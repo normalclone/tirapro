@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ComponentProps } from 'react';
+import { DocsLink } from '@/components/ui/DocsLink';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import type { UseQueryResult } from '@tanstack/react-query';
 import { Bookmark, ChevronDown, Filter as FilterIcon, Play, Plus, Trash2 } from 'lucide-react';
@@ -11,7 +12,9 @@ import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { useConfirm } from '@/components/ui/useConfirm';
 import { Input } from '@/components/ui/Input';
 import { Badge, EmptyState, Skeleton } from '@/components/ui/primitives';
-import { pageContainer } from '@/components/layout/page';
+import { PageFrame } from '@/components/layout/PageFrame';
+import { PageHeader } from '@/components/layout/PageHeader';
+import { RailLayout } from '@/components/layout/RailLayout';
 import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { useProjects } from '@/features/projects/api';
@@ -202,21 +205,11 @@ export function FiltersPage() {
         : 'Bộ lọc';
 
   return (
-    <div className="flex h-full min-h-0 flex-col lg:flex-row">
-      {/* Rail: danh sách bộ lọc — dọc trên desktop, hàng cuộn ngang trên mobile */}
-      <aside
-        aria-label="Bộ lọc đã lưu"
-        className={cn(
-          'shrink-0 border-border bg-surface',
-          'flex flex-col gap-2 border-b px-3 py-3',
-          'lg:w-72 lg:overflow-y-auto lg:border-b-0 lg:border-r lg:px-3 lg:py-5',
-        )}
-      >
-        <div className="flex items-center justify-between gap-2 px-1 lg:px-2">
-          <h1 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-faint max-lg:sr-only">
-            <Bookmark className="h-3.5 w-3.5" aria-hidden />
-            Bộ lọc đã lưu
-          </h1>
+    <RailLayout
+      ariaLabel="Bộ lọc đã lưu"
+      rail={
+        <>
+          <p className="px-2 pb-1 text-xs font-medium text-muted max-lg:hidden">Bộ lọc đã lưu</p>
           {/* < lg: rail thu thành một nút (mặc định đóng) để thấy ô JQL ngay; mở ra xổ danh sách tại chỗ. */}
           <button
             type="button"
@@ -238,91 +231,90 @@ export function FiltersPage() {
               aria-hidden
             />
           </button>
-        </div>
 
-        <div
-          id="saved-filters-body"
-          className={cn('flex flex-col gap-2', !railOpen && 'max-lg:hidden')}
-        >
-          {canManageFilters && (
-            <Button
-              size="sm"
-              onClick={() => {
-                setCreateInitialJql('');
-                setCreateOpen(true);
+          <div
+            id="saved-filters-body"
+            className={cn('flex flex-col gap-2', !railOpen && 'max-lg:hidden')}
+          >
+            <SavedFilterList
+              query={savedFilters}
+              activeId={activeFilterId}
+              onSelect={(f) => {
+                setRailOpen(false);
+                void loadAndRunSaved(f);
               }}
-              className="w-full"
-            >
-              <Plus className="h-4 w-4" aria-hidden />
-              Tạo bộ lọc
-            </Button>
-          )}
-
-          <SavedFilterList
-            query={savedFilters}
-            activeId={activeFilterId}
-            onSelect={(f) => {
-              setRailOpen(false);
-              void loadAndRunSaved(f);
-            }}
-            onDelete={handleDelete}
-            canManage={canManageFilters}
-            deleting={deleteFilter.isPending ? deleteFilter.variables : undefined}
-          />
-        </div>
-      </aside>
-
+              onDelete={handleDelete}
+              canManage={canManageFilters}
+              deleting={deleteFilter.isPending ? deleteFilter.variables : undefined}
+            />
+          </div>
+        </>
+      }
+    >
       {/* Nội dung: JQL nhanh + kết quả có phân trang */}
-      <div className="flex min-w-0 flex-1 flex-col overflow-auto">
-        <div className={pageContainer('md', 'flex flex-col gap-5')}>
-          <header className="flex flex-col gap-1">
-            <div className="flex items-center gap-2.5">
-              <FilterIcon className="h-5 w-5 text-muted" aria-hidden />
-              <h2 className="truncate text-xl font-semibold text-ink-strong">{heading}</h2>
-            </div>
-            <p className="text-sm text-muted">
-              Chọn một bộ lọc đã lưu để xem kết quả, hoặc chạy nhanh một truy vấn JQL bên dưới.
-            </p>
-          </header>
+      <PageFrame size="lg" className="flex flex-col gap-5">
+        <PageHeader
+          className="mb-0"
+          title={heading}
+          description={
+            <>
+              Chọn một bộ lọc đã lưu để xem kết quả, hoặc chạy nhanh một truy vấn JQL.{' '}
+              <DocsLink anchor="tim-kiem" />
+            </>
+          }
+          actions={
+            canManageFilters ? (
+              <Button
+                size="sm"
+                onClick={() => {
+                  setCreateInitialJql('');
+                  setCreateOpen(true);
+                }}
+              >
+                <Plus className="h-4 w-4" aria-hidden />
+                Tạo bộ lọc
+              </Button>
+            ) : undefined
+          }
+        />
 
-          <AdhocBar
-            value={jqlDraft}
-            onChange={setJqlDraft}
-            onRun={runAdhoc}
-            running={active.kind === 'adhoc' && isRunning}
-            error={runError}
-            onSave={
-              canManageFilters
-                ? () => {
-                    setCreateInitialJql(jqlDraft.trim());
-                    setCreateOpen(true);
-                  }
+        <AdhocBar
+          value={jqlDraft}
+          onChange={setJqlDraft}
+          onRun={runAdhoc}
+          running={active.kind === 'adhoc' && isRunning}
+          error={runError}
+          onSave={
+            canManageFilters
+              ? () => {
+                  setCreateInitialJql(jqlDraft.trim());
+                  setCreateOpen(true);
+                }
+              : undefined
+          }
+        />
+
+        <ResultsTable
+          issues={shownResults}
+          loading={isRunning}
+          hasRun={hasRun}
+          error={runError}
+          page={page}
+          onPageChange={setPage}
+          projectKeyById={projectKeyById}
+          onOpen={openIssue}
+          hasMore={shownSet?.hasMore ?? false}
+          loadingMore={loadingMore}
+          onLoadMore={() => void loadMore()}
+          exportJql={
+            active.kind === 'adhoc'
+              ? active.jql
+              : active.kind === 'filter'
+                ? active.filter.jql
                 : undefined
-            }
-          />
-
-          <ResultsTable
-            issues={shownResults}
-            loading={isRunning}
-            hasRun={hasRun}
-            error={runError}
-            page={page}
-            onPageChange={setPage}
-            projectKeyById={projectKeyById}
-            onOpen={openIssue}
-            hasMore={shownSet?.hasMore ?? false}
-            loadingMore={loadingMore}
-            onLoadMore={() => void loadMore()}
-            exportJql={
-              active.kind === 'adhoc'
-                ? active.jql
-                : active.kind === 'filter'
-                  ? active.filter.jql
-                  : undefined
-            }
-          />
-        </div>
-      </div>
+          }
+        />
+      </PageFrame>
 
       {canManageFilters && (
         <CreateFilterModal
@@ -335,7 +327,7 @@ export function FiltersPage() {
           }
         />
       )}
-    </div>
+    </RailLayout>
   );
 }
 

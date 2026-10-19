@@ -2,7 +2,8 @@ import { useMemo, useState } from 'react';
 import { ScrollText, ShieldOff } from 'lucide-react';
 import { AUDIT_ACTION_LABEL } from '@tirapro/types';
 import { SETTINGS_LABELS } from '@/lib/navLabels';
-import { pageContainer } from '@/components/layout/page';
+import { PageFrame } from '@/components/layout/PageFrame';
+import { PageHeader } from '@/components/layout/PageHeader';
 import { Avatar, Badge, EmptyState } from '@/components/ui/primitives';
 import { Button } from '@/components/ui/Button';
 import { DateInput } from '@/components/ui/DateInput';
@@ -104,13 +105,17 @@ export function AuditLogPage() {
 
   if (!allowed) {
     return (
-      <div className={pageContainer('md')}>
+      <PageFrame size="sm">
+        <PageHeader
+          title={SETTINGS_LABELS.audit}
+          description="Ai đã thêm/gỡ thành viên, đổi vai trò, sửa tích hợp… trong không gian làm việc này."
+        />
         <EmptyState
           icon={<ShieldOff className="h-6 w-6" />}
           title="Bạn không có quyền xem nhật ký quản trị"
           description="Chỉ quản trị không gian làm việc xem được nhật ký này. Hãy nhờ quản trị viên nếu bạn cần tra cứu."
         />
-      </div>
+      </PageFrame>
     );
   }
 
@@ -118,15 +123,11 @@ export function AuditLogPage() {
   const hasFilter = Object.values(filters).some(Boolean);
 
   return (
-    <div className={pageContainer('md')}>
-      <header className="mb-5">
-        <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">
-          {SETTINGS_LABELS.audit}
-        </h1>
-        <p className="mt-1 text-sm text-muted">
-          Ai đã thêm/gỡ thành viên, đổi vai trò, sửa tích hợp… trong không gian làm việc này.
-        </p>
-      </header>
+    <PageFrame size="sm">
+      <PageHeader
+        title={SETTINGS_LABELS.audit}
+        description="Ai đã thêm/gỡ thành viên, đổi vai trò, sửa tích hợp… trong không gian làm việc này."
+      />
 
       <AuditFilterBar
         filters={filters}
@@ -203,6 +204,6 @@ export function AuditLogPage() {
           </>
         )}
       </QueryBoundary>
-    </div>
+    </PageFrame>
   );
 }

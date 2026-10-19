@@ -3,7 +3,7 @@ import type { NotificationEmailPrefs } from '@tirapro/types';
 import { toast } from 'sonner';
 import { Skeleton } from '@/components/ui/primitives';
 import { apiErrorMessage } from '@/lib/api';
-import { SectionCard } from './SectionCard';
+import { SectionCard } from '@/components/ui/SectionCard';
 import { useNotificationPrefs, useUpdateNotificationPrefs } from './api';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
 
@@ -67,11 +67,7 @@ export function NotificationSection() {
 
   return (
     <div className="space-y-6">
-      <SectionCard
-        icon={<Bell className="h-4 w-4" />}
-        title="Thông báo"
-        description="Mặc định yên tĩnh — chỉ bật thông báo quan trọng."
-      >
+      <SectionCard icon={<Bell className="h-4 w-4" />} title="Trong ứng dụng">
         <QueryBoundary
           query={prefsQuery}
           skeleton={

@@ -59,7 +59,8 @@ import { fmtLongDate } from '@/lib/dateFormat';
 import { HealthBadge } from '@/components/ui/HealthBadge';
 import { PrintButton } from '@/components/ui/PrintButton';
 import { PrintHeader } from '@/components/ui/PrintHeader';
-import { pageContainer } from '@/components/layout/page';
+import { PageFrame } from '@/components/layout/PageFrame';
+import { PageHeader } from '@/components/layout/PageHeader';
 import { useRecents } from '@/stores/recentIssues';
 import { cn } from '@/lib/utils';
 import { CHART_MARGIN, yAxisWidth } from '@/lib/chartAxis';
@@ -114,32 +115,20 @@ export function DashboardPage() {
   const now = useNow();
 
   return (
-    <div className={pageContainer('xl', 'py-6')}>
-      {/* Greeting — chung cho cả hai chế độ */}
-      {/* Admin: bản in có khối PrintHeader riêng (tiêu đề + người in) nên bỏ lời chào. */}
-      <header
-        className={cn(
-          'mb-5 flex flex-wrap items-start justify-between gap-x-4 gap-y-3',
-          isAdmin && 'print:hidden',
-        )}
-      >
-        <div className="min-w-0">
-          <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">
-            {greetingPrefix(now)}
-            {user?.displayName ? `, ${user.displayName}` : ''}
-          </h1>
-          <p className="mt-1 text-sm text-muted">{fmtLongDate(now)}</p>
-        </div>
-        {/* Chuyển sang dashboard tuỳ biến (của tôi / được chia sẻ); tự ẩn khi chưa có dashboard nào. */}
-        <div className="print:hidden">
-          <DashboardSwitcher />
-        </div>
-      </header>
+    <PageFrame size="xl" className="py-6">
+      {/* Lời chào — chung cho cả hai chế độ. Admin: bản in có khối PrintHeader riêng (tiêu đề + người in) nên bỏ lời chào. */}
+      <PageHeader
+        className={cn(isAdmin && 'print:hidden')}
+        title={`${greetingPrefix(now)}${user?.displayName ? `, ${user.displayName}` : ''}`}
+        description={fmtLongDate(now)}
+        // Chuyển sang dashboard tuỳ biến (của tôi / được chia sẻ); tự ẩn khi chưa có dashboard nào.
+        actions={<DashboardSwitcher className="print:hidden" />}
+      />
 
       <RecentsStrip />
 
       <div data-tour="home-overview">{isAdmin ? <AdminOverview /> : <PersonalOverview />}</div>
-    </div>
+    </PageFrame>
   );
 }
 
@@ -193,7 +182,7 @@ function AdminOverview() {
         <span className="flex items-center gap-3">
           {canDigest && (
             <Link
-              to="/connect/integrations?section=digest"
+              to="/connect/integrations/digest"
               className="inline-flex items-center gap-1 rounded-sm text-xs font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
             >
               <CalendarClock className="h-3.5 w-3.5" aria-hidden />

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { ScrollText } from 'lucide-react';
-import { pageContainer } from '@/components/layout/page';
+import { PageFrame } from '@/components/layout/PageFrame';
+import { PageHeader } from '@/components/layout/PageHeader';
 import { Avatar, Badge, EmptyState, Skeleton } from '@/components/ui/primitives';
 import { Button } from '@/components/ui/Button';
 import { QueryError } from '@/components/ui/QueryError';
@@ -71,15 +72,11 @@ export function AdminSystemPage() {
   const nextLimit = AUDIT_STEPS.find((s) => s > limit) ?? limit;
 
   return (
-    <div className={pageContainer('lg')}>
-      <header className="mb-6">
-        <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">
-          {ADMIN_LABELS.system}
-        </h1>
-        <p className="mt-1 text-sm text-muted">
-          Tình trạng dịch vụ (tự làm mới) &amp; nhật ký kiểm toán toàn hệ thống.
-        </p>
-      </header>
+    <PageFrame size="lg">
+      <PageHeader
+        title={ADMIN_LABELS.system}
+        description="Tình trạng dịch vụ (tự làm mới) & nhật ký kiểm toán toàn hệ thống."
+      />
 
       {/* Health */}
       <section className="mb-8">
@@ -222,6 +219,6 @@ export function AdminSystemPage() {
           )}
         </TabPanel>
       </section>
-    </div>
+    </PageFrame>
   );
 }

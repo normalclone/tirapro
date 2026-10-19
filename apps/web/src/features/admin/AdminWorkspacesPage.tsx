@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
 import { Archive, ArchiveRestore, Building2, Search, SearchX } from 'lucide-react';
 import { toast } from 'sonner';
-import { pageContainer } from '@/components/layout/page';
+import { PageFrame } from '@/components/layout/PageFrame';
+import { PageHeader } from '@/components/layout/PageHeader';
 import { Avatar, Badge, EmptyState, Skeleton } from '@/components/ui/primitives';
 import { useConfirm } from '@/components/ui/useConfirm';
 import { Button } from '@/components/ui/Button';
@@ -81,15 +82,11 @@ export function AdminWorkspacesPage() {
   }
 
   return (
-    <div className={pageContainer('lg')}>
-      <header className="mb-6">
-        <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">
-          {ADMIN_LABELS.workspaces}
-        </h1>
-        <p className="mt-1 text-sm text-muted">
-          Mọi không gian làm việc trong hệ thống — đổi gói dịch vụ, lưu trữ hoặc khôi phục.
-        </p>
-      </header>
+    <PageFrame size="lg">
+      <PageHeader
+        title={ADMIN_LABELS.workspaces}
+        description="Mọi không gian làm việc trong hệ thống — đổi gói dịch vụ, lưu trữ hoặc khôi phục."
+      />
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <div className="relative min-w-56 flex-1">
@@ -227,6 +224,6 @@ export function AdminWorkspacesPage() {
           </table>
         </ScrollX>
       )}
-    </div>
+    </PageFrame>
   );
 }

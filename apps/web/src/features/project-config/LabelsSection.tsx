@@ -15,7 +15,7 @@ import {
   type LabelUpdateInput,
 } from './api';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
-import { SectionCard } from './SectionCard';
+import { SectionCard } from '@/components/ui/SectionCard';
 
 /** Màu mặc định cho nhãn mới (token primary). */
 const DEFAULT_LABEL_COLOR = '#6366f1';
@@ -76,11 +76,7 @@ export function LabelsSection({ projectId, canAdmin }: { projectId?: string; can
   }
 
   return (
-    <SectionCard
-      icon={<Tags className="h-4 w-4" />}
-      title="Nhãn"
-      description="Gắn nhãn cho công việc để nhóm và lọc theo cách của riêng bạn."
-    >
+    <SectionCard>
       <QueryBoundary
         query={labelsQuery}
         skeleton={
@@ -98,7 +94,12 @@ export function LabelsSection({ projectId, canAdmin }: { projectId?: string; can
             description="Nhãn là từ khoá tự đặt để nhóm và lọc công việc. Thêm nhãn đầu tiên để bắt đầu gắn."
             action={
               canAdmin ? (
-                <Button size="sm" onClick={() => setAdding(true)} disabled={!projectId}>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setAdding(true)}
+                  disabled={!projectId}
+                >
                   <Plus className="h-4 w-4" />
                   Thêm nhãn
                 </Button>

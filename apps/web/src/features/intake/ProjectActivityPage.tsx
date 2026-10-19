@@ -17,7 +17,8 @@ import { Link, useParams } from 'react-router-dom';
 import { useProject } from '@/features/projects/api';
 import { Avatar, EmptyState, Skeleton } from '@/components/ui/primitives';
 import { Button } from '@/components/ui/Button';
-import { pageContainer } from '@/components/layout/page';
+import { PageFrame } from '@/components/layout/PageFrame';
+import { PageHeader } from '@/components/layout/PageHeader';
 import { useProjectActivity, type ProjectActivityItem } from './api';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
 import { fmtDate, fmtDateTime, fmtRelative } from '@/lib/dateFormat';
@@ -237,14 +238,8 @@ export function ProjectActivityPage() {
   const groups = groupByDay(items);
 
   return (
-    <div className={pageContainer('sm')}>
-      <header className="mb-6">
-        <h1 className="flex items-center gap-2 text-lg font-semibold text-ink-strong">
-          <History className="h-4 w-4 text-primary" />
-          Hoạt động
-        </h1>
-        <p className="mt-1 text-sm text-muted">Ai đã làm gì, trên công việc nào.</p>
-      </header>
+    <PageFrame size="full">
+      <PageHeader variant="tab" title="Hoạt động" description="Ai đã làm gì, trên công việc nào." />
 
       <QueryBoundary
         query={activityQuery}
@@ -274,9 +269,9 @@ export function ProjectActivityPage() {
           <>
             {groups.map((g) => (
               <section key={g.key}>
-                <h2 className="sticky top-0 z-[1] -mx-2 mb-3 bg-bg/85 px-2 py-1.5 text-xs font-semibold uppercase tracking-wide text-muted backdrop-blur">
+                <h3 className="sticky top-0 z-[1] -mx-2 mb-3 bg-bg/85 px-2 py-1.5 text-xs font-semibold uppercase tracking-wide text-muted backdrop-blur">
                   {g.label}
-                </h2>
+                </h3>
                 {/* Rail dọc liên tục + các chấm; rail canh giữa cột avatar (14px = nửa của 28px) */}
                 <ol className="relative">
                   <span
@@ -305,6 +300,6 @@ export function ProjectActivityPage() {
           </>
         )}
       </QueryBoundary>
-    </div>
+    </PageFrame>
   );
 }

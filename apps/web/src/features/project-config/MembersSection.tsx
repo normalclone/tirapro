@@ -19,7 +19,7 @@ import {
   useSetProjectMemberRoles,
 } from '@/features/members/api';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
-import { SectionCard } from './SectionCard';
+import { SectionCard } from '@/components/ui/SectionCard';
 
 /* ------------------------------------------------------------------ */
 /* Section — Thành viên dự án                                          */
@@ -73,15 +73,7 @@ export function MembersSection({
   }
 
   return (
-    <SectionCard
-      icon={<Users className="h-4 w-4" />}
-      title="Thành viên"
-      description={
-        isPrivate
-          ? 'Dự án riêng tư — chỉ những người ở đây (và quản trị) thấy dự án.'
-          : 'Mọi thành viên của không gian làm việc đều tham gia dự án này. Có thể đặt vai trò riêng cho từng người khi cần.'
-      }
-    >
+    <SectionCard>
       <QueryBoundary
         query={membersQuery}
         skeleton={

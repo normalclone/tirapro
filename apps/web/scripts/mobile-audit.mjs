@@ -78,8 +78,12 @@ const P = `/p/${PROJECT}`;
 const DEFAULT_ROUTES = [
   '/',
   '/projects',
-  ...['board', 'backlog', 'gantt', 'tree', 'reports', 'triage', 'activity', 'config'].map(
+  ...['board', 'backlog', 'gantt', 'tree', 'reports', 'triage', 'trash', 'activity', 'config'].map(
     (v) => `${P}/${v}`,
+  ),
+  // Cấu hình dự án là route con: gốc = danh sách mục; mục = trang con có hàng "‹ Cấu hình".
+  ...['general', 'members', 'components', 'versions', 'labels', 'data'].map(
+    (s) => `${P}/config/${s}`,
   ),
   `/issue/${ISSUE}`,
   '/filters',
@@ -87,10 +91,16 @@ const DEFAULT_ROUTES = [
   '/account',
   '/wiki',
   '/notifications',
+  // Trang gốc của khu vực có menu con: ở 390px là DANH SÁCH mục ("bước vào"), không redirect như desktop.
+  '/settings',
+  '/manage',
+  '/connect',
   ...['portfolio', 'goals', 'risks', 'resources', 'response-time', 'clients'].map(
     (v) => `/manage/${v}`,
   ),
   '/connect/integrations',
+  '/connect/integrations/telegram',
+  '/connect/integrations/digest',
   '/connect/automation',
   ...[
     'general',

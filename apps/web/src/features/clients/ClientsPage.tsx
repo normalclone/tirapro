@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { DocsLink } from '@/components/ui/DocsLink';
 import {
   Building2,
   ChevronDown,
@@ -16,7 +17,8 @@ import { EmptyState, Skeleton } from '@/components/ui/primitives';
 import { Button } from '@/components/ui/Button';
 import { useConfirm } from '@/components/ui/useConfirm';
 import { Input } from '@/components/ui/Input';
-import { pageContainer } from '@/components/layout/page';
+import { PageFrame } from '@/components/layout/PageFrame';
+import { PageHeader } from '@/components/layout/PageHeader';
 import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/stores/auth';
@@ -381,23 +383,23 @@ export function ClientsPage() {
   const hasClients = (clients ?? []).length > 0;
 
   return (
-    <div className={pageContainer('lg')}>
-      <header className="mb-6 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">
-            {MANAGE_LABELS.clients}
-          </h1>
-          <p className="mt-1 text-sm text-muted">
-            Lưu thông tin liên hệ của khách hàng, nối họ với dự án đang làm và ghi lại giá trị, thời
-            hạn của từng hợp đồng để không bỏ sót cam kết.
-          </p>
-        </div>
-        {canManage && (
-          <Button size="sm" onClick={openCreate}>
-            <Plus className="h-4 w-4" /> Thêm khách hàng
-          </Button>
-        )}
-      </header>
+    <PageFrame size="xl">
+      <PageHeader
+        title={MANAGE_LABELS.clients}
+        description={
+          <>
+            Lưu thông tin khách hàng, nối với dự án và theo dõi hợp đồng.{' '}
+            <DocsLink anchor="quan-ly-nang-cao" />
+          </>
+        }
+        actions={
+          canManage ? (
+            <Button size="sm" onClick={openCreate}>
+              <Plus className="h-4 w-4" /> Thêm khách hàng
+            </Button>
+          ) : undefined
+        }
+      />
 
       {hasClients && (
         <div className="mb-4">
@@ -435,7 +437,7 @@ export function ClientsPage() {
             }
             action={
               canManage ? (
-                <Button size="sm" onClick={openCreate}>
+                <Button variant="secondary" size="sm" onClick={openCreate}>
                   <Plus className="h-4 w-4" /> Thêm khách hàng
                 </Button>
               ) : undefined
@@ -491,6 +493,6 @@ export function ClientsPage() {
         contract={contractCtx?.contract}
         onClose={() => setContractCtx(null)}
       />
-    </div>
+    </PageFrame>
   );
 }

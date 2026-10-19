@@ -56,11 +56,9 @@ describe('mobile nền chung', () => {
     ));
   it('dải menu phụ cuộn ngang có dấu hiệu còn nội dung', () => {
     for (const f of [
-      'features/settings/SettingsLayout.tsx',
-      'features/manage/ManageLayout.tsx',
-      'features/connect/ConnectLayout.tsx',
-      'features/integrations/IntegrationsPage.tsx',
-      'features/project-config/ProjectConfigPage.tsx',
+      // Settings/Manage/Connect không còn dải chip (mobile = danh sách mục "bước vào", SubNavLayout);
+      // Tích hợp dùng hàng tab theo route (LinkTabs); Cấu hình dự án cũng là route con của SubNavLayout (T10).
+      'components/ui/LinkTabs.tsx',
     ])
       expect(src(f), f).toMatch(/scroll-fade-x/);
   });

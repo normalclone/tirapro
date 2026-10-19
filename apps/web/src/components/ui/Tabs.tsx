@@ -43,11 +43,13 @@ const LIST = 'flex gap-1 border-b border-border';
 const TAB = '-mb-px border-b-2 px-3 py-2 text-sm';
 const ON = 'border-primary text-ink-strong';
 const OFF = 'border-transparent text-muted hover:text-ink';
+/** Kiểu gạch chân dùng chung cho `Tabs` (state) và `LinkTabs` (route) — một nguồn duy nhất. */
+export const TAB_STYLE = { base: TAB_BASE, list: LIST, tab: TAB, on: ON, off: OFF } as const;
 
 /**
  * Hàng tab đúng mẫu ARIA (APG): `tablist` > `tab` có `aria-selected`, roving tabindex (chỉ tab đang chọn là điểm dừng
  * Tab), ←/→/Home/End chuyển tab VÀ kích hoạt ngay (automatic activation), `aria-controls` trỏ tới `TabPanel`
- * cùng `idBase`. Chuyển bằng state cùng trang — điều hướng theo URL/route thì dùng liên kết có `aria-current`, không dùng Tabs.
+ * cùng `idBase`. Chuyển bằng state cùng trang — điều hướng theo URL/route thì dùng `LinkTabs` (liên kết có `aria-current`), không dùng Tabs.
  * - Một kiểu gạch chân duy nhất. `fade`: hàng cuộn ngang có mờ mép còn nội dung (nơi dùng tự đặt `overflow-x-auto` qua className).
  * - Bắt buộc `ariaLabel` (tên của tablist).
  */

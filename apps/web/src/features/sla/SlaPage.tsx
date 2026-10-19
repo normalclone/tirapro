@@ -1,9 +1,12 @@
 import { useState } from 'react';
+import { DocsLink } from '@/components/ui/DocsLink';
 import { Link } from 'react-router-dom';
 import { AlarmClock, Plus, Trash2, TriangleAlert } from 'lucide-react';
 import { toast } from 'sonner';
 import { apiErrorMessage } from '@/lib/api';
-import { pageContainer } from '@/components/layout/page';
+import { PageFrame } from '@/components/layout/PageFrame';
+import { PageHeader } from '@/components/layout/PageHeader';
+import { SectionCard } from '@/components/ui/SectionCard';
 import { Avatar, Badge, EmptyState, Skeleton } from '@/components/ui/primitives';
 import { Button } from '@/components/ui/Button';
 import { Dialog } from '@/components/ui/Dialog';
@@ -34,37 +37,40 @@ import { MANAGE_LABELS, SETTINGS_LABELS } from '@/lib/navLabels';
 /** Bảng theo dõi công việc sắp trễ / đã trễ hạn cam kết (dùng trong mục Danh mục). */
 export function SlaBoardPage() {
   return (
-    <div className={pageContainer('sm')}>
-      <header className="mb-6">
-        <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">
-          {MANAGE_LABELS.responseTime}
-        </h1>
-        <p className="mt-1 text-sm text-muted">
-          Các công việc đang chạy đồng hồ đếm ngược theo cam kết thời gian xử lý. Việc sắp tới hạn
-          tô vàng, việc đã quá hạn tô đỏ — hãy xử lý từ trên xuống.
-        </p>
-      </header>
+    <PageFrame size="xl">
+      <PageHeader
+        title={MANAGE_LABELS.responseTime}
+        description="Công việc đang chạy đồng hồ theo cam kết; sắp tới hạn tô vàng, quá hạn tô đỏ."
+      />
       <SlaBoard />
-    </div>
+    </PageFrame>
   );
 }
 
 /** Cấu hình cam kết thời gian xử lý (dùng trong Cài đặt). */
 export function SlaPoliciesPage() {
   const canManage = useAuth((s) => s.can('sla:manage'));
+  const [open, setOpen] = useState(false);
   return (
-    <div className={pageContainer('sm')}>
-      <header className="mb-6">
-        <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">
-          {SETTINGS_LABELS.responseTime}
-        </h1>
-        <p className="mt-1 text-sm text-muted">
-          Đặt thời hạn phải phản hồi và phải xử lý xong cho từng nhóm công việc. Hệ thống bấm giờ
-          ngay khi công việc được tạo và cảnh báo khi sắp trễ.
-        </p>
-      </header>
-      <SlaPolicies canManage={canManage} />
-    </div>
+    <PageFrame size="sm">
+      <PageHeader
+        title={SETTINGS_LABELS.responseTime}
+        description={
+          <>
+            Đặt thời hạn phản hồi và xử lý xong cho từng nhóm công việc.{' '}
+            <DocsLink anchor="quan-ly-nang-cao" />
+          </>
+        }
+        actions={
+          canManage ? (
+            <Button size="sm" onClick={() => setOpen(true)}>
+              <Plus className="h-4 w-4" /> Thêm cam kết
+            </Button>
+          ) : undefined
+        }
+      />
+      <SlaPolicies canManage={canManage} open={open} onOpenChange={setOpen} />
+    </PageFrame>
   );
 }
 
@@ -100,22 +106,24 @@ function SlaBoardTable({ rows }: { rows: SlaBoardRow[] }) {
   const soon = rows.filter((r) => !r.resolveBreached && r.remainingMins <= SLA_SOON_MINS).length;
 
   return (
-    <section className="rounded-lg border border-border bg-surface">
-      <div className="flex flex-wrap items-center gap-3 border-b border-border px-5 py-4">
-        <h2
-          className="text-base font-semibold text-ink-strong"
-          title="Đồng hồ chạy từ lúc công việc được tạo cho tới khi xử lý xong."
-        >
-          Đang chạy đồng hồ
-        </h2>
-        <span className="text-sm text-muted">{rows.length} công việc</span>
-        {breached > 0 && <Badge className="bg-danger/10 text-danger">{breached} đã quá hạn</Badge>}
-        {soon > 0 && (
-          <Badge className="bg-warning/15 text-warning">
-            {soon} {SLA_SOON_LABEL}
-          </Badge>
-        )}
-      </div>
+    <SectionCard
+      title="Đang chạy đồng hồ"
+      description="Đồng hồ chạy từ lúc công việc được tạo cho tới khi xử lý xong."
+      bare
+      actions={
+        <>
+          <span className="text-sm text-muted">{rows.length} công việc</span>
+          {breached > 0 && (
+            <Badge className="bg-danger/10 text-danger">{breached} đã quá hạn</Badge>
+          )}
+          {soon > 0 && (
+            <Badge className="bg-warning/15 text-warning">
+              {soon} {SLA_SOON_LABEL}
+            </Badge>
+          )}
+        </>
+      }
+    >
       <ul className="divide-y divide-border">
         {rows.map((r) => {
           const late = r.resolveBreached;
@@ -189,11 +197,19 @@ function SlaBoardTable({ rows }: { rows: SlaBoardRow[] }) {
           );
         })}
       </ul>
-    </section>
+    </SectionCard>
   );
 }
 
-function SlaPolicies({ canManage }: { canManage: boolean }) {
+function SlaPolicies({
+  canManage,
+  open,
+  onOpenChange,
+}: {
+  canManage: boolean;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
   const policiesQuery = useSlaPolicies();
   const { data } = policiesQuery;
   const { data: projects } = useProjects();
@@ -201,7 +217,6 @@ function SlaPolicies({ canManage }: { canManage: boolean }) {
   const update = useUpdateSlaPolicy();
   const remove = useDeleteSlaPolicy();
   const confirm = useConfirm();
-  const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
   const [projectId, setProjectId] = useState('');
   const [responseH, setResponseH] = useState('4');
@@ -222,7 +237,7 @@ function SlaPolicies({ canManage }: { canManage: boolean }) {
       {
         onSuccess: () => {
           toast.success('Đã tạo cam kết');
-          setOpen(false);
+          onOpenChange(false);
           setName('');
           setProjectId('');
         },
@@ -232,133 +247,120 @@ function SlaPolicies({ canManage }: { canManage: boolean }) {
   }
 
   return (
-    <section className="rounded-lg border border-border bg-surface">
-      <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-4">
-        <div>
-          <h2 className="text-base font-semibold text-ink-strong">Danh sách cam kết</h2>
-          <p className="mt-0.5 text-sm text-muted">
-            Mỗi cam kết áp cho một dự án cụ thể, hoặc cho mọi dự án nếu bạn không chọn dự án nào.
-          </p>
-        </div>
-        {canManage && (
-          <Button size="sm" onClick={() => setOpen(true)}>
-            <Plus className="h-4 w-4" /> Thêm cam kết
-          </Button>
-        )}
-      </div>
-
-      <div className="p-5">
-        <QueryBoundary
-          query={policiesQuery}
-          skeleton={
-            <div className="space-y-2">
-              {Array.from({ length: 3 }).map((_, i) => (
-                <Skeleton key={i} className="h-12 w-full" />
-              ))}
-            </div>
-          }
-          empty={() => list.length === 0}
-          emptyState={
-            <EmptyState
-              icon={<AlarmClock className="h-6 w-6" />}
-              title="Chưa đặt cam kết nào"
-              description={
-                canManage
-                  ? 'Cam kết là thời hạn bạn tự đặt cho việc phản hồi và xử lý xong. Tạo cam kết đầu tiên để hệ thống bắt đầu bấm giờ.'
-                  : 'Cam kết là thời hạn cho việc phản hồi và xử lý xong. Quản trị viên chưa đặt cam kết nào.'
-              }
-            />
-          }
-        >
-          {() => (
-            <ul className="divide-y divide-border">
-              {list.map((p: SlaPolicyDto) => (
-                <li
-                  key={p.id}
-                  className="flex flex-wrap items-center gap-x-3 gap-y-1.5 py-3 first:pt-0 last:pb-0"
+    <SectionCard
+      title="Danh sách cam kết"
+      description="Mỗi cam kết áp cho một dự án cụ thể, hoặc cho mọi dự án nếu bạn không chọn dự án nào."
+    >
+      <QueryBoundary
+        query={policiesQuery}
+        skeleton={
+          <div className="space-y-2">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <Skeleton key={i} className="h-12 w-full" />
+            ))}
+          </div>
+        }
+        empty={() => list.length === 0}
+        emptyState={
+          <EmptyState
+            icon={<AlarmClock className="h-6 w-6" />}
+            title="Chưa đặt cam kết nào"
+            description={
+              canManage
+                ? 'Cam kết là thời hạn bạn tự đặt cho việc phản hồi và xử lý xong. Tạo cam kết đầu tiên để hệ thống bắt đầu bấm giờ.'
+                : 'Cam kết là thời hạn cho việc phản hồi và xử lý xong. Quản trị viên chưa đặt cam kết nào.'
+            }
+          />
+        }
+      >
+        {() => (
+          <ul className="divide-y divide-border">
+            {list.map((p: SlaPolicyDto) => (
+              <li
+                key={p.id}
+                className="flex flex-wrap items-center gap-x-3 gap-y-1.5 py-3 first:pt-0 last:pb-0"
+              >
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-medium text-ink-strong">
+                    {p.name}
+                  </span>
+                  <span className="block truncate text-xs text-muted">
+                    {p.project ? `Dự án ${p.project.key}` : 'Mọi dự án'}
+                    {p.priority ? ` · ${p.priority.name}` : ''}
+                  </span>
+                </span>
+                <span
+                  className="shrink-0 text-xs text-muted"
+                  title="Tính từ lúc công việc được tạo, phải có phản hồi đầu tiên trong khoảng này."
                 >
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-medium text-ink-strong">
-                      {p.name}
-                    </span>
-                    <span className="block truncate text-xs text-muted">
-                      {p.project ? `Dự án ${p.project.key}` : 'Mọi dự án'}
-                      {p.priority ? ` · ${p.priority.name}` : ''}
-                    </span>
-                  </span>
-                  <span
-                    className="shrink-0 text-xs text-muted"
-                    title="Tính từ lúc công việc được tạo, phải có phản hồi đầu tiên trong khoảng này."
-                  >
-                    Phản hồi trong <b className="text-ink">{fmtMins(p.responseMins)}</b>
-                  </span>
-                  <span
-                    className="shrink-0 text-xs text-muted"
-                    title="Tính từ lúc công việc được tạo, phải xử lý xong trong khoảng này."
-                  >
-                    Xử lý xong trong <b className="text-ink">{fmtMins(p.resolveMins)}</b>
-                  </span>
-                  <Badge
-                    className={p.active ? 'bg-success/10 text-success' : 'bg-surface-2 text-muted'}
-                  >
-                    {p.active ? 'Đang áp dụng' : 'Đang tắt'}
-                  </Badge>
-                  {canManage && (
-                    <div className="flex shrink-0 items-center gap-1">
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        title={
-                          p.active
-                            ? 'Ngừng bấm giờ cho công việc mới khớp cam kết này'
-                            : 'Bấm giờ trở lại cho công việc mới khớp cam kết này'
-                        }
-                        aria-label={p.active ? `Tắt cam kết ${p.name}` : `Bật cam kết ${p.name}`}
-                        onClick={() =>
-                          update.mutate(
-                            { id: p.id, active: !p.active },
-                            { onError: (e) => toast.error(apiErrorMessage(e)) },
-                          )
-                        }
-                      >
-                        {p.active ? 'Tắt' : 'Bật'}
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="text-muted hover:text-danger"
-                        title="Xoá cam kết"
-                        aria-label={`Xoá cam kết ${p.name}`}
-                        onClick={async () => {
-                          if (
-                            !(await confirm({
-                              title: `Xoá cam kết “${p.name}”? Các công việc đang tính giờ theo cam kết này sẽ ngừng được theo dõi.`,
-                              destructive: true,
-                            }))
-                          )
-                            return;
-                          remove.mutate(p.id, { onError: (e) => toast.error(apiErrorMessage(e)) });
-                        }}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
-        </QueryBoundary>
-      </div>
+                  Phản hồi trong <b className="text-ink">{fmtMins(p.responseMins)}</b>
+                </span>
+                <span
+                  className="shrink-0 text-xs text-muted"
+                  title="Tính từ lúc công việc được tạo, phải xử lý xong trong khoảng này."
+                >
+                  Xử lý xong trong <b className="text-ink">{fmtMins(p.resolveMins)}</b>
+                </span>
+                <Badge
+                  className={p.active ? 'bg-success/10 text-success' : 'bg-surface-2 text-muted'}
+                >
+                  {p.active ? 'Đang áp dụng' : 'Đang tắt'}
+                </Badge>
+                {canManage && (
+                  <div className="flex shrink-0 items-center gap-1">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      title={
+                        p.active
+                          ? 'Ngừng bấm giờ cho công việc mới khớp cam kết này'
+                          : 'Bấm giờ trở lại cho công việc mới khớp cam kết này'
+                      }
+                      aria-label={p.active ? `Tắt cam kết ${p.name}` : `Bật cam kết ${p.name}`}
+                      onClick={() =>
+                        update.mutate(
+                          { id: p.id, active: !p.active },
+                          { onError: (e) => toast.error(apiErrorMessage(e)) },
+                        )
+                      }
+                    >
+                      {p.active ? 'Tắt' : 'Bật'}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="text-muted hover:text-danger"
+                      title="Xoá cam kết"
+                      aria-label={`Xoá cam kết ${p.name}`}
+                      onClick={async () => {
+                        if (
+                          !(await confirm({
+                            title: `Xoá cam kết “${p.name}”? Các công việc đang tính giờ theo cam kết này sẽ ngừng được theo dõi.`,
+                            destructive: true,
+                          }))
+                        )
+                          return;
+                        remove.mutate(p.id, { onError: (e) => toast.error(apiErrorMessage(e)) });
+                      }}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </QueryBoundary>
 
       <Dialog
         open={open}
-        onOpenChange={setOpen}
+        onOpenChange={onOpenChange}
         title="Thêm cam kết thời gian"
         onSubmit={submit}
         footer={
           <>
-            <Button variant="ghost" onClick={() => setOpen(false)}>
+            <Button variant="ghost" onClick={() => onOpenChange(false)}>
               Huỷ
             </Button>
             <Button onClick={submit} loading={create.isPending} disabled={!name.trim()}>
@@ -423,6 +425,6 @@ function SlaPolicies({ canManage }: { canManage: boolean }) {
           </div>
         </div>
       </Dialog>
-    </section>
+    </SectionCard>
   );
 }

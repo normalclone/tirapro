@@ -17,7 +17,7 @@ import {
   type VersionUpdateInput,
 } from './api';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
-import { SectionCard } from './SectionCard';
+import { SectionCard } from '@/components/ui/SectionCard';
 import { blockOnInvalidDate } from '@/lib/dateGuard';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 
@@ -110,11 +110,7 @@ export function VersionsSection({
   }
 
   return (
-    <SectionCard
-      icon={<Tag className="h-4 w-4" />}
-      title="Phiên bản"
-      description="Theo dõi các mốc phát hành (release) của dự án."
-    >
+    <SectionCard>
       <QueryBoundary
         query={versionsQuery}
         skeleton={
@@ -132,7 +128,12 @@ export function VersionsSection({
             description="Thêm phiên bản đầu tiên để lập kế hoạch phát hành."
             action={
               canAdmin ? (
-                <Button size="sm" onClick={() => setAdding(true)} disabled={!projectId}>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setAdding(true)}
+                  disabled={!projectId}
+                >
                   <Plus className="h-4 w-4" />
                   Thêm phiên bản
                 </Button>

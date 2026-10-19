@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { DocsLink } from '@/components/ui/DocsLink';
 import { useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import {
@@ -28,7 +29,9 @@ import { EmptyState, Skeleton } from '@/components/ui/primitives';
 import { MarkdownView } from '@/features/issue-edit/MarkdownView';
 import { useProjects } from '@/features/projects/api';
 import { useLazyProjectCan, useProjectsCan } from '@/features/projects/permissions';
-import { pageContainer } from '@/components/layout/page';
+import { PageFrame } from '@/components/layout/PageFrame';
+import { PageHeader } from '@/components/layout/PageHeader';
+import { RailLayout } from '@/components/layout/RailLayout';
 import { apiErrorCode, apiErrorMessage } from '@/lib/api';
 import { currentProjectKey } from '@/lib/currentProject';
 import { cn } from '@/lib/utils';
@@ -614,39 +617,55 @@ export function WikiPage() {
     </div>
   );
 
+  // Breadcrumb ở tiêu đề trang: tổ tiên (bấm để mở) › trang đang xem. Trang gốc (không tổ tiên) thì thôi, tiêu đề trang đã đủ.
+  const openPage = pendingNew || !selectedId ? undefined : page.data;
+  const crumbs =
+    openPage && openPage.breadcrumb.length > 0
+      ? [
+          ...openPage.breadcrumb.map((b) => ({ label: b.title, onClick: () => open(b.id) })),
+          { label: openPage.title },
+        ]
+      : undefined;
+
   return (
-    <div className={pageContainer('xl')}>
-      <header className="mb-6">
-        <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">
-          {APP_NAV_LABELS.wiki}
-        </h1>
-        <p className="mt-1 text-sm text-muted">
-          Tài liệu nội bộ: nơi lưu quy trình, hướng dẫn và biên bản họp. Viết bằng Markdown, xếp
-          thành cây trang, dùng chung cho cả tổ chức hoặc riêng từng dự án.
-        </p>
-      </header>
-
-      <div className="mb-3 lg:hidden">
-        <Button
-          size="sm"
-          variant="secondary"
-          onClick={() => setTreeOpen((v) => !v)}
-          aria-expanded={treeOpen}
-        >
-          <PanelLeft className="h-4 w-4" />{' '}
-          {treeOpen ? 'Ẩn danh sách trang' : 'Hiện danh sách trang'}
-        </Button>
-      </div>
-
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-[17rem_minmax(0,1fr)]">
-        <aside
-          className={cn(
-            'rounded-lg border border-border bg-surface lg:sticky lg:top-4 lg:max-h-[calc(100vh-8rem)]',
-            treeOpen ? 'block' : 'hidden lg:block',
-          )}
-        >
-          {treePanel}
-        </aside>
+    <RailLayout
+      ariaLabel="Cây trang Wiki"
+      railClassName="gap-0 p-0 lg:p-0"
+      rail={
+        <>
+          <div className="px-3 py-3 lg:hidden">
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => setTreeOpen((v) => !v)}
+              aria-expanded={treeOpen}
+            >
+              <PanelLeft className="h-4 w-4" />{' '}
+              {treeOpen ? 'Ẩn danh sách trang' : 'Hiện danh sách trang'}
+            </Button>
+          </div>
+          <div
+            className={cn(
+              'min-h-0 flex-1 max-lg:max-h-[60vh] max-lg:border-t max-lg:border-border',
+              !treeOpen && 'max-lg:hidden',
+            )}
+          >
+            {treePanel}
+          </div>
+        </>
+      }
+    >
+      <PageFrame size="lg">
+        <PageHeader
+          title={APP_NAV_LABELS.wiki}
+          description={
+            <>
+              Tài liệu nội bộ viết bằng Markdown, xếp thành cây trang.{' '}
+              <DocsLink anchor="quan-ly-nang-cao" />
+            </>
+          }
+          breadcrumb={crumbs}
+        />
 
         <section className="min-w-0 rounded-lg border border-border bg-surface">
           {pendingNew ? (
@@ -719,27 +738,6 @@ export function WikiPage() {
             >
               {(pg) => (
                 <article className="p-6">
-                  {pg.breadcrumb.length > 0 && (
-                    <nav
-                      aria-label="Đường dẫn trang"
-                      className="mb-2 flex flex-wrap items-center gap-1 text-xs text-faint"
-                    >
-                      {pg.breadcrumb.map((b) => (
-                        <span key={b.id} className="flex items-center gap-1">
-                          <button
-                            type="button"
-                            onClick={() => open(b.id)}
-                            className="rounded transition-colors hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
-                          >
-                            {b.title}
-                          </button>
-                          <ChevronRight className="h-3 w-3" aria-hidden />
-                        </span>
-                      ))}
-                      <span className="text-muted">{pg.title}</span>
-                    </nav>
-                  )}
-
                   {editing ? (
                     <WikiEditor
                       title={draftTitle}
@@ -836,18 +834,18 @@ export function WikiPage() {
             </QueryBoundary>
           )}
         </section>
-      </div>
 
-      <WikiTrashDialog
-        open={trashOpen}
-        onOpenChange={setTrashOpen}
-        scope={scope}
-        scopeLabel={(pid) =>
-          pid ? (projects?.find((p) => p.id === pid)?.name ?? 'Dự án') : 'Dùng chung'
-        }
-        onRestored={open}
-      />
-    </div>
+        <WikiTrashDialog
+          open={trashOpen}
+          onOpenChange={setTrashOpen}
+          scope={scope}
+          scopeLabel={(pid) =>
+            pid ? (projects?.find((p) => p.id === pid)?.name ?? 'Dự án') : 'Dùng chung'
+          }
+          onRestored={open}
+        />
+      </PageFrame>
+    </RailLayout>
   );
 }
 

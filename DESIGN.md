@@ -131,6 +131,46 @@ Type scale (rem, 1rem=16px) — line-height đặc cho mật độ cao:
 - **`@media (prefers-reduced-motion: reduce)`**: thay bằng crossfade/instant cho MỌI animation.
 - Reveal phải tăng cường default đã hiển thị; không gate nội dung sau transition.
 
+## Khung trang (đợt 2 · phần B)
+
+Mọi màn trong AppShell dựng từ bốn khối dùng chung ở `components/layout` + `components/ui`; trang/feature **không tự đặt** `max-w-*`, đệm trang, tiêu đề h1 hay thẻ có viền (test `pageFrame.test.ts` chặn).
+
+**`PageFrame` — bề rộng + đệm (B-D1).** Nội dung mọi màn bắt đầu cùng một vị trí ngang. Đệm ngang 16px (mobile) / 24px (từ `sm`), dọc trên 24 → 32px, dưới 32px; từ `lg` đệm đáy 112px (`lg:pb-28`) để nút nổi (FAB) không che dòng cuối.
+
+| Cỡ     | Bề rộng            | Dùng cho                                                                                                                                              |
+| ------ | ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `sm`   | `max-w-3xl`        | form/danh sách hẹp: Cài đặt (trừ Vai trò & quyền, Quy trình), Thành viên, Thông báo, Tài khoản, Kết nối, Tự động hoá, Cấu hình dự án                  |
+| `lg`   | `max-w-5xl`        | màn làm việc vừa: chi tiết công việc, Bộ lọc, Wiki, Quản trị hệ thống, Quy trình, Vai trò & quyền                                                     |
+| `xl`   | `max-w-7xl`        | bảng mật độ cao: Tổng quan, Dự án, Bảng tổng quan, các trang Danh mục                                                                                 |
+| `full` | theo vùng nội dung | tab trong dự án: Việc mới vào, Thùng rác, Hoạt động, Cây việc, Báo cáo (Bảng việc/Việc chờ/Lịch trình là bề mặt công cụ riêng, không qua `PageFrame`) |
+
+Ngoại lệ có chủ đích ngoài `PageFrame` (allowlist trong test, kèm lý do): cỡ hộp thoại `xl` của `Dialog`; bài viết của trang Hướng dẫn công khai.
+
+**`PageHeader` — đầu trang (B-D2).** Thứ tự: breadcrumb → tiêu đề (không icon) → **mô tả đúng một câu, một dòng** → nút bên phải.
+
+- Mô tả ngắn; giải thích dài đặt ở trang Hướng dẫn và nối bằng `DocsLink` ("Tìm hiểu thêm", mở `/documentation#<mục>` ở tab mới).
+- `variant="page"` là h1 (mỗi route đúng **một** h1). `variant="tab"` là h2, dành cho tab trong dự án và các mục của Cấu hình dự án — đã có h1 của header dự án; thẻ bên dưới dùng `SectionCard headingLevel={3}` (không nhảy cấp).
+- **h1 của dự án:** `ProjectLayout` vẽ tên dự án là h1 duy nhất của mọi tab dự án. Dưới `lg` ô chọn dự án đã hiện tên nên h1 chuyển sang `sr-only` (KHÔNG `hidden`/`display:none`, vì như vậy trang mất h1 với trình đọc màn hình).
+- **Nút chính:** tối đa MỘT nút chính trong `actions` (xuống dòng riêng dưới `sm`); khung `actions` không vẽ gì thì tự ẩn (`empty:hidden`) để khỏi chừa khe (Tổng quan, Danh mục).
+- **Không tiêu đề** (bỏ `title`): chỉ breadcrumb + actions, dành cho trang tự vẽ h1 hiển thị ngay bên dưới — chi tiết công việc, nơi ô tiêu đề sửa tại chỗ (bọc trong `<h1>`, kể cả khi đang sửa, có `aria-label="Tiêu đề công việc"`) chính là h1.
+- **`titleHidden`**: h1 chỉ cho trình đọc màn hình (`sr-only`) cùng hàng breadcrumb + actions — dùng cho trạng thái chưa có tiêu đề hiển thị (đang tải/lỗi/không thấy của chi tiết công việc) để mọi trạng thái vẫn có **đúng một h1**.
+
+**Vị trí nút tạo (RB4).** Nút tạo chính của trang nằm ở `PageHeader.actions`. Ba ngoại lệ:
+
+1. Trang sửa danh sách tại chỗ (Mức ưu tiên, Mức nghiêm trọng, Trường thông tin thêm, Quy trình): form thêm mở **ngay dưới danh sách** nên nút "Thêm…" (secondary) đứng ở đó, không lên header.
+2. Tạo theo phạm vi tab (vd tab Nhóm của Thành viên, tab của Tự động hoá): nút nằm ở header của thẻ (`SectionCard.actions`), vì chỉ áp cho tab đó.
+3. Nút tạo trong `EmptyState` luôn là **secondary** (B-D6): lối vào chính đã ở header; khối trống không được tranh sự chú ý.
+
+**`SubNavLayout` — menu con (B-D4).** Dùng cho Cài đặt, Quản lý (Danh mục), Kết nối, Cấu hình dự án. Chế độ route: mỗi mục là một route con (`basePath` + id), nên đổi mục đổi pathname và `LeaveGuardHost` bắt form chưa lưu — không tự chặn bằng state. Từ `lg`: rail trái 240px (nhóm chữ thường-hoa kiểu câu, KHÔNG `uppercase`, không heading), route index chuyển hướng tới mục đầu. Dưới `lg`: **"bước vào"** — `basePath` là danh sách mục (không chuyển hướng), trang con có hàng "‹ <khu vực>" (giữ `?query` và slot `top`); Back của trình duyệt về danh sách. Liên kết cũ dạng `?section=` được chuyển hướng sang route con.
+
+**`RailLayout` — master–detail (ngoại lệ có tài liệu của B-D4).** Bộ lọc và Wiki: rail 288px vì là DANH SÁCH ĐỘNG (tìm/xoá/cây trang), không "bước vào"; dưới `lg` rail xếp trên nội dung. Rail không có heading; h1 thuộc `PageHeader` trong nội dung. `RailLayout` và `SubNavLayout` dùng chung chất liệu qua `railSurface.ts` (`RAIL_SURFACE`: nền `surface`, `border-r`, đệm ngang 12px, cuộn riêng từ `lg`); chỉ khác `RAIL_WIDTH` (`nav` 240px, `master` 288px).
+
+**`SectionCard` — thẻ duy nhất có tiêu đề (B-D3).** Một thẻ = icon (tuỳ chọn) + tiêu đề h2/h3 + mô tả + nút + chân thẻ; thẻ đơn mục của trang đã có `PageHeader` thì **không tiêu đề** (mô tả đã chuyển lên header). Cấm khai báo `function SectionCard/Card` cục bộ và header thẻ tự vẽ (viền dưới + tiêu đề) — allowlist có lý do: ô biểu đồ Báo cáo, ô thông số trang Hướng dẫn, hàng lồng trong trình sửa quy tắc, thẻ công việc trên Bảng, panel Epic của Backlog.
+
+- **Giữ `GroupCard` (Danh mục), `ClientCard` (Khách hàng), `GoalCard` (Mục tiêu):** đó là **mục của danh sách** — mỗi thẻ là một thực thể lặp, tiêu đề là nút thu/mở kèm tiến độ/trạng thái/liên hệ — không phải thẻ khu vực tĩnh. `SectionCard` không biểu diễn thu/mở, ép vào chỉ thêm nút thừa. Điều kiện giữ (test kiểm): phải có `aria-expanded`.
+
+**Vùng chạm.** `Button size="icon"` là 36px với chuột và **44px** khi `pointer: coarse`, áp toàn app (không đặt riêng từng nút).
+
 ## Components (conventions)
 
 shadcn/ui (Radix primitives) + Tailwind, restyle theo token trên. Primitives P0:

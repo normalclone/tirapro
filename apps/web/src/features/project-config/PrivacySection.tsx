@@ -6,7 +6,7 @@ import { useProjectMembers } from '@/features/members/api';
 import { useUpdateProject } from '@/features/projects/api';
 import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
-import { SectionCard } from './SectionCard';
+import { SectionCard } from '@/components/ui/SectionCard';
 
 /**
  * Hàng "Quyền xem" của cấu hình dự án: công tắc "Dự án riêng tư". Bật = chỉ thành viên dự án + quản trị không gian
@@ -56,6 +56,7 @@ export function PrivacySection({ project, canAdmin }: { project: ProjectDto; can
 
   return (
     <SectionCard
+      headingLevel={3}
       icon={<Lock className="h-4 w-4" />}
       title="Quyền xem"
       description="Chọn ai nhìn thấy dự án này."

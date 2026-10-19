@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { DocsLink } from '@/components/ui/DocsLink';
 import { LineChart, Link2, Pencil, Plus, Target, Trash2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Avatar, Badge, EmptyState, Skeleton } from '@/components/ui/primitives';
@@ -6,7 +7,8 @@ import { Button } from '@/components/ui/Button';
 import { useConfirm } from '@/components/ui/useConfirm';
 import { Input } from '@/components/ui/Input';
 import { SearchSelect } from '@/components/ui/SearchSelect';
-import { pageContainer } from '@/components/layout/page';
+import { PageFrame } from '@/components/layout/PageFrame';
+import { PageHeader } from '@/components/layout/PageHeader';
 import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/stores/auth';
@@ -490,24 +492,23 @@ export function GoalsPage() {
     : null;
 
   return (
-    <div className={pageContainer('lg')}>
-      <header className="mb-6 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">
-            {MANAGE_LABELS.goals}
-          </h1>
-          <p className="mt-1 text-sm text-muted">
-            Mục tiêu và kết quả then chốt. Mỗi kỳ (thường là một quý) đặt vài mục tiêu, mỗi mục tiêu
-            kèm những kết quả then chốt đo được bằng số. Tiến độ tính từ số đo hiện tại của các kết
-            quả đó. Cách làm này quốc tế gọi là OKR.
-          </p>
-        </div>
-        {canManage && (
-          <Button onClick={openCreate}>
-            <Plus className="h-4 w-4" /> Tạo mục tiêu
-          </Button>
-        )}
-      </header>
+    <PageFrame size="xl">
+      <PageHeader
+        title={MANAGE_LABELS.goals}
+        description={
+          <>
+            Đặt mục tiêu theo quý, mỗi mục tiêu kèm kết quả then chốt đo được bằng số.{' '}
+            <DocsLink anchor="quan-ly-nang-cao" />
+          </>
+        }
+        actions={
+          canManage ? (
+            <Button size="sm" onClick={openCreate}>
+              <Plus className="h-4 w-4" /> Tạo mục tiêu
+            </Button>
+          ) : undefined
+        }
+      />
 
       <div className="mb-5 flex flex-wrap items-center gap-2">
         <SearchSelect
@@ -565,7 +566,7 @@ export function GoalsPage() {
             }
             action={
               canManage ? (
-                <Button onClick={openCreate}>
+                <Button variant="secondary" size="sm" onClick={openCreate}>
                   <Plus className="h-4 w-4" /> Tạo mục tiêu
                 </Button>
               ) : undefined
@@ -617,6 +618,6 @@ export function GoalsPage() {
         goal={attachTarget}
         onClose={() => setAttaching(null)}
       />
-    </div>
+    </PageFrame>
   );
 }

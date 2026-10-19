@@ -17,7 +17,7 @@ import {
   type CustomFieldType,
 } from './api';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
-import { SETTINGS_LABELS } from '@/lib/navLabels';
+import { SectionCard } from '@/components/ui/SectionCard';
 
 /** Nhãn tiếng Việt cho từng loại trường, giữ đúng thứ tự enum backend. */
 const FIELD_TYPES: { value: CustomFieldType; label: string }[] = [
@@ -43,34 +43,6 @@ const TYPE_LABELS: Record<CustomFieldType, string> = FIELD_TYPES.reduce(
 
 function hasOptions(type: CustomFieldType): boolean {
   return type === 'SELECT' || type === 'MULTI_SELECT';
-}
-
-/** Card khung — giữ đúng vocabulary với SettingsPage. */
-function SectionCard({
-  icon,
-  title,
-  description,
-  children,
-}: {
-  icon: React.ReactNode;
-  title: string;
-  description?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <section className="rounded-lg border border-border bg-surface">
-      <div className="flex items-start gap-3 border-b border-border px-5 py-4">
-        <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary-subtle text-primary">
-          {icon}
-        </span>
-        <div>
-          <h2 className="text-base font-semibold text-ink-strong">{title}</h2>
-          {description && <p className="mt-0.5 text-sm text-muted">{description}</p>}
-        </div>
-      </div>
-      <div className="p-5">{children}</div>
-    </section>
-  );
 }
 
 export function CustomFieldsAdminSection() {
@@ -156,11 +128,7 @@ export function CustomFieldsAdminSection() {
   }
 
   return (
-    <SectionCard
-      icon={<LayoutList className="h-4 w-4" />}
-      title={SETTINGS_LABELS.fields}
-      description="Thêm các ô thông tin riêng của bạn vào mỗi công việc. Không thể đổi kiểu dữ liệu của trường sau khi tạo."
-    >
+    <SectionCard>
       <QueryBoundary
         query={fieldsQuery}
         skeleton={
@@ -182,7 +150,7 @@ export function CustomFieldsAdminSection() {
             }
             action={
               canManage ? (
-                <Button size="sm" onClick={() => setAdding(true)}>
+                <Button variant="secondary" size="sm" onClick={() => setAdding(true)}>
                   <Plus className="h-4 w-4" />
                   Thêm trường
                 </Button>

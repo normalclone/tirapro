@@ -20,6 +20,7 @@ import {
   useUpdateAllocation,
   type AllocationDto,
 } from './api';
+import { SectionCard } from '@/components/ui/SectionCard';
 import { fmtDayMonth } from '@/lib/dateFormat';
 import { blockOnInvalidDate } from '@/lib/dateGuard';
 
@@ -137,22 +138,23 @@ export function AllocationsPanel({
   }
 
   return (
-    <section className="rounded-lg border border-border bg-surface">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-4">
-        <div>
-          <h2 className="text-base font-semibold text-ink-strong">Phân bổ người vào dự án</h2>
-          <p className="mt-0.5 text-sm text-muted">
-            Ai dành bao nhiêu phần trăm thời gian cho dự án nào. Đang hiện các phân bổ có ngày rơi
-            vào khoảng {fmtDayMonth(from)} – {fmtDayMonth(to)}.
-          </p>
-        </div>
-        {canManage && !form && (
+    <SectionCard
+      title="Phân bổ người vào dự án"
+      bare
+      description={
+        <>
+          Ai dành bao nhiêu phần trăm thời gian cho dự án nào. Đang hiện các phân bổ có ngày rơi vào
+          khoảng {fmtDayMonth(from)} – {fmtDayMonth(to)}.
+        </>
+      }
+      actions={
+        canManage && !form ? (
           <Button size="sm" onClick={startCreate}>
             <Plus className="h-4 w-4" aria-hidden /> Thêm phân bổ
           </Button>
-        )}
-      </div>
-
+        ) : undefined
+      }
+    >
       {form && (
         <div ref={formRef} className="border-b border-border bg-surface-2/60 px-5 py-4">
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -248,7 +250,7 @@ export function AllocationsPanel({
             }
             action={
               canManage && !form ? (
-                <Button size="sm" onClick={startCreate}>
+                <Button variant="secondary" size="sm" onClick={startCreate}>
                   <Plus className="h-4 w-4" aria-hidden /> Thêm phân bổ
                 </Button>
               ) : undefined
@@ -366,7 +368,7 @@ export function AllocationsPanel({
         onConfirm={confirmDelete}
         onCancel={() => setPendingDelete(null)}
       />
-    </section>
+    </SectionCard>
   );
 }
 

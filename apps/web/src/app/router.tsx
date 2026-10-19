@@ -5,6 +5,7 @@ import { AppShell } from '@/components/layout/AppShell';
 import { RouteError } from '@/components/layout/RouteError';
 import { NotFoundPage } from '@/components/layout/NotFoundPage';
 import { RequireAccess } from '@/components/layout/RequireAccess';
+import { ScrollToHash } from '@/features/docs/ScrollToHash';
 import { ConnectIndexRedirect } from '@/features/connect/ConnectIndexRedirect';
 import { SettingsIndexRedirect } from '@/features/settings/SettingsIndexRedirect';
 import { NAV_RULES } from '@/lib/navAccess';
@@ -71,6 +72,16 @@ const ProjectConfigPage = lazy(() =>
     default: m.ProjectConfigPage,
   })),
 );
+const ConfigIndexRedirect = lazy(() =>
+  import('@/features/project-config/ProjectConfigPage').then((m) => ({
+    default: m.ConfigIndexRedirect,
+  })),
+);
+const ConfigSection = lazy(() =>
+  import('@/features/project-config/ProjectConfigPage').then((m) => ({
+    default: m.ConfigSection,
+  })),
+);
 const IssueDetailPage = lazy(() =>
   import('@/features/issues/IssueDetailPage').then((m) => ({ default: m.IssueDetailPage })),
 );
@@ -79,6 +90,16 @@ const FiltersPage = lazy(() =>
 );
 const IntegrationsPage = lazy(() =>
   import('@/features/integrations/IntegrationsPage').then((m) => ({ default: m.IntegrationsPage })),
+);
+const IntegrationsIndexRedirect = lazy(() =>
+  import('@/features/integrations/IntegrationsPage').then((m) => ({
+    default: m.IntegrationsIndexRedirect,
+  })),
+);
+const IntegrationSection = lazy(() =>
+  import('@/features/integrations/IntegrationsPage').then((m) => ({
+    default: m.IntegrationSection,
+  })),
 );
 const WorkflowSettingsPage = lazy(() =>
   import('@/features/workflow-settings/WorkflowSettingsPage').then((m) => ({
@@ -248,6 +269,7 @@ export const router = createBrowserRouter([
     path: '/documentation',
     element: (
       <Suspense fallback={<PageLoading />}>
+        <ScrollToHash />
         <DocumentationPage />
       </Suspense>
     ),
@@ -329,7 +351,17 @@ export const router = createBrowserRouter([
           { index: true, element: <ConnectIndexRedirect /> },
           {
             element: <RequireAccess rule={NAV_RULES.connectIntegrations} who="quản trị viên" />,
-            children: [{ path: 'integrations', element: <IntegrationsPage /> }],
+            children: [
+              {
+                path: 'integrations',
+                element: <IntegrationsPage />,
+                children: [
+                  // Liên kết cũ `/connect/integrations?section=digest` rơi vào index rồi chuyển tới route con.
+                  { index: true, element: <IntegrationsIndexRedirect /> },
+                  { path: ':section', element: <IntegrationSection /> },
+                ],
+              },
+            ],
           },
           { path: 'automation', element: <AutomationPage /> },
         ],
@@ -360,7 +392,15 @@ export const router = createBrowserRouter([
           { path: 'reports', element: <ReportsPage /> },
           { path: 'gantt', element: <GanttPage /> },
           { path: 'tree', element: <TreePage /> },
-          { path: 'config', element: <ProjectConfigPage /> },
+          {
+            path: 'config',
+            element: <ProjectConfigPage />,
+            children: [
+              // `?section=` (và đường dẫn gốc) → route con; mục lạ → Chung.
+              { index: true, element: <ConfigIndexRedirect /> },
+              { path: ':section', element: <ConfigSection /> },
+            ],
+          },
           // URL lạ trong dự án: 404 hiện trong <Outlet /> nên giữ rail + thanh view của dự án.
           { path: '*', element: <NotFoundPage /> },
         ],

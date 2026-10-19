@@ -1,19 +1,19 @@
 import { Link } from 'react-router-dom';
-import { FileUp } from 'lucide-react';
-import { pageContainer } from '@/components/layout/page';
-import { SectionCard } from '@/features/settings/SectionCard';
+import { PageFrame } from '@/components/layout/PageFrame';
+import { PageHeader } from '@/components/layout/PageHeader';
+import { SectionCard } from '@/components/ui/SectionCard';
 import { JiraImportWizard } from './JiraImportWizard';
 import { SETTINGS_LABELS } from '@/lib/navLabels';
 
 /** Trang "Nhập dữ liệu" trong Cài đặt — hiện có nhập từ Jira (CSV). */
 export function ImportPage() {
   return (
-    <div className={pageContainer('lg')}>
-      <SectionCard
-        icon={<FileUp className="h-4 w-4" />}
+    <PageFrame size="sm">
+      <PageHeader
         title={SETTINGS_LABELS.import}
-        description="Chuyển công việc từ Jira sang Tirapro bằng tệp CSV: ghép loại, trạng thái, mức ưu tiên và người dùng rồi nhập theo lô."
-      >
+        description="Chuyển công việc từ Jira sang Tirapro bằng tệp CSV, ghép trường rồi nhập theo lô."
+      />
+      <SectionCard>
         <JiraImportWizard />
       </SectionCard>
       <p className="mt-4 text-sm text-muted">
@@ -23,6 +23,6 @@ export function ImportPage() {
         </Link>{' '}
         → Cài đặt dự án → Xuất / Nhập dữ liệu.
       </p>
-    </div>
+    </PageFrame>
   );
 }

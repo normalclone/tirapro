@@ -563,3 +563,65 @@ Phần A của đợt chuẩn hoá thứ hai: dọn các tồn đọng của đ�
 - **Tab:** bấm phím mũi tên là chuyển luôn sang tab đó (tab nào tải dữ liệu thì mỗi lần bấm là một lần tải); phím Tab chưa nhảy vào vùng nội dung của tab.
 - **Điều hướng:** đường lạ trong dự án chưa tồn tại có thể thoáng hiện trang "Không tìm thấy" trong lúc dự án đang tải; nếu tải quyền bị lỗi mạng thì Việc mới vào hiện "Không có quyền" thay vì báo lỗi; lệnh Việc mới vào ở ⌘K chỉ xuất hiện sau khi quyền đã tải xong.
 - **Kỹ thuật (không ảnh hưởng người dùng):** hai lần khoá dự án khi đánh số lại; test mới chủ yếu kiểm hàm thuần và đọc mã nguồn (chưa có test chạy trên trình duyệt thật).
+
+---
+
+# Giao diện đợt 2 · Phần B (2026-10-19)
+
+Phần B của đợt chuẩn hoá thứ hai: **khung trang và điều hướng**. Mọi màn dùng chung một khung (bề rộng, đệm, đầu trang, thẻ, menu con) thay cho cách mỗi trang tự dựng. Chỉ đổi giao diện web.
+
+## 1. Cần làm khi triển khai
+
+- **Chỉ cần triển khai web.** Không đổi API, không có migration, không phải chạy `db:raw` hay lệnh nào khác.
+- **Liên kết cũ vẫn dùng được, không phải đổi gì:** địa chỉ có `?section=` của Ứng dụng bên ngoài và Cấu hình dự án được tự chuyển sang địa chỉ mới (xem mục 2). Dấu trang, tài liệu, tin nhắn đã gửi không bị gãy.
+- Trang Hướng dẫn nhận thêm liên kết sâu (`/documentation#<mục>`) để các dòng "Tìm hiểu thêm" mở đúng mục; không cần cấu hình.
+
+## 2. Thay đổi người dùng thấy
+
+### Khung trang thống nhất
+
+- **Bề rộng theo loại màn:** form hẹp (Cài đặt, Thành viên, Thông báo, Tài khoản, Kết nối), màn làm việc vừa (chi tiết công việc, Bộ lọc, Wiki, Quản trị hệ thống, Quy trình, Vai trò & quyền), bảng dày (Tổng quan, Dự án, Bảng tổng quan, các trang Danh mục) và tab trong dự án rộng hết vùng nội dung. Nội dung các màn bắt đầu cùng một chỗ nên đổi màn không bị lệch tay.
+- **Đầu trang giống nhau:** đường dẫn (nếu có) → tiêu đề → một dòng mô tả → nút chính bên phải. Nút "tạo" chính của trang nằm ở góc phải đầu trang; riêng các trang sửa danh sách tại chỗ (Mức ưu tiên, Mức nghiêm trọng, Trường thông tin thêm, Quy trình) vẫn có nút "Thêm…" ngay dưới danh sách. Nút tạo trong khối "chưa có gì" là nút phụ (nền xám), không tranh chú ý với nút chính.
+- **Mô tả ngắn lại còn một câu** ở Cài đặt, Danh mục, Quản lý, Kết nối, Tài khoản…; các ví dụ và công thức dài đã chuyển đi (công thức tính nhân lực nay nằm ở chú giải của bảng khối lượng). Những mô tả có tài liệu đi kèm thêm **"Tìm hiểu thêm"** (mở trang Hướng dẫn đúng mục ở tab mới).
+- Các thẻ trong Cài đặt, Thành viên, Danh mục… dùng cùng một kiểu thẻ (biểu tượng, tiêu đề, mô tả, nút ở góc phải).
+- **Đường dẫn (breadcrumb) đã chuyển chỗ:** ở **Wiki**, đường dẫn các trang cha (`trang cha › trang đang xem`, chỉ hiện khi trang có trang cha) nay nằm đầu trang, phía trên tiêu đề, thay vì ở trong bài viết. Ở **xem bảng tổng quan tuỳ biến**, liên kết "← Tổng quan" được thay bằng đường dẫn "Tổng quan › <tên bảng>" (không in ra giấy). Ở **chi tiết công việc**, đường dẫn dùng chữ đơn cách cho mã và rê chuột vào việc cha/Epic thấy tên đầy đủ; "Quay lại" nằm bên phải cùng hàng. Trên điện thoại, trang nằm trong menu con chỉ hiện nút "‹ khu vực", không hiện đường dẫn.
+- Thẻ đầu của Cài đặt › Thông báo đổi tên từ "Thông báo" thành **"Trong ứng dụng"** (khỏi trùng với tiêu đề trang).
+- **Màn chi tiết công việc:** tiêu đề công việc đã sửa tại chỗ được trình đọc màn hình đọc là tiêu đề chính của trang; cách bấm để sửa, Esc huỷ, Enter lưu không đổi.
+- **Tổng quan quản trị hệ thống:** nút làm mới là nút biểu tượng; rê chuột thấy "Làm mới · <thời điểm cập nhật>".
+- Nút chỉ có biểu tượng lớn lên **44px trên màn cảm ứng** (36px với chuột như trước).
+
+### Menu con và điện thoại
+
+- **Cài đặt, Quản lý (Danh mục) và Kết nối trên điện thoại** mở ra một **danh sách mục**; chạm một mục để vào, bấm "‹" (hoặc nút Back của trình duyệt) để về danh sách. Trên máy tính vẫn là menu bên trái như cũ, mở thẳng mục đầu tiên. Menu bên trái không còn chữ hoa nhỏ.
+- **Cấu hình dự án** cũng theo kiểu đó: trên điện thoại là danh sách 6 mục (Chung, Thành viên, Thành phần, Phiên bản, Nhãn, Xuất / Nhập dữ liệu).
+
+### Địa chỉ mới
+
+| Trang | Địa chỉ mới | Địa chỉ cũ |
+|---|---|---|
+| Ứng dụng bên ngoài | `/connect/integrations/telegram`, `/repos` (chỉ khi bật cờ Kho mã lúc build), `/digest` | `/connect/integrations?section=digest` → chuyển sang `/digest` |
+| Cấu hình dự án | `/p/<mã>/config/general`, `/members`, `/components`, `/versions`, `/labels`, `/data` | `/p/<mã>/config?section=members` → chuyển sang `/members` |
+
+Mục **Kho mã (`/repos`) chỉ có khi bật cờ build `VITE_FEATURE_REPOS=1` (mặc định tắt)**; khi tắt, mục không hiện trong hàng tab và địa chỉ `/repos` chuyển về Telegram. Địa chỉ gốc (`/connect/integrations`, `/p/<mã>/config`) mở mục đầu (Telegram / Chung); mục lạ (`?section=abc`) cũng về mục đầu. Nút Back của trình duyệt đi qua từng mục.
+
+### Sửa dở rồi đổi mục
+
+- Ở Cấu hình dự án, đang sửa dở "Chung" mà bấm sang mục khác thì vẫn được hỏi "Bỏ các thay đổi chưa lưu?" (nay do cơ chế chặn rời trang chung làm, không còn mã riêng từng trang). Huỷ thì ở lại với phần đã gõ.
+- Các mục của Ứng dụng bên ngoài hiện chưa có biểu mẫu nào giữ trạng thái "chưa lưu", nên chưa có gì để hỏi ở đó.
+
+### Tab trong dự án
+
+- Việc mới vào, Thùng rác, Hoạt động, Cây việc, Báo cáo có tiêu đề cùng kiểu và rộng hết vùng nội dung. Nút "Gửi yêu cầu" của Việc mới vào nằm ở góc phải đầu trang. Báo cáo có tiêu đề "Báo cáo" phía trên hàng tab.
+- **Trình đọc màn hình:** mỗi trang đúng một tiêu đề chính. Với tab trong dự án đó là tên dự án; trên điện thoại (nơi tên dự án đã hiện ở ô chọn dự án) vẫn còn trong dòng đọc của trình đọc màn hình nhưng không hiện lặp trên màn hình.
+
+## 3. Còn mở
+
+- **Màn rất rộng:** Việc mới vào, Thùng rác, Hoạt động nay trải hết vùng nội dung (theo quy ước tab trong dự án), nên dòng danh sách rất dài trên màn lớn. Nếu thấy khó đọc có thể đặt giới hạn riêng cho ba tab này.
+- **Cần mắt người kiểm với dữ liệu thật:** bước ghép trường của Nhập dữ liệu (bước 2–3) ở bề rộng máy tính bảng; thẻ "Đang chạy đồng hồ" của Cam kết thời gian khi có công việc đang chạy (môi trường thử chưa có dữ liệu).
+- **Kết nối:** vào `/connect` từ liên kết cũ chuyển hướng hai lần và làm rơi `?project=` (đã vậy từ trước); chạm một mục trong danh sách Kết nối trên điện thoại cũng không giữ `?project=`.
+- **Báo cáo:** bản in vẫn có tiêu đề "Báo cáo" phía trên các biểu đồ.
+- **Tổng quan:** bản xem cho in vẫn có tiêu đề riêng (ẩn trên màn hình).
+- **Bảng tổng quan tuỳ biến:** trình sửa có thêm khoảng 60px ở đầu để chứa tiêu đề trang (cần cho đúng một tiêu đề chính).
+- **Chi tiết công việc trên điện thoại:** hàng "Quay lại / mã công việc" cao hơn trước một chút.
+- **Cố ý giữ nguyên:** thẻ thu/mở của Danh mục (chương trình), Khách hàng và Mục tiêu là *mục của danh sách*, không đổi sang kiểu thẻ khu vực; rail 288px của Bộ lọc và Wiki rộng hơn menu 240px vì là danh sách động.
+- **Kỹ thuật (không ảnh hưởng người dùng):** các test mới chủ yếu đọc mã nguồn và kết xuất tĩnh (chưa có test chạy trên trình duyệt thật); chưa có test chạy thật cho "trên điện thoại vẫn có một tiêu đề chính".

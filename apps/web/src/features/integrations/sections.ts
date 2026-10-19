@@ -12,21 +12,32 @@ export function integrationSections(flags: { repos: boolean }): {
   ];
 }
 
-/** `?section=digest` → mục tương ứng nếu đang hiện; giá trị lạ/mục bị ẩn → null (giữ mục mặc định). */
+/** Đường dẫn route con của một mục: `/connect/integrations/<id>`. */
+export function integrationPath(id: IntegrationSectionId): string {
+  return `/connect/integrations/${id}`;
+}
+
+/** Hàng tab theo route (`to` tuyệt đối). */
+export function integrationTabs(flags: { repos: boolean }): { to: string; label: string }[] {
+  return integrationSections(flags).map((s) => ({ to: integrationPath(s.id), label: s.label }));
+}
+
+/** `digest` / `/connect/integrations/digest` → mục tương ứng nếu đang hiện; giá trị lạ/mục bị ẩn → null. */
 export function parseIntegrationSection(
-  value: string | null,
+  value: string | null | undefined,
   flags: { repos: boolean },
 ): IntegrationSectionId | null {
   return integrationSections(flags).find((s) => s.id === value)?.id ?? null;
 }
 
 /**
- * `?section=` đổi trong lúc đang ở trang: khác mục đang mở → `ask` (đi qua `pick` có guard "bỏ thay đổi chưa lưu"),
- * còn lại `none`. Thuần để test.
+ * Đích của `/connect/integrations` (kể cả liên kết cũ `?section=digest`): mục hợp lệ → route con của nó, còn lại →
+ * Telegram. Các query khác (vd `?project=<id>` của Kết nối) được giữ, riêng `section` bị bỏ. Thuần để test.
  */
-export function resolveSectionIntent(args: {
-  fromUrl: IntegrationSectionId | null;
-  active: IntegrationSectionId;
-}): 'none' | 'ask' {
-  return args.fromUrl && args.fromUrl !== args.active ? 'ask' : 'none';
+export function integrationRedirectTarget(search: string, flags: { repos: boolean }): string {
+  const params = new URLSearchParams(search);
+  const id = parseIntegrationSection(params.get('section'), flags) ?? 'telegram';
+  params.delete('section');
+  const rest = params.toString();
+  return `${integrationPath(id)}${rest ? `?${rest}` : ''}`;
 }

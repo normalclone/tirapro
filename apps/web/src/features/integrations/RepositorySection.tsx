@@ -16,11 +16,11 @@ import {
   type RepositoryProvider,
 } from './api';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
-import { SectionCard } from './SectionCard';
+import { SectionCard } from '@/components/ui/SectionCard';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 
 /** Icon "kho mã" — chồng logo GitHub + GitLab để gợi ý nhóm nguồn. */
-export function RepoStackIcon() {
+function RepoStackIcon() {
   return (
     <span className="flex items-center" aria-hidden>
       <PlatformLogo platform="GITHUB" size={16} />
@@ -122,7 +122,7 @@ export function RepositorySection() {
             title="Chưa có repo nào"
             description="Thêm repo GitHub hoặc GitLab để liên kết hoạt động code với dự án."
             action={
-              <Button size="sm" onClick={() => setAdding(true)}>
+              <Button variant="secondary" size="sm" onClick={() => setAdding(true)}>
                 <Plus className="h-4 w-4" />
                 Thêm repo
               </Button>

@@ -51,7 +51,7 @@ export function Card({
   return (
     <div className="print-avoid-break rounded-lg border border-border bg-surface p-4">
       <div className="mb-3 flex flex-wrap items-baseline justify-between gap-x-2">
-        <h2 className="text-sm font-medium text-muted">{title}</h2>
+        <h3 className="text-sm font-medium text-muted">{title}</h3>
         {caption && <span className="text-xs text-faint">{caption}</span>}
       </div>
       {children}

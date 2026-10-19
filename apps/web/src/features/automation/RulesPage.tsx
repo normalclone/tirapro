@@ -35,6 +35,7 @@ import {
   useUpdateRule,
   type AutomationRule,
 } from './rules-api';
+import { SectionCard } from '@/components/ui/SectionCard';
 import { fmtDateTime } from '@/lib/dateFormat';
 import { useScopeParam } from '@/lib/scopeParam';
 
@@ -110,17 +111,14 @@ export function RulesPage() {
   }
 
   return (
-    <section className="rounded-lg border border-border bg-surface">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-4">
-        <div className="min-w-0">
-          <h2 className="text-base font-semibold text-ink-strong">Quy tắc tự động</h2>
-          <p className="mt-0.5 text-sm text-muted">
-            Khi có sự kiện, nếu thoả điều kiện thì hệ thống tự làm: giao việc, đổi trạng thái, bình
-            luận, thông báo… Mỗi lần chạy đều được ghi lại.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="w-52">
+    <SectionCard
+      title="Quy tắc tự động"
+      description="Khi có sự kiện, nếu thoả điều kiện thì hệ thống tự làm: giao việc, đổi trạng thái, bình luận, thông báo… Mỗi lần chạy đều được ghi lại."
+      bare
+      actions={
+        <>
+          {/* Dưới sm: ô phạm vi chiếm cả hàng, nút "Tạo quy tắc" xuống hàng dưới (trước đây ô cố định w-52 + nút tràn mép thẻ ở 390px). */}
+          <div className="w-52 max-sm:w-full">
             <SearchSelect
               value={scope ?? ''}
               onChange={setScopeChoice}
@@ -135,9 +133,9 @@ export function RulesPage() {
               <Plus className="h-4 w-4" /> Tạo quy tắc
             </Button>
           )}
-        </div>
-      </div>
-
+        </>
+      }
+    >
       <div>
         {noAccess ? (
           <div className="p-5">
@@ -172,7 +170,7 @@ export function RulesPage() {
               title="Chưa có quy tắc nào"
               description="Ví dụ: khi tạo việc có mức ưu tiên cao thì giao cho trưởng dự án và báo cho cả nhóm; mỗi sáng thứ hai nhắc những việc quá hạn."
               action={
-                <Button size="sm" onClick={() => open(null)}>
+                <Button variant="secondary" size="sm" onClick={() => open(null)}>
                   <Plus className="h-4 w-4" /> Tạo quy tắc
                 </Button>
               }
@@ -306,6 +304,6 @@ export function RulesPage() {
           });
         }}
       />
-    </section>
+    </SectionCard>
   );
 }
