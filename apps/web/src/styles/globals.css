@@ -33,6 +33,23 @@
   --series-3: oklch(0.58 0.17 18);
   --series-4: oklch(0.58 0.13 140);
   --series-5: oklch(0.5 0.1 285);
+  /* Màu nhãn (lib/labelPalette.ts): chữ/chấm + nền chip; chữ ≥ 4.5:1 trên nền chip */
+  --label-1: oklch(0.52 0.16 262);
+  --label-1-bg: oklch(0.95 0.03 262);
+  --label-2: oklch(0.51 0.085 200);
+  --label-2-bg: oklch(0.95 0.03 200);
+  --label-3: oklch(0.51 0.14 150);
+  --label-3-bg: oklch(0.95 0.03 150);
+  --label-4: oklch(0.52 0.105 85);
+  --label-4-bg: oklch(0.95 0.03 85);
+  --label-5: oklch(0.53 0.14 50);
+  --label-5-bg: oklch(0.95 0.03 50);
+  --label-6: oklch(0.54 0.19 25);
+  --label-6-bg: oklch(0.95 0.03 25);
+  --label-7: oklch(0.52 0.16 300);
+  --label-7-bg: oklch(0.95 0.03 300);
+  --label-8: oklch(0.52 0.02 256);
+  --label-8-bg: oklch(0.95 0.01 256);
 }
 
 .dark {
@@ -65,6 +82,23 @@
   --series-3: oklch(0.7 0.16 18);
   --series-4: oklch(0.72 0.13 140);
   --series-5: oklch(0.72 0.1 285);
+  /* Màu nhãn (lib/labelPalette.ts): chữ/chấm + nền chip; chữ ≥ 4.5:1 trên nền chip */
+  --label-1: oklch(0.72 0.13 262);
+  --label-1-bg: oklch(0.3 0.05 262);
+  --label-2: oklch(0.76 0.1 200);
+  --label-2-bg: oklch(0.3 0.05 200);
+  --label-3: oklch(0.74 0.14 150);
+  --label-3-bg: oklch(0.3 0.05 150);
+  --label-4: oklch(0.82 0.13 85);
+  --label-4-bg: oklch(0.3 0.05 85);
+  --label-5: oklch(0.76 0.14 50);
+  --label-5-bg: oklch(0.3 0.05 50);
+  --label-6: oklch(0.72 0.17 25);
+  --label-6-bg: oklch(0.3 0.05 25);
+  --label-7: oklch(0.74 0.13 300);
+  --label-7-bg: oklch(0.3 0.05 300);
+  --label-8: oklch(0.74 0.02 256);
+  --label-8-bg: oklch(0.3 0.015 256);
 }
 
 @layer base {
@@ -222,6 +256,23 @@
     --series-3: oklch(0.58 0.17 18);
     --series-4: oklch(0.58 0.13 140);
     --series-5: oklch(0.5 0.1 285);
+    /* Màu nhãn (lib/labelPalette.ts): chữ/chấm + nền chip; chữ ≥ 4.5:1 trên nền chip */
+    --label-1: oklch(0.52 0.16 262);
+    --label-1-bg: oklch(0.95 0.03 262);
+    --label-2: oklch(0.51 0.085 200);
+    --label-2-bg: oklch(0.95 0.03 200);
+    --label-3: oklch(0.51 0.14 150);
+    --label-3-bg: oklch(0.95 0.03 150);
+    --label-4: oklch(0.52 0.105 85);
+    --label-4-bg: oklch(0.95 0.03 85);
+    --label-5: oklch(0.53 0.14 50);
+    --label-5-bg: oklch(0.95 0.03 50);
+    --label-6: oklch(0.54 0.19 25);
+    --label-6-bg: oklch(0.95 0.03 25);
+    --label-7: oklch(0.52 0.16 300);
+    --label-7-bg: oklch(0.95 0.03 300);
+    --label-8: oklch(0.52 0.02 256);
+    --label-8-bg: oklch(0.95 0.01 256);
   }
   html,
   body,

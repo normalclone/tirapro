@@ -8,32 +8,12 @@ import { Input } from '@/components/ui/Input';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { RoleMultiSelect } from '@/components/ui/RoleMultiSelect';
 import { useUserSelect } from '@/features/members/useUserSelect';
-import { cn } from '@/lib/utils';
+import { ColorPicker } from '@/components/ui/ColorPicker';
+import { LABEL_PALETTE } from '@/lib/labelPalette';
 import { useCreateTeam, useUpdateTeam } from './api';
 
-/** Bảng màu nhãn nhóm (OKLCH-adjacent, WCAG-friendly trên nền sáng/tối). */
-const TEAM_COLORS = [
-  '#2563eb',
-  '#16a34a',
-  '#a855f7',
-  '#f59e0b',
-  '#dc2626',
-  '#0d9488',
-  '#db2777',
-  '#6366f1',
-];
-
-/** Tên màu tiếng Việt cho aria-label (mã hex không đọc lên được cho người dùng trình đọc màn hình). */
-const TEAM_COLOR_NAMES: Record<string, string> = {
-  '#2563eb': 'xanh dương',
-  '#16a34a': 'xanh lá',
-  '#a855f7': 'tím',
-  '#f59e0b': 'cam',
-  '#dc2626': 'đỏ',
-  '#0d9488': 'xanh ngọc',
-  '#db2777': 'hồng',
-  '#6366f1': 'chàm',
-};
+/** Màu mặc định của nhóm mới (Xanh dương của bảng màu chung). */
+const DEFAULT_TEAM_COLOR = LABEL_PALETTE[0]!.hex;
 
 /** Nhãn + gợi ý cho một ô nhập. `title` = giải nghĩa khi rê chuột vào nhãn. */
 function Field({
@@ -74,7 +54,7 @@ export function TeamEditorModal({
   const editing = !!team;
 
   const [name, setName] = useState('');
-  const [color, setColor] = useState(TEAM_COLORS[0]);
+  const [color, setColor] = useState(DEFAULT_TEAM_COLOR);
   const [description, setDescription] = useState('');
   const [memberIds, setMemberIds] = useState<string[]>([]);
   const [leadId, setLeadId] = useState('');
@@ -82,7 +62,7 @@ export function TeamEditorModal({
   useEffect(() => {
     if (!open) return;
     setName(team?.name ?? '');
-    setColor(team?.color ?? TEAM_COLORS[0]);
+    setColor(team?.color ?? DEFAULT_TEAM_COLOR);
     setDescription(team?.description ?? '');
     setMemberIds(team?.members.map((m) => m.id) ?? []);
     setLeadId(team?.lead?.id ?? '');
@@ -165,25 +145,7 @@ export function TeamEditorModal({
         </Field>
 
         <Field label="Màu nhãn" title="Màu này giúp nhận ra nhóm trong các danh sách và bộ lọc">
-          <div className="flex flex-wrap gap-2">
-            {TEAM_COLORS.map((c) => (
-              <button
-                key={c}
-                type="button"
-                onClick={() => setColor(c)}
-                aria-label={`Màu ${TEAM_COLOR_NAMES[c] ?? c}`}
-                title={`Màu ${TEAM_COLOR_NAMES[c] ?? c}`}
-                aria-pressed={color === c}
-                className={cn(
-                  'h-7 w-7 rounded-full transition-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
-                  color === c
-                    ? 'ring-2 ring-offset-2 ring-offset-surface ring-ink-strong'
-                    : 'hover:scale-110',
-                )}
-                style={{ background: c }}
-              />
-            ))}
-          </div>
+          <ColorPicker value={color} onChange={setColor} ariaLabel="Màu nhãn nhóm" />
         </Field>
 
         <Field

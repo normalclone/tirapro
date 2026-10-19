@@ -26,6 +26,7 @@ import { COARSE_NO_CALLOUT } from '@/lib/dragTouch';
 import { rowPeekProps } from '@/features/issues/peek/rowPeekProps';
 import { PEEKED_ROW_CLS, peekedAttrs } from '@/features/issues/peek/peekedRow';
 import { IssueKeyLink } from '@/features/issues/peek/IssueKeyLink';
+import { labelToneStyle } from '@/lib/labelPalette';
 
 /** Tối đa 2 nhãn đầu của dòng (chỉ từ `lg`), phần còn lại gộp "+N". */
 function RowLabels({ labels }: { labels: IssueDto['labels'] }) {
@@ -36,10 +37,7 @@ function RowLabels({ labels }: { labels: IssueDto['labels'] }) {
         <span
           key={l.id}
           className="max-w-[7rem] truncate rounded px-1.5 py-px text-[10px] font-medium"
-          style={{
-            backgroundColor: `color-mix(in oklch, ${l.color || 'var(--faint)'} 16%, transparent)`,
-            color: l.color || 'var(--faint)',
-          }}
+          style={labelToneStyle(l.color)}
           title={`Nhãn: ${l.name}`}
         >
           {l.name}

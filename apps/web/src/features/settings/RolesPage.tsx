@@ -32,6 +32,8 @@ import {
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
 import { RoleMatrixTable } from './RoleMatrixTable';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
+import { ColorPicker } from '@/components/ui/ColorPicker';
+import { LABEL_PALETTE, paletteValue } from '@/lib/labelPalette';
 import { Tabs, TabPanel } from '@/components/ui/Tabs';
 import { SETTINGS_LABELS } from '@/lib/navLabels';
 
@@ -41,17 +43,8 @@ const ROLES_TABS: { id: RolesTab; label: string }[] = [
   { id: 'matrix', label: 'So sánh vai trò' },
 ];
 
-/** Bộ màu OKLCH gợi ý cho vai trò tuỳ chỉnh (đồng bộ tông với system role). */
-const PRESET_COLORS = [
-  'oklch(0.55 0.20 25)',
-  'oklch(0.58 0.16 330)',
-  'oklch(0.55 0.16 300)',
-  'oklch(0.55 0.13 245)',
-  'oklch(0.60 0.13 200)',
-  'oklch(0.58 0.13 150)',
-  'oklch(0.72 0.15 75)',
-  'oklch(0.60 0.018 256)',
-];
+/** Màu mặc định của vai trò mới (Xanh dương — chuỗi OKLCH như các vai trò đã lưu). */
+const DEFAULT_ROLE_COLOR = paletteValue(LABEL_PALETTE[0]!, 'oklch');
 
 const SCOPE_LABEL: Record<RoleScope, string> = {
   WORKSPACE: 'Cấp không gian làm việc',
@@ -317,7 +310,7 @@ function RoleDialog({
   const [name, setName] = useState(role?.name ?? '');
   const [scope, setScope] = useState<RoleScope>(role?.scope ?? initialScope);
   const [description, setDescription] = useState(role?.description ?? '');
-  const [color, setColor] = useState<string>(role?.color ?? PRESET_COLORS[3]!);
+  const [color, setColor] = useState<string>(role?.color ?? DEFAULT_ROLE_COLOR);
   const [perms, setPerms] = useState<Set<PermissionKey>>(() => new Set(role?.permissionKeys ?? []));
 
   // Checklist hiển thị theo scope của vai trò (chung ↔ dự án). Khi đổi scope
@@ -493,25 +486,16 @@ function RoleDialog({
             </div>
 
             <div>
-              <span className="mb-1.5 block text-sm font-medium text-muted">Màu</span>
+              <span id="role-color-label" className="mb-1.5 block text-sm font-medium text-muted">
+                Màu
+              </span>
               <div className="flex flex-wrap items-center gap-2">
-                {PRESET_COLORS.map((c) => {
-                  const active = c === color;
-                  return (
-                    <button
-                      key={c}
-                      type="button"
-                      onClick={() => setColor(c)}
-                      aria-label={`Chọn màu ${c}`}
-                      aria-pressed={active}
-                      className={cn(
-                        'h-7 w-7 rounded-full transition-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
-                        active ? 'ring-2 ring-offset-2 ring-offset-surface' : 'hover:scale-110',
-                      )}
-                      style={{ backgroundColor: c, ['--tw-ring-color' as string]: c }}
-                    />
-                  );
-                })}
+                <ColorPicker
+                  value={color}
+                  onChange={setColor}
+                  format="oklch"
+                  ariaLabelledby="role-color-label"
+                />
                 <span className="ml-1">
                   <RoleBadge name={trimmedName || 'Xem trước'} color={color} />
                 </span>

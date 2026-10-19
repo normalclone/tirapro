@@ -77,6 +77,23 @@ Priority ramp (highest→lowest): `danger` → `oklch(0.65 0.17 45)` (cam) → `
 
 **Ưu tiên = `PriorityIcon`**, không bao giờ chỉ là chấm màu: mũi tên chọn theo **vị trí hạng** trong cấu hình ưu tiên (⇈ cao nhất · ↑ cao · = trung bình · ↓ thấp · ⇊ thấp nhất; cấu hình 2–3 mức thì chỉ dùng ↓ / ↑ hoặc ↓ = ↑), màu lấy từ ramp trên / cấu hình, kèm `aria-label` + tooltip "Ưu tiên: <tên>". Dùng ở thẻ board, dòng Việc chờ, Tổng quan, Việc mới vào, SLA, Cây việc.
 
+## Màu nhãn (`--label-1..8`)
+
+Một bảng 8 màu cho nhãn, nhóm, chương trình, cột mốc và vai trò (`lib/labelPalette.ts` + `components/ui/ColorPicker`). **Lưu** hex sRGB của biến thể sáng (API chỉ nhận hex — không migration; vai trò lưu chuỗi OKLCH của biến thể sáng như trước). **Hiển thị** luôn qua token, không dùng hex: `--label-N` (chữ/chấm) và `--label-N-bg` (nền chip) có biến thể sáng/tối. Nền chip: sáng `oklch(0.95 c H)`, tối `oklch(0.30 c H)` (c = 0.03/0.05, Xám 0.01/0.015). Chữ trên nền chip ≥ 4.5:1 và chấm/swatch ≥ 3:1 trên nền trang ở cả hai giao diện — `labelPalette.test.ts` tính tương phản từ chính các giá trị OKLCH và đối chiếu với `styles/globals.css`.
+
+| `--label-N` | Tên        | Hex lưu   | Sáng (chữ/chấm)         | Tối (chữ/chấm)         |
+| ----------- | ---------- | --------- | ----------------------- | ---------------------- |
+| 1           | Xanh dương | `#3263c3` | `oklch(0.52 0.16 262)`  | `oklch(0.72 0.13 262)` |
+| 2           | Xanh lơ    | `#087479` | `oklch(0.51 0.085 200)` | `oklch(0.76 0.1 200)`  |
+| 3           | Xanh lá    | `#017b37` | `oklch(0.51 0.14 150)`  | `oklch(0.74 0.14 150)` |
+| 4           | Vàng       | `#846305` | `oklch(0.52 0.105 85)`  | `oklch(0.82 0.13 85)`  |
+| 5           | Cam        | `#a94e00` | `oklch(0.53 0.14 50)`   | `oklch(0.76 0.14 50)`  |
+| 6           | Đỏ         | `#c52b30` | `oklch(0.54 0.19 25)`   | `oklch(0.72 0.17 25)`  |
+| 7           | Tím        | `#794db6` | `oklch(0.52 0.16 300)`  | `oklch(0.74 0.13 300)` |
+| 8           | Xám        | `#626a75` | `oklch(0.52 0.02 256)`  | `oklch(0.74 0.02 256)` |
+
+Màu cũ không thuộc bảng (nhãn tạo bằng ô màu native, nhóm/chương trình cũ…) hiển thị bằng tông GẦN NHẤT (`labelTone`, so theo sắc độ trong OKLab); không bao giờ chữ khó đọc, dữ liệu đã lưu không bị sửa. Trong `ColorPicker` màu cũ hiện thêm một swatch "Màu hiện tại" đang chọn. Swatch: tên truy cập là tên màu tiếng Việt, đang chọn = viền + dấu tick, 44px trên cảm ứng.
+
 ## Typography
 
 - **UI / body**: **Geist Sans** (self-host qua `@fontsource-variable/geist`). KHÔNG dùng

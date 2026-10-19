@@ -16,9 +16,11 @@ import {
 } from './api';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
 import { SectionCard } from '@/components/ui/SectionCard';
+import { ColorPicker } from '@/components/ui/ColorPicker';
+import { LABEL_PALETTE, labelTone } from '@/lib/labelPalette';
 
-/** Màu mặc định cho nhãn mới (token primary). */
-const DEFAULT_LABEL_COLOR = '#6366f1';
+/** Màu mặc định cho nhãn mới: Xanh dương của bảng màu chung (lưu hex, như API yêu cầu). */
+const DEFAULT_LABEL_COLOR = LABEL_PALETTE[0]!.hex;
 
 /* ------------------------------------------------------------------ */
 /* Section — Nhãn (Labels)                                             */
@@ -123,7 +125,7 @@ export function LabelsSection({ projectId, canAdmin }: { projectId?: string; can
                 <li key={l.id} className="flex items-center gap-3 py-2.5 first:pt-0">
                   <span
                     className="h-3 w-3 shrink-0 rounded-full border border-border"
-                    style={{ background: l.color ?? DEFAULT_LABEL_COLOR }}
+                    style={{ background: labelTone(l.color).fg }}
                     aria-hidden
                   />
                   <span className="min-w-0 truncate text-sm font-medium text-ink">{l.name}</span>
@@ -177,18 +179,11 @@ export function LabelsSection({ projectId, canAdmin }: { projectId?: string; can
                   }}
                 />
               </div>
-              <div className="w-24">
-                <label htmlFor="label-color" className="mb-1 block text-xs font-medium text-muted">
+              <div>
+                <span id="label-color-label" className="mb-1 block text-xs font-medium text-muted">
                   Màu
-                </label>
-                <input
-                  id="label-color"
-                  type="color"
-                  value={color}
-                  aria-label="Màu nhãn"
-                  onChange={(e) => setColor(e.target.value)}
-                  className="h-9 w-full cursor-pointer rounded-md border border-border bg-bg px-1"
-                />
+                </span>
+                <ColorPicker value={color} onChange={setColor} ariaLabelledby="label-color-label" />
               </div>
               <div className="flex items-center gap-2">
                 <Button size="sm" onClick={submitAdd} loading={create.isPending}>
@@ -255,15 +250,7 @@ function LabelEditRow({
           }}
         />
       </div>
-      <div className="w-24">
-        <input
-          type="color"
-          value={color}
-          aria-label="Màu nhãn"
-          onChange={(e) => setColor(e.target.value)}
-          className="h-9 w-full cursor-pointer rounded-md border border-border bg-bg px-1"
-        />
-      </div>
+      <ColorPicker value={color} onChange={setColor} ariaLabel="Màu nhãn" />
       <div className="flex items-center gap-1">
         <Button size="icon" onClick={save} loading={saving} title="Lưu">
           <Check className="h-4 w-4" />

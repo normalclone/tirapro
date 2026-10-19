@@ -19,6 +19,7 @@ import { COARSE_NO_CALLOUT } from '@/lib/dragTouch';
 import { rowPeekProps } from '@/features/issues/peek/rowPeekProps';
 import { PEEKED_ROW_CLS, peekedAttrs } from '@/features/issues/peek/peekedRow';
 import { IssueKeyLink } from '@/features/issues/peek/IssueKeyLink';
+import { labelToneStyle } from '@/lib/labelPalette';
 
 /** Roving focus giữa các card bằng phím mũi tên (theo data-lane/col/row). */
 function focusCard(lane: number, col: number, row: number): boolean {
@@ -34,11 +35,10 @@ function focusCard(lane: number, col: number, row: number): boolean {
 
 /** Chip nhãn nhỏ trên card. */
 const LabelChip = memo(function LabelChip({ name, color }: { name: string; color: string | null }) {
-  const c = color || 'var(--faint)';
   return (
     <span
       className="max-w-[8rem] truncate rounded px-1.5 py-px text-[10px] font-medium"
-      style={{ backgroundColor: `color-mix(in oklch, ${c} 16%, transparent)`, color: c }}
+      style={labelToneStyle(color)}
       title={`Nhãn: ${name}`}
     >
       {name}
