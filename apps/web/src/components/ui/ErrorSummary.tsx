@@ -8,13 +8,13 @@ import { errorCountLabel, focusField, type FieldError } from '@/lib/formErrors';
  */
 export function ErrorSummary({
   errors,
-  attempt = 0,
+  attempt,
   onNavigate = (id) => void focusField(id),
   className,
 }: {
   errors: readonly FieldError[];
   /** Số lần gửi lỗi (`useErrorFlow().attempts`): đổi → báo lại một lần. */
-  attempt?: number;
+  attempt: number;
   /** Mặc định đưa focus tới ô có id đó; nơi có ô ngoài DOM thường (vd tab khác) có thể tự xử lý. */
   onNavigate?: (id: string) => void;
   className?: string;

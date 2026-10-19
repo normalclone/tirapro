@@ -18,7 +18,9 @@ const errs = [
 ];
 
 describe('ErrorSummary', () => {
-  const html = renderToStaticMarkup(<ErrorSummary errors={errs} onNavigate={() => undefined} />);
+  const html = renderToStaticMarkup(
+    <ErrorSummary errors={errs} attempt={1} onNavigate={() => undefined} />,
+  );
   it('role="alert", tiêu đề đếm lỗi', () => {
     expect(html).toContain('role="alert"');
     expect(html).toContain('3 trường cần sửa');
@@ -30,10 +32,10 @@ describe('ErrorSummary', () => {
     expect(html).not.toContain('href=');
   });
   it('1 lỗi → "1 trường cần sửa"; không lỗi → không vẽ gì', () => {
-    expect(renderToStaticMarkup(<ErrorSummary errors={errs.slice(0, 1)} />)).toContain(
+    expect(renderToStaticMarkup(<ErrorSummary errors={errs.slice(0, 1)} attempt={1} />)).toContain(
       '1 trường cần sửa',
     );
-    expect(renderToStaticMarkup(<ErrorSummary errors={[]} />)).toBe('');
+    expect(renderToStaticMarkup(<ErrorSummary errors={[]} attempt={0} />)).toBe('');
   });
   it('dùng token danger, không rung, không (s)', () => {
     const s = read('components/ui/ErrorSummary.tsx');
