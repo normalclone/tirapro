@@ -3,6 +3,7 @@ import type { GuideContent } from '@tirapro/shared';
 import type { GuideType } from '@tirapro/types';
 import { api } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
+import { applyGuideProgress } from './tourOutcome';
 
 /**
  * Guide như API trả về cho FE. Tái dùng `GuideContent` (union TourContent | HelpContent
@@ -36,9 +37,18 @@ export function useScreenGuides(screen: string) {
 
 /** Đánh dấu guide đã xem (seen) hoặc hoàn thành (complete). */
 export function useMarkGuide() {
+  const qc = useQueryClient();
   return useMutation({
     mutationFn: (v: { key: string; action: 'seen' | 'complete' }) =>
       api.post(`/guides/${v.key}/${v.action}`),
+    // Cập nhật cache để "?" mở lại không POST `seen` lần nữa (chỉ một POST mỗi lần đóng). `onboarding` không phải mảng → bỏ qua.
+    onSuccess: (_res, v) => {
+      qc.setQueriesData<ScreenGuide[]>({ queryKey: ['guides'] }, (old) =>
+        Array.isArray(old)
+          ? applyGuideProgress(old, v.key, v.action === 'complete' ? 'complete' : 'seen')
+          : old,
+      );
+    },
   });
 }
 

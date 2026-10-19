@@ -7,7 +7,12 @@ import { Button } from '@/components/ui/Button';
 import { firstVisible } from '@/lib/firstVisible';
 import { useScreenGuides, useMarkGuide, type ScreenGuide } from './api';
 import { isTour, primaryTourOf, routeToScreen } from './routeToScreen';
-import { ensureSkipButton, restoreTourFocus, tourOutcome } from './tourOutcome';
+import {
+  createTourFlow,
+  ensureSkipButton,
+  restoreTourFocus,
+  shouldFocusPrimary,
+} from './tourOutcome';
 
 /**
  * Đổi step shape (shared) → DriveStep (driver.js), lọc bỏ step không có phần tử nào ĐANG HIỂN THỊ khớp selector.
@@ -64,9 +69,8 @@ export function GuideLauncher() {
         return; // mất mạng khi tải thư viện: bỏ qua, người dùng bấm lại “Hướng dẫn màn này” sau
       }
       if (opts.markSeen) markGuide.mutate({ key: guide.key, action: 'seen' });
-      // "complete" chỉ khi tới bước cuối và bấm "Xong" (xem tourOutcome); Bỏ qua/×/Esc/bấm nền = "seen".
-      let reachedLast = false;
-      let finishedViaDone = false;
+      // "complete" chỉ khi bấm "Xong" ở bước cuối (xem createTourFlow); Bỏ qua/×/Esc/bấm nền = "seen".
+      const flow = createTourFlow();
       const d = driver({
         showProgress: true,
         nextBtnText: 'Tiếp',
@@ -74,26 +78,33 @@ export function GuideLauncher() {
         doneBtnText: 'Xong',
         progressText: '{{current}}/{{total}}',
         steps,
-        onHighlighted: (_el, _step, { driver }) => {
-          if (driver.isLastStep()) reachedLast = true;
-        },
-        // Nút "Tiếp" ở bước cuối chính là "Xong" (phím → cũng vậy): ghi nhận rồi đóng; bước khác đi tiếp như mặc định.
+        // Nút "Tiếp" ở bước cuối chính là "Xong". Phím → (ArrowRight) cũng đi qua hook này nên ở bước cuối được tính là
+        // hoàn thành — bàn phím tương đương Tiếp/Xong, chủ ý. `isLastStep()` đổi ngay khi moveNext (không chờ hiệu ứng).
         onNextClick: (_el, _step, { driver }) => {
-          if (driver.isLastStep()) {
-            finishedViaDone = true;
-            driver.destroy();
-          } else driver.moveNext();
+          if (flow.next(driver.isLastStep()) === 'finish') driver.destroy();
+          else driver.moveNext();
         },
-        onPopoverRender: (popover, { driver }) =>
-          ensureSkipButton(popover.footer, document, () => driver.destroy()),
+        onPopoverRender: (popover, { driver }) => {
+          ensureSkipButton(popover.footer, document, () => driver.destroy());
+          // driver.js focus phần tử đầu tiên trong popover (×) ngay sau hook này → chuyển về nút chính (Tiếp/Xong) sau đó,
+          // để Enter đi tiếp thay vì đóng nhầm; không giật focus khỏi ô nhập của phần tử đang được chỉ tới.
+          window.requestAnimationFrame(() => {
+            const a = document.activeElement;
+            if (
+              shouldFocusPrimary({
+                activeInPopover: !!a && popover.wrapper.contains(a),
+                activeIsBody: !a || a === document.body,
+              })
+            )
+              popover.nextButton.focus({ preventScroll: true });
+          });
+        },
         onDestroyed: () => {
           launching.current = false;
-          markGuide.mutate({
-            key: guide.key,
-            action: tourOutcome({ reachedLast, finishedViaDone }),
-          });
-          // driver.js tự trả focus về phần tử ở bước TRƯỚC (đã bị gỡ ở tour nhiều bước) → ta trả về nơi đã mở tour.
-          restoreTourFocus(opts.returnFocus, document.querySelector<HTMLElement>('main'));
+          markGuide.mutate({ key: guide.key, action: flow.outcome() });
+          // driver.js tự trả focus về phần tử ở bước TRƯỚC (đã bị gỡ ở tour nhiều bước) → ta trả về nút "?" đã mở tour;
+          // không có (auto-start, Cmd+K) thì để như driver (body), không ép vào <main>.
+          restoreTourFocus(opts.returnFocus);
         },
       });
       d.drive();
@@ -211,6 +222,7 @@ const GUIDE_THEME_CSS = `
 /* Cảm ứng: mọi nút ở footer đạt vùng chạm 44px (DESIGN.md). */
 @media (pointer: coarse) {
   .driver-popover-footer button { min-height: 44px; min-width: 44px; padding: 0 12px; }
+  .driver-popover-close-btn { width: 44px; height: 44px; font-size: 24px; line-height: 44px; }
 }
 .driver-popover-close-btn { color: var(--ink); opacity: 0.6; }
 .driver-popover-close-btn:hover { opacity: 1; }

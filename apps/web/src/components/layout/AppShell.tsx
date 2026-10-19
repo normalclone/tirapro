@@ -146,10 +146,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <ConnectionBanner />
         </div>
         {/* scrollbar-gutter:stable — nội dung căn giữa không lệch ngang giữa trang dài (có scrollbar) và trang ngắn */}
-        <main
-          tabIndex={-1}
-          className="min-h-0 flex-1 overflow-auto outline-none [scrollbar-gutter:stable] focus:outline-none print:overflow-visible"
-        >
+        <main className="min-h-0 flex-1 overflow-auto [scrollbar-gutter:stable] print:overflow-visible">
           {children}
         </main>
         {/* Hai con flex cuối của cột (dưới <main>): thanh "chưa lưu" rồi thanh tab đáy. Không `fixed` nên không che nội dung. */}
