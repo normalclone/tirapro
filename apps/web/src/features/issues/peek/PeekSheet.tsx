@@ -1,11 +1,13 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode, type RefObject } from 'react';
 import * as RadixDialog from '@radix-ui/react-dialog';
 import { X } from 'lucide-react';
 import { Dialog } from '@/components/ui/Dialog';
 import { hasDraftText } from '@/lib/hotkeys';
 import {
   nextSnap,
+  PEEK_SHEET_HALF_ATTR,
   sheetClass,
+  sheetCoversListBottom,
   sheetEscapeAction,
   snapToggleLabel,
   type PeekSnap,
@@ -48,6 +50,7 @@ export function PeekSheet({
   onClose,
   header,
   returnFocus,
+  listRef,
   children,
 }: {
   issueKey: string;
@@ -57,9 +60,17 @@ export function PeekSheet({
   header: ReactNode;
   /** Trả focus về thẻ/dòng đã mở khi sheet đóng (Radix không có nút mở để trả về). */
   returnFocus: () => void;
+  /** Khung danh sách của trang — được đánh dấu khi sheet che nửa dưới để thẻ được ‹ › đưa vào không nằm sau sheet. */
+  listRef: RefObject<HTMLElement | null>;
   children: ReactNode;
 }) {
   const [snap, setSnap] = useState<PeekSnap>('half');
+  const covers = sheetCoversListBottom(open, snap);
+  useEffect(() => {
+    const list = listRef.current;
+    list?.toggleAttribute(PEEK_SHEET_HALF_ATTR, covers);
+    return () => list?.removeAttribute(PEEK_SHEET_HALF_ATTR);
+  }, [covers, listRef]);
   return (
     <Dialog
       open={open}

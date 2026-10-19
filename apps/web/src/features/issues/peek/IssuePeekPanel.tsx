@@ -70,6 +70,8 @@ export function IssuePeekPanel({
   const ref = useRef<HTMLElement>(null);
   const keyRef = useRef(issueKey);
   keyRef.current = issueKey;
+  const sheetRef = useRef(sheet);
+  sheetRef.current = sheet;
   const { listRef, order } = usePeekContext();
   const position = usePeekPosition(issueKey);
   // "Việc sau" ở dòng cuối phần đã nạp: nạp thêm rồi tự bước khi có dòng mới (khoá việc đang xem lúc bấm).
@@ -135,6 +137,8 @@ export function IssuePeekPanel({
     ref.current?.focus({ preventScroll: true });
     const list = listRef.current; // khung danh sách sống lâu hơn panel
     return () => {
+      // Sheet: Radix `onCloseAutoFocus` đã trả focus; cleanup này chạy muộn (sau hiệu ứng đóng) và có thể giật focus người dùng vừa dời.
+      if (sheetRef.current) return;
       list
         ?.querySelector<HTMLElement>(`[data-issue-key="${CSS.escape(keyRef.current)}"]`)
         ?.focus({ preventScroll: true });
@@ -173,6 +177,7 @@ export function IssuePeekPanel({
         issueKey={issueKey}
         open={open}
         onClose={onClose}
+        listRef={listRef}
         returnFocus={() =>
           findPeekSource(listRef.current, keyRef.current)?.focus({ preventScroll: true })
         }

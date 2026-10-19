@@ -20,6 +20,11 @@ export function isPeekSheetViewport(): boolean {
   return !window.matchMedia(PEEK_DESKTOP_QUERY).matches;
 }
 
+/** Thuộc tính đặt lên khung danh sách khi sheet che nửa dưới màn hình (CSS chừa `scroll-margin-bottom` cho các mục). */
+export const PEEK_SHEET_HALF_ATTR = 'data-peek-sheet-half';
+export const sheetCoversListBottom = (open: boolean, snap: PeekSnap): boolean =>
+  open && snap === 'half';
+
 export const nextSnap = (s: PeekSnap): PeekSnap => (s === 'half' ? 'full' : 'half');
 export const snapToggleLabel = (s: PeekSnap): string => (s === 'half' ? 'Mở rộng' : 'Thu gọn');
 

@@ -94,7 +94,8 @@ function ColumnImpl({
       <div
         className={cn(
           // pt-1.5: chừa chỗ cho đường kẻ chèn phía trên thẻ đầu (-top-[5px]) khỏi bị overflow cắt.
-          'flex flex-1 flex-col gap-2 overflow-y-auto px-2 pb-2 pt-1.5',
+          // Đệm đáy 50dvh chỉ khi sheet xem nhanh (nấc nửa) đang che nửa dưới: cột ngắn mới cuộn được thẻ cuối lên trên sheet.
+          'flex flex-1 flex-col gap-2 overflow-y-auto px-2 pb-2 pt-1.5 [[data-peek-sheet-half]_&]:pb-[50dvh]',
           grouped && 'min-h-[3rem]',
         )}
       >

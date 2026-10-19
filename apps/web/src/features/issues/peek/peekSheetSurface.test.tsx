@@ -5,6 +5,8 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import {
   findPeekSource,
+  PEEK_SHEET_HALF_ATTR,
+  sheetCoversListBottom,
   nextSnap,
   PEEK_DESKTOP_QUERY,
   peekNavPlan,
@@ -177,5 +179,34 @@ describe('nối dây', () => {
     expect(design).not.toContain('dropdown=1000');
     const tw = readFileSync(join(WEB, 'tailwind.config.ts'), 'utf8');
     expect(tw).toContain("dropdown: '1350'");
+  });
+});
+
+describe('vòng sửa 1 — M1 focus, M2 thẻ bị sheet che', () => {
+  const panel = src('features/issues/peek/IssuePeekPanel.tsx');
+  const sheetSrc = src('features/issues/peek/PeekSheet.tsx');
+  it('sheetCoversListBottom: chỉ khi sheet đang mở ở nấc nửa', () => {
+    expect(sheetCoversListBottom(true, 'half')).toBe(true);
+    expect(sheetCoversListBottom(true, 'full')).toBe(false);
+    expect(sheetCoversListBottom(false, 'half')).toBe(false);
+  });
+  it('M1: cleanup gỡ panel không trả focus lần hai khi là sheet (onCloseAutoFocus đã lo)', () => {
+    expect(panel).toMatch(/sheetRef\.current = sheet/);
+    expect(panel).toMatch(/return \(\) => \{[\s\S]*?if \(sheetRef\.current\) return;/);
+  });
+  it('M2: sheet đánh dấu khung danh sách bằng thuộc tính và gỡ khi đóng/đổi nấc', () => {
+    expect(PEEK_SHEET_HALF_ATTR).toBe('data-peek-sheet-half');
+    expect(sheetSrc).toContain('toggleAttribute(PEEK_SHEET_HALF_ATTR');
+    expect(sheetSrc).toContain('removeAttribute(PEEK_SHEET_HALF_ATTR)');
+    expect(panel).toContain('listRef={listRef}');
+  });
+  it('M2: cột Bảng việc có thêm đệm đáy 50dvh khi sheet nửa mở (cột ngắn mới cuộn được thẻ cuối lên trên sheet)', () => {
+    expect(src('features/board/Column.tsx')).toContain('[[data-peek-sheet-half]_&]:pb-[50dvh]');
+  });
+  it('M2: CSS chừa 50dvh dưới các mục khi thuộc tính bật', () => {
+    const css = src('styles/globals.css');
+    expect(css).toMatch(
+      /\[data-peek-sheet-half\] \[data-issue-key\]\s*\{\s*scroll-margin-bottom:\s*50dvh/,
+    );
   });
 });

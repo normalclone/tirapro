@@ -157,7 +157,13 @@ export function CardBody({
       {selectBox}
       <div className={cn(layout.gap, 'flex items-center gap-2')}>
         <IssueTypeBadge name={issue.type.name} color={issue.type.color} />
-        <div className="ml-auto flex items-center gap-2">
+        <div
+          className={cn(
+            'ml-auto flex items-center gap-2',
+            // Cảm ứng: nút "…" ở góc trên phải (vùng bấm 44px) → chừa chỗ để không đè chip hạn/điểm.
+            menu && '[@media(pointer:coarse)]:pr-10',
+          )}
+        >
           <DueBadge issue={issue} warnOnly />
           {fields.points && issue.storyPoints != null && (
             <span
@@ -206,7 +212,7 @@ export function CardBody({
         {issue.severity && isBugType(issue.type) && (
           <SeverityBadge severity={issue.severity} compact />
         )}
-        {/* Nút "…" nằm TRONG hàng mã (khoảng trống giữa mã và người phụ trách): không đè chip hạn/điểm ở hàng trên. */}
+        {/* Chuột: nút "…" nằm TRONG hàng mã (khoảng trống giữa mã và người phụ trách): không đè chip hạn/điểm ở hàng trên. Cảm ứng: nút ra góc trên phải thẻ (CARD_MENU_COARSE_CLS). */}
         {menu}
         {fields.assignee && <CardAssignee assignee={issue.assignee} />}
       </div>
@@ -235,6 +241,13 @@ export function CardBody({
     </div>
   );
 }
+
+/**
+ * Cảm ứng: đưa nút "…" ra GÓC TRÊN PHẢI của thẻ. Ở hàng mã, vùng bấm 44px (`::after`) của nút nằm cách tâm thẻ chỉ vài px khi
+ * mã dài, và Chrome hút cú chạm giữa thẻ vào nút đó (mở menu thay vì xem nhanh). Chuột giữ nguyên vị trí trong hàng mã.
+ */
+const CARD_MENU_COARSE_CLS =
+  '[@media(pointer:coarse)]:absolute [@media(pointer:coarse)]:right-1 [@media(pointer:coarse)]:top-1';
 
 interface CardProps {
   issue: IssueDto;
@@ -339,7 +352,14 @@ export const Card = memo(
               />
             )
           }
-          menu={<IssueRowMenuButton issue={issue} surface="board" onPeek={onOpen} />}
+          menu={
+            <IssueRowMenuButton
+              issue={issue}
+              surface="board"
+              onPeek={onOpen}
+              className={CARD_MENU_COARSE_CLS}
+            />
+          }
           isDragging={isDragging}
           canDrag={canDrag}
           style={style}

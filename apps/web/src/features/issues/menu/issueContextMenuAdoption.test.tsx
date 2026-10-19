@@ -164,14 +164,28 @@ describe('gắn vào các bề mặt (đọc source)', () => {
     expect(card).toContain('PEEKED_ROW_CLS');
     expect(card).toContain('peekedAttrs(peeked)');
   });
-  it('Bảng việc: nút "…" nằm TRONG hàng mã (không phủ chip hạn/điểm), bản overlay/xem trước không có nút', () => {
+  it('Bảng việc (chuột): nút "…" nằm TRONG hàng mã (không phủ chip hạn/điểm), bản overlay/xem trước không có nút', () => {
     const card = src('features/board/Card.tsx');
-    expect(card).not.toContain('absolute right-1 top-1');
-    expect(card).not.toContain('pointer:coarse)]:pr-6');
+    // Không có `absolute` vô điều kiện: chỉ cảm ứng mới được đưa ra góc (xem test kế).
+    expect(card.replace(/\[@media\(pointer:coarse\)\]:absolute/g, '')).not.toContain(
+      'absolute right-1 top-1',
+    );
     // `{menu}` đứng trong hàng mã: sau SeverityBadge, trước khối người phụ trách
     expect(card).toMatch(/<SeverityBadge[\s\S]*?\{menu\}[\s\S]*?<CardAssignee/);
     expect(src('features/board/BoardDnd.tsx')).not.toContain('menu=');
     expect(src('features/board/CardDisplayPopover.tsx')).not.toContain('menu=');
+  });
+  it('Bảng việc (cảm ứng): nút "…" ra GÓC TRÊN PHẢI thẻ (xa tâm/tiêu đề — vùng 44px không bị Chrome hút cú chạm giữa thẻ), hàng đầu chừa chỗ', () => {
+    const card = src('features/board/Card.tsx');
+    const cls = /const CARD_MENU_COARSE_CLS =\s*'([^']+)'/.exec(card)?.[1] ?? '';
+    expect(cls).toContain('[@media(pointer:coarse)]:absolute');
+    expect(cls).toContain('[@media(pointer:coarse)]:right-1');
+    expect(cls).toContain('[@media(pointer:coarse)]:top-1');
+    expect(card).toContain('className={CARD_MENU_COARSE_CLS}');
+    // hàng đầu (loại + chip hạn/điểm) chừa chỗ cho vùng bấm 44px chỉ khi có nút
+    expect(card).toMatch(/menu && '\[@media\(pointer:coarse\)\]:pr-10'/);
+    // vẫn 24px + ::after 44px (class gốc không đổi)
+    expect(ROW_MENU_BUTTON_CLS).toContain('[@media(pointer:coarse)]:after:-inset-2.5');
   });
   it('Bộ lọc: phủ thay đổi lên danh sách đang hiện (không refetch), bỏ lớp phủ khi đổi nguồn', () => {
     const page = src('features/saved-filters/FiltersPage.tsx');

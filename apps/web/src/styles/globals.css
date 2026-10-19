@@ -299,3 +299,8 @@
     display: none !important;
   }
 }
+
+/* Xem nhanh dạng sheet đáy ở nấc nửa che nửa dưới màn hình: thẻ được ‹ › cuộn vào (`scrollIntoView nearest`) phải nằm TRÊN sheet. */
+[data-peek-sheet-half] [data-issue-key] {
+  scroll-margin-bottom: 50dvh;
+}
