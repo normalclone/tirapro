@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Eye } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/Button';
@@ -8,18 +8,13 @@ import { FormField } from '@/components/ui/FormField';
 import { Input } from '@/components/ui/Input';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { apiErrorMessage } from '@/lib/api';
-import { focusFirstError, type FieldError } from '@/lib/formErrors';
+import type { FieldError } from '@/lib/formErrors';
+import { useErrorFlow } from '@/lib/useErrorFlow';
 import { useAuth } from '@/stores/auth';
 import { cn } from '@/lib/utils';
 import { useProjects } from '@/features/projects/api';
 import { useCreateDigest, usePreviewDigest, useUpdateDigest, type Digest } from './api';
-import {
-  BlocksField,
-  ChannelFields,
-  Field,
-  ScheduleFields,
-  type SetDigestForm,
-} from './DigestFormFields';
+import { BlocksField, ChannelFields, ScheduleFields, type SetDigestForm } from './DigestFormFields';
 import {
   effectiveAllowPrivate,
   initialForm,
@@ -69,24 +64,15 @@ export function DigestEditorDialog({
     }));
 
   // Sau lần Lưu lỗi đầu tiên, lỗi được tính lại theo form: sửa tới đâu hết lỗi tới đó.
-  const [showErrors, setShowErrors] = useState(false);
-  const [focusTick, setFocusTick] = useState(0);
-  const issues = showErrors ? validateForm(form) : [];
-  const errors: FieldError[] = issues.map((i) => ({ ...FIELD_META[i.field], message: i.message }));
-  const errorsRef = useRef(errors);
-  errorsRef.current = errors;
-  const errorOf = (f: DigestField) => issues.find((i) => i.field === f)?.message;
-  // Đưa tới lỗi đầu tiên SAU khi phần tóm tắt đã hiện (nếu không, bố cục dịch xuống làm lệch vị trí cuộn).
-  useEffect(() => {
-    if (focusTick > 0) focusFirstError(errorsRef.current);
-  }, [focusTick]);
+  const allErrors: FieldError[] = validateForm(form).map((i) => ({
+    ...FIELD_META[i.field],
+    message: i.message,
+  }));
+  const flow = useErrorFlow(allErrors);
+  const errorOf = (f: DigestField) => flow.errorOf(FIELD_META[f].id);
 
   function submit() {
-    if (validateForm(form).length > 0) {
-      setShowErrors(true);
-      setFocusTick((n) => n + 1);
-      return;
-    }
+    if (allErrors.length > 0) return flow.fail();
     const done = {
       onSuccess: () => {
         toast.success(digest ? 'Đã lưu báo cáo.' : 'Đã tạo báo cáo định kỳ.');
@@ -118,7 +104,7 @@ export function DigestEditorDialog({
       }
     >
       <div className="space-y-4 pb-1">
-        <ErrorSummary errors={errors} />
+        <ErrorSummary errors={flow.errors} />
         <div className="grid gap-3 sm:grid-cols-2">
           <FormField id="digest-name" label="Tên báo cáo" error={errorOf('name')}>
             {(a11y) => (
@@ -273,22 +259,24 @@ function ProjectField({
 }) {
   const { data } = useProjects();
   return (
-    <Field
+    <FormField
       id="digest-project"
       label="Phạm vi"
       hint={locked ? 'Không đổi được phạm vi sau khi tạo.' : undefined}
     >
-      <SearchSelect
-        id="digest-project"
-        value={form.projectId}
-        onChange={(v) => set('projectId', v)}
-        options={[
-          { value: '', label: 'Tất cả dự án' },
-          ...(data ?? []).map((p) => ({ value: p.id, label: p.name })),
-        ]}
-        disabled={locked}
-        className="w-full"
-      />
-    </Field>
+      {(a11y) => (
+        <SearchSelect
+          {...a11y}
+          value={form.projectId}
+          onChange={(v) => set('projectId', v)}
+          options={[
+            { value: '', label: 'Tất cả dự án' },
+            ...(data ?? []).map((p) => ({ value: p.id, label: p.name })),
+          ]}
+          disabled={locked}
+          className="w-full"
+        />
+      )}
+    </FormField>
   );
 }

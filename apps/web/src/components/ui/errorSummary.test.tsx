@@ -129,11 +129,11 @@ describe('Digest (biểu mẫu mẫu): lỗi theo trường thay cho toast', () 
   it('dùng ErrorSummary + focusFirstError, không toast.error cho lỗi nhập liệu', () => {
     const s = dlg();
     expect(s).toContain('<ErrorSummary');
-    expect(s).toContain('focusFirstError(');
+    expect(s).toContain('useErrorFlow(');
     expect(s).not.toMatch(/toast\.error\(error\)/);
   });
   it('lỗi tính lại theo form (sửa tới đâu hết lỗi tới đó) sau lần Lưu lỗi đầu tiên', () => {
-    expect(dlg()).toMatch(/showErrors/);
+    expect(dlg()).toMatch(/flow\.fail\(\)/);
   });
   it('tên báo cáo dùng FormField + Input invalid; khối/người nhận có id để đưa focus tới', () => {
     const s = dlg();
@@ -206,5 +206,21 @@ describe('P-C2 · hoàn thiện nền báo lỗi', () => {
       expect(s, f).toMatch(/relative/);
       expect(s, f).toMatch(/FormField/);
     }
+  });
+});
+
+describe('useErrorFlow (dòng báo lỗi dùng chung)', () => {
+  const s = () => read('lib/useErrorFlow.ts');
+  it('chỉ hiện lỗi sau lần thử gửi đầu tiên, rồi lấy theo danh sách lỗi hiện tại (sửa tới đâu hết lỗi tới đó)', () => {
+    expect(s()).toMatch(/attempted \? all : \[\]/);
+  });
+  it('đưa focus tới lỗi đầu tiên theo thứ tự DOM SAU commit (effect theo tick), dùng ref để không đăng ký lại', () => {
+    expect(s()).toContain('focusFirstError(');
+    expect(s()).toMatch(/useEffect\(/);
+    expect(s()).toContain('errorsRef');
+  });
+  it('trả errorOf(id) cho lời lỗi từng ô và reset() cho lúc mở lại hộp', () => {
+    expect(s()).toContain('errorOf');
+    expect(s()).toContain('reset');
   });
 });

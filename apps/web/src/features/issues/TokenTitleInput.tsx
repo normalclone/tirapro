@@ -31,6 +31,8 @@ export function TokenTitleInput({
   onEnter,
   inputRef,
   ariaLabel,
+  invalid,
+  ariaDescribedby,
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -45,6 +47,9 @@ export function TokenTitleInput({
   onEnter?: () => void;
   inputRef?: Ref<HTMLInputElement>;
   ariaLabel?: string;
+  /** Ô đang sai: viền danger + aria-invalid (lời lỗi do nơi dùng vẽ, trỏ bằng `ariaDescribedby`). Bỏ qua khi `bare`. */
+  invalid?: boolean;
+  ariaDescribedby?: string;
 }) {
   const Field = bare ? 'input' : Input;
   const ref = useRef<HTMLInputElement | null>(null);
@@ -148,6 +153,8 @@ export function TokenTitleInput({
           ref={setRefs}
           id={id}
           aria-label={ariaLabel}
+          aria-describedby={ariaDescribedby}
+          {...(bare ? {} : { invalid })}
           autoFocus={autoFocus}
           value={value}
           placeholder={placeholder}

@@ -32,7 +32,7 @@ const SCHEDULE_CHOICES: { value: DigestSchedule; label: string }[] = [
 const WEEKDAY_CHOICES = WEEKDAY_OPTIONS.map((o) => ({ value: String(o.value), label: o.label }));
 const HOUR_CHOICES = HOUR_OPTIONS.map((o) => ({ value: String(o.value), label: o.label }));
 
-export function Field({
+function Field({
   id,
   label,
   hint,
