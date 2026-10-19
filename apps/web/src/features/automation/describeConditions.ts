@@ -13,7 +13,7 @@ export const NO_CONDITIONS_TEXT =
 /** Tra tên hiển thị của một mã (trạng thái, mức ưu tiên, người…) theo trường; không biết → `undefined`. */
 export type NameOf = (field: string, id: string) => string | undefined;
 
-const MISSING = '…';
+const MISSING = '(chưa chọn)';
 const ID_FIELDS = new Set([
   'statusId',
   'priorityId',

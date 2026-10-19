@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import type { RuleCondition } from '@tirapro/shared';
@@ -30,17 +32,19 @@ describe('describeCondition', () => {
       'Mức ưu tiên không nằm trong High',
     );
   });
-  it('danh sách rỗng / thiếu giá trị → dấu … để biết còn thiếu', () => {
+  it('danh sách rỗng / thiếu giá trị → "(chưa chọn)" để biết còn thiếu', () => {
     expect(describeCondition({ field: 'priorityId', op: 'in', value: [] }, nameOf)).toBe(
-      'Mức ưu tiên là một trong …',
+      'Mức ưu tiên là một trong (chưa chọn)',
     );
     expect(describeCondition({ field: 'priorityId', op: 'eq', value: '' }, nameOf)).toBe(
-      'Mức ưu tiên là …',
+      'Mức ưu tiên là (chưa chọn)',
     );
     expect(describeCondition({ field: 'storyPoints', op: 'eq', value: NaN }, nameOf)).toBe(
-      'Điểm ước lượng là …',
+      'Điểm ước lượng là (chưa chọn)',
     );
-    expect(describeCondition({ field: 'priorityId', op: 'eq' }, nameOf)).toBe('Mức ưu tiên là …');
+    expect(describeCondition({ field: 'priorityId', op: 'eq' }, nameOf)).toBe(
+      'Mức ưu tiên là (chưa chọn)',
+    );
   });
   it('phép không cần giá trị; tiêu đề "chứa" đặt trong ngoặc kép', () => {
     expect(describeCondition({ field: 'assigneeId', op: 'empty' }, nameOf)).toBe(
@@ -70,13 +74,13 @@ describe('describeCondition', () => {
     const odd = { field: 'weird', op: 'wow', value: 'x' } as unknown as RuleCondition;
     expect(describeCondition(odd, nameOf)).toBe('weird wow x');
     const objVal = { field: 'summary', op: 'eq', value: { a: 1 } } as unknown as RuleCondition;
-    expect(describeCondition(objVal, nameOf)).toBe('Tiêu đề là …');
+    expect(describeCondition(objVal, nameOf)).toBe('Tiêu đề là (chưa chọn)');
   });
-  it('điều kiện JQL: nêu câu JQL; rỗng → …', () => {
+  it('điều kiện JQL: nêu câu JQL; rỗng → (chưa chọn)', () => {
     expect(describeCondition({ jql: 'priority = High OR status = Open' }, nameOf)).toBe(
       'khớp bộ lọc JQL: priority = High OR status = Open',
     );
-    expect(describeCondition({ jql: '  ' }, nameOf)).toBe('khớp bộ lọc JQL: …');
+    expect(describeCondition({ jql: '  ' }, nameOf)).toBe('khớp bộ lọc JQL: (chưa chọn)');
   });
 });
 
@@ -130,5 +134,12 @@ describe('<ConditionSentence>', () => {
   it('chỉ là chữ đọc: không có nút/ô nhập', () => {
     const h = html([{ field: 'typeId', op: 'eq', value: 't1' }]);
     expect(h).not.toMatch(/<(button|input|select|textarea)/);
+  });
+});
+
+describe('<ConditionSentence> tràn chữ', () => {
+  it('JQL dài không làm tràn khung trên mobile: ngắt chữ ở câu', () => {
+    const src = readFileSync(join(__dirname, 'ConditionSentence.tsx'), 'utf8');
+    expect(src).toMatch(/break-words|\[overflow-wrap:anywhere\]/);
   });
 });

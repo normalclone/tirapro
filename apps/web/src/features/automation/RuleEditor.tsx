@@ -33,6 +33,7 @@ import {
   RULE_NAME_ID,
   RULE_TRIGGER_ID,
   actionFieldId,
+  actionRowId,
   conditionFieldId,
   conditionJqlId,
   validateRulePayload,
@@ -699,8 +700,9 @@ function ActionCard({
   const types = (Object.keys(ACTION_LABELS) as ActionType[]).filter(
     (t) => scoped || (t !== 'addLabel' && t !== 'removeLabel'),
   );
+  const rowError = errorOf(actionRowId(a.id));
   return (
-    <div className="space-y-2">
+    <div id={actionRowId(a.id)} className="space-y-2">
       <SearchSelect
         ariaLabel="Loại hành động"
         value={a.type}
@@ -946,6 +948,8 @@ function ActionCard({
           </Err>
         </div>
       )}
+
+      {rowError && <FieldErrorText id={fieldErrorId(actionRowId(a.id))}>{rowError}</FieldErrorText>}
     </div>
   );
 }

@@ -4,7 +4,9 @@ import {
   RULE_CONDITIONS_ID,
   RULE_NAME_ID,
   RULE_TRIGGER_ID,
+  RENDERED_ACTION_KEYS,
   actionFieldId,
+  actionRowId,
   conditionFieldId,
   conditionJqlId,
   ruleIssueToFieldError,
@@ -177,7 +179,18 @@ describe('ruleIssueToFieldError (đường dẫn zod → id trường)', () => {
   });
   it('khoá lạ không có trong bảng → vẫn có lỗi dùng được (id khối hành động, câu chung)', () => {
     const e = ruleIssueToFieldError(issue(['actions', 0, 'zzz'], 'Required', 'invalid_type'), ids);
-    expect(e?.id).toBe('rule-act-a1-zzz');
+    expect(e?.id).toBe('rule-act-a1');
     expect(e?.message).toBe('Giá trị chưa hợp lệ');
+  });
+  it('khoá không có ô riêng (field, mode, roles, type) → khối của hành động đó (có phần tử để focus)', () => {
+    expect(actionRowId('a1')).toBe('rule-act-a1');
+    for (const key of ['field', 'mode', 'roles', 'type'])
+      expect(ruleIssueToFieldError(issue(['actions', 1, key]), ids).id, key).toBe('rule-act-a2');
+  });
+  it('khoá có ô riêng vẫn trỏ tới ô đó, không rơi về khối', () => {
+    for (const key of RENDERED_ACTION_KEYS)
+      expect(ruleIssueToFieldError(issue(['actions', 0, key]), ids).id, key).toBe(
+        `rule-act-a1-${key}`,
+      );
   });
 });

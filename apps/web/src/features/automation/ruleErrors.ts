@@ -11,6 +11,24 @@ export const RULE_ACTIONS_ID = 'rule-actions';
 export const conditionFieldId = (rowId: string): string => `rule-cond-${rowId}`;
 export const conditionJqlId = (rowId: string): string => `rule-cond-${rowId}-jql`;
 export const actionFieldId = (rowId: string, key: string): string => `rule-act-${rowId}-${key}`;
+/** Khối gốc của một thẻ hành động: đích focus cho lỗi không có ô riêng (`field`, `mode`, `roles`, `type`, khoá lạ). */
+export const actionRowId = (rowId: string): string => `rule-act-${rowId}`;
+
+/** Khoá hành động có ô nhập mang id `actionFieldId(row, key)` trong `ActionCard`; các khoá khác trỏ về `actionRowId`. */
+export const RENDERED_ACTION_KEYS = [
+  'value',
+  'userId',
+  'toStatusId',
+  'labelId',
+  'body',
+  'message',
+  'userIds',
+  'url',
+  'secret',
+  'summary',
+  'typeId',
+] as const;
+const RENDERED = new Set<string>(RENDERED_ACTION_KEYS);
 
 /** Id hàng nháp theo thứ tự trong payload: `conditions[i]` ↔ `conditions[i]` của bản nháp (toPayload giữ nguyên thứ tự). */
 export interface RuleDraftIds {
@@ -26,6 +44,7 @@ export interface RuleIssueLike {
 
 /** Tên ô của từng khoá hành động; cũng là thứ tự ô trong một hành động (để xếp lỗi theo thứ tự trang). */
 const ACTION_KEYS: ReadonlyArray<readonly [key: string, label: string, fallback: string]> = [
+  ['type', 'Loại hành động', 'Hãy chọn loại hành động'],
   ['field', 'Trường cần đặt', 'Hãy chọn trường cần đặt'],
   ['value', 'Giá trị mới', 'Giá trị chưa hợp lệ'],
   ['mode', 'Cách giao', 'Hãy chọn cách giao việc'],
@@ -106,7 +125,7 @@ function toRanked(issue: RuleIssueLike, ids: RuleDraftIds): Ranked {
     const key = typeof leaf === 'string' ? leaf : 'value';
     const info = KEY_INFO.get(key);
     return {
-      id: actionFieldId(rowId, key),
+      id: RENDERED.has(key) ? actionFieldId(rowId, key) : actionRowId(rowId),
       label: `Hành động ${n} · ${info?.label ?? 'Cấu hình'}`,
       message: isZodDefault(raw)
         ? tooBig

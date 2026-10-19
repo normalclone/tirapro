@@ -117,6 +117,10 @@ describe('244 · quy tắc tự động hoá (RuleEditor) báo lỗi theo trư�
     ])
       expect(s(), id).toContain(id);
   });
+  it('mỗi thẻ hành động có id gốc (đích focus cho khoá không có ô riêng) và vẽ lời lỗi của nó', () => {
+    expect(s()).toContain('id={actionRowId(a.id)}');
+    expect(s()).toContain('errorOf(actionRowId(a.id))');
+  });
   it('điều kiện hiển thị thành câu bằng <ConditionSentence> (chữ đọc, không đổi dữ liệu)', () => {
     expect(s()).toContain('<ConditionSentence');
   });

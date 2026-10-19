@@ -22,7 +22,7 @@ export function ConditionSentence({
   const clauses = conditionClauses(conditions, nameOf);
   return (
     <div className="rounded-md border border-border bg-surface px-3 py-2">
-      <p className="text-sm text-ink">
+      <p className="break-words text-sm text-ink [overflow-wrap:anywhere]">
         {clauses.length === 0 ? (
           <span className="text-muted">{NO_CONDITIONS_TEXT}</span>
         ) : (
