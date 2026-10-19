@@ -1,8 +1,7 @@
 import type { ReactNode } from 'react';
-import { ChevronLeft } from 'lucide-react';
-import { Link } from 'react-router-dom';
 import { Breadcrumb, type BreadcrumbItem } from '@/components/ui/Breadcrumb';
 import { cn } from '@/lib/utils';
+import { BackLink } from './BackLink';
 
 export type PageHeaderVariant = 'page' | 'tab';
 
@@ -48,16 +47,7 @@ export function PageHeader({
   const hasCrumb = !!breadcrumb && breadcrumb.some((b) => b.label.trim() !== '');
   return (
     <header className={cn('mb-6', className)} {...rest}>
-      {back && (
-        <Link
-          to={back.to}
-          aria-label={`Quay lại ${back.label}`}
-          className="-ml-1 mb-3 inline-flex min-h-9 items-center gap-0.5 rounded-md pr-2 text-sm font-medium text-muted transition-colors hover:text-ink-strong lg:hidden"
-        >
-          <ChevronLeft className="h-4 w-4" aria-hidden="true" />
-          {back.label}
-        </Link>
-      )}
+      {back && <BackLink label={back.label} to={back.to} className="-ml-1 mb-3" />}
       {hasCrumb && (
         <Breadcrumb items={breadcrumb} className={cn('mb-2', back && 'max-lg:hidden')} />
       )}

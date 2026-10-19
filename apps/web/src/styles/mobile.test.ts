@@ -56,9 +56,7 @@ describe('mobile nền chung', () => {
     ));
   it('dải menu phụ cuộn ngang có dấu hiệu còn nội dung', () => {
     for (const f of [
-      'features/settings/SettingsLayout.tsx',
-      'features/manage/ManageLayout.tsx',
-      'features/connect/ConnectLayout.tsx',
+      // Settings/Manage/Connect không còn dải chip (mobile = danh sách mục "bước vào", SubNavLayout); còn lại 2 nơi.
       'features/integrations/IntegrationsPage.tsx',
       'features/project-config/ProjectConfigPage.tsx',
     ])

@@ -87,6 +87,10 @@ const DEFAULT_ROUTES = [
   '/account',
   '/wiki',
   '/notifications',
+  // Trang gốc của khu vực có menu con: ở 390px là DANH SÁCH mục ("bước vào"), không redirect như desktop.
+  '/settings',
+  '/manage',
+  '/connect',
   ...['portfolio', 'goals', 'risks', 'resources', 'response-time', 'clients'].map(
     (v) => `/manage/${v}`,
   ),
