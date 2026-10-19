@@ -17,6 +17,7 @@ import { useShellEffects } from '@/components/layout/useShellEffects';
 import { ADMIN_NAV, NAV_ITEMS } from '@/components/layout/navItems';
 import { Button } from '@/components/ui/Button';
 import { ConfirmHost } from '@/components/ui/useConfirm';
+import { IssueActionHost } from '@/features/issues/menu/IssueActionHost';
 import { useAi } from '@/stores/ai';
 import { useIsSystemAdmin, useVisibleItems } from '@/lib/navAccess';
 import { useGlobalHotkeys } from '@/lib/useGlobalHotkeys';
@@ -161,6 +162,8 @@ export function AppShell({ children }: { children: ReactNode }) {
       <ShortcutsDialog open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
       {/* Hộp xác nhận dùng chung cho useConfirm() — chỉ mount một lần. */}
       <ConfirmHost />
+      {/* Hành động ghi từ menu công việc (chuột phải / nút "…") — sống lâu hơn menu. */}
+      <IssueActionHost />
       {/* Bộ chặn rời trang duy nhất (useBlocker + beforeunload) cho mọi useLeaveGuard. */}
       <LeaveGuardHost />
     </div>

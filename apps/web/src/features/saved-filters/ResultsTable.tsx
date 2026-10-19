@@ -16,6 +16,7 @@ import {
   peekedAttrs,
 } from '@/features/issues/peek/peekedRow';
 import { rowPeekProps } from '@/features/issues/peek/rowPeekProps';
+import { IssueContextMenu, IssueRowMenuButton } from '@/features/issues/menu/IssueContextMenu';
 import { categoryColor } from '@/lib/statusColor';
 import { useMediaQuery } from '@/lib/useMediaQuery';
 import { RESULTS_PAGE_SIZE, resultCountLabel } from './resultPaging';
@@ -455,25 +456,35 @@ function ResultRow({
   peeked: boolean;
 }) {
   return (
-    <tr
-      tabIndex={0}
-      data-nav-item
-      data-issue-key={issue.key}
-      aria-roledescription="dòng việc"
-      {...peekedAttrs(peeked)}
-      {...rowPeekProps(issue.key, onOpen)}
-      className={cn(
-        'cursor-pointer transition-colors focus-visible:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--ring)]',
-        // Đang xem: nền token KHÔNG đổi khi rê chuột (hover thường sẽ đè lên và dòng đang xem biến mất).
-        peeked ? PEEKED_TABLE_ROW_CLS : 'hover:bg-surface-2',
-      )}
-    >
-      {columns.map((col) => (
-        <td key={col} className="whitespace-nowrap px-3 py-2.5 first:pl-4 last:pr-4">
-          <Cell issue={issue} col={col} ctx={ctx} onPeek={onOpen} />
-        </td>
-      ))}
-    </tr>
+    <IssueContextMenu issue={issue} surface="filters" onPeek={onOpen}>
+      <tr
+        tabIndex={0}
+        data-nav-item
+        data-issue-key={issue.key}
+        aria-roledescription="dòng việc"
+        {...peekedAttrs(peeked)}
+        {...rowPeekProps(issue.key, onOpen)}
+        className={cn(
+          'group/row cursor-pointer transition-colors focus-visible:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--ring)]',
+          // Đang xem: nền token KHÔNG đổi khi rê chuột (hover thường sẽ đè lên và dòng đang xem biến mất).
+          peeked ? PEEKED_TABLE_ROW_CLS : 'hover:bg-surface-2',
+        )}
+      >
+        {columns.map((col) => (
+          <td key={col} className="whitespace-nowrap px-3 py-2.5 first:pl-4 last:pr-4">
+            {col === 'key' ? (
+              // Mã + nút "…" (menu công việc): nút chỉ hiện khi rê/focus dòng, luôn hiện trên cảm ứng.
+              <span className="inline-flex items-center gap-1">
+                <Cell issue={issue} col={col} ctx={ctx} onPeek={onOpen} />
+                <IssueRowMenuButton issue={issue} surface="filters" onPeek={onOpen} />
+              </span>
+            ) : (
+              <Cell issue={issue} col={col} ctx={ctx} onPeek={onOpen} />
+            )}
+          </td>
+        ))}
+      </tr>
+    </IssueContextMenu>
   );
 }
 
@@ -488,27 +499,32 @@ function ResultCard({
   peeked: boolean;
 }) {
   return (
-    <li>
-      <button
-        type="button"
-        data-nav-item
-        data-issue-key={issue.key}
-        {...peekedAttrs(peeked)}
-        {...rowPeekProps(issue.key, onOpen)}
-        className={cn(
-          'flex w-full flex-col gap-1.5 px-4 py-3 text-left transition-colors hover:bg-surface-2 focus-visible:bg-surface-2 focus-visible:outline-none',
-          peeked && PEEKED_ROW_CLS,
-        )}
-      >
-        <span className="flex items-baseline gap-2">
-          <span className="shrink-0 font-mono text-xs font-medium text-muted">{issue.key}</span>
-          <span className="min-w-0 flex-1 truncate text-sm text-ink-strong">{issue.summary}</span>
+    <IssueContextMenu issue={issue} surface="filters" onPeek={onOpen}>
+      <li className="group/row relative">
+        <span className="absolute right-2 top-2 z-10">
+          <IssueRowMenuButton issue={issue} surface="filters" onPeek={onOpen} />
         </span>
-        <span className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
-          <StatusCell issue={issue} />
-          {issue.assignee ? <PersonCell person={issue.assignee} /> : null}
-        </span>
-      </button>
-    </li>
+        <button
+          type="button"
+          data-nav-item
+          data-issue-key={issue.key}
+          {...peekedAttrs(peeked)}
+          {...rowPeekProps(issue.key, onOpen)}
+          className={cn(
+            'flex w-full flex-col gap-1.5 py-3 pl-4 pr-12 text-left transition-colors hover:bg-surface-2 focus-visible:bg-surface-2 focus-visible:outline-none',
+            peeked && PEEKED_ROW_CLS,
+          )}
+        >
+          <span className="flex items-baseline gap-2">
+            <span className="shrink-0 font-mono text-xs font-medium text-muted">{issue.key}</span>
+            <span className="min-w-0 flex-1 truncate text-sm text-ink-strong">{issue.summary}</span>
+          </span>
+          <span className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
+            <StatusCell issue={issue} />
+            {issue.assignee ? <PersonCell person={issue.assignee} /> : null}
+          </span>
+        </button>
+      </li>
+    </IssueContextMenu>
   );
 }

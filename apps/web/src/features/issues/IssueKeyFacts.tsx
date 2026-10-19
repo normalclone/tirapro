@@ -151,7 +151,10 @@ export function IssueKeyFacts({
   onOpenWorkflow: () => void;
 }) {
   return (
-    <section aria-label="Thuộc tính chính" className="mt-2 grid grid-cols-2 gap-x-3 md:grid-cols-4">
+    <section
+      aria-label="Thuộc tính chính"
+      className="mt-2 grid grid-cols-2 gap-x-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)_minmax(0,1fr)_minmax(0,1fr)]"
+    >
       <FactTile label="Trạng thái">
         <IssueStatusField
           status={issue.status}

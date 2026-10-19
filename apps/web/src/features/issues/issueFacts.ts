@@ -1,7 +1,7 @@
 /**
  * Thuộc tính của công việc nằm ở đâu trên trang chi tiết, theo cỡ màn hình (module thuần).
- * - Từ `md` trở lên: như trước — trạng thái ở thanh nút, ưu tiên cạnh tiêu đề, phần còn lại ở cột phải.
- * - Dưới `md`: dải 4 trường chính ngay dưới tiêu đề; phần còn lại gom vào "Thuộc tính khác". Mỗi trường ở đúng MỘT nơi
+ * - Từ `lg` trở lên: như trước — trạng thái ở thanh nút, ưu tiên cạnh tiêu đề, phần còn lại ở cột phải.
+ * - Dưới `lg`: dải 4 trường chính ngay dưới tiêu đề; phần còn lại gom vào "Thuộc tính khác". Mỗi trường ở đúng MỘT nơi
  *   (cùng một control không bao giờ dựng hai lần trên một trang → id/phím tắt/focus không trùng).
  */
 export type FactField =
@@ -17,10 +17,10 @@ export type FactField =
   | 'updatedAt'
   | 'resolvedAt';
 
-/** Dải thuộc tính chính (dưới md), theo thứ tự hiện. */
+/** Dải thuộc tính chính (dưới lg), theo thứ tự hiện. */
 export const STRIP_FACTS = ['status', 'assignee', 'due', 'priority'] as const;
 
-/** Phần còn lại của cột phải, gom vào "Thuộc tính khác" (dưới md). */
+/** Phần còn lại của cột phải, gom vào "Thuộc tính khác" (dưới lg). */
 export const OTHER_FACTS = [
   'epicParent',
   'reporter',

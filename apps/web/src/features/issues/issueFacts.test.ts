@@ -35,7 +35,7 @@ describe('factLayout — thuộc tính nào nằm ở đâu', () => {
   it('dải chính = Trạng thái, Người phụ trách, Hạn, Ưu tiên (theo thứ tự)', () => {
     expect(STRIP_FACTS).toEqual(['status', 'assignee', 'due', 'priority']);
   });
-  it('từ md trở lên: y như hiện nay — không dải, không "Thuộc tính khác", mọi thứ ở cột phải', () => {
+  it('từ lg trở lên: y như hiện nay — không dải, không "Thuộc tính khác", mọi thứ ở cột phải', () => {
     const l = factLayout(true);
     expect(l.strip).toEqual([]);
     expect(l.other).toEqual([]);
@@ -52,7 +52,7 @@ describe('factLayout — thuộc tính nào nằm ở đâu', () => {
     expect(l.statusInToolbar).toBe(true);
     expect(l.priorityInHeader).toBe(true);
   });
-  it('dưới md: dải có 4 trường chính, phần còn lại vào "Thuộc tính khác", cột phải không còn trường nào', () => {
+  it('dưới lg: dải có 4 trường chính, phần còn lại vào "Thuộc tính khác", cột phải không còn trường nào', () => {
     const l = factLayout(false);
     expect(l.strip).toEqual([...STRIP_FACTS]);
     expect(l.other).toEqual([...OTHER_FACTS]);

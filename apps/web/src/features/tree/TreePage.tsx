@@ -29,6 +29,7 @@ import { PEEKED_ROW_CLS, peekedAttrs } from '@/features/issues/peek/peekedRow';
 import { rowPeekProps } from '@/features/issues/peek/rowPeekProps';
 import { COARSE_NO_CALLOUT } from '@/lib/dragTouch';
 import { isModifiedClick } from '@/lib/rowOpen';
+import { IssueContextMenu, IssueRowMenuButton } from '@/features/issues/menu/IssueContextMenu';
 import { flattenVisible, visibleKeys } from './treeOrder';
 
 /**
@@ -270,95 +271,98 @@ function TreeRow({
   const rowOpen = rowPeekProps(issue.key, onOpen); // chỉ lấy click/auxclick (keydown của li thuộc dnd-kit)
 
   return (
-    <li
-      ref={(el) => {
-        drag.setNodeRef(el);
-        drop.setNodeRef(el);
-      }}
-      {...drag.listeners}
-      {...peekedAttrs(peeked)}
-      onClick={rowOpen.onClick}
-      onAuxClick={rowOpen.onAuxClick}
-      data-dragging={dragging || undefined}
-      className={cn(
-        GRID_COLS,
-        'group cursor-pointer px-3 py-2 transition-colors',
-        // Kéo bằng cảm ứng (nhấn giữ): không chọn chữ / không menu xem trước liên kết của iOS giành mất cử chỉ.
-        'touch-manipulation',
-        COARSE_NO_CALLOUT,
-        // Đang xem: nền token không đổi khi rê chuột (hover thường sẽ đè lên).
-        peeked ? PEEKED_ROW_CLS : 'hover:bg-surface-2',
-        dragging && 'opacity-40',
-        dropState === 'ok' && 'bg-surface-2 ring-2 ring-inset ring-[var(--ring)]',
-        dropState === 'bad' && 'cursor-not-allowed ring-2 ring-inset ring-danger',
-      )}
-    >
-      {/* Cột 1 — Tiêu đề: thụt lề theo cấp + chevron + loại + key + summary + tiến độ con */}
-      <div className="flex min-w-0 items-center gap-2">
-        <span style={{ width: depth * INDENT_STEP }} className="shrink-0" aria-hidden />
-        {hasChildren ? (
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation(); // chỉ đóng/mở nhánh, không mở issue
-              onToggle();
-            }}
-            aria-label={collapsed ? 'Mở rộng' : 'Thu gọn'}
-            aria-expanded={!collapsed}
-            className="grid h-5 w-5 shrink-0 place-items-center rounded text-muted hover:bg-surface-3 hover:text-ink"
-          >
-            <ChevronRight
-              className={cn('h-4 w-4 transition-transform', !collapsed && 'rotate-90')}
-              aria-hidden
-            />
-          </button>
-        ) : (
-          <span className="h-5 w-5 shrink-0" aria-hidden />
+    <IssueContextMenu issue={issue} surface="tree" onPeek={onOpen}>
+      <li
+        ref={(el) => {
+          drag.setNodeRef(el);
+          drop.setNodeRef(el);
+        }}
+        {...drag.listeners}
+        {...peekedAttrs(peeked)}
+        onClick={rowOpen.onClick}
+        onAuxClick={rowOpen.onAuxClick}
+        data-dragging={dragging || undefined}
+        className={cn(
+          GRID_COLS,
+          'group group/row cursor-pointer px-3 py-2 transition-colors',
+          // Kéo bằng cảm ứng (nhấn giữ): không chọn chữ / không menu xem trước liên kết của iOS giành mất cử chỉ.
+          'touch-manipulation',
+          COARSE_NO_CALLOUT,
+          // Đang xem: nền token không đổi khi rê chuột (hover thường sẽ đè lên).
+          peeked ? PEEKED_ROW_CLS : 'hover:bg-surface-2',
+          dragging && 'opacity-40',
+          dropState === 'ok' && 'bg-surface-2 ring-2 ring-inset ring-[var(--ring)]',
+          dropState === 'bad' && 'cursor-not-allowed ring-2 ring-inset ring-danger',
         )}
-
-        <Link
-          to={`/issue/${issue.key}`}
-          draggable={false}
-          data-nav-item
-          data-issue-key={issue.key}
-          onClick={(e: MouseEvent<HTMLAnchorElement>) => {
-            if (isModifiedClick(e)) return; // link thật: Cmd/Ctrl+bấm → tab mới
-            e.preventDefault();
-            e.stopPropagation();
-            onOpen(issue.key);
-          }}
-          className={cn(
-            COARSE_NO_CALLOUT,
-            'flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-0.5 text-left focus-visible:rounded max-sm:py-1 sm:flex-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40',
+      >
+        {/* Cột 1 — Tiêu đề: thụt lề theo cấp + chevron + loại + key + summary + tiến độ con */}
+        <div className="flex min-w-0 items-center gap-2">
+          <span style={{ width: depth * INDENT_STEP }} className="shrink-0" aria-hidden />
+          {hasChildren ? (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation(); // chỉ đóng/mở nhánh, không mở issue
+                onToggle();
+              }}
+              aria-label={collapsed ? 'Mở rộng' : 'Thu gọn'}
+              aria-expanded={!collapsed}
+              className="grid h-5 w-5 shrink-0 place-items-center rounded text-muted hover:bg-surface-3 hover:text-ink"
+            >
+              <ChevronRight
+                className={cn('h-4 w-4 transition-transform', !collapsed && 'rotate-90')}
+                aria-hidden
+              />
+            </button>
+          ) : (
+            <span className="h-5 w-5 shrink-0" aria-hidden />
           )}
-          title={issue.summary}
-        >
-          <span
-            role="img"
-            aria-label={`Trạng thái: ${issue.status.name}`}
-            title={issue.status.name}
-            className="h-2 w-2 shrink-0 rounded-full sm:hidden"
-            style={{ background: categoryColor(issue.status.category) }}
-          />
-          <span
-            className="shrink-0 rounded bg-surface-2 px-1 py-0.5 text-[10px] text-muted group-hover:bg-surface-3"
-            style={issue.type.color ? { color: issue.type.color } : undefined}
+
+          <Link
+            to={`/issue/${issue.key}`}
+            draggable={false}
+            data-nav-item
+            data-issue-key={issue.key}
+            onClick={(e: MouseEvent<HTMLAnchorElement>) => {
+              if (isModifiedClick(e)) return; // link thật: Cmd/Ctrl+bấm → tab mới
+              e.preventDefault();
+              e.stopPropagation();
+              onOpen(issue.key);
+            }}
+            className={cn(
+              COARSE_NO_CALLOUT,
+              'flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-0.5 text-left focus-visible:rounded max-sm:py-1 sm:flex-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40',
+            )}
+            title={issue.summary}
           >
-            {issue.type.name}
-          </span>
-          <span className="shrink-0 font-mono text-xs text-muted">{issue.key}</span>
-          <span className="min-w-0 text-sm text-ink group-hover:text-ink-strong max-sm:order-last max-sm:basis-full max-sm:line-clamp-2 sm:flex-1 sm:truncate">
-            {issue.summary}
-          </span>
-          {showProgress && (
-            <TaskProgress progress={progress} compact className="hidden w-24 shrink-0 lg:block" />
-          )}
-          <DueBadge issue={issue} warnOnly className="shrink-0" />
-        </Link>
-      </div>
+            <span
+              role="img"
+              aria-label={`Trạng thái: ${issue.status.name}`}
+              title={issue.status.name}
+              className="h-2 w-2 shrink-0 rounded-full sm:hidden"
+              style={{ background: categoryColor(issue.status.category) }}
+            />
+            <span
+              className="shrink-0 rounded bg-surface-2 px-1 py-0.5 text-[10px] text-muted group-hover:bg-surface-3"
+              style={issue.type.color ? { color: issue.type.color } : undefined}
+            >
+              {issue.type.name}
+            </span>
+            <span className="shrink-0 font-mono text-xs text-muted">{issue.key}</span>
+            <span className="min-w-0 text-sm text-ink group-hover:text-ink-strong max-sm:order-last max-sm:basis-full max-sm:line-clamp-2 sm:flex-1 sm:truncate">
+              {issue.summary}
+            </span>
+            {showProgress && (
+              <TaskProgress progress={progress} compact className="hidden w-24 shrink-0 lg:block" />
+            )}
+            <DueBadge issue={issue} warnOnly className="shrink-0" />
+          </Link>
+          <IssueRowMenuButton issue={issue} surface="tree" onPeek={onOpen} />
+        </div>
 
-      <TreeMetaCells issue={issue} cell={cell} ranks={ranks} />
-    </li>
+        <TreeMetaCells issue={issue} cell={cell} ranks={ranks} />
+      </li>
+    </IssueContextMenu>
   );
 }
 

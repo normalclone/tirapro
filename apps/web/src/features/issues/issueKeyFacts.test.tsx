@@ -67,9 +67,11 @@ describe('nối vào trang chi tiết (đọc source)', () => {
     expect(page).toMatch(/layout\.priorityInHeader && <IssuePrioritySelect/);
     expect(page).toMatch(/layout\.statusInToolbar && \(/);
   });
-  it('RC13: dải dưới lg; trong 768–1023 bốn ô nằm một hàng (md:grid-cols-4)', () => {
+  it('RC13: dải dưới lg; trong 768–1023 bốn ô nằm một hàng (cột Người phụ trách rộng hơn)', () => {
     const facts = read('IssueKeyFacts.tsx');
-    expect(facts).toMatch(/grid-cols-2[^"]*md:grid-cols-4/);
+    expect(facts).toMatch(
+      /grid-cols-2[^"]*md:grid-cols-\[minmax\(0,1fr\)_minmax\(0,1\.6fr\)_minmax\(0,1fr\)_minmax\(0,1fr\)\]/,
+    );
   });
   it('m1: "Xem quy trình" dưới lg nằm cạnh chip Trạng thái trong dải (giữ tên truy cập), không còn đứng một mình ở thanh nút', () => {
     const facts = read('IssueKeyFacts.tsx');

@@ -67,7 +67,7 @@ export function rowRootProps(o: { draggable: boolean; hasOpen: boolean }): Recor
 }
 
 /** Mở trang đầy đủ của công việc ở tab mới (một nơi cho mọi dòng/thẻ). */
-function openIssueInNewTab(key: string): void {
+export function openIssueInNewTab(key: string): void {
   window.open(`/issue/${key}`, '_blank', 'noopener');
 }
 

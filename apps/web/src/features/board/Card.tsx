@@ -1,4 +1,11 @@
-import { memo, useContext, type CSSProperties, type HTMLAttributes, type Ref } from 'react';
+import {
+  memo,
+  useContext,
+  type CSSProperties,
+  type HTMLAttributes,
+  type ReactNode,
+  type Ref,
+} from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import type { IssueDto } from '@tirapro/types';
 import { DueBadge, dueBorderClass } from '@/components/ui/DueBadge';
@@ -20,6 +27,7 @@ import { rowPeekProps } from '@/features/issues/peek/rowPeekProps';
 import { PEEKED_ROW_CLS, peekedAttrs } from '@/features/issues/peek/peekedRow';
 import { IssueKeyLink } from '@/features/issues/peek/IssueKeyLink';
 import { labelToneStyle } from '@/lib/labelPalette';
+import { IssueContextMenu, IssueRowMenuButton } from '@/features/issues/menu/IssueContextMenu';
 import { cardLayout, type CardDisplay } from './cardDisplay';
 import { CardDisplayContext } from './cardDisplayContext';
 
@@ -48,6 +56,27 @@ const LabelChip = memo(function LabelChip({ name, color }: { name: string; color
   );
 });
 
+/** Người phụ trách ở góc phải dưới của thẻ ("Chưa gán" khi trống). */
+function CardAssignee({ assignee }: { assignee: IssueDto['assignee'] }) {
+  return (
+    <div className="ml-auto flex min-w-0 items-center">
+      {assignee ? (
+        <span
+          className="flex min-w-0 items-center gap-1"
+          title={`Người phụ trách: ${assignee.displayName}`}
+        >
+          <Avatar name={assignee.displayName} src={assignee.avatarUrl} size={18} />
+          <span className="max-w-[6.5rem] truncate text-xs text-muted">{assignee.displayName}</span>
+        </span>
+      ) : (
+        <span className="whitespace-nowrap text-[11px] text-faint" title="Chưa có ai nhận việc này">
+          Chưa gán
+        </span>
+      )}
+    </div>
+  );
+}
+
 /**
  * Phần giao diện thuần của thẻ — dùng cho cả thẻ kéo được (`Card`) lẫn bản trôi theo chuột (`DragOverlay`).
  * Bản overlay KHÔNG gọi `useSortable` để không đăng ký trùng id với thẻ gốc trong dnd-kit.
@@ -65,6 +94,7 @@ export function CardBody({
   onOpenKey,
   peeked,
   display,
+  menu,
 }: {
   issue: IssueDto;
   progress?: SubtreeProgress;
@@ -84,6 +114,8 @@ export function CardBody({
   peeked?: boolean;
   /** Ghi đè tuỳ chọn hiển thị (xem trước trong popover); bỏ trống = tuỳ chọn của người dùng từ context. */
   display?: CardDisplay;
+  /** Nút "…" (menu công việc) — góc phải trên; bản overlay/xem trước không truyền. */
+  menu?: ReactNode;
 }) {
   const fromContext = useContext(CardDisplayContext);
   const { fields } = display ?? fromContext;
@@ -97,7 +129,7 @@ export function CardBody({
       {...peekedAttrs(peeked)}
       style={style}
       className={cn(
-        'relative rounded-md border bg-surface shadow-sm transition-shadow',
+        'group/row relative rounded-md border bg-surface shadow-sm transition-shadow',
         layout.pad,
         canDrag
           ? `cursor-grab touch-manipulation active:cursor-grabbing ${COARSE_NO_CALLOUT}`
@@ -109,7 +141,15 @@ export function CardBody({
         overlay && 'shadow-lg',
       )}
     >
-      <div className={cn(layout.gap, 'flex items-center gap-2')}>
+      {menu && <span className="absolute right-1 top-1 z-10">{menu}</span>}
+      {/* Cảm ứng: chừa chỗ cho nút "…" luôn hiện ở góc phải trên (chip hạn/điểm lùi sang trái). */}
+      <div
+        className={cn(
+          layout.gap,
+          'flex items-center gap-2',
+          menu && '[@media(pointer:coarse)]:pr-6',
+        )}
+      >
         <IssueTypeBadge name={issue.type.name} color={issue.type.color} />
         <div className="ml-auto flex items-center gap-2">
           <DueBadge issue={issue} warnOnly />
@@ -160,32 +200,7 @@ export function CardBody({
         {issue.severity && isBugType(issue.type) && (
           <SeverityBadge severity={issue.severity} compact />
         )}
-        {fields.assignee && (
-          <div className="ml-auto flex min-w-0 items-center">
-            {issue.assignee ? (
-              <span
-                className="flex min-w-0 items-center gap-1"
-                title={`Người phụ trách: ${issue.assignee.displayName}`}
-              >
-                <Avatar
-                  name={issue.assignee.displayName}
-                  src={issue.assignee.avatarUrl}
-                  size={18}
-                />
-                <span className="max-w-[6.5rem] truncate text-xs text-muted">
-                  {issue.assignee.displayName}
-                </span>
-              </span>
-            ) : (
-              <span
-                className="whitespace-nowrap text-[11px] text-faint"
-                title="Chưa có ai nhận việc này"
-              >
-                Chưa gán
-              </span>
-            )}
-          </div>
-        )}
+        {fields.assignee && <CardAssignee assignee={issue.assignee} />}
       </div>
 
       {fields.progress && progress && progress.total > 0 && (
@@ -278,33 +293,43 @@ export const Card = memo(
     }
 
     return (
-      <CardBody
-        issue={issue}
-        progress={progress}
-        isDragging={isDragging}
-        canDrag={canDrag}
-        style={style}
-        dropEdge={dropEdge}
-        rootRef={setNodeRef}
-        onOpenKey={onOpen}
-        peeked={peeked}
-        rootProps={{
-          ...listeners,
-          ...attributes,
-          ...({
-            'data-board-card': true,
-            'data-nav-item': true,
-            'data-lane': laneIdx,
-            'data-col': colIdx,
-            'data-row': rowIdx,
-            'data-issue-key': issue.key,
-          } as object),
-          ...rowPeekProps(issue.key, onOpen),
-          role: 'button',
-          tabIndex: 0,
-          onKeyDown,
-        }}
-      />
+      <IssueContextMenu issue={issue} surface="board" onPeek={onOpen} display="contents">
+        <CardBody
+          issue={issue}
+          progress={progress}
+          menu={
+            <IssueRowMenuButton
+              issue={issue}
+              surface="board"
+              onPeek={onOpen}
+              className="bg-surface"
+            />
+          }
+          isDragging={isDragging}
+          canDrag={canDrag}
+          style={style}
+          dropEdge={dropEdge}
+          rootRef={setNodeRef}
+          onOpenKey={onOpen}
+          peeked={peeked}
+          rootProps={{
+            ...listeners,
+            ...attributes,
+            ...({
+              'data-board-card': true,
+              'data-nav-item': true,
+              'data-lane': laneIdx,
+              'data-col': colIdx,
+              'data-row': rowIdx,
+              'data-issue-key': issue.key,
+            } as object),
+            ...rowPeekProps(issue.key, onOpen),
+            role: 'button',
+            tabIndex: 0,
+            onKeyDown,
+          }}
+        />
+      </IssueContextMenu>
     );
   },
   (prev, next) =>

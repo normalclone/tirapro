@@ -734,7 +734,7 @@ export function IssueDetailPage() {
                 )}
               </div>
 
-              {/* Dưới md: phần còn lại của cột phải gom vào "Thuộc tính khác" (thu gọn mặc định), ngay trên thân trang. */}
+              {/* Dưới lg: phần còn lại của cột phải gom vào "Thuộc tính khác" (thu gọn mặc định), ngay trên thân trang. */}
               {layout.other.length > 0 && (
                 <OtherFactsDisclosure>
                   <EpicParentField issue={issue} />
