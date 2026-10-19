@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { toast } from 'sonner';
+import { writeClipboard } from '@/lib/copyText';
 import type { IssueDto } from '@tirapro/types';
 import { useProjectMeta } from '@/features/ai/api';
 import { useProjects } from '@/features/projects/api';
@@ -107,7 +108,7 @@ export function useIssueTransitions(issue: IssueDto | undefined) {
               duration: 12000,
               action: {
                 label: 'Chép lý do',
-                onClick: () => void navigator.clipboard?.writeText(text).catch(() => undefined),
+                onClick: () => void writeClipboard(text),
               },
             });
           }

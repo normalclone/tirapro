@@ -12,6 +12,7 @@ import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import {
   Archive,
   ArrowLeft,
+  Check,
   ChevronRight,
   Copy,
   GitCommit,
@@ -36,6 +37,7 @@ import { useCanEditIssue, useCanIn, useProjectPermissions } from '@/features/pro
 import { useMyWorkspaces } from '@/features/workspace/api';
 import { useDeleteIssue, useRetractIssue } from '@/features/issue-edit/api';
 import { RetractMenuItem } from './RetractMenuItem';
+import { useIssueCopy } from './useIssueCopy';
 import { IssueRelations } from '@/features/tree/IssueRelations';
 import { CustomFieldsPanel } from '@/features/issue-fields/CustomFieldsPanel';
 import { AttachmentsPanel } from '@/features/attachments/AttachmentsPanel';
@@ -349,25 +351,7 @@ export function IssueDetailPage() {
     canEditThis,
   ]);
 
-  function copyLink() {
-    navigator.clipboard
-      ?.writeText(window.location.href)
-      .then(() => toast.success('Đã sao chép liên kết. Dán vào chat hoặc email để chia sẻ.'))
-      .catch(() =>
-        toast.error('Trình duyệt chặn sao chép — hãy chép thủ công đường dẫn trên thanh địa chỉ.'),
-      );
-  }
-
-  function copyKey() {
-    navigator.clipboard
-      ?.writeText(key)
-      .then(() => toast.success(`Đã sao chép mã ${key}`))
-      .catch(() =>
-        toast.error(
-          'Trình duyệt chặn sao chép — hãy chép thủ công mã hiển thị trên thanh điều hướng.',
-        ),
-      );
-  }
+  const { copyKey, copyLink, keyCopied } = useIssueCopy(issue?.key ?? key);
 
   const isMine = !!issue && !!me && issue.assigneeId === me.id;
   function assignToMe() {
@@ -534,7 +518,11 @@ export function IssueDetailPage() {
                   aria-label="Sao chép mã công việc"
                   className="grid h-6 w-6 shrink-0 place-items-center rounded text-faint transition-colors hover:bg-surface-2 hover:text-ink [@media(pointer:coarse)]:h-9 [@media(pointer:coarse)]:w-9"
                 >
-                  <Hash className="h-3.5 w-3.5" />
+                  {keyCopied ? (
+                    <Check className="h-3.5 w-3.5 text-success" aria-hidden />
+                  ) : (
+                    <Hash className="h-3.5 w-3.5" />
+                  )}
                 </button>
               </>
             }

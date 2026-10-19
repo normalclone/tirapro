@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Plus, Trash2, Check, Webhook, Copy } from 'lucide-react';
 import { toast } from 'sonner';
+import { useCopyToClipboard } from '@/lib/useCopyToClipboard';
 import { Button } from '@/components/ui/Button';
 import { useConfirm } from '@/components/ui/useConfirm';
 import { Input } from '@/components/ui/Input';
@@ -245,18 +246,11 @@ function RepositoryRow({
   onDelete: () => void;
   deleting: boolean;
 }) {
-  const [copied, setCopied] = useState(false);
+  const { copied, copy } = useCopyToClipboard();
   const webhookPath = `POST /api/v1/dev/webhook/${repo.id}`;
 
-  async function copyWebhook() {
-    try {
-      await navigator.clipboard.writeText(`/api/v1/dev/webhook/${repo.id}`);
-      setCopied(true);
-      toast.success('Đã sao chép đường dẫn webhook.');
-      setTimeout(() => setCopied(false), 1500);
-    } catch {
-      toast.error('Không sao chép được. Vui lòng sao chép thủ công.');
-    }
+  function copyWebhook() {
+    void copy(`/api/v1/dev/webhook/${repo.id}`, 'Đã sao chép đường dẫn webhook');
   }
 
   return (

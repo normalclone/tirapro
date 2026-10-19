@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import * as Popover from '@radix-ui/react-popover';
 import { Check, ChevronDown, Copy, ListFilter, Plus, Trash2, Wand2, X } from 'lucide-react';
-import { toast } from 'sonner';
+import { useCopyToClipboard } from '@/lib/useCopyToClipboard';
 import {
   CURRENT_USER_TOKEN,
   isRelativeDateToken,
@@ -723,10 +723,10 @@ function MultiSelect({
 /* ------------------------------------------------------------------ */
 
 function JqlPreview({ jql }: { jql: string }) {
+  const { copied, copy: copyText } = useCopyToClipboard();
   function copy() {
     if (!jql) return;
-    void navigator.clipboard?.writeText(jql);
-    toast.success('Đã chép JQL');
+    void copyText(jql, 'Đã chép JQL');
   }
   return (
     <div className="rounded-md border border-border bg-surface-2 px-3 py-2">
@@ -742,8 +742,12 @@ function JqlPreview({ jql }: { jql: string }) {
           // Giữ disabled:opacity (không dùng token vô hiệu) — nút chữ ghost không nền: chỉ cần mờ đi.
           className="flex items-center gap-1 text-xs text-muted transition-colors hover:text-ink disabled:opacity-40"
         >
-          <Copy className="h-3.5 w-3.5" aria-hidden />
-          Chép
+          {copied ? (
+            <Check className="h-3.5 w-3.5 text-success" aria-hidden />
+          ) : (
+            <Copy className="h-3.5 w-3.5" aria-hidden />
+          )}
+          {copied ? 'Đã chép' : 'Chép'}
         </button>
       </div>
       <code className="block break-all font-mono text-xs text-ink">

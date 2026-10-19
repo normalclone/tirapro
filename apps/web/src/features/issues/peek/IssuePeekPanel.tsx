@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ChevronRight, ExternalLink, Hash, X } from 'lucide-react';
-import { toast } from 'sonner';
+import { Check, ChevronRight, ExternalLink, Hash, Link2, X } from 'lucide-react';
 import type { IssueDto } from '@tirapro/types';
 import { DelayedSpinner } from '@/components/ui/primitives';
 import { QueryError } from '@/components/ui/QueryError';
@@ -27,6 +26,7 @@ import { IssueRelations } from '@/features/tree/IssueRelations';
 import { activeDrag } from '@/lib/activeDrag';
 import { hasDraftText, isOverlayOpen, shouldClosePeekOnEscape } from '@/lib/hotkeys';
 import { useIssue } from '../api';
+import { useIssueCopy } from '../useIssueCopy';
 import { issueViewState } from '../issueViewState';
 import { ActivityTabs } from '../ActivityTabs';
 import { LazyPanel } from '../LazyPanel';
@@ -98,12 +98,9 @@ export function IssuePeekPanel({ issueKey, onClose }: { issueKey: string; onClos
 }
 
 function PeekHeader({ issueKey, onClose }: { issueKey: string; onClose: () => void }) {
-  function copyKey() {
-    navigator.clipboard
-      ?.writeText(issueKey)
-      .then(() => toast.success(`Đã sao chép mã ${issueKey}`))
-      .catch(() => toast.error('Trình duyệt chặn sao chép — hãy chép thủ công mã công việc.'));
-  }
+  const { copyKey, copyLink, keyCopied, linkCopied } = useIssueCopy(issueKey);
+  const copyBtn =
+    'grid h-6 w-6 shrink-0 place-items-center rounded text-faint transition-colors hover:bg-surface-2 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] [@media(pointer:coarse)]:h-9 [@media(pointer:coarse)]:w-9';
   return (
     <div className="flex shrink-0 items-center gap-1.5 border-b border-border px-3 py-2">
       <span className="font-mono text-xs text-muted">{issueKey}</span>
@@ -112,9 +109,26 @@ function PeekHeader({ issueKey, onClose }: { issueKey: string; onClose: () => vo
         onClick={copyKey}
         title={`Sao chép mã công việc (${issueKey})`}
         aria-label="Sao chép mã công việc"
-        className="grid h-6 w-6 shrink-0 place-items-center rounded text-faint transition-colors hover:bg-surface-2 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+        className={copyBtn}
       >
-        <Hash className="h-3.5 w-3.5" />
+        {keyCopied ? (
+          <Check className="h-3.5 w-3.5 text-success" aria-hidden />
+        ) : (
+          <Hash className="h-3.5 w-3.5" />
+        )}
+      </button>
+      <button
+        type="button"
+        onClick={copyLink}
+        title="Sao chép liên kết công việc. Dán vào chat hoặc email để chia sẻ."
+        aria-label="Sao chép liên kết"
+        className={copyBtn}
+      >
+        {linkCopied ? (
+          <Check className="h-3.5 w-3.5 text-success" aria-hidden />
+        ) : (
+          <Link2 className="h-3.5 w-3.5" />
+        )}
       </button>
       <Link
         to={`/issue/${issueKey}`}
