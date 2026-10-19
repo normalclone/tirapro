@@ -102,7 +102,7 @@ export function CardBody({
         canDrag
           ? `cursor-grab touch-manipulation active:cursor-grabbing ${COARSE_NO_CALLOUT}`
           : 'cursor-pointer',
-        (fields.due && dueBorderClass(issue)) || 'border-border',
+        dueBorderClass(issue) || 'border-border',
         'hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
         isDragging && 'opacity-40',
         peeked && PEEKED_ROW_CLS,
@@ -112,7 +112,7 @@ export function CardBody({
       <div className={cn(layout.gap, 'flex items-center gap-2')}>
         <IssueTypeBadge name={issue.type.name} color={issue.type.color} />
         <div className="ml-auto flex items-center gap-2">
-          {fields.due && <DueBadge issue={issue} warnOnly />}
+          <DueBadge issue={issue} warnOnly />
           {fields.points && issue.storyPoints != null && (
             <span
               className="tabular grid h-5 min-w-5 place-items-center rounded-full bg-surface-2 px-1 text-[10px] font-medium text-muted"

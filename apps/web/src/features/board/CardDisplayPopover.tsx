@@ -16,14 +16,13 @@ import {
   type CardDisplay,
 } from './cardDisplay';
 
-/** Việc mẫu cho phần xem trước: đủ mọi trường (hạn sắp tới để hiện cảnh báo hạn, 4 nhãn để thấy cả "+n"). */
+/** Việc mẫu cho phần xem trước: đủ mọi trường (hạn sắp tới để hiện cảnh báo hạn — luôn hiện, 4 nhãn để thấy cả "+n"). */
 function sampleIssue(): IssueDto {
   return {
     id: 'preview',
     key: 'VD-12',
-    summary: 'Đồng bộ danh bạ khi đăng nhập lại trên điện thoại mới',
+    summary: 'Đồng bộ danh bạ trên máy mới',
     type: { id: 'preview-type', name: 'Tác vụ', color: null },
-    status: { id: 'preview-status', name: 'In Progress', category: 'IN_PROGRESS' },
     priority: { id: 'preview-priority', name: 'Cao', rank: 2, color: null },
     assignee: { id: 'preview-user', displayName: 'Minh Anh', avatarUrl: null },
     storyPoints: 5,
@@ -63,7 +62,7 @@ export function CardDisplayPanel({
   const isDefault = isDefaultDisplay(display);
   const issue = useMemo(sampleIssue, []);
   return (
-    <div className="space-y-4 p-4">
+    <div className="flex flex-col gap-4 p-4">
       <div>
         <h2 id={titleId} className="text-sm font-semibold text-ink-strong">
           Hiển thị thẻ
@@ -89,7 +88,7 @@ export function CardDisplayPanel({
         <p id={fieldsLabel} className="text-xs font-medium text-muted">
           Trường trên thẻ
         </p>
-        <p className="mb-1 text-xs text-faint">Mã và tiêu đề luôn hiện.</p>
+        <p className="mb-1 text-xs text-faint">Mã và tiêu đề luôn hiện; cảnh báo hạn cũng vậy.</p>
         <div role="group" aria-labelledby={fieldsLabel} className="space-y-1">
           {CARD_FIELDS.map((f) => (
             <Switch
@@ -103,9 +102,13 @@ export function CardDisplayPanel({
         </div>
       </div>
 
-      <div>
+      {/* Dưới sm: lên đầu + dính mép trên khung cuộn → thấy thẻ đổi ngay khi bật/tắt mà không phải cuộn (bảng phía sau bị che). */}
+      <div className="z-10 bg-surface max-sm:sticky max-sm:top-0 max-sm:order-first max-sm:-mx-4 max-sm:-mt-4 max-sm:border-b max-sm:border-border max-sm:px-4 max-sm:pb-2 max-sm:pt-3">
         <p className="mb-1.5 text-xs font-medium text-muted">Xem trước</p>
-        <div aria-hidden="true" className="pointer-events-none rounded-lg bg-surface-3 p-2">
+        <div
+          aria-hidden="true"
+          className="pointer-events-none rounded-lg bg-surface-3 p-2 max-sm:p-1.5"
+        >
           <CardBody issue={issue} progress={SAMPLE_PROGRESS} display={display} canDrag={false} />
         </div>
       </div>

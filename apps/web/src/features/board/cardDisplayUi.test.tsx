@@ -21,7 +21,6 @@ const issue = {
   key: 'TP-7',
   summary: 'Sửa lỗi đăng nhập trên Safari',
   type: { id: 't', name: 'Lỗi', color: '#c00', icon: null },
-  status: { id: 's', name: 'Đang làm', category: 'IN_PROGRESS' },
   priority: { id: 'p', name: 'Cao', rank: 2, color: '#c60' },
   assignee: { id: 'u', displayName: 'Lan Anh', avatarUrl: null },
   storyPoints: 5,
@@ -90,6 +89,53 @@ describe('CardBody theo tuỳ chọn hiển thị', () => {
   });
 });
 
+describe('cảnh báo hạn luôn hiện, bất kể tuỳ chọn', () => {
+  const day = (offset: number) => new Date(Date.now() + offset * 86_400_000).toISOString();
+  const allOff = (() => {
+    let d = setDensity(DEFAULT_CARD_DISPLAY, 'compact');
+    for (const f of CARD_FIELDS) d = toggleField(d, f.id);
+    return d;
+  })();
+  const render = (dueDate: string, display: CardDisplay) =>
+    renderToStaticMarkup(
+      <QueryClientProvider client={new QueryClient()}>
+        <CardBody issue={{ ...issue, dueDate }} display={display} />
+      </QueryClientProvider>,
+    );
+  const settings: [string, CardDisplay][] = [
+    ['mặc định', DEFAULT_CARD_DISPLAY],
+    ['gọn', setDensity(DEFAULT_CARD_DISPLAY, 'compact')],
+    ['mọi trường tắt + gọn', allOff],
+  ];
+  it.each(settings)('quá hạn (%s): viền đỏ + huy hiệu "Quá hạn"', (_n, d) => {
+    const h = render(day(-3), d);
+    expect(h).toContain('border-danger');
+    expect(h).toContain('Quá hạn');
+  });
+  it.each(settings)('sắp đến hạn (%s): viền hổ phách + huy hiệu hạn', (_n, d) => {
+    const h = render(day(1), d);
+    expect(h).toContain('border-warning');
+    expect(h).toMatch(/text-warning/);
+  });
+  it('hạn còn xa: không viền cảnh báo (như trước)', () => {
+    const h = render(day(30), DEFAULT_CARD_DISPLAY);
+    expect(h).not.toContain('border-danger');
+    expect(h).not.toContain('border-warning');
+  });
+  it('popover không có công tắc Hạn', () => {
+    const h = renderToStaticMarkup(
+      <QueryClientProvider client={new QueryClient()}>
+        <CardDisplayPanel
+          display={DEFAULT_CARD_DISPLAY}
+          onChange={() => undefined}
+          onReset={() => undefined}
+        />
+      </QueryClientProvider>,
+    );
+    expect(h).not.toMatch(/id="[^"]*-label"[^>]*>Hạn</);
+  });
+});
+
 describe('CardDisplayPanel', () => {
   const panel = (display: CardDisplay = DEFAULT_CARD_DISPLAY) =>
     renderToStaticMarkup(
@@ -155,6 +201,30 @@ describe('nối vào Bảng việc (đọc source)', () => {
     expect(card).toMatch(/export const Card = memo\(/);
     expect(card).not.toMatch(/prev\.display/);
     expect(read('Column.tsx')).not.toMatch(/display/i);
+  });
+  it('dưới sm: "Xem trước" lên đầu và dính mép trên khi cuộn; từ sm giữ thứ tự cũ', () => {
+    const pop = read('CardDisplayPopover.tsx');
+    expect(pop).toContain('flex flex-col gap-4');
+    for (const c of [
+      'max-sm:order-first',
+      'max-sm:sticky',
+      'max-sm:top-0',
+      'z-10',
+      'bg-surface',
+      'max-sm:border-b',
+    ]) {
+      expect(pop).toContain(c);
+    }
+    expect(pop).not.toMatch(/[\s"`]sm:(order|sticky)/);
+  });
+  it('việc mẫu không mang trường status (không cần tên nhóm trạng thái)', () => {
+    expect(read('CardDisplayPopover.tsx')).not.toMatch(/\bstatus:/);
+  });
+  it('chip Hiển thị đứng trước "Nhóm theo người" để còn nhìn thấy ở dải cuộn ngang của mobile', () => {
+    expect(page.indexOf('<CardDisplayPopover')).toBeLessThan(
+      page.indexOf('onClick={toggleAssignee}'),
+    );
+    expect(page.indexOf('<CardDisplayPopover')).toBeGreaterThan(page.indexOf('<AssigneeFilter'));
   });
   it('nút kích hoạt: chữ nhìn thấy làm tên, vùng bấm 44px trên cảm ứng', () => {
     const pop = read('CardDisplayPopover.tsx');

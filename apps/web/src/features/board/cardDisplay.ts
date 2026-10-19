@@ -15,7 +15,6 @@ export const CARD_DENSITIES: readonly { value: CardDensity; label: string }[] = 
 export const CARD_FIELDS = [
   { id: 'assignee', label: 'Người phụ trách' },
   { id: 'points', label: 'Điểm' },
-  { id: 'due', label: 'Hạn' },
   { id: 'labels', label: 'Nhãn' },
   { id: 'priority', label: 'Ưu tiên' },
   { id: 'progress', label: 'Tiến độ việc con' },

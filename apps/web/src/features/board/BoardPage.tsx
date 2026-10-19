@@ -661,6 +661,13 @@ export function BoardPage() {
                   value={assignee}
                   onChange={changeAssignee}
                 />
+                {cardDisplay.enabled && (
+                  <CardDisplayPopover
+                    display={cardDisplay.display}
+                    onChange={cardDisplay.update}
+                    onReset={cardDisplay.reset}
+                  />
+                )}
                 <button
                   type="button"
                   onClick={toggleAssignee}
@@ -676,13 +683,6 @@ export function BoardPage() {
                 >
                   <Users className="h-3.5 w-3.5" aria-hidden /> Nhóm theo người
                 </button>
-                {cardDisplay.enabled && (
-                  <CardDisplayPopover
-                    display={cardDisplay.display}
-                    onChange={cardDisplay.update}
-                    onReset={cardDisplay.reset}
-                  />
-                )}
                 {canCreate && !project?.archivedAt && (
                   <button
                     type="button"

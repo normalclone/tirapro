@@ -43,7 +43,6 @@ describe('mặc định = giao diện hiện nay', () => {
     expect(CARD_FIELDS.map((f) => f.id)).toEqual([
       'assignee',
       'points',
-      'due',
       'labels',
       'priority',
       'progress',
@@ -82,10 +81,10 @@ describe('parseCardDisplay', () => {
     }
   });
   it('đọc mật độ + trường đã tắt; trường không nhắc tới lấy mặc định (trường mới tự được gộp)', () => {
-    const d = parseCardDisplay('{"v":1,"density":"compact","fields":{"due":false}}');
+    const d = parseCardDisplay('{"v":1,"density":"compact","fields":{"points":false}}');
     expect(d.density).toBe('compact');
-    expect(d.fields.due).toBe(false);
-    for (const f of CARD_FIELDS.filter((x) => x.id !== 'due')) expect(d.fields[f.id]).toBe(true);
+    expect(d.fields.points).toBe(false);
+    for (const f of CARD_FIELDS.filter((x) => x.id !== 'points')) expect(d.fields[f.id]).toBe(true);
   });
   it('mật độ lạ → thường; trường lạ bị bỏ; giá trị không phải boolean → mặc định của trường đó', () => {
     const d = parseCardDisplay(
@@ -97,7 +96,7 @@ describe('parseCardDisplay', () => {
     expect(Object.keys(d.fields).sort()).toEqual(CARD_FIELDS.map((f) => f.id).sort());
   });
   it('kết quả bằng mặc định thì trả đúng tham chiếu mặc định', () => {
-    expect(parseCardDisplay('{"v":1,"density":"normal","fields":{"due":true}}')).toBe(
+    expect(parseCardDisplay('{"v":1,"density":"normal","fields":{"points":true}}')).toBe(
       DEFAULT_CARD_DISPLAY,
     );
   });
@@ -114,11 +113,22 @@ describe('setDensity / toggleField', () => {
     expect(setDensity(DEFAULT_CARD_DISPLAY, 'normal')).toBe(DEFAULT_CARD_DISPLAY);
   });
   it('bật/tắt một trường, không sửa đối tượng cũ', () => {
-    const off = toggleField(DEFAULT_CARD_DISPLAY, 'due');
-    expect(off.fields.due).toBe(false);
-    expect(DEFAULT_CARD_DISPLAY.fields.due).toBe(true);
-    expect(toggleField(off, 'due')).toEqual(DEFAULT_CARD_DISPLAY);
-    expect(isDefaultDisplay(toggleField(off, 'due'))).toBe(true);
+    const off = toggleField(DEFAULT_CARD_DISPLAY, 'points');
+    expect(off.fields.points).toBe(false);
+    expect(DEFAULT_CARD_DISPLAY.fields.points).toBe(true);
+    expect(toggleField(off, 'points')).toEqual(DEFAULT_CARD_DISPLAY);
+    expect(isDefaultDisplay(toggleField(off, 'points'))).toBe(true);
+  });
+  it('Hạn không phải trường tắt được (thẻ chỉ hiện hạn như cảnh báo): due đã lưu từ bản trước bị bỏ như trường lạ', () => {
+    expect(CARD_FIELDS.map((f) => f.id as string)).not.toContain('due');
+    expect(parseCardDisplay('{"v":1,"density":"normal","fields":{"due":false}}')).toBe(
+      DEFAULT_CARD_DISPLAY,
+    );
+    const d = parseCardDisplay('{"v":1,"density":"compact","fields":{"due":false,"labels":false}}');
+    expect(d.density).toBe('compact');
+    expect(d.fields.labels).toBe(false);
+    expect(Object.keys(d.fields)).not.toContain('due');
+    expect(serializeCardDisplay(d)).not.toContain('due');
   });
   it('mã việc và tiêu đề không phải trường tắt được', () => {
     const ids = CARD_FIELDS.map((f) => f.id as string);
@@ -135,11 +145,11 @@ describe('serialize / lưu theo người + bảng', () => {
   });
   it('mặc định → null (xoá khoá); chỉ lưu phần khác mặc định', () => {
     expect(serializeCardDisplay(DEFAULT_CARD_DISPLAY)).toBeNull();
-    const d = toggleField(setDensity(DEFAULT_CARD_DISPLAY, 'compact'), 'due');
+    const d = toggleField(setDensity(DEFAULT_CARD_DISPLAY, 'compact'), 'points');
     expect(JSON.parse(serializeCardDisplay(d)!)).toEqual({
       v: 1,
       density: 'compact',
-      fields: { due: false },
+      fields: { points: false },
     });
   });
   it('ghi rồi đọc lại giữ nguyên; đặt lại mặc định xoá khoá', () => {
