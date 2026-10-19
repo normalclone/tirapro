@@ -141,9 +141,9 @@ export function IssueDetailPage() {
   const can = useCanIn(issue?.projectId);
   const canEditThis = useCanEditIssue(issue?.projectId)(issue ?? {});
   const canTransition = can('issue:transition');
-  // Thuộc tính chính: dưới md hiện dải ngay dưới tiêu đề + "Thuộc tính khác"; từ md như trước. Chọn bằng media query để
+  // Thuộc tính chính: dưới lg hiện dải ngay dưới tiêu đề + "Thuộc tính khác"; từ lg như trước. Chọn bằng media query để
   // MỖI control chỉ dựng một lần (không trùng id/focus/phím tắt), thay vì dựng hai bản rồi ẩn bằng CSS.
-  const isDesktop = useMediaQuery('(min-width: 768px)', true);
+  const isDesktop = useMediaQuery('(min-width: 1024px)', true);
   const layout = factLayout(isDesktop);
   const { data: devLinks } = useDevLinks(FEATURES.repos ? issue?.id : undefined);
   // Mã issue theo LOẠI (BUG-4…) → KHÔNG suy ra project key từ chuỗi; resolve theo projectId.
@@ -562,6 +562,10 @@ export function IssueDetailPage() {
                     nextStatuses={nextStatuses}
                     transitionPending={transitionPending}
                     onTransition={requestTransition}
+                    onOpenWorkflow={() => {
+                      setWfSeen(true);
+                      setWfOpen(true);
+                    }}
                   />
                 )}
                 <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
@@ -664,8 +668,9 @@ export function IssueDetailPage() {
                 </DropdownMenu.Root>
 
                 {/* Trạng thái hiện tại + xem quy trình, rồi các bước chuyển kế tiếp (theo workflow) */}
-                <div className="ml-auto flex flex-wrap items-center gap-1.5">
-                  {layout.statusInToolbar && (
+                {layout.statusInToolbar && (
+                  <div className="ml-auto flex flex-wrap items-center gap-1.5">
+                    {/* Chip trạng thái (từ lg; dưới lg đã ở dải thuộc tính) */}
                     <span
                       className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-sm font-medium text-ink"
                       title="Trạng thái hiện tại của công việc"
@@ -679,54 +684,54 @@ export function IssueDetailPage() {
                       />
                       {issue.status.name}
                     </span>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setWfSeen(true);
-                      setWfOpen(true);
-                    }}
-                    aria-label="Xem quy trình"
-                    title="Xem quy trình: các trạng thái có thể có và bước chuyển hợp lệ"
-                    className="grid h-8 w-8 place-items-center rounded-md text-faint transition-colors hover:bg-surface-2 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
-                  >
-                    <Workflow className="h-4 w-4" />
-                  </button>
-                  {layout.statusInToolbar && canTransition && nextStatuses.length > 0 && (
-                    <>
-                      <ChevronRight className="h-4 w-4 shrink-0 text-faint" aria-hidden />
-                      {nextStatuses.map((o, i) => (
-                        <button
-                          key={o.id}
-                          type="button"
-                          disabled={transitionPending}
-                          onClick={() => requestTransition(o.id)}
-                          title={`${
-                            o.label !== o.name
-                              ? `${o.label} → “${o.name}”`
-                              : `Chuyển sang “${o.name}”`
-                          }${i < 9 ? ` · phím tắt ${i + 1}` : ''}`}
-                          className="group inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 py-1.5 text-sm font-medium text-ink transition-colors hover:border-primary hover:bg-primary-subtle hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:cursor-not-allowed disabled:border-transparent disabled:bg-disabled-bg disabled:text-disabled-fg"
-                        >
-                          <span
-                            className="h-2 w-2 shrink-0 rounded-full"
-                            style={{ background: CATEGORY_COLOR[o.category] ?? 'var(--faint)' }}
-                            aria-hidden
-                          />
-                          {o.label}
-                          {i < 9 && (
-                            <kbd
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setWfSeen(true);
+                        setWfOpen(true);
+                      }}
+                      aria-label="Xem quy trình"
+                      title="Xem quy trình: các trạng thái có thể có và bước chuyển hợp lệ"
+                      className="grid h-8 w-8 place-items-center rounded-md text-faint transition-colors hover:bg-surface-2 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+                    >
+                      <Workflow className="h-4 w-4" />
+                    </button>
+                    {canTransition && nextStatuses.length > 0 && (
+                      <>
+                        <ChevronRight className="h-4 w-4 shrink-0 text-faint" aria-hidden />
+                        {nextStatuses.map((o, i) => (
+                          <button
+                            key={o.id}
+                            type="button"
+                            disabled={transitionPending}
+                            onClick={() => requestTransition(o.id)}
+                            title={`${
+                              o.label !== o.name
+                                ? `${o.label} → “${o.name}”`
+                                : `Chuyển sang “${o.name}”`
+                            }${i < 9 ? ` · phím tắt ${i + 1}` : ''}`}
+                            className="group inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 py-1.5 text-sm font-medium text-ink transition-colors hover:border-primary hover:bg-primary-subtle hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:cursor-not-allowed disabled:border-transparent disabled:bg-disabled-bg disabled:text-disabled-fg"
+                          >
+                            <span
+                              className="h-2 w-2 shrink-0 rounded-full"
+                              style={{ background: CATEGORY_COLOR[o.category] ?? 'var(--faint)' }}
                               aria-hidden
-                              className="kbd-hint ml-0.5 grid h-4 min-w-4 place-items-center rounded border border-border bg-surface-2 px-1 font-mono text-[10px] leading-none text-faint transition-colors group-hover:border-primary/40 group-hover:text-primary"
-                            >
-                              {i + 1}
-                            </kbd>
-                          )}
-                        </button>
-                      ))}
-                    </>
-                  )}
-                </div>
+                            />
+                            {o.label}
+                            {i < 9 && (
+                              <kbd
+                                aria-hidden
+                                className="kbd-hint ml-0.5 grid h-4 min-w-4 place-items-center rounded border border-border bg-surface-2 px-1 font-mono text-[10px] leading-none text-faint transition-colors group-hover:border-primary/40 group-hover:text-primary"
+                              >
+                                {i + 1}
+                              </kbd>
+                            )}
+                          </button>
+                        ))}
+                      </>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Dưới md: phần còn lại của cột phải gom vào "Thuộc tính khác" (thu gọn mặc định), ngay trên thân trang. */}

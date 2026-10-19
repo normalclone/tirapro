@@ -42,6 +42,10 @@ describe('IssueStatusField', () => {
     expect(h).toContain('In Progress');
     expect(h).toContain('min-h-11');
   });
+  it('m2: giá trị thẳng hàng với nhãn (bù đệm trái của nút/chữ)', () => {
+    expect(html(true, opts)).toMatch(/<button[^>]*class="[^"]*-ml-1\.5/);
+    expect(html(false, opts)).toMatch(/<span[^>]*class="[^"]*-ml-1\.5/);
+  });
   it('không có quyền chuyển: giá trị hiện thẳng, không phải nút vô hiệu', () => {
     const h = html(false, opts);
     expect(h).not.toContain('<button');
@@ -56,11 +60,28 @@ describe('IssueStatusField', () => {
 describe('nối vào trang chi tiết (đọc source)', () => {
   const page = read('IssueDetailPage.tsx');
   it('chọn nội dung theo cỡ màn hình bằng useMediaQuery (mỗi bản chỉ dựng một lần, id không trùng)', () => {
-    expect(page).toContain("useMediaQuery('(min-width: 768px)'");
+    expect(page).toContain("useMediaQuery('(min-width: 1024px)'");
+    expect(page).not.toContain('min-width: 768px');
     expect(page).toContain('factLayout(');
     expect(page).toMatch(/layout\.strip\.length > 0 && \(\s*<IssueKeyFacts/);
     expect(page).toMatch(/layout\.priorityInHeader && <IssuePrioritySelect/);
     expect(page).toMatch(/layout\.statusInToolbar && \(/);
+  });
+  it('RC13: dải dưới lg; trong 768–1023 bốn ô nằm một hàng (md:grid-cols-4)', () => {
+    const facts = read('IssueKeyFacts.tsx');
+    expect(facts).toMatch(/grid-cols-2[^"]*md:grid-cols-4/);
+  });
+  it('m1: "Xem quy trình" dưới lg nằm cạnh chip Trạng thái trong dải (giữ tên truy cập), không còn đứng một mình ở thanh nút', () => {
+    const facts = read('IssueKeyFacts.tsx');
+    expect(facts).toContain('onOpenWorkflow');
+    expect(facts).toContain('aria-label="Xem quy trình"');
+    const page = read('IssueDetailPage.tsx');
+    expect(page).toMatch(/onOpenWorkflow=\{\(\) => \{/);
+    // thanh nút: cả cụm trạng thái (chip, quy trình, bước kế) chỉ dựng ở bản có thanh nút
+    expect(page).toMatch(
+      /\{layout\.statusInToolbar && \(\s*<div className="ml-auto flex flex-wrap/,
+    );
+    expect((page.match(/aria-label="Xem quy trình"/g) ?? []).length).toBe(1);
   });
   it('vẫn đúng một h1; hộp chuyển trạng thái dùng chung requestTransition', () => {
     expect((page.match(/<IssueSummaryEdit/g) ?? []).length).toBe(1);
@@ -87,6 +108,7 @@ describe('nối vào trang chi tiết (đọc source)', () => {
     expect(facts).toContain('IssueDueField');
     expect(facts).toContain('IssuePrioritySelect');
     expect(facts).not.toContain('useUpdateIssue');
+    expect(facts).toContain('flushStart');
     const props = read('../issue-edit/IssueProperties.tsx');
     // hàng ở cột phải cũng dùng chính control đó
     expect(props).toMatch(/<IssueAssigneeControl issue=\{issue\} \/>/);

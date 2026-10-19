@@ -1,6 +1,6 @@
 import { useId, useRef, useState, type ReactNode } from 'react';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
-import { ChevronDown } from 'lucide-react';
+import { ChevronDown, Workflow } from 'lucide-react';
 import type { IssueDto } from '@tirapro/types';
 import {
   IssueAssigneeControl,
@@ -69,7 +69,7 @@ export function IssueStatusField({
   if (!canTransition || options.length === 0) {
     return (
       <span
-        className="inline-flex min-w-0 items-center gap-1.5 px-1.5 text-sm font-medium text-ink"
+        className="-ml-1.5 inline-flex min-w-0 items-center gap-1.5 px-1.5 text-sm font-medium text-ink"
         title="Trạng thái hiện tại của công việc"
       >
         <StatusChip status={status} />
@@ -84,7 +84,7 @@ export function IssueStatusField({
           disabled={pending}
           aria-label={`Trạng thái: ${status.name}`}
           title="Đổi trạng thái: chọn bước kế tiếp theo quy trình"
-          className="inline-flex min-h-11 min-w-0 items-center gap-1.5 rounded-md px-1.5 text-sm font-medium text-ink transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:cursor-not-allowed disabled:text-disabled-fg"
+          className="-ml-1.5 inline-flex min-h-11 min-w-0 items-center gap-1.5 rounded-md px-1.5 text-sm font-medium text-ink transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:cursor-not-allowed disabled:text-disabled-fg"
         >
           <StatusChip status={status} />
           <ChevronDown className="h-3.5 w-3.5 shrink-0 text-faint" aria-hidden />
@@ -139,6 +139,7 @@ export function IssueKeyFacts({
   nextStatuses,
   transitionPending,
   onTransition,
+  onOpenWorkflow,
 }: {
   issue: IssueDto;
   canEditRestricted: boolean;
@@ -146,9 +147,11 @@ export function IssueKeyFacts({
   nextStatuses: readonly NextStatus[];
   transitionPending: boolean;
   onTransition: (statusId: string) => void;
+  /** Mở sơ đồ quy trình (nút này ở thanh nút khi từ lg trở lên). */
+  onOpenWorkflow: () => void;
 }) {
   return (
-    <section aria-label="Thuộc tính chính" className="mt-2 grid grid-cols-2 gap-x-3">
+    <section aria-label="Thuộc tính chính" className="mt-2 grid grid-cols-2 gap-x-3 md:grid-cols-4">
       <FactTile label="Trạng thái">
         <IssueStatusField
           status={issue.status}
@@ -157,19 +160,29 @@ export function IssueKeyFacts({
           pending={transitionPending}
           onPick={onTransition}
         />
+        <button
+          type="button"
+          onClick={onOpenWorkflow}
+          aria-label="Xem quy trình"
+          title="Xem quy trình: các trạng thái có thể có và bước chuyển hợp lệ"
+          className="grid h-11 w-11 shrink-0 place-items-center rounded-md text-faint transition-colors hover:bg-surface-2 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+        >
+          <Workflow className="h-4 w-4" aria-hidden />
+        </button>
       </FactTile>
       <FactTile label="Người phụ trách">
         <IssueAssigneeControl
           issue={issue}
-          className={`max-w-full justify-start ${TAP}`}
+          className={`min-w-0 max-w-full shrink justify-start ${TAP}`}
           suggestClassName={TAP}
+          flushStart
         />
       </FactTile>
       <FactTile label="Hạn">
         <IssueDueField issue={issue} canEdit={canEditRestricted} layout="tile" />
       </FactTile>
       <FactTile label="Ưu tiên">
-        <IssuePrioritySelect issue={issue} className={TAP} />
+        <IssuePrioritySelect issue={issue} className={`-ml-1 ${TAP}`} />
       </FactTile>
     </section>
   );

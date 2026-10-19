@@ -458,12 +458,15 @@ export function IssueAssigneeControl({
   issue,
   className,
   suggestClassName,
+  flushStart,
 }: {
   issue: IssueDto;
   /** Ghi thêm lên nút chọn (vd `min-h-11 max-w-full`). */
   className?: string;
   /** Ghi thêm lên nút "Gợi ý". */
   suggestClassName?: string;
+  /** Phần tử đầu dòng tự bù đệm trái để chữ thẳng hàng với nhãn phía trên (ô trong dải thuộc tính). */
+  flushStart?: boolean;
 }) {
   const assignees = useAssigneePicker(issue.projectId);
   const patch = useUpdateIssue(issue.projectId);
@@ -476,7 +479,7 @@ export function IssueAssigneeControl({
           projectId={issue.projectId}
           issueId={issue.id}
           disabled={patch.isPending}
-          className={suggestClassName}
+          className={cn(flushStart && '-ml-1.5', suggestClassName)}
           onPick={(userId) => {
             if (userId === (issue.assignee?.id ?? null)) return;
             patch.mutate(
@@ -513,7 +516,12 @@ export function IssueAssigneeControl({
               );
             }
           }}
-          className={cn(INLINE_TRIGGER, 'justify-end', className)}
+          className={cn(
+            INLINE_TRIGGER,
+            'justify-end',
+            flushStart && !canSuggest && '-ml-1',
+            className,
+          )}
           renderTrigger={() =>
             issue.assignee ? (
               <span className="flex min-w-0 items-center gap-1.5">
@@ -694,7 +702,7 @@ function DateRowShell({
               valueTip ? `${valueTip} — bấm để đổi` : `Bấm để đặt hoặc đổi ${label.toLowerCase()}`
             }
             className={cn(
-              'min-h-11 min-w-0 rounded px-1.5 text-left transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
+              '-ml-1.5 min-h-11 min-w-0 rounded px-1.5 text-left transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
               display ? valueClass : 'text-faint',
             )}
           >
@@ -702,7 +710,7 @@ function DateRowShell({
           </button>
         ) : (
           <span
-            className={cn('min-w-0 rounded px-1.5 py-0.5', display ? valueClass : 'text-ink')}
+            className={cn('min-w-0 rounded py-0.5', display ? valueClass : 'text-ink')}
             title={valueTip ?? (display ? undefined : `Việc này chưa đặt ${label.toLowerCase()}`)}
           >
             {shown}
