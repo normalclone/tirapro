@@ -10,8 +10,8 @@ import { activeDrag } from '@/lib/activeDrag';
 import { categoryColor } from '@/lib/statusColor';
 import type { NextStatus } from '@/features/issues/nextStatuses';
 import type { ProjectLabel } from '@/features/issue-meta/api';
-import { PointsPopover } from './PointsPopover';
-import type { PriorityChoice } from './InlineEdits';
+import { PointsPopover } from '@/features/backlog/PointsPopover';
+import type { PriorityChoice } from '@/features/backlog/InlineEdits';
 import { cn } from '@/lib/utils';
 import { TERM } from '@/lib/terms';
 import { labelTone } from '@/lib/labelPalette';
@@ -20,6 +20,8 @@ import { labelTone } from '@/lib/labelPalette';
 const BACKLOG_OPTION = '__backlog__';
 /** id ảo cho lựa chọn "Gỡ khỏi epic" / "Bỏ ưu tiên" (giá trị thật = null). */
 const NONE_OPTION = '__none__';
+const NO_SPRINTS: SprintDto[] = [];
+const NO_EPICS: IssueDto[] = [];
 
 /**
  * Esc bỏ chọn (ngay cả khi focus không nằm trên thanh này) — trừ khi Esc dành cho thứ khác: dialog/menu/popover đang mở
@@ -55,13 +57,14 @@ function AssignTrigger() {
 }
 
 /**
- * Thanh thao tác hàng loạt (sticky đáy backlog) — hiện khi có ≥1 việc được chọn.
- * Các hành động ghi được gate ở phía trang gọi (canAssign / canManageBacklog).
+ * Dock thao tác hàng loạt (Việc chờ, Bảng việc) — hiện khi có ≥1 việc được chọn. Thuần trình bày: các hành động ghi được
+ * gate ở phía trang gọi (canAssign / canManageBacklog / canEdit / canTransition), và NHÓM KHÔNG TRUYỀN HANDLER = ẨN
+ * (Bảng việc không có sprint/epic).
  */
-export function BulkActionBar({
+export function BulkDock({
   count,
   projectId,
-  sprints,
+  sprints = NO_SPRINTS,
   busy,
   canAssign,
   canManageBacklog,
@@ -83,28 +86,31 @@ export function BulkActionBar({
 }: {
   count: number;
   projectId: string;
-  sprints: SprintDto[];
+  /** Sprint chọn được; chỉ dùng khi có `onMoveToSprint`. */
+  sprints?: SprintDto[];
   busy: boolean;
   canAssign: boolean;
   canManageBacklog: boolean;
   onAssignToMe: () => void;
   onAssignTo: (userId: string) => void;
-  onMoveToSprint: (sprintId: string | null) => void;
+  /** Không truyền = ẩn nhóm "Chuyển sprint". */
+  onMoveToSprint?: (sprintId: string | null) => void;
   onClear: () => void;
   /** Sửa được MỌI việc đang chọn (`canEditIssue` từng việc) — cho Điểm/Ưu tiên/Nhãn/Epic. */
   canEdit: boolean;
   /** Có quyền chuyển trạng thái (`issue:transition`). */
   canTransition: boolean;
   priorities: PriorityChoice[];
-  /** Epic chọn được (đã loại các việc đang chọn). */
-  epics: IssueDto[];
+  /** Epic chọn được (đã loại các việc đang chọn); chỉ dùng khi có `onSetEpic`. */
+  epics?: IssueDto[];
   labels: ProjectLabel[];
   /** Trạng thái mà MỌI việc đang chọn đều chuyển tới được (`commonNextStatuses`). */
   statusOptions: NextStatus[];
   onSetPoints: (points: number | null) => void;
   onSetPriority: (priorityId: string | null) => void;
   onAddLabel: (labelId: string) => void;
-  onSetEpic: (epicId: string | null) => void;
+  /** Không truyền = ẩn nhóm "Epic". */
+  onSetEpic?: (epicId: string | null) => void;
   onSetStatus: (statusId: string) => void;
 }) {
   const assignPicker = useAssigneePicker(projectId);
@@ -164,7 +170,7 @@ export function BulkActionBar({
           </>
         )}
 
-        {canManageBacklog && (
+        {canManageBacklog && onMoveToSprint && (
           <SearchSelect
             value=""
             onChange={(v) => {
@@ -222,7 +228,7 @@ function BulkEditControls({
   canEdit,
   canTransition,
   priorities,
-  epics,
+  epics = NO_EPICS,
   labels,
   statusOptions,
   onSetPoints,
@@ -231,7 +237,7 @@ function BulkEditControls({
   onSetEpic,
   onSetStatus,
 }: Pick<
-  Parameters<typeof BulkActionBar>[0],
+  Parameters<typeof BulkDock>[0],
   | 'busy'
   | 'canEdit'
   | 'canTransition'
@@ -285,23 +291,25 @@ function BulkEditControls({
               <BarTrigger icon={<Tag className="h-4 w-4 shrink-0" />} text="Nhãn" />
             )}
           />
-          <SearchSelect
-            value=""
-            onChange={(v) => v && onSetEpic(v === NONE_OPTION ? null : v)}
-            options={[
-              { value: NONE_OPTION, label: 'Gỡ khỏi epic' },
-              ...epics.map((e) => ({ value: e.id, label: e.summary, hint: e.key })),
-            ]}
-            placeholder="Epic"
-            searchPlaceholder="Tìm epic…"
-            ariaLabel="Gắn các việc đang chọn vào một epic, hoặc gỡ khỏi epic"
-            disabled={busy}
-            align="end"
-            className="h-8 w-auto"
-            renderTrigger={() => (
-              <BarTrigger icon={<Zap className="h-4 w-4 shrink-0" />} text="Epic" />
-            )}
-          />
+          {onSetEpic && (
+            <SearchSelect
+              value=""
+              onChange={(v) => v && onSetEpic(v === NONE_OPTION ? null : v)}
+              options={[
+                { value: NONE_OPTION, label: 'Gỡ khỏi epic' },
+                ...epics.map((e) => ({ value: e.id, label: e.summary, hint: e.key })),
+              ]}
+              placeholder="Epic"
+              searchPlaceholder="Tìm epic…"
+              ariaLabel="Gắn các việc đang chọn vào một epic, hoặc gỡ khỏi epic"
+              disabled={busy}
+              align="end"
+              className="h-8 w-auto"
+              renderTrigger={() => (
+                <BarTrigger icon={<Zap className="h-4 w-4 shrink-0" />} text="Epic" />
+              )}
+            />
+          )}
         </>
       )}
 

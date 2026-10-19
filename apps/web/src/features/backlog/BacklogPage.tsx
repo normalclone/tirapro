@@ -89,8 +89,9 @@ import {
 import { cn } from '@/lib/utils';
 import { CHIP_ROW_GAP_COARSE, CHIP_TOUCH_HIT, STRIP_ROWS_GAP_COARSE } from '@/lib/touchHit';
 import { IssueRow, IssueRowBody, type RowEdit } from './IssueRow';
-import { useBulkEdit } from './useBulkEdit';
-import { commonNextStatuses } from './bulkEdit';
+import { useBulkEdit } from '@/features/bulk/useBulkEdit';
+import { commonNextStatuses } from '@/features/bulk/bulkEdit';
+import { useBulkSelection } from '@/features/bulk/useBulkSelection';
 import {
   backlogDragRoute,
   canMoveSprintVia,
@@ -98,7 +99,7 @@ import {
   planBacklogDrop,
   widenNeighbors,
 } from './dropPlan';
-import { BulkActionBar } from './BulkActionBar';
+import { BulkDock } from '@/features/bulk/BulkDock';
 import { EpicPanel } from './EpicPanel';
 import { epicPanelShown, useEpicPanel } from '@/stores/epicPanel';
 import { useMediaQuery } from '@/lib/useMediaQuery';
@@ -235,7 +236,12 @@ export function BacklogPage() {
   };
 
   // Bulk select: id các việc đang chọn + cờ đang chạy batch (khóa thao tác).
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const {
+    selected,
+    toggle: toggleSelect,
+    setMany: toggleSelectSection,
+    clear: clearSelection,
+  } = useBulkSelection();
 
   const [dragging, setDragging] = useState<IssueDto | null>(null);
   // Phần tử cuộn của trang (dùng cho danh sách ảo hoá). Giữ bằng state để Section dài nhận được nó sau khi gắn DOM.
@@ -555,29 +561,6 @@ export function BacklogPage() {
   }
 
   /* -------------------------- Bulk select -------------------------- */
-
-  const toggleSelect = useCallback((id: string) => {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }, []);
-
-  // Chọn/bỏ chọn toàn bộ việc (đã lọc) trong một section.
-  const toggleSelectSection = useCallback((ids: string[], selectAll: boolean) => {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      for (const id of ids) {
-        if (selectAll) next.add(id);
-        else next.delete(id);
-      }
-      return next;
-    });
-  }, []);
-
-  const clearSelection = useCallback(() => setSelected(new Set()), []);
 
   // Thao tác hàng loạt (Gán/Chuyển sprint/Điểm/Ưu tiên/Nhãn/Epic/Trạng thái) + Hoàn tác — xem `useBulkEdit`.
   const { data: workflows } = useWorkflows();
@@ -930,7 +913,7 @@ export function BacklogPage() {
                 // Xem nhanh mở → cột danh sách hẹp lại: dòng ẩn nhãn + tên người phụ trách (xem `group-data-[peeking]/list` ở IssueRow).
                 data-peeking={peek.peekKey ? '' : undefined}
                 // Đệm đáy `pb-24` chừa chỗ cho nút nổi — chỉ từ `lg` (dưới `lg` không có nút nổi, thanh tab đáy nằm NGOÀI vùng cuộn).
-                // Dưới `lg`: `BulkActionBar` là `sticky bottom-0` và tính theo mép ĐỆM của vùng cuộn → đang chọn thì bỏ đệm đáy
+                // Dưới `lg`: `BulkDock` là `sticky bottom-0` và tính theo mép ĐỆM của vùng cuộn → đang chọn thì bỏ đệm đáy
                 // (`pb-0`) để thanh nằm sát ngay trên thanh tab đáy, không để lọt dòng danh sách ở khe giữa hai thanh.
                 className={cn(
                   'group/list min-w-0 flex-1 space-y-4 overflow-y-auto p-3 sm:p-6 lg:pb-24',
@@ -1121,7 +1104,7 @@ export function BacklogPage() {
                 )}
 
                 {selected.size > 0 && (
-                  <BulkActionBar
+                  <BulkDock
                     count={selected.size}
                     projectId={projectId}
                     sprints={visibleSprints}
@@ -1415,7 +1398,7 @@ function Section({
   quickAddEpicId?: string;
   /** Bật checkbox chọn hàng loạt (không áp cho section chỉ đọc). */
   selectable?: boolean;
-  selected?: Set<string>;
+  selected?: ReadonlySet<string>;
   onToggleSelect?: (id: string) => void;
   onToggleSection?: (ids: string[], selectAll: boolean) => void;
   /** Bấm dòng/mã → mở panel xem nhanh (cả sprint đã đóng: chỉ xem vẫn mở được). */

@@ -355,9 +355,9 @@ describe('dọn kỹ thuật đợt 2A (Task 6)', () => {
       hits(/import \{[^}]*usePriorityRanks[^}]*\} from '@\/features\/settings-admin\/api'/),
     ).toEqual([]);
   });
-  it('BulkActionBar không còn lớp margin chết (cha `space-y-4` ghi đè mb-*)', () => {
+  it('BulkDock không còn lớp margin chết (cha `space-y-4` ghi đè mb-*)', () => {
     const region = /aria-label="Thao tác hàng loạt"[\s\S]*?className=\{cn\(([\s\S]*?)\)\}/.exec(
-      src('features/backlog/BulkActionBar.tsx'),
+      src('features/bulk/BulkDock.tsx'),
     )![1]!;
     expect(region).not.toMatch(/\bmb-|lg:mb-/);
   });

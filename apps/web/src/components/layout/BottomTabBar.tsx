@@ -78,7 +78,7 @@ const TabButton = forwardRef<
 
 /**
  * Thanh tab đáy dưới `lg` (thay drawer + hamburger + nút nổi). Con flex CUỐI của cột phải (dưới `<main>`), KHÔNG `fixed`:
- * không che nội dung, `BulkActionBar sticky bottom-0` tự nằm ngay trên thanh. Người dùng thường: Tổng quan · Dự án · Tạo ·
+ * không che nội dung, `BulkDock sticky bottom-0` tự nằm ngay trên thanh. Người dùng thường: Tổng quan · Dự án · Tạo ·
  * Thông báo · Tôi. Admin hệ thống ở `/admin*`: 4 mục admin đầu + Tôi. "Tạo" và "Tôi" mở sheet đáy (không phải route).
  */
 export function BottomTabBar({ admin }: { admin: boolean }) {

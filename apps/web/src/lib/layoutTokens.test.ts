@@ -43,7 +43,7 @@ describe('FAB không che nội dung', () => {
       expect(src(f), f).toMatch(/\blg:pb-2[48]\b/);
   });
   it('thanh thao tác hàng loạt né FAB chỉ từ lg (lg:mr-24); dưới lg không còn FAB nên không chừa mb-24, nằm sát thanh tab đáy', () => {
-    const bar = src('features/backlog/BulkActionBar.tsx');
+    const bar = src('features/bulk/BulkDock.tsx');
     expect(bar).toMatch(/lg:mr-24/);
     // Cha `space-y-4` ghi đè margin-bottom của con nên không đặt mb-* (lớp chết đã bỏ ở đợt 2A).
     expect(bar).not.toMatch(/\bmb-\d+\b|\blg:mb-\d+\b/);

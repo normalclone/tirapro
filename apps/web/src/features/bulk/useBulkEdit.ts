@@ -11,7 +11,7 @@ import {
   rejectionReason,
   useBulkUpdateIssues,
   type BulkIssuePatch,
-} from './api';
+} from '@/features/backlog/api';
 import {
   groupByPrev,
   labelsToUndo,
@@ -37,20 +37,27 @@ function restoreField(field: BulkField, canRestore?: (prev: BulkValue) => boolea
 }
 
 /**
- * Thao tác hàng loạt của Việc chờ: áp `patch` cho các việc đang chọn tuần tự theo lô ≤ 100 (`runBulkInChunks` trong
+ * Thao tác hàng loạt (Việc chờ, Bảng việc): áp `patch` cho các việc đang chọn tuần tự theo lô ≤ 100 (`runBulkInChunks` trong
  * `useBulkUpdateIssues`), toast tổng kết có "Hoàn tác" khi đảo được. Việc bị người khác sửa trước (conflicts) không làm
  * hỏng cả lô, chỉ được đếm là chưa xong. Hoàn tác dùng version máy chủ trả về trong `updated`.
  */
 export function useBulkEdit(a: {
   projectId: string;
+  /** Bảng đang thao tác: gửi kèm để máy chủ kiểm WIP khi đổi trạng thái. */
+  boardId?: string;
+  /** Làm mới thêm cache của nơi gọi sau mỗi lần ghi (vd việc của bảng có bộ lọc). */
+  invalidate?: () => void;
   issues: IssueDto[] | undefined;
-  selected: Set<string>;
+  selected: ReadonlySet<string>;
   clearSelection: () => void;
   workflows: Workflow[] | undefined;
   sprints: SprintDto[] | undefined;
 }) {
   const { projectId, issues, selected, clearSelection, workflows, sprints } = a;
-  const bulkUpdate = useBulkUpdateIssues(projectId);
+  const bulkUpdate = useBulkUpdateIssues(projectId, {
+    boardId: a.boardId,
+    invalidate: a.invalidate,
+  });
   const confirm = useConfirm();
   const [busy, setBusy] = useState(false);
 

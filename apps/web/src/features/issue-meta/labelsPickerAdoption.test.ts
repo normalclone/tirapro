@@ -73,12 +73,9 @@ describe('tạo nhãn khi gắn — nối dây', () => {
 });
 
 describe('m1 — mọi nơi hiển thị nhãn dùng cùng tông (labelTone)', () => {
-  it.each([['features/backlog/BulkActionBar.tsx'], ['features/automation/RuleEditor.tsx']])(
-    '%s',
-    (rel) => {
-      const src = read(rel);
-      expect(src).toContain('labelTone');
-      expect(src).not.toMatch(/label: l\.name, color: l\.color/);
-    },
-  );
+  it.each([['features/bulk/BulkDock.tsx'], ['features/automation/RuleEditor.tsx']])('%s', (rel) => {
+    const src = read(rel);
+    expect(src).toContain('labelTone');
+    expect(src).not.toMatch(/label: l\.name, color: l\.color/);
+  });
 });
