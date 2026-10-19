@@ -11,6 +11,7 @@ import { uploadAttachmentFile } from '@/features/attachments/api';
 import { FileDrop } from '@/features/attachments/FileDrop';
 import { MarkdownEditor } from '@/features/issue-edit/MarkdownEditor';
 import { Button } from '@/components/ui/Button';
+import { SplitButton } from '@/components/ui/SplitButton';
 import { Dialog } from '@/components/ui/Dialog';
 import { ErrorSummary } from '@/components/ui/ErrorSummary';
 import { FieldErrorText } from '@/components/ui/FieldError';
@@ -524,24 +525,30 @@ export function CreateIssueModal() {
           <Button type="button" variant="ghost" onClick={close}>
             Huỷ
           </Button>
-          <Button
-            type="button"
-            variant="secondary"
-            title="Tạo việc này rồi giữ nguyên cửa sổ để nhập việc tiếp theo"
-            onClick={() => void createAnother()}
-            loading={busy}
-            disabled={metaLoading}
-          >
-            Tạo &amp; nhập tiếp
-          </Button>
-          <Button
+          <SplitButton
             type="submit"
             form="create-issue-form"
+            title="Tạo rồi mở công việc vừa tạo"
+            menuLabel="Tuỳ chọn tạo khác"
             loading={create.isPending || busy}
             disabled={metaLoading}
+            items={[
+              {
+                id: 'another',
+                label: 'Tạo & nhập tiếp',
+                hint: 'Giữ cửa sổ, chỉ xoá tiêu đề và mô tả',
+                onSelect: () => void createAnother(),
+              },
+              {
+                id: 'open',
+                label: 'Tạo & mở',
+                hint: 'Đóng cửa sổ và mở công việc vừa tạo',
+                onSelect: () => void submitCreate(),
+              },
+            ]}
           >
-            {title}
-          </Button>
+            Tạo
+          </SplitButton>
         </>
       }
     >
