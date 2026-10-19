@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   resolvedLast14Days,
   sourceFromProjectReport,
+  statCell,
   statValue,
   type StatSource,
 } from './statMetrics';
@@ -56,5 +57,42 @@ describe('sourceFromProjectReport', () => {
     expect(src.totals).toEqual({ total: 10, todo: 4, inProgress: 3, done: 3, overdue: 2, bug: 3 });
     expect(src.projectCount).toBe(1);
     expect(statValue('done14', src)).toBe(5);
+  });
+});
+
+describe('statCell — ô "Chỉ số" kiểu StatRow (không số khổng lồ, không bịa đích)', () => {
+  it('quá hạn: số + thanh trên số việc chưa xong (todo + đang làm), nền nhấn khi > 0', () => {
+    const c = statCell('overdue', overview);
+    expect(c).toMatchObject({
+      value: 4,
+      tone: 'danger',
+      highlight: true,
+      sub: 'trên 21 việc chưa xong',
+    });
+    expect(c.bullet).toMatchObject({ value: 4, max: 21, tone: 'danger' });
+    expect(c.bullet?.target).toBeUndefined();
+  });
+  it('quá hạn = 0 hoặc không còn việc mở → không nhấn, không thanh', () => {
+    expect(
+      statCell('overdue', { ...overview, totals: { ...overview.totals, overdue: 0 } }),
+    ).toMatchObject({
+      highlight: false,
+    });
+    const none = statCell('overdue', {
+      ...overview,
+      totals: { ...overview.totals, todo: 0, inProgress: 0, overdue: 0 },
+    });
+    expect(none.bullet).toBeUndefined();
+    expect(none.sub).toBeUndefined();
+  });
+  it('open / bugs / projects / done14: chỉ số + chú thích, KHÔNG có thanh (chưa có đích thật)', () => {
+    for (const m of ['open', 'bugs', 'projects'] as const) {
+      expect(statCell(m, overview).bullet).toBeUndefined();
+    }
+    expect(statCell('done14', { ...overview, resolved14: 12 })).toMatchObject({ value: 12 });
+    expect(statCell('done14', { ...overview, resolved14: 12 }).bullet).toBeUndefined();
+  });
+  it('thiếu nguồn (done14 null) → value null để hiện "—"', () => {
+    expect(statCell('done14', overview).value).toBeNull();
   });
 });

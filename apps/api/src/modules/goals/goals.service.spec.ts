@@ -1231,3 +1231,83 @@ describe('GoalsService — che cấu hình nguồn của KR theo quyền ngườ
     expect(g.keyResultProgress).toBe(88);
   });
 });
+
+describe('GoalsService.toDto — expectedProgress (chỉ đọc, tính từ kỳ + hôm nay, không migration)', () => {
+  const row = (period: string) => ({
+    id: 'o1',
+    workspaceId: 'w1',
+    projectId: null,
+    project: null,
+    name: 'Mục tiêu',
+    description: null,
+    period,
+    status: 'ACTIVE',
+    owner: null,
+    keyResults: [
+      {
+        id: 'k1',
+        name: 'KR',
+        unit: 'NUMBER',
+        startValue: 0,
+        targetValue: 10,
+        currentValue: 5,
+        source: 'MANUAL',
+        sourceConfig: null,
+        unitLabel: null,
+        _count: { checkIns: 0 },
+        checkIns: [],
+      },
+    ],
+    issues: [],
+    createdAt: new Date('2026-09-01T00:00:00Z'),
+    updatedAt: new Date('2026-09-01T00:00:00Z'),
+  });
+  const toDto = (period: string) => {
+    const service = new GoalsService(
+      {} as never,
+      ACCESS_ALL as never,
+      NO_MEASURE as never,
+      NO_SNAPSHOT as never,
+      RBAC as never,
+    );
+    return (
+      service as unknown as {
+        toDto: (
+          o: unknown,
+          ctx: unknown,
+        ) => { expectedProgress: number | null; keyResults: { expectedProgress: number | null }[] };
+      }
+    ).toDto(row(period), { measured: new Map(), canShowConfig: () => true });
+  };
+
+  it('quý đang chạy: phần trăm thời gian đã trôi, cùng giá trị cho mục tiêu và từng KR', () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date('2026-11-16T05:00:00Z')); // giữa Q4/2026 theo giờ VN
+      const dto = toDto('2026-Q4');
+      expect(dto.expectedProgress).toBeGreaterThan(48);
+      expect(dto.expectedProgress).toBeLessThan(53);
+      expect(dto.keyResults[0]?.expectedProgress).toBe(dto.expectedProgress);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('kẹp 0–100: kỳ chưa tới → 0, kỳ đã qua → 100', () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date('2026-06-01T00:00:00Z'));
+      expect(toDto('2026-Q4').expectedProgress).toBe(0);
+      vi.setSystemTime(new Date('2027-03-01T00:00:00Z'));
+      expect(toDto('2026-Q4').expectedProgress).toBe(100);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('kỳ tự do (không phải YYYY-Qn) → null: không bịa vạch thời gian', () => {
+    const dto = toDto('FY26');
+    expect(dto.expectedProgress).toBeNull();
+    expect(dto.keyResults[0]?.expectedProgress).toBeNull();
+  });
+});

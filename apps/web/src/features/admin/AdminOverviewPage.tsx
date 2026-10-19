@@ -5,7 +5,8 @@ import { Button } from '@/components/ui/Button';
 import { Skeleton } from '@/components/ui/primitives';
 import { QueryError } from '@/components/ui/QueryError';
 import { useAdminOverview } from './api';
-import { StatTile, StatusPill, fmtBytes, relTime } from './_ui';
+import { StatRow } from '@/components/ui/StatRow';
+import { StatusPill, fmtBytes, relTime } from './_ui';
 import { fmtNumber } from '@/lib/locale';
 import { ADMIN_LABELS } from '@/lib/navLabels';
 
@@ -87,56 +88,60 @@ export function AdminOverviewPage() {
           {/* Quy mô nội dung */}
           <section>
             <h2 className="mb-3 text-sm font-semibold text-ink">Quy mô</h2>
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-              <StatTile
-                label="Không gian làm việc"
-                value={fmtNumber(data.workspaces.active)}
-                sub={
-                  data.workspaces.archived > 0
-                    ? `${fmtNumber(data.workspaces.archived)} đã lưu trữ`
-                    : 'chưa có nơi nào lưu trữ'
-                }
-              />
-              <StatTile
-                label="Người dùng"
-                value={fmtNumber(data.users.active)}
-                sub={`${fmtNumber(data.users.systemAdmins)} admin · ${fmtNumber(data.users.deactivated)} vô hiệu`}
-              />
-              <StatTile label="Dự án" value={fmtNumber(data.projects)} />
-              <StatTile
-                label="Công việc"
-                value={fmtNumber(data.issues.total)}
-                sub={`${fmtNumber(data.issues.open)} đang mở · ${fmtNumber(data.issues.done)} đã xong`}
-              />
-              <StatTile
-                label="Tệp đính kèm"
-                value={fmtNumber(data.attachments.count)}
-                sub={fmtBytes(data.attachments.totalBytes)}
-              />
-              <StatTile
-                label="Hoạt động 24h"
-                value={fmtNumber(data.activity.last24h)}
-                sub={`${fmtNumber(data.activity.last7d)} trong 7 ngày`}
-              />
-            </div>
+            <StatRow
+              cols="sm:grid-cols-3"
+              items={[
+                {
+                  label: 'Không gian làm việc',
+                  value: fmtNumber(data.workspaces.active),
+                  sub:
+                    data.workspaces.archived > 0
+                      ? `${fmtNumber(data.workspaces.archived)} đã lưu trữ`
+                      : 'chưa có nơi nào lưu trữ',
+                },
+                {
+                  label: 'Người dùng',
+                  value: fmtNumber(data.users.active),
+                  sub: `${fmtNumber(data.users.systemAdmins)} admin · ${fmtNumber(data.users.deactivated)} vô hiệu`,
+                },
+                { label: 'Dự án', value: fmtNumber(data.projects) },
+                {
+                  label: 'Công việc',
+                  value: fmtNumber(data.issues.total),
+                  sub: `${fmtNumber(data.issues.open)} đang mở · ${fmtNumber(data.issues.done)} đã xong`,
+                },
+                {
+                  label: 'Tệp đính kèm',
+                  value: fmtNumber(data.attachments.count),
+                  sub: fmtBytes(data.attachments.totalBytes),
+                },
+                {
+                  label: 'Hoạt động 24h',
+                  value: fmtNumber(data.activity.last24h),
+                  sub: `${fmtNumber(data.activity.last7d)} trong 7 ngày`,
+                },
+              ]}
+            />
           </section>
 
           {/* AI 30 ngày */}
           <section>
             <h2 className="mb-3 text-sm font-semibold text-ink">AI · 30 ngày qua</h2>
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              <StatTile label="Lượt gọi" value={fmtNumber(data.ai.requests)} accent />
-              <StatTile
-                label="Token vào / ra"
-                value={`${fmtNumber(data.ai.inputTokens)}`}
-                sub={`${fmtNumber(data.ai.outputTokens)} token ra`}
-              />
-              <StatTile label="Chi phí ước tính" value={`$${data.ai.estCostUsd.toFixed(2)}`} />
-              <StatTile
-                label="Tỉ lệ thành công"
-                value={data.ai.successRate == null ? '—' : `${data.ai.successRate}%`}
-              />
-            </div>
+            <StatRow
+              items={[
+                { label: 'Lượt gọi', value: fmtNumber(data.ai.requests), tone: 'primary' },
+                {
+                  label: 'Token vào / ra',
+                  value: `${fmtNumber(data.ai.inputTokens)}`,
+                  sub: `${fmtNumber(data.ai.outputTokens)} token ra`,
+                },
+                { label: 'Chi phí ước tính', value: `$${data.ai.estCostUsd.toFixed(2)}` },
+                {
+                  label: 'Tỉ lệ thành công',
+                  value: data.ai.successRate == null ? '—' : `${data.ai.successRate}%`,
+                },
+              ]}
+            />
           </section>
         </div>
       )}

@@ -5,7 +5,8 @@ import { QueryError } from '@/components/ui/QueryError';
 import { fmtDate } from '@/lib/dateFormat';
 import { cn } from '@/lib/utils';
 import { useQaReport, type QaReport } from './api';
-import { Card, StatStrip, type StatItem } from './charts';
+import { StatRow, type StatItem } from '@/components/ui/StatRow';
+import { Card } from './charts';
 import { barWidthPct, formatHours, formatPercent, shouldWarnReopen } from './qaFormat';
 import { ScrollX } from '@/components/ui/ScrollX';
 
@@ -233,7 +234,7 @@ export function QaReportPanel({ projectId }: { projectId: string }) {
         <div
           className={cn('space-y-4 transition-opacity', report.isPlaceholderData && 'opacity-60')}
         >
-          <StatStrip items={statItems(report.data)} className="sm:grid-cols-4" />
+          <StatRow items={statItems(report.data)} cols="sm:grid-cols-4" />
           <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
             <Card title="Bug đang mở theo mức nghiêm trọng">
               <SeverityBars rows={report.data.openBySeverity} />

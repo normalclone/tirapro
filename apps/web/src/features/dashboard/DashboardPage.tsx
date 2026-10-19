@@ -47,6 +47,7 @@ import { MyBugsSection } from './MyBugsSection';
 import { OnboardingChecklist } from '@/features/guides/OnboardingChecklist';
 import { CreateProjectModal } from '@/features/projects/CreateProjectModal';
 import { Button } from '@/components/ui/Button';
+import { StatRow, type StatItem } from '@/components/ui/StatRow';
 import { lastViewKey, resolveCurrentProjectKey } from '@/lib/currentProject';
 import { emptyHomeActions, personaOf, type HomeAction } from '@/lib/persona';
 import { useCreateIssueModal } from '@/stores/createIssue';
@@ -226,19 +227,7 @@ function AdminOverview() {
           {/* Cảnh báo — đặt trên cùng để đập vào mắt trước các số liệu */}
           <WarningCards warnings={data.warnings} />
 
-          <StatRow
-            stats={[
-              { label: 'Tổng công việc', value: data.totals.total },
-              { label: 'Bug', value: data.totals.bug, tone: 'bug' },
-              {
-                label: STATUS_CATEGORY_LABEL.IN_PROGRESS,
-                value: data.totals.inProgress,
-                tone: 'progress',
-              },
-              { label: STATUS_CATEGORY_LABEL.DONE, value: data.totals.done, tone: 'done' },
-              { label: 'Quá hạn', value: data.totals.overdue, tone: 'danger' },
-            ]}
-          />
+          <StatRow items={workspaceStatItems(data.totals)} />
 
           {/* Sơ đồ + xu hướng — nhồi 4 khối/hàng cho dày */}
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -537,54 +526,38 @@ function SliceBar({ slices }: { slices: OverviewSlice[] }) {
   );
 }
 
-type StatTone = 'default' | 'progress' | 'done' | 'danger' | 'bug';
-
-const STAT_VALUE_TONE: Record<StatTone, string> = {
-  default: 'text-ink-strong',
-  progress: 'text-status-progress',
-  done: 'text-status-done',
-  danger: 'text-danger',
-  bug: 'text-danger', // đỏ như "Quá hạn" nhưng KHÔNG có nền cảnh báo (không cùng vị trí nên không rối)
-};
-
-/** Số cột trên sm+ khớp đúng số ô → không để lại ô trống viền. */
-const SM_COLS: Record<number, string> = {
-  3: 'sm:grid-cols-3',
-  4: 'sm:grid-cols-4',
-  5: 'sm:grid-cols-5',
-};
-
-function StatRow({ stats }: { stats: { label: string; value: number; tone?: StatTone }[] }) {
-  const oddCount = stats.length % 2 === 1; // mobile 2 cột → ô cuối lẻ cần span 2 cho kín
-  return (
-    <div
-      className={cn(
-        'grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-border bg-border',
-        SM_COLS[stats.length] ?? 'sm:grid-cols-4',
-      )}
-    >
-      {stats.map((s, idx) => {
-        const tone = s.tone ?? 'default';
-        const highlight = tone === 'danger' && s.value > 0;
-        const fillTail = oddCount && idx === stats.length - 1;
-        return (
-          <div
-            key={s.label}
-            className={cn(
-              'px-4 py-2.5',
-              highlight ? 'bg-danger/5' : 'bg-surface',
-              fillTail && 'max-sm:col-span-2',
-            )}
-          >
-            <p className="text-xs font-medium text-muted">{s.label}</p>
-            <p className={cn('mt-0.5 text-2xl font-semibold tabular', STAT_VALUE_TONE[tone])}>
-              {s.value}
-            </p>
-          </div>
-        );
-      })}
-    </div>
-  );
+/**
+ * Hàng chỉ số của Tổng quan workspace. Thanh chỉ ở ô có mẫu số thật: "Hoàn thành" trên tổng việc, "Quá hạn" trên số việc
+ * chưa xong (Tổng công việc / Bug / Đang làm không có đích nên chỉ số).
+ */
+function workspaceStatItems(t: {
+  total: number;
+  bug: number;
+  inProgress: number;
+  done: number;
+  overdue: number;
+}): StatItem[] {
+  const open = Math.max(t.total - t.done, 0);
+  return [
+    { label: 'Tổng công việc', value: t.total },
+    { label: 'Bug', value: t.bug, tone: 'bug' },
+    { label: STATUS_CATEGORY_LABEL.IN_PROGRESS, value: t.inProgress, tone: 'progress' },
+    {
+      label: STATUS_CATEGORY_LABEL.DONE,
+      value: t.done,
+      tone: 'done',
+      sub: t.total > 0 ? `${Math.round((t.done / t.total) * 100)}% tổng việc` : undefined,
+      bullet: t.total > 0 ? { value: t.done, max: t.total, tone: 'done', unit: 'việc' } : undefined,
+    },
+    {
+      label: 'Quá hạn',
+      value: t.overdue,
+      tone: 'danger',
+      highlight: t.overdue > 0,
+      sub: open > 0 ? `trên ${open} việc chưa xong` : undefined,
+      bullet: open > 0 ? { value: t.overdue, max: open, tone: 'danger', unit: 'việc' } : undefined,
+    },
+  ];
 }
 
 /** Nhãn + màu cho thời hạn sprint đang chạy. */
@@ -758,14 +731,19 @@ function PersonalOverview() {
       {issues && issues.length > 0 && (
         <div className="mb-8">
           <StatRow
-            stats={[
+            items={[
               { label: 'Việc của tôi', value: counts.total },
               {
                 label: STATUS_CATEGORY_LABEL.IN_PROGRESS,
                 value: counts.inProgress,
                 tone: 'progress',
               },
-              { label: 'Quá hạn', value: counts.overdue, tone: 'danger' },
+              {
+                label: 'Quá hạn',
+                value: counts.overdue,
+                tone: 'danger',
+                highlight: counts.overdue > 0,
+              },
             ]}
           />
         </div>

@@ -8,7 +8,8 @@ import { QueryError } from '@/components/ui/QueryError';
 import { ADMIN_LABELS } from '@/lib/navLabels';
 import { groupedAuditActionOptions } from '@/features/audit/auditFilters';
 import { useAdminAudit, useAdminHealth, type AuditKind } from './api';
-import { StatTile, StatusPill, relTime } from './_ui';
+import { StatRow } from '@/components/ui/StatRow';
+import { StatusPill, relTime } from './_ui';
 import { fmtDateTime } from '@/lib/dateFormat';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { Tabs, TabPanel } from '@/components/ui/Tabs';
@@ -112,16 +113,18 @@ export function AdminSystemPage() {
                 note={health.ai ? 'bật' : 'heuristic'}
               />
             </div>
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              <StatTile label="Uptime" value={fmtUptime(health.uptimeSec)} />
-              <StatTile
-                label="RAM (RSS)"
-                value={`${health.memoryRssMb} MB`}
-                sub={`heap ${health.heapUsedMb} MB`}
-              />
-              <StatTile label="Phiên bản" value={health.release} />
-              <StatTile label="Môi trường" value={health.nodeEnv} />
-            </div>
+            <StatRow
+              items={[
+                { label: 'Uptime', value: fmtUptime(health.uptimeSec) },
+                {
+                  label: 'RAM (RSS)',
+                  value: `${health.memoryRssMb} MB`,
+                  sub: `heap ${health.heapUsedMb} MB`,
+                },
+                { label: 'Phiên bản', value: health.release },
+                { label: 'Môi trường', value: health.nodeEnv },
+              ]}
+            />
           </>
         )}
       </section>
