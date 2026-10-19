@@ -353,7 +353,6 @@ export function ClientsPage() {
         title: `Xoá khách hàng “${c.name}”?`,
         description: `${warn} Các dự án vẫn giữ nguyên, chỉ bỏ liên kết với khách hàng.`.trim(),
         destructive: true,
-        requireText: c.name,
       }))
     )
       return;

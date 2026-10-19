@@ -1,4 +1,3 @@
-import { useEffect } from 'react';
 import { create } from 'zustand';
 import { AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
@@ -24,12 +23,15 @@ interface ConfirmState {
   /** Giữ lại cả khi đã đóng để nội dung không biến mất giữa chừng hiệu ứng đóng. */
   opts: ConfirmOptions | null;
   resolve: ((ok: boolean) => void) | null;
+  /** Đếm số lần mở hộp — ô gõ tên gắn với số này để mở lại luôn trống. */
+  seq: number;
 }
 
 export const useConfirmStore = create<ConfirmState>(() => ({
   open: false,
   opts: null,
   resolve: null,
+  seq: 0,
 }));
 
 function settle(ok: boolean) {
@@ -58,7 +60,7 @@ function ask(opts: ConfirmOptions): Promise<boolean> {
   return new Promise<boolean>((resolve) => {
     const timer = setTimeout(() => {
       pendingOpen = null;
-      useConfirmStore.setState({ open: true, opts, resolve });
+      useConfirmStore.setState((s) => ({ open: true, opts, resolve, seq: s.seq + 1 }));
     }, 0);
     pendingOpen = { timer, resolve };
   });
@@ -76,13 +78,8 @@ export function useConfirm(): (opts: ConfirmOptions) => Promise<boolean> {
 export function ConfirmHost(): JSX.Element | null {
   const open = useConfirmStore((s) => s.open);
   const opts = useConfirmStore((s) => s.opts);
-  const text = useRequireText(opts?.requireText);
-  const { reset } = text;
-  // Mỗi lần mở (opts mới) bắt đầu với ô trống.
-  useEffect(() => {
-    reset();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [opts]);
+  const seq = useConfirmStore((s) => s.seq);
+  const text = useRequireText(opts?.requireText, seq);
   if (!opts) return null;
   const destructive = !!opts.destructive;
   const needsText = text.required;
@@ -97,9 +94,14 @@ export function ConfirmHost(): JSX.Element | null {
       size="sm"
       icon={destructive ? <AlertTriangle className="h-4 w-4" /> : undefined}
       iconTone="danger"
-      onSubmit={() => {
-        if (text.matches) settle(true);
-      }}
+      // Cmd/Ctrl+Enter chỉ có nghĩa khi có ô gõ tên (xác nhận thường giữ hành vi cũ: không làm gì).
+      onSubmit={
+        needsText
+          ? () => {
+              if (text.matches) settle(true);
+            }
+          : undefined
+      }
       footer={
         <>
           <Button

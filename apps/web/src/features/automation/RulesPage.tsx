@@ -292,7 +292,6 @@ export function RulesPage() {
         title={deleting ? `Xoá quy tắc “${deleting.name}”?` : ''}
         description="Quy tắc và lịch sử chạy của nó sẽ bị xoá. Những thay đổi quy tắc đã làm trước đó vẫn giữ nguyên."
         confirmLabel="Xoá quy tắc"
-        requireText={deleting?.name}
         loading={remove.isPending}
         onCancel={() => setDeleting(null)}
         onConfirm={() => {

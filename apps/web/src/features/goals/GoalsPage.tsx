@@ -246,7 +246,6 @@ function GoalCard({
         description:
           'Toàn bộ kết quả then chốt của mục tiêu này cũng bị xoá và không khôi phục được.',
         destructive: true,
-        requireText: goal.name,
       }))
     )
       return;

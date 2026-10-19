@@ -11,7 +11,7 @@ const fake = (value: string) => ({
   required: true,
   value,
   matches: false,
-  reset: () => undefined,
+  justComposedRef: { current: false },
   bind: {
     value,
     onChange: () => undefined,
@@ -24,8 +24,13 @@ describe('RequireTextField', () => {
   const html = renderToStaticMarkup(
     <RequireTextField expected="CI deploy" text={fake('')} onEnter={() => undefined} />,
   );
-  it('nêu rõ chữ cần gõ trong nhãn gắn với ô nhập', () => {
-    expect(html).toMatch(/<label[^>]*for="([^"]+)"/);
+  it('nhãn gắn đúng với ô nhập: htmlFor của nhãn = id của ô', () => {
+    const forId = /<label[^>]*for="([^"]+)"/.exec(html)?.[1];
+    const inputId = /<input[^>]*\sid="([^"]+)"/.exec(html)?.[1];
+    expect(forId).toBeTruthy();
+    expect(inputId).toBe(forId);
+  });
+  it('nêu rõ chữ cần gõ trong nhãn', () => {
     expect(html).toContain('CI deploy');
     expect(html).toContain('để xác nhận');
   });
@@ -48,38 +53,59 @@ describe('008/269 · useConfirm + ConfirmDialog có requireText', () => {
     expect(s).toMatch(/requireText\?: string/);
     expect(s).toMatch(/disabled=\{!text\.matches\}/);
   });
-  it('Cmd/Ctrl+Enter chỉ xác nhận khi đã khớp', () => {
-    expect(read('components/ui/useConfirm.tsx')).toMatch(/onSubmit=\{[^}]*text\.matches/);
+  it('Cmd/Ctrl+Enter: chỉ đặt onSubmit khi có ô gõ (xác nhận thường giữ hành vi cũ), và chỉ xác nhận khi khớp', () => {
+    expect(read('components/ui/useConfirm.tsx')).toMatch(/onSubmit=\{\s*needsText\b/);
+    expect(read('features/issues/ConfirmDialog.tsx')).toMatch(/onSubmit=\{needsText\b/);
+  });
+  it('ô gõ dùng shouldSubmitOnEnter (Safari IME) và theo dõi compositionend', () => {
+    const s = read('components/ui/RequireText.tsx');
+    expect(s).toContain('shouldSubmitOnEnter(');
+    expect(s).toContain('justComposedRef');
+  });
+  it('chữ đã gõ gắn với lần mở (không reset bằng effect → mở lại không lộ chữ cũ dù một commit)', () => {
+    expect(read('components/ui/RequireText.tsx')).not.toMatch(/useEffect/);
+    expect(read('components/ui/useConfirm.tsx')).not.toMatch(/reset\(\)/);
+    expect(read('features/issues/ConfirmDialog.tsx')).not.toMatch(/reset\(\)/);
+  });
+  it('ConfirmDialog giữ requireText cuối cùng trong lúc hiệu ứng đóng', () => {
+    expect(read('features/issues/ConfirmDialog.tsx')).toContain('lastRequireText');
   });
 });
 
-describe('269 · nơi áp dụng (xoá cứng / thu hồi) đều bắt gõ tên', () => {
+describe('269 · chỉ 4 nơi bắt gõ tên (RC2)', () => {
   const SITES: [string, number][] = [
     ['features/api-keys/ApiKeysPage.tsx', 1],
-    ['features/workflow-settings/WorkflowSettingsPage.tsx', 3],
+    ['features/workflow-settings/WorkflowSettingsPage.tsx', 1],
     ['features/settings-admin/CustomFieldsAdminSection.tsx', 1],
     ['features/settings/RolesPage.tsx', 1],
-    ['features/goals/GoalsPage.tsx', 1],
-    ['features/dashboards/DashboardViewPage.tsx', 1],
-    ['features/clients/ClientsPage.tsx', 1],
-    ['features/automation/RulesPage.tsx', 1],
-    ['features/sla/SlaPage.tsx', 1],
-    ['features/integrations/RepositorySection.tsx', 1],
-    ['features/integrations/TelegramSection.tsx', 2],
-    ['features/backlog/SprintEditDialog.tsx', 1],
   ];
   for (const [f, n] of SITES) {
     it(`${f} có ${n} chỗ requireText`, () => {
       expect(read(f).match(/requireText[:=]/g)?.length ?? 0).toBe(n);
     });
   }
-  it('xoá mềm có Hoàn tác (bình luận, worklog…) KHÔNG bị bắt gõ', () => {
-    for (const f of [
-      'features/issue-edit/CommentsSection.tsx',
-      'features/issues/WorklogPanel.tsx',
-      'features/issues/IssueDetailPage.tsx',
-      'features/project-config/GeneralSection.tsx',
-    ])
-      expect(read(f), f).not.toMatch(/requireText/);
+  it('quy trình: chỉ xoá quy trình bắt gõ, trạng thái/bước chuyển thì không', () => {
+    const s = read('features/workflow-settings/WorkflowSettingsPage.tsx');
+    const at = s.indexOf('requireText: wf.name');
+    expect(at).toBeGreaterThan(0);
+    expect(s).not.toMatch(/requireText: (status|t)\.name/);
   });
+  const NOT: string[] = [
+    'features/goals/GoalsPage.tsx',
+    'features/dashboards/DashboardViewPage.tsx',
+    'features/clients/ClientsPage.tsx',
+    'features/automation/RulesPage.tsx',
+    'features/sla/SlaPage.tsx',
+    'features/integrations/RepositorySection.tsx',
+    'features/integrations/TelegramSection.tsx',
+    'features/backlog/SprintEditDialog.tsx',
+    'features/issue-edit/CommentsSection.tsx',
+    'features/issues/WorklogPanel.tsx',
+    'features/issues/IssueDetailPage.tsx',
+    'features/project-config/GeneralSection.tsx',
+  ];
+  for (const f of NOT)
+    it(`${f} KHÔNG bắt gõ tên`, () => {
+      expect(read(f)).not.toMatch(/requireText/);
+    });
 });

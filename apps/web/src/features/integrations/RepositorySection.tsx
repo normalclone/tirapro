@@ -99,7 +99,6 @@ export function RepositorySection() {
       description:
         'Repo sẽ ngừng nhận webhook và bị gỡ khỏi dự án. Hành động này không thể hoàn tác.',
       destructive: true,
-      requireText: repo.name,
     });
     if (!ok) return;
     remove.mutate(repo.id, {

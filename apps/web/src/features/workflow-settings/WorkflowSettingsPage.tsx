@@ -504,7 +504,6 @@ function StatusSection({ workflow }: { workflow: Workflow }) {
       title: `Xoá trạng thái "${status.name}"?`,
       description: 'Hành động này không thể hoàn tác.',
       destructive: true,
-      requireText: status.name,
     });
     if (!ok) return;
     deleteStatus.mutate(status.id, {
@@ -727,7 +726,6 @@ function TransitionSection({ workflow }: { workflow: Workflow }) {
       title: `Xoá bước chuyển "${t.name}"?`,
       description: 'Hành động này không thể hoàn tác.',
       destructive: true,
-      requireText: t.name,
     });
     if (!ok) return;
     deleteTransition.mutate(t.id, {

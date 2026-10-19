@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { matchesConfirmText, normalizeConfirmText } from './confirmText';
+import { matchesConfirmText, normalizeConfirmText, shouldSubmitOnEnter } from './confirmText';
 
 describe('normalizeConfirmText', () => {
   it('cắt khoảng trắng hai đầu và gộp khoảng trắng giữa chữ', () => {
@@ -32,5 +32,33 @@ describe('matchesConfirmText', () => {
   it('không có gì để gõ (tên rỗng) → không khớp, tránh mở cửa sau', () => {
     expect(matchesConfirmText('', '')).toBe(false);
     expect(matchesConfirmText('   ', '  ')).toBe(false);
+  });
+});
+
+describe('shouldSubmitOnEnter', () => {
+  const base = {
+    key: 'Enter',
+    isComposing: false,
+    keyCode: 13,
+    justComposed: false,
+    matches: true,
+  };
+  it('Enter thường khi đã khớp → xác nhận', () => {
+    expect(shouldSubmitOnEnter(base)).toBe(true);
+  });
+  it('chưa khớp → không xác nhận', () => {
+    expect(shouldSubmitOnEnter({ ...base, matches: false })).toBe(false);
+  });
+  it('phím khác Enter → không', () => {
+    expect(shouldSubmitOnEnter({ ...base, key: 'a' })).toBe(false);
+  });
+  it('đang gõ dở bằng bộ gõ (isComposing) → không', () => {
+    expect(shouldSubmitOnEnter({ ...base, isComposing: true })).toBe(false);
+  });
+  it('Safari: Enter chốt bộ gõ có isComposing=false nhưng keyCode 229 → không', () => {
+    expect(shouldSubmitOnEnter({ ...base, keyCode: 229 })).toBe(false);
+  });
+  it('Safari: Enter đến ngay sau compositionend → không', () => {
+    expect(shouldSubmitOnEnter({ ...base, justComposed: true })).toBe(false);
   });
 });

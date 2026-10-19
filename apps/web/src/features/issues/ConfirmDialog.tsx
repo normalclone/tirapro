@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useRef, useState } from 'react';
 import { AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Dialog } from '@/components/ui/Dialog';
@@ -33,12 +33,18 @@ export function ConfirmDialog({
   onConfirm: () => void;
   onCancel: () => void;
 }) {
-  const text = useRequireText(requireText);
-  const { reset } = text;
-  useEffect(() => {
-    if (open) reset();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, requireText]);
+  // Giữ chữ yêu cầu cuối cùng trong lúc hiệu ứng đóng (người gọi thường xoá đối tượng ngay khi đóng) → ô và nút không đổi.
+  const lastRequireText = useRef(requireText);
+  if (requireText) lastRequireText.current = requireText;
+  const shownText = requireText ?? lastRequireText.current;
+  // Số lần mở: chữ đã gõ gắn với số này nên mở lại luôn trống ngay commit đầu.
+  const [seq, setSeq] = useState(0);
+  const [prevOpen, setPrevOpen] = useState(open);
+  if (open !== prevOpen) {
+    setPrevOpen(open);
+    if (open) setSeq((n) => n + 1);
+  }
+  const text = useRequireText(shownText, seq);
   const needsText = text.required;
   const confirm = () => {
     if (text.matches && !loading) onConfirm();
@@ -54,7 +60,7 @@ export function ConfirmDialog({
       size="sm"
       icon={danger ? <AlertTriangle className="h-4 w-4" /> : undefined}
       iconTone="danger"
-      onSubmit={confirm}
+      onSubmit={needsText ? confirm : undefined}
       footer={
         <>
           <Button variant="ghost" size="sm" onClick={onCancel} autoFocus={danger && !needsText}>
@@ -73,8 +79,8 @@ export function ConfirmDialog({
         </>
       }
     >
-      {needsText && requireText && (
-        <RequireTextField expected={requireText} text={text} onEnter={confirm} />
+      {needsText && shownText && (
+        <RequireTextField expected={shownText} text={text} onEnter={confirm} />
       )}
     </Dialog>
   );

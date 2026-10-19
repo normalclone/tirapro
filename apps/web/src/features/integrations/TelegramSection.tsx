@@ -97,7 +97,6 @@ export function TelegramSection() {
         description:
           'Các kênh của kết nối này sẽ ngừng gửi thông báo. Hành động này không thể hoàn tác.',
         destructive: true,
-        requireText: it.name,
       }))
     )
       return;
@@ -303,7 +302,6 @@ function ChannelList({
       title: `Xoá kênh "${label}"?`,
       description: 'Kênh sẽ ngừng nhận thông báo. Hành động này không thể hoàn tác.',
       destructive: true,
-      requireText: label,
     });
     if (!ok) return;
     remove.mutate(channelId, {

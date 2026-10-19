@@ -339,7 +339,6 @@ function SlaPolicies({
                             description:
                               'Các công việc đang tính giờ theo cam kết này sẽ ngừng được theo dõi.',
                             destructive: true,
-                            requireText: p.name,
                           }))
                         )
                           return;
