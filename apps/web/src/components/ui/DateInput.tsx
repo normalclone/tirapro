@@ -12,6 +12,7 @@ import { Input } from '@/components/ui/Input';
 import { INVALID_FIELD_CLS, describedBy } from '@/lib/formErrors';
 import { cn } from '@/lib/utils';
 import {
+  dateFieldError,
   formatViDate,
   inDateRange,
   joinDateTime,
@@ -22,8 +23,6 @@ import {
   splitDateTime,
 } from '@/lib/dateInput';
 
-const DATE_ERR = 'Ngày chưa đúng (dd/MM/yyyy)';
-const RANGE_ERR = 'Ngày nằm ngoài khoảng cho phép';
 const TIME_ERR = 'Giờ chưa đúng (HH:mm)';
 
 const INVALID_CLS = INVALID_FIELD_CLS;
@@ -31,14 +30,6 @@ const INVALID_CLS = INVALID_FIELD_CLS;
 const CAN_PICK =
   typeof HTMLInputElement !== 'undefined' &&
   typeof HTMLInputElement.prototype.showPicker === 'function';
-
-/** Thông điệp lỗi của chữ đang gõ ('' nếu trống hoặc hợp lệ). */
-function dateError(text: string, min?: string, max?: string, rangeError = RANGE_ERR): string {
-  if (text === '') return '';
-  const iso = parseViDate(text);
-  if (iso === null) return DATE_ERR;
-  return inDateRange(iso, min, max) ? '' : rangeError;
-}
 
 /**
  * Đặt `customValidity` của ô theo lỗi hiện có → form native không gửi đi giá trị cũ khi ô đang hiện chữ sai
@@ -114,12 +105,6 @@ export interface DateInputProps {
   required?: boolean;
   disabled?: boolean;
   className?: string;
-  /**
-   * Lỗi do NƠI DÙNG quyết (vd khoảng ngày sai thứ tự — `DateRangeInput`). Chuỗi → viền đỏ + `aria-invalid` + dòng lỗi dưới
-   * ô (cùng chỗ với lỗi chữ ngày; lỗi chữ ngày sai ưu tiên) + `customValidity` (form native và `blockOnInvalidDate` vẫn chặn).
-   * `true` → chỉ viền/`aria-invalid` (lời lỗi nơi khác vẽ).
-   */
-  invalid?: boolean | string;
   /** Id phần tử mô tả thêm (gợi ý, tóm tắt); id dòng lỗi của chính ô được nối sau. */
   'aria-describedby'?: string;
 }
@@ -138,7 +123,6 @@ export function DateInput({
   required,
   disabled,
   className,
-  invalid,
   'aria-describedby': describedByProp,
 }: DateInputProps) {
   const [text, setText] = useState(() => formatViDate(value));
@@ -157,12 +141,9 @@ export function DateInput({
     setTouched(false);
   }, [value]);
 
-  const err = dateError(text, min, max, rangeError);
+  const err = dateFieldError(text, min, max, rangeError);
   const showErr = err !== '' && (touched || text.length === 10);
-  const hostErr = typeof invalid === 'string' && invalid.trim() !== '' ? invalid : '';
-  const shownErr = showErr ? err : hostErr;
-  const isInvalid = shownErr !== '' || invalid === true;
-  useCustomValidity(inputRef, err || hostErr);
+  useCustomValidity(inputRef, err);
   useEffect(() => onErrorChange?.(err), [err, onErrorChange]);
 
   const apply = (iso: string) => {
@@ -228,10 +209,10 @@ export function DateInput({
         required={required}
         disabled={disabled}
         aria-label={ariaLabel}
-        aria-invalid={isInvalid || undefined}
-        aria-describedby={describedBy(describedByProp, shownErr !== '' && errId)}
+        aria-invalid={showErr || undefined}
+        aria-describedby={describedBy(describedByProp, showErr && errId)}
         data-custom-validity=""
-        className={cn(CAN_PICK && 'pr-10', isInvalid && INVALID_CLS, className)}
+        className={cn(CAN_PICK && 'pr-10', showErr && INVALID_CLS, className)}
         onChange={(e) => handleText(e.target.value)}
         onPaste={handlePaste}
         onKeyDown={(e) => {
@@ -276,9 +257,9 @@ export function DateInput({
           />
         </>
       )}
-      {shownErr !== '' && (
+      {showErr && (
         <p id={errId} role="alert" className="mt-1 text-xs text-danger">
-          {shownErr}
+          {err}
         </p>
       )}
     </div>
@@ -293,7 +274,7 @@ export function DateInput({
  */
 export interface DateTimeInputProps extends Omit<
   DateInputProps,
-  'onCommit' | 'onErrorChange' | 'invalid' | 'aria-describedby'
+  'onCommit' | 'onErrorChange' | 'aria-describedby'
 > {
   onCommit?: (isoLocal: string) => void;
   /** Giờ mặc định khi vừa chọn ngày mà chưa có giờ (mặc định 17:00 = cuối giờ làm việc). */

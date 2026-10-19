@@ -114,3 +114,22 @@ export function inDateRange(iso: string, min?: string, max?: string): boolean {
   if (max && iso > max) return false;
   return true;
 }
+
+const DATE_ERR = 'Ngày chưa đúng (dd/MM/yyyy)';
+const RANGE_ERR = 'Ngày nằm ngoài khoảng cho phép';
+
+/**
+ * Thông điệp lỗi của chữ đang gõ trong một ô ngày ('' nếu trống hoặc hợp lệ): chữ không thành ngày thật → câu chuẩn;
+ * ngày nằm ngoài [min, max] → `rangeError` (nơi dùng nên nói rõ, vd "Ngày kết thúc không được trước ngày bắt đầu").
+ */
+export function dateFieldError(
+  text: string,
+  min?: string,
+  max?: string,
+  rangeError: string = RANGE_ERR,
+): string {
+  if (text === '') return '';
+  const iso = parseViDate(text);
+  if (iso === null) return DATE_ERR;
+  return inDateRange(iso, min, max) ? '' : rangeError;
+}

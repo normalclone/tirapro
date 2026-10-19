@@ -23,7 +23,6 @@ import {
 import { SectionCard } from '@/components/ui/SectionCard';
 import { fmtDayMonth } from '@/lib/dateFormat';
 import { blockOnInvalidDate } from '@/lib/dateGuard';
-import { DEFAULT_RANGE_ERROR, dateRangeError } from '@/lib/dateRange';
 
 interface FormState {
   id: string | null;
@@ -104,7 +103,6 @@ export function AllocationsPanel({
       return toast.error('Tỉ lệ thời gian phải từ 1% đến 200%');
     if (!form.startDate || !form.endDate)
       return toast.error('Hãy chọn cả ngày bắt đầu và ngày kết thúc');
-    if (dateRangeError(form.startDate, form.endDate)) return toast.error(DEFAULT_RANGE_ERROR);
 
     const payload = {
       userId: form.userId,

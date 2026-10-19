@@ -41,6 +41,8 @@ export function SprintEditDialog({
   const [start, setStart] = useState(toDateInput(sprint.startDate));
   const [end, setEnd] = useState(toDateInput(sprint.endDate));
   const [confirmDelete, setConfirmDelete] = useState(false);
+  // Lỗi hiện có của cặp ngày (chữ sai/ngoài khoảng ở một ô) — DateRangeInput báo lên.
+  const [dateErr, setDateErr] = useState('');
 
   // Câu báo hiện MỘT lần, ngay tại ô Ngày kết thúc (DateRangeInput); ở đây chỉ để khoá nút Lưu.
   const dateError = dateRangeError(start, end) !== null;
@@ -49,7 +51,7 @@ export function SprintEditDialog({
     goal.trim() !== (sprint.goal ?? '') ||
     (future && start !== toDateInput(sprint.startDate)) ||
     end !== toDateInput(sprint.endDate);
-  const canSave = dirty && !!name.trim() && !dateError && !update.isPending;
+  const canSave = dirty && !!name.trim() && !dateError && !dateErr && !update.isPending;
 
   async function save() {
     if (blockOnInvalidDate()) return;
@@ -161,6 +163,7 @@ export function SprintEditDialog({
             end={end}
             onStartChange={setStart}
             onEndChange={setEnd}
+            onErrorChange={setDateErr}
             startDisabled={!future}
             inputClassName="text-sm"
           />

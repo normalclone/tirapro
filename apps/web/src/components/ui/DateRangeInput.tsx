@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { DateInput } from '@/components/ui/DateInput';
 import { FormField } from '@/components/ui/FormField';
 import { describedBy } from '@/lib/formErrors';
@@ -43,8 +43,9 @@ const LABEL_CLS = 'mb-1.5 block text-sm font-medium text-muted';
 /**
  * Hai ô ngày (bắt đầu – kết thúc) + dòng tóm tắt "14 ngày · 20/10 – 02/11" + kiểm kết thúc ≥ bắt đầu.
  * Dựng từ hai `DateInput` nên giữ nguyên xử lý chữ ngày sai, `data-custom-validity` (`blockOnInvalidDate` vẫn tìm được)
- * và định dạng dd/MM/yyyy. Lỗi thứ tự hiện ở ô KẾT THÚC (`invalid` chuỗi → `aria-invalid` + `aria-describedby` + dòng lỗi);
- * ô trống được phép (luật bắt buộc thuộc nơi dùng). Tóm tắt là vùng `role="status"` luôn có mặt (giữ chỗ, không nhảy
+ * và định dạng dd/MM/yyyy. Ô kết thúc nhận `min` = ngày bắt đầu (lịch tô xám ngày sớm hơn) nên lỗi thứ tự — gõ ngày
+ * sớm hơn, hoặc dời bắt đầu qua ngày kết thúc đã có — hiện ở ô KẾT THÚC bằng `errorMessage` (`aria-invalid` +
+ * `aria-describedby` + dòng lỗi + `customValidity`); `onErrorChange` báo lên để nơi dùng khoá Lưu. Ô trống được phép (luật bắt buộc thuộc nơi dùng). Tóm tắt là vùng `role="status"` luôn có mặt (giữ chỗ, không nhảy
  * bố cục) và được cả hai ô trỏ tới bằng `aria-describedby`. Dưới `sm` hai ô xếp dọc. Lịch hai đầu: hoãn.
  */
 export function DateRangeInput({
@@ -78,9 +79,14 @@ export function DateRangeInput({
   const [endErr, setEndErr] = useState('');
 
   const rangeErr = dateRangeError(start, end, errorMessage) ?? '';
-  const summary = dateRangeSummary(start, end, now);
   const groupErr = startErr || endErr || rangeErr;
+  // Có lỗi (kể cả chữ đang gõ chưa vào giá trị) thì không tóm tắt một khoảng cũ.
+  const summary = groupErr ? '' : dateRangeSummary(start, end, now);
   useEffect(() => onErrorChange?.(groupErr), [groupErr, onErrorChange]);
+  // Đóng hộp thoại (ô bị gỡ) → báo hết lỗi, để nơi dùng không kẹt nút Lưu bằng lỗi của lần mở trước.
+  const report = useRef(onErrorChange);
+  report.current = onErrorChange;
+  useEffect(() => () => report.current?.(''), []);
 
   const labelCls = compact ? undefined : LABEL_CLS;
   const summaryRef = summary ? summaryId : undefined;
@@ -109,7 +115,8 @@ export function DateRangeInput({
               value={end}
               onChange={onEndChange}
               onErrorChange={setEndErr}
-              invalid={rangeErr}
+              min={start || undefined}
+              rangeError={errorMessage}
               aria-describedby={describedBy(a['aria-describedby'], summaryRef)}
               required={endRequired}
               disabled={endDisabled}

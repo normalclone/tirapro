@@ -84,6 +84,8 @@ export function ContractEditorModal({
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [note, setNote] = useState('');
+  // Lỗi hiện có của cặp ngày (chữ sai/ngoài khoảng ở một ô) — DateRangeInput báo lên.
+  const [dateErr, setDateErr] = useState('');
 
   useEffect(() => {
     if (!open) return;
@@ -111,7 +113,7 @@ export function ContractEditorModal({
   if (!clientId) return null;
 
   const busy = create.isPending || update.isPending;
-  const canSave = name.trim().length > 0 && !dateOrderInvalid && !busy;
+  const canSave = name.trim().length > 0 && !dateOrderInvalid && !dateErr && !busy;
 
   async function save() {
     if (!canSave || !clientId) return;
@@ -238,6 +240,7 @@ export function ContractEditorModal({
           end={endDate}
           onStartChange={setStartDate}
           onEndChange={setEndDate}
+          onErrorChange={setDateErr}
           errorMessage="Ngày kết thúc đang sớm hơn ngày bắt đầu — hãy sửa lại một trong hai ngày."
         />
 

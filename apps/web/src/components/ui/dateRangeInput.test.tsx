@@ -95,6 +95,36 @@ describe('<DateRangeInput>', () => {
   });
 });
 
+describe('<DateRangeInput>: thứ tự ngày', () => {
+  it('ngày kết thúc đã lưu rồi bắt đầu dời sau nó: lỗi bằng câu riêng ở ô kết thúc, tóm tắt ẩn', () => {
+    const h = render({
+      start: '2026-11-05',
+      end: '2026-11-02',
+      errorMessage: 'Ngày mục tiêu sớm quá',
+    });
+    expect(h).toContain('Ngày mục tiêu sớm quá');
+    expect(h).not.toContain('Ngày nằm ngoài khoảng cho phép');
+    expect(attr(tag(h, 'r-end'), 'aria-invalid')).toBe('true');
+    expect(status(h)?.[2]).toBe('');
+  });
+  it('không còn đường `invalid` do nơi dùng cấp: chỉ một nguồn lỗi là chính DateInput', () => {
+    const di = readFileSync(join(__dirname, 'DateInput.tsx'), 'utf8');
+    expect(di).not.toMatch(/hostErr/);
+    expect(di).not.toMatch(/\n\s+invalid\?:/);
+  });
+});
+
+describe('DateRangeInput: nối dây', () => {
+  const src = () => readFileSync(join(__dirname, 'DateRangeInput.tsx'), 'utf8');
+  it('ô kết thúc nhận min = ngày bắt đầu (lịch tô xám ngày sớm hơn) + câu lỗi của nơi dùng', () => {
+    expect(src()).toMatch(/min=\{start \|\| undefined\}/);
+    expect(src()).toMatch(/rangeError=\{errorMessage\}/);
+  });
+  it('rời đi (đóng hộp thoại) thì báo hết lỗi để nơi dùng không kẹt nút Lưu', () => {
+    expect(src()).toMatch(/\(\) => \(\) => \w+\.current\?\.\(''\)/);
+  });
+});
+
 describe('DateRangeInput: dựng từ hai DateInput có sẵn, không viết lại xử lý ngày', () => {
   const src = () => readFileSync(join(__dirname, 'DateRangeInput.tsx'), 'utf8');
   it('dùng DateInput, FormField và hàm thuần ở lib/dateRange', () => {

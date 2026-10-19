@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  dateFieldError,
   formatViDate,
   joinDateTime,
   maskViDate,
@@ -70,5 +71,30 @@ describe('giờ', () => {
     expect(joinDateTime('', '09:30')).toBe('');
     expect(splitDateTime('2026-08-05T09:30')).toEqual({ date: '2026-08-05', time: '09:30' });
     expect(splitDateTime('')).toEqual({ date: '', time: '' });
+  });
+});
+
+describe('dateFieldError — lỗi của chữ đang gõ trong một ô ngày', () => {
+  it('trống hoặc hợp lệ → rỗng', () => {
+    expect(dateFieldError('')).toBe('');
+    expect(dateFieldError('20/10/2026', '2026-10-01', '2026-12-31')).toBe('');
+  });
+  it('chữ không phải ngày → câu chuẩn dd/MM/yyyy', () => {
+    expect(dateFieldError('31/02/2026')).toBe('Ngày chưa đúng (dd/MM/yyyy)');
+    expect(dateFieldError('20/10')).toBe('Ngày chưa đúng (dd/MM/yyyy)');
+  });
+  it('gõ ngày kết thúc TRƯỚC `min` (ngày bắt đầu) → câu riêng của nơi dùng', () => {
+    expect(dateFieldError('01/10/2026', '2026-10-20', undefined, 'Ngày mục tiêu sớm quá')).toBe(
+      'Ngày mục tiêu sớm quá',
+    );
+  });
+  it('ngày kết thúc đã lưu, rồi bắt đầu bị dời SAU nó → vẫn báo (chữ hiển thị là ngày đã lưu)', () => {
+    expect(dateFieldError('02/11/2026', '2026-11-05', undefined, 'sớm quá')).toBe('sớm quá');
+  });
+  it('không có câu riêng → câu chung', () => {
+    expect(dateFieldError('01/10/2026', '2026-10-20')).toBe('Ngày nằm ngoài khoảng cho phép');
+  });
+  it('bằng `min` hợp lệ (cho phép cùng ngày)', () => {
+    expect(dateFieldError('20/10/2026', '2026-10-20')).toBe('');
   });
 });

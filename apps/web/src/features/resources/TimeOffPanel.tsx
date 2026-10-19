@@ -22,7 +22,6 @@ import {
 import { SectionCard } from '@/components/ui/SectionCard';
 import { fmtDayMonth } from '@/lib/dateFormat';
 import { blockOnInvalidDate } from '@/lib/dateGuard';
-import { DEFAULT_RANGE_ERROR, dateRangeError } from '@/lib/dateRange';
 
 const KIND_META: Record<TimeOffKind, { label: string; className: string }> = {
   LEAVE: { label: 'Nghỉ phép', className: 'bg-primary-subtle text-primary' },
@@ -99,7 +98,6 @@ export function TimeOffPanel({
       return toast.error('Hãy chọn người nghỉ, hoặc đổi phạm vi sang “Cả tổ chức”');
     if (!form.startDate || !form.endDate)
       return toast.error('Hãy chọn cả ngày bắt đầu và ngày kết thúc');
-    if (dateRangeError(form.startDate, form.endDate)) return toast.error(DEFAULT_RANGE_ERROR);
 
     const payload = {
       userId: form.scope === 'workspace' ? null : form.userId,

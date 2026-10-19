@@ -1,15 +1,22 @@
 import { describe, expect, it } from 'vitest';
+import { inclusiveDayCount } from '@/lib/dateRange';
 import { dayOf, defaultStart, startWarnings, suggestEnd, toDayIso } from './sprintDefaults';
 
 describe('suggestEnd', () => {
-  it('cộng đúng số tuần, giữ định dạng ISO UTC 00:00', () => {
-    expect(suggestEnd('2026-10-15T00:00:00.000Z', 2)).toBe('2026-10-29T00:00:00.000Z');
-    expect(suggestEnd('2026-10-15T00:00:00.000Z', 1)).toBe('2026-10-22T00:00:00.000Z');
-    expect(suggestEnd('2026-10-15T00:00:00.000Z', 3)).toBe('2026-11-05T00:00:00.000Z');
+  it('start + 7×tuần − 1: đếm cả hai đầu thì "2 tuần" = 14 ngày; giữ định dạng ISO UTC 00:00', () => {
+    expect(suggestEnd('2026-10-15T00:00:00.000Z', 2)).toBe('2026-10-28T00:00:00.000Z');
+    expect(suggestEnd('2026-10-15T00:00:00.000Z', 1)).toBe('2026-10-21T00:00:00.000Z');
+    expect(suggestEnd('2026-10-15T00:00:00.000Z', 3)).toBe('2026-11-04T00:00:00.000Z');
   });
 
   it('qua cuối tháng/năm vẫn đúng', () => {
-    expect(suggestEnd('2026-12-25T00:00:00.000Z', 2)).toBe('2027-01-08T00:00:00.000Z');
+    expect(suggestEnd('2026-12-25T00:00:00.000Z', 2)).toBe('2027-01-07T00:00:00.000Z');
+  });
+
+  it.each([1, 2, 3])('%i tuần = đúng 7×số tuần ngày (inclusiveDayCount)', (w) => {
+    const start = '2026-10-20';
+    const end = dayOf(suggestEnd(toDayIso(start), w));
+    expect(inclusiveDayCount(start, end)).toBe(7 * w);
   });
 });
 
