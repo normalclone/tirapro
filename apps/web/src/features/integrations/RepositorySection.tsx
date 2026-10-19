@@ -94,7 +94,14 @@ export function RepositorySection() {
   }
 
   async function handleDelete(repo: Repository) {
-    if (!(await confirm({ title: `Xoá repo "${repo.name}"?`, destructive: true }))) return;
+    const ok = await confirm({
+      title: `Xoá repo "${repo.name}"?`,
+      description:
+        'Repo sẽ ngừng nhận webhook và bị gỡ khỏi dự án. Hành động này không thể hoàn tác.',
+      destructive: true,
+      requireText: repo.name,
+    });
+    if (!ok) return;
     remove.mutate(repo.id, {
       onSuccess: () => toast.success('Đã xoá repo.'),
       onError: (e) => toast.error(apiErrorMessage(e)),

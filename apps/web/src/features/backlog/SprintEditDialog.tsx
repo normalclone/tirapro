@@ -189,6 +189,7 @@ export function SprintEditDialog({
             : 'Sprint trống sẽ bị xoá. Không thể khôi phục.'
         }
         confirmLabel="Xoá sprint"
+        requireText={sprint.name}
         loading={remove.isPending}
         onConfirm={() => void doDelete()}
         onCancel={() => setConfirmDelete(false)}

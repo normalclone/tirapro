@@ -335,8 +335,11 @@ function SlaPolicies({
                       onClick={async () => {
                         if (
                           !(await confirm({
-                            title: `Xoá cam kết “${p.name}”? Các công việc đang tính giờ theo cam kết này sẽ ngừng được theo dõi.`,
+                            title: `Xoá cam kết “${p.name}”?`,
+                            description:
+                              'Các công việc đang tính giờ theo cam kết này sẽ ngừng được theo dõi.',
                             destructive: true,
+                            requireText: p.name,
                           }))
                         )
                           return;

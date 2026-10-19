@@ -376,11 +376,17 @@ function RoleDialog({
   async function handleDelete() {
     if (!role || role.isSystem) return;
     const count = role.memberCount ?? 0;
-    const warn =
-      count > 0
-        ? `Vai trò "${roleLabel(role.name)}" đang gán cho ${count} thành viên. Xoá vai trò?`
-        : `Xoá vai trò "${roleLabel(role.name)}"? Hành động này không thể hoàn tác.`;
-    if (!(await confirm({ title: warn, destructive: true }))) return;
+    const label = roleLabel(role.name);
+    const ok = await confirm({
+      title: `Xoá vai trò "${label}"?`,
+      description:
+        count > 0
+          ? `Vai trò đang gán cho ${count} thành viên. Hành động này không thể hoàn tác.`
+          : 'Hành động này không thể hoàn tác.',
+      destructive: true,
+      requireText: label,
+    });
+    if (!ok) return;
     deleteRole.mutate(role.id, { onSuccess: onClose });
   }
 

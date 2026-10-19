@@ -118,6 +118,7 @@ export function WorkflowSettingsPage() {
         ? 'Mẫu chỉ dùng để tham khảo; dự án đã tạo không bị ảnh hưởng. Hành động này không thể hoàn tác.'
         : 'Quy trình và các trạng thái, chuyển tiếp của nó sẽ bị xoá. Hành động này không thể hoàn tác.',
       destructive: true,
+      requireText: wf.name,
     });
     if (!ok) return;
     deleteWorkflow.mutate(wf.id, {
@@ -503,6 +504,7 @@ function StatusSection({ workflow }: { workflow: Workflow }) {
       title: `Xoá trạng thái "${status.name}"?`,
       description: 'Hành động này không thể hoàn tác.',
       destructive: true,
+      requireText: status.name,
     });
     if (!ok) return;
     deleteStatus.mutate(status.id, {
@@ -725,6 +727,7 @@ function TransitionSection({ workflow }: { workflow: Workflow }) {
       title: `Xoá bước chuyển "${t.name}"?`,
       description: 'Hành động này không thể hoàn tác.',
       destructive: true,
+      requireText: t.name,
     });
     if (!ok) return;
     deleteTransition.mutate(t.id, {

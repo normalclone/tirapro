@@ -319,6 +319,7 @@ export function ApiKeysPage() {
       description: 'Mọi tích hợp dùng khoá này sẽ ngừng hoạt động.',
       confirmLabel: 'Thu hồi',
       destructive: true,
+      requireText: k.name,
     });
     if (!ok) return;
     revoke.mutate(k.id, { onError: (e) => toast.error(apiErrorMessage(e)) });

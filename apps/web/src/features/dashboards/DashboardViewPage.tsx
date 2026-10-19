@@ -92,6 +92,7 @@ function DashboardView({
           ? 'Bảng tổng quan bị xoá không khôi phục được.'
           : 'Những người đang được chia sẻ sẽ không còn thấy bảng tổng quan này. Không khôi phục được.',
       destructive: true,
+      requireText: dashboard.name,
     });
     if (!ok) return;
     remove.mutate(dashboard.id, {
