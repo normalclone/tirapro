@@ -58,6 +58,18 @@ describe('recentVelocity(sprints)', () => {
     expect(recentVelocity([])).toEqual({ avg: 0, count: 0 });
     expect(recentVelocity(undefined)).toEqual({ avg: 0, count: 0 });
   });
+  it('bỏ sprint đóng không có ảnh chụp CLOSE (committed = completed = 0) — không kéo TB xuống', () => {
+    const e = (committed: number, completed: number) => ({ committed, completed });
+    expect(recentVelocity([e(0, 0), e(10, 8), e(12, 12), e(0, 0)])).toEqual({ avg: 10, count: 2 });
+    // đã lọc TRƯỚC khi lấy 3 gần nhất: không để sprint rỗng chiếm chỗ
+    expect(recentVelocity([e(20, 20), e(0, 0), e(10, 10), e(10, 10), e(0, 0)])).toEqual({
+      avg: 13.33,
+      count: 3,
+    });
+    // thật sự hoàn thành 0 điểm nhưng có cam kết thì vẫn tính
+    expect(recentVelocity([e(10, 0), e(10, 10)])).toEqual({ avg: 5, count: 2 });
+    expect(recentVelocity([e(0, 0)])).toEqual({ avg: 0, count: 0 });
+  });
   it('bỏ qua giá trị không hữu hạn; làm tròn 2 chữ số', () => {
     expect(recentVelocity(c(1, 1, 2))).toEqual({ avg: 1.33, count: 3 });
     expect(recentVelocity(c(Number.NaN, 4))).toEqual({ avg: 4, count: 1 });

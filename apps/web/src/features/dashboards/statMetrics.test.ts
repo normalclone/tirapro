@@ -72,6 +72,11 @@ describe('statCell — ô "Chỉ số" kiểu StatRow (không số khổng lồ,
     expect(c.bullet).toMatchObject({ value: 4, max: 21, tone: 'danger' });
     expect(c.bullet?.target).toBeUndefined();
   });
+  it('quá hạn = 0 → số KHÔNG đỏ (không tone), không nền nhấn', () => {
+    const zero = statCell('overdue', { ...overview, totals: { ...overview.totals, overdue: 0 } });
+    expect(zero.tone).toBeUndefined();
+    expect(zero.highlight).toBe(false);
+  });
   it('quá hạn = 0 hoặc không còn việc mở → không nhấn, không thanh', () => {
     expect(
       statCell('overdue', { ...overview, totals: { ...overview.totals, overdue: 0 } }),

@@ -70,7 +70,9 @@ export function bulletDelta(
   const diff = round1((finite(value) ? value : 0) - (finite(target) ? target : 0));
   if (diff === 0) return `đúng ${targetLabel}`;
   const sign = diff > 0 ? '+' : '−';
-  return `so với ${targetLabel} ${sign}${withUnit(Math.abs(diff), unit)}`;
+  // Chênh lệch của một số % là "điểm %" (hiệu tuyệt đối) — "+6%" dễ bị đọc thành tăng 6% tương đối.
+  const amount = unit === '%' ? `${fmtNum(Math.abs(diff))} điểm %` : withUnit(Math.abs(diff), unit);
+  return `so với ${targetLabel} ${sign}${amount}`;
 }
 
 /** Bản thay thế bằng chữ ĐẦY ĐỦ (số thật, không kẹp) cho `aria-valuetext` — màu/vạch không phải kênh duy nhất. */

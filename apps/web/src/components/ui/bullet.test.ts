@@ -76,7 +76,7 @@ describe('bulletDelta', () => {
     expect(bulletDelta(40, 40, 'cam kết')).toBe('đúng cam kết');
   });
   it('đơn vị: "%" dính liền, chữ thì cách', () => {
-    expect(bulletDelta(55, 50, 'kỳ vọng', '%')).toBe('so với kỳ vọng +5%');
+    expect(bulletDelta(55, 50, 'kỳ vọng', '%')).toBe('so với kỳ vọng +5 điểm %');
     expect(bulletDelta(30, 40, 'cam kết', 'điểm')).toBe('so với cam kết −10 điểm');
   });
   it('số lẻ làm tròn 1 chữ số; chênh lệch nhỏ hơn làm tròn coi như đúng', () => {
@@ -130,6 +130,6 @@ describe('bulletValueText (bản thay thế bằng chữ đầy đủ)', () => {
         targetLabel: 'kỳ vọng',
         unit: '%',
       }),
-    ).toBe('Tiến độ: 40%, kỳ vọng 50%, so với kỳ vọng −10%');
+    ).toBe('Tiến độ: 40%, kỳ vọng 50%, so với kỳ vọng −10 điểm %');
   });
 });

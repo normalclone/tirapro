@@ -14,6 +14,7 @@ import { apiErrorMessage } from '@/lib/api';
 import { useAuth } from '@/stores/auth';
 import { useProjects } from '@/features/projects/api';
 import { GoalEditorModal } from './GoalEditorModal';
+import { paceTarget } from './goalPace';
 import { AttachIssuesModal } from './AttachIssuesModal';
 import {
   useDeleteGoal,
@@ -171,7 +172,7 @@ function KeyResultRow({
         <BulletBar
           value={kr.progress}
           max={100}
-          target={kr.expectedProgress ?? undefined}
+          target={paceTarget(goal.status, kr.expectedProgress)}
           targetLabel="kỳ vọng"
           unit="%"
           tone={kr.progress >= 100 ? 'done' : 'primary'}
@@ -316,7 +317,7 @@ function GoalCard({
               size="md"
               value={goal.progress}
               max={100}
-              target={goal.expectedProgress ?? undefined}
+              target={paceTarget(goal.status, goal.expectedProgress)}
               targetLabel="kỳ vọng"
               unit="%"
               tone={goal.progress >= 100 ? 'done' : 'primary'}

@@ -8,7 +8,8 @@ const VALUE_TONE: Record<StatTone, string> = {
   progress: 'text-status-progress',
   done: 'text-status-done',
   danger: 'text-danger',
-  warning: 'text-warning',
+  // text-warning (~2.4:1 trên nền sáng) không đạt AA ở cỡ chữ này → dùng warning-ink như bản Báo cáo cũ.
+  warning: 'text-warning-ink',
   bug: 'text-danger', // đỏ như "Quá hạn" nhưng KHÔNG có nền cảnh báo (không cùng vị trí nên không rối)
   primary: 'text-primary',
 };
@@ -44,16 +45,20 @@ export function StatRow({
   items,
   className,
   cols,
+  bare,
 }: {
   items: StatItem[];
   className?: string;
   cols?: string;
+  /** Ô nằm TRONG một khung đã có viền + đệm (vd ô dashboard tuỳ biến): bỏ viền/bo/nền/đệm của hàng chỉ số. */
+  bare?: boolean;
 }) {
   const oddTail = cols === undefined && items.length % 2 === 1; // mobile 2 cột → ô cuối lẻ span 2 cho kín
   return (
     <div
       className={cn(
-        'print-avoid-break grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-border bg-border',
+        'print-avoid-break grid grid-cols-2 gap-px overflow-hidden',
+        bare ? 'rounded-none' : 'rounded-lg border border-border bg-border',
         cols ?? SM_COLS[items.length] ?? 'sm:grid-cols-4',
         className,
       )}
@@ -63,8 +68,8 @@ export function StatRow({
           key={s.label}
           title={s.title}
           className={cn(
-            'px-4 py-2.5',
-            s.highlight ? 'bg-danger/5' : 'bg-surface',
+            bare ? 'p-0' : 'px-4 py-2.5',
+            s.highlight ? 'bg-danger/5' : bare ? 'bg-transparent' : 'bg-surface',
             oddTail && idx === items.length - 1 && 'max-sm:col-span-2',
           )}
         >
@@ -74,7 +79,7 @@ export function StatRow({
           >
             {s.value}
           </p>
-          {s.sub && <p className="mt-0.5 truncate text-xs text-muted">{s.sub}</p>}
+          {s.sub && <p className="mt-0.5 break-words text-xs text-muted">{s.sub}</p>}
           {s.bullet && (
             <BulletBar {...s.bullet} label={s.bullet.label ?? s.label} className="mt-1.5" />
           )}

@@ -48,10 +48,13 @@ const CAPACITY_SPRINTS = 3;
  * Trả `count` = số sprint thực sự dùng (0 → chưa có lịch sử).
  */
 export function recentVelocity(
-  sprints: ReadonlyArray<{ completed: number }> | null | undefined,
+  sprints: ReadonlyArray<{ completed: number; committed?: number }> | null | undefined,
   n: number = CAPACITY_SPRINTS,
 ): { avg: number; count: number } {
-  const recent = (sprints ?? []).slice(-n).filter((s) => Number.isFinite(s.completed));
+  // Sprint đóng nhưng không có ảnh chụp CLOSE được API báo 0/0 → không phải dữ liệu thật, bỏ TRƯỚC khi lấy `n` gần nhất.
+  const recent = (sprints ?? [])
+    .filter((s) => Number.isFinite(s.completed) && !(s.committed === 0 && s.completed === 0))
+    .slice(-n);
   if (recent.length === 0) return { avg: 0, count: 0 };
   return {
     avg: r2(recent.reduce((a, s) => a + s.completed, 0) / recent.length),

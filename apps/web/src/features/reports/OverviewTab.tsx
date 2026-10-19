@@ -160,7 +160,7 @@ function SummaryStats({
     {
       label: 'Quá hạn',
       value: totals.overdue,
-      tone: 'danger',
+      tone: totals.overdue > 0 ? 'danger' : undefined,
       highlight: totals.overdue > 0,
       sub: open > 0 ? `trên ${open} việc chưa xong` : undefined,
       bullet:

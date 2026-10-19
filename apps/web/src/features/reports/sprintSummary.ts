@@ -38,3 +38,18 @@ export function movedToLabel(movedTo: SprintSummaryReport['movedTo']): string | 
   if (!name) return movedTo.kind === 'new' ? 'một sprint mới' : 'một sprint khác';
   return movedTo.kind === 'new' ? `${name} (mới tạo)` : name;
 }
+
+/**
+ * Dòng phụ ô "Hoàn thành": "n việc · x%"; phạm vi đổi giữa sprint thì thêm "cam kết ban đầu N điểm" bằng chữ
+ * (vạch marker mảnh trên thanh không thấy được trên cảm ứng và khi in).
+ */
+export function completedSub(
+  completed: { count: number; points: number },
+  committed: { count: number; points: number },
+  initial: { count: number; points: number } | null | undefined,
+): string {
+  const base = `${completed.count} việc · ${completionPct(completed.points, committed.points)}%`;
+  const changed =
+    !!initial && (initial.points !== committed.points || initial.count !== committed.count);
+  return changed ? `${base} · cam kết ban đầu ${fmtPoints(initial.points)} điểm` : base;
+}

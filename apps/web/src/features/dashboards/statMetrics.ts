@@ -64,7 +64,8 @@ export function statCell(
   const open = statValue('open', src) ?? 0;
   return {
     value,
-    tone: 'danger',
+    // 0 việc quá hạn là tin tốt: không tô đỏ.
+    tone: value > 0 ? 'danger' : undefined,
     highlight: value > 0,
     sub: open > 0 ? `trên ${open} việc chưa xong` : undefined,
     bullet: open > 0 ? { value, max: open, tone: 'danger', unit: 'việc' } : undefined,

@@ -15,7 +15,7 @@ import { orderSprints, resolveSprint, SPRINT_STATE_LABEL } from './burndown';
 import { BurndownChart, Card, ChartSkeleton, VelocityChart } from './charts';
 import { StatRow, type StatItem } from '@/components/ui/StatRow';
 import { SprintSummaryPanel } from './SprintSummaryPanel';
-import { completionPct, fmtPoints } from './sprintSummary';
+import { completedSub, fmtPoints } from './sprintSummary';
 
 function burndownEmptyHint(state: string): string {
   return state === 'FUTURE'
@@ -225,7 +225,7 @@ function SprintSummaryCards({ summary }: { summary: SprintSummaryReport }) {
     {
       label: 'Hoàn thành',
       value: `${fmtPoints(completed.points)} điểm`,
-      sub: `${completed.count} việc · ${completionPct(completed.points, committed.points)}%`,
+      sub: completedSub(completed, committed, initialCommitted),
       tone: 'done',
       // Đích thật = cam kết của sprint; vạch phụ khi phạm vi đổi giữa chừng.
       bullet:

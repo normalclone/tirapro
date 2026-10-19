@@ -64,8 +64,7 @@ export function StatNumberWidget({ title, config }: WidgetProps) {
     >
       <StatRow
         cols="grid-cols-1"
-        // Đã nằm trong khung ô: bỏ viền/bo của hàng chỉ số để không thành hộp trong hộp.
-        className="rounded-none border-0"
+        bare // đã nằm trong khung ô: không viền/đệm thứ hai
         items={[{ ...cell, label: meta.label, value: cell?.value ?? '—', title: meta.hint }]}
       />
     </WidgetFrame>

@@ -552,7 +552,7 @@ function workspaceStatItems(t: {
     {
       label: 'Quá hạn',
       value: t.overdue,
-      tone: 'danger',
+      tone: t.overdue > 0 ? 'danger' : undefined,
       highlight: t.overdue > 0,
       sub: open > 0 ? `trên ${open} việc chưa xong` : undefined,
       bullet: open > 0 ? { value: t.overdue, max: open, tone: 'danger', unit: 'việc' } : undefined,
@@ -741,7 +741,7 @@ function PersonalOverview() {
               {
                 label: 'Quá hạn',
                 value: counts.overdue,
-                tone: 'danger',
+                tone: counts.overdue > 0 ? 'danger' : undefined,
                 highlight: counts.overdue > 0,
               },
             ]}

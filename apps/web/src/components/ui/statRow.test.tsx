@@ -56,3 +56,44 @@ describe('<StatRow>', () => {
     expect(h).toMatch(/text-danger/);
   });
 });
+
+describe('<StatRow> — bảng tone → class (ghim; so với các bản cũ của Tổng quan/Báo cáo)', () => {
+  const TONES = {
+    default: 'text-ink-strong',
+    progress: 'text-status-progress',
+    done: 'text-status-done',
+    danger: 'text-danger',
+    // text-warning ~2.4:1 trên nền sáng → không đạt AA ở cỡ chữ này; bản Báo cáo cũ dùng warning-ink.
+    warning: 'text-warning-ink',
+    bug: 'text-danger',
+    primary: 'text-primary',
+  } as const;
+  for (const [tone, cls] of Object.entries(TONES)) {
+    it(`tone ${tone} → ${cls}`, () => {
+      const h = html([{ label: 'x', value: 1, tone: tone as StatItem['tone'] }]);
+      expect(h).toMatch(new RegExp(`text-lg font-semibold[^"]*${cls}\\b|${cls}\\b[^"]*text-lg`));
+    });
+  }
+  it('không tone nào dùng text-warning trơn (không đạt AA)', () => {
+    for (const tone of Object.keys(TONES)) {
+      expect(html([{ label: 'x', value: 1, tone: tone as StatItem['tone'] }])).not.toMatch(
+        /text-warning(?!-ink)/,
+      );
+    }
+  });
+});
+
+describe('<StatRow bare> — ô nằm trong khung ô dashboard (không đệm/viền thứ hai)', () => {
+  it('bare bỏ viền, bo góc, nền và đệm của ô', () => {
+    const h = html([{ label: 'Quá hạn', value: 3 }], { bare: true, cols: 'grid-cols-1' });
+    expect(h).not.toMatch(/border-border/);
+    expect(h).not.toMatch(/rounded-lg/);
+    expect(h).not.toMatch(/px-4 py-2\.5/);
+    expect(h).toMatch(/p-0/);
+  });
+  it('mặc định vẫn có viền + đệm', () => {
+    const h = html([{ label: 'Quá hạn', value: 3 }]);
+    expect(h).toMatch(/border-border/);
+    expect(h).toMatch(/px-4 py-2\.5/);
+  });
+});
