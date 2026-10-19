@@ -77,7 +77,7 @@ interface KeyState {
 const keyStates = new WeakMap<QueryClient, Map<string, KeyState>>();
 const statesOf = (qc: QueryClient): Map<string, KeyState> => {
   let m = keyStates.get(qc);
-  if (!m) keyStates.set(qc, (m = new Map()));
+  if (!m) keyStates.set(qc, (m = new Map<string, KeyState>()));
   return m;
 };
 
