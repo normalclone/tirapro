@@ -88,7 +88,7 @@ export function useReportSubmit({
       toast.success(
         res.deduped
           ? `Đã thêm ghi chú vào ${res.key} (lần ${res.occurrenceCount})`
-          : `Đã gửi ${res.key} vào Việc mới vào`,
+          : `Đã gửi ${res.key} — đang chờ người phụ trách duyệt`,
         { duration: 6000, action: { label: 'Mở', onClick: () => navigate(`/issue/${res.key}`) } },
       );
       onDone();

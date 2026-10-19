@@ -1,6 +1,6 @@
 import { sprintActionPath } from '@/features/backlog/sprintAction';
 import { TRIAGE_TITLE } from '@/features/triage/triageLogic';
-import { CONNECT_LABELS } from '@/lib/navLabels';
+import { CONNECT_LABELS, MANAGE_LABELS } from '@/lib/navLabels';
 
 /**
  * Một lệnh của nhóm "Dự án hiện tại" trong Cmd+K: `to` = điều hướng. `keywords` không dấu để gõ không cần dấu
@@ -105,7 +105,7 @@ export function buildProjectCommands(input: ProjectCommandInput): ProjectCommand
     });
   out.push({
     id: 'nav.risks',
-    label: 'Mở Rủi ro & vướng mắc',
+    label: `Mở ${MANAGE_LABELS.risks}`,
     keywords: 'rui ro vuong mac risks raid',
     to: `/manage/risks?project=${projectId}`,
     icon: 'risks',

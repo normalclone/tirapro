@@ -156,7 +156,7 @@ export function AdminConfigPage() {
       <div className="space-y-4">
         {/* Feature flags (chỉnh được) */}
         <section className="rounded-lg border border-border bg-surface p-4">
-          <h2 className="mb-1 text-sm font-semibold text-ink">Feature flags</h2>
+          <h2 className="mb-1 text-sm font-semibold text-ink">Cờ tính năng</h2>
           <div className="divide-y divide-border">
             <FlagRow
               label="Cho phép đăng ký công khai"

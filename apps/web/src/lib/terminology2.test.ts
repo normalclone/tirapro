@@ -181,6 +181,21 @@ describe('một nguồn nhãn (lib/navLabels.ts)', () => {
     ).toEqual([]);
   });
 
+  it('chữ lệnh "Mở <nhãn menu>" lấy từ navLabels, không viết tay (Bảng lệnh)', () => {
+    const labels = [
+      ...Object.values(APP_NAV_LABELS),
+      ...Object.values(SETTINGS_LABELS),
+      ...Object.values(MANAGE_LABELS),
+      ...Object.values(CONNECT_LABELS),
+      ...Object.values(ADMIN_LABELS),
+      ...Object.values(PROJECT_CONFIG_LABELS),
+    ].filter((l) => l.length > 0);
+    const esc = (t: string) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const re = new RegExp(`['"]Mở (${labels.map(esc).join('|')})['"]`);
+    expect(hits(re)).toEqual([]);
+    expect(src('features/command/projectCommands.ts')).toContain('`Mở ${MANAGE_LABELS.risks}`');
+  });
+
   it('mô tả dưới tiêu đề không lặp lại tiêu đề', () => {
     expect(
       hits(
