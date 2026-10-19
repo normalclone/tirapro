@@ -12,7 +12,8 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import axios from 'axios';
-import { pageContainer } from '@/components/layout/page';
+import { PageFrame } from '@/components/layout/PageFrame';
+import { PageHeader } from '@/components/layout/PageHeader';
 import { Badge, EmptyState, Skeleton } from '@/components/ui/primitives';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -122,16 +123,11 @@ export function ApiKeysPage() {
   }
 
   return (
-    <div className={pageContainer('sm')}>
-      <header className="mb-6">
-        <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight text-ink-strong">
-          <KeyRound className="h-6 w-6 text-primary" /> {SETTINGS_LABELS.api}
-        </h1>
-        <p className="mt-1 text-sm text-muted">
-          Cấp khoá API để phần mềm khác &amp; trợ lý AI (qua MCP) khai thác dữ liệu của không gian
-          làm việc.
-        </p>
-      </header>
+    <PageFrame size="sm">
+      <PageHeader
+        title={SETTINGS_LABELS.api}
+        description="Cấp khoá API để phần mềm khác & trợ lý AI (qua MCP) khai thác dữ liệu của không gian làm việc."
+      />
 
       {/* Điểm kết nối */}
       <section className="mb-5 rounded-lg border border-border bg-surface p-4">
@@ -323,7 +319,7 @@ export function ApiKeysPage() {
           )}
         </>
       )}
-    </div>
+    </PageFrame>
   );
 
   async function handleRevoke(k: ApiKey) {

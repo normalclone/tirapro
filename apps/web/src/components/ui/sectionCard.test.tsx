@@ -71,4 +71,10 @@ describe('SectionCard — markup', () => {
     expect(out).toContain('<h3');
     expect(out).toContain('mt-4');
   });
+  it('không title/mô tả/icon/actions → không có header, thân vẫn đệm p-5', () => {
+    const out = renderToStaticMarkup(<SectionCard>nội dung</SectionCard>);
+    expect(out).not.toMatch(/\bborder-b\b/);
+    expect(out).not.toMatch(/<h[23]/);
+    expect(out).toContain('<div class="p-5">nội dung</div>');
+  });
 });

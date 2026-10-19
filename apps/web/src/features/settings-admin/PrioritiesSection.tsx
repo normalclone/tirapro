@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { SignalHigh, Flag, Plus, Pencil, Trash2, Check, X, Star } from 'lucide-react';
+import { Flag, Plus, Pencil, Trash2, Check, X, Star } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/Button';
 import { ReadOnlyNote } from '@/components/ui/NoAccess';
@@ -17,7 +17,6 @@ import {
   type PriorityUpdateInput,
 } from './api';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
-import { SETTINGS_LABELS } from '@/lib/navLabels';
 import { SectionCard } from '@/components/ui/SectionCard';
 
 const DEFAULT_COLOR = '#64748b';
@@ -87,11 +86,7 @@ export function PrioritiesSection() {
   }
 
   return (
-    <SectionCard
-      icon={<SignalHigh className="h-4 w-4" />}
-      title={SETTINGS_LABELS.priorities}
-      description="Đặt các mức ưu tiên để sắp xếp thứ tự làm công việc. Số thứ tự càng nhỏ thì càng ưu tiên."
-    >
+    <SectionCard>
       {!canManage && <ReadOnlyNote />}
       <QueryBoundary
         query={prioritiesQuery}
@@ -114,7 +109,7 @@ export function PrioritiesSection() {
             }
             action={
               canManage ? (
-                <Button size="sm" onClick={() => setAdding(true)}>
+                <Button variant="secondary" size="sm" onClick={() => setAdding(true)}>
                   <Plus className="h-4 w-4" />
                   Thêm mức ưu tiên
                 </Button>

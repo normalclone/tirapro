@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom';
 import { StatusPanel } from '@/components/ui/StatusPanel';
 import { buttonVariants } from '@/components/ui/Button';
-import { pageContainer } from '@/components/layout/page';
+import { PageFrame } from '@/components/layout/PageFrame';
 
 /**
  * Trang "không có quyền" — thay cho việc redirect im lặng hoặc để người dùng bấm rồi nhận 403.
@@ -9,7 +9,7 @@ import { pageContainer } from '@/components/layout/page';
  */
 export function NoAccess({ who = 'quản trị viên' }: { who?: string }) {
   return (
-    <div className={pageContainer('sm')}>
+    <PageFrame size="sm">
       <StatusPanel
         variant="forbidden"
         title="Bạn không có quyền xem trang này"
@@ -20,7 +20,7 @@ export function NoAccess({ who = 'quản trị viên' }: { who?: string }) {
           </Link>
         }
       />
-    </div>
+    </PageFrame>
   );
 }
 

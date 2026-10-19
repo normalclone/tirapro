@@ -1,8 +1,14 @@
+import { PageFrame } from '@/components/layout/PageFrame';
+import { PageHeader } from '@/components/layout/PageHeader';
 import { CustomFieldsAdminSection } from '@/features/settings-admin/CustomFieldsAdminSection';
-import { PageShell } from './PageShell';
+import { SETTINGS_LABELS } from '@/lib/navLabels';
 
 export const SettingsFieldsPage = () => (
-  <PageShell>
+  <PageFrame size="sm">
+    <PageHeader
+      title={SETTINGS_LABELS.fields}
+      description="Thêm các ô thông tin riêng của bạn vào mỗi công việc. Không thể đổi kiểu dữ liệu của trường sau khi tạo."
+    />
     <CustomFieldsAdminSection />
-  </PageShell>
+  </PageFrame>
 );

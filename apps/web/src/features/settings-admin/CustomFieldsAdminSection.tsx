@@ -17,7 +17,6 @@ import {
   type CustomFieldType,
 } from './api';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
-import { SETTINGS_LABELS } from '@/lib/navLabels';
 import { SectionCard } from '@/components/ui/SectionCard';
 
 /** Nhãn tiếng Việt cho từng loại trường, giữ đúng thứ tự enum backend. */
@@ -129,11 +128,7 @@ export function CustomFieldsAdminSection() {
   }
 
   return (
-    <SectionCard
-      icon={<LayoutList className="h-4 w-4" />}
-      title={SETTINGS_LABELS.fields}
-      description="Thêm các ô thông tin riêng của bạn vào mỗi công việc. Không thể đổi kiểu dữ liệu của trường sau khi tạo."
-    >
+    <SectionCard>
       <QueryBoundary
         query={fieldsQuery}
         skeleton={
@@ -155,7 +150,7 @@ export function CustomFieldsAdminSection() {
             }
             action={
               canManage ? (
-                <Button size="sm" onClick={() => setAdding(true)}>
+                <Button variant="secondary" size="sm" onClick={() => setAdding(true)}>
                   <Plus className="h-4 w-4" />
                   Thêm trường
                 </Button>

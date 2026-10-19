@@ -88,9 +88,14 @@ describe('một nguồn nhãn (lib/navLabels.ts)', () => {
 
   const pageTitles: [string, string, string][] = [
     [
-      'features/workspace/WorkspaceBrandingPanel.tsx',
+      'features/settings/SettingsGeneralPage.tsx',
       'SETTINGS_LABELS.general',
       SETTINGS_LABELS.general,
+    ],
+    [
+      'features/settings/SettingsNotificationsPage.tsx',
+      'SETTINGS_LABELS.notifications',
+      SETTINGS_LABELS.notifications,
     ],
     ['features/settings/RolesPage.tsx', 'SETTINGS_LABELS.roles', SETTINGS_LABELS.roles],
     [
@@ -99,20 +104,16 @@ describe('một nguồn nhãn (lib/navLabels.ts)', () => {
       SETTINGS_LABELS.workflows,
     ],
     [
-      'features/settings-admin/PrioritiesSection.tsx',
+      'features/settings/SettingsPrioritiesPage.tsx',
       'SETTINGS_LABELS.priorities',
       SETTINGS_LABELS.priorities,
     ],
     [
-      'features/settings/SeveritySection.tsx',
+      'features/settings/SettingsSeveritiesPage.tsx',
       'SETTINGS_LABELS.severities',
       SETTINGS_LABELS.severities,
     ],
-    [
-      'features/settings-admin/CustomFieldsAdminSection.tsx',
-      'SETTINGS_LABELS.fields',
-      SETTINGS_LABELS.fields,
-    ],
+    ['features/settings/SettingsFieldsPage.tsx', 'SETTINGS_LABELS.fields', SETTINGS_LABELS.fields],
     ['features/sla/SlaPage.tsx', 'SETTINGS_LABELS.responseTime', SETTINGS_LABELS.responseTime],
     ['features/import/ImportPage.tsx', 'SETTINGS_LABELS.import', SETTINGS_LABELS.import],
     ['features/api-keys/ApiKeysPage.tsx', 'SETTINGS_LABELS.api', SETTINGS_LABELS.api],

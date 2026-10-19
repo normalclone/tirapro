@@ -14,8 +14,13 @@ export interface PageHeaderProps {
   title: ReactNode;
   /** Một dòng mô tả (muted). */
   description?: ReactNode;
-  /** Đường dẫn phân cấp phía trên tiêu đề. Dưới `lg` ẩn nếu có `back` (bước vào = một cấp). */
+  /** Đường dẫn phân cấp phía trên tiêu đề. */
   breadcrumb?: readonly BreadcrumbItem[];
+  /**
+   * Breadcrumb có hiện dưới `lg` không (mặc định có). Trang nằm trong `SubNavLayout` (Cài đặt/Danh mục/Kết nối…)
+   * truyền `false`: ở mobile đã có "‹ Khu vực" do layout vẽ nên một cấp là đủ. Tách hẳn khỏi `back` (RB3).
+   */
+  breadcrumbMobile?: boolean;
   /** Nút phải: tối đa MỘT nút chính; dưới `sm` xuống dòng riêng. */
   actions?: ReactNode;
   /** Mobile "bước vào": link "‹ Cài đặt" đầu trang con, chỉ hiện dưới `lg`. */
@@ -36,6 +41,7 @@ export function PageHeader({
   title,
   description,
   breadcrumb,
+  breadcrumbMobile = true,
   actions,
   back,
   variant = 'page',
@@ -49,7 +55,10 @@ export function PageHeader({
     <header className={cn('mb-6', className)} {...rest}>
       {back && <BackLink label={back.label} to={back.to} className="-ml-1 mb-3" />}
       {hasCrumb && (
-        <Breadcrumb items={breadcrumb} className={cn('mb-2', back && 'max-lg:hidden')} />
+        <Breadcrumb
+          items={breadcrumb}
+          className={cn('mb-2', !breadcrumbMobile && 'max-lg:hidden')}
+        />
       )}
       <div className="flex flex-wrap items-start gap-x-4 gap-y-3">
         <div className="min-w-0 flex-1 basis-64">

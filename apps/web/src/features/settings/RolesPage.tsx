@@ -15,7 +15,9 @@ import { useConfirm } from '@/components/ui/useConfirm';
 import { Input } from '@/components/ui/Input';
 import { RoleBadge } from '@/components/ui/RoleBadge';
 import { EmptyState, Skeleton } from '@/components/ui/primitives';
-import { pageContainer } from '@/components/layout/page';
+import { PageFrame } from '@/components/layout/PageFrame';
+import { PageHeader } from '@/components/layout/PageHeader';
+import { SectionCard } from '@/components/ui/SectionCard';
 import { cn } from '@/lib/utils';
 import { useRetained } from '@/lib/useRetained';
 import { useAuth } from '@/stores/auth';
@@ -97,24 +99,19 @@ export function RolesPage() {
   }, [roles]);
 
   return (
-    <div className={pageContainer('sm')}>
-      <header className="mb-8 flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">
-            {SETTINGS_LABELS.roles}
-          </h1>
-          <p className="mt-1 text-sm text-muted">
-            Vai trò gom các quyền lại để gán cho thành viên. Vai trò hệ thống là cố định; bạn có thể
-            tạo vai trò tuỳ chỉnh riêng.
-          </p>
-        </div>
-        {canManage && (
-          <Button size="sm" onClick={() => openCreate('WORKSPACE')} data-tour="roles-create">
-            <Plus className="h-4 w-4" />
-            Tạo vai trò
-          </Button>
-        )}
-      </header>
+    <PageFrame size="lg">
+      <PageHeader
+        title={SETTINGS_LABELS.roles}
+        description="Vai trò gom các quyền lại để gán cho thành viên. Vai trò hệ thống là cố định; bạn có thể tạo vai trò tuỳ chỉnh riêng."
+        actions={
+          canManage ? (
+            <Button size="sm" onClick={() => openCreate('WORKSPACE')} data-tour="roles-create">
+              <Plus className="h-4 w-4" />
+              Tạo vai trò
+            </Button>
+          ) : undefined
+        }
+      />
       {!canManage && <ReadOnlyNote />}
 
       <Tabs
@@ -145,7 +142,7 @@ export function RolesPage() {
               description="Tạo vai trò đầu tiên để phân quyền cho thành viên."
               action={
                 canManage ? (
-                  <Button size="sm" onClick={() => openCreate('WORKSPACE')}>
+                  <Button variant="secondary" size="sm" onClick={() => openCreate('WORKSPACE')}>
                     <Plus className="h-4 w-4" />
                     Tạo vai trò
                   </Button>
@@ -186,7 +183,7 @@ export function RolesPage() {
           setCreatingScope(null);
         }}
       />
-    </div>
+    </PageFrame>
   );
 }
 
@@ -208,16 +205,18 @@ function RoleGroup({
   onCreate: () => void;
 }) {
   return (
-    <section className="rounded-lg border border-border bg-surface">
-      <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-4">
-        <h2 className="text-base font-semibold text-ink-strong">{SCOPE_LABEL[scope]}</h2>
-        {canManage && (
+    <SectionCard
+      title={SCOPE_LABEL[scope]}
+      bare
+      actions={
+        canManage ? (
           <Button variant="ghost" size="sm" onClick={onCreate}>
             <Plus className="h-4 w-4" />
             Tạo vai trò
           </Button>
-        )}
-      </div>
+        ) : undefined
+      }
+    >
       <div className="p-2">
         {roles.length === 0 ? (
           <p className="px-3 py-4 text-sm text-muted">
@@ -233,7 +232,7 @@ function RoleGroup({
           </ul>
         )}
       </div>
-    </section>
+    </SectionCard>
   );
 }
 

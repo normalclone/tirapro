@@ -20,7 +20,8 @@ import { Badge, EmptyState, Skeleton } from '@/components/ui/primitives';
 import { apiErrorMessage } from '@/lib/api';
 import { useAuth } from '@/stores/auth';
 import { ReadOnlyNote } from '@/components/ui/NoAccess';
-import { pageContainer } from '@/components/layout/page';
+import { PageFrame } from '@/components/layout/PageFrame';
+import { PageHeader } from '@/components/layout/PageHeader';
 import { cn } from '@/lib/utils';
 import { WorkflowGraph } from './WorkflowGraph';
 import {
@@ -128,16 +129,11 @@ export function WorkflowSettingsPage() {
   }
 
   return (
-    <div className={pageContainer('lg')}>
-      <header className="mb-8">
-        <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">
-          {SETTINGS_LABELS.workflows}
-        </h1>
-        <p className="mt-1 text-sm text-muted">
-          Quản lý các bước một công việc đi qua: có những trạng thái nào và được chuyển từ trạng
-          thái nào sang trạng thái nào.
-        </p>
-      </header>
+    <PageFrame size="lg">
+      <PageHeader
+        title={SETTINGS_LABELS.workflows}
+        description="Quản lý các bước một công việc đi qua: có những trạng thái nào và được chuyển từ trạng thái nào sang trạng thái nào."
+      />
       {!canManage && <ReadOnlyNote />}
 
       <SectionCard
@@ -278,7 +274,7 @@ export function WorkflowSettingsPage() {
       </SectionCard>
 
       {selected && <WorkflowDetail workflow={selected} />}
-    </div>
+    </PageFrame>
   );
 }
 

@@ -18,7 +18,8 @@ interface SectionCardProps extends Omit<HTMLAttributes<HTMLElement>, 'title'> {
   /** Ô icon bên trái tiêu đề (tuỳ chọn). */
   icon?: ReactNode;
   iconTone?: SectionCardTone;
-  title: string;
+  /** Bỏ trống (cùng mô tả/icon/actions) = thẻ không có header, vd khi tiêu đề trang đã nói đủ. */
+  title?: string;
   description?: ReactNode;
   /** Hành động PHỤ nằm trong card (không phải nút "Tạo X" của trang — nút đó thuộc `PageHeader.actions`). */
   actions?: ReactNode;
@@ -46,33 +47,40 @@ export function SectionCard({
   ...rest
 }: SectionCardProps) {
   const Heading = sectionHeadingTag(headingLevel);
+  const hasHeader = !!(title || description || icon || actions);
   return (
     <section className={cn('rounded-lg border border-border bg-surface', className)} {...rest}>
-      <div
-        className={cn(
-          'flex flex-wrap gap-x-3 gap-y-3 border-b border-border px-5 py-4',
-          // Chỉ tiêu đề (không mô tả): căn giữa để tiêu đề thẳng hàng với nút/đếm bên phải.
-          description ? 'items-start' : 'items-center',
-        )}
-      >
-        {icon && (
-          <span
-            className={cn(
-              'mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md',
-              TILE_TONE[iconTone],
+      {hasHeader && (
+        <div
+          className={cn(
+            'flex flex-wrap gap-x-3 gap-y-3 border-b border-border px-5 py-4',
+            // Chỉ tiêu đề (không mô tả): căn giữa để tiêu đề thẳng hàng với nút/đếm bên phải.
+            description ? 'items-start' : 'items-center',
+          )}
+        >
+          {icon && (
+            <span
+              className={cn(
+                'mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md',
+                TILE_TONE[iconTone],
+              )}
+            >
+              {icon}
+            </span>
+          )}
+          <div className="min-w-0 flex-1 basis-48">
+            {title && (
+              <Heading className="text-base font-semibold text-ink-strong">{title}</Heading>
             )}
-          >
-            {icon}
-          </span>
-        )}
-        <div className="min-w-0 flex-1 basis-48">
-          <Heading className="text-base font-semibold text-ink-strong">{title}</Heading>
-          {description && <p className="mt-0.5 text-sm text-muted">{description}</p>}
+            {description && <p className="mt-0.5 text-sm text-muted">{description}</p>}
+          </div>
+          {actions && (
+            <div className="flex shrink-0 flex-wrap items-center gap-2 max-sm:w-full">
+              {actions}
+            </div>
+          )}
         </div>
-        {actions && (
-          <div className="flex shrink-0 flex-wrap items-center gap-2 max-sm:w-full">{actions}</div>
-        )}
-      </div>
+      )}
       <div className={bare ? undefined : 'p-5'}>{children}</div>
       {footer && (
         <div className="flex flex-wrap items-center justify-end gap-2 border-t border-border px-5 py-3">

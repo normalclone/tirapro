@@ -18,7 +18,6 @@ import {
   type SeverityUpdateInput,
 } from './api';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
-import { SETTINGS_LABELS } from '@/lib/navLabels';
 
 const DEFAULT_COLOR = '#64748b';
 
@@ -77,11 +76,7 @@ export function SeveritySection() {
   }
 
   return (
-    <SectionCard
-      icon={<Flag className="h-4 w-4" />}
-      title={SETTINGS_LABELS.severities}
-      description="Đặt các mức nghiêm trọng để phân loại công việc theo tác động. Số thứ tự càng nhỏ thì mức càng nặng và càng được xử lý trước."
-    >
+    <SectionCard>
       {!canManage && <ReadOnlyNote />}
       <QueryBoundary
         query={severitiesQuery}
@@ -104,7 +99,7 @@ export function SeveritySection() {
             }
             action={
               canManage ? (
-                <Button size="sm" onClick={() => setAdding(true)}>
+                <Button variant="secondary" size="sm" onClick={() => setAdding(true)}>
                   <Plus className="h-4 w-4" />
                   Thêm mức độ
                 </Button>

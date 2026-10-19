@@ -55,17 +55,23 @@ describe('PageHeader — trang thử', () => {
     expect(out).toContain('Chọn việc nào đáng báo cho bạn.');
     expect(out).toContain('<button type="button">Lưu</button>');
   });
-  it('back: link "Quay lại …" chỉ hiện dưới lg; breadcrumb ẩn dưới lg khi có back', () => {
+  it('back: link "Quay lại …" chỉ hiện dưới lg', () => {
     const out = render(full);
     expect(out).toMatch(
       /<a [^>]*aria-label="Quay lại Cài đặt"[^>]*lg:hidden[^>]*href="\/settings"/,
     );
+  });
+  it('breadcrumb hiện ở mọi cỡ mặc định, kể cả khi có back (không còn phụ thuộc back)', () => {
+    const out = render(full);
+    expect(out).toContain('<nav aria-label="Đường dẫn"');
+    expect(out).not.toContain('max-lg:hidden');
+  });
+  it('breadcrumbMobile={false} → breadcrumb ẩn dưới lg (trang trong SubNavLayout)', () => {
+    const out = render({ ...full, back: undefined, breadcrumbMobile: false });
     expect(out).toMatch(/<nav aria-label="Đường dẫn" class="[^"]*max-lg:hidden/);
   });
-  it('không có back → không có link quay lại, breadcrumb luôn hiện', () => {
-    const out = render({ ...full, back: undefined });
-    expect(out).not.toContain('Quay lại');
-    expect(out).not.toContain('max-lg:hidden');
+  it('không có back → không có link quay lại', () => {
+    expect(render({ ...full, back: undefined })).not.toContain('Quay lại');
   });
   it('breadcrumb rỗng hoặc toàn cấp trống → không render nav', () => {
     expect(render({ title: 'x', breadcrumb: [] })).not.toContain('<nav');
