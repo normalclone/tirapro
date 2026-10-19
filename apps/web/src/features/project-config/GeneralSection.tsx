@@ -108,6 +108,7 @@ export function GeneralSection({ project, canAdmin }: { project: ProjectDto; can
   return (
     <>
       <SectionCard
+        headingLevel={3}
         icon={<SlidersHorizontal className="h-4 w-4" />}
         title="Thông tin dự án"
         description={
@@ -206,6 +207,7 @@ export function GeneralSection({ project, canAdmin }: { project: ProjectDto; can
 
       {canAdmin && (
         <SectionCard
+          headingLevel={3}
           icon={archived ? <ArchiveRestore className="h-4 w-4" /> : <Archive className="h-4 w-4" />}
           title={archived ? 'Dự án đã lưu trữ' : 'Lưu trữ dự án'}
           description={

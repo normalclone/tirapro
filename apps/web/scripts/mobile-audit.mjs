@@ -78,8 +78,12 @@ const P = `/p/${PROJECT}`;
 const DEFAULT_ROUTES = [
   '/',
   '/projects',
-  ...['board', 'backlog', 'gantt', 'tree', 'reports', 'triage', 'activity', 'config'].map(
+  ...['board', 'backlog', 'gantt', 'tree', 'reports', 'triage', 'trash', 'activity', 'config'].map(
     (v) => `${P}/${v}`,
+  ),
+  // Cấu hình dự án là route con: gốc = danh sách mục; mục = trang con có hàng "‹ Cấu hình".
+  ...['general', 'members', 'components', 'versions', 'labels', 'data'].map(
+    (s) => `${P}/config/${s}`,
   ),
   `/issue/${ISSUE}`,
   '/filters',

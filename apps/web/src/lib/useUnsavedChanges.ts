@@ -1,8 +1,7 @@
-import { useCallback, useEffect, useId, useRef } from 'react';
-import { useConfirm } from '@/components/ui/useConfirm';
+import { useEffect, useId, useRef } from 'react';
 import { shouldBlockNavigation } from '@/lib/unsavedChanges';
 import { useLeaveGuard } from '@/lib/useLeaveGuard';
-import { dirtyEntries, useUnsavedStore } from '@/stores/unsaved';
+import { useUnsavedStore } from '@/stores/unsaved';
 
 const DEFAULT_DESCRIPTION = 'Rời đi bây giờ thì những chỗ bạn vừa sửa sẽ mất.';
 
@@ -44,25 +43,4 @@ export function useUnsavedChanges(o: {
 
   // Gỡ mục khi form unmount (đổi mục/đổi trang) để thanh không treo.
   useEffect(() => () => useUnsavedStore.getState().remove(id), [id]);
-}
-
-/**
- * Gọi trước khi đổi tab-state trong trang (không đi qua router nên `useBlocker` không bắt):
- * còn mục dirty → hỏi "Bỏ các thay đổi chưa lưu?". Trả `true` nếu được đi tiếp (đã reset các mục dirty).
- */
-export function useConfirmDiscard(): () => Promise<boolean> {
-  const confirm = useConfirm();
-  return useCallback(async () => {
-    const dirty = dirtyEntries(useUnsavedStore.getState().entries);
-    if (dirty.length === 0) return true;
-    const ok = await confirm({
-      title: 'Bỏ các thay đổi chưa lưu?',
-      description: DEFAULT_DESCRIPTION,
-      confirmLabel: 'Bỏ thay đổi',
-      destructive: true,
-    });
-    if (!ok) return false;
-    for (const [, e] of dirty) e.reset();
-    return true;
-  }, [confirm]);
 }

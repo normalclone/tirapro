@@ -71,6 +71,16 @@ const ProjectConfigPage = lazy(() =>
     default: m.ProjectConfigPage,
   })),
 );
+const ConfigIndexRedirect = lazy(() =>
+  import('@/features/project-config/ProjectConfigPage').then((m) => ({
+    default: m.ConfigIndexRedirect,
+  })),
+);
+const ConfigSection = lazy(() =>
+  import('@/features/project-config/ProjectConfigPage').then((m) => ({
+    default: m.ConfigSection,
+  })),
+);
 const IssueDetailPage = lazy(() =>
   import('@/features/issues/IssueDetailPage').then((m) => ({ default: m.IssueDetailPage })),
 );
@@ -380,7 +390,15 @@ export const router = createBrowserRouter([
           { path: 'reports', element: <ReportsPage /> },
           { path: 'gantt', element: <GanttPage /> },
           { path: 'tree', element: <TreePage /> },
-          { path: 'config', element: <ProjectConfigPage /> },
+          {
+            path: 'config',
+            element: <ProjectConfigPage />,
+            children: [
+              // `?section=` (và đường dẫn gốc) → route con; mục lạ → Chung.
+              { index: true, element: <ConfigIndexRedirect /> },
+              { path: ':section', element: <ConfigSection /> },
+            ],
+          },
           // URL lạ trong dự án: 404 hiện trong <Outlet /> nên giữ rail + thanh view của dự án.
           { path: '*', element: <NotFoundPage /> },
         ],

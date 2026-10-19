@@ -8,7 +8,7 @@ import { DueBadge } from '@/components/ui/DueBadge';
 import { TaskProgress } from '@/components/ui/TaskProgress';
 import { Avatar, DelayedSpinner, EmptyState, Skeleton } from '@/components/ui/primitives';
 import { QueryError } from '@/components/ui/QueryError';
-import { pageContainer } from '@/components/layout/page';
+import { PageFrame } from '@/components/layout/PageFrame';
 import { categoryColor } from '@/lib/statusColor';
 import {
   buildIssueTree,
@@ -111,9 +111,9 @@ export function TreePage() {
   return (
     <DndContext {...drag.dndProps}>
       <div className="flex h-full flex-col">
-        <div className="min-h-0 flex-1 overflow-auto pb-6 lg:pb-24">
-          {pe || issuesQ.isError ? (
-            <div className={pageContainer('lg')}>
+        <div className="min-h-0 flex-1 overflow-auto">
+          <PageFrame size="full" className="lg:pb-24">
+            {pe || issuesQ.isError ? (
               <QueryError
                 error={pErr ?? issuesQ.error}
                 onRetry={() => {
@@ -121,87 +121,85 @@ export function TreePage() {
                   if (!pe) void issuesQ.refetch();
                 }}
               />
-            </div>
-          ) : isLoading ? (
-            <div className={pageContainer('lg', 'space-y-1.5')}>
-              {Array.from({ length: 6 }).map((_, i) => (
-                <Skeleton key={i} className="h-9 w-full" />
-              ))}
-              <DelayedSpinner />
-            </div>
-          ) : rows.length === 0 ? (
-            <div className={pageContainer('lg')}>
+            ) : isLoading ? (
+              <div className="space-y-1.5">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <Skeleton key={i} className="h-9 w-full" />
+                ))}
+                <DelayedSpinner />
+              </div>
+            ) : rows.length === 0 ? (
               <EmptyState
                 icon={<ListTree className="h-8 w-8" aria-hidden />}
                 title="Chưa có công việc nào"
                 description="Mở một công việc, đặt trường “Việc cha” cho nó — cây phân cấp sẽ tự hiện ở đây."
               />
-            </div>
-          ) : (
-            <div className={pageContainer('lg')}>
-              {canEditAny && (
-                <p className="mb-2 text-xs text-faint">
-                  Kéo một dòng thả lên dòng khác để đổi Epic / Việc cha. Không kéo được? Mở công
-                  việc và đổi ở ô “Epic / Việc cha”.
-                </p>
-              )}
-              <div className="overflow-hidden rounded-lg border border-border bg-surface">
-                {/* Hàng tiêu đề cột — dính khi cuộn để luôn biết đang xem cột nào */}
-                <div
-                  className={cn(
-                    GRID_COLS,
-                    'sticky top-0 z-10 border-b border-border bg-surface-2 px-3 py-2',
-                    'text-[11px] font-medium uppercase tracking-wide text-faint',
-                  )}
-                >
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={toggleAll}
-                      disabled={parentIds.size === 0}
-                      aria-label={allCollapsed ? 'Mở rộng tất cả' : 'Thu gọn tất cả'}
-                      title={allCollapsed ? 'Mở rộng tất cả' : 'Thu gọn tất cả'}
-                      // Giữ disabled:opacity (không dùng token vô hiệu) — icon-button không nền: token nền vô nghĩa, chỉ cần mờ đi.
-                      className="grid h-5 w-5 shrink-0 place-items-center rounded text-faint hover:bg-surface-3 hover:text-ink disabled:pointer-events-none disabled:opacity-40"
-                    >
-                      {allCollapsed ? (
-                        <ChevronsUpDown className="h-3.5 w-3.5" aria-hidden />
-                      ) : (
-                        <ChevronsDownUp className="h-3.5 w-3.5" aria-hidden />
-                      )}
-                    </button>
-                    <span>Tiêu đề</span>
-                  </div>
-                  <span className="max-sm:hidden">Trạng thái</span>
-                  <span className="max-sm:hidden">Người phụ trách</span>
-                  <span className="max-sm:hidden">Ưu tiên</span>
-                  <span
-                    className="text-right tabular max-sm:hidden"
-                    title="Dòng có việc bên trong hiện điểm cộng dồn: đã xong / tổng"
+            ) : (
+              <>
+                {canEditAny && (
+                  <p className="mb-2 text-xs text-faint">
+                    Kéo một dòng thả lên dòng khác để đổi Epic / Việc cha. Không kéo được? Mở công
+                    việc và đổi ở ô “Epic / Việc cha”.
+                  </p>
+                )}
+                <div className="overflow-hidden rounded-lg border border-border bg-surface">
+                  {/* Hàng tiêu đề cột — dính khi cuộn để luôn biết đang xem cột nào */}
+                  <div
+                    className={cn(
+                      GRID_COLS,
+                      'sticky top-0 z-10 border-b border-border bg-surface-2 px-3 py-2',
+                      'text-[11px] font-medium uppercase tracking-wide text-faint',
+                    )}
                   >
-                    Điểm
-                  </span>
-                </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={toggleAll}
+                        disabled={parentIds.size === 0}
+                        aria-label={allCollapsed ? 'Mở rộng tất cả' : 'Thu gọn tất cả'}
+                        title={allCollapsed ? 'Mở rộng tất cả' : 'Thu gọn tất cả'}
+                        // Giữ disabled:opacity (không dùng token vô hiệu) — icon-button không nền: token nền vô nghĩa, chỉ cần mờ đi.
+                        className="grid h-5 w-5 shrink-0 place-items-center rounded text-faint hover:bg-surface-3 hover:text-ink disabled:pointer-events-none disabled:opacity-40"
+                      >
+                        {allCollapsed ? (
+                          <ChevronsUpDown className="h-3.5 w-3.5" aria-hidden />
+                        ) : (
+                          <ChevronsDownUp className="h-3.5 w-3.5" aria-hidden />
+                        )}
+                      </button>
+                      <span>Tiêu đề</span>
+                    </div>
+                    <span className="max-sm:hidden">Trạng thái</span>
+                    <span className="max-sm:hidden">Người phụ trách</span>
+                    <span className="max-sm:hidden">Ưu tiên</span>
+                    <span
+                      className="text-right tabular max-sm:hidden"
+                      title="Dòng có việc bên trong hiện điểm cộng dồn: đã xong / tổng"
+                    >
+                      Điểm
+                    </span>
+                  </div>
 
-                <ul className="divide-y divide-border">
-                  {rows.map((node) => (
-                    <TreeRow
-                      key={node.issue.id}
-                      node={node}
-                      progress={progressById.get(node.issue.id)}
-                      rollup={rollups.get(node.issue.id) ?? null}
-                      collapsed={collapsed.has(node.issue.id)}
-                      canDrag={canEditIssue(node.issue)}
-                      dragging={dragId === node.issue.id}
-                      dropState={drag.dropStateOf(node.issue.id)}
-                      onToggle={() => toggle(node.issue.id)}
-                      onOpen={() => navigate(`/issue/${node.issue.key}`)}
-                    />
-                  ))}
-                </ul>
-              </div>
-            </div>
-          )}
+                  <ul className="divide-y divide-border">
+                    {rows.map((node) => (
+                      <TreeRow
+                        key={node.issue.id}
+                        node={node}
+                        progress={progressById.get(node.issue.id)}
+                        rollup={rollups.get(node.issue.id) ?? null}
+                        collapsed={collapsed.has(node.issue.id)}
+                        canDrag={canEditIssue(node.issue)}
+                        dragging={dragId === node.issue.id}
+                        dropState={drag.dropStateOf(node.issue.id)}
+                        onToggle={() => toggle(node.issue.id)}
+                        onOpen={() => navigate(`/issue/${node.issue.key}`)}
+                      />
+                    ))}
+                  </ul>
+                </div>
+              </>
+            )}
+          </PageFrame>
         </div>
         {/* Ngoài khung cuộn: không phủ lên dòng nào, vị trí không phụ thuộc cuộn/tự cuộn khi kéo. */}
         {dragId && <RootDropZone active={overId === ROOT_DROP_ID} />}

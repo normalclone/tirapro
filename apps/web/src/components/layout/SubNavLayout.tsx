@@ -7,7 +7,7 @@ import { cn } from '@/lib/utils';
 import { TruncatedLabel } from '@/components/ui/TruncatedLabel';
 import { BackLink } from './BackLink';
 import { PAGE_FRAME_WIDTH, PageFrame, type PageFrameSize } from './PageFrame';
-import { PageHeader } from './PageHeader';
+import { PageHeader, type PageHeaderVariant } from './PageHeader';
 import { isIndexPath, visibleGroups, type SubNavGroup } from './subNavModel';
 
 interface SubNavLayoutProps {
@@ -25,6 +25,11 @@ interface SubNavLayoutProps {
    * rộng để thẳng lề với tiêu đề trang ở cỡ md. Trang con dùng cỡ khác thì chỉ lệch ở 768–1023px.
    */
   frameSize?: PageFrameSize;
+  /**
+   * Cấp tiêu đề của danh sách mục (mobile): `page` = h1 (khu vực có trang riêng: Cài đặt/Danh mục/Kết nối); `tab` = h2
+   * khi trang nằm dưới một h1 có sẵn (Cấu hình dự án: h1 là tên dự án ở header dự án).
+   */
+  variant?: PageHeaderVariant;
 }
 
 /**
@@ -44,6 +49,7 @@ export function SubNavLayout({
   basePath,
   top,
   frameSize = 'sm',
+  variant = 'page',
 }: SubNavLayoutProps) {
   const { pathname, search } = useLocation();
   const isDesktop = useMediaQuery(DESKTOP_MIN_QUERY);
@@ -90,6 +96,7 @@ export function SubNavLayout({
             groups={shown}
             top={top}
             frameSize={frameSize}
+            variant={variant}
           />
         ) : (
           <>
@@ -120,13 +127,15 @@ function SubNavList({
   groups,
   top,
   frameSize,
+  variant,
 }: Pick<SubNavLayoutProps, 'title' | 'ariaLabel' | 'top'> & {
   groups: SubNavGroup[];
   frameSize: PageFrameSize;
+  variant: PageHeaderVariant;
 }) {
   return (
     <PageFrame size={frameSize}>
-      <PageHeader title={title} />
+      <PageHeader title={title} variant={variant} />
       <nav aria-label={ariaLabel} className="space-y-6">
         {top}
         {groups.map((g, gi) => (

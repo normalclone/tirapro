@@ -114,11 +114,7 @@ export function DataSection({ projectId, canImport }: { projectId?: string; canI
   }
 
   return (
-    <SectionCard
-      icon={<Download className="h-4 w-4" />}
-      title="Xuất / Nhập dữ liệu"
-      description="Sao lưu dự án ra tệp JSON, hoặc nhập công việc hàng loạt từ tệp CSV / JSON."
-    >
+    <SectionCard>
       <div className="space-y-6">
         {!canImport && (
           <p className="rounded-md border border-border bg-surface-2 px-3 py-2 text-sm text-muted">

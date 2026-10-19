@@ -206,11 +206,12 @@ export function ProjectLayout() {
               )}
             />
           )}
-          {/* Dưới lg đã có ô chọn dự án (hiện tên) → không lặp tên dự án lần hai. */}
+          {/* Dưới lg đã có ô chọn dự án (hiện tên) → không lặp tên dự án lần hai trên màn hình, nhưng vẫn là h1 duy nhất
+              của trang cho trình đọc màn hình (sr-only, không `hidden`): các tab/Cấu hình bên dưới chỉ dùng h2. */}
           <h1
             className={cn(
               'min-w-0 truncate text-lg font-semibold tracking-tight',
-              hasPicker && 'hidden lg:block',
+              hasPicker && 'max-lg:sr-only',
             )}
           >
             {project?.name ?? key}

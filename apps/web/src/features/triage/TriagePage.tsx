@@ -8,7 +8,8 @@ import { useProject } from '@/features/projects/api';
 import { Badge, DelayedSpinner, EmptyState, Skeleton } from '@/components/ui/primitives';
 import { Button } from '@/components/ui/Button';
 import { QueryError } from '@/components/ui/QueryError';
-import { pageContainer } from '@/components/layout/page';
+import { PageFrame } from '@/components/layout/PageFrame';
+import { PageHeader } from '@/components/layout/PageHeader';
 import { apiErrorMessage } from '@/lib/api';
 import { useCan, useCanIn, useProjectPermissions } from '@/features/projects/permissions';
 import { NoAccess } from '@/components/ui/NoAccess';
@@ -96,57 +97,58 @@ export function TriagePage() {
   if (access === 'denied') return <NoAccess who="người có quyền duyệt việc trong dự án này" />;
   if (access === 'loading')
     return (
-      <div className={pageContainer('md', 'space-y-2')}>
+      <PageFrame size="full" className="space-y-2">
         {[0, 1, 2].map((i) => (
           <Skeleton key={i} className="h-16 w-full" />
         ))}
         <DelayedSpinner />
-      </div>
+      </PageFrame>
     );
 
   return (
     <PeekShell>
       <div className="flex min-h-0 flex-1 flex-col">
-        <div className="flex items-center gap-2 border-b border-border px-6 py-3">
-          <span className="text-sm font-medium text-ink">{TRIAGE_TITLE}</span>
-          {inboxCount > 0 && (
-            <Badge className="bg-primary-subtle text-primary tabular">{inboxCount}</Badge>
-          )}
-          <Button
-            size="sm"
-            className="ml-auto"
-            onClick={() =>
-              useReportIssueModal.getState().openReport({ projectKey: key, kind: 'BUG' })
-            }
-            disabled={!projectId}
-          >
-            <Bug className="h-4 w-4" />
-            Gửi yêu cầu
-          </Button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto pb-6 lg:pb-24">
-          {inbox.isError ? (
-            <div className={pageContainer('md')}>
+        <div className="flex-1 overflow-y-auto">
+          <PageFrame size="full" className="lg:pb-24">
+            <PageHeader
+              variant="tab"
+              title={
+                <span className="inline-flex items-center gap-2">
+                  {TRIAGE_TITLE}
+                  {inboxCount > 0 && (
+                    <Badge className="bg-primary-subtle text-primary tabular">{inboxCount}</Badge>
+                  )}
+                </span>
+              }
+              actions={
+                <Button
+                  size="sm"
+                  onClick={() =>
+                    useReportIssueModal.getState().openReport({ projectKey: key, kind: 'BUG' })
+                  }
+                  disabled={!projectId}
+                >
+                  <Bug className="h-4 w-4" />
+                  Gửi yêu cầu
+                </Button>
+              }
+            />
+            {inbox.isError ? (
               <QueryError error={inbox.error} onRetry={() => inbox.refetch()} />
-            </div>
-          ) : isLoading ? (
-            <div className={pageContainer('md', 'space-y-2')}>
-              {[0, 1, 2, 3].map((i) => (
-                <Skeleton key={i} className="h-16 w-full" />
-              ))}
-              <DelayedSpinner />
-            </div>
-          ) : !issues || issues.length === 0 ? (
-            <div className={pageContainer('md')}>
+            ) : isLoading ? (
+              <div className="space-y-2">
+                {[0, 1, 2, 3].map((i) => (
+                  <Skeleton key={i} className="h-16 w-full" />
+                ))}
+                <DelayedSpinner />
+              </div>
+            ) : !issues || issues.length === 0 ? (
               <EmptyState
                 icon={<Inbox className="h-8 w-8" />}
                 title="Không còn việc mới vào — mọi yêu cầu đã được xử lý"
                 description="Đây là nơi tiếp nhận công việc do người ngoài dự án báo lên. Hiện không còn việc nào chờ bạn duyệt."
               />
-            </div>
-          ) : (
-            <div className={pageContainer('md')}>
+            ) : (
               <ul className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-surface">
                 {issues.map((issue) => (
                   <TriageRow
@@ -167,8 +169,8 @@ export function TriagePage() {
                   />
                 ))}
               </ul>
-            </div>
-          )}
+            )}
+          </PageFrame>
         </div>
       </div>
       {declining && (

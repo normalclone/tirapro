@@ -80,11 +80,7 @@ export function ComponentsSection({
   }
 
   return (
-    <SectionCard
-      icon={<Boxes className="h-4 w-4" />}
-      title="Thành phần"
-      description="Chia công việc theo từng phần chức năng hoặc từng khối của dự án."
-    >
+    <SectionCard>
       <QueryBoundary
         query={componentsQuery}
         skeleton={
@@ -102,7 +98,12 @@ export function ComponentsSection({
             description="Thành phần là một phần chức năng của dự án (vd Đăng nhập, Thanh toán). Thêm thành phần đầu tiên để chia công việc cho gọn."
             action={
               canAdmin ? (
-                <Button size="sm" onClick={() => setAdding(true)} disabled={!projectId}>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setAdding(true)}
+                  disabled={!projectId}
+                >
                   <Plus className="h-4 w-4" />
                   Thêm thành phần
                 </Button>

@@ -7,7 +7,8 @@ import { Button } from '@/components/ui/Button';
 import { DelayedSpinner, EmptyState, Skeleton } from '@/components/ui/primitives';
 import { QueryError } from '@/components/ui/QueryError';
 import { IssueTypeBadge } from '@/components/ui/IssueTypeBadge';
-import { pageContainer } from '@/components/layout/page';
+import { PageFrame } from '@/components/layout/PageFrame';
+import { PageHeader } from '@/components/layout/PageHeader';
 import { apiErrorMessage } from '@/lib/api';
 import { fmtDateTime } from '@/lib/dateFormat';
 import { useRestoreIssue, useTrash, type TrashItem } from './api';
@@ -29,15 +30,20 @@ export function TrashPage() {
   }
 
   return (
-    <div className="flex h-full flex-col">
-      <div className="flex items-center gap-2 border-b border-border px-6 py-3">
-        <span className="text-sm font-medium text-ink">Thùng rác</span>
-        {!!trash.data?.length && (
-          <span className="tabular text-xs text-muted">{trash.data.length}</span>
-        )}
-      </div>
-      <div className="flex-1 overflow-y-auto">
-        <div className={pageContainer('sm')}>
+    <div className="h-full overflow-y-auto">
+      <PageFrame size="full">
+        <PageHeader
+          variant="tab"
+          title={
+            <span className="inline-flex items-baseline gap-2">
+              Thùng rác
+              {!!trash.data?.length && (
+                <span className="tabular text-sm font-normal text-muted">{trash.data.length}</span>
+              )}
+            </span>
+          }
+        />
+        <div>
           {!projectId ? (
             <Skeleton className="h-16 w-full" />
           ) : !allowed ? (
@@ -95,7 +101,7 @@ export function TrashPage() {
             </ul>
           )}
         </div>
-      </div>
+      </PageFrame>
     </div>
   );
 }

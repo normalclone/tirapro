@@ -56,6 +56,7 @@ export function PrivacySection({ project, canAdmin }: { project: ProjectDto; can
 
   return (
     <SectionCard
+      headingLevel={3}
       icon={<Lock className="h-4 w-4" />}
       title="Quyền xem"
       description="Chọn ai nhìn thấy dự án này."
