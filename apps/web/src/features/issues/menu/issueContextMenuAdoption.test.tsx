@@ -99,8 +99,12 @@ describe('IssueMenuItems / host (đọc source)', () => {
     expect(host).toContain('runs.map(');
     expect(host).not.toContain('(s) => s.current)');
     expect((host.match(/done\(\)/g) ?? []).length).toBeGreaterThanOrEqual(4);
-    expect(host).toContain('UNDO_WINDOW_MS');
-    expect(host).toContain('SAFETY_MS');
+    // hẹn giờ gỡ do hàm thuần `runnerLifecycle` quyết định (hộp mở/đang chạy → huỷ hẹn)
+    expect(host).toContain('runnerLifecycle(');
+    expect(host).toContain('timer.cancel()');
+    expect(host).not.toContain('schedule(SAFETY_MS)');
+    expect(src('features/issues/menu/runnerLifecycle.ts')).toContain('UNDO_WINDOW_MS');
+    expect(src('features/issues/menu/runnerLifecycle.ts')).toContain('SAFETY_MS');
   });
   it('ghi thành công → lớp phủ Bộ lọc (không invalidate /search, không refetch)', () => {
     expect(host).toContain('recordIssueChange');

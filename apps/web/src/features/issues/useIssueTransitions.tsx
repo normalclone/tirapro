@@ -176,5 +176,8 @@ export function useIssueTransitions(issue: IssueDto | undefined) {
     dialog,
     dialogOpen,
     isPending: transition.isPending,
+    /** Kết quả lần chạy gần nhất (đặt lại khi chạy lại). */
+    succeeded: transition.isSuccess,
+    failed: transition.isError,
   };
 }

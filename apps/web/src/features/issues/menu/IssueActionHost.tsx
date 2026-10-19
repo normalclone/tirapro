@@ -16,6 +16,7 @@ import {
   type IssueActionRequest,
 } from './issueActions';
 import { recordIssueChange, recordIssueDeleted } from './issueOverlay';
+import { runnerLifecycle } from './runnerLifecycle';
 
 /** Bản mới nhất của việc (cache danh sách dự án) để gửi đúng `version` (OCC); không có thì dùng bản của dòng lúc bấm. */
 function useLatest(issue: IssueDto): IssueDto {
@@ -39,18 +40,16 @@ function useOnce(fn: () => void) {
   }, []);
 }
 
-/** Cửa sổ Hoàn tác của toast đổi trạng thái (xem `transitionToastOptions`): runner còn sống tới hết khoảng này. */
-const UNDO_WINDOW_MS = 8_000;
-/** Chốt chặn: runner không bao giờ treo vô hạn dù luồng bị bỏ dở (vd hộp hỏi đóng bằng cách không báo). */
-const SAFETY_MS = 60_000;
-
-/** Báo `done` sau `ms` (và dọn khi runner bị gỡ). */
-function useDoneAfter(done: () => void) {
+/** Hẹn giờ gỡ runner; `cancel` huỷ hẹn (và dọn khi runner bị gỡ). */
+function useDoneTimer(done: () => void) {
   const timer = useRef<number | undefined>(undefined);
   useEffect(() => () => window.clearTimeout(timer.current), []);
-  return (ms: number) => {
-    window.clearTimeout(timer.current);
-    timer.current = window.setTimeout(done, ms);
+  return {
+    cancel: () => window.clearTimeout(timer.current),
+    schedule: (ms: number) => {
+      window.clearTimeout(timer.current);
+      timer.current = window.setTimeout(done, ms);
+    },
   };
 }
 
@@ -70,24 +69,22 @@ function TransitionRunner({
 }) {
   const latest = useLatest(issue);
   const t = useIssueTransitions(latest);
-  const schedule = useDoneAfter(done);
-  const sawPending = useRef(false);
-  const sawDialog = useRef(false);
-  useOnce(() => {
-    t.requestTransition(toStatusId);
-    schedule(SAFETY_MS);
-  });
+  const timer = useDoneTimer(done);
+  const dialogSeen = useRef(false);
+  useOnce(() => t.requestTransition(toStatusId));
   useEffect(() => {
-    if (t.dialogOpen) sawDialog.current = true;
-    if (t.isPending) {
-      sawPending.current = true;
-    } else if (sawPending.current) {
-      schedule(UNDO_WINDOW_MS); // xong (thành công hay lỗi): giữ cho tới hết cửa sổ Hoàn tác
-    } else if (sawDialog.current && !t.dialogOpen) {
-      done(); // hộp bị huỷ, chưa chuyển gì
-    }
+    if (t.dialogOpen) dialogSeen.current = true;
+    const next = runnerLifecycle({
+      dialogOpen: t.dialogOpen,
+      isPending: t.isPending,
+      succeeded: t.succeeded,
+      failed: t.failed,
+      dialogSeen: dialogSeen.current,
+    });
+    if (next === 'keep') timer.cancel();
+    else timer.schedule(next.removeAfterMs);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- chỉ phản ứng khi trạng thái hộp/chuyển đổi đổi
-  }, [t.isPending, t.dialogOpen]);
+  }, [t.isPending, t.dialogOpen, t.succeeded, t.failed]);
   return <>{t.dialog}</>;
 }
 
