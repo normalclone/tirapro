@@ -347,7 +347,9 @@ export function BoardPage() {
   );
   const sel = useBulkSelection(visualOrder);
   const pruneSelection = sel.prune;
-  useEffect(() => pruneSelection(new Set(visualOrder)), [pruneSelection, visualOrder]);
+  useEffect(() => {
+    pruneSelection(new Set(visualOrder));
+  }, [pruneSelection, visualOrder]);
   // Chọn nhiều cần ít nhất một thao tác hàng loạt được phép (dự án lưu trữ → chỉ đọc → không hiện ô chọn).
   const canBulk = canAssign || canTransition || canEditFull;
   const bulkApi = useMemo<BulkSelectionApi | null>(
@@ -888,6 +890,7 @@ export function BoardPage() {
                   issues={issues}
                   selected={sel.selected}
                   onClear={sel.clear}
+                  onRetain={sel.prune}
                 />
               )}
             </div>

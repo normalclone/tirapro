@@ -290,6 +290,8 @@ export const Card = memo(
         listeners?.onKeyDown?.(e);
         return;
       } // Space nhấc thẻ để kéo bằng bàn phím
+      // Mũi tên phát từ điều khiển BÊN TRONG thẻ (ô chọn, nút "…") thuộc về điều khiển đó, không dời thẻ.
+      if (e.target !== e.currentTarget) return;
       const map: Record<string, [number, number]> = {
         ArrowUp: [0, -1],
         ArrowDown: [0, 1],

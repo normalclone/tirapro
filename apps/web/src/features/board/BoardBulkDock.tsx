@@ -27,12 +27,15 @@ export function BoardBulkDock({
   issues,
   selected,
   onClear,
+  onRetain,
 }: {
   project: ProjectDto;
   boardId: string;
   issues: IssueDto[] | undefined;
   selected: ReadonlySet<string>;
   onClear: () => void;
+  /** Sau một lần ghi chỉ giữ chọn các id này (việc chưa xong để thử lại). */
+  onRetain: (keep: ReadonlySet<string>) => void;
 }) {
   const qc = useQueryClient();
   const { data: workflows } = useWorkflows();
@@ -50,7 +53,7 @@ export function BoardBulkDock({
     invalidate: () => void qc.invalidateQueries({ queryKey: keys.issues.byBoard(boardId) }),
     issues,
     selected,
-    clearSelection: onClear,
+    retainSelection: onRetain,
     workflows,
     sprints,
   });

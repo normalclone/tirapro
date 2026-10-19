@@ -62,7 +62,9 @@ describe('IssueContextMenu (đọc source)', () => {
     expect(s).toContain('isTypingTarget(e.target)');
   });
   it('phím trong menu không lọt vào bộ phím của dòng/thẻ', () => {
-    expect((s.match(/onKeyDown=\{stopKeys\}/g) ?? []).length).toBeGreaterThanOrEqual(3);
+    expect((s.match(/onKeyDown=\{stopRowKeys\}/g) ?? []).length).toBeGreaterThanOrEqual(3);
+    // chỉ phím của dòng/thẻ; không nuốt mọi phím (Cmd+K, ?, g-chord… phải tới window)
+    expect(s).not.toContain('const stopKeys');
   });
   it('nút "…" không để cử chỉ lan sang dnd-kit/dòng', () => {
     for (const ev of ['onMouseDown', 'onTouchStart', 'onPointerDown', 'onClick'])

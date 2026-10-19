@@ -5,6 +5,8 @@ import {
   commonNextStatuses,
   groupByPrev,
   labelsToUndo,
+  planBulkResult,
+  bulkResultTitle,
   planRestoreField,
   prevValueOf,
   runUndoPlan,
@@ -177,5 +179,49 @@ describe('runUndoPlan (đếm việc chưa hoàn tác được)', () => {
     expect(r.stuck).toBe(3);
     expect(r.unsent).toBe(3);
     expect(r.firstError).toBe(boom);
+  });
+});
+
+describe('planBulkResult (kết quả một lần bulk → lựa chọn kế tiếp)', () => {
+  const sel = new Set(['a', 'b', 'c', 'd']);
+  const ids = (xs: string[]) => xs.map((id) => ({ id }));
+  it('xong hết: bỏ chọn tất cả', () => {
+    const r = planBulkResult({ updated: ids(['a', 'b', 'c', 'd']), conflicts: [] }, sel);
+    expect(r.kind).toBe('all');
+    expect([...r.retain]).toEqual([]);
+  });
+  it('một phần: giữ chọn đúng các việc CHƯA xong (conflict) để thử lại', () => {
+    const r = planBulkResult({ updated: ids(['a', 'b']), conflicts: ids(['c', 'd']) }, sel);
+    expect(r.kind).toBe('partial');
+    expect([...r.retain].sort()).toEqual(['c', 'd']);
+    expect(r.updatedCount).toBe(2);
+    expect(r.conflictCount).toBe(2);
+  });
+  it('không việc nào xong: giữ nguyên lựa chọn, không phải "một phần"', () => {
+    const r = planBulkResult({ updated: [], conflicts: ids(['a', 'b', 'c', 'd']) }, sel);
+    expect(r.kind).toBe('none');
+    expect([...r.retain].sort()).toEqual(['a', 'b', 'c', 'd']);
+  });
+  it('conflict không thuộc lựa chọn hiện tại (đã đổi lúc chờ) thì không kéo vào', () => {
+    const r = planBulkResult({ updated: ids(['a']), conflicts: ids(['zz', 'b']) }, sel);
+    expect([...r.retain]).toEqual(['b']);
+  });
+});
+
+describe('bulkResultTitle', () => {
+  it('xong hết: giữ câu cũ theo động từ', () => {
+    expect(bulkResultTitle('chuyển', { kind: 'all', updatedCount: 3, conflictCount: 0 })).toBe(
+      'Đã chuyển 3 việc.',
+    );
+  });
+  it('một phần: "Đã cập nhật N việc · M việc chưa cập nhật được"', () => {
+    expect(bulkResultTitle('chuyển', { kind: 'partial', updatedCount: 2, conflictCount: 1 })).toBe(
+      'Đã cập nhật 2 việc · 1 việc chưa cập nhật được',
+    );
+  });
+  it('không việc nào: nói thẳng', () => {
+    expect(bulkResultTitle('chuyển', { kind: 'none', updatedCount: 0, conflictCount: 4 })).toBe(
+      'Chưa cập nhật được việc nào (4 việc)',
+    );
   });
 });

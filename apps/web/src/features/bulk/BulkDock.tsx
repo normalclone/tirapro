@@ -370,7 +370,7 @@ function BulkEditControls({
   | 'onSetEpic'
   | 'onSetStatus'
 > & { only?: 'status' | 'rest'; layout: Layout }) {
-  const cls = layout === 'stack' ? 'h-11 w-full' : 'h-8 w-auto';
+  const cls = layout === 'stack' ? 'h-11 w-full' : 'h-8 w-auto [@media(pointer:coarse)]:h-11';
   return (
     <>
       {canEdit && only !== 'status' && (

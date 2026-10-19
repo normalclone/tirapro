@@ -1,4 +1,5 @@
-import type { KeyboardEvent, MouseEvent } from 'react';
+import type { MouseEvent } from 'react';
+import { stopRowKeys } from '@/lib/rowKeys';
 import { cn } from '@/lib/utils';
 
 const noop = () => undefined;
@@ -6,7 +7,8 @@ const noop = () => undefined;
 /**
  * Ô chọn trên thẻ: hiện khi rê/focus thẻ (`group/row`), luôn hiện khi đang có lựa chọn và trên cảm ứng (vùng bấm 44px bằng
  * `::after`). Click có Shift = chọn dải. KHÔNG để cử chỉ lan sang thẻ — bấm không mở xem nhanh, không bắt đầu kéo (dnd-kit
- * nghe pointerdown/mousedown/touchstart/keydown trên gốc thẻ) — giống nút "…".
+ * nghe pointerdown/mousedown/touchstart/keydown trên gốc thẻ) — giống nút "…". Phím: chỉ chặn phím của thẻ
+ * (`stopRowKeys`), phím toàn cục vẫn tới window.
  */
 export function SelectCheckbox({
   issueKey,
@@ -26,10 +28,6 @@ export function SelectCheckbox({
     e.stopPropagation();
     if (e.shiftKey) onRange();
     else onToggle();
-  }
-  function onKeyDown(e: KeyboardEvent) {
-    // Esc phải tới `document` (bỏ chọn); phím khác không được tới thẻ (Space nhấc thẻ, mũi tên dời thẻ, Enter mở).
-    if (e.key !== 'Escape') e.stopPropagation();
   }
   return (
     <span
@@ -53,7 +51,7 @@ export function SelectCheckbox({
         type="checkbox"
         checked={checked}
         onChange={noop}
-        onKeyDown={onKeyDown}
+        onKeyDown={stopRowKeys}
         aria-label={`Chọn ${issueKey}`}
         className="h-3.5 w-3.5 cursor-pointer accent-[var(--primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
       />

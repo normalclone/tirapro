@@ -1,9 +1,10 @@
-import { useRef, type KeyboardEvent, type PointerEvent, type ReactElement } from 'react';
+import { useRef, type PointerEvent, type ReactElement } from 'react';
 import * as ContextMenu from '@radix-ui/react-context-menu';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { MoreHorizontal } from 'lucide-react';
 import type { IssueDto } from '@tirapro/types';
 import { isTypingTarget } from '@/lib/hotkeys';
+import { stopRowKeys } from '@/lib/rowKeys';
 import { useCoarsePointer } from '@/lib/useCoarsePointer';
 import { cn } from '@/lib/utils';
 import { IssueMenuItems, MENU_CONTENT_CLS, type MenuKit } from './IssueMenuItems';
@@ -33,9 +34,6 @@ const DROPDOWN_KIT: MenuKit = {
   RadioItem: DropdownMenu.RadioItem,
   ItemIndicator: DropdownMenu.ItemIndicator,
 };
-
-/** Phím trong menu (portal nhưng vẫn nổi lên theo cây React) không được lọt vào bộ phím của dòng/thẻ (mũi tên dời thẻ…). */
-const stopKeys = (e: KeyboardEvent) => e.stopPropagation();
 
 /**
  * Chuột phải (hoặc Shift+F10 / phím Menu — trình duyệt phát `contextmenu` từ phần tử đang focus) trên một dòng/thẻ → menu
@@ -101,7 +99,7 @@ export function IssueContextMenu({
         <ContextMenu.Content
           className={MENU_CONTENT_CLS}
           collisionPadding={8}
-          onKeyDown={stopKeys}
+          onKeyDown={stopRowKeys}
           aria-label={`Thao tác cho ${issue.key}`}
         >
           <IssueMenuItems
@@ -153,7 +151,7 @@ export function IssueRowMenuButton({
           onTouchStart={(e) => e.stopPropagation()}
           onPointerDown={(e) => e.stopPropagation()}
           onClick={(e) => e.stopPropagation()}
-          onKeyDown={stopKeys}
+          onKeyDown={stopRowKeys}
           className={cn(ROW_MENU_BUTTON_CLS, className)}
         >
           <MoreHorizontal className="h-4 w-4" aria-hidden />
@@ -164,7 +162,7 @@ export function IssueRowMenuButton({
           align="end"
           sideOffset={4}
           collisionPadding={8}
-          onKeyDown={stopKeys}
+          onKeyDown={stopRowKeys}
           aria-label={`Thao tác cho ${issue.key}`}
           className={MENU_CONTENT_CLS}
         >

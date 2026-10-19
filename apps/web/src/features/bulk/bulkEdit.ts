@@ -108,3 +108,34 @@ export async function runUndoPlan(
   }
   return { stuck, unsent, firstError };
 }
+
+/** Kết quả một lần bulk (phần cần để quyết định lựa chọn kế tiếp). */
+export interface BulkOutcome {
+  /** `all` = xong hết · `partial` = một phần (còn việc chưa xong) · `none` = không việc nào xong. */
+  kind: 'all' | 'partial' | 'none';
+  updatedCount: number;
+  conflictCount: number;
+}
+
+/**
+ * Sau một lần bulk: bỏ chọn các việc ĐÃ xong, GIỮ chọn các việc chưa xong (conflict: người khác sửa trước, hoặc chưa gửi được)
+ * để người dùng thử lại ngay. `retain` chỉ gồm id vẫn thuộc lựa chọn hiện tại. Hoàn tác (nếu có) chỉ áp cho phần đã xong.
+ */
+export function planBulkResult(
+  result: { updated: Array<{ id: string }>; conflicts: Array<{ id: string }> },
+  selected: ReadonlySet<string>,
+): BulkOutcome & { retain: ReadonlySet<string> } {
+  const retain = new Set(result.conflicts.map((c) => c.id).filter((id) => selected.has(id)));
+  const updatedCount = result.updated.length;
+  const conflictCount = result.conflicts.length;
+  const kind = conflictCount === 0 ? 'all' : updatedCount === 0 ? 'none' : 'partial';
+  return { kind, updatedCount, conflictCount, retain };
+}
+
+/** Dòng chính của toast tổng kết một lần bulk. */
+export function bulkResultTitle(verb: string, o: BulkOutcome): string {
+  if (o.kind === 'all') return `Đã ${verb} ${o.updatedCount} việc.`;
+  if (o.kind === 'partial')
+    return `Đã cập nhật ${o.updatedCount} việc · ${o.conflictCount} việc chưa cập nhật được`;
+  return `Chưa cập nhật được việc nào (${o.conflictCount} việc)`;
+}

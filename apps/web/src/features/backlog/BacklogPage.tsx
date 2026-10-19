@@ -241,6 +241,7 @@ export function BacklogPage() {
     toggle: toggleSelect,
     setMany: toggleSelectSection,
     clear: clearSelection,
+    prune: retainSelection,
   } = useBulkSelection();
 
   const [dragging, setDragging] = useState<IssueDto | null>(null);
@@ -569,7 +570,7 @@ export function BacklogPage() {
     projectId: projectId ?? '',
     issues,
     selected,
-    clearSelection,
+    retainSelection,
     workflows,
     sprints,
   });

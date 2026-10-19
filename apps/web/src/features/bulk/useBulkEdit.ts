@@ -13,7 +13,9 @@ import {
   type BulkIssuePatch,
 } from '@/features/backlog/api';
 import {
+  bulkResultTitle,
   labelsToUndo,
+  planBulkResult,
   planRestoreField,
   runUndoPlan,
   type BulkField,
@@ -43,11 +45,12 @@ export function useBulkEdit(a: {
   invalidate?: () => void;
   issues: IssueDto[] | undefined;
   selected: ReadonlySet<string>;
-  clearSelection: () => void;
+  /** Sau mỗi lần ghi: chỉ giữ chọn các id này (rỗng = bỏ chọn hết); phần chưa xong được giữ để thử lại. */
+  retainSelection: (keep: ReadonlySet<string>) => void;
   workflows: Workflow[] | undefined;
   sprints: SprintDto[] | undefined;
 }) {
-  const { projectId, issues, selected, clearSelection, workflows, sprints } = a;
+  const { projectId, issues, selected, retainSelection, workflows, sprints } = a;
   const bulkUpdate = useBulkUpdateIssues(projectId, {
     boardId: a.boardId,
     invalidate: a.invalidate,
@@ -79,18 +82,22 @@ export function useBulkEdit(a: {
         items: targets.map((i) => ({ id: i.id, version: i.version })),
         patch,
       });
-      const { updated, conflicts } = result;
-      clearSelection();
-      if (conflicts.length === 0) {
-        const plan = undo?.(targets, updated) ?? null;
-        toast.success(`Đã ${verb} ${updated.length} việc.`, {
-          duration: 6000,
-          action: plan ? { label: 'Hoàn tác', onClick: () => void undoAll(plan) } : undefined,
-        });
+      const { updated } = result;
+      const outcome = planBulkResult(result, selected);
+      // Xong hết → bỏ chọn; một phần → chỉ bỏ chọn phần đã xong, GIỮ phần chưa xong để thử lại.
+      retainSelection(outcome.retain);
+      // Hoàn tác chỉ áp cho phần ĐÃ cập nhật (kế hoạch dựng từ `updated`, kèm version mới của máy chủ).
+      const plan = outcome.kind === 'none' ? null : (undo?.(targets, updated) ?? null);
+      const action = plan ? { label: 'Hoàn tác', onClick: () => void undoAll(plan) } : undefined;
+      const title = bulkResultTitle(verb, outcome);
+      if (outcome.kind === 'all') {
+        toast.success(title, { duration: 6000, action });
       } else {
-        toast.warning(`Đã ${verb} ${updated.length} việc, còn ${conflicts.length} việc chưa xong`, {
+        toast.warning(title, {
+          duration: plan ? 8000 : undefined,
+          action,
           description: bulkShortfallHint(
-            conflicts.length,
+            outcome.conflictCount,
             result.unsent,
             rejectionReason(result.error),
           ),
