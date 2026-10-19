@@ -531,14 +531,21 @@ type SearchSelectProps = Parameters<typeof SearchSelectControl>[0];
 
 /**
  * Như `SearchSelectControl` + `invalid`: `true` → viền danger + aria-invalid; chuỗi → thêm lời lỗi dưới ô (id `<id>-error`,
- * nối vào aria-describedby). Chuỗi cần `id` để id lời lỗi ổn định và trùng với ô mà `ErrorSummary`/`focusFirstError` tìm.
+ * nối vào aria-describedby, sau `aria-describedby` truyền vào). Chuỗi cần `id` để id lời lỗi ổn định và trùng với ô mà
+ * `ErrorSummary`/`focusFirstError` tìm.
+ * Lưu ý: chuỗi vẽ thêm một `<p>` ANH EM sau ô — trong khung `relative`/có icon hay trong `<label>` sẽ vỡ bố cục; khi đó dùng
+ * `FormField` và truyền `invalid` boolean (FormField tự vẽ lời lỗi).
  */
 export function SearchSelect({
   invalid,
+  'aria-describedby': describedByProp,
   ...props
-}: Omit<SearchSelectProps, 'invalidAria'> & { invalid?: boolean | string }) {
+}: Omit<SearchSelectProps, 'invalidAria'> & {
+  invalid?: boolean | string;
+  'aria-describedby'?: string;
+}) {
   const autoId = useId();
-  const a = invalidAttrs(invalid, props.id ?? autoId);
+  const a = invalidAttrs(invalid, props.id ?? autoId, describedByProp);
   const control = (
     <SearchSelectControl
       {...props}

@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useId, type ReactNode } from 'react';
 import { FieldErrorText } from '@/components/ui/FieldError';
 import { invalidAttrs } from '@/lib/formErrors';
 import { radioGroupKeyDownSkipDisabled, shouldEmitChange } from '@/lib/radioNav';
@@ -53,7 +53,8 @@ export function SegmentedControl<T extends string>({
   /** Như `Input`: `true` → aria-invalid; chuỗi → thêm lời lỗi dưới nhóm (id `<id>-error`) và nối vào aria-describedby. Cần `id`. */
   invalid?: boolean | string;
 }) {
-  const attrs = invalidAttrs(invalid, id ?? 'segmented', ariaDescribedby);
+  const autoId = useId();
+  const attrs = invalidAttrs(invalid, id ?? autoId, ariaDescribedby);
   const ariaLabel = 'ariaLabel' in labelProps ? labelProps.ariaLabel : undefined;
   const ariaLabelledby = 'ariaLabelledby' in labelProps ? labelProps.ariaLabelledby : undefined;
   const isOff = (o: SegmentedOption<T>) => disabled || !!o.disabled;

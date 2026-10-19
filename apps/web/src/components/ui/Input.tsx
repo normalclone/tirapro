@@ -10,6 +10,8 @@ export type InputProps = InputHTMLAttributes<HTMLInputElement> & {
   /**
    * Ô đang sai. `true` → viền danger + `aria-invalid` (lời lỗi do nơi khác vẽ, vd `FormField`). Chuỗi → thêm lời lỗi
    * ngay dưới ô với id ổn định `<id>-error`, và `aria-describedby` trỏ tới đó (nối sau gợi ý có sẵn).
+   * Lưu ý: chuỗi vẽ thêm một `<p>` ANH EM sau ô — trong khung `relative`/có icon hay trong `<label>` sẽ vỡ bố cục; khi đó
+   * dùng `FormField` và truyền `invalid` boolean (FormField tự vẽ lời lỗi).
    */
   invalid?: boolean | string;
 };

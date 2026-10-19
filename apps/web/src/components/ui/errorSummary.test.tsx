@@ -142,3 +142,69 @@ describe('Digest (biểu mẫu mẫu): lỗi theo trường thay cho toast', () 
     expect(read('features/digests/DigestFormFields.tsx')).toContain('id="digest-recipients"');
   });
 });
+
+describe('P-C2 · hoàn thiện nền báo lỗi', () => {
+  it('m1: SearchSelect nhận aria-describedby và nối qua invalidAttrs (gợi ý của FormField tới được trigger)', () => {
+    const html = renderToStaticMarkup(
+      <SearchSelect
+        id="s"
+        aria-describedby="s-hint"
+        value=""
+        onChange={() => undefined}
+        options={[]}
+        invalid="Chọn một mục."
+      />,
+    );
+    expect(html).toContain('aria-describedby="s-hint s-error"');
+    const noErr = renderToStaticMarkup(
+      <SearchSelect
+        id="s"
+        aria-describedby="s-hint"
+        value=""
+        onChange={() => undefined}
+        options={[]}
+      />,
+    );
+    expect(noErr).toContain('aria-describedby="s-hint"');
+  });
+  it('m1: FormField + SearchSelect truyền {...a11y} tới trigger', () => {
+    const html = renderToStaticMarkup(
+      <FormField id="p" label="Phạm vi" hint="Gợi ý" error="Chọn phạm vi.">
+        {(a) => <SearchSelect {...a} value="" onChange={() => undefined} options={[]} />}
+      </FormField>,
+    );
+    expect(html).toMatch(/<button[^>]*aria-describedby="p-hint p-error"/);
+    expect(html.match(/Chọn phạm vi\./g)?.length).toBe(1);
+  });
+  it('m2: SegmentedControl không có id vẫn có id lỗi ổn định (useId), không dùng chữ "segmented"', () => {
+    const html = renderToStaticMarkup(
+      <SegmentedControl
+        ariaLabel="Chế độ"
+        value="a"
+        onChange={() => undefined}
+        options={[{ value: 'a', label: 'A' }]}
+        invalid="Chọn chế độ."
+      />,
+    );
+    const did = /aria-describedby="([^"]+)"/.exec(html)?.[1];
+    expect(did).toBeTruthy();
+    expect(did).not.toContain('segmented');
+    expect(html).toContain(`id="${did}"`);
+    expect(read('components/ui/SegmentedControl.tsx')).not.toContain("'segmented'");
+  });
+  it('m3: ErrorSummary báo assertive lần đầu hiện; số lỗi đổi sau đó báo polite (vùng aria-live riêng)', () => {
+    const html = renderToStaticMarkup(<ErrorSummary errors={errs} />);
+    expect(html).toContain('role="alert"');
+    expect(html).toMatch(/<p[^>]*aria-live="polite"[^>]*>3 trường cần sửa<\/p>/);
+    const s = read('components/ui/ErrorSummary.tsx');
+    expect(s).toMatch(/role=\{announced \? undefined : 'alert'\}/);
+    expect(s).toMatch(/setAnnounced\(has\)/);
+  });
+  it('m4: doc của invalid nói rõ chuỗi vẽ <p> anh em → trong khung relative/nhãn dùng FormField với boolean', () => {
+    for (const f of ['components/ui/Input.tsx', 'components/ui/SearchSelect.tsx']) {
+      const s = read(f);
+      expect(s, f).toMatch(/relative/);
+      expect(s, f).toMatch(/FormField/);
+    }
+  });
+});
