@@ -1,16 +1,16 @@
-import { useRef, useState, type KeyboardEvent } from 'react';
+import { useState } from 'react';
 import { ScrollText } from 'lucide-react';
 import { pageContainer } from '@/components/layout/page';
 import { Avatar, Badge, EmptyState, Skeleton } from '@/components/ui/primitives';
 import { Button } from '@/components/ui/Button';
 import { QueryError } from '@/components/ui/QueryError';
-import { cn } from '@/lib/utils';
 import { ADMIN_LABELS } from '@/lib/navLabels';
 import { groupedAuditActionOptions } from '@/features/audit/auditFilters';
 import { useAdminAudit, useAdminHealth, type AuditKind } from './api';
 import { StatTile, StatusPill, relTime } from './_ui';
 import { fmtDateTime } from '@/lib/dateFormat';
 import { SearchSelect } from '@/components/ui/SearchSelect';
+import { Tabs, TabPanel } from '@/components/ui/Tabs';
 
 /** Bậc số lượng nhật ký tải mỗi lần. */
 const AUDIT_STEPS = [50, 100, 200] as const;
@@ -44,63 +44,6 @@ const fmtUptime = (s: number) => {
 };
 
 const prettyAction = (a: string) => a.replace(/_/g, ' ').toLowerCase();
-
-/** Tabs loại nhật ký theo mẫu ARIA: roving tabindex, mũi tên trái/phải + Home/End, aria-controls tới tabpanel. */
-function AuditTabs({ kind, onChange }: { kind: AuditKind; onChange: (k: AuditKind) => void }) {
-  const refs = useRef<Record<string, HTMLButtonElement | null>>({});
-  function onKeyDown(e: KeyboardEvent<HTMLButtonElement>, index: number) {
-    const last = AUDIT_TABS.length - 1;
-    const next =
-      e.key === 'ArrowRight'
-        ? index === last
-          ? 0
-          : index + 1
-        : e.key === 'ArrowLeft'
-          ? index === 0
-            ? last
-            : index - 1
-          : e.key === 'Home'
-            ? 0
-            : e.key === 'End'
-              ? last
-              : null;
-    if (next === null) return;
-    e.preventDefault();
-    const target = AUDIT_TABS[next]!;
-    onChange(target.kind);
-    refs.current[target.kind]?.focus();
-  }
-  return (
-    <div
-      role="tablist"
-      aria-label="Loại nhật ký"
-      className="flex rounded-md border border-border bg-surface p-0.5"
-    >
-      {AUDIT_TABS.map((t, i) => (
-        <button
-          key={t.kind}
-          ref={(el) => {
-            refs.current[t.kind] = el;
-          }}
-          type="button"
-          role="tab"
-          id={`audit-tab-${t.kind}`}
-          aria-selected={kind === t.kind}
-          aria-controls="audit-tabpanel"
-          tabIndex={kind === t.kind ? 0 : -1}
-          onClick={() => onChange(t.kind)}
-          onKeyDown={(e) => onKeyDown(e, i)}
-          className={cn(
-            'rounded px-3 py-1 text-xs font-medium transition-colors',
-            kind === t.kind ? 'bg-primary-subtle text-primary' : 'text-muted hover:text-ink',
-          )}
-        >
-          {t.label}
-        </button>
-      ))}
-    </div>
-  );
-}
 
 export function AdminSystemPage() {
   const [limit, setLimit] = useState<number>(AUDIT_STEPS[0]);
@@ -190,13 +133,17 @@ export function AdminSystemPage() {
       <section>
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-sm font-semibold text-ink">Nhật ký kiểm toán · gần đây</h2>
-          <AuditTabs
-            kind={kind}
+          <Tabs
+            idBase="audit"
+            ariaLabel="Loại nhật ký"
+            variant="pill"
+            value={kind}
             onChange={(k) => {
               setKind(k);
               setAction('');
               setLimit(AUDIT_STEPS[0]);
             }}
+            items={AUDIT_TABS.map((t) => ({ id: t.kind, label: t.label }))}
           />
           <div className="flex items-center gap-2 text-xs text-muted">
             <span>Lọc</span>
@@ -214,7 +161,7 @@ export function AdminSystemPage() {
             />
           </div>
         </div>
-        <div role="tabpanel" id="audit-tabpanel" aria-labelledby={`audit-tab-${kind}`}>
+        <TabPanel idBase="audit" value={kind}>
           {aError ? (
             <QueryError error={aErr} onRetry={() => void aRefetch()} />
           ) : aLoading ? (
@@ -274,7 +221,7 @@ export function AdminSystemPage() {
               </Button>
             </div>
           )}
-        </div>
+        </TabPanel>
       </section>
     </div>
   );

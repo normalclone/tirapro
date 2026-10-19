@@ -6,7 +6,6 @@ import { Button } from '@/components/ui/Button';
 import { useConfirm } from '@/components/ui/useConfirm';
 import { pageContainer } from '@/components/layout/page';
 import { apiErrorMessage } from '@/lib/api';
-import { cn } from '@/lib/utils';
 import { useAuth } from '@/stores/auth';
 import { RecurringModal } from './RecurringModal';
 import { RulesPage } from './RulesPage';
@@ -23,6 +22,7 @@ import {
   type RecurringIssue,
 } from './api';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
+import { Tabs, TabPanel } from '@/components/ui/Tabs';
 import { fmtDateTime } from '@/lib/dateFormat';
 import { CONNECT_LABELS } from '@/lib/navLabels';
 
@@ -57,36 +57,24 @@ export function AutomationPage() {
         </p>
       </header>
 
-      <div
-        className="mb-6 flex gap-1 border-b border-border"
-        role="tablist"
-        aria-label="Loại tự động hoá"
-      >
-        {tabs.map((t) => (
-          <button
-            key={t.id}
-            role="tab"
-            aria-selected={tab === t.id}
-            onClick={() => setTab(t.id)}
-            className={cn(
-              '-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
-              tab === t.id
-                ? 'border-primary text-ink-strong'
-                : 'border-transparent text-muted hover:text-ink',
-            )}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+      <Tabs
+        idBase="automation"
+        ariaLabel="Loại tự động hoá"
+        value={tab}
+        onChange={setTab}
+        items={tabs}
+        className="mb-6"
+      />
 
-      {tab === 'rules' ? (
-        <RulesPage />
-      ) : tab === 'templates' ? (
-        <TemplatesPanel canManage={canManage} />
-      ) : (
-        <RecurringPanel canManage={canManage} />
-      )}
+      <TabPanel idBase="automation" value={tab}>
+        {tab === 'rules' ? (
+          <RulesPage />
+        ) : tab === 'templates' ? (
+          <TemplatesPanel canManage={canManage} />
+        ) : (
+          <RecurringPanel canManage={canManage} />
+        )}
+      </TabPanel>
     </div>
   );
 }

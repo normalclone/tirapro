@@ -15,6 +15,13 @@ describe('SegmentedControl dùng chung', () => {
     expect(src).toContain('radioGroupKeyDownSkipDisabled');
     expect(src).not.toContain('role="tab');
   });
+  it('nhận ariaDescribedby / ariaInvalid và truyền xuống radiogroup', () => {
+    const src = control();
+    expect(src).toMatch(/ariaDescribedby\?: string/);
+    expect(src).toMatch(/ariaInvalid\?: boolean/);
+    expect(src).toMatch(/aria-describedby=\{ariaDescribedby\}/);
+    expect(src).toMatch(/aria-invalid=\{ariaInvalid \? true : undefined\}/);
+  });
   it('chỉ phát onChange khi chọn mục khác (qua shouldEmitChange)', () => {
     const src = control();
     expect(src).toContain('shouldEmitChange(value, o.value)');

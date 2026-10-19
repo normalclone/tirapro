@@ -31,6 +31,8 @@ export function SegmentedControl<T extends string>({
   fullWidth,
   className,
   id,
+  ariaDescribedby,
+  ariaInvalid,
   ...labelProps
 }: SegmentedControlLabel & {
   value: T;
@@ -41,6 +43,10 @@ export function SegmentedControl<T extends string>({
   fullWidth?: boolean;
   className?: string;
   id?: string;
+  /** Trỏ tới gợi ý/lỗi của nhóm (vd dòng lỗi dưới ô) — truyền xuống radiogroup. */
+  ariaDescribedby?: string;
+  /** Giá trị đang sai (hợp lệ trên radiogroup). */
+  ariaInvalid?: boolean;
 }) {
   const ariaLabel = 'ariaLabel' in labelProps ? labelProps.ariaLabel : undefined;
   const ariaLabelledby = 'ariaLabelledby' in labelProps ? labelProps.ariaLabelledby : undefined;
@@ -55,6 +61,8 @@ export function SegmentedControl<T extends string>({
       role="radiogroup"
       aria-label={ariaLabel}
       aria-labelledby={ariaLabelledby}
+      aria-describedby={ariaDescribedby}
+      aria-invalid={ariaInvalid ? true : undefined}
       aria-disabled={disabled ? 'true' : undefined}
       onKeyDown={disabled ? undefined : radioGroupKeyDownSkipDisabled}
       className={cn(

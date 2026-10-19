@@ -148,6 +148,7 @@ function PeekBody({ issueKey, onClose }: { issueKey: string; onClose: () => void
     return (
       <StatusPanel
         variant="not-found"
+        headingLevel={2}
         title={`Không tìm thấy công việc ${issueKey}`}
         description="Mã này không còn tồn tại, hoặc bạn chưa được cấp quyền xem."
         className="py-10"

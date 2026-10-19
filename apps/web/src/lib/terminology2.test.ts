@@ -168,7 +168,7 @@ describe('một nguồn nhãn (lib/navLabels.ts)', () => {
   });
 
   it('nhãn viết tay đã bỏ: aria-label Vai trò & quyền, tiêu đề, chữ lệnh lấy từ navLabels', () => {
-    expect(src('features/settings/RolesPage.tsx')).toMatch(/aria-label=\{SETTINGS_LABELS\.roles\}/);
+    expect(src('features/settings/RolesPage.tsx')).toMatch(/ariaLabel=\{SETTINGS_LABELS\.roles\}/);
     expect(hits(/aria-label="Vai trò & quyền"/)).toEqual([]);
     expect(hits(/>Nhật ký quản trị</)).toEqual([]);
     expect(hits(/>Tự động hoá</)).toEqual([]);

@@ -29,6 +29,7 @@ import {
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
 import { RoleMatrixTable } from './RoleMatrixTable';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
+import { Tabs, TabPanel } from '@/components/ui/Tabs';
 import { SETTINGS_LABELS } from '@/lib/navLabels';
 
 type RolesTab = 'list' | 'matrix';
@@ -116,39 +117,17 @@ export function RolesPage() {
       </header>
       {!canManage && <ReadOnlyNote />}
 
-      <div
-        className="mb-6 flex gap-1 border-b border-border"
-        role="tablist"
-        aria-label={SETTINGS_LABELS.roles}
+      <Tabs
+        idBase="roles"
+        ariaLabel={SETTINGS_LABELS.roles}
+        value={tab}
+        onChange={setTab}
+        items={ROLES_TABS}
+        className="mb-6"
         data-tour="roles-tabs"
-      >
-        {ROLES_TABS.map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            role="tab"
-            id={`roles-tab-${t.id}`}
-            aria-selected={tab === t.id}
-            aria-controls="roles-tabpanel"
-            onClick={() => setTab(t.id)}
-            className={cn(
-              '-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
-              tab === t.id
-                ? 'border-primary text-ink-strong'
-                : 'border-transparent text-muted hover:text-ink',
-            )}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+      />
 
-      <div
-        id="roles-tabpanel"
-        role="tabpanel"
-        aria-labelledby={`roles-tab-${tab}`}
-        data-tour="roles-list"
-      >
+      <TabPanel idBase="roles" value={tab} data-tour="roles-list">
         <QueryBoundary
           query={rolesQuery}
           skeleton={
@@ -194,7 +173,7 @@ export function RolesPage() {
             )
           }
         </QueryBoundary>
-      </div>
+      </TabPanel>
 
       <RoleDialog
         key={session}
