@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import {
@@ -53,6 +53,7 @@ import { canWriteAt, noWriteMessage, projectIdsToCheck, writeLoadingAt } from '.
 import { WikiHistoryDialog } from './WikiHistoryDialog';
 import { RestoreDraftBanner } from './RestoreDraftBanner';
 import { WikiEditor } from './WikiEditor';
+import { singleFlight } from '@/lib/singleFlight';
 import { buildCreateInput, newDraftKey, pendingNewFor, type PendingNewPage } from './wikiDraft';
 import { useWikiDraft } from './useWikiDraft';
 import { WikiTrashDialog } from './WikiTrashDialog';
@@ -356,8 +357,15 @@ export function WikiPage() {
     }
   }
 
-  async function save(opts?: { overwrite?: boolean }) {
-    if (pendingNew) return saveNew();
+  // Cờ đồng bộ: Ctrl/⌘+Enter giữ phím gọi `onSubmit` lặp lại, `isPending` của mutation chỉ cập nhật sau một lượt render
+  // nên không đủ chặn lần gọi thứ hai (sẽ tạo trang thứ hai / lưu chồng).
+  const savingRef = useRef(false);
+  /** Lưu (nút Lưu, Ctrl/⌘+Enter): trang mới → `saveNew`, trang có sẵn → `saveExisting`; chỉ một lần chạy tại một thời điểm. */
+  function save(opts?: { overwrite?: boolean }): Promise<void> {
+    return singleFlight(savingRef, () => (pendingNew ? saveNew() : saveExisting(opts)));
+  }
+
+  async function saveExisting(opts?: { overwrite?: boolean }) {
     if (!page.data) return;
     const title = draftTitle.trim();
     if (!title) {

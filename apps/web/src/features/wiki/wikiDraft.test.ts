@@ -148,6 +148,15 @@ describe('WikiPage: "Tạo trang mới" không gọi máy chủ cho tới lần 
     );
     expect(stop).toMatch(/setPendingNew\(null\)/);
   });
+  it('mọi đường lưu đi qua save() có singleFlight(savingRef): giữ Ctrl+Enter không tạo hai trang', () => {
+    expect(src).toMatch(/const savingRef = useRef\(false\)/);
+    expect(src).toMatch(
+      /singleFlight\(savingRef, \(\) => \(pendingNew \? saveNew\(\) : saveExisting\(opts\)\)\)/,
+    );
+    // saveNew / saveExisting chỉ được gọi từ save(), không gọi trực tiếp ở nơi khác
+    expect(src.match(/saveNew\(\)/g)).toHaveLength(2); // khai báo + một lần trong save()
+    expect(src.match(/saveExisting\(/g)).toHaveLength(2);
+  });
   it('useWikiDraft nhận trang giả theo newDraftKey khi đang soạn trang mới', () => {
     expect(src).toMatch(/newDraftKey\(pendingNew\)/);
   });
