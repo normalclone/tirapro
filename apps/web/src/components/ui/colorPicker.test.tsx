@@ -93,7 +93,9 @@ describe('ColorPicker: quy ước radiogroup chung', () => {
   const src = readFileSync(join(__dirname, 'ColorPicker.tsx'), 'utf8');
   it('dùng lib/radioNav (mũi tên/Home/End, một điểm Tab) và không dùng input màu native', () => {
     expect(src).toMatch(/radioGroupKeyDownSkipDisabled/);
-    expect(src).toMatch(/shouldEmitChange/);
+    expect(src).toMatch(
+      /shouldEmitChange\(\s*colorKey\(current, format\),\s*colorKey\(it\.value, format\)/,
+    );
     expect(src).not.toMatch(/type=["']color["']/);
   });
 });

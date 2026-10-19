@@ -3,6 +3,7 @@ import { Check } from 'lucide-react';
 import { radioGroupKeyDownSkipDisabled, shouldEmitChange } from '@/lib/radioNav';
 import {
   LABEL_PALETTE,
+  colorKey,
   findPaletteEntry,
   labelTone,
   paletteValue,
@@ -110,7 +111,8 @@ export function ColorPicker({
             disabled={disabled}
             tabIndex={i === entry ? 0 : -1}
             onClick={() => {
-              if (shouldEmitChange(current, it.value)) onChange(it.value);
+              if (shouldEmitChange(colorKey(current, format), colorKey(it.value, format)))
+                onChange(it.value);
             }}
             className={cn(
               'inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full transition-[box-shadow] duration-150 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11',

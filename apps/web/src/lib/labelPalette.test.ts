@@ -3,12 +3,20 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   LABEL_PALETTE,
+  colorKey,
   findPaletteEntry,
   labelTone,
   paletteValue,
   type LabelPaletteKey,
 } from './labelPalette';
-import { contrastRatio, formatOklch, inSrgbGamut, oklchToHex, type Oklch } from './oklch';
+import {
+  contrastRatio,
+  formatOklch,
+  inSrgbGamut,
+  oklchToHex,
+  parseOklch,
+  type Oklch,
+} from './oklch';
 
 const css = readFileSync(join(__dirname, '..', 'styles', 'globals.css'), 'utf8');
 const block = (selector: string): string => {
@@ -18,18 +26,25 @@ const block = (selector: string): string => {
 const token = (theme: 'root' | 'dark', name: string): string | undefined =>
   new RegExp(`--${name}: ([^;]+);`).exec(block(theme === 'root' ? ':root' : '.dark'))?.[1];
 
-// Nền trang/mặt phẳng của DESIGN.md (globals.css) — swatch/chấm phải ≥ 3:1 trên đó (WCAG 1.4.11).
+/** Khối token của một giao diện, đọc từ globals.css (in ấn = khối `:root, :root.dark` trong `@media print`). */
+const printBlock = (): string => {
+  const start = css.indexOf(':root,\n  :root.dark {');
+  return css.slice(start, css.indexOf('\n  }', start));
+};
+const rawToken = (src: string, name: string): string | undefined =>
+  new RegExp(`--${name}: ([^;]+);`).exec(src)?.[1];
+
+// Nền trang/mặt phẳng LẤY TỪ globals.css (không viết cứng) — swatch/chấm phải ≥ 3:1 trên đó (WCAG 1.4.11).
+const SURFACES = ['bg', 'surface', 'surface-2', 'surface-3'] as const;
+const surfaces = (src: string): Oklch[] =>
+  SURFACES.map((n) => {
+    const v = parseOklch(rawToken(src, n));
+    if (!v) throw new Error(`không đọc được --${n}`);
+    return v;
+  });
 const PAGE: Record<'light' | 'dark', Oklch[]> = {
-  light: [
-    [1, 0, 0],
-    [0.985, 0.004, 250],
-    [0.968, 0.005, 250],
-  ],
-  dark: [
-    [0.17, 0.013, 256],
-    [0.205, 0.014, 256],
-    [0.235, 0.015, 256],
-  ],
+  light: surfaces(block(':root')),
+  dark: surfaces(block('.dark')),
 };
 
 describe('LABEL_PALETTE', () => {
@@ -87,6 +102,43 @@ describe('token CSS khớp bảng màu (một nguồn sự thật)', () => {
       expect(token('dark', `label-${n}-bg`)).toBe(formatOklch(e.bgDark));
     },
   );
+});
+
+describe('token in ấn (luôn nền sáng) khớp biến thể sáng', () => {
+  it('khối print có đủ 16 token --label-* và bằng giá trị TS', () => {
+    const print = printBlock();
+    expect(print).toContain(':root.dark');
+    LABEL_PALETTE.forEach((e, i) => {
+      expect(rawToken(print, `label-${i + 1}`)).toBe(formatOklch(e.light));
+      expect(rawToken(print, `label-${i + 1}-bg`)).toBe(formatOklch(e.bgLight));
+    });
+  });
+  it('nền in = nền sáng của :root (không lệch khi sửa token sáng)', () => {
+    expect(surfaces(printBlock())).toEqual(PAGE.light);
+  });
+  it('bốn nền đọc được ở mỗi giao diện', () => {
+    expect(PAGE.light).toHaveLength(4);
+    expect(PAGE.dark).toHaveLength(4);
+  });
+});
+
+describe('colorKey — so sánh màu không phân biệt hoa/thường', () => {
+  it('#C52B30 và #c52b30 cùng khoá; trong bảng màu thì là khoá mục', () => {
+    expect(colorKey('#C52B30', 'hex')).toBe(colorKey('#c52b30', 'hex'));
+    expect(colorKey('#C52B30 ', 'hex')).toBe(colorKey('#c52b30', 'hex'));
+  });
+  it('màu ngoài bảng: so theo chữ thường đã cắt khoảng trắng', () => {
+    expect(colorKey('#ABCDEF', 'hex')).toBe(colorKey('#abcdef', 'hex'));
+    expect(colorKey('#abcdef', 'hex')).not.toBe(colorKey('#abcdee', 'hex'));
+  });
+  it('khác màu → khác khoá; trống → rỗng', () => {
+    expect(colorKey('#c52b30', 'hex')).not.toBe(colorKey('#3263c3', 'hex'));
+    expect(colorKey(null, 'hex')).toBe('');
+    expect(colorKey('', 'hex')).toBe('');
+  });
+  it('oklch: khớp chuỗi biến thể sáng', () => {
+    expect(colorKey('oklch(0.54 0.19 25)', 'oklch')).toBe(colorKey('OKLCH(0.54 0.19 25)', 'oklch'));
+  });
 });
 
 describe('labelTone', () => {

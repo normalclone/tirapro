@@ -90,9 +90,19 @@ export function findPaletteEntry(
 ): LabelPaletteEntry | null {
   if (typeof value !== 'string') return null;
   const v = value.trim();
-  if (format === 'oklch') return LABEL_PALETTE.find((e) => formatOklch(e.light) === v) ?? null;
   const lower = v.toLowerCase();
+  if (format === 'oklch') return LABEL_PALETTE.find((e) => formatOklch(e.light) === lower) ?? null;
   return LABEL_PALETTE.find((e) => e.hex === lower) ?? null;
+}
+
+/**
+ * Khoá so sánh hai giá trị màu: trong bảng màu → khoá của mục (`#C52B30` và `#c52b30` là MỘT màu); ngoài bảng → chữ thường
+ * đã cắt khoảng trắng; trống → ''. Dùng để bấm lại màu đang chọn (chỉ khác hoa/thường) không phát `onChange`.
+ */
+export function colorKey(value: unknown, format: PaletteFormat = 'hex'): string {
+  if (typeof value !== 'string' || value.trim() === '') return '';
+  const e = findPaletteEntry(value, format);
+  return e ? `palette:${e.key}` : value.trim().toLowerCase();
 }
 
 export interface LabelTone {
