@@ -10,6 +10,7 @@ import { useAuth } from '@/stores/auth';
 import { useUnsavedChanges } from '@/lib/useUnsavedChanges';
 import { useChangePassword, useLogoutAll } from './api';
 import { isPasswordFormDirty } from './passwordPolicy';
+import { SectionCard } from '@/components/ui/SectionCard';
 
 /** Quy tắc mật khẩu — khớp với passwordSchema ở backend. */
 const RULES: { test: (v: string) => boolean; label: string }[] = [
@@ -65,19 +66,12 @@ export function ChangePasswordPanel() {
   }
 
   return (
-    <section className="rounded-lg border border-border bg-surface">
-      <div className="flex items-start gap-3 border-b border-border px-5 py-4">
-        <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary-subtle text-primary">
-          <KeyRound className="h-4 w-4" />
-        </span>
-        <div>
-          <h2 className="text-base font-semibold text-ink-strong">Đổi mật khẩu</h2>
-          <p className="mt-0.5 text-sm text-muted">
-            Nhập mật khẩu hiện tại để xác minh đúng là bạn, rồi đặt mật khẩu mới.
-          </p>
-        </div>
-      </div>
-
+    <SectionCard
+      icon={<KeyRound className="h-4 w-4" />}
+      title="Đổi mật khẩu"
+      description="Nhập mật khẩu hiện tại để xác minh đúng là bạn, rồi đặt mật khẩu mới."
+      bare
+    >
       <form onSubmit={onSubmit} className="space-y-5 p-5">
         <label className="block space-y-1.5">
           <span className="text-sm font-medium text-ink">Mật khẩu hiện tại</span>
@@ -166,7 +160,7 @@ export function ChangePasswordPanel() {
       </form>
 
       <LogoutAllRow />
-    </section>
+    </SectionCard>
   );
 }
 

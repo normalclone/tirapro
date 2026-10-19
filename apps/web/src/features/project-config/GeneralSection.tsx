@@ -14,33 +14,7 @@ import { useUnsavedChanges } from '@/lib/useUnsavedChanges';
 import { PrivacySection } from './PrivacySection';
 import { settleField } from '@/lib/settleField';
 import { SearchSelect } from '@/components/ui/SearchSelect';
-
-function Card({
-  icon,
-  title,
-  description,
-  children,
-}: {
-  icon: React.ReactNode;
-  title: string;
-  description?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <section className="rounded-lg border border-border bg-surface">
-      <div className="flex items-start gap-3 border-b border-border px-5 py-4">
-        <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary-subtle text-primary">
-          {icon}
-        </span>
-        <div>
-          <h2 className="text-base font-semibold text-ink-strong">{title}</h2>
-          {description && <p className="mt-0.5 text-sm text-muted">{description}</p>}
-        </div>
-      </div>
-      <div className="p-5">{children}</div>
-    </section>
-  );
-}
+import { SectionCard } from '@/components/ui/SectionCard';
 
 /**
  * Mục "Chung" của cấu hình dự án: sửa tên / mô tả / người phụ trách / cách giao việc mặc định,
@@ -133,7 +107,7 @@ export function GeneralSection({ project, canAdmin }: { project: ProjectDto; can
   const field = 'mb-1.5 block text-sm font-medium text-muted';
   return (
     <>
-      <Card
+      <SectionCard
         icon={<SlidersHorizontal className="h-4 w-4" />}
         title="Thông tin dự án"
         description={
@@ -226,12 +200,12 @@ export function GeneralSection({ project, canAdmin }: { project: ProjectDto; can
           {/* Enter trong ô nhập vẫn lưu: nút gửi mặc định ẩn (nút Lưu thật nằm ở thanh "thay đổi chưa lưu"). */}
           {canAdmin && <button type="submit" className="sr-only" tabIndex={-1} aria-hidden />}
         </form>
-      </Card>
+      </SectionCard>
 
       <PrivacySection project={project} canAdmin={canAdmin} />
 
       {canAdmin && (
-        <Card
+        <SectionCard
           icon={archived ? <ArchiveRestore className="h-4 w-4" /> : <Archive className="h-4 w-4" />}
           title={archived ? 'Dự án đã lưu trữ' : 'Lưu trữ dự án'}
           description={
@@ -254,7 +228,7 @@ export function GeneralSection({ project, canAdmin }: { project: ProjectDto; can
               <Archive className="h-4 w-4" /> Lưu trữ dự án
             </Button>
           )}
-        </Card>
+        </SectionCard>
       )}
 
       <ConfirmDialog

@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/Button';
+import { SectionCard } from '@/components/ui/SectionCard';
 import { Input } from '@/components/ui/Input';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { useConfirm } from '@/components/ui/useConfirm';
@@ -139,152 +140,142 @@ export function WorkflowSettingsPage() {
       </header>
       {!canManage && <ReadOnlyNote />}
 
-      <section className="rounded-lg border border-border bg-surface">
-        <div className="flex items-start justify-between gap-3 border-b border-border px-5 py-4">
-          <div className="flex items-start gap-3">
-            <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary-subtle text-primary">
-              <GitBranch className="h-4 w-4" />
-            </span>
-            <div>
-              <h2 className="text-base font-semibold text-ink-strong">Danh sách quy trình</h2>
-              <p className="mt-0.5 text-sm text-muted">
-                Chọn một quy trình để xem và chỉnh sửa chi tiết.
-              </p>
-            </div>
-          </div>
-          {canManage && !adding && (
+      <SectionCard
+        icon={<GitBranch className="h-4 w-4" />}
+        title="Danh sách quy trình"
+        description="Chọn một quy trình để xem và chỉnh sửa chi tiết."
+        actions={
+          canManage && !adding ? (
             <Button size="sm" onClick={() => setAdding(true)}>
               <Plus className="h-4 w-4" />
               Tạo quy trình
             </Button>
-          )}
-        </div>
-
-        <div className="p-5">
-          <QueryBoundary
-            query={workflowsQuery}
-            skeleton={
-              <div className="space-y-2">
-                {Array.from({ length: 3 }).map((_, i) => (
-                  <Skeleton key={i} className="h-12 w-full" />
-                ))}
-              </div>
-            }
-            empty={() => workflows.length === 0 && !adding}
-            emptyState={
-              <EmptyState
-                icon={<GitBranch className="h-6 w-6" />}
-                title="Chưa có quy trình nào"
-                description={
-                  canManage
-                    ? 'Quy trình là chuỗi trạng thái mà mỗi công việc đi qua, từ lúc mở đến lúc xong. Tạo quy trình đầu tiên để bắt đầu.'
-                    : 'Chưa có quy trình nào. Nhờ quản trị chung tạo giúp.'
-                }
-                action={
-                  canManage ? (
-                    <Button size="sm" onClick={() => setAdding(true)}>
-                      <Plus className="h-4 w-4" />
-                      Tạo quy trình
-                    </Button>
-                  ) : undefined
-                }
-              />
-            }
-          >
-            {() => (
-              <div className="space-y-5">
-                {groups.map((g) => (
-                  <section key={g.id} aria-labelledby={`wf-group-${g.id}`}>
-                    <h3 id={`wf-group-${g.id}`} className="mb-2 text-sm font-medium text-muted">
-                      {g.title} <span className="font-normal text-faint">({g.items.length})</span>
-                    </h3>
-                    <ul className="space-y-2">
-                      {g.items.map((wf) => (
-                        <WorkflowRow
-                          key={wf.id}
-                          workflow={wf}
-                          canManage={canManage}
-                          expanded={wf.id === selectedId}
-                          onToggle={() => setSelectedId((cur) => (cur === wf.id ? null : wf.id))}
-                          onDelete={() => void handleDeleteWorkflow(wf)}
-                          deleting={deleteWorkflow.isPending}
-                        />
-                      ))}
-                    </ul>
-                  </section>
-                ))}
-              </div>
-            )}
-          </QueryBoundary>
-
-          {/* Form tạo workflow */}
-          {canManage && adding && (
-            <div className="mt-4 rounded-md border border-border bg-surface-2 p-3">
-              <div className="space-y-3">
-                <div>
-                  <label htmlFor="wf-name" className="mb-1 block text-xs font-medium text-muted">
-                    Tên quy trình
-                  </label>
-                  <Input
-                    id="wf-name"
-                    value={name}
-                    autoFocus
-                    placeholder="VD: Quy trình phát triển"
-                    onChange={(e) => setName(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') submitAdd();
-                      if (e.key === 'Escape') resetAdd();
-                    }}
-                  />
-                </div>
-                <div>
-                  <label htmlFor="wf-desc" className="mb-1 block text-xs font-medium text-muted">
-                    Mô tả (tuỳ chọn)
-                  </label>
-                  <Input
-                    id="wf-desc"
-                    value={description}
-                    placeholder="Mô tả ngắn gọn quy trình"
-                    onChange={(e) => setDescription(e.target.value)}
-                  />
-                </div>
-                <div>
-                  <label htmlFor="wf-project" className="mb-1 block text-xs font-medium text-muted">
-                    Dự án (tuỳ chọn)
-                  </label>
-                  <SearchSelect
-                    id="wf-project"
-                    value={projectId}
-                    onChange={setProjectId}
-                    options={[
-                      { value: '', label: 'Toàn không gian làm việc' },
-                      ...(projects ?? []).map((p) => ({ value: p.id, label: p.name, hint: p.key })),
-                    ]}
-                    searchPlaceholder="Tìm dự án…"
-                    className="w-full"
-                  />
-                  <p className="mt-1 text-xs text-faint">
-                    Chọn “Toàn không gian làm việc” nếu quy trình dùng chung cho mọi dự án.
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Button size="sm" onClick={submitAdd} loading={createWorkflow.isPending}>
-                    Tạo
+          ) : undefined
+        }
+      >
+        <QueryBoundary
+          query={workflowsQuery}
+          skeleton={
+            <div className="space-y-2">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <Skeleton key={i} className="h-12 w-full" />
+              ))}
+            </div>
+          }
+          empty={() => workflows.length === 0 && !adding}
+          emptyState={
+            <EmptyState
+              icon={<GitBranch className="h-6 w-6" />}
+              title="Chưa có quy trình nào"
+              description={
+                canManage
+                  ? 'Quy trình là chuỗi trạng thái mà mỗi công việc đi qua, từ lúc mở đến lúc xong. Tạo quy trình đầu tiên để bắt đầu.'
+                  : 'Chưa có quy trình nào. Nhờ quản trị chung tạo giúp.'
+              }
+              action={
+                canManage ? (
+                  <Button size="sm" onClick={() => setAdding(true)}>
+                    <Plus className="h-4 w-4" />
+                    Tạo quy trình
                   </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={resetAdd}
-                    disabled={createWorkflow.isPending}
-                  >
-                    Huỷ
-                  </Button>
-                </div>
-              </div>
+                ) : undefined
+              }
+            />
+          }
+        >
+          {() => (
+            <div className="space-y-5">
+              {groups.map((g) => (
+                <section key={g.id} aria-labelledby={`wf-group-${g.id}`}>
+                  <h3 id={`wf-group-${g.id}`} className="mb-2 text-sm font-medium text-muted">
+                    {g.title} <span className="font-normal text-faint">({g.items.length})</span>
+                  </h3>
+                  <ul className="space-y-2">
+                    {g.items.map((wf) => (
+                      <WorkflowRow
+                        key={wf.id}
+                        workflow={wf}
+                        canManage={canManage}
+                        expanded={wf.id === selectedId}
+                        onToggle={() => setSelectedId((cur) => (cur === wf.id ? null : wf.id))}
+                        onDelete={() => void handleDeleteWorkflow(wf)}
+                        deleting={deleteWorkflow.isPending}
+                      />
+                    ))}
+                  </ul>
+                </section>
+              ))}
             </div>
           )}
-        </div>
-      </section>
+        </QueryBoundary>
+
+        {/* Form tạo workflow */}
+        {canManage && adding && (
+          <div className="mt-4 rounded-md border border-border bg-surface-2 p-3">
+            <div className="space-y-3">
+              <div>
+                <label htmlFor="wf-name" className="mb-1 block text-xs font-medium text-muted">
+                  Tên quy trình
+                </label>
+                <Input
+                  id="wf-name"
+                  value={name}
+                  autoFocus
+                  placeholder="VD: Quy trình phát triển"
+                  onChange={(e) => setName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') submitAdd();
+                    if (e.key === 'Escape') resetAdd();
+                  }}
+                />
+              </div>
+              <div>
+                <label htmlFor="wf-desc" className="mb-1 block text-xs font-medium text-muted">
+                  Mô tả (tuỳ chọn)
+                </label>
+                <Input
+                  id="wf-desc"
+                  value={description}
+                  placeholder="Mô tả ngắn gọn quy trình"
+                  onChange={(e) => setDescription(e.target.value)}
+                />
+              </div>
+              <div>
+                <label htmlFor="wf-project" className="mb-1 block text-xs font-medium text-muted">
+                  Dự án (tuỳ chọn)
+                </label>
+                <SearchSelect
+                  id="wf-project"
+                  value={projectId}
+                  onChange={setProjectId}
+                  options={[
+                    { value: '', label: 'Toàn không gian làm việc' },
+                    ...(projects ?? []).map((p) => ({ value: p.id, label: p.name, hint: p.key })),
+                  ]}
+                  searchPlaceholder="Tìm dự án…"
+                  className="w-full"
+                />
+                <p className="mt-1 text-xs text-faint">
+                  Chọn “Toàn không gian làm việc” nếu quy trình dùng chung cho mọi dự án.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button size="sm" onClick={submitAdd} loading={createWorkflow.isPending}>
+                  Tạo
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={resetAdd}
+                  disabled={createWorkflow.isPending}
+                >
+                  Huỷ
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+      </SectionCard>
 
       {selected && <WorkflowDetail workflow={selected} />}
     </div>
@@ -524,156 +515,146 @@ function StatusSection({ workflow }: { workflow: Workflow }) {
   }
 
   return (
-    <section className="rounded-lg border border-border bg-surface">
-      <div className="flex items-start gap-3 border-b border-border px-5 py-4">
-        <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary-subtle text-primary">
-          <CircleDot className="h-4 w-4" />
-        </span>
-        <div>
-          <h2 className="text-base font-semibold text-ink-strong">Trạng thái</h2>
-          <p className="mt-0.5 text-sm text-muted">
-            Các trạng thái mà công việc có thể ở, trong quy trình này.
-          </p>
-        </div>
-      </div>
-
-      <div className="p-5">
-        {statuses.length === 0 && !adding ? (
-          <EmptyState
-            icon={<CircleDot className="h-6 w-6" />}
-            title="Chưa có trạng thái nào"
-            description={
-              canManage
-                ? 'Trạng thái cho biết công việc đang ở bước nào (vd To Do, In Progress, Done). Thêm trạng thái đầu tiên cho quy trình này.'
-                : 'Quy trình này chưa có trạng thái nào.'
-            }
-            action={
-              canManage ? (
-                <Button size="sm" onClick={() => setAdding(true)}>
-                  <Plus className="h-4 w-4" />
-                  Thêm trạng thái
-                </Button>
-              ) : undefined
-            }
-          />
-        ) : (
-          <ul className="divide-y divide-border">
-            {statuses.map((s) => (
-              <li key={s.id} className="flex items-center gap-3 py-2.5 first:pt-0">
-                <span
-                  className="h-3 w-3 shrink-0 rounded-full border border-border"
-                  style={{ background: s.color ?? CATEGORY_VAR[s.category] }}
-                  aria-hidden
-                />
-                <span className="truncate text-sm font-medium text-ink">{s.name}</span>
-                <Badge className="bg-surface-2 text-muted" dotColor={CATEGORY_VAR[s.category]}>
-                  {STATUS_CATEGORY_LABEL[s.category]}
+    <SectionCard
+      icon={<CircleDot className="h-4 w-4" />}
+      title="Trạng thái"
+      description="Các trạng thái mà công việc có thể ở, trong quy trình này."
+    >
+      {statuses.length === 0 && !adding ? (
+        <EmptyState
+          icon={<CircleDot className="h-6 w-6" />}
+          title="Chưa có trạng thái nào"
+          description={
+            canManage
+              ? 'Trạng thái cho biết công việc đang ở bước nào (vd To Do, In Progress, Done). Thêm trạng thái đầu tiên cho quy trình này.'
+              : 'Quy trình này chưa có trạng thái nào.'
+          }
+          action={
+            canManage ? (
+              <Button size="sm" onClick={() => setAdding(true)}>
+                <Plus className="h-4 w-4" />
+                Thêm trạng thái
+              </Button>
+            ) : undefined
+          }
+        />
+      ) : (
+        <ul className="divide-y divide-border">
+          {statuses.map((s) => (
+            <li key={s.id} className="flex items-center gap-3 py-2.5 first:pt-0">
+              <span
+                className="h-3 w-3 shrink-0 rounded-full border border-border"
+                style={{ background: s.color ?? CATEGORY_VAR[s.category] }}
+                aria-hidden
+              />
+              <span className="truncate text-sm font-medium text-ink">{s.name}</span>
+              <Badge className="bg-surface-2 text-muted" dotColor={CATEGORY_VAR[s.category]}>
+                {STATUS_CATEGORY_LABEL[s.category]}
+              </Badge>
+              {s.isInitial && (
+                <Badge className="bg-primary-subtle text-primary">
+                  <Flag className="h-3 w-3" />
+                  Khởi đầu
                 </Badge>
-                {s.isInitial && (
-                  <Badge className="bg-primary-subtle text-primary">
-                    <Flag className="h-3 w-3" />
-                    Khởi đầu
-                  </Badge>
-                )}
-                <span className="font-mono text-xs text-faint">#{s.order}</span>
+              )}
+              <span className="font-mono text-xs text-faint">#{s.order}</span>
 
-                {canManage && (
-                  <div className="ml-auto flex items-center gap-1">
-                    {!s.isInitial && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setInitial(s)}
-                        loading={updateStatus.isPending}
-                        title="Đặt làm trạng thái khởi đầu"
-                      >
-                        <Flag className="h-4 w-4" />
-                        Đặt khởi đầu
-                      </Button>
-                    )}
+              {canManage && (
+                <div className="ml-auto flex items-center gap-1">
+                  {!s.isInitial && (
                     <Button
                       variant="ghost"
-                      size="icon"
-                      onClick={() => void handleDelete(s)}
-                      title="Xoá trạng thái"
-                      className="text-muted hover:text-danger"
+                      size="sm"
+                      onClick={() => setInitial(s)}
+                      loading={updateStatus.isPending}
+                      title="Đặt làm trạng thái khởi đầu"
                     >
-                      <Trash2 className="h-4 w-4" />
-                      <span className="sr-only">Xoá trạng thái {s.name}</span>
+                      <Flag className="h-4 w-4" />
+                      Đặt khởi đầu
                     </Button>
-                  </div>
-                )}
-              </li>
-            ))}
-          </ul>
-        )}
+                  )}
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => void handleDelete(s)}
+                    title="Xoá trạng thái"
+                    className="text-muted hover:text-danger"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    <span className="sr-only">Xoá trạng thái {s.name}</span>
+                  </Button>
+                </div>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
 
-        {/* Form thêm trạng thái */}
-        {!canManage ? null : adding ? (
-          <div className="mt-4 rounded-md border border-border bg-surface-2 p-3">
-            <div className="flex flex-wrap items-end gap-3">
-              <div className="min-w-[10rem] flex-1">
-                <label htmlFor="st-name" className="mb-1 block text-xs font-medium text-muted">
-                  Tên
-                </label>
-                <Input
-                  id="st-name"
-                  value={name}
-                  autoFocus
-                  placeholder="VD: Đang xem xét"
-                  onChange={(e) => setName(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') submitAdd();
-                    if (e.key === 'Escape') resetAdd();
-                  }}
-                />
-              </div>
-              <div>
-                <span id="st-category-label" className="mb-1 block text-xs font-medium text-muted">
-                  Phân loại
-                </span>
-                <SegmentedControl<StatusCategory>
-                  ariaLabelledby="st-category-label"
-                  value={category}
-                  onChange={setCategory}
-                  options={CATEGORY_OPTIONS.map((c) => ({
-                    value: c,
-                    label: STATUS_CATEGORY_LABEL[c],
-                  }))}
-                />
-              </div>
-              <div>
-                <label htmlFor="st-color" className="mb-1 block text-xs font-medium text-muted">
-                  Màu
-                </label>
-                <input
-                  id="st-color"
-                  type="color"
-                  value={color}
-                  onChange={(e) => setColor(e.target.value)}
-                  className="h-9 w-12 cursor-pointer rounded-md border border-border bg-bg p-1"
-                />
-              </div>
-              <div className="flex items-center gap-2">
-                <Button size="sm" onClick={submitAdd} loading={addStatus.isPending}>
-                  Lưu
-                </Button>
-                <Button size="sm" variant="ghost" onClick={resetAdd} disabled={addStatus.isPending}>
-                  Huỷ
-                </Button>
-              </div>
+      {/* Form thêm trạng thái */}
+      {!canManage ? null : adding ? (
+        <div className="mt-4 rounded-md border border-border bg-surface-2 p-3">
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="min-w-[10rem] flex-1">
+              <label htmlFor="st-name" className="mb-1 block text-xs font-medium text-muted">
+                Tên
+              </label>
+              <Input
+                id="st-name"
+                value={name}
+                autoFocus
+                placeholder="VD: Đang xem xét"
+                onChange={(e) => setName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') submitAdd();
+                  if (e.key === 'Escape') resetAdd();
+                }}
+              />
+            </div>
+            <div>
+              <span id="st-category-label" className="mb-1 block text-xs font-medium text-muted">
+                Phân loại
+              </span>
+              <SegmentedControl<StatusCategory>
+                ariaLabelledby="st-category-label"
+                value={category}
+                onChange={setCategory}
+                options={CATEGORY_OPTIONS.map((c) => ({
+                  value: c,
+                  label: STATUS_CATEGORY_LABEL[c],
+                }))}
+              />
+            </div>
+            <div>
+              <label htmlFor="st-color" className="mb-1 block text-xs font-medium text-muted">
+                Màu
+              </label>
+              <input
+                id="st-color"
+                type="color"
+                value={color}
+                onChange={(e) => setColor(e.target.value)}
+                className="h-9 w-12 cursor-pointer rounded-md border border-border bg-bg p-1"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <Button size="sm" onClick={submitAdd} loading={addStatus.isPending}>
+                Lưu
+              </Button>
+              <Button size="sm" variant="ghost" onClick={resetAdd} disabled={addStatus.isPending}>
+                Huỷ
+              </Button>
             </div>
           </div>
-        ) : (
-          statuses.length > 0 && (
-            <Button variant="secondary" size="sm" className="mt-4" onClick={() => setAdding(true)}>
-              <Plus className="h-4 w-4" />
-              Thêm trạng thái
-            </Button>
-          )
-        )}
-      </div>
-    </section>
+        </div>
+      ) : (
+        statuses.length > 0 && (
+          <Button variant="secondary" size="sm" className="mt-4" onClick={() => setAdding(true)}>
+            <Plus className="h-4 w-4" />
+            Thêm trạng thái
+          </Button>
+        )
+      )}
+    </SectionCard>
   );
 }
 
@@ -758,151 +739,141 @@ function TransitionSection({ workflow }: { workflow: Workflow }) {
   const noStatuses = statuses.length === 0;
 
   return (
-    <section className="rounded-lg border border-border bg-surface">
-      <div className="flex items-start gap-3 border-b border-border px-5 py-4">
-        <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary-subtle text-primary">
-          <ArrowRight className="h-4 w-4" />
-        </span>
-        <div>
-          <h2 className="text-base font-semibold text-ink-strong">Chuyển trạng thái</h2>
-          <p className="mt-0.5 text-sm text-muted">
-            Các bước cho phép công việc chuyển từ trạng thái này sang trạng thái khác.
-          </p>
-        </div>
-      </div>
+    <SectionCard
+      icon={<ArrowRight className="h-4 w-4" />}
+      title="Chuyển trạng thái"
+      description="Các bước cho phép công việc chuyển từ trạng thái này sang trạng thái khác."
+    >
+      {transitions.length === 0 && !adding ? (
+        <EmptyState
+          icon={<ArrowRight className="h-6 w-6" />}
+          title="Chưa có bước chuyển nào"
+          description={
+            noStatuses
+              ? 'Hãy thêm trạng thái trước khi tạo bước chuyển.'
+              : 'Bước chuyển quy định công việc được đi từ trạng thái nào sang trạng thái nào. Thêm bước chuyển đầu tiên cho quy trình này.'
+          }
+          action={
+            canManage &&
+            !noStatuses && (
+              <Button size="sm" onClick={() => setAdding(true)}>
+                <Plus className="h-4 w-4" />
+                Thêm bước chuyển
+              </Button>
+            )
+          }
+        />
+      ) : (
+        <ul className="divide-y divide-border">
+          {transitions.map((t) => (
+            <li key={t.id} className="flex items-center gap-3 py-2.5 first:pt-0">
+              <Circle className="h-3 w-3 shrink-0 text-faint" aria-hidden />
+              <span className="truncate text-sm font-medium text-ink">{t.name}</span>
+              <span className="flex items-center gap-1.5 text-xs text-muted">
+                <span className="font-mono">{statusName(t.fromStatusId)}</span>
+                <ArrowRight className="h-3.5 w-3.5 text-faint" aria-hidden />
+                <span className="font-mono">{statusName(t.toStatusId)}</span>
+              </span>
 
-      <div className="p-5">
-        {transitions.length === 0 && !adding ? (
-          <EmptyState
-            icon={<ArrowRight className="h-6 w-6" />}
-            title="Chưa có bước chuyển nào"
-            description={
-              noStatuses
-                ? 'Hãy thêm trạng thái trước khi tạo bước chuyển.'
-                : 'Bước chuyển quy định công việc được đi từ trạng thái nào sang trạng thái nào. Thêm bước chuyển đầu tiên cho quy trình này.'
-            }
-            action={
-              canManage &&
-              !noStatuses && (
-                <Button size="sm" onClick={() => setAdding(true)}>
-                  <Plus className="h-4 w-4" />
-                  Thêm bước chuyển
-                </Button>
-              )
-            }
-          />
-        ) : (
-          <ul className="divide-y divide-border">
-            {transitions.map((t) => (
-              <li key={t.id} className="flex items-center gap-3 py-2.5 first:pt-0">
-                <Circle className="h-3 w-3 shrink-0 text-faint" aria-hidden />
-                <span className="truncate text-sm font-medium text-ink">{t.name}</span>
-                <span className="flex items-center gap-1.5 text-xs text-muted">
-                  <span className="font-mono">{statusName(t.fromStatusId)}</span>
-                  <ArrowRight className="h-3.5 w-3.5 text-faint" aria-hidden />
-                  <span className="font-mono">{statusName(t.toStatusId)}</span>
-                </span>
+              {canManage && (
+                <div className="ml-auto flex items-center gap-1">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => void handleDelete(t)}
+                    title="Xoá bước chuyển"
+                    className="text-muted hover:text-danger"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    <span className="sr-only">Xoá bước chuyển {t.name}</span>
+                  </Button>
+                </div>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
 
-                {canManage && (
-                  <div className="ml-auto flex items-center gap-1">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => void handleDelete(t)}
-                      title="Xoá bước chuyển"
-                      className="text-muted hover:text-danger"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                      <span className="sr-only">Xoá bước chuyển {t.name}</span>
-                    </Button>
-                  </div>
-                )}
-              </li>
-            ))}
-          </ul>
-        )}
-
-        {/* Form thêm bước chuyển */}
-        {!canManage ? null : adding ? (
-          <div className="mt-4 rounded-md border border-border bg-surface-2 p-3">
-            <div className="flex flex-wrap items-end gap-3">
-              <div className="min-w-[10rem] flex-1">
-                <label htmlFor="tr-name" className="mb-1 block text-xs font-medium text-muted">
-                  Tên
-                </label>
-                <Input
-                  id="tr-name"
-                  value={name}
-                  autoFocus
-                  placeholder="VD: Bắt đầu làm"
-                  onChange={(e) => setName(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') submitAdd();
-                    if (e.key === 'Escape') resetAdd();
-                  }}
-                />
-              </div>
-              <div className="w-40">
-                <label htmlFor="tr-from" className="mb-1 block text-xs font-medium text-muted">
-                  Từ
-                </label>
-                <SearchSelect
-                  id="tr-from"
-                  value={fromStatusId}
-                  onChange={setFromStatusId}
-                  options={[
-                    { value: ANY_FROM, label: '(bất kỳ)' },
-                    ...statuses.map((s) => ({
-                      value: s.id,
-                      label: s.name,
-                      color: s.color ?? CATEGORY_VAR[s.category],
-                    })),
-                  ]}
-                  className="w-full"
-                />
-              </div>
-              <div className="w-40">
-                <label htmlFor="tr-to" className="mb-1 block text-xs font-medium text-muted">
-                  Đến
-                </label>
-                <SearchSelect
-                  id="tr-to"
-                  value={toStatusId}
-                  onChange={setToStatusId}
-                  options={statuses.map((s) => ({
+      {/* Form thêm bước chuyển */}
+      {!canManage ? null : adding ? (
+        <div className="mt-4 rounded-md border border-border bg-surface-2 p-3">
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="min-w-[10rem] flex-1">
+              <label htmlFor="tr-name" className="mb-1 block text-xs font-medium text-muted">
+                Tên
+              </label>
+              <Input
+                id="tr-name"
+                value={name}
+                autoFocus
+                placeholder="VD: Bắt đầu làm"
+                onChange={(e) => setName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') submitAdd();
+                  if (e.key === 'Escape') resetAdd();
+                }}
+              />
+            </div>
+            <div className="w-40">
+              <label htmlFor="tr-from" className="mb-1 block text-xs font-medium text-muted">
+                Từ
+              </label>
+              <SearchSelect
+                id="tr-from"
+                value={fromStatusId}
+                onChange={setFromStatusId}
+                options={[
+                  { value: ANY_FROM, label: '(bất kỳ)' },
+                  ...statuses.map((s) => ({
                     value: s.id,
                     label: s.name,
                     color: s.color ?? CATEGORY_VAR[s.category],
-                  }))}
-                  placeholder="Chọn trạng thái…"
-                  className="w-full"
-                />
-              </div>
-              <div className="flex items-center gap-2">
-                <Button size="sm" onClick={submitAdd} loading={addTransition.isPending}>
-                  Lưu
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={resetAdd}
-                  disabled={addTransition.isPending}
-                >
-                  Huỷ
-                </Button>
-              </div>
+                  })),
+                ]}
+                className="w-full"
+              />
+            </div>
+            <div className="w-40">
+              <label htmlFor="tr-to" className="mb-1 block text-xs font-medium text-muted">
+                Đến
+              </label>
+              <SearchSelect
+                id="tr-to"
+                value={toStatusId}
+                onChange={setToStatusId}
+                options={statuses.map((s) => ({
+                  value: s.id,
+                  label: s.name,
+                  color: s.color ?? CATEGORY_VAR[s.category],
+                }))}
+                placeholder="Chọn trạng thái…"
+                className="w-full"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <Button size="sm" onClick={submitAdd} loading={addTransition.isPending}>
+                Lưu
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={resetAdd}
+                disabled={addTransition.isPending}
+              >
+                Huỷ
+              </Button>
             </div>
           </div>
-        ) : (
-          !noStatuses &&
-          transitions.length > 0 && (
-            <Button variant="secondary" size="sm" className="mt-4" onClick={() => setAdding(true)}>
-              <Plus className="h-4 w-4" />
-              Thêm bước chuyển
-            </Button>
-          )
-        )}
-      </div>
-    </section>
+        </div>
+      ) : (
+        !noStatuses &&
+        transitions.length > 0 && (
+          <Button variant="secondary" size="sm" className="mt-4" onClick={() => setAdding(true)}>
+            <Plus className="h-4 w-4" />
+            Thêm bước chuyển
+          </Button>
+        )
+      )}
+    </SectionCard>
   );
 }

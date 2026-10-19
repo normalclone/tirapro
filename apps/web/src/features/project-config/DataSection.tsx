@@ -17,7 +17,7 @@ import {
   type ImportResult,
 } from './api';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
-import { SectionCard } from './SectionCard';
+import { SectionCard } from '@/components/ui/SectionCard';
 import { importResultMessage } from './importResult';
 import { fmtDateTime } from '@/lib/dateFormat';
 

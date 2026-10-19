@@ -15,7 +15,7 @@ import {
   type LabelUpdateInput,
 } from './api';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
-import { SectionCard } from './SectionCard';
+import { SectionCard } from '@/components/ui/SectionCard';
 
 /** Màu mặc định cho nhãn mới (token primary). */
 const DEFAULT_LABEL_COLOR = '#6366f1';

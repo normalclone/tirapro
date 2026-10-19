@@ -19,7 +19,7 @@ import {
   useSetProjectMemberRoles,
 } from '@/features/members/api';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
-import { SectionCard } from './SectionCard';
+import { SectionCard } from '@/components/ui/SectionCard';
 
 /* ------------------------------------------------------------------ */
 /* Section — Thành viên dự án                                          */

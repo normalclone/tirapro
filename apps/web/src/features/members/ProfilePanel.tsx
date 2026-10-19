@@ -12,6 +12,7 @@ import { SearchSelect } from '@/components/ui/SearchSelect';
 import { initialProfileTimeZone } from './profileTimeZone';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { settleField } from '@/lib/settleField';
+import { SectionCard } from '@/components/ui/SectionCard';
 
 const LOCALES: { value: string; label: string }[] = [
   { value: 'vi', label: 'Tiếng Việt' },
@@ -80,20 +81,12 @@ export function ProfilePanel() {
   }
 
   return (
-    <section className="rounded-lg border border-border bg-surface">
-      <div className="flex items-start gap-3 border-b border-border px-5 py-4">
-        <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary-subtle text-primary">
-          <UserCircle className="h-4 w-4" />
-        </span>
-        <div>
-          <h2 className="text-base font-semibold text-ink-strong">Hồ sơ của tôi</h2>
-          <p className="mt-0.5 text-sm text-muted">
-            Những thông tin này hiện với mọi thành viên khác, ở mọi không gian làm việc bạn tham
-            gia.
-          </p>
-        </div>
-      </div>
-
+    <SectionCard
+      icon={<UserCircle className="h-4 w-4" />}
+      title="Hồ sơ của tôi"
+      description="Những thông tin này hiện với mọi thành viên khác, ở mọi không gian làm việc bạn tham gia."
+      bare
+    >
       <form ref={formRef} onSubmit={onSubmit} className="space-y-5 p-5">
         <AvatarUploader
           name={user.displayName}
@@ -158,6 +151,6 @@ export function ProfilePanel() {
         {/* Enter trong ô nhập vẫn lưu: nút gửi mặc định ẩn (nút Lưu thật nằm ở thanh "thay đổi chưa lưu"). */}
         <button type="submit" className="sr-only" tabIndex={-1} aria-hidden />
       </form>
-    </section>
+    </SectionCard>
   );
 }

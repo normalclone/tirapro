@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/Input';
 import { Badge, EmptyState, Skeleton } from '@/components/ui/primitives';
 import { apiErrorMessage } from '@/lib/api';
 import { useAuth } from '@/stores/auth';
-import { SectionCard } from './SectionCard';
+import { SectionCard } from '@/components/ui/SectionCard';
 import {
   useSeverities,
   useCreateSeverity,

@@ -17,7 +17,7 @@ import {
   type VersionUpdateInput,
 } from './api';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
-import { SectionCard } from './SectionCard';
+import { SectionCard } from '@/components/ui/SectionCard';
 import { blockOnInvalidDate } from '@/lib/dateGuard';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 

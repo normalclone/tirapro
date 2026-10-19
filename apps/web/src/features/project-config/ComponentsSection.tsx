@@ -15,7 +15,7 @@ import {
   type ComponentUpdateInput,
 } from './api';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
-import { SectionCard } from './SectionCard';
+import { SectionCard } from '@/components/ui/SectionCard';
 
 /* ------------------------------------------------------------------ */
 /* Section — Components                                                 */

@@ -19,6 +19,7 @@ import {
 } from './api';
 import { PASSWORD_POLICY_HINT, passwordPolicyError } from './passwordPolicy';
 import { useWorkspaceRoleChoice } from './useWorkspaceRoleChoice';
+import { SectionCard } from '@/components/ui/SectionCard';
 
 /**
  * Thẻ "Thêm thành viên" — MỘT hộp: chọn người có sẵn trong hệ thống (pool chung) HOẶC bấm
@@ -32,18 +33,13 @@ export function AddMemberPanel() {
   const [prefillEmail, setPrefillEmail] = useState('');
   if (!can('member:manage')) return null;
   return (
-    <section className="rounded-lg border border-border bg-surface" data-tour="members-add">
-      <div className="flex items-start gap-3 border-b border-border px-5 py-4">
-        <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary-subtle text-primary">
-          <UserPlus className="h-4 w-4" />
-        </span>
-        <div>
-          <h2 className="text-base font-semibold text-ink-strong">Thêm thành viên</h2>
-          <p className="mt-0.5 text-sm text-muted">
-            Chọn người có sẵn trong hệ thống hoặc tạo tài khoản mới.
-          </p>
-        </div>
-      </div>
+    <SectionCard
+      icon={<UserPlus className="h-4 w-4" />}
+      title="Thêm thành viên"
+      description="Chọn người có sẵn trong hệ thống hoặc tạo tài khoản mới."
+      bare
+      data-tour="members-add"
+    >
       {mode === 'pick' ? (
         <AddExistingUser
           prefillEmail={prefillEmail}
@@ -61,7 +57,7 @@ export function AddMemberPanel() {
           }}
         />
       )}
-    </section>
+    </SectionCard>
   );
 }
 

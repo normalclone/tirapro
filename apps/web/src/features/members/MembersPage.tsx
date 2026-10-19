@@ -7,6 +7,7 @@ import { TeamsPanel } from '@/features/teams/TeamsPanel';
 import { AddPeopleDialog } from './AddPeopleDialog';
 import { Avatar, Badge, EmptyState, Skeleton } from '@/components/ui/primitives';
 import { Button } from '@/components/ui/Button';
+import { SectionCard } from '@/components/ui/SectionCard';
 import { Input } from '@/components/ui/Input';
 import { useConfirm } from '@/components/ui/useConfirm';
 import { RoleBadge } from '@/components/ui/RoleBadge';
@@ -78,13 +79,12 @@ export function MembersPage() {
           <div className="space-y-8">
             <AddMemberPanel />
 
-            <section
-              className="rounded-lg border border-border bg-surface"
+            <SectionCard
+              title="Danh sách thành viên"
+              bare
               data-tour="members-list"
-            >
-              <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-border px-4 py-4 sm:px-5">
-                <h2 className="text-base font-semibold text-ink-strong">Danh sách thành viên</h2>
-                <div className="flex items-center gap-3">
+              actions={
+                <>
                   {members && members.length > 0 && (
                     <span
                       className="text-sm text-muted"
@@ -103,9 +103,9 @@ export function MembersPage() {
                       <UserPlus className="h-4 w-4" /> Thêm nhiều người
                     </Button>
                   )}
-                </div>
-              </div>
-
+                </>
+              }
+            >
               {members && members.length > 0 && (
                 <div className="border-b border-border px-5 py-3">
                   <div className="relative">
@@ -155,7 +155,7 @@ export function MembersPage() {
                   )}
                 </QueryBoundary>
               </div>
-            </section>
+            </SectionCard>
           </div>
         )}
       </TabPanel>

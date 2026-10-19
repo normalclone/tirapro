@@ -16,7 +16,7 @@ import {
   type RepositoryProvider,
 } from './api';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
-import { SectionCard } from './SectionCard';
+import { SectionCard } from '@/components/ui/SectionCard';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 
 /** Icon "kho mã" — chồng logo GitHub + GitLab để gợi ý nhóm nguồn. */

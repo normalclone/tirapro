@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/Button';
+import { SectionCard } from '@/components/ui/SectionCard';
 import { useConfirm } from '@/components/ui/useConfirm';
 import { Badge, EmptyState, Skeleton } from '@/components/ui/primitives';
 import { apiErrorMessage } from '@/lib/api';
@@ -68,74 +69,65 @@ export function DigestsSection() {
   }
 
   return (
-    <section className="rounded-lg border border-border bg-surface">
-      {/* Mobile (<sm): biểu tượng + tiêu đề/mô tả một hàng, nút "Tạo" xuống hàng dưới full-width (không ép chữ thành cột hẹp). */}
-      <div className="flex flex-wrap items-start gap-3 border-b border-border px-5 py-4 sm:flex-nowrap">
-        <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary-subtle text-primary">
-          <CalendarClock className="h-4 w-4" />
-        </span>
-        <div className="min-w-0 flex-1">
-          <h2 className="text-base font-semibold text-ink-strong">Báo cáo định kỳ</h2>
-          <p className="mt-0.5 text-sm text-muted">
-            Tổng hợp tiến độ dự án theo lịch rồi gửi qua Telegram và/hoặc email.
-          </p>
-        </div>
-        {canManage && digests.length > 0 && (
-          <Button size="sm" className="shrink-0 max-sm:w-full" onClick={() => openEditor(null)}>
+    <SectionCard
+      icon={<CalendarClock className="h-4 w-4" />}
+      title="Báo cáo định kỳ"
+      description="Tổng hợp tiến độ dự án theo lịch rồi gửi qua Telegram và/hoặc email."
+      actions={
+        canManage && digests.length > 0 ? (
+          <Button size="sm" className="max-sm:w-full" onClick={() => openEditor(null)}>
             <Plus className="h-4 w-4" />
             Tạo báo cáo định kỳ
           </Button>
+        ) : undefined
+      }
+    >
+      {!canManage && <ReadOnlyNote />}
+      <QueryBoundary
+        query={digestsQuery}
+        skeleton={
+          <div className="space-y-2">
+            {Array.from({ length: 2 }).map((_, i) => (
+              <Skeleton key={i} className="h-16 w-full" />
+            ))}
+          </div>
+        }
+        empty={() => digests.length === 0}
+        emptyState={
+          <EmptyState
+            icon={<CalendarClock className="h-6 w-6" />}
+            title="Chưa có báo cáo định kỳ nào"
+            description={
+              canManage
+                ? 'Tạo báo cáo để tự động tổng hợp tiến độ dự án theo lịch.'
+                : 'Chưa có báo cáo định kỳ nào. Nhờ quản trị chung tạo giúp.'
+            }
+            action={
+              canManage ? (
+                <Button size="sm" onClick={() => openEditor(null)}>
+                  <Plus className="h-4 w-4" />
+                  Tạo báo cáo định kỳ
+                </Button>
+              ) : undefined
+            }
+          />
+        }
+      >
+        {() => (
+          <ul className="space-y-2.5">
+            {digests.map((digest) => (
+              <DigestRow
+                key={digest.id}
+                digest={digest}
+                canManage={canManage}
+                onEdit={() => openEditor(digest)}
+                onDelete={() => handleDelete(digest)}
+                deleting={remove.isPending}
+              />
+            ))}
+          </ul>
         )}
-      </div>
-
-      <div className="p-5">
-        {!canManage && <ReadOnlyNote />}
-        <QueryBoundary
-          query={digestsQuery}
-          skeleton={
-            <div className="space-y-2">
-              {Array.from({ length: 2 }).map((_, i) => (
-                <Skeleton key={i} className="h-16 w-full" />
-              ))}
-            </div>
-          }
-          empty={() => digests.length === 0}
-          emptyState={
-            <EmptyState
-              icon={<CalendarClock className="h-6 w-6" />}
-              title="Chưa có báo cáo định kỳ nào"
-              description={
-                canManage
-                  ? 'Tạo báo cáo để tự động tổng hợp tiến độ dự án theo lịch.'
-                  : 'Chưa có báo cáo định kỳ nào. Nhờ quản trị chung tạo giúp.'
-              }
-              action={
-                canManage ? (
-                  <Button size="sm" onClick={() => openEditor(null)}>
-                    <Plus className="h-4 w-4" />
-                    Tạo báo cáo định kỳ
-                  </Button>
-                ) : undefined
-              }
-            />
-          }
-        >
-          {() => (
-            <ul className="space-y-2.5">
-              {digests.map((digest) => (
-                <DigestRow
-                  key={digest.id}
-                  digest={digest}
-                  canManage={canManage}
-                  onEdit={() => openEditor(digest)}
-                  onDelete={() => handleDelete(digest)}
-                  deleting={remove.isPending}
-                />
-              ))}
-            </ul>
-          )}
-        </QueryBoundary>
-      </div>
+      </QueryBoundary>
 
       <DigestEditorDialog
         key={editor.nonce}
@@ -143,7 +135,7 @@ export function DigestsSection() {
         onOpenChange={(open) => setEditor((e) => ({ ...e, open }))}
         digest={editor.digest}
       />
-    </section>
+    </SectionCard>
   );
 }
 

@@ -48,7 +48,13 @@ export function SectionCard({
   const Heading = sectionHeadingTag(headingLevel);
   return (
     <section className={cn('rounded-lg border border-border bg-surface', className)} {...rest}>
-      <div className="flex flex-wrap items-start gap-x-3 gap-y-3 border-b border-border px-5 py-4">
+      <div
+        className={cn(
+          'flex flex-wrap gap-x-3 gap-y-3 border-b border-border px-5 py-4',
+          // Chỉ tiêu đề (không mô tả): căn giữa để tiêu đề thẳng hàng với nút/đếm bên phải.
+          description ? 'items-start' : 'items-center',
+        )}
+      >
         {icon && (
           <span
             className={cn(

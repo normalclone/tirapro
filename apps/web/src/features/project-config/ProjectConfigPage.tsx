@@ -21,7 +21,7 @@ import {
   useRemoveProjectAvatar,
 } from '@/features/projects/api';
 import { GeneralSection } from './GeneralSection';
-import { SectionCard } from './SectionCard';
+import { SectionCard } from '@/components/ui/SectionCard';
 import { MembersSection } from './MembersSection';
 import { ComponentsSection } from './ComponentsSection';
 import { VersionsSection } from './VersionsSection';

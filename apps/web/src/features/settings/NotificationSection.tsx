@@ -3,7 +3,7 @@ import type { NotificationEmailPrefs } from '@tirapro/types';
 import { toast } from 'sonner';
 import { Skeleton } from '@/components/ui/primitives';
 import { apiErrorMessage } from '@/lib/api';
-import { SectionCard } from './SectionCard';
+import { SectionCard } from '@/components/ui/SectionCard';
 import { useNotificationPrefs, useUpdateNotificationPrefs } from './api';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
 

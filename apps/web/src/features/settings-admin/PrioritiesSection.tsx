@@ -18,36 +18,9 @@ import {
 } from './api';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
 import { SETTINGS_LABELS } from '@/lib/navLabels';
+import { SectionCard } from '@/components/ui/SectionCard';
 
 const DEFAULT_COLOR = '#64748b';
-
-/** Card khung — giữ đúng vocabulary với SettingsPage (icon trong ô bo tròn primary-subtle). */
-function SectionCard({
-  icon,
-  title,
-  description,
-  children,
-}: {
-  icon: React.ReactNode;
-  title: string;
-  description?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <section className="rounded-lg border border-border bg-surface">
-      <div className="flex items-start gap-3 border-b border-border px-5 py-4">
-        <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary-subtle text-primary">
-          {icon}
-        </span>
-        <div>
-          <h2 className="text-base font-semibold text-ink-strong">{title}</h2>
-          {description && <p className="mt-0.5 text-sm text-muted">{description}</p>}
-        </div>
-      </div>
-      <div className="p-5">{children}</div>
-    </section>
-  );
-}
 
 export function PrioritiesSection() {
   const confirm = useConfirm();

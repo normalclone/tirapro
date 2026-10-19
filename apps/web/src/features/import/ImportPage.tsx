@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom';
 import { FileUp } from 'lucide-react';
 import { pageContainer } from '@/components/layout/page';
-import { SectionCard } from '@/features/settings/SectionCard';
+import { SectionCard } from '@/components/ui/SectionCard';
 import { JiraImportWizard } from './JiraImportWizard';
 import { SETTINGS_LABELS } from '@/lib/navLabels';
 

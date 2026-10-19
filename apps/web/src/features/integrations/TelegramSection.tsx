@@ -23,7 +23,7 @@ import {
 } from './api';
 import { HEALTH_TONE, lastTestLabel, testToast, type StatusTone } from './telegramStatus';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
-import { SectionCard } from './SectionCard';
+import { SectionCard } from '@/components/ui/SectionCard';
 import { TelegramWizard } from './TelegramWizardDialog';
 import { wizardEntry, type WizardStep } from './telegramWizard';
 
