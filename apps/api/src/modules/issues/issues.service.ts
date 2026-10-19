@@ -1643,18 +1643,29 @@ export class IssuesService {
 
     // Rank được tính TRONG transaction, SAU khi khoá hàng dự án (cùng khoá với create/rebalance): trước đây đọc mốc ở
     // ngoài khoá nên kéo xuống cuối đồng thời với create (hoặc hai lần kéo vào cùng khe) ra hai việc cùng rank.
-    // Thứ tự khoá cố định: dự án → (rank) → cột WIP (enforceWip) — không đảo nên không deadlock.
+    // Thứ tự khoá cố định: dự án → cột WIP (enforceWip) → rank (có thể rebalance, khoá mọi dòng issue của dự án) → ghi.
+    // Cột LUÔN trước dòng như transition/bulkUpdate/move không mốc (khoá cột rồi mới tới dòng issue) nên rebalance không
+    // thể bắt chéo khoá với chúng — đảo lại (rank trước WIP) sẽ deadlock khi hai bên đụng nhau.
     // Sự kiện rebalance (nếu hết chỗ chèn) gom vào `afterCommit`, chỉ phát sau khi commit.
     const afterCommit: Array<() => void> = [];
     let rank = current.rank;
     const updated = await this.prisma.$transaction(
       async (tx) => {
-        if (hasNeighbor) {
+        if (hasNeighbor)
           await tx.project.update({
             where: { id: current.projectId },
             data: { updatedAt: new Date() },
             select: { id: true },
           });
+        if (wip)
+          await this.wipService.enforceWip(tx, wip, {
+            userId,
+            workspaceId,
+            projectId: current.projectId,
+            incoming: 1,
+            force: input.force,
+          });
+        if (hasNeighbor)
           rank = await this.rankService.resolveRank(
             current.projectId,
             tx,
@@ -1669,15 +1680,6 @@ export class IssuesService {
                 : null,
             }),
           );
-        }
-        if (wip)
-          await this.wipService.enforceWip(tx, wip, {
-            userId,
-            workspaceId,
-            projectId: current.projectId,
-            incoming: 1,
-            force: input.force,
-          });
         const row = await this.updateWithVersion(tx, id, workspaceId, input.version, {
           rank,
           statusId: input.statusId ?? current.statusId,

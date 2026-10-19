@@ -2784,7 +2784,7 @@ function moveRankSetup(
   return { ...made, tx, log, transaction, outsideIssue };
 }
 
-describe('IssuesService.move — rank tính TRONG tx, sau khi khoá dự án và trước khi kiểm WIP (R3)', () => {
+describe('IssuesService.move — rank tính TRONG tx, sau khoá dự án và khoá cột WIP (R3)', () => {
   it('kéo vào GIỮA hai mốc: khoá dự án trước, rồi đọc cả hai mốc qua tx, rồi ghi; không đọc mốc ngoài tx', async () => {
     const { service, log, outsideIssue } = moveRankSetup();
     await service.move('w1', 'u1', 'i1', { version: 3, afterId: 'a', beforeId: 'b' });
@@ -2815,7 +2815,7 @@ describe('IssuesService.move — rank tính TRONG tx, sau khi khoá dự án và
     expect(log.slice(0, 3)).toEqual(['begin', 'lock', 'tx-rank-read:a']);
   });
 
-  it('kéo sang cột khác có WIP: thứ tự khoá dự án → mốc rank → khoá cột (WIP) → ghi (không đảo, tránh deadlock)', async () => {
+  it('kéo sang cột khác có WIP: thứ tự khoá dự án → khoá cột (WIP) → mốc rank → ghi (cùng thứ tự cột-trước-dòng với mọi đường khác, tránh deadlock khi rebalance)', async () => {
     const { service, log } = moveRankSetup();
     await service.move('w1', 'u1', 'i1', {
       version: 3,
@@ -2826,11 +2826,18 @@ describe('IssuesService.move — rank tính TRONG tx, sau khi khoá dự án và
     });
     const at = (x: string) => log.indexOf(x);
     expect(at('lock')).toBeGreaterThan(at('begin'));
-    expect(at('tx-rank-read:a')).toBeGreaterThan(at('lock'));
-    expect(at('tx-rank-read:b')).toBeGreaterThan(at('lock'));
-    expect(at('wip-lock')).toBeGreaterThan(at('tx-rank-read:b'));
-    expect(at('write')).toBeGreaterThan(at('wip-lock'));
+    expect(at('wip-lock')).toBeGreaterThan(at('lock'));
+    expect(at('tx-rank-read:a')).toBeGreaterThan(at('wip-lock'));
+    expect(at('tx-rank-read:b')).toBeGreaterThan(at('wip-lock'));
+    expect(at('write')).toBeGreaterThan(at('tx-rank-read:b'));
     expect(at('commit')).toBeGreaterThan(at('write'));
+  });
+
+  it('move có mốc nhưng KHÔNG có WIP (cùng cột): vẫn khoá dự án rồi đọc mốc, KHÔNG khoá cột', async () => {
+    const { service, log } = moveRankSetup();
+    await service.move('w1', 'u1', 'i1', { version: 3, afterId: 'a', beforeId: 'b' });
+    expect(log).not.toContain('wip-lock');
+    expect(log.slice(0, 4)).toEqual(['begin', 'lock', 'tx-rank-read:a', 'tx-rank-read:b']);
   });
 
   it('WIP vẫn chặn đúng khi có mốc rank: cột đầy => 422, không ghi, không emit (khoá dự án đã nhả do rollback)', async () => {
@@ -2844,6 +2851,7 @@ describe('IssuesService.move — rank tính TRONG tx, sau khi khoá dự án và
         beforeId: 'b',
       }),
     ).rejects.toMatchObject({ response: { code: 'WIP_LIMIT_REACHED' } });
+    expect(log).toEqual(['begin', 'lock', 'wip-lock']); // WIP chặn TRƯỚC khi đọc mốc/rebalance
     expect(log).not.toContain('write');
     expect(log).not.toContain('commit');
     expect(tx.issue.updateMany).not.toHaveBeenCalled();
@@ -2879,6 +2887,19 @@ describe('IssuesService.move — rebalance trong tx, sự kiện chỉ phát sau
     expect(
       events.emit.mock.calls.filter((c) => c[0] === DOMAIN_EVENTS.PROJECT_RANKS_REBALANCED),
     ).toHaveLength(1);
+  });
+
+  it('rebalance + WIP: khoá dự án → khoá cột → rebalance (khoá các dòng) — không khoá dòng trước khoá cột', async () => {
+    const { service, log } = moveRankSetup({ ranks: { a: ['n', 'i'], b: ['n0', 'r'] } });
+    await service.move('w1', 'u1', 'i1', {
+      version: 3,
+      statusId: 's2',
+      boardId: 'b1',
+      afterId: 'a',
+      beforeId: 'b',
+    });
+    expect(log.indexOf('lock')).toBeLessThan(log.indexOf('wip-lock'));
+    expect(log.indexOf('wip-lock')).toBeLessThan(log.indexOf('rebalance-update'));
   });
 
   it('rebalance xong nhưng ghi thất bại (OCC) => rollback, KHÔNG phát PROJECT_RANKS_REBALANCED', async () => {
