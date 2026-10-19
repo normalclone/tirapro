@@ -20,9 +20,8 @@ describe('FAB không che nội dung', () => {
     expect(src('App.tsx')).toMatch(/<Toaster[\s\S]*?offset=/));
   it('Toaster dùng toastBottomCss (hằng tính vùng an toàn, không số cứng)', () =>
     expect(src('App.tsx')).toMatch(/toastBottomCss/));
-  it('PageFrame (và pageContainer bọc nó) chừa đệm đáy cho FAB', () => {
+  it('PageFrame chừa đệm đáy cho FAB', () => {
     const page = src('components/layout/PageFrame.tsx');
-    expect(src('components/layout/page.ts')).toMatch(/pageFrameClass/);
     expect(page).toMatch(/\bpb-8\b[^'"]*\blg:pb-28\b/);
     expect(page.replace(/lg:pb-28/g, '')).not.toMatch(/\bpb-28\b/);
     expect(page).not.toMatch(/\bpy-8\b/);

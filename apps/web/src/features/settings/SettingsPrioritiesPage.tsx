@@ -7,7 +7,7 @@ export const SettingsPrioritiesPage = () => (
   <PageFrame size="sm">
     <PageHeader
       title={SETTINGS_LABELS.priorities}
-      description="Đặt các mức ưu tiên để sắp xếp thứ tự làm công việc. Số thứ tự càng nhỏ thì càng ưu tiên."
+      description="Đặt các mức ưu tiên; số thứ tự càng nhỏ thì càng được làm trước."
     />
     <PrioritiesSection />
   </PageFrame>

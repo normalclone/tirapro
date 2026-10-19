@@ -5,6 +5,7 @@ import { AppShell } from '@/components/layout/AppShell';
 import { RouteError } from '@/components/layout/RouteError';
 import { NotFoundPage } from '@/components/layout/NotFoundPage';
 import { RequireAccess } from '@/components/layout/RequireAccess';
+import { ScrollToHash } from '@/features/docs/ScrollToHash';
 import { ConnectIndexRedirect } from '@/features/connect/ConnectIndexRedirect';
 import { SettingsIndexRedirect } from '@/features/settings/SettingsIndexRedirect';
 import { NAV_RULES } from '@/lib/navAccess';
@@ -268,6 +269,7 @@ export const router = createBrowserRouter([
     path: '/documentation',
     element: (
       <Suspense fallback={<PageLoading />}>
+        <ScrollToHash />
         <DocumentationPage />
       </Suspense>
     ),

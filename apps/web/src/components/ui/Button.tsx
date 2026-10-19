@@ -34,7 +34,8 @@ const button = cva(
         sm: 'h-8 px-3 text-sm',
         md: 'h-9 px-4 text-base',
         lg: 'h-10 px-5 text-base',
-        icon: 'h-9 w-9',
+        // Cảm ứng: 44px (DESIGN.md "vùng chạm ≥ 44px"); chuột giữ 36px cho thanh công cụ gọn.
+        icon: 'h-9 w-9 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11',
       },
     },
     defaultVariants: { variant: 'primary', size: 'md' },

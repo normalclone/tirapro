@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { DocsLink } from '@/components/ui/DocsLink';
 import { Link } from 'react-router-dom';
 import { AlarmClock, Plus, Trash2, TriangleAlert } from 'lucide-react';
 import { toast } from 'sonner';
@@ -39,7 +40,7 @@ export function SlaBoardPage() {
     <PageFrame size="xl">
       <PageHeader
         title={MANAGE_LABELS.responseTime}
-        description="Các công việc đang chạy đồng hồ đếm ngược theo cam kết thời gian xử lý. Việc sắp tới hạn tô vàng, việc đã quá hạn tô đỏ — hãy xử lý từ trên xuống."
+        description="Công việc đang chạy đồng hồ theo cam kết; sắp tới hạn tô vàng, quá hạn tô đỏ."
       />
       <SlaBoard />
     </PageFrame>
@@ -54,7 +55,12 @@ export function SlaPoliciesPage() {
     <PageFrame size="sm">
       <PageHeader
         title={SETTINGS_LABELS.responseTime}
-        description="Đặt thời hạn phải phản hồi và phải xử lý xong cho từng nhóm công việc. Hệ thống bấm giờ ngay khi công việc được tạo và cảnh báo khi sắp trễ."
+        description={
+          <>
+            Đặt thời hạn phản hồi và xử lý xong cho từng nhóm công việc.{' '}
+            <DocsLink anchor="quan-ly-nang-cao" />
+          </>
+        }
         actions={
           canManage ? (
             <Button size="sm" onClick={() => setOpen(true)}>

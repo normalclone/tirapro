@@ -22,7 +22,7 @@ export const PAGE_FRAME_WIDTH = {
 export type PageFrameSize = keyof typeof PAGE_FRAME_WIDTH;
 
 /**
- * Lớp CSS của khung (hàm thuần để chỗ không render được — vd `pageContainer` — dùng chung).
+ * Lớp CSS của khung (hàm thuần để chỗ không render được dùng chung).
  * Đệm: ngang 16px (mobile) / 24px (từ sm); dọc trên 24px → 32px (từ sm), dưới 32px.
  */
 export function pageFrameClass(size: PageFrameSize, className?: string): string {

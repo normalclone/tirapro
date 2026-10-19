@@ -130,7 +130,7 @@ export function AdminConfigPage() {
   const header = (
     <PageHeader
       title={ADMIN_LABELS.config}
-      description="Cờ tính năng bật/tắt ngay, không cần triển khai lại. Cấu hình nền lấy từ biến môi trường."
+      description="Cờ tính năng bật/tắt ngay, không cần triển khai lại; cấu hình nền lấy từ biến môi trường."
     />
   );
   // Mọi nhánh (lỗi/đang tải/chính) đều có h1 — đúng một h1 mỗi route.

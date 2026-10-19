@@ -98,4 +98,18 @@ describe('PageHeader — trang thử', () => {
     expect(out.indexOf('Sao chép')).toBeLessThan(out.indexOf('<h1'));
     expect(out).not.toContain('max-lg:hidden');
   });
+  it('không title (chế độ không tiêu đề): chỉ breadcrumb + actions, không heading nào', () => {
+    const out = render({
+      breadcrumb: [{ label: 'Dự án', to: '/p' }, { label: 'DEMO-1' }],
+      actions: <button type="button">Sao chép</button>,
+    });
+    expect(out).not.toMatch(/<h[1-6]/);
+    expect(out).toContain('<nav');
+    expect(out).toContain('Sao chép');
+  });
+  it('khung actions rỗng tự ẩn (empty:hidden) ở cả hai kiểu bố cục — Tổng quan/Danh mục có lúc không vẽ gì', () => {
+    expect(render({ title: 'A', actions: <span /> })).toMatch(/empty:hidden/);
+    expect(render({ title: 'A', titleHidden: true, actions: <span /> })).toMatch(/empty:hidden/);
+    expect(render({ title: 'A' })).not.toMatch(/empty:hidden/);
+  });
 });

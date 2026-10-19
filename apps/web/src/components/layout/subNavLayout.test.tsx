@@ -5,6 +5,7 @@ import { Route, Routes } from 'react-router-dom';
 import { StaticRouter } from 'react-router-dom/server';
 import { describe, expect, it } from 'vitest';
 import { SubNavLayout } from './SubNavLayout';
+import { RAIL_SURFACE, RAIL_WIDTH } from './railSurface';
 import type { SubNavGroup } from './subNavModel';
 
 const src = (p: string) => readFileSync(join(__dirname, '..', '..', p), 'utf8');
@@ -95,7 +96,10 @@ describe('SubNavLayout — mobile ở trang con', () => {
 describe('SubNavLayout — rail desktop', () => {
   const out = render('/settings/roles');
   it('rail chỉ hiện từ lg, rộng 240px, có aria-label', () => {
-    expect(out).toMatch(/<nav aria-label="Mục cài đặt" class="hidden [^"]*lg:flex[^"]*lg:w-60"/);
+    const cls = (out.match(/<nav aria-label="Mục cài đặt" class="([^"]*)"/)?.[1] ?? '').split(' ');
+    for (const t of [...RAIL_SURFACE.split(' '), RAIL_WIDTH.nav, 'hidden', 'lg:flex'])
+      expect(cls).toContain(t);
+    expect(RAIL_WIDTH.nav).toBe('lg:w-60');
   });
   it('tên khu vực là chữ phụ <p>, không phải heading; nhóm không uppercase', () => {
     expect(out).toMatch(/<p class="[^"]*">Cài đặt<\/p>/);

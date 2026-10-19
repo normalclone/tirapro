@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { DocsLink } from '@/components/ui/DocsLink';
 import { CalendarClock, FileStack, Pause, Pencil, Play, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Badge, EmptyState, Skeleton } from '@/components/ui/primitives';
@@ -50,7 +51,12 @@ export function AutomationPage() {
     <PageFrame size="sm">
       <PageHeader
         title={CONNECT_LABELS.automation}
-        description="Quy tắc để hệ thống tự làm khi có sự kiện (khi… nếu… thì…). Mẫu công việc giúp bạn khỏi gõ lại những trường quen thuộc. Công việc lặp lại để hệ thống tự tạo việc theo lịch — họp tuần, báo cáo tháng, kiểm tra định kỳ."
+        description={
+          <>
+            Quy tắc tự chạy, mẫu công việc và việc lặp lại giúp bạn đỡ làm tay.{' '}
+            <DocsLink anchor="quan-ly-nang-cao" />
+          </>
+        }
       />
 
       <Tabs

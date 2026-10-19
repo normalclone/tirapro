@@ -47,10 +47,16 @@ describe('Bộ lọc, Wiki, chi tiết công việc dùng khung chung (T9)', () 
     expect(s).toContain('useWikiDraft(');
     expect(src('features/wiki/useWikiDraft.ts')).toMatch(/useLeaveGuard|useUnsavedChanges/);
   });
-  it('Chi tiết công việc: h1 là tiêu đề ẩn của PageHeader; ô tiêu đề hiển thị không còn là h1; sửa tại chỗ giữ nguyên', () => {
+  it('Chi tiết công việc (RB7): h1 là ô tiêu đề hiển thị; PageHeader title-less khi đã có việc, sr-only chỉ lúc tải/lỗi', () => {
     const s = src('features/issues/IssueDetailPage.tsx');
-    expect(s).toMatch(/<PageHeader\s+titleHidden/);
-    expect(s).not.toMatch(/<h1\b/);
+    // đúng một <h1 trong file, bọc cả ô nhập khi đang sửa (luôn có đúng một h1)
+    expect(s.match(/<h1\b/g)).toHaveLength(1);
+    expect(s).toMatch(/<h1[^>]*>\s*\{editingSummary \?/);
+    expect(s).toMatch(/aria-label="Tiêu đề công việc"/);
+    // PageHeader: sr-only (titleHidden + title) chỉ khi chưa có việc; có việc thì bỏ title
+    expect(s).toMatch(
+      /<PageHeader\s+titleHidden=\{!showIssue\}\s+title=\{showIssue \? undefined : key\}/,
+    );
     expect(s).toContain('setEditingSummary(true)');
     expect(s).toContain("e.key === 'Escape'");
     expect(s).not.toMatch(/breadcrumbMobile=\{false\}/);

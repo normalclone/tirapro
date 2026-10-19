@@ -55,7 +55,7 @@ export function MembersPage() {
     <PageFrame size="sm">
       <PageHeader
         title={APP_NAV_LABELS.members}
-        description="Thành viên thuộc về cả không gian làm việc, nên ai có tên ở đây đều tham gia mọi dự án. Nhóm dùng để sắp xếp họ theo chức năng và giao vai trò hàng loạt."
+        description="Ai có tên ở đây đều tham gia mọi dự án; nhóm giúp sắp xếp và giao vai trò hàng loạt."
       />
 
       <Tabs

@@ -132,7 +132,7 @@ export function WorkflowSettingsPage() {
     <PageFrame size="lg">
       <PageHeader
         title={SETTINGS_LABELS.workflows}
-        description="Quản lý các bước một công việc đi qua: có những trạng thái nào và được chuyển từ trạng thái nào sang trạng thái nào."
+        description="Các trạng thái của một công việc và những bước chuyển được phép giữa chúng."
       />
       {!canManage && <ReadOnlyNote />}
 

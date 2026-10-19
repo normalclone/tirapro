@@ -122,11 +122,7 @@ export function DashboardPage() {
         title={`${greetingPrefix(now)}${user?.displayName ? `, ${user.displayName}` : ''}`}
         description={fmtLongDate(now)}
         // Chuyển sang dashboard tuỳ biến (của tôi / được chia sẻ); tự ẩn khi chưa có dashboard nào.
-        actions={
-          <div className="print:hidden">
-            <DashboardSwitcher />
-          </div>
-        }
+        actions={<DashboardSwitcher className="print:hidden" />}
       />
 
       <RecentsStrip />

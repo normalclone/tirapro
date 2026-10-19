@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { DocsLink } from '@/components/ui/DocsLink';
 import { useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import {
@@ -657,7 +658,12 @@ export function WikiPage() {
       <PageFrame size="lg">
         <PageHeader
           title={APP_NAV_LABELS.wiki}
-          description="Tài liệu nội bộ: nơi lưu quy trình, hướng dẫn và biên bản họp. Viết bằng Markdown, xếp thành cây trang, dùng chung cho cả tổ chức hoặc riêng từng dự án."
+          description={
+            <>
+              Tài liệu nội bộ viết bằng Markdown, xếp thành cây trang.{' '}
+              <DocsLink anchor="quan-ly-nang-cao" />
+            </>
+          }
           breadcrumb={crumbs}
         />
 

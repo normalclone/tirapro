@@ -26,6 +26,7 @@ export function AdminOverviewPage() {
             onClick={() => void refetch()}
             title={refreshLabel}
             aria-label={refreshLabel}
+            aria-busy={isFetching || undefined}
           >
             <RefreshCw className={isFetching ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} />
           </Button>

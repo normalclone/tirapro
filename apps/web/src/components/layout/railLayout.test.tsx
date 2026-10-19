@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { RailLayout } from './RailLayout';
+import { RAIL_SURFACE, RAIL_WIDTH } from './railSurface';
 
 describe('RailLayout — master–detail có rail trái', () => {
   const out = renderToStaticMarkup(
@@ -9,8 +10,11 @@ describe('RailLayout — master–detail có rail trái', () => {
     </RailLayout>,
   );
   it('rail là aside có tên, rộng 288px từ lg, nền surface + viền phải, không card viền 4 phía', () => {
-    expect(out).toMatch(/<aside aria-label="Bộ lọc đã lưu" class="[^"]*lg:w-72[^"]*lg:border-r/);
-    expect(out).toMatch(/bg-surface/);
+    const cls = (out.match(/<aside aria-label="Bộ lọc đã lưu" class="([^"]*)"/)?.[1] ?? '').split(
+      ' ',
+    );
+    for (const t of [...RAIL_SURFACE.split(' '), RAIL_WIDTH.master]) expect(cls).toContain(t);
+    expect(RAIL_WIDTH.master).toBe('lg:w-72');
     expect(out).not.toMatch(/rounded-lg/);
   });
   it('rail không có heading; h1 nằm ở nội dung; nội dung cuộn riêng', () => {

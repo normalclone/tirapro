@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { DocsLink } from '@/components/ui/DocsLink';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import { Users } from 'lucide-react';
 import { Avatar, EmptyState, Skeleton } from '@/components/ui/primitives';
@@ -128,7 +129,12 @@ function ResourcesHeader({
   return (
     <PageHeader
       title={MANAGE_LABELS.resources}
-      description="Nhân lực và khối lượng việc: xem mỗi người đang gánh bao nhiêu giờ so với số giờ họ thật sự làm được. Số giờ làm được (năng lực) = ngày làm việc trong tuần, đã trừ nghỉ phép và ngày lễ, nhân tỉ lệ phân bổ; khối lượng việc = ước lượng giờ của các việc được giao, chia đều cho những ngày việc đó kéo dài."
+      description={
+        <>
+          Xem mỗi người được giao bao nhiêu giờ so với số giờ họ làm được.{' '}
+          <DocsLink anchor="quan-ly-nang-cao" />
+        </>
+      }
       actions={
         showExport ? <WorkloadExport report={exportReport} from={from} to={to} /> : undefined
       }
@@ -314,7 +320,7 @@ function Legend() {
       ))}
       <li
         className="text-faint"
-        title="Ví dụ: được giao 52h trong tuần mà chỉ làm được 40h thì hiện 130% và tô đỏ."
+        title="Ví dụ: được giao 52h trong tuần mà chỉ làm được 40h thì hiện 130% và tô đỏ. Số giờ làm được = ngày làm việc trong tuần, đã trừ nghỉ phép và ngày lễ, nhân tỉ lệ phân bổ; số giờ được giao = ước lượng giờ của các việc, chia đều cho những ngày việc đó kéo dài."
       >
         Phần trăm = số giờ được giao ÷ số giờ làm được trong tuần
       </li>

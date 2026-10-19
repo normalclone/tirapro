@@ -122,7 +122,7 @@ export function RepositorySection() {
             title="Chưa có repo nào"
             description="Thêm repo GitHub hoặc GitLab để liên kết hoạt động code với dự án."
             action={
-              <Button size="sm" onClick={() => setAdding(true)}>
+              <Button variant="secondary" size="sm" onClick={() => setAdding(true)}>
                 <Plus className="h-4 w-4" />
                 Thêm repo
               </Button>

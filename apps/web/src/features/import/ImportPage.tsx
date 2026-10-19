@@ -11,7 +11,7 @@ export function ImportPage() {
     <PageFrame size="sm">
       <PageHeader
         title={SETTINGS_LABELS.import}
-        description="Chuyển công việc từ Jira sang Tirapro bằng tệp CSV: ghép loại, trạng thái, mức ưu tiên và người dùng rồi nhập theo lô."
+        description="Chuyển công việc từ Jira sang Tirapro bằng tệp CSV, ghép trường rồi nhập theo lô."
       />
       <SectionCard>
         <JiraImportWizard />

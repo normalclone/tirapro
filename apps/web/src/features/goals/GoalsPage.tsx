@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { DocsLink } from '@/components/ui/DocsLink';
 import { LineChart, Link2, Pencil, Plus, Target, Trash2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Avatar, Badge, EmptyState, Skeleton } from '@/components/ui/primitives';
@@ -494,7 +495,12 @@ export function GoalsPage() {
     <PageFrame size="xl">
       <PageHeader
         title={MANAGE_LABELS.goals}
-        description="Mục tiêu và kết quả then chốt. Mỗi kỳ (thường là một quý) đặt vài mục tiêu, mỗi mục tiêu kèm những kết quả then chốt đo được bằng số. Tiến độ tính từ số đo hiện tại của các kết quả đó. Cách làm này quốc tế gọi là OKR."
+        description={
+          <>
+            Đặt mục tiêu theo quý, mỗi mục tiêu kèm kết quả then chốt đo được bằng số.{' '}
+            <DocsLink anchor="quan-ly-nang-cao" />
+          </>
+        }
         actions={
           canManage ? (
             <Button size="sm" onClick={openCreate}>

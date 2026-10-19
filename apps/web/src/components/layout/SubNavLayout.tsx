@@ -8,6 +8,7 @@ import { TruncatedLabel } from '@/components/ui/TruncatedLabel';
 import { BackLink } from './BackLink';
 import { PAGE_FRAME_WIDTH, PageFrame, type PageFrameSize } from './PageFrame';
 import { PageHeader, type PageHeaderVariant } from './PageHeader';
+import { RAIL_SURFACE, RAIL_WIDTH } from './railSurface';
 import { isIndexPath, visibleGroups, type SubNavGroup } from './subNavModel';
 
 interface SubNavLayoutProps {
@@ -60,7 +61,7 @@ export function SubNavLayout({
     <div className="flex h-full min-h-0 flex-col lg:flex-row">
       <nav
         aria-label={ariaLabel}
-        className="hidden shrink-0 flex-col gap-0.5 overflow-y-auto border-r border-border bg-surface px-3 py-5 lg:flex lg:w-60"
+        className={cn(RAIL_SURFACE, RAIL_WIDTH.nav, 'hidden flex-col gap-0.5 lg:flex')}
       >
         <p className="px-3 pb-2 text-xs font-semibold text-faint">{title}</p>
         {top}

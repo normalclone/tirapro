@@ -1,4 +1,5 @@
 import { useMemo, useState, type FormEvent } from 'react';
+import { DocsLink } from '@/components/ui/DocsLink';
 import { Plus, Shield, ShieldCheck, Trash2 } from 'lucide-react';
 import {
   PERMISSION_CATALOG,
@@ -102,7 +103,12 @@ export function RolesPage() {
     <PageFrame size="lg">
       <PageHeader
         title={SETTINGS_LABELS.roles}
-        description="Vai trò gom các quyền lại để gán cho thành viên. Vai trò hệ thống là cố định; bạn có thể tạo vai trò tuỳ chỉnh riêng."
+        description={
+          <>
+            Vai trò gom các quyền để gán cho thành viên; vai trò hệ thống không đổi được.{' '}
+            <DocsLink anchor="vai-tro" />
+          </>
+        }
         actions={
           canManage ? (
             <Button size="sm" onClick={() => openCreate('WORKSPACE')} data-tour="roles-create">

@@ -1,3 +1,4 @@
+import { cn } from '@/lib/utils';
 import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { LayoutDashboard } from 'lucide-react';
@@ -16,7 +17,13 @@ const NEW_VALUE = '__new__';
  * `dashboard:manage`). Không có gì để chọn hoặc danh sách lỗi → không hiện, để không làm hỏng trang chủ. Không nhớ dashboard xem gần nhất: Tổng quan chung vẫn là
  * trang chủ.
  */
-export function DashboardSwitcher({ currentId }: { currentId?: string }) {
+export function DashboardSwitcher({
+  currentId,
+  className,
+}: {
+  currentId?: string;
+  className?: string;
+}) {
   const navigate = useNavigate();
   const { data } = useDashboards();
   const canManage = useAuth((s) => s.can('dashboard:manage'));
@@ -45,7 +52,7 @@ export function DashboardSwitcher({ currentId }: { currentId?: string }) {
       options={options}
       ariaLabel="Chọn bảng tổng quan"
       searchPlaceholder="Tìm bảng tổng quan…"
-      className="w-full sm:w-64"
+      className={cn('w-full sm:w-64', className)}
       align="end"
       renderTrigger={(selected) => (
         <span className="flex items-center gap-2">

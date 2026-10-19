@@ -177,6 +177,7 @@ Giao diện chỉ có tiếng Việt, nhưng GIỮ thuật ngữ Agile tiếng A
 - [ ] Optimistic + skeleton, không spinner chặn.
 - [ ] Empty / loading / error / first-run state đầy đủ, dùng `EmptyState` (có icon; `compact` trong ô nhỏ) và `StatusPanel` (không tìm thấy / không có quyền / lỗi) — **không tự vẽ** khối trống hay màn lỗi.
 - [ ] Ô chọn dùng `SegmentedControl` (≤ 4 mục ngắn) hoặc `SearchSelect`; không `<select>` native, không tự dựng dropdown. Ưu tiên hiện bằng `PriorityIcon`. Hàng tab dùng `Tabs`/`TabPanel`.
+- [ ] Khung trang dùng đúng khối chung: `PageFrame` (cỡ theo bảng B-D1), `PageHeader` (đúng một h1; tab trong dự án dùng `variant="tab"`; mô tả một câu, dài hơn thì `DocsLink`), `SubNavLayout`/`RailLayout` cho menu con và master–detail, `SectionCard` cho thẻ (không `max-w-*`, h1, thẻ có viền tự vẽ). Nút tạo chính ở `PageHeader.actions` (ngoại lệ ghi trong DESIGN.md "Khung trang"); nút tạo trong `EmptyState` là secondary. Test `pageFrame.test.ts` chặn tái phạm.
 - [ ] Inline edit + quick-add nơi phù hợp.
 - [ ] Undo cho hành động đảo được; confirm chỉ cho phá hủy.
 - [ ] Tour + help cho màn; có `data-tour` anchors.

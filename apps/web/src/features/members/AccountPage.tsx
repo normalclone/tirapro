@@ -10,7 +10,7 @@ export function AccountPage() {
     <PageFrame size="sm">
       <PageHeader
         title={APP_NAV_LABELS.account}
-        description="Hồ sơ cá nhân và mật khẩu của bạn. Những thông tin này đi theo bạn ở mọi không gian làm việc, không riêng nơi bạn đang mở."
+        description="Hồ sơ và mật khẩu của bạn, dùng chung cho mọi không gian làm việc."
       />
 
       <div className="space-y-8">

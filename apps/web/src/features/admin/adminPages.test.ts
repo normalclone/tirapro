@@ -41,6 +41,11 @@ describe('trang Quản trị hệ thống dùng PageFrame lg + PageHeader (T7)',
     );
     expect(s).not.toMatch(/\{data \? relTime\(data\.generatedAt\) : 'Làm mới'\}/);
   });
+  it('Tổng quan: nút làm mới báo đang tải bằng aria-busy (RB6)', () => {
+    expect(src('features/admin/AdminOverviewPage.tsx')).toMatch(
+      /aria-busy=\{isFetching \|\| undefined\}/,
+    );
+  });
   it('Cấu hình: nhánh lỗi/đang tải cũng có tiêu đề (đúng một h1 mỗi route)', () => {
     const s = src('features/admin/AdminConfigPage.tsx');
     expect(s.match(/<PageFrame size="lg">/g)).toHaveLength(3);

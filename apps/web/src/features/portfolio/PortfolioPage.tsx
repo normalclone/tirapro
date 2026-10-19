@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { DocsLink } from '@/components/ui/DocsLink';
 import {
   ChevronDown,
   ChevronRight,
@@ -351,7 +352,12 @@ export function PortfolioPage() {
     <PageFrame size="xl">
       <PageHeader
         title={MANAGE_LABELS.portfolio}
-        description="Gom các dự án liên quan vào một chương trình để xem tiến độ chung, việc quá hạn và mốc thời gian ở một chỗ, thay vì mở từng dự án."
+        description={
+          <>
+            Gom các dự án liên quan thành một chương trình để xem tiến độ chung.{' '}
+            <DocsLink anchor="quan-ly-nang-cao" />
+          </>
+        }
         actions={
           <>
             {rollup && totals && totals.projectCount > 0 && (

@@ -11,7 +11,11 @@ export function pageHeaderTag(variant: PageHeaderVariant = 'page'): 'h1' | 'h2' 
 }
 
 export interface PageHeaderProps {
-  title: ReactNode;
+  /**
+   * Tiêu đề. **Bỏ trống = chế độ không tiêu đề** (chỉ breadcrumb + actions): dành cho trang tự vẽ h1 hiển thị ngay
+   * bên dưới (chi tiết công việc: ô tiêu đề sửa tại chỗ là h1). Trang đó phải tự bảo đảm đúng một h1.
+   */
+  title?: ReactNode;
   /** Một dòng mô tả (muted). */
   description?: ReactNode;
   /** Đường dẫn phân cấp phía trên tiêu đề. */
@@ -27,9 +31,9 @@ export interface PageHeaderProps {
   back?: { label: string; to: string };
   variant?: PageHeaderVariant;
   /**
-   * Tiêu đề chỉ dành cho trình đọc màn hình (`sr-only`): trang đã có tiêu đề hiển thị riêng không thể nằm trong h1
-   * (vd chi tiết công việc: ô sửa tiêu đề tại chỗ kèm các ô chọn loại/ưu tiên). Khi đó breadcrumb và actions chung một
-   * hàng; `description` không dùng.
+   * Tiêu đề chỉ dành cho trình đọc màn hình (`sr-only`), kèm breadcrumb và actions chung một hàng; `description`
+   * không dùng. Dùng cho trạng thái chưa có tiêu đề hiển thị (đang tải/lỗi/không thấy của chi tiết công việc) để trang
+   * vẫn có đúng một h1.
    */
   titleHidden?: boolean;
   /** `id` của thẻ tiêu đề — cho `aria-labelledby` của vùng nội dung. */
@@ -58,7 +62,7 @@ export function PageHeader({
 }: PageHeaderProps) {
   const Heading = pageHeaderTag(variant);
   const hasCrumb = !!breadcrumb && breadcrumb.some((b) => b.label.trim() !== '');
-  if (titleHidden) {
+  if (titleHidden || title == null) {
     return (
       <header className={cn('mb-4', className)} {...rest}>
         {back && <BackLink label={back.label} to={back.to} className="-ml-1 mb-3" />}
@@ -70,12 +74,16 @@ export function PageHeader({
             />
           )}
           {actions && (
-            <div className="ml-auto flex shrink-0 flex-wrap items-center gap-2">{actions}</div>
+            <div className="ml-auto flex shrink-0 flex-wrap items-center gap-2 empty:hidden">
+              {actions}
+            </div>
           )}
         </div>
-        <Heading id={titleId} className="sr-only">
-          {title}
-        </Heading>
+        {title != null && (
+          <Heading id={titleId} className="sr-only">
+            {title}
+          </Heading>
+        )}
       </header>
     );
   }
@@ -102,7 +110,10 @@ export function PageHeader({
           {description && <p className="mt-1 text-sm text-muted">{description}</p>}
         </div>
         {actions && (
-          <div className="flex shrink-0 flex-wrap items-center gap-2 max-sm:w-full">{actions}</div>
+          // `empty:hidden`: actions là component có lúc không vẽ gì (Tổng quan, Danh mục) → bỏ khung rỗng, khỏi chừa khe.
+          <div className="flex shrink-0 flex-wrap items-center gap-2 empty:hidden max-sm:w-full">
+            {actions}
+          </div>
         )}
       </div>
     </header>

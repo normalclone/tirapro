@@ -90,7 +90,7 @@ export function AdminUsersPage() {
     <PageFrame size="lg">
       <PageHeader
         title={ADMIN_LABELS.accounts}
-        description="Tạo tài khoản và cấp quyền: được lập không gian làm việc mới, hoặc quản trị toàn hệ thống."
+        description="Tạo tài khoản và cấp quyền lập không gian làm việc mới hoặc quản trị hệ thống."
         actions={
           <Button
             size="sm"

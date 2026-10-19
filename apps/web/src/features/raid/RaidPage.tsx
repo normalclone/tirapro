@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { DocsLink } from '@/components/ui/DocsLink';
 import { Tabs, TabPanel } from '@/components/ui/Tabs';
 import { Pencil, Plus, ShieldAlert, Trash2 } from 'lucide-react';
 import { format } from 'date-fns';
@@ -434,7 +435,12 @@ export function RaidPage() {
     <PageFrame size="xl">
       <PageHeader
         title={MANAGE_LABELS.risks}
-        description="Nơi ghi lại mọi thứ có thể cản tiến độ của cả tổ chức: rủi ro có thể xảy ra, giả định đang tin là đúng, vấn đề đang xảy ra và việc phải chờ bên khác (quốc tế gọi là sổ RAID). Điểm rủi ro = xác suất × mức ảnh hưởng, mục đáng lo nhất luôn nằm trên cùng."
+        description={
+          <>
+            Ghi lại rủi ro, giả định, vấn đề và việc chờ bên khác có thể cản tiến độ.{' '}
+            <DocsLink anchor="quan-ly-nang-cao" />
+          </>
+        }
         actions={
           <>
             <ExportMenu

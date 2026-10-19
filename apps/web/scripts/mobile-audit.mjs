@@ -99,6 +99,8 @@ const DEFAULT_ROUTES = [
     (v) => `/manage/${v}`,
   ),
   '/connect/integrations',
+  '/connect/integrations/telegram',
+  '/connect/integrations/digest',
   '/connect/automation',
   ...[
     'general',

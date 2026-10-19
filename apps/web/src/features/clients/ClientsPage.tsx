@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { DocsLink } from '@/components/ui/DocsLink';
 import {
   Building2,
   ChevronDown,
@@ -385,7 +386,12 @@ export function ClientsPage() {
     <PageFrame size="xl">
       <PageHeader
         title={MANAGE_LABELS.clients}
-        description="Lưu thông tin liên hệ của khách hàng, nối họ với dự án đang làm và ghi lại giá trị, thời hạn của từng hợp đồng để không bỏ sót cam kết."
+        description={
+          <>
+            Lưu thông tin khách hàng, nối với dự án và theo dõi hợp đồng.{' '}
+            <DocsLink anchor="quan-ly-nang-cao" />
+          </>
+        }
         actions={
           canManage ? (
             <Button size="sm" onClick={openCreate}>

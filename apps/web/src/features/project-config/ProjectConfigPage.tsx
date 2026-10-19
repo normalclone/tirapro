@@ -131,8 +131,8 @@ export function ConfigSection() {
   const description =
     section === 'members'
       ? project?.isPrivate
-        ? 'Dự án riêng tư — chỉ những người ở đây (và quản trị) thấy dự án.'
-        : 'Mọi thành viên của không gian làm việc đều tham gia dự án này. Có thể đặt vai trò riêng cho từng người khi cần.'
+        ? 'Dự án riêng tư — chỉ người ở đây và quản trị thấy được.'
+        : 'Mọi thành viên không gian làm việc đều tham gia; đặt vai trò riêng cho từng người khi cần.'
       : def.description;
 
   return (

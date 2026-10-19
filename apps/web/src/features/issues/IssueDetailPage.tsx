@@ -482,6 +482,9 @@ export function IssueDetailPage() {
     }
   }
 
+  const showIssue =
+    !!issue && viewState !== 'not-found' && viewState !== 'error' && viewState !== 'loading';
+
   return (
     <div className="flex h-full min-h-0">
       {/* Sidebar dự án — luôn hiển thị để giữ ngữ cảnh (giống Jira) */}
@@ -490,12 +493,12 @@ export function IssueDetailPage() {
       <div className="min-w-0 flex-1 overflow-auto">
         <PageFrame size="lg" className="py-6">
           {/*
-           * Tiêu đề trang cho trình đọc màn hình (`titleHidden`): ô tiêu đề hiển thị bên dưới là ô sửa tại chỗ nằm cạnh
-           * các ô chọn loại/ưu tiên nên không thể là h1 (h1 sẽ chứa cả ô chọn). Có cả khi đang tải/lỗi/không thấy.
+           * Đã có công việc: không vẽ tiêu đề ở đây — h1 là chính ô tiêu đề hiển thị bên dưới (title-less: chỉ breadcrumb +
+           * actions). Đang tải/lỗi/không thấy: chưa có ô đó nên dùng h1 sr-only (`titleHidden`) → mọi trạng thái đúng một h1.
            */}
           <PageHeader
-            titleHidden
-            title={issue ? `${key} · ${issue.summary}` : key}
+            titleHidden={!showIssue}
+            title={showIssue ? undefined : key}
             breadcrumb={[
               { label: workspaceName },
               project
@@ -566,36 +569,42 @@ export function IssueDetailPage() {
                     <IssueSeveritySelect issue={issue} />
                     <IssueResolutionSelect issue={issue} />
                   </div>
-                  {editingSummary ? (
-                    <Input
-                      autoFocus
-                      value={summary}
-                      onChange={(e) => setSummary(e.target.value)}
-                      onBlur={saveSummary}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') void saveSummary();
-                        else if (e.key === 'Escape' && !e.nativeEvent.isComposing) {
-                          // Esc huỷ sửa (đúng UX_CONVENTIONS) — trả lại tiêu đề cũ, không lưu.
-                          e.preventDefault();
-                          summaryCancelled.current = true;
-                          setSummary(issue.summary);
-                          setEditingSummary(false);
+                  {/* h1 của trang = ô tiêu đề hiển thị (đang sửa thì h1 bọc ô nhập, vẫn đúng một h1). */}
+                  <h1 className="order-3 min-w-0 basis-full sm:order-2 sm:basis-0 sm:flex-1">
+                    {editingSummary ? (
+                      <Input
+                        autoFocus
+                        aria-label="Tiêu đề công việc"
+                        value={summary}
+                        onChange={(e) => setSummary(e.target.value)}
+                        onBlur={saveSummary}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') void saveSummary();
+                          else if (e.key === 'Escape' && !e.nativeEvent.isComposing) {
+                            // Esc huỷ sửa (đúng UX_CONVENTIONS) — trả lại tiêu đề cũ, không lưu.
+                            e.preventDefault();
+                            summaryCancelled.current = true;
+                            setSummary(issue.summary);
+                            setEditingSummary(false);
+                          }
+                        }}
+                        className="h-10 text-xl font-semibold tracking-tight sm:text-2xl"
+                      />
+                    ) : (
+                      <span
+                        className={cn(
+                          '-mx-1 block break-words rounded px-1 text-xl font-semibold tracking-tight sm:text-2xl',
+                          canEditThis && 'cursor-text hover:bg-surface-2',
+                        )}
+                        onClick={canEditThis ? () => setEditingSummary(true) : undefined}
+                        title={
+                          canEditThis ? withKey('Bấm để sửa tiêu đề', 'issue.edit') : undefined
                         }
-                      }}
-                      className="order-3 h-10 basis-full text-xl font-semibold tracking-tight sm:order-2 sm:basis-0 sm:flex-1 sm:text-2xl"
-                    />
-                  ) : (
-                    <div
-                      className={cn(
-                        '-mx-1 order-3 min-w-0 basis-full break-words rounded px-1 text-xl font-semibold tracking-tight sm:order-2 sm:basis-0 sm:flex-1 sm:text-2xl',
-                        canEditThis && 'cursor-text hover:bg-surface-2',
-                      )}
-                      onClick={canEditThis ? () => setEditingSummary(true) : undefined}
-                      title={canEditThis ? withKey('Bấm để sửa tiêu đề', 'issue.edit') : undefined}
-                    >
-                      {issue.summary}
-                    </div>
-                  )}
+                      >
+                        {issue.summary}
+                      </span>
+                    )}
+                  </h1>
                   <div className="order-2 ml-auto flex shrink-0 items-center gap-2 sm:order-3 sm:ml-0 sm:mt-1">
                     <PresenceAvatars room="issue" projectId={issue.projectId} issueId={issue.id} />
                     <IssueSlaBadge issueId={issue.id} />

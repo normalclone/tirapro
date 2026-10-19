@@ -7,7 +7,7 @@ export const SettingsSeveritiesPage = () => (
   <PageFrame size="sm">
     <PageHeader
       title={SETTINGS_LABELS.severities}
-      description="Đặt các mức nghiêm trọng để phân loại công việc theo tác động. Số thứ tự càng nhỏ thì mức càng nặng và càng được xử lý trước."
+      description="Đặt các mức nghiêm trọng; số thứ tự càng nhỏ thì mức càng nặng, xử lý trước."
     />
     <SeveritySection />
   </PageFrame>

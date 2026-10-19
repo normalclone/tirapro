@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ComponentProps } from 'react';
+import { DocsLink } from '@/components/ui/DocsLink';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import type { UseQueryResult } from '@tanstack/react-query';
 import { Bookmark, ChevronDown, Filter as FilterIcon, Play, Plus, Trash2 } from 'lucide-react';
@@ -255,7 +256,12 @@ export function FiltersPage() {
         <PageHeader
           className="mb-0"
           title={heading}
-          description="Chọn một bộ lọc đã lưu để xem kết quả, hoặc chạy nhanh một truy vấn JQL bên dưới."
+          description={
+            <>
+              Chọn một bộ lọc đã lưu để xem kết quả, hoặc chạy nhanh một truy vấn JQL.{' '}
+              <DocsLink anchor="tim-kiem" />
+            </>
+          }
           actions={
             canManageFilters ? (
               <Button

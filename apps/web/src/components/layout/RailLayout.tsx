@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { cn } from '@/lib/utils';
+import { RAIL_SURFACE, RAIL_WIDTH } from './railSurface';
 
 /**
  * Khung master–detail có rail trái (Bộ lọc, Wiki): rail là DANH SÁCH ĐỘNG (tìm/xoá/cây trang) chứ không phải menu
@@ -25,8 +26,10 @@ export function RailLayout({
       <aside
         aria-label={ariaLabel}
         className={cn(
-          'flex shrink-0 flex-col gap-2 border-b border-border bg-surface px-3 py-3',
-          'lg:w-72 lg:overflow-y-auto lg:border-b-0 lg:border-r lg:py-5',
+          RAIL_SURFACE,
+          RAIL_WIDTH.master,
+          // Dưới lg rail xếp trên nội dung: viền dưới thay viền phải, đệm dọc gọn hơn.
+          'flex flex-col gap-2 border-b py-3 lg:border-b-0',
           railClassName,
         )}
       >

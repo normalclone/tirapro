@@ -7,7 +7,7 @@ export const SettingsFieldsPage = () => (
   <PageFrame size="sm">
     <PageHeader
       title={SETTINGS_LABELS.fields}
-      description="Thêm các ô thông tin riêng của bạn vào mỗi công việc. Không thể đổi kiểu dữ liệu của trường sau khi tạo."
+      description="Thêm ô thông tin riêng vào mỗi công việc; kiểu dữ liệu không đổi được sau khi tạo."
     />
     <CustomFieldsAdminSection />
   </PageFrame>

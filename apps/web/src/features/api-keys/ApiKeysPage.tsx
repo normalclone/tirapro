@@ -126,7 +126,7 @@ export function ApiKeysPage() {
     <PageFrame size="sm">
       <PageHeader
         title={SETTINGS_LABELS.api}
-        description="Cấp khoá API để phần mềm khác & trợ lý AI (qua MCP) khai thác dữ liệu của không gian làm việc."
+        description="Cấp khoá API để phần mềm khác và trợ lý AI (MCP) khai thác dữ liệu."
       />
 
       {/* Điểm kết nối */}
