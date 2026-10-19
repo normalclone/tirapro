@@ -22,9 +22,17 @@ export class RankService {
     private readonly events: EventEmitter2,
   ) {}
 
-  /** Rank của issue làm mốc — phải còn sống và cùng workspace/project, nếu không thì báo lỗi thay vì lặng lẽ xếp xuống cuối. */
-  async rankOf(workspaceId: string, projectId: string, id: string): Promise<string> {
-    const r = await this.prisma.issue.findFirst({
+  /**
+   * Rank của issue làm mốc — phải còn sống và cùng workspace/project, nếu không thì báo lỗi thay vì lặng lẽ xếp xuống cuối.
+   * `db`: đọc qua transaction của bên gọi (đã giữ khoá dự án) — mặc định `this.prisma` (ngoài transaction).
+   */
+  async rankOf(
+    workspaceId: string,
+    projectId: string,
+    id: string,
+    db: Prisma.TransactionClient = this.prisma,
+  ): Promise<string> {
+    const r = await db.issue.findFirst({
       where: { id, workspaceId, projectId, deletedAt: null },
       select: { rank: true },
     });

@@ -1630,16 +1630,6 @@ export class IssuesService {
 
     // Không có mốc nào ⇒ giữ rank hiện tại (trước đây rankBetween(null, null) đặt thẻ vào GIỮA dự án).
     const hasNeighbor = wantsRank && useRankHint;
-    const rank = hasNeighbor
-      ? await this.rankService.resolveRank(current.projectId, this.prisma, null, id, async () => ({
-          prev: input.afterId
-            ? await this.rankService.rankOf(workspaceId, current.projectId, input.afterId)
-            : null,
-          next: input.beforeId
-            ? await this.rankService.rankOf(workspaceId, current.projectId, input.beforeId)
-            : null,
-        }))
-      : current.rank;
 
     // Chỉ kiểm WIP khi thật sự đổi sang trạng thái khác (kéo trong cùng cột/xếp lại thứ tự thì không chiếm thêm chỗ).
     const wip = statusChanged
@@ -1651,36 +1641,68 @@ export class IssuesService {
         )
       : null;
 
-    const updated = await this.prisma.$transaction(async (tx) => {
-      if (wip)
-        await this.wipService.enforceWip(tx, wip, {
-          userId,
-          workspaceId,
-          projectId: current.projectId,
-          incoming: 1,
-          force: input.force,
+    // Rank được tính TRONG transaction, SAU khi khoá hàng dự án (cùng khoá với create/rebalance): trước đây đọc mốc ở
+    // ngoài khoá nên kéo xuống cuối đồng thời với create (hoặc hai lần kéo vào cùng khe) ra hai việc cùng rank.
+    // Thứ tự khoá cố định: dự án → (rank) → cột WIP (enforceWip) — không đảo nên không deadlock.
+    // Sự kiện rebalance (nếu hết chỗ chèn) gom vào `afterCommit`, chỉ phát sau khi commit.
+    const afterCommit: Array<() => void> = [];
+    let rank = current.rank;
+    const updated = await this.prisma.$transaction(
+      async (tx) => {
+        if (hasNeighbor) {
+          await tx.project.update({
+            where: { id: current.projectId },
+            data: { updatedAt: new Date() },
+            select: { id: true },
+          });
+          rank = await this.rankService.resolveRank(
+            current.projectId,
+            tx,
+            afterCommit,
+            id,
+            async () => ({
+              prev: input.afterId
+                ? await this.rankService.rankOf(workspaceId, current.projectId, input.afterId, tx)
+                : null,
+              next: input.beforeId
+                ? await this.rankService.rankOf(workspaceId, current.projectId, input.beforeId, tx)
+                : null,
+            }),
+          );
+        }
+        if (wip)
+          await this.wipService.enforceWip(tx, wip, {
+            userId,
+            workspaceId,
+            projectId: current.projectId,
+            incoming: 1,
+            force: input.force,
+          });
+        const row = await this.updateWithVersion(tx, id, workspaceId, input.version, {
+          rank,
+          statusId: input.statusId ?? current.statusId,
+          sprintId: input.sprintId !== undefined ? input.sprintId : current.sprintId,
+          updatedById: userId,
+          // Cùng quy ước bulkUpdate: sang DONE đặt Resolution mặc định (move không nhận resolutionId), rời DONE xoá cả hai.
+          ...(statusChanged
+            ? {
+                resolutionId: toDone ? moveResolutionId : null,
+                resolvedAt: toDone ? new Date() : null,
+              }
+            : {}),
         });
-      const row = await this.updateWithVersion(tx, id, workspaceId, input.version, {
-        rank,
-        statusId: input.statusId ?? current.statusId,
-        sprintId: input.sprintId !== undefined ? input.sprintId : current.sprintId,
-        updatedById: userId,
-        // Cùng quy ước bulkUpdate: sang DONE đặt Resolution mặc định (move không nhận resolutionId), rời DONE xoá cả hai.
-        ...(statusChanged
-          ? {
-              resolutionId: toDone ? moveResolutionId : null,
-              resolvedAt: toDone ? new Date() : null,
-            }
-          : {}),
-      });
-      // Kéo sang cột/trạng thái khác cũng là đổi trạng thái: ghi lịch sử để CFD/burndown không hụt.
-      if (row.statusId !== current.statusId)
-        await this.recordStatusChange(tx, userId, current, row);
-      // Đổi sprint qua move cũng phải để lại lịch sử SPRINT (burndown/velocity dựa vào đó), như update()/bulkUpdate().
-      // Ở move chỉ sprint có thể khác nên recordChanges chỉ ghi đúng dòng SPRINT.
-      if (row.sprintId !== current.sprintId) await this.recordChanges(tx, userId, current, row);
-      return row;
-    });
+        // Kéo sang cột/trạng thái khác cũng là đổi trạng thái: ghi lịch sử để CFD/burndown không hụt.
+        if (row.statusId !== current.statusId)
+          await this.recordStatusChange(tx, userId, current, row);
+        // Đổi sprint qua move cũng phải để lại lịch sử SPRINT (burndown/velocity dựa vào đó), như update()/bulkUpdate().
+        // Ở move chỉ sprint có thể khác nên recordChanges chỉ ghi đúng dòng SPRINT.
+        if (row.sprintId !== current.sprintId) await this.recordChanges(tx, userId, current, row);
+        return row;
+      },
+      // Có mốc ⇒ có thể rebalance cả dự án trong tx (dự án lớn vượt 5s mặc định).
+      hasNeighbor ? { timeout: 30_000 } : undefined,
+    );
+    for (const fire of afterCommit) fire();
     const dto = this.toDto(updated);
     this.events.emit(DOMAIN_EVENTS.ISSUE_MOVED, {
       issueId: id,
