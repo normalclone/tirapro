@@ -1,4 +1,4 @@
-import { memo, type CSSProperties, type HTMLAttributes, type Ref } from 'react';
+import { memo, useContext, type CSSProperties, type HTMLAttributes, type Ref } from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import type { IssueDto } from '@tirapro/types';
 import { DueBadge, dueBorderClass } from '@/components/ui/DueBadge';
@@ -20,6 +20,8 @@ import { rowPeekProps } from '@/features/issues/peek/rowPeekProps';
 import { PEEKED_ROW_CLS, peekedAttrs } from '@/features/issues/peek/peekedRow';
 import { IssueKeyLink } from '@/features/issues/peek/IssueKeyLink';
 import { labelToneStyle } from '@/lib/labelPalette';
+import { cardLayout, type CardDisplay } from './cardDisplay';
+import { CardDisplayContext } from './cardDisplayContext';
 
 /** Roving focus giữa các card bằng phím mũi tên (theo data-lane/col/row). */
 function focusCard(lane: number, col: number, row: number): boolean {
@@ -62,6 +64,7 @@ export function CardBody({
   rootProps,
   onOpenKey,
   peeked,
+  display,
 }: {
   issue: IssueDto;
   progress?: SubtreeProgress;
@@ -79,7 +82,12 @@ export function CardBody({
   onOpenKey?: (key: string) => void;
   /** Đang được xem nhanh ở panel phải: tô nền + vòng (token) và `aria-current`. */
   peeked?: boolean;
+  /** Ghi đè tuỳ chọn hiển thị (xem trước trong popover); bỏ trống = tuỳ chọn của người dùng từ context. */
+  display?: CardDisplay;
 }) {
+  const fromContext = useContext(CardDisplayContext);
+  const { fields } = display ?? fromContext;
+  const layout = cardLayout((display ?? fromContext).density);
   const labels = issue.labels ?? [];
   const ranks = usePriorityRanks();
   return (
@@ -89,22 +97,23 @@ export function CardBody({
       {...peekedAttrs(peeked)}
       style={style}
       className={cn(
-        'relative rounded-md border bg-surface p-2.5 shadow-sm transition-shadow',
+        'relative rounded-md border bg-surface shadow-sm transition-shadow',
+        layout.pad,
         canDrag
           ? `cursor-grab touch-manipulation active:cursor-grabbing ${COARSE_NO_CALLOUT}`
           : 'cursor-pointer',
-        dueBorderClass(issue) || 'border-border',
+        (fields.due && dueBorderClass(issue)) || 'border-border',
         'hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
         isDragging && 'opacity-40',
         peeked && PEEKED_ROW_CLS,
         overlay && 'shadow-lg',
       )}
     >
-      <div className="mb-1.5 flex items-center gap-2">
+      <div className={cn(layout.gap, 'flex items-center gap-2')}>
         <IssueTypeBadge name={issue.type.name} color={issue.type.color} />
         <div className="ml-auto flex items-center gap-2">
-          <DueBadge issue={issue} warnOnly />
-          {issue.storyPoints != null && (
+          {fields.due && <DueBadge issue={issue} warnOnly />}
+          {fields.points && issue.storyPoints != null && (
             <span
               className="tabular grid h-5 min-w-5 place-items-center rounded-full bg-surface-2 px-1 text-[10px] font-medium text-muted"
               title={`${issue.storyPoints} điểm ước lượng — mức độ lớn của việc này`}
@@ -115,15 +124,15 @@ export function CardBody({
         </div>
       </div>
 
-      <p className="mb-1.5 line-clamp-2 text-sm text-ink-strong">{issue.summary}</p>
+      <p className={cn(layout.gap, layout.title, 'text-sm text-ink-strong')}>{issue.summary}</p>
 
-      {labels.length > 0 && (
-        <div className="mb-1.5 flex flex-wrap items-center gap-1">
-          {labels.slice(0, 3).map((l) => (
+      {fields.labels && labels.length > 0 && (
+        <div className={cn(layout.gap, 'flex flex-wrap items-center gap-1')}>
+          {labels.slice(0, layout.labelMax).map((l) => (
             <LabelChip key={l.id} name={l.name} color={l.color} />
           ))}
-          {labels.length > 3 && (
-            <span className="text-[10px] text-faint">+{labels.length - 3}</span>
+          {labels.length > layout.labelMax && (
+            <span className="text-[10px] text-faint">+{labels.length - layout.labelMax}</span>
           )}
         </div>
       )}
@@ -139,7 +148,7 @@ export function CardBody({
             {issue.key}
           </span>
         )}
-        {issue.priority && (
+        {fields.priority && issue.priority && (
           <PriorityIcon
             name={issue.priority.name}
             rank={issue.priority.rank}
@@ -151,31 +160,37 @@ export function CardBody({
         {issue.severity && isBugType(issue.type) && (
           <SeverityBadge severity={issue.severity} compact />
         )}
-        <div className="ml-auto flex min-w-0 items-center">
-          {issue.assignee ? (
-            <span
-              className="flex min-w-0 items-center gap-1"
-              title={`Người phụ trách: ${issue.assignee.displayName}`}
-            >
-              <Avatar name={issue.assignee.displayName} src={issue.assignee.avatarUrl} size={18} />
-              <span className="max-w-[6.5rem] truncate text-xs text-muted">
-                {issue.assignee.displayName}
+        {fields.assignee && (
+          <div className="ml-auto flex min-w-0 items-center">
+            {issue.assignee ? (
+              <span
+                className="flex min-w-0 items-center gap-1"
+                title={`Người phụ trách: ${issue.assignee.displayName}`}
+              >
+                <Avatar
+                  name={issue.assignee.displayName}
+                  src={issue.assignee.avatarUrl}
+                  size={18}
+                />
+                <span className="max-w-[6.5rem] truncate text-xs text-muted">
+                  {issue.assignee.displayName}
+                </span>
               </span>
-            </span>
-          ) : (
-            <span
-              className="whitespace-nowrap text-[11px] text-faint"
-              title="Chưa có ai nhận việc này"
-            >
-              Chưa gán
-            </span>
-          )}
-        </div>
+            ) : (
+              <span
+                className="whitespace-nowrap text-[11px] text-faint"
+                title="Chưa có ai nhận việc này"
+              >
+                Chưa gán
+              </span>
+            )}
+          </div>
+        )}
       </div>
 
-      {progress && progress.total > 0 && (
+      {fields.progress && progress && progress.total > 0 && (
         <div
-          className="mt-2 flex items-center gap-1.5"
+          className={cn(layout.progressTop, 'flex items-center gap-1.5')}
           title={`Việc con: đã xong ${progress.done}/${progress.total}`}
         >
           <TaskProgress progress={progress} compact className="flex-1" />
