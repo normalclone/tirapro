@@ -306,6 +306,7 @@ export function FiltersPage() {
           hasMore={shownSet?.hasMore ?? false}
           loadingMore={loadingMore}
           onLoadMore={() => void loadMore()}
+          scopeKey={active.kind === 'filter' ? `filter:${active.filter.id}` : 'adhoc'}
           exportJql={
             active.kind === 'adhoc'
               ? active.jql

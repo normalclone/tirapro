@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState, type KeyboardEvent, type MouseEvent } from 'react';
+import { useMemo, type KeyboardEvent, type MouseEvent } from 'react';
 import * as Popover from '@radix-ui/react-popover';
 import { ChevronLeft, ChevronRight, Columns3, Filter as FilterIcon, SearchX } from 'lucide-react';
 import type { IssueDto } from '@tirapro/types';
@@ -14,46 +14,11 @@ import { categoryColor } from '@/lib/statusColor';
 import { useMediaQuery } from '@/lib/useMediaQuery';
 import { resultCountLabel } from './resultPaging';
 import { cn } from '@/lib/utils';
-import { useAuth } from '@/stores/auth';
-import {
-  RESULT_COLUMNS,
-  cellText,
-  loadColumns,
-  saveColumns,
-  type ResultColumnId,
-} from './resultColumns';
+import { ColumnHeader } from './ColumnHeader';
+import { RESULT_COLUMNS, cellText, isDefaultColumns, type ResultColumnId } from './resultColumns';
+import { useResultColumns } from './useResultColumns';
 
 const RESULTS_PAGE_SIZE = 25;
-
-/**
- * Cột đang chọn của người dùng (nhớ trong localStorage theo `userId`). `columns` luôn có `key` + `summary`.
- * L2 (Xuất CSV) dùng chính hook này + `cellText`/`RESULT_COLUMNS` để xuất đúng cột đang xem.
- */
-function useResultColumns(): {
-  columns: ResultColumnId[];
-  toggle: (id: ResultColumnId) => void;
-} {
-  const userId = useAuth((s) => s.user?.id ?? 'anonymous');
-  const [state, setState] = useState(() => ({ userId, columns: loadColumns(userId) }));
-  // Đổi người dùng (đăng xuất/đăng nhập tài khoản khác) → nạp lại cột của người đó.
-  const current = state.userId === userId ? state : { userId, columns: loadColumns(userId) };
-  if (current !== state) setState(current);
-
-  const toggle = useCallback(
-    (id: ResultColumnId) => {
-      const def = RESULT_COLUMNS.find((c) => c.id === id);
-      if (!def || def.locked) return;
-      const has = current.columns.includes(id);
-      const next = RESULT_COLUMNS.filter((c) =>
-        c.id === id ? !has : current.columns.includes(c.id),
-      ).map((c) => c.id);
-      saveColumns(userId, next);
-      setState({ userId, columns: next });
-    },
-    [current.columns, userId],
-  );
-  return { columns: current.columns, toggle };
-}
 
 export function ResultsTable({
   issues,
@@ -68,6 +33,7 @@ export function ResultsTable({
   hasMore = false,
   loadingMore = false,
   onLoadMore,
+  scopeKey = 'adhoc',
 }: {
   issues: IssueDto[] | null;
   loading: boolean;
@@ -84,8 +50,11 @@ export function ResultsTable({
   hasMore?: boolean;
   loadingMore?: boolean;
   onLoadMore?: () => void;
+  /** Phạm vi nhớ bố cục cột: `adhoc` (JQL nhanh) hoặc `filter:<id>` (bộ lọc đã lưu). */
+  scopeKey?: string;
 }) {
-  const { columns, toggle } = useResultColumns();
+  const cols = useResultColumns(scopeKey);
+  const { columns } = cols;
   const wide = useMediaQuery('(min-width: 640px)', true);
   const ctx = useMemo(() => ({ projectKeyById }), [projectKeyById]);
 
@@ -129,6 +98,9 @@ export function ResultsTable({
 
   return (
     <div className="flex flex-col rounded-lg border border-border bg-surface">
+      <p className="sr-only" role="status">
+        {cols.announce}
+      </p>
       <ResultsToolbar
         countLabel={resultCountLabel(total, hasMore)}
         range={
@@ -137,42 +109,19 @@ export function ResultsTable({
         hasMore={hasMore}
         wide={wide}
         columns={columns}
-        onToggleColumn={toggle}
+        onToggleColumn={cols.toggle}
+        onResetColumns={cols.reset}
         exportJql={exportJql}
       />
 
       {wide ? (
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-max border-collapse text-sm">
-            <thead>
-              <tr className="border-b border-border text-left text-xs font-medium text-muted">
-                {columns.map((id) => (
-                  <th
-                    key={id}
-                    scope="col"
-                    className={cn(
-                      'whitespace-nowrap px-3 py-2 first:pl-4 last:pr-4',
-                      id === 'points' && 'text-right',
-                    )}
-                  >
-                    {RESULT_COLUMNS.find((c) => c.id === id)!.label}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {pageItems.map((issue) => (
-                <ResultRow
-                  key={issue.id}
-                  issue={issue}
-                  columns={columns}
-                  ctx={ctx}
-                  onOpen={onOpen}
-                />
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <ResultsGrid
+          columns={columns}
+          cols={cols}
+          pageItems={pageItems}
+          ctx={ctx}
+          onOpen={onOpen}
+        />
       ) : (
         <ul className="divide-y divide-border">
           {pageItems.map((issue) => (
@@ -217,6 +166,55 @@ export function ResultsTable({
   );
 }
 
+/** Bảng kết quả (màn rộng): tiêu đề cột là nút mở menu sửa cột; cuộn ngang khi quá rộng. */
+function ResultsGrid({
+  columns,
+  cols,
+  pageItems,
+  ctx,
+  onOpen,
+}: {
+  columns: ResultColumnId[];
+  cols: ReturnType<typeof useResultColumns>;
+  pageItems: IssueDto[];
+  ctx: { projectKeyById: Map<string, string> };
+  onOpen: (key: string) => void;
+}) {
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full min-w-max border-collapse text-sm">
+        <thead ref={cols.theadRef}>
+          <tr className="border-b border-border text-left text-xs font-medium text-muted">
+            {columns.map((id) => (
+              <th
+                key={id}
+                scope="col"
+                className={cn(
+                  'whitespace-nowrap px-3 py-2 first:pl-4 last:pr-4',
+                  id === 'points' && 'text-right',
+                )}
+              >
+                <ColumnHeader
+                  id={id}
+                  columns={columns}
+                  onMove={cols.move}
+                  onHide={cols.hide}
+                  onShow={cols.show}
+                />
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-border">
+          {pageItems.map((issue) => (
+            <ResultRow key={issue.id} issue={issue} columns={columns} ctx={ctx} onOpen={onOpen} />
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 /** Thanh đầu bảng kết quả: nhãn đếm (không ghi số bị cắt như tổng), chọn cột, xuất CSV, gợi ý khi còn nữa. */
 function ResultsToolbar({
   countLabel,
@@ -225,6 +223,7 @@ function ResultsToolbar({
   wide,
   columns,
   onToggleColumn,
+  onResetColumns,
   exportJql,
 }: {
   countLabel: string;
@@ -233,6 +232,7 @@ function ResultsToolbar({
   wide: boolean;
   columns: ResultColumnId[];
   onToggleColumn: (id: ResultColumnId) => void;
+  onResetColumns: () => void;
   exportJql?: string;
 }) {
   return (
@@ -244,7 +244,9 @@ function ResultsToolbar({
             {countLabel}
             {range}
           </span>
-          {wide && <ColumnPicker columns={columns} onToggle={onToggleColumn} />}
+          {wide && (
+            <ColumnPicker columns={columns} onToggle={onToggleColumn} onReset={onResetColumns} />
+          )}
           {exportJql && (
             <ExportMenu
               items={[
@@ -277,9 +279,11 @@ function ResultsToolbar({
 function ColumnPicker({
   columns,
   onToggle,
+  onReset,
 }: {
   columns: ResultColumnId[];
   onToggle: (id: ResultColumnId) => void;
+  onReset: () => void;
 }) {
   return (
     <Popover.Root>
@@ -318,6 +322,16 @@ function ColumnPicker({
               </li>
             ))}
           </ul>
+          <div className="mt-1 border-t border-border pt-1">
+            <button
+              type="button"
+              onClick={onReset}
+              disabled={isDefaultColumns(columns)}
+              className="w-full rounded-md px-2 py-1.5 text-left text-sm text-ink hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:cursor-not-allowed disabled:text-faint disabled:hover:bg-transparent [@media(pointer:coarse)]:min-h-11"
+            >
+              Đặt lại mặc định
+            </button>
+          </div>
         </Popover.Content>
       </Popover.Portal>
     </Popover.Root>
