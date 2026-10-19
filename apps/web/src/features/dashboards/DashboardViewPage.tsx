@@ -1,5 +1,5 @@
-import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Copy, LayoutDashboard, Pencil, Plus, Trash2 } from 'lucide-react';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { Copy, LayoutDashboard, Pencil, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/Button';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
@@ -8,7 +8,8 @@ import { useConfirm } from '@/components/ui/useConfirm';
 import { PrintButton } from '@/components/ui/PrintButton';
 import { PrintHeader } from '@/components/ui/PrintHeader';
 import { Badge, EmptyState } from '@/components/ui/primitives';
-import { pageContainer } from '@/components/layout/page';
+import { PageFrame } from '@/components/layout/PageFrame';
+import { PageHeader } from '@/components/layout/PageHeader';
 import { apiErrorMessage } from '@/lib/api';
 import { useAuth } from '@/stores/auth';
 import type { CustomDashboardDto } from '@tirapro/shared';
@@ -50,9 +51,9 @@ export function DashboardViewPage() {
             onReload={() => void query.refetch()}
           />
         ) : (
-          <div className={pageContainer('xl', 'py-6')}>
+          <PageFrame size="xl" className="py-6">
             <DashboardView dashboard={dashboard} canManage={canManage} />
-          </div>
+          </PageFrame>
         )
       }
     </QueryBoundary>
@@ -105,54 +106,62 @@ function DashboardView({
   return (
     <>
       <PrintHeader title={dashboard.name} subtitle={scopeDescription(dashboard)} />
-      <header className="mb-5 flex flex-wrap items-start justify-between gap-x-4 gap-y-3 print:hidden">
-        <div className="min-w-0">
-          <Link
-            to="/"
-            className="mb-1 inline-flex items-center gap-1 rounded-sm text-xs text-muted hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
-          >
-            <ArrowLeft className="h-3.5 w-3.5" aria-hidden /> Tổng quan
-          </Link>
-          <h1 className="flex flex-wrap items-center gap-x-3 gap-y-1 text-2xl font-semibold tracking-tight text-ink-strong">
+      <PageHeader
+        className="print:hidden"
+        breadcrumb={[{ label: 'Tổng quan', to: '/' }, { label: dashboard.name }]}
+        title={
+          <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
             <span className="min-w-0 break-words">{dashboard.name}</span>
             <Badge className="bg-surface-2 text-muted" title={scopeDescription(dashboard)}>
               {scopeBadge(dashboard)}
             </Badge>
-          </h1>
-          {dashboard.description && (
-            <p className="mt-1 max-w-2xl text-sm text-muted">{dashboard.description}</p>
-          )}
-          {!dashboard.isMine && (
-            <p className="mt-1 text-xs text-faint">Của {dashboard.owner.displayName}</p>
-          )}
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <DashboardSwitcher currentId={dashboard.id} />
-          {!dashboard.canEdit && canManage && (
-            <Button size="sm" variant="secondary" onClick={copy} loading={duplicate.isPending}>
-              <Copy className="h-4 w-4" aria-hidden /> Tạo bản sao để chỉnh sửa
-            </Button>
-          )}
-          {dashboard.canEdit && canManage && (
-            <Button size="sm" onClick={() => setParams({ edit: '1' })}>
-              <Pencil className="h-4 w-4" aria-hidden /> Chỉnh sửa
-            </Button>
-          )}
-          {widgets.length > 0 && <PrintButton title={dashboard.name} />}
-          {dashboard.canDelete && canManage && (
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => void onDelete()}
-              loading={remove.isPending}
-              aria-label="Xoá bảng tổng quan"
-              title="Xoá bảng tổng quan"
-            >
-              <Trash2 className="h-4 w-4" aria-hidden />
-            </Button>
-          )}
-        </div>
-      </header>
+          </span>
+        }
+        description={
+          dashboard.description || !dashboard.isMine ? (
+            <>
+              {dashboard.description}
+              {!dashboard.isMine && (
+                <span
+                  className={
+                    dashboard.description ? 'mt-1 block text-xs text-faint' : 'text-xs text-faint'
+                  }
+                >
+                  Của {dashboard.owner.displayName}
+                </span>
+              )}
+            </>
+          ) : undefined
+        }
+        actions={
+          <>
+            <DashboardSwitcher currentId={dashboard.id} />
+            {!dashboard.canEdit && canManage && (
+              <Button size="sm" variant="secondary" onClick={copy} loading={duplicate.isPending}>
+                <Copy className="h-4 w-4" aria-hidden /> Tạo bản sao để chỉnh sửa
+              </Button>
+            )}
+            {dashboard.canEdit && canManage && (
+              <Button size="sm" onClick={() => setParams({ edit: '1' })}>
+                <Pencil className="h-4 w-4" aria-hidden /> Chỉnh sửa
+              </Button>
+            )}
+            {widgets.length > 0 && <PrintButton title={dashboard.name} />}
+            {dashboard.canDelete && canManage && (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => void onDelete()}
+                loading={remove.isPending}
+                aria-label="Xoá bảng tổng quan"
+                title="Xoá bảng tổng quan"
+              >
+                <Trash2 className="h-4 w-4" aria-hidden />
+              </Button>
+            )}
+          </>
+        }
+      />
 
       {widgets.length === 0 ? (
         <EmptyState
@@ -169,7 +178,7 @@ function DashboardView({
           }
           action={
             dashboard.canEdit && canManage ? (
-              <Button onClick={() => setParams({ edit: '1' })}>
+              <Button variant="secondary" size="sm" onClick={() => setParams({ edit: '1' })}>
                 <Plus className="h-4 w-4" aria-hidden /> Thêm widget
               </Button>
             ) : undefined

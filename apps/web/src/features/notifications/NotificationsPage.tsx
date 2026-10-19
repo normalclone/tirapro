@@ -5,7 +5,8 @@ import { Button } from '@/components/ui/Button';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
 import { EmptyState } from '@/components/ui/primitives';
 import { Tabs, TabPanel } from '@/components/ui/Tabs';
-import { pageContainer } from '@/components/layout/page';
+import { PageFrame } from '@/components/layout/PageFrame';
+import { PageHeader } from '@/components/layout/PageHeader';
 import { APP_NAV_LABELS } from '@/lib/navLabels';
 import { NotificationRow } from './NotificationRow';
 import { notificationHref } from './notificationHref';
@@ -48,21 +49,21 @@ export function NotificationsPage() {
   const current = TABS.find((t) => t.id === tab)!;
 
   return (
-    <div className={pageContainer('sm')}>
-      <header className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">
-          {APP_NAV_LABELS.notifications}
-        </h1>
-        <Button
-          size="sm"
-          variant="secondary"
-          onClick={() => markAllRead.mutate()}
-          disabled={unread === 0 || markAllRead.isPending}
-          title="Đánh dấu toàn bộ thông báo chưa đọc của bạn là đã đọc (không chỉ tab đang xem)"
-        >
-          <CheckCheck className="h-4 w-4" /> Đánh dấu đã đọc tất cả
-        </Button>
-      </header>
+    <PageFrame size="sm">
+      <PageHeader
+        title={APP_NAV_LABELS.notifications}
+        actions={
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => markAllRead.mutate()}
+            disabled={unread === 0 || markAllRead.isPending}
+            title="Đánh dấu toàn bộ thông báo chưa đọc của bạn là đã đọc (không chỉ tab đang xem)"
+          >
+            <CheckCheck className="h-4 w-4" /> Đánh dấu đã đọc tất cả
+          </Button>
+        }
+      />
 
       <Tabs
         idBase="notif"
@@ -111,6 +112,6 @@ export function NotificationsPage() {
           .
         </p>
       </TabPanel>
-    </div>
+    </PageFrame>
   );
 }

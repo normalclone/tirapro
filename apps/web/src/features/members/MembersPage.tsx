@@ -14,7 +14,8 @@ import { RoleBadge } from '@/components/ui/RoleBadge';
 import { apiErrorMessage } from '@/lib/api';
 import { fmtRelative } from '@/lib/dateFormat';
 import { normalizeVi } from '@/lib/text';
-import { pageContainer } from '@/components/layout/page';
+import { PageFrame } from '@/components/layout/PageFrame';
+import { PageHeader } from '@/components/layout/PageHeader';
 import { useAuth } from '@/stores/auth';
 import { useRoles } from '@/features/roles/api';
 import { EditRolesPopover } from './EditRolesPopover';
@@ -51,16 +52,11 @@ export function MembersPage() {
   ];
 
   return (
-    <div className={pageContainer('sm')}>
-      <header className="mb-6">
-        <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">
-          {APP_NAV_LABELS.members}
-        </h1>
-        <p className="mt-1 text-sm text-muted">
-          Thành viên thuộc về cả không gian làm việc, nên ai có tên ở đây đều tham gia mọi dự án.
-          Nhóm dùng để sắp xếp họ theo chức năng và giao vai trò hàng loạt.
-        </p>
-      </header>
+    <PageFrame size="sm">
+      <PageHeader
+        title={APP_NAV_LABELS.members}
+        description="Thành viên thuộc về cả không gian làm việc, nên ai có tên ở đây đều tham gia mọi dự án. Nhóm dùng để sắp xếp họ theo chức năng và giao vai trò hàng loạt."
+      />
 
       <Tabs
         idBase="members"
@@ -161,7 +157,7 @@ export function MembersPage() {
       </TabPanel>
 
       <AddPeopleDialog mode="workspace" open={bulkOpen} onClose={() => setBulkOpen(false)} />
-    </div>
+    </PageFrame>
   );
 }
 

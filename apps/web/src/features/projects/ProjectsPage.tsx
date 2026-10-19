@@ -2,7 +2,8 @@ import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Archive, ArrowRight, FolderKanban, Plus, Search } from 'lucide-react';
 import type { ProjectDto } from '@tirapro/types';
-import { pageContainer } from '@/components/layout/page';
+import { PageFrame } from '@/components/layout/PageFrame';
+import { PageHeader } from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
@@ -73,13 +74,8 @@ export function ProjectsPage() {
   );
 
   return (
-    <div className={pageContainer('lg')}>
-      <header className="mb-6 flex flex-wrap items-center gap-3">
-        <h1 className="mr-auto text-2xl font-semibold tracking-tight text-ink-strong">
-          {APP_NAV_LABELS.projects}
-        </h1>
-        {createButton}
-      </header>
+    <PageFrame size="xl">
+      <PageHeader title={APP_NAV_LABELS.projects} actions={createButton || undefined} />
 
       {recent && last && (
         <Link
@@ -165,7 +161,7 @@ export function ProjectsPage() {
               }
               action={
                 canCreate ? (
-                  <Button size="sm" onClick={() => setCreateOpen(true)}>
+                  <Button variant="secondary" size="sm" onClick={() => setCreateOpen(true)}>
                     <Plus className="h-4 w-4" /> Tạo dự án đầu tiên
                   </Button>
                 ) : undefined
@@ -192,7 +188,7 @@ export function ProjectsPage() {
       </QueryBoundary>
 
       <CreateProjectModal open={createOpen} onClose={() => setCreateOpen(false)} />
-    </div>
+    </PageFrame>
   );
 }
 

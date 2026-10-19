@@ -7,7 +7,8 @@ import type { CustomDashboardDto, CustomWidgetDto, DashboardWidgetType } from '@
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { EmptyState } from '@/components/ui/primitives';
-import { pageContainer } from '@/components/layout/page';
+import { PageFrame } from '@/components/layout/PageFrame';
+import { PageHeader } from '@/components/layout/PageHeader';
 import { useProjects } from '@/features/projects/api';
 import { useTeams } from '@/features/teams/api';
 import { apiErrorCode, apiErrorMessage } from '@/lib/api';
@@ -339,7 +340,12 @@ export function DashboardEditor({
   const configWidget = widgets.find((w) => w.id === configId) ?? null;
 
   return (
-    <div className={pageContainer('xl', 'py-6')}>
+    <PageFrame size="xl" className="py-6">
+      {/* Tên bảng nằm trong ô nhập nên trang cần tiêu đề riêng để có đúng một h1. */}
+      <PageHeader
+        title={dashboard ? 'Chỉnh sửa bảng tổng quan' : 'Bảng tổng quan mới'}
+        className="mb-4"
+      />
       <NameFields
         name={draft.name}
         description={draft.description}
@@ -377,7 +383,7 @@ export function DashboardEditor({
           title="Bảng tổng quan trống — thêm widget đầu tiên"
           description="Chọn ô số liệu, biểu đồ hay danh sách việc từ danh mục."
           action={
-            <Button onClick={() => setAddOpen(true)}>
+            <Button variant="secondary" size="sm" onClick={() => setAddOpen(true)}>
               <Plus className="h-4 w-4" aria-hidden /> Thêm widget
             </Button>
           }
@@ -409,6 +415,6 @@ export function DashboardEditor({
           setConfigId(null);
         }}
       />
-    </div>
+    </PageFrame>
   );
 }
