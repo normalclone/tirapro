@@ -1,8 +1,11 @@
+import { useQueryClient } from '@tanstack/react-query';
 import { useRef } from 'react';
 import type { IssueDto } from '@tirapro/types';
 import { InlineText } from '@/components/ui/InlineText';
-import { apiErrorCode, apiErrorMessage } from '@/lib/api';
+import { api, apiErrorCode, apiErrorMessage } from '@/lib/api';
+import { keys } from '@/lib/queryKeys';
 import { useUpdateIssue } from './api';
+import { SummaryConflictError, saveSummaryOnce } from './summarySave';
 
 /** Lời báo xung đột phiên bản (409): nói rõ chuyện gì xảy ra và lựa chọn — KHÔNG tự ghi đè. */
 export const SUMMARY_CONFLICT_MESSAGE =
@@ -11,26 +14,17 @@ export const SUMMARY_CONFLICT_MESSAGE =
 /** Lỗi lưu tiêu đề → câu hiển thị. `apiErrorMessage` luôn được gọi để MutationCache không toast thêm lần hai. */
 export function summaryErrorText(e: unknown): string {
   const generic = apiErrorMessage(e);
+  if (e instanceof SummaryConflictError)
+    return `Tiêu đề vừa được đổi thành “${e.serverSummary}”. ${SUMMARY_CONFLICT_MESSAGE}`;
   return apiErrorCode(e) === 'VERSION_CONFLICT' ? SUMMARY_CONFLICT_MESSAGE : generic;
 }
 
 /**
- * Version gửi kèm lần lưu: LẦN ĐẦU của một lần sửa dùng version chụp lúc mở ô (thay đổi xen giữa → máy chủ trả 409, không
- * bị ghi đè âm thầm); sau một lần lỗi ("Thử lại", ✓ sau 409) người dùng đã thấy xung đột nên dùng bản mới nhất — ghi đè có chủ đích.
- */
-export function saveVersion(v: {
-  captured: number | null;
-  latest: number;
-  attempt: number;
-}): number {
-  return v.attempt === 0 && v.captured !== null ? v.captured : v.latest;
-}
-
-/**
  * Tiêu đề công việc sửa tại chỗ — dùng chung cho trang chi tiết (h1) và panel xem nhanh (h2).
- * Giữ khoá lạc quan (`saveVersion`): lần lưu đầu gửi version chụp lúc mở ô; "Thử lại"/✓ sau lỗi gửi version MỚI NHẤT (đọc qua
- * ref lúc gửi; nếu bản mới chưa về thì máy chủ lại trả 409 — không bao giờ ghi đè âm thầm). Lỗi 409 hiện lời báo xung đột
- * ngay dưới ô, giữ nguyên chữ người dùng đang gõ.
+ * Giữ khoá lạc quan (`summarySave`): lần lưu đầu gửi version chụp lúc mở ô. Gặp 409: nạp lại bản mới — nếu TIÊU ĐỀ không ai đổi
+ * (chỉ trường khác đổi) thì tự thử lại đúng một lần với version mới (người dùng chỉ thấy Đang lưu… → Đã lưu); nếu tiêu đề đã
+ * đổi thì báo xung đột kèm tiêu đề hiện tại, giữ chữ người dùng đang gõ. "Thử lại"/✓ sau lỗi gửi version MỚI NHẤT (ghi đè có
+ * chủ đích). Không bao giờ ghi đè âm thầm. Lỗi do ô tự hiển thị nên mutation `silent` (không toast chung, nhất là cho 409 được nuốt).
  */
 export function IssueSummaryEdit({
   issue,
@@ -53,10 +47,11 @@ export function IssueSummaryEdit({
   editRequest?: number;
   onEditingChange?: (editing: boolean) => void;
 }) {
-  const update = useUpdateIssue(issue.projectId);
+  const qc = useQueryClient();
+  const update = useUpdateIssue(issue.projectId, { silent: true });
   const issueRef = useRef(issue);
   issueRef.current = issue;
-  const captured = useRef<number | null>(null);
+  const captured = useRef<{ version: number; summary: string } | null>(null);
   return (
     <InlineText
       value={issue.summary}
@@ -70,20 +65,33 @@ export function IssueSummaryEdit({
       editRequest={editRequest}
       onEditingChange={onEditingChange}
       onEditStart={() => {
-        captured.current = issueRef.current.version;
+        captured.current = {
+          version: issueRef.current.version,
+          summary: issueRef.current.summary,
+        };
       }}
       describeError={summaryErrorText}
       onSave={(next, attempt) => {
         const cur = issueRef.current;
-        return update.mutateAsync({
-          id: cur.id,
-          key: cur.key,
-          patch: { summary: next },
-          version: saveVersion({
-            captured: captured.current,
-            latest: cur.version,
-            attempt,
-          }),
+        return saveSummaryOnce({
+          attempt,
+          startVersion: captured.current?.version ?? null,
+          startSummary: captured.current?.summary ?? null,
+          latestVersion: () => issueRef.current.version,
+          send: (version) =>
+            update.mutateAsync({
+              id: cur.id,
+              key: cur.key,
+              patch: { summary: next },
+              version,
+            }),
+          refetch: () =>
+            qc.fetchQuery({
+              queryKey: keys.issues.byKey(cur.key),
+              queryFn: async () => (await api.get<IssueDto>(`/issues/${cur.key}`)).data,
+              staleTime: 0,
+            }),
+          isConflict: (e) => apiErrorCode(e) === 'VERSION_CONFLICT',
         });
       }}
     />

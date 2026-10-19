@@ -4,11 +4,8 @@ import { AxiosError } from 'axios';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { wasErrorDescribed } from '@/lib/api';
-import {
-  SUMMARY_CONFLICT_MESSAGE,
-  saveVersion,
-  summaryErrorText,
-} from '@/features/issues/IssueSummaryEdit';
+import { SUMMARY_CONFLICT_MESSAGE, summaryErrorText } from '@/features/issues/IssueSummaryEdit';
+import { SummaryConflictError, saveVersion } from '@/features/issues/summarySave';
 import { InlineText } from './InlineText';
 
 const read = (rel: string) => readFileSync(join(__dirname, '..', '..', rel), 'utf8');
@@ -117,7 +114,7 @@ describe('IssueSummaryEdit — khoá lạc quan (OCC) và 409', () => {
   const s = read('features/issues/IssueSummaryEdit.tsx');
   it('mỗi lần lưu gửi version MỚI NHẤT của việc (qua ref lúc gửi), không phải bản chụp lúc mở ô', () => {
     expect(s).toContain('issueRef.current = issue');
-    expect(s).toMatch(/const cur = issueRef\.current;[\s\S]*latest: cur\.version/);
+    expect(s).toContain('latestVersion: () => issueRef.current.version');
   });
   const conflict = new AxiosError('x', 'ERR_BAD_REQUEST', undefined, undefined, {
     status: 409,
@@ -128,6 +125,11 @@ describe('IssueSummaryEdit — khoá lạc quan (OCC) và 409', () => {
     expect(SUMMARY_CONFLICT_MESSAGE).toMatch(/Người khác vừa sửa/);
     expect(SUMMARY_CONFLICT_MESSAGE).toMatch(/Lưu/);
     expect(SUMMARY_CONFLICT_MESSAGE).toMatch(/Huỷ/);
+  });
+  it('xung đột thật (tiêu đề đã đổi): nêu tiêu đề hiện tại trên máy chủ rồi mới tới lời báo chung', () => {
+    const t = summaryErrorText(new SummaryConflictError('Bản của người khác'));
+    expect(t).toContain('Tiêu đề vừa được đổi thành “Bản của người khác”');
+    expect(t.endsWith(SUMMARY_CONFLICT_MESSAGE)).toBe(true);
   });
   it('lỗi khác → câu của apiErrorMessage; mọi nhánh đều đánh dấu "đã mô tả" để MutationCache không toast thêm', () => {
     const other = new AxiosError('x', 'ERR', undefined, undefined, {
@@ -177,11 +179,19 @@ describe('fix round 1', () => {
       expect(saveVersion({ captured: null, latest: 5, attempt: 0 })).toBe(5);
       expect(saveVersion({ captured: 4, latest: 4, attempt: 0 })).toBe(4);
     });
-    it('adapter chụp version khi BẮT ĐẦU sửa (onEditStart) và truyền attempt cho saveVersion', () => {
+    it('adapter chụp version + tiêu đề khi BẮT ĐẦU sửa (onEditStart) và lưu qua saveSummaryOnce (attempt, refetch)', () => {
       expect(adapter).toContain('onEditStart');
-      expect(adapter).toMatch(/captured\.current = issueRef\.current\.version/);
-      expect(adapter).toMatch(/saveVersion\(\{[\s\S]*attempt/);
+      expect(adapter).toMatch(
+        /captured\.current = \{[\s\S]*version: issueRef\.current\.version[\s\S]*summary: issueRef\.current\.summary/,
+      );
+      expect(adapter).toContain('saveSummaryOnce(');
+      expect(adapter).toMatch(/attempt,/);
       expect(adapter).not.toMatch(/version: cur\.version/);
+    });
+    it('409 ở lần đầu đi qua nạp lại bản mới (fetchQuery) và KHÔNG toast chung (silent); không vòng lặp', () => {
+      expect(adapter).toContain('useUpdateIssue(issue.projectId, { silent: true })');
+      expect(adapter).toContain('fetchQuery(');
+      expect(adapter).toContain('startSummary');
     });
     it('hook gọi onEditStart ngay trong start() và chuyển attempt của máy trạng thái cho onSave', () => {
       expect(hook).toContain('onEditStartRef.current?.()');
