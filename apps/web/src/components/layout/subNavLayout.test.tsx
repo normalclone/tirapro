@@ -17,7 +17,7 @@ const groups: SubNavGroup[] = [
 ];
 
 // SSR không có `window.matchMedia` → useMediaQuery trả fallback false = khung hình mobile (dưới lg).
-const render = (location: string) =>
+const render = (location: string, frameSize?: 'xl') =>
   renderToStaticMarkup(
     <StaticRouter location={location}>
       <Routes>
@@ -28,6 +28,7 @@ const render = (location: string) =>
               title="Cài đặt"
               ariaLabel="Mục cài đặt"
               groups={groups}
+              frameSize={frameSize}
               basePath="/settings"
               top={<a href="/p/x/board">Về dự án X</a>}
             />
@@ -146,5 +147,17 @@ describe('ba layout mỏng', () => {
     const s = src('features/settings/SettingsLayout.tsx');
     expect(s.indexOf('can(i.permission)')).toBeGreaterThan(-1);
     expect(s.indexOf('can(i.permission)')).toBeLessThan(s.indexOf('<SubNavLayout'));
+  });
+});
+
+describe('SubNavLayout — frameSize chỉ cho hàng quay lại', () => {
+  it('danh sách mục luôn sm kể cả khu vực có frameSize xl; hàng quay lại ở trang con theo frameSize', () => {
+    const list = render('/settings', 'xl');
+    expect(list).toMatch(/class="[^"]*max-w-3xl/);
+    expect(list).not.toMatch(/max-w-7xl/);
+    const child = render('/settings/roles', 'xl');
+    expect(child).toMatch(
+      /<div class="mx-auto [^"]*max-w-7xl[^"]*lg:hidden|<div class="mx-auto [^"]*lg:hidden[^"]*max-w-7xl/,
+    );
   });
 });

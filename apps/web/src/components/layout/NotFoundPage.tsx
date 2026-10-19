@@ -31,6 +31,8 @@ export function NotFoundPage() {
   return (
     <StatusPanel
       variant="not-found"
+      // Trong dự án (`/p/KEY/…`) h1 là tên dự án của ProjectLayout → h2; ngoài dự án đây là h1 của trang.
+      headingLevel={projectKey ? 2 : 1}
       title="Không tìm thấy trang"
       description={
         <>

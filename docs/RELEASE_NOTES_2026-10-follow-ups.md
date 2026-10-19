@@ -584,6 +584,7 @@ Phần B của đợt chuẩn hoá thứ hai: **khung trang và điều hướng
 - **Đầu trang giống nhau:** đường dẫn (nếu có) → tiêu đề → một dòng mô tả → nút chính bên phải. Nút "tạo" chính của trang nằm ở góc phải đầu trang; riêng các trang sửa danh sách tại chỗ (Mức ưu tiên, Mức nghiêm trọng, Trường thông tin thêm, Quy trình) vẫn có nút "Thêm…" ngay dưới danh sách. Nút tạo trong khối "chưa có gì" là nút phụ (nền xám), không tranh chú ý với nút chính.
 - **Mô tả ngắn lại còn một câu** ở Cài đặt, Danh mục, Quản lý, Kết nối, Tài khoản…; các ví dụ và công thức dài đã chuyển đi (công thức tính nhân lực nay nằm ở chú giải của bảng khối lượng). Những mô tả có tài liệu đi kèm thêm **"Tìm hiểu thêm"** (mở trang Hướng dẫn đúng mục ở tab mới).
 - Các thẻ trong Cài đặt, Thành viên, Danh mục… dùng cùng một kiểu thẻ (biểu tượng, tiêu đề, mô tả, nút ở góc phải).
+- **Đường dẫn (breadcrumb) đã chuyển chỗ:** ở **Wiki**, đường dẫn các trang cha (`trang cha › trang đang xem`, chỉ hiện khi trang có trang cha) nay nằm đầu trang, phía trên tiêu đề, thay vì ở trong bài viết. Ở **xem bảng tổng quan tuỳ biến**, liên kết "← Tổng quan" được thay bằng đường dẫn "Tổng quan › <tên bảng>" (không in ra giấy). Ở **chi tiết công việc**, đường dẫn dùng chữ đơn cách cho mã và rê chuột vào việc cha/Epic thấy tên đầy đủ; "Quay lại" nằm bên phải cùng hàng. Trên điện thoại, trang nằm trong menu con chỉ hiện nút "‹ khu vực", không hiện đường dẫn.
 - Thẻ đầu của Cài đặt › Thông báo đổi tên từ "Thông báo" thành **"Trong ứng dụng"** (khỏi trùng với tiêu đề trang).
 - **Màn chi tiết công việc:** tiêu đề công việc đã sửa tại chỗ được trình đọc màn hình đọc là tiêu đề chính của trang; cách bấm để sửa, Esc huỷ, Enter lưu không đổi.
 - **Tổng quan quản trị hệ thống:** nút làm mới là nút biểu tượng; rê chuột thấy "Làm mới · <thời điểm cập nhật>".
@@ -598,10 +599,10 @@ Phần B của đợt chuẩn hoá thứ hai: **khung trang và điều hướng
 
 | Trang | Địa chỉ mới | Địa chỉ cũ |
 |---|---|---|
-| Ứng dụng bên ngoài | `/connect/integrations/telegram`, `/repos`, `/digest` | `/connect/integrations?section=digest` → chuyển sang `/digest` |
+| Ứng dụng bên ngoài | `/connect/integrations/telegram`, `/repos` (chỉ khi bật cờ Kho mã lúc build), `/digest` | `/connect/integrations?section=digest` → chuyển sang `/digest` |
 | Cấu hình dự án | `/p/<mã>/config/general`, `/members`, `/components`, `/versions`, `/labels`, `/data` | `/p/<mã>/config?section=members` → chuyển sang `/members` |
 
-Địa chỉ gốc (`/connect/integrations`, `/p/<mã>/config`) mở mục đầu (Telegram / Chung); mục lạ (`?section=abc`) cũng về mục đầu. Nút Back của trình duyệt đi qua từng mục.
+Mục **Kho mã (`/repos`) chỉ có khi bật cờ build `VITE_FEATURE_REPOS=1` (mặc định tắt)**; khi tắt, mục không hiện trong hàng tab và địa chỉ `/repos` chuyển về Telegram. Địa chỉ gốc (`/connect/integrations`, `/p/<mã>/config`) mở mục đầu (Telegram / Chung); mục lạ (`?section=abc`) cũng về mục đầu. Nút Back của trình duyệt đi qua từng mục.
 
 ### Sửa dở rồi đổi mục
 

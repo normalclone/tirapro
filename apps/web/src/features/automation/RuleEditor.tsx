@@ -382,7 +382,7 @@ function Card({
   label: string;
 }) {
   return (
-    <div className="relative rounded-md border border-border bg-bg p-3 pr-10">
+    <div className="relative rounded-md border border-border bg-bg p-3 pr-12">
       {children}
       {onRemove && (
         <Button

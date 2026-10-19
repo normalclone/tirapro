@@ -22,6 +22,9 @@ import { TRIAGE_TITLE, triageAccess, type AcceptPayload } from './triageLogic';
 
 const DAY_MS = 86_400_000;
 
+/** Dưới h1 tên dự án của ProjectLayout nên màn không có quyền dùng h2 (`headingLevel={2}`). */
+const NO_ACCESS_WHO = 'người có quyền duyệt việc trong dự án này';
+
 export function TriagePage() {
   const { key = '' } = useParams();
   const { data: project } = useProject(key);
@@ -94,7 +97,7 @@ export function TriagePage() {
     );
   }
 
-  if (access === 'denied') return <NoAccess who="người có quyền duyệt việc trong dự án này" />;
+  if (access === 'denied') return <NoAccess who={NO_ACCESS_WHO} headingLevel={2} />;
   if (access === 'loading')
     return (
       <PageFrame size="full" className="space-y-2">

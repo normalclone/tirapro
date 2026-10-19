@@ -22,8 +22,9 @@ interface SubNavLayoutProps {
   /** Chèn trên cùng rail, danh sách và hàng quay lại ở trang con (vd link "Về dự án X"). */
   top?: ReactNode;
   /**
-   * Cỡ `PageFrame` thường dùng của các trang con khu vực này (B-D1): hàng "‹ Khu vực" và danh sách mục dùng cùng bề
-   * rộng để thẳng lề với tiêu đề trang ở cỡ md. Trang con dùng cỡ khác thì chỉ lệch ở 768–1023px.
+   * Cỡ `PageFrame` thường dùng của các trang con khu vực này (B-D1): chỉ dành cho hàng "‹ Khu vực" ở trang con, để
+   * thẳng lề với tiêu đề trang ở cỡ md (trang con dùng cỡ khác thì chỉ lệch ở 768–1023px). Danh sách mục luôn là `sm`
+   * (một cột hẹp, kể cả khu vực có trang con rộng như Danh mục `xl`).
    */
   frameSize?: PageFrameSize;
   /**
@@ -96,7 +97,6 @@ export function SubNavLayout({
             ariaLabel={ariaLabel}
             groups={shown}
             top={top}
-            frameSize={frameSize}
             variant={variant}
           />
         ) : (
@@ -127,15 +127,13 @@ function SubNavList({
   ariaLabel,
   groups,
   top,
-  frameSize,
   variant,
 }: Pick<SubNavLayoutProps, 'title' | 'ariaLabel' | 'top'> & {
   groups: SubNavGroup[];
-  frameSize: PageFrameSize;
   variant: PageHeaderVariant;
 }) {
   return (
-    <PageFrame size={frameSize}>
+    <PageFrame size="sm">
       <PageHeader title={title} variant={variant} />
       <nav aria-label={ariaLabel} className="space-y-6">
         {top}
