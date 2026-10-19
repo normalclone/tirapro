@@ -1,6 +1,8 @@
 import type { MutationOptions, QueryClient } from '@tanstack/react-query';
 import type { NotificationEmailPrefs } from '@tirapro/types';
 import { keys } from '@/lib/queryKeys';
+import { queryClient } from '@/lib/queryClient';
+import { registerSessionCleaner } from '@/lib/sessionCache';
 import type { NotificationPrefsResponse } from './api';
 
 /** Bản vá gửi `PUT /notifications/preferences` (hình dạng payload GIỮ NGUYÊN). */
@@ -81,6 +83,26 @@ const statesOf = (qc: QueryClient): Map<string, KeyState> => {
   return m;
 };
 
+/**
+ * Bỏ toàn bộ trạng thái theo khoá của `qc` (đổi phiên: đăng xuất / đổi workspace). Lần lưu còn đang chạy giữ tham chiếu
+ * bản đồ CŨ trong context nên không còn ghi/trừ vào bản đồ của người dùng sau.
+ */
+export function resetPrefsKeyStates(qc: QueryClient): void {
+  keyStates.delete(qc);
+}
+registerSessionCleaner(() => resetPrefsKeyStates(queryClient));
+
+/** Context của mutation: bản đồ trạng thái mà lần này ĐÃ tăng `pending` (null = onMutate thoát sớm, không tăng). */
+interface PrefsMutationContext {
+  states: Map<string, KeyState> | null;
+}
+/** Bản đồ còn hiệu lực của lần lưu này, hoặc undefined nếu không tăng gì / phiên đã đổi. */
+const liveStates = (
+  qc: QueryClient,
+  ctx: PrefsMutationContext | undefined,
+): Map<string, KeyState> | undefined =>
+  ctx?.states && keyStates.get(qc) === ctx.states ? ctx.states : undefined;
+
 function patchEntries(patch: PrefsPatch): Array<[string, boolean]> {
   const out: Array<[string, boolean]> = [];
   for (const [k, v] of Object.entries(patch.preferences ?? {}))
@@ -126,7 +148,7 @@ export function prefsMutationOptions(
   qc: QueryClient,
   send: (patch: PrefsPatch) => Promise<unknown>,
   events?: () => PrefsSaveEvents | undefined,
-): MutationOptions<unknown, unknown, PrefsPatch> {
+): MutationOptions<unknown, unknown, PrefsPatch, PrefsMutationContext> {
   return {
     mutationKey: MUTATION_KEY,
     scope: { id: 'notification-preferences' },
@@ -135,7 +157,7 @@ export function prefsMutationOptions(
       events?.()?.onStart?.();
       await qc.cancelQueries({ queryKey: keys.notificationPrefs });
       const cur = qc.getQueryData<NotificationPrefsResponse>(keys.notificationPrefs);
-      if (!cur) return;
+      if (!cur) return { states: null }; // không tăng pending → onSettled không được trừ
       const states = statesOf(qc);
       for (const [key] of patchEntries(patch)) {
         const st = states.get(key) ?? { confirmed: readKey(cur, key), pending: 0 };
@@ -143,18 +165,21 @@ export function prefsMutationOptions(
         states.set(key, st);
       }
       qc.setQueryData(keys.notificationPrefs, applyPrefsPatch(cur, patch));
+      return { states };
     },
-    onSuccess: (_d, patch) => {
-      const states = statesOf(qc);
-      for (const [key, v] of patchEntries(patch)) {
-        const st = states.get(key);
-        if (st) st.confirmed = v;
-      }
+    onSuccess: (_d, patch, ctx) => {
+      const states = liveStates(qc, ctx);
+      if (states)
+        for (const [key, v] of patchEntries(patch)) {
+          const st = states.get(key);
+          if (st) st.confirmed = v;
+        }
       events?.()?.onSaved?.();
     },
-    onError: (_e, patch) => {
+    onError: (_e, patch, ctx) => {
       events?.()?.onFailed?.(patch);
-      const states = statesOf(qc);
+      const states = liveStates(qc, ctx);
+      if (!states) return; // phiên đã đổi hoặc lần này không áp gì lạc quan: không có gì để hoàn tác
       const revert: Array<[string, boolean | undefined]> = [];
       for (const [key] of patchEntries(patch)) {
         const st = states.get(key);
@@ -165,14 +190,15 @@ export function prefsMutationOptions(
         cur ? restorePrefsKeys(cur, valuesFor(revert)) : cur,
       );
     },
-    onSettled: (_d, _e, patch) => {
-      const states = statesOf(qc);
-      for (const [key] of patchEntries(patch)) {
-        const st = states.get(key);
-        if (!st) continue;
-        st.pending -= 1;
-        if (st.pending <= 0) states.delete(key);
-      }
+    onSettled: (_d, _e, patch, ctx) => {
+      const states = liveStates(qc, ctx); // chỉ trừ nếu CHÍNH lần này đã tăng, trong đúng phiên
+      if (states)
+        for (const [key] of patchEntries(patch)) {
+          const st = states.get(key);
+          if (!st) continue;
+          st.pending -= 1;
+          if (st.pending <= 0) states.delete(key);
+        }
       if (qc.isMutating({ mutationKey: MUTATION_KEY }) <= 1)
         void qc.invalidateQueries({ queryKey: keys.notificationPrefs });
     },

@@ -5,11 +5,14 @@ import {
   applyPrefsPatch,
   isOptionsOpen,
   prefsMutationOptions,
+  resetPrefsKeyStates,
   restorePrefsKeys,
   type PrefsPatch,
 } from './notificationPrefs';
 import type { NotificationPrefsResponse } from './api';
 import { keys } from '@/lib/queryKeys';
+import { queryClient } from '@/lib/queryClient';
+import { clearSessionCaches } from '@/lib/sessionCache';
 
 const base = (): NotificationPrefsResponse => ({
   preferences: { MENTIONED: true, COMMENT_ADDED: false },
@@ -222,5 +225,95 @@ describe('rollback về giá trị ĐÃ XÁC NHẬN bởi máy chủ (không v�
     const { run, data } = setup(() => Promise.reject(new Error('x')));
     await run({ email: { mention: true } });
     expect(data().email.mention).toBe(false);
+  });
+});
+
+describe('trạng thái theo khoá gắn với PHIÊN (không rò sang người dùng sau)', () => {
+  const settle = () => new Promise((r) => setTimeout(r, 10));
+  const newUserData = (): NotificationPrefsResponse => ({
+    ...base(),
+    preferences: { MENTIONED: true, COMMENT_ADDED: true },
+  });
+
+  it('đổi phiên (resetPrefsKeyStates): lần bấm của người sau gieo lại `confirmed` từ cache mới, không dùng giá trị cũ', async () => {
+    const gate = defer<void>();
+    const { qc, run, data } = setup(() => gate.promise);
+    const p1 = run({ preferences: { COMMENT_ADDED: false } }); // người cũ: confirmed=false... đang chờ
+    await settle();
+    resetPrefsKeyStates(qc); // đăng xuất / đổi workspace
+    qc.setQueryData(keys.notificationPrefs, newUserData()); // người sau: máy chủ nói COMMENT_ADDED=true
+    const fail = new MutationObserver(
+      qc,
+      prefsMutationOptions(qc, () => Promise.reject(new Error('500'))),
+    );
+    const p2 = fail.mutate({ preferences: { COMMENT_ADDED: false } }).catch(() => undefined);
+    gate.resolve();
+    await Promise.all([p1, p2]);
+    expect(data().preferences.COMMENT_ADDED).toBe(true); // hoàn tác về TRUE của người sau, không phải giá trị cũ
+  });
+
+  it('lần lưu của phiên cũ xong muộn không trừ `pending` / ghi `confirmed` của phiên mới', async () => {
+    const gateOld = defer<void>();
+    const { qc, run, data } = setup(() => gateOld.promise);
+    const old = run({ preferences: { COMMENT_ADDED: true } });
+    await settle();
+    resetPrefsKeyStates(qc);
+    qc.setQueryData(keys.notificationPrefs, base()); // người sau: COMMENT_ADDED=false
+    const failing = new MutationObserver(
+      qc,
+      prefsMutationOptions(qc, () => Promise.reject(new Error('500'))),
+    );
+    // mutation mới chạy NỐI TIẾP sau lần cũ (cùng scope); lần cũ xong trước
+    const next = failing.mutate({ preferences: { COMMENT_ADDED: true } }).catch(() => undefined);
+    await settle();
+    gateOld.resolve(); // lần cũ thành công → KHÔNG được đặt confirmed=true cho phiên mới
+    await Promise.all([old, next]);
+    expect(data().preferences.COMMENT_ADDED).toBe(false); // lần mới lỗi → về false của máy chủ phiên mới
+  });
+
+  it('clearSessionCaches (đổi phiên thật) xoá trạng thái khoá của queryClient toàn cục', async () => {
+    const gate = defer<void>();
+    queryClient.setQueryData(keys.notificationPrefs, base());
+    const o1 = new MutationObserver(
+      queryClient,
+      prefsMutationOptions(queryClient, () => gate.promise),
+    );
+    const p1 = o1.mutate({ preferences: { COMMENT_ADDED: false } }).catch(() => undefined);
+    await settle();
+    clearSessionCaches();
+    queryClient.setQueryData(keys.notificationPrefs, newUserData());
+    const o2 = new MutationObserver(
+      queryClient,
+      prefsMutationOptions(queryClient, () => Promise.reject(new Error('500'))),
+    );
+    const p2 = o2.mutate({ preferences: { COMMENT_ADDED: false } }).catch(() => undefined);
+    gate.resolve();
+    await Promise.all([p1, p2]);
+    expect(
+      queryClient.getQueryData<NotificationPrefsResponse>(keys.notificationPrefs)?.preferences
+        .COMMENT_ADDED,
+    ).toBe(true);
+    queryClient.clear();
+  });
+
+  it('onMutate thoát sớm (cache rỗng, không tăng pending) → onSettled KHÔNG được trừ pending của lần khác', async () => {
+    const gates = [defer<void>(), defer<void>(), defer<void>()];
+    let n = 0;
+    const { qc, run, data } = setup(() => gates[n++]!.promise);
+    const a = run({ preferences: { COMMENT_ADDED: true } }); // tăng pending (=1)
+    await settle();
+    qc.removeQueries({ queryKey: keys.notificationPrefs }); // cache rỗng
+    const b = run({ preferences: { COMMENT_ADDED: false } }); // onMutate thoát sớm, không tăng
+    await settle();
+    qc.setQueryData(keys.notificationPrefs, base()); // nạp lại từ máy chủ
+    const c = run({ preferences: { COMMENT_ADDED: false } }); // tăng pending (=2)
+    await settle();
+    gates[0]!.resolve(); // a xong → pending 1, confirmed=true
+    await settle();
+    gates[1]!.resolve(); // b xong (không được trừ) → pending vẫn 1
+    await settle();
+    gates[2]!.reject(new Error('500')); // c lỗi, là lần cuối → phải hoàn tác về confirmed (true)
+    await Promise.all([a, b, c]);
+    expect(data().preferences.COMMENT_ADDED).toBe(true);
   });
 });
