@@ -7,7 +7,7 @@ const FILL: Record<BulletTone, string> = {
   primary: 'bg-primary',
   progress: 'bg-status-progress',
   done: 'bg-status-done',
-  warning: 'bg-warning',
+  warning: 'bg-warning-fill',
   danger: 'bg-danger',
   neutral: 'bg-muted',
 };

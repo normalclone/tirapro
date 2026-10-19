@@ -69,7 +69,8 @@ export function StatRow({
           title={s.title}
           className={cn(
             bare ? 'p-0' : 'px-4 py-2.5',
-            s.highlight ? 'bg-danger/5' : bare ? 'bg-transparent' : 'bg-surface',
+            // bare: không tô nền nhấn (sẽ thành khối hồng sát mép khung) — chữ/thanh đỏ đã báo hiệu.
+            bare ? 'bg-transparent' : s.highlight ? 'bg-danger/5' : 'bg-surface',
             oddTail && idx === items.length - 1 && 'max-sm:col-span-2',
           )}
         >

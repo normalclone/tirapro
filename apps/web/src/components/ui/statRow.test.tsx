@@ -91,6 +91,17 @@ describe('<StatRow bare> — ô nằm trong khung ô dashboard (không đệm/vi
     expect(h).not.toMatch(/px-4 py-2\.5/);
     expect(h).toMatch(/p-0/);
   });
+  it('bare + highlight: KHÔNG tô nền hồng sát mép (chỉ chữ/thanh đỏ báo hiệu)', () => {
+    const h = html([{ label: 'Quá hạn', value: 3, tone: 'danger', highlight: true }], {
+      bare: true,
+      cols: 'grid-cols-1',
+    });
+    expect(h).not.toMatch(/bg-danger\/5/);
+    expect(h).toMatch(/text-danger/);
+  });
+  it('không bare + highlight vẫn có nền nhấn', () => {
+    expect(html([{ label: 'Quá hạn', value: 3, highlight: true }])).toMatch(/bg-danger\/5/);
+  });
   it('mặc định vẫn có viền + đệm', () => {
     const h = html([{ label: 'Quá hạn', value: 3 }]);
     expect(h).toMatch(/border-border/);

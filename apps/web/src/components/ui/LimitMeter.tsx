@@ -27,8 +27,13 @@ type Level = Exclude<LimitLevel, 'none'>;
 export type LimitTone = 'strict' | 'advisory';
 
 const BAR: Record<LimitTone, Record<Level, string>> = {
-  strict: { ok: 'bg-muted', warn: 'bg-warning', full: 'bg-danger', over: 'bg-danger' },
-  advisory: { ok: 'bg-muted', warn: 'bg-warning', full: 'bg-warning', over: 'bg-warning' },
+  strict: { ok: 'bg-muted', warn: 'bg-warning-fill', full: 'bg-danger', over: 'bg-danger' },
+  advisory: {
+    ok: 'bg-muted',
+    warn: 'bg-warning-fill',
+    full: 'bg-warning-fill',
+    over: 'bg-warning-fill',
+  },
 };
 // "Đầy" và "Vượt" in đậm: nhãn là tín hiệu chính, màu chỉ phụ.
 const TEXT: Record<LimitTone, Record<Level, string>> = {
