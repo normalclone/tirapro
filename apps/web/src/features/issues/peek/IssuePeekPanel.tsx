@@ -31,7 +31,7 @@ import { issueViewState } from '../issueViewState';
 import { ActivityTabs } from '../ActivityTabs';
 import { LazyPanel } from '../LazyPanel';
 import { useIssueTransitions } from '../useIssueTransitions';
-import { InlineSummary } from './InlineSummary';
+import { IssueSummaryEdit } from '../IssueSummaryEdit';
 
 const CATEGORY_COLOR: Record<string, string> = {
   TODO: 'var(--status-todo)',
@@ -197,7 +197,15 @@ function PeekContent({ issue }: { issue: IssueDto }) {
           <IssueTypeSelect issue={issue} />
           <IssuePrioritySelect issue={issue} />
         </div>
-        <InlineSummary issue={issue} />
+        <IssueSummaryEdit
+          issue={issue}
+          canEdit={canEditThis}
+          as="h2"
+          className="flex-1"
+          textClassName="text-lg font-semibold leading-snug tracking-tight text-ink-strong"
+          inputClassName="h-9 text-lg font-semibold tracking-tight"
+          title="Bấm để sửa tiêu đề"
+        />
       </div>
 
       {/* Trạng thái hiện tại + các bước kế tiếp theo quy trình */}

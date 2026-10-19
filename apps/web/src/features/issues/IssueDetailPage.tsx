@@ -37,6 +37,7 @@ import { useCanEditIssue, useCanIn, useProjectPermissions } from '@/features/pro
 import { useMyWorkspaces } from '@/features/workspace/api';
 import { useDeleteIssue, useRetractIssue } from '@/features/issue-edit/api';
 import { RetractMenuItem } from './RetractMenuItem';
+import { IssueSummaryEdit } from './IssueSummaryEdit';
 import { useIssueCopy } from './useIssueCopy';
 import { IssueRelations } from '@/features/tree/IssueRelations';
 import { CustomFieldsPanel } from '@/features/issue-fields/CustomFieldsPanel';
@@ -84,7 +85,6 @@ import { apiErrorCode } from '@/lib/api';
 import { PageFrame } from '@/components/layout/PageFrame';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
 import { useAuth } from '@/stores/auth';
 import { PresenceAvatars } from '@/features/presence/PresenceAvatars';
 import { useCreateIssueModal } from '@/stores/createIssue';
@@ -94,7 +94,6 @@ import { useCachedProjectIssue, useUpdateIssue } from './api';
 import { withKey } from '@/lib/shortcuts';
 import { isCommentHotkey, isOverlayOpen, isTypingTarget, isWorklogHotkey } from '@/lib/hotkeys';
 import { apiErrorMessage } from '@/lib/api';
-import { cn } from '@/lib/utils';
 import { FEATURES } from '@/lib/features';
 import type { WorkflowViewDialog as WorkflowViewDialogType } from '@/features/workflow-settings/WorkflowViewDialog';
 
@@ -174,13 +173,9 @@ export function IssueDetailPage() {
     isPending: transitionPending,
   } = useIssueTransitions(issue);
 
+  // Ô sửa tiêu đề do InlineText quản lý; trang chỉ biết "đang sửa" (tắt phím tắt) và yêu cầu mở từ ngoài (phím `e`, state điều hướng).
   const [editingSummary, setEditingSummary] = useState(false);
-  // Esc huỷ sửa tiêu đề: blur xảy ra ngay sau đó không được lưu.
-  const summaryCancelled = useRef(false);
-  useEffect(() => {
-    if (editingSummary) summaryCancelled.current = false; // lần sửa mới: bỏ cờ huỷ cũ (unmount không bắn blur)
-  }, [editingSummary]);
-  const [summary, setSummary] = useState('');
+  const [summaryEditRequest, setSummaryEditRequest] = useState(0);
   // Phím `e` ở danh sách điều hướng tới đây kèm `state.editSummary`: mở sẵn ô sửa tiêu đề khi đã biết được sửa (quyền tải xong).
   const location = useLocation();
   const editRequested = useRef(
@@ -192,8 +187,7 @@ export function IssueDetailPage() {
     if (!editRequested.current || !issue || !permsSettled) return;
     editRequested.current = false;
     if (canEditThis) {
-      setSummary(issue.summary);
-      setEditingSummary(true);
+      setSummaryEditRequest((n) => n + 1);
     } else toast.info(EDIT_DENIED_NOTICE);
     // Xoá cờ khỏi history để tải lại/Back không tự mở ô sửa lần nữa.
     navigate(
@@ -206,9 +200,6 @@ export function IssueDetailPage() {
   const [wfSeen, setWfSeen] = useState(false); // đã từng mở → giữ dialog trong cây để hiệu ứng đóng chạy được
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmRetract, setConfirmRetract] = useState(false);
-  useEffect(() => {
-    if (issue) setSummary(issue.summary);
-  }, [issue?.id]);
 
   // Phím `w` ghi thời gian: đăng ký ở cấp trang vì WorklogPanel chỉ mount khi cuộn tới (LazyPanel).
   // Mỗi lần bấm tăng `worklogRequest` → ép dựng panel, cuộn tới và mở form (đếm số để bấm lại sau khi đóng vẫn mở).
@@ -327,8 +318,7 @@ export function IssueDetailPage() {
           toast.info(EDIT_DENIED_NOTICE);
           return;
         }
-        setSummary(issue.summary);
-        setEditingSummary(true);
+        setSummaryEditRequest((n) => n + 1);
         return;
       }
       const n = Number(e.key);
@@ -419,28 +409,6 @@ export function IssueDetailPage() {
   }, []);
 
   const canEditRestricted = useCanEditRestricted(issue);
-
-  async function saveSummary() {
-    if (summaryCancelled.current) {
-      summaryCancelled.current = false;
-      return;
-    }
-    if (!issue || summary.trim() === issue.summary) {
-      setEditingSummary(false);
-      return;
-    }
-    try {
-      await updateIssue.mutateAsync({
-        id: issue.id,
-        key: issue.key,
-        patch: { summary: summary.trim() },
-        version: issue.version,
-      });
-      setEditingSummary(false);
-    } catch (e) {
-      toast.error(apiErrorMessage(e));
-    }
-  }
 
   async function onDelete() {
     if (!issue) return;
@@ -560,42 +528,18 @@ export function IssueDetailPage() {
                     <IssueSeveritySelect issue={issue} />
                     <IssueResolutionSelect issue={issue} />
                   </div>
-                  {/* h1 của trang = ô tiêu đề hiển thị (đang sửa thì h1 bọc ô nhập, vẫn đúng một h1). */}
-                  <h1 className="order-3 min-w-0 basis-full sm:order-2 sm:basis-0 sm:flex-1">
-                    {editingSummary ? (
-                      <Input
-                        autoFocus
-                        aria-label="Tiêu đề công việc"
-                        value={summary}
-                        onChange={(e) => setSummary(e.target.value)}
-                        onBlur={saveSummary}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') void saveSummary();
-                          else if (e.key === 'Escape' && !e.nativeEvent.isComposing) {
-                            // Esc huỷ sửa (đúng UX_CONVENTIONS) — trả lại tiêu đề cũ, không lưu.
-                            e.preventDefault();
-                            summaryCancelled.current = true;
-                            setSummary(issue.summary);
-                            setEditingSummary(false);
-                          }
-                        }}
-                        className="h-10 text-xl font-semibold tracking-tight sm:text-2xl"
-                      />
-                    ) : (
-                      <span
-                        className={cn(
-                          '-mx-1 block break-words rounded px-1 text-xl font-semibold tracking-tight sm:text-2xl',
-                          canEditThis && 'cursor-text hover:bg-surface-2',
-                        )}
-                        onClick={canEditThis ? () => setEditingSummary(true) : undefined}
-                        title={
-                          canEditThis ? withKey('Bấm để sửa tiêu đề', 'issue.edit') : undefined
-                        }
-                      >
-                        {issue.summary}
-                      </span>
-                    )}
-                  </h1>
+                  {/* h1 của trang = tiêu đề hiển thị (InlineText as="h1"; đang sửa thì h1 bọc ô nhập, vẫn đúng một h1). */}
+                  <IssueSummaryEdit
+                    issue={issue}
+                    canEdit={canEditThis}
+                    as="h1"
+                    className="order-3 basis-full sm:order-2 sm:basis-0 sm:flex-1"
+                    textClassName="text-xl font-semibold tracking-tight sm:text-2xl"
+                    inputClassName="h-10 text-xl font-semibold tracking-tight sm:text-2xl"
+                    title={withKey('Bấm để sửa tiêu đề', 'issue.edit')}
+                    editRequest={summaryEditRequest}
+                    onEditingChange={setEditingSummary}
+                  />
                   <div className="order-2 ml-auto flex shrink-0 items-center gap-2 sm:order-3 sm:ml-0 sm:mt-1">
                     <PresenceAvatars room="issue" projectId={issue.projectId} issueId={issue.id} />
                     <IssueSlaBadge issueId={issue.id} />
