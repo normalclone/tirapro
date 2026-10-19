@@ -1,4 +1,4 @@
-import { useId, useRef, useState, type ChangeEvent, type CompositionEvent } from 'react';
+import { useEffect, useId, useRef, useState, type ChangeEvent, type CompositionEvent } from 'react';
 import { Input } from '@/components/ui/Input';
 import { matchesConfirmText, normalizeConfirmText, shouldSubmitOnEnter } from '@/lib/confirmText';
 
@@ -20,6 +20,7 @@ export function useRequireText(expected: string | undefined, seq: number) {
   const [state, setState] = useState<TypedState>({ seq, value: '', composing: false });
   const justComposedRef = useRef(false);
   const timer = useRef<number | undefined>(undefined);
+  useEffect(() => () => window.clearTimeout(timer.current), []);
   const cur = state.seq === seq ? state : { seq, value: '', composing: false };
   const required = !!expected && normalizeConfirmText(expected) !== '';
   return {

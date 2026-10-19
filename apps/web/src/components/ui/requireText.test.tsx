@@ -40,7 +40,7 @@ describe('RequireTextField', () => {
   });
 });
 
-describe('008/269 · useConfirm + ConfirmDialog có requireText', () => {
+describe('269 · useConfirm có requireText', () => {
   it('ConfirmOptions có requireText; nút xác nhận bị khoá tới khi khớp; focus vào ô nhập', () => {
     const s = read('components/ui/useConfirm.tsx');
     expect(s).toMatch(/requireText\?: string/);
@@ -48,14 +48,12 @@ describe('008/269 · useConfirm + ConfirmDialog có requireText', () => {
     expect(s).toMatch(/disabled=\{!text\.matches\}/);
     expect(s).toContain('autoFocus={destructive && !needsText}');
   });
-  it('ConfirmDialog (điều khiển bằng state) cũng có requireText và khoá nút', () => {
+  it('ConfirmDialog (bản state) KHÔNG có requireText — không còn nơi dùng (RC4)', () => {
     const s = read('features/issues/ConfirmDialog.tsx');
-    expect(s).toMatch(/requireText\?: string/);
-    expect(s).toMatch(/disabled=\{!text\.matches\}/);
+    expect(s).not.toMatch(/requireText|RequireText|lastRequireText/);
   });
   it('Cmd/Ctrl+Enter: chỉ đặt onSubmit khi có ô gõ (xác nhận thường giữ hành vi cũ), và chỉ xác nhận khi khớp', () => {
     expect(read('components/ui/useConfirm.tsx')).toMatch(/onSubmit=\{\s*needsText\b/);
-    expect(read('features/issues/ConfirmDialog.tsx')).toMatch(/onSubmit=\{needsText\b/);
   });
   it('ô gõ dùng shouldSubmitOnEnter (Safari IME) và theo dõi compositionend', () => {
     const s = read('components/ui/RequireText.tsx');
@@ -63,12 +61,12 @@ describe('008/269 · useConfirm + ConfirmDialog có requireText', () => {
     expect(s).toContain('justComposedRef');
   });
   it('chữ đã gõ gắn với lần mở (không reset bằng effect → mở lại không lộ chữ cũ dù một commit)', () => {
-    expect(read('components/ui/RequireText.tsx')).not.toMatch(/useEffect/);
     expect(read('components/ui/useConfirm.tsx')).not.toMatch(/reset\(\)/);
-    expect(read('features/issues/ConfirmDialog.tsx')).not.toMatch(/reset\(\)/);
+    expect(read('components/ui/useConfirm.tsx')).not.toMatch(/useEffect/);
   });
-  it('ConfirmDialog giữ requireText cuối cùng trong lúc hiệu ứng đóng', () => {
-    expect(read('features/issues/ConfirmDialog.tsx')).toContain('lastRequireText');
+  it('hẹn giờ justComposed được xoá khi gỡ khỏi cây (unmount)', () => {
+    const s = read('components/ui/RequireText.tsx');
+    expect(s).toMatch(/useEffect\(\(\) => \(\) => window\.clearTimeout\(timer\.current\)/);
   });
 });
 
