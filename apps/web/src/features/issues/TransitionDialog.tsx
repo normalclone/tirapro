@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import type { KeyboardEvent } from 'react';
 import { CheckCircle2, RotateCcw, Undo2 } from 'lucide-react';
+import { RadioCard } from '@/components/ui/RadioCard';
 import { Dialog } from '@/components/ui/Dialog';
 import { Button } from '@/components/ui/Button';
 import { cn } from '@/lib/utils';
@@ -78,7 +79,7 @@ export function TransitionDialog({
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     if (e.key !== 'Enter' || e.shiftKey || e.metaKey || e.ctrlKey || e.defaultPrevented) return;
     const el = e.target as HTMLElement;
-    if (el.tagName === 'BUTTON') return; // Enter trên nút (chip, Huỷ…) = bấm nút đó
+    if (el.tagName === 'BUTTON' && el.getAttribute('role') !== 'radio') return; // Enter trên nút (Huỷ…) = bấm nút đó; trên thẻ radio = xác nhận như radio native
     // Ô ghi chú: Enter xuống dòng; riêng ô còn TRỐNG thì Enter = xác nhận (không có chữ nào để mất).
     if (el.tagName === 'TEXTAREA' && comment.trim()) return;
     e.preventDefault();
@@ -106,7 +107,7 @@ export function TransitionDialog({
         e.preventDefault();
         const root = body.current;
         const target = isClose
-          ? root?.querySelector<HTMLElement>('input[type="radio"]:checked')
+          ? root?.querySelector<HTMLElement>('[role="radio"][aria-checked="true"]')
           : root?.querySelector<HTMLElement>('textarea');
         (target ?? root?.querySelector<HTMLElement>('textarea'))?.focus({ preventScroll: true });
       }}
@@ -123,36 +124,22 @@ export function TransitionDialog({
     >
       <div ref={body} onKeyDown={onKeyDown} className="flex flex-col gap-3">
         {isClose && resolutions.length > 0 && (
-          <fieldset>
-            <legend className="mb-1.5 text-sm font-medium text-ink">Cách giải quyết</legend>
-            <div className="flex flex-col gap-1.5">
-              {resolutions.map((r) => (
-                <label
-                  key={r.id}
-                  className={cn(
-                    'flex cursor-pointer items-start gap-2.5 rounded-md border px-2.5 py-1.5 transition-colors',
-                    resolutionId === r.id
-                      ? 'border-primary bg-primary-subtle'
-                      : 'border-border hover:bg-surface-2',
-                  )}
-                >
-                  <input
-                    type="radio"
-                    name="transition-resolution"
-                    className="mt-0.5 accent-[var(--primary)]"
-                    checked={resolutionId === r.id}
-                    onChange={() => setResolutionId(r.id)}
-                  />
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-sm text-ink">{r.name}</span>
-                    {r.description && (
-                      <span className="block text-xs text-muted">{r.description}</span>
-                    )}
-                  </span>
-                </label>
-              ))}
-            </div>
-          </fieldset>
+          <div>
+            <p id="tr-resolution-label" className="mb-1.5 text-sm font-medium text-ink">
+              Cách giải quyết
+            </p>
+            <RadioCard
+              size="sm"
+              ariaLabelledby="tr-resolution-label"
+              value={resolutionId}
+              onChange={setResolutionId}
+              options={resolutions.map((r) => ({
+                value: r.id,
+                label: r.name,
+                description: r.description || undefined,
+              }))}
+            />
+          </div>
         )}
         {/* Đang gõ @: chừa chỗ cho popup gợi ý (thân hộp cuộn, popup nằm trong dòng chảy) kẻo bị cắt. */}
         <div className={cn(/(^|\s)@\S*$/.test(comment) && 'pb-40')}>

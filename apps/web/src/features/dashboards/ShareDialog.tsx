@@ -1,11 +1,11 @@
 import { useMemo, useState } from 'react';
 import { Button } from '@/components/ui/Button';
+import { RadioCard } from '@/components/ui/RadioCard';
 import { Dialog } from '@/components/ui/Dialog';
 import { SearchSelect, type SearchSelectOption } from '@/components/ui/SearchSelect';
 import { useProjects } from '@/features/projects/api';
 import { useTeams } from '@/features/teams/api';
 import { useAuth } from '@/stores/auth';
-import { cn } from '@/lib/utils';
 import { DASHBOARD_SCOPES, type DashboardScopeValue } from '@tirapro/shared';
 import { shareValidation } from './layoutOps';
 
@@ -119,67 +119,43 @@ export function ShareDialog({
         </>
       }
     >
-      <fieldset className="space-y-2">
-        <legend className="sr-only">Mức chia sẻ</legend>
-        {DASHBOARD_SCOPES.map((scope) => {
-          const checked = draft.scope === scope;
-          return (
-            <div
-              key={scope}
-              className={cn(
-                'rounded-lg border p-3 transition-colors',
-                checked ? 'border-primary bg-primary-subtle' : 'border-border',
-              )}
-            >
-              <label className="flex cursor-pointer items-start gap-2.5">
-                <input
-                  type="radio"
-                  name="dashboard-scope"
-                  value={scope}
-                  checked={checked}
-                  onChange={() => pickScope(scope)}
-                  className="mt-1 accent-[var(--primary)]"
+      <RadioCard
+        ariaLabel="Mức chia sẻ"
+        value={draft.scope}
+        onChange={pickScope}
+        options={DASHBOARD_SCOPES.map((scope) => ({
+          value: scope,
+          label: SCOPE_META[scope].label,
+          description: SCOPE_META[scope].note,
+          children:
+            scope === 'PROJECT' ? (
+              <>
+                <SearchSelect
+                  value={draft.projectId}
+                  onChange={(projectId) => setDraft((d) => ({ ...d, projectId }))}
+                  options={projectOptions}
+                  placeholder="Chọn dự án…"
+                  searchPlaceholder="Tìm dự án…"
+                  ariaLabel="Dự án được chia sẻ"
                 />
-                <span className="min-w-0">
-                  <span className="block text-sm font-medium text-ink-strong">
-                    {SCOPE_META[scope].label}
-                  </span>
-                  <span className="mt-0.5 block text-xs text-muted">{SCOPE_META[scope].note}</span>
-                </span>
-              </label>
-              {checked && scope === 'PROJECT' && (
-                <div className="mt-2 pl-6">
-                  <SearchSelect
-                    value={draft.projectId}
-                    onChange={(projectId) => setDraft((d) => ({ ...d, projectId }))}
-                    options={projectOptions}
-                    placeholder="Chọn dự án…"
-                    searchPlaceholder="Tìm dự án…"
-                    ariaLabel="Dự án được chia sẻ"
-                  />
-                  {selectedProject?.isPrivate && (
-                    <p className="mt-1 text-xs text-muted">
-                      Dự án riêng tư: chỉ thành viên dự án thấy.
-                    </p>
-                  )}
-                </div>
-              )}
-              {checked && scope === 'TEAM' && (
-                <div className="mt-2 pl-6">
-                  <SearchSelect
-                    value={draft.teamId}
-                    onChange={(teamId) => setDraft((d) => ({ ...d, teamId }))}
-                    options={teamOptions}
-                    placeholder="Chọn nhóm…"
-                    searchPlaceholder="Tìm nhóm…"
-                    ariaLabel="Nhóm được chia sẻ"
-                  />
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </fieldset>
+                {selectedProject?.isPrivate && (
+                  <p className="mt-1 text-xs text-muted">
+                    Dự án riêng tư: chỉ thành viên dự án thấy.
+                  </p>
+                )}
+              </>
+            ) : scope === 'TEAM' ? (
+              <SearchSelect
+                value={draft.teamId}
+                onChange={(teamId) => setDraft((d) => ({ ...d, teamId }))}
+                options={teamOptions}
+                placeholder="Chọn nhóm…"
+                searchPlaceholder="Tìm nhóm…"
+                ariaLabel="Nhóm được chia sẻ"
+              />
+            ) : undefined,
+        }))}
+      />
       {error && (
         <p role="alert" className="mt-3 text-sm text-danger">
           {error}
