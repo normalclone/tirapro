@@ -23,7 +23,7 @@ function sampleIssue(): IssueDto {
     key: 'VD-12',
     summary: 'Đồng bộ danh bạ khi đăng nhập lại trên điện thoại mới',
     type: { id: 'preview-type', name: 'Tác vụ', color: null },
-    status: { id: 'preview-status', name: 'Đang làm', category: 'IN_PROGRESS' },
+    status: { id: 'preview-status', name: 'In Progress', category: 'IN_PROGRESS' },
     priority: { id: 'preview-priority', name: 'Cao', rank: 2, color: null },
     assignee: { id: 'preview-user', displayName: 'Minh Anh', avatarUrl: null },
     storyPoints: 5,
