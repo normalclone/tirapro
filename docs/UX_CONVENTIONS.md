@@ -63,6 +63,8 @@
 - Trạng thái = **icon + nhãn + màu** (không chỉ màu). Nhớ ngữ cảnh (project/board/filter/theme gần nhất). Ưu tiên luôn là `PriorityIcon` (mũi tên theo hạng), không phải chấm màu.
 - **Nên có một hành động chính (primary) mỗi màn/hộp thoại/thanh** — các nút còn lại là secondary/ghost (hướng dẫn, chưa có test ép). Nút vô hiệu dùng token `disabled-bg`/`disabled-fg`, không giảm độ mờ.
 - **Ô chọn:** cấm `<select>` native (test `noNativeSelect`). ≤ 4 lựa chọn ngắn, cố định → `SegmentedControl`; còn lại → `SearchSelect`. Bật/tắt có hiệu lực ngay → `Switch`; chọn trong biểu mẫu rồi mới Lưu → `Checkbox` (giữ nguyên).
+- **Hàng tab:** đổi phần nội dung cùng trang → `Tabs` + `TabPanel` (tab thật cho trình đọc màn hình, phím ←/→/Home/End; không tự dựng `role="tab"`, không dùng `SegmentedControl` cho tab); chọn kiểu xem của cùng nội dung → `SegmentedControl`; chuyển route → liên kết `aria-current`.
+- **Tạo bản ghi bằng nút/phím tắt** dùng `singleFlight` (`lib/singleFlight.ts`) để giữ phím Ctrl/⌘+Enter hoặc bấm đúp không tạo hai bản ghi.
 - **Form có nút Lưu cấp trang** dùng `UnsavedBar` ("Có thay đổi chưa lưu · Bỏ thay đổi · Lưu"); rời trang/đổi mục khi đang sửa thì hỏi xác nhận (`useLeaveGuard`).
 
 ## 10. Responsive & accessible = dễ cho tất cả
@@ -174,7 +176,7 @@ Giao diện chỉ có tiếng Việt, nhưng GIỮ thuật ngữ Agile tiếng A
 - [ ] Hành động chính ≤ 2 click / hoặc 1 lệnh Cmd+K.
 - [ ] Optimistic + skeleton, không spinner chặn.
 - [ ] Empty / loading / error / first-run state đầy đủ, dùng `EmptyState` (có icon; `compact` trong ô nhỏ) và `StatusPanel` (không tìm thấy / không có quyền / lỗi) — **không tự vẽ** khối trống hay màn lỗi.
-- [ ] Ô chọn dùng `SegmentedControl` (≤ 4 mục ngắn) hoặc `SearchSelect`; không `<select>` native, không tự dựng dropdown. Ưu tiên hiện bằng `PriorityIcon`.
+- [ ] Ô chọn dùng `SegmentedControl` (≤ 4 mục ngắn) hoặc `SearchSelect`; không `<select>` native, không tự dựng dropdown. Ưu tiên hiện bằng `PriorityIcon`. Hàng tab dùng `Tabs`/`TabPanel`.
 - [ ] Inline edit + quick-add nơi phù hợp.
 - [ ] Undo cho hành động đảo được; confirm chỉ cho phá hủy.
 - [ ] Tour + help cho màn; có `data-tour` anchors.
