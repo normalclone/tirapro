@@ -38,3 +38,23 @@ export function sprintCapacityLimit(velocityAvg: number | null | undefined): num
     ? velocityAvg
     : null;
 }
+
+/** Số sprint đã đóng gần nhất dùng tính velocity TB của sức chứa sprint. */
+const CAPACITY_SPRINTS = 3;
+
+/**
+ * Velocity TB của tối đa `n` sprint đã đóng GẦN NHẤT, tính ở client từ `useVelocity().data.sprints`
+ * (API trả cũ → mới). Không đổi `limit` của truy vấn vì khoá cache báo cáo không có `limit`.
+ * Trả `count` = số sprint thực sự dùng (0 → chưa có lịch sử).
+ */
+export function recentVelocity(
+  sprints: ReadonlyArray<{ completed: number }> | null | undefined,
+  n: number = CAPACITY_SPRINTS,
+): { avg: number; count: number } {
+  const recent = (sprints ?? []).slice(-n).filter((s) => Number.isFinite(s.completed));
+  if (recent.length === 0) return { avg: 0, count: 0 };
+  return {
+    avg: r2(recent.reduce((a, s) => a + s.completed, 0) / recent.length),
+    count: recent.length,
+  };
+}

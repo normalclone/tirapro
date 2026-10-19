@@ -52,7 +52,7 @@ import { parseSprintAction, stripSprintAction, type SprintAction } from './sprin
 import { useProjectIssues, useUpdateIssue } from '@/features/issues/api';
 import { useVelocity } from '@/features/reports/api';
 import { useCan } from '@/features/projects/permissions';
-import { sprintCapacityLimit } from '@/components/ui/limitLevel';
+import { recentVelocity, sprintCapacityLimit } from '@/components/ui/limitLevel';
 import { LimitMeter } from '@/components/ui/LimitMeter';
 import { useProjectMeta } from '@/features/ai/api';
 import { useProjectLabels, type ProjectLabel } from '@/features/issue-meta/api';
@@ -165,11 +165,15 @@ export function BacklogPage() {
   const projectId = project?.id;
 
   const sprintsQ = useProjectSprints(projectId);
-  // Sức chứa sprint bản nhẹ = velocity TB (một lần cho cả dự án, không theo từng sprint). Không có quyền xem báo cáo
-  // hoặc chưa có sprint đã đóng → không có giới hạn → ẩn đồng hồ (header vẫn hiện "N việc · P điểm").
+  // Sức chứa sprint bản nhẹ = velocity TB 3 sprint đã đóng gần nhất (tính ở client từ dữ liệu `useVelocity` — không
+  // đổi `limit` của truy vấn để khỏi làm bẩn cache của màn Báo cáo). Một lần cho cả dự án. Chỉ tải khi có sprint chưa
+  // đóng (nơi đồng hồ hiện) và có quyền xem báo cáo. Chưa có sprint đã đóng → không có giới hạn → ẩn đồng hồ.
   const canViewReports = useCan(projectId)('report:view');
-  const velocityQ = useVelocity(canViewReports ? projectId : undefined);
-  const sprintCapacity = sprintCapacityLimit(velocityQ.data?.averageCompleted);
+  const hasOpenSprint = sprintsQ.data?.some((sp) => sp.state !== 'CLOSED') ?? false;
+  const velocityQ = useVelocity(canViewReports && hasOpenSprint ? projectId : undefined);
+  const recent = useMemo(() => recentVelocity(velocityQ.data?.sprints), [velocityQ.data]);
+  const sprintCapacity = sprintCapacityLimit(recent.avg);
+  const sprintCapacityTip = `Velocity TB ${recent.count} sprint gần nhất: ${recent.avg} điểm. So tổng điểm ước lượng của sprint với số đó (chỉ để tham khảo, không chặn thêm việc).`;
   const issuesQ = useProjectIssues(projectId);
   const { data: sprints, isLoading: ls } = sprintsQ;
   const { data: issues, isLoading: li } = issuesQ;
@@ -961,6 +965,7 @@ export function BacklogPage() {
                                 // Chưa lọc: so cả sprint với velocity (bộ lọc chỉ ẩn dòng, không đổi sức chứa).
                                 used: pointsSum(fullBySprint.get(sprint.id) ?? []),
                                 limit: sprintCapacity,
+                                tip: sprintCapacityTip,
                               }
                             : null
                         }
@@ -1401,7 +1406,7 @@ function Section({
   meta?: React.ReactNode;
   points: number;
   /** Tổng điểm cả sprint (chưa lọc) so với velocity TB — chỉ sprint chưa đóng; null/undefined = không vẽ đồng hồ. */
-  capacity?: { used: number; limit: number } | null;
+  capacity?: { used: number; limit: number; tip: string } | null;
   count: number;
   issues: IssueDto[];
   progressMap: Map<string, SubtreeProgress>;
@@ -1507,7 +1512,8 @@ function Section({
             label="Sức chứa sprint"
             unit="điểm"
             labels={SPRINT_CAPACITY_LABELS}
-            description="So tổng điểm ước lượng của sprint với velocity trung bình các sprint đã kết thúc gần đây (chỉ để tham khảo, không chặn thêm việc)."
+            tone="advisory"
+            description={capacity.tip}
           />
         </div>
       )}

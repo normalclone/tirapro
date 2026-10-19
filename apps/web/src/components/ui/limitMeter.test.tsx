@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { LimitMeter } from './LimitMeter';
-import { limitLevel, sprintCapacityLimit } from './limitLevel';
+import { limitLevel, recentVelocity, sprintCapacityLimit } from './limitLevel';
 
 const read = (p: string) => readFileSync(join(__dirname, '..', '..', p), 'utf8');
 
@@ -47,6 +47,23 @@ describe('limitLevel(used, limit)', () => {
   });
 });
 
+describe('recentVelocity(sprints)', () => {
+  const c = (...n: number[]) => n.map((completed) => ({ completed }));
+  it('TB của 3 sprint đã đóng GẦN NHẤT (API trả cũ → mới)', () => {
+    expect(recentVelocity(c(100, 10, 20, 30))).toEqual({ avg: 20, count: 3 });
+  });
+  it('ít hơn 3 → dùng số có; chưa có → count 0', () => {
+    expect(recentVelocity(c(16))).toEqual({ avg: 16, count: 1 });
+    expect(recentVelocity(c(10, 15))).toEqual({ avg: 12.5, count: 2 });
+    expect(recentVelocity([])).toEqual({ avg: 0, count: 0 });
+    expect(recentVelocity(undefined)).toEqual({ avg: 0, count: 0 });
+  });
+  it('bỏ qua giá trị không hữu hạn; làm tròn 2 chữ số', () => {
+    expect(recentVelocity(c(1, 1, 2))).toEqual({ avg: 1.33, count: 3 });
+    expect(recentVelocity(c(Number.NaN, 4))).toEqual({ avg: 4, count: 1 });
+  });
+});
+
 describe('sprintCapacityLimit(velocity)', () => {
   it('chưa có lịch sử (0, âm, NaN, undefined) → null: ẩn đồng hồ', () => {
     expect(sprintCapacityLimit(0)).toBeNull();
@@ -83,7 +100,31 @@ describe('<LimitMeter>', () => {
     expect(warn).toMatch(/aria-valuetext="4\/5 — Gần đầy"/);
     expect(html({ used: 5 })).toContain('Đầy');
     expect(html({ used: 7 })).toContain('Vượt 2');
-    expect(html({ used: 7 })).toMatch(/aria-valuenow="7"/);
+    // aria-valuenow kẹp ở giới hạn; số thật ở aria-valuetext
+    expect(html({ used: 7 })).toMatch(/aria-valuenow="5"/);
+    expect(html({ used: 7 })).toMatch(/aria-valuetext="7\/5 — Vượt 2"/);
+  });
+  it('aria-valuenow luôn trong [min,max]; chữ hiển thị aria-hidden (trùng valuetext)', () => {
+    for (const used of [-3, 0, 5, 9, Number.NaN]) {
+      const h = html({ used });
+      const now = Number(/aria-valuenow="([^"]+)"/.exec(h)?.[1]);
+      expect(now).toBeGreaterThanOrEqual(0);
+      expect(now).toBeLessThanOrEqual(5);
+    }
+    expect(html({ used: 4 })).toMatch(/<p aria-hidden="true"/);
+  });
+  it('"Đầy" và "Vượt" in đậm; track dùng border-strong', () => {
+    expect(html({ used: 5 })).toMatch(/font-semibold/);
+    expect(html({ used: 4 })).not.toMatch(/font-semibold/);
+    expect(html()).toMatch(/bg-border-strong/);
+  });
+  it('tông: strict đỏ khi đầy/vượt; advisory dùng cam, không đỏ', () => {
+    for (const used of [5, 7]) {
+      expect(html({ used })).toMatch(/bg-danger/);
+      const a = html({ used, tone: 'advisory' });
+      expect(a).not.toMatch(/danger/);
+      expect(a).toMatch(/bg-warning/);
+    }
   });
   it('vượt: aria-valuemax vẫn là giới hạn, thanh đầy 100%', () => {
     const h = html({ used: 7 });
@@ -132,5 +173,10 @@ describe('dùng đồng hồ', () => {
     expect(src.match(/useVelocity\(/g)).toHaveLength(1);
     expect(src.indexOf('useVelocity(')).toBeLessThan(src.indexOf('function Section('));
     expect(src).toMatch(/Sức chứa sprint/);
+    expect(src).toMatch(/recentVelocity\(/);
+    expect(src).toMatch(/tone="advisory"/);
+    // chỉ tải velocity khi có sprint chưa đóng
+    expect(src).toMatch(/hasOpenSprint/);
+    expect(src).toMatch(/Velocity TB \$\{recent\.count\} sprint gần nhất/);
   });
 });

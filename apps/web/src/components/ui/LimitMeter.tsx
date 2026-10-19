@@ -16,24 +16,41 @@ const DEFAULT_LABELS: Required<StateLabels> = {
   over: (n: number) => `Vượt ${n}`,
 };
 
-const BAR: Record<Exclude<LimitLevel, 'none'>, string> = {
-  ok: 'bg-muted',
-  warn: 'bg-warning',
-  full: 'bg-danger',
-  over: 'bg-danger',
+type Level = Exclude<LimitLevel, 'none'>;
+
+/**
+ * Tông màu theo ngữ cảnh.
+ * - `strict` (WIP): đầy/vượt là đỏ vì máy chủ CHẶN ở mức đó.
+ * - `advisory` (sức chứa sprint): chỉ để tham khảo, không chặn gì — đầy/vượt dùng cam (warning), không dùng đỏ;
+ *   "đầy bằng velocity" là mục tiêu chứ không phải báo động nên không được đỏ.
+ */
+export type LimitTone = 'strict' | 'advisory';
+
+const BAR: Record<LimitTone, Record<Level, string>> = {
+  strict: { ok: 'bg-muted', warn: 'bg-warning', full: 'bg-danger', over: 'bg-danger' },
+  advisory: { ok: 'bg-muted', warn: 'bg-warning', full: 'bg-warning', over: 'bg-warning' },
 };
-const TEXT: Record<Exclude<LimitLevel, 'none'>, string> = {
-  ok: 'text-muted',
-  warn: 'text-warning-ink',
-  full: 'text-danger',
-  over: 'font-semibold text-danger',
+// "Đầy" và "Vượt" in đậm: nhãn là tín hiệu chính, màu chỉ phụ.
+const TEXT: Record<LimitTone, Record<Level, string>> = {
+  strict: {
+    ok: 'text-muted',
+    warn: 'text-warning-ink',
+    full: 'font-semibold text-danger',
+    over: 'font-semibold text-danger',
+  },
+  advisory: {
+    ok: 'text-muted',
+    warn: 'text-warning-ink',
+    full: 'font-semibold text-warning-ink',
+    over: 'font-semibold text-warning-ink',
+  },
 };
 
 const fmt = (n: number) => String(Math.round(n * 10) / 10);
 
 /**
  * Đồng hồ hạn mức: thanh mảnh + chữ "đã dùng/giới hạn" + nhãn trạng thái (Gần đầy / Đầy / Vượt N).
- * Màu chỉ làm rõ thêm — chữ luôn có. `role="meter"`; `aria-valuemax` luôn là giới hạn (vượt thì valuenow > valuemax).
+ * Màu chỉ làm rõ thêm — chữ luôn có. `role="meter"`; `aria-valuenow` kẹp ở giới hạn (hợp lệ ARIA), số thật nằm ở `aria-valuetext`; chữ hiển thị `aria-hidden` vì trùng valuetext.
  * Không có giới hạn dùng được → không render. Dùng cho WIP cột (Board) và sức chứa sprint (Backlog).
  */
 export function LimitMeter({
@@ -44,6 +61,7 @@ export function LimitMeter({
   unit,
   labels,
   description,
+  tone = 'strict',
   className,
 }: {
   used: number;
@@ -58,6 +76,8 @@ export function LimitMeter({
   labels?: StateLabels;
   /** Giải thích dài — qua `aria-describedby` và tooltip, không nằm trong tên. */
   description?: string;
+  /** Tông màu — mặc định `strict` (đỏ khi đầy/vượt); `advisory` cho hạn mức chỉ tham khảo. */
+  tone?: LimitTone;
   className?: string;
 }) {
   const descId = useId();
@@ -76,22 +96,24 @@ export function LimitMeter({
       <div
         role="meter"
         aria-label={label}
-        aria-valuenow={used}
+        aria-valuenow={Math.min(Number.isFinite(used) ? Math.max(used, 0) : 0, limit)}
         aria-valuemin={0}
         aria-valuemax={limit}
         aria-valuetext={valueText}
         aria-describedby={description ? descId : undefined}
-        className="h-1 w-full overflow-hidden rounded-full bg-border"
+        className="h-1 w-full overflow-hidden rounded-full bg-border-strong"
       >
         <div
           className={cn(
             'h-full rounded-full transition-[width] duration-base motion-reduce:transition-none',
-            BAR[level],
+            BAR[tone][level],
           )}
           style={{ width: `${Math.round(pct * 100)}%` }}
         />
       </div>
-      <p className={cn('tabular mt-1 text-[11px] leading-4', TEXT[level])}>{text}</p>
+      <p aria-hidden="true" className={cn('tabular mt-1 text-[11px] leading-4', TEXT[tone][level])}>
+        {text}
+      </p>
       {description && (
         <span id={descId} className="sr-only">
           {description}
