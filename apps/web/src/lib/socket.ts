@@ -4,10 +4,10 @@ import type { ClientToServerEvents, RoomTarget, ServerToClientEvents } from '@ti
 import { getAccessToken } from './auth-token';
 import { refreshAccessToken } from './api';
 import {
+  attemptAfterSession,
   connReduce,
   INITIAL_CONN,
   nextRetry,
-  STABLE_RETRY_MS,
   type ConnEvent,
   type ConnState,
   type RetryReason,
@@ -89,7 +89,6 @@ function clearRetry(): void {
  */
 async function scheduleRetry(s: AppSocket, reason: RetryReason, stableMs: number): Promise<void> {
   if (retryTimer || retrying || s !== socket) return;
-  if (stableMs >= STABLE_RETRY_MS) retryAttempt = 0;
   const base = { reason, attempt: retryAttempt, stableMs, online: navigator.onLine };
   const apply = (d: ReturnType<typeof nextRetry>): boolean => {
     if (d === 'wait-online') waitingOnline = reason;
@@ -136,6 +135,8 @@ function bindStatus(s: AppSocket): void {
     const now = Date.now();
     const stableMs = upAt === null ? 0 : now - upAt;
     upAt = null;
+    // Phiên đã ổn định thì bộ đếm về 0 BẤT KỂ lý do rớt (vd `transport close` sau phiên dài không để lại bộ đếm cũ cho lần kick sau).
+    retryAttempt = attemptAfterSession(retryAttempt, stableMs);
     dispatchConn({ type: 'disconnect', at: now, reason });
     if (reason === 'io server disconnect') void scheduleRetry(s, reason, stableMs);
   });

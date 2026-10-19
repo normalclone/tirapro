@@ -6,6 +6,7 @@ import {
   deriveBanner,
   INITIAL_CONN,
   LOST_AFTER_MS,
+  attemptAfterSession,
   MAX_RETRIES,
   nextChangeIn,
   nextRetry,
@@ -257,6 +258,17 @@ describe('nextRetry — quyết định nối lại thủ công (thuần)', () =
   });
 });
 
+describe('attemptAfterSession — bộ đếm sau một phiên kết nối', () => {
+  it('phiên sống ≥ STABLE_RETRY_MS → về 0 (mọi lý do rớt, kể cả transport close)', () => {
+    expect(attemptAfterSession(4, STABLE_RETRY_MS)).toBe(0);
+    expect(attemptAfterSession(4, STABLE_RETRY_MS + 1)).toBe(0);
+  });
+  it('phiên ngắn (bị kick ngay) → giữ nguyên bộ đếm', () => {
+    expect(attemptAfterSession(4, STABLE_RETRY_MS - 1)).toBe(4);
+    expect(attemptAfterSession(2, 0)).toBe(2);
+  });
+});
+
 describe('retryDelayMs — nối lại thủ công khi socket.io không tự nối', () => {
   it('lùi dần, trần 30s', () => {
     expect(retryDelayMs(0)).toBe(2000);
@@ -292,6 +304,12 @@ describe('nối dây', () => {
     expect(s).toContain('nextRetry(');
     expect(s).toContain("type: 'gave_up'");
     expect(s).toContain('waitingOnline');
+    // handler `disconnect` chung đặt lại bộ đếm theo phiên, KHÔNG phụ thuộc lý do rớt
+    const disc = /s\.on\('disconnect',[\s\S]*?\n  \}\);/.exec(s)?.[0] ?? '';
+    expect(disc).toContain('attemptAfterSession(');
+    expect(disc.indexOf('attemptAfterSession(')).toBeLessThan(
+      disc.indexOf("reason === 'io server disconnect'"),
+    );
     expect(s).toMatch(/if \(!navigator\.onLine\) \{\s*waitingOnline = reason;/); // cả lúc hẹn giờ nổ
     const connectHandler = /s\.on\('connect', \(\) => \{[\s\S]*?\n  \}\);/.exec(s)?.[0] ?? '';
     expect(connectHandler).not.toMatch(/retryAttempt = 0/);

@@ -159,6 +159,10 @@ export function nextChangeIn(raw: ConnState, now: number): number | null {
  */
 export const retryDelayMs = (attempt: number): number => Math.min(30_000, 2000 * 2 ** attempt);
 
+/** Bộ đếm nối lại sau một phiên kết nối đã sống `stableMs`: phiên ổn định (≥ STABLE_RETRY_MS) → 0, bất kể lý do rớt; phiên ngắn → giữ. */
+export const attemptAfterSession = (attempt: number, stableMs: number): number =>
+  stableMs >= STABLE_RETRY_MS ? 0 : attempt;
+
 export type RetryReason = 'io server disconnect' | 'connect_error';
 
 /**
@@ -178,7 +182,7 @@ export function nextRetry(o: {
 }): { delayMs: number } | 'stop' | 'wait-online' {
   if (!o.online) return 'wait-online';
   if (!o.refreshed) return 'stop';
-  const attempt = o.stableMs >= STABLE_RETRY_MS ? 0 : o.attempt;
+  const attempt = attemptAfterSession(o.attempt, o.stableMs);
   if (attempt >= MAX_RETRIES) return 'stop';
   return { delayMs: retryDelayMs(attempt) };
 }
