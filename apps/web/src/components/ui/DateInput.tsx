@@ -9,6 +9,7 @@ import {
 } from 'react';
 import { CalendarDays } from 'lucide-react';
 import { Input } from '@/components/ui/Input';
+import { INVALID_FIELD_CLS } from '@/lib/formErrors';
 import { cn } from '@/lib/utils';
 import {
   formatViDate,
@@ -25,8 +26,7 @@ const DATE_ERR = 'Ngày chưa đúng (dd/MM/yyyy)';
 const RANGE_ERR = 'Ngày nằm ngoài khoảng cho phép';
 const TIME_ERR = 'Giờ chưa đúng (HH:mm)';
 
-/** Viền + ring đỏ kể cả khi đang focus (đè `focus-visible:border-primary` của `Input`). */
-const INVALID_CLS = 'border-danger focus-visible:!border-danger focus-visible:ring-danger/40';
+const INVALID_CLS = INVALID_FIELD_CLS;
 
 const CAN_PICK =
   typeof HTMLInputElement !== 'undefined' &&

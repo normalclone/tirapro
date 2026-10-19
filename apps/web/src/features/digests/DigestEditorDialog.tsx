@@ -1,11 +1,14 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Eye } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/Button';
 import { Dialog } from '@/components/ui/Dialog';
+import { ErrorSummary } from '@/components/ui/ErrorSummary';
+import { FormField } from '@/components/ui/FormField';
 import { Input } from '@/components/ui/Input';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { apiErrorMessage } from '@/lib/api';
+import { focusFirstError, type FieldError } from '@/lib/formErrors';
 import { useAuth } from '@/stores/auth';
 import { cn } from '@/lib/utils';
 import { useProjects } from '@/features/projects/api';
@@ -23,8 +26,16 @@ import {
   toCreatePayload,
   toUpdatePayload,
   validateForm,
+  type DigestField,
   type DigestFormState,
 } from './digestForm';
+
+/** Trường của form → id phần tử trong hộp + nhãn hiện ở phần tóm tắt lỗi. */
+const FIELD_META: Record<DigestField, { id: string; label: string }> = {
+  name: { id: 'digest-name', label: 'Tên báo cáo' },
+  blocks: { id: 'digest-blocks', label: 'Nội dung báo cáo' },
+  recipients: { id: 'digest-recipients', label: 'Người nhận email' },
+};
 
 /**
  * Tạo / sửa báo cáo định kỳ trong MỘT hộp thoại: tên, phạm vi, lịch, kênh (Telegram + Email), khối nội dung, xem
@@ -57,10 +68,23 @@ export function DigestEditorDialog({
       ...(key === 'projectId' ? { allowPrivateToChannel: false } : {}),
     }));
 
+  // Sau lần Lưu lỗi đầu tiên, lỗi được tính lại theo form: sửa tới đâu hết lỗi tới đó.
+  const [showErrors, setShowErrors] = useState(false);
+  const [focusTick, setFocusTick] = useState(0);
+  const issues = showErrors ? validateForm(form) : [];
+  const errors: FieldError[] = issues.map((i) => ({ ...FIELD_META[i.field], message: i.message }));
+  const errorsRef = useRef(errors);
+  errorsRef.current = errors;
+  const errorOf = (f: DigestField) => issues.find((i) => i.field === f)?.message;
+  // Đưa tới lỗi đầu tiên SAU khi phần tóm tắt đã hiện (nếu không, bố cục dịch xuống làm lệch vị trí cuộn).
+  useEffect(() => {
+    if (focusTick > 0) focusFirstError(errorsRef.current);
+  }, [focusTick]);
+
   function submit() {
-    const error = validateForm(form);
-    if (error) {
-      toast.error(error);
+    if (validateForm(form).length > 0) {
+      setShowErrors(true);
+      setFocusTick((n) => n + 1);
       return;
     }
     const done = {
@@ -94,20 +118,32 @@ export function DigestEditorDialog({
       }
     >
       <div className="space-y-4 pb-1">
+        <ErrorSummary errors={errors} />
         <div className="grid gap-3 sm:grid-cols-2">
-          <Field id="digest-name" label="Tên báo cáo">
-            <Input
-              id="digest-name"
-              value={form.name}
-              placeholder="VD: Tổng kết tuần"
-              onChange={(e) => set('name', e.target.value)}
-            />
-          </Field>
+          <FormField id="digest-name" label="Tên báo cáo" error={errorOf('name')}>
+            {(a11y) => (
+              <Input
+                {...a11y}
+                value={form.name}
+                placeholder="VD: Tổng kết tuần"
+                onChange={(e) => set('name', e.target.value)}
+              />
+            )}
+          </FormField>
           <ProjectField form={form} set={set} locked={digest !== null} />
         </div>
         <ScheduleFields form={form} set={set} />
-        <ChannelFields form={form} set={set} projectIsPrivate={projectIsPrivate} />
-        <BlocksField value={form.blocks} onChange={(v) => set('blocks', v)} />
+        <ChannelFields
+          form={form}
+          set={set}
+          projectIsPrivate={projectIsPrivate}
+          recipientsError={errorOf('recipients')}
+        />
+        <BlocksField
+          value={form.blocks}
+          onChange={(v) => set('blocks', v)}
+          error={errorOf('blocks')}
+        />
         <PreviewPanel form={form} projectIsPrivate={flagPrivate} />
       </div>
     </Dialog>

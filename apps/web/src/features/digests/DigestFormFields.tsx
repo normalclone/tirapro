@@ -2,9 +2,11 @@ import { useMemo, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { Search } from 'lucide-react';
 import { DIGEST_BLOCKS, type DigestBlockId } from '@tirapro/shared';
+import { FieldErrorText } from '@/components/ui/FieldError';
 import { Input } from '@/components/ui/Input';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { Avatar } from '@/components/ui/primitives';
+import { fieldErrorId } from '@/lib/formErrors';
 import { cn } from '@/lib/utils';
 import { useUserSelect } from '@/features/members/useUserSelect';
 import { useDigestChannels, type DigestSchedule } from './api';
@@ -120,11 +122,14 @@ export function ChannelFields({
   form,
   set,
   projectIsPrivate,
+  recipientsError,
 }: {
   form: DigestFormState;
   set: SetDigestForm;
   /** Dự án đang gắn (nếu có) là dự án RIÊNG TƯ. */
   projectIsPrivate: boolean;
+  /** Lỗi của danh sách người nhận email (hiện dưới ô, trỏ bằng aria-describedby). */
+  recipientsError?: string;
 }) {
   const { options, loading } = useDigestChannels();
   return (
@@ -186,7 +191,19 @@ export function ChannelFields({
           </p>
         )}
         {form.deliverEmail && (
-          <RecipientsPicker value={form.recipients} onChange={(v) => set('recipients', v)} />
+          <div
+            id="digest-recipients"
+            role="group"
+            aria-label="Người nhận email"
+            aria-describedby={recipientsError ? fieldErrorId('digest-recipients') : undefined}
+          >
+            <RecipientsPicker value={form.recipients} onChange={(v) => set('recipients', v)} />
+            {recipientsError && (
+              <FieldErrorText id={fieldErrorId('digest-recipients')}>
+                {recipientsError}
+              </FieldErrorText>
+            )}
+          </div>
         )}
       </div>
     </div>
@@ -311,14 +328,19 @@ function RecipientsPicker({
 export function BlocksField({
   value,
   onChange,
+  error,
 }: {
   value: DigestBlockId[];
   onChange: (v: DigestBlockId[]) => void;
+  error?: string;
 }) {
   const toggle = (id: DigestBlockId) =>
     onChange(value.includes(id) ? value.filter((v) => v !== id) : [...value, id]);
   return (
-    <fieldset>
+    <fieldset
+      id="digest-blocks"
+      aria-describedby={error ? fieldErrorId('digest-blocks') : undefined}
+    >
       <legend className="mb-1 text-xs font-medium text-muted">Nội dung báo cáo</legend>
       <div className="grid gap-x-4 gap-y-2 sm:grid-cols-2">
         {DIGEST_BLOCKS.map((b) => (
@@ -336,6 +358,7 @@ export function BlocksField({
           </label>
         ))}
       </div>
+      {error && <FieldErrorText id={fieldErrorId('digest-blocks')}>{error}</FieldErrorText>}
     </fieldset>
   );
 }

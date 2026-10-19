@@ -10,7 +10,9 @@ import {
 } from 'react';
 import * as Popover from '@radix-ui/react-popover';
 import { Check, ChevronDown } from 'lucide-react';
+import { FieldErrorText } from '@/components/ui/FieldError';
 import { Input } from '@/components/ui/Input';
+import { INVALID_FIELD_CLS, invalidAttrs } from '@/lib/formErrors';
 import { groupHeadingAt } from './searchSelectGroups';
 import {
   filterOptions,
@@ -51,7 +53,31 @@ export interface SearchSelectOption {
  * Chọn lại giá trị đang chọn KHÔNG phát `onChange` (như select native, xem `shouldEmitChange`): menu dạng "hành động"
  * phải truyền `value=""` và để mọi option có `value` khác rỗng thì mới luôn phát.
  */
-export function SearchSelect({
+const TRIGGER_CLS = [
+  'flex h-9 w-full items-center gap-2 rounded-md border border-border bg-bg px-3 text-left text-sm transition-colors',
+  'focus-visible:outline-none focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
+  'disabled:bg-disabled-bg disabled:text-disabled-fg disabled:cursor-not-allowed data-[state=open]:border-primary',
+].join(' ');
+
+function TriggerLabel({
+  selected,
+  placeholder,
+  renderTrigger,
+}: {
+  selected: SearchSelectOption | undefined;
+  placeholder: string;
+  renderTrigger?: (selected: SearchSelectOption | undefined) => ReactNode;
+}) {
+  if (renderTrigger)
+    return <span className="min-w-0 flex-1 truncate">{renderTrigger(selected)}</span>;
+  return (
+    <span className={cn('min-w-0 flex-1 truncate', selected ? 'text-ink' : 'text-faint')}>
+      {selected ? selected.label : placeholder}
+    </span>
+  );
+}
+
+function SearchSelectControl({
   value,
   onChange,
   options,
@@ -68,6 +94,7 @@ export function SearchSelect({
   moreHint,
   resolveOption,
   searchable,
+  invalidAria,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -91,6 +118,8 @@ export function SearchSelect({
   resolveOption?: (value: string) => SearchSelectOption | undefined;
   /** Ép hiện/ẩn ô tìm. Mặc định: hiện khi > 6 mục hoặc có `onSearchChange` (tìm phía máy chủ). */
   searchable?: boolean;
+  /** Thuộc tính aria của lỗi (từ `invalidAttrs`); có `aria-invalid` thì trigger viền danger. */
+  invalidAria?: { 'aria-invalid'?: true; 'aria-describedby'?: string };
 }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
@@ -147,20 +176,14 @@ export function SearchSelect({
           id={id}
           disabled={disabled}
           aria-label={ariaLabel}
-          className={cn(
-            'flex h-9 w-full items-center gap-2 rounded-md border border-border bg-bg px-3 text-left text-sm transition-colors',
-            'focus-visible:outline-none focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
-            'disabled:bg-disabled-bg disabled:text-disabled-fg disabled:cursor-not-allowed data-[state=open]:border-primary',
-            className,
-          )}
+          {...invalidAria}
+          className={cn(TRIGGER_CLS, invalidAria?.['aria-invalid'] && INVALID_FIELD_CLS, className)}
         >
-          {renderTrigger ? (
-            <span className="min-w-0 flex-1 truncate">{renderTrigger(selected)}</span>
-          ) : (
-            <span className={cn('min-w-0 flex-1 truncate', selected ? 'text-ink' : 'text-faint')}>
-              {selected ? selected.label : placeholder}
-            </span>
-          )}
+          <TriggerLabel
+            selected={selected}
+            placeholder={placeholder}
+            renderTrigger={renderTrigger}
+          />
           {!hideChevron && <ChevronDown className="h-4 w-4 shrink-0 text-faint" aria-hidden />}
         </button>
       </Popover.Trigger>
@@ -501,5 +524,32 @@ function OptionRow({
         </span>
       )}
     </li>
+  );
+}
+
+type SearchSelectProps = Parameters<typeof SearchSelectControl>[0];
+
+/**
+ * Như `SearchSelectControl` + `invalid`: `true` → viền danger + aria-invalid; chuỗi → thêm lời lỗi dưới ô (id `<id>-error`,
+ * nối vào aria-describedby). Chuỗi cần `id` để id lời lỗi ổn định và trùng với ô mà `ErrorSummary`/`focusFirstError` tìm.
+ */
+export function SearchSelect({
+  invalid,
+  ...props
+}: Omit<SearchSelectProps, 'invalidAria'> & { invalid?: boolean | string }) {
+  const autoId = useId();
+  const a = invalidAttrs(invalid, props.id ?? autoId);
+  const control = (
+    <SearchSelectControl
+      {...props}
+      invalidAria={{ 'aria-invalid': a.ariaInvalid, 'aria-describedby': a.describedBy }}
+    />
+  );
+  if (!a.errorId) return control;
+  return (
+    <>
+      {control}
+      <FieldErrorText id={a.errorId}>{a.errorText}</FieldErrorText>
+    </>
   );
 }
