@@ -49,6 +49,13 @@ export interface DialogProps {
    * mà hộp này mở bằng state nên không có trigger → focus rơi về `body`; nơi mở từ một nút nên tự trả focus về nút đó.
    */
   onCloseAutoFocus?: (e: Event) => void;
+  /**
+   * Chỉ `placement="bottom"`: thay tay nắm trang trí bằng nội dung riêng (vd nút đổi nấc chiều cao của sheet xem nhanh).
+   * Không truyền → vẫn là tay nắm trang trí như cũ.
+   */
+  handle?: ReactNode;
+  /** Không vẽ nút X mặc định — nơi dùng tự đặt nút đóng (vd trong `handle`, kích thước chạm 44px). */
+  hideClose?: boolean;
   /** Chặn Esc đóng hộp (gọi `e.preventDefault()`) — vd Esc đang dành để đóng một panel con. */
   onEscapeKeyDown?: (e: globalThis.KeyboardEvent) => void;
 }
@@ -98,6 +105,8 @@ export function Dialog({
   iconTone = 'primary',
   headerExtra,
   placement = 'center',
+  handle,
+  hideClose = false,
   onOpenAutoFocus,
   onCloseAutoFocus,
   onEscapeKeyDown,
@@ -132,13 +141,14 @@ export function Dialog({
             className,
           )}
         >
-          {placement === 'bottom' && (
-            // Tay nắm trang trí (không kéo được) — gợi ý đây là sheet trượt từ đáy.
-            <div
-              aria-hidden
-              className="mx-auto mt-2 h-1 w-8 shrink-0 rounded-full bg-border-strong"
-            />
-          )}
+          {placement === 'bottom' &&
+            (handle ?? (
+              // Tay nắm trang trí (không kéo được) — gợi ý đây là sheet trượt từ đáy.
+              <div
+                aria-hidden
+                className="mx-auto mt-2 h-1 w-8 shrink-0 rounded-full bg-border-strong"
+              />
+            ))}
           <div
             className={cn(
               'shrink-0 px-5 pt-4 pr-14',
@@ -182,12 +192,14 @@ export function Dialog({
               {footer}
             </div>
           )}
-          <RadixDialog.Close
-            aria-label="Đóng"
-            className="absolute right-3 top-3 grid h-8 w-8 place-items-center rounded-md text-muted transition-colors duration-fast hover:bg-surface-2 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-          >
-            <X className="h-4 w-4" aria-hidden />
-          </RadixDialog.Close>
+          {!hideClose && (
+            <RadixDialog.Close
+              aria-label="Đóng"
+              className="absolute right-3 top-3 grid h-8 w-8 place-items-center rounded-md text-muted transition-colors duration-fast hover:bg-surface-2 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            >
+              <X className="h-4 w-4" aria-hidden />
+            </RadixDialog.Close>
+          )}
         </RadixDialog.Content>
       </RadixDialog.Portal>
     </RadixDialog.Root>

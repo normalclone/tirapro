@@ -37,6 +37,8 @@ import { PeekNavControls } from './PeekNavControls';
 import { usePeekContext } from './PeekOrderContext';
 import { usePeekPosition } from './usePeekPosition';
 import { resolvePendingMore } from '@/lib/peekPosition';
+import { PeekSheet } from './PeekSheet';
+import { findPeekSource } from './peekSheetLogic';
 
 const CATEGORY_COLOR: Record<string, string> = {
   TODO: 'var(--status-todo)',
@@ -45,16 +47,23 @@ const CATEGORY_COLOR: Record<string, string> = {
 };
 
 /**
- * Xem nhanh công việc ở cột phải — KHÔNG modal (không focus-trap, không lớp phủ) để bấm hết dòng này sang dòng khác.
- * Cột tĩnh 30rem ở `lg+`; ngăn kéo phủ phải ở màn nhỏ — cùng một `<aside>` bằng CSS.
+ * Xem nhanh công việc. Từ `md` (768px): cột phải KHÔNG modal (không focus-trap, không lớp phủ) để bấm hết dòng này sang dòng
+ * khác — cột tĩnh 30rem ở `lg+`, ngăn kéo phủ phải ở 768–1023px (cùng một `<aside>` bằng CSS). Dưới `md`: sheet đáy MODAL
+ * 2 nấc (`PeekSheet`) — cùng nội dung/điều hướng ‹ ›; vì modal nên phím j/k tắt ở điện thoại.
  */
 export function IssuePeekPanel({
   issueKey,
   onClose,
   onNavigate,
+  sheet = false,
+  open = true,
 }: {
   issueKey: string;
   onClose: () => void;
+  /** Dưới md (`PeekShell` quyết định theo `PEEK_DESKTOP_QUERY`): hiện sheet đáy modal thay cho `<aside>`. */
+  sheet?: boolean;
+  /** Chỉ sheet: `false` = đang chạy hiệu ứng đóng (cây còn giữ khoá cuối cùng). Panel phi-modal luôn được gỡ ngay khi đóng. */
+  open?: boolean;
   /** Đổi sang việc khác (`useIssuePeek().open` — cùng hàm phím j/k gọi). Không truyền → không có nút ‹ › và "n/N". */
   onNavigate?: (key: string) => void;
 }) {
@@ -70,6 +79,8 @@ export function IssuePeekPanel({
   // huỷ sửa tại chỗ) → bỏ qua; Esc từ ô nhập TRONG panel đang có chữ chưa gửi (bình luận, bước checklist, liên kết…)
   // → chỉ rời ô (nháp còn nguyên vì panel không bị gỡ), Esc kế tiếp mới đóng.
   useEffect(() => {
+    // Sheet là modal: Esc do Radix xử lý (đóng/giữ nháp/nhường ô sửa tại chỗ), listener này không được đóng thêm lần nữa.
+    if (sheet) return;
     function onKey(e: KeyboardEvent) {
       // Đang gõ bằng bộ gõ (IME Telex/VNI): Esc thuộc về bộ gõ, không blur ô/đóng panel.
       if (e.isComposing) return;
@@ -87,7 +98,7 @@ export function IssuePeekPanel({
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  }, [onClose, sheet]);
 
   // Việc đang xem đổi (bấm dòng, j/k, ‹ ›, quay lại): cuộn dòng/thẻ của nó vào khung CHỈ khi đang ngoài tầm nhìn (`nearest` không
   // làm gì nếu đã thấy; `scroll-behavior` do CSS reduced-motion quản, không ép cuộn mượt). Tìm TRONG khung danh sách của trang
@@ -130,6 +141,47 @@ export function IssuePeekPanel({
     };
   }, [listRef]);
 
+  const nav = onNavigate && (
+    <PeekNavControls
+      position={position}
+      busyNext={awaiting === issueKey}
+      // CÙNG hàm với phím j/k (`useGlobalHotkeys`): đi từ việc đang xem, kẹp ở hai đầu, panel theo qua `onPeek`;
+      // trang có thứ tự thật → bước theo nó (kể cả dòng chưa vẽ), cùng khung danh sách.
+      onStep={(dir) => {
+        if (dir === 1 && position?.needsLoadMore && order?.loadMore) {
+          setAwaiting(issueKey);
+          order.loadMore();
+          return;
+        }
+        moveNavFocus(
+          dir,
+          {
+            peekKey: issueKey,
+            onPeek: onNavigate,
+            fromPeek: true,
+            focus: false,
+            order: order ?? undefined,
+          },
+          listRef.current ?? document,
+        );
+      }}
+    />
+  );
+  if (sheet)
+    return (
+      <PeekSheet
+        issueKey={issueKey}
+        open={open}
+        onClose={onClose}
+        returnFocus={() =>
+          findPeekSource(listRef.current, keyRef.current)?.focus({ preventScroll: true })
+        }
+        header={<PeekHeader issueKey={issueKey} onClose={onClose} nav={nav} hideClose />}
+      >
+        <PeekBody key={issueKey} issueKey={issueKey} onClose={onClose} />
+      </PeekSheet>
+    );
+
   return (
     <aside
       ref={ref}
@@ -139,38 +191,7 @@ export function IssuePeekPanel({
       aria-label={`Xem nhanh ${issueKey}`}
       className="fixed inset-y-0 right-0 z-sticky flex w-full max-w-[30rem] flex-col border-l border-border bg-surface shadow-lg outline-none duration-base animate-in slide-in-from-right lg:static lg:z-auto lg:w-[min(30rem,40vw)] lg:min-w-[20rem] lg:max-w-none lg:shrink-0 lg:shadow-none"
     >
-      <PeekHeader
-        issueKey={issueKey}
-        onClose={onClose}
-        nav={
-          onNavigate && (
-            <PeekNavControls
-              position={position}
-              busyNext={awaiting === issueKey}
-              // CÙNG hàm với phím j/k (`useGlobalHotkeys`): đi từ việc đang xem, kẹp ở hai đầu, panel theo qua `onPeek`;
-              // trang có thứ tự thật → bước theo nó (kể cả dòng chưa vẽ), cùng khung danh sách.
-              onStep={(dir) => {
-                if (dir === 1 && position?.needsLoadMore && order?.loadMore) {
-                  setAwaiting(issueKey);
-                  order.loadMore();
-                  return;
-                }
-                moveNavFocus(
-                  dir,
-                  {
-                    peekKey: issueKey,
-                    onPeek: onNavigate,
-                    fromPeek: true,
-                    focus: false,
-                    order: order ?? undefined,
-                  },
-                  listRef.current ?? document,
-                );
-              }}
-            />
-          )
-        }
-      />
+      <PeekHeader issueKey={issueKey} onClose={onClose} nav={nav} />
       <PeekBody key={issueKey} issueKey={issueKey} onClose={onClose} />
     </aside>
   );
@@ -180,10 +201,13 @@ function PeekHeader({
   issueKey,
   onClose,
   nav,
+  hideClose = false,
 }: {
   issueKey: string;
   onClose: () => void;
   nav?: ReactNode;
+  /** Sheet đáy có nút đóng riêng ở tay nắm (44px) — không lặp lại ở đây. */
+  hideClose?: boolean;
 }) {
   const { copyKey, copyLink, keyCopied, linkCopied } = useIssueCopy(issueKey);
   const copyBtn =
@@ -228,15 +252,17 @@ function PeekHeader({
         <span className="max-sm:sr-only">Mở trang</span>
         <ExternalLink className="h-3.5 w-3.5" aria-hidden />
       </Link>
-      <button
-        type="button"
-        onClick={onClose}
-        title="Đóng (Esc)"
-        aria-label="Đóng xem nhanh"
-        className="grid h-7 w-7 shrink-0 place-items-center rounded-md text-muted transition-colors hover:bg-surface-2 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
-      >
-        <X className="h-4 w-4" />
-      </button>
+      {!hideClose && (
+        <button
+          type="button"
+          onClick={onClose}
+          title="Đóng (Esc)"
+          aria-label="Đóng xem nhanh"
+          className="grid h-7 w-7 shrink-0 place-items-center rounded-md text-muted transition-colors hover:bg-surface-2 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      )}
     </div>
   );
 }

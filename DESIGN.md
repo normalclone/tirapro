@@ -137,7 +137,7 @@ Type scale (rem, 1rem=16px) — line-height đặc cho mật độ cao:
   - `--shadow-md`: `0 2px 8px oklch(0.4 0.03 256 / 0.08), 0 1px 2px oklch(0.4 0.03 256 / 0.06)`
   - `--shadow-lg` (popover/dialog): `0 8px 28px oklch(0.35 0.03 256 / 0.14)`
 - Z-index scale (ngữ nghĩa, không bao giờ 999/9999):
-  `dropdown=1000, sticky=1100, backdrop=1200, modal=1300, toast=1400, tooltip=1500`.
+  `sticky=1100, backdrop=1200, modal=1300, dropdown=1350 (menu/popover mở từ TRONG modal, phải nằm trên), toast=1400, tooltip=1500`.
 
 ## Motion
 
@@ -223,6 +223,7 @@ Badge/Tag, Tabs, Checkbox, Switch, Toast (sonner-style), Skeleton, Command palet
 - **Thanh tab đáy** 5 ô: Tổng quan · Dự án · ＋ Tạo · Thông báo · Tôi. Không drawer, không nút hamburger, **không nút nổi (FAB)** — FAB chỉ còn từ `lg` trở lên.
 - "＋ Tạo" và "Tôi" mở **sheet đáy** (`Dialog placement="bottom"`): Tạo = các tác vụ tạo giống menu FAB; Tôi = các mục điều hướng còn lại + tài khoản. Chế độ Quản trị: 4 mục + "Tôi".
 - Topbar có nút **Tìm** (mở Bảng lệnh). Gợi ý phím (`.kbd-hint`) ẩn trên màn cảm ứng; trang Hướng dẫn và bảng phím tắt vẫn hiện tên phím.
+- **Xem nhanh việc** (`?peek=KEY`): dưới `md` (768px) là **sheet đáy modal** 2 nấc — nửa màn (`50dvh`) ↔ gần toàn màn — đổi bằng nút tay nắm (44px, `aria-expanded`), chuyển chiều cao `ease-out-expo` không nảy; chỉ tay nắm + đầu sheet cố định, thân cuộn. Back của Android/trình duyệt, Esc và X đều đóng; focus về thẻ/dòng đã mở. Sheet là modal nên phím `j`/`k` tắt (chấp nhận trên điện thoại) và nó phủ cả thanh hàng loạt lẫn thanh tab. Từ `md` giữ panel cột phải **phi-modal** (bấm hết dòng này sang dòng khác, `j`/`k` dùng được).
 - Thanh hàng loạt và thanh "chưa lưu" (`UnsavedBar`) nằm **ngay trên** thanh tab, không đè lên. Toast nổi trên thanh tab (+ vùng an toàn iOS). Không notch, không gradient, không nảy.
 
 ## Absolute Bans (kế thừa impeccable)
