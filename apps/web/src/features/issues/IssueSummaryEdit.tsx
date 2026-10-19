@@ -1,5 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query';
-import { useRef } from 'react';
+import { useEffect, useRef } from 'react';
+import { toast } from 'sonner';
 import type { IssueDto } from '@tirapro/types';
 import { InlineText } from '@/components/ui/InlineText';
 import { api, apiErrorCode, apiErrorMessage } from '@/lib/api';
@@ -20,11 +21,23 @@ export function summaryErrorText(e: unknown): string {
 }
 
 /**
+ * Lỗi lưu tiêu đề đến SAU khi ô sửa đã gỡ (đã chuyển việc/đóng panel): không còn ô để hiện lỗi nên báo bằng toast. Xung đột thật
+ * không nhắc "Bấm Lưu/Huỷ" (ô đã mất), chỉ nói tiêu đề chưa được lưu. Luôn qua `apiErrorMessage` (đánh dấu đã mô tả).
+ */
+export function lateSummaryErrorText(e: unknown): string {
+  const generic = apiErrorMessage(e);
+  if (e instanceof SummaryConflictError)
+    return `Tiêu đề chưa được lưu vì người khác vừa đổi thành “${e.serverSummary}”.`;
+  return generic;
+}
+
+/**
  * Tiêu đề công việc sửa tại chỗ — dùng chung cho trang chi tiết (h1) và panel xem nhanh (h2).
  * Giữ khoá lạc quan (`summarySave`): lần lưu đầu gửi version chụp lúc mở ô. Gặp 409: nạp lại bản mới — nếu TIÊU ĐỀ không ai đổi
  * (chỉ trường khác đổi) thì tự thử lại đúng một lần với version mới (người dùng chỉ thấy Đang lưu… → Đã lưu); nếu tiêu đề đã
- * đổi thì báo xung đột kèm tiêu đề hiện tại, giữ chữ người dùng đang gõ. "Thử lại"/✓ sau lỗi gửi version MỚI NHẤT (ghi đè có
- * chủ đích). Không bao giờ ghi đè âm thầm. Lỗi do ô tự hiển thị nên mutation `silent` (không toast chung, nhất là cho 409 được nuốt).
+ * đổi thì báo xung đột kèm tiêu đề hiện tại, giữ chữ người dùng đang gõ. Chỉ SAU KHI đã thấy báo xung đột, "Lưu"/"Thử lại" mới
+ * gửi version MỚI NHẤT (ghi đè có chủ đích); sau lỗi 500/mất mạng vẫn giữ version đã chụp. Không bao giờ ghi đè âm thầm. Lỗi do ô
+ * tự hiển thị nên mutation `silent` (không toast chung); nếu lỗi đến sau khi ô đã gỡ thì toast (`lateSummaryErrorText`).
  */
 export function IssueSummaryEdit({
   issue,
@@ -52,6 +65,14 @@ export function IssueSummaryEdit({
   const issueRef = useRef(issue);
   issueRef.current = issue;
   const captured = useRef<{ version: number; summary: string } | null>(null);
+  const conflictSeen = useRef(false);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   return (
     <InlineText
       value={issue.summary}
@@ -65,16 +86,17 @@ export function IssueSummaryEdit({
       editRequest={editRequest}
       onEditingChange={onEditingChange}
       onEditStart={() => {
+        conflictSeen.current = false;
         captured.current = {
           version: issueRef.current.version,
           summary: issueRef.current.summary,
         };
       }}
       describeError={summaryErrorText}
-      onSave={(next, attempt) => {
+      onSave={(next) => {
         const cur = issueRef.current;
         return saveSummaryOnce({
-          attempt,
+          conflictSeen: conflictSeen.current,
           startVersion: captured.current?.version ?? null,
           startSummary: captured.current?.summary ?? null,
           latestVersion: () => issueRef.current.version,
@@ -92,6 +114,14 @@ export function IssueSummaryEdit({
               staleTime: 0,
             }),
           isConflict: (e) => apiErrorCode(e) === 'VERSION_CONFLICT',
+          isMounted: () => mounted.current,
+          notifyLate: (e) => {
+            const message = lateSummaryErrorText(e);
+            toast.error(message, { id: `summary-late:${message}` });
+          },
+          onConflictShown: () => {
+            conflictSeen.current = true;
+          },
         });
       }}
     />

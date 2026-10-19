@@ -4,7 +4,11 @@ import { AxiosError } from 'axios';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { wasErrorDescribed } from '@/lib/api';
-import { SUMMARY_CONFLICT_MESSAGE, summaryErrorText } from '@/features/issues/IssueSummaryEdit';
+import {
+  SUMMARY_CONFLICT_MESSAGE,
+  lateSummaryErrorText,
+  summaryErrorText,
+} from '@/features/issues/IssueSummaryEdit';
 import { SummaryConflictError, saveVersion } from '@/features/issues/summarySave';
 import { InlineText } from './InlineText';
 
@@ -172,12 +176,11 @@ describe('fix round 1', () => {
   });
 
   describe('version khoá lạc quan: lần lưu đầu dùng version LÚC MỞ Ô', () => {
-    it('saveVersion: lần đầu (attempt 0) = version đã chụp; sau lỗi (attempt ≥ 1) hoặc không có bản chụp = mới nhất', () => {
-      expect(saveVersion({ captured: 3, latest: 5, attempt: 0 })).toBe(3);
-      expect(saveVersion({ captured: 3, latest: 5, attempt: 1 })).toBe(5);
-      expect(saveVersion({ captured: 3, latest: 5, attempt: 2 })).toBe(5);
-      expect(saveVersion({ captured: null, latest: 5, attempt: 0 })).toBe(5);
-      expect(saveVersion({ captured: 4, latest: 4, attempt: 0 })).toBe(4);
+    it('saveVersion: version đã chụp cho tới khi người dùng thấy xung đột; sau đó (hoặc không có bản chụp) = mới nhất', () => {
+      expect(saveVersion({ captured: 3, latest: 5, conflictSeen: false })).toBe(3);
+      expect(saveVersion({ captured: 3, latest: 5, conflictSeen: true })).toBe(5);
+      expect(saveVersion({ captured: null, latest: 5, conflictSeen: false })).toBe(5);
+      expect(saveVersion({ captured: 4, latest: 4, conflictSeen: false })).toBe(4);
     });
     it('adapter chụp version + tiêu đề khi BẮT ĐẦU sửa (onEditStart) và lưu qua saveSummaryOnce (attempt, refetch)', () => {
       expect(adapter).toContain('onEditStart');
@@ -185,7 +188,9 @@ describe('fix round 1', () => {
         /captured\.current = \{[\s\S]*version: issueRef\.current\.version[\s\S]*summary: issueRef\.current\.summary/,
       );
       expect(adapter).toContain('saveSummaryOnce(');
-      expect(adapter).toMatch(/attempt,/);
+      expect(adapter).toContain('conflictSeen: conflictSeen.current');
+      expect(adapter).toContain('conflictSeen.current = false');
+      expect(adapter).toContain('isMounted: () => mounted.current');
       expect(adapter).not.toMatch(/version: cur\.version/);
     });
     it('409 ở lần đầu đi qua nạp lại bản mới (fetchQuery) và KHÔNG toast chung (silent); không vòng lặp', () => {
@@ -209,5 +214,25 @@ describe('fix round 1', () => {
   });
   it('sau lưu bằng blur, trả focus về tiêu đề KHÔNG cuộn trang', () => {
     expect(inline).toContain('viewRef.current?.focus({ preventScroll: true })');
+  });
+});
+
+describe('P-C7 — lỗi đến sau khi ô sửa đã gỡ, và chỉ ghi đè sau khi đã thấy xung đột', () => {
+  const adapter = read('features/issues/IssueSummaryEdit.tsx');
+  it('lateSummaryErrorText: lỗi thường = câu của apiErrorMessage (đánh dấu đã mô tả); xung đột thật nêu tiêu đề mới, không nhắc nút Lưu/Huỷ', () => {
+    const e = new AxiosError('x', 'ERR', undefined, undefined, {
+      status: 500,
+      data: { success: false, error: { code: 'VALIDATION_ERROR' } },
+    } as never);
+    expect(lateSummaryErrorText(e)).toBe(summaryErrorText(e));
+    expect(wasErrorDescribed(e)).toBe(true);
+    const t = lateSummaryErrorText(new SummaryConflictError('Bản mới'));
+    expect(t).toContain('“Bản mới”');
+    expect(t).not.toMatch(/Bấm Lưu|Huỷ/);
+  });
+  it('adapter: cờ mounted gỡ khi unmount, toast có id theo nội dung, conflictSeen đặt lại ở onEditStart và chỉ bật qua onConflictShown', () => {
+    expect(adapter).toMatch(/return \(\) => \{\s*mounted\.current = false;/);
+    expect(adapter).toContain('toast.error(message, { id: `summary-late:${message}` })');
+    expect(adapter).toMatch(/onConflictShown: \(\) => \{\s*conflictSeen\.current = true;/);
   });
 });
