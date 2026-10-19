@@ -162,7 +162,7 @@ describe('gợi ý phím trên cảm ứng (.kbd-hint)', () => {
       'features/issue-edit/CommentsSection.tsx',
       'features/issue-edit/AcceptanceCriteria.tsx',
       'features/issue-edit/DescriptionEditor.tsx',
-      'features/wiki/WikiPage.tsx',
+      'features/wiki/WikiEditor.tsx',
     ])
       expect(src(f), f).toMatch(/flex items-center justify-end gap-2/);
   });

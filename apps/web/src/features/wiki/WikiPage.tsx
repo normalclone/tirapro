@@ -25,7 +25,6 @@ import { useConfirm } from '@/components/ui/useConfirm';
 import { Input } from '@/components/ui/Input';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { EmptyState, Skeleton } from '@/components/ui/primitives';
-import { MarkdownEditor } from '@/features/issue-edit/MarkdownEditor';
 import { MarkdownView } from '@/features/issue-edit/MarkdownView';
 import { useProjects } from '@/features/projects/api';
 import { useLazyProjectCan, useProjectsCan } from '@/features/projects/permissions';
@@ -53,6 +52,8 @@ import { fmtDateTime } from '@/lib/dateFormat';
 import { canWriteAt, noWriteMessage, projectIdsToCheck, writeLoadingAt } from './wikiScope';
 import { WikiHistoryDialog } from './WikiHistoryDialog';
 import { RestoreDraftBanner } from './RestoreDraftBanner';
+import { WikiEditor } from './WikiEditor';
+import { buildCreateInput, newDraftKey, pendingNewFor, type PendingNewPage } from './wikiDraft';
 import { useWikiDraft } from './useWikiDraft';
 import { WikiTrashDialog } from './WikiTrashDialog';
 import { APP_NAV_LABELS } from '@/lib/navLabels';
@@ -168,10 +169,13 @@ export function WikiPage() {
   const [baseVersion, setBaseVersion] = useState<number | null>(null);
   // Nội dung lúc bắt đầu sửa: mốc để tính "có thay đổi chưa lưu".
   const [baseline, setBaseline] = useState<{ title: string; body: string } | null>(null);
+  // Trang MỚI chưa lưu: chỉ ở phía trình duyệt (cha + phạm vi); `POST /wiki` chạy ở lần Lưu đầu (saveNew).
+  const [pendingNew, setPendingNew] = useState<PendingNewPage | null>(null);
   const loadedPage = page.data && page.data.id === selectedId ? page.data : undefined;
   const wikiDraft = useWikiDraft({
     editing,
-    page: loadedPage,
+    // Trang mới: trang giả rỗng khoá theo `newDraftKey` ⇒ tự lưu nháp, đề nghị khôi phục và chặn rời trang như trang thật.
+    page: pendingNew ? { id: newDraftKey(pendingNew), title: '', body: '' } : loadedPage,
     baseline,
     draftTitle,
     draftBody,
@@ -235,6 +239,7 @@ export function WikiPage() {
   function stopEditing() {
     setEditing(false);
     setEditIssue(null);
+    setPendingNew(null);
   }
 
   // Chỉ đặt state nên ổn định giữa các lần render (dùng được trong deps của effect `?edit=1`).
@@ -270,7 +275,7 @@ export function WikiPage() {
 
   // Đang soạn dở thì hỏi "Bỏ thay đổi chưa lưu?" trước khi chuyển trang (cây, breadcrumb, kết quả tìm).
   async function openAfterConfirm(id: string) {
-    if (id === selectedId) {
+    if (id === selectedId && !pendingNew) {
       setTreeOpen(false); // bấm lại đúng trang đang xem/đang sửa: không hỏi, không thoát chế độ sửa
       return;
     }
@@ -297,33 +302,62 @@ export function WikiPage() {
     wikiDraft.setOffer(null);
   }
 
+  /** Khôi phục nháp của trang MỚI (sau F5/đóng tab): nháp chưa gắn phiên bản nào của máy chủ. */
+  function restoreNewDraft() {
+    const o = wikiDraft.offer;
+    if (!o) return;
+    setDraftTitle(o.title);
+    setDraftBody(o.body);
+    wikiDraft.setOffer(null);
+  }
+
   /** Đổi phạm vi: bỏ chọn trang cũ (nó có thể thuộc phạm vi khác) trừ khi đang soạn dở. */
   function setScope(v: string) {
     setScopeChoice(v);
     if (!editing) setSelectedId(null);
   }
 
-  /** Tạo trang mới (gốc ở phạm vi đang chọn) hoặc trang con (luôn cùng phạm vi với trang cha). */
+  /**
+   * "Tạo trang mới" (gốc ở phạm vi đang chọn) hoặc trang con (luôn cùng phạm vi với trang cha): CHỈ mở khối soạn trống.
+   * Trang chỉ được tạo trên máy chủ ở lần Lưu đầu (`saveNew`) nên huỷ/đóng tab không để lại trang rỗng.
+   */
   async function addPage(parent: { id: string; projectId: string | null } | null) {
-    const parentId = parent?.id ?? null;
     if (!(await wikiDraft.confirmDiscard())) return;
+    const pending = pendingNewFor(parent, scopeProjectId);
+    if (pending.parentId) setExpanded((prev) => new Set(prev).add(pending.parentId!));
+    setPendingNew(pending);
+    setDraftTitle('');
+    setDraftBody('');
+    setBaseVersion(null);
+    setBaseline({ title: '', body: '' });
+    setEditIssue(null);
+    setEditing(true);
+    wikiDraft.checkOffer({ id: newDraftKey(pending), title: '', body: '' });
+    setTreeOpen(false);
+  }
+
+  /** Lưu LẦN ĐẦU của trang mới: một `POST /wiki`, bỏ nháp cục bộ (nội dung đã nằm trên máy chủ), rồi mở trang thật. */
+  async function saveNew() {
+    if (!pendingNew) return;
+    const title = draftTitle.trim();
+    if (!title) {
+      toast.error('Hãy nhập tiêu đề cho trang trước khi lưu');
+      return;
+    }
     try {
-      const created = await create.mutateAsync({
-        title: parentId ? 'Trang con mới' : 'Trang mới',
-        body: '',
-        parentId,
-        projectId: parent ? parent.projectId : scopeProjectId,
-      });
-      if (parentId) setExpanded((prev) => new Set(prev).add(parentId));
+      const created = await create.mutateAsync(buildCreateInput(pendingNew, title, draftBody));
+      wikiDraft.discard(); // xoá nháp theo khoá `new:…` (pageIdRef còn trỏ tới nó)
       wikiDraft.runInternalNav(() => setSelectedId(created.id));
-      startEditing(created);
-      setTreeOpen(false);
+      stopEditing();
+      toast.success('Đã tạo trang');
     } catch (e) {
+      // Giữ khối soạn để bản đang viết không mất; `apiErrorMessage` đánh dấu đã báo (tránh toast chung chen thêm).
       toast.error(apiErrorMessage(e));
     }
   }
 
   async function save(opts?: { overwrite?: boolean }) {
+    if (pendingNew) return saveNew();
     if (!page.data) return;
     const title = draftTitle.trim();
     if (!title) {
@@ -607,7 +641,31 @@ export function WikiPage() {
         </aside>
 
         <section className="min-w-0 rounded-lg border border-border bg-surface">
-          {!selectedId ? (
+          {pendingNew ? (
+            // Trang mới chưa có trên máy chủ: khối soạn đứng riêng, tách khỏi trang đang xem (QueryBoundary bên dưới).
+            <article className="p-6">
+              <WikiEditor
+                title={draftTitle}
+                onTitle={setDraftTitle}
+                body={draftBody}
+                onBody={setDraftBody}
+                banners={
+                  wikiDraft.offer && (
+                    <RestoreDraftBanner
+                      offer={wikiDraft.offer}
+                      pageVersion={null}
+                      onRestore={restoreNewDraft}
+                      onDismiss={wikiDraft.discard}
+                    />
+                  )
+                }
+                onSave={() => void save()}
+                onCancel={() => void cancelEdit()}
+                saving={create.isPending}
+                saveLabel="Tạo trang"
+              />
+            </article>
+          ) : !selectedId ? (
             <div className="p-6">
               <EmptyState
                 icon={<BookOpen className="h-6 w-6" />}
@@ -675,70 +733,40 @@ export function WikiPage() {
                   )}
 
                   {editing ? (
-                    <div className="space-y-3">
-                      <Input
-                        value={draftTitle}
-                        onChange={(e) => setDraftTitle(e.target.value)}
-                        placeholder="Tiêu đề trang"
-                        aria-label="Tiêu đề trang"
-                        autoFocus
-                        className="h-10 text-lg font-semibold"
-                      />
-                      {wikiDraft.offer && (
-                        <RestoreDraftBanner
-                          offer={wikiDraft.offer}
-                          pageVersion={pg.version}
-                          onRestore={() => restoreDraft(pg)}
-                          onDismiss={wikiDraft.discard}
-                        />
-                      )}
-                      {editIssue && (
-                        <EditIssueBanner
-                          kind={editIssue}
-                          latest={pg}
-                          draftBody={draftBody}
-                          busy={update.isPending}
-                          onOverwrite={() => void overwrite()}
-                          onClose={stopEditing}
-                        />
-                      )}
-                      <MarkdownEditor
-                        value={draftBody}
-                        onChange={setDraftBody}
-                        onSubmit={() => void save()}
-                        onCancel={() => void cancelEdit()}
-                        rows={18}
-                        placeholder="Viết nội dung ở đây. Markdown cơ bản: # tiêu đề, **đậm**, - gạch đầu dòng… Gõ mã công việc (vd DEMO-STORY-3) để liên kết."
-                      />
-                      <div className="flex items-center justify-end gap-2">
-                        <span
-                          className="mr-auto text-xs text-faint"
-                          title="Markdown là cách viết chữ đậm, tiêu đề, danh sách bằng ký hiệu — ví dụ **đậm** hoặc # Tiêu đề."
-                        >
-                          Markdown cơ bản · Gõ mã công việc (vd DEMO-STORY-3) để liên kết
-                          <span className="kbd-hint"> · Ctrl/⌘+Enter để lưu · Esc để huỷ</span>
-                        </span>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          title="Xem các phiên bản cũ của trang này"
-                          onClick={() => setHistoryOpen(true)}
-                        >
-                          <History className="h-4 w-4" /> Lịch sử
-                        </Button>
-                        <Button size="sm" variant="ghost" onClick={() => void cancelEdit()}>
-                          Huỷ
-                        </Button>
-                        <Button
-                          size="sm"
-                          loading={update.isPending}
-                          disabled={editIssue === 'deleted'}
-                          onClick={() => void save()}
-                        >
-                          Lưu trang
-                        </Button>
-                      </div>
-                    </div>
+                    <WikiEditor
+                      title={draftTitle}
+                      onTitle={setDraftTitle}
+                      body={draftBody}
+                      onBody={setDraftBody}
+                      banners={
+                        <>
+                          {wikiDraft.offer && (
+                            <RestoreDraftBanner
+                              offer={wikiDraft.offer}
+                              pageVersion={pg.version}
+                              onRestore={() => restoreDraft(pg)}
+                              onDismiss={wikiDraft.discard}
+                            />
+                          )}
+                          {editIssue && (
+                            <EditIssueBanner
+                              kind={editIssue}
+                              latest={pg}
+                              draftBody={draftBody}
+                              busy={update.isPending}
+                              onOverwrite={() => void overwrite()}
+                              onClose={stopEditing}
+                            />
+                          )}
+                        </>
+                      }
+                      onSave={() => void save()}
+                      onCancel={() => void cancelEdit()}
+                      onHistory={() => setHistoryOpen(true)}
+                      saving={update.isPending}
+                      saveDisabled={editIssue === 'deleted'}
+                      saveLabel="Lưu trang"
+                    />
                   ) : (
                     <>
                       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
