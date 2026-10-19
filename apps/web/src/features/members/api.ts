@@ -1,15 +1,18 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { MemberDto, UserDto } from '@tirapro/types';
-import { api } from '@/lib/api';
-import { queryClient, qk } from '@/lib/queryClient';
+import {
+  keepPreviousData,
+  skipToken,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
+import type { MemberDto, PoolUserDto, UserDto } from '@tirapro/types';
+import { api, type Ack } from '@/lib/api';
+import { setAccessToken } from '@/lib/auth-token';
+import { queryClient } from '@/lib/queryClient';
+import { reconnectSocket } from '@/lib/socket';
 import { useAuth } from '@/stores/auth';
-
-/** Khoá cache cho danh sách thành viên của không gian làm việc hiện tại. */
-export const workspaceUsersKey = ['workspace-users'] as const;
-/** Khoá cache cho thành viên chung kèm vai trò (GET /members). */
-export const workspaceMembersKey = ['workspace-members'] as const;
-/** Khoá cache cho thành viên của một dự án. */
-export const projectMembersKey = (projectId: string) => ['project-members', projectId] as const;
+import { keys } from '@/lib/queryKeys';
+import { userSearchQuery, USER_PICKER_LIMIT, type UserSearchOpts } from './userSearch';
 
 /** Thân request cập nhật hồ sơ cá nhân (PATCH /users/me). */
 export interface UpdateProfileInput {
@@ -25,16 +28,24 @@ export interface ChangePasswordInput {
   newPassword: string;
 }
 
-/** Danh sách thành viên (user) trong không gian làm việc hiện tại. */
-export function useWorkspaceUsers() {
+/**
+ * Tìm người PHÍA MÁY CHỦ (GET /users?projectId&search&limit): dự án riêng tư chỉ trả người xem được dự án, loại tài khoản
+ * đã khoá (trừ khi `includeInactive`). Giữ kết quả cũ trong lúc gõ tiếp để danh sách không nháy trống.
+ */
+export function useSearchUsers(opts: UserSearchOpts & { enabled?: boolean } = {}) {
+  const { enabled = true, ...q } = opts;
+  const search = q.search?.trim() ?? '';
+  const limit = q.limit ?? USER_PICKER_LIMIT;
   return useQuery({
-    queryKey: workspaceUsersKey,
-    queryFn: async () => (await api.get<UserDto[]>('/users')).data,
+    queryKey: keys.users.search(q.projectId ?? '', search, limit, q.includeInactive ?? false),
+    queryFn: enabled
+      ? async ({ signal }) =>
+          (await api.get<UserDto[]>(`/users?${userSearchQuery({ ...q, search })}`, { signal })).data
+      : skipToken,
+    staleTime: 30_000,
+    placeholderData: keepPreviousData,
   });
 }
-
-/** Khoá cache cho toàn bộ user trong hệ thống (pool để chọn thêm vào không gian làm việc). */
-export const allUsersKey = (search?: string) => ['all-users', search ?? ''] as const;
 
 /**
  * Toàn bộ user trong hệ thống (pool do system admin quản lý ở nơi khác) — để chọn
@@ -43,10 +54,12 @@ export const allUsersKey = (search?: string) => ['all-users', search ?? ''] as c
 export function useAllUsers(search?: string, enabled = true) {
   const q = search?.trim() ?? '';
   return useQuery({
-    queryKey: allUsersKey(q),
-    queryFn: async () =>
-      (await api.get<UserDto[]>('/users/all', { params: q ? { search: q } : undefined })).data,
-    enabled,
+    queryKey: keys.users.all(q),
+    queryFn: enabled
+      ? async () =>
+          (await api.get<PoolUserDto[]>('/users/all', { params: q ? { search: q } : undefined }))
+            .data
+      : skipToken,
   });
 }
 
@@ -60,8 +73,8 @@ export function useUpdateProfile() {
     mutationFn: async (input: UpdateProfileInput) =>
       (await api.patch<UserDto>('/users/me', input)).data,
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: qk.me });
-      void queryClient.invalidateQueries({ queryKey: workspaceUsersKey });
+      void queryClient.invalidateQueries({ queryKey: keys.me });
+      void queryClient.invalidateQueries({ queryKey: keys.users.workspace });
       // Làm mới user/quyền trong auth store (cập nhật tên & avatar ở mọi nơi).
       void bootstrap();
     },
@@ -69,20 +82,36 @@ export function useUpdateProfile() {
 }
 
 /**
- * Đổi mật khẩu của chính mình. BE xác minh mật khẩu hiện tại; không cần đăng nhập
- * lại vì session (access + refresh) hiện tại vẫn giữ nguyên.
+ * Đổi mật khẩu của chính mình. BE xác minh mật khẩu hiện tại, thu hồi MỌI phiên (thiết bị khác phải đăng nhập lại)
+ * và cấp phiên mới cho thiết bị này (access token trong body + cookie refresh) → không cần đăng nhập lại ở đây.
  */
 export function useChangePassword() {
   return useMutation({
     mutationFn: async (input: ChangePasswordInput) =>
-      (await api.post('/users/me/change-password', input)).data,
+      (
+        await api.post<{ success: boolean; accessToken: string }>(
+          '/users/me/change-password',
+          input,
+        )
+      ).data,
+    onSuccess: (data) => {
+      setAccessToken(data.accessToken);
+      reconnectSocket();
+    },
+  });
+}
+
+/** Đăng xuất mọi thiết bị của chính mình (kể cả thiết bị này). Gọi xong phải `useAuth.getState().logout()`. */
+export function useLogoutAll() {
+  return useMutation({
+    mutationFn: async () => (await api.post<{ success: boolean }>('/auth/logout-all')).data,
   });
 }
 
 /** Refresh user ở mọi nơi (header, danh sách thành viên, avatar trên issue). */
 function refreshUserEverywhere(bootstrap: () => Promise<void>) {
-  void queryClient.invalidateQueries({ queryKey: qk.me });
-  void queryClient.invalidateQueries({ queryKey: workspaceUsersKey });
+  void queryClient.invalidateQueries({ queryKey: keys.me });
+  void queryClient.invalidateQueries({ queryKey: keys.users.workspace });
   void bootstrap();
 }
 
@@ -103,7 +132,7 @@ export function useUploadUserAvatar() {
 export function useRemoveUserAvatar() {
   const bootstrap = useAuth((s) => s.bootstrap);
   return useMutation({
-    mutationFn: async () => (await api.delete('/users/me/avatar')).data,
+    mutationFn: async () => (await api.delete<UserDto>('/users/me/avatar')).data,
     onSuccess: () => refreshUserEverywhere(bootstrap),
   });
 }
@@ -115,7 +144,7 @@ export function useRemoveUserAvatar() {
 /** Danh sách thành viên của không gian làm việc hiện tại kèm vai trò (GET /members). */
 export function useWorkspaceMembers() {
   return useQuery({
-    queryKey: workspaceMembersKey,
+    queryKey: keys.members.workspace,
     queryFn: async () => (await api.get<MemberDto[]>('/members')).data,
   });
 }
@@ -130,8 +159,34 @@ export function useAddMember() {
     mutationFn: ({ userId, roleIds }: { userId: string; roleIds: string[] }) =>
       api.post<MemberDto>('/members', { userId, roleIds }).then((r) => r.data),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: workspaceMembersKey });
-      void qc.invalidateQueries({ queryKey: workspaceUsersKey });
+      void qc.invalidateQueries({ queryKey: keys.members.workspace });
+      void qc.invalidateQueries({ queryKey: keys.users.workspace });
+    },
+  });
+}
+
+/** Kết quả tạo tài khoản: `tempPassword` chỉ có khi không nhập mật khẩu và chỉ trả MỘT lần. */
+export interface CreateMemberAccountResult {
+  member: MemberDto;
+  tempPassword?: string;
+}
+
+/** Tạo tài khoản mới + thêm vào không gian làm việc hiện tại trong một lần (POST /members/accounts). */
+export function useCreateMemberAccount() {
+  const qc = useQueryClient();
+  return useMutation({
+    // Kết quả chứa mật khẩu tạm "chỉ hiện một lần" → không giữ trong MutationCache (gcTime 0 + reset() khi đóng khung).
+    gcTime: 0,
+    mutationFn: (input: {
+      email: string;
+      displayName: string;
+      roleIds: string[];
+      password?: string;
+    }) => api.post<CreateMemberAccountResult>('/members/accounts', input).then((r) => r.data),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: keys.members.workspace });
+      void qc.invalidateQueries({ queryKey: keys.users.workspace });
+      void qc.invalidateQueries({ queryKey: keys.users.allRoot });
     },
   });
 }
@@ -141,11 +196,13 @@ export function useAddMembersBulk() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ userIds, roleIds }: { userIds: string[]; roleIds: string[] }) =>
-      api.post<{ added: number; skipped: number }>('/members/bulk', { userIds, roleIds }).then((r) => r.data),
+      api
+        .post<{ added: number; skipped: number }>('/members/bulk', { userIds, roleIds })
+        .then((r) => r.data),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: workspaceMembersKey });
-      void qc.invalidateQueries({ queryKey: workspaceUsersKey });
-      void qc.invalidateQueries({ queryKey: ['all-users'] });
+      void qc.invalidateQueries({ queryKey: keys.members.workspace });
+      void qc.invalidateQueries({ queryKey: keys.users.workspace });
+      void qc.invalidateQueries({ queryKey: keys.users.allRoot });
     },
   });
 }
@@ -157,8 +214,9 @@ export function useSetMemberRoles() {
     mutationFn: ({ userId, roleIds }: { userId: string; roleIds: string[] }) =>
       api.put<MemberDto>(`/members/${userId}/roles`, { roleIds }).then((r) => r.data),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: workspaceMembersKey });
-      void qc.invalidateQueries({ queryKey: workspaceUsersKey });
+      void qc.invalidateQueries({ queryKey: keys.projects.permissionsAll });
+      void qc.invalidateQueries({ queryKey: keys.members.workspace });
+      void qc.invalidateQueries({ queryKey: keys.users.workspace });
     },
   });
 }
@@ -167,10 +225,10 @@ export function useSetMemberRoles() {
 export function useRemoveMember() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (userId: string) => api.delete(`/members/${userId}`).then((r) => r.data),
+    mutationFn: (userId: string) => api.delete<Ack>(`/members/${userId}`).then((r) => r.data),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: workspaceMembersKey });
-      void qc.invalidateQueries({ queryKey: workspaceUsersKey });
+      void qc.invalidateQueries({ queryKey: keys.members.workspace });
+      void qc.invalidateQueries({ queryKey: keys.users.workspace });
     },
   });
 }
@@ -182,24 +240,10 @@ export function useRemoveMember() {
 /** Danh sách thành viên của một dự án. */
 export function useProjectMembers(projectId?: string) {
   return useQuery({
-    queryKey: projectMembersKey(projectId ?? ''),
-    queryFn: async () =>
-      (await api.get<MemberDto[]>(`/projects/${projectId}/members`)).data,
-    enabled: !!projectId,
-  });
-}
-
-/** Thêm thành viên (user có sẵn trong không gian làm việc) vào dự án với ≥1 vai trò. */
-export function useAddProjectMember(projectId: string) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ userId, roleIds }: { userId: string; roleIds: string[] }) =>
-      api
-        .post<MemberDto>(`/projects/${projectId}/members`, { userId, roleIds })
-        .then((r) => r.data),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: projectMembersKey(projectId) });
-    },
+    queryKey: keys.members.project(projectId ?? ''),
+    queryFn: projectId
+      ? async () => (await api.get<MemberDto[]>(`/projects/${projectId}/members`)).data
+      : skipToken,
   });
 }
 
@@ -208,8 +252,16 @@ export function useAddProjectMembersBulk(projectId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ userIds, roleIds }: { userIds: string[]; roleIds: string[] }) =>
-      api.post<{ added: number; skipped: number }>(`/projects/${projectId}/members/bulk`, { userIds, roleIds }).then((r) => r.data),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: projectMembersKey(projectId) }),
+      api
+        .post<{
+          added: number;
+          skipped: number;
+        }>(`/projects/${projectId}/members/bulk`, { userIds, roleIds })
+        .then((r) => r.data),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: keys.members.project(projectId) });
+      void qc.invalidateQueries({ queryKey: keys.projects.permissions(projectId) });
+    },
   });
 }
 
@@ -222,7 +274,8 @@ export function useSetProjectMemberRoles(projectId: string) {
         .put<MemberDto>(`/projects/${projectId}/members/${userId}/roles`, { roleIds })
         .then((r) => r.data),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: projectMembersKey(projectId) });
+      void qc.invalidateQueries({ queryKey: keys.members.project(projectId) });
+      void qc.invalidateQueries({ queryKey: keys.projects.permissions(projectId) });
     },
   });
 }
@@ -232,9 +285,10 @@ export function useRemoveProjectMember(projectId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (userId: string) =>
-      api.delete(`/projects/${projectId}/members/${userId}`).then((r) => r.data),
+      api.delete<Ack>(`/projects/${projectId}/members/${userId}`).then((r) => r.data),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: projectMembersKey(projectId) });
+      void qc.invalidateQueries({ queryKey: keys.members.project(projectId) });
+      void qc.invalidateQueries({ queryKey: keys.projects.permissions(projectId) });
     },
   });
 }

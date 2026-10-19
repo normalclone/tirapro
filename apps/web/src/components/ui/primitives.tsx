@@ -3,7 +3,15 @@ import { Loader2 } from 'lucide-react';
 import { cn, initials } from '@/lib/utils';
 
 /** Avatar tròn với initials fallback. */
-export function Avatar({ name, src, size = 24 }: { name: string; src?: string | null; size?: number }) {
+export function Avatar({
+  name,
+  src,
+  size = 24,
+}: {
+  name: string;
+  src?: string | null;
+  size?: number;
+}) {
   return (
     <span
       className="inline-flex shrink-0 items-center justify-center rounded-full bg-primary-subtle text-[10px] font-semibold text-primary overflow-hidden"
@@ -16,9 +24,25 @@ export function Avatar({ name, src, size = 24 }: { name: string; src?: string | 
 }
 
 /** `title` = câu giải nghĩa hiện tức thì khi rê chuột (xem InstantTooltip). */
-export function Badge({ children, className, dotColor, title }: { children: ReactNode; className?: string; dotColor?: string; title?: string }) {
+export function Badge({
+  children,
+  className,
+  dotColor,
+  title,
+}: {
+  children: ReactNode;
+  className?: string;
+  dotColor?: string;
+  title?: string;
+}) {
   return (
-    <span title={title} className={cn('inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium', className)}>
+    <span
+      title={title}
+      className={cn(
+        'inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium',
+        className,
+      )}
+    >
       {dotColor && <span className="h-1.5 w-1.5 rounded-full" style={{ background: dotColor }} />}
       {children}
     </span>
@@ -49,13 +73,40 @@ export function DelayedSpinner({ delay = 350, label }: { delay?: number; label?:
   );
 }
 
-export function EmptyState({ icon, title, description, action }: { icon?: ReactNode; title: string; description?: string; action?: ReactNode }) {
+export function EmptyState({
+  icon,
+  title,
+  description,
+  action,
+  size = 'default',
+}: {
+  /** Bắt buộc: khối trống luôn có hình để người dùng nhận ra đây là trạng thái, không phải lỗi tải. */
+  icon: ReactNode;
+  title: string;
+  description?: ReactNode;
+  action?: ReactNode;
+  /** `compact` cho khối nằm trong thẻ/panel; `default` cho cả vùng nội dung của trang. */
+  size?: 'default' | 'compact';
+}) {
+  const compact = size === 'compact';
   return (
-    <div className="flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border px-6 py-12 text-center">
-      {icon && <div className="text-faint">{icon}</div>}
+    <div
+      role="status"
+      className={cn(
+        'flex flex-col items-center justify-center rounded-lg border border-dashed border-border text-center',
+        compact ? 'gap-2 px-4 py-6 text-sm' : 'gap-3 px-6 py-12',
+      )}
+    >
+      <div aria-hidden="true" className={cn('text-faint', compact && '[&_svg]:h-5 [&_svg]:w-5')}>
+        {icon}
+      </div>
       <div>
-        <p className="font-medium text-ink-strong">{title}</p>
-        {description && <p className="mt-1 text-sm text-muted max-w-sm">{description}</p>}
+        <p className="break-words font-medium text-ink-strong">{title}</p>
+        {description && (
+          <p className={cn('mt-1 max-w-sm text-muted', compact ? 'text-xs' : 'text-sm')}>
+            {description}
+          </p>
+        )}
       </div>
       {action}
     </div>

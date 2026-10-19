@@ -4,7 +4,8 @@ import { ERROR_CODES, type ErrorCode, type ErrorDetail } from '@tirapro/types';
 /** Exception nghiệp vụ mang error code (map sang error envelope ở filter). */
 export class AppException extends HttpException {
   constructor(
-    public readonly code: ErrorCode | string,
+    // `string & {}` giữ gợi ý tự hoàn thành của ErrorCode mà vẫn cho mã tuỳ ý.
+    public readonly code: ErrorCode | (string & {}),
     message: string,
     status: HttpStatus,
     public readonly details?: ErrorDetail[],
@@ -26,7 +27,10 @@ export class ForbiddenAppException extends AppException {
 }
 
 export class VersionConflictException extends AppException {
-  constructor(message = 'Dữ liệu đã thay đổi bởi người khác', public readonly current?: unknown) {
+  constructor(
+    message = 'Dữ liệu đã thay đổi bởi người khác',
+    public readonly current?: unknown,
+  ) {
     super(ERROR_CODES.VERSION_CONFLICT, message, HttpStatus.CONFLICT);
   }
 }
@@ -43,8 +47,32 @@ export class BusinessRuleException extends AppException {
   }
 }
 
-export class AiUnavailableException extends AppException {
-  constructor(message = 'Tính năng AI hiện không khả dụng') {
-    super(ERROR_CODES.AI_UNAVAILABLE, message, HttpStatus.SERVICE_UNAVAILABLE);
+/** 409 với mã nghiệp vụ riêng (ALREADY_MEMBER, LAST_WORKSPACE_ADMIN…) để client nhận ra mà không so khớp câu chữ. */
+export class ConflictAppException extends AppException {
+  constructor(code: ErrorCode | (string & {}), message: string) {
+    super(code, message, HttpStatus.CONFLICT);
+  }
+}
+
+/** Email đã có tài khoản dùng được — mã riêng để client nhận ra mà không so khớp câu chữ. */
+export class EmailAlreadyRegisteredException extends AppException {
+  constructor(
+    message = 'Email này đã có tài khoản — hãy chọn người đó trong danh sách để thêm vào không gian làm việc',
+  ) {
+    super(ERROR_CODES.EMAIL_ALREADY_REGISTERED, message, HttpStatus.UNPROCESSABLE_ENTITY);
+  }
+}
+
+/** Mốc kéo-thả (afterId/beforeId) của client đã lỗi thời — thứ tự hai mốc bị đảo. Client tải lại danh sách rồi thả lại. */
+export class RankNeighborsStaleException extends AppException {
+  constructor(message = 'Thứ tự công việc vừa thay đổi — hãy tải lại danh sách rồi kéo thả lại') {
+    super(ERROR_CODES.RANK_NEIGHBORS_STALE, message, HttpStatus.CONFLICT);
+  }
+}
+
+/** Cột board đã đầy giới hạn WIP; client bắt code này để hỏi "Vẫn chuyển?" (chỉ quản trị dự án được ép). */
+export class WipLimitReachedException extends AppException {
+  constructor(message: string) {
+    super(ERROR_CODES.WIP_LIMIT_REACHED, message, HttpStatus.UNPROCESSABLE_ENTITY);
   }
 }

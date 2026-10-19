@@ -1,15 +1,11 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { skipToken, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import type { IssueDto } from '@tirapro/types';
 import { api } from '@/lib/api';
+import { keys } from '@/lib/queryKeys';
 
 // ---- Types (local, no `any`) ----
 export interface WatchState {
   watching: boolean;
-}
-
-export interface Watcher {
-  id: string;
-  displayName: string;
-  avatarUrl: string | null;
 }
 
 export interface LinkType {
@@ -19,11 +15,11 @@ export interface LinkType {
   inwardName: string;
 }
 
-export interface LinkedIssue {
+interface LinkedIssue {
   id: string;
   key: string;
   summary: string;
-  status: { name: string; category: string };
+  status: Pick<IssueDto['status'], 'name' | 'category'>;
 }
 
 export interface IssueLink {
@@ -35,17 +31,14 @@ export interface IssueLink {
 }
 
 // ---- Query keys ----
-export const watchKey = (issueId: string) => ['issue-watch', issueId] as const;
-export const watchersKey = (issueId: string) => ['issue-watchers', issueId] as const;
-export const issueLinksKey = (issueId: string) => ['issue-links', issueId] as const;
-export const linkTypesKey = () => ['link-types'] as const;
 
 // ---- Watch ----
 export function useWatchState(issueId: string) {
   return useQuery({
-    queryKey: watchKey(issueId),
-    queryFn: async () => (await api.get<WatchState>(`/issues/${issueId}/watch`)).data,
-    enabled: !!issueId,
+    queryKey: keys.issues.watch(issueId),
+    queryFn: issueId
+      ? async () => (await api.get<WatchState>(`/issues/${issueId}/watch`)).data
+      : skipToken,
   });
 }
 
@@ -60,8 +53,8 @@ export function useToggleWatch(issueId: string) {
       return res.data;
     },
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: watchKey(issueId) });
-      void qc.invalidateQueries({ queryKey: watchersKey(issueId) });
+      void qc.invalidateQueries({ queryKey: keys.issues.watch(issueId) });
+      void qc.invalidateQueries({ queryKey: keys.issues.watchers(issueId) });
     },
   });
 }
@@ -69,15 +62,16 @@ export function useToggleWatch(issueId: string) {
 // ---- Links ----
 export function useIssueLinks(issueId: string) {
   return useQuery({
-    queryKey: issueLinksKey(issueId),
-    queryFn: async () => (await api.get<IssueLink[]>(`/issues/${issueId}/links`)).data,
-    enabled: !!issueId,
+    queryKey: keys.issues.links(issueId),
+    queryFn: issueId
+      ? async () => (await api.get<IssueLink[]>(`/issues/${issueId}/links`)).data
+      : skipToken,
   });
 }
 
 export function useLinkTypes() {
   return useQuery({
-    queryKey: linkTypesKey(),
+    queryKey: keys.issues.linkTypes,
     queryFn: async () => (await api.get<LinkType[]>('/link-types')).data,
   });
 }
@@ -85,10 +79,16 @@ export function useLinkTypes() {
 export function useCreateLink(issueId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (v: { targetIssueId: string; linkTypeId: string }) =>
-      (await api.post<IssueLink>(`/issues/${issueId}/links`, v)).data,
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: issueLinksKey(issueId) });
+    mutationFn: async (v: {
+      targetIssueId: string;
+      linkTypeId: string;
+      /** 'inward' = công việc đang xem là phía ĐÍCH ("is blocked by"); mặc định 'outward'. */
+      direction?: 'outward' | 'inward';
+    }) => (await api.post<IssueLink>(`/issues/${issueId}/links`, v)).data,
+    onSuccess: (_res, v) => {
+      void qc.invalidateQueries({ queryKey: keys.issues.links(issueId) });
+      // Đầu kia thấy liên kết theo chiều ngược lại → nạp lại danh sách liên kết của nó nếu đang có trong cache.
+      void qc.invalidateQueries({ queryKey: keys.issues.links(v.targetIssueId) });
     },
   });
 }
@@ -100,7 +100,7 @@ export function useDeleteLink(issueId: string) {
       await api.delete(`/links/${linkId}`);
     },
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: issueLinksKey(issueId) });
+      void qc.invalidateQueries({ queryKey: keys.issues.links(issueId) });
     },
   });
 }

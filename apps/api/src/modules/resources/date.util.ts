@@ -6,7 +6,7 @@
  * ổn định bất kể timezone của server hay của trình duyệt.
  */
 
-export const DAY_MS = 24 * 60 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
 /** Số giờ làm việc chuẩn của một ngày công. */
 export const HOURS_PER_DAY = 8;
 
@@ -46,13 +46,6 @@ export function isWorkingDay(d: Date): boolean {
   return dow >= 1 && dow <= 5;
 }
 
-/** Danh sách ngày (nửa đêm UTC) từ `from` đến `to`, bao gồm hai đầu. */
-export function eachDay(from: Date, to: Date, maxDays = 400): Date[] {
-  const out: Date[] = [];
-  for (let d = toUtcDay(from); d <= to && out.length < maxDays; d = addDays(d, 1)) out.push(d);
-  return out;
-}
-
 /** Số ngày làm việc trong đoạn [from, to] (bao gồm hai đầu). Trả 0 nếu đoạn rỗng. */
 export function countWorkingDays(from: Date, to: Date, maxDays = 400): number {
   if (to < from) return 0;
@@ -67,7 +60,8 @@ export function countWorkingDays(from: Date, to: Date, maxDays = 400): number {
 /** Nhãn tuần ngắn gọn cho UI: `24/07 – 30/07`. */
 export function weekLabel(monday: Date): string {
   const end = addDays(monday, 6);
-  const dm = (d: Date) => `${String(d.getUTCDate()).padStart(2, '0')}/${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+  const dm = (d: Date) =>
+    `${String(d.getUTCDate()).padStart(2, '0')}/${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
   return `${dm(monday)} – ${dm(end)}`;
 }
 

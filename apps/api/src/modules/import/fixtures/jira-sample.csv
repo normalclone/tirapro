@@ -1,0 +1,28 @@
+Summary,Issue key,Issue id,Issue Type,Status,Priority,Resolution,Assignee,Assignee Id,Reporter,Reporter Id,Creator,Created,Updated,Resolved,Due date,Labels,Labels,Labels,Sprint,Sprint,Parent,Custom field (Epic Link),Custom field (Story Points),Description,Comment,Comment,Comment,Time Spent,Original Estimate,Project key,Project name,Custom field (Ghi chú nội bộ)
+Nền tảng thanh toán,PROJ-1,10001,Epic,Done,High,Done,Nguyễn Văn An,acc-an,Trần Thị Bình,acc-binh,Trần Thị Bình,01/Sep/26 8:00 AM,30/Sep/26 5:15 PM,30/Sep/26 5:15 PM,,,,,,,,,,Gom toàn bộ công việc thanh toán.,,,,,,PROJ,Dự án mẫu,Ghi chú epic
+Báo cáo & thống kê,PROJ-2,10002,Epic,In Progress,Medium,,Trần Thị Bình,acc-binh,Trần Thị Bình,acc-binh,Trần Thị Bình,02/Sep/26 9:00 AM,14/Oct/26 11:00 AM,,31/Dec/26,,,,,,,,,,,,,,,PROJ,Dự án mẫu,
+Tích hợp cổng VNPay,PROJ-3,10003,Story,Done,Highest,Done,Nguyễn Văn An,acc-an,Trần Thị Bình,acc-binh,Trần Thị Bình,03/Sep/26 10:00 AM,20/Sep/26 4:30 PM,20/Sep/26 4:30 PM,,payment,backend,urgent,Sprint 1,,,PROJ-1,8,"Tích hợp VNPay.
+
+Yêu cầu:
+- Tạo link thanh toán
+- Xử lý IPN
+
+""Quan trọng"": phải idempotent; xem a, b; c.",05/Sep/26 2:10 PM;acc-binh;Đã có tài liệu API.,"06/Sep/26 9:30 AM;acc-an;Bắt đầu làm; sẽ xong trong tuần.
+Dòng thứ hai của bình luận.",,25200,28800,PROJ,Dự án mẫu,
+Màn hình lịch sử giao dịch,PROJ-4,10004,Story,In Review,High,,Lê Minh Cường,acc-cuong,Nguyễn Văn An,acc-an,Nguyễn Văn An,04/Sep/26 11:00 AM,12/Oct/26 3:00 PM,,,frontend,ui,,Sprint 1,Sprint 2,,PROJ-1,5,,10/Oct/26 8:45 AM;acc-cuong;Đang chờ review.,,,10800,14400,PROJ,Dự án mẫu,
+Lỗi làm tròn số tiền,PROJ-5,10005,Bug,Done,Highest,Fixed,Trần Thị Bình,acc-binh,Lê Minh Cường,acc-cuong,Lê Minh Cường,05/Sep/26 1:00 PM,06/Sep/26 6:00 PM,06/Sep/26 6:00 PM,,payment,,,Sprint 1,,,PROJ-1,2,Số tiền 1.005 bị làm tròn sai.,,,,3600,3600,PROJ,Dự án mẫu,
+Xuất báo cáo doanh thu theo tháng,PROJ-6,10006,Story,To Do,Medium,,,,Nguyễn Văn An,acc-an,Nguyễn Văn An,15/Oct/26 9:30 AM,15/Oct/26 9:30 AM,,,reporting,,,Sprint 3,,,PROJ-2,5,Chưa phân công.,,,,,,PROJ,Dự án mẫu,
+Biểu đồ doanh thu,PROJ-7,10007,Task,In Progress,,,Nguyễn Văn An,acc-an,Nguyễn Văn An,acc-an,Nguyễn Văn An,08/Sep/26 9:00 AM,13/Oct/26 10:00 AM,,,reporting,chart,frontend,Sprint 2,Sprint 3,,PROJ-2,3,Không đặt ưu tiên.,12/Oct/26 4:00 PM;acc-ghost;Người dùng đã bị xoá khỏi Jira.,,,5400,10800,PROJ,Dự án mẫu,
+Cấu hình CI/CD,PROJ-8,10008,Task,Done,Low,Done,Lê Minh Cường,acc-cuong,Lê Minh Cường,acc-cuong,Lê Minh Cường,09/Sep/26 9:00 AM,11/Sep/26 9:00 AM,11/Sep/26 9:00 AM,,devops,,,Sprint 1,,,,,,,,,7200,7200,PROJ,Dự án mẫu,
+Tài liệu hướng dẫn triển khai,PROJ-9,10009,Task,To Do,Lowest,,Trần Thị Bình,acc-binh,Trần Thị Bình,acc-binh,Trần Thị Bình,10/Sep/26 9:00 AM,10/Sep/26 9:00 AM,,20/Nov/26,docs,,,,,,,1,,,,,,,PROJ,Dự án mẫu,
+Sửa lỗi đăng nhập SSO,PROJ-10,10010,Bug,In Progress,High,,Nguyễn Văn An,acc-an,Lê Minh Cường,acc-cuong,Lê Minh Cường,11/Sep/26 9:00 AM,14/Oct/26 9:00 AM,,,auth,bug,,Sprint 2,,,,3,Đăng nhập SSO lỗi 500 khi token hết hạn.,13/Oct/26 9:00 AM;acc-an;Đã tái hiện được.,14/Oct/26 9:00 AM;acc-binh;Cần log thêm.,14/Oct/26 11:20 AM;acc-an;Đã thêm log.,9000,7200,PROJ,Dự án mẫu,
+Tối ưu truy vấn danh sách đơn hàng,PROJ-11,10011,Story,To Do,Medium,,Lê Minh Cường,acc-cuong,Trần Thị Bình,acc-binh,Trần Thị Bình,12/Sep/26 9:00 AM,12/Sep/26 9:00 AM,,,backend,performance,,,,,,8,,,,,,,PROJ,Dự án mẫu,
+Trang quản trị người dùng,PROJ-12,10012,Story,Done,Medium,Done,Trần Thị Bình,acc-binh,Nguyễn Văn An,acc-an,Nguyễn Văn An,13/Sep/26 9:00 AM,28/Sep/26 9:00 AM,28/Sep/26 9:00 AM,,admin,frontend,,Sprint 1,,,,5,,,,,18000,18000,PROJ,Dự án mẫu,
+Kiểm thử tải cổng thanh toán,PROJ-13,10013,Task,To Do,High,,,,Lê Minh Cường,acc-cuong,Lê Minh Cường,14/Sep/26 9:00 AM,14/Sep/26 9:00 AM,,,qa,payment,,,,,PROJ-1,,,,,,,,PROJ,Dự án mẫu,
+Thiết kế lại trang chủ,PROJ-14,10014,Story,In Progress,Low,,Nguyễn Văn An,acc-an,Trần Thị Bình,acc-binh,Trần Thị Bình,15/Sep/26 9:00 AM,09/Oct/26 9:00 AM,,,design,frontend,ui,Sprint 2,,,,13,,,,,3600,,PROJ,Dự án mẫu,
+Gọi API VNPay: tạo chữ ký,PROJ-15,10015,Sub-task,Done,High,Done,Nguyễn Văn An,acc-an,Nguyễn Văn An,acc-an,Nguyễn Văn An,04/Sep/26 9:00 AM,08/Sep/26 9:00 AM,08/Sep/26 9:00 AM,,payment,,,Sprint 1,,10003,,,,,,,10800,10800,PROJ,Dự án mẫu,
+Gọi API VNPay: xử lý IPN,PROJ-16,10016,Sub-task,Done,High,Done,Nguyễn Văn An,acc-an,Nguyễn Văn An,acc-an,Nguyễn Văn An,04/Sep/26 9:10 AM,15/Sep/26 9:00 AM,15/Sep/26 9:00 AM,,payment,,,Sprint 1,,10003,,,,,,,14400,14400,PROJ,Dự án mẫu,
+Dựng bảng lịch sử giao dịch,PROJ-17,10017,Sub-task,In Progress,Medium,,Lê Minh Cường,acc-cuong,Lê Minh Cường,acc-cuong,Lê Minh Cường,05/Sep/26 9:00 AM,12/Oct/26 9:00 AM,,,frontend,,,Sprint 1,Sprint 2,10004,,,,,,,3600,7200,PROJ,Dự án mẫu,
+Viết test cho bộ lọc lịch sử,PROJ-18,10018,Sub-task,To Do,Low,,,,Lê Minh Cường,acc-cuong,Lê Minh Cường,06/Sep/26 9:00 AM,06/Sep/26 9:00 AM,,,,,,,,10004,,,,,,,,,PROJ,Dự án mẫu,
+Thêm log cho SSO,PROJ-19,10019,Sub-task,Done,Medium,Done,Nguyễn Văn An,acc-an,Nguyễn Văn An,acc-an,Nguyễn Văn An,14/Oct/26 11:00 AM,14/Oct/26 11:20 AM,14/Oct/26 11:20 AM,,auth,,,Sprint 2,,10010,,,,,,,1200,1800,PROJ,Dự án mẫu,
+Kiểm tra token hết hạn,PROJ-20,10020,Sub-task,To Do,High,,Trần Thị Bình,acc-binh,Nguyễn Văn An,acc-an,Nguyễn Văn An,14/Oct/26 11:30 AM,14/Oct/26 11:30 AM,,,auth,,,Sprint 2,,10010,,,,,,,,,PROJ,Dự án mẫu,

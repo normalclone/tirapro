@@ -1,10 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
-import {
-  BusinessRuleException,
-  NotFoundAppException,
-} from '../../common/exceptions/app.exception';
+import { BusinessRuleException, NotFoundAppException } from '../../common/exceptions/app.exception';
 
 /** DTO trả về cho Severity (mức độ nghiêm trọng kỹ thuật). */
 export interface SeverityDto {
@@ -17,7 +14,7 @@ export interface SeverityDto {
   isSystem: boolean;
 }
 
-/** DTO trả về cho Priority (độ ưu tiên nghiệp vụ). */
+/** DTO trả về cho Priority (mức ưu tiên nghiệp vụ). */
 export interface PriorityDto {
   id: string;
   name: string;
@@ -62,7 +59,7 @@ type SeverityRow = Prisma.SeverityGetPayload<true>;
 type PriorityRow = Prisma.PriorityGetPayload<true>;
 
 const SEVERITY_DUPLICATE = 'Mức độ đã tồn tại';
-const PRIORITY_DUPLICATE = 'Độ ưu tiên đã tồn tại';
+const PRIORITY_DUPLICATE = 'Mức ưu tiên đã tồn tại';
 const SYSTEM_LOCKED = 'Không sửa được mục hệ thống';
 
 @Injectable()
@@ -79,10 +76,7 @@ export class ConfigCatalogService {
     return rows.map((r) => this.toSeverityDto(r));
   }
 
-  async createSeverity(
-    workspaceId: string,
-    input: CreateSeverityInput,
-  ): Promise<SeverityDto> {
+  async createSeverity(workspaceId: string, input: CreateSeverityInput): Promise<SeverityDto> {
     try {
       const row = await this.prisma.severity.create({
         data: {
@@ -136,10 +130,7 @@ export class ConfigCatalogService {
     }
   }
 
-  async removeSeverity(
-    workspaceId: string,
-    id: string,
-  ): Promise<{ success: true }> {
+  async removeSeverity(workspaceId: string, id: string): Promise<{ success: true }> {
     const existing = await this.requireSeverity(workspaceId, id);
     if (existing.isSystem) throw new BusinessRuleException(SYSTEM_LOCKED);
     await this.prisma.severity.delete({ where: { id } });
@@ -156,10 +147,7 @@ export class ConfigCatalogService {
     return rows.map((r) => this.toPriorityDto(r));
   }
 
-  async createPriority(
-    workspaceId: string,
-    input: CreatePriorityInput,
-  ): Promise<PriorityDto> {
+  async createPriority(workspaceId: string, input: CreatePriorityInput): Promise<PriorityDto> {
     try {
       const row = await this.prisma.priority.create({
         data: {
@@ -213,10 +201,7 @@ export class ConfigCatalogService {
     }
   }
 
-  async removePriority(
-    workspaceId: string,
-    id: string,
-  ): Promise<{ success: true }> {
+  async removePriority(workspaceId: string, id: string): Promise<{ success: true }> {
     const existing = await this.requirePriority(workspaceId, id);
     if (existing.isSystem) throw new BusinessRuleException(SYSTEM_LOCKED);
     await this.prisma.priority.delete({ where: { id } });
@@ -225,10 +210,7 @@ export class ConfigCatalogService {
 
   // ----- Helpers -----
 
-  private async requireSeverity(
-    workspaceId: string,
-    id: string,
-  ): Promise<SeverityRow> {
+  private async requireSeverity(workspaceId: string, id: string): Promise<SeverityRow> {
     const row = await this.prisma.severity.findFirst({
       where: { id, workspaceId },
     });
@@ -236,14 +218,11 @@ export class ConfigCatalogService {
     return row;
   }
 
-  private async requirePriority(
-    workspaceId: string,
-    id: string,
-  ): Promise<PriorityRow> {
+  private async requirePriority(workspaceId: string, id: string): Promise<PriorityRow> {
     const row = await this.prisma.priority.findFirst({
       where: { id, workspaceId },
     });
-    if (!row) throw new NotFoundAppException('Độ ưu tiên');
+    if (!row) throw new NotFoundAppException('Mức ưu tiên');
     return row;
   }
 

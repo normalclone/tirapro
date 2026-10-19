@@ -1,7 +1,11 @@
-import axios, { AxiosError, type AxiosRequestConfig } from 'axios';
+import type { AxiosError } from 'axios';
+import axios, { type AxiosRequestConfig } from 'axios';
 import { getAccessToken, setAccessToken } from './auth-token';
 
 const BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:4000/api/v1';
+
+/** Phản hồi của endpoint xoá/thao tác không trả dữ liệu: máy chủ trả `{ success: true }` (không phải `void`). */
+export type Ack = { success: boolean };
 
 export const api = axios.create({ baseURL: BASE_URL, withCredentials: true });
 
@@ -16,7 +20,13 @@ let refreshing: Promise<string | null> | null = null;
 
 async function doRefresh(): Promise<string | null> {
   try {
-    const res = await axios.post(`${BASE_URL}/auth/refresh`, {}, { withCredentials: true });
+    // Gửi kèm access token cũ (có thể đã hết hạn) để server giữ nguyên workspace đang làm việc.
+    const old = getAccessToken();
+    const res = await axios.post<{ accessToken?: string | null }>(
+      `${BASE_URL}/auth/refresh`,
+      {},
+      { withCredentials: true, headers: old ? { Authorization: `Bearer ${old}` } : undefined },
+    );
     const token = res.data?.accessToken ?? null;
     setAccessToken(token);
     return token;
@@ -28,7 +38,10 @@ async function doRefresh(): Promise<string | null> {
 
 /** Refresh access token dùng chung 1 promise (bootstrap + interceptor không refresh chồng → tránh xoay refresh-token 2 lần). */
 export function refreshAccessToken(): Promise<string | null> {
-  if (!refreshing) refreshing = doRefresh().finally(() => { refreshing = null; });
+  if (!refreshing)
+    refreshing = doRefresh().finally(() => {
+      refreshing = null;
+    });
   return refreshing;
 }
 
@@ -57,20 +70,42 @@ api.interceptors.response.use(
  * không chỉ báo có lỗi. Mã nào không có ở đây thì dùng message của máy chủ.
  */
 const ERROR_MESSAGES: Record<string, string> = {
-  VERSION_CONFLICT: 'Người khác vừa sửa mục này — hãy tải lại trang để xem bản mới nhất rồi thao tác lại.',
+  VERSION_CONFLICT:
+    'Người khác vừa sửa mục này — hãy tải lại trang để xem bản mới nhất rồi thao tác lại.',
   FORBIDDEN: 'Bạn không có quyền làm việc này. Liên hệ quản trị viên nếu cần được cấp quyền.',
   UNAUTHORIZED: 'Phiên đăng nhập đã hết hạn — hãy đăng nhập lại.',
   NOT_FOUND: 'Không tìm thấy dữ liệu. Có thể nó vừa bị xoá hoặc đường dẫn không đúng.',
   VALIDATION_ERROR: 'Thông tin nhập chưa hợp lệ — kiểm tra lại các ô được đánh dấu.',
+  RANK_NEIGHBORS_STALE:
+    'Thứ tự công việc vừa thay đổi do người khác — danh sách đã được nạp lại, hãy kéo thả lại.',
+  ALREADY_MEMBER: 'Người này đã là thành viên.',
+  LAST_WORKSPACE_ADMIN: 'Không thể hạ hoặc gỡ quản trị viên cuối cùng của không gian làm việc.',
   RATE_LIMITED: 'Bạn thao tác hơi nhanh. Chờ vài giây rồi thử lại.',
-  WORKFLOW_TRANSITION_INVALID: 'Quy trình không cho chuyển thẳng sang trạng thái này. Hãy chọn một trạng thái trong danh sách gợi ý.',
+  WORKFLOW_TRANSITION_INVALID:
+    'Quy trình không cho chuyển thẳng sang trạng thái này. Hãy chọn một trạng thái trong danh sách gợi ý.',
 };
+
+/**
+ * Các lỗi đã được `apiErrorMessage` dịch (tức là một chỗ nào đó đã hiển thị cho người dùng) —
+ * MutationCache dựa vào đây để không toast lần hai.
+ */
+const describedErrors = new WeakSet<object>();
+export const wasErrorDescribed = (e: unknown): boolean =>
+  typeof e === 'object' && e !== null && describedErrors.has(e);
+
+/** Mã lỗi nghiệp vụ của máy chủ (`error.code`) — để client phân nhánh mà không so khớp câu chữ. */
+export function apiErrorCode(e: unknown): string | undefined {
+  if (!axios.isAxiosError(e)) return undefined;
+  return (e.response?.data as { error?: { code?: string } } | undefined)?.error?.code;
+}
 
 /** Bóc lỗi envelope { error: { code, message } } thành câu người dùng đọc hiểu. */
 export function apiErrorMessage(e: unknown): string {
+  if (typeof e === 'object' && e !== null) describedErrors.add(e);
   if (axios.isAxiosError(e)) {
-    const err = (e.response?.data as { error?: { code?: string; message?: string } } | undefined)?.error;
-    if (err?.code && ERROR_MESSAGES[err.code]) return ERROR_MESSAGES[err.code];
+    const err = (e.response?.data as { error?: { code?: string; message?: string } } | undefined)
+      ?.error;
+    if (err?.code && ERROR_MESSAGES[err.code]) return ERROR_MESSAGES[err.code]!;
     if (err?.message) return err.message;
     // Không có phản hồi = mất mạng hoặc máy chủ chưa sẵn sàng.
     if (!e.response) return 'Không kết nối được máy chủ. Kiểm tra mạng rồi thử lại.';

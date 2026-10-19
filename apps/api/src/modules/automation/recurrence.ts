@@ -49,7 +49,7 @@ export function computeNextRun(cfg: RecurrenceConfig, from: Date = new Date()): 
   }
 
   const monthDay = clamp(Math.trunc(cfg.monthDay ?? 1), 1, 31);
-  let year = from.getFullYear();
+  const year = from.getFullYear();
   let month = from.getMonth();
   let d = atMonthDay(year, month, monthDay, hour);
   if (d.getTime() <= from.getTime()) {

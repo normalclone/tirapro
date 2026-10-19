@@ -1,5 +1,5 @@
 /** Màu theo NHÓM trạng thái (StatusCategory). Nguồn dùng chung cho board/gantt/tree/relations/filters. */
-export const CATEGORY_COLOR: Record<string, string> = {
+const CATEGORY_COLOR: Record<string, string> = {
   TODO: 'var(--status-todo)',
   IN_PROGRESS: 'var(--status-progress)',
   DONE: 'var(--status-done)',

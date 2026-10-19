@@ -1,24 +1,51 @@
 import { Injectable } from '@nestjs/common';
-import { PERMISSION_CATALOG, SYSTEM_ROLE_META, type RoleScope } from '@tirapro/types';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import {
+  AUDIT_ACTIONS,
+  DOMAIN_EVENTS,
+  PERMISSION_CATALOG,
+  SYSTEM_ROLE_META,
+  type RoleScope,
+} from '@tirapro/types';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { ForbiddenAppException, NotFoundAppException } from '../../common/exceptions/app.exception';
 import { RbacService } from '../rbac/rbac.service';
+import { AuditService } from '../audit/audit.service';
 import type { CreateRoleInput, UpdateRoleInput } from './roles.schemas';
 
 const VALID_KEYS = new Set<string>(PERMISSION_CATALOG.map((p) => p.key));
 
 type RoleRow = {
-  id: string; workspaceId: string | null; name: string; scope: RoleScope; isSystem: boolean;
-  description: string | null; color: string | null;
+  id: string;
+  workspaceId: string | null;
+  name: string;
+  scope: RoleScope;
+  isSystem: boolean;
+  description: string | null;
+  color: string | null;
   permissions: { permission: { key: string } }[];
   _count: { wsMembershipRoles: number; projMembershipRoles: number };
 };
 
-const ROLE_SELECT = {
-  id: true, workspaceId: true, name: true, scope: true, isSystem: true, description: true, color: true,
-  permissions: { select: { permission: { select: { key: true } } } },
-  _count: { select: { wsMembershipRoles: true, projMembershipRoles: true } },
-} as const;
+/** Đếm số lần gán vai trò — chỉ trong workspace đang xem (không đếm toàn hệ thống). */
+const memberCountSelect = (workspaceId: string) =>
+  ({
+    wsMembershipRoles: { where: { membership: { workspaceId } } },
+    projMembershipRoles: { where: { membership: { project: { workspaceId, deletedAt: null } } } },
+  }) as const;
+
+const roleSelect = (workspaceId: string) =>
+  ({
+    id: true,
+    workspaceId: true,
+    name: true,
+    scope: true,
+    isSystem: true,
+    description: true,
+    color: true,
+    permissions: { select: { permission: { select: { key: true } } } },
+    _count: { select: memberCountSelect(workspaceId) },
+  }) as const;
 
 /**
  * Danh mục vai trò: gồm role HỆ THỐNG (workspaceId=null, dùng chung, chỉ đọc) + role
@@ -29,54 +56,105 @@ export class RolesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly rbac: RbacService,
+    private readonly audit: AuditService,
+    // Tuỳ chọn để chỗ dựng service bằng 3 đối số (spec cũ) vẫn chạy; Nest DI tiêm bản thật.
+    private readonly events?: EventEmitter2,
   ) {}
 
   async list(workspaceId: string, scope?: RoleScope) {
     const roles = await this.prisma.role.findMany({
       where: { OR: [{ workspaceId: null }, { workspaceId }], ...(scope ? { scope } : {}) },
       orderBy: [{ isSystem: 'desc' }, { scope: 'asc' }, { name: 'asc' }],
-      select: ROLE_SELECT,
+      select: roleSelect(workspaceId),
     });
-    return roles.map((r) => this.toDto(r as RoleRow));
+    return roles.map((r) => this.toDto(r));
   }
 
-  async create(workspaceId: string, input: CreateRoleInput) {
+  async create(workspaceId: string, input: CreateRoleInput, actorId: string) {
     const permIds = await this.permIds(input.permissionKeys);
     const role = await this.prisma.role.create({
       data: {
-        workspaceId, name: input.name.trim(), scope: input.scope, isSystem: false,
-        description: input.description ?? null, color: input.color ?? null,
+        workspaceId,
+        name: input.name.trim(),
+        scope: input.scope,
+        isSystem: false,
+        description: input.description ?? null,
+        color: input.color ?? null,
         permissions: { create: permIds.map((permissionId) => ({ permissionId })) },
       },
-      select: ROLE_SELECT,
+      select: roleSelect(workspaceId),
     });
-    return this.toDto(role as RoleRow);
+    await this.audit.record({
+      workspaceId,
+      actorId,
+      action: AUDIT_ACTIONS.ROLE_CREATED,
+      entityType: 'role',
+      entityId: role.id,
+      summary: `Tạo vai trò "${role.name}"`,
+      meta: { name: role.name, scope: role.scope, permissionCount: permIds.length },
+    });
+    return this.toDto(role);
   }
 
-  async update(workspaceId: string, id: string, input: UpdateRoleInput) {
+  async update(workspaceId: string, id: string, input: UpdateRoleInput, actorId: string) {
     await this.assertCustom(workspaceId, id);
     const data: Record<string, unknown> = {};
     if (input.name !== undefined) data.name = input.name.trim();
     if (input.description !== undefined) data.description = input.description;
     if (input.color !== undefined) data.color = input.color;
+    let permIds: string[] | null = null;
     if (input.permissionKeys) {
-      const permIds = await this.permIds(input.permissionKeys);
-      await this.prisma.rolePermission.deleteMany({ where: { roleId: id } });
+      permIds = await this.permIds(input.permissionKeys);
       data.permissions = { create: permIds.map((permissionId) => ({ permissionId })) };
     }
-    const role = await this.prisma.role.update({ where: { id }, data, select: ROLE_SELECT });
+    // Xoá bộ quyền cũ + ghi vai trò (kèm bộ quyền mới) trong MỘT transaction: đổi tên trùng/lỗi giữa chừng không làm vai
+    // trò mất sạch quyền.
+    const role = permIds
+      ? (
+          await this.prisma.$transaction([
+            this.prisma.rolePermission.deleteMany({ where: { roleId: id } }),
+            this.prisma.role.update({ where: { id }, data, select: roleSelect(workspaceId) }),
+          ])
+        )[1]
+      : await this.prisma.role.update({ where: { id }, data, select: roleSelect(workspaceId) });
     await this.rbac.invalidateWorkspace(workspaceId); // quyền role đổi → xoá cache toàn workspace
-    return this.toDto(role as RoleRow);
+    // Bộ quyền đổi → ảnh hưởng mọi người giữ vai trò này: gateway rà lại socket cả workspace (rút người mất quyền xem).
+    if (input.permissionKeys) this.events?.emit(DOMAIN_EVENTS.ACCESS_CHANGED, { workspaceId });
+    await this.audit.record({
+      workspaceId,
+      actorId,
+      action: AUDIT_ACTIONS.ROLE_UPDATED,
+      entityType: 'role',
+      entityId: role.id,
+      summary: `Sửa vai trò "${role.name}"`,
+      meta: {
+        name: role.name,
+        changed: Object.keys(input).filter((k) => input[k as keyof UpdateRoleInput] !== undefined),
+        permissionCount: role.permissions.length,
+      },
+    });
+    return this.toDto(role);
   }
 
-  async remove(workspaceId: string, id: string) {
+  async remove(workspaceId: string, id: string, actorId: string) {
     const role = await this.assertCustom(workspaceId, id);
     const count = role._count.wsMembershipRoles + role._count.projMembershipRoles;
     if (count > 0) {
-      throw new ForbiddenAppException(`Vai trò đang gán cho ${count} thành viên — gỡ khỏi họ trước khi xoá`);
+      throw new ForbiddenAppException(
+        `Vai trò đang gán cho ${count} thành viên — gỡ khỏi họ trước khi xoá`,
+      );
     }
     await this.prisma.role.delete({ where: { id } });
     await this.rbac.invalidateWorkspace(workspaceId);
+    await this.audit.record({
+      workspaceId,
+      actorId,
+      action: AUDIT_ACTIONS.ROLE_DELETED,
+      entityType: 'role',
+      entityId: id,
+      summary: `Xoá vai trò "${role.name}"`,
+      meta: { name: role.name },
+    });
     return { success: true };
   }
 
@@ -84,9 +162,13 @@ export class RolesService {
   private toDto(r: RoleRow) {
     const meta = SYSTEM_ROLE_META[r.name as keyof typeof SYSTEM_ROLE_META];
     return {
-      id: r.id, workspaceId: r.workspaceId, name: r.name, scope: r.scope, isSystem: r.isSystem,
-      description: r.description ?? (r.isSystem ? meta?.description ?? null : null),
-      color: r.color ?? (r.isSystem ? meta?.color ?? null : null),
+      id: r.id,
+      workspaceId: r.workspaceId,
+      name: r.name,
+      scope: r.scope,
+      isSystem: r.isSystem,
+      description: r.description ?? (r.isSystem ? (meta?.description ?? null) : null),
+      color: r.color ?? (r.isSystem ? (meta?.color ?? null) : null),
       permissionKeys: r.permissions.map((p) => p.permission.key),
       memberCount: r._count.wsMembershipRoles + r._count.projMembershipRoles,
     };
@@ -95,7 +177,13 @@ export class RolesService {
   private async assertCustom(workspaceId: string, id: string) {
     const role = await this.prisma.role.findUnique({
       where: { id },
-      select: { id: true, isSystem: true, workspaceId: true, _count: { select: { wsMembershipRoles: true, projMembershipRoles: true } } },
+      select: {
+        id: true,
+        name: true,
+        isSystem: true,
+        workspaceId: true,
+        _count: { select: memberCountSelect(workspaceId) },
+      },
     });
     if (!role) throw new NotFoundAppException('Vai trò');
     if (role.isSystem || role.workspaceId !== workspaceId) {
@@ -107,7 +195,10 @@ export class RolesService {
   private async permIds(keys: string[]): Promise<string[]> {
     const valid = [...new Set(keys)].filter((k) => VALID_KEYS.has(k));
     if (!valid.length) return [];
-    const rows = await this.prisma.permission.findMany({ where: { key: { in: valid } }, select: { id: true } });
+    const rows = await this.prisma.permission.findMany({
+      where: { key: { in: valid } },
+      select: { id: true },
+    });
     return rows.map((r) => r.id);
   }
 }

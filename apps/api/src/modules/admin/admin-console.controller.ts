@@ -15,8 +15,11 @@ import {
   type PatchWorkspaceInput,
   type UpdateFlagsInput,
 } from './admin-console.schemas';
+import { AuthOnly } from '../../common/decorators/auth-only.decorator';
 
 /** Console quản trị hệ thống (tổng quan, workspaces, cấu hình, health/audit) — CHỈ admin hệ thống. */
+// Chỉ admin hệ thống: từng handler tự kiểm tra isSystemAdmin (assertSysAdmin), không thuộc quyền RBAC của workspace.
+@AuthOnly()
 @ApiTags('admin')
 @Controller('admin')
 export class AdminConsoleController {
@@ -28,7 +31,8 @@ export class AdminConsoleController {
   ) {}
 
   private assertSysAdmin(user: AuthUser): void {
-    if (!user.isSystemAdmin) throw new ForbiddenAppException('Chỉ admin hệ thống mới truy cập được');
+    if (!user.isSystemAdmin)
+      throw new ForbiddenAppException('Chỉ admin hệ thống mới truy cập được');
   }
 
   @Get('overview')
@@ -38,13 +42,16 @@ export class AdminConsoleController {
   }
 
   @Get('config')
-  async config(@CurrentUser() user: AuthUser) {
+  config(@CurrentUser() user: AuthUser) {
     this.assertSysAdmin(user);
     return this.overviewSvc.configStatus();
   }
 
   @Put('config/flags')
-  async setFlags(@CurrentUser() user: AuthUser, @Body(new ZodValidationPipe(updateFlagsSchema)) dto: UpdateFlagsInput) {
+  async setFlags(
+    @CurrentUser() user: AuthUser,
+    @Body(new ZodValidationPipe(updateFlagsSchema)) dto: UpdateFlagsInput,
+  ) {
     this.assertSysAdmin(user);
     return this.settings.setFlags(dto);
   }

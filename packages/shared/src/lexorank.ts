@@ -1,85 +1,71 @@
 /**
- * LexoRank tối giản: rank là chuỗi base-36 ([0-9a-z]). Sinh rank nằm giữa hai
- * rank để chèn item mà không phải đánh số lại. Dùng cho ordering board/backlog,
- * chạy được cả ở FE (optimistic) lẫn BE.
+ * LexoRank (fractional indexing, base-36): rank là phần thập phân `0.xxx` viết bằng
+ * [0-9a-z], so sánh bằng so sánh chuỗi thông thường. `rankBetween(prev, next)` luôn
+ * trả rank r thoả prev < r < next và r không kết thúc bằng '0' (để luôn còn chỗ chèn
+ * phía dưới). Hết chỗ thì ném `RankGapError` — nơi gọi phải đánh số lại (rebalance).
+ * Chạy được cả ở FE (optimistic) lẫn BE.
  */
 
 const ALPHABET = '0123456789abcdefghijklmnopqrstuvwxyz';
 const BASE = ALPHABET.length;
-const MIN_CHAR = ALPHABET[0]; // '0'
-const MAX_CHAR = ALPHABET[BASE - 1]; // 'z'
+export const RANK_MAX_LEN = 48;
 
-function charToVal(c: string): number {
-  const v = ALPHABET.indexOf(c);
-  return v < 0 ? 0 : v;
-}
-
-/** Sinh rank nằm giữa `prev` và `next` (một trong hai có thể null). */
-export function rankBetween(prev: string | null, next: string | null): string {
-  const a = prev && prev.length ? prev : '';
-  const b = next && next.length ? next : '';
-
-  if (!a && !b) return 'n'; // điểm giữa khoảng trống
-  if (!a) return rankBefore(b);
-  if (!b) return rankAfter(a);
-  if (a >= b) {
-    // dữ liệu không nhất quán: nối thêm để vẫn lớn hơn a
-    return a + 'n';
+export class RankGapError extends Error {
+  constructor(a: string, b: string) {
+    super(`Không có rank giữa "${a}" và "${b}" — cần đánh số lại`);
+    this.name = 'RankGapError';
   }
-  return midpoint(a, b);
 }
 
-function rankBefore(next: string): string {
-  // tìm rank < next
-  const first = next[0] ?? MAX_CHAR;
-  if (charToVal(first) > 0) {
-    return ALPHABET[Math.floor(charToVal(first) / 2)];
-  }
-  // first là '0' -> đi sâu hơn
-  return MIN_CHAR + rankBefore(next.slice(1) || MAX_CHAR);
-}
+const val = (c: string | undefined): number => (c === undefined ? 0 : ALPHABET.indexOf(c));
 
-function rankAfter(prev: string): string {
-  const first = prev[0] ?? MIN_CHAR;
-  const v = charToVal(first);
-  if (v < BASE - 1) {
-    return ALPHABET[v + Math.max(1, Math.floor((BASE - v) / 2))];
-  }
-  // first là 'z' -> giữ và nối thêm
-  return MAX_CHAR + rankAfter(prev.slice(1));
-}
-
+/** midpoint(a, b): a < b, a và b không kết thúc bằng '0' (a rỗng = 0, b rỗng = 1). */
 function midpoint(a: string, b: string): string {
+  if (b !== '' && a >= b) throw new RankGapError(a, b);
+  const cbAt = (i: number): number => (b === '' ? BASE : i < b.length ? val(b[i]) : BASE);
   let i = 0;
-  let result = '';
-  for (;;) {
-    const ca = a[i] ?? MIN_CHAR;
-    const cb = b[i] ?? MAX_CHAR;
-    if (ca === cb) {
-      result += ca;
-      i++;
-      continue;
-    }
-    const va = charToVal(ca);
-    const vb = charToVal(cb);
-    if (vb - va > 1) {
-      const mid = Math.floor((va + vb) / 2);
-      return result + ALPHABET[mid];
-    }
-    // sát nhau: giữ ca rồi tìm rank sau phần đuôi của a
-    result += ca;
-    return result + rankAfter(a.slice(i + 1));
+  // Bỏ tiền tố chung (a coi như được đệm '0' bên phải)
+  while (i < a.length || i < b.length) {
+    if (val(a[i]) !== cbAt(i)) break;
+    i++;
   }
+  const prefix = a.padEnd(i, '0').slice(0, i);
+  const ca = val(a[i]);
+  const cb = cbAt(i);
+  if (cb - ca > 1) {
+    // Thêm vào cuối (b rỗng) mà a còn ký tự: tăng đúng 1 để rank không dài nhanh khi thêm tuần tự
+    const mid = b === '' && i < a.length ? ca + 1 : Math.floor((ca + cb) / 2);
+    return prefix + ALPHABET[mid];
+  }
+  // Sát nhau: giữ ca, đi tiếp giữa phần đuôi của a và "vô cùng"
+  const rest = midpoint(a.slice(i + 1), '');
+  return prefix + ALPHABET[ca] + rest;
 }
 
-/** Sinh dãy n rank cách đều cho seed/khởi tạo cột. */
+export function rankBetween(prev: string | null, next: string | null): string {
+  const a = (prev ?? '').replace(/0+$/, '');
+  const b = (next ?? '').replace(/0+$/, '');
+  if (next !== null && next !== '' && b === '') throw new RankGapError(a, next); // next = "0…": không có gì nhỏ hơn
+  const r = midpoint(a, b);
+  if (r === '' || r.endsWith('0')) throw new RankGapError(a, b);
+  if (r.length > RANK_MAX_LEN) throw new RankGapError(a, b);
+  return r;
+}
+
+/** Sinh dãy n rank cách đều, tăng dần (dùng khi seed và khi rebalance). */
 export function initialRanks(n: number): string[] {
-  const ranks: string[] = [];
-  let prev: string | null = null;
+  // Chia đều đoạn (0,1): rank k = (k+1)/(n+1) biểu diễn base-36. Đủ chữ số để mọi rank khác nhau.
+  const digits = Math.max(2, Math.ceil(Math.log(n + 1) / Math.log(BASE)) + 1);
+  const out: string[] = [];
   for (let k = 0; k < n; k++) {
-    const r = rankBetween(prev, null);
-    ranks.push(r);
-    prev = r;
+    // Số nguyên k' = floor((k+1) * BASE^digits / (n+1)) -> viết base-36 đủ `digits` chữ số
+    let x = Math.floor(((k + 1) * BASE ** digits) / (n + 1));
+    let s = '';
+    for (let d = 0; d < digits; d++) {
+      s = ALPHABET[x % BASE]! + s;
+      x = Math.floor(x / BASE);
+    }
+    out.push(s.replace(/0+$/, '') || '1');
   }
-  return ranks;
+  return out;
 }

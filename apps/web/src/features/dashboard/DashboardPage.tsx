@@ -1,22 +1,72 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { Link } from 'react-router-dom';
-import { AlertTriangle, CalendarClock, ChevronRight, Flame, FolderKanban, History, Inbox, Info, TrendingUp } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
 import {
-  Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
+  AlertTriangle,
+  BarChart3,
+  CalendarClock,
+  CheckCircle2,
+  ChevronRight,
+  Flame,
+  FolderKanban,
+  History,
+  Inbox,
+  Info,
+  TrendingUp,
+} from 'lucide-react';
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  Legend,
+  Line,
+  LineChart,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
 } from 'recharts';
 import type { IssueDto, StatusCategory } from '@tirapro/types';
 import { useProjects } from '../projects/api';
 import {
-  useMyIssues, useWorkspaceOverview,
-  type OverviewAttention, type OverviewForecast, type OverviewProject, type OverviewSlice,
-  type OverviewTotals, type OverviewTrendPoint, type OverviewWarning,
+  useMyIssues,
+  useWorkspaceOverview,
+  type OverviewAttention,
+  type OverviewForecast,
+  type OverviewProject,
+  type OverviewSlice,
+  type OverviewTotals,
+  type OverviewTrendPoint,
+  type OverviewWarning,
 } from './api';
+import { DashboardSwitcher } from '@/features/dashboards/DashboardSwitcher';
+import { LeadershipCards } from './LeadershipCards';
+import { MyBugsSection } from './MyBugsSection';
+import { OnboardingChecklist } from '@/features/guides/OnboardingChecklist';
+import { CreateProjectModal } from '@/features/projects/CreateProjectModal';
+import { Button } from '@/components/ui/Button';
+import { lastViewKey, resolveCurrentProjectKey } from '@/lib/currentProject';
+import { emptyHomeActions, personaOf, type HomeAction } from '@/lib/persona';
+import { useCreateIssueModal } from '@/stores/createIssue';
+import { openReportIssue } from '@/stores/reportIssue';
 import { useAuth } from '@/stores/auth';
 import { DelayedSpinner, EmptyState, Skeleton } from '@/components/ui/primitives';
-import { DueBadge, dueState } from '@/components/ui/DueBadge';
-import { pageContainer } from '@/components/layout/page';
+import { DueBadge } from '@/components/ui/DueBadge';
+import { dueState } from '@/lib/dueDate';
+import { fmtLongDate } from '@/lib/dateFormat';
+import { HealthBadge } from '@/components/ui/HealthBadge';
+import { PrintButton } from '@/components/ui/PrintButton';
+import { PrintHeader } from '@/components/ui/PrintHeader';
+import { PageFrame } from '@/components/layout/PageFrame';
+import { PageHeader } from '@/components/layout/PageHeader';
 import { useRecents } from '@/stores/recentIssues';
 import { cn } from '@/lib/utils';
+import { CHART_MARGIN, yAxisWidth } from '@/lib/chartAxis';
+import { STATUS_CATEGORY_LABEL } from '@/lib/terms';
+import { PriorityIcon } from '@/components/ui/PriorityIcon';
+import { usePriorityRanks } from '@/features/issue-meta/usePriorityRanks';
 
 const CATEGORY_COLOR: Record<StatusCategory, string> = {
   TODO: 'var(--status-todo)',
@@ -24,16 +74,10 @@ const CATEGORY_COLOR: Record<StatusCategory, string> = {
   DONE: 'var(--status-done)',
 };
 
-const WEEKDAYS = ['Chủ nhật', 'Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy'];
-
 /** Ngưỡng rank được coi là "ưu tiên cao" (Highest=5, High=4). */
 const HIGH_PRIORITY_RANK = 4;
 /** Số issue tối đa hiển thị trong mỗi mục nổi bật ở chế độ cá nhân. */
 const SECTION_LIMIT = 6;
-
-function formatToday(d: Date): string {
-  return `${WEEKDAYS[d.getDay()]}, ${d.getDate()} thg ${d.getMonth() + 1} ${d.getFullYear()}`;
-}
 
 function greetingPrefix(d: Date): string {
   const h = d.getHours();
@@ -71,20 +115,20 @@ export function DashboardPage() {
   const now = useNow();
 
   return (
-    <div className={pageContainer('xl', 'py-6')}>
-      {/* Greeting — chung cho cả hai chế độ */}
-      <header className="mb-5">
-        <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">
-          {greetingPrefix(now)}
-          {user?.displayName ? `, ${user.displayName}` : ''}
-        </h1>
-        <p className="mt-1 text-sm text-muted">{formatToday(now)}</p>
-      </header>
+    <PageFrame size="xl" className="py-6">
+      {/* Lời chào — chung cho cả hai chế độ. Admin: bản in có khối PrintHeader riêng (tiêu đề + người in) nên bỏ lời chào. */}
+      <PageHeader
+        className={cn(isAdmin && 'print:hidden')}
+        title={`${greetingPrefix(now)}${user?.displayName ? `, ${user.displayName}` : ''}`}
+        description={fmtLongDate(now)}
+        // Chuyển sang dashboard tuỳ biến (của tôi / được chia sẻ); tự ẩn khi chưa có dashboard nào.
+        actions={<DashboardSwitcher className="print:hidden" />}
+      />
 
       <RecentsStrip />
 
-      {isAdmin ? <AdminOverview /> : <PersonalOverview />}
-    </div>
+      <div data-tour="home-overview">{isAdmin ? <AdminOverview /> : <PersonalOverview />}</div>
+    </PageFrame>
   );
 }
 
@@ -93,7 +137,7 @@ function RecentsStrip() {
   const recents = useRecents((s) => s.items);
   if (recents.length === 0) return null;
   return (
-    <section className="mb-6">
+    <section className="mb-6 print:hidden">
       <div className="mb-2 flex items-center gap-1.5 text-xs font-medium text-faint">
         <History className="h-3.5 w-3.5" aria-hidden /> Xem gần đây
       </div>
@@ -120,14 +164,34 @@ function RecentsStrip() {
 
 function AdminOverview() {
   const { data, isLoading, isError } = useWorkspaceOverview(true);
+  // Lối vào báo cáo định kỳ: chỉ người quản lý được tích hợp mới tạo/sửa được.
+  const canDigest = useAuth((s) => s.can('integration:manage'));
+  const [createOpen, setCreateOpen] = useState(false);
 
   return (
     <section className="mb-12">
-      <div className="mb-3 flex items-baseline justify-between gap-4">
+      {/* Khối "Bắt đầu" ở ĐẦU Tổng quan (kể cả khi chưa có dự án nào): workspace mới thấy ngay việc cần làm tiếp. */}
+      <OnboardingChecklist />
+      <PrintHeader
+        title="Tổng quan chung"
+        subtitle={data ? `Toàn bộ ${data.projectCount} dự án đang hoạt động` : undefined}
+      />
+      {/* Bản in đã có PrintHeader (tiêu đề + số dự án) → ẩn hàng tiêu đề này để không lặp. */}
+      <div className="mb-3 flex items-center justify-between gap-4 print:hidden">
         <h2 className="text-base font-semibold text-ink-strong">Tổng quan chung</h2>
-        {data && (
-          <span className="text-xs text-faint tabular">{data.projectCount} dự án</span>
-        )}
+        <span className="flex items-center gap-3">
+          {canDigest && (
+            <Link
+              to="/connect/integrations/digest"
+              className="inline-flex items-center gap-1 rounded-sm text-xs font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+            >
+              <CalendarClock className="h-3.5 w-3.5" aria-hidden />
+              Báo cáo định kỳ
+            </Link>
+          )}
+          {data && <span className="text-xs text-faint tabular">{data.projectCount} dự án</span>}
+          {data && data.projectCount > 0 && <PrintButton title="Tổng quan" />}
+        </span>
       </div>
 
       {isLoading && (
@@ -152,8 +216,10 @@ function AdminOverview() {
           icon={<FolderKanban className="h-8 w-8" />}
           title="Chưa có dự án nào để tổng hợp"
           description="Tạo dự án đầu tiên để bắt đầu theo dõi tiến độ."
+          action={<Button onClick={() => setCreateOpen(true)}>Tạo dự án</Button>}
         />
       )}
+      <CreateProjectModal open={createOpen} onClose={() => setCreateOpen(false)} />
 
       {data && data.projectCount > 0 && (
         <div className="space-y-3">
@@ -164,8 +230,12 @@ function AdminOverview() {
             stats={[
               { label: 'Tổng công việc', value: data.totals.total },
               { label: 'Bug', value: data.totals.bug, tone: 'bug' },
-              { label: 'Đang làm', value: data.totals.inProgress, tone: 'progress' },
-              { label: 'Hoàn thành', value: data.totals.done, tone: 'done' },
+              {
+                label: STATUS_CATEGORY_LABEL.IN_PROGRESS,
+                value: data.totals.inProgress,
+                tone: 'progress',
+              },
+              { label: STATUS_CATEGORY_LABEL.DONE, value: data.totals.done, tone: 'done' },
               { label: 'Quá hạn', value: data.totals.overdue, tone: 'danger' },
             ]}
           />
@@ -189,6 +259,9 @@ function AdminOverview() {
           {/* Bảng dự án — đặt trên phần dự báo & cần chú ý */}
           <ProjectStatsTable projects={data.projects} />
 
+          {/* Thẻ lãnh đạo: Top rủi ro · OKR chậm · Người quá tải */}
+          <LeadershipCards />
+
           {/* Dự báo (bằng chữ) + Task cần chú ý */}
           <div className="grid gap-3 lg:grid-cols-3">
             <ForecastCard forecast={data.forecast} />
@@ -207,8 +280,14 @@ function AdminOverview() {
 /* ------------------------------------------------------------------ */
 
 const WARN_STYLE: Record<OverviewWarning['level'], { box: string; icon: ReactNode }> = {
-  danger: { box: 'border-danger/30 bg-danger/5 text-danger', icon: <AlertTriangle className="h-4 w-4" /> },
-  warning: { box: 'border-warning/30 bg-warning/5 text-warning', icon: <AlertTriangle className="h-4 w-4" /> },
+  danger: {
+    box: 'border-danger/30 bg-danger/5 text-danger',
+    icon: <AlertTriangle className="h-4 w-4" />,
+  },
+  warning: {
+    box: 'border-warning/30 bg-warning/5 text-warning',
+    icon: <AlertTriangle className="h-4 w-4" />,
+  },
   info: { box: 'border-border bg-surface text-muted', icon: <Info className="h-4 w-4" /> },
 };
 
@@ -219,7 +298,13 @@ function WarningCards({ warnings }: { warnings: OverviewWarning[] }) {
       {warnings.map((w, i) => {
         const s = WARN_STYLE[w.level];
         return (
-          <div key={i} className={cn('flex items-start gap-2 rounded-lg border px-3 py-2 text-sm', s.box)}>
+          <div
+            key={i}
+            className={cn(
+              'print-avoid-break flex items-start gap-2 rounded-lg border px-3 py-2 text-sm',
+              s.box,
+            )}
+          >
             <span className="mt-0.5 shrink-0">{s.icon}</span>
             <span className={w.level === 'info' ? 'text-ink' : ''}>{w.text}</span>
           </div>
@@ -231,7 +316,7 @@ function WarningCards({ warnings }: { warnings: OverviewWarning[] }) {
 
 function ForecastCard({ forecast }: { forecast: OverviewForecast[] }) {
   return (
-    <div className="rounded-lg border border-border bg-surface p-3">
+    <div className="print-avoid-break rounded-lg border border-border bg-surface p-3">
       <h3 className="mb-2 flex items-center gap-2 text-sm font-medium text-ink-strong">
         <TrendingUp className="h-4 w-4 text-primary" /> Dự báo
       </h3>
@@ -249,24 +334,45 @@ function ForecastCard({ forecast }: { forecast: OverviewForecast[] }) {
 
 function AttentionCard({ items }: { items: OverviewAttention[] }) {
   return (
-    <div className="rounded-lg border border-border bg-surface p-3">
+    <div className="print-avoid-break rounded-lg border border-border bg-surface p-3">
       <h3 className="mb-2 flex items-center gap-2 text-sm font-medium text-ink-strong">
         <Flame className="h-4 w-4 text-danger" /> Cần chú ý
       </h3>
       {items.length === 0 ? (
-        <p className="rounded-md bg-surface-2 px-3 py-2 text-sm text-muted">Không có việc nào cần chú ý gấp 👍</p>
+        <EmptyState
+          size="compact"
+          icon={<CheckCircle2 className="text-success" />}
+          title="Không có việc nào cần chú ý gấp"
+          description="Việc quá hạn, sắp đến hạn hoặc ưu tiên cao chưa giao sẽ hiện ở đây."
+        />
       ) : (
         <ul className="divide-y divide-border overflow-hidden rounded-md border border-border">
           {items.map((it) => (
             <li key={it.key}>
-              <Link to={`/issue/${it.key}`} className="flex items-center gap-2.5 px-3 py-2 transition-colors hover:bg-surface-2">
-                <span className={cn('mt-0.5 h-2 w-2 shrink-0 rounded-full', it.level === 'danger' ? 'bg-danger' : 'bg-warning')} aria-hidden />
+              <Link
+                to={`/issue/${it.key}`}
+                className="flex items-center gap-2.5 px-3 py-2 transition-colors hover:bg-surface-2"
+              >
+                <span
+                  className={cn(
+                    'mt-0.5 h-2 w-2 shrink-0 rounded-full',
+                    it.level === 'danger' ? 'bg-danger' : 'bg-warning',
+                  )}
+                  aria-hidden
+                />
                 <span className="min-w-0 flex-1">
                   <span className="flex items-center gap-2">
                     <span className="shrink-0 font-mono text-xs text-muted">{it.key}</span>
                     <span className="min-w-0 flex-1 truncate text-sm text-ink">{it.summary}</span>
                   </span>
-                  <span className={cn('text-xs', it.level === 'danger' ? 'text-danger' : 'text-warning')}>{it.reason}</span>
+                  <span
+                    className={cn(
+                      'text-xs',
+                      it.level === 'danger' ? 'text-danger' : 'text-warning',
+                    )}
+                  >
+                    {it.reason}
+                  </span>
                 </span>
                 <ChevronRight className="h-4 w-4 shrink-0 text-faint" aria-hidden />
               </Link>
@@ -279,17 +385,51 @@ function AttentionCard({ items }: { items: OverviewAttention[] }) {
 }
 
 function TrendChart({ trend }: { trend: OverviewTrendPoint[] }) {
-  if (!trend || trend.length === 0) return <EmptyChart />;
+  if (!trend || trend.length === 0)
+    return (
+      <EmptyChart hint="Biểu đồ hiện khi có việc được tạo hoặc hoàn thành trong 8 tuần gần đây." />
+    );
   return (
     <ResponsiveContainer width="100%" height="100%">
-      <LineChart data={trend} margin={{ top: 8, right: 12, bottom: 0, left: -8 }}>
+      <LineChart data={trend} margin={{ ...CHART_MARGIN, right: 12 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-        <XAxis dataKey="label" tick={{ fontSize: 11, fill: 'var(--muted)' }} stroke="var(--border)" tickLine={false} />
-        <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: 'var(--muted)' }} stroke="var(--border)" width={32} tickLine={false} axisLine={false} />
+        <XAxis
+          dataKey="label"
+          tick={{ fontSize: 11, fill: 'var(--muted)' }}
+          stroke="var(--border)"
+          tickLine={false}
+        />
+        <YAxis
+          allowDecimals={false}
+          tick={{ fontSize: 11, fill: 'var(--muted)' }}
+          stroke="var(--border)"
+          width={yAxisWidth(trend.flatMap((p) => [p.created, p.resolved]))}
+          tickLine={false}
+          axisLine={false}
+        />
         <Tooltip contentStyle={TOOLTIP_STYLE} />
-        <Legend verticalAlign="top" height={24} iconType="plainline" wrapperStyle={{ fontSize: 11 }} />
-        <Line type="monotone" dataKey="created" name="Tạo mới" stroke="var(--status-progress)" strokeWidth={2} dot={false} />
-        <Line type="monotone" dataKey="resolved" name="Đã xử lý" stroke="var(--status-done)" strokeWidth={2} dot={false} />
+        <Legend
+          verticalAlign="top"
+          height={24}
+          iconType="plainline"
+          wrapperStyle={{ fontSize: 11 }}
+        />
+        <Line
+          type="monotone"
+          dataKey="created"
+          name="Tạo mới"
+          stroke="var(--status-progress)"
+          strokeWidth={2}
+          dot={false}
+        />
+        <Line
+          type="monotone"
+          dataKey="resolved"
+          name="Đã xử lý"
+          stroke="var(--status-done)"
+          strokeWidth={2}
+          dot={false}
+        />
       </LineChart>
     </ResponsiveContainer>
   );
@@ -309,48 +449,88 @@ const TOOLTIP_STYLE = {
 
 function ChartCard({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <div className="rounded-lg border border-border bg-surface p-3">
+    <div className="print-avoid-break rounded-lg border border-border bg-surface p-3">
       <h3 className="mb-2 text-xs font-medium text-muted">{title}</h3>
       <div className="h-48">{children}</div>
     </div>
   );
 }
 
-function EmptyChart() {
-  return <div className="grid h-full place-items-center text-xs text-faint">Chưa có dữ liệu</div>;
+function EmptyChart({ hint }: { hint: string }) {
+  return (
+    <div className="grid h-full place-items-center">
+      <EmptyState size="compact" icon={<BarChart3 />} title="Chưa có dữ liệu" description={hint} />
+    </div>
+  );
 }
 
 function StatusDonut({ totals }: { totals: OverviewTotals }) {
-  if (totals.total === 0) return <EmptyChart />;
+  if (totals.total === 0)
+    return <EmptyChart hint="Biểu đồ hiện khi dự án có ít nhất một công việc." />;
   const data = [
-    { name: 'Cần làm', value: totals.todo, color: 'var(--status-todo)' },
-    { name: 'Đang làm', value: totals.inProgress, color: 'var(--status-progress)' },
-    { name: 'Hoàn thành', value: totals.done, color: 'var(--status-done)' },
+    { name: STATUS_CATEGORY_LABEL.TODO, value: totals.todo, color: 'var(--status-todo)' },
+    {
+      name: STATUS_CATEGORY_LABEL.IN_PROGRESS,
+      value: totals.inProgress,
+      color: 'var(--status-progress)',
+    },
+    { name: STATUS_CATEGORY_LABEL.DONE, value: totals.done, color: 'var(--status-done)' },
   ].filter((d) => d.value > 0);
   return (
     <ResponsiveContainer width="100%" height="100%">
       <PieChart>
-        <Pie data={data} dataKey="value" nameKey="name" innerRadius="58%" outerRadius="82%" paddingAngle={2} stroke="none">
-          {data.map((d) => <Cell key={d.name} fill={d.color} />)}
+        <Pie
+          data={data}
+          dataKey="value"
+          nameKey="name"
+          innerRadius="58%"
+          outerRadius="82%"
+          paddingAngle={2}
+          stroke="none"
+        >
+          {data.map((d) => (
+            <Cell key={d.name} fill={d.color} />
+          ))}
         </Pie>
         <Tooltip contentStyle={TOOLTIP_STYLE} />
-        <Legend verticalAlign="bottom" height={24} iconType="circle" wrapperStyle={{ fontSize: 11 }} />
+        <Legend
+          verticalAlign="bottom"
+          height={24}
+          iconType="circle"
+          wrapperStyle={{ fontSize: 11 }}
+        />
       </PieChart>
     </ResponsiveContainer>
   );
 }
 
 function SliceBar({ slices }: { slices: OverviewSlice[] }) {
-  if (!slices || slices.length === 0) return <EmptyChart />;
+  if (!slices || slices.length === 0)
+    return <EmptyChart hint="Biểu đồ hiện khi dự án có ít nhất một công việc." />;
   return (
     <ResponsiveContainer width="100%" height="100%">
-      <BarChart data={slices} margin={{ top: 8, right: 8, bottom: 0, left: -8 }}>
-        <XAxis dataKey="name" tick={{ fontSize: 11, fill: 'var(--muted)' }} stroke="var(--border)" interval={0} tickLine={false} />
-        <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: 'var(--muted)' }} stroke="var(--border)" width={32} tickLine={false} axisLine={false} />
+      <BarChart data={slices} margin={CHART_MARGIN}>
+        <XAxis
+          dataKey="name"
+          tick={{ fontSize: 11, fill: 'var(--muted)' }}
+          stroke="var(--border)"
+          interval={0}
+          tickLine={false}
+        />
+        <YAxis
+          allowDecimals={false}
+          tick={{ fontSize: 11, fill: 'var(--muted)' }}
+          stroke="var(--border)"
+          width={yAxisWidth(slices.map((s) => s.count))}
+          tickLine={false}
+          axisLine={false}
+        />
         <Tooltip cursor={{ fill: 'var(--surface-2)' }} contentStyle={TOOLTIP_STYLE} />
         {/* `name` bắt buộc: thiếu nó thì tooltip hiện tên khoá dữ liệu ("count") thay vì tiếng Việt. */}
         <Bar dataKey="count" name="Số công việc" radius={[4, 4, 0, 0]} maxBarSize={48}>
-          {slices.map((s) => <Cell key={s.name} fill={s.color ?? 'var(--primary)'} />)}
+          {slices.map((s) => (
+            <Cell key={s.name} fill={s.color ?? 'var(--primary)'} />
+          ))}
         </Bar>
       </BarChart>
     </ResponsiveContainer>
@@ -374,11 +554,7 @@ const SM_COLS: Record<number, string> = {
   5: 'sm:grid-cols-5',
 };
 
-function StatRow({
-  stats,
-}: {
-  stats: { label: string; value: number; tone?: StatTone }[];
-}) {
+function StatRow({ stats }: { stats: { label: string; value: number; tone?: StatTone }[] }) {
   const oddCount = stats.length % 2 === 1; // mobile 2 cột → ô cuối lẻ cần span 2 cho kín
   return (
     <div
@@ -424,14 +600,20 @@ function ProjectStatsTable({ projects }: { projects: OverviewProject[] }) {
   return (
     <div className="overflow-hidden rounded-lg border border-border bg-surface">
       {/* Header cột — ẩn ở mobile để dồn không gian cho số liệu */}
-      <div className="hidden items-center gap-3 border-b border-border px-4 py-2 text-[11px] font-medium uppercase tracking-wide text-faint sm:flex">
-        <span className="min-w-0 flex-1">Dự án</span>
-        <span className="hidden w-40 md:block">Sprint đang chạy</span>
-        <span className="w-14 text-right tabular">Tổng</span>
-        <span className="w-16 text-right tabular">Đang làm</span>
-        <span className="w-16 text-right tabular">Xong</span>
-        <span className="w-16 text-right tabular">Quá hạn</span>
-        <span className="w-24 text-right">Tiến độ</span>
+      {/* Khổ A4 dọc hẹp hơn md nhưng vẫn cần đủ cột → `print:` dựng lại bố cục md với cột co hẹp (L4). */}
+      <div className="hidden items-center gap-3 border-b border-border px-4 py-2 text-[11px] font-medium uppercase tracking-wide text-faint sm:flex print:flex print:gap-2 print:px-2">
+        <span className="min-w-0 flex-1 print:basis-24">Dự án</span>
+        <span className="w-12 md:w-32 print:w-32">
+          <span className="sr-only md:not-sr-only print:not-sr-only">Sức khoẻ</span>
+        </span>
+        <span className="hidden w-40 md:block print:block print:w-24">Sprint đang chạy</span>
+        <span className="w-14 text-right tabular print:w-12">Tổng</span>
+        <span className="w-20 whitespace-nowrap text-right tabular print:w-16">
+          {STATUS_CATEGORY_LABEL.IN_PROGRESS}
+        </span>
+        <span className="w-16 text-right tabular print:w-12">{STATUS_CATEGORY_LABEL.DONE}</span>
+        <span className="w-16 text-right tabular print:w-12">Quá hạn</span>
+        <span className="w-24 text-right print:w-12">Tiến độ</span>
       </div>
 
       <ul className="divide-y divide-border">
@@ -449,11 +631,11 @@ function ProjectStatsRow({ project: p }: { project: OverviewProject }) {
   const due = p.sprint ? sprintDue(p.sprint.daysLeft) : null;
 
   return (
-    <li>
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3 transition-colors hover:bg-surface-2">
+    <li className="print-avoid-break">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3 transition-colors hover:bg-surface-2 print:gap-x-2 print:px-2">
         <Link
           to={`/p/${p.key}/board`}
-          className="group flex min-w-0 flex-1 items-center gap-2.5"
+          className="group flex min-w-0 flex-1 basis-40 items-center gap-2.5 print:basis-24"
         >
           <span className="grid h-7 w-7 shrink-0 place-items-center rounded bg-primary-subtle font-mono text-[11px] font-bold text-primary">
             {p.key.slice(0, 3)}
@@ -466,11 +648,18 @@ function ProjectStatsRow({ project: p }: { project: OverviewProject }) {
           </span>
         </Link>
 
+        {/* Sức khoẻ: dưới md chỉ còn icon (tên truy cập vẫn đủ); bấm xem lý do */}
+        <span className="w-12 shrink-0 md:w-32 print:w-32">
+          <HealthBadge health={p.health} projectKey={p.key} compact />
+        </span>
+
         {/* Sprint đang chạy (ẩn dưới md để dồn chỗ cho số liệu) */}
-        <span className="hidden w-40 shrink-0 md:block">
+        <span className="hidden w-40 shrink-0 md:block print:block print:w-24">
           {p.sprint && due ? (
             <>
-              <span className="block truncate text-sm text-ink" title={p.sprint.name}>{p.sprint.name}</span>
+              <span className="block truncate text-sm text-ink" title={p.sprint.name}>
+                {p.sprint.name}
+              </span>
               <span className={cn('block text-[11px] tabular', due.className)}>{due.text}</span>
             </>
           ) : (
@@ -478,21 +667,27 @@ function ProjectStatsRow({ project: p }: { project: OverviewProject }) {
           )}
         </span>
 
-        <span className="w-14 text-right text-sm tabular text-ink-strong">{p.total}</span>
-        <span className="w-16 text-right text-sm tabular text-status-progress">{p.inProgress}</span>
-        <span className="w-16 text-right text-sm tabular text-status-done">{p.done}</span>
+        <span className="w-14 text-right text-sm tabular text-ink-strong print:w-12">
+          {p.total}
+        </span>
+        <span className="w-20 text-right text-sm tabular text-status-progress print:w-16">
+          {p.inProgress}
+        </span>
+        <span className="w-16 text-right text-sm tabular text-status-done print:w-12">
+          {p.done}
+        </span>
         <span
           className={cn(
-            'w-16 text-right text-sm tabular',
+            'w-16 text-right text-sm tabular print:w-12',
             p.overdue > 0 ? 'font-semibold text-danger' : 'text-faint',
           )}
         >
           {p.overdue}
         </span>
 
-        <span className="flex w-24 items-center justify-end gap-2">
+        <span className="flex w-24 items-center justify-end gap-2 print:w-12">
           <span
-            className="h-1.5 w-14 overflow-hidden rounded-full bg-surface-3"
+            className="h-1.5 w-14 overflow-hidden print:hidden rounded-full bg-surface-3"
             role="progressbar"
             aria-valuenow={pct}
             aria-valuemin={0}
@@ -517,7 +712,7 @@ function ProjectStatsRow({ project: p }: { project: OverviewProject }) {
 
 function PersonalOverview() {
   const { data: issues, isLoading, isError } = useMyIssues();
-  const { data: projects } = useProjects();
+  const { data: projects, isError: projectsError } = useProjects();
 
   const keyById = useMemo(() => {
     const m = new Map<string, string>();
@@ -565,12 +760,23 @@ function PersonalOverview() {
           <StatRow
             stats={[
               { label: 'Việc của tôi', value: counts.total },
-              { label: 'Đang làm', value: counts.inProgress, tone: 'progress' },
+              {
+                label: STATUS_CATEGORY_LABEL.IN_PROGRESS,
+                value: counts.inProgress,
+                tone: 'progress',
+              },
               { label: 'Quá hạn', value: counts.overdue, tone: 'danger' },
             ]}
           />
         </div>
       )}
+
+      {/* Bug tôi báo chưa đóng / chờ tôi xác nhận — tự ẩn khi không có */}
+      <MyBugsSection
+        renderRow={(issue) => (
+          <MyIssueRow key={issue.id} issue={issue} projectKey={keyById.get(issue.projectId)} />
+        )}
+      />
 
       {/* Ưu tiên cao */}
       <section className="mb-10">
@@ -582,9 +788,12 @@ function PersonalOverview() {
         {isLoading && <IssueListSkeleton />}
         {isError && <p className="text-sm text-danger">Không tải được danh sách việc của bạn.</p>}
         {issues && highPriority.length === 0 && !isLoading && (
-          <p className="rounded-lg border border-border bg-surface px-4 py-3 text-sm text-muted">
-            Không có việc ưu tiên cao nào đang chờ.
-          </p>
+          <EmptyState
+            size="compact"
+            icon={<CheckCircle2 />}
+            title="Không có việc ưu tiên cao nào đang chờ"
+            description="Việc được giao cho bạn ở mức ưu tiên cao trở lên sẽ hiện ở đây."
+          />
         )}
         {highPriority.length > 0 && (
           <ul className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-surface">
@@ -604,14 +813,22 @@ function PersonalOverview() {
 
         {isLoading && <IssueListSkeleton />}
         {issues && dueSoon.length === 0 && !isLoading && (
-          <p className="rounded-lg border border-border bg-surface px-4 py-3 text-sm text-muted">
-            Không có việc nào sắp đến hạn.
-          </p>
+          <EmptyState
+            size="compact"
+            icon={<CalendarClock />}
+            title="Không có việc nào sắp đến hạn"
+            description="Việc của bạn có hạn trong thời gian tới hoặc đã trễ hạn sẽ hiện ở đây."
+          />
         )}
         {dueSoon.length > 0 && (
           <ul className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-surface">
             {dueSoon.map((issue) => (
-              <MyIssueRow key={issue.id} issue={issue} projectKey={keyById.get(issue.projectId)} showDue />
+              <MyIssueRow
+                key={issue.id}
+                issue={issue}
+                projectKey={keyById.get(issue.projectId)}
+                showDue
+              />
             ))}
           </ul>
         )}
@@ -628,12 +845,9 @@ function PersonalOverview() {
 
         {isLoading && <IssueListSkeleton />}
         {isError && <p className="text-sm text-danger">Không tải được danh sách việc của bạn.</p>}
-        {issues && issues.length === 0 && (
-          <EmptyState
-            icon={<Inbox className="h-8 w-8" />}
-            title="Bạn chưa được giao việc nào"
-            description="Khi có việc được giao cho bạn, chúng sẽ xuất hiện ở đây."
-          />
+        {issues && issues.length === 0 && projects && <PersonalEmptyState projects={projects} />}
+        {issues && issues.length === 0 && !projects && projectsError && (
+          <p className="text-sm text-danger">Không tải được danh sách dự án của bạn.</p>
         )}
         {issues && issues.length > 0 && (
           <ul className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-surface">
@@ -643,6 +857,66 @@ function PersonalOverview() {
           </ul>
         )}
       </section>
+    </>
+  );
+}
+
+/** "Việc của tôi" trống: nút hành động đúng vai (dev → nhận việc, tester → báo lỗi, BA/PO/SM → viết yêu cầu). */
+function PersonalEmptyState({ projects }: { projects: { key: string }[] }) {
+  const navigate = useNavigate();
+  const can = useAuth((s) => s.can);
+  const workspaceId = useAuth((s) => s.workspaceId);
+  const memberships = useAuth((s) => s.memberships);
+  const openCreate = useCreateIssueModal((s) => s.openCreate);
+  const [createProject, setCreateProject] = useState(false);
+
+  const persona = personaOf(
+    memberships.filter((m) => m.workspaceId === workspaceId),
+    can,
+  );
+  let lastViewRaw: string | null = null;
+  try {
+    lastViewRaw = localStorage.getItem(lastViewKey());
+  } catch {
+    /* storage bị chặn → rơi về dự án đầu */
+  }
+  const projectKey = resolveCurrentProjectKey({ pathname: '/', projects, lastViewRaw });
+  const { title, description, actions } = emptyHomeActions(persona, {
+    projectKey,
+    canCreateProject: can('project:create'),
+  });
+
+  function run(a: HomeAction) {
+    if (a.kind === 'link' && a.to) navigate(a.to);
+    else if (a.kind === 'create-issue') openCreate({ projectKey: projectKey ?? undefined });
+    else if (a.kind === 'report-bug')
+      openReportIssue({ projectKey: projectKey ?? undefined, kind: 'BUG' });
+    else if (a.kind === 'create-project') setCreateProject(true);
+  }
+
+  return (
+    <>
+      <EmptyState
+        icon={<Inbox className="h-8 w-8" />}
+        title={title}
+        description={description}
+        action={
+          actions.length > 0 ? (
+            <div className="flex flex-wrap justify-center gap-2">
+              {actions.map((a) => (
+                <Button
+                  key={a.id}
+                  variant={a.primary ? 'primary' : 'secondary'}
+                  onClick={() => run(a)}
+                >
+                  {a.label}
+                </Button>
+              ))}
+            </div>
+          ) : undefined
+        }
+      />
+      <CreateProjectModal open={createProject} onClose={() => setCreateProject(false)} />
     </>
   );
 }
@@ -674,6 +948,7 @@ function MyIssueRow({
 }) {
   const dot = CATEGORY_COLOR[issue.status.category];
   const to = `/issue/${issue.key}`;
+  const ranks = usePriorityRanks();
 
   return (
     <li>
@@ -691,11 +966,11 @@ function MyIssueRow({
         <span className="min-w-0 flex-1 truncate text-sm text-ink-strong">{issue.summary}</span>
         {showDue && <DueBadge issue={issue} warnOnly className="shrink-0" />}
         {issue.priority && (
-          <span
-            className="h-2 w-2 shrink-0 rounded-full"
-            style={{ background: issue.priority.color ?? 'var(--status-todo)' }}
-            title={issue.priority.name}
-            aria-hidden
+          <PriorityIcon
+            name={issue.priority.name}
+            rank={issue.priority.rank}
+            ranks={ranks}
+            color={issue.priority.color}
           />
         )}
         {projectKey && (
@@ -707,4 +982,3 @@ function MyIssueRow({
     </li>
   );
 }
-

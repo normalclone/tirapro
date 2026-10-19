@@ -1,22 +1,47 @@
 import { useEffect, useMemo, useState } from 'react';
-import { X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/Button';
+import { Dialog } from '@/components/ui/Dialog';
 import { Input } from '@/components/ui/Input';
+import { DateInput } from '@/components/ui/DateInput';
 import { SearchSelect } from '@/components/ui/SearchSelect';
-import { PeoplePicker, type PersonOption } from '@/components/ui/PeoplePicker';
+import { PeoplePicker } from '@/components/ui/PeoplePicker';
 import { Badge } from '@/components/ui/primitives';
 import { apiErrorMessage } from '@/lib/api';
+import { useRetained } from '@/lib/useRetained';
 import { cn } from '@/lib/utils';
 import { useProjects } from '@/features/projects/api';
-import { useWorkspaceUsers } from '@/features/members/api';
-import { useCreateRaidItem, useUpdateRaidItem, type RaidItemDto, type RaidKind, type RaidStatus } from './api';
+import { useAssigneePicker } from '@/features/issue-edit/useAssigneeOptions';
 import {
-  IMPACT_LABELS, PROBABILITY_LABELS, RAID_KINDS, RAID_LEVEL_LEGEND, RAID_LEVEL_META, RAID_STATUS_OPTIONS,
-  SCALE, raidLevelOf,
+  useCreateRaidItem,
+  useUpdateRaidItem,
+  type RaidItemDto,
+  type RaidKind,
+  type RaidStatus,
+} from './api';
+import {
+  IMPACT_LABELS,
+  PROBABILITY_LABELS,
+  RAID_KINDS,
+  RAID_LEVEL_LEGEND,
+  RAID_LEVEL_META,
+  RAID_STATUS_OPTIONS,
+  SCALE,
+  raidLevelOf,
 } from './constants';
+import { blockOnInvalidDate } from '@/lib/dateGuard';
 
-function Field({ label, hint, htmlFor, children }: { label: string; hint?: string; htmlFor?: string; children: React.ReactNode }) {
+function Field({
+  label,
+  hint,
+  htmlFor,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  htmlFor?: string;
+  children: React.ReactNode;
+}) {
   return (
     <div>
       <label htmlFor={htmlFor} className="mb-1.5 block text-sm font-medium text-muted">
@@ -30,7 +55,11 @@ function Field({ label, hint, htmlFor, children }: { label: string; hint?: strin
 
 /** Bộ chọn 1..5 dạng nút — mỗi nút có nhãn chữ để không phải đoán ý nghĩa con số. */
 function ScalePicker({
-  value, onChange, labels, ariaLabel, idPrefix,
+  value,
+  onChange,
+  labels,
+  ariaLabel,
+  idPrefix,
 }: {
   value: number;
   onChange: (v: number) => void;
@@ -51,7 +80,9 @@ function ScalePicker({
           onClick={() => onChange(n)}
           className={cn(
             'h-9 flex-1 rounded-md border text-sm font-medium tabular-nums transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
-            value === n ? 'border-primary bg-primary text-primary-fg' : 'border-border bg-bg text-muted hover:bg-surface-2',
+            value === n
+              ? 'border-primary bg-primary text-primary-fg'
+              : 'border-border bg-bg text-muted hover:bg-surface-2',
           )}
         >
           {n}
@@ -63,7 +94,10 @@ function ScalePicker({
 
 /** Modal tạo/sửa một mục trong danh sách rủi ro & vướng mắc. */
 export function RaidEditorModal({
-  open, item, defaultKind, onClose,
+  open,
+  item: itemProp,
+  defaultKind,
+  onClose,
 }: {
   open: boolean;
   item?: RaidItemDto | null;
@@ -71,9 +105,12 @@ export function RaidEditorModal({
   onClose: () => void;
 }) {
   const { data: projects } = useProjects();
-  const { data: users } = useWorkspaceUsers();
+  // Chọn người: tìm phía máy chủ (không giới hạn 50 người), loại tài khoản khoá; chủ cũ đã khoá vẫn hiện tên.
+  const people = useAssigneePicker();
   const create = useCreateRaidItem();
   const update = useUpdateRaidItem();
+  // Cha đặt `item` về null ngay khi đóng → giữ bản lúc mở để tiêu đề/nút không đổi giữa hiệu ứng đóng.
+  const item = useRetained(open ? { item: itemProp } : null)?.item;
   const editing = !!item;
 
   const [kind, setKind] = useState<RaidKind>('RISK');
@@ -109,20 +146,6 @@ export function RaidEditorModal({
     [projects],
   );
 
-  const people: PersonOption[] = useMemo(
-    () =>
-      (users ?? []).map((u) => ({
-        id: u.id,
-        name: u.displayName,
-        avatarUrl: u.avatarUrl,
-        email: u.email,
-        search: `${u.displayName} ${u.email}`.toLowerCase(),
-      })),
-    [users],
-  );
-
-  if (!open) return null;
-
   const busy = create.isPending || update.isPending;
   const canSave = title.trim().length > 0 && !busy;
   const score = probability * impact;
@@ -131,6 +154,7 @@ export function RaidEditorModal({
 
   async function save() {
     if (!canSave) return;
+    if (blockOnInvalidDate()) return;
     const payload = {
       kind,
       title: title.trim(),
@@ -158,154 +182,166 @@ export function RaidEditorModal({
   }
 
   return (
-    <div className="fixed inset-0 z-modal flex items-start justify-center p-4 pt-[6vh]">
-      <button className="absolute inset-0 bg-black/30 animate-in fade-in duration-200" onClick={onClose} aria-label="Đóng" />
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label={editing ? 'Sửa mục theo dõi' : 'Thêm mục theo dõi'}
-        className="relative flex max-h-[88vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-lg animate-in fade-in zoom-in-95 duration-200"
-        onKeyDown={(e) => {
-          if (e.key === 'Escape') onClose();
-          if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) void save();
-        }}
-      >
-        <header className="flex items-center gap-2 border-b border-border px-5 py-3">
-          <span className="text-sm font-medium text-ink">
-            {editing ? 'Sửa' : 'Thêm'} {kindMeta?.label.toLowerCase() ?? 'mục theo dõi'}
-          </span>
-          <Button variant="ghost" size="icon" className="ml-auto" onClick={onClose} aria-label="Đóng">
-            <X className="h-4 w-4" />
+    <Dialog
+      open={open}
+      onOpenChange={(o) => {
+        if (!o) onClose();
+      }}
+      title={`${editing ? 'Sửa' : 'Thêm'} ${kindMeta?.label.toLowerCase() ?? 'mục theo dõi'}`}
+      size="lg"
+      onSubmit={() => void save()}
+      footer={
+        <>
+          <span className="kbd-hint mr-auto text-xs text-faint">Ctrl/Cmd + Enter để lưu</span>
+          <Button variant="ghost" onClick={onClose}>
+            Huỷ
           </Button>
-        </header>
+          <Button onClick={() => void save()} loading={busy} disabled={!canSave}>
+            {editing ? 'Lưu thay đổi' : `Thêm ${kindMeta?.label.toLowerCase() ?? 'mục'}`}
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <Field label="Loại" hint="(chọn đúng loại để lọc và báo cáo cho chuẩn)">
+          <div
+            className="flex flex-wrap gap-1.5"
+            role="radiogroup"
+            aria-label="Loại rủi ro hoặc vướng mắc"
+          >
+            {RAID_KINDS.map((k) => (
+              <button
+                key={k.value}
+                type="button"
+                role="radio"
+                aria-checked={kind === k.value}
+                title={k.description}
+                onClick={() => setKind(k.value)}
+                className={cn(
+                  'h-8 rounded-md border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
+                  kind === k.value
+                    ? 'border-primary bg-primary text-primary-fg'
+                    : 'border-border bg-bg text-muted hover:bg-surface-2',
+                )}
+              >
+                {k.label}
+              </button>
+            ))}
+          </div>
+          {kindMeta && <p className="mt-1.5 text-xs text-faint">{kindMeta.description}</p>}
+        </Field>
 
-        <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4">
-          <Field label="Loại" hint="(chọn đúng loại để lọc và báo cáo cho chuẩn)">
-            <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Loại rủi ro hoặc vướng mắc">
-              {RAID_KINDS.map((k) => (
-                <button
-                  key={k.value}
-                  type="button"
-                  role="radio"
-                  aria-checked={kind === k.value}
-                  title={k.description}
-                  onClick={() => setKind(k.value)}
-                  className={cn(
-                    'h-8 rounded-md border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
-                    kind === k.value ? 'border-primary bg-primary text-primary-fg' : 'border-border bg-bg text-muted hover:bg-surface-2',
-                  )}
-                >
-                  {k.label}
-                </button>
-              ))}
-            </div>
-            {kindMeta && <p className="mt-1.5 text-xs text-faint">{kindMeta.description}</p>}
-          </Field>
+        <Field label="Tiêu đề" htmlFor="raid-title">
+          <Input
+            id="raid-title"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="VD: Nhà cung cấp giao API chậm hơn cam kết"
+            autoFocus
+            maxLength={200}
+          />
+        </Field>
 
-          <Field label="Tiêu đề" htmlFor="raid-title">
-            <Input
-              id="raid-title"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="VD: Nhà cung cấp giao API chậm hơn cam kết"
-              autoFocus
-              maxLength={200}
+        <Field label="Mô tả" hint="(tùy chọn)" htmlFor="raid-desc">
+          <Input
+            id="raid-desc"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="Bối cảnh, dấu hiệu nhận biết sớm…"
+            maxLength={4000}
+          />
+        </Field>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field
+            label="Xác suất xảy ra"
+            hint={`(${probability} — ${PROBABILITY_LABELS[probability]})`}
+          >
+            <ScalePicker
+              value={probability}
+              onChange={setProbability}
+              labels={PROBABILITY_LABELS}
+              ariaLabel="Xác suất xảy ra, từ 1 rất khó tới 5 gần như chắc chắn"
+              idPrefix="raid-prob"
             />
           </Field>
-
-          <Field label="Mô tả" hint="(tùy chọn)" htmlFor="raid-desc">
-            <Input
-              id="raid-desc"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Bối cảnh, dấu hiệu nhận biết sớm…"
-              maxLength={4000}
-            />
-          </Field>
-
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Xác suất xảy ra" hint={`(${probability} — ${PROBABILITY_LABELS[probability]})`}>
-              <ScalePicker
-                value={probability}
-                onChange={setProbability}
-                labels={PROBABILITY_LABELS}
-                ariaLabel="Xác suất xảy ra, từ 1 rất khó tới 5 gần như chắc chắn"
-                idPrefix="raid-prob"
-              />
-            </Field>
-            <Field label="Mức ảnh hưởng" hint={`(${impact} — ${IMPACT_LABELS[impact]})`}>
-              <ScalePicker
-                value={impact}
-                onChange={setImpact}
-                labels={IMPACT_LABELS}
-                ariaLabel="Mức ảnh hưởng nếu xảy ra, từ 1 không đáng kể tới 5 nghiêm trọng"
-                idPrefix="raid-impact"
-              />
-            </Field>
-          </div>
-
-          <div className="flex items-center gap-2 rounded-md border border-border bg-bg px-3 py-2" title={RAID_LEVEL_LEGEND}>
-            <span className="text-sm text-muted">Điểm rủi ro</span>
-            <span className="text-sm font-semibold tabular-nums text-ink-strong">{score}</span>
-            <span className="text-xs text-faint">= {probability} × {impact}</span>
-            <Badge className={cn('ml-auto', level.badge)}>{level.label}</Badge>
-          </div>
-
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Trạng thái" htmlFor="raid-status">
-              <SearchSelect
-                id="raid-status"
-                value={status}
-                onChange={(v) => setStatus(v as RaidStatus)}
-                options={RAID_STATUS_OPTIONS}
-                ariaLabel="Trạng thái"
-              />
-            </Field>
-            <Field label="Hạn xử lý" hint="(tùy chọn — ngày cần xong)" htmlFor="raid-due">
-              <Input id="raid-due" type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
-            </Field>
-            <Field label="Dự án" hint="(để trống = ảnh hưởng cả tổ chức)" htmlFor="raid-project">
-              <SearchSelect
-                id="raid-project"
-                value={projectId}
-                onChange={setProjectId}
-                options={projectOptions}
-                ariaLabel="Dự án"
-                placeholder="Toàn tổ chức"
-                searchPlaceholder="Tìm dự án…"
-              />
-            </Field>
-            <Field label="Người phụ trách" hint="(tùy chọn — người theo dõi và xử lý)" htmlFor="raid-owner">
-              <PeoplePicker
-                id="raid-owner"
-                value={ownerId}
-                onChange={setOwnerId}
-                options={people}
-                emptyLabel="Chưa chọn"
-                ariaLabel="Người phụ trách mục này"
-              />
-            </Field>
-          </div>
-
-          <Field label="Cách xử lý" hint="(tùy chọn — làm gì để bớt nguy hiểm)" htmlFor="raid-mitigation">
-            <Input
-              id="raid-mitigation"
-              value={mitigation}
-              onChange={(e) => setMitigation(e.target.value)}
-              placeholder="Làm gì để giảm xác suất hoặc ảnh hưởng?"
-              maxLength={4000}
+          <Field label="Mức ảnh hưởng" hint={`(${impact} — ${IMPACT_LABELS[impact]})`}>
+            <ScalePicker
+              value={impact}
+              onChange={setImpact}
+              labels={IMPACT_LABELS}
+              ariaLabel="Mức ảnh hưởng nếu xảy ra, từ 1 không đáng kể tới 5 nghiêm trọng"
+              idPrefix="raid-impact"
             />
           </Field>
         </div>
 
-        <footer className="flex items-center justify-end gap-2 border-t border-border px-5 py-3">
-          <span className="mr-auto text-xs text-faint">Ctrl/Cmd + Enter để lưu</span>
-          <Button variant="ghost" onClick={onClose}>Hủy</Button>
-          <Button onClick={() => void save()} loading={busy} disabled={!canSave}>
-            {editing ? 'Lưu thay đổi' : `Thêm ${kindMeta?.label.toLowerCase() ?? 'mục'}`}
-          </Button>
-        </footer>
+        <div
+          className="flex items-center gap-2 rounded-md border border-border bg-bg px-3 py-2"
+          title={RAID_LEVEL_LEGEND}
+        >
+          <span className="text-sm text-muted">Điểm rủi ro</span>
+          <span className="text-sm font-semibold tabular-nums text-ink-strong">{score}</span>
+          <span className="text-xs text-faint">
+            = {probability} × {impact}
+          </span>
+          <Badge className={cn('ml-auto', level.badge)}>{level.label}</Badge>
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Trạng thái" htmlFor="raid-status">
+            <SearchSelect
+              id="raid-status"
+              value={status}
+              onChange={(v) => setStatus(v as RaidStatus)}
+              options={RAID_STATUS_OPTIONS}
+              ariaLabel="Trạng thái"
+            />
+          </Field>
+          <Field label="Hạn xử lý" hint="(tùy chọn — ngày cần xong)" htmlFor="raid-due">
+            <DateInput id="raid-due" value={dueDate} onChange={setDueDate} />
+          </Field>
+          <Field label="Dự án" hint="(để trống = ảnh hưởng cả tổ chức)" htmlFor="raid-project">
+            <SearchSelect
+              id="raid-project"
+              value={projectId}
+              onChange={setProjectId}
+              options={projectOptions}
+              ariaLabel="Dự án"
+              placeholder="Toàn tổ chức"
+              searchPlaceholder="Tìm dự án…"
+            />
+          </Field>
+          <Field
+            label="Người phụ trách"
+            hint="(tùy chọn — người theo dõi và xử lý)"
+            htmlFor="raid-owner"
+          >
+            <PeoplePicker
+              id="raid-owner"
+              value={ownerId}
+              onChange={setOwnerId}
+              {...people}
+              emptyLabel="Chưa chọn"
+              ariaLabel="Người phụ trách mục này"
+            />
+          </Field>
+        </div>
+
+        <Field
+          label="Cách xử lý"
+          hint="(tùy chọn — làm gì để bớt nguy hiểm)"
+          htmlFor="raid-mitigation"
+        >
+          <Input
+            id="raid-mitigation"
+            value={mitigation}
+            onChange={(e) => setMitigation(e.target.value)}
+            placeholder="Làm gì để giảm xác suất hoặc ảnh hưởng?"
+            maxLength={4000}
+          />
+        </Field>
       </div>
-    </div>
+    </Dialog>
   );
 }

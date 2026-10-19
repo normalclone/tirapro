@@ -1,22 +1,14 @@
-import {
-  Body,
-  Controller,
-  Delete,
-  Get,
-  Param,
-  Patch,
-  Post,
-  Query,
-} from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
 import { PERMISSIONS } from '@tirapro/types';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import type { AuthUser } from '../../common/types/request';
+import { WorkspaceId } from '../../common/decorators/workspace-id.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
-import { ForbiddenAppException } from '../../common/exceptions/app.exception';
-import type { AuthUser } from '../../common/types/request';
 import { WorkflowAdminService } from './workflow-admin.service';
+import { ProjectRef } from '../../common/decorators/project-ref.decorator';
 
 // ---------------------------------------------------------------------------
 // Schemas (zod) — dùng ZodValidationPipe, message tiếng Việt
@@ -28,10 +20,7 @@ const nameSchema = z
   .min(1, 'Tên không được để trống')
   .max(80, 'Tên tối đa 80 ký tự');
 
-const descriptionSchema = z
-  .string()
-  .trim()
-  .max(500, 'Mô tả tối đa 500 ký tự');
+const descriptionSchema = z.string().trim().max(500, 'Mô tả tối đa 500 ký tự');
 
 const hexColor = z
   .string()
@@ -117,56 +106,61 @@ type UpdateTransitionBody = z.infer<typeof updateTransitionSchema>;
 export class WorkflowAdminController {
   constructor(private readonly workflows: WorkflowAdminService) {}
 
-  private ws(user: AuthUser): string {
-    if (!user.workspaceId) throw new ForbiddenAppException('Bạn chưa chọn không gian làm việc — hãy chọn một không gian rồi thử lại');
-    return user.workspaceId;
-  }
-
   // ----- Workflows -----
 
+  @Permissions(PERMISSIONS.PROJECT_VIEW)
+  @ProjectRef('query', 'projectId')
   @Get('workflows')
   async list(
+    @WorkspaceId() workspaceId: string,
     @CurrentUser() user: AuthUser,
     @Query('projectId') projectId?: string,
     @Query('isTemplate') isTemplate?: string,
   ) {
-    return this.workflows.listWorkflows(this.ws(user), {
-      projectId: projectId || undefined,
-      isTemplate:
-        isTemplate === undefined
-          ? undefined
-          : isTemplate === 'true' || isTemplate === '1',
-    });
+    return this.workflows.listWorkflows(
+      workspaceId,
+      {
+        projectId: projectId || undefined,
+        isTemplate:
+          isTemplate === undefined ? undefined : isTemplate === 'true' || isTemplate === '1',
+      },
+      user.id,
+    );
   }
 
+  @Permissions(PERMISSIONS.PROJECT_VIEW)
   @Get('workflows/:id')
-  async getOne(@CurrentUser() user: AuthUser, @Param('id') id: string) {
-    return this.workflows.getWorkflow(this.ws(user), id);
+  async getOne(
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+  ) {
+    return this.workflows.getWorkflow(workspaceId, id, user.id);
   }
 
   @Post('workflows')
   @Permissions(PERMISSIONS.WORKSPACE_ADMIN)
   async create(
-    @CurrentUser() user: AuthUser,
+    @WorkspaceId() workspaceId: string,
     @Body(new ZodValidationPipe(createWorkflowSchema)) dto: CreateWorkflowBody,
   ) {
-    return this.workflows.createWorkflow(this.ws(user), dto);
+    return this.workflows.createWorkflow(workspaceId, dto);
   }
 
   @Patch('workflows/:id')
   @Permissions(PERMISSIONS.WORKSPACE_ADMIN)
   async update(
-    @CurrentUser() user: AuthUser,
+    @WorkspaceId() workspaceId: string,
     @Param('id') id: string,
     @Body(new ZodValidationPipe(updateWorkflowSchema)) dto: UpdateWorkflowBody,
   ) {
-    return this.workflows.updateWorkflow(this.ws(user), id, dto);
+    return this.workflows.updateWorkflow(workspaceId, id, dto);
   }
 
   @Delete('workflows/:id')
   @Permissions(PERMISSIONS.WORKSPACE_ADMIN)
-  async remove(@CurrentUser() user: AuthUser, @Param('id') id: string) {
-    return this.workflows.removeWorkflow(this.ws(user), id);
+  async remove(@WorkspaceId() workspaceId: string, @Param('id') id: string) {
+    return this.workflows.removeWorkflow(workspaceId, id);
   }
 
   // ----- Statuses -----
@@ -174,27 +168,27 @@ export class WorkflowAdminController {
   @Post('workflows/:id/statuses')
   @Permissions(PERMISSIONS.WORKSPACE_ADMIN)
   async createStatus(
-    @CurrentUser() user: AuthUser,
+    @WorkspaceId() workspaceId: string,
     @Param('id') workflowId: string,
     @Body(new ZodValidationPipe(createStatusSchema)) dto: CreateStatusBody,
   ) {
-    return this.workflows.createStatus(this.ws(user), workflowId, dto);
+    return this.workflows.createStatus(workspaceId, workflowId, dto);
   }
 
   @Patch('statuses/:id')
   @Permissions(PERMISSIONS.WORKSPACE_ADMIN)
   async updateStatus(
-    @CurrentUser() user: AuthUser,
+    @WorkspaceId() workspaceId: string,
     @Param('id') id: string,
     @Body(new ZodValidationPipe(updateStatusSchema)) dto: UpdateStatusBody,
   ) {
-    return this.workflows.updateStatus(this.ws(user), id, dto);
+    return this.workflows.updateStatus(workspaceId, id, dto);
   }
 
   @Delete('statuses/:id')
   @Permissions(PERMISSIONS.WORKSPACE_ADMIN)
-  async removeStatus(@CurrentUser() user: AuthUser, @Param('id') id: string) {
-    return this.workflows.removeStatus(this.ws(user), id);
+  async removeStatus(@WorkspaceId() workspaceId: string, @Param('id') id: string) {
+    return this.workflows.removeStatus(workspaceId, id);
   }
 
   // ----- Transitions -----
@@ -202,26 +196,26 @@ export class WorkflowAdminController {
   @Post('workflows/:id/transitions')
   @Permissions(PERMISSIONS.WORKSPACE_ADMIN)
   async createTransition(
-    @CurrentUser() user: AuthUser,
+    @WorkspaceId() workspaceId: string,
     @Param('id') workflowId: string,
     @Body(new ZodValidationPipe(createTransitionSchema)) dto: CreateTransitionBody,
   ) {
-    return this.workflows.createTransition(this.ws(user), workflowId, dto);
+    return this.workflows.createTransition(workspaceId, workflowId, dto);
   }
 
   @Patch('transitions/:id')
   @Permissions(PERMISSIONS.WORKSPACE_ADMIN)
   async updateTransition(
-    @CurrentUser() user: AuthUser,
+    @WorkspaceId() workspaceId: string,
     @Param('id') id: string,
     @Body(new ZodValidationPipe(updateTransitionSchema)) dto: UpdateTransitionBody,
   ) {
-    return this.workflows.updateTransition(this.ws(user), id, dto);
+    return this.workflows.updateTransition(workspaceId, id, dto);
   }
 
   @Delete('transitions/:id')
   @Permissions(PERMISSIONS.WORKSPACE_ADMIN)
-  async removeTransition(@CurrentUser() user: AuthUser, @Param('id') id: string) {
-    return this.workflows.removeTransition(this.ws(user), id);
+  async removeTransition(@WorkspaceId() workspaceId: string, @Param('id') id: string) {
+    return this.workflows.removeTransition(workspaceId, id);
   }
 }

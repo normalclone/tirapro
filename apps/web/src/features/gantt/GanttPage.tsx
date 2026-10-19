@@ -1,20 +1,35 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { addDays, differenceInCalendarDays, format, startOfDay } from 'date-fns';
-import { CalendarRange, Camera, Link2, Zap } from 'lucide-react';
+import { addDays, differenceInCalendarDays, startOfDay } from 'date-fns';
+import { CalendarRange, Camera, Link2, ListTodo, Zap } from 'lucide-react';
 import { toast } from 'sonner';
 import type { IssueDto } from '@tirapro/types';
 import { useProject } from '@/features/projects/api';
-import { useProjectIssues } from '@/features/backlog/api';
+import { useProjectIssues, useUpdateIssue } from '@/features/issues/api';
 import { DelayedSpinner, EmptyState, Skeleton } from '@/components/ui/primitives';
 import { Button } from '@/components/ui/Button';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { QueryError } from '@/components/ui/QueryError';
-import { isOverdue } from '@/components/ui/DueBadge';
+import { isOverdue } from '@/lib/dueDate';
+import { fmtDate, fmtDateTime, fmtDayMonth, fmtMonthYear, monthAxisLabel } from '@/lib/dateFormat';
 import { categoryColor } from '@/lib/statusColor';
 import { apiErrorMessage } from '@/lib/api';
-import { useAuth } from '@/stores/auth';
+import { useCanEditSchedule, useCanIn } from '@/features/projects/permissions';
 import { cn } from '@/lib/utils';
+import { keys } from '@/lib/queryKeys';
+import { useQueryClient } from '@tanstack/react-query';
+import {
+  applyDrag,
+  clampDelta,
+  NO_SCHEDULE_PERM_HINT,
+  orderSpans,
+  toIssuePatch,
+  type UnscheduledPatch,
+} from './dragMath';
+import { useMediaQuery } from '@/lib/useMediaQuery';
+import { useBarDrag, type BarDragMode } from './useBarDrag';
+import { UnscheduledPanel } from './UnscheduledPanel';
+import { groupDaysByMonth, type MonthGroup } from './groupDaysByMonth';
 import { PlanningPanel } from '@/features/planning/PlanningPanel';
 import {
   useBaseline,
@@ -29,14 +44,23 @@ import {
   type ScheduleItemDto,
 } from '@/features/planning/api';
 
+/** Bề rộng cột nhãn: đầy đủ (mã + tiêu đề) từ `sm`; điện thoại chỉ còn mã để vùng biểu đồ đủ rộng. */
 const LABEL_W = 240;
+const LABEL_W_NARROW = 112;
 const DAY_W = 30;
 const ROW_H = 40;
 /** Chiều cao thật của một hàng = ROW_H + 1px viền dưới → dùng để đặt mũi tên phụ thuộc. */
 const ROW_STRIDE = ROW_H + 1;
 const MAX_DAYS = 220;
+const HANDLE_W = 8;
+const BAR_KEYSHORTCUTS =
+  'Shift+ArrowLeft Shift+ArrowRight Alt+ArrowLeft Alt+ArrowRight Alt+Shift+ArrowLeft Alt+Shift+ArrowRight';
+const BAR_KEY_HINT =
+  'Phím (khi đang chọn thanh): Shift+←/→ dời cả thanh · Alt+←/→ đổi hạn · Alt+Shift+←/→ đổi bắt đầu';
 
 interface Span {
+  /** = issue.id (khoá cho useBarDrag). */
+  id: string;
   issue: IssueDto;
   start: Date;
   end: Date;
@@ -83,7 +107,15 @@ function dependencyPath(dep: DependencyDto, from: BarBox, to: BarBox) {
 }
 
 /** Ô chú thích nhỏ ở thanh công cụ. `hint` là câu giải nghĩa hiện khi rê chuột. */
-function LegendItem({ swatch, label, hint }: { swatch: React.ReactNode; label: string; hint?: string }) {
+function LegendItem({
+  swatch,
+  label,
+  hint,
+}: {
+  swatch: React.ReactNode;
+  label: string;
+  hint?: string;
+}) {
   return (
     <span className="flex items-center gap-1.5 whitespace-nowrap" title={hint}>
       {swatch}
@@ -93,12 +125,22 @@ function LegendItem({ swatch, label, hint }: { swatch: React.ReactNode; label: s
 }
 
 export function GanttPage() {
+  const narrow = useMediaQuery('(max-width: 639px)');
+  const labelW = narrow ? LABEL_W_NARROW : LABEL_W;
   const { key = '' } = useParams();
   const navigate = useNavigate();
-  const canManagePlan = useAuth((s) => s.can('plan:manage'));
-
-  const { data: project, isLoading: lp, isError: pe, error: pErr, refetch: refetchProject } = useProject(key);
+  const {
+    data: project,
+    isLoading: lp,
+    isError: pe,
+    error: pErr,
+    refetch: refetchProject,
+  } = useProject(key);
   const projectId = project?.id;
+  const canManagePlan = useCanIn(projectId)('plan:manage');
+  const canSchedule = useCanEditSchedule(projectId);
+  const qc = useQueryClient();
+  const updateIssue = useUpdateIssue(projectId);
   const issuesQ = useProjectIssues(projectId);
   const { data: issues, isLoading: li } = issuesQ;
   const isLoading = lp || li;
@@ -110,6 +152,7 @@ export function GanttPage() {
 
   const [showCritical, setShowCritical] = useState(true);
   const [panelOpen, setPanelOpen] = useState(false);
+  const [unscheduledOpen, setUnscheduledOpen] = useState(false);
   const [baselineId, setBaselineId] = useState('');
   const baselineQ = useBaseline(projectId, baselineId || undefined);
   const createBaseline = useCreateBaseline(projectId ?? '');
@@ -123,14 +166,20 @@ export function GanttPage() {
     [scheduleQ.data],
   );
   const baselineById = useMemo(
-    () => new Map<string, BaselineItemDto>((baselineQ.data?.items ?? []).map((i) => [i.issueId, i])),
+    () =>
+      new Map<string, BaselineItemDto>((baselineQ.data?.items ?? []).map((i) => [i.issueId, i])),
     [baselineQ.data],
   );
+
+  // Sau khi người dùng đổi ngày: giữ nguyên thứ tự hàng và mốc đầu thước (thanh không nhảy hàng, biểu đồ không dịch)
+  // cho tới lần tải/đổi dự án sau.
+  const [frozen, setFrozen] = useState<{ order: string[]; minD: Date } | null>(null);
+  useEffect(() => setFrozen(null), [projectId]);
 
   const model = useMemo(() => {
     const today = startOfDay(new Date());
     const spans: Span[] = [];
-    let noDate = 0;
+    const unscheduled: IssueDto[] = [];
 
     for (const issue of issues ?? []) {
       const sch = scheduleById.get(issue.id);
@@ -147,7 +196,7 @@ export function GanttPage() {
         end = startOfDay(new Date(sch.earlyFinish));
         inferred = true;
       } else {
-        noDate++;
+        unscheduled.push(issue);
         continue;
       }
 
@@ -159,6 +208,7 @@ export function GanttPage() {
       const baseEnd = baseStart && baseEndPick && baseEndPick < baseStart ? baseStart : baseEndPick;
 
       spans.push({
+        id: issue.id,
         issue,
         start,
         end,
@@ -171,12 +221,23 @@ export function GanttPage() {
       });
     }
 
-    spans.sort((a, b) => a.start.getTime() - b.start.getTime() || a.end.getTime() - b.end.getTime());
+    // Việc còn mở lên trước (đặt ngày cho việc đã xong ít có ý nghĩa).
+    unscheduled.sort(
+      (a, b) => Number(a.status.category === 'DONE') - Number(b.status.category === 'DONE'),
+    );
+
+    const ordered = orderSpans(spans, frozen?.order ?? null);
 
     const empty = {
-      spans, days: [] as Date[], months: [] as { label: string; span: number }[],
-      minD: today, totalDays: 0, today, noDate,
-      layout: new Map<string, BarBox>(), msPoints: [] as { m: MilestoneDto; x: number }[],
+      spans: ordered,
+      days: [] as Date[],
+      months: [] as MonthGroup[],
+      minD: today,
+      totalDays: 0,
+      today,
+      unscheduled,
+      layout: new Map<string, BarBox>(),
+      msPoints: [] as { m: MilestoneDto; x: number }[],
     };
     if (spans.length === 0) return empty;
 
@@ -189,7 +250,8 @@ export function GanttPage() {
     times.push(today.getTime());
     for (const m of milestones) times.push(startOfDay(new Date(m.dueDate)).getTime());
 
-    const minD = addDays(startOfDay(new Date(Math.min(...times))), -2);
+    const computedMin = addDays(startOfDay(new Date(Math.min(...times))), -2);
+    const minD = frozen && frozen.minD < computedMin ? frozen.minD : computedMin;
     let maxD = addDays(startOfDay(new Date(Math.max(...times))), 7);
     let totalDays = differenceInCalendarDays(maxD, minD) + 1;
     if (totalDays > MAX_DAYS) {
@@ -199,19 +261,11 @@ export function GanttPage() {
     const days = Array.from({ length: totalDays }, (_, i) => addDays(minD, i));
 
     // Gộp ngày theo tháng để vẽ dải tháng ở header.
-    const months: { label: string; span: number }[] = [];
-    let i = 0;
-    while (i < days.length) {
-      const m = days[i];
-      let j = i;
-      while (j < days.length && days[j].getMonth() === m.getMonth() && days[j].getFullYear() === m.getFullYear()) j++;
-      months.push({ label: format(m, 'MM/yyyy'), span: j - i });
-      i = j;
-    }
+    const months = groupDaysByMonth(days);
 
     const dayOffset = (d: Date) => differenceInCalendarDays(d, minD);
     const layout = new Map<string, BarBox>();
-    spans.forEach((s, row) => {
+    ordered.forEach((s, row) => {
       const left = dayOffset(s.start) * DAY_W;
       const width = Math.max((dayOffset(s.end) - dayOffset(s.start) + 1) * DAY_W - 4, DAY_W - 4);
       layout.set(s.issue.id, { row, left, right: left + width, y: row * ROW_STRIDE + ROW_H / 2 });
@@ -222,8 +276,8 @@ export function GanttPage() {
       x: dayOffset(startOfDay(new Date(m.dueDate))) * DAY_W + DAY_W / 2,
     }));
 
-    return { spans, days, months, minD, totalDays, today, noDate, layout, msPoints };
-  }, [issues, scheduleById, baselineById, milestones, compareOn]);
+    return { spans: ordered, days, months, minD, totalDays, today, unscheduled, layout, msPoints };
+  }, [issues, scheduleById, baselineById, milestones, compareOn, frozen]);
 
   const trackW = model.totalDays * DAY_W;
   const offset = (d: Date) => differenceInCalendarDays(d, model.minD);
@@ -231,13 +285,98 @@ export function GanttPage() {
   const hasInferred = model.spans.some((s) => s.inferred);
   const highlightCritical = showCritical && deps.length > 0;
 
+  const refreshSchedule = useCallback(() => {
+    if (projectId) void qc.invalidateQueries({ queryKey: keys.planning.schedule(projectId) });
+  }, [qc, projectId]);
+
+  /** Ghi ngày mới (chỉ trường đổi) + toast "Hoàn tác"; lỗi/409 do hook rollback + MutationCache báo. */
+  const commitDrag = useCallback(
+    (s: Span, mode: BarDragMode, deltaDays: number) => {
+      const shown = { start: s.start, end: s.end };
+      const next = applyDrag(shown, mode, deltaDays);
+      const patch = toIssuePatch(s.issue, next, shown);
+      const fields = Object.keys(patch) as ('startDate' | 'dueDate')[];
+      if (fields.length === 0) return;
+      const { issue } = s;
+      setFrozen((prev) => prev ?? { order: model.spans.map((x) => x.id), minD: model.minD });
+      updateIssue.mutate(
+        { id: issue.id, key: issue.key, patch, version: issue.version },
+        {
+          onSuccess: (res) => {
+            refreshSchedule();
+            const old: Record<string, string | null> = {};
+            for (const f of fields) old[f] = issue[f];
+            toast.success(
+              `Đã đổi lịch ${issue.key}: ${fmtDayMonth(next.start)} → ${fmtDayMonth(next.end)}`,
+              {
+                duration: 5000,
+                action: {
+                  label: 'Hoàn tác',
+                  onClick: () =>
+                    updateIssue.mutate(
+                      { id: issue.id, key: issue.key, patch: old, version: res.data.version },
+                      { onSuccess: refreshSchedule },
+                    ),
+                },
+              },
+            );
+          },
+        },
+      );
+    },
+    [updateIssue, refreshSchedule, model],
+  );
+
+  const canDragBar = useCallback((s: Span) => canSchedule(s.issue), [canSchedule]);
+  /** Giữ thanh trong thước thời gian: ngày đầu ≥ 0, ngày cuối ≤ totalDays-1. */
+  const clampBar = useCallback(
+    (s: Span, mode: BarDragMode, delta: number) => {
+      const sOff = differenceInCalendarDays(s.start, model.minD);
+      const eOff = differenceInCalendarDays(s.end, model.minD);
+      return clampDelta(sOff, eOff, model.totalDays - 1, mode, delta);
+    },
+    [model.minD, model.totalDays],
+  );
+  const drag = useBarDrag<Span>({
+    dayW: DAY_W,
+    canDrag: canDragBar,
+    clamp: clampBar,
+    onCommit: commitDrag,
+  });
+
+  async function saveUnscheduled(issue: IssueDto, patch: UnscheduledPatch) {
+    const res = await updateIssue.mutateAsync({
+      id: issue.id,
+      key: issue.key,
+      patch: { ...patch },
+      version: issue.version,
+    });
+    refreshSchedule();
+    toast.success(`Đã đặt ngày cho ${issue.key} — việc hiện thành thanh trên biểu đồ`, {
+      duration: 5000,
+      action: {
+        label: 'Hoàn tác',
+        onClick: () =>
+          updateIssue.mutate(
+            {
+              id: issue.id,
+              key: issue.key,
+              patch: { startDate: null, dueDate: null },
+              version: res.data.version,
+            },
+            { onSuccess: refreshSchedule },
+          ),
+      },
+    });
+  }
+
   const baselineOptions = useMemo(
     () => [
       { value: '', label: 'Không so sánh' },
       ...(baselinesQ.data ?? []).map((b) => ({
         value: b.id,
         label: b.name,
-        hint: format(new Date(b.capturedAt), 'dd/MM/yy'),
+        hint: fmtDate(b.capturedAt),
       })),
     ],
     [baselinesQ.data],
@@ -245,7 +384,7 @@ export function GanttPage() {
 
   async function captureBaseline() {
     if (!projectId) return;
-    const name = `Kế hoạch gốc ${format(new Date(), 'dd/MM/yyyy HH:mm')}`;
+    const name = `Kế hoạch gốc ${fmtDateTime(new Date())}`;
     try {
       const created = await createBaseline.mutateAsync({ name });
       setBaselineId(created.id);
@@ -256,7 +395,7 @@ export function GanttPage() {
   }
 
   function barTitle(s: Span): string {
-    const parts = [`${s.issue.key} · ${format(s.start, 'dd/MM')} → ${format(s.end, 'dd/MM')}`];
+    const parts = [`${s.issue.key} · ${fmtDayMonth(s.start)} → ${fmtDayMonth(s.end)}`];
     if (s.inferred) parts.push('Chưa đặt ngày — hệ thống suy ra từ phụ thuộc');
     if (s.overdue) parts.push('Đã quá hạn');
     if (highlightCritical && s.critical) {
@@ -266,9 +405,18 @@ export function GanttPage() {
     }
     if (compareOn && s.baseStart && s.baseEnd) {
       const delta = differenceInCalendarDays(s.end, s.baseEnd);
-      const drift = delta === 0 ? 'đúng kế hoạch' : delta > 0 ? `chậm ${delta} ngày so với kế hoạch` : `sớm ${-delta} ngày so với kế hoạch`;
-      parts.push(`Kế hoạch gốc: ${format(s.baseStart, 'dd/MM')} → ${format(s.baseEnd, 'dd/MM')} (${drift})`);
+      const drift =
+        delta === 0
+          ? 'đúng kế hoạch'
+          : delta > 0
+            ? `chậm ${delta} ngày so với kế hoạch`
+            : `sớm ${-delta} ngày so với kế hoạch`;
+      parts.push(
+        `Kế hoạch gốc: ${fmtDayMonth(s.baseStart)} → ${fmtDayMonth(s.baseEnd)} (${drift})`,
+      );
     }
+    if (!canSchedule(s.issue)) parts.push(NO_SCHEDULE_PERM_HINT);
+    else parts.push(BAR_KEY_HINT);
     return parts.join('\n');
   }
 
@@ -300,6 +448,19 @@ export function GanttPage() {
         >
           <Link2 className="h-4 w-4" aria-hidden /> Phụ thuộc &amp; cột mốc
           <span className="tabular text-muted">{deps.length + milestones.length}</span>
+        </Button>
+
+        <Button
+          variant={unscheduledOpen ? 'secondary' : 'ghost'}
+          size="sm"
+          aria-expanded={unscheduledOpen}
+          aria-controls="gantt-unscheduled"
+          disabled={!projectId}
+          title="Công việc chưa có ngày bắt đầu/hạn và không nối với việc nào nên chưa hiện trên biểu đồ. Bấm để đặt ngày ngay tại đây."
+          onClick={() => setUnscheduledOpen((v) => !v)}
+        >
+          <ListTodo className="h-4 w-4" aria-hidden /> Chưa lên lịch
+          <span className="tabular text-muted">{model.unscheduled.length}</span>
         </Button>
 
         <div className="flex items-center gap-1.5">
@@ -354,14 +515,24 @@ export function GanttPage() {
             <LegendItem
               label="Kế hoạch gốc"
               hint="Thanh mờ viền đứt = ngày đã chốt trong kế hoạch gốc. Thanh đặc lệch sang phải nghĩa là việc đang chậm hơn kế hoạch."
-              swatch={<span className="h-2.5 w-5 rounded-sm border border-dashed border-[var(--border-strong)]" aria-hidden />}
+              swatch={
+                <span
+                  className="h-2.5 w-5 rounded-sm border border-dashed border-[var(--border-strong)]"
+                  aria-hidden
+                />
+              }
             />
           )}
           {hasInferred && (
             <LegendItem
               label="Ngày dự kiến"
               hint="Việc chưa được đặt ngày. Hệ thống tạm suy ra ngày từ các phụ thuộc đã khai báo."
-              swatch={<span className="h-2.5 w-5 rounded-sm border border-dashed border-[var(--faint)] opacity-70" aria-hidden />}
+              swatch={
+                <span
+                  className="h-2.5 w-5 rounded-sm border border-dashed border-[var(--faint)] opacity-70"
+                  aria-hidden
+                />
+              }
             />
           )}
           {milestones.length > 0 && (
@@ -374,20 +545,23 @@ export function GanttPage() {
         </div>
       </div>
 
-      {model.noDate > 0 && (
-        <div
-          className="border-b border-border px-6 py-2 text-xs text-faint"
-          title="Đặt ngày bắt đầu hoặc hạn cho những việc này, hoặc nối chúng vào một việc khác, thì chúng sẽ hiện trên biểu đồ."
-        >
-          {model.noDate} công việc chưa hiện ở đây vì chưa có ngày bắt đầu/hạn và cũng không nối với việc nào
-        </div>
+      {unscheduledOpen && (
+        <UnscheduledPanel
+          issues={model.unscheduled}
+          canSchedule={canSchedule}
+          onSave={saveUnscheduled}
+          onClose={() => setUnscheduledOpen(false)}
+        />
       )}
 
-      <div className="min-h-0 flex-1 overflow-auto p-4">
+      <div className="min-h-0 flex-1 overflow-auto p-4 lg:pb-24">
         {pe || issuesQ.isError ? (
           <QueryError
             error={pErr ?? issuesQ.error}
-            onRetry={() => { void refetchProject(); void issuesQ.refetch(); }}
+            onRetry={() => {
+              void refetchProject();
+              if (!pe) void issuesQ.refetch();
+            }}
           />
         ) : isLoading ? (
           <div className="space-y-2">
@@ -404,12 +578,12 @@ export function GanttPage() {
           />
         ) : (
           <div className="inline-block min-w-full overflow-hidden rounded-lg border border-border bg-surface">
-            <div style={{ width: LABEL_W + trackW }}>
+            <div style={{ width: labelW + trackW }}>
               {/* Header: dải tháng + số ngày */}
               <div className="sticky top-0 z-20 flex border-b border-border bg-surface">
                 <div
                   className="sticky left-0 z-10 shrink-0 border-r border-border bg-surface px-3 py-2 text-xs font-semibold uppercase tracking-wide text-faint"
-                  style={{ width: LABEL_W }}
+                  style={{ width: labelW }}
                 >
                   Công việc
                 </div>
@@ -418,10 +592,11 @@ export function GanttPage() {
                     {model.months.map((m, i) => (
                       <div
                         key={i}
-                        className="border-r border-border py-1 text-center text-xs font-medium text-muted"
+                        className="overflow-hidden whitespace-nowrap border-r border-border py-1 text-center text-xs font-medium text-muted"
                         style={{ width: m.span * DAY_W }}
+                        title={fmtMonthYear(m.start)}
                       >
-                        {m.label}
+                        {monthAxisLabel(m.start, m.span * DAY_W)}
                       </div>
                     ))}
                   </div>
@@ -452,7 +627,7 @@ export function GanttPage() {
                 <div className="flex border-b border-border">
                   <div
                     className="sticky left-0 z-10 shrink-0 border-r border-border bg-surface px-3 py-1.5 text-xs font-medium text-muted"
-                    style={{ width: LABEL_W }}
+                    style={{ width: labelW }}
                   >
                     Cột mốc
                   </div>
@@ -464,18 +639,29 @@ export function GanttPage() {
                           key={m.id}
                           className="absolute top-1/2 flex -translate-y-1/2 items-center gap-1.5"
                           style={{ left: x }}
-                          title={`Cột mốc: ${m.name}\nNgày phải đạt: ${format(new Date(m.dueDate), 'dd/MM/yyyy')}${m.completedAt ? '\nĐã đạt' : '\nChưa đạt'}`}
+                          title={`Cột mốc: ${m.name}\nNgày phải đạt: ${fmtDate(m.dueDate)}${m.completedAt ? '\nĐã đạt' : '\nChưa đạt'}`}
                         >
                           <span
-                            className={cn('-ml-[5px] h-2.5 w-2.5 shrink-0 rotate-45 border', m.completedAt && 'opacity-60')}
-                            style={{ background: m.completedAt ? 'transparent' : color, borderColor: color }}
+                            className={cn(
+                              '-ml-[5px] h-2.5 w-2.5 shrink-0 rotate-45 border',
+                              m.completedAt && 'opacity-60',
+                            )}
+                            style={{
+                              background: m.completedAt ? 'transparent' : color,
+                              borderColor: color,
+                            }}
                             aria-hidden
                           />
-                          <span className={cn('whitespace-nowrap text-[11px] font-medium text-ink', m.completedAt && 'text-muted line-through')}>
+                          <span
+                            className={cn(
+                              'whitespace-nowrap text-[11px] font-medium text-ink',
+                              m.completedAt && 'text-muted line-through',
+                            )}
+                          >
                             {m.name}
                           </span>
                           <span className="whitespace-nowrap text-[11px] tabular text-faint">
-                            {format(new Date(m.dueDate), 'dd/MM')}
+                            {fmtDayMonth(m.dueDate)}
                           </span>
                         </div>
                       );
@@ -489,7 +675,7 @@ export function GanttPage() {
                 {/* Đường "hôm nay" xuyên suốt */}
                 <div
                   className="pointer-events-none absolute bottom-0 top-0 z-0 w-px bg-primary/60"
-                  style={{ left: LABEL_W + offset(model.today) * DAY_W + DAY_W / 2 }}
+                  style={{ left: labelW + offset(model.today) * DAY_W + DAY_W / 2 }}
                   aria-hidden
                 />
                 {/* Vạch dọc cho từng cột mốc */}
@@ -497,7 +683,7 @@ export function GanttPage() {
                   <div
                     key={m.id}
                     className="pointer-events-none absolute bottom-0 top-0 z-0 w-0 border-l border-dashed opacity-50"
-                    style={{ left: LABEL_W + x, borderColor: m.color ?? 'var(--primary)' }}
+                    style={{ left: labelW + x, borderColor: m.color ?? 'var(--primary)' }}
                     aria-hidden
                   />
                 ))}
@@ -506,11 +692,11 @@ export function GanttPage() {
                 {deps.length > 0 && (
                   <svg
                     className="pointer-events-none absolute left-0 top-0 z-[5]"
-                    width={LABEL_W + trackW}
+                    width={labelW + trackW}
                     height={model.spans.length * ROW_STRIDE}
                     aria-hidden
                   >
-                    <g transform={`translate(${LABEL_W},0)`}>
+                    <g transform={`translate(${labelW},0)`}>
                       {deps.map((dep) => {
                         const from = model.layout.get(dep.predecessorId);
                         const to = model.layout.get(dep.successorId);
@@ -523,7 +709,12 @@ export function GanttPage() {
                         const { d, head } = dependencyPath(dep, from, to);
                         return (
                           <g key={dep.id} opacity={critical ? 0.95 : 0.7}>
-                            <path d={d} fill="none" stroke={color} strokeWidth={critical ? 1.6 : 1.2} />
+                            <path
+                              d={d}
+                              fill="none"
+                              stroke={color}
+                              strokeWidth={critical ? 1.6 : 1.2}
+                            />
                             <polygon points={head} fill={color} />
                           </g>
                         );
@@ -533,10 +724,17 @@ export function GanttPage() {
                 )}
 
                 {model.spans.map((s) => {
-                  const { issue, start, end, overdue, inferred, critical } = s;
+                  const { issue, overdue, inferred, critical } = s;
                   const box = model.layout.get(issue.id);
-                  const left = box?.left ?? 0;
-                  const width = (box?.right ?? 0) - left;
+                  const dragging = drag.preview?.id === issue.id ? drag.preview : null;
+                  const draggable = canSchedule(issue);
+                  const live = dragging
+                    ? applyDrag({ start: s.start, end: s.end }, dragging.mode, dragging.deltaDays)
+                    : null;
+                  const left = live ? offset(live.start) * DAY_W : (box?.left ?? 0);
+                  const width = live
+                    ? Math.max((offset(live.end) - offset(live.start) + 1) * DAY_W - 4, DAY_W - 4)
+                    : (box?.right ?? 0) - (box?.left ?? 0);
                   const barColor = overdue
                     ? 'var(--danger)'
                     : issue.status.color || categoryColor(issue.status.category);
@@ -544,15 +742,24 @@ export function GanttPage() {
                   const baseLeft = s.baseStart ? offset(s.baseStart) * DAY_W : 0;
                   const baseWidth =
                     s.baseStart && s.baseEnd
-                      ? Math.max((offset(s.baseEnd) - offset(s.baseStart) + 1) * DAY_W - 4, DAY_W - 4)
+                      ? Math.max(
+                          (offset(s.baseEnd) - offset(s.baseStart) + 1) * DAY_W - 4,
+                          DAY_W - 4,
+                        )
                       : 0;
                   return (
-                    <div key={issue.id} className="flex border-b border-border last:border-b-0 hover:bg-surface-2">
+                    <div
+                      key={issue.id}
+                      className="flex border-b border-border last:border-b-0 hover:bg-surface-2"
+                    >
                       <button
                         type="button"
                         onClick={() => navigate(`/issue/${issue.key}`)}
-                        className="sticky left-0 z-10 flex shrink-0 items-center gap-2 border-r border-border bg-surface px-3 text-left hover:bg-surface-2"
-                        style={{ width: LABEL_W, height: ROW_H }}
+                        // Dưới sm tiêu đề bị ẩn (cột nhãn hẹp) — tên truy cập vẫn đủ mã + tiêu đề.
+                        aria-label={`${issue.key} ${issue.summary}`}
+                        title={issue.summary}
+                        className="sticky left-0 z-10 flex shrink-0 items-center gap-2 border-r border-border bg-surface px-2 text-left hover:bg-surface-2 sm:px-3"
+                        style={{ width: labelW, height: ROW_H }}
                       >
                         {isCritical && (
                           <span
@@ -562,13 +769,15 @@ export function GanttPage() {
                           />
                         )}
                         <span className="shrink-0 font-mono text-xs text-muted">{issue.key}</span>
-                        <span className="min-w-0 flex-1 truncate text-sm text-ink">{issue.summary}</span>
+                        <span className="hidden min-w-0 flex-1 truncate text-sm text-ink sm:block">
+                          {issue.summary}
+                        </span>
                       </button>
                       <div className="relative" style={{ width: trackW, height: ROW_H }}>
                         {compareOn && baseWidth > 0 && (
                           <div
                             className="absolute top-1/2 -translate-y-1/2 rounded-md border border-dashed"
-                            title={`Kế hoạch gốc của ${issue.key}: ${format(s.baseStart!, 'dd/MM')} → ${format(s.baseEnd!, 'dd/MM')}. Thanh đặc là lịch hiện tại.`}
+                            title={`Kế hoạch gốc của ${issue.key}: ${fmtDayMonth(s.baseStart)} → ${fmtDayMonth(s.baseEnd)}. Thanh đặc là lịch hiện tại.`}
                             style={{
                               left: baseLeft,
                               width: baseWidth,
@@ -581,12 +790,25 @@ export function GanttPage() {
                         )}
                         <button
                           type="button"
-                          onClick={() => navigate(`/issue/${issue.key}`)}
-                          title={barTitle(s)}
+                          onClick={() => {
+                            if (drag.consumeClick()) return;
+                            navigate(`/issue/${issue.key}`);
+                          }}
+                          // Đang kéo: bỏ tooltip (che thanh + chữ đã cũ); chip ngày xem trước thay thế.
+                          title={drag.preview ? undefined : barTitle(s)}
+                          aria-label={barTitle(s)}
+                          aria-keyshortcuts={draggable ? BAR_KEYSHORTCUTS : undefined}
+                          {...drag.bind(s, 'move')}
                           className={cn(
                             'absolute top-1/2 flex -translate-y-1/2 items-center overflow-hidden rounded-md border px-2 text-left',
-                            'transition-opacity hover:opacity-90',
+                            !dragging && 'transition-opacity hover:opacity-90',
                             'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
+                            // Chuột/bút kéo được → chặn cử chỉ trình duyệt; cảm ứng giữ cuộn trang.
+                            draggable &&
+                              (dragging
+                                ? 'cursor-grabbing select-none'
+                                : 'cursor-grab [@media(pointer:fine)]:touch-none'),
+                            dragging && 'z-10 opacity-90 shadow-md',
                             inferred && 'border-dashed opacity-75',
                           )}
                           style={{
@@ -600,6 +822,24 @@ export function GanttPage() {
                             boxShadow: isCritical ? '0 0 0 1.5px var(--danger)' : undefined,
                           }}
                         >
+                          {draggable &&
+                            (['start', 'end'] as const).map((edge) => (
+                              <span
+                                key={edge}
+                                data-gantt-handle={edge}
+                                aria-hidden
+                                title={
+                                  edge === 'start' ? 'Kéo để đổi ngày bắt đầu' : 'Kéo để đổi hạn'
+                                }
+                                {...drag.bind(s, edge)}
+                                className={cn(
+                                  'absolute top-0 h-full cursor-ew-resize touch-none [@media(pointer:coarse)]:hidden',
+                                  'hover:bg-[color-mix(in_oklab,var(--ink)_14%,transparent)]',
+                                  edge === 'start' ? 'left-0' : 'right-0',
+                                )}
+                                style={{ width: Math.min(HANDLE_W, Math.floor(width / 3)) }}
+                              />
+                            ))}
                           {width >= 70 && (
                             <span
                               className="truncate text-[11px] font-medium"
@@ -611,6 +851,15 @@ export function GanttPage() {
                             </span>
                           )}
                         </button>
+                        {live && (
+                          <span
+                            role="status"
+                            className="pointer-events-none absolute top-0 z-20 -translate-y-full whitespace-nowrap rounded bg-ink px-1.5 py-0.5 text-[11px] tabular text-surface"
+                            style={{ left }}
+                          >
+                            {fmtDayMonth(live.start)} → {fmtDayMonth(live.end)}
+                          </span>
+                        )}
                       </div>
                     </div>
                   );

@@ -154,7 +154,9 @@ export function AvatarUploader({
             </Button>
           )}
         </div>
-        <p className="text-xs text-faint">{hint ?? 'PNG, JPG, WEBP hoặc GIF · tự thu nhỏ về 256px'}</p>
+        <p className="text-xs text-faint">
+          {hint ?? 'PNG, JPG, WEBP hoặc GIF · tự thu nhỏ về 256px'}
+        </p>
       </div>
     </div>
   );

@@ -1,67 +1,116 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Paperclip, Plus, X } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import { toast } from 'sonner';
 import { apiErrorMessage } from '@/lib/api';
 import { useProjectMeta } from '@/features/ai/api';
 import { useProjects } from '@/features/projects/api';
 import { useProjectSprints } from '@/features/backlog/api';
-import { useWorkspaceUsers } from '@/features/issue-edit/api';
+import { useSearchUsers } from '@/features/members/api';
 import { uploadAttachmentFile } from '@/features/attachments/api';
-import { MarkdownEditor } from '@/features/issue-edit/DescriptionEditor';
+import { FileDrop } from '@/features/attachments/FileDrop';
+import { MarkdownEditor } from '@/features/issue-edit/MarkdownEditor';
 import { Button } from '@/components/ui/Button';
+import { Dialog } from '@/components/ui/Dialog';
 import { Input } from '@/components/ui/Input';
+import { DateTimeInput } from '@/components/ui/DateInput';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { PeoplePicker } from '@/components/ui/PeoplePicker';
-import { useAssigneeOptions } from '@/features/issue-edit/useAssigneeOptions';
+import { useAssigneePicker } from '@/features/issue-edit/useAssigneeOptions';
 import { useCreateIssueModal } from '@/stores/createIssue';
-import { cn } from '@/lib/utils';
+import { openReportIssue } from '@/stores/reportIssue';
+import { isBugType } from '@/features/issue-edit/severity';
+import { ARCHIVED_PICK_HINT, CREATE_LAST_KEY } from '@/lib/currentProject';
 import { useCreateIssue } from './create-api';
+import { useProjectIssues } from './api';
+import { epicChoices, parentChoices } from '@/lib/epic';
+import { blockOnInvalidDate } from '@/lib/dateGuard';
+import { dueDaysFromToday } from '@/lib/dueDate';
 import { TokenTitleInput } from './TokenTitleInput';
-import { parseTitleTokens, type TokenCtx } from './titleTokens';
-
-const selectClass = cn(
-  'h-9 w-full rounded-md border border-border bg-bg px-3 text-sm text-ink',
-  'transition-colors duration-150 focus-visible:outline-none focus-visible:border-primary',
-  'focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:opacity-50',
-);
+import {
+  parseTitleTokens,
+  resolveCreateValues,
+  stripPartialTail,
+  tokenFieldsToApply,
+  type TokenCtx,
+  type TokenFieldKey,
+  type TokenFieldValues,
+  type TokenResult,
+} from './titleTokens';
 
 // Nhớ dự án/loại đã dùng gần nhất để prefill lần sau (tăng tốc nhập liệu).
-const LAST_KEY = 'tirapro:createIssue:last';
 function loadLast(): { projectKey?: string; typeId?: string } {
-  try { return JSON.parse(localStorage.getItem(LAST_KEY) || '{}'); } catch { return {}; }
+  try {
+    return JSON.parse(localStorage.getItem(CREATE_LAST_KEY) || '{}') as {
+      projectKey?: string;
+      typeId?: string;
+    };
+  } catch {
+    return {};
+  }
 }
 function saveLast(v: { projectKey?: string; typeId?: string }) {
-  try { localStorage.setItem(LAST_KEY, JSON.stringify(v)); } catch { /* ignore */ }
+  try {
+    localStorage.setItem(CREATE_LAST_KEY, JSON.stringify(v));
+  } catch {
+    /* ignore */
+  }
 }
 
 // Bản nháp tiêu đề/mô tả theo dự án — khôi phục khi mở lại, xoá khi tạo thành công (UX_CONVENTIONS §3/§17).
-interface Draft { summary?: string; description?: string }
+interface Draft {
+  summary?: string;
+  description?: string;
+  acceptance?: string;
+}
 const DRAFT_KEY = (projectKey: string) => `tirapro:createIssue:draft:${projectKey || '_'}`;
 function loadDraft(projectKey: string): Draft {
-  try { return JSON.parse(localStorage.getItem(DRAFT_KEY(projectKey)) || '{}'); } catch { return {}; }
+  try {
+    return JSON.parse(localStorage.getItem(DRAFT_KEY(projectKey)) || '{}') as Draft;
+  } catch {
+    return {};
+  }
 }
 function saveDraft(projectKey: string, d: Draft) {
   try {
-    if (!d.summary?.trim() && !d.description?.trim()) localStorage.removeItem(DRAFT_KEY(projectKey));
+    if (!d.summary?.trim() && !d.description?.trim() && !d.acceptance?.trim())
+      localStorage.removeItem(DRAFT_KEY(projectKey));
     else localStorage.setItem(DRAFT_KEY(projectKey), JSON.stringify(d));
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
 }
 function clearDraft(projectKey: string) {
-  try { localStorage.removeItem(DRAFT_KEY(projectKey)); } catch { /* ignore */ }
+  try {
+    localStorage.removeItem(DRAFT_KEY(projectKey));
+  } catch {
+    /* ignore */
+  }
 }
 
 /* --------- Mẫu mô tả gợi sẵn theo loại công việc --------- */
 const TEMPLATES: Record<string, string> = {
   BUG: 'Các bước tái hiện:\n1. \n2. \n\nKết quả hiện tại:\n\nKết quả mong muốn:\n',
-  STORY: 'Bối cảnh:\n\nTiêu chí hoàn thành:\n- \n- ',
+  STORY: 'Bối cảnh:\n\n',
   TASK: 'Mục tiêu:\n\nViệc cần làm:\n- ',
 };
 const TEMPLATE_VALUES = Object.values(TEMPLATES);
 const isTemplate = (s: string) => TEMPLATE_VALUES.includes(s);
 
 /** Nhãn + gợi ý ngắn cho một ô nhập. `title` = giải nghĩa thuật ngữ (hiện khi rê chuột vào nhãn). */
-function Field({ label, hint, title, className, children }: { label: string; hint?: string; title?: string; className?: string; children: React.ReactNode }) {
+function Field({
+  label,
+  hint,
+  title,
+  className,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  title?: string;
+  className?: string;
+  children: React.ReactNode;
+}) {
   return (
     <div className={className}>
       <label className="mb-1.5 block text-sm font-medium text-muted" title={title}>
@@ -86,22 +135,48 @@ export function CreateIssueModal() {
   const [typeId, setTypeId] = useState('');
   const [summary, setSummary] = useState('');
   const [description, setDescription] = useState('');
+  const [acceptance, setAcceptance] = useState('');
   const [priorityId, setPriorityId] = useState('');
   const [assigneeId, setAssigneeId] = useState('');
   const [sprintId, setSprintId] = useState('');
   const [points, setPoints] = useState('');
   const [due, setDue] = useState('');
+  const [epicId, setEpicId] = useState('');
+  const [parentPick, setParentPick] = useState('');
   const [files, setFiles] = useState<File[]>([]);
   const [busy, setBusy] = useState(false);
   const prevTypeRef = useRef('');
+  const lastTokens = useRef<TokenResult>({ clean: '' });
+  // Parse đầy đủ (kể cả token đuôi chưa đồng bộ) ở lần gõ trước, và các ô người dùng đổi tay sau lần token đổi gần nhất.
+  const lastFull = useRef<TokenResult>({ clean: '' });
+  const manualRef = useRef<Set<TokenFieldKey>>(new Set());
+  const markManual = (k: TokenFieldKey) => manualRef.current.add(k);
+  // Lần chạy effect đồng bộ token ngay sau khi mở dùng `summary` cũ (trước khi nạp bản nháp) → bỏ qua.
+  const skipSyncRef = useRef(false);
+  // Chữ đang giữ (không tự lưu) sau khi chọn dự án đã có nháp riêng — xem ô Dự án.
+  const heldDraftRef = useRef<{
+    key: string;
+    summary: string;
+    description: string;
+    acceptance: string;
+  } | null>(null);
 
-  const selProject = useMemo(() => (projects ?? []).find((p) => p.key === selKey), [projects, selKey]);
+  const selProject = useMemo(
+    () => (projects ?? []).find((p) => p.key === selKey),
+    [projects, selKey],
+  );
   const selId = selProject?.id ?? '';
 
   const { data: meta } = useProjectMeta(open && selKey ? selKey : undefined);
   const { data: sprints } = useProjectSprints(open ? selId || undefined : undefined);
-  const { data: users } = useWorkspaceUsers();
-  const assignees = useAssigneeOptions(selId || undefined);
+  const { data: projIssues = [] } = useProjectIssues(open && selId ? selId : undefined);
+  // Người cho token `@tên` trong tiêu đề: thành viên của dự án đang chọn (máy chủ lọc theo dự án, bỏ tài khoản khoá).
+  const { data: users } = useSearchUsers({
+    projectId: selId || undefined,
+    limit: 200,
+    enabled: open,
+  });
+  const assignees = useAssigneePicker(selId || undefined);
   const create = useCreateIssue(selId);
 
   const last = useMemo(() => loadLast(), [open]);
@@ -109,28 +184,62 @@ export function CreateIssueModal() {
   // Mở popup: đặt lại theo ngữ cảnh; dự án prefill từ lần dùng gần nhất; khôi phục bản nháp (nếu có).
   useEffect(() => {
     if (!open) return;
-    const key = preset.projectKey ?? loadLast().projectKey ?? projects?.[0]?.key ?? '';
+    // pickProject: dự án hiện tại đã lưu trữ → để TRỐNG, người dùng tự chọn (không đoán dự án đầu danh sách).
+    heldDraftRef.current = null;
+    const key = preset.pickProject
+      ? ''
+      : (preset.projectKey ?? loadLast().projectKey ?? projects?.[0]?.key ?? '');
     const draft = loadDraft(key);
     setSelKey(key);
-    setTypeId(''); setSummary(draft.summary ?? ''); setDescription(draft.description ?? ''); setPriorityId('');
-    setAssigneeId(''); setSprintId(''); setPoints(''); setDue(''); setFiles([]); setBusy(false);
+    setTypeId('');
+    setSummary(draft.summary ?? '');
+    setDescription(draft.description ?? '');
+    setAcceptance(draft.acceptance ?? '');
+    setPriorityId('');
+    setAssigneeId('');
+    setSprintId('');
+    setPoints('');
+    setDue('');
+    setEpicId('');
+    setParentPick('');
+    setFiles([]);
+    setBusy(false);
     prevTypeRef.current = '';
-    if (draft.summary || draft.description) toast.info('Đã khôi phục nội dung bạn nhập dở lần trước');
+    lastTokens.current = { clean: '' };
+    lastFull.current = { clean: '' };
+    manualRef.current.clear();
+    skipSyncRef.current = true;
+    if (draft.summary || draft.description || draft.acceptance)
+      toast.info('Đã khôi phục nội dung bạn nhập dở lần trước');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   // Tự lưu bản nháp (tiêu đề + mô tả) theo dự án khi đang mở — không mất khi lỡ đóng.
   useEffect(() => {
     if (!open) return;
-    const t = setTimeout(() => saveDraft(selKey, { summary, description }), 400);
+    // Vừa chọn dự án đã có nháp riêng khi đang giữ chữ đã gõ: chưa ghi đè nháp cũ cho tới khi người dùng gõ thêm.
+    const held = heldDraftRef.current;
+    if (held) {
+      if (
+        held.key === selKey &&
+        held.summary === summary &&
+        held.description === description &&
+        held.acceptance === acceptance
+      )
+        return;
+      heldDraftRef.current = null;
+    }
+    const t = setTimeout(() => saveDraft(selKey, { summary, description, acceptance }), 400);
     return () => clearTimeout(t);
-  }, [open, selKey, summary, description]);
+  }, [open, selKey, summary, description, acceptance]);
 
   // Mặc định loại: sub-task nếu tạo sub-task, ngược lại ưu tiên loại đã dùng gần nhất.
   const defaultTypeId = useMemo(() => {
     if (!meta) return '';
-    if (preset.subtask) return meta.issueTypes.find((t) => t.isSubtask)?.id ?? meta.issueTypes[0]?.id ?? '';
-    const lastId = last.typeId && meta.issueTypes.some((t) => t.id === last.typeId) ? last.typeId : undefined;
+    if (preset.subtask)
+      return meta.issueTypes.find((t) => t.isSubtask)?.id ?? meta.issueTypes[0]?.id ?? '';
+    const lastId =
+      last.typeId && meta.issueTypes.some((t) => t.id === last.typeId) ? last.typeId : undefined;
     return lastId ?? meta.issueTypes.find((t) => !t.isSubtask)?.id ?? meta.issueTypes[0]?.id ?? '';
   }, [meta, preset.subtask, last.typeId]);
   useEffect(() => {
@@ -141,12 +250,49 @@ export function CreateIssueModal() {
 
   const sprintOptions = useMemo(
     () => [
-      { value: '', label: 'Backlog — chưa xếp vào sprint' },
+      { value: '', label: 'Việc chờ — chưa xếp vào sprint' },
       ...(sprints ?? [])
         .filter((s) => s.state !== 'CLOSED')
-        .map((s) => ({ value: s.id, label: s.state === 'ACTIVE' ? `${s.name} · đang chạy` : s.name })),
+        .map((s) => ({
+          value: s.id,
+          label: s.state === 'ACTIVE' ? `${s.name} · đang chạy` : s.name,
+        })),
     ],
     [sprints],
+  );
+
+  // Epic không thuộc epic nào, sub-task không có hàng Epic; "Việc cha" ẩn khi đã có cha định sẵn hoặc loại Epic.
+  const selType = meta?.issueTypes.find((t) => t.id === typeId);
+  const isEpicType = selType?.key === 'EPIC';
+  const hideEpic = isEpicType || !!selType?.isSubtask;
+  const hideParent = !!preset.parentId || isEpicType;
+  useEffect(() => {
+    if (hideEpic) setEpicId('');
+    if (hideParent) setParentPick('');
+  }, [hideEpic, hideParent]);
+  const epicOptions = useMemo(
+    () => [
+      { value: '', label: 'Không thuộc epic' },
+      ...epicChoices(projIssues, '').map((i) => ({
+        value: i.id,
+        label: i.summary,
+        hint: i.key,
+        color: i.type.color,
+      })),
+    ],
+    [projIssues],
+  );
+  const parentOptions = useMemo(
+    () => [
+      { value: '', label: 'Không có việc cha' },
+      ...parentChoices(projIssues, '').map((i) => ({
+        value: i.id,
+        label: i.summary,
+        hint: i.key,
+        color: i.type.color,
+      })),
+    ],
+    [projIssues],
   );
 
   const tokenCtx = useMemo<TokenCtx>(
@@ -154,15 +300,39 @@ export function CreateIssueModal() {
     [meta, users, sprints],
   );
 
+  // Đồng bộ ô bên dưới NGAY khi token khớp (không đợi rời ô tiêu đề). Chỉ áp token MỚI/ĐỔI so với lần trước
+  // nên không ghi đè lựa chọn tay; gỡ token không xoá ô. Token đang gõ dở ở đuôi chưa áp (tránh ô nhảy theo từng chữ).
+  // `tokenCtx` đổi khi meta/người dùng/sprint tải xong → token đã gõ trước đó được áp ở lần chạy này.
+  useEffect(() => {
+    if (!open) return;
+    if (skipSyncRef.current) {
+      skipSyncRef.current = false;
+      return;
+    }
+    // Token vừa xuất hiện/đổi giá trị (kể cả đuôi chưa áp) → ô tương ứng lại do token quản tới khi người dùng đổi tay.
+    const full = parseTitleTokens(summary, tokenCtx);
+    for (const k of Object.keys(tokenFieldsToApply(lastFull.current, full, new Set()))) {
+      manualRef.current.delete(k as TokenFieldKey);
+    }
+    lastFull.current = full;
+    const next = parseTitleTokens(stripPartialTail(summary), tokenCtx);
+    applyFields(tokenFieldsToApply(lastTokens.current, next, manualRef.current));
+    lastTokens.current = next;
+  }, [open, summary, tokenCtx]);
+
   // Rời ô tiêu đề: CHỈ điền các trường suy ra từ token — GIỮ nguyên chữ đang gõ trong ô
   // (tránh cảm giác "mất chữ"/không undo được). Token chỉ được lược bỏ khi thực sự tạo (doCreate).
   function applyTokens() {
     const r = parseTitleTokens(summary, tokenCtx);
-    if (r.priorityId) setPriorityId(r.priorityId);
-    if (r.assigneeId) setAssigneeId(r.assigneeId);
-    if (r.sprintId) setSprintId(r.sprintId);
-    if (r.points != null) setPoints(String(r.points));
-    if (r.dueLocal) setDue(r.dueLocal);
+    applyFields(tokenFieldsToApply(lastTokens.current, r, manualRef.current));
+    lastTokens.current = r;
+  }
+  function applyFields(f: Partial<TokenFieldValues>) {
+    if (f.priorityId) setPriorityId(f.priorityId);
+    if (f.assigneeId) setAssigneeId(f.assigneeId);
+    if (f.sprintId) setSprintId(f.sprintId);
+    if (f.points != null) setPoints(f.points);
+    if (f.due) setDue(f.due);
   }
 
   // Đổi loại → tự điền mẫu mô tả (chỉ khi mô tả trống hoặc đang là mẫu; bỏ qua lần đặt mặc định đầu).
@@ -176,24 +346,33 @@ export function CreateIssueModal() {
     setDescription((d) => (d === '' || isTemplate(d) ? tmpl : d));
   }, [typeId, meta]);
 
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') close(); }
-    if (open) window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [open, close]);
-
-  if (!open) return null;
-
+  const isStory = meta?.issueTypes.find((t) => t.id === typeId)?.key === 'STORY';
   const trimmed = summary.trim();
-  const canSubmit = !!meta && !!selId && !!typeId && trimmed.length > 0 && !create.isPending && !busy;
+  const canSubmit =
+    !!meta && !!selId && !!typeId && trimmed.length > 0 && !create.isPending && !busy;
+  // Cảnh báo mềm: không chặn gửi (đường Tạo / Tạo & nhập tiếp / Cmd+Enter đều như nhau).
+  // Cùng định nghĩa "quá hạn" với mọi nơi khác: hạn HÔM NAY (theo ngày VN) chưa phải quá khứ.
+  const dueInPast = due !== '' && dueDaysFromToday(due) < 0;
   const title = preset.subtask ? 'Tạo việc con' : 'Tạo công việc';
 
   async function doCreate() {
     if (!canSubmit) return null;
-    // Áp token gõ nhanh còn sót (nếu chưa blur) — token thắng giá trị đang chọn. Chỉ lược token khi TẠO.
+    // Ô ngày/giờ đang gõ sai: chặn mọi đường gửi (nút Tạo & nhập tiếp, Cmd+Enter không đi qua form native).
+    if (blockOnInvalidDate()) return null;
+    // Giá trị trên ô = giá trị được gửi: ô đổi tay thắng; token chỉ chèn cho ô chưa bị đổi tay và token chưa kịp
+    // đồng bộ (đang gõ dở ở đuôi). Chỉ lược token khỏi tiêu đề khi TẠO.
     const tk = parseTitleTokens(summary, tokenCtx);
+    const v = resolveCreateValues(
+      { priorityId, assigneeId, sprintId, points, due },
+      lastTokens.current,
+      tk,
+      manualRef.current,
+    );
     const finalSummary = tk.clean.trim();
-    if (!finalSummary) { toast.error('Hãy nhập tiêu đề mô tả việc cần làm'); return null; }
+    if (!finalSummary) {
+      toast.error('Hãy nhập tiêu đề mô tả việc cần làm');
+      return null;
+    }
     setBusy(true);
     try {
       const created = await create.mutateAsync({
@@ -202,19 +381,25 @@ export function CreateIssueModal() {
         summary: finalSummary,
         description: description.trim() || null,
         descriptionFormat: 'MARKDOWN',
-        priorityId: (tk.priorityId ?? priorityId) || undefined,
-        assigneeId: (tk.assigneeId ?? assigneeId) || null,
-        parentId: preset.parentId ?? undefined,
-        storyPoints: tk.points ?? (points ? Number(points) : undefined),
-        sprintId: (tk.sprintId ?? sprintId) || undefined,
-        dueDate: tk.dueLocal ? new Date(tk.dueLocal).toISOString() : (due ? new Date(due).toISOString() : undefined),
+        acceptanceCriteria: isStory ? acceptance.trim() || null : null,
+        priorityId: v.priorityId || undefined,
+        assigneeId: v.assigneeId || null,
+        parentId: preset.parentId ?? (hideParent ? undefined : parentPick || undefined),
+        epicId: hideEpic ? undefined : epicId || undefined,
+        storyPoints: v.points ? Number(v.points) : undefined,
+        sprintId: v.sprintId || undefined,
+        dueDate: v.due ? new Date(v.due).toISOString() : undefined,
       });
       // Tải các tệp đính kèm song song → không dừng vì 1 tệp lỗi; báo rõ N/M nếu có lỗi.
       if (files.length > 0) {
-        const results = await Promise.allSettled(files.map((f) => uploadAttachmentFile(created.id, f)));
+        const results = await Promise.allSettled(
+          files.map((f) => uploadAttachmentFile(created.id, f)),
+        );
         const failed = results.filter((r) => r.status === 'rejected').length;
         if (failed > 0) {
-          const failedNames = files.filter((_, i) => results[i]!.status === 'rejected').map((f) => f.name);
+          const failedNames = files
+            .filter((_, i) => results[i]!.status === 'rejected')
+            .map((f) => f.name);
           toast.error(`${failed}/${files.length} tệp chưa tải lên được`, {
             description: `${failedNames.join(', ')} — công việc đã được tạo, hãy mở nó ra và đính kèm lại các tệp này.`,
             duration: 6000,
@@ -232,6 +417,24 @@ export function CreateIssueModal() {
     }
   }
 
+  // Mang tiêu đề (giữ nguyên cả token đã gõ), mô tả và tệp đính sang form Báo lỗi (có kiểm tra trùng + mức nghiêm trọng)
+  // rồi đóng hộp tạo việc. Mẫu mô tả của hộp này bỏ đi (form Báo lỗi có mẫu riêng). Bản nháp tạo việc GIỮ NGUYÊN tới khi
+  // báo lỗi gửi thành công (`onSent`) — lỡ đóng form Báo lỗi vẫn còn chữ để quay lại.
+  function switchToReport() {
+    const text = description.trim() && !isTemplate(description) ? description : undefined;
+    const key = selKey;
+    saveDraft(key, { summary, description, acceptance }); // chốt nháp ngay (không chờ debounce)
+    openReportIssue({
+      projectKey: key || undefined,
+      kind: 'BUG',
+      summary: summary.trim(),
+      description: text,
+      files,
+      onSent: () => clearDraft(key),
+    });
+    close();
+  }
+
   // Tạo xong → đóng popup + mở issue mới.
   async function submitCreate() {
     const created = await doCreate();
@@ -246,189 +449,362 @@ export function CreateIssueModal() {
     const created = await doCreate();
     if (!created) return;
     toast.success(`Đã tạo ${created.key} — mời bạn nhập việc tiếp theo`);
-    setSummary(''); setDescription(''); setFiles([]); setPoints(''); setDue('');
+    setSummary('');
+    setDescription('');
+    setFiles([]);
+    setPoints('');
+    setDue('');
+    lastTokens.current = { clean: '' };
+    lastFull.current = { clean: '' };
+    manualRef.current.clear();
     requestAnimationFrame(() => document.getElementById('ci-summary')?.focus());
   }
 
   return (
-    <div className="fixed inset-0 z-modal flex items-start justify-center p-4 pt-[7vh]">
-      <button className="absolute inset-0 bg-black/30 animate-in fade-in duration-200" onClick={close} aria-label="Đóng" />
-      <div className="relative flex max-h-[88vh] w-full max-w-4xl flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-lg animate-in fade-in zoom-in-95 duration-200">
-        <header className="flex items-center gap-2 border-b border-border px-5 py-3">
-          <Plus className="h-4 w-4 text-primary" />
-          <span className="text-sm font-medium text-ink">{title}</span>
-          <Button variant="ghost" size="icon" className="ml-auto" onClick={close} aria-label="Đóng">
-            <X className="h-4 w-4" />
+    <Dialog
+      open={open}
+      icon={<Plus className="h-4 w-4" />}
+      onOpenChange={(o) => {
+        if (!o) close();
+      }}
+      // Ô Dự án trống (dự án hiện tại đã lưu trữ): focus thẳng vào ô đó thay vì ô tiêu đề.
+      onOpenAutoFocus={
+        preset.pickProject
+          ? (e) => {
+              e.preventDefault();
+              document.getElementById('ci-project')?.focus();
+            }
+          : undefined
+      }
+      title={title}
+      size="xl"
+      onSubmit={() => void submitCreate()}
+      footer={
+        <>
+          <span className="kbd-hint mr-auto text-xs text-faint max-sm:hidden">
+            ⌘/Ctrl + Enter để tạo nhanh
+          </span>
+          <Button type="button" variant="ghost" onClick={close}>
+            Huỷ
           </Button>
-        </header>
-
-        <form
-          onSubmit={(e) => { e.preventDefault(); void submitCreate(); }}
-          onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); void submitCreate(); } }}
-          className="flex min-h-0 flex-1 flex-col"
-        >
-          <div className="grid flex-1 grid-cols-1 gap-4 overflow-y-auto px-5 py-4 sm:grid-cols-2">
-            <Field label="Dự án">
-              <SearchSelect
-                value={selKey}
-                onChange={(v) => {
-                  // Đổi dự án → nạp bản nháp của DỰ ÁN MỚI (không mang chữ dự án cũ sang, không đè nháp dự án mới).
-                  const d = loadDraft(v);
-                  setSelKey(v);
-                  setTypeId(''); setPriorityId(''); setSprintId(''); setAssigneeId('');
-                  setSummary(d.summary ?? ''); setDescription(d.description ?? '');
-                }}
-                placeholder="Chọn dự án…"
-                searchPlaceholder="Tìm dự án…"
-                className={selectClass}
-                options={(projects ?? []).map((p) => ({ value: p.key, label: p.name, hint: p.key }))}
-              />
-            </Field>
-            <Field label="Loại việc">
-              <SearchSelect
-                value={typeId}
-                onChange={setTypeId}
-                disabled={!meta}
-                className={selectClass}
-                ariaLabel="Loại việc"
-                options={(meta?.issueTypes ?? []).map((t) => ({ value: t.id, label: t.name, color: t.color }))}
-              />
-            </Field>
-
-            <Field label="Tiêu đề" className="relative z-20 sm:col-span-2">
-              <TokenTitleInput
-                id="ci-summary"
-                autoFocus
-                value={summary}
-                onChange={setSummary}
-                onBlur={applyTokens}
-                ctx={tokenCtx}
-                placeholder="Việc cần làm là gì? VD: Sửa lỗi không đăng nhập được trên Safari"
-              />
-              <p className="mt-1 flex flex-wrap gap-x-2 gap-y-0.5 text-xs text-faint" title="Gõ thẳng các ký hiệu này trong tiêu đề để điền nhanh các trường bên dưới — không cần bấm chuột.">
-                <span>Gõ nhanh ngay trong tiêu đề:</span>
-                <span><code className="rounded bg-surface-2 px-1 text-ink">!ưu-tiên</code></span>
-                <span><code className="rounded bg-surface-2 px-1 text-ink">@người</code></span>
-                <span><code className="rounded bg-surface-2 px-1 text-ink">#sprint</code></span>
-                <span><code className="rounded bg-surface-2 px-1 text-ink">~điểm</code></span>
-                <span><code className="rounded bg-surface-2 px-1 text-ink">^hạn</code> (mai · t6 · 3d · 2w · 15/8)</span>
-              </p>
-            </Field>
-
-            <Field label="Người phụ trách" hint="(tùy chọn)" title="Người chịu trách nhiệm làm việc này. Để trống nếu chưa biết giao cho ai.">
-              <PeoplePicker
-                value={assigneeId}
-                onChange={setAssigneeId}
-                emptyLabel="Chưa gán"
-                className={selectClass}
-                options={assignees}
-              />
-            </Field>
-            <Field label="Ưu tiên" hint="(tùy chọn)" title="Việc này gấp đến mức nào so với các việc khác">
-              <SearchSelect
-                value={priorityId}
-                onChange={setPriorityId}
-                disabled={!meta}
-                className={selectClass}
-                options={[{ value: '', label: '—' }, ...(meta?.priorities ?? []).map((p) => ({ value: p.id, label: p.name, color: p.color }))]}
-              />
-            </Field>
-
-            <Field label="Sprint" hint="(tùy chọn)" title="Sprint là đợt làm việc ngắn, thường 1–2 tuần. Để trống thì việc nằm ở Backlog — danh sách chờ.">
-              <SearchSelect value={sprintId} onChange={setSprintId} disabled={!selId} className={selectClass} ariaLabel="Sprint" options={sprintOptions} />
-            </Field>
-            <div className="grid grid-cols-2 gap-4">
-              <Field label="Điểm ước lượng" hint="(tùy chọn)" title="Con số ước chừng độ lớn của việc — càng lớn càng tốn công. Dùng để đo sức làm của nhóm mỗi sprint.">
-                <Input type="number" min={0} inputMode="numeric" value={points} onChange={(e) => setPoints(e.target.value)} placeholder="VD: 3" className="text-sm" aria-label="Điểm ước lượng" />
-              </Field>
-              <Field label="Hạn hoàn thành" hint="(tùy chọn)" title="Mốc phải xong. Quá hạn mà chưa xong, việc sẽ hiện viền đỏ trên bảng.">
-                <Input type="datetime-local" value={due} onChange={(e) => setDue(e.target.value)} className="text-sm" aria-label="Hạn hoàn thành" />
-              </Field>
-            </div>
-
-            <Field label="Mô tả" hint="(tùy chọn)" className="sm:col-span-2" title="Viết đủ để người khác làm được mà không cần hỏi lại bạn.">
-              <MarkdownEditor value={description} onChange={setDescription} onSubmit={() => void submitCreate()} rows={10} placeholder="Bối cảnh, các bước, thế nào là xong… (viết được Markdown; chèn ảnh bằng ![](đường-dẫn))" />
-            </Field>
-
-            <Field label="Tệp đính kèm" hint="(tùy chọn)" className="sm:col-span-2">
-              <FileDrop
-                files={files}
-                onAdd={(fs) => setFiles((prev) => [...prev, ...fs])}
-                onRemove={(i) => setFiles((prev) => prev.filter((_, j) => j !== i))}
-              />
-            </Field>
-          </div>
-
-          <footer className="flex items-center gap-2 border-t border-border px-5 py-3">
-            <span className="mr-auto hidden text-xs text-faint sm:block">⌘/Ctrl + Enter để tạo nhanh</span>
-            <Button type="button" variant="ghost" onClick={close}>Hủy</Button>
-            <Button
-              type="button"
-              variant="secondary"
-              title="Tạo việc này rồi giữ nguyên cửa sổ để nhập việc tiếp theo"
-              onClick={() => void createAnother()}
-              loading={busy}
-              disabled={!canSubmit}
-            >
-              Tạo &amp; nhập tiếp
-            </Button>
-            <Button type="submit" loading={create.isPending || busy} disabled={!canSubmit}>{title}</Button>
-          </footer>
-        </form>
-      </div>
-    </div>
-  );
-}
-
-function fmtSize(n: number): string {
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${Math.round(n / 1024)} KB`;
-  return `${(n / 1024 / 1024).toFixed(1)} MB`;
-}
-
-/** Vùng chọn/kéo-thả tệp (giữ cục bộ tới khi công việc được tạo rồi mới tải lên). */
-function FileDrop({ files, onAdd, onRemove }: { files: File[]; onAdd: (f: File[]) => void; onRemove: (i: number) => void }) {
-  const [over, setOver] = useState(false);
-  return (
-    <div>
-      <label
-        onDragOver={(e) => { e.preventDefault(); setOver(true); }}
-        onDragLeave={() => setOver(false)}
-        onDrop={(e) => { e.preventDefault(); setOver(false); onAdd(Array.from(e.dataTransfer.files)); }}
-        className={cn(
-          'flex cursor-pointer flex-col items-center justify-center gap-1 rounded-md border border-dashed px-3 py-5 text-center text-sm transition-colors',
-          over ? 'border-primary bg-primary-subtle/40 text-ink' : 'border-border text-muted hover:border-primary hover:text-ink',
-        )}
+          <Button
+            type="button"
+            variant="secondary"
+            title="Tạo việc này rồi giữ nguyên cửa sổ để nhập việc tiếp theo"
+            onClick={() => void createAnother()}
+            loading={busy}
+            disabled={!canSubmit}
+          >
+            Tạo &amp; nhập tiếp
+          </Button>
+          <Button
+            type="submit"
+            form="create-issue-form"
+            loading={create.isPending || busy}
+            disabled={!canSubmit}
+          >
+            {title}
+          </Button>
+        </>
+      }
+    >
+      <form
+        id="create-issue-form"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void submitCreate();
+        }}
       >
-        <Paperclip className="h-4 w-4" aria-hidden />
-        <span>Kéo thả tệp vào đây hoặc <span className="font-medium text-primary">bấm để chọn tệp</span></span>
-        <input
-          type="file"
-          multiple
-          className="hidden"
-          onChange={(e) => { if (e.target.files?.length) onAdd(Array.from(e.target.files)); e.currentTarget.value = ''; }}
-        />
-      </label>
-      {files.length > 0 && (
-        <ul className="mt-2 space-y-1">
-          {files.map((f, i) => (
-            <li key={i} className="flex items-center gap-2 rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-sm">
-              <Paperclip className="h-3.5 w-3.5 shrink-0 text-muted" aria-hidden />
-              <span className="min-w-0 flex-1 truncate text-ink">{f.name}</span>
-              <span className="shrink-0 text-xs text-faint tabular">{fmtSize(f.size)}</span>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <Field label="Dự án">
+            <SearchSelect
+              id="ci-project"
+              value={selKey}
+              onChange={(v) => {
+                // Đổi dự án → nạp bản nháp của DỰ ÁN MỚI (không mang chữ dự án cũ sang, không đè nháp dự án mới).
+                // Riêng khi CHƯA có dự án (chọn lần đầu): giữ chữ đã gõ, chỉ nạp nháp nếu chưa gõ gì — không ghi đè.
+                const typed =
+                  !selKey &&
+                  (summary.trim() !== '' || description.trim() !== '' || acceptance.trim() !== '');
+                if (!typed) {
+                  const d = loadDraft(v);
+                  setSummary(d.summary ?? '');
+                  setDescription(d.description ?? '');
+                  setAcceptance(d.acceptance ?? '');
+                } else {
+                  clearDraft(selKey); // nháp "chưa có dự án" đã chuyển sang dự án vừa chọn
+                  const saved = loadDraft(v);
+                  if (
+                    saved.summary?.trim() ||
+                    saved.description?.trim() ||
+                    saved.acceptance?.trim()
+                  ) {
+                    // Dự án này đã có nháp riêng: giữ nguyên nháp đó trong kho cho tới khi người dùng gõ thêm.
+                    heldDraftRef.current = { key: v, summary, description, acceptance };
+                    toast.info(
+                      'Dự án này đang có một bản nháp khác — chữ bạn vừa gõ được giữ nguyên, bản nháp cũ chỉ bị thay khi bạn gõ tiếp.',
+                    );
+                  }
+                }
+                setSelKey(v);
+                setTypeId('');
+                manualRef.current.clear();
+                setPriorityId('');
+                setSprintId('');
+                setAssigneeId('');
+                setEpicId('');
+                setParentPick('');
+              }}
+              placeholder="Chọn dự án…"
+              searchPlaceholder="Tìm dự án…"
+              options={(projects ?? []).map((p) => ({ value: p.key, label: p.name, hint: p.key }))}
+            />
+            {preset.pickProject && !selKey && (
+              <p className="mt-1 text-xs text-muted" role="status">
+                {ARCHIVED_PICK_HINT}
+              </p>
+            )}
+          </Field>
+          <Field label="Loại việc">
+            <SearchSelect
+              value={typeId}
+              onChange={setTypeId}
+              disabled={!meta}
+              ariaLabel="Loại việc"
+              options={(meta?.issueTypes ?? []).map((t) => ({
+                value: t.id,
+                label: t.name,
+                color: t.color,
+              }))}
+            />
+          </Field>
+
+          {isBugType(selType) && (
+            <p className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-md bg-surface-2 px-3 py-2 text-xs text-muted sm:col-span-2">
+              <span>Báo lỗi có kiểm tra trùng và mức nghiêm trọng —</span>
               <button
                 type="button"
-                onClick={() => onRemove(i)}
-                aria-label={`Bỏ tệp ${f.name} khỏi danh sách đính kèm`}
-                title="Bỏ tệp này"
-                className="grid h-5 w-5 shrink-0 place-items-center rounded text-faint transition-colors hover:bg-surface-3 hover:text-danger focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+                onClick={switchToReport}
+                className="rounded font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
               >
-                <X className="h-3.5 w-3.5" />
+                Chuyển sang form Báo lỗi
               </button>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
+            </p>
+          )}
+
+          <Field label="Tiêu đề" className="relative z-20 sm:col-span-2">
+            <TokenTitleInput
+              id="ci-summary"
+              autoFocus={!preset.pickProject}
+              value={summary}
+              onChange={setSummary}
+              onBlur={applyTokens}
+              ctx={tokenCtx}
+              placeholder="Việc cần làm là gì? VD: Sửa lỗi không đăng nhập được trên Safari"
+            />
+            <p
+              className="mt-1 flex flex-wrap gap-x-2 gap-y-0.5 text-xs text-faint"
+              title="Gõ thẳng các ký hiệu này trong tiêu đề để điền nhanh các trường bên dưới — không cần bấm chuột."
+            >
+              <span>Gõ nhanh ngay trong tiêu đề:</span>
+              <span>
+                <code className="rounded bg-surface-2 px-1 text-ink">!ưu-tiên</code>
+              </span>
+              <span>
+                <code className="rounded bg-surface-2 px-1 text-ink">@người</code>
+              </span>
+              <span>
+                <code className="rounded bg-surface-2 px-1 text-ink">#sprint</code>
+              </span>
+              <span>
+                <code className="rounded bg-surface-2 px-1 text-ink">~điểm</code>
+              </span>
+              <span>
+                <code className="rounded bg-surface-2 px-1 text-ink">^hạn</code> (mai · t6 · 3d · 2w
+                · 15/8)
+              </span>
+            </p>
+          </Field>
+
+          <Field
+            label="Người phụ trách"
+            hint="(tùy chọn)"
+            title="Người chịu trách nhiệm làm việc này. Để trống nếu chưa biết giao cho ai."
+          >
+            <PeoplePicker
+              value={assigneeId}
+              onChange={(v) => {
+                markManual('assigneeId');
+                setAssigneeId(v);
+              }}
+              emptyLabel="Chưa gán"
+              {...assignees}
+            />
+          </Field>
+          <Field
+            label="Ưu tiên"
+            hint="(tùy chọn)"
+            title="Việc này gấp đến mức nào so với các việc khác"
+          >
+            <SearchSelect
+              value={priorityId}
+              onChange={(v) => {
+                markManual('priorityId');
+                setPriorityId(v);
+              }}
+              disabled={!meta}
+              options={[
+                { value: '', label: '—' },
+                ...(meta?.priorities ?? []).map((p) => ({
+                  value: p.id,
+                  label: p.name,
+                  color: p.color,
+                })),
+              ]}
+            />
+          </Field>
+
+          <Field
+            label="Sprint"
+            hint="(tùy chọn)"
+            title="Sprint là khoảng thời gian làm việc ngắn, thường 1–2 tuần. Để trống thì việc nằm ở Việc chờ."
+          >
+            <SearchSelect
+              value={sprintId}
+              onChange={(v) => {
+                markManual('sprintId');
+                setSprintId(v);
+              }}
+              disabled={!selId}
+              ariaLabel="Sprint"
+              options={sprintOptions}
+            />
+          </Field>
+          <Field
+            label="Điểm ước lượng"
+            hint="(tùy chọn)"
+            title="Con số ước chừng độ lớn của việc — càng lớn càng tốn công. Dùng để đo sức làm của nhóm mỗi sprint."
+          >
+            <Input
+              type="number"
+              min={0}
+              inputMode="numeric"
+              value={points}
+              onChange={(e) => {
+                markManual('points');
+                setPoints(e.target.value);
+              }}
+              placeholder="VD: 3"
+              className="text-sm"
+              aria-label="Điểm ước lượng"
+            />
+          </Field>
+          {/* Cả hàng: ô ngày dd/MM/yyyy + ô giờ HH:mm cần chỗ, và không để cột phải trống. */}
+          <Field
+            className="sm:col-span-2"
+            label="Hạn hoàn thành"
+            hint="(tùy chọn)"
+            title="Mốc phải xong. Quá hạn mà chưa xong, việc sẽ hiện viền đỏ trên bảng."
+          >
+            <DateTimeInput
+              value={due}
+              onChange={(v) => {
+                markManual('due');
+                setDue(v);
+              }}
+              defaultTime="17:00"
+              ariaLabel="Hạn hoàn thành"
+            />
+            {dueInPast && (
+              <p role="status" className="mt-1 text-xs text-warning-ink">
+                Hạn đã qua — việc sẽ hiện quá hạn ngay khi tạo. Vẫn tạo được.
+              </p>
+            )}
+          </Field>
+
+          {(!hideEpic || !hideParent) && (
+            <div className="grid grid-cols-1 gap-4 sm:col-span-2 sm:grid-cols-2">
+              {!hideEpic && (
+                <Field
+                  label="Epic"
+                  hint="(tùy chọn)"
+                  title="Mảng lớn mà việc này thuộc về. Tiến độ epic tính theo điểm các việc bên trong."
+                >
+                  <SearchSelect
+                    value={epicId}
+                    onChange={setEpicId}
+                    disabled={!selId}
+                    ariaLabel="Epic"
+                    searchPlaceholder="Tìm epic theo mã hoặc tiêu đề…"
+                    options={epicOptions}
+                  />
+                </Field>
+              )}
+              {!hideParent && (
+                <Field
+                  label="Việc cha"
+                  hint="(tùy chọn)"
+                  title="Công việc lớn hơn mà việc này là một phần của nó."
+                >
+                  <SearchSelect
+                    value={parentPick}
+                    onChange={setParentPick}
+                    disabled={!selId}
+                    ariaLabel="Việc cha"
+                    searchPlaceholder="Tìm việc cha theo mã hoặc tiêu đề…"
+                    options={parentOptions}
+                  />
+                </Field>
+              )}
+            </div>
+          )}
+
+          <Field
+            label="Mô tả"
+            hint="(tùy chọn)"
+            className="sm:col-span-2"
+            title="Viết đủ để người khác làm được mà không cần hỏi lại bạn."
+          >
+            <MarkdownEditor
+              value={description}
+              onChange={setDescription}
+              onSubmit={() => void submitCreate()}
+              rows={10}
+              mentionPeople={assignees.options}
+              mentionProjectId={selId || undefined}
+              onPasteImages={(fs) => setFiles((prev) => [...prev, ...fs])}
+              placeholder="Bối cảnh, các bước, thế nào là xong… (viết được Markdown; chèn ảnh bằng ![](đường-dẫn) hoặc dán ảnh)"
+            />
+          </Field>
+
+          {isStory && (
+            <Field
+              label="Tiêu chí chấp nhận"
+              hint="(tùy chọn — mỗi dòng một tiêu chí)"
+              className="sm:col-span-2"
+              title="Điều kiện để Story được coi là xong. Mỗi dòng dạng - [ ] … để tick khi nghiệm thu."
+            >
+              <MarkdownEditor
+                value={acceptance}
+                onChange={setAcceptance}
+                onSubmit={() => void submitCreate()}
+                rows={4}
+                mentionPeople={assignees.options}
+                mentionProjectId={selId || undefined}
+                placeholder="- [ ] Người dùng đăng nhập được bằng email&#10;- [ ] Báo lỗi rõ khi sai mật khẩu"
+              />
+            </Field>
+          )}
+
+          <Field label="Tệp đính kèm" hint="(tùy chọn)" className="sm:col-span-2">
+            <FileDrop
+              files={files}
+              onAdd={(fs) => setFiles((prev) => [...prev, ...fs])}
+              onRemove={(i) => setFiles((prev) => prev.filter((_, j) => j !== i))}
+            />
+          </Field>
+        </div>
+      </form>
+    </Dialog>
   );
 }

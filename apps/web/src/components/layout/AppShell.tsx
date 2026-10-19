@@ -1,148 +1,115 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { LayoutGrid, LayoutDashboard, Settings, Plug, Filter, Users, Menu, X, Sparkles, ShieldCheck, Building2, SlidersHorizontal, Activity, ArrowLeft, Briefcase, BookOpen } from 'lucide-react';
+import { Sparkles, ShieldCheck, ArrowLeft, Search } from 'lucide-react';
 import { WorkspaceSwitcher } from '@/features/workspace/WorkspaceSwitcher';
 import { GuideLauncher } from '@/features/guides/GuideLauncher';
+import { useNotificationRealtime } from '@/lib/realtime';
 import { NotificationBell } from '@/features/notifications/NotificationBell';
 import { UserMenu } from '@/components/layout/UserMenu';
 import { FloatingActions } from '@/components/layout/FloatingActions';
+import { BottomTabBar } from '@/components/layout/BottomTabBar';
+import { CreateDialogsHost } from '@/components/layout/createActions';
+import { LeaveGuardHost } from '@/components/layout/LeaveGuardHost';
+import { UnsavedBar } from '@/components/layout/UnsavedBar';
 import { MaintenanceBanner } from '@/components/layout/MaintenanceBanner';
-import { ShortcutsDialog, SHORTCUTS_EVENT } from '@/components/layout/ShortcutsDialog';
+import { ShortcutsDialog } from '@/components/layout/ShortcutsDialog';
+import { useShellEffects } from '@/components/layout/useShellEffects';
+import { ADMIN_NAV, NAV_ITEMS } from '@/components/layout/navItems';
 import { Button } from '@/components/ui/Button';
+import { ConfirmHost } from '@/components/ui/useConfirm';
 import { useAi } from '@/stores/ai';
+import { useIsSystemAdmin, useVisibleItems } from '@/lib/navAccess';
 import { useGlobalHotkeys } from '@/lib/useGlobalHotkeys';
+import { DESKTOP_MIN_QUERY } from '@/lib/bottomBar';
+import { useMediaQuery } from '@/lib/useMediaQuery';
 import { cn } from '@/lib/utils';
 import { TruncatedLabel } from '@/components/ui/TruncatedLabel';
 
-const NAV_ITEMS: { to: string; label: string; icon: ReactNode; match: (p: string) => boolean }[] = [
-  { to: '/', label: 'Tổng quan', icon: <LayoutDashboard className="h-4 w-4" />, match: (p) => p === '/' },
-  { to: '/projects', label: 'Dự án', icon: <LayoutGrid className="h-4 w-4" />, match: (p) => p.startsWith('/projects') || p.startsWith('/p/') },
-  { to: '/filters', label: 'Bộ lọc đã lưu', icon: <Filter className="h-4 w-4" />, match: (p) => p.startsWith('/filters') },
-  { to: '/members', label: 'Thành viên', icon: <Users className="h-4 w-4" />, match: (p) => p.startsWith('/members') },
-  { to: '/manage', label: 'Quản trị', icon: <Briefcase className="h-4 w-4" />, match: (p) => p.startsWith('/manage') },
-  { to: '/wiki', label: 'Wiki', icon: <BookOpen className="h-4 w-4" />, match: (p) => p.startsWith('/wiki') },
-  { to: '/connect', label: 'Kết nối', icon: <Plug className="h-4 w-4" />, match: (p) => p.startsWith('/connect') },
-  { to: '/settings', label: 'Cài đặt', icon: <Settings className="h-4 w-4" />, match: (p) => p.startsWith('/settings') },
-];
-
-// Menu riêng cho Admin hệ thống — đứng trên mọi không gian làm việc (không gắn với nơi nào cụ thể).
-const ADMIN_NAV: { to: string; label: string; icon: ReactNode; match: (p: string) => boolean }[] = [
-  { to: '/admin', label: 'Tổng quan', icon: <LayoutDashboard className="h-4 w-4" />, match: (p) => p === '/admin' },
-  { to: '/admin/workspaces', label: 'Không gian làm việc', icon: <Building2 className="h-4 w-4" />, match: (p) => p.startsWith('/admin/workspaces') },
-  { to: '/admin/accounts', label: 'Tài khoản', icon: <Users className="h-4 w-4" />, match: (p) => p.startsWith('/admin/accounts') },
-  { to: '/admin/config', label: 'Cấu hình', icon: <SlidersHorizontal className="h-4 w-4" />, match: (p) => p.startsWith('/admin/config') },
-  { to: '/admin/system', label: 'Hệ thống', icon: <Activity className="h-4 w-4" />, match: (p) => p.startsWith('/admin/system') },
-];
-
 export function AppShell({ children }: { children: ReactNode }) {
   const loc = useLocation();
-  const admin = loc.pathname === '/admin' || loc.pathname.startsWith('/admin/');
-  const navItems = admin ? ADMIN_NAV : NAV_ITEMS;
-  const [navOpen, setNavOpen] = useState(false);
+  // Chế độ menu admin chỉ cho admin hệ thống — người khác mở /admin thấy trang "không có quyền" trong khung thường.
+  const isSysAdmin = useIsSystemAdmin();
+  const admin = isSysAdmin && (loc.pathname === '/admin' || loc.pathname.startsWith('/admin/'));
+  const visibleNav = useVisibleItems(NAV_ITEMS, loc.pathname);
+  const navItems = admin ? ADMIN_NAV : visibleNav;
+  useNotificationRealtime();
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
-  const closeRef = useRef<HTMLButtonElement>(null);
+  // Từ `lg`: sidebar tĩnh + nút nổi. Dưới `lg` (điện thoại + máy tính bảng): thanh tab đáy + sheet, KHÔNG drawer/hamburger/nút nổi.
+  const desktop = useMediaQuery(DESKTOP_MIN_QUERY);
   const aiEnabled = useAi((s) => s.enabled);
   const toggleAi = useAi((s) => s.toggle);
 
   // Phím tắt toàn cục (c, /, g b/l/d, ?).
   useGlobalHotkeys();
 
-  // Bảng phím tắt — mở bằng `?` hoặc từ bảng lệnh (sự kiện dùng chung).
-  useEffect(() => {
-    const onOpen = () => setShortcutsOpen(true);
-    window.addEventListener(SHORTCUTS_EVENT, onOpen);
-    return () => window.removeEventListener(SHORTCUTS_EVENT, onOpen);
-  }, []);
-
-  // Đóng drawer khi đổi route (điều hướng xong là ẩn).
-  useEffect(() => {
-    setNavOpen(false);
-  }, [loc.pathname]);
-
-  // Esc để đóng + focus nút đóng khi mở (a11y bàn phím trên mobile).
-  useEffect(() => {
-    if (!navOpen) return;
-    closeRef.current?.focus();
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setNavOpen(false);
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [navOpen]);
+  useShellEffects({ setShortcutsOpen });
 
   return (
-    <div className="flex h-full">
-      {/* Backdrop (chỉ mobile, khi drawer mở) */}
-      {navOpen && (
-        <button
-          type="button"
-          aria-label="Đóng menu"
-          onClick={() => setNavOpen(false)}
-          className="fixed inset-0 z-nav-backdrop bg-ink/40 backdrop-blur-[1px] lg:hidden"
-        />
-      )}
-
-      {/* Sidebar: tĩnh trên desktop, drawer trượt trên mobile */}
+    <div className="flex h-full print:block print:h-auto">
+      {/* Sidebar: chỉ từ `lg` (dưới `lg` đã có thanh tab đáy — BottomTabBar). */}
       <aside
         id="app-sidebar"
         aria-label="Điều hướng chính"
-        className={cn(
-          'fixed inset-y-0 left-0 z-nav-drawer flex w-64 flex-col border-r border-border bg-surface',
-          'transition-transform duration-200 ease-out-quart motion-reduce:transition-none',
-          'lg:static lg:z-auto lg:w-48 lg:shrink-0 lg:translate-x-0 lg:shadow-none',
-          navOpen ? 'translate-x-0 shadow-lg' : '-translate-x-full',
-        )}
+        className="hidden w-48 shrink-0 flex-col border-r border-border bg-surface print:hidden lg:flex"
       >
         <div className="flex h-[52px] items-center gap-2 px-4">
-          <div className={cn('grid h-6 w-6 place-items-center rounded-md text-xs font-bold', admin ? 'bg-ink-strong text-bg' : 'bg-primary text-primary-fg')}>
+          <div
+            className={cn(
+              'grid h-6 w-6 place-items-center rounded-md text-xs font-bold',
+              admin ? 'bg-ink-strong text-bg' : 'bg-primary text-primary-fg',
+            )}
+          >
             {admin ? <ShieldCheck className="h-3.5 w-3.5" /> : 'T'}
           </div>
-          <span className="font-semibold tracking-tight text-ink-strong">{admin ? 'Quản trị' : 'Tirapro'}</span>
-          <Button
-            ref={closeRef}
-            variant="ghost"
-            size="icon"
-            onClick={() => setNavOpen(false)}
-            className="ml-auto h-9 w-9 lg:hidden"
-            aria-label="Đóng menu"
-          >
-            <X className="h-4 w-4" />
-          </Button>
+          <span className="font-semibold tracking-tight text-ink-strong">
+            {admin ? 'Quản trị' : 'Tirapro'}
+          </span>
         </div>
-        <nav className="flex-1 space-y-0.5 overflow-y-auto px-2 py-2">
+        <nav className="flex-1 space-y-0.5 overflow-y-auto px-2 py-2" data-tour="nav-main">
           {admin && (
             <>
-              <NavItem to="/" active={false} icon={<ArrowLeft className="h-4 w-4" />} label="Về ứng dụng" />
+              <NavItem
+                to="/"
+                active={false}
+                icon={<ArrowLeft className="h-4 w-4" />}
+                label="Về ứng dụng"
+              />
               <div className="my-1.5 border-t border-border" />
             </>
           )}
           {navItems.map((item) => (
-            <NavItem key={item.to} to={item.to} active={item.match(loc.pathname)} icon={item.icon} label={item.label} />
+            <NavItem
+              key={item.to}
+              to={item.to}
+              active={item.match(loc.pathname)}
+              icon={<item.Icon className="h-4 w-4" />}
+              label={item.label}
+            />
           ))}
         </nav>
-        <div className="border-t border-border p-2 text-xs text-faint">
-          <kbd className="rounded bg-surface-2 px-1.5 py-0.5 font-mono">⌘K</kbd> lệnh nhanh
+        <div className="border-t border-border p-2 text-xs text-faint" data-tour="cmdk-hint">
+          <kbd className="kbd-hint rounded bg-surface-2 px-1.5 py-0.5 font-mono">⌘K</kbd> lệnh nhanh
         </div>
       </aside>
 
       {/* Main */}
-      <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-[52px] shrink-0 items-center gap-2 border-b border-border px-4">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setNavOpen(true)}
-            className="-ml-1 h-10 w-10 lg:hidden"
-            aria-label="Mở menu"
-            aria-controls="app-sidebar"
-            aria-expanded={navOpen}
-          >
-            <Menu className="h-5 w-5" />
-          </Button>
+      <div className="flex min-w-0 flex-1 flex-col print:block">
+        <header className="flex h-[52px] shrink-0 items-center gap-2 border-b border-border px-4 print:hidden">
           {/* Admin đứng trên mọi nơi → không có bộ chọn/nhãn không gian làm việc ở thanh trên. */}
           {!admin && <WorkspaceSwitcher />}
           <div className="min-w-0 flex-1 truncate text-sm text-muted" data-tour="topbar-context" />
           <div className="flex items-center gap-2">
+            {/* Dưới `lg` không còn nút nổi "Lệnh nhanh" → lối vào Bảng lệnh/tìm kiếm nằm ở đây (cùng sự kiện với nút nổi). */}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="lg:hidden"
+              aria-label="Tìm và chạy lệnh nhanh"
+              data-tour="cmdk-hint"
+              onClick={() => window.dispatchEvent(new Event('tirapro:command'))}
+            >
+              <Search className="h-5 w-5" />
+            </Button>
             {/* Trợ lý AI gắn với không gian làm việc → chỉ hiện ngoài ngữ cảnh admin. */}
             {!admin && (
               <Button
@@ -159,22 +126,58 @@ export function AppShell({ children }: { children: ReactNode }) {
             )}
             {/* Hướng dẫn màn + thông báo dùng chung mọi ngữ cảnh (kể cả admin). */}
             <GuideLauncher />
-            <NotificationBell />
-            <UserMenu />
+            {/* Dưới `lg` chuông + menu người dùng đã có trên thanh tab đáy (ô Thông báo, Tôi) → ẩn để khỏi lặp.
+                Admin không có ô Thông báo trên thanh → chuông ở lại. */}
+            <span
+              className={cn('inline-flex', !admin && 'max-lg:hidden')}
+              data-tour="topbar-notifications"
+            >
+              <NotificationBell />
+            </span>
+            <span className="inline-flex max-lg:hidden">
+              <UserMenu />
+            </span>
           </div>
         </header>
-        <MaintenanceBanner />
+        <div className="print:hidden">
+          <MaintenanceBanner />
+        </div>
         {/* scrollbar-gutter:stable — nội dung căn giữa không lệch ngang giữa trang dài (có scrollbar) và trang ngắn */}
-        <main className="min-h-0 flex-1 overflow-auto [scrollbar-gutter:stable]">{children}</main>
+        <main className="min-h-0 flex-1 overflow-auto [scrollbar-gutter:stable] print:overflow-visible">
+          {children}
+        </main>
+        {/* Hai con flex cuối của cột (dưới <main>): thanh "chưa lưu" rồi thanh tab đáy. Không `fixed` nên không che nội dung. */}
+        <UnsavedBar />
+        {!desktop && <BottomTabBar admin={admin} />}
       </div>
 
-      {!admin && <FloatingActions />}
+      {/* `contents`: không thêm hộp vào flex của khung; `print:hidden` ẩn cả nút nổi lẫn hộp thoại khi in. */}
+      {!admin && (
+        <div className="contents print:hidden">
+          {desktop && <FloatingActions />}
+          <CreateDialogsHost />
+        </div>
+      )}
       <ShortcutsDialog open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
+      {/* Hộp xác nhận dùng chung cho useConfirm() — chỉ mount một lần. */}
+      <ConfirmHost />
+      {/* Bộ chặn rời trang duy nhất (useBlocker + beforeunload) cho mọi useLeaveGuard. */}
+      <LeaveGuardHost />
     </div>
   );
 }
 
-function NavItem({ to, active, icon, label }: { to: string; active: boolean; icon: ReactNode; label: string }) {
+function NavItem({
+  to,
+  active,
+  icon,
+  label,
+}: {
+  to: string;
+  active: boolean;
+  icon: ReactNode;
+  label: string;
+}) {
   return (
     <Link
       to={to}

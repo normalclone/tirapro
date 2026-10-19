@@ -7,7 +7,6 @@ import {
   JQL_FIELDS,
   JQL_FUNCTIONS,
   type JqlFieldName,
-  type JqlFunctionName,
   type JqlNode,
   type JqlOperator,
   type JqlOrderBy,
@@ -41,7 +40,7 @@ function tokenize(input: string): Token[] {
   let i = 0;
   const n = input.length;
   while (i < n) {
-    const c = input[i];
+    const c = input[i]!;
     if (c === ' ' || c === '\t' || c === '\n' || c === '\r') {
       i++;
       continue;
@@ -94,7 +93,7 @@ function tokenize(input: string): Token[] {
     // bareword: chữ/số/._-+:@
     const start = i;
     let buf = '';
-    while (i < n && !/[\s(),=<>!~]/.test(input[i])) {
+    while (i < n && !/[\s(),=<>!~]/.test(input[i]!)) {
       buf += input[i];
       i++;
     }
@@ -113,10 +112,10 @@ class Parser {
   constructor(private readonly toks: Token[]) {}
 
   private peek(): Token {
-    return this.toks[this.p];
+    return this.toks[this.p]!;
   }
   private next(): Token {
-    return this.toks[this.p++];
+    return this.toks[this.p++]!;
   }
   private isKw(v: string): boolean {
     const t = this.peek();
@@ -276,7 +275,11 @@ class Parser {
       // Ngày tương đối: -7d, 30d, -1w, 2m, 1y (m = tháng).
       const rel = /^([+-]?\d+)([dwmy])$/i.exec(t.value);
       if (rel) {
-        return { kind: 'relativeDate', amount: parseInt(rel[1], 10), unit: rel[2].toLowerCase() as RelativeDateUnit };
+        return {
+          kind: 'relativeDate',
+          amount: parseInt(rel[1]!, 10),
+          unit: rel[2]!.toLowerCase() as RelativeDateUnit,
+        };
       }
       // Hàm: currentUser(), now(), startOfWeek()… (ngoặc tuỳ chọn).
       const fn = JQL_FUNCTIONS.find((f) => f.toLowerCase() === t.value.toLowerCase());
@@ -285,7 +288,7 @@ class Parser {
           this.next();
           this.eat('rparen', `${fn}() cần ngoặc đóng`);
         }
-        return { kind: 'function', name: fn as JqlFunctionName, args: [] };
+        return { kind: 'function', name: fn, args: [] };
       }
       return { kind: 'string', value: t.value };
     }

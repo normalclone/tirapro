@@ -4,7 +4,7 @@ import { WikiService } from './wiki.service';
 
 /**
  * Module Wiki — tài liệu nội bộ dạng cây (markdown), phạm vi workspace hoặc dự án.
- * Đọc: workspace:view. Ghi: wiki:manage.
+ * Đọc: workspace:view. Ghi: wiki:manage (theo dự án của trang). Xoá: project:admin.
  */
 @Module({
   controllers: [WikiController],

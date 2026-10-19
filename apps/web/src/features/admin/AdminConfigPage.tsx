@@ -1,16 +1,27 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { pageContainer } from '@/components/layout/page';
+import { PageFrame } from '@/components/layout/PageFrame';
+import { PageHeader } from '@/components/layout/PageHeader';
 import { Skeleton } from '@/components/ui/primitives';
-import { Button } from '@/components/ui/Button';
 import { QueryError } from '@/components/ui/QueryError';
 import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { useAdminConfig, useUpdateFlags, type SystemFlags } from './api';
 import { InfoRow } from './_ui';
+import { fmtNumber } from '@/lib/locale';
+import { useUnsavedChanges } from '@/lib/useUnsavedChanges';
+import { ADMIN_LABELS } from '@/lib/navLabels';
 
 /** Công tắc bật/tắt (accessible). */
-function Switch({ checked, onChange, disabled }: { checked: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
+function Switch({
+  checked,
+  onChange,
+  disabled,
+}: {
+  checked: boolean;
+  onChange: (v: boolean) => void;
+  disabled?: boolean;
+}) {
   return (
     <button
       type="button"
@@ -19,16 +30,34 @@ function Switch({ checked, onChange, disabled }: { checked: boolean; onChange: (
       disabled={disabled}
       onClick={() => onChange(!checked)}
       className={cn(
+        // Giữ disabled:opacity (không dùng token vô hiệu) — công tắc: trạng thái bật/tắt phải còn đọc được khi vô hiệu.
         'relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:opacity-50',
         checked ? 'bg-primary' : 'bg-surface-3',
       )}
     >
-      <span className={cn('inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform', checked ? 'translate-x-4' : 'translate-x-0.5')} />
+      <span
+        className={cn(
+          'inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform',
+          checked ? 'translate-x-4' : 'translate-x-0.5',
+        )}
+      />
     </button>
   );
 }
 
-function FlagRow({ label, desc, checked, onChange, disabled }: { label: string; desc: string; checked: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
+function FlagRow({
+  label,
+  desc,
+  checked,
+  onChange,
+  disabled,
+}: {
+  label: string;
+  desc: string;
+  checked: boolean;
+  onChange: (v: boolean) => void;
+  disabled?: boolean;
+}) {
   return (
     <div className="flex items-start justify-between gap-4 py-3.5">
       <div className="min-w-0">
@@ -57,38 +86,80 @@ export function AdminConfigPage() {
   const { data, isLoading, isError, error, refetch } = useAdminConfig();
   const update = useUpdateFlags();
   const [banner, setBanner] = useState('');
+  // Mốc "đã lưu": theo máy chủ, và cập nhật ngay khi lưu xong (không chờ refetch) → dirty về false tức thì.
+  const [savedBanner, setSavedBanner] = useState('');
+  const savedRef = useRef('');
+  savedRef.current = savedBanner;
 
-  useEffect(() => { if (data) setBanner(data.flags.maintenanceBanner); }, [data]);
+  useEffect(() => {
+    if (!data) return;
+    const server = data.flags.maintenanceBanner;
+    // Đang gõ dở thì không đè (bật/tắt cờ cũng làm refetch); chỉ nạp lại khi ô chưa bị sửa.
+    setBanner((cur) => (cur === savedRef.current ? server : cur));
+    setSavedBanner(server);
+  }, [data]);
+
+  const bannerDirty = banner !== savedBanner;
 
   function setFlag(patch: Partial<SystemFlags>) {
     update.mutate(patch, { onError: (e) => toast.error(apiErrorMessage(e)) });
   }
   function saveBanner() {
-    update.mutate({ maintenanceBanner: banner }, {
-      onSuccess: () => toast.success(banner.trim() ? 'Đã bật banner bảo trì' : 'Đã ẩn banner'),
-      onError: (e) => toast.error(apiErrorMessage(e)),
-    });
+    const next = banner;
+    update.mutate(
+      { maintenanceBanner: next },
+      {
+        onSuccess: () => {
+          setSavedBanner(next);
+          toast.success(next.trim() ? 'Đã bật banner bảo trì' : 'Đã ẩn banner');
+        },
+        onError: (e) => toast.error(apiErrorMessage(e)),
+      },
+    );
   }
 
+  useUnsavedChanges({
+    dirty: bannerDirty,
+    saving: update.isPending,
+    canSave: !update.isPending,
+    onSave: saveBanner,
+    onReset: () => setBanner(savedRef.current),
+    description: 'Nội dung banner bảo trì bạn vừa sửa chưa được lưu.',
+  });
+
+  const header = (
+    <PageHeader
+      title={ADMIN_LABELS.config}
+      description="Cờ tính năng bật/tắt ngay, không cần triển khai lại; cấu hình nền lấy từ biến môi trường."
+    />
+  );
+  // Mọi nhánh (lỗi/đang tải/chính) đều có h1 — đúng một h1 mỗi route.
   if (isError) {
-    return <div className={pageContainer('md')}><QueryError error={error} onRetry={() => void refetch()} /></div>;
+    return (
+      <PageFrame size="lg">
+        {header}
+        <QueryError error={error} onRetry={() => void refetch()} />
+      </PageFrame>
+    );
   }
   if (isLoading || !data) {
-    return <div className={pageContainer('md')}><Skeleton className="h-96 w-full" /></div>;
+    return (
+      <PageFrame size="lg">
+        {header}
+        <Skeleton className="h-96 w-full" />
+      </PageFrame>
+    );
   }
 
   const f = data.flags;
   return (
-    <div className={pageContainer('md')}>
-      <header className="mb-6">
-        <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">Cấu hình &amp; Feature flags</h1>
-        <p className="mt-1 text-sm text-muted">Cờ runtime bật/tắt ngay, không cần deploy. Cấu hình nền lấy từ biến môi trường.</p>
-      </header>
+    <PageFrame size="lg">
+      {header}
 
       <div className="space-y-4">
         {/* Feature flags (chỉnh được) */}
         <section className="rounded-lg border border-border bg-surface p-4">
-          <h2 className="mb-1 text-sm font-semibold text-ink">Feature flags</h2>
+          <h2 className="mb-1 text-sm font-semibold text-ink">Cờ tính năng</h2>
           <div className="divide-y divide-border">
             <FlagRow
               label="Cho phép đăng ký công khai"
@@ -114,8 +185,12 @@ export function AdminConfigPage() {
           </div>
 
           <div className="mt-3 border-t border-border pt-3.5">
-            <label htmlFor="banner" className="text-sm font-medium text-ink">Banner bảo trì</label>
-            <p className="mt-0.5 text-xs text-muted">Hiển thị cho mọi người dùng. Để trống để ẩn.</p>
+            <label htmlFor="banner" className="text-sm font-medium text-ink">
+              Banner bảo trì
+            </label>
+            <p className="mt-0.5 text-xs text-muted">
+              Hiển thị cho mọi người dùng. Để trống để ẩn.
+            </p>
             <textarea
               id="banner"
               value={banner}
@@ -125,40 +200,61 @@ export function AdminConfigPage() {
               placeholder="VD: Hệ thống bảo trì 22:00–23:00 hôm nay…"
               className="mt-2 w-full rounded-md border border-border bg-bg px-3 py-2 text-sm text-ink placeholder:text-faint focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
             />
-            <div className="mt-2 flex justify-end">
-              <Button size="sm" onClick={saveBanner} disabled={update.isPending || banner === f.maintenanceBanner}>Lưu banner</Button>
-            </div>
           </div>
         </section>
 
         {/* Cấu hình nền (đọc từ .env) */}
         <div className="grid gap-4 md:grid-cols-2">
           <Panel title="AI">
-            <InfoRow label="Bật (env)"><YesNo v={data.ai.enabled} /></InfoRow>
-            <InfoRow label="ANTHROPIC_API_KEY"><YesNo v={data.ai.hasKey} yes="đã cấu hình" no="thiếu" /></InfoRow>
+            <InfoRow label="Bật (env)">
+              <YesNo v={data.ai.enabled} />
+            </InfoRow>
+            <InfoRow label="ANTHROPIC_API_KEY">
+              <YesNo v={data.ai.hasKey} yes="đã cấu hình" no="thiếu" />
+            </InfoRow>
             <InfoRow label="Model chính">{data.ai.modelPrimary ?? '—'}</InfoRow>
             <InfoRow label="Model nhanh">{data.ai.modelFast ?? '—'}</InfoRow>
-            <InfoRow label="Giới hạn token mỗi không gian làm việc / tháng">{data.ai.monthlyQuotaPerWorkspace?.toLocaleString('vi-VN') ?? '—'}</InfoRow>
+            <InfoRow label="Giới hạn token mỗi không gian làm việc / tháng">
+              {data.ai.monthlyQuotaPerWorkspace != null
+                ? fmtNumber(data.ai.monthlyQuotaPerWorkspace)
+                : '—'}
+            </InfoRow>
           </Panel>
           <Panel title="Embedding / Tìm kiếm ngữ nghĩa">
             <InfoRow label="Nhà cung cấp">{data.embedding.provider}</InfoRow>
             <InfoRow label="Số chiều">{data.embedding.dim ?? '—'}</InfoRow>
-            <InfoRow label="API key"><YesNo v={data.embedding.hasKey} yes="đã cấu hình" no={data.embedding.provider === 'none' ? 'không dùng' : 'thiếu'} /></InfoRow>
+            <InfoRow label="API key">
+              <YesNo
+                v={data.embedding.hasKey}
+                yes="đã cấu hình"
+                no={data.embedding.provider === 'none' ? 'không dùng' : 'thiếu'}
+              />
+            </InfoRow>
           </Panel>
           <Panel title="Redis (realtime / cache)">
-            <InfoRow label="Đã cấu hình"><YesNo v={data.redis.configured} /></InfoRow>
-            <InfoRow label="Kết nối"><YesNo v={data.redis.available} yes="hoạt động" no="giảm cấp" /></InfoRow>
+            <InfoRow label="Đã cấu hình">
+              <YesNo v={data.redis.configured} />
+            </InfoRow>
+            <InfoRow label="Kết nối">
+              <YesNo v={data.redis.available} yes="hoạt động" no="giảm cấp" />
+            </InfoRow>
           </Panel>
           <Panel title="Lưu trữ & Giới hạn">
             <InfoRow label="Driver">{data.storage.driver}</InfoRow>
-            <InfoRow label="Tệp tối đa">{data.storage.maxFileSizeMb ? `${data.storage.maxFileSizeMb} MB` : '—'}</InfoRow>
+            <InfoRow label="Tệp tối đa">
+              {data.storage.maxFileSizeMb ? `${data.storage.maxFileSizeMb} MB` : '—'}
+            </InfoRow>
             <InfoRow label="S3 bucket">{data.storage.s3Bucket ?? '—'}</InfoRow>
-            <InfoRow label="Rate limit">{data.throttle.limit != null ? `${data.throttle.limit} / ${data.throttle.ttl}s` : '—'}</InfoRow>
-            <InfoRow label="Telegram"><YesNo v={data.integrations.telegram} yes="bật" no="tắt" /></InfoRow>
+            <InfoRow label="Rate limit">
+              {data.throttle.limit != null ? `${data.throttle.limit} / ${data.throttle.ttl}s` : '—'}
+            </InfoRow>
+            <InfoRow label="Telegram">
+              <YesNo v={data.integrations.telegram} yes="bật" no="tắt" />
+            </InfoRow>
             <InfoRow label="Môi trường">{data.nodeEnv}</InfoRow>
           </Panel>
         </div>
       </div>
-    </div>
+    </PageFrame>
   );
 }

@@ -1,11 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link2, Pencil, Plus, Target, Trash2, X } from 'lucide-react';
+import { DocsLink } from '@/components/ui/DocsLink';
+import { LineChart, Link2, Pencil, Plus, Target, Trash2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Avatar, Badge, EmptyState, Skeleton } from '@/components/ui/primitives';
 import { Button } from '@/components/ui/Button';
+import { useConfirm } from '@/components/ui/useConfirm';
 import { Input } from '@/components/ui/Input';
 import { SearchSelect } from '@/components/ui/SearchSelect';
-import { pageContainer } from '@/components/layout/page';
+import { PageFrame } from '@/components/layout/PageFrame';
+import { PageHeader } from '@/components/layout/PageHeader';
 import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/stores/auth';
@@ -13,14 +16,39 @@ import { useProjects } from '@/features/projects/api';
 import { GoalEditorModal } from './GoalEditorModal';
 import { AttachIssuesModal } from './AttachIssuesModal';
 import {
-  useDeleteGoal, useDetachGoalIssues, useGoalPeriods, useGoals, useUpdateKeyResult,
-  type GoalDto, type KeyResultDto, type ObjectiveStatus,
+  useDeleteGoal,
+  useDetachGoalIssues,
+  useGoalPeriods,
+  useGoals,
+  useUpdateKeyResult,
+  type GoalDto,
+  type KeyResultDto,
+  type ObjectiveStatus,
 } from './api';
+import { QueryBoundary } from '@/components/ui/QueryBoundary';
+import { fmtDateTime } from '@/lib/dateFormat';
+import { describeSource, isAutoSource } from './krSource';
+import { formatKrValue, krSummary } from './krFormat';
+import { CheckInButton, CheckInHistoryButton } from './CheckInPopover';
+import { ProgressChart } from './ProgressChart';
+import { MANAGE_LABELS } from '@/lib/navLabels';
 
 const STATUS_META: Record<ObjectiveStatus, { label: string; className: string; hint: string }> = {
-  DRAFT: { label: 'Nháp', className: 'bg-surface-2 text-muted', hint: 'Đang soạn, chưa công bố cho cả nhóm' },
-  ACTIVE: { label: 'Đang theo đuổi', className: 'bg-primary-subtle text-primary', hint: 'Cả nhóm đang làm để đạt mục tiêu này' },
-  CLOSED: { label: 'Đã chốt', className: 'bg-success/10 text-success', hint: 'Kỳ đã kết thúc, kết quả không thay đổi nữa' },
+  DRAFT: {
+    label: 'Nháp',
+    className: 'bg-surface-2 text-muted',
+    hint: 'Đang soạn, chưa công bố cho cả nhóm',
+  },
+  ACTIVE: {
+    label: 'Đang theo đuổi',
+    className: 'bg-primary-subtle text-primary',
+    hint: 'Cả nhóm đang làm để đạt mục tiêu này',
+  },
+  CLOSED: {
+    label: 'Đã chốt',
+    className: 'bg-success/10 text-success',
+    hint: 'Kỳ đã kết thúc, kết quả không thay đổi nữa',
+  },
 };
 
 const STATUS_FILTER_OPTIONS = [
@@ -36,18 +64,22 @@ function periodHint(period: string): string {
   return m ? `Quý ${m[2]} năm ${m[1]}` : `Kỳ ${period}`;
 }
 
-/** Định dạng giá trị KR theo đơn vị (số / phần trăm / tiền). */
-function formatValue(value: number, unit: KeyResultDto['unit']): string {
-  if (unit === 'PERCENT') return `${Math.round(value * 10) / 10}%`;
-  if (unit === 'CURRENCY') return new Intl.NumberFormat('vi-VN').format(value);
-  return String(Math.round(value * 100) / 100);
-}
-
-function ProgressBar({ value, label, size = 'md' }: { value: number; label: string; size?: 'sm' | 'md' }) {
+function ProgressBar({
+  value,
+  label,
+  size = 'md',
+}: {
+  value: number;
+  label: string;
+  size?: 'sm' | 'md';
+}) {
   const pct = Math.min(100, Math.max(0, value));
   return (
     <div
-      className={cn('w-full overflow-hidden rounded-full bg-surface-3', size === 'md' ? 'h-2' : 'h-1.5')}
+      className={cn(
+        'w-full overflow-hidden rounded-full bg-surface-3',
+        size === 'md' ? 'h-2' : 'h-1.5',
+      )}
       role="progressbar"
       aria-valuenow={pct}
       aria-valuemin={0}
@@ -63,11 +95,30 @@ function ProgressBar({ value, label, size = 'md' }: { value: number; label: stri
 }
 
 /** Một kết quả then chốt: thanh tiến độ + ô sửa giá trị hiện tại ngay tại chỗ. */
-function KeyResultRow({ goal, kr, canManage }: { goal: GoalDto; kr: KeyResultDto; canManage: boolean }) {
+function KeyResultRow({
+  goal,
+  kr,
+  canManage,
+}: {
+  goal: GoalDto;
+  kr: KeyResultDto;
+  canManage: boolean;
+}) {
   const updateKr = useUpdateKeyResult();
+  const { data: projects } = useProjects();
   const [draft, setDraft] = useState(String(kr.currentValue));
+  const auto = isAutoSource(kr.source);
+  const projectNames = useMemo(
+    () => Object.fromEntries((projects ?? []).map((p) => [p.id, p.name])),
+    [projects],
+  );
+  const sourceHint = auto
+    ? `${describeSource(kr, projectNames)}. Số tính theo dự án bạn có quyền xem.`
+    : undefined;
 
-  useEffect(() => { setDraft(String(kr.currentValue)); }, [kr.currentValue]);
+  useEffect(() => {
+    setDraft(String(kr.currentValue));
+  }, [kr.currentValue]);
 
   async function commit() {
     const next = Number(draft);
@@ -76,7 +127,12 @@ function KeyResultRow({ goal, kr, canManage }: { goal: GoalDto; kr: KeyResultDto
       return;
     }
     try {
-      await updateKr.mutateAsync({ goalId: goal.id, keyResultId: kr.id, currentValue: next });
+      await updateKr.mutateAsync({
+        goalId: goal.id,
+        keyResultId: kr.id,
+        currentValue: next,
+        expectedCurrentValue: kr.currentValue,
+      });
     } catch (e) {
       setDraft(String(kr.currentValue));
       toast.error(apiErrorMessage(e));
@@ -86,27 +142,52 @@ function KeyResultRow({ goal, kr, canManage }: { goal: GoalDto; kr: KeyResultDto
   return (
     <li className="py-2.5 first:pt-0 last:pb-0">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-        <p className="min-w-0 flex-1 truncate text-sm text-ink" title={kr.name}>{kr.name}</p>
+        <p
+          className="w-full min-w-0 text-sm text-ink sm:w-auto sm:flex-1 sm:truncate"
+          title={kr.name}
+        >
+          {kr.name}
+        </p>
         <div className="flex items-center gap-2">
-          {canManage ? (
+          {auto ? (
+            <>
+              <Badge className="bg-primary-subtle text-primary" title={sourceHint}>
+                Tự đo
+              </Badge>
+              <span className="tabular-nums text-sm text-ink" title={sourceHint}>
+                {formatKrValue(kr.currentValue, kr.unit, kr.unitLabel)}
+              </span>
+            </>
+          ) : canManage ? (
             <Input
               type="number"
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
               onBlur={() => void commit()}
               onKeyDown={(e) => {
-                if (e.key === 'Enter') { e.preventDefault(); (e.target as HTMLInputElement).blur(); }
-                if (e.key === 'Escape') { setDraft(String(kr.currentValue)); (e.target as HTMLInputElement).blur(); }
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  (e.target as HTMLInputElement).blur();
+                }
+                if (e.key === 'Escape') {
+                  setDraft(String(kr.currentValue));
+                  (e.target as HTMLInputElement).blur();
+                }
               }}
               className="h-8 w-24 tabular-nums text-sm"
               title="Số đo hiện tại. Sửa rồi nhấn Enter là lưu ngay."
               aria-label={`Giá trị hiện tại của ${kr.name}`}
             />
           ) : (
-            <span className="tabular-nums text-sm text-ink" title="Số đo hiện tại">{formatValue(kr.currentValue, kr.unit)}</span>
+            <span className="tabular-nums text-sm text-ink" title="Số đo hiện tại">
+              {formatKrValue(kr.currentValue, kr.unit, kr.unitLabel)}
+            </span>
           )}
-          <span className="whitespace-nowrap text-xs text-faint" title="Số cần đạt để coi là hoàn thành">
-            / {formatValue(kr.targetValue, kr.unit)}
+          <span
+            className="whitespace-nowrap text-xs text-faint"
+            title="Số cần đạt để coi là hoàn thành"
+          >
+            / {formatKrValue(kr.targetValue, kr.unit, kr.unitLabel)}
           </span>
           <span
             className="w-10 shrink-0 text-right text-xs font-medium tabular-nums text-muted"
@@ -119,24 +200,55 @@ function KeyResultRow({ goal, kr, canManage }: { goal: GoalDto; kr: KeyResultDto
       <div className="mt-1.5">
         <ProgressBar value={kr.progress} label={`Tiến độ ${kr.name}`} size="sm" />
       </div>
+      <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5">
+        <p
+          className="min-w-0 flex-1 text-xs tabular-nums text-faint"
+          title="Hành trình của kết quả này"
+        >
+          {krSummary(kr)}
+          {auto && !kr.measureError && kr.measuredAt && ` · đo lúc ${fmtDateTime(kr.measuredAt)}`}
+        </p>
+        <div className="flex items-center gap-0.5">
+          {canManage && !auto && <CheckInButton goal={goal} kr={kr} />}
+          {(!auto || kr.checkInCount > 0) && <CheckInHistoryButton goal={goal} kr={kr} />}
+        </div>
+      </div>
+      {auto && kr.measureError && (
+        <p className="mt-1 text-xs text-danger" role="alert">
+          {`Không đo được: ${kr.measureError} — đang hiện số cũ`}
+        </p>
+      )}
     </li>
   );
 }
 
 function GoalCard({
-  goal, canManage, onEdit, onAttach,
+  goal,
+  canManage,
+  onEdit,
+  onAttach,
 }: {
   goal: GoalDto;
   canManage: boolean;
   onEdit: (goal: GoalDto) => void;
   onAttach: (goal: GoalDto) => void;
 }) {
+  const confirm = useConfirm();
   const remove = useDeleteGoal();
   const detach = useDetachGoalIssues();
   const status = STATUS_META[goal.status];
+  const [chartOpen, setChartOpen] = useState(false);
 
   async function handleRemove() {
-    if (!window.confirm(`Xoá mục tiêu “${goal.name}”? Toàn bộ kết quả then chốt của mục tiêu này cũng bị xoá và không khôi phục được.`)) return;
+    if (
+      !(await confirm({
+        title: `Xoá mục tiêu “${goal.name}”?`,
+        description:
+          'Toàn bộ kết quả then chốt của mục tiêu này cũng bị xoá và không khôi phục được.',
+        destructive: true,
+      }))
+    )
+      return;
     try {
       await remove.mutateAsync(goal.id);
       toast.success('Đã xoá mục tiêu');
@@ -157,25 +269,37 @@ function GoalCard({
   return (
     <article className="rounded-lg border border-border bg-surface">
       <div className="flex flex-wrap items-start gap-3 px-4 py-3.5 sm:px-5">
-        <div className="min-w-0 flex-1">
+        <div className="w-full min-w-0 sm:w-auto sm:flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <h3 className="text-base font-semibold text-ink-strong">{goal.name}</h3>
-            <Badge className={status.className}><span title={status.hint}>{status.label}</span></Badge>
+            <h3 className="min-w-0 break-words text-base font-semibold text-ink-strong">
+              {goal.name}
+            </h3>
+            <Badge className={status.className}>
+              <span title={status.hint}>{status.label}</span>
+            </Badge>
             {goal.project && (
-              <span className="text-xs text-faint" title="Mục tiêu này chỉ áp dụng cho dự án đó">{goal.project.name}</span>
+              <span className="text-xs text-faint" title="Mục tiêu này chỉ áp dụng cho dự án đó">
+                {goal.project.name}
+              </span>
             )}
           </div>
           {goal.description && <p className="mt-1 text-sm text-muted">{goal.description}</p>}
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 max-sm:w-full max-sm:justify-between">
           {goal.owner ? (
-            <span className="flex items-center gap-1.5" title={`Người phụ trách mục tiêu: ${goal.owner.displayName}`}>
+            <span
+              className="flex items-center gap-1.5"
+              title={`Người phụ trách mục tiêu: ${goal.owner.displayName}`}
+            >
               <Avatar name={goal.owner.displayName} src={goal.owner.avatarUrl} size={26} />
               <span className="hidden text-sm text-muted sm:inline">{goal.owner.displayName}</span>
             </span>
           ) : (
-            <span className="text-xs text-faint" title="Chưa ai nhận trách nhiệm chính cho mục tiêu này">
+            <span
+              className="text-xs text-faint"
+              title="Chưa ai nhận trách nhiệm chính cho mục tiêu này"
+            >
               Chưa có người phụ trách
             </span>
           )}
@@ -222,7 +346,8 @@ function GoalCard({
           {goal.keyResults.length > 0
             ? `Tính trung bình từ ${goal.keyResults.length} kết quả then chốt`
             : 'Chưa có kết quả then chốt nào để đo tiến độ'}
-          {goal.issueCount > 0 && ` · ${goal.issueDoneCount}/${goal.issueCount} công việc đã xong (${goal.issueProgress}%)`}
+          {goal.issueCount > 0 &&
+            ` · ${goal.issueDoneCount}/${goal.issueCount} công việc đã xong (${goal.issueProgress}%)`}
         </p>
       </div>
 
@@ -233,6 +358,26 @@ function GoalCard({
           ))}
         </ul>
       )}
+      {goal.keyResults.length > 0 && (
+        <div className="border-t border-border px-4 py-2 sm:px-5">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setChartOpen((o) => !o)}
+            aria-expanded={chartOpen}
+            aria-controls={`goal-chart-${goal.id}`}
+            title="Đường tiến độ theo ngày của từng kết quả và của cả mục tiêu"
+          >
+            <LineChart className="h-4 w-4" />
+            {chartOpen ? 'Ẩn biểu đồ' : 'Biểu đồ'}
+          </Button>
+          {chartOpen && (
+            <div id={`goal-chart-${goal.id}`} className="mt-2 pb-1">
+              <ProgressChart goal={goal} />
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="flex flex-wrap items-center gap-2 border-t border-border px-4 py-2.5 sm:px-5">
         {goal.issues.map((issue) => (
@@ -242,7 +387,11 @@ function GoalCard({
           >
             <span className="font-mono">{issue.key}</span>
             <span className="max-w-[14rem] truncate">{issue.summary}</span>
-            {issue.statusCategory === 'DONE' && <span className="text-success" title="Công việc này đã hoàn thành">xong</span>}
+            {issue.statusCategory === 'DONE' && (
+              <span className="text-success" title="Công việc này đã hoàn thành">
+                xong
+              </span>
+            )}
             {canManage && (
               <button
                 type="button"
@@ -266,9 +415,21 @@ function GoalCard({
             <Link2 className="h-4 w-4" /> Gắn công việc
           </Button>
         )}
-        {!canManage && goal.issues.length === 0 && <span className="text-xs text-faint">Chưa gắn công việc nào</span>}
+        {!canManage && goal.issues.length === 0 && (
+          <span className="text-xs text-faint">Chưa gắn công việc nào</span>
+        )}
       </div>
     </article>
+  );
+}
+
+function GoalsSkeleton() {
+  return (
+    <div className="space-y-4">
+      {Array.from({ length: 3 }).map((_, i) => (
+        <Skeleton key={i} className="h-40 w-full" />
+      ))}
+    </div>
   );
 }
 
@@ -284,7 +445,8 @@ export function GoalsPage() {
   const [editing, setEditing] = useState<GoalDto | null>(null);
   const [attaching, setAttaching] = useState<GoalDto | null>(null);
 
-  const { data: goals, isLoading } = useGoals({ period, projectId, status });
+  const goalsQuery = useGoals({ period, projectId, status });
+  const { data: goals } = goalsQuery;
   const { data: periods } = useGoalPeriods();
   const { data: projects } = useProjects();
 
@@ -325,24 +487,28 @@ export function GoalsPage() {
   }
 
   // Modal đang mở giữ tham chiếu cũ sau khi lưu → lấy bản mới nhất từ danh sách.
-  const attachTarget = attaching ? (goals ?? []).find((g) => g.id === attaching.id) ?? attaching : null;
+  const attachTarget = attaching
+    ? ((goals ?? []).find((g) => g.id === attaching.id) ?? attaching)
+    : null;
 
   return (
-    <div className={pageContainer('lg')}>
-      <header className="mb-6 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">Mục tiêu &amp; kết quả then chốt</h1>
-          <p className="mt-1 text-sm text-muted">
-            Mỗi kỳ (thường là một quý) đặt vài mục tiêu, mỗi mục tiêu kèm những kết quả then chốt đo được bằng số.
-            Tiến độ tính từ số đo hiện tại của các kết quả đó. Cách làm này quốc tế gọi là OKR.
-          </p>
-        </div>
-        {canManage && (
-          <Button onClick={openCreate}>
-            <Plus className="h-4 w-4" /> Tạo mục tiêu
-          </Button>
-        )}
-      </header>
+    <PageFrame size="xl">
+      <PageHeader
+        title={MANAGE_LABELS.goals}
+        description={
+          <>
+            Đặt mục tiêu theo quý, mỗi mục tiêu kèm kết quả then chốt đo được bằng số.{' '}
+            <DocsLink anchor="quan-ly-nang-cao" />
+          </>
+        }
+        actions={
+          canManage ? (
+            <Button size="sm" onClick={openCreate}>
+              <Plus className="h-4 w-4" /> Tạo mục tiêu
+            </Button>
+          ) : undefined
+        }
+      />
 
       <div className="mb-5 flex flex-wrap items-center gap-2">
         <SearchSelect
@@ -374,59 +540,84 @@ export function GoalsPage() {
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => { setPeriod(''); setProjectId(''); setStatus(''); }}
+            onClick={() => {
+              setPeriod('');
+              setProjectId('');
+              setStatus('');
+            }}
           >
             Xoá bộ lọc
           </Button>
         )}
       </div>
 
-      {isLoading ? (
-        <div className="space-y-4">
-          {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-40 w-full" />)}
-        </div>
-      ) : groups.length === 0 ? (
-        <EmptyState
-          icon={<Target className="h-6 w-6" />}
-          title="Chưa có mục tiêu nào"
-          description={
-            canManage
-              ? 'Mục tiêu cho biết kỳ này cả nhóm hướng tới điều gì. Tạo mục tiêu đầu tiên, thêm vài kết quả then chốt đo được bằng số rồi gắn công việc để theo dõi.'
-              : 'Mục tiêu cho biết kỳ này cả nhóm hướng tới điều gì. Khi nhóm của bạn đặt mục tiêu, chúng sẽ hiện ở đây.'
-          }
-          action={canManage ? <Button onClick={openCreate}><Plus className="h-4 w-4" /> Tạo mục tiêu</Button> : undefined}
-        />
-      ) : (
-        <div className="space-y-8">
-          {groups.map(([groupPeriod, items]) => (
-            <section key={groupPeriod}>
-              <div className="mb-3 flex items-baseline gap-2">
-                <h2 className="text-base font-semibold text-ink-strong" title={periodHint(groupPeriod)}>{groupPeriod}</h2>
-                <span className="text-sm text-faint">{items.length} mục tiêu</span>
-              </div>
-              <div className="space-y-4">
-                {items.map((goal) => (
-                  <GoalCard
-                    key={goal.id}
-                    goal={goal}
-                    canManage={canManage}
-                    onEdit={openEdit}
-                    onAttach={setAttaching}
-                  />
-                ))}
-              </div>
-            </section>
-          ))}
-        </div>
-      )}
+      <QueryBoundary
+        query={goalsQuery}
+        skeleton={<GoalsSkeleton />}
+        empty={() => groups.length === 0}
+        emptyState={
+          <EmptyState
+            icon={<Target className="h-6 w-6" />}
+            title="Chưa có mục tiêu nào"
+            description={
+              canManage
+                ? 'Mục tiêu cho biết kỳ này cả nhóm hướng tới điều gì. Tạo mục tiêu đầu tiên, thêm vài kết quả then chốt đo được bằng số rồi gắn công việc để theo dõi.'
+                : 'Mục tiêu cho biết kỳ này cả nhóm hướng tới điều gì. Khi nhóm của bạn đặt mục tiêu, chúng sẽ hiện ở đây.'
+            }
+            action={
+              canManage ? (
+                <Button variant="secondary" size="sm" onClick={openCreate}>
+                  <Plus className="h-4 w-4" /> Tạo mục tiêu
+                </Button>
+              ) : undefined
+            }
+          />
+        }
+      >
+        {() => (
+          <div className="space-y-8">
+            {groups.map(([groupPeriod, items]) => (
+              <section key={groupPeriod}>
+                <div className="mb-3 flex items-baseline gap-2">
+                  <h2
+                    className="text-base font-semibold text-ink-strong"
+                    title={periodHint(groupPeriod)}
+                  >
+                    {groupPeriod}
+                  </h2>
+                  <span className="text-sm text-faint">{items.length} mục tiêu</span>
+                </div>
+                <div className="space-y-4">
+                  {items.map((goal) => (
+                    <GoalCard
+                      key={goal.id}
+                      goal={goal}
+                      canManage={canManage}
+                      onEdit={openEdit}
+                      onAttach={setAttaching}
+                    />
+                  ))}
+                </div>
+              </section>
+            ))}
+          </div>
+        )}
+      </QueryBoundary>
 
       <GoalEditorModal
         open={editorOpen}
         goal={editing}
         defaultPeriod={period || undefined}
-        onClose={() => { setEditorOpen(false); setEditing(null); }}
+        onClose={() => {
+          setEditorOpen(false);
+          setEditing(null);
+        }}
       />
-      <AttachIssuesModal open={!!attachTarget} goal={attachTarget} onClose={() => setAttaching(null)} />
-    </div>
+      <AttachIssuesModal
+        open={!!attachTarget}
+        goal={attachTarget}
+        onClose={() => setAttaching(null)}
+      />
+    </PageFrame>
   );
 }

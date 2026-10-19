@@ -1,29 +1,11 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import { useLocation } from 'react-router-dom';
-import { Plus, FolderPlus, Search, Sparkles, Bug, Eye, EyeOff, X, Settings2, Check } from 'lucide-react';
-import { toast } from 'sonner';
-import { useProject, useProjects } from '@/features/projects/api';
-import { useIssue } from '@/features/issues/api';
-import { useToggleWatch, useWatchState } from '@/features/issue-widgets/api';
-import { useAi } from '@/stores/ai';
+import { Plus, Search, X, Settings2, Check } from 'lucide-react';
 import { useQuickActions, type QuickActionKey } from '@/stores/quickActions';
-import { useCreateIssueModal } from '@/stores/createIssue';
-import { CreateProjectModal } from '@/features/projects/CreateProjectModal';
-import { GenerateIssuesDialog } from '@/features/ai/GenerateIssuesDialog';
-import { ReportIssueModal } from '@/features/intake/ReportIssueModal';
-import { apiErrorMessage } from '@/lib/api';
+import { useCreateActions } from '@/components/layout/createActions';
+import { keyLabel } from '@/lib/shortcuts';
+import { useMediaQuery } from '@/lib/useMediaQuery';
 import { cn } from '@/lib/utils';
-
-function projectKeyFromPath(pathname: string): string {
-  const parts = pathname.split('/').filter(Boolean);
-  if (parts[0] === 'p' && parts[1]) return parts[1].toUpperCase();
-  // Trang /issue/:key — mã theo LOẠI, không suy ra project key từ chuỗi; resolve theo projectId.
-  return '';
-}
-function issueKeyFromPath(pathname: string): string {
-  const parts = pathname.split('/').filter(Boolean);
-  return parts[0] === 'issue' && parts[1] ? parts[1].toUpperCase() : '';
-}
+import { FAB_BOTTOM_CSS, FAB_RIGHT_CSS } from '@/lib/layoutTokens';
 
 interface QuickAction {
   key: QuickActionKey;
@@ -43,35 +25,21 @@ const ACTION_META: { key: QuickActionKey; label: string; hint?: string }[] = [
   { key: 'command', label: 'Lệnh nhanh' },
 ];
 
+/**
+ * Nút nổi (CHỈ từ `lg` — dưới `lg` đã có thanh tab đáy + sheet "Tạo", xem `AppShell`). Danh sách tác vụ lấy từ
+ * `useCreateActions` (dùng chung với sheet), ở đây chỉ thêm "Lệnh nhanh" + "Tuỳ biến" và lọc theo tuỳ chọn người dùng.
+ * Hộp thoại Tạo dự án / Tạo bằng AI nằm ở `CreateDialogsHost`.
+ */
 export function FloatingActions() {
-  const loc = useLocation();
-  const openCreate = useCreateIssueModal((s) => s.openCreate);
-  const aiEnabled = useAi((s) => s.enabled);
   const { enabled, toggle } = useQuickActions();
-  const projectKey = projectKeyFromPath(loc.pathname);
-  const issueKey = issueKeyFromPath(loc.pathname);
-  const { data: issue } = useIssue(issueKey || null);
-  const { data: projects } = useProjects();
-  const { data: projectByKey } = useProject(projectKey);
-  // Trên /p/:key dùng key; trên trang issue resolve project theo projectId của issue.
-  const project = projectByKey ?? (issue ? projects?.find((p) => p.id === issue.projectId) ?? null : null);
-  const issueId = issue?.id ?? '';
-  const { data: watchState } = useWatchState(issueId);
-  const watchToggle = useToggleWatch(issueId);
+  const createActions = useCreateActions();
+  // Cảm ứng: tooltip native `title` bị kẹt sau khi chạm (InstantTooltip ẩn ở pointerdown nhưng iPad vẫn thấy dính).
+  const coarse = useMediaQuery('(pointer: coarse)');
 
   const [open, setOpen] = useState(false);
   const [closing, setClosing] = useState(false);
   const [customizing, setCustomizing] = useState(false);
-  const [createProject, setCreateProject] = useState(false);
-  const [genAi, setGenAi] = useState(false);
-  const [report, setReport] = useState(false);
   const closeTimer = useRef<ReturnType<typeof setTimeout>>();
-
-  const hasProject = !!project?.id;
-  const onIssue = !!issueId;
-  const watching = watchState?.watching ?? false;
-  // Tạo công việc = mở TRANG tạo (không còn popup). Dùng dự án hiện tại, fallback dự án đầu tiên.
-  const createTargetKey = project?.key ?? projects?.[0]?.key ?? '';
 
   // Đóng có chuyển động: chạy animate-out rồi mới unmount. Fallback tức thời khi
   // người dùng ưu tiên giảm chuyển động (đã có motion-reduce trên phần tử con).
@@ -98,28 +66,27 @@ export function FloatingActions() {
 
   // Tác vụ khả dụng theo ngữ cảnh, lọc theo tuỳ chọn người dùng.
   const actions: QuickAction[] = [
-    enabled.issue && {
-      key: 'issue',
-      icon: <Plus className="h-5 w-5" />,
-      label: 'Tạo công việc',
-      onClick: run(() => {
-        if (createTargetKey) openCreate({ projectKey: createTargetKey });
-        else toast.error('Chưa có dự án nào — hãy tạo một dự án trước, rồi thêm công việc vào đó.');
-      }),
-    },
-    hasProject && aiEnabled && enabled.ai && { key: 'ai', icon: <Sparkles className="h-5 w-5 text-primary" />, label: 'Tạo bằng AI', onClick: run(() => setGenAi(true)) },
-    hasProject && enabled.report && { key: 'report', icon: <Bug className="h-5 w-5" />, label: 'Báo lỗi', onClick: run(() => setReport(true)) },
-    onIssue && enabled.watch && {
-      key: 'watch',
-      icon: watching ? <Eye className="h-5 w-5 text-primary" /> : <EyeOff className="h-5 w-5" />,
-      label: watching ? 'Bỏ theo dõi' : 'Theo dõi',
-      onClick: run(() =>
-        watchToggle.mutateAsync(watching).catch((e: unknown) => toast.error(apiErrorMessage(e))),
-      ),
-    },
-    enabled.project && { key: 'project', icon: <FolderPlus className="h-5 w-5" />, label: 'Tạo dự án', onClick: run(() => setCreateProject(true)) },
-    enabled.command && { key: 'command', icon: <Search className="h-5 w-5" />, label: 'Lệnh nhanh', kbd: '⌘K', onClick: run(() => window.dispatchEvent(new Event('tirapro:command'))) },
-  ].filter(Boolean) as QuickAction[];
+    ...createActions
+      .filter((a) => enabled[a.key])
+      .map((a) => ({
+        key: a.key,
+        icon: a.icon,
+        label: a.label,
+        kbd: a.kbd,
+        onClick: run(a.perform),
+      })),
+    ...(enabled.command
+      ? [
+          {
+            key: 'command' as const,
+            icon: <Search className="h-5 w-5" />,
+            label: 'Lệnh nhanh',
+            kbd: keyLabel('global.palette')?.replace(' ', ''),
+            onClick: run(() => window.dispatchEvent(new Event('tirapro:command'))),
+          },
+        ]
+      : []),
+  ];
 
   return (
     <>
@@ -132,16 +99,21 @@ export function FloatingActions() {
         />
       )}
 
-      <div className="fixed bottom-6 right-6 z-sticky flex flex-col items-end gap-3">
+      <div
+        className="fixed z-sticky flex flex-col items-end gap-3"
+        style={{ bottom: FAB_BOTTOM_CSS, right: FAB_RIGHT_CSS }}
+      >
         {open && customizing && (
           <div
             className={cn(
               'w-64 rounded-lg border border-border bg-surface p-2 shadow-lg',
-              'origin-bottom-right animate-in fade-in zoom-in-95 duration-[120ms] ease-out-quart',
+              'origin-bottom-right animate-in fade-in zoom-in-95 duration-fast ease-out-quart',
               'motion-reduce:animate-none motion-reduce:zoom-in-100',
             )}
           >
-            <p className="px-2 py-1 text-xs font-semibold uppercase tracking-wide text-faint">Tuỳ biến nút nổi</p>
+            <p className="px-2 py-1 text-xs font-semibold uppercase tracking-wide text-faint">
+              Tuỳ biến nút nổi
+            </p>
             <ul>
               {ACTION_META.map((m) => (
                 <li key={m.key}>
@@ -158,7 +130,9 @@ export function FloatingActions() {
                     <span
                       className={cn(
                         'grid h-4 w-4 shrink-0 place-items-center rounded border',
-                        enabled[m.key] ? 'border-primary bg-primary text-primary-fg' : 'border-border',
+                        enabled[m.key]
+                          ? 'border-primary bg-primary text-primary-fg'
+                          : 'border-border',
                       )}
                     >
                       {enabled[m.key] && <Check className="h-3 w-3" />}
@@ -214,10 +188,10 @@ export function FloatingActions() {
           }}
           aria-expanded={open}
           aria-label={open ? 'Đóng thao tác nhanh' : 'Thao tác nhanh'}
-          title="Thao tác nhanh"
+          title={coarse ? undefined : 'Thao tác nhanh'}
           className={cn(
             'grid h-14 w-14 place-items-center rounded-full bg-primary text-primary-fg shadow-lg',
-            'transition-[background-color,transform] duration-[120ms] ease-out-quart',
+            'transition-[background-color,transform] duration-fast ease-out-quart',
             'hover:bg-primary-hover active:scale-95',
             'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
             'motion-reduce:transition-none motion-reduce:active:scale-100',
@@ -225,7 +199,7 @@ export function FloatingActions() {
         >
           <span
             className={cn(
-              'grid place-items-center transition-transform duration-[120ms] ease-out-quart motion-reduce:transition-none',
+              'grid place-items-center transition-transform duration-fast ease-out-quart motion-reduce:transition-none',
               open && !closing ? 'rotate-45' : 'rotate-0',
             )}
           >
@@ -233,16 +207,6 @@ export function FloatingActions() {
           </span>
         </button>
       </div>
-
-      <CreateProjectModal open={createProject} onClose={() => setCreateProject(false)} />
-      {hasProject && (
-        <>
-          <ReportIssueModal projectKey={project!.key} projectId={project!.id} open={report} onClose={() => setReport(false)} />
-          {aiEnabled && (
-            <GenerateIssuesDialog projectKey={project!.key} projectId={project!.id} open={genAi} onClose={() => setGenAi(false)} />
-          )}
-        </>
-      )}
     </>
   );
 }
@@ -269,7 +233,16 @@ interface ActionButtonProps {
  * trạng thái đích nên không tái khởi động hiệu ứng. So le bằng transition-delay.
  * Có fallback `motion-reduce`: hiện/ẩn tức thời, không transform.
  */
-function ActionButton({ onClick, label, icon, kbd, index, closing, dashed, muted }: ActionButtonProps) {
+function ActionButton({
+  onClick,
+  label,
+  icon,
+  kbd,
+  index,
+  closing,
+  dashed,
+  muted,
+}: ActionButtonProps) {
   const [shown, setShown] = useState(false);
   useEffect(() => {
     const id = requestAnimationFrame(() => setShown(true));
@@ -287,7 +260,7 @@ function ActionButton({ onClick, label, icon, kbd, index, closing, dashed, muted
       style={{ transitionDelay: `${delay}ms`, willChange: 'transform, opacity' }}
       className={cn(
         'group flex items-center gap-2 rounded-full outline-none',
-        'transition-[opacity,transform] duration-[180ms] ease-out-quart',
+        'transition-[opacity,transform] duration-base ease-out-quart',
         visible ? 'translate-y-0 opacity-100' : 'translate-y-1.5 opacity-0',
         'motion-reduce:transition-none motion-reduce:translate-y-0',
       )}
@@ -295,18 +268,22 @@ function ActionButton({ onClick, label, icon, kbd, index, closing, dashed, muted
       <span
         className={cn(
           'flex items-center gap-1.5 rounded-md border bg-surface px-2.5 py-1 text-sm font-medium shadow-sm',
-          'transition-colors duration-[120ms] ease-out-quart motion-reduce:transition-none',
+          'transition-colors duration-fast ease-out-quart motion-reduce:transition-none',
           muted ? 'border-border text-muted group-hover:text-ink' : 'border-border text-ink',
           'group-hover:bg-surface-2',
         )}
       >
         {label}
-        {kbd && <kbd className="rounded bg-surface-2 px-1 font-mono text-[10px] text-muted">{kbd}</kbd>}
+        {kbd && (
+          <kbd className="kbd-hint rounded bg-surface-2 px-1 font-mono text-[10px] text-muted">
+            {kbd}
+          </kbd>
+        )}
       </span>
       <span
         className={cn(
           'grid h-11 w-11 shrink-0 place-items-center rounded-full border bg-surface shadow-md',
-          'transition-[background-color,transform] duration-[120ms] ease-out-quart',
+          'transition-[background-color,transform] duration-fast ease-out-quart',
           'group-hover:bg-surface-2 group-active:scale-95',
           'group-focus-visible:ring-2 group-focus-visible:ring-[var(--ring)]',
           'motion-reduce:transition-none motion-reduce:group-active:scale-100',

@@ -1,7 +1,25 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { toCsv, vnDayStamp } from '@tirapro/shared';
+import type { IssueDto } from '@tirapro/types';
 import { PrismaService } from '../../infra/prisma/prisma.service';
-import { NotFoundAppException } from '../../common/exceptions/app.exception';
+import { BusinessRuleException, NotFoundAppException } from '../../common/exceptions/app.exception';
+import { BUG_TYPE_WHERE } from '../../common/bug-type';
+import { TRIAGE_VISIBLE } from '../../common/triage-visibility';
+import type { PageResult } from '../../common/dto/page-result';
+import { IssuesService } from '../issues/issues.service';
+import { ProjectAccessService } from '../rbac/project-access.service';
+import { SearchService } from '../search/search.service';
+import {
+  ISSUE_CSV_COLUMN_DEFS,
+  resolveIssueCsvColumns,
+  type ExportRow,
+  type IssuesCsvQuery,
+} from './issues-csv';
+
+/** Mỗi trang 200 (trần của tìm kiếm), tối đa 25 trang = 5.000 dòng. */
+const CSV_PAGE_SIZE = 200;
+const CSV_MAX_ROWS = 5000;
 
 /** Include đầy đủ cho mỗi issue khi export (round-trippable với import CSV/JSON). */
 const exportIssueInclude = {
@@ -74,7 +92,163 @@ export interface ProjectExport {
 
 @Injectable()
 export class ExportService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly issues: IssuesService,
+    private readonly search: SearchService,
+    private readonly access: ProjectAccessService,
+  ) {}
+
+  /**
+   * CSV công việc cho Việc chờ / danh sách bug / sprint / kết quả JQL. Đi qua service đã lọc theo người xem
+   * (`viewerId = userId`: dự án riêng tư người xuất không thấy thì không có dòng nào). Lặp con trỏ tới hết hoặc
+   * `CSV_MAX_ROWS`; chạm trần thì cắt và `truncated: true`.
+   */
+  async exportIssuesCsv(
+    workspaceId: string,
+    userId: string,
+    q: IssuesCsvQuery,
+  ): Promise<{ csv: string; truncated: boolean; filename: string; rows: number }> {
+    const { projectId, jql, preset, sprintId } = q;
+    const hasJql = !!jql?.trim();
+    if ((preset || sprintId) && !projectId) {
+      throw new BusinessRuleException(
+        'Xuất theo Việc chờ / bug / sprint cần chọn dự án (projectId).',
+      );
+    }
+    if (hasJql && (preset || sprintId)) {
+      throw new BusinessRuleException(
+        'Chỉ chọn một nguồn: truy vấn JQL hoặc Việc chờ / bug / sprint.',
+      );
+    }
+    if (preset === 'backlog' && sprintId) {
+      throw new BusinessRuleException('Việc chờ là việc chưa vào sprint — không kèm sprintId.');
+    }
+    if (!hasJql && !preset && !sprintId) {
+      throw new BusinessRuleException(
+        'Thiếu điều kiện xuất — dùng jql=…, hoặc preset=… (việc chờ hoặc bug), hoặc sprintId=… (kèm projectId).',
+      );
+    }
+
+    const project = projectId
+      ? await this.prisma.project.findFirst({
+          where: { id: projectId, workspaceId, deletedAt: null },
+          select: { id: true, key: true },
+        })
+      : null;
+    if (projectId && !project) throw new NotFoundAppException('Dự án');
+    // Tự kiểm quyền thấy dự án riêng tư (không chỉ dựa vào guard ProjectRef): người ngoài nhận 404 như dự án không tồn tại.
+    if (projectId) await this.access.assertCanSee(userId, workspaceId, projectId, 'Dự án');
+    const sprint =
+      sprintId && projectId
+        ? await this.prisma.sprint.findFirst({
+            where: { id: sprintId, projectId, deletedAt: null, project: { workspaceId } },
+            select: { id: true, name: true },
+          })
+        : null;
+    if (sprintId && !sprint) throw new NotFoundAppException('Sprint');
+
+    let fetchPage: (cursor: string | undefined) => Promise<PageResult<IssueDto>>;
+    if (hasJql) {
+      fetchPage = (cursor) =>
+        this.search.search(workspaceId, userId, {
+          mode: 'jql',
+          jql,
+          projectId,
+          cursor,
+          limit: CSV_PAGE_SIZE,
+        });
+    } else {
+      // Preset/sprint = cùng tập với màn hình (Việc chờ, Bug, Sprint đều ẩn việc chưa duyệt/đã từ chối: TRIAGE_VISIBLE) nên số
+      // dòng CSV khớp số việc trên màn. JQL giữ nguyên (người báo vẫn tìm lại được việc của mình — Q15).
+      const where: Prisma.IssueWhereInput = { projectId, AND: [TRIAGE_VISIBLE] };
+      let orderBy: Prisma.IssueOrderByWithRelationInput[] = [{ createdAt: 'desc' }];
+      if (preset === 'backlog') {
+        where.sprintId = null;
+        where.status = { category: { not: 'DONE' } };
+        orderBy = [{ rank: 'asc' }];
+      }
+      // Cùng định nghĩa 'bug' với báo cáo QA / KR OPEN_BUGS (key BUG hoặc tên Bug).
+      if (preset === 'bugs') where.type = BUG_TYPE_WHERE;
+      if (sprint) {
+        where.sprintId = sprint.id;
+        orderBy = [{ rank: 'asc' }];
+      }
+      fetchPage = (cursor) =>
+        this.issues.query(workspaceId, where, orderBy, cursor, CSV_PAGE_SIZE, userId);
+    }
+
+    const columnIds = resolveIssueCsvColumns(q.columns);
+    const columns = columnIds.map((id) => ISSUE_CSV_COLUMN_DEFS[id]);
+    const rows: ExportRow[] = [];
+    const sprintNames = new Map<string, string>();
+    const projectKeys = new Map<string, string>();
+    let truncated = false;
+    let cursor: string | undefined;
+    for (;;) {
+      const res = await fetchPage(cursor);
+      const batch = res.data.slice(0, CSV_MAX_ROWS - rows.length);
+      await this.fillNames(workspaceId, batch, columnIds, sprintNames, projectKeys);
+      for (const i of batch) {
+        rows.push({
+          ...i,
+          sprintName: i.sprintId ? (sprintNames.get(i.sprintId) ?? null) : null,
+          projectKey: projectKeys.get(i.projectId) ?? null,
+        });
+      }
+      const info = res.pageInfo;
+      const next = 'hasNextPage' in info && info.hasNextPage ? info.endCursor : null;
+      if (!next || res.data.length === 0) break;
+      if (rows.length >= CSV_MAX_ROWS) {
+        truncated = true;
+        break;
+      }
+      cursor = next;
+    }
+
+    const delimiter = q.delimiter === 'semicolon' ? ';' : ',';
+    const label = preset ?? (sprint ? `sprint-${slugify(sprint.name)}` : 'jql');
+    return {
+      csv: toCsv(rows, columns, { delimiter }),
+      truncated,
+      rows: rows.length,
+      filename: `tirapro-${project?.key ?? 'workspace'}-${label}-${vnDayStamp()}.csv`,
+    };
+  }
+
+  /** Nạp tên sprint / khoá dự án còn thiếu cho một lô (chỉ khi cột đó được xuất). */
+  private async fillNames(
+    workspaceId: string,
+    batch: IssueDto[],
+    columnIds: readonly string[],
+    sprintNames: Map<string, string>,
+    projectKeys: Map<string, string>,
+  ): Promise<void> {
+    if (columnIds.includes('sprint')) {
+      const ids = [
+        ...new Set(
+          batch.map((i) => i.sprintId).filter((x): x is string => !!x && !sprintNames.has(x)),
+        ),
+      ];
+      if (ids.length) {
+        const found = await this.prisma.sprint.findMany({
+          where: { id: { in: ids }, deletedAt: null, project: { workspaceId } },
+          select: { id: true, name: true },
+        });
+        for (const s of found) sprintNames.set(s.id, s.name);
+      }
+    }
+    if (columnIds.includes('project')) {
+      const ids = [...new Set(batch.map((i) => i.projectId).filter((x) => !projectKeys.has(x)))];
+      if (ids.length) {
+        const found = await this.prisma.project.findMany({
+          where: { id: { in: ids }, workspaceId, deletedAt: null },
+          select: { id: true, key: true },
+        });
+        for (const p of found) projectKeys.set(p.id, p.key);
+      }
+    }
+  }
 
   /** Xuất toàn bộ một project ra JSON tự chứa. Chỉ đọc, không thay đổi dữ liệu. */
   async exportProject(workspaceId: string, projectId: string): Promise<ProjectExport> {
@@ -154,4 +328,13 @@ export class ExportService {
       })),
     };
   }
+}
+
+/** `Sprint 2 — Ra mắt` → `sprint-2-ra-mat`: bỏ ký tự không phải chữ/số, giữ chữ có dấu để tên file đọc được. */
+function slugify(name: string): string {
+  const slug = name
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, '-')
+    .replace(/^-+|-+$/g, '');
+  return slug || 'sprint';
 }

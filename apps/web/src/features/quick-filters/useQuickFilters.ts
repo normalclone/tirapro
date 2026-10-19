@@ -1,14 +1,17 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { IssueDto } from '@tirapro/types';
+import { isOverdue } from '@/lib/dueDate';
 
 /** Bộ lọc nhanh có thể bật/tắt độc lập; bật nhiều bộ cùng lúc thì việc phải khớp TẤT CẢ. */
-export type QuickFilterId = 'mine' | 'overdue' | 'unassigned';
+export type QuickFilterId = 'mine' | 'reported' | 'unassigned' | 'overdue' | 'bug';
 
 /** `hint` hiện trong tooltip của chip — nói rõ bộ lọc giữ lại những việc nào. */
 export const QUICK_FILTERS: { id: QuickFilterId; label: string; hint: string }[] = [
   { id: 'mine', label: 'Của tôi', hint: 'Chỉ hiện việc bạn đang phụ trách' },
-  { id: 'overdue', label: 'Quá hạn', hint: 'Chỉ hiện việc đã qua hạn mà chưa xong' },
+  { id: 'reported', label: 'Tôi báo cáo', hint: 'Chỉ hiện việc do bạn báo cáo hoặc tạo' },
   { id: 'unassigned', label: 'Chưa gán', hint: 'Chỉ hiện việc chưa có ai nhận' },
+  { id: 'overdue', label: 'Quá hạn', hint: 'Chỉ hiện việc đã qua hạn mà chưa xong' },
+  { id: 'bug', label: 'Chỉ Bug', hint: 'Chỉ hiện công việc loại Bug' },
 ];
 
 const LS_KEY = 'tirapro:quickFilters';
@@ -18,7 +21,9 @@ function readStored(): Set<QuickFilterId> {
     const raw = JSON.parse(localStorage.getItem(LS_KEY) || '[]') as unknown;
     if (!Array.isArray(raw)) return new Set();
     const valid = new Set(QUICK_FILTERS.map((f) => f.id));
-    return new Set(raw.filter((v): v is QuickFilterId => typeof v === 'string' && valid.has(v as QuickFilterId)));
+    return new Set(
+      raw.filter((v): v is QuickFilterId => typeof v === 'string' && valid.has(v as QuickFilterId)),
+    );
   } catch {
     return new Set();
   }
@@ -53,14 +58,6 @@ export function useQuickFilters() {
   return { active, toggle, clear };
 }
 
-/** Một công việc có "quá hạn" không: có đặt hạn, hạn đã qua, và việc chưa xong. */
-function isOverdue(issue: IssueDto, now: number): boolean {
-  if (!issue.dueDate) return false;
-  if (issue.status.category === 'DONE') return false;
-  const due = new Date(issue.dueDate).getTime();
-  return Number.isFinite(due) && due < now;
-}
-
 /**
  * Lọc phía trình duyệt theo các bộ lọc đang bật (việc phải khớp tất cả). `userId` = người dùng
  * hiện tại, dùng cho bộ "Của tôi". Trả về mảng mới (không đột biến đầu vào).
@@ -71,11 +68,19 @@ export function applyQuickFilters(
   userId: string | undefined,
 ): IssueDto[] {
   if (active.size === 0) return issues;
-  const now = Date.now();
+  const now = new Date();
   return issues.filter((issue) => {
     if (active.has('mine') && issue.assigneeId !== userId) return false;
     if (active.has('overdue') && !isOverdue(issue, now)) return false;
     if (active.has('unassigned') && issue.assigneeId) return false;
+    // Khoá hệ thống BUG (không phụ thuộc tên hiển thị); loại tuỳ chỉnh không có key thì không phải Bug.
+    if (active.has('bug') && issue.type.key !== 'BUG') return false;
+    // Khớp ngữ nghĩa báo cáo/tạo của isIssueOwner phía server; KHÔNG tính "được giao".
+    if (
+      active.has('reported') &&
+      !(userId && (issue.reporterId === userId || issue.createdById === userId))
+    )
+      return false;
     return true;
   });
 }

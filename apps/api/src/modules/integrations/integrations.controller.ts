@@ -4,21 +4,27 @@ import { z } from 'zod';
 import { PERMISSIONS } from '@tirapro/types';
 import { IntegrationType } from '@prisma/client';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { WorkspaceId } from '../../common/decorators/workspace-id.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
-import { ForbiddenAppException } from '../../common/exceptions/app.exception';
 import type { AuthUser } from '../../common/types/request';
 import { IntegrationsService } from './integrations.service';
+import { LinkCodesService } from './link-codes.service';
 
 /** Body tạo integration Telegram. */
 export const createTelegramSchema = z.object({
   name: z.string().min(1, 'Tên không được để trống'),
-  botToken: z.string().min(1).optional(),
+  // Hình dạng token bot (123456789:AAH…) — chặn ký tự lạ trước khi token đi vào URL gọi getMe.
+  botToken: z
+    .string()
+    .trim()
+    .regex(/^\d{6,}:[A-Za-z0-9_-]{30,}$/, 'Token bot không đúng dạng — hãy copy lại từ @BotFather')
+    .optional(),
 });
 export type CreateTelegramBody = z.infer<typeof createTelegramSchema>;
 
 /** Body thêm kênh. */
-export const addChannelSchema = z.object({
+const addChannelSchema = z.object({
   externalId: z.string().min(1, 'Thiếu chat_id'),
   title: z.string().optional(),
   events: z.array(z.string()).optional(),
@@ -26,69 +32,116 @@ export const addChannelSchema = z.object({
 });
 export type AddChannelBody = z.infer<typeof addChannelSchema>;
 
+/** Body tạo mã liên kết (projectId: kênh chỉ nhận thông báo của dự án đó). */
+const createLinkCodeSchema = z.object({ projectId: z.string().min(1).optional() });
+export type CreateLinkCodeBody = z.infer<typeof createLinkCodeSchema>;
+
 @ApiTags('integrations')
 @Controller('integrations')
 export class IntegrationsController {
-  constructor(private readonly integrations: IntegrationsService) {}
+  constructor(
+    private readonly integrations: IntegrationsService,
+    private readonly linkCodes: LinkCodesService,
+  ) {}
 
-  private ws(user: AuthUser): string {
-    if (!user.workspaceId) throw new ForbiddenAppException('Bạn chưa chọn không gian làm việc — hãy chọn một không gian rồi thử lại');
-    return user.workspaceId;
-  }
-
-  /** Liệt kê integration (đã ẩn token). Không cần quyền quản lý — chỉ đọc. */
+  /** Liệt kê integration (đã ẩn token). Mọi thành viên workspace xem được; tạo/xoá cần INTEGRATION_MANAGE. */
+  @Permissions(PERMISSIONS.WORKSPACE_VIEW)
   @Get()
-  async list(@CurrentUser() user: AuthUser, @Query('type') type?: string) {
+  async list(@WorkspaceId() workspaceId: string, @Query('type') type?: string) {
     const parsed = type && type in IntegrationType ? (type as IntegrationType) : undefined;
-    return this.integrations.list(this.ws(user), parsed);
+    return this.integrations.list(workspaceId, parsed);
   }
 
-  /** Tạo integration Telegram. */
+  /** Cờ hệ thống + bot chung (để wizard biết có cho dùng "bot chung" không). Đặt trước mọi route `:id`. */
+  @Get('telegram/platform')
+  @Permissions(PERMISSIONS.INTEGRATION_MANAGE)
+  async platform() {
+    return this.integrations.platform();
+  }
+
+  /** Tạo integration Telegram (xác thực token qua getMe trước khi lưu). */
   @Post('telegram')
   @Permissions(PERMISSIONS.INTEGRATION_MANAGE)
   async createTelegram(
+    @WorkspaceId() workspaceId: string,
     @CurrentUser() user: AuthUser,
     @Body(new ZodValidationPipe(createTelegramSchema)) body: CreateTelegramBody,
   ) {
-    return this.integrations.createTelegram(this.ws(user), user.id, body);
+    return this.integrations.createTelegram(workspaceId, user.id, body);
   }
 
   /** Xóa integration (cascade kênh). */
   @Delete(':id')
   @Permissions(PERMISSIONS.INTEGRATION_MANAGE)
-  async remove(@CurrentUser() user: AuthUser, @Param('id') id: string) {
-    return this.integrations.remove(this.ws(user), id);
+  async remove(
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+  ) {
+    return this.integrations.remove(workspaceId, id, user.id);
   }
 
   /** Liệt kê kênh của một integration. */
   @Get(':id/channels')
   @Permissions(PERMISSIONS.INTEGRATION_MANAGE)
-  async listChannels(@CurrentUser() user: AuthUser, @Param('id') id: string) {
-    return this.integrations.listChannels(this.ws(user), id);
+  async listChannels(
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+  ) {
+    return this.integrations.listChannels(workspaceId, id, user.id);
   }
 
   /** Thêm kênh vào integration. */
   @Post(':id/channels')
   @Permissions(PERMISSIONS.INTEGRATION_MANAGE)
   async addChannel(
+    @WorkspaceId() workspaceId: string,
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
     @Body(new ZodValidationPipe(addChannelSchema)) body: AddChannelBody,
   ) {
-    return this.integrations.addChannel(this.ws(user), id, body);
+    return this.integrations.addChannel(workspaceId, id, body, user.id);
   }
 
   /** Xóa một kênh. */
   @Delete('channels/:channelId')
   @Permissions(PERMISSIONS.INTEGRATION_MANAGE)
-  async removeChannel(@CurrentUser() user: AuthUser, @Param('channelId') channelId: string) {
-    return this.integrations.removeChannel(this.ws(user), channelId);
+  async removeChannel(
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
+    @Param('channelId') channelId: string,
+  ) {
+    return this.integrations.removeChannel(workspaceId, channelId, user.id);
   }
 
   /** Gửi tin nhắn kiểm tra tới mọi kênh đang bật. */
   @Post(':id/test')
   @Permissions(PERMISSIONS.INTEGRATION_MANAGE)
-  async test(@CurrentUser() user: AuthUser, @Param('id') id: string) {
-    return this.integrations.test(this.ws(user), id);
+  async test(@WorkspaceId() workspaceId: string, @Param('id') id: string) {
+    return this.integrations.test(workspaceId, id);
+  }
+
+  /** Tạo mã liên kết 6 ký tự (15 phút, dùng một lần) để gõ `/link@Bot MÃ` trong nhóm Telegram. */
+  @Post(':id/link-codes')
+  @Permissions(PERMISSIONS.INTEGRATION_MANAGE)
+  async createLinkCode(
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(createLinkCodeSchema)) body: CreateLinkCodeBody,
+  ) {
+    return this.linkCodes.createCode(workspaceId, id, user.id, body.projectId);
+  }
+
+  /** Hỏi xem mã đã được gõ trong nhóm chưa (đọc tin mới nhất theo yêu cầu, không polling nền). */
+  @Post(':id/link-codes/:code/poll')
+  @Permissions(PERMISSIONS.INTEGRATION_MANAGE)
+  async pollLinkCode(
+    @WorkspaceId() workspaceId: string,
+    @Param('id') id: string,
+    @Param('code') code: string,
+  ) {
+    return this.linkCodes.poll(workspaceId, id, code);
   }
 }

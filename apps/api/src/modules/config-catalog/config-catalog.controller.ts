@@ -2,11 +2,9 @@ import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/commo
 import { ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
 import { PERMISSIONS } from '@tirapro/types';
-import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { WorkspaceId } from '../../common/decorators/workspace-id.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
-import { ForbiddenAppException } from '../../common/exceptions/app.exception';
-import type { AuthUser } from '../../common/types/request';
 import { ConfigCatalogService } from './config-catalog.service';
 
 const hexColor = z
@@ -70,72 +68,69 @@ type UpdatePriorityBody = z.infer<typeof updatePrioritySchema>;
 export class ConfigCatalogController {
   constructor(private readonly catalog: ConfigCatalogService) {}
 
-  private ws(user: AuthUser): string {
-    if (!user.workspaceId) throw new ForbiddenAppException('Bạn chưa chọn không gian làm việc — hãy chọn một không gian rồi thử lại');
-    return user.workspaceId;
-  }
-
   // ----- Severities -----
 
+  @Permissions(PERMISSIONS.WORKSPACE_VIEW)
   @Get('severities')
-  async listSeverities(@CurrentUser() user: AuthUser) {
-    return this.catalog.listSeverities(this.ws(user));
+  async listSeverities(@WorkspaceId() workspaceId: string) {
+    return this.catalog.listSeverities(workspaceId);
   }
 
   @Post('severities')
   @Permissions(PERMISSIONS.WORKSPACE_ADMIN)
   async createSeverity(
-    @CurrentUser() user: AuthUser,
+    @WorkspaceId() workspaceId: string,
     @Body(new ZodValidationPipe(createSeveritySchema)) dto: CreateSeverityBody,
   ) {
-    return this.catalog.createSeverity(this.ws(user), dto);
+    return this.catalog.createSeverity(workspaceId, dto);
   }
 
   @Patch('severities/:id')
   @Permissions(PERMISSIONS.WORKSPACE_ADMIN)
   async updateSeverity(
-    @CurrentUser() user: AuthUser,
+    @WorkspaceId() workspaceId: string,
     @Param('id') id: string,
     @Body(new ZodValidationPipe(updateSeveritySchema)) dto: UpdateSeverityBody,
   ) {
-    return this.catalog.updateSeverity(this.ws(user), id, dto);
+    return this.catalog.updateSeverity(workspaceId, id, dto);
   }
 
   @Delete('severities/:id')
   @Permissions(PERMISSIONS.WORKSPACE_ADMIN)
-  async removeSeverity(@CurrentUser() user: AuthUser, @Param('id') id: string) {
-    return this.catalog.removeSeverity(this.ws(user), id);
+  async removeSeverity(@WorkspaceId() workspaceId: string, @Param('id') id: string) {
+    return this.catalog.removeSeverity(workspaceId, id);
   }
 
   // ----- Priorities -----
 
+  @Permissions(PERMISSIONS.WORKSPACE_VIEW)
   @Get('priorities')
-  async listPriorities(@CurrentUser() user: AuthUser) {
-    return this.catalog.listPriorities(this.ws(user));
+  async listPriorities(@WorkspaceId() workspaceId: string) {
+    return this.catalog.listPriorities(workspaceId);
   }
 
   @Post('priorities')
   @Permissions(PERMISSIONS.WORKSPACE_ADMIN)
   async createPriority(
-    @CurrentUser() user: AuthUser,
+    @WorkspaceId() workspaceId: string,
     @Body(new ZodValidationPipe(createPrioritySchema)) dto: CreatePriorityBody,
   ) {
-    return this.catalog.createPriority(this.ws(user), dto);
+    return this.catalog.createPriority(workspaceId, dto);
   }
 
   @Patch('priorities/:id')
   @Permissions(PERMISSIONS.WORKSPACE_ADMIN)
   async updatePriority(
-    @CurrentUser() user: AuthUser,
+    @WorkspaceId() workspaceId: string,
     @Param('id') id: string,
     @Body(new ZodValidationPipe(updatePrioritySchema)) dto: UpdatePriorityBody,
   ) {
-    return this.catalog.updatePriority(this.ws(user), id, dto);
+    return this.catalog.updatePriority(workspaceId, id, dto);
   }
 
   @Delete('priorities/:id')
   @Permissions(PERMISSIONS.WORKSPACE_ADMIN)
-  async removePriority(@CurrentUser() user: AuthUser, @Param('id') id: string) {
-    return this.catalog.removePriority(this.ws(user), id);
+  async removePriority(@WorkspaceId() workspaceId: string, @Param('id') id: string) {
+    return this.catalog.removePriority(workspaceId, id);
   }
 }

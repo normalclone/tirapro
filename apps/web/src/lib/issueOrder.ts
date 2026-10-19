@@ -1,4 +1,4 @@
-/** Sắp xếp task: ưu tiên cao trước, rồi tới trạng thái (To Do → Đang làm → Hoàn thành). */
+/** Sắp xếp task: ưu tiên cao trước, rồi tới trạng thái (To Do → In Progress → Done). */
 
 type Orderable = {
   priority: { rank: number } | null;

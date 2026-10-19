@@ -3,6 +3,8 @@ import { CustomFieldType, Prisma } from '@prisma/client';
 import { ERROR_CODES } from '@tirapro/types';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { AppException, NotFoundAppException } from '../../common/exceptions/app.exception';
+import { ProjectAccessService } from '../rbac/project-access.service';
+import { assertIssueWritable, assertProjectIdWritable } from '../../common/project-writable';
 
 /** Field định nghĩa kèm options (cho dropdown / hiển thị). */
 const fieldInclude = {
@@ -28,7 +30,7 @@ export interface UpdateCustomFieldInput {
 /** Giá trị đã chuẩn hoá trả về FE (kiểu phụ thuộc loại field). */
 export type NormalizedFieldValue = string | number | boolean | string[] | null;
 
-export interface FieldOptionView {
+interface FieldOptionView {
   id: string;
   value: string;
   color: string | null;
@@ -55,17 +57,33 @@ const SELECT_TYPES = new Set<CustomFieldType>([
 
 @Injectable()
 export class CustomFieldsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly access: ProjectAccessService,
+  ) {}
 
   // ============================ DEFINITIONS ============================
 
-  /** Liệt kê field áp dụng cho workspace; nếu có projectId → field của project đó + field global (projectId null). */
-  async listDefinitions(workspaceId: string, projectId?: string): Promise<FieldDefinitionView[]> {
+  /**
+   * Liệt kê field áp dụng cho workspace; nếu có projectId → field của project đó + field global (projectId null).
+   * Không có projectId: chỉ field global + field của dự án người xem thấy (tên/lựa chọn field của dự án riêng tư
+   * người ngoài không lộ).
+   */
+  async listDefinitions(
+    workspaceId: string,
+    projectId: string | undefined,
+    viewerId: string,
+  ): Promise<FieldDefinitionView[]> {
     if (projectId) await this.requireProject(workspaceId, projectId);
+    const visible = projectId ? {} : await this.access.visibleWhere(viewerId, workspaceId);
     const where: Prisma.CustomFieldWhereInput = {
       workspaceId,
       deletedAt: null,
-      ...(projectId ? { OR: [{ projectId }, { projectId: null }] } : {}),
+      ...(projectId
+        ? { OR: [{ projectId }, { projectId: null }] }
+        : Object.keys(visible).length
+          ? { OR: [{ projectId: null }, { project: visible }] }
+          : {}),
     };
     const rows = await this.prisma.customField.findMany({
       where,
@@ -75,11 +93,16 @@ export class CustomFieldsService {
     return rows.map((r) => this.toDefinitionView(r));
   }
 
-  async createDefinition(workspaceId: string, input: CreateCustomFieldInput): Promise<FieldDefinitionView> {
+  async createDefinition(
+    workspaceId: string,
+    input: CreateCustomFieldInput,
+  ): Promise<FieldDefinitionView> {
     if (input.projectId) await this.requireProject(workspaceId, input.projectId);
+    // Định nghĩa cấp workspace (không gắn dự án) không bị chặn.
+    await assertProjectIdWritable(this.prisma, input.projectId);
 
     const isSelect = SELECT_TYPES.has(input.type);
-    const rawOptions = isSelect ? input.options ?? [] : [];
+    const rawOptions = isSelect ? (input.options ?? []) : [];
     // Khử trùng lặp value (option unique [customFieldId, value]).
     const seen = new Set<string>();
     const options = rawOptions
@@ -107,7 +130,8 @@ export class CustomFieldsService {
     id: string,
     input: UpdateCustomFieldInput,
   ): Promise<FieldDefinitionView> {
-    await this.requireField(workspaceId, id);
+    const cur = await this.requireField(workspaceId, id);
+    await assertProjectIdWritable(this.prisma, cur.projectId);
     const data: Prisma.CustomFieldUpdateInput = {};
     if (input.name !== undefined) data.name = input.name.trim();
     if (input.isRequired !== undefined) data.isRequired = input.isRequired;
@@ -121,7 +145,8 @@ export class CustomFieldsService {
   }
 
   async softDeleteDefinition(workspaceId: string, id: string): Promise<{ success: true }> {
-    await this.requireField(workspaceId, id);
+    const cur = await this.requireField(workspaceId, id);
+    await assertProjectIdWritable(this.prisma, cur.projectId);
     await this.prisma.customField.update({ where: { id }, data: { deletedAt: new Date() } });
     return { success: true };
   }
@@ -156,6 +181,7 @@ export class CustomFieldsService {
     value: unknown,
   ): Promise<IssueFieldValueView> {
     await this.requireIssue(workspaceId, issueId);
+    await assertIssueWritable(this.prisma, issueId);
     const field = await this.requireField(workspaceId, fieldId);
 
     const columns = this.toColumns(field, value);
@@ -263,7 +289,8 @@ export class CustomFieldsService {
   }
 
   private asString(field: FieldRow, value: unknown): string {
-    if (typeof value !== 'string') throw this.invalid(`Field "${field.name}" cần giá trị dạng chuỗi`);
+    if (typeof value !== 'string')
+      throw this.invalid(`Field "${field.name}" cần giá trị dạng chuỗi`);
     if (field.type === CustomFieldType.URL && value.length > 0) {
       try {
         new URL(value);
@@ -276,7 +303,8 @@ export class CustomFieldsService {
 
   private asNumber(value: unknown): number {
     const n = typeof value === 'string' ? Number(value) : value;
-    if (typeof n !== 'number' || Number.isNaN(n)) throw this.invalid('Giá trị phải là một số hợp lệ');
+    if (typeof n !== 'number' || Number.isNaN(n))
+      throw this.invalid('Giá trị phải là một số hợp lệ');
     return n;
   }
 

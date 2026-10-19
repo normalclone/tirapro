@@ -1,11 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api } from '@/lib/api';
+import type { ProjectHealthDto } from '@tirapro/shared';
+import { api, type Ack } from '@/lib/api';
+import { keys } from '@/lib/queryKeys';
 
-/** Khoá cache danh mục chương trình của không gian làm việc hiện tại. */
-export const programsKey = ['programs'] as const;
-export const programRollupKey = ['programs', 'rollup'] as const;
-
-export interface ProgramProjectRef {
+interface ProgramProjectRef {
   id: string;
   key: string;
   name: string;
@@ -53,6 +51,8 @@ export interface RollupProject extends RollupStats {
   leadName: string | null;
   startDate: string | null;
   targetDate: string | null;
+  /** Sức khoẻ dự án (L16); null với dự án đã lưu trữ. */
+  health: ProjectHealthDto | null;
 }
 
 export interface RollupGroup extends RollupStats {
@@ -77,7 +77,7 @@ export interface PortfolioRollup {
 /** Danh sách chương trình (thô — dùng cho modal sửa & bộ lọc). */
 export function usePrograms() {
   return useQuery({
-    queryKey: programsKey,
+    queryKey: keys.programs.all,
     queryFn: async () => (await api.get<ProgramDto[]>('/programs')).data,
   });
 }
@@ -85,7 +85,7 @@ export function usePrograms() {
 /** Rollup tiến độ toàn danh mục: chương trình → dự án con, kèm số liệu issue. */
 export function useProgramRollup() {
   return useQuery({
-    queryKey: programRollupKey,
+    queryKey: keys.programs.rollup,
     queryFn: async () => (await api.get<PortfolioRollup>('/programs/rollup')).data,
   });
 }
@@ -93,15 +93,16 @@ export function useProgramRollup() {
 function useInvalidatePortfolio() {
   const qc = useQueryClient();
   return () => {
-    void qc.invalidateQueries({ queryKey: programsKey });
-    void qc.invalidateQueries({ queryKey: ['projects'] });
+    void qc.invalidateQueries({ queryKey: keys.programs.all });
+    void qc.invalidateQueries({ queryKey: keys.projects.all });
   };
 }
 
 export function useCreateProgram() {
   const invalidate = useInvalidatePortfolio();
   return useMutation({
-    mutationFn: (input: ProgramInput) => api.post<ProgramDto>('/programs', input).then((r) => r.data),
+    mutationFn: (input: ProgramInput) =>
+      api.post<ProgramDto>('/programs', input).then((r) => r.data),
     onSuccess: invalidate,
   });
 }
@@ -118,7 +119,7 @@ export function useUpdateProgram() {
 export function useDeleteProgram() {
   const invalidate = useInvalidatePortfolio();
   return useMutation({
-    mutationFn: (id: string) => api.delete(`/programs/${id}`).then((r) => r.data),
+    mutationFn: (id: string) => api.delete<Ack>(`/programs/${id}`).then((r) => r.data),
     onSuccess: invalidate,
   });
 }

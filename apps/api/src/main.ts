@@ -4,29 +4,51 @@ import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { Logger as PinoLogger } from 'nestjs-pino';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { PrismaExceptionFilter } from './common/filters/prisma-exception.filter';
 import { ResponseInterceptor } from './common/interceptors/response.interceptor';
+import { RedisIoAdapter } from './modules/realtime/redis-io.adapter';
 
 async function bootstrap(): Promise<void> {
   const logger = new Logger('Bootstrap');
-  const app = await NestFactory.create<NestExpressApplication>(AppModule, { bufferLogs: false });
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    bufferLogs: true,
+    rawBody: true,
+  });
   const config = app.get(ConfigService);
+
+  // ---- Ops: log pino + proxy ----
+  // Mọi Logger của Nest (kể cả `new Logger()` trong service) đi qua pino; log đệm từ lúc khởi động được xả ra ở đây.
+  app.useLogger(app.get(PinoLogger));
+  // Prod chạy sau reverse proxy / load balancer 1 tầng: lấy IP thật từ X-Forwarded-For (rate-limit theo IP đúng).
+  if (config.get<boolean>('isProd')) app.set('trust proxy', 1);
 
   const globalPrefix = config.get<string>('api.globalPrefix') ?? 'api';
   const version = config.get<string>('api.version') ?? 'v1';
   app.setGlobalPrefix(`${globalPrefix}/${version}`);
 
-  app.use(helmet({ contentSecurityPolicy: false, crossOriginResourcePolicy: false }));
+  // Prod: bật CSP mặc định của helmet. Dev: tắt vì Swagger UI cần inline script/style.
+  // CORP toàn cục same-site; route media tự đặt `cross-origin` để nhúng ảnh đại diện.
+  app.use(
+    helmet({
+      contentSecurityPolicy: config.get<boolean>('isProd') ? undefined : false,
+      crossOriginResourcePolicy: { policy: 'same-site' },
+    }),
+  );
   app.use(cookieParser());
   app.enableCors({
     origin: config.get<string[]>('api.corsOrigin') ?? true,
     credentials: true,
-    exposedHeaders: ['X-Request-Id'],
+    exposedHeaders: ['X-Request-Id', 'Content-Disposition', 'X-Export-Truncated', 'X-Export-Rows'],
   });
+
+  const ioAdapter = new RedisIoAdapter(app);
+  await ioAdapter.connectToRedis();
+  app.useWebSocketAdapter(ioAdapter);
 
   app.useGlobalPipes(
     new ValidationPipe({
@@ -49,11 +71,17 @@ async function bootstrap(): Promise<void> {
           '(tạo ở Cài đặt → API & MCP). Có thể dùng header `X-API-Key: tira_…` thay thế. ' +
           'Bấm **Authorize** rồi dán key để thử trực tiếp.\n\n' +
           '**MCP** (cho trợ lý AI): Streamable HTTP tại `http://localhost:4100/mcp`. ' +
-          'Tổng quan nhanh: `GET /api/v1/help`.',
+          `Tổng quan nhanh: \`GET /${globalPrefix}/${version}/help\`.`,
       )
       .setVersion('0.1.0')
-      .addBearerAuth({ type: 'http', scheme: 'bearer', description: 'JWT hoặc API key tira_…' }, 'bearer')
-      .addApiKey({ type: 'apiKey', name: 'X-API-Key', in: 'header', description: 'API key tira_…' }, 'api-key')
+      .addBearerAuth(
+        { type: 'http', scheme: 'bearer', description: 'JWT hoặc API key tira_…' },
+        'bearer',
+      )
+      .addApiKey(
+        { type: 'apiKey', name: 'X-API-Key', in: 'header', description: 'API key tira_…' },
+        'api-key',
+      )
       .build();
     const doc = SwaggerModule.createDocument(app, docConfig);
     SwaggerModule.setup(`${globalPrefix}/docs`, app, doc, {
@@ -72,4 +100,8 @@ async function bootstrap(): Promise<void> {
   }
 }
 
-void bootstrap();
+bootstrap().catch((err: unknown) => {
+  // Lỗi khởi động (vd: cấu hình production không hợp lệ) phải thấy rõ và thoát mã ≠ 0 để orchestrator biết.
+  console.error(err);
+  process.exit(1);
+});

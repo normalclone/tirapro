@@ -1,9 +1,16 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, HttpStatus, Res } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
+import type { Response } from 'express';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { OptionalAuth } from '../../common/decorators/optional-auth.decorator';
 import { Public } from '../../common/decorators/public.decorator';
+import type { AuthUser } from '../../common/types/request';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { RedisService } from '../../infra/redis/redis.service';
 import { SystemSettingsService } from '../system-settings/system-settings.service';
+
+/** Giới hạn chờ DB/Redis cho readiness. */
+const READY_TIMEOUT_MS = 2000;
 
 @ApiTags('health')
 @Controller('health')
@@ -14,24 +21,123 @@ export class HealthController {
     private readonly settings: SystemSettingsService,
   ) {}
 
+  /** Liveness: tiến trình còn sống — KHÔNG chạm DB/Redis (LB/k8s dùng để quyết định restart). */
   @Public()
-  @Get()
-  async check() {
-    let db = false;
-    try {
-      await this.prisma.$queryRaw`SELECT 1`;
-      db = true;
-    } catch {
-      db = false;
+  @Get('live')
+  live() {
+    return { status: 'ok' };
+  }
+
+  /**
+   * Readiness: sẵn sàng nhận traffic? DB phải trả lời `SELECT 1` trong 2 giây, Redis (nếu có) phải ping được.
+   * DB lỗi → 503 để LB rút node khỏi vòng. Redis là tuỳ chọn (app chạy giảm cấp) nên chỉ báo trạng thái.
+   * `warnings` là cảnh báo KHÔNG chặn traffic (vd chưa bật full-text) — luôn là mảng, có thể rỗng.
+   */
+  @Public()
+  @Get('ready')
+  async ready(@Res({ passthrough: true }) res: Response) {
+    const [db, redis] = await Promise.all([this.pingDb(), this.pingRedis()]);
+    if (!db) res.status(HttpStatus.SERVICE_UNAVAILABLE);
+    const warnings: string[] = [];
+    if (db && (await this.hasSearchVector()) === false) {
+      warnings.push(
+        'Issue.searchVector chưa có — tìm kiếm văn bản đang dùng chế độ dự phòng (chậm hơn). Hãy chạy `pnpm --filter @tirapro/api db:raw` để bật full-text.',
+      );
     }
-    const redis = this.redis.isAvailable();
+    if (db && (await this.hasUnaccent()) === false) {
+      warnings.push(
+        'Chưa có immutable_unaccent — tìm kiếm chưa bỏ dấu bằng chỉ mục. Hãy chạy `pnpm --filter @tirapro/api db:raw`.',
+      );
+    }
+    return { status: db ? 'ok' : 'unavailable', db, redis, warnings };
+  }
+
+  /**
+   * Tổng quan sức khoẻ. Công khai (LB cũ vẫn gọi) nhưng chỉ trả chi tiết (db/redis/uptime)
+   * cho quản trị hệ thống; khách chỉ thấy `status`.
+   */
+  @Public()
+  @OptionalAuth()
+  @Get()
+  async check(@CurrentUser() user?: AuthUser) {
+    const db = await this.pingDb();
+    const status = db ? 'ok' : 'degraded';
+    if (!user?.isSystemAdmin) return { status };
     return {
-      status: db ? 'ok' : 'degraded',
+      status,
       db,
-      redis,
+      redis: this.redis.isAvailable(),
       uptimeSec: Math.round(process.uptime()),
       timestamp: new Date().toISOString(),
     };
+  }
+
+  private async pingDb(): Promise<boolean> {
+    try {
+      await Promise.race([
+        this.prisma.$queryRaw`SELECT 1`,
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('DB timeout')), READY_TIMEOUT_MS).unref(),
+        ),
+      ]);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /** Hàm `immutable_unaccent(text)` (db:raw) đã có? `null` nếu không kiểm tra được (không coi là thiếu). */
+  private async hasUnaccent(): Promise<boolean | null> {
+    try {
+      const rows = await Promise.race([
+        this.prisma.$queryRaw<
+          { ok: boolean }[]
+        >`SELECT to_regprocedure('immutable_unaccent(text)') IS NOT NULL AS ok`,
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('DB timeout')), READY_TIMEOUT_MS).unref(),
+        ),
+      ]);
+      return rows[0]?.ok ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Cột full-text đã được tạo (db:raw)? `null` nếu không kiểm tra được (không coi là thiếu). */
+  private async hasSearchVector(): Promise<boolean | null> {
+    try {
+      const rows = await Promise.race([
+        this.prisma.$queryRaw<{ ok: boolean }[]>`
+          SELECT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = current_schema() AND table_name = 'Issue' AND column_name = 'searchVector'
+          ) AS ok`,
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('DB timeout')), READY_TIMEOUT_MS).unref(),
+        ),
+      ]);
+      return rows[0]?.ok ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  /** `true` ping được, `false` có cấu hình nhưng không ping được, `null` không dùng Redis. */
+  private async pingRedis(): Promise<boolean | null> {
+    const client = this.redis.getClient();
+    if (!client) return null;
+    if (!this.redis.isAvailable()) return false;
+    try {
+      await Promise.race([
+        client.ping(),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Redis timeout')), READY_TIMEOUT_MS).unref(),
+        ),
+      ]);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   /** Thông báo hệ thống công khai (banner bảo trì, trạng thái đăng ký) — mọi client đọc được. */

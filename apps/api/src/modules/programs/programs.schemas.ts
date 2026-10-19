@@ -4,7 +4,7 @@ import { z } from 'zod';
  * Ngày nhận cả 'YYYY-MM-DD' (input type=date của FE) lẫn ISO-8601 đầy đủ.
  * Chuỗi rỗng = bỏ trống (service tự quy về null) để FE không phải chuyển '' → null.
  */
-export const dateInput = z
+const dateInput = z
   .string()
   .trim()
   .refine((v) => v === '' || !Number.isNaN(Date.parse(v)), 'Ngày không hợp lệ')

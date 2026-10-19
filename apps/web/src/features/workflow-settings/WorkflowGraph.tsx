@@ -20,8 +20,10 @@ import { Plus, Trash2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { useConfirm } from '@/components/ui/useConfirm';
 import { cn } from '@/lib/utils';
 import { apiErrorMessage } from '@/lib/api';
+import { useAuth } from '@/stores/auth';
 import {
   useAddStatus,
   useAddTransition,
@@ -30,6 +32,8 @@ import {
   type StatusCategory,
   type Workflow,
 } from './api';
+import { STATUS_CATEGORY_LABEL } from '@/lib/terms';
+import { SegmentedControl } from '@/components/ui/SegmentedControl';
 
 const ANY_ID = '__any__';
 
@@ -37,11 +41,6 @@ const CATEGORY_VAR: Record<StatusCategory, string> = {
   TODO: 'var(--status-todo)',
   IN_PROGRESS: 'var(--status-progress)',
   DONE: 'var(--status-done)',
-};
-const CATEGORY_LABEL: Record<StatusCategory, string> = {
-  TODO: 'Cần làm',
-  IN_PROGRESS: 'Đang làm',
-  DONE: 'Hoàn thành',
 };
 const CATEGORY_COL: Record<StatusCategory, number> = { TODO: 1, IN_PROGRESS: 2, DONE: 3 };
 const COL_W = 240;
@@ -73,7 +72,7 @@ function savePos(workflowId: string, map: PosMap) {
   }
 }
 
-/** Bố cục tự động: cột theo nhóm trạng thái (Bất kỳ → Cần làm → Đang làm → Hoàn thành). */
+/** Bố cục tự động: cột theo nhóm trạng thái (Bất kỳ → To Do → In Progress → Done). */
 function autoLayout(wf: Workflow): PosMap {
   const counts: Record<StatusCategory, number> = { TODO: 0, IN_PROGRESS: 0, DONE: 0 };
   const pos: PosMap = { [ANY_ID]: { x: 0, y: 24 } };
@@ -84,18 +83,33 @@ function autoLayout(wf: Workflow): PosMap {
   return pos;
 }
 
-function buildNodes(wf: Workflow, saved: PosMap, onDelete: (id: string) => void): Node<NodeData>[] {
+function buildNodes(
+  wf: Workflow,
+  saved: PosMap,
+  onDelete?: (id: string) => void,
+): Node<NodeData>[] {
   const auto = autoLayout(wf);
   const at = (id: string) => saved[id] ?? auto[id] ?? { x: 0, y: 0 };
   const nodes: Node<NodeData>[] = [
-    { id: ANY_ID, type: 'wf', position: at(ANY_ID), data: { label: 'Bất kỳ trạng thái', isAny: true } },
+    {
+      id: ANY_ID,
+      type: 'wf',
+      position: at(ANY_ID),
+      data: { label: 'Bất kỳ trạng thái', isAny: true },
+    },
   ];
   for (const s of wf.statuses) {
     nodes.push({
       id: s.id,
       type: 'wf',
       position: at(s.id),
-      data: { label: s.name, category: s.category, color: s.color, isInitial: s.isInitial, onDelete },
+      data: {
+        label: s.name,
+        category: s.category,
+        color: s.color,
+        isInitial: s.isInitial,
+        onDelete,
+      },
     });
   }
   return nodes;
@@ -108,7 +122,12 @@ function buildEdges(wf: Workflow): Edge[] {
     target: t.toStatusId,
     label: t.name,
     type: 'smoothstep',
-    markerEnd: { type: MarkerType.ArrowClosed, width: 16, height: 16, color: 'var(--border-strong)' },
+    markerEnd: {
+      type: MarkerType.ArrowClosed,
+      width: 16,
+      height: 16,
+      color: 'var(--border-strong)',
+    },
     style: { stroke: 'var(--border-strong)', strokeWidth: 1.5 },
     labelStyle: { fill: 'var(--muted)', fontSize: 11, fontWeight: 500 },
     labelBgStyle: { fill: 'var(--surface)', fillOpacity: 0.9 },
@@ -127,7 +146,11 @@ function StatusNode({ id, data, selected }: NodeProps<NodeData>) {
         )}
       >
         {data.label}
-        <Handle type="source" position={Position.Right} className="!h-2.5 !w-2.5 !border-2 !border-surface !bg-faint" />
+        <Handle
+          type="source"
+          position={Position.Right}
+          className="!h-2.5 !w-2.5 !border-2 !border-surface !bg-faint"
+        />
       </div>
     );
   }
@@ -138,30 +161,50 @@ function StatusNode({ id, data, selected }: NodeProps<NodeData>) {
         selected && 'border-primary ring-2 ring-[var(--ring)]',
       )}
     >
-      <Handle type="target" position={Position.Left} className="!h-2.5 !w-2.5 !border-2 !border-surface !bg-[var(--border-strong)]" />
+      <Handle
+        type="target"
+        position={Position.Left}
+        className="!h-2.5 !w-2.5 !border-2 !border-surface !bg-[var(--border-strong)]"
+      />
       <div className="flex items-center gap-2">
         <span
           className="h-2.5 w-2.5 shrink-0 rounded-full"
-          style={{ background: data.color || (data.category ? CATEGORY_VAR[data.category] : 'var(--faint)') }}
+          style={{
+            background:
+              data.color || (data.category ? CATEGORY_VAR[data.category] : 'var(--faint)'),
+          }}
           aria-hidden
         />
-        <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink-strong">{data.label}</span>
+        <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink-strong">
+          {data.label}
+        </span>
         {data.isInitial && (
-          <span className="rounded bg-primary-subtle px-1 py-0.5 text-[10px] font-medium text-primary">Khởi tạo</span>
+          <span className="rounded bg-primary-subtle px-1 py-0.5 text-[10px] font-medium text-primary">
+            Khởi tạo
+          </span>
         )}
       </div>
       {data.category && (
-        <span className="mt-0.5 block text-[11px] text-faint">{CATEGORY_LABEL[data.category]}</span>
+        <span className="mt-0.5 block text-[11px] text-faint">
+          {STATUS_CATEGORY_LABEL[data.category]}
+        </span>
       )}
-      <button
-        type="button"
-        onClick={() => data.onDelete?.(id)}
-        title="Xoá trạng thái"
-        className="absolute -right-2 -top-2 hidden h-5 w-5 place-items-center rounded-full border border-border bg-surface text-muted shadow-sm hover:text-danger group-hover:grid"
-      >
-        <Trash2 className="h-3 w-3" aria-hidden />
-      </button>
-      <Handle type="source" position={Position.Right} className="!h-2.5 !w-2.5 !border-2 !border-surface !bg-primary" />
+      {data.onDelete && (
+        <button
+          type="button"
+          onClick={() => data.onDelete?.(id)}
+          title="Xoá trạng thái"
+          aria-label="Xoá trạng thái"
+          className="absolute -right-2 -top-2 hidden h-5 w-5 place-items-center rounded-full border border-border bg-surface text-muted shadow-sm hover:text-danger group-hover:grid"
+        >
+          <Trash2 className="h-3 w-3" aria-hidden />
+        </button>
+      )}
+      <Handle
+        type="source"
+        position={Position.Right}
+        className="!h-2.5 !w-2.5 !border-2 !border-surface !bg-primary"
+      />
     </div>
   );
 }
@@ -183,6 +226,9 @@ export function WorkflowGraph({ workflow }: { workflow: Workflow }) {
   const deleteTransition = useDeleteTransition();
   const addStatus = useAddStatus();
   const deleteStatus = useDeleteStatus();
+  const confirm = useConfirm();
+  // Chỉ `workspace:admin` được sửa quy trình; người khác xem sơ đồ (kéo node để dễ nhìn vẫn được).
+  const canManage = useAuth((s) => s.can('workspace:admin'));
 
   const posRef = useRef<PosMap>(loadPos(workflow.id));
   const statusById = useMemo(
@@ -191,19 +237,24 @@ export function WorkflowGraph({ workflow }: { workflow: Workflow }) {
   );
 
   const handleDeleteStatus = useCallback(
-    (id: string) => {
+    async (id: string) => {
       const s = statusById.get(id);
       if (!s) return;
-      if (!window.confirm(`Xoá trạng thái "${s.name}"? Các chuyển tiếp liên quan cũng sẽ bị xoá.`)) return;
+      const ok = await confirm({
+        title: `Xoá trạng thái "${s.name}"?`,
+        description: 'Các chuyển tiếp liên quan cũng sẽ bị xoá.',
+        destructive: true,
+      });
+      if (!ok) return;
       deleteStatus.mutate(id, { onError: (e) => toast.error(apiErrorMessage(e)) });
     },
-    [statusById, deleteStatus],
+    [statusById, deleteStatus, confirm],
   );
   // Tham chiếu ổn định cho onDelete để effect dựng node KHÔNG chạy lại mỗi render
   // (object mutation của react-query đổi ref mỗi render → tránh rebuild liên tục khiến reactflow giữ node ẩn).
   const deleteRef = useRef(handleDeleteStatus);
   deleteRef.current = handleDeleteStatus;
-  const stableDelete = useCallback((id: string) => deleteRef.current(id), []);
+  const stableDelete = useCallback((id: string) => void deleteRef.current(id), []);
 
   const [nodes, setNodes, onNodesChange] = useNodesState<NodeData>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
@@ -211,9 +262,9 @@ export function WorkflowGraph({ workflow }: { workflow: Workflow }) {
   // Chỉ dựng lại node/edge khi DỮ LIỆU workflow đổi (thêm/xoá) — giữ vị trí đã lưu.
   useEffect(() => {
     posRef.current = loadPos(workflow.id);
-    setNodes(buildNodes(workflow, posRef.current, stableDelete));
+    setNodes(buildNodes(workflow, posRef.current, canManage ? stableDelete : undefined));
     setEdges(buildEdges(workflow));
-  }, [workflow, stableDelete, setNodes, setEdges]);
+  }, [workflow, canManage, stableDelete, setNodes, setEdges]);
 
   const onConnect = useCallback(
     (c: Connection) => {
@@ -226,10 +277,13 @@ export function WorkflowGraph({ workflow }: { workflow: Workflow }) {
         toast.info('Chuyển tiếp này đã tồn tại.');
         return;
       }
-      const fromName = c.source === ANY_ID ? 'Bất kỳ' : statusById.get(c.source)?.name ?? '';
+      const fromName = c.source === ANY_ID ? 'Bất kỳ' : (statusById.get(c.source)?.name ?? '');
       const toName = statusById.get(c.target)?.name ?? '';
       addTransition.mutate(
-        { workflowId: workflow.id, input: { name: `${fromName} → ${toName}`, fromStatusId: fromId, toStatusId: c.target } },
+        {
+          workflowId: workflow.id,
+          input: { name: `${fromName} → ${toName}`, fromStatusId: fromId, toStatusId: c.target },
+        },
         { onError: (e) => toast.error(apiErrorMessage(e)) },
       );
     },
@@ -238,14 +292,18 @@ export function WorkflowGraph({ workflow }: { workflow: Workflow }) {
 
   const onEdgesDelete = useCallback(
     (removed: Edge[]) => {
-      for (const e of removed) deleteTransition.mutate(e.id, { onError: (err) => toast.error(apiErrorMessage(err)) });
+      for (const e of removed)
+        deleteTransition.mutate(e.id, { onError: (err) => toast.error(apiErrorMessage(err)) });
     },
     [deleteTransition],
   );
 
   const onNodeDragStop = useCallback(
     (_e: unknown, node: Node) => {
-      posRef.current = { ...posRef.current, [node.id]: { x: Math.round(node.position.x), y: Math.round(node.position.y) } };
+      posRef.current = {
+        ...posRef.current,
+        [node.id]: { x: Math.round(node.position.x), y: Math.round(node.position.y) },
+      };
       savePos(workflow.id, posRef.current);
     },
     [workflow.id],
@@ -261,29 +319,34 @@ export function WorkflowGraph({ workflow }: { workflow: Workflow }) {
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
         onEdgesDelete={onEdgesDelete}
+        nodesConnectable={canManage}
         onNodeDragStop={onNodeDragStop}
         defaultEdgeOptions={{ type: 'smoothstep' }}
         fitView
         proOptions={{ hideAttribution: true }}
-        deleteKeyCode={['Backspace', 'Delete']}
+        deleteKeyCode={canManage ? ['Backspace', 'Delete'] : null}
       >
         <FitView dep={workflow.id} />
         <Background gap={16} color="var(--border)" />
         <Controls showInteractive={false} className="!border-border !bg-surface !shadow-md" />
-        <Panel position="top-left">
-          <AddStatusForm
-            adding={addStatus.isPending}
-            onAdd={(name, category) =>
-              addStatus.mutate(
-                { workflowId: workflow.id, input: { name, category } },
-                { onError: (e) => toast.error(apiErrorMessage(e)) },
-              )
-            }
-          />
-        </Panel>
+        {canManage && (
+          <Panel position="top-left">
+            <AddStatusForm
+              adding={addStatus.isPending}
+              onAdd={(name, category) =>
+                addStatus.mutate(
+                  { workflowId: workflow.id, input: { name, category } },
+                  { onError: (e) => toast.error(apiErrorMessage(e)) },
+                )
+              }
+            />
+          </Panel>
+        )}
         <Panel position="bottom-right">
           <p className="rounded-md border border-border bg-surface/90 px-2.5 py-1.5 text-xs text-muted shadow-sm">
-            Kéo từ chấm phải của một trạng thái sang trạng thái khác để tạo chuyển tiếp · chọn mũi tên rồi Delete để xoá
+            {canManage
+              ? 'Kéo từ chấm phải của một trạng thái sang trạng thái khác để tạo chuyển tiếp · chọn mũi tên rồi Delete để xoá'
+              : 'Bạn chỉ có quyền xem sơ đồ quy trình.'}
           </p>
         </Panel>
       </ReactFlow>
@@ -293,7 +356,13 @@ export function WorkflowGraph({ workflow }: { workflow: Workflow }) {
 
 const CATEGORIES: StatusCategory[] = ['TODO', 'IN_PROGRESS', 'DONE'];
 
-function AddStatusForm({ onAdd, adding }: { onAdd: (name: string, category: StatusCategory) => void; adding: boolean }) {
+function AddStatusForm({
+  onAdd,
+  adding,
+}: {
+  onAdd: (name: string, category: StatusCategory) => void;
+  adding: boolean;
+}) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
   const [category, setCategory] = useState<StatusCategory>('TODO');
@@ -334,23 +403,28 @@ function AddStatusForm({ onAdd, adding }: { onAdd: (name: string, category: Stat
         />
       </div>
       <div>
-        <label className="mb-1 block text-xs font-medium text-muted">Nhóm</label>
-        <select
+        <span id="wf-add-category-label" className="mb-1 block text-xs font-medium text-muted">
+          Nhóm
+        </span>
+        <SegmentedControl<StatusCategory>
+          ariaLabelledby="wf-add-category-label"
+          size="sm"
+          fullWidth={false}
           value={category}
-          onChange={(e) => setCategory(e.target.value as StatusCategory)}
-          className="h-8 rounded-md border border-border bg-bg px-2 text-sm text-ink focus-visible:outline-none focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
-        >
-          {CATEGORIES.map((c) => (
-            <option key={c} value={c}>
-              {CATEGORY_LABEL[c]}
-            </option>
-          ))}
-        </select>
+          onChange={setCategory}
+          options={CATEGORIES.map((c) => ({ value: c, label: STATUS_CATEGORY_LABEL[c] }))}
+        />
       </div>
       <Button size="sm" onClick={submit} loading={adding}>
         Thêm
       </Button>
-      <Button size="icon" variant="ghost" onClick={() => setOpen(false)} aria-label="Đóng" className="h-8 w-8">
+      <Button
+        size="icon"
+        variant="ghost"
+        onClick={() => setOpen(false)}
+        aria-label="Đóng"
+        className="h-8 w-8"
+      >
         <X className="h-4 w-4" />
       </Button>
     </div>

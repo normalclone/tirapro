@@ -1,5 +1,6 @@
 import type { IssueDto } from '@tirapro/types';
 import { byPriorityThenStatus } from './issueOrder';
+import { treeParentId } from './issueRefs';
 
 export interface IssueTreeNode {
   issue: IssueDto;
@@ -8,8 +9,9 @@ export interface IssueTreeNode {
 }
 
 /**
- * Dựng cây issue theo `parentId`. Gốc = issue không có cha HOẶC cha không nằm trong tập
- * hiện tại (mồ côi → coi như gốc, không mất issue). Mỗi cấp sắp theo ưu tiên→trạng thái.
+ * Dựng cây issue theo cha-trong-cây `parentId ?? epicId` (`treeParentId`). Gốc = issue không có cha HOẶC
+ * cha không nằm trong tập hiện tại (mồ côi → coi như gốc, không mất issue). Issue nằm trong vòng lẫn
+ * (X.parentId=Y, Y.epicId=X) không có gốc nên được nối vào cuối như gốc. Mỗi cấp sắp theo ưu tiên→trạng thái.
  */
 export function buildIssueTree(issues: IssueDto[]): IssueTreeNode[] {
   const byId = new Map(issues.map((i) => [i.id, i]));
@@ -17,11 +19,11 @@ export function buildIssueTree(issues: IssueDto[]): IssueTreeNode[] {
   const roots: IssueDto[] = [];
 
   for (const it of issues) {
-    const hasParent = it.parentId && byId.has(it.parentId);
-    if (hasParent) {
-      const arr = childrenOf.get(it.parentId!) ?? [];
+    const pid = treeParentId(it);
+    if (pid && byId.has(pid)) {
+      const arr = childrenOf.get(pid) ?? [];
       arr.push(it);
-      childrenOf.set(it.parentId!, arr);
+      childrenOf.set(pid, arr);
     } else {
       roots.push(it);
     }
@@ -37,7 +39,15 @@ export function buildIssueTree(issues: IssueDto[]): IssueTreeNode[] {
   };
 
   const seen = new Set<string>();
-  return roots.slice().sort(byPriorityThenStatus).map((r) => build(r, 0, seen));
+  const tree = roots
+    .slice()
+    .sort(byPriorityThenStatus)
+    .map((r) => build(r, 0, seen));
+  // Lưới an toàn: issue thuộc vòng không có gốc → chưa được duyệt; nối làm gốc để không bao giờ "mất" việc.
+  for (const it of issues.slice().sort(byPriorityThenStatus)) {
+    if (!seen.has(it.id)) tree.push(build(it, 0, seen));
+  }
+  return tree;
 }
 
 export interface SubtreeProgress {
@@ -47,15 +57,18 @@ export interface SubtreeProgress {
   todo: number;
   /** % task con (toàn cây) đã ở trạng thái Hoàn thành. */
   pct: number;
+  /** Đơn vị của total/done/... khi KHÔNG phải số việc (epic tính theo điểm). Mặc định: số việc. */
+  unit?: 'điểm' | 'việc';
 }
 
 function childrenMap(issues: IssueDto[]): Map<string, IssueDto[]> {
   const m = new Map<string, IssueDto[]>();
   for (const it of issues) {
-    if (it.parentId) {
-      const arr = m.get(it.parentId) ?? [];
+    const pid = treeParentId(it);
+    if (pid) {
+      const arr = m.get(pid) ?? [];
       arr.push(it);
-      m.set(it.parentId, arr);
+      m.set(pid, arr);
     }
   }
   return m;
@@ -76,12 +89,12 @@ export function subtreeProgress(issues: IssueDto[], rootId: string): SubtreeProg
     counts[it.status.category] = (counts[it.status.category] ?? 0) + 1;
     for (const c of childrenOf.get(it.id) ?? []) stack.push(c);
   }
-  const done = counts.DONE;
+  const done = counts.DONE ?? 0;
   return {
     total,
     done,
-    inProgress: counts.IN_PROGRESS,
-    todo: counts.TODO,
+    inProgress: counts.IN_PROGRESS ?? 0,
+    todo: counts.TODO ?? 0,
     pct: total ? Math.round((done / total) * 100) : 0,
   };
 }
@@ -100,10 +113,11 @@ export function buildProgressMap(issues: IssueDto[]): Map<string, SubtreeProgres
 export function descendantIdsWithSelf(issues: IssueDto[], rootId: string): Set<string> {
   const childrenOf = new Map<string, string[]>();
   for (const it of issues) {
-    if (it.parentId) {
-      const arr = childrenOf.get(it.parentId) ?? [];
+    const pid = treeParentId(it);
+    if (pid) {
+      const arr = childrenOf.get(pid) ?? [];
       arr.push(it.id);
-      childrenOf.set(it.parentId, arr);
+      childrenOf.set(pid, arr);
     }
   }
   const out = new Set<string>([rootId]);
@@ -118,4 +132,20 @@ export function descendantIdsWithSelf(issues: IssueDto[], rootId: string): Set<s
     }
   }
   return out;
+}
+
+/** So sánh tiến độ theo giá trị (bản đồ tiến độ được dựng lại mỗi lần cache đổi nên tham chiếu không dùng được cho `memo`). */
+export function sameProgress(
+  a: SubtreeProgress | undefined,
+  b: SubtreeProgress | undefined,
+): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return (
+    a.total === b.total &&
+    a.done === b.done &&
+    a.inProgress === b.inProgress &&
+    a.todo === b.todo &&
+    a.pct === b.pct
+  );
 }

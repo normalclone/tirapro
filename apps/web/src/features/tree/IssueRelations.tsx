@@ -3,10 +3,12 @@ import { useNavigate } from 'react-router-dom';
 import { ListTree } from 'lucide-react';
 import type { IssueDto } from '@tirapro/types';
 import { byPriorityThenStatus } from '@/lib/issueOrder';
+import { childrenForPanel, epicTaskProgress } from '@/lib/epic';
+import { isEpicIssue } from '@/lib/issueRefs';
 import { subtreeProgress } from '@/lib/issueTree';
 import { TaskProgress } from '@/components/ui/TaskProgress';
 import { categoryColor } from '@/lib/statusColor';
-import { useProjectIssues } from '@/features/backlog/api';
+import { useProjectIssues } from '@/features/issues/api';
 
 /**
  * Việc con trực tiếp của một công việc + tiến độ cả nhánh. Việc đặt việc cha nằm ở
@@ -17,10 +19,15 @@ export function IssueRelations({ issue }: { issue: IssueDto }) {
   const { data: issues = [] } = useProjectIssues(issue.projectId);
 
   const children = useMemo(
-    () => issues.filter((i) => i.parentId === issue.id).slice().sort(byPriorityThenStatus),
-    [issues, issue.id],
+    () => childrenForPanel(issues, issue).sort(byPriorityThenStatus),
+    [issues, issue],
   );
-  const progress = useMemo(() => subtreeProgress(issues, issue.id), [issues, issue.id]);
+  const isEpic = isEpicIssue(issue);
+  // Epic: tiến độ theo đúng tập thành viên đang liệt kê (số việc khớp danh sách, % theo điểm); việc thường: cả nhánh con cháu.
+  const progress = useMemo(
+    () => (isEpic ? epicTaskProgress(issues, issue.id) : subtreeProgress(issues, issue.id)),
+    [issues, issue.id, isEpic],
+  );
 
   // Chỉ hiển thị mục Việc con khi thực sự có việc con.
   if (children.length === 0) return null;
@@ -29,14 +36,29 @@ export function IssueRelations({ issue }: { issue: IssueDto }) {
     <section className="rounded-lg border border-border bg-surface">
       <div className="flex items-center gap-2 border-b border-border px-4 py-2.5">
         <ListTree className="h-4 w-4 text-muted" aria-hidden />
-        <h2 className="text-sm font-medium text-ink-strong" title="Những việc nhỏ được tách ra từ việc này. Xong hết việc con thì việc cha mới coi là xong.">Việc con ({children.length})</h2>
+        <h2
+          className="text-sm font-medium text-ink-strong"
+          title={
+            isEpic
+              ? 'Các công việc thuộc epic này (gắn epic hoặc là việc con trực tiếp).'
+              : 'Những việc nhỏ được tách ra từ việc này. Xong hết việc con thì việc cha mới coi là xong.'
+          }
+        >
+          {isEpic ? 'Công việc trong epic' : 'Việc con'} ({children.length})
+        </h2>
         {progress.total > 0 && (
           <span className="ml-auto tabular text-xs text-muted">{progress.pct}% hoàn thành</span>
         )}
       </div>
 
       <div className="space-y-2 p-4">
-        {progress.total > 0 && <TaskProgress progress={progress} className="pb-0.5" />}
+        {progress.total > 0 && (
+          <TaskProgress
+            progress={progress}
+            className="pb-0.5"
+            label={isEpic ? 'Tiến độ epic' : undefined}
+          />
+        )}
         <ul className="divide-y divide-border overflow-hidden rounded-md border border-border">
           {children.map((c) => (
             <li key={c.id}>

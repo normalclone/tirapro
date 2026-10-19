@@ -43,12 +43,12 @@ if [ "$TOOLS" = 1 ]; then docker compose --profile tools up -d; else docker comp
 info "Chờ Postgres sẵn sàng…"
 health=""
 for _ in $(seq 1 30); do
-  health="$(docker inspect -f '{{.State.Health.Status}}' projira-postgres 2>/dev/null || echo none)"
+  health="$(docker inspect -f '{{.State.Health.Status}}' tirapro-postgres 2>/dev/null || echo none)"
   [ "$health" = healthy ] && break
   sleep 2
 done
 if [ "$health" = healthy ]; then ok "Postgres healthy."; else warn "Postgres chưa healthy sau 60s (status=$health) — vẫn tiếp tục."; fi
-ok "Redis: $(docker inspect -f '{{.State.Health.Status}}' projira-redis 2>/dev/null || echo '?')"
+ok "Redis: $(docker inspect -f '{{.State.Health.Status}}' tirapro-redis 2>/dev/null || echo '?')"
 
 # 3) Build package dùng chung + Prisma client
 info "Build @tirapro/types + @tirapro/shared…"

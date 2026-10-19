@@ -1,9 +1,25 @@
 import { Injectable } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { DOMAIN_EVENTS, type SprintDto } from '@tirapro/types';
-import type { CreateSprintInput } from '@tirapro/shared';
+import type {
+  CompleteSprintInput,
+  CreateSprintInput,
+  SprintClosePayload,
+  StartSprintInput,
+  UpdateSprintInput,
+} from '@tirapro/shared';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
+import { iso } from '../../common/mappers/date';
 import { BusinessRuleException, NotFoundAppException } from '../../common/exceptions/app.exception';
+import { assertNotArchived } from '../../common/project-writable';
+import { TRIAGE_VISIBLE, isUnreviewed } from '../../common/triage-visibility';
+
+/** Ngày lịch (UTC) của một thời điểm, dạng số để so sánh. */
+const utcDay = (d: Date) => Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+
+/** Số lần thử lại khi hai request tạo sprint tính trùng sequence. */
+const SEQUENCE_RETRIES = 3;
 
 @Injectable()
 export class SprintsService {
@@ -13,100 +29,459 @@ export class SprintsService {
   ) {}
 
   async listForProject(workspaceId: string, projectId: string): Promise<SprintDto[]> {
+    // `projectId` thiếu (query bỏ trống) ⇒ Prisma bỏ qua điều kiện và liệt kê sprint của MỌI dự án (kể cả riêng tư) mà guard
+    // không kiểm dự án nào: bắt buộc phải có.
+    if (!projectId) throw new BusinessRuleException('Thiếu projectId');
     const sprints = await this.prisma.sprint.findMany({
-      where: { projectId, deletedAt: null, project: { workspaceId } },
+      where: { projectId, deletedAt: null, project: { workspaceId, deletedAt: null } },
       orderBy: [{ state: 'asc' }, { sequence: 'desc' }],
-      include: { _count: { select: { issues: true } }, issues: { select: { storyPoints: true } } },
     });
-    return sprints.map((s) => this.toDto(s, s._count.issues, s.issues.reduce((a, i) => a + (i.storyPoints ?? 0), 0)));
+    if (sprints.length === 0) return [];
+    // Đếm issue + tổng điểm bằng một câu GROUP BY (không kéo từng issue về); issue đã xoá mềm không tính.
+    const groups = await this.prisma.issue.groupBy({
+      by: ['sprintId'],
+      where: { sprintId: { in: sprints.map((s) => s.id) }, deletedAt: null, ...TRIAGE_VISIBLE },
+      _count: { _all: true },
+      _sum: { storyPoints: true },
+    });
+    const statsBySprint = new Map(
+      groups.map((g) => [g.sprintId, { count: g._count._all, points: g._sum.storyPoints ?? 0 }]),
+    );
+    return sprints.map((s) => {
+      const st = statsBySprint.get(s.id);
+      return this.toDto(s, st?.count ?? 0, st?.points ?? 0);
+    });
   }
 
-  async create(workspaceId: string, projectId: string, input: CreateSprintInput): Promise<SprintDto> {
-    const project = await this.prisma.project.findFirst({ where: { id: projectId, workspaceId, deletedAt: null }, select: { id: true } });
+  async create(
+    workspaceId: string,
+    projectId: string,
+    input: Omit<CreateSprintInput, 'projectId'>,
+  ): Promise<SprintDto> {
+    const project = await this.prisma.project.findFirst({
+      where: { id: projectId, workspaceId, deletedAt: null },
+      select: { id: true, archivedAt: true },
+    });
     if (!project) throw new NotFoundAppException('Dự án');
-    const last = await this.prisma.sprint.findFirst({ where: { projectId }, orderBy: { sequence: 'desc' }, select: { sequence: true } });
-    const sprint = await this.prisma.sprint.create({
-      data: {
-        projectId,
-        boardId: input.boardId ?? null,
-        name: input.name,
-        goal: input.goal ?? null,
-        sequence: (last?.sequence ?? 0) + 1,
-        startDate: input.startDate ? new Date(input.startDate) : null,
-        endDate: input.endDate ? new Date(input.endDate) : null,
-      },
-    });
-    return this.toDto(sprint, 0, 0);
+    assertNotArchived(project.archivedAt);
+    // sequence = lớn nhất + 1; hai request đồng thời có thể tính trùng → unique [projectId, sequence]
+    // chặn bản ghi trùng (P2002) và ta tính lại, tối đa 3 lần.
+    for (let attempt = 1; ; attempt++) {
+      // allow-deleted: sequence phải tính cả sprint đã xoá để không trùng số thứ tự
+      const last = await this.prisma.sprint.findFirst({
+        where: { projectId },
+        orderBy: { sequence: 'desc' },
+        select: { sequence: true },
+      });
+      try {
+        const sprint = await this.prisma.sprint.create({
+          data: {
+            projectId,
+            boardId: input.boardId ?? null,
+            name: input.name,
+            goal: input.goal ?? null,
+            sequence: (last?.sequence ?? 0) + 1,
+            startDate: input.startDate ? new Date(input.startDate) : null,
+            endDate: input.endDate ? new Date(input.endDate) : null,
+          },
+        });
+        return this.toDto(sprint, 0, 0);
+      } catch (e) {
+        const isDup = e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002';
+        if (!isDup || attempt >= SEQUENCE_RETRIES) {
+          if (isDup)
+            throw new BusinessRuleException(
+              'Nhiều người đang tạo sprint cùng lúc — hãy thử tạo lại sau vài giây',
+            );
+          throw e;
+        }
+      }
+    }
   }
 
-  async start(workspaceId: string, sprintId: string): Promise<SprintDto> {
+  /**
+   * Bắt đầu sprint. `input` (tuỳ chọn) chốt ngày bắt đầu/kết thúc và mục tiêu trong CÙNG giao dịch chuyển ACTIVE
+   * (không PATCH rồi start — hai request sẽ để sprint nửa vời nếu request sau lỗi). Kiểm `end >= start` trong transaction, TRƯỚC khi ghi.
+   */
+  async start(
+    workspaceId: string,
+    sprintId: string,
+    input: StartSprintInput = {},
+  ): Promise<SprintDto> {
     const sprint = await this.requireSprint(workspaceId, sprintId);
-    if (sprint.state !== 'FUTURE') throw new BusinessRuleException('Chỉ sprint FUTURE mới start được');
-    const active = await this.prisma.sprint.findFirst({ where: { projectId: sprint.projectId, state: 'ACTIVE', deletedAt: null } });
-    if (active) throw new BusinessRuleException('Đã có sprint đang ACTIVE; hoàn thành nó trước');
-
-    const updated = await this.prisma.sprint.update({
-      where: { id: sprintId },
-      data: { state: 'ACTIVE', startDate: sprint.startDate ?? new Date() },
+    const updated = await this.prisma.$transaction(async (tx) => {
+      // Khoá dòng project để hai request start đồng thời trong cùng project phải xếp hàng.
+      await tx.project.update({
+        where: { id: sprint.projectId },
+        data: { updatedAt: new Date() },
+        select: { id: true },
+      });
+      // Đọc lại trạng thái SAU khi khoá: sprint đang ACTIVE/CLOSED thì báo đúng lý do thay vì "đã có sprint ACTIVE".
+      const cur = await tx.sprint.findFirst({
+        where: { id: sprintId, deletedAt: null },
+        select: { state: true, startDate: true, endDate: true },
+      });
+      if (cur?.state !== 'FUTURE')
+        throw new BusinessRuleException('Chỉ bắt đầu được sprint chưa bắt đầu');
+      // Ngày hiệu lực tính từ giá trị đọc SAU khi khoá (không dùng bản đọc trước đó) để không ghi đè một PATCH ngày xen giữa.
+      const startDate = input.startDate ? new Date(input.startDate) : (cur.startDate ?? new Date());
+      const endDate =
+        input.endDate === undefined
+          ? cur.endDate
+          : input.endDate === null
+            ? null
+            : new Date(input.endDate);
+      // So theo NGÀY (UTC): bằng nhau được phép (sprint một ngày; kết thúc = hôm nay khi bắt đầu là "bây giờ").
+      if (endDate && utcDay(endDate) < utcDay(startDate))
+        throw new BusinessRuleException(
+          'Ngày kết thúc không được trước ngày bắt đầu — hãy chọn lại ngày',
+        );
+      const data: Prisma.SprintUpdateManyMutationInput = { state: 'ACTIVE', startDate };
+      if (input.endDate !== undefined) data.endDate = endDate;
+      if (input.goal !== undefined) data.goal = input.goal?.trim() ? input.goal.trim() : null;
+      const active = await tx.sprint.findFirst({
+        where: { projectId: sprint.projectId, state: 'ACTIVE', deletedAt: null },
+        select: { id: true },
+      });
+      if (active) throw new BusinessRuleException('Đã có sprint đang chạy — hãy kết thúc nó trước');
+      // Chuyển trạng thái có điều kiện: chỉ thắng khi sprint vẫn còn FUTURE.
+      const { count } = await tx.sprint.updateMany({
+        where: { id: sprintId, state: 'FUTURE', deletedAt: null },
+        data,
+      });
+      if (count === 0) throw new BusinessRuleException('Chỉ bắt đầu được sprint chưa bắt đầu');
+      await this.snapshot(tx, sprintId, 'START');
+      return tx.sprint.findUniqueOrThrow({ where: { id: sprintId } });
     });
-    await this.snapshot(sprintId, 'START');
     this.events.emit(DOMAIN_EVENTS.SPRINT_STARTED, { sprintId, projectId: sprint.projectId });
     return this.toDto(updated);
   }
 
-  async complete(workspaceId: string, sprintId: string): Promise<SprintDto> {
+  /**
+   * Hoàn thành sprint. Việc CHƯA Done đi theo `moveIncompleteTo`: về backlog, sang sprint FUTURE mới (tự tạo
+   * "Sprint {số tiếp theo}") hoặc sang một sprint FUTURE có sẵn. Mọi thứ — đóng sprint, snapshot CLOSE, tạo sprint
+   * mới, chuyển issue + history — nằm trong MỘT transaction: lỗi ở đâu cũng không để sprint đóng mà việc còn kẹt.
+   */
+  async complete(
+    workspaceId: string,
+    sprintId: string,
+    actorId: string,
+    input: CompleteSprintInput = { moveIncompleteTo: 'backlog' },
+  ): Promise<SprintDto> {
     const sprint = await this.requireSprint(workspaceId, sprintId);
-    if (sprint.state !== 'ACTIVE') throw new BusinessRuleException('Chỉ sprint ACTIVE mới complete được');
+    const dest = input.moveIncompleteTo;
+    if (typeof dest === 'object' && dest.sprintId === sprintId) {
+      throw new BusinessRuleException(
+        'Không thể chuyển việc chưa xong sang chính sprint đang hoàn thành — hãy chọn sprint khác',
+      );
+    }
+    const updated = await this.prisma.$transaction(async (tx) => {
+      // Chuyển trạng thái có điều kiện: hai lần complete đồng thời chỉ một lần thắng.
+      const { count } = await tx.sprint.updateMany({
+        where: { id: sprintId, state: 'ACTIVE', deletedAt: null },
+        data: { state: 'CLOSED', completeDate: new Date() },
+      });
+      if (count === 0) throw new BusinessRuleException('Chỉ kết thúc được sprint đang chạy');
 
-    await this.snapshot(sprintId, 'CLOSE');
-    // Đưa issue chưa Done về backlog (sprintId = null)
-    await this.prisma.issue.updateMany({
-      where: { sprintId, deletedAt: null, status: { category: { not: 'DONE' } } },
-      data: { sprintId: null },
-    });
-    const updated = await this.prisma.sprint.update({
-      where: { id: sprintId },
-      data: { state: 'CLOSED', completeDate: new Date() },
+      // Thứ tự: (1) đóng sprint ở trên, (2) tính việc chưa Done, (3) tạo/khoá sprint đích, (4) snapshot CLOSE kèm
+      // payload (việc chuyển tiếp + nơi chuyển), (5) mới chuyển issue ra. Snapshot vẫn chụp TOÀN BỘ sprint (cả việc sắp
+      // bị đẩy ra) vì issue chưa di chuyển — velocity cần "cam kết" thật của sprint.
+      const pushed = await tx.issue.findMany({
+        where: { sprintId, deletedAt: null, status: { category: { not: 'DONE' } } },
+        select: { id: true, key: true, summary: true, storyPoints: true, triageState: true },
+      });
+
+      let targetSprintId: string | null = null;
+      let movedTo: SprintClosePayload['movedTo'] = { kind: 'backlog' };
+      if (dest === 'new') {
+        const created = await this.createNextSprint(tx, sprint);
+        targetSprintId = created.id;
+        movedTo = { kind: 'new', sprintId: created.id, sprintName: created.name };
+      } else if (typeof dest === 'object') {
+        // updateMany làm vừa khoá dòng vừa kiểm: sprint đích phải còn FUTURE, cùng dự án, chưa xoá; và
+        // `remove()` (cũng updateMany trên dòng này) phải xếp hàng sau — không có việc nào trỏ vào sprint vừa bị xoá.
+        const lock = await tx.sprint.updateMany({
+          where: {
+            id: dest.sprintId,
+            projectId: sprint.projectId,
+            state: 'FUTURE',
+            deletedAt: null,
+          },
+          data: { updatedAt: new Date() },
+        });
+        if (lock.count === 0)
+          throw new BusinessRuleException(
+            'Sprint đích không còn hợp lệ — hãy chọn một sprint chưa bắt đầu của dự án này',
+          );
+        targetSprintId = dest.sprintId;
+        const target = await tx.sprint.findFirst({
+          where: { id: dest.sprintId, deletedAt: null },
+          select: { name: true },
+        });
+        movedTo = { kind: 'sprint', sprintId: dest.sprintId, sprintName: target?.name };
+      }
+
+      const payload: SprintClosePayload = {
+        // Việc chưa duyệt vẫn bị đưa ra khỏi sprint (không bỏ sót) nhưng không liệt vào "chuyển tiếp" — snapshot cũng không
+        // tính nó, nên committed = completed + remaining vẫn đúng.
+        carriedOver: pushed
+          .filter((i) => !isUnreviewed(i.triageState))
+          .map((i) => ({
+            id: i.id,
+            key: i.key,
+            summary: i.summary,
+            storyPoints: i.storyPoints ?? null,
+          })),
+        movedTo,
+      };
+      await this.snapshot(
+        tx,
+        sprintId,
+        'CLOSE',
+        new Date(),
+        payload as unknown as Prisma.InputJsonValue,
+      );
+
+      // Đưa issue chưa Done sang đích và ghi lịch sử cho từng issue.
+      if (pushed.length) {
+        await this.moveIssuesOut(tx, {
+          sprintId,
+          projectId: sprint.projectId,
+          ids: pushed.map((i) => i.id),
+          targetSprintId,
+          actorId,
+          onlyNotDone: true,
+        });
+      }
+      return tx.sprint.findUniqueOrThrow({ where: { id: sprintId } });
     });
     this.events.emit(DOMAIN_EVENTS.SPRINT_COMPLETED, { sprintId, projectId: sprint.projectId });
     return this.toDto(updated);
   }
 
-  private async snapshot(sprintId: string, kind: 'START' | 'DAILY' | 'SCOPE_CHANGE' | 'CLOSE') {
-    const issues = await this.prisma.issue.findMany({
-      where: { sprintId, deletedAt: null },
+  /** Sửa sprint. FUTURE sửa được mọi trường; ACTIVE chỉ mục tiêu + ngày kết thúc; CLOSED không sửa. */
+  async update(
+    workspaceId: string,
+    sprintId: string,
+    input: UpdateSprintInput,
+  ): Promise<SprintDto> {
+    const sprint = await this.requireSprint(workspaceId, sprintId);
+    if (sprint.state === 'CLOSED')
+      throw new BusinessRuleException('Sprint đã hoàn thành — không sửa được nữa');
+    if (sprint.state === 'ACTIVE') {
+      const changesName = input.name !== undefined && input.name !== sprint.name;
+      const changesStart =
+        input.startDate !== undefined &&
+        (input.startDate ? new Date(input.startDate).getTime() : null) !==
+          (sprint.startDate?.getTime() ?? null);
+      if (changesName || changesStart) {
+        throw new BusinessRuleException(
+          'Sprint đang chạy chỉ sửa được mục tiêu và ngày kết thúc — hãy bỏ phần đổi tên/ngày bắt đầu',
+        );
+      }
+    }
+    const data: Prisma.SprintUpdateManyMutationInput = {};
+    if (input.name !== undefined && sprint.state === 'FUTURE') data.name = input.name;
+    if (input.goal !== undefined) data.goal = input.goal?.trim() ? input.goal : null;
+    if (input.startDate !== undefined && sprint.state === 'FUTURE')
+      data.startDate = input.startDate ? new Date(input.startDate) : null;
+    if (input.endDate !== undefined) data.endDate = input.endDate ? new Date(input.endDate) : null;
+    const start = 'startDate' in data ? (data.startDate as Date | null) : sprint.startDate;
+    const end = 'endDate' in data ? (data.endDate as Date | null) : sprint.endDate;
+    if (start && end && end < start)
+      throw new BusinessRuleException(
+        'Ngày kết thúc không được trước ngày bắt đầu — hãy chọn lại ngày',
+      );
+    // Có điều kiện theo state đã đọc: sprint vừa được start/complete/xoá giữa chừng thì không ghi đè.
+    const { count } = await this.prisma.sprint.updateMany({
+      where: { id: sprintId, state: sprint.state, deletedAt: null },
+      data,
+    });
+    if (count === 0)
+      throw new BusinessRuleException('Sprint vừa đổi trạng thái — hãy tải lại trang rồi sửa lại');
+    const updated = await this.prisma.sprint.findUniqueOrThrow({ where: { id: sprintId } });
+    this.events.emit(DOMAIN_EVENTS.SPRINT_UPDATED, { sprintId, projectId: sprint.projectId });
+    return this.toDto(updated);
+  }
+
+  /** Xoá mềm sprint FUTURE; issue trong sprint về backlog + history, cùng một transaction. */
+  async remove(workspaceId: string, sprintId: string, actorId: string): Promise<{ success: true }> {
+    const sprint = await this.requireSprint(workspaceId, sprintId);
+    if (sprint.state !== 'FUTURE') {
+      throw new BusinessRuleException(
+        'Chỉ xoá được sprint chưa bắt đầu — sprint đang chạy hãy kết thúc, sprint đã đóng được giữ làm lịch sử',
+      );
+    }
+    await this.prisma.$transaction(async (tx) => {
+      const { count } = await tx.sprint.updateMany({
+        where: { id: sprintId, state: 'FUTURE', deletedAt: null },
+        data: { deletedAt: new Date() },
+      });
+      if (count === 0)
+        throw new BusinessRuleException('Sprint vừa được bắt đầu hoặc xoá — hãy tải lại trang');
+      const issues = await tx.issue.findMany({
+        where: { sprintId, deletedAt: null },
+        select: { id: true },
+      });
+      if (issues.length) {
+        await this.moveIssuesOut(tx, {
+          sprintId,
+          projectId: sprint.projectId,
+          ids: issues.map((i) => i.id),
+          targetSprintId: null,
+          actorId,
+          onlyNotDone: false,
+        });
+      }
+    });
+    this.events.emit(DOMAIN_EVENTS.SPRINT_UPDATED, { sprintId, projectId: sprint.projectId });
+    return { success: true };
+  }
+
+  /** Tạo sprint FUTURE kế tiếp (cùng board) bên trong transaction của `complete`. */
+  private async createNextSprint(
+    tx: Prisma.TransactionClient,
+    from: { projectId: string; boardId: string | null },
+  ): Promise<{ id: string; name: string }> {
+    // allow-deleted: sequence phải tính cả sprint đã xoá để không trùng số thứ tự
+    const last = await tx.sprint.findFirst({
+      where: { projectId: from.projectId },
+      orderBy: { sequence: 'desc' },
+      select: { sequence: true },
+    });
+    const sequence = (last?.sequence ?? 0) + 1;
+    try {
+      const created = await tx.sprint.create({
+        data: {
+          projectId: from.projectId,
+          boardId: from.boardId,
+          name: `Sprint ${sequence}`,
+          sequence,
+          state: 'FUTURE',
+        },
+        select: { id: true, name: true },
+      });
+      return created;
+    } catch (e) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+        throw new BusinessRuleException(
+          'Nhiều người đang tạo sprint cùng lúc — hãy hoàn thành sprint lại sau vài giây',
+        );
+      }
+      throw e;
+    }
+  }
+
+  /**
+   * Chuyển issue ra khỏi `sprintId` sang `targetSprintId` (null = backlog) kèm history SPRINT.
+   * `version` tăng để client đang giữ bản cũ bị OCC chặn thay vì lặng lẽ ghi đè sprint.
+   * Điều kiện `sprintId` ở updateMany: issue vừa bị người khác chuyển đi thì không bị kéo lại.
+   */
+  private async moveIssuesOut(
+    tx: Prisma.TransactionClient,
+    p: {
+      sprintId: string;
+      projectId: string;
+      ids: string[];
+      targetSprintId: string | null;
+      actorId: string;
+      onlyNotDone: boolean;
+    },
+  ): Promise<void> {
+    await tx.issue.updateMany({
+      where: {
+        id: { in: p.ids },
+        sprintId: p.sprintId,
+        ...(p.onlyNotDone ? { status: { category: { not: 'DONE' as const } } } : {}),
+      },
+      data: { sprintId: p.targetSprintId, version: { increment: 1 } },
+    });
+    const occurredAt = new Date();
+    await tx.issueHistory.createMany({
+      data: p.ids.map((issueId) => ({
+        issueId,
+        projectId: p.projectId,
+        sprintId: p.sprintId,
+        field: 'SPRINT' as const,
+        oldValue: p.sprintId,
+        newValue: p.targetSprintId,
+        actorId: p.actorId,
+        occurredAt,
+      })),
+    });
+  }
+
+  /** Chụp trạng thái sprint (dùng cho START/CLOSE ở đây và DAILY ở cron). `at` cho phép đóng dấu thời điểm khác "bây giờ". */
+  async snapshot(
+    tx: Prisma.TransactionClient,
+    sprintId: string,
+    kind: 'START' | 'DAILY' | 'SCOPE_CHANGE' | 'CLOSE',
+    at: Date = new Date(),
+    payload?: Prisma.InputJsonValue,
+  ) {
+    const issues = await tx.issue.findMany({
+      where: { sprintId, deletedAt: null, ...TRIAGE_VISIBLE },
       select: { storyPoints: true, status: { select: { category: true } } },
     });
     const committedPoints = issues.reduce((a, i) => a + (i.storyPoints ?? 0), 0);
-    const completedPoints = issues.filter((i) => i.status.category === 'DONE').reduce((a, i) => a + (i.storyPoints ?? 0), 0);
+    const completedPoints = issues
+      .filter((i) => i.status.category === 'DONE')
+      .reduce((a, i) => a + (i.storyPoints ?? 0), 0);
     const completedCount = issues.filter((i) => i.status.category === 'DONE').length;
-    await this.prisma.sprintSnapshot.create({
+    await tx.sprintSnapshot.create({
       data: {
-        sprintId, kind, snapshotAt: new Date(),
-        committedPoints, completedPoints, remainingPoints: committedPoints - completedPoints,
-        committedCount: issues.length, completedCount,
+        sprintId,
+        kind,
+        snapshotAt: at,
+        committedPoints,
+        completedPoints,
+        remainingPoints: committedPoints - completedPoints,
+        committedCount: issues.length,
+        completedCount,
+        payload,
       },
     });
   }
 
   private async requireSprint(workspaceId: string, sprintId: string) {
-    const s = await this.prisma.sprint.findFirst({ where: { id: sprintId, deletedAt: null, project: { workspaceId } } });
+    const s = await this.prisma.sprint.findFirst({
+      where: { id: sprintId, deletedAt: null, project: { workspaceId, deletedAt: null } },
+      include: { project: { select: { archivedAt: true } } },
+    });
     if (!s) throw new NotFoundAppException('Đợt làm việc (sprint)');
+    assertNotArchived(s.project.archivedAt);
     return s;
   }
 
   private toDto(
-    s: { id: string; projectId: string; boardId: string | null; name: string; goal: string | null; state: string; startDate: Date | null; endDate: Date | null; completeDate: Date | null; sequence: number },
+    s: {
+      id: string;
+      projectId: string;
+      boardId: string | null;
+      name: string;
+      goal: string | null;
+      state: string;
+      startDate: Date | null;
+      endDate: Date | null;
+      completeDate: Date | null;
+      sequence: number;
+    },
     issueCount?: number,
     totalPoints?: number,
   ): SprintDto {
     return {
-      id: s.id, projectId: s.projectId, boardId: s.boardId, name: s.name, goal: s.goal,
+      id: s.id,
+      projectId: s.projectId,
+      boardId: s.boardId,
+      name: s.name,
+      goal: s.goal,
       state: s.state as SprintDto['state'],
-      startDate: s.startDate?.toISOString() ?? null,
-      endDate: s.endDate?.toISOString() ?? null,
-      completeDate: s.completeDate?.toISOString() ?? null,
-      sequence: s.sequence, issueCount, totalPoints,
+      startDate: iso(s.startDate),
+      endDate: iso(s.endDate),
+      completeDate: iso(s.completeDate),
+      sequence: s.sequence,
+      issueCount,
+      totalPoints,
     };
   }
 }

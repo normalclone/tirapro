@@ -1,23 +1,37 @@
 import { useState } from 'react';
+import { DocsLink } from '@/components/ui/DocsLink';
 import { CalendarClock, FileStack, Pause, Pencil, Play, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Badge, EmptyState, Skeleton } from '@/components/ui/primitives';
 import { Button } from '@/components/ui/Button';
-import { pageContainer } from '@/components/layout/page';
+import { useConfirm } from '@/components/ui/useConfirm';
+import { PageFrame } from '@/components/layout/PageFrame';
+import { PageHeader } from '@/components/layout/PageHeader';
+import { SectionCard } from '@/components/ui/SectionCard';
 import { apiErrorMessage } from '@/lib/api';
-import { cn } from '@/lib/utils';
 import { useAuth } from '@/stores/auth';
 import { RecurringModal } from './RecurringModal';
+import { RulesPage } from './RulesPage';
 import { TemplateModal } from './TemplateModal';
 import {
-  describeRecurrence, useDeleteRecurring, useDeleteTemplate, useIssueTemplates, useRecurringIssues,
-  useRunRecurringNow, useUpdateRecurring, type IssueTemplate, type RecurringIssue,
+  describeRecurrence,
+  useDeleteRecurring,
+  useDeleteTemplate,
+  useIssueTemplates,
+  useRecurringIssues,
+  useRunRecurringNow,
+  useUpdateRecurring,
+  type IssueTemplate,
+  type RecurringIssue,
 } from './api';
+import { QueryBoundary } from '@/components/ui/QueryBoundary';
+import { Tabs, TabPanel } from '@/components/ui/Tabs';
+import { fmtDateTime } from '@/lib/dateFormat';
+import { CONNECT_LABELS } from '@/lib/navLabels';
 
-type Tab = 'templates' | 'recurring';
+type Tab = 'rules' | 'templates' | 'recurring';
 
-const dateTime = (iso: string) =>
-  new Date(iso).toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+const dateTime = fmtDateTime;
 
 /**
  * Tự động hoá: mẫu công việc (điền sẵn trường khi tạo) và công việc lặp lại (hệ thống
@@ -25,49 +39,54 @@ const dateTime = (iso: string) =>
  */
 export function AutomationPage() {
   const canManage = useAuth((s) => s.can('project:admin'));
-  const [tab, setTab] = useState<Tab>('templates');
+  const [tab, setTab] = useState<Tab>('rules');
 
   const tabs: { id: Tab; label: string }[] = [
-    { id: 'templates', label: 'Mẫu công việc' },
-    { id: 'recurring', label: 'Công việc lặp lại' },
+    { id: 'rules', label: 'Quy tắc' },
+    { id: 'templates', label: 'Mẫu' },
+    { id: 'recurring', label: 'Lặp lại' },
   ];
 
   return (
-    <div className={pageContainer('md')}>
-      <header className="mb-6">
-        <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">Tự động hoá</h1>
-        <p className="mt-1 text-sm text-muted">
-          Mẫu công việc giúp bạn khỏi gõ lại những trường quen thuộc. Công việc lặp lại để hệ thống tự tạo việc theo lịch — họp tuần, báo cáo tháng, kiểm tra định kỳ.
-        </p>
-      </header>
+    <PageFrame size="sm">
+      <PageHeader
+        title={CONNECT_LABELS.automation}
+        description={
+          <>
+            Quy tắc tự chạy, mẫu công việc và việc lặp lại giúp bạn đỡ làm tay.{' '}
+            <DocsLink anchor="quan-ly-nang-cao" />
+          </>
+        }
+      />
 
-      <div className="mb-6 flex gap-1 border-b border-border" role="tablist" aria-label="Loại tự động hoá">
-        {tabs.map((t) => (
-          <button
-            key={t.id}
-            role="tab"
-            aria-selected={tab === t.id}
-            onClick={() => setTab(t.id)}
-            className={cn(
-              '-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
-              tab === t.id ? 'border-primary text-ink-strong' : 'border-transparent text-muted hover:text-ink',
-            )}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+      <Tabs
+        idBase="automation"
+        ariaLabel="Loại tự động hoá"
+        value={tab}
+        onChange={setTab}
+        items={tabs}
+        className="mb-6"
+      />
 
-      {tab === 'templates' ? <TemplatesPanel canManage={canManage} /> : <RecurringPanel canManage={canManage} />}
-    </div>
+      <TabPanel idBase="automation" value={tab}>
+        {tab === 'rules' ? (
+          <RulesPage />
+        ) : tab === 'templates' ? (
+          <TemplatesPanel canManage={canManage} />
+        ) : (
+          <RecurringPanel canManage={canManage} />
+        )}
+      </TabPanel>
+    </PageFrame>
   );
 }
 
 /* ---------------------------- Mẫu công việc ---------------------------- */
 
 function TemplatesPanel({ canManage }: { canManage: boolean }) {
-  const { data, isLoading } = useIssueTemplates();
+  const templatesQuery = useIssueTemplates();
   const remove = useDeleteTemplate();
+  const confirm = useConfirm();
   const [editing, setEditing] = useState<IssueTemplate | null>(null);
   const [open, setOpen] = useState(false);
 
@@ -77,7 +96,12 @@ function TemplatesPanel({ canManage }: { canManage: boolean }) {
   }
 
   async function destroy(t: IssueTemplate) {
-    if (!window.confirm(`Xoá mẫu “${t.name}”? Các việc đã tạo từ mẫu này vẫn giữ nguyên.`)) return;
+    const ok = await confirm({
+      title: `Xoá mẫu “${t.name}”?`,
+      description: 'Các việc đã tạo từ mẫu này vẫn giữ nguyên.',
+      destructive: true,
+    });
+    if (!ok) return;
     try {
       await remove.mutateAsync({ id: t.id, projectId: t.projectId });
       toast.success('Đã xoá mẫu công việc');
@@ -87,50 +111,72 @@ function TemplatesPanel({ canManage }: { canManage: boolean }) {
   }
 
   return (
-    <section className="rounded-lg border border-border bg-surface">
-      <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-4">
-        <div className="min-w-0">
-          <h2 className="text-base font-semibold text-ink-strong">Mẫu công việc</h2>
-          <p className="mt-0.5 text-sm text-muted">Điền sẵn loại, độ ưu tiên, tiêu đề và mô tả cho những việc hay gặp.</p>
-        </div>
-        {canManage && (
+    <SectionCard
+      title="Mẫu công việc"
+      description="Điền sẵn loại, mức ưu tiên, tiêu đề và mô tả cho những việc hay gặp."
+      actions={
+        canManage ? (
           <Button size="sm" onClick={() => edit(null)}>
             <Plus className="h-4 w-4" /> Tạo mẫu
           </Button>
-        )}
-      </div>
-
-      <div className="p-5">
-        {isLoading ? (
-          <ListSkeleton />
-        ) : !data?.length ? (
+        ) : undefined
+      }
+    >
+      <QueryBoundary
+        query={templatesQuery}
+        skeleton={<ListSkeleton />}
+        empty={(d) => d.length === 0}
+        emptyState={
           <EmptyState
             icon={<FileStack className="h-6 w-6" />}
             title="Chưa có mẫu công việc nào"
-            description="Mẫu điền sẵn loại, độ ưu tiên, tiêu đề và mô tả để bạn tạo việc chỉ trong một bước. Hãy tạo mẫu cho việc hay gặp: báo lỗi, yêu cầu tính năng, đón thành viên mới."
-            action={canManage ? <Button size="sm" onClick={() => edit(null)}><Plus className="h-4 w-4" /> Tạo mẫu</Button> : undefined}
+            description="Mẫu điền sẵn loại, mức ưu tiên, tiêu đề và mô tả để bạn tạo việc chỉ trong một bước. Hãy tạo mẫu cho việc hay gặp: báo lỗi, yêu cầu tính năng, đón thành viên mới."
+            action={
+              canManage ? (
+                <Button variant="secondary" size="sm" onClick={() => edit(null)}>
+                  <Plus className="h-4 w-4" /> Tạo mẫu
+                </Button>
+              ) : undefined
+            }
           />
-        ) : (
+        }
+      >
+        {(templates) => (
           <ul className="divide-y divide-border">
-            {data.map((t) => (
+            {templates.map((t) => (
               <li key={t.id} className="flex flex-wrap items-start gap-3 py-3 first:pt-0 last:pb-0">
                 <div className="min-w-0 flex-1">
                   <p className="flex flex-wrap items-center gap-2 text-sm font-medium text-ink">
                     {t.name}
-                    <Badge className={t.project ? 'bg-primary-subtle text-primary' : 'bg-surface-2 text-muted'}>
+                    <Badge
+                      className={
+                        t.project ? 'bg-primary-subtle text-primary' : 'bg-surface-2 text-muted'
+                      }
+                    >
                       {t.project ? t.project.key : 'Dùng chung mọi dự án'}
                     </Badge>
                   </p>
-                  {t.description && <p className="mt-0.5 truncate text-xs text-muted">{t.description}</p>}
+                  {t.description && (
+                    <p className="mt-0.5 truncate text-xs text-muted">{t.description}</p>
+                  )}
                   {t.payload.summary && (
-                    <p className="mt-0.5 truncate text-xs text-faint" title="Tiêu đề này được điền sẵn khi ai đó tạo việc từ mẫu, vẫn sửa lại được.">
+                    <p
+                      className="mt-0.5 truncate text-xs text-faint"
+                      title="Tiêu đề này được điền sẵn khi ai đó tạo việc từ mẫu, vẫn sửa lại được."
+                    >
                       Tiêu đề điền sẵn: {t.payload.summary}
                     </p>
                   )}
                 </div>
                 {canManage && (
                   <div className="flex shrink-0 items-center gap-1">
-                    <Button variant="ghost" size="icon" title="Sửa mẫu" aria-label={`Sửa mẫu ${t.name}`} onClick={() => edit(t)}>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      title="Sửa mẫu"
+                      aria-label={`Sửa mẫu ${t.name}`}
+                      onClick={() => edit(t)}
+                    >
                       <Pencil className="h-4 w-4" />
                     </Button>
                     <Button
@@ -149,19 +195,20 @@ function TemplatesPanel({ canManage }: { canManage: boolean }) {
             ))}
           </ul>
         )}
-      </div>
+      </QueryBoundary>
 
       <TemplateModal open={open} template={editing} onClose={() => setOpen(false)} />
-    </section>
+    </SectionCard>
   );
 }
 
 /* ------------------------- Công việc lặp lại --------------------------- */
 
 function RecurringPanel({ canManage }: { canManage: boolean }) {
-  const { data, isLoading } = useRecurringIssues();
+  const recurringQuery = useRecurringIssues();
   const update = useUpdateRecurring();
   const remove = useDeleteRecurring();
+  const confirm = useConfirm();
   const runNow = useRunRecurringNow();
   const [editing, setEditing] = useState<RecurringIssue | null>(null);
   const [open, setOpen] = useState(false);
@@ -194,7 +241,12 @@ function RecurringPanel({ canManage }: { canManage: boolean }) {
   }
 
   async function destroy(r: RecurringIssue) {
-    if (!window.confirm(`Xoá lịch “${r.name}”? Các công việc đã tạo trước đó vẫn giữ nguyên.`)) return;
+    const ok = await confirm({
+      title: `Xoá lịch “${r.name}”?`,
+      description: 'Các công việc đã tạo trước đó vẫn giữ nguyên.',
+      destructive: true,
+    });
+    if (!ok) return;
     try {
       await remove.mutateAsync({ id: r.id, projectId: r.projectId });
       toast.success('Đã xoá lịch lặp');
@@ -204,45 +256,65 @@ function RecurringPanel({ canManage }: { canManage: boolean }) {
   }
 
   return (
-    <section className="rounded-lg border border-border bg-surface">
-      <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-4">
-        <div className="min-w-0">
-          <h2 className="text-base font-semibold text-ink-strong">Công việc lặp lại</h2>
-          <p className="mt-0.5 text-sm text-muted">Hệ thống kiểm tra 15 phút một lần và tự tạo công việc khi tới lịch.</p>
-        </div>
-        {canManage && (
+    <SectionCard
+      title="Công việc lặp lại"
+      description="Hệ thống kiểm tra 15 phút một lần và tự tạo công việc khi tới lịch."
+      actions={
+        canManage ? (
           <Button size="sm" onClick={() => edit(null)}>
             <Plus className="h-4 w-4" /> Tạo lịch lặp
           </Button>
-        )}
-      </div>
-
-      <div className="p-5">
-        {isLoading ? (
-          <ListSkeleton />
-        ) : !data?.length ? (
+        ) : undefined
+      }
+    >
+      <QueryBoundary
+        query={recurringQuery}
+        skeleton={<ListSkeleton />}
+        empty={(d) => d.length === 0}
+        emptyState={
           <EmptyState
             icon={<CalendarClock className="h-6 w-6" />}
             title="Chưa có công việc lặp lại nào"
             description="Đặt lịch một lần, hệ thống tự tạo việc mỗi kỳ: họp đầu tuần, báo cáo cuối tháng, rà soát bảo mật."
-            action={canManage ? <Button size="sm" onClick={() => edit(null)}><Plus className="h-4 w-4" /> Tạo lịch lặp</Button> : undefined}
+            action={
+              canManage ? (
+                <Button variant="secondary" size="sm" onClick={() => edit(null)}>
+                  <Plus className="h-4 w-4" /> Tạo lịch lặp
+                </Button>
+              ) : undefined
+            }
           />
-        ) : (
+        }
+      >
+        {(rules) => (
           <ul className="divide-y divide-border">
-            {data.map((r) => (
+            {rules.map((r) => (
               <li key={r.id} className="flex flex-wrap items-start gap-3 py-3 first:pt-0 last:pb-0">
                 <div className="min-w-0 flex-1">
                   <p className="flex flex-wrap items-center gap-2 text-sm font-medium text-ink">
                     {r.name}
                     <Badge className="bg-primary-subtle text-primary">{r.project.key}</Badge>
-                    <Badge className={r.active ? 'bg-success/10 text-success' : 'bg-surface-2 text-muted'}>
+                    <Badge
+                      className={
+                        r.active ? 'bg-success/10 text-success' : 'bg-surface-2 text-muted'
+                      }
+                    >
                       {r.active ? 'Đang chạy' : 'Đang tạm dừng'}
                     </Badge>
                   </p>
-                  <p className="mt-0.5 text-xs text-muted" title="Lịch chạy của công việc lặp lại này.">{describeRecurrence(r)}</p>
+                  <p
+                    className="mt-0.5 text-xs text-muted"
+                    title="Lịch chạy của công việc lặp lại này."
+                  >
+                    {describeRecurrence(r)}
+                  </p>
                   <p className="mt-0.5 text-xs text-faint">
-                    {r.active ? `Lần tạo việc kế tiếp: ${dateTime(r.nextRunAt)}` : 'Đang tạm dừng — hệ thống không tự tạo việc'}
-                    {r.lastRunAt ? ` · Lần gần nhất: ${dateTime(r.lastRunAt)}` : ' · Chưa tạo việc nào'}
+                    {r.active
+                      ? `Lần tạo việc kế tiếp: ${dateTime(r.nextRunAt)}`
+                      : 'Đang tạm dừng — hệ thống không tự tạo việc'}
+                    {r.lastRunAt
+                      ? ` · Lần gần nhất: ${dateTime(r.lastRunAt)}`
+                      : ' · Chưa tạo việc nào'}
                   </p>
                 </div>
                 {canManage && (
@@ -259,13 +331,23 @@ function RecurringPanel({ canManage }: { canManage: boolean }) {
                     <Button
                       variant="ghost"
                       size="icon"
-                      title={r.active ? 'Tạm dừng — hệ thống ngừng tự tạo việc' : 'Bật lại — hệ thống tiếp tục tự tạo việc theo lịch'}
+                      title={
+                        r.active
+                          ? 'Tạm dừng — hệ thống ngừng tự tạo việc'
+                          : 'Bật lại — hệ thống tiếp tục tự tạo việc theo lịch'
+                      }
                       aria-label={r.active ? `Tạm dừng ${r.name}` : `Bật lại ${r.name}`}
                       onClick={() => void toggle(r)}
                     >
                       {r.active ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
                     </Button>
-                    <Button variant="ghost" size="icon" title="Sửa lịch" aria-label={`Sửa lịch ${r.name}`} onClick={() => edit(r)}>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      title="Sửa lịch"
+                      aria-label={`Sửa lịch ${r.name}`}
+                      onClick={() => edit(r)}
+                    >
                       <Pencil className="h-4 w-4" />
                     </Button>
                     <Button
@@ -284,10 +366,10 @@ function RecurringPanel({ canManage }: { canManage: boolean }) {
             ))}
           </ul>
         )}
-      </div>
+      </QueryBoundary>
 
       <RecurringModal open={open} item={editing} onClose={() => setOpen(false)} />
-    </section>
+    </SectionCard>
   );
 }
 

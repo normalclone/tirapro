@@ -2,10 +2,12 @@ import { Body, Controller, Get, Param, Post, Put, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
 import { NotificationType } from '@tirapro/types';
+import { notificationFilterSchema } from '@tirapro/shared';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import type { AuthUser } from '../../common/types/request';
 import { NotificationsService } from './notifications.service';
+import { AuthOnly } from '../../common/decorators/auth-only.decorator';
 
 /** Body của PUT /notifications/preferences — object boolean tùy chọn, khóa theo enum loại thông báo. */
 const updatePreferencesSchema = z.object({
@@ -15,24 +17,44 @@ const updatePreferencesSchema = z.object({
         Object.values(NotificationType).map((type) => [type, z.boolean().optional()]),
       ) as Record<NotificationType, z.ZodOptional<z.ZodBoolean>>,
     )
-    .strict(),
+    .strict()
+    .optional(),
+  /** Tuỳ chọn nhận thông báo qua email. */
+  email: z
+    .object({
+      mention: z.boolean().optional(),
+      assigned: z.boolean().optional(),
+      comment: z.boolean().optional(),
+      transition: z.boolean().optional(),
+    })
+    .strict()
+    .optional(),
 });
 type UpdatePreferencesBody = z.infer<typeof updatePreferencesSchema>;
 
+// Thông báo & tuỳ chọn của chính người dùng — service luôn lọc theo user.id.
+@AuthOnly()
 @ApiTags('notifications')
 @Controller('notifications')
 export class NotificationsController {
   constructor(private readonly notifications: NotificationsService) {}
 
-  /** Thông báo của tôi, mới nhất trước. */
+  /** Thông báo của tôi, mới nhất trước. `filter`: all | unread | mentioned | assigned. */
   @Get()
   async list(
     @CurrentUser() user: AuthUser,
     @Query('cursor') cursor?: string,
     @Query('limit') limit?: string,
+    @Query('filter') filter?: string,
   ) {
     const lim = Math.min(Math.max(Number(limit) || 30, 1), 100);
-    return this.notifications.listMine(user.id, cursor, lim);
+    // Giá trị lạ/thiếu → 'all' (tương thích ngược).
+    return this.notifications.listMine(
+      user.id,
+      cursor,
+      lim,
+      notificationFilterSchema.parse(filter),
+    );
   }
 
   /** Số thông báo chưa đọc. */
@@ -47,14 +69,13 @@ export class NotificationsController {
     return this.notifications.getPreferences(user.id);
   }
 
-  /** Cập nhật tùy chọn nhận thông báo của tôi; trả về map hiệu lực sau cập nhật. */
+  /** Cập nhật tùy chọn nhận thông báo (in-app và email) của tôi; trả về map hiệu lực sau cập nhật. */
   @Put('preferences')
   async updatePreferences(
     @CurrentUser() user: AuthUser,
     @Body(new ZodValidationPipe(updatePreferencesSchema)) dto: UpdatePreferencesBody,
   ) {
-    const preferences = await this.notifications.updatePreferences(user.id, dto.preferences);
-    return { preferences };
+    return this.notifications.updatePreferences(user.id, dto.preferences ?? {}, dto.email ?? {});
   }
 
   /** Đánh dấu một thông báo là đã đọc. */

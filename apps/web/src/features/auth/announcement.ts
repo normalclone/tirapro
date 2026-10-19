@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { keys } from '@/lib/queryKeys';
 
 interface Announcement {
   maintenanceBanner: string;
@@ -11,9 +12,9 @@ interface Announcement {
  * MaintenanceBanner (cùng query key nên chia sẻ cache). `signupEnabled` điều khiển
  * việc mở đăng ký công khai; mặc định coi như bật cho tới khi có dữ liệu.
  */
-export function useAnnouncement() {
+function useAnnouncement() {
   return useQuery({
-    queryKey: ['system-announcement'],
+    queryKey: keys.system.announcement,
     queryFn: async () => (await api.get<Announcement>('/health/announcement')).data,
     staleTime: 30_000,
   });

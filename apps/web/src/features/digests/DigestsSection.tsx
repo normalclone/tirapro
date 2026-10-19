@@ -1,47 +1,40 @@
 import { useState } from 'react';
-import { CalendarClock, Play, Trash2, Plus, ChevronDown, ChevronRight } from 'lucide-react';
-import { formatDistanceToNow } from 'date-fns';
+import {
+  CalendarClock,
+  Play,
+  Trash2,
+  Plus,
+  Pencil,
+  ChevronDown,
+  ChevronRight,
+  Mail,
+  Send,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
-import { SearchSelect } from '@/components/ui/SearchSelect';
+import { SectionCard } from '@/components/ui/SectionCard';
+import { useConfirm } from '@/components/ui/useConfirm';
 import { Badge, EmptyState, Skeleton } from '@/components/ui/primitives';
 import { apiErrorMessage } from '@/lib/api';
+import { useAuth } from '@/stores/auth';
+import { ReadOnlyNote } from '@/components/ui/NoAccess';
 import { cn } from '@/lib/utils';
-import { useProjects } from '@/features/projects/api';
-import {
-  useDigests,
-  useCreateDigest,
-  useUpdateDigest,
-  useDeleteDigest,
-  useRunDigest,
-  type Digest,
-  type DigestSchedule,
-} from './api';
-
-/* ------------------------------------------------------------------ */
-/* Hằng số                                                            */
-/* ------------------------------------------------------------------ */
-
-const SCHEDULE_LABEL: Record<DigestSchedule, string> = {
-  DAILY: 'Hằng ngày',
-  WEEKLY: 'Hằng tuần',
-  SPRINT_END: 'Cuối sprint',
-  MANUAL: 'Thủ công',
-};
-
-const SCHEDULE_OPTIONS: DigestSchedule[] = ['DAILY', 'WEEKLY', 'SPRINT_END', 'MANUAL'];
-
-const SELECT_CLASS =
-  'h-9 w-full rounded-md border border-border bg-bg px-3 text-base text-ink focus-visible:outline-none focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-[var(--ring)]';
-
-/** Bỏ thẻ HTML (vd <b>) khỏi summaryText — backend trả về chuỗi dạng HTML-ish. */
-function stripTags(text: string): string {
-  return text.replace(/<[^>]*>/g, '').trim();
-}
+import { SWITCH_TOUCH_HIT } from '@/lib/touchHit';
+import { useDigests, useUpdateDigest, useDeleteDigest, useRunDigest, type Digest } from './api';
+import { DigestEditorDialog } from './DigestEditorDialog';
+import { describeSchedule } from './schedule';
+import { QueryBoundary } from '@/components/ui/QueryBoundary';
+import { fmtRelative } from '@/lib/dateFormat';
 
 function truncate(text: string, max = 140): string {
   return text.length > max ? `${text.slice(0, max).trimEnd()}…` : text;
+}
+
+/** Hộp thoại tạo/sửa: `nonce` đổi mỗi lần mở để form khởi tạo lại; đóng chỉ hạ `open` (giữ nội dung cho hiệu ứng đóng). */
+interface EditorState {
+  open: boolean;
+  digest: Digest | null;
+  nonce: number;
 }
 
 /* ------------------------------------------------------------------ */
@@ -49,51 +42,26 @@ function truncate(text: string, max = 140): string {
 /* ------------------------------------------------------------------ */
 
 export function DigestsSection() {
-  const { data, isLoading } = useDigests();
-  const { data: projectsData } = useProjects();
-  const create = useCreateDigest();
+  const confirm = useConfirm();
+  const digestsQuery = useDigests();
+  const { data } = digestsQuery;
   const remove = useDeleteDigest();
-
-  const [adding, setAdding] = useState(false);
-  const [name, setName] = useState('');
-  const [schedule, setSchedule] = useState<DigestSchedule>('WEEKLY');
-  const [projectId, setProjectId] = useState('');
+  // Ghi digest (tạo/sửa/xoá/chạy) cần `integration:manage`; người không có quyền chỉ xem.
+  const canManage = useAuth((s) => s.can('integration:manage'));
+  const [editor, setEditor] = useState<EditorState>({ open: false, digest: null, nonce: 0 });
 
   const digests = data ?? [];
-  const projects = projectsData ?? [];
+  const openEditor = (digest: Digest | null) =>
+    setEditor((e) => ({ open: true, digest, nonce: e.nonce + 1 }));
 
-  function resetAdd() {
-    setName('');
-    setSchedule('WEEKLY');
-    setProjectId('');
-    setAdding(false);
-  }
-
-  function submitAdd() {
-    const trimmed = name.trim();
-    if (!trimmed) {
-      toast.error('Vui lòng nhập tên báo cáo.');
+  async function handleDelete(digest: Digest) {
+    if (
+      !(await confirm({
+        title: `Xoá báo cáo "${digest.name}"? Hành động này không thể hoàn tác.`,
+        destructive: true,
+      }))
+    )
       return;
-    }
-    create.mutate(
-      {
-        name: trimmed,
-        schedule,
-        projectId: projectId === '' ? undefined : projectId,
-        // channel/metrics để mặc định ở MVP — sẽ cấu hình kênh gửi sau.
-      },
-      {
-        onSuccess: () => {
-          resetAdd();
-          toast.success('Đã tạo báo cáo định kỳ.');
-        },
-        onError: (e) => toast.error(apiErrorMessage(e)),
-      },
-    );
-  }
-
-  function handleDelete(digest: Digest) {
-    if (!window.confirm(`Xoá báo cáo "${digest.name}"? Hành động này không thể hoàn tác.`)) return;
     remove.mutate(digest.id, {
       onSuccess: () => toast.success('Đã xoá báo cáo.'),
       onError: (e) => toast.error(apiErrorMessage(e)),
@@ -101,132 +69,73 @@ export function DigestsSection() {
   }
 
   return (
-    <section className="rounded-lg border border-border bg-surface">
-      <div className="flex items-start gap-3 border-b border-border px-5 py-4">
-        <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary-subtle text-primary">
-          <CalendarClock className="h-4 w-4" />
-        </span>
-        <div>
-          <h2 className="text-base font-semibold text-ink-strong">Báo cáo định kỳ (Digest)</h2>
-          <p className="mt-0.5 text-sm text-muted">
-            Tổng hợp tiến độ dự án theo lịch và gửi qua Telegram nếu có kênh được cấu hình.
-          </p>
-        </div>
-      </div>
-
-      <div className="p-5">
-        {isLoading ? (
+    <SectionCard
+      icon={<CalendarClock className="h-4 w-4" />}
+      title="Báo cáo định kỳ"
+      description="Tổng hợp tiến độ dự án theo lịch rồi gửi qua Telegram và/hoặc email."
+      actions={
+        canManage ? (
+          <Button size="sm" className="max-sm:w-full" onClick={() => openEditor(null)}>
+            <Plus className="h-4 w-4" />
+            Tạo báo cáo định kỳ
+          </Button>
+        ) : undefined
+      }
+    >
+      {!canManage && <ReadOnlyNote />}
+      <QueryBoundary
+        query={digestsQuery}
+        skeleton={
           <div className="space-y-2">
             {Array.from({ length: 2 }).map((_, i) => (
               <Skeleton key={i} className="h-16 w-full" />
             ))}
           </div>
-        ) : digests.length === 0 && !adding ? (
+        }
+        empty={() => digests.length === 0}
+        emptyState={
           <EmptyState
             icon={<CalendarClock className="h-6 w-6" />}
-            title="Chưa có digest nào"
-            description="Tạo báo cáo định kỳ để tự động tổng hợp tiến độ dự án theo lịch."
+            title="Chưa có báo cáo định kỳ nào"
+            description={
+              canManage
+                ? 'Tạo báo cáo để tự động tổng hợp tiến độ dự án theo lịch.'
+                : 'Chưa có báo cáo định kỳ nào. Nhờ quản trị chung tạo giúp.'
+            }
             action={
-              <Button size="sm" onClick={() => setAdding(true)}>
-                <Plus className="h-4 w-4" />
-                Tạo báo cáo
-              </Button>
+              canManage ? (
+                <Button variant="secondary" size="sm" onClick={() => openEditor(null)}>
+                  <Plus className="h-4 w-4" />
+                  Tạo báo cáo định kỳ
+                </Button>
+              ) : undefined
             }
           />
-        ) : (
+        }
+      >
+        {() => (
           <ul className="space-y-2.5">
             {digests.map((digest) => (
               <DigestRow
                 key={digest.id}
                 digest={digest}
+                canManage={canManage}
+                onEdit={() => openEditor(digest)}
                 onDelete={() => handleDelete(digest)}
                 deleting={remove.isPending}
               />
             ))}
           </ul>
         )}
+      </QueryBoundary>
 
-        {/* Form tạo báo cáo */}
-        {adding ? (
-          <div className="mt-4 rounded-md border border-border bg-surface-2 p-3">
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div>
-                <label htmlFor="digest-name" className="mb-1 block text-xs font-medium text-muted">
-                  Tên báo cáo
-                </label>
-                <Input
-                  id="digest-name"
-                  value={name}
-                  autoFocus
-                  placeholder="VD: Tổng kết tuần"
-                  onChange={(e) => setName(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') submitAdd();
-                    if (e.key === 'Escape') resetAdd();
-                  }}
-                />
-              </div>
-              <div>
-                <label
-                  htmlFor="digest-schedule"
-                  className="mb-1 block text-xs font-medium text-muted"
-                >
-                  Lịch gửi
-                </label>
-                <select
-                  id="digest-schedule"
-                  value={schedule}
-                  onChange={(e) => setSchedule(e.target.value as DigestSchedule)}
-                  className={SELECT_CLASS}
-                >
-                  {SCHEDULE_OPTIONS.map((value) => (
-                    <option key={value} value={value}>
-                      {SCHEDULE_LABEL[value]}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="sm:col-span-2">
-                <label
-                  htmlFor="digest-project"
-                  className="mb-1 block text-xs font-medium text-muted"
-                >
-                  Dự án <span className="text-faint">(tùy chọn)</span>
-                </label>
-                <SearchSelect
-                  id="digest-project"
-                  value={projectId}
-                  onChange={setProjectId}
-                  options={[
-                    { value: '', label: 'Tất cả dự án' },
-                    ...projects.map((project) => ({ value: project.id, label: project.name })),
-                  ]}
-                  className="w-full"
-                />
-              </div>
-            </div>
-            <p className="mt-2 text-xs text-faint">
-              Báo cáo sẽ gửi qua Telegram nếu có kênh được cấu hình.
-            </p>
-            <div className="mt-3 flex items-center gap-2">
-              <Button size="sm" onClick={submitAdd} loading={create.isPending}>
-                Tạo báo cáo
-              </Button>
-              <Button size="sm" variant="ghost" onClick={resetAdd} disabled={create.isPending}>
-                Huỷ
-              </Button>
-            </div>
-          </div>
-        ) : (
-          digests.length > 0 && (
-            <Button variant="secondary" size="sm" className="mt-4" onClick={() => setAdding(true)}>
-              <Plus className="h-4 w-4" />
-              Tạo báo cáo
-            </Button>
-          )
-        )}
-      </div>
-    </section>
+      <DigestEditorDialog
+        key={editor.nonce}
+        open={editor.open}
+        onOpenChange={(open) => setEditor((e) => ({ ...e, open }))}
+        digest={editor.digest}
+      />
+    </SectionCard>
   );
 }
 
@@ -236,15 +145,20 @@ export function DigestsSection() {
 
 function DigestRow({
   digest,
+  canManage,
+  onEdit,
   onDelete,
   deleting,
 }: {
   digest: Digest;
+  canManage: boolean;
+  onEdit: () => void;
   onDelete: () => void;
   deleting: boolean;
 }) {
   const update = useUpdateDigest();
   const run = useRunDigest();
+  const confirm = useConfirm();
 
   const [summary, setSummary] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
@@ -260,83 +174,133 @@ function DigestRow({
     );
   }
 
-  function handleRun() {
+  async function handleRun() {
+    // Có email: "Chạy ngay" xếp thư THẬT cho từng người nhận → xác nhận trước (server còn giới hạn ≥ 1 phút/lần).
+    if (
+      digest.deliverEmail &&
+      !(await confirm({
+        title: `Gửi ngay "${digest.name}" tới ${digest.recipients.length} người nhận qua email?`,
+        description: 'Mỗi người nhận một thư thật, kể cả khi họ đã tắt email thông báo.',
+        confirmLabel: 'Gửi ngay',
+      }))
+    )
+      return;
     run.mutate(digest.id, {
       onSuccess: (res) => {
-        const text = stripTags(res.summaryText ?? '');
+        // Backend trả văn bản thuần (escape HTML chỉ ở kênh Telegram) — không cần xử lý thẻ/entity ở đây.
+        const text = (res.summaryText ?? '').trim();
         setSummary(text);
         setExpanded(true);
+        if (res.skippedRecipients?.length) {
+          toast.warning(
+            `Không gửi email cho ${res.skippedRecipients.join(', ')} vì họ không thấy dự án của báo cáo này.`,
+          );
+        }
+        if (res.channelSkipped) {
+          toast.warning(
+            'Dự án riêng tư chưa được phép đăng vào nhóm Telegram nên không gửi vào nhóm — bật "Cho phép đăng vào nhóm Telegram" khi sửa báo cáo nếu muốn.',
+          );
+        }
         if (res.sent) {
           toast.success(text ? truncate(text) : 'Đã gửi báo cáo.');
-        } else {
-          toast.info(
-            text ? truncate(text) : 'Đã tạo bản tổng hợp nhưng chưa gửi (chưa có kênh).',
-          );
+        } else if (!res.channelSkipped) {
+          toast.info(text ? truncate(text) : 'Đã tạo bản tổng hợp nhưng chưa gửi (chưa có kênh).');
         }
       },
       onError: (e) => toast.error(apiErrorMessage(e)),
     });
   }
 
-  const lastRunLabel = digest.lastRunAt
-    ? formatDistanceToNow(new Date(digest.lastRunAt), { addSuffix: true })
-    : 'Chưa chạy lần nào';
+  const lastRunLabel = digest.lastRunAt ? fmtRelative(digest.lastRunAt) : 'Chưa chạy lần nào';
 
   return (
     <li className="rounded-md border border-border">
-      <div className="flex items-center gap-3 px-3 py-2.5">
-        <div className="flex min-w-0 flex-1 items-center gap-2">
-          <span className="truncate text-sm font-medium text-ink">{digest.name}</span>
-          <Badge className="bg-surface-2 text-muted">{SCHEDULE_LABEL[digest.schedule]}</Badge>
-          {!digest.isEnabled && <Badge className="bg-surface-2 text-faint">Tạm dừng</Badge>}
-          <span className="hidden truncate text-xs text-faint sm:inline">{lastRunLabel}</span>
-        </div>
-
-        <div className="flex shrink-0 items-center gap-1">
-          {/* Bật / tắt báo cáo */}
-          <button
-            type="button"
-            role="switch"
-            aria-checked={digest.isEnabled}
-            aria-label={digest.isEnabled ? 'Tắt báo cáo' : 'Bật báo cáo'}
-            onClick={handleToggle}
-            disabled={update.isPending}
-            title={digest.isEnabled ? 'Đang bật — bấm để tạm dừng' : 'Đang tạm dừng — bấm để bật'}
-            className={cn(
-              'relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:opacity-50',
-              digest.isEnabled ? 'bg-primary' : 'bg-surface-3',
+      {/* Mobile (<sm): tên + lịch chiếm trọn dòng trên (được xuống dòng), công tắc + hành động ở dòng dưới. */}
+      <div className="flex flex-col gap-2 px-3 py-2.5 sm:flex-row sm:items-center sm:gap-3">
+        <div className="min-w-0 sm:flex-1">
+          <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+            <span className="break-words text-sm font-medium text-ink sm:truncate">
+              {digest.name}
+            </span>
+            {!digest.isEnabled && <Badge className="bg-surface-2 text-faint">Tạm dừng</Badge>}
+            {digest.channelId && (
+              <Badge className="bg-surface-2 text-muted">
+                <Send className="h-3 w-3" aria-hidden />
+                Telegram
+              </Badge>
             )}
-          >
-            <span
-              className={cn(
-                'inline-block h-4 w-4 rounded-full bg-white shadow-sm transition-transform duration-150',
-                digest.isEnabled ? 'translate-x-[1.125rem]' : 'translate-x-0.5',
-              )}
-            />
-          </button>
-
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleRun}
-            loading={run.isPending}
-            title="Chạy báo cáo ngay và xem bản tổng hợp"
-          >
-            <Play className="h-4 w-4" />
-            Chạy ngay
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={onDelete}
-            disabled={deleting}
-            className="text-muted hover:text-danger"
-            title="Xoá báo cáo"
-          >
-            <Trash2 className="h-4 w-4" />
-            <span className="sr-only">Xoá {digest.name}</span>
-          </Button>
+            {digest.deliverEmail && (
+              <Badge className="bg-surface-2 text-muted">
+                <Mail className="h-3 w-3" aria-hidden />
+                Email · {digest.recipients.length} người
+              </Badge>
+            )}
+          </div>
+          <p className="mt-0.5 text-xs text-muted sm:truncate">
+            {describeSchedule(digest)}
+            <span className="hidden text-faint sm:inline"> · {lastRunLabel}</span>
+          </p>
         </div>
+
+        {canManage && (
+          <div className="flex shrink-0 flex-wrap items-center gap-1">
+            {/* Bật / tắt báo cáo */}
+            <button
+              type="button"
+              role="switch"
+              aria-checked={digest.isEnabled}
+              aria-label={digest.isEnabled ? 'Tắt báo cáo' : 'Bật báo cáo'}
+              onClick={handleToggle}
+              disabled={update.isPending}
+              title={digest.isEnabled ? 'Đang bật — bấm để tạm dừng' : 'Đang tạm dừng — bấm để bật'}
+              className={cn(
+                SWITCH_TOUCH_HIT,
+                // Giữ disabled:opacity (không dùng token vô hiệu) — công tắc: trạng thái bật/tắt phải còn đọc được khi vô hiệu.
+                'inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:opacity-50',
+                digest.isEnabled ? 'bg-primary' : 'bg-surface-3',
+              )}
+            >
+              <span
+                className={cn(
+                  'inline-block h-4 w-4 rounded-full bg-white shadow-sm transition-transform duration-150',
+                  digest.isEnabled ? 'translate-x-[1.125rem]' : 'translate-x-0.5',
+                )}
+              />
+            </button>
+
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleRun}
+              loading={run.isPending}
+              title="Chạy báo cáo ngay và xem bản tổng hợp"
+            >
+              <Play className="h-4 w-4" />
+              Chạy ngay
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={onEdit}
+              className="text-muted hover:text-ink"
+              title="Sửa báo cáo"
+            >
+              <Pencil className="h-4 w-4" />
+              <span className="sr-only">Sửa {digest.name}</span>
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={onDelete}
+              disabled={deleting}
+              className="text-muted hover:text-danger"
+              title="Xoá báo cáo"
+            >
+              <Trash2 className="h-4 w-4" />
+              <span className="sr-only">Xoá {digest.name}</span>
+            </Button>
+          </div>
+        )}
       </div>
 
       {/* lastRunAt cho màn hình hẹp */}

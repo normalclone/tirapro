@@ -18,7 +18,8 @@ Repo đã có sẵn [`render.yaml`](../render.yaml) mô tả 4 thành phần: Po
    - `tirapro-web` → `VITE_API_URL = https://tirapro-api.onrender.com/api/v1`
    - `tirapro-web` → `VITE_WS_URL = https://tirapro-api.onrender.com`
    Rồi **Manual Deploy** lại cả hai (web phải build lại để nhúng URL API).
-3. Khi API khởi động, `startCommand` tự chạy (đều idempotent): `prisma migrate deploy` → `db:raw` (tạo extension `vector`/`pg_trgm`) → `db:seed:init` (chỉ nạp demo **khi DB còn rỗng**) → chạy server.
+3. Khi API khởi động, `startCommand` tự chạy (đều idempotent): `prisma migrate deploy` → `db:raw` (extension `vector`/`pg_trgm`/`unaccent`, cột tìm kiếm `Issue.searchVector`, chỉ mục trigram — **lần đầu nâng cấp khoá bảng `Issue`, xem [Checklist triển khai](#checklist-triển-khai--nâng-cấp)**) → `db:seed:init` (chỉ nạp demo **khi DB còn rỗng**) → chạy server.
+   - Free tier **không có Shell** nên không chạy tay được script một lần (`automation:seal-secrets`, `integrations:rekey`) từ Dashboard — xem cách chạy từ máy của bạn ở mục Checklist bên dưới.
    - Free tier **không hỗ trợ `preDeployCommand`** nên gộp vào `startCommand`. Seed **không** reset dữ liệu ở các lần cold-start sau (chỉ chạy lần boot đầu, lúc chưa có workspace).
    - Muốn **reset demo về trạng thái chuẩn**: xoá dữ liệu rồi restart, hoặc chạy `pnpm --filter @tirapro/api run db:seed` (gói có Shell/paid).
 4. (Tùy chọn) Bật AI thật: thêm biến `ANTHROPIC_API_KEY` cho `tirapro-api`. Bỏ trống → chạy heuristic.
@@ -69,7 +70,156 @@ Build/Start/env giống cột trong `render.yaml`. Đặt `DATABASE_URL/DIRECT_U
 | `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET` | API | ≥32 ký tự; Render `generateValue` tự sinh. |
 | `ANTHROPIC_API_KEY` | API | (tùy chọn) bật AI thật. |
 | `EMBEDDING_PROVIDER` | API | `none` → tìm kiếm dùng full-text. |
+| `INTEGRATION_ENCRYPTION_KEY` | API | Khoá mã hoá token tích hợp (≥32 ký tự, khác mặc định ở production). Render `generateValue` tự sinh. |
+| `INTEGRATION_ENCRYPTION_KEY_PREVIOUS` | API | (tùy chọn) khoá CŨ — để vẫn giải mã token đã mã hoá trước khi đổi khoá. Xem mục dưới. |
 | `VITE_API_URL` | Web | `https://<api>/api/v1` (nhúng lúc build). |
 | `VITE_WS_URL` | Web | `https://<api>` (WebSocket). |
+| `VITE_SHOW_DEMO_ACCOUNTS` | Web | (tùy chọn) `true` = hiện khối "Tài khoản demo" + mật khẩu chung ở trang đăng nhập và trang tài liệu. Chỉ bật cho staging/demo; production để trống (bản build không chứa mật khẩu demo). |
+| `VITE_FEATURE_REPOS` | Web | (tùy chọn) `1` = bật lại mục Kho mã (GitHub/GitLab) + khối "Liên kết code" trên công việc. Mặc định **ẩn** (hoãn tới đợt sau). Nhúng lúc build. |
 
 Chi tiết đầy đủ: [`.env.example`](../.env.example).
+
+## Checklist triển khai / nâng cấp
+
+Thứ tự **duy nhất** cho mọi lần nâng cấp (bản đầu tiên của đợt này có thay đổi `db:raw` lớn — xem bước 2). Mỗi bước idempotent, chạy lại an toàn.
+
+| # | Bước | Lệnh | Khi nào |
+|---|---|---|---|
+| 0 | Sao lưu DB | `pg_dump` / snapshot của nhà cung cấp | Luôn, trước khi đụng DB prod |
+| 1 | Áp migration Prisma | `prisma migrate deploy` | Luôn. Đợt UX round 2 thêm **28 migration** (xem "Bước 1b") và **nếu prod chưa chạy 6 migration của base `22c116c` thì bước này áp cả 6** (tổng 34) — xem "Bước 1" bên dưới |
+| 2 | SQL thô (extension, `searchVector`, chỉ mục) | `pnpm --filter @tirapro/api run db:raw` | Luôn. **DB lớn: chạy TAY trong giờ thấp điểm TRƯỚC khi rollout image mới** (xem cảnh báo bên dưới) |
+| 3 | Mã hoá lại token/khoá bí mật khi ĐỔI `INTEGRATION_ENCRYPTION_KEY` | `integrations:rekey` | Chỉ khi đổi khoá (xem mục "đổi khoá mã hoá" bên dưới) |
+| 4 | Mã hoá khoá bí mật webhook automation cũ | `automation:seal-secrets` | Một lần, **sau khi bản mới đã ổn định** (xem cảnh báo rollback) |
+| 5 | Kiểm bộ quyền vai trò hệ thống khớp code | `pnpm --filter @tirapro/api run db:check-roles` | Sau `migrate deploy` (tuỳ chọn): in `+thiếu`/`-thừa` theo `SYSTEM_ROLE_PERMISSIONS`, thoát mã 1 nếu lệch. Migration chỉ THÊM quyền, không gỡ. Trong container: `docker run --rm --env-file .env <image> node scripts/check-system-roles.mjs` (giống hai script ở bước 3-4; cần image đã copy script này) |
+
+Render/Docker (`render.yaml` `startCommand`, `Dockerfile` `CMD`) tự chạy bước 1 + 2 mỗi lần khởi động; bước 3-4 luôn là thao tác tay.
+
+### Ghi chú phát hành — tài khoản & phiên đăng nhập
+
+- **Khoá tài khoản có hiệu lực ngay** (access token, refresh token, socket đang mở, API key của người đó). **Đặt lại mật khẩu (admin), "Quên mật khẩu" hoàn tất, tự đổi mật khẩu và "Đăng xuất mọi thiết bị"** thu hồi mọi phiên web (access token cấp trước mốc thu hồi bị 401 ngay) và ngắt socket đang mở. Riêng **tự đổi mật khẩu**: thiết bị đang đổi được cấp phiên mới (token + cookie) và giữ/nối lại socket bằng token mới; socket và phiên của các thiết bị khác bị ngắt.
+- **API key KHÔNG bị thu hồi** khi đổi mật khẩu / đăng xuất mọi thiết bị: key là thông tin xác thực riêng của tích hợp (MCP, script). Key chỉ bị chặn khi tài khoản chủ key bị **khoá** (cache xác thực bị xoá ngay) hoặc khi chủ key bị **gỡ khỏi không gian làm việc**. Nghi lộ key thì thu hồi trong Cài đặt → API.
+- Phiên đang chạy trên bản cũ không có claim `iatMs` — vẫn hợp lệ, chỉ bị so theo giây.
+
+### Bước 1 — `migrate deploy`: 6 migration của base có thể chưa chạy trên prod
+
+Ngoài các migration của đợt UX round 2, base `22c116c` có 6 migration mà prod có thể chưa từng áp: `sprint_sequence_unique`, `perf_indexes`, `mail_invite_reset`, `project_archive`, `worklog_rules`, `ai_log_index`. Kiểm bằng `prisma migrate status`. Nếu còn pending, `migrate deploy` sẽ áp chúng, hệ quả:
+
+- **`project_archive`**: đặt `archivedAt = updatedAt` cho mọi dự án đang `isArchived` → các dự án đó trở thành **chỉ-đọc và bị ẩn** (thông báo cho quản trị dự án trước).
+- **`perf_indexes`**: `CREATE INDEX` thường (không `CONCURRENTLY`, vì chạy trong transaction migration) trên `"Issue"` → **khoá ghi bảng `Issue` trong lúc build index** (đọc vẫn được). Với bảng lớn hãy coi như cửa sổ bảo trì, cùng lúc với bước 2.
+- **`sprint_sequence_unique`**: nếu có sprint trùng `(projectId, sequence)` thì **đánh lại số** các bản trùng (giữ bản cũ nhất) rồi tạo unique index.
+- `mail_invite_reset`, `worklog_rules`, `ai_log_index`: thêm bảng/cột/chỉ mục nhỏ.
+- **`remove_invites`** (UX vòng 2): xoá bảng `InviteToken` và mọi thư mời (mọi trạng thái) trong `EmailOutbox` (liên kết nhận lời mời trong hộp thư người dùng sẽ 404). Không thể hoàn tác dữ liệu lời mời đã xoá.
+
+### Bước 1b — `migrate deploy`: 28 migration của UX vòng 2
+
+Danh sách đầy đủ (tên, khoá, backfill) và hành vi người dùng thấy: `docs/RELEASE_NOTES_2026-10-follow-ups.md` mục "UX vòng 2". Tóm tắt những gì ảnh hưởng vận hành:
+
+- **Không migration nào ghi lại bảng `Issue`** và vòng 2 **không đổi** `db:raw`. `Issue` chỉ nhận 2 `ADD COLUMN` nullable (`acceptanceCriteria`, `environment`) — đổi metadata, khoá `ACCESS EXCLUSIVE` rất ngắn (nhưng phải chờ giao dịch dài đang mở). Cột có `DEFAULT` hằng (`Project.isPrivate`, `WikiPage.version`, `KeyResult.source`, `ReportSubscription.weekday/hour/timezone/deliverEmail/allowPrivateToChannel`) cũng chỉ đổi metadata trên PG ≥ 11.
+- **Khoá ghi trong lúc build index** (`CREATE INDEX` thường, chạy trong giao dịch migration): bảng nối `IssueComponent`, `IssueFixVersion` (`issue_component_version_index`) và bảng `Mention` (`mention_unique`: xoá dòng trùng, giữ dòng cũ nhất, rồi 2 unique index). Hai bảng đầu nhỏ hơn `Issue` nhiều; bảng `Mention` lớn thì chạy giờ thấp điểm.
+- **Backfill dữ liệu:** `membership_roles_backfill` (thêm dòng nối vai trò cho membership chưa có), `link_types_causes_tests` (thêm 2 loại liên kết mỗi workspace), `wiki_page_issue` (quét `regexp_matches` mọi nội dung wiki — CPU theo tổng dung lượng wiki), `wiki_page_history` (sao chép nội dung **mọi** trang wiki thành bản v1 → dung lượng wiki tăng gấp đôi một lần), `project_workflow_names` (đổi tên quy trình mặc định thành `"tên (MÃ)"`). Tất cả idempotent.
+- **Cấp quyền (INSERT `RolePermission`, chỉ thêm, không thu hồi):** `system_roles_refresh` (Scrum Master `issue:create`+`issue:triage`, Product Owner `issue:transition`), `wiki_project_permissions` (`wiki:manage` thành quyền cấp dự án cho Project Admin/BA/PO/Scrum Master/Developer/Tester **và** mọi vai tuỳ biến có `project:admin`/`workspace:admin`; vì mọi thành viên workspace là Developer mặc định nên họ sửa được wiki mọi dự án công khai). Cache quyền Redis hết hạn tối đa ~1 phút sau khi áp.
+- **Không hoàn tác:** `remove_invites` xoá bảng `InviteToken` và mọi thư mời trong `EmailOutbox`; `wiki_page_history` backfill; enum `HistoryField` thêm `DESCRIPTION`/`COMPONENT`/`FIX_VERSION`, `DashboardScope.TEAM`, `WidgetType` ×3 (`ADD VALUE` chạy trong giao dịch cần PG ≥ 12). Không nên quay về image cũ sau khi người dùng đã dùng bản mới; sao lưu (bước 0) là đường lùi.
+- Mốc thời gian migration không đơn điệu (vd `…299000` sau `…207000`): `migrate deploy` vẫn áp mọi migration chưa áp, không cần `migrate dev`. DB dev nào đã áp migration L5/L20/OKR bằng tên tạm cũ (`…200000_dashboard_team_scope`, `…202000_digest_schedule_fields`, `…203000/204000/208000_key_result_*`) bị lệch lịch sử — dựng lại DB đó.
+
+### Ghi chú phát hành — UX vòng 2
+
+- **Nền trình duyệt tối thiểu:** Safari/iOS ≥ 15.4, Chrome/Edge/Firefox trong 2 năm gần nhất (màu `oklch()` của DESIGN.md cần Safari 15.4; đợt sửa cuối đang gỡ regex lookbehind khỏi chunk đầu để iOS 15.4–16.3 không trắng trang). Thiết bị cũ hơn không được hỗ trợ.
+
+- **Không chạy `db:seed` để "seed lại quyền" trên dữ liệu thật** — `db:seed` làm mới (xoá) workspace demo. Quyền vai trò hệ thống đã đi qua migration; kiểm bằng bước 5 (`db:check-roles`). Mô tả quyền tiếng Việt trong bảng `Permission` chỉ đổi khi chạy `db:seed`, nhưng web đọc mô tả từ `@tirapro/types` nên không ảnh hưởng. Tour mặc định + checklist "Bắt đầu" tự được API gieo lúc khởi động (khoá advisory, không hạ cấp).
+- **Biến môi trường:** API không có biến mới; web có `VITE_FEATURE_REPOS` (tuỳ chọn) và `VITE_SHOW_DEMO_ACCOUNTS` (xem bảng trên).
+- **Telegram:** dùng **một bot riêng cho Tirapro**. Wizard liên kết nhóm đọc tin bằng `getUpdates` (offset âm, `allowed_updates=['message']`): công cụ khác đọc `getUpdates` trên cùng bot có thể mất tin cũ hơn 100 bản mới nhất hoặc gặp 409; Tirapro báo 409 khi bot đang gắn webhook hoặc có tiến trình khác đang đọc. Tạo kết nối không token khi hệ thống không có bot chung (`TELEGRAM_BOT_TOKEN`) bị từ chối.
+- **Pool người dùng chung = giả định một tổ chức:** quản trị workspace thấy và thêm được mọi tài khoản hệ thống. Không triển khai nhiều tổ chức độc lập kèm tự đăng ký mở (nguy cơ chiếm tài khoản/nhìn thấy người dùng giữa workspace) trừ khi tắt đăng ký.
+- **Tác vụ nền:** digest chạy mỗi giờ (`0 * * * *`, khớp thứ/giờ/múi giờ từng báo cáo) + tự gửi khi kết thúc sprint — **báo cáo định kỳ hiện có đổi giờ gửi**: trước chạy 08:00 theo múi giờ tiến trình (UTC trên Docker/Render → 15:00 giờ VN), nay mặc định 08:00 `Asia/Ho_Chi_Minh` nên trên máy chủ UTC thư đến **sớm 7 giờ**; báo trước hoặc chỉnh giờ từng báo cáo; cron chụp giá trị Key Result `01:30 UTC` hằng ngày. Cron khoá bằng Redis; không có Redis thì chạy chế độ một node (không khoá) — đừng chạy nhiều instance API mà thiếu Redis.
+- **Email:** báo cáo định kỳ qua Email và thư đặt lại mật khẩu đi qua `MAIL_DRIVER`; `console` chỉ ghi log, `smtp` hiện mới là khung chưa gửi thật (ném lỗi khi gửi) — Telegram là kênh digest dùng được ngay.
+- **Báo trước cho người dùng:** liên kết lời mời cũ không còn (404), dự án riêng tư ẩn với người ngoài dự án, việc chưa duyệt không còn trên Board/Việc chờ, API key không bị thu hồi khi đổi mật khẩu (xem mục trên), custom role có `report:view` nhưng không `project:view` mất số liệu dự án công khai.
+
+### Bước 2 — `db:raw`: khoá bảng `Issue` (cửa sổ bảo trì)
+
+Bản này thay `Issue.searchVector` (bỏ dấu tiếng Việt, không còn chứa mã issue) và thêm 4 chỉ mục GIN trigram. Lần đầu trên DB đã có dữ liệu, `db:raw`:
+
+- **xoá + tạo lại cột sinh `searchVector`** → ghi lại toàn bộ bảng và giữ khoá `ACCESS EXCLUSIVE` trên `"Issue"` **đến hết file** (cả đọc lẫn ghi đều chờ). Đo trên PG 18, 100 041 issue: **~9 giây** (tăng tuyến tính; 1 triệu issue ~ vài chục giây đến vài phút, build GIN còn phụ thuộc `maintenance_work_mem`). Bảng phình gấp đôi tạm thời đến khi VACUUM;
+- tạo 4 chỉ mục `issue_description_trgm`, `issue_key_trgm`, `issue_summary_unaccent_trgm`, `issue_description_unaccent_trgm` (thêm dung lượng, chút chi phí ghi);
+- lần chạy sau là no-op (~0,5 giây).
+
+Việc cần làm:
+1. **Báo trước** người dùng: ghi/đọc issue có thể chậm ~9 giây mỗi 100k issue trong lúc nâng cấp.
+2. DB **> ~300k issue** (hoặc Postgres nhỏ/chậm): chạy `db:raw` TAY giờ thấp điểm **trước** khi rollout image mới. Image mới sau đó chạy `db:raw` như no-op. Không để orchestrator tự chạy lần đầu: `HEALTHCHECK --start-period=40s` có thể giết container giữa chừng → transaction rollback (an toàn dữ liệu) nhưng lần khởi động sau lặp lại y hệt, không bao giờ xong (crash-loop).
+3. Nhiều instance khởi động cùng lúc (rolling deploy, `--scale`) là an toàn: file SQL mở đầu bằng `pg_advisory_xact_lock` nên các `db:raw` đồng thời xếp hàng, bên đến sau thấy mọi thứ đã có và chạy như no-op.
+4. Quyền DB: cần tạo extension — `unaccent`, `pg_trgm`, `btree_gin` là extension "trusted" từ PG13 (chỉ cần quyền `CREATE` trên database; RDS/Render/Supabase đều có sẵn). `vector` (pgvector) vẫn như trước. Cần quyền `CREATE` trên schema `public` để tạo hàm `immutable_unaccent`. Hàm gọi cứng `public.unaccent` — nếu extension `unaccent` đã cài ở schema khác (vd Supabase `extensions`) thì `db:raw` sẽ lỗi; cài lại trong `public` hoặc báo lại.
+5. Chưa chạy `db:raw` thì tìm kiếm **vẫn chạy** (rơi về `translate()`/ILIKE, chậm hơn) và `/health` báo thiếu `searchVector`/`immutable_unaccent`.
+
+Cách chạy tay: VPS — `set -a; . ./.env; set +a; pnpm --filter @tirapro/api run db:raw` (Prisma **không** nạp `.env` ở gốc repo khi chạy từ `apps/api`, nên phải nạp biến vào shell như vậy). Render — không có Shell: từ máy của bạn, trỏ vào *External Database URL* (Dashboard → `tirapro-db` → Connect; cần cho phép IP của bạn) rồi `DATABASE_URL='<external-url>' DIRECT_URL='<external-url>' pnpm --filter @tirapro/api run db:raw`; làm TRƯỚC khi deploy bản mới. Docker:
+
+```bash
+docker run --rm --env-file .env tirapro-api \
+  ./node_modules/.bin/prisma db execute --file ./prisma/sql/01_pgvector_fts.sql --schema ./prisma/schema.prisma
+```
+
+### Bước 3-4 — chạy `integrations:rekey` / `automation:seal-secrets` ở từng môi trường
+
+Hai script là `node scripts/*.mjs` — chỉ cần `DATABASE_URL` + `INTEGRATION_ENCRYPTION_KEY` (+ `INTEGRATION_ENCRYPTION_KEY_PREVIOUS` cho rekey) trong **môi trường của tiến trình**; không cần pnpm hay mã nguồn.
+
+**Trước khi seal — kiểm khoá (bắt buộc ở lần đầu nếu DB chưa có secret/token nào đã mã hoá):** script tự đối chiếu khoá bằng một mẫu đã mã hoá sẵn (khoá webhook `enc:v1:…` hoặc token bot Telegram). Nếu DB không có mẫu nào **mà vẫn còn khoá webhook dạng thô cần seal**, nó **dừng với exit 1** và đòi `--i-verified-key` (không còn gì để seal thì thoát 0, không cảnh báo). Cờ này là lời xác nhận của BẠN, nên chỉ thêm sau khi tự so khoá trong shell/env-file với `INTEGRATION_ENCRYPTION_KEY` của dịch vụ API đang chạy (Render: Dashboard → Environment; Docker/VPS: env của container/process API) — so mà không in khoá ra, vd `printf %s "$INTEGRATION_ENCRYPTION_KEY" | shasum -a 256` ở hai nơi phải ra cùng giá trị. `--dry-run` bỏ qua yêu cầu cờ khi thiếu mẫu (chỉ in cảnh báo), nhưng vẫn **exit 1 nếu khoá hiện tại không giải được mẫu đã mã hoá** (sai khoá).
+
+- **VPS (Phương án B):** nạp `.env` rồi chạy từ gốc repo (đã kiểm khoá như trên):
+  ```bash
+  set -a; . ./.env; set +a
+  pnpm --filter @tirapro/api run automation:seal-secrets -- --dry-run
+  pnpm --filter @tirapro/api run automation:seal-secrets                    # exit 1 nếu chưa có mẫu đối chiếu khoá…
+  pnpm --filter @tirapro/api run automation:seal-secrets -- --i-verified-key # …thì chạy dòng này SAU khi đã tự kiểm khoá
+  ```
+- **Docker:** image runtime có sẵn hai script ở `/app/scripts/`. Chạy như job một lần với **cùng env** của container API (đặc biệt cùng `INTEGRATION_ENCRYPTION_KEY`; nếu DB nằm ở máy host dùng `host.docker.internal` hoặc `--network host` thay cho `localhost` trong `DATABASE_URL`):
+  ```bash
+  docker run --rm --env-file .env tirapro-api node scripts/seal-webhook-secrets.mjs --dry-run
+  docker run --rm --env-file .env tirapro-api node scripts/seal-webhook-secrets.mjs   # exit 1 nếu DB chưa có mẫu đối chiếu khoá: tự kiểm khoá rồi thêm --i-verified-key (xem trên)
+  docker run --rm --env-file .env tirapro-api node scripts/rekey-integrations.mjs --dry-run   # nếu đổi khoá
+  ```
+  Lưu ý `--env-file` của Docker: giá trị lấy **nguyên văn** (dấu nháy `"…"`/`'…'` trong file không bị bóc — bỏ nháy đi), và `localhost` trong `DATABASE_URL` là chính container chứ không phải máy host.
+  (Kubernetes/ECS: tạo Job/one-off task dùng cùng image + `command: ["node","scripts/seal-webhook-secrets.mjs"]` + secret env của API.)
+- **Render (không Shell, Free):** không có chỗ chạy trực tiếp. Chọn một:
+  1. Chạy từ **máy của bạn** trỏ vào Postgres Render qua *External Database URL* (Dashboard → `tirapro-db` → Connect; cần mở IP cho phép) với đúng `INTEGRATION_ENCRYPTION_KEY` của dịch vụ API (Dashboard → Environment): `DATABASE_URL='<external-url>' INTEGRATION_ENCRYPTION_KEY='<key>' node apps/api/scripts/seal-webhook-secrets.mjs --dry-run`, rồi chạy thật (không `--dry-run`; nếu thoát 1 vì chưa có mẫu đối chiếu khoá thì thêm `--i-verified-key` SAU khi đã so khoá với env của API) (cần `pnpm install` + `prisma generate` ở bản clone, hoặc dùng cách Docker ở trên với image build từ repo).
+  2. Gói trả phí có Shell/One-off Job: chạy `node apps/api/scripts/seal-webhook-secrets.mjs --dry-run` rồi bản thật trong đó (shell của chính dịch vụ API dùng đúng env của nó, nhưng vẫn cần `--i-verified-key` nếu chưa có mẫu đối chiếu — khoá khi đó đúng sẵn, bạn chỉ cần xác nhận).
+  3. **Chấp nhận bỏ qua** `seal-secrets`: khoá cũ dạng chữ thường vẫn gửi webhook bình thường và tự được mã hoá khi người dùng lưu lại quy tắc. Chỉ mất lợi ích "không còn plaintext trong DB" cho đến lúc đó.
+
+### Cảnh báo cho bước 4 (`seal-secrets`)
+
+- **Không hoàn tác được và không an toàn khi rollback.** Sau khi seal, quay về image cũ thì code cũ dùng nguyên chuỗi `enc:v1:…` làm khoá HMAC → chữ ký webhook sai âm thầm. Chỉ seal **sau** khi bản mới đã chạy ổn định và bạn không còn định rollback.
+- Phải dùng **đúng** `INTEGRATION_ENCRYPTION_KEY` mà API đang chạy. Script tự thử giải một **mẫu đã mã hoá sẵn** — khoá webhook `enc:v1:…` có sẵn, hoặc token bot Telegram đã mã hoá — bằng khoá hiện tại; không giải được (khoá trong shell khác khoá API) → **dừng, exit 1** thay vì mã hoá bằng khoá lạ.
+- **Giới hạn của guard:** lần seal đầu mà DB **chưa có secret/token nào đã mã hoá** (không Telegram, không webhook `enc:v1:`) thì không có mẫu để đối chiếu — script in cảnh báo và **từ chối ghi** trừ khi bạn thêm `--i-verified-key` (bạn tự đối chiếu khoá với env của dịch vụ API) hoặc `--force`. `--dry-run` không cần cờ. `--force` bỏ qua mọi kiểm tra — chỉ dùng khi chắc chắn.
+- Exit code: `0` xong, `1` thiếu khoá/sai khoá/chưa xác nhận khoá, `2` có quy tắc bị bỏ qua (xung đột đúng lúc có người sửa / khoá > 200 ký tự) → chạy lại.
+
+---
+
+## Nâng cấp / đổi khoá mã hoá tích hợp (Telegram BYO token)
+
+Token bot Telegram của từng workspace được mã hoá bằng `INTEGRATION_ENCRYPTION_KEY`. Ở production API không cho dùng
+khoá mặc định, nên nếu trước đây hệ thống chạy bằng khoá mặc định (hoặc bạn đổi sang khoá mới) thì token cũ sẽ **không giải được**:
+API ghi log lỗi, trả "không có token" (không dùng ciphertext làm token) và tích hợp đó ngừng gửi tin.
+
+Cách xử lý (chọn một):
+1. **Giữ khoá cũ làm khoá dự phòng** — đặt khoá cũ vào `INTEGRATION_ENCRYPTION_KEY_PREVIOUS` (khoá mặc định cũ là
+   `dev_integration_encryption_key_change_me_0001`), khoá mới vào `INTEGRATION_ENCRYPTION_KEY`, rồi khởi động lại API.
+   Token cũ giải mã bằng khoá dự phòng; token mới luôn mã hoá bằng khoá mới.
+2. **Mã hoá lại một lần** rồi bỏ khoá dự phòng: giữ cả hai biến như trên, chạy
+   `pnpm --filter @tirapro/api run integrations:rekey -- --dry-run` để xem trước, rồi chạy không có `--dry-run`.
+   Sau đó có thể xoá `INTEGRATION_ENCRYPTION_KEY_PREVIOUS`.
+3. Không còn khoá cũ → nhập lại token bot trong Cài đặt → Tích hợp.
+
+`integrations:rekey` cũng mã hoá lại khoá bí mật của webhook automation (`enc:v1:…`) cùng một lần chạy. Nếu đổi
+`INTEGRATION_ENCRYPTION_KEY` mà không rekey (hoặc không giữ khoá cũ trong `…_PREVIOUS`), webhook có khoá bí mật sẽ báo lỗi
+"Khoá bí mật của webhook không giải mã được" thay vì gửi thiếu chữ ký — nhập lại khoá trong quy tắc để khắc phục.
+
+### Mã hoá khoá bí mật webhook automation (sau khi nâng cấp)
+
+Khoá bí mật ký HMAC của webhook trong Automation giờ được lưu mã hoá (`enc:v1:…`, cùng khoá `INTEGRATION_ENCRYPTION_KEY`)
+và API chỉ trả `********`. Quy tắc tạo trước bản nâng cấp vẫn còn khoá dạng chữ thường (vẫn gửi được); mã hoá nốt bằng
+script một lần, **idempotent** (chạy lại không mã hoá hai lần, chỉ bỏ qua khoá đã mã hoá):
+
+```bash
+pnpm --filter @tirapro/api run automation:seal-secrets -- --dry-run   # xem trước: bao nhiêu khoá sẽ được mã hoá
+pnpm --filter @tirapro/api run automation:seal-secrets                # ghi vào DB (thêm -- --i-verified-key ở lần đầu nếu DB chưa có mẫu đã mã hoá, sau khi tự kiểm khoá)
+```
+
+Cần `DATABASE_URL` và `INTEGRATION_ENCRYPTION_KEY` (đúng giá trị API đang dùng) trong môi trường — cách nạp biến và chạy trong Docker/Render: xem [Checklist triển khai](#checklist-triển-khai--nâng-cấp). Script không đổi schema,
+không cần `prisma migrate`. Nếu in "bỏ qua (xung đột)" (có người đang sửa quy tắc) thì chạy lại. Client bên thứ ba từng đọc
+`actions[].secret` qua API sẽ không còn lấy lại được khoá.

@@ -1,59 +1,67 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { HelpCircle } from 'lucide-react';
-import { driver, type DriveStep } from 'driver.js';
+import type { DriveStep, Driver, Config } from 'driver.js';
 import type { TourContent, TourStepDef } from '@tirapro/shared';
-import { GuideType } from '@tirapro/types';
 import { Button } from '@/components/ui/Button';
+import { firstVisible } from '@/lib/firstVisible';
 import { useScreenGuides, useMarkGuide, type ScreenGuide } from './api';
-import 'driver.js/dist/driver.css';
+import { isTour, primaryTourOf, routeToScreen } from './routeToScreen';
 
 /**
- * Chuẩn hoá pathname cụ thể → screen pattern khớp với BE.
- * Vd `/p/PROJ-1/board` → `/p/:key/board`. Project key là segment sau `/p/`.
+ * Đổi step shape (shared) → DriveStep (driver.js), lọc bỏ step không có phần tử nào ĐANG HIỂN THỊ khớp selector.
+ * Cùng một `data-tour` có thể nằm ở hai nơi (sidebar desktop + thanh tab đáy mobile; chỉ một nơi hiện) nên lấy phần tử
+ * hiển thị đầu tiên và đưa thẳng cho driver.js — nếu để driver tự `querySelector` nó sẽ trỏ vào bản bị `display:none`.
  */
-function routeToScreen(pathname: string): string {
-  const m = /^\/p\/[^/]+(\/.*)?$/.exec(pathname);
-  if (m) return `/p/:key${m[1] ?? ''}`.replace(/\/$/, '') || '/p/:key';
-  // Bỏ trailing slash (trừ root) để khớp screen đã seed.
-  if (pathname.length > 1 && pathname.endsWith('/')) return pathname.slice(0, -1);
-  return pathname;
-}
-
-/** Type-guard: content có phải tour (có mảng steps) không. */
-function isTour(content: ScreenGuide['content']): content is TourContent {
-  return !!content && Array.isArray((content as Partial<TourContent>).steps);
-}
-
-/** Đổi step shape (shared) → DriveStep (driver.js), lọc bỏ step có selector không tồn tại. */
 function toDriveSteps(steps: TourStepDef[]): DriveStep[] {
   return [...steps]
     .sort((a, b) => a.order - b.order)
-    .filter((s) => !s.selector || !!document.querySelector(s.selector))
-    .map((s) => ({
-      element: s.selector,
-      popover: {
-        title: s.title,
-        description: s.body,
-        // driver.js Side không có 'auto' → để mặc định; các giá trị còn lại hợp lệ.
-        side: s.placement === 'auto' ? undefined : s.placement,
-      },
-    }));
+    .flatMap((s) => {
+      const el = s.selector ? firstVisible(document.querySelectorAll(s.selector)) : null;
+      if (s.selector && !el) return [];
+      return [
+        {
+          // Bước không có selector → popover giữa màn hình (driver.js).
+          ...(el ? { element: el } : {}),
+          popover: {
+            title: s.title,
+            description: s.body,
+            // driver.js Side không có 'auto' → để mặc định; các giá trị còn lại hợp lệ.
+            side: s.placement === 'auto' ? undefined : s.placement,
+          },
+        } satisfies DriveStep,
+      ];
+    });
 }
 
 export function GuideLauncher() {
   const location = useLocation();
   const screen = routeToScreen(location.pathname);
-  const { data: guides } = useScreenGuides(screen);
+  const { data: guides, isPending } = useScreenGuides(screen);
   const markGuide = useMarkGuide();
   // Đảm bảo intro chỉ auto-start một lần / màn / phiên.
   const autoStarted = useRef<Set<string>>(new Set());
+  // Đang tải/đang chạy tour: chặn bấm đúp mở hai tour chồng nhau (mở khoá khi tour đóng).
+  const launching = useRef(false);
 
   const runTour = useCallback(
-    (guide: ScreenGuide, opts: { markSeen?: boolean }) => {
+    async (guide: ScreenGuide, opts: { markSeen?: boolean }) => {
       if (!isTour(guide.content)) return;
       const steps = toDriveSteps(guide.content.steps);
       if (steps.length === 0) return;
+      // driver.js + CSS chỉ tải khi thật sự chạy tour (không nằm trong bundle đầu).
+      if (launching.current) return;
+      launching.current = true;
+      let driver: (config?: Config) => Driver;
+      try {
+        [{ driver }] = await Promise.all([
+          import('driver.js'),
+          import('driver.js/dist/driver.css'),
+        ]);
+      } catch {
+        launching.current = false;
+        return; // mất mạng khi tải thư viện: bỏ qua, người dùng bấm lại “Hướng dẫn màn này” sau
+      }
       if (opts.markSeen) markGuide.mutate({ key: guide.key, action: 'seen' });
       const d = driver({
         showProgress: true,
@@ -63,6 +71,7 @@ export function GuideLauncher() {
         progressText: '{{current}}/{{total}}',
         steps,
         onDestroyed: () => {
+          launching.current = false;
           markGuide.mutate({ key: guide.key, action: 'complete' });
         },
       });
@@ -72,25 +81,42 @@ export function GuideLauncher() {
   );
 
   // Tìm tour của màn (đầu tiên theo order) để gắn nút "Hướng dẫn".
-  const tours = (guides ?? []).filter((g) => g.type === GuideType.TOUR && isTour(g.content));
-  const primaryTour = tours[0];
+  const primaryTour = primaryTourOf(guides);
+  const autoStart =
+    primaryTour !== undefined && (primaryTour.content as TourContent).autoStart === true;
 
-  // Auto-start tour intro chưa xem, một lần duy nhất / màn / phiên.
+  // `runTour` đổi danh tính mỗi lần render (phụ thuộc kết quả useMutation) → giữ bản mới nhất trong ref để hẹn giờ auto-start
+  // KHÔNG bị huỷ/chạy lại mỗi lần render (trước đây hẹn giờ bị huỷ ngay mà `autoStarted` đã đánh dấu ⇒ tour không bao giờ tự chạy).
+  const runTourRef = useRef(runTour);
   useEffect(() => {
-    if (!primaryTour || primaryTour.seen) return;
+    runTourRef.current = runTour;
+  }, [runTour]);
+
+  // Auto-start CHỈ tour có `autoStart` (Tổng quan), chưa xem, một lần duy nhất / màn / phiên — các màn khác chạy khi bấm "?".
+  useEffect(() => {
+    if (!primaryTour || !autoStart || primaryTour.seen) return;
     if (autoStarted.current.has(screen)) return;
-    autoStarted.current.add(screen);
-    // Đợi 1 frame cho DOM (data-tour targets) render xong.
-    const t = window.setTimeout(() => runTour(primaryTour, { markSeen: true }), 350);
+    // Đợi một nhịp cho DOM (data-tour targets) render xong; đánh dấu "đã chạy" lúc thật sự chạy.
+    const t = window.setTimeout(() => {
+      if (autoStarted.current.has(screen)) return;
+      autoStarted.current.add(screen);
+      void runTourRef.current(primaryTour, { markSeen: true });
+    }, 350);
     return () => window.clearTimeout(t);
-  }, [primaryTour, screen, runTour]);
+  }, [primaryTour, autoStart, screen]);
 
   // Bảng lệnh có thể yêu cầu chạy tour màn hiện tại (sự kiện dùng chung).
   useEffect(() => {
-    const onTour = () => primaryTour && runTour(primaryTour, { markSeen: !primaryTour.seen });
+    const onTour = () => {
+      if (primaryTour) void runTour(primaryTour, { markSeen: !primaryTour.seen });
+    };
     window.addEventListener('tirapro:tour', onTour);
     return () => window.removeEventListener('tirapro:tour', onTour);
   }, [primaryTour, runTour]);
+
+  // Màn không có tour → KHÔNG hiện nút (không để nút xám vô nghĩa). Đang tải: giữ chỗ 36×36 trong suốt để thanh trên
+  // không nhảy bố cục khi nút hiện ra.
+  if (!primaryTour) return isPending ? <span className="inline-block h-9 w-9" aria-hidden /> : null;
 
   return (
     <>
@@ -100,8 +126,9 @@ export function GuideLauncher() {
         size="icon"
         aria-label="Hướng dẫn màn này"
         title="Hướng dẫn màn này"
-        disabled={!primaryTour}
-        onClick={() => primaryTour && runTour(primaryTour, { markSeen: !primaryTour.seen })}
+        onClick={() => {
+          void runTour(primaryTour, { markSeen: !primaryTour.seen });
+        }}
       >
         <HelpCircle className="h-4 w-4" />
       </Button>

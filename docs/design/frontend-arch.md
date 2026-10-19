@@ -21,7 +21,7 @@ Subsystem này định nghĩa toàn bộ kiến trúc client của ứng dụng 
 |---|---|---|
 | Backend API (NestJS) | REST qua axios, base `/api/v1` | DTO types từ `@tirapro/types`; lỗi chuẩn `{ statusCode, message, error, code }` |
 | Auth subsystem | JWT access (memory/Zustand) + refresh (httpOnly cookie hoặc localStorage tùy chính sách BE) | `POST /auth/login`, `/auth/refresh`, `/auth/logout`, `GET /auth/me` |
-| Realtime subsystem | Socket.io client, namespace `/realtime`, rooms theo `project:{id}` / `issue:{id}` | events: `board.updated`, `issue.updated`, `presence.sync`, `comment.created`, `notification.new` |
+| Realtime subsystem | Socket.io client, namespace `/realtime`, rooms theo `project:{id}` / `issue:{id}` | events: `board.updated`, `issue.updated`, `presence.sync`, `comment:added|updated|deleted`, `notification.new` |
 | AI subsystem | REST `/ai/*` (streaming SSE cho summarize/generate) | phải degrade gracefully: nếu `GET /ai/health` trả `{ enabled:false }` → ẩn/disable UI AI |
 | Shared types | package `@tirapro/types`, `@tirapro/zod-schemas` | import trực tiếp, build qua tsup |
 
@@ -484,7 +484,9 @@ export function useUpdateIssue(issueKey: string) {
 export interface ServerToClientEvents {
   'board.updated': (p: { boardId: string; issueId: string; from: string; to: string; rank: string; actorId: string }) => void;
   'issue.updated': (p: { issueKey: string; patch: Partial<IssueDetailDto>; actorId: string }) => void;
-  'comment.created': (p: { issueKey: string; comment: CommentDto }) => void;
+  'comment:added': (p: { comment: CommentDto }) => void;
+  'comment:updated': (p: { comment: CommentDto }) => void;
+  'comment:deleted': (p: { commentId: string; issueId: string }) => void;
   'presence.sync': (p: { room: string; users: PresenceUser[] }) => void;
   'notification.new': (p: NotificationDto) => void;
 }
