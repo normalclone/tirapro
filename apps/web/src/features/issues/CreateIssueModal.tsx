@@ -12,6 +12,7 @@ import { FileDrop } from '@/features/attachments/FileDrop';
 import { MarkdownEditor } from '@/features/issue-edit/MarkdownEditor';
 import { Button } from '@/components/ui/Button';
 import { SplitButton } from '@/components/ui/SplitButton';
+import { SUBMIT_ALT_SHORTCUT, SUBMIT_SHORTCUT } from '@/lib/submitShortcut';
 import { Dialog } from '@/components/ui/Dialog';
 import { ErrorSummary } from '@/components/ui/ErrorSummary';
 import { FieldErrorText } from '@/components/ui/FieldError';
@@ -517,10 +518,11 @@ export function CreateIssueModal() {
       title={title}
       size="xl"
       onSubmit={() => void submitCreate()}
+      onSubmitAlt={() => void createAnother()}
       footer={
         <>
           <span className="kbd-hint mr-auto text-xs text-faint max-sm:hidden">
-            ⌘/Ctrl + Enter để tạo nhanh
+            ⌘/Ctrl + Enter: tạo · thêm Shift: tạo &amp; nhập tiếp
           </span>
           <Button type="button" variant="ghost" onClick={close}>
             Huỷ
@@ -537,13 +539,15 @@ export function CreateIssueModal() {
                 id: 'another',
                 label: 'Tạo & nhập tiếp',
                 hint: 'Giữ cửa sổ, chỉ xoá tiêu đề và mô tả',
-                onSelect: () => void createAnother(),
+                onSelect: () => createAnother(),
+                shortcut: SUBMIT_ALT_SHORTCUT,
               },
               {
                 id: 'open',
                 label: 'Tạo & mở',
                 hint: 'Đóng cửa sổ và mở công việc vừa tạo',
-                onSelect: () => void submitCreate(),
+                onSelect: () => submitCreate(),
+                shortcut: SUBMIT_SHORTCUT,
               },
             ]}
           >
@@ -826,6 +830,7 @@ export function CreateIssueModal() {
               value={description}
               onChange={setDescription}
               onSubmit={() => void submitCreate()}
+              onSubmitAlt={() => void createAnother()}
               rows={10}
               mentionPeople={assignees.options}
               mentionProjectId={selId || undefined}
@@ -845,6 +850,7 @@ export function CreateIssueModal() {
                 value={acceptance}
                 onChange={setAcceptance}
                 onSubmit={() => void submitCreate()}
+                onSubmitAlt={() => void createAnother()}
                 rows={4}
                 mentionPeople={assignees.options}
                 mentionProjectId={selId || undefined}

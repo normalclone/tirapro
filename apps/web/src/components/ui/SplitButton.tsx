@@ -9,7 +9,53 @@ export interface SplitButtonItem {
   label: string;
   /** Mô tả ngắn dưới nhãn; đọc qua aria-describedby (tên truy cập của mục chỉ là nhãn). */
   hint?: string;
-  onSelect: () => void;
+  /** Phím tắt của hành động: `label` hiện thành <kbd> (ngoài tên truy cập), `keys` đi vào aria-keyshortcuts. */
+  shortcut?: { label: string; keys: string };
+  /** Có thể trả Promise: xong rồi mới kiểm tra focus có rơi ra ngoài hộp không. */
+  onSelect: () => void | Promise<unknown>;
+}
+
+/**
+ * Một mục menu. Tên truy cập = CHỈ nhãn (span có id, `aria-labelledby`); mô tả qua `aria-describedby`; phím tắt qua
+ * `aria-keyshortcuts` + <kbd> ẩn với trình đọc màn hình (không nằm trong tên). Cùng quy tắc với RadioCard.
+ */
+export function SplitMenuItem({
+  item,
+  uid,
+  onPick,
+}: {
+  item: SplitButtonItem;
+  uid: string;
+  onPick: (item: SplitButtonItem) => void;
+}) {
+  const labelId = `${uid}-${item.id}-l`;
+  const hintId = `${uid}-${item.id}-h`;
+  return (
+    <DropdownMenu.Item
+      aria-labelledby={labelId}
+      aria-describedby={item.hint ? hintId : undefined}
+      aria-keyshortcuts={item.shortcut?.keys}
+      onSelect={() => onPick(item)}
+      className="flex cursor-pointer items-center justify-between gap-4 rounded-md px-2.5 py-2 text-sm text-ink outline-none transition-colors data-[highlighted]:bg-surface-2 [@media(pointer:coarse)]:min-h-11"
+    >
+      <span className="flex flex-col">
+        <span id={labelId}>{item.label}</span>
+        {item.hint && (
+          <span id={hintId} className="text-xs text-muted">
+            {item.hint}
+          </span>
+        )}
+      </span>
+      {item.shortcut && (
+        <kbd
+          aria-hidden
+          className="kbd-hint shrink-0 rounded border border-border bg-surface-2 px-1.5 py-0.5 font-mono text-[11px] text-muted"
+        >
+          {item.shortcut.label}
+        </kbd>
+      )}
+    </DropdownMenu.Item>
+  );
 }
 
 const TOUCH_H = '[@media(pointer:coarse)]:h-11';
@@ -55,8 +101,35 @@ export function SplitButton({
 }) {
   const uid = useId();
   const pending = useRef<SplitButtonItem | null>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+
+  // Sau hành động (kể cả thất bại chỉ có toast / thoát sớm vì guard) mà focus rơi về body hoặc ra ngoài hộp → trả về ▾.
+  function restoreFocus() {
+    const trigger = triggerRef.current;
+    if (!trigger?.isConnected) return; // hộp đã đóng / chuyển trang
+    const active = document.activeElement;
+    const scope = trigger.closest('[role="dialog"]');
+    // Chính khung hộp thoại (Radix kéo focus về đó khi mất chỗ đứng) cũng chưa phải chỗ đứng hợp lý.
+    const ok =
+      active &&
+      active !== document.body &&
+      (!scope || (scope !== active && scope.contains(active)));
+    if (!ok) trigger.focus();
+  }
+  async function run(item: SplitButtonItem) {
+    try {
+      await item.onSelect();
+    } finally {
+      requestAnimationFrame(restoreFocus);
+    }
+  }
+
   return (
-    <DropdownMenu.Root>
+    <DropdownMenu.Root
+      onOpenChange={(o) => {
+        if (o) pending.current = null; // phòng thủ: không để mục cũ còn treo từ lần mở trước
+      }}
+    >
       <div className={cn('inline-flex items-stretch gap-px', className)}>
         <Button
           type={type}
@@ -73,6 +146,7 @@ export function SplitButton({
         </Button>
         <DropdownMenu.Trigger asChild>
           <Button
+            ref={triggerRef}
             type="button"
             variant={variant}
             size={size}
@@ -97,26 +171,19 @@ export function SplitButton({
             if (!item) return; // Esc / bấm ra ngoài: trả focus về nút ▾ như thường
             pending.current = null;
             e.preventDefault();
-            item.onSelect(); // menu đã đóng hẳn: focus hành động đặt không bị bẫy focus của menu kéo lại
+            void run(item); // menu đã đóng hẳn: focus hành động đặt không bị bẫy focus của menu kéo lại
           }}
           className="z-dropdown min-w-56 overflow-hidden rounded-lg border border-border bg-surface p-1 shadow-lg animate-in fade-in zoom-in-95 duration-150 motion-reduce:animate-none print:hidden"
         >
           {items.map((item) => (
-            <DropdownMenu.Item
+            <SplitMenuItem
               key={item.id}
-              aria-describedby={item.hint ? `${uid}-${item.id}` : undefined}
-              onSelect={() => {
-                pending.current = item;
+              item={item}
+              uid={uid}
+              onPick={(it) => {
+                pending.current = it;
               }}
-              className="flex cursor-pointer flex-col rounded-md px-2.5 py-2 text-sm text-ink outline-none transition-colors data-[highlighted]:bg-surface-2 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:justify-center"
-            >
-              {item.label}
-              {item.hint && (
-                <span id={`${uid}-${item.id}`} className="text-xs text-muted">
-                  {item.hint}
-                </span>
-              )}
-            </DropdownMenu.Item>
+            />
           ))}
         </DropdownMenu.Content>
       </DropdownMenu.Portal>

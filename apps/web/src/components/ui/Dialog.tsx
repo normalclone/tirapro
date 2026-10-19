@@ -2,6 +2,7 @@ import type { KeyboardEvent, ReactNode } from 'react';
 import * as RadixDialog from '@radix-ui/react-dialog';
 import { X } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { pickSubmit } from '@/lib/submitShortcut';
 
 const SIZE: Record<'sm' | 'md' | 'lg' | 'xl', string> = {
   sm: 'max-w-sm',
@@ -22,6 +23,8 @@ export interface DialogProps {
   size?: 'sm' | 'md' | 'lg' | 'xl';
   /** Cmd/Ctrl+Enter gọi onSubmit nếu có (kể cả khi đang gõ trong textarea). */
   onSubmit?: () => void;
+  /** Cmd/Ctrl+Shift+Enter (hành động phụ, vd "Tạo & nhập tiếp"). Không truyền → Shift gửi như Cmd/Ctrl+Enter. */
+  onSubmitAlt?: () => void;
   /** Class thêm cho vùng nội dung cuộn (vd bỏ padding khi nội dung tự quản lý bố cục). */
   bodyClassName?: string;
   /** Ẩn tiêu đề khỏi mắt nhìn nhưng vẫn giữ cho trình đọc màn hình (vd bảng lệnh có ô tìm riêng). */
@@ -87,6 +90,7 @@ export function Dialog({
   footer,
   size = 'md',
   onSubmit,
+  onSubmitAlt,
   bodyClassName,
   hideTitle = false,
   className,
@@ -99,12 +103,13 @@ export function Dialog({
   onEscapeKeyDown,
 }: DialogProps) {
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
-    if (!onSubmit) return;
-    if (e.key !== 'Enter' || !(e.metaKey || e.ctrlKey) || e.defaultPrevented) return;
+    if (e.defaultPrevented) return;
+    const run = pickSubmit(e, { onSubmit, onSubmitAlt });
+    if (!run) return;
     // Dialog lồng nhau: sự kiện React nổi lên qua portal — chỉ xử lý phím gõ bên trong chính hộp này.
     if (!e.currentTarget.contains(e.target as Node)) return;
     e.preventDefault();
-    onSubmit();
+    run();
   };
 
   return (

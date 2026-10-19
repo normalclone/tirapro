@@ -2,7 +2,8 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { SplitButton } from './SplitButton';
+import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
+import { SplitButton, SplitMenuItem } from './SplitButton';
 
 const src = () => readFileSync(join(__dirname, 'SplitButton.tsx'), 'utf8');
 const items = [
@@ -55,21 +56,75 @@ describe('<SplitButton>', () => {
     expect(open(main)).toContain('rounded-r-none');
     expect(open(more!)).toContain('rounded-l-none');
   });
-  it('hành động của mục chạy SAU khi menu đóng (onCloseAutoFocus), không chạy trong onSelect', () => {
-    // Chạy ngay trong onSelect thì focus mà hành động vừa đặt (vd tóm tắt lỗi) bị bẫy focus của menu kéo lại → rơi về body.
+  it('hành động của mục chạy SAU khi menu đóng (onCloseAutoFocus), không chạy trong lúc chọn', () => {
+    // Chạy ngay khi chọn thì focus mà hành động vừa đặt (vd tóm tắt lỗi) bị bẫy focus của menu kéo lại → rơi về body.
     const s = src();
-    const onSelect = /onSelect=\{\(\) => \{[\s\S]*?\n\s*\}\}/.exec(s)![0];
-    expect(onSelect).toContain('pending.current = item');
-    expect(onSelect).not.toContain('item.onSelect()');
+    const pick = /onPick=\{[\s\S]*?\n\s*\}\}/.exec(s)![0];
+    expect(pick).toContain('pending.current = it');
+    expect(pick).not.toContain('onSelect()');
     const close = /onCloseAutoFocus=\{[\s\S]*?\n\s*\}\}/.exec(s)![0];
     expect(close).toContain('pending.current');
     expect(close).toContain('preventDefault()');
-    expect(close).toContain('.onSelect()');
+    expect(close).toContain('run(item)');
+  });
+  it('focus dự phòng: sau hành động, focus ở body/ngoài hộp → trả về ▾; mở menu xoá mục treo', () => {
+    const s = src();
+    expect(s).toContain('await item.onSelect()');
+    expect(s).toContain('requestAnimationFrame(restoreFocus)');
+    expect(s).toContain('trigger.closest(\'[role="dialog"]\')');
+    expect(s).toContain('document.body');
+    expect(s).toContain('scope !== active');
+    expect(s).toContain('trigger.focus()');
+    expect(s).toMatch(/onOpenChange=\{\(o\) => \{\s*if \(o\) pending\.current = null/);
   });
   it('nguồn: Radix dropdown, mục có mô tả qua aria-describedby (tên chỉ là nhãn), không tự refocus sau khi chọn', () => {
     const s = src();
     expect(s).toContain('@radix-ui/react-dropdown-menu');
-    expect(s).toContain('aria-describedby');
     expect(s).not.toMatch(/#[0-9a-fA-F]{3,8}\b|\bbg-(blue|indigo|purple)-/); // chỉ token
+  });
+});
+
+describe('<SplitMenuItem> — tên truy cập chỉ là nhãn', () => {
+  const menu = (item: object) =>
+    renderToStaticMarkup(
+      <DropdownMenu.Root open>
+        <DropdownMenu.Content forceMount>
+          <SplitMenuItem
+            uid="u"
+            item={{ id: 'another', label: 'Tạo & nhập tiếp', onSelect: () => undefined, ...item }}
+            onPick={() => undefined}
+          />
+        </DropdownMenu.Content>
+      </DropdownMenu.Root>,
+    );
+  const tag = (h: string) => /<div[^>]*role="menuitem"[^>]*>/.exec(h)![0];
+  it('aria-labelledby trỏ vào span nhãn (id riêng); mô tả riêng qua aria-describedby; không lặp', () => {
+    const h = menu({
+      hint: 'Giữ cửa sổ',
+      shortcut: { label: '⌘/Ctrl+Shift+Enter', keys: 'Meta+Shift+Enter Control+Shift+Enter' },
+    });
+    const t = tag(h);
+    const lab = attr(t, 'aria-labelledby')!;
+    const desc = attr(t, 'aria-describedby')!;
+    expect(lab).not.toBe(desc);
+    expect(h).toMatch(new RegExp(`<span id="${lab}"[^>]*>Tạo &amp; nhập tiếp</span>`));
+    expect(h).toMatch(new RegExp(`<span id="${desc}"[^>]*>Giữ cửa sổ</span>`));
+  });
+  it('phím tắt: aria-keyshortcuts trên mục + <kbd> hiển thị nằm NGOÀI span nhãn (không vào tên)', () => {
+    const h = menu({
+      shortcut: { label: '⌘/Ctrl+Shift+Enter', keys: 'Meta+Shift+Enter Control+Shift+Enter' },
+    });
+    expect(attr(tag(h), 'aria-keyshortcuts')).toBe('Meta+Shift+Enter Control+Shift+Enter');
+    expect(h).toMatch(/<kbd[^>]*>⌘\/Ctrl\+Shift\+Enter<\/kbd>/);
+    expect(h).toMatch(/<kbd[^>]*class="kbd-hint /); // ẩn trên cảm ứng (không có bàn phím)
+    const label = /<span id="[^"]*-l"[^>]*>[\s\S]*?<\/span>/.exec(h)![0];
+    expect(label).not.toContain('kbd');
+    expect(label).not.toContain('Ctrl');
+  });
+  it('không hint/phím tắt → không có aria-describedby / aria-keyshortcuts / kbd', () => {
+    const h = menu({});
+    expect(attr(tag(h), 'aria-describedby')).toBeUndefined();
+    expect(attr(tag(h), 'aria-keyshortcuts')).toBeUndefined();
+    expect(h).not.toContain('<kbd');
   });
 });
