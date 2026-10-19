@@ -53,6 +53,41 @@ describe('<PeekNavControls> — ‹ › và "n/N"', () => {
   });
 });
 
+// Gọi thẳng hàm component (không hook) rồi lục cây phần tử để lấy onClick thật của từng nút — chạy đúng guard `step()`.
+type El = { props?: { children?: unknown; onClick?: () => void; 'aria-label'?: string } };
+function findButton(node: unknown, name: string): El | null {
+  if (!node || typeof node !== 'object') return null;
+  if (Array.isArray(node)) {
+    for (const n of node) {
+      const f = findButton(n, name);
+      if (f) return f;
+    }
+    return null;
+  }
+  const el = node as El;
+  if (el.props?.['aria-label'] === name) return el;
+  return findButton(el.props?.children, name);
+}
+describe('guard step() — bấm / Enter trên nút aria-disabled không làm gì', () => {
+  const click = (peekKey: string, name: string) => {
+    const calls: number[] = [];
+    const tree = PeekNavControls({
+      position: peekPosition(keys, peekKey),
+      onStep: (d) => calls.push(d),
+    });
+    findButton(tree, name)!.props!.onClick!(); // Enter trên <button> kích hoạt chính onClick này
+    return calls;
+  };
+  it('đầu danh sách: "Việc trước" không gọi onStep; "Việc sau" gọi với +1', () => {
+    expect(click('A-1', 'Việc trước')).toEqual([]);
+    expect(click('A-1', 'Việc sau')).toEqual([1]);
+  });
+  it('cuối danh sách: "Việc sau" không gọi onStep; "Việc trước" gọi với -1', () => {
+    expect(click('A-3', 'Việc sau')).toEqual([]);
+    expect(click('A-3', 'Việc trước')).toEqual([-1]);
+  });
+});
+
 describe('thẻ/dòng đang xem', () => {
   it('peekedAttrs: aria-current="true" khi đang xem, không có thuộc tính khi không', () => {
     expect(peekedAttrs(true)).toEqual({ 'aria-current': 'true' });
@@ -74,6 +109,8 @@ describe('thẻ/dòng đang xem', () => {
     expect(card).toContain('prev.peeked === next.peeked');
     const tri = read('features/triage/TriageRow.tsx');
     expect(tri).toContain('...peekedAttrs(peeking)');
+    expect(tri).toContain('peeking && PEEKED_ROW_CLS');
+    expect(tri).not.toContain('bg-primary-subtle/60');
   });
   it('Board: BoardPage chỉ đưa peekedKey vào cột CÓ việc đang xem (peekedKeyIn) → Column → Card', () => {
     const board = read('features/board/BoardPage.tsx');

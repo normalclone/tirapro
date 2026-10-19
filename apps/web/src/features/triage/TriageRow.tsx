@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/Button';
 import { SeverityBadge } from '@/components/ui/SeverityBadge';
 import { MarkdownView } from '@/features/issue-edit/MarkdownView';
 import { IssueKeyLink } from '@/features/issues/peek/IssueKeyLink';
-import { peekedAttrs } from '@/features/issues/peek/peekedRow';
+import { PEEKED_ROW_CLS, peekedAttrs } from '@/features/issues/peek/peekedRow';
 import { rowPeekProps } from '@/features/issues/peek/rowPeekProps';
 import { fmtDateTime, fmtRelative } from '@/lib/dateFormat';
 import { cn } from '@/lib/utils';
@@ -234,7 +234,7 @@ export function TriageRow({
     <li
       data-issue-key={issue.key}
       {...peekedAttrs(peeking)}
-      className={cn(peeking && 'bg-primary-subtle/60')}
+      className={cn(peeking && PEEKED_ROW_CLS)}
     >
       <div
         role="group"

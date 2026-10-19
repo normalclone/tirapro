@@ -224,15 +224,20 @@ describe('P-C7 — lỗi đến sau khi ô sửa đã gỡ, và chỉ ghi đè s
       status: 500,
       data: { success: false, error: { code: 'VALIDATION_ERROR' } },
     } as never);
-    expect(lateSummaryErrorText(e)).toBe(summaryErrorText(e));
+    expect(lateSummaryErrorText(e, 'TP-7')).toBe(
+      `Tiêu đề TP-7 chưa được lưu: ${summaryErrorText(e)}`,
+    );
     expect(wasErrorDescribed(e)).toBe(true);
-    const t = lateSummaryErrorText(new SummaryConflictError('Bản mới'));
+    const t = lateSummaryErrorText(new SummaryConflictError('Bản mới'), 'TP-7');
+    expect(t).toContain('Tiêu đề TP-7 chưa được lưu');
     expect(t).toContain('“Bản mới”');
     expect(t).not.toMatch(/Bấm Lưu|Huỷ/);
   });
   it('adapter: cờ mounted gỡ khi unmount, toast có id theo nội dung, conflictSeen đặt lại ở onEditStart và chỉ bật qua onConflictShown', () => {
     expect(adapter).toMatch(/return \(\) => \{\s*mounted\.current = false;/);
-    expect(adapter).toContain('toast.error(message, { id: `summary-late:${message}` })');
+    expect(adapter).toContain(
+      'toast.error(lateSummaryErrorText(e, cur.key), { id: `summary-late:${cur.key}` })',
+    );
     expect(adapter).toMatch(/onConflictShown: \(\) => \{\s*conflictSeen\.current = true;/);
   });
 });

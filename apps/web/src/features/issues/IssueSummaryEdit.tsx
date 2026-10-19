@@ -24,11 +24,11 @@ export function summaryErrorText(e: unknown): string {
  * Lỗi lưu tiêu đề đến SAU khi ô sửa đã gỡ (đã chuyển việc/đóng panel): không còn ô để hiện lỗi nên báo bằng toast. Xung đột thật
  * không nhắc "Bấm Lưu/Huỷ" (ô đã mất), chỉ nói tiêu đề chưa được lưu. Luôn qua `apiErrorMessage` (đánh dấu đã mô tả).
  */
-export function lateSummaryErrorText(e: unknown): string {
+export function lateSummaryErrorText(e: unknown, key: string): string {
   const generic = apiErrorMessage(e);
   if (e instanceof SummaryConflictError)
-    return `Tiêu đề chưa được lưu vì người khác vừa đổi thành “${e.serverSummary}”.`;
-  return generic;
+    return `Tiêu đề ${key} chưa được lưu vì người khác vừa đổi thành “${e.serverSummary}”.`;
+  return `Tiêu đề ${key} chưa được lưu: ${generic}`;
 }
 
 /**
@@ -116,8 +116,8 @@ export function IssueSummaryEdit({
           isConflict: (e) => apiErrorCode(e) === 'VERSION_CONFLICT',
           isMounted: () => mounted.current,
           notifyLate: (e) => {
-            const message = lateSummaryErrorText(e);
-            toast.error(message, { id: `summary-late:${message}` });
+            // Nói rõ việc nào (ô đã gỡ, người dùng đang ở việc khác); id theo việc → hai việc lỗi cùng lúc không gộp toast.
+            toast.error(lateSummaryErrorText(e, cur.key), { id: `summary-late:${cur.key}` });
           },
           onConflictShown: () => {
             conflictSeen.current = true;
