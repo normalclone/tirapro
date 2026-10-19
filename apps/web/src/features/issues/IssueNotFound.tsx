@@ -14,6 +14,7 @@ export function IssueNotFound({ issueKey }: { issueKey: string }) {
   return (
     <StatusPanel
       variant="not-found"
+      headingLevel={2}
       title={`Không tìm thấy công việc ${issueKey}`}
       description="Mã này không tồn tại, đã bị xoá, hoặc bạn chưa được cấp quyền xem."
       actions={

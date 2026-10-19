@@ -83,4 +83,19 @@ describe('PageHeader — trang thử', () => {
     expect(out).not.toContain('<nav');
     expect(out).not.toContain('<p ');
   });
+  it('titleHidden: h1 chỉ cho trình đọc màn hình; breadcrumb và actions chung một hàng; không mô tả', () => {
+    const out = render({
+      title: 'DEMO-1 · Sửa lỗi',
+      description: 'KHÔNG HIỆN',
+      titleHidden: true,
+      breadcrumb: [{ label: 'Dự án', to: '/p' }, { label: 'DEMO-1' }],
+      actions: <button type="button">Sao chép</button>,
+    });
+    expect(out.match(/<h1\b/g)).toHaveLength(1);
+    expect(out).toMatch(/<h1 class="sr-only">DEMO-1 · Sửa lỗi<\/h1>/);
+    expect(out).not.toContain('KHÔNG HIỆN');
+    expect(out.indexOf('<nav')).toBeLessThan(out.indexOf('Sao chép'));
+    expect(out.indexOf('Sao chép')).toBeLessThan(out.indexOf('<h1'));
+    expect(out).not.toContain('max-lg:hidden');
+  });
 });

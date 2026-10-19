@@ -7,7 +7,7 @@ import {
   type ComponentProps,
   type ComponentType,
 } from 'react';
-import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import {
   Archive,
@@ -79,7 +79,8 @@ import { QueryError } from '@/components/ui/QueryError';
 import { IssueNotFound } from './IssueNotFound';
 import { issueViewState } from './issueViewState';
 import { apiErrorCode } from '@/lib/api';
-import { pageContainer } from '@/components/layout/page';
+import { PageFrame } from '@/components/layout/PageFrame';
+import { PageHeader } from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { useAuth } from '@/stores/auth';
@@ -148,6 +149,7 @@ export function IssueDetailPage() {
   const { data: projects } = useProjects(true);
   const project = projects?.find((p) => p.id === issue?.projectId) ?? null;
   const projectKey = project?.key ?? '';
+  const workspaceName = useWorkspaceName();
   // Trang chi tiết nằm ngoài ProjectLayout → tự nhận realtime của project chứa issue này.
   useProjectRealtime(issue?.projectId);
   // Việc cha chỉ để hiện breadcrumb: đọc từ cache dự án (có sẵn khi đi từ board sang) mà KHÔNG tải cả danh sách việc.
@@ -486,51 +488,54 @@ export function IssueDetailPage() {
       <ProjectRail activeKey={projectKey} view="board" />
 
       <div className="min-w-0 flex-1 overflow-auto">
-        <div className={pageContainer('xl', 'py-6')}>
-          {/* Breadcrumb + Theo dõi + Xoá */}
-          <div className="mb-4 flex items-center gap-2 text-sm">
-            <Button variant="ghost" size="sm" onClick={() => navigate(-1)} aria-label="Quay lại">
-              <ArrowLeft className="h-4 w-4" />
-              Quay lại
-            </Button>
-            <nav
-              className="flex min-w-0 flex-1 items-center gap-1.5 truncate text-muted"
-              aria-label="Breadcrumb"
-            >
-              <WorkspaceName />
-              <span className="text-faint">/</span>
-              {project ? (
-                <Link to={`/p/${project.key}/board`} className="truncate hover:text-ink">
-                  {project.name}
-                </Link>
-              ) : (
-                <span className="font-mono">{projectKey}</span>
-              )}
-              {parent && (
-                <>
-                  <span className="text-faint">/</span>
-                  <Link
-                    to={`/issue/${parent.key}`}
-                    className="truncate font-mono hover:text-ink"
-                    title={`${parent.isEpic ? 'Epic' : 'Việc cha'}: ${parent.summary}`}
-                  >
-                    {parent.key}
-                  </Link>
-                </>
-              )}
-              <span className="text-faint">/</span>
-              <span className="font-mono text-ink">{key}</span>
-              <button
-                type="button"
-                onClick={copyKey}
-                title={`Sao chép mã công việc (${key}) để dán vào chat, commit…`}
-                aria-label="Sao chép mã công việc"
-                className="grid h-6 w-6 shrink-0 place-items-center rounded text-faint transition-colors hover:bg-surface-2 hover:text-ink [@media(pointer:coarse)]:h-9 [@media(pointer:coarse)]:w-9"
-              >
-                <Hash className="h-3.5 w-3.5" />
-              </button>
-            </nav>
-          </div>
+        <PageFrame size="lg" className="py-6">
+          {/*
+           * Tiêu đề trang cho trình đọc màn hình (`titleHidden`): ô tiêu đề hiển thị bên dưới là ô sửa tại chỗ nằm cạnh
+           * các ô chọn loại/ưu tiên nên không thể là h1 (h1 sẽ chứa cả ô chọn). Có cả khi đang tải/lỗi/không thấy.
+           */}
+          <PageHeader
+            titleHidden
+            title={issue ? `${key} · ${issue.summary}` : key}
+            breadcrumb={[
+              { label: workspaceName },
+              project
+                ? { label: project.name, to: `/p/${project.key}/board` }
+                : { label: projectKey, mono: true },
+              ...(parent
+                ? [
+                    {
+                      label: parent.key,
+                      to: `/issue/${parent.key}`,
+                      mono: true,
+                      title: `${parent.isEpic ? 'Epic' : 'Việc cha'}: ${parent.summary}`,
+                    },
+                  ]
+                : []),
+              { label: key, mono: true },
+            ]}
+            actions={
+              <>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => navigate(-1)}
+                  aria-label="Quay lại"
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                  Quay lại
+                </Button>
+                <button
+                  type="button"
+                  onClick={copyKey}
+                  title={`Sao chép mã công việc (${key}) để dán vào chat, commit…`}
+                  aria-label="Sao chép mã công việc"
+                  className="grid h-6 w-6 shrink-0 place-items-center rounded text-faint transition-colors hover:bg-surface-2 hover:text-ink [@media(pointer:coarse)]:h-9 [@media(pointer:coarse)]:w-9"
+                >
+                  <Hash className="h-3.5 w-3.5" />
+                </button>
+              </>
+            }
+          />
 
           {project?.archivedAt && (
             <div
@@ -580,7 +585,7 @@ export function IssueDetailPage() {
                       className="order-3 h-10 basis-full text-xl font-semibold tracking-tight sm:order-2 sm:basis-0 sm:flex-1 sm:text-2xl"
                     />
                   ) : (
-                    <h1
+                    <div
                       className={cn(
                         '-mx-1 order-3 min-w-0 basis-full break-words rounded px-1 text-xl font-semibold tracking-tight sm:order-2 sm:basis-0 sm:flex-1 sm:text-2xl',
                         canEditThis && 'cursor-text hover:bg-surface-2',
@@ -589,7 +594,7 @@ export function IssueDetailPage() {
                       title={canEditThis ? withKey('Bấm để sửa tiêu đề', 'issue.edit') : undefined}
                     >
                       {issue.summary}
-                    </h1>
+                    </div>
                   )}
                   <div className="order-2 ml-auto flex shrink-0 items-center gap-2 sm:order-3 sm:ml-0 sm:mt-1">
                     <PresenceAvatars room="issue" projectId={issue.projectId} issueId={issue.id} />
@@ -891,16 +896,15 @@ export function IssueDetailPage() {
               />
             </>
           )}
-        </div>
+        </PageFrame>
       </div>
     </div>
   );
 }
 
 /** Tên không gian làm việc hiện tại cho breadcrumb. */
-function WorkspaceName() {
+function useWorkspaceName(): string {
   const wsId = useAuth((s) => s.workspaceId);
   const { data: workspaces } = useMyWorkspaces();
-  const name = workspaces?.find((w) => w.id === wsId)?.name;
-  return <span className="truncate">{name ?? 'Không gian làm việc'}</span>;
+  return workspaces?.find((w) => w.id === wsId)?.name ?? 'Không gian làm việc';
 }

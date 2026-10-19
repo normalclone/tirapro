@@ -10,13 +10,24 @@ export interface BreadcrumbItem {
   to?: string;
   /** Cho cấp không phải route (vd Wiki mở trang bằng id). Chỉ dùng khi không có `to`. */
   onClick?: () => void;
+  /** Chữ đơn cách (mã công việc, khoá dự án). */
+  mono?: boolean;
+  /** Gợi ý khi rê chuột (vd tên việc cha); gắn trên link/nút/chữ của cấp. */
+  title?: string;
 }
 
-export type BreadcrumbEntry =
-  | { kind: 'current'; label: string }
-  | { kind: 'link'; label: string; to: string }
-  | { kind: 'button'; label: string; onClick: () => void }
-  | { kind: 'text'; label: string };
+interface CrumbExtras {
+  mono?: boolean;
+  title?: string;
+}
+
+export type BreadcrumbEntry = CrumbExtras &
+  (
+    | { kind: 'current'; label: string }
+    | { kind: 'link'; label: string; to: string }
+    | { kind: 'button'; label: string; onClick: () => void }
+    | { kind: 'text'; label: string }
+  );
 
 /**
  * Chuẩn hoá danh sách cấp thành các mục hiển thị:
@@ -29,10 +40,14 @@ export function breadcrumbItems(items: readonly BreadcrumbItem[]): BreadcrumbEnt
     .map((it) => ({ ...it, label: it.label.trim() }))
     .filter((it) => it.label.length > 0);
   return kept.map((it, i): BreadcrumbEntry => {
-    if (i === kept.length - 1) return { kind: 'current', label: it.label };
-    if (it.to) return { kind: 'link', label: it.label, to: it.to };
-    if (it.onClick) return { kind: 'button', label: it.label, onClick: it.onClick };
-    return { kind: 'text', label: it.label };
+    const extras: CrumbExtras = {
+      ...(it.mono ? { mono: true } : {}),
+      ...(it.title ? { title: it.title } : {}),
+    };
+    if (i === kept.length - 1) return { kind: 'current', label: it.label, ...extras };
+    if (it.to) return { kind: 'link', label: it.label, to: it.to, ...extras };
+    if (it.onClick) return { kind: 'button', label: it.label, onClick: it.onClick, ...extras };
+    return { kind: 'text', label: it.label, ...extras };
   });
 }
 
@@ -67,20 +82,25 @@ export function Breadcrumb({
               )}
             >
               {e.kind === 'link' ? (
-                <Link to={e.to} className={cn(CRUMB, CRUMB_ACTION)}>
-                  <TruncatedLabel text={e.label} className="block" />
+                <Link to={e.to} title={e.title} className={cn(CRUMB, CRUMB_ACTION)}>
+                  <TruncatedLabel text={e.label} className={cn('block', e.mono && 'font-mono')} />
                 </Link>
               ) : e.kind === 'button' ? (
-                <button type="button" onClick={e.onClick} className={cn(CRUMB, CRUMB_ACTION)}>
-                  <TruncatedLabel text={e.label} className="block" />
+                <button
+                  type="button"
+                  onClick={e.onClick}
+                  title={e.title}
+                  className={cn(CRUMB, CRUMB_ACTION)}
+                >
+                  <TruncatedLabel text={e.label} className={cn('block', e.mono && 'font-mono')} />
                 </button>
               ) : e.kind === 'current' ? (
-                <span aria-current="page" className="min-w-0 font-medium text-ink">
-                  <TruncatedLabel text={e.label} className="block" />
+                <span aria-current="page" title={e.title} className="min-w-0 font-medium text-ink">
+                  <TruncatedLabel text={e.label} className={cn('block', e.mono && 'font-mono')} />
                 </span>
               ) : (
-                <span className={CRUMB}>
-                  <TruncatedLabel text={e.label} className="block" />
+                <span title={e.title} className={CRUMB}>
+                  <TruncatedLabel text={e.label} className={cn('block', e.mono && 'font-mono')} />
                 </span>
               )}
             </li>

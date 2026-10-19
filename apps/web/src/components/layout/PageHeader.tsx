@@ -26,6 +26,12 @@ export interface PageHeaderProps {
   /** Mobile "bước vào": link "‹ Cài đặt" đầu trang con, chỉ hiện dưới `lg`. */
   back?: { label: string; to: string };
   variant?: PageHeaderVariant;
+  /**
+   * Tiêu đề chỉ dành cho trình đọc màn hình (`sr-only`): trang đã có tiêu đề hiển thị riêng không thể nằm trong h1
+   * (vd chi tiết công việc: ô sửa tiêu đề tại chỗ kèm các ô chọn loại/ưu tiên). Khi đó breadcrumb và actions chung một
+   * hàng; `description` không dùng.
+   */
+  titleHidden?: boolean;
   /** `id` của thẻ tiêu đề — cho `aria-labelledby` của vùng nội dung. */
   titleId?: string;
   className?: string;
@@ -45,12 +51,34 @@ export function PageHeader({
   actions,
   back,
   variant = 'page',
+  titleHidden = false,
   titleId,
   className,
   ...rest
 }: PageHeaderProps) {
   const Heading = pageHeaderTag(variant);
   const hasCrumb = !!breadcrumb && breadcrumb.some((b) => b.label.trim() !== '');
+  if (titleHidden) {
+    return (
+      <header className={cn('mb-4', className)} {...rest}>
+        {back && <BackLink label={back.label} to={back.to} className="-ml-1 mb-3" />}
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+          {hasCrumb && (
+            <Breadcrumb
+              items={breadcrumb}
+              className={cn('flex-1 basis-60', !breadcrumbMobile && 'max-lg:hidden')}
+            />
+          )}
+          {actions && (
+            <div className="ml-auto flex shrink-0 flex-wrap items-center gap-2">{actions}</div>
+          )}
+        </div>
+        <Heading id={titleId} className="sr-only">
+          {title}
+        </Heading>
+      </header>
+    );
+  }
   return (
     <header className={cn('mb-6', className)} {...rest}>
       {back && <BackLink label={back.label} to={back.to} className="-ml-1 mb-3" />}

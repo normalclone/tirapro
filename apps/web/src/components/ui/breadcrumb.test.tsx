@@ -80,4 +80,26 @@ describe('Breadcrumb — markup', () => {
   it('không có cấp nào → không render gì', () => {
     expect(html([])).toBe('');
   });
+  it('mono và title của cấp: chữ đơn cách + gợi ý gắn trên link, cấp cuối giữ mono', () => {
+    const out = html([
+      { label: 'Dự án', to: '/p/x/board' },
+      { label: 'DEMO-1', to: '/issue/DEMO-1', mono: true, title: 'Epic: Gốc' },
+      { label: 'DEMO-2', mono: true },
+    ]);
+    expect(out).toMatch(
+      /<a [^>]*title="Epic: Gốc"[^>]*href="\/issue\/DEMO-1"|<a [^>]*href="\/issue\/DEMO-1"[^>]*title="Epic: Gốc"/,
+    );
+    expect(out.match(/font-mono/g)).toHaveLength(2);
+  });
+});
+
+describe('breadcrumbItems — mono/title cộng thêm, không đổi hình dạng cũ', () => {
+  it('chỉ thêm khoá khi có giá trị', () => {
+    expect(
+      breadcrumbItems([{ label: 'A', to: '/a', mono: true, title: 'x' }, { label: 'B' }]),
+    ).toEqual([
+      { kind: 'link', label: 'A', to: '/a', mono: true, title: 'x' },
+      { kind: 'current', label: 'B' },
+    ]);
+  });
 });
