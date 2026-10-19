@@ -77,6 +77,10 @@ export async function confirmLeaveApp(
  */
 export function commitLeaveApp(): void {
   const s = useLeaveGuardStore.getState();
-  discardDirty(s.entries);
-  s.setSuspended(true);
+  try {
+    discardDirty(s.entries);
+  } finally {
+    // `onDiscard` của một mục ném lỗi cũng không được để `beforeunload` còn bật (sẽ hỏi lại ngay trước khi tải lại).
+    s.setSuspended(true);
+  }
 }

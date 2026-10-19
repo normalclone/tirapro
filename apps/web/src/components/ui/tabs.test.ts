@@ -92,6 +92,22 @@ describe('không còn tablist tự vẽ', () => {
     expect(w).toMatch(/<SegmentedControl[\s\S]*Kiểu xem quy trình/);
     expect(w).not.toContain('role="tab');
   });
+  it('mỗi <Tabs idBase="x"> có <TabPanel idBase="x"> trong cùng file', () => {
+    const files = walk(root)
+      .map((f) => f.slice(root.length + 1))
+      .filter((rel) => rel !== 'components/ui/Tabs.tsx');
+    let checked = 0;
+    for (const rel of files) {
+      const s = src(rel);
+      for (const m of s.matchAll(/<Tabs\b[^>]*?\bidBase="([^"]+)"/g)) {
+        checked++;
+        expect(s, `${rel}: thiếu <TabPanel idBase="${m[1]}">`).toMatch(
+          new RegExp(`<TabPanel\\b[^>]*?\\bidBase="${m[1]}"`),
+        );
+      }
+    }
+    expect(checked).toBeGreaterThanOrEqual(10); // đối chứng: regex thật sự bắt được các hàng tab
+  });
   it('BoardSettingsDialog: Cài đặt bảng là tab (không còn SegmentedControl cho mục cài đặt)', () => {
     const b = src('features/board/BoardSettingsDialog.tsx');
     expect(b).toMatch(/<Tabs[^>]*\n?[^>]*ariaLabel="Mục cài đặt bảng"/);

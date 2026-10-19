@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   commitLeaveApp,
@@ -154,6 +156,27 @@ describe('commitLeaveApp (sau khi đổi THÀNH CÔNG, ngay trước khi tải l
     expect(dirty).toHaveBeenCalledTimes(1);
     expect(clean).not.toHaveBeenCalled();
     expect(useLeaveGuardStore.getState().suspended).toBe(true);
+  });
+
+  it('một onDiscard ném lỗi vẫn tắt beforeunload (try/finally) và lỗi được ném lại', () => {
+    const s = useLeaveGuardStore.getState();
+    s.set(
+      'w',
+      entry(true, {
+        onDiscard: () => {
+          throw new Error('boom');
+        },
+      }),
+    );
+    expect(() => commitLeaveApp()).toThrow('boom');
+    expect(useLeaveGuardStore.getState().suspended).toBe(true);
+  });
+
+  it('useSwitchWorkspace.onSuccess: nạp token + tải lại nằm trong finally sau commitLeaveApp', () => {
+    const api = readFileSync(join(__dirname, '..', 'features/workspace/api.ts'), 'utf8');
+    expect(api).toMatch(
+      /try \{\s*commitLeaveApp\(\);\s*\} finally \{\s*setAccessToken\(data\.accessToken\);[\s\S]*?window\.location\.assign\('\/'\);/,
+    );
   });
 
   it('chưa commit (đổi lỗi) thì nháp còn và beforeunload vẫn bật', async () => {

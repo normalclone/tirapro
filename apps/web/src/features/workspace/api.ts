@@ -50,10 +50,14 @@ export function useSwitchWorkspace() {
         .then((r) => r.data),
     onSuccess: (data) => {
       // Đổi thành công mới bỏ nháp chưa lưu (người dùng đã đồng ý ở bước hỏi); lỗi thì không tới đây → nháp còn.
-      commitLeaveApp();
-      setAccessToken(data.accessToken);
-      clearSessionCaches();
-      window.location.assign('/');
+      // `try/finally`: một `onDiscard` ném lỗi không được chặn việc nạp token mới + tải lại (đã đổi xong ở máy chủ).
+      try {
+        commitLeaveApp();
+      } finally {
+        setAccessToken(data.accessToken);
+        clearSessionCaches();
+        window.location.assign('/');
+      }
     },
   });
 }
