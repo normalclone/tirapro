@@ -38,7 +38,12 @@ import { useProjectRealtime } from '@/lib/realtime';
 import { LAST_ACTIVE_KEY, lastViewKey } from '@/lib/currentProject';
 import { withKey } from '@/lib/shortcuts';
 import { useScrollFade } from '@/lib/useScrollFade';
-import { PROJECT_VIEW_LABELS, activeMoreSeg, tabLabelVisible } from './projectTabs';
+import {
+  PROJECT_VIEW_LABELS,
+  activeMoreSeg,
+  tabLabelVisible,
+  visibleMoreItems,
+} from './projectTabs';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 
 const VIEWS = [
@@ -57,7 +62,14 @@ const MORE: {
   to: (p: { key: string; id: string }) => string;
   needs?: PermissionKey;
 }[] = [
-  { id: 'triage', label: TRIAGE_TITLE, icon: Inbox, to: (p) => `/p/${p.key}/triage` },
+  {
+    id: 'triage',
+    label: TRIAGE_TITLE,
+    icon: Inbox,
+    to: (p) => `/p/${p.key}/triage`,
+    // Hộp chứa việc chưa duyệt của người khác: chỉ người có quyền duyệt thấy mục này (API cũng 403 nếu thiếu).
+    needs: 'issue:triage',
+  },
   { id: 'activity', label: 'Hoạt động', icon: Activity, to: (p) => `/p/${p.key}/activity` },
   // Rủi ro và Tự động hoá dùng trang sẵn có, lọc sẵn theo dự án này qua `?project=<id>`.
   {
@@ -324,19 +336,17 @@ export function ProjectLayout() {
                   sideOffset={6}
                   className="z-dropdown w-48 overflow-hidden rounded-lg border border-border bg-surface p-1 shadow-lg animate-in fade-in zoom-in-95 duration-150"
                 >
-                  {MORE.filter((m) => !m.needs || canProject(m.needs))
-                    .filter((m) => project?.id || (m.id !== 'risks' && m.id !== 'automation'))
-                    .map((m) => (
-                      <DropdownMenu.Item key={m.id} asChild>
-                        <Link
-                          to={m.to({ key, id: project?.id ?? '' })}
-                          className="flex cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-2 text-sm text-ink outline-none transition-colors data-[highlighted]:bg-surface-2"
-                        >
-                          <m.icon className="h-4 w-4 text-muted" />
-                          {m.label}
-                        </Link>
-                      </DropdownMenu.Item>
-                    ))}
+                  {visibleMoreItems(MORE, canProject, !!project?.id).map((m) => (
+                    <DropdownMenu.Item key={m.id} asChild>
+                      <Link
+                        to={m.to({ key, id: project?.id ?? '' })}
+                        className="flex cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-2 text-sm text-ink outline-none transition-colors data-[highlighted]:bg-surface-2"
+                      >
+                        <m.icon className="h-4 w-4 text-muted" />
+                        {m.label}
+                      </Link>
+                    </DropdownMenu.Item>
+                  ))}
                 </DropdownMenu.Content>
               </DropdownMenu.Portal>
             </DropdownMenu.Root>

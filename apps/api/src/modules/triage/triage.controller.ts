@@ -36,7 +36,8 @@ type SnoozeInput = z.infer<typeof snoozeSchema>;
 export class TriageController {
   constructor(private readonly triage: TriageService) {}
 
-  @Permissions(PERMISSIONS.PROJECT_VIEW)
+  // Hộp "Việc mới vào" chứa tên/mô tả/người báo của việc CHƯA duyệt → chỉ người có quyền duyệt xem (403 nếu thiếu).
+  @Permissions(PERMISSIONS.ISSUE_TRIAGE)
   @ProjectRef('query', 'projectId')
   @Get()
   async inbox(
@@ -55,7 +56,7 @@ export class TriageController {
     );
   }
 
-  @Permissions(PERMISSIONS.PROJECT_VIEW)
+  @Permissions(PERMISSIONS.ISSUE_TRIAGE)
   @ProjectRef('query', 'projectId')
   @Get('count')
   async count(

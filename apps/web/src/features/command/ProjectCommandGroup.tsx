@@ -4,7 +4,7 @@ import { Command } from 'cmdk';
 import { BarChart3, GanttChartSquare, Inbox, Play, Repeat, ShieldAlert } from 'lucide-react';
 import { useProjectSprints } from '@/features/backlog/api';
 import { useProject } from '@/features/projects/api';
-import { useProjectCan } from '@/features/projects/permissions';
+import { useCan, useProjectCan } from '@/features/projects/permissions';
 import { ActionItem } from './ActionItem';
 import { buildProjectCommands, type ProjectCommand } from './projectCommands';
 
@@ -36,6 +36,8 @@ export function ProjectCommandGroup({
   const can = useProjectCan(project);
   const canSprint = can('sprint:manage');
   const canAutomation = can('automation:manage');
+  // Việc mới vào xem được cả ở dự án lưu trữ (chỉ không duyệt được) → quyền thô `useCan`, không phải bản đã trừ lưu trữ.
+  const canTriage = useCan(project?.id)('issue:triage');
 
   const commands = useMemo(
     () =>
@@ -46,9 +48,10 @@ export function ProjectCommandGroup({
             sprints: sprints ?? [],
             canSprint,
             canAutomation,
+            canTriage,
           })
         : [],
-    [project, sprints, canSprint, canAutomation],
+    [project, sprints, canSprint, canAutomation, canTriage],
   );
   if (commands.length === 0) return null;
 

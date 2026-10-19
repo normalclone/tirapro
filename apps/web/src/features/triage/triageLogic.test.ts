@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   buildAcceptPayload,
@@ -7,6 +9,7 @@ import {
   isLongDescription,
   kindLabel,
   TRIAGE_TITLE,
+  triageAccess,
   triageSprintOptions,
 } from './triageLogic';
 
@@ -116,5 +119,29 @@ describe('isLongDescription', () => {
 describe('TRIAGE_TITLE', () => {
   it('tên chức năng là "Việc mới vào" (UX_CONVENTIONS §19), không còn "Phân loại (Triage)"', () => {
     expect(TRIAGE_TITLE).toBe('Việc mới vào');
+  });
+});
+
+describe('triageAccess — ai được mở trang "Việc mới vào"', () => {
+  it('quyền dự án chưa tải xong → loading (không kết luận sớm, không gọi API)', () => {
+    expect(triageAccess({ permsPending: true, canTriage: false })).toBe('loading');
+    expect(triageAccess({ permsPending: true, canTriage: true })).toBe('loading');
+  });
+  it('tải xong: có issue:triage → allowed; thiếu → denied (NoAccess)', () => {
+    expect(triageAccess({ permsPending: false, canTriage: true })).toBe('allowed');
+    expect(triageAccess({ permsPending: false, canTriage: false })).toBe('denied');
+  });
+});
+
+describe('TriagePage — chặn truy cập trực tiếp bằng URL', () => {
+  const page = readFileSync(join(__dirname, 'TriagePage.tsx'), 'utf8');
+  it('dùng useCan (KHÔNG useCanIn: dự án lưu trữ làm useCanIn trả false) để quyết định xem trang', () => {
+    expect(page).toMatch(/useCan\(projectId\)\('issue:triage'\)/);
+    expect(page).toMatch(/triageAccess\(/);
+    expect(page).toMatch(/<NoAccess/);
+  });
+  it('không gọi API hộp/đếm khi chưa được phép (truyền undefined → skipToken)', () => {
+    expect(page).toMatch(/useTriageInbox\(allowed \? projectId : undefined\)/);
+    expect(page).toMatch(/useTriageCount\(allowed \? projectId : undefined\)/);
   });
 });

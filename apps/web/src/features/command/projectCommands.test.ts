@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { buildProjectCommands } from './projectCommands';
 import { TRIAGE_TITLE } from '@/features/triage/triageLogic';
@@ -13,6 +15,7 @@ const base = {
   sprints: [...sprints],
   canSprint: true,
   canAutomation: true,
+  canTriage: true,
 };
 
 describe('buildProjectCommands', () => {
@@ -76,10 +79,15 @@ describe('buildProjectCommands', () => {
   it('Wiki không nằm trong nhóm dự án (wiki chưa lọc theo dự án) — có ở nhóm Điều hướng chung', () => {
     expect(buildProjectCommands(base).some((c) => c.to === '/wiki')).toBe(false);
   });
-  it('Việc mới vào luôn có (cùng quy tắc với tab "Việc mới vào" của dự án)', () => {
+  it('Việc mới vào theo quyền duyệt (issue:triage), độc lập với quyền sprint', () => {
     expect(buildProjectCommands({ ...base, canSprint: false }).map((c) => c.to)).toContain(
       '/p/DEMO/triage',
     );
+    const noTriage = buildProjectCommands({ ...base, canTriage: false });
+    expect(noTriage.map((c) => c.id)).not.toContain('nav.triage');
+    expect(noTriage.map((c) => c.to)).not.toContain('/p/DEMO/triage');
+    // các lệnh điều hướng khác không bị ảnh hưởng
+    expect(noTriage.map((c) => c.to)).toContain('/p/DEMO/reports');
   });
   it('nhãn lệnh dùng đúng tên chức năng (TRIAGE_TITLE) như tab và tiêu đề trang', () => {
     const cmd = buildProjectCommands(base).find((c) => c.to === '/p/DEMO/triage');
@@ -92,5 +100,13 @@ describe('buildProjectCommands', () => {
     const cmds = buildProjectCommands(base);
     expect(cmds.find((c) => c.label === 'Tạo sprint')?.keywords).toContain('tao sprint');
     expect(new Set(cmds.map((c) => c.id)).size).toBe(cmds.length);
+  });
+});
+
+describe('ProjectCommandGroup — quyền Việc mới vào', () => {
+  it('đọc-source: canTriage lấy từ useCan thô (không useProjectCan/useCanIn đã trừ lưu trữ) và truyền vào buildProjectCommands', () => {
+    const src = readFileSync(join(__dirname, 'ProjectCommandGroup.tsx'), 'utf8');
+    expect(src).toMatch(/useCan\(project\?\.id\)\('issue:triage'\)/);
+    expect(src).toMatch(/canTriage,\s*\}\)/);
   });
 });

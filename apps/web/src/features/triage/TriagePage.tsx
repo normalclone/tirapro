@@ -10,13 +10,14 @@ import { Button } from '@/components/ui/Button';
 import { QueryError } from '@/components/ui/QueryError';
 import { pageContainer } from '@/components/layout/page';
 import { apiErrorMessage } from '@/lib/api';
-import { useCanIn } from '@/features/projects/permissions';
+import { useCan, useCanIn, useProjectPermissions } from '@/features/projects/permissions';
+import { NoAccess } from '@/components/ui/NoAccess';
 import { PeekShell } from '@/features/issues/peek/PeekShell';
 import { useIssuePeek } from '@/features/issues/peek/useIssuePeek';
 import { useAccept, useDecline, useSnooze, useTriageCount, useTriageInbox } from './api';
 import { DeclineDialog } from './DeclineDialog';
 import { TriageRow } from './TriageRow';
-import { TRIAGE_TITLE, type AcceptPayload } from './triageLogic';
+import { TRIAGE_TITLE, triageAccess, type AcceptPayload } from './triageLogic';
 
 const DAY_MS = 86_400_000;
 
@@ -25,10 +26,18 @@ export function TriagePage() {
   const { data: project } = useProject(key);
   const projectId = project?.id;
 
-  const inbox = useTriageInbox(projectId);
-  const { data: issues, isLoading } = inbox;
-  const { data: count } = useTriageCount(projectId);
+  // Xem hộp = có `issue:triage` (useCan thô: dự án lưu trữ vẫn xem được). Mở thẳng URL khi thiếu quyền → NoAccess, KHÔNG gọi API.
+  const access = triageAccess({
+    permsPending: useProjectPermissions(projectId).isPending,
+    canTriage: useCan(projectId)('issue:triage'),
+  });
+  const allowed = access === 'allowed';
 
+  const inbox = useTriageInbox(allowed ? projectId : undefined);
+  const { data: issues, isLoading } = inbox;
+  const { data: count } = useTriageCount(allowed ? projectId : undefined);
+
+  // Duyệt/từ chối/hoãn là thao tác GHI: dự án lưu trữ → useCanIn trả false (ẩn nút) dù vẫn xem được hộp.
   const canTriage = useCanIn(projectId)('issue:triage');
 
   const accept = useAccept(projectId ?? '');
@@ -83,6 +92,17 @@ export function TriagePage() {
       },
     );
   }
+
+  if (access === 'denied') return <NoAccess who="người có quyền duyệt việc trong dự án này" />;
+  if (access === 'loading')
+    return (
+      <div className={pageContainer('md', 'space-y-2')}>
+        {[0, 1, 2].map((i) => (
+          <Skeleton key={i} className="h-16 w-full" />
+        ))}
+        <DelayedSpinner />
+      </div>
+    );
 
   return (
     <PeekShell>

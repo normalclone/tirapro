@@ -1,3 +1,5 @@
+import type { PermissionKey } from '@tirapro/types';
+
 /** Segment URL của các màn nằm trong menu "Thêm" (khớp `MORE` ở ProjectLayout; Rủi ro/Tự động hoá ở trang ngoài dự án). */
 const MORE_SEGMENTS = ['triage', 'activity', 'trash', 'config'] as const;
 export type MoreSeg = (typeof MORE_SEGMENTS)[number];
@@ -33,3 +35,17 @@ export const PROJECT_VIEW_ENTRIES: readonly { seg: string; label: string; keywor
   { seg: 'activity', label: 'Hoạt động', keywords: ['hoat dong', 'lich su'] },
   { seg: 'config', label: 'Cấu hình', keywords: ['settings', 'cau hinh', 'cai dat'] },
 ];
+
+/**
+ * Mục menu "Thêm" hiện cho người dùng: mục có `needs` (quyền cấp dự án, vd `issue:triage` cho "Việc mới vào") chỉ hiện khi có
+ * quyền; Rủi ro / Tự động hoá cần biết dự án (`hasProject`) vì đường dẫn mang `?project=<id>`.
+ */
+export function visibleMoreItems<T extends { id: string; needs?: PermissionKey }>(
+  items: readonly T[],
+  can: (perm: PermissionKey) => boolean,
+  hasProject: boolean,
+): T[] {
+  return items
+    .filter((m) => !m.needs || can(m.needs))
+    .filter((m) => hasProject || (m.id !== 'risks' && m.id !== 'automation'));
+}
