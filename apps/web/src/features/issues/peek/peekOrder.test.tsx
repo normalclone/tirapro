@@ -61,7 +61,7 @@ describe('Bộ lọc: bấm dòng = xem nhanh; Cmd/Ctrl+bấm / chuột giữa =
     expect(table).toContain('{...rowPeekProps(issue.key, onOpen)}'); // click/auxclick/Enter → openOnClick/openOnRowKey
   });
   it('dòng bảng và thẻ điện thoại: PEEKED_ROW_CLS + aria-current theo peekedKey', () => {
-    expect(table).toContain('peeked ? PEEKED_TABLE_ROW_CLS'); // <tr>: box-shadow không vẽ được
+    expect(table).toMatch(/peeked\s*\?\s*PEEKED_TABLE_ROW_CLS/); // <tr>: box-shadow không vẽ được (đang xem thắng đang chọn)
     expect(table).toContain('peeked && PEEKED_ROW_CLS'); // thẻ điện thoại
     expect(table.match(/\.\.\.peekedAttrs\(peeked\)/g)!.length).toBe(2);
     expect(table.match(/\.\.\.rowPeekProps\(/g)!.length).toBe(2);

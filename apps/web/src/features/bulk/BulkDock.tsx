@@ -106,7 +106,8 @@ export function BulkDock({
   canAssign: boolean;
   canManageBacklog: boolean;
   onAssignToMe: () => void;
-  onAssignTo: (userId: string) => void;
+  /** Không truyền = ẩn "Đổi người phụ trách" (vd Bộ lọc nhiều dự án: người chọn được khác nhau theo dự án). */
+  onAssignTo?: (userId: string) => void;
   /** Không truyền = ẩn nhóm "Chuyển sprint". */
   onMoveToSprint?: (sprintId: string | null) => void;
   onClear: () => void;
@@ -122,10 +123,12 @@ export function BulkDock({
   statusOptions: NextStatus[];
   onSetPoints: (points: number | null) => void;
   onSetPriority: (priorityId: string | null) => void;
-  onAddLabel: (labelId: string) => void;
+  /** Không truyền = ẩn nhóm "Nhãn" (nhãn thuộc từng dự án). */
+  onAddLabel?: (labelId: string) => void;
   /** Không truyền = ẩn nhóm "Epic". */
   onSetEpic?: (epicId: string | null) => void;
-  onSetStatus: (statusId: string) => void;
+  /** Không truyền = ẩn "Trạng thái" (quy trình theo dự án). */
+  onSetStatus?: (statusId: string) => void;
   /**
    * `sticky` = dính đáy vùng cuộn của trang (Việc chờ). `docked` = con flex `shrink-0` ở cuối cột nội dung (Bảng việc: vùng
    * cuộn là từng cột nên không dính được), nằm trên thanh tab đáy.
@@ -233,7 +236,7 @@ export function BulkDock({
   );
 }
 
-/** "Gán cho tôi" + "Đổi người phụ trách" (cùng quyền `canAssign`). */
+/** "Gán cho tôi" + (nếu có `onAssignTo`) "Đổi người phụ trách" — cùng quyền `canAssign`. */
 function AssignControls({
   layout,
   busy,
@@ -247,9 +250,8 @@ function AssignControls({
   projectId: string;
   canAssign: boolean;
   onAssignToMe: () => void;
-  onAssignTo: (userId: string) => void;
+  onAssignTo?: (userId: string) => void;
 }) {
-  const assignPicker = useAssigneePicker(projectId);
   if (!canAssign) return null;
   return (
     <>
@@ -264,20 +266,40 @@ function AssignControls({
         <UserCheck className="h-4 w-4" />
         Gán cho tôi
       </Button>
-      <PeoplePicker
-        value=""
-        onChange={(v) => {
-          if (v) onAssignTo(v);
-        }}
-        {...assignPicker}
-        includeEmpty={false}
-        ariaLabel="Chọn người phụ trách mới cho các việc đang chọn"
-        disabled={busy || assignPicker.options.length === 0}
-        align="end"
-        className={layout === 'stack' ? 'h-11 w-full' : 'h-8 w-52'}
-        renderTrigger={AssignTrigger}
-      />
+      {onAssignTo && (
+        <AssignPicker layout={layout} busy={busy} projectId={projectId} onAssignTo={onAssignTo} />
+      )}
     </>
+  );
+}
+
+/** Người chọn được theo MỘT dự án nên chỉ dựng khi trang cho phép (hook tải danh sách chỉ chạy khi hiện). */
+function AssignPicker({
+  layout,
+  busy,
+  projectId,
+  onAssignTo,
+}: {
+  layout: Layout;
+  busy: boolean;
+  projectId: string;
+  onAssignTo: (userId: string) => void;
+}) {
+  const assignPicker = useAssigneePicker(projectId);
+  return (
+    <PeoplePicker
+      value=""
+      onChange={(v) => {
+        if (v) onAssignTo(v);
+      }}
+      {...assignPicker}
+      includeEmpty={false}
+      ariaLabel="Chọn người phụ trách mới cho các việc đang chọn"
+      disabled={busy || assignPicker.options.length === 0}
+      align="end"
+      className={layout === 'stack' ? 'h-11 w-full' : 'h-8 w-52'}
+      renderTrigger={AssignTrigger}
+    />
   );
 }
 
@@ -397,24 +419,26 @@ function BulkEditControls({
               <BarTrigger icon={<Flag className="h-4 w-4 shrink-0" />} text="Ưu tiên" />
             )}
           />
-          <SearchSelect
-            value=""
-            onChange={(v) => v && onAddLabel(v)}
-            options={labels.map((l) => ({
-              value: l.id,
-              label: l.name,
-              color: labelTone(l.color).fg,
-            }))}
-            placeholder="Nhãn"
-            searchPlaceholder="Tìm nhãn…"
-            ariaLabel="Gắn nhãn cho các việc đang chọn"
-            disabled={busy || labels.length === 0}
-            align="end"
-            className={cls}
-            renderTrigger={() => (
-              <BarTrigger icon={<Tag className="h-4 w-4 shrink-0" />} text="Nhãn" />
-            )}
-          />
+          {onAddLabel && (
+            <SearchSelect
+              value=""
+              onChange={(v) => v && onAddLabel(v)}
+              options={labels.map((l) => ({
+                value: l.id,
+                label: l.name,
+                color: labelTone(l.color).fg,
+              }))}
+              placeholder="Nhãn"
+              searchPlaceholder="Tìm nhãn…"
+              ariaLabel="Gắn nhãn cho các việc đang chọn"
+              disabled={busy || labels.length === 0}
+              align="end"
+              className={cls}
+              renderTrigger={() => (
+                <BarTrigger icon={<Tag className="h-4 w-4 shrink-0" />} text="Nhãn" />
+              )}
+            />
+          )}
           {onSetEpic && (
             <SearchSelect
               value=""
@@ -437,7 +461,7 @@ function BulkEditControls({
         </>
       )}
 
-      {canTransition && only !== 'rest' && (
+      {canTransition && onSetStatus && only !== 'rest' && (
         <span
           className={cn('inline-flex', layout === 'stack' && 'w-full')}
           title={

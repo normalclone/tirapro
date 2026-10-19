@@ -30,6 +30,8 @@ import { useProjects } from '@/features/projects/api';
 import { useAuth } from '@/stores/auth';
 import { JqlEditor } from './JqlEditor';
 import { ResultsTable } from './ResultsTable';
+import { FiltersBulkDock } from './FiltersBulkDock';
+import { useBulkSelection } from '@/features/bulk/useBulkSelection';
 import { PeekShell } from '@/features/issues/peek/PeekShell';
 import { useIssuePeek } from '@/features/issues/peek/useIssuePeek';
 import type { PeekOrder } from '@/features/issues/peek/PeekOrderContext';
@@ -159,6 +161,24 @@ export function FiltersPage() {
     clearIssueOverlay();
     return clearIssueOverlay;
   }, [active]);
+
+  // Chọn nhiều (hàng loạt): thứ tự = các dòng đã nạp (Shift+click chọn dải qua cả trang). Dòng biến mất khỏi kết quả (xoá,
+  // chạy lại, đổi nguồn) thì bỏ khỏi lựa chọn.
+  const resultOrder = useMemo(() => (shownResults ?? []).map((i) => i.id), [shownResults]);
+  const sel = useBulkSelection(resultOrder);
+  const pruneSelection = sel.prune;
+  useEffect(() => {
+    pruneSelection(new Set(resultOrder));
+  }, [pruneSelection, resultOrder]);
+  const selectionProps = useMemo(
+    () => ({
+      selected: sel.selected,
+      onToggle: sel.toggle,
+      onRange: sel.range,
+      onTogglePage: sel.setMany,
+    }),
+    [sel.selected, sel.toggle, sel.range, sel.setMany],
+  );
 
   // Đổi nguồn hoặc kết quả GỐC (chạy lại) → về trang 1. KHÔNG theo `shownResults`: "Tải thêm" nối vào đó và phải giữ trang.
   useEffect(() => {
@@ -368,6 +388,7 @@ export function FiltersPage() {
             loadingMore={loadingMore}
             onLoadMore={() => void loadMore()}
             scopeKey={active.kind === 'filter' ? `filter:${active.filter.id}` : 'adhoc'}
+            selection={selectionProps}
             exportJql={
               active.kind === 'adhoc'
                 ? active.jql
@@ -377,6 +398,16 @@ export function FiltersPage() {
             }
           />
         </PageFrame>
+
+        {sel.selected.size > 0 && (
+          <FiltersBulkDock
+            issues={shownResults}
+            selected={sel.selected}
+            onClear={sel.clear}
+            onRetain={sel.prune}
+            projectKeyById={projectKeyById}
+          />
+        )}
 
         {canManageFilters && (
           <CreateFilterModal

@@ -16,6 +16,7 @@ export function SelectCheckbox({
   alwaysVisible,
   onToggle,
   onRange,
+  placement = 'corner',
 }: {
   issueKey: string;
   checked: boolean;
@@ -23,6 +24,8 @@ export function SelectCheckbox({
   alwaysVisible: boolean;
   onToggle: () => void;
   onRange: () => void;
+  /** `corner` = treo góc trên-trái của thẻ (Bảng việc); `inline` = nằm trong dòng/ô (Bộ lọc). */
+  placement?: 'corner' | 'inline';
 }) {
   function onClick(e: MouseEvent) {
     e.stopPropagation();
@@ -38,7 +41,8 @@ export function SelectCheckbox({
       onPointerDown={(e) => e.stopPropagation()}
       onClick={onClick}
       className={cn(
-        'absolute -left-1.5 -top-1.5 z-10 grid h-5 w-5 place-items-center rounded border border-border bg-surface shadow-sm',
+        'grid h-5 w-5 shrink-0 place-items-center rounded border border-border bg-surface shadow-sm',
+        placement === 'corner' ? 'absolute -left-1.5 -top-1.5 z-10' : 'relative',
         'transition-opacity motion-reduce:transition-none',
         checked && 'border-primary',
         alwaysVisible

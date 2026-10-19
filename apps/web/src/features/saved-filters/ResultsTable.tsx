@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import * as Popover from '@radix-ui/react-popover';
 import { ChevronLeft, ChevronRight, Columns3, Filter as FilterIcon, SearchX } from 'lucide-react';
 import type { IssueDto } from '@tirapro/types';
@@ -17,6 +17,7 @@ import {
 } from '@/features/issues/peek/peekedRow';
 import { rowPeekProps } from '@/features/issues/peek/rowPeekProps';
 import { IssueContextMenu, IssueRowMenuButton } from '@/features/issues/menu/IssueContextMenu';
+import { SelectCheckbox } from '@/features/bulk/SelectCheckbox';
 import { categoryColor } from '@/lib/statusColor';
 import { useMediaQuery } from '@/lib/useMediaQuery';
 import { RESULTS_PAGE_SIZE, resultCountLabel } from './resultPaging';
@@ -24,6 +25,16 @@ import { cn } from '@/lib/utils';
 import { ColumnHeader } from './ColumnHeader';
 import { RESULT_COLUMNS, cellText, isDefaultColumns, type ResultColumnId } from './resultColumns';
 import { useResultColumns } from './useResultColumns';
+
+/** Chọn nhiều cho bảng kết quả (trạng thái nằm ở trang; `useBulkSelection`). */
+export interface RowSelection {
+  selected: ReadonlySet<string>;
+  onToggle: (id: string) => void;
+  /** Shift+click: chọn dải theo thứ tự các dòng đã nạp. */
+  onRange: (id: string) => void;
+  /** Chọn/bỏ chọn cả trang đang hiện. */
+  onTogglePage: (ids: string[], on: boolean) => void;
+}
 
 export function ResultsTable({
   issues,
@@ -40,6 +51,7 @@ export function ResultsTable({
   loadingMore = false,
   onLoadMore,
   scopeKey = 'adhoc',
+  selection,
 }: {
   issues: IssueDto[] | null;
   loading: boolean;
@@ -61,6 +73,8 @@ export function ResultsTable({
   onLoadMore?: () => void;
   /** Phạm vi nhớ bố cục cột: `adhoc` (JQL nhanh) hoặc `filter:<id>` (bộ lọc đã lưu). */
   scopeKey?: string;
+  /** Chọn nhiều (hàng loạt): ô chọn ở đầu mỗi dòng/thẻ + ô "chọn tất cả trên trang". Không truyền = không chọn nhiều. */
+  selection?: RowSelection;
 }) {
   const cols = useResultColumns(scopeKey);
   const { columns } = cols;
@@ -131,6 +145,7 @@ export function ResultsTable({
           ctx={ctx}
           onOpen={onOpen}
           peekedKey={peekedKey}
+          selection={selection}
         />
       ) : (
         <ul className="divide-y divide-border">
@@ -140,6 +155,7 @@ export function ResultsTable({
               issue={issue}
               onOpen={onOpen}
               peeked={peekedKey === issue.key}
+              selection={selection}
             />
           ))}
         </ul>
@@ -189,6 +205,7 @@ function ResultsGrid({
   ctx,
   onOpen,
   peekedKey,
+  selection,
 }: {
   columns: ResultColumnId[];
   cols: ReturnType<typeof useResultColumns>;
@@ -196,12 +213,14 @@ function ResultsGrid({
   ctx: { projectKeyById: Map<string, string> };
   onOpen: (key: string) => void;
   peekedKey: string | null;
+  selection?: RowSelection;
 }) {
   return (
     <div className="overflow-x-auto">
       <table className="w-full min-w-max border-collapse text-sm">
         <thead ref={cols.theadRef}>
           <tr className="border-b border-border text-left text-xs font-medium text-muted">
+            {selection && <SelectAllHeader pageItems={pageItems} selection={selection} />}
             {columns.map((id) => (
               <th
                 key={id}
@@ -231,11 +250,46 @@ function ResultsGrid({
               ctx={ctx}
               onOpen={onOpen}
               peeked={peekedKey === issue.key}
+              selection={selection}
             />
           ))}
         </tbody>
       </table>
     </div>
+  );
+}
+
+/** Ô "chọn tất cả trên trang" ở đầu bảng; trạng thái lưng chừng (indeterminate) khi chỉ chọn một phần của trang. */
+function SelectAllHeader({
+  pageItems,
+  selection,
+}: {
+  pageItems: IssueDto[];
+  selection: RowSelection;
+}) {
+  const ref = useRef<HTMLInputElement>(null);
+  const n = pageItems.filter((i) => selection.selected.has(i.id)).length;
+  const all = n > 0 && n === pageItems.length;
+  useEffect(() => {
+    if (ref.current) ref.current.indeterminate = n > 0 && !all;
+  }, [n, all]);
+  return (
+    <th scope="col" className="w-10 py-2 pl-4 pr-0" data-no-peek>
+      <input
+        ref={ref}
+        type="checkbox"
+        checked={all}
+        onChange={() =>
+          selection.onTogglePage(
+            pageItems.map((i) => i.id),
+            !all,
+          )
+        }
+        aria-label="Chọn tất cả trên trang"
+        title="Chọn tất cả việc trên trang này"
+        className="h-4 w-4 cursor-pointer accent-[var(--primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] [@media(pointer:coarse)]:h-5 [@media(pointer:coarse)]:w-5"
+      />
+    </th>
   );
 }
 
@@ -448,13 +502,17 @@ function ResultRow({
   ctx,
   onOpen,
   peeked,
+  selection,
 }: {
   issue: IssueDto;
   columns: ResultColumnId[];
   ctx: { projectKeyById: Map<string, string> };
   onOpen: (key: string) => void;
   peeked: boolean;
+  selection?: RowSelection;
 }) {
+  const checked = selection?.selected.has(issue.id) ?? false;
+  const anySelected = (selection?.selected.size ?? 0) > 0;
   return (
     <IssueContextMenu issue={issue} surface="filters" onPeek={onOpen}>
       <tr
@@ -462,14 +520,31 @@ function ResultRow({
         data-nav-item
         data-issue-key={issue.key}
         aria-roledescription="dòng việc"
+        data-selected={checked ? '' : undefined}
         {...peekedAttrs(peeked)}
         {...rowPeekProps(issue.key, onOpen)}
         className={cn(
           'group/row cursor-pointer transition-colors focus-visible:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--ring)]',
           // Đang xem: nền token KHÔNG đổi khi rê chuột (hover thường sẽ đè lên và dòng đang xem biến mất).
-          peeked ? PEEKED_TABLE_ROW_CLS : 'hover:bg-surface-2',
+          peeked
+            ? PEEKED_TABLE_ROW_CLS
+            : checked
+              ? 'bg-primary-subtle hover:bg-primary-subtle'
+              : 'hover:bg-surface-2',
         )}
       >
+        {selection && (
+          <td className="w-10 py-2.5 pl-4 pr-0" data-no-peek>
+            <SelectCheckbox
+              placement="inline"
+              issueKey={issue.key}
+              checked={checked}
+              alwaysVisible={anySelected}
+              onToggle={() => selection.onToggle(issue.id)}
+              onRange={() => selection.onRange(issue.id)}
+            />
+          </td>
+        )}
         {columns.map((col) => (
           <td key={col} className="whitespace-nowrap px-3 py-2.5 first:pl-4 last:pr-4">
             {col === 'key' ? (
@@ -493,14 +568,33 @@ function ResultCard({
   issue,
   onOpen,
   peeked,
+  selection,
 }: {
   issue: IssueDto;
   onOpen: (key: string) => void;
   peeked: boolean;
+  selection?: RowSelection;
 }) {
+  const checked = selection?.selected.has(issue.id) ?? false;
   return (
     <IssueContextMenu issue={issue} surface="filters" onPeek={onOpen}>
-      <li className="group/row relative">
+      <li
+        className={cn('group/row relative', checked && 'bg-primary-subtle')}
+        data-selected={checked ? '' : undefined}
+      >
+        {selection && (
+          // Điện thoại: ô chọn luôn hiện (vùng bấm 44px), nằm cạnh nút thẻ chứ không lồng trong nó.
+          <span className="absolute left-3 top-3.5 z-10">
+            <SelectCheckbox
+              placement="inline"
+              issueKey={issue.key}
+              checked={checked}
+              alwaysVisible
+              onToggle={() => selection.onToggle(issue.id)}
+              onRange={() => selection.onRange(issue.id)}
+            />
+          </span>
+        )}
         <span className="absolute right-2 top-2 z-10">
           <IssueRowMenuButton issue={issue} surface="filters" onPeek={onOpen} />
         </span>
@@ -511,7 +605,8 @@ function ResultCard({
           {...peekedAttrs(peeked)}
           {...rowPeekProps(issue.key, onOpen)}
           className={cn(
-            'flex w-full flex-col gap-1.5 py-3 pl-4 pr-12 text-left transition-colors hover:bg-surface-2 focus-visible:bg-surface-2 focus-visible:outline-none',
+            'flex w-full flex-col gap-1.5 py-3 pr-12 text-left transition-colors hover:bg-surface-2 focus-visible:bg-surface-2 focus-visible:outline-none',
+            selection ? 'pl-11' : 'pl-4',
             peeked && PEEKED_ROW_CLS,
           )}
         >

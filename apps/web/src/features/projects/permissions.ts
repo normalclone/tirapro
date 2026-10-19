@@ -8,6 +8,7 @@ import {
   canEditIssue,
   hasPermission,
   type IssueOwnership,
+  type PermissionContext,
 } from '@/lib/permissions';
 import { keys } from '@/lib/queryKeys';
 import { useAuth } from '@/stores/auth';
@@ -48,6 +49,27 @@ export function useProjectsCan(
     byId.set(id, known || project || results[i]?.isError ? known : undefined);
   });
   return (id) => byId.get(id);
+}
+
+/**
+ * Ngữ cảnh quyền + trạng thái lưu trữ của NHIỀU dự án một lúc (kết quả Bộ lọc trải nhiều dự án): dùng chung cache
+ * `useProjectPermissions`. Quyền dự án chưa tải → chỉ có quyền cấp workspace (an toàn: coi là chưa đủ quyền).
+ */
+export function useProjectPermissionContexts(
+  projectIds: readonly string[],
+): (projectId: string) => { ctx: PermissionContext; archived: boolean } {
+  const isSystemAdmin = useAuth((s) => s.user?.isSystemAdmin === true);
+  const workspace = useAuth((s) => s.permissions);
+  const results = useQueries({ queries: projectIds.map((id) => projectPermissionsQuery(id)) });
+  const { data: projects } = useProjects(true, projectIds.length > 0);
+  const byId = new Map<string, PermissionContext>();
+  projectIds.forEach((id, i) => {
+    byId.set(id, { isSystemAdmin, workspace, project: results[i]?.data?.permissions });
+  });
+  return (id) => ({
+    ctx: byId.get(id) ?? { isSystemAdmin, workspace, project: undefined },
+    archived: !!projects?.find((p) => p.id === id)?.archivedAt,
+  });
 }
 
 /**
