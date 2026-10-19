@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/Button';
 import { Dialog } from '@/components/ui/Dialog';
 import { Input } from '@/components/ui/Input';
 import { DateInput } from '@/components/ui/DateInput';
+import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { PeoplePicker } from '@/components/ui/PeoplePicker';
 import { Badge } from '@/components/ui/primitives';
@@ -53,42 +54,33 @@ function Field({
   );
 }
 
-/** Bộ chọn 1..5 dạng nút — mỗi nút có nhãn chữ để không phải đoán ý nghĩa con số. */
+const KIND_OPTIONS = RAID_KINDS.map((k) => ({
+  value: k.value,
+  label: k.label,
+  title: k.description,
+}));
+
+/** Bộ chọn 1..5 dạng nút — mỗi nút có nhãn chữ (tooltip) để không phải đoán ý nghĩa con số. */
 function ScalePicker({
   value,
   onChange,
   labels,
   ariaLabel,
-  idPrefix,
 }: {
   value: number;
   onChange: (v: number) => void;
   labels: Record<number, string>;
   ariaLabel: string;
-  idPrefix: string;
 }) {
+  const options = SCALE.map((n) => ({ value: String(n), label: String(n), title: labels[n] }));
   return (
-    <div className="flex gap-1" role="radiogroup" aria-label={ariaLabel}>
-      {SCALE.map((n) => (
-        <button
-          key={n}
-          id={`${idPrefix}-${n}`}
-          type="button"
-          role="radio"
-          aria-checked={value === n}
-          title={labels[n]}
-          onClick={() => onChange(n)}
-          className={cn(
-            'h-9 flex-1 rounded-md border text-sm font-medium tabular-nums transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
-            value === n
-              ? 'border-primary bg-primary text-primary-fg'
-              : 'border-border bg-bg text-muted hover:bg-surface-2',
-          )}
-        >
-          {n}
-        </button>
-      ))}
-    </div>
+    <SegmentedControl
+      ariaLabel={ariaLabel}
+      fullWidth
+      value={String(value)}
+      onChange={(v) => onChange(Number(v))}
+      options={options}
+    />
   );
 }
 
@@ -204,30 +196,12 @@ export function RaidEditorModal({
     >
       <div className="space-y-4">
         <Field label="Loại" hint="(chọn đúng loại để lọc và báo cáo cho chuẩn)">
-          <div
-            className="flex flex-wrap gap-1.5"
-            role="radiogroup"
-            aria-label="Loại rủi ro hoặc vướng mắc"
-          >
-            {RAID_KINDS.map((k) => (
-              <button
-                key={k.value}
-                type="button"
-                role="radio"
-                aria-checked={kind === k.value}
-                title={k.description}
-                onClick={() => setKind(k.value)}
-                className={cn(
-                  'h-8 rounded-md border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
-                  kind === k.value
-                    ? 'border-primary bg-primary text-primary-fg'
-                    : 'border-border bg-bg text-muted hover:bg-surface-2',
-                )}
-              >
-                {k.label}
-              </button>
-            ))}
-          </div>
+          <SegmentedControl
+            ariaLabel="Loại rủi ro hoặc vướng mắc"
+            value={kind}
+            onChange={setKind}
+            options={KIND_OPTIONS}
+          />
           {kindMeta && <p className="mt-1.5 text-xs text-faint">{kindMeta.description}</p>}
         </Field>
 
@@ -262,7 +236,6 @@ export function RaidEditorModal({
               onChange={setProbability}
               labels={PROBABILITY_LABELS}
               ariaLabel="Xác suất xảy ra, từ 1 rất khó tới 5 gần như chắc chắn"
-              idPrefix="raid-prob"
             />
           </Field>
           <Field label="Mức ảnh hưởng" hint={`(${impact} — ${IMPACT_LABELS[impact]})`}>
@@ -271,7 +244,6 @@ export function RaidEditorModal({
               onChange={setImpact}
               labels={IMPACT_LABELS}
               ariaLabel="Mức ảnh hưởng nếu xảy ra, từ 1 không đáng kể tới 5 nghiêm trọng"
-              idPrefix="raid-impact"
             />
           </Field>
         </div>

@@ -11,20 +11,6 @@ export function nextRadioIndex(key: string, index: number, count: number): numbe
 }
 
 /**
- * onKeyDown cho container `role="radiogroup"` (các mục `role="radio"` dùng roving tabindex: chỉ mục đang chọn có
- * tabIndex 0): mũi tên chuyển chọn + chuyển focus sang mục mới bằng cách bấm nó.
- */
-export function radioGroupKeyDown(e: KeyboardEvent<HTMLElement>) {
-  const items = Array.from(e.currentTarget.querySelectorAll<HTMLElement>('[role="radio"]'));
-  const i = items.indexOf(document.activeElement as HTMLElement);
-  const next = i < 0 ? null : nextRadioIndex(e.key, i, items.length);
-  if (next === null) return;
-  e.preventDefault();
-  items[next]!.focus();
-  items[next]!.click();
-}
-
-/**
  * Như `nextRadioIndex` nhưng BỎ QUA mục bị vô hiệu: đi tiếp theo hướng phím cho tới mục bật gần nhất (mũi tên vòng tròn,
  * Home/End về mục bật đầu/cuối). Trả null nếu phím không điều hướng, hoặc không còn mục bật nào khác mục hiện tại.
  */
@@ -48,8 +34,9 @@ export function nextEnabledRadioIndex(
 }
 
 /**
- * `radioGroupKeyDown` cho nhóm có mục vô hiệu (`disabled` native hoặc `aria-disabled="true"`): mũi tên nhảy qua mục tắt
- * (mục tắt không focus/bấm được nên bản gốc sẽ kẹt tại đó). Nhóm không có mục tắt hành xử y hệt `radioGroupKeyDown`.
+ * onKeyDown cho container `role="radiogroup"` (các mục `role="radio"` dùng roving tabindex: chỉ mục đang chọn có
+ * tabIndex 0): mũi tên chuyển chọn + chuyển focus sang mục mới bằng cách bấm nó, nhảy qua mục vô hiệu (`disabled`
+ * native hoặc `aria-disabled="true"`) vì mục tắt không focus/bấm được.
  */
 export function radioGroupKeyDownSkipDisabled(e: KeyboardEvent<HTMLElement>) {
   const items = Array.from(e.currentTarget.querySelectorAll<HTMLElement>('[role="radio"]'));

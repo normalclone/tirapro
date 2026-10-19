@@ -10,6 +10,8 @@ export interface SegmentedOption<T extends string> {
   label: string;
   icon?: ReactNode;
   disabled?: boolean;
+  /** Tooltip riêng (mô tả dài hơn nhãn); mặc định là nhãn. */
+  title?: string;
 }
 
 /** Nhóm radio PHẢI có tên truy cập: nhãn chuỗi (`ariaLabel`) hoặc trỏ tới nhãn nhìn thấy (`ariaLabelledby`). */
@@ -38,7 +40,8 @@ export function SegmentedControl<T extends string>({
   invalid,
   ...labelProps
 }: SegmentedControlLabel & {
-  value: T;
+  /** `null` = chưa chọn mục nào (mục bật đầu tiên là điểm vào Tab); bấm một mục luôn phát `onChange`. */
+  value: T | null;
   onChange: (v: T) => void;
   options: readonly SegmentedOption<T>[];
   disabled?: boolean;
@@ -99,7 +102,7 @@ export function SegmentedControl<T extends string>({
               aria-disabled={off ? 'true' : undefined}
               disabled={off}
               tabIndex={i === entry ? 0 : -1}
-              title={o.label}
+              title={o.title ?? o.label}
               onClick={() => {
                 if (shouldEmitChange(value, o.value)) onChange(o.value);
               }}

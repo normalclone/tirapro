@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { toast } from 'sonner';
 import type { ProjectHealth } from '@tirapro/types';
 import type { ProjectHealthDto } from '@tirapro/shared';
@@ -6,14 +6,17 @@ import { Button } from '@/components/ui/Button';
 import { HealthBadge, HealthDetails } from '@/components/ui/HealthBadge';
 import { healthLabel } from '@/components/ui/healthLabel';
 import { Input } from '@/components/ui/Input';
+import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { useSetProjectHealth } from '@/features/reports/api';
 import { Card } from '@/features/reports/charts';
 import { apiErrorMessage } from '@/lib/api';
-import { cn } from '@/lib/utils';
 import { useProjectCan } from './permissions';
 import { canSubmit, HEALTH_NOTE_MAX } from './healthOverride';
 
-const LEVELS: ProjectHealth[] = ['GREEN', 'YELLOW', 'RED'];
+const LEVEL_OPTIONS = (['GREEN', 'YELLOW', 'RED'] as const).map((l) => ({
+  value: l,
+  label: healthLabel(l),
+}));
 
 /**
  * Thẻ "Sức khoẻ dự án" đầu tab Tổng quan của Báo cáo: mức hiện tại + lý do tự tính, và (chỉ với `project:admin`)
@@ -31,7 +34,6 @@ export function HealthOverrideCard({
   const canOverride = can('project:admin');
   const setHealth = useSetProjectHealth(project.id);
   const noteId = useId();
-  const radioRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
   const current = health?.override ?? null;
   const [level, setLevel] = useState<ProjectHealth | null>(current?.level ?? null);
@@ -47,20 +49,6 @@ export function HealthOverrideCard({
 
   const dirty = level !== (current?.level ?? null) || note.trim() !== (current?.note ?? '');
   const ready = level !== null && canSubmit(level, note) && dirty;
-
-  /** Mũi tên chuyển mức (radiogroup chuẩn WAI-ARIA: chỉ một điểm dừng Tab, mũi tên chọn + chuyển focus). */
-  function onRadioKey(e: KeyboardEvent<HTMLDivElement>) {
-    const focused = radioRefs.current.findIndex((el) => el === document.activeElement);
-    const i = focused >= 0 ? focused : level ? LEVELS.indexOf(level) : -1;
-    let next = -1;
-    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') next = (i + 1) % LEVELS.length;
-    else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp')
-      next = (i - 1 + LEVELS.length) % LEVELS.length;
-    if (next < 0) return;
-    e.preventDefault();
-    setLevel(LEVELS[next]!);
-    radioRefs.current[next]?.focus();
-  }
 
   async function save() {
     if (!level || !canSubmit(level, note)) return;
@@ -102,34 +90,12 @@ export function HealthOverrideCard({
               void save();
             }}
           >
-            <div
-              role="radiogroup"
-              aria-label="Mức ghi đè"
-              className="flex flex-wrap gap-1.5"
-              onKeyDown={onRadioKey}
-            >
-              {LEVELS.map((l, idx) => (
-                <button
-                  key={l}
-                  ref={(el) => {
-                    radioRefs.current[idx] = el;
-                  }}
-                  type="button"
-                  role="radio"
-                  aria-checked={level === l}
-                  tabIndex={level === l || (level === null && idx === 0) ? 0 : -1}
-                  onClick={() => setLevel(l)}
-                  className={cn(
-                    'h-8 rounded-md border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
-                    level === l
-                      ? 'border-primary bg-primary-subtle text-ink-strong'
-                      : 'border-border text-ink hover:bg-surface-2',
-                  )}
-                >
-                  {healthLabel(l)}
-                </button>
-              ))}
-            </div>
+            <SegmentedControl
+              ariaLabel="Mức ghi đè"
+              value={level}
+              onChange={setLevel}
+              options={LEVEL_OPTIONS}
+            />
             <div>
               <label htmlFor={noteId} className="mb-1 block text-xs text-muted">
                 Ghi chú lý do (bắt buộc khi ghi đè)

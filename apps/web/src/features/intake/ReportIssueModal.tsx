@@ -2,8 +2,6 @@ import { useMemo, useState, type FormEvent } from 'react';
 import { Bug, Monitor } from 'lucide-react';
 import type { EnvironmentInput } from '@tirapro/shared';
 import type { ProjectDto } from '@tirapro/types';
-import { cn } from '@/lib/utils';
-import { radioGroupKeyDown } from '@/lib/radioNav';
 import { useErrorFlow } from '@/lib/useErrorFlow';
 import { describedBy, fieldErrorId, type FieldError } from '@/lib/formErrors';
 import { Button } from '@/components/ui/Button';
@@ -11,6 +9,7 @@ import { Dialog } from '@/components/ui/Dialog';
 import { ErrorSummary } from '@/components/ui/ErrorSummary';
 import { FieldErrorText } from '@/components/ui/FieldError';
 import { Input } from '@/components/ui/Input';
+import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { useOpenSession } from '@/lib/useOpenSession';
 import { useCreateTarget } from '@/lib/useCreateTarget';
@@ -65,34 +64,19 @@ export function ReportIssueModal() {
   return <ReportIssueForm key={session} open={open} preset={preset} onClose={close} />;
 }
 
+const KIND_OPTIONS = REPORT_KINDS.map((k) => ({ value: k, label: reportKindLabel(k) }));
+
 /** Ba nút phân đoạn chọn loại yêu cầu. */
 function KindPicker({ kind, onChange }: { kind: RequestKind; onChange: (k: RequestKind) => void }) {
   return (
-    <div
-      role="radiogroup"
-      aria-label="Loại yêu cầu"
-      onKeyDown={radioGroupKeyDown}
-      className="flex gap-1.5"
-    >
-      {REPORT_KINDS.map((k) => (
-        <button
-          key={k}
-          type="button"
-          role="radio"
-          aria-checked={kind === k}
-          tabIndex={kind === k ? 0 : -1}
-          onClick={() => onChange(k)}
-          className={cn(
-            'h-8 flex-1 rounded-md border px-2 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
-            kind === k
-              ? 'border-primary bg-primary-subtle font-medium text-primary'
-              : 'border-border text-muted hover:bg-surface-2 hover:text-ink',
-          )}
-        >
-          {reportKindLabel(k)}
-        </button>
-      ))}
-    </div>
+    <SegmentedControl
+      ariaLabel="Loại yêu cầu"
+      size="sm"
+      fullWidth
+      value={kind}
+      onChange={onChange}
+      options={KIND_OPTIONS}
+    />
   );
 }
 
@@ -168,43 +152,26 @@ function reportFieldErrors(f: Pick<ReportFormState, 'projectId' | 'summary'>): F
   return validateReport(f).map((i) => ({ ...FIELD_META[i.field], message: i.message }));
 }
 
+const MODE_OPTIONS: { value: ReportMode; label: string; title: string }[] = [
+  { value: 'basic', label: 'Cơ bản', title: 'Chỉ cần tiêu đề — gửi nhanh nhất' },
+  {
+    value: 'advanced',
+    label: 'Nâng cao',
+    title: 'Mẫu bước tái hiện, mức nghiêm trọng, môi trường, tệp',
+  },
+];
+
 /** Công tắc phân đoạn "Cơ bản | Nâng cao" ở đầu form — nhớ theo người. */
 function ModeSwitch({ mode, onChange }: { mode: ReportMode; onChange: (m: ReportMode) => void }) {
-  const opts: { id: ReportMode; label: string; hint: string }[] = [
-    { id: 'basic', label: 'Cơ bản', hint: 'Chỉ cần tiêu đề — gửi nhanh nhất' },
-    {
-      id: 'advanced',
-      label: 'Nâng cao',
-      hint: 'Mẫu bước tái hiện, mức nghiêm trọng, môi trường, tệp',
-    },
-  ];
   return (
-    <div
-      role="radiogroup"
-      aria-label="Chế độ form"
-      onKeyDown={radioGroupKeyDown}
-      className="inline-flex rounded-md border border-border bg-surface-2 p-0.5"
-    >
-      {opts.map((o) => (
-        <button
-          key={o.id}
-          type="button"
-          role="radio"
-          aria-checked={mode === o.id}
-          tabIndex={mode === o.id ? 0 : -1}
-          title={o.hint}
-          onClick={() => onChange(o.id)}
-          className={cn(
-            'h-7 rounded px-3 text-sm transition-colors max-sm:h-11 max-sm:px-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
-            mode === o.id
-              ? 'bg-surface font-medium text-ink shadow-sm'
-              : 'text-muted hover:text-ink',
-          )}
-        >
-          {o.label}
-        </button>
-      ))}
-    </div>
+    <SegmentedControl
+      ariaLabel="Chế độ form"
+      size="sm"
+      fullWidth={false}
+      value={mode}
+      onChange={onChange}
+      options={MODE_OPTIONS}
+    />
   );
 }
 
