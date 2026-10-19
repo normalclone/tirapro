@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, type Ack } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
-import { LOCALE } from '@/lib/locale';
+import { LOCALE, fmtNumber } from '@/lib/locale';
 
 interface ClientProjectRef {
   id: string;
@@ -148,6 +148,6 @@ export function formatMoney(value: number | null, currency: string): string {
       maximumFractionDigits: 0,
     }).format(value);
   } catch {
-    return `${new Intl.NumberFormat(LOCALE).format(value)} ${currency}`;
+    return `${fmtNumber(value)} ${currency}`;
   }
 }

@@ -65,7 +65,7 @@ import { cn } from '@/lib/utils';
 import { CHART_MARGIN, yAxisWidth } from '@/lib/chartAxis';
 import { STATUS_CATEGORY_LABEL } from '@/lib/terms';
 import { PriorityIcon } from '@/components/ui/PriorityIcon';
-import { usePriorityRanks } from '@/features/settings-admin/api';
+import { usePriorityRanks } from '@/features/issue-meta/usePriorityRanks';
 
 const CATEGORY_COLOR: Record<StatusCategory, string> = {
   TODO: 'var(--status-todo)',

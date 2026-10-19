@@ -19,7 +19,7 @@ import {
   type AcceptPayload,
 } from './triageLogic';
 import { PriorityIcon } from '@/components/ui/PriorityIcon';
-import { usePriorityRanks } from '@/features/settings-admin/api';
+import { usePriorityRanks } from '@/features/issue-meta/usePriorityRanks';
 
 const SNOOZE_CHOICES: { label: string; days: number }[] = [
   { label: '1 ngày', days: 1 },

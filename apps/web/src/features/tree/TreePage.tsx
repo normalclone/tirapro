@@ -21,7 +21,7 @@ import { cn } from '@/lib/utils';
 import { pointsCell } from './pointsCell';
 import { ROOT_DROP_ID, rowDropId, useTreeDrag, type DropState } from './useTreeDrag';
 import { PriorityIcon } from '@/components/ui/PriorityIcon';
-import { usePriorityRanks } from '@/features/settings-admin/api';
+import { usePriorityRanks } from '@/features/issue-meta/usePriorityRanks';
 
 /**
  * Bố cục cột dùng chung cho hàng tiêu đề (header) và mọi hàng dữ liệu, để các cột

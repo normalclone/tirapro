@@ -19,7 +19,7 @@ import { useAuth } from '@/stores/auth';
 import { Input } from '@/components/ui/Input';
 import { Avatar } from '@/components/ui/primitives';
 import { PriorityIcon } from '@/components/ui/PriorityIcon';
-import { usePriorityRanks } from '@/features/settings-admin/api';
+import { usePriorityRanks } from '@/features/issue-meta/usePriorityRanks';
 import { IssueTypeBadge } from '@/components/ui/IssueTypeBadge';
 import { SeverityBadge } from '@/components/ui/SeverityBadge';
 import { isBugType } from './severity';

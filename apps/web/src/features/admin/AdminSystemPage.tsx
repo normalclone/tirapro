@@ -136,7 +136,6 @@ export function AdminSystemPage() {
           <Tabs
             idBase="audit"
             ariaLabel="Loại nhật ký"
-            variant="pill"
             value={kind}
             onChange={(k) => {
               setKind(k);

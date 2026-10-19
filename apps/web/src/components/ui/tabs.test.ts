@@ -54,6 +54,10 @@ describe('không còn tablist tự vẽ', () => {
       .filter((rel) => !(rel in ALLOW));
     expect(found).toEqual([]);
   });
+  it('một kiểu tab duy nhất (gạch chân): không còn variant pill; Hệ thống dùng mặc định (RA4)', () => {
+    expect(src('components/ui/Tabs.tsx')).not.toMatch(/variant|pill/);
+    expect(src('features/admin/AdminSystemPage.tsx')).not.toMatch(/variant="pill"/);
+  });
   it('Tabs có tablist/tab/tabpanel, aria-controls/labelledby, roving tabindex, aria-selected', () => {
     const t = src('components/ui/Tabs.tsx');
     for (const needle of [

@@ -28,7 +28,7 @@ import {
   SLA_SOON_LABEL,
 } from './api';
 import { PriorityIcon } from '@/components/ui/PriorityIcon';
-import { usePriorityRanks } from '@/features/settings-admin/api';
+import { usePriorityRanks } from '@/features/issue-meta/usePriorityRanks';
 import { MANAGE_LABELS, SETTINGS_LABELS } from '@/lib/navLabels';
 
 /** Bảng theo dõi công việc sắp trễ / đã trễ hạn cam kết (dùng trong mục Danh mục). */

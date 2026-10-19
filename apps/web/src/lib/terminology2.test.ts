@@ -9,7 +9,7 @@ import {
   PROJECT_CONFIG_LABELS,
   SETTINGS_LABELS,
 } from './navLabels';
-import { hits } from './terminology.test';
+import { collapseWs, hits, joinedHits } from './terminology.test';
 
 /**
  * Bộ C (UX_CONVENTIONS §19 + đợt 1 UI): nút huỷ, tên menu = tiêu đề trang, chữ chỉ hướng, "Project ID", "dashboard".
@@ -305,5 +305,51 @@ describe('định dạng ngày/tháng thống nhất (lib/dateFormat.ts)', () =>
 describe('thông báo: không nhận "Hệ thống" khi có người làm', () => {
   it('NotificationRow truyền actorId vào buildNotificationTitle', () => {
     expect(src('features/notifications/NotificationRow.tsx')).toMatch(/actorId:\s*item\.actorId/);
+  });
+});
+
+describe('cụm cấm bị bẻ dòng trong JSX vẫn bị bắt', () => {
+  it('collapseWs gộp xuống dòng + thụt lề thành một dấu cách', () => {
+    const wrapped = '<p>\n   Chọn theo mức\n          ưu tiên và hạn chót\n</p>';
+    expect(collapseWs(wrapped)).toContain('mức ưu tiên và hạn chót');
+    expect(/độ ưu tiên/i.test(collapseWs('độ\n      ưu tiên'))).toBe(true);
+    expect(/độ ưu tiên/i.test('độ\n      ưu tiên')).toBe(false); // theo từng dòng thì sót
+  });
+  it('không còn "độ ưu tiên" / "đợt làm việc" / "Project ID" kể cả khi bị bẻ dòng', () => {
+    expect(joinedHits(/độ ưu tiên/i)).toEqual([]);
+    expect(joinedHits(/đợt làm việc/i)).toEqual([]);
+    expect(joinedHits(/Project ID/)).toEqual([]);
+  });
+});
+
+describe('dọn kỹ thuật đợt 2A (Task 6)', () => {
+  it('chỉ MỘT hàm định dạng số: fmtNumber (lib/locale); không còn fmtInt / Intl.NumberFormat rải rác', () => {
+    expect(hits(/\bfmtInt\b/)).toEqual([]);
+    // Bản không tuỳ chọn trùng `fmtNumber`; bản có `currency`/`maximumFractionDigits` là biến thể hợp lệ.
+    expect(
+      hits(/new Intl\.NumberFormat\(LOCALE\)/).filter((x) => !x.startsWith('lib/locale.ts')),
+    ).toEqual([]);
+  });
+  it('usePriorityRanks nằm ở features/issue-meta, không còn export ở settings-admin/api', () => {
+    expect(src('features/issue-meta/usePriorityRanks.ts')).toMatch(
+      /export function usePriorityRanks/,
+    );
+    expect(src('features/settings-admin/api.ts')).not.toMatch(/usePriorityRanks/);
+    expect(
+      hits(/import \{[^}]*usePriorityRanks[^}]*\} from '@\/features\/settings-admin\/api'/),
+    ).toEqual([]);
+  });
+  it('BulkActionBar không còn lớp margin chết (cha `space-y-4` ghi đè mb-*)', () => {
+    const region = /aria-label="Thao tác hàng loạt"[\s\S]*?className=\{cn\(([\s\S]*?)\)\}/.exec(
+      src('features/backlog/BulkActionBar.tsx'),
+    )![1]!;
+    expect(region).not.toMatch(/\bmb-|lg:mb-/);
+  });
+  it('router: p/:key có route con `*` (404 giữ khung dự án); NotFoundPage nhận biết dự án', () => {
+    const router = src('app/router.tsx');
+    const block = router.slice(router.indexOf("path: 'p/:key'"));
+    const end = block.indexOf('\n      },');
+    expect(block.slice(0, end)).toMatch(/path: '\*'/);
+    expect(src('components/layout/NotFoundPage.tsx')).toMatch(/projectKeyOf\(pathname\)/);
   });
 });

@@ -11,3 +11,25 @@ export function tabLabelVisible(isActive: boolean): boolean {
 export function activeMoreSeg(seg: string): MoreSeg | null {
   return (MORE_SEGMENTS as readonly string[]).includes(seg) ? (seg as MoreSeg) : null;
 }
+
+/**
+ * Các màn trong một dự án (`/p/KEY/<seg>`): nhãn + từ khoá để gợi ý khi gõ sai đường dẫn. Nhãn của 5 tab chính là
+ * nguồn của `ProjectLayout` (VIEWS).
+ */
+export const PROJECT_VIEW_LABELS = {
+  board: 'Bảng việc',
+  backlog: 'Việc chờ',
+  gantt: 'Lịch trình',
+  tree: 'Cây việc',
+  reports: 'Báo cáo',
+} as const;
+
+export const PROJECT_VIEW_ENTRIES: readonly { seg: string; label: string; keywords: string[] }[] = [
+  { seg: 'board', label: PROJECT_VIEW_LABELS.board, keywords: ['board', 'bang'] },
+  { seg: 'backlog', label: PROJECT_VIEW_LABELS.backlog, keywords: ['viec cho'] },
+  { seg: 'gantt', label: PROJECT_VIEW_LABELS.gantt, keywords: ['timeline', 'lich trinh'] },
+  { seg: 'tree', label: PROJECT_VIEW_LABELS.tree, keywords: ['viec', 'epic'] },
+  { seg: 'reports', label: PROJECT_VIEW_LABELS.reports, keywords: ['report', 'bao cao'] },
+  { seg: 'activity', label: 'Hoạt động', keywords: ['hoat dong', 'lich su'] },
+  { seg: 'config', label: 'Cấu hình', keywords: ['settings', 'cau hinh', 'cai dat'] },
+];

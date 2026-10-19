@@ -38,15 +38,15 @@ import { useProjectRealtime } from '@/lib/realtime';
 import { LAST_ACTIVE_KEY, lastViewKey } from '@/lib/currentProject';
 import { withKey } from '@/lib/shortcuts';
 import { useScrollFade } from '@/lib/useScrollFade';
-import { activeMoreSeg, tabLabelVisible } from './projectTabs';
+import { PROJECT_VIEW_LABELS, activeMoreSeg, tabLabelVisible } from './projectTabs';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 
 const VIEWS = [
-  { seg: 'board', label: 'Bảng việc', icon: LayoutGrid },
-  { seg: 'backlog', label: 'Việc chờ', icon: ListTodo },
-  { seg: 'gantt', label: 'Lịch trình', icon: GanttChartSquare },
-  { seg: 'tree', label: 'Cây việc', icon: ListTree },
-  { seg: 'reports', label: 'Báo cáo', icon: BarChart3 },
+  { seg: 'board', label: PROJECT_VIEW_LABELS.board, icon: LayoutGrid },
+  { seg: 'backlog', label: PROJECT_VIEW_LABELS.backlog, icon: ListTodo },
+  { seg: 'gantt', label: PROJECT_VIEW_LABELS.gantt, icon: GanttChartSquare },
+  { seg: 'tree', label: PROJECT_VIEW_LABELS.tree, icon: ListTree },
+  { seg: 'reports', label: PROJECT_VIEW_LABELS.reports, icon: BarChart3 },
 ] as const;
 
 /** Mục menu "Thêm": `to` dựng đường dẫn; `needs` = quyền cấp dự án để hiện mục (không có thì ẩn). */

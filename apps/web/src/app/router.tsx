@@ -361,6 +361,8 @@ export const router = createBrowserRouter([
           { path: 'gantt', element: <GanttPage /> },
           { path: 'tree', element: <TreePage /> },
           { path: 'config', element: <ProjectConfigPage /> },
+          // URL lạ trong dự án: 404 hiện trong <Outlet /> nên giữ rail + thanh view của dự án.
+          { path: '*', element: <NotFoundPage /> },
         ],
       },
       // Phải là con CUỐI: URL lạ vẫn đi qua RequireAuth (chưa đăng nhập → /login) và có sidebar/topbar.

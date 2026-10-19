@@ -38,26 +38,17 @@ export function nextTabIndex(
 
 const TAB_BASE =
   'shrink-0 whitespace-nowrap font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:cursor-not-allowed disabled:text-disabled-fg';
-const STYLES = {
-  underline: {
-    list: 'flex gap-1 border-b border-border',
-    tab: '-mb-px border-b-2 px-3 py-2 text-sm',
-    on: 'border-primary text-ink-strong',
-    off: 'border-transparent text-muted hover:text-ink',
-  },
-  pill: {
-    list: 'flex rounded-md border border-border bg-surface p-0.5',
-    tab: 'rounded px-3 py-1 text-xs',
-    on: 'bg-primary-subtle text-primary',
-    off: 'text-muted hover:text-ink',
-  },
-} as const;
+// Một kiểu duy nhất (gạch chân) cho toàn app.
+const LIST = 'flex gap-1 border-b border-border';
+const TAB = '-mb-px border-b-2 px-3 py-2 text-sm';
+const ON = 'border-primary text-ink-strong';
+const OFF = 'border-transparent text-muted hover:text-ink';
 
 /**
  * Hàng tab đúng mẫu ARIA (APG): `tablist` > `tab` có `aria-selected`, roving tabindex (chỉ tab đang chọn là điểm dừng
  * Tab), ←/→/Home/End chuyển tab VÀ kích hoạt ngay (automatic activation), `aria-controls` trỏ tới `TabPanel`
  * cùng `idBase`. Chuyển bằng state cùng trang — điều hướng theo URL/route thì dùng liên kết có `aria-current`, không dùng Tabs.
- * - `variant`: `underline` (gạch chân, mặc định) hoặc `pill` (hộp nhỏ). `fade`: hàng cuộn ngang có mờ mép còn nội dung (nơi dùng tự đặt `overflow-x-auto` qua className).
+ * - Một kiểu gạch chân duy nhất. `fade`: hàng cuộn ngang có mờ mép còn nội dung (nơi dùng tự đặt `overflow-x-auto` qua className).
  * - Bắt buộc `ariaLabel` (tên của tablist).
  */
 export function Tabs<T extends string>({
@@ -66,7 +57,6 @@ export function Tabs<T extends string>({
   onChange,
   items,
   ariaLabel,
-  variant = 'underline',
   fade = false,
   className,
   ...rest
@@ -76,10 +66,8 @@ export function Tabs<T extends string>({
   onChange: (id: T) => void;
   items: readonly TabItem<T>[];
   ariaLabel: string;
-  variant?: keyof typeof STYLES;
   fade?: boolean;
 }) {
-  const s = STYLES[variant];
   const listRef = useRef<HTMLDivElement | null>(null);
   const scrollFade = useScrollFade<HTMLDivElement>(value, '[aria-selected="true"]');
   const entry = items.some((t) => t.id === value && !t.disabled)
@@ -112,7 +100,7 @@ export function Tabs<T extends string>({
       role="tablist"
       aria-label={ariaLabel}
       onKeyDown={onKeyDown}
-      className={cn(s.list, fade && 'scroll-fade-x relative', className)}
+      className={cn(LIST, fade && 'scroll-fade-x relative', className)}
     >
       {items.map((t) => {
         const ids = tabIds(idBase, t.id);
@@ -129,7 +117,7 @@ export function Tabs<T extends string>({
             disabled={t.disabled}
             title={t.title}
             onClick={() => onChange(t.id)}
-            className={cn(TAB_BASE, s.tab, on ? s.on : s.off)}
+            className={cn(TAB_BASE, TAB, on ? ON : OFF)}
           >
             {t.label}
           </button>
