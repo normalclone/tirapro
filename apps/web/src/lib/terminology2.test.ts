@@ -121,6 +121,18 @@ describe('một nguồn nhãn (lib/navLabels.ts)', () => {
     ['features/clients/ClientsPage.tsx', 'MANAGE_LABELS.clients', MANAGE_LABELS.clients],
     ['features/members/MembersPage.tsx', 'APP_NAV_LABELS.members', APP_NAV_LABELS.members],
     ['features/wiki/WikiPage.tsx', 'APP_NAV_LABELS.wiki', APP_NAV_LABELS.wiki],
+    ['features/audit/AuditLogPage.tsx', 'SETTINGS_LABELS.audit', SETTINGS_LABELS.audit],
+    [
+      'features/automation/AutomationPage.tsx',
+      'CONNECT_LABELS.automation',
+      CONNECT_LABELS.automation,
+    ],
+    ['features/projects/ProjectLayout.tsx', 'CONNECT_LABELS.automation', CONNECT_LABELS.automation],
+    ['features/projects/ProjectLayout.tsx', 'MANAGE_LABELS.risks', MANAGE_LABELS.risks],
+    ['features/command/projectCommands.ts', 'CONNECT_LABELS.automation', CONNECT_LABELS.automation],
+    ['features/portfolio/PortfolioPage.tsx', 'MANAGE_LABELS.portfolio', MANAGE_LABELS.portfolio],
+    ['features/command/CommandPalette.tsx', 'APP_NAV_LABELS.home', APP_NAV_LABELS.home],
+    ['features/command/CommandPalette.tsx', 'APP_NAV_LABELS.wiki', APP_NAV_LABELS.wiki],
     ['features/connect/ConnectLayout.tsx', 'APP_NAV_LABELS.connect', APP_NAV_LABELS.connect],
     [
       'features/integrations/IntegrationsPage.tsx',
@@ -153,6 +165,28 @@ describe('một nguồn nhãn (lib/navLabels.ts)', () => {
   it.each(pageTitles)('%s dùng %s làm tiêu đề trang', (file, ref, label) => {
     expect(label.length).toBeGreaterThan(0);
     expect(src(file)).toContain(ref);
+  });
+
+  it('nhãn viết tay đã bỏ: aria-label Vai trò & quyền, tiêu đề, chữ lệnh lấy từ navLabels', () => {
+    expect(src('features/settings/RolesPage.tsx')).toMatch(/aria-label=\{SETTINGS_LABELS\.roles\}/);
+    expect(hits(/aria-label="Vai trò & quyền"/)).toEqual([]);
+    expect(hits(/>Nhật ký quản trị</)).toEqual([]);
+    expect(hits(/>Tự động hoá</)).toEqual([]);
+    expect(hits(/>Danh mục dự án</)).toEqual([]);
+    expect(
+      hits(/label: 'Tự động hoá'|label: 'Rủi ro & vướng mắc'|label: 'Mở Tự động hoá'/),
+    ).toEqual([]);
+    expect(
+      hits(/label="(Tổng quan|Wiki)"/).filter((x) => x.startsWith('features/command/')),
+    ).toEqual([]);
+  });
+
+  it('mô tả dưới tiêu đề không lặp lại tiêu đề', () => {
+    expect(
+      hits(
+        /(Khách hàng và hợp đồng|Thành viên và nhóm|Nhập từ Jira|Cấu hình hệ thống và feature flags)\s*[:.]/,
+      ),
+    ).toEqual([]);
   });
 
   it('nhãn khớp nhãn menu đã chốt (không đổi chữ menu)', () => {
@@ -223,6 +257,16 @@ describe('vai trò hiển thị bằng tiếng Việt (roleLabel)', () => {
     ['features/members/AddPeopleDialog.tsx', /\{roleLabel\(r\)\}/],
   ])('%s dịch tên vai trò qua roleLabel', (file, re) => {
     expect(src(file)).toMatch(re);
+  });
+  it('dialog Vai trò & quyền và tài khoản mẫu ở màn đăng nhập hiện tên vai trò tiếng Việt', () => {
+    const roles = src('features/settings/RolesPage.tsx');
+    expect(roles).toMatch(/roleLabel\(role\?\.name \?\? ''\)/);
+    expect(roles).toMatch(/Sửa "\$\{roleLabel\(role\?\.name \?\? ''\)\}"/);
+    const demo = src('features/auth/DemoAccounts.tsx');
+    expect(demo).toMatch(/roleLabel\(SYSTEM_ROLES\.DEVELOPER\)/);
+    expect(demo).toMatch(/roleLabel\(SYSTEM_ROLES\.TESTER\)/);
+    expect(demo).toMatch(/roleLabel\(SYSTEM_ROLES\.BUSINESS_ANALYST\)/);
+    expect(demo).not.toMatch(/role: '(Developer|Tester|Phân tích nghiệp vụ)'/);
   });
   it('không còn in `{ws.roleName}` thô', () => {
     expect(hits(/\{ws\.roleName\}/)).toEqual([]);

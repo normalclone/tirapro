@@ -22,6 +22,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import type { PermissionKey } from '@tirapro/types';
+import { CONNECT_LABELS, MANAGE_LABELS } from '@/lib/navLabels';
 import { useProject, useProjects } from './api';
 import { ProjectRail } from './ProjectRail';
 import { GenerateIssuesDialog } from '@/features/ai/GenerateIssuesDialog';
@@ -61,13 +62,13 @@ const MORE: {
   // Rủi ro và Tự động hoá dùng trang sẵn có, lọc sẵn theo dự án này qua `?project=<id>`.
   {
     id: 'risks',
-    label: 'Rủi ro & vướng mắc',
+    label: MANAGE_LABELS.risks,
     icon: ShieldAlert,
     to: (p) => `/manage/risks?project=${p.id}`,
   },
   {
     id: 'automation',
-    label: 'Tự động hoá',
+    label: CONNECT_LABELS.automation,
     icon: Repeat,
     to: (p) => `/connect/automation?project=${p.id}`,
     needs: 'automation:manage',

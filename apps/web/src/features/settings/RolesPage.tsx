@@ -119,7 +119,7 @@ export function RolesPage() {
       <div
         className="mb-6 flex gap-1 border-b border-border"
         role="tablist"
-        aria-label="Vai trò & quyền"
+        aria-label={SETTINGS_LABELS.roles}
         data-tour="roles-tabs"
       >
         {ROLES_TABS.map((t) => (
@@ -403,8 +403,8 @@ function RoleDialog({
   const title: string = isCreate
     ? 'Tạo vai trò'
     : readOnly
-      ? (role?.name ?? '')
-      : `Sửa "${role?.name}"`;
+      ? roleLabel(role?.name ?? '')
+      : `Sửa "${roleLabel(role?.name ?? '')}"`;
 
   return (
     <Dialog

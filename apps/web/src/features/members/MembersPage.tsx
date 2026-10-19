@@ -56,8 +56,8 @@ export function MembersPage() {
           {APP_NAV_LABELS.members}
         </h1>
         <p className="mt-1 text-sm text-muted">
-          Thành viên và nhóm. Thành viên thuộc về cả không gian làm việc, nên ai có tên ở đây đều
-          tham gia mọi dự án. Nhóm dùng để sắp xếp họ theo chức năng và giao vai trò hàng loạt.
+          Thành viên thuộc về cả không gian làm việc, nên ai có tên ở đây đều tham gia mọi dự án.
+          Nhóm dùng để sắp xếp họ theo chức năng và giao vai trò hàng loạt.
         </p>
       </header>
 

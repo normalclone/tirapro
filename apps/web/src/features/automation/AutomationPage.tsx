@@ -24,6 +24,7 @@ import {
 } from './api';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
 import { fmtDateTime } from '@/lib/dateFormat';
+import { CONNECT_LABELS } from '@/lib/navLabels';
 
 type Tab = 'rules' | 'templates' | 'recurring';
 
@@ -46,7 +47,9 @@ export function AutomationPage() {
   return (
     <div className={pageContainer('md')}>
       <header className="mb-6">
-        <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">Tự động hoá</h1>
+        <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">
+          {CONNECT_LABELS.automation}
+        </h1>
         <p className="mt-1 text-sm text-muted">
           Quy tắc để hệ thống tự làm khi có sự kiện (khi… nếu… thì…). Mẫu công việc giúp bạn khỏi gõ
           lại những trường quen thuộc. Công việc lặp lại để hệ thống tự tạo việc theo lịch — họp

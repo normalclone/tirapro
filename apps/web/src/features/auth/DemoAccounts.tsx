@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { ChevronDown, ShieldCheck, Users } from 'lucide-react';
+import { roleLabel, SYSTEM_ROLES } from '@tirapro/types';
 import { cn } from '@/lib/utils';
 
 const DEMO_PASSWORD = 'Password123';
@@ -10,9 +11,9 @@ const DEMO_PASSWORD = 'Password123';
  */
 const DEMO_ACCOUNTS: { email: string; name: string; role: string; admin?: boolean }[] = [
   { email: 'admin@projira.dev', name: 'An Quản Trị', role: 'Admin hệ thống', admin: true },
-  { email: 'ba@tirapro.dev', name: 'Bình (BA)', role: 'Phân tích nghiệp vụ' },
-  { email: 'dev@tirapro.dev', name: 'Dũng (Dev)', role: 'Developer' },
-  { email: 'tester@tirapro.dev', name: 'Trang (Tester)', role: 'Tester' },
+  { email: 'ba@tirapro.dev', name: 'Bình (BA)', role: roleLabel(SYSTEM_ROLES.BUSINESS_ANALYST) },
+  { email: 'dev@tirapro.dev', name: 'Dũng (Dev)', role: roleLabel(SYSTEM_ROLES.DEVELOPER) },
+  { email: 'tester@tirapro.dev', name: 'Trang (Tester)', role: roleLabel(SYSTEM_ROLES.TESTER) },
 ];
 
 /**

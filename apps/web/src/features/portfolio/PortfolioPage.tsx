@@ -35,6 +35,7 @@ import {
 } from './api';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
 import { fmtDate } from '@/lib/dateFormat';
+import { MANAGE_LABELS } from '@/lib/navLabels';
 
 type Tab = 'programs' | 'roadmap';
 
@@ -347,7 +348,9 @@ export function PortfolioPage() {
     <div className={pageContainer('xl')}>
       <header className="mb-6 flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-[16rem] max-w-2xl flex-1">
-          <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">Danh mục dự án</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">
+            {MANAGE_LABELS.portfolio}
+          </h1>
           <p className="mt-1 text-sm text-muted">
             Gom các dự án liên quan vào một chương trình để xem tiến độ chung, việc quá hạn và mốc
             thời gian ở một chỗ, thay vì mở từng dự án.

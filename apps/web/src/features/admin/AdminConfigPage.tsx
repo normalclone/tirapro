@@ -149,8 +149,7 @@ export function AdminConfigPage() {
           {ADMIN_LABELS.config}
         </h1>
         <p className="mt-1 text-sm text-muted">
-          Cấu hình hệ thống và feature flags: cờ runtime bật/tắt ngay, không cần deploy. Cấu hình
-          nền lấy từ biến môi trường.
+          Cờ tính năng bật/tắt ngay, không cần triển khai lại. Cấu hình nền lấy từ biến môi trường.
         </p>
       </header>
 

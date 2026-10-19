@@ -1,5 +1,6 @@
 import { sprintActionPath } from '@/features/backlog/sprintAction';
 import { TRIAGE_TITLE } from '@/features/triage/triageLogic';
+import { CONNECT_LABELS } from '@/lib/navLabels';
 
 /**
  * Một lệnh của nhóm "Dự án hiện tại" trong Cmd+K: `to` = điều hướng. `keywords` không dấu để gõ không cần dấu
@@ -111,7 +112,7 @@ export function buildProjectCommands(input: ProjectCommandInput): ProjectCommand
   if (input.canAutomation)
     out.push({
       id: 'nav.automation',
-      label: 'Mở Tự động hoá',
+      label: `Mở ${CONNECT_LABELS.automation}`,
       keywords: 'tu dong hoa automation quy tac rule',
       to: `/connect/automation?project=${projectId}`,
       icon: 'automation',

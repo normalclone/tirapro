@@ -12,7 +12,7 @@ export function ImportPage() {
       <SectionCard
         icon={<FileUp className="h-4 w-4" />}
         title={SETTINGS_LABELS.import}
-        description="Nhập từ Jira: chuyển công việc từ Jira sang Tirapro bằng tệp CSV: ghép loại, trạng thái, ưu tiên và người dùng rồi nhập theo lô."
+        description="Chuyển công việc từ Jira sang Tirapro bằng tệp CSV: ghép loại, trạng thái, mức ưu tiên và người dùng rồi nhập theo lô."
       >
         <JiraImportWizard />
       </SectionCard>
