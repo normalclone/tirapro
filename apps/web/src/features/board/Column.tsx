@@ -2,6 +2,7 @@ import { memo, useMemo } from 'react';
 import { useDroppable } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import type { BoardColumnDto, IssueDto } from '@tirapro/types';
+import { LimitMeter } from '@/components/ui/LimitMeter';
 import { QuickAddRow } from '@/components/ui/QuickAddRow';
 import type { CreateIssueInput } from '@/features/issues/create-api';
 import { categoryColor } from '@/lib/statusColor';
@@ -30,6 +31,13 @@ export interface ColumnProps {
   grouped?: boolean;
   /** Số việc tính vào WIP của cột (toàn bảng, chưa lọc) — chỉ dùng khi cột có giới hạn. */
   wipUsed?: number;
+}
+
+/** Giải thích WIP (tooltip + aria-describedby). Giữ nguyên lời cũ của chip. */
+function wipDescription(used: number, limit: number): string {
+  return used >= limit
+    ? `Cột đã đầy: ${used}/${limit} việc đang làm. Hoàn thành bớt việc trước khi kéo thêm vào (quản trị dự án có thể chọn “Vẫn chuyển”).`
+    : `Giới hạn việc đang làm (WIP): ${used}/${limit}`;
 }
 
 function ColumnImpl({
@@ -75,22 +83,17 @@ function ColumnImpl({
         >
           {issues.length}
         </span>
-        {col.wipLimit != null && (
-          <span
-            className={cn(
-              'tabular rounded-full px-1.5 py-px text-[11px] font-medium',
-              wipUsed >= col.wipLimit ? 'bg-danger/10 text-danger' : 'bg-surface-2 text-muted',
-            )}
-            title={
-              wipUsed >= col.wipLimit
-                ? `Cột đã đầy: ${wipUsed}/${col.wipLimit} việc đang làm. Hoàn thành bớt việc trước khi kéo thêm vào (quản trị dự án có thể chọn “Vẫn chuyển”).`
-                : `Giới hạn việc đang làm (WIP): ${wipUsed}/${col.wipLimit}`
-            }
-          >
-            WIP {wipUsed}/{col.wipLimit}
-          </span>
-        )}
       </div>
+      {col.wipLimit != null && (
+        <LimitMeter
+          className="px-3 pb-1.5"
+          used={wipUsed}
+          limit={col.wipLimit}
+          label={`Giới hạn WIP của cột ${col.name}`}
+          prefix="WIP"
+          description={wipDescription(wipUsed, col.wipLimit)}
+        />
+      )}
       <div
         className={cn(
           // pt-1.5: chừa chỗ cho đường kẻ chèn phía trên thẻ đầu (-top-[5px]) khỏi bị overflow cắt.

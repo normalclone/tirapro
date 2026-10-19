@@ -50,6 +50,10 @@ import { SprintEditDialog } from './SprintEditDialog';
 import { StartSprintDialog, type StartSprintValues } from './StartSprintDialog';
 import { parseSprintAction, stripSprintAction, type SprintAction } from './sprintAction';
 import { useProjectIssues, useUpdateIssue } from '@/features/issues/api';
+import { useVelocity } from '@/features/reports/api';
+import { useCan } from '@/features/projects/permissions';
+import { sprintCapacityLimit } from '@/components/ui/limitLevel';
+import { LimitMeter } from '@/components/ui/LimitMeter';
 import { useProjectMeta } from '@/features/ai/api';
 import { useProjectLabels, type ProjectLabel } from '@/features/issue-meta/api';
 import { useWorkflows } from '@/features/workflow-settings/api';
@@ -133,6 +137,13 @@ const STATE_BADGE: Record<SprintDto['state'], { label: string; className: string
 const BACKLOG_TIP = 'Việc chờ: danh sách việc chưa xếp vào sprint nào.';
 const SPRINT_TIP = 'Sprint: khoảng thời gian làm việc ngắn, thường 1–2 tuần.';
 
+const SPRINT_CAPACITY_LABELS = {
+  ok: 'dưới velocity TB',
+  warn: 'gần velocity TB',
+  full: 'bằng velocity TB',
+  over: (n: number) => `hơn velocity TB ${n}`,
+};
+
 function pointsSum(issues: IssueDto[]): number {
   return issues.reduce((sum, i) => sum + (i.storyPoints ?? 0), 0);
 }
@@ -154,6 +165,11 @@ export function BacklogPage() {
   const projectId = project?.id;
 
   const sprintsQ = useProjectSprints(projectId);
+  // Sức chứa sprint bản nhẹ = velocity TB (một lần cho cả dự án, không theo từng sprint). Không có quyền xem báo cáo
+  // hoặc chưa có sprint đã đóng → không có giới hạn → ẩn đồng hồ (header vẫn hiện "N việc · P điểm").
+  const canViewReports = useCan(projectId)('report:view');
+  const velocityQ = useVelocity(canViewReports ? projectId : undefined);
+  const sprintCapacity = sprintCapacityLimit(velocityQ.data?.averageCompleted);
   const issuesQ = useProjectIssues(projectId);
   const { data: sprints, isLoading: ls } = sprintsQ;
   const { data: issues, isLoading: li } = issuesQ;
@@ -939,6 +955,15 @@ export function BacklogPage() {
                           ) : undefined
                         }
                         points={pointsSum(sprintIssues)}
+                        capacity={
+                          sprint.state !== 'CLOSED' && sprintCapacity != null
+                            ? {
+                                // Chưa lọc: so cả sprint với velocity (bộ lọc chỉ ẩn dòng, không đổi sức chứa).
+                                used: pointsSum(fullBySprint.get(sprint.id) ?? []),
+                                limit: sprintCapacity,
+                              }
+                            : null
+                        }
                         count={sprintIssues.length}
                         issues={sprintIssues}
                         progressMap={progressMap}
@@ -1344,6 +1369,7 @@ function Section({
   badge,
   meta,
   points,
+  capacity,
   count,
   issues,
   progressMap,
@@ -1374,6 +1400,8 @@ function Section({
   /** Thông tin phụ cạnh nhãn trạng thái (vd khoảng ngày + số ngày còn lại của sprint đang chạy). */
   meta?: React.ReactNode;
   points: number;
+  /** Tổng điểm cả sprint (chưa lọc) so với velocity TB — chỉ sprint chưa đóng; null/undefined = không vẽ đồng hồ. */
+  capacity?: { used: number; limit: number } | null;
   count: number;
   issues: IssueDto[];
   progressMap: Map<string, SubtreeProgress>;
@@ -1469,6 +1497,20 @@ function Section({
         </span>
         {action && <div className="ml-auto">{action}</div>}
       </div>
+
+      {capacity != null && (
+        <div className="px-4 pb-3">
+          <LimitMeter
+            className="max-w-xs"
+            used={capacity.used}
+            limit={capacity.limit}
+            label="Sức chứa sprint"
+            unit="điểm"
+            labels={SPRINT_CAPACITY_LABELS}
+            description="So tổng điểm ước lượng của sprint với velocity trung bình các sprint đã kết thúc gần đây (chỉ để tham khảo, không chặn thêm việc)."
+          />
+        </div>
+      )}
 
       {hint && <p className="px-4 pb-2 text-xs text-muted">{hint}</p>}
 
