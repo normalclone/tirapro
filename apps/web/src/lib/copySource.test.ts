@@ -47,4 +47,21 @@ describe('008 · sao chép dùng chung một cách', () => {
       expect(read(f), f).not.toMatch(/setTimeout\(\(\) => set(Done|Copied)\(false\)/);
     }
   });
+  it('phím y ở chi tiết gọi copyLink qua ref (không đóng băng key cũ trong effect)', () => {
+    const s = read('features/issues/IssueDetailPage.tsx');
+    expect(s).toMatch(/const copyLinkRef = useRef\(copyLink\);\s*copyLinkRef\.current = copyLink;/);
+    expect(s).toContain('copyLinkRef.current()');
+    expect(s).not.toMatch(/e\.key === 'y'[^}]*\bcopyLink\(\)/);
+  });
+  it('"Chép lý do" báo lỗi bằng cùng câu của useCopyToClipboard khi không chép được', () => {
+    const t = read('features/issues/useIssueTransitions.tsx');
+    expect(t).toContain('COPY_FAILED_MESSAGE');
+    expect(t).not.toMatch(/writeClipboard\(text\),/);
+    expect(read('lib/useCopyToClipboard.ts')).toMatch(/export const COPY_FAILED_MESSAGE/);
+  });
+  it('nút # ở chi tiết có vòng focus-visible như nút trong peek', () => {
+    const s = read('features/issues/IssueDetailPage.tsx');
+    const at = s.indexOf('onClick={copyKey}');
+    expect(s.slice(at, at + 700)).toContain('focus-visible:ring-2');
+  });
 });

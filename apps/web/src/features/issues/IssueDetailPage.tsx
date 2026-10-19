@@ -317,7 +317,7 @@ export function IssueDetailPage() {
       }
       if (e.key === 'y' || e.key === 'Y') {
         e.preventDefault();
-        copyLink();
+        copyLinkRef.current();
         return;
       }
       // e = sửa tiêu đề tại chỗ (cùng đường với bấm vào tiêu đề); preventDefault để chữ "e" không lọt vào ô vừa mở.
@@ -352,6 +352,9 @@ export function IssueDetailPage() {
   ]);
 
   const { copyKey, copyLink, keyCopied } = useIssueCopy(issue?.key ?? key);
+  // Bộ nghe phím (effect ở trên) không đăng ký lại khi đổi công việc cùng status/version → đọc copyLink mới nhất qua ref.
+  const copyLinkRef = useRef(copyLink);
+  copyLinkRef.current = copyLink;
 
   const isMine = !!issue && !!me && issue.assigneeId === me.id;
   function assignToMe() {
@@ -516,7 +519,7 @@ export function IssueDetailPage() {
                   onClick={copyKey}
                   title={`Sao chép mã công việc (${key}) để dán vào chat, commit…`}
                   aria-label="Sao chép mã công việc"
-                  className="grid h-6 w-6 shrink-0 place-items-center rounded text-faint transition-colors hover:bg-surface-2 hover:text-ink [@media(pointer:coarse)]:h-9 [@media(pointer:coarse)]:w-9"
+                  className="grid h-6 w-6 shrink-0 place-items-center rounded text-faint transition-colors hover:bg-surface-2 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] [@media(pointer:coarse)]:h-9 [@media(pointer:coarse)]:w-9"
                 >
                   {keyCopied ? (
                     <Check className="h-3.5 w-3.5 text-success" aria-hidden />

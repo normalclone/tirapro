@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { toast } from 'sonner';
 import { writeClipboard } from '@/lib/copyText';
+import { COPY_FAILED_MESSAGE } from '@/lib/useCopyToClipboard';
 import type { IssueDto } from '@tirapro/types';
 import { useProjectMeta } from '@/features/ai/api';
 import { useProjects } from '@/features/projects/api';
@@ -108,7 +109,11 @@ export function useIssueTransitions(issue: IssueDto | undefined) {
               duration: 12000,
               action: {
                 label: 'Chép lý do',
-                onClick: () => void writeClipboard(text),
+                onClick: () => {
+                  void writeClipboard(text).then((ok) => {
+                    if (!ok) toast.error(COPY_FAILED_MESSAGE);
+                  });
+                },
               },
             });
           }
