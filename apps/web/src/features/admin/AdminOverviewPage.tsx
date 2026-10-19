@@ -1,5 +1,7 @@
 import { RefreshCw } from 'lucide-react';
-import { pageContainer } from '@/components/layout/page';
+import { PageFrame } from '@/components/layout/PageFrame';
+import { PageHeader } from '@/components/layout/PageHeader';
+import { Button } from '@/components/ui/Button';
 import { Skeleton } from '@/components/ui/primitives';
 import { QueryError } from '@/components/ui/QueryError';
 import { useAdminOverview } from './api';
@@ -9,27 +11,26 @@ import { ADMIN_LABELS } from '@/lib/navLabels';
 
 export function AdminOverviewPage() {
   const { data, isLoading, isError, error, isFetching, refetch } = useAdminOverview();
+  // Nút chỉ có biểu tượng: nhãn + thời điểm cập nhật nằm ở tooltip (và tên truy cập).
+  const refreshLabel = data ? `Làm mới · ${relTime(data.generatedAt)}` : 'Làm mới';
 
   return (
-    <div className={pageContainer('xl')}>
-      <header className="mb-6 flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">
-            {ADMIN_LABELS.overview}
-          </h1>
-          <p className="mt-1 text-sm text-muted">
-            Sức khoẻ &amp; quy mô toàn hệ thống, cập nhật tự động.
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={() => void refetch()}
-          className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs font-medium text-muted transition-colors hover:bg-surface-2 hover:text-ink"
-        >
-          <RefreshCw className={isFetching ? 'h-3.5 w-3.5 animate-spin' : 'h-3.5 w-3.5'} />
-          {data ? relTime(data.generatedAt) : 'Làm mới'}
-        </button>
-      </header>
+    <PageFrame size="lg">
+      <PageHeader
+        title={ADMIN_LABELS.overview}
+        description="Sức khoẻ & quy mô toàn hệ thống, cập nhật tự động."
+        actions={
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={() => void refetch()}
+            title={refreshLabel}
+            aria-label={refreshLabel}
+          >
+            <RefreshCw className={isFetching ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} />
+          </Button>
+        }
+      />
 
       {isError ? (
         <QueryError error={error} onRetry={() => void refetch()} />
@@ -138,6 +139,6 @@ export function AdminOverviewPage() {
           </section>
         </div>
       )}
-    </div>
+    </PageFrame>
   );
 }

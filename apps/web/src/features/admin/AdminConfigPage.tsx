@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { pageContainer } from '@/components/layout/page';
+import { PageFrame } from '@/components/layout/PageFrame';
+import { PageHeader } from '@/components/layout/PageHeader';
 import { Skeleton } from '@/components/ui/primitives';
 import { QueryError } from '@/components/ui/QueryError';
 import { apiErrorMessage } from '@/lib/api';
@@ -126,32 +127,34 @@ export function AdminConfigPage() {
     description: 'Nội dung banner bảo trì bạn vừa sửa chưa được lưu.',
   });
 
+  const header = (
+    <PageHeader
+      title={ADMIN_LABELS.config}
+      description="Cờ tính năng bật/tắt ngay, không cần triển khai lại. Cấu hình nền lấy từ biến môi trường."
+    />
+  );
+  // Mọi nhánh (lỗi/đang tải/chính) đều có h1 — đúng một h1 mỗi route.
   if (isError) {
     return (
-      <div className={pageContainer('md')}>
+      <PageFrame size="lg">
+        {header}
         <QueryError error={error} onRetry={() => void refetch()} />
-      </div>
+      </PageFrame>
     );
   }
   if (isLoading || !data) {
     return (
-      <div className={pageContainer('md')}>
+      <PageFrame size="lg">
+        {header}
         <Skeleton className="h-96 w-full" />
-      </div>
+      </PageFrame>
     );
   }
 
   const f = data.flags;
   return (
-    <div className={pageContainer('md')}>
-      <header className="mb-6">
-        <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">
-          {ADMIN_LABELS.config}
-        </h1>
-        <p className="mt-1 text-sm text-muted">
-          Cờ tính năng bật/tắt ngay, không cần triển khai lại. Cấu hình nền lấy từ biến môi trường.
-        </p>
-      </header>
+    <PageFrame size="lg">
+      {header}
 
       <div className="space-y-4">
         {/* Feature flags (chỉnh được) */}
@@ -252,6 +255,6 @@ export function AdminConfigPage() {
           </Panel>
         </div>
       </div>
-    </div>
+    </PageFrame>
   );
 }

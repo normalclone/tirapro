@@ -1,5 +1,5 @@
 import { useDeferredValue, useEffect, useMemo, useState, type FormEvent } from 'react';
-import { Check, Copy, Plus, Search, SearchX, ShieldCheck, Users } from 'lucide-react';
+import { Check, Copy, Plus, Search, SearchX, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/stores/auth';
 import { Avatar, Badge, EmptyState, Skeleton } from '@/components/ui/primitives';
@@ -7,7 +7,8 @@ import { Button } from '@/components/ui/Button';
 import { Dialog } from '@/components/ui/Dialog';
 import { Input } from '@/components/ui/Input';
 import { QueryError } from '@/components/ui/QueryError';
-import { pageContainer } from '@/components/layout/page';
+import { PageFrame } from '@/components/layout/PageFrame';
+import { PageHeader } from '@/components/layout/PageHeader';
 import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { ADMIN_LABELS } from '@/lib/navLabels';
@@ -86,27 +87,22 @@ export function AdminUsersPage() {
   }
 
   return (
-    <div className={pageContainer('md')}>
-      <header className="mb-6 flex items-end justify-between gap-3">
-        <div>
-          <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight text-ink-strong">
-            <ShieldCheck className="h-6 w-6 text-primary" /> {ADMIN_LABELS.accounts}
-          </h1>
-          <p className="mt-1 text-sm text-muted">
-            Tạo tài khoản và cấp quyền: được lập không gian làm việc mới, hoặc quản trị toàn hệ
-            thống.
-          </p>
-        </div>
-        <Button
-          size="sm"
-          onClick={() => {
-            setSession((n) => n + 1);
-            setCreateOpen(true);
-          }}
-        >
-          <Plus className="h-4 w-4" /> Tạo tài khoản
-        </Button>
-      </header>
+    <PageFrame size="lg">
+      <PageHeader
+        title={ADMIN_LABELS.accounts}
+        description="Tạo tài khoản và cấp quyền: được lập không gian làm việc mới, hoặc quản trị toàn hệ thống."
+        actions={
+          <Button
+            size="sm"
+            onClick={() => {
+              setSession((n) => n + 1);
+              setCreateOpen(true);
+            }}
+          >
+            <Plus className="h-4 w-4" /> Tạo tài khoản
+          </Button>
+        }
+      />
 
       {isError ? (
         <QueryError error={error} onRetry={() => void refetch()} />
@@ -208,7 +204,7 @@ export function AdminUsersPage() {
       )}
 
       <CreateUserModal key={session} open={createOpen} onClose={() => setCreateOpen(false)} />
-    </div>
+    </PageFrame>
   );
 }
 
