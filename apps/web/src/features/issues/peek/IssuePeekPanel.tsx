@@ -36,6 +36,7 @@ import { IssueSummaryEdit } from '../IssueSummaryEdit';
 import { PeekNavControls } from './PeekNavControls';
 import { usePeekContext } from './PeekOrderContext';
 import { usePeekPosition } from './usePeekPosition';
+import { resolvePendingMore } from '@/lib/peekPosition';
 
 const CATEGORY_COLOR: Record<string, string> = {
   TODO: 'var(--status-todo)',
@@ -63,7 +64,7 @@ export function IssuePeekPanel({
   const { listRef, order } = usePeekContext();
   const position = usePeekPosition(issueKey);
   // "Việc sau" ở dòng cuối phần đã nạp: nạp thêm rồi tự bước khi có dòng mới (khoá việc đang xem lúc bấm).
-  const pendingMore = useRef<string | null>(null);
+  const [awaiting, setAwaiting] = useState<string | null>(null);
 
   // Esc đóng panel (nghe ở `window`, sau `document`): lớp phủ mở → nhường; Esc đã có người dùng (bỏ chọn hàng loạt,
   // huỷ sửa tại chỗ) → bỏ qua; Esc từ ô nhập TRONG panel đang có chữ chưa gửi (bình luận, bước checklist, liên kết…)
@@ -92,7 +93,7 @@ export function IssuePeekPanel({
   // làm gì nếu đã thấy; `scroll-behavior` do CSS reduced-motion quản, không ép cuộn mượt). Tìm TRONG khung danh sách của trang
   // (không phải mọi `[data-issue-key]` của tài liệu). Dòng chưa vẽ (ảo hoá, trang khác) → `reveal` của trang đưa nó vào.
   useEffect(() => {
-    pendingMore.current = null;
+    setAwaiting(null);
     const el = listRef.current?.querySelector<HTMLElement>(
       `[data-issue-key="${CSS.escape(issueKey)}"]`,
     );
@@ -102,15 +103,20 @@ export function IssuePeekPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [issueKey, listRef]);
 
-  // Đã nạp thêm sau "Việc sau" ở cuối: bước sang dòng đầu của phần mới.
+  // Đã nạp thêm sau "Việc sau" ở cuối: bước sang dòng đầu của phần mới; nạp xong mà không thêm dòng (lỗi) → bỏ chờ để lần nạp
+  // thủ công sau đó không tự bước. Chỉ đường bấm "Việc sau" mới đặt `awaiting`.
   useEffect(() => {
-    if (pendingMore.current !== issueKey || !order || !onNavigate) return;
-    const i = order.keys.indexOf(issueKey);
-    const next = i >= 0 ? order.keys[i + 1] : undefined;
-    if (next === undefined) return;
-    pendingMore.current = null;
-    onNavigate(next);
-  }, [order, issueKey, onNavigate]);
+    if (!order || !onNavigate) return;
+    const r = resolvePendingMore(awaiting, {
+      peekKey: issueKey,
+      keys: order.keys,
+      loading: !!order.loadingMore,
+    });
+    if (r.action === 'step') {
+      setAwaiting(null);
+      onNavigate(r.next);
+    } else if (r.action === 'cancel') setAwaiting(null);
+  }, [order, issueKey, onNavigate, awaiting]);
 
   // Focus: mở → vào khung panel; đóng → về dòng đang xem nếu còn trong DOM (dòng ảo hoá đã gỡ thì thôi).
   // Chỉ lúc mount/unmount, không mỗi lần đổi `issueKey`.
@@ -140,11 +146,12 @@ export function IssuePeekPanel({
           onNavigate && (
             <PeekNavControls
               position={position}
+              busyNext={awaiting === issueKey}
               // CÙNG hàm với phím j/k (`useGlobalHotkeys`): đi từ việc đang xem, kẹp ở hai đầu, panel theo qua `onPeek`;
               // trang có thứ tự thật → bước theo nó (kể cả dòng chưa vẽ), cùng khung danh sách.
               onStep={(dir) => {
                 if (dir === 1 && position?.needsLoadMore && order?.loadMore) {
-                  pendingMore.current = issueKey;
+                  setAwaiting(issueKey);
                   order.loadMore();
                   return;
                 }

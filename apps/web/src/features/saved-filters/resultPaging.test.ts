@@ -3,7 +3,9 @@ import type { IssueDto } from '@tirapro/types';
 import {
   RESULTS_PAGE_SIZE,
   appendResults,
+  initialPaging,
   pageOfIndex,
+  pagingReducer,
   resultCountLabel,
   toResultSet,
 } from './resultPaging';
@@ -54,4 +56,28 @@ describe('pageOfIndex — trang (1-based) chứa dòng thứ i của kết quả
     expect(pageOfIndex(99)).toBe(4);
   });
   it('chỉ số âm → trang 1', () => expect(pageOfIndex(-1)).toBe(1));
+});
+
+describe('pagingReducer — trang hiện tại khi kết quả đổi', () => {
+  const active = { kind: 'filter', id: 'f1' };
+  const base = { items: [] };
+  const at = (page: number) => ({ ...initialPaging(active, base), page });
+  it('"Tải thêm" (nguồn + kết quả gốc không đổi, chỉ nối thêm) GIỮ trang hiện tại', () => {
+    expect(pagingReducer(at(2), { type: 'sync', active, base })).toEqual(at(2));
+    expect(pagingReducer(at(3), { type: 'sync', active, base }).page).toBe(3);
+  });
+  it('đổi bộ lọc/nguồn → về trang 1', () => {
+    expect(pagingReducer(at(2), { type: 'sync', active: { ...active }, base }).page).toBe(1);
+  });
+  it('chạy lại / kết quả gốc mới (cùng nguồn) → về trang 1', () => {
+    expect(pagingReducer(at(2), { type: 'sync', active, base: { items: [] } }).page).toBe(1);
+  });
+  it('sync không đổi trả đúng state cũ (không vẽ lại thừa)', () => {
+    const s = at(2);
+    expect(pagingReducer(s, { type: 'sync', active, base })).toBe(s);
+  });
+  it('chuyển trang (Trước/Sau, reveal của xem nhanh) đặt trang, tối thiểu 1', () => {
+    expect(pagingReducer(at(1), { type: 'go', page: 3 }).page).toBe(3);
+    expect(pagingReducer(at(2), { type: 'go', page: 0 }).page).toBe(1);
+  });
 });

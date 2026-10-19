@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { peekAriaLabel, peekCountText, type PeekPosition } from '@/lib/peekPosition';
 
@@ -12,9 +12,12 @@ import { peekAriaLabel, peekCountText, type PeekPosition } from '@/lib/peekPosit
 export function PeekNavControls({
   position,
   onStep,
+  busyNext = false,
 }: {
   position: PeekPosition | null;
   onStep: (dir: 1 | -1) => void;
+  /** "Việc sau" đang nạp thêm kết quả: `aria-busy` + biểu tượng quay, bấm thêm không làm gì (nhưng vẫn là nút, giữ focus). */
+  busyNext?: boolean;
 }) {
   if (!position) return null;
   const step = (dir: 1 | -1, enabled: boolean) => () => {
@@ -50,11 +53,16 @@ export function PeekNavControls({
         aria-label="Việc sau"
         aria-keyshortcuts="j"
         aria-disabled={position.hasNext ? undefined : true}
+        aria-busy={busyNext || undefined}
         title="Việc sau (J)"
-        onClick={step(1, position.hasNext)}
+        onClick={step(1, position.hasNext && !busyNext)}
         className={cls}
       >
-        <ChevronRight className="h-4 w-4" aria-hidden />
+        {busyNext ? (
+          <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden />
+        ) : (
+          <ChevronRight className="h-4 w-4" aria-hidden />
+        )}
       </Button>
     </div>
   );

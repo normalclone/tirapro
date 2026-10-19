@@ -11,6 +11,8 @@ export interface PeekOrder {
   hasMore?: boolean;
   /** Nạp trang kế (có thì "Việc sau" ở dòng cuối nạp thêm rồi bước tiếp). */
   loadMore?: () => void;
+  /** Đang nạp trang kế (để panel biết "Việc sau" ở cuối đang chờ, và nạp xong mà không thêm dòng = thất bại). */
+  loadingMore?: boolean;
   /** Đưa dòng `key` vào DOM/tầm nhìn khi nó chưa được vẽ (cuộn danh sách ảo hoá, sang đúng trang…). */
   reveal?: (key: string) => void;
 }

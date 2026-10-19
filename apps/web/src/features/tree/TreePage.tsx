@@ -27,6 +27,7 @@ import { PeekShell } from '@/features/issues/peek/PeekShell';
 import { useIssuePeek } from '@/features/issues/peek/useIssuePeek';
 import { PEEKED_ROW_CLS, peekedAttrs } from '@/features/issues/peek/peekedRow';
 import { rowPeekProps } from '@/features/issues/peek/rowPeekProps';
+import { COARSE_NO_CALLOUT } from '@/lib/dragTouch';
 import { isModifiedClick } from '@/lib/rowOpen';
 import { flattenVisible, visibleKeys } from './treeOrder';
 
@@ -282,6 +283,9 @@ function TreeRow({
       className={cn(
         GRID_COLS,
         'group cursor-pointer px-3 py-2 transition-colors',
+        // Kéo bằng cảm ứng (nhấn giữ): không chọn chữ / không menu xem trước liên kết của iOS giành mất cử chỉ.
+        'touch-manipulation',
+        COARSE_NO_CALLOUT,
         // Đang xem: nền token không đổi khi rê chuột (hover thường sẽ đè lên).
         peeked ? PEEKED_ROW_CLS : 'hover:bg-surface-2',
         dragging && 'opacity-40',
@@ -323,7 +327,10 @@ function TreeRow({
             e.stopPropagation();
             onOpen(issue.key);
           }}
-          className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-0.5 text-left focus-visible:rounded max-sm:py-1 sm:flex-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+          className={cn(
+            COARSE_NO_CALLOUT,
+            'flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-0.5 text-left focus-visible:rounded max-sm:py-1 sm:flex-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40',
+          )}
           title={issue.summary}
         >
           <span

@@ -1,4 +1,13 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent, type ComponentProps } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+  type FormEvent,
+  type ComponentProps,
+} from 'react';
 import { DocsLink } from '@/components/ui/DocsLink';
 import { useSearchParams } from 'react-router-dom';
 import type { UseQueryResult } from '@tanstack/react-query';
@@ -24,7 +33,13 @@ import { ResultsTable } from './ResultsTable';
 import { PeekShell } from '@/features/issues/peek/PeekShell';
 import { useIssuePeek } from '@/features/issues/peek/useIssuePeek';
 import type { PeekOrder } from '@/features/issues/peek/PeekOrderContext';
-import { appendResults, pageOfIndex, type ResultSet } from './resultPaging';
+import {
+  appendResults,
+  initialPaging,
+  pageOfIndex,
+  pagingReducer,
+  type ResultSet,
+} from './resultPaging';
 import { QueryBuilder } from './QueryBuilder';
 import {
   useCreateFilter,
@@ -84,7 +99,6 @@ export function FiltersPage() {
   // Các trang đã nạp THÊM sau trang đầu ("Tải thêm"); đổi nguồn/chạy lại thì bỏ.
   const [more, setMore] = useState<ResultSet | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [page, setPage] = useState(1);
   const [createOpen, setCreateOpen] = useState(false);
   const [railOpen, setRailOpen] = useState(false);
   // JQL đổ sẵn vào hộp "Tạo bộ lọc" (nút "Lưu truy vấn" cạnh "Chạy JQL"); '' = mở hộp trống.
@@ -112,6 +126,11 @@ export function FiltersPage() {
 
   // Kết quả ad-hoc lấy trực tiếp từ query; kết quả bộ lọc đã lưu giữ trong state.
   const baseResults = active.kind === 'adhoc' ? (adhoc.data ?? null) : results;
+  const [paging, dispatchPaging] = useReducer(pagingReducer, undefined, () =>
+    initialPaging(active, baseResults),
+  );
+  const page = paging.page;
+  const setPage = useCallback((p: number) => dispatchPaging({ type: 'go', page: p }), []);
   // Đổi bộ lọc/chạy lại trong lúc đang "Tải thêm": trang về trễ của nguồn cũ bị bỏ (so `loadSeq`).
   const loadSeq = useRef(0);
   useEffect(() => {
@@ -119,18 +138,17 @@ export function FiltersPage() {
     setMore(null);
     setLoadingMore(false);
   }, [baseResults]);
-  // Memo: `appendResults` dựng đối tượng mới mỗi lần gọi → không memo thì `shownResults` đổi tham chiếu MỖI lần vẽ, effect "về trang 1"
-  // chạy liên tục và sau "Tải thêm" không ở được trang 2+ (cũng làm `reveal` của xem nhanh bị đạp về trang 1).
+  // Memo: `appendResults` dựng đối tượng mới mỗi lần gọi → không memo thì `shownResults` đổi tham chiếu MỖI lần vẽ.
   const shownSet = useMemo(
     () => (baseResults ? (more ? appendResults(baseResults, more) : baseResults) : null),
     [baseResults, more],
   );
   const shownResults: IssueDto[] | null = shownSet?.items ?? null;
 
-  // Đổi nguồn kết quả → về trang 1.
+  // Đổi nguồn hoặc kết quả GỐC (chạy lại) → về trang 1. KHÔNG theo `shownResults`: "Tải thêm" nối vào đó và phải giữ trang.
   useEffect(() => {
-    setPage(1);
-  }, [active, shownResults]);
+    dispatchPaging({ type: 'sync', active, base: baseResults });
+  }, [active, baseResults]);
 
   // `?jql=…` trên URL (vd "Xem tất cả" từ trang chủ) → điền vào ô và chạy ngay; chỉ áp lại khi tham số đổi.
   useEffect(() => {
@@ -209,12 +227,13 @@ export function FiltersPage() {
       keys: peekKeys,
       hasMore,
       loadMore: hasMore ? () => void loadMoreRef.current() : undefined,
+      loadingMore,
       reveal: (key) => {
         const i = peekKeysRef.current.indexOf(key);
         if (i >= 0) setPage(pageOfIndex(i));
       },
     }),
-    [peekKeys, hasMore],
+    [peekKeys, hasMore, loadingMore, setPage],
   );
 
   const isRunning = active.kind === 'adhoc' ? adhoc.isFetching : runFilter.isPending;

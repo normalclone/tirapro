@@ -36,7 +36,6 @@ describe('PeekOrderContext — nối dây', () => {
   });
   it('panel: bước tới cuối phần đã nạp thì gọi loadMore rồi tự bước khi có thêm dòng', () => {
     expect(panel).toContain('order.loadMore()');
-    expect(panel).toContain('pendingMore');
   });
   it('phím j/k lấy thứ tự + khung từ cùng nguồn đã đăng ký', () => {
     expect(hotkeys).toContain('getPeekSource()');
@@ -96,5 +95,40 @@ describe('Việc chờ: thứ tự thật + cuộn ảo hoá', () => {
     expect(bl).toContain('concatKeys(');
     expect(bl).toContain('scrollToIndex(');
     expect(bl).toContain('PeekRevealContext');
+  });
+});
+
+describe('Cây việc — kéo-thả bằng cảm ứng không bị menu xem trước liên kết của iOS chặn', () => {
+  const tree = read('features/tree/TreePage.tsx');
+  const card = read('features/board/Card.tsx');
+  const row = read('features/backlog/IssueRow.tsx');
+  const shared = read('lib/dragTouch.ts');
+  it('hằng dùng chung có select-none + -webkit-touch-callout:none ở con trỏ thô', () => {
+    expect(shared).toContain('[@media(pointer:coarse)]:select-none');
+    expect(shared).toContain('[@media(pointer:coarse)]:[-webkit-touch-callout:none]');
+  });
+  it('Board, Việc chờ và Cây cùng dùng hằng đó; Cây áp cho cả <li> lẫn tiêu đề <Link>', () => {
+    expect(card).toContain('COARSE_NO_CALLOUT');
+    expect(row).toContain('COARSE_NO_CALLOUT');
+    expect(tree.match(/COARSE_NO_CALLOUT/g)!.length).toBeGreaterThanOrEqual(3); // import + li + Link
+    expect(tree).toMatch(/<Link[\s\S]*?COARSE_NO_CALLOUT[\s\S]*?>/);
+  });
+});
+
+describe('Bộ lọc — trang hiện tại chỉ về 1 khi đổi nguồn/kết quả gốc, không khi "Tải thêm"', () => {
+  const page = read('features/saved-filters/FiltersPage.tsx');
+  it('dùng pagingReducer đồng bộ theo [active, baseResults] (không theo shownResults)', () => {
+    expect(page).toContain('pagingReducer');
+    expect(page).toMatch(/type: 'sync'[\s\S]*?\[active, baseResults\]/);
+    expect(page).not.toMatch(/setPage\(1\);\s*\}, \[active, shownResults\]/);
+  });
+});
+
+describe('panel — chờ nạp thêm', () => {
+  const panel = read('features/issues/peek/IssuePeekPanel.tsx');
+  it('dùng resolvePendingMore (huỷ khi nạp xong mà không thêm dòng), busyNext cho nút, chỉ đặt chờ ở đường bấm "Việc sau"', () => {
+    expect(panel).toContain('resolvePendingMore(');
+    expect(panel).toContain('busyNext=');
+    expect(panel.match(/setAwaiting\(issueKey\)/g)!.length).toBe(1);
   });
 });

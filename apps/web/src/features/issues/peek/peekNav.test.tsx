@@ -54,7 +54,14 @@ describe('<PeekNavControls> — ‹ › và "n/N"', () => {
 });
 
 // Gọi thẳng hàm component (không hook) rồi lục cây phần tử để lấy onClick thật của từng nút — chạy đúng guard `step()`.
-type El = { props?: { children?: unknown; onClick?: () => void; 'aria-label'?: string } };
+type El = {
+  props?: {
+    children?: unknown;
+    onClick?: () => void;
+    'aria-label'?: string;
+    'aria-busy'?: boolean;
+  };
+};
 function findButton(node: unknown, name: string): El | null {
   if (!node || typeof node !== 'object') return null;
   if (Array.isArray(node)) {
@@ -85,6 +92,45 @@ describe('guard step() — bấm / Enter trên nút aria-disabled không làm g�
   it('cuối danh sách: "Việc sau" không gọi onStep; "Việc trước" gọi với -1', () => {
     expect(click('A-3', 'Việc sau')).toEqual([]);
     expect(click('A-3', 'Việc trước')).toEqual([-1]);
+  });
+});
+
+describe('nút "Việc sau" khi đang nạp thêm', () => {
+  const tree = (busyNext: boolean) => {
+    const calls: number[] = [];
+    const t = PeekNavControls({
+      position: peekPosition(keys, 'A-3', false, { more: true, canLoadMore: true }),
+      onStep: (d) => calls.push(d),
+      busyNext,
+    });
+    return { t, calls };
+  };
+  it('đang nạp: aria-busy="true" trên "Việc sau" (không trên "Việc trước"), bấm thêm không gọi onStep lần nữa', () => {
+    const { t, calls } = tree(true);
+    expect(findButton(t, 'Việc sau')!.props!['aria-busy']).toBe(true);
+    expect(findButton(t, 'Việc trước')!.props!['aria-busy']).toBeUndefined();
+    findButton(t, 'Việc sau')!.props!.onClick!();
+    expect(calls).toEqual([]);
+  });
+  it('không nạp: không aria-busy, bấm gọi onStep(+1)', () => {
+    const { t, calls } = tree(false);
+    expect(findButton(t, 'Việc sau')!.props!['aria-busy']).toBeUndefined();
+    findButton(t, 'Việc sau')!.props!.onClick!();
+    expect(calls).toEqual([1]);
+  });
+  it('markup có biểu tượng quay (có motion-reduce) khi đang nạp; vẫn là nút (không disabled) để giữ focus', () => {
+    const h = renderToStaticMarkup(
+      <PeekNavControls
+        position={peekPosition(keys, 'A-3', false, { more: true, canLoadMore: true })}
+        onStep={() => undefined}
+        busyNext
+      />,
+    );
+    const b = /<button[^>]*aria-label="Việc sau"[^>]*>/.exec(h)![0];
+    expect(b).toContain('aria-busy="true"');
+    expect(b).not.toMatch(/ disabled[= >]/);
+    expect(h).toContain('animate-spin');
+    expect(h).toContain('motion-reduce:animate-none');
   });
 });
 

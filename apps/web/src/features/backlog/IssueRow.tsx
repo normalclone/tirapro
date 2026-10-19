@@ -22,6 +22,7 @@ import { useDropEdge } from '@/lib/dropHint';
 import { SORT_TRANSITION } from '@/lib/sortableDnd';
 import { sameProgress, type SubtreeProgress } from '@/lib/issueTree';
 import { openOnRowKey, rowRootProps } from '@/lib/rowOpen';
+import { COARSE_NO_CALLOUT } from '@/lib/dragTouch';
 import { rowPeekProps } from '@/features/issues/peek/rowPeekProps';
 import { PEEKED_ROW_CLS, peekedAttrs } from '@/features/issues/peek/peekedRow';
 import { IssueKeyLink } from '@/features/issues/peek/IssueKeyLink';
@@ -134,7 +135,7 @@ export function IssueRowBody({
         'relative flex items-center gap-3 rounded-md border bg-surface px-2.5 py-2 transition-colors',
         readOnly
           ? 'cursor-default'
-          : 'cursor-grab touch-manipulation active:cursor-grabbing [@media(pointer:coarse)]:select-none [@media(pointer:coarse)]:[-webkit-touch-callout:none]',
+          : `cursor-grab touch-manipulation active:cursor-grabbing ${COARSE_NO_CALLOUT}`,
         warn || 'border-transparent hover:border-border',
         'hover:bg-surface-2',
         checked && 'border-primary bg-primary-subtle',

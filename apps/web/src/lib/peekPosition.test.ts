@@ -6,6 +6,7 @@ import {
   peekCountText,
   peekPosition,
   peekedKeyIn,
+  resolvePendingMore,
   sameNavSnapshot,
 } from './peekPosition';
 
@@ -295,5 +296,27 @@ describe('concatKeys — thứ tự thật của trang nhiều khu (sprint… r�
   });
   it('trùng khoá (một việc không thể ở hai khu) chỉ giữ lần đầu', () => {
     expect(concatKeys([[{ key: 'A' }], [{ key: 'A' }, { key: 'B' }]])).toEqual(['A', 'B']);
+  });
+});
+
+describe('resolvePendingMore — tự bước sau khi "Việc sau" nạp thêm', () => {
+  const ks = ['A-1', 'A-2', 'A-3'];
+  const r = (pending: string | null, peekKey: string, keys: readonly string[], loading: boolean) =>
+    resolvePendingMore(pending, { peekKey, keys, loading });
+  it('không chờ gì → không làm gì (nạp thủ công "Tải thêm" KHÔNG tự bước)', () => {
+    expect(r(null, 'A-3', [...ks, 'A-4'], false)).toEqual({ action: 'none' });
+  });
+  it('đang nạp, chưa có dòng mới → chờ', () => {
+    expect(r('A-3', 'A-3', ks, true)).toEqual({ action: 'wait' });
+  });
+  it('có dòng mới sau việc đang xem → bước sang dòng đầu của phần mới', () => {
+    expect(r('A-3', 'A-3', [...ks, 'A-4', 'A-5'], false)).toEqual({ action: 'step', next: 'A-4' });
+  });
+  it('nạp xong mà không thêm dòng nào (lỗi/rỗng) → huỷ chờ, để nạp thủ công sau đó không tự bước', () => {
+    expect(r('A-3', 'A-3', ks, false)).toEqual({ action: 'cancel' });
+  });
+  it('đã sang việc khác (hoặc việc đang xem không còn trong danh sách) → huỷ', () => {
+    expect(r('A-3', 'A-2', ks, true)).toEqual({ action: 'cancel' });
+    expect(r('A-3', 'A-3', ['B-1'], true)).toEqual({ action: 'cancel' });
   });
 });

@@ -93,3 +93,26 @@ export function concatKeys(groups: readonly (readonly { key: string }[])[]): str
       }
   return out;
 }
+
+/**
+ * Sau khi bấm "Việc sau" ở dòng cuối phần đã nạp (panel gọi `loadMore`): quyết định bước tiếp của lúc chờ.
+ * `pending` = khoá việc đang xem lúc bấm (null = không chờ — nạp thủ công "Tải thêm" KHÔNG bao giờ tự bước).
+ * - `step`: đã có dòng mới ngay sau việc đang xem → bước sang đó.
+ * - `wait`: đang nạp, chưa có dòng mới.
+ * - `cancel`: đã sang việc khác / việc không còn trong danh sách / nạp xong mà không thêm dòng nào (lỗi hoặc rỗng) → bỏ chờ.
+ */
+export function resolvePendingMore(
+  pending: string | null,
+  d: { peekKey: string; keys: readonly string[]; loading: boolean },
+):
+  | { action: 'none' }
+  | { action: 'wait' }
+  | { action: 'cancel' }
+  | { action: 'step'; next: string } {
+  if (pending === null) return { action: 'none' };
+  const i = d.keys.indexOf(d.peekKey);
+  if (pending !== d.peekKey || i < 0) return { action: 'cancel' };
+  const next = d.keys[i + 1];
+  if (next !== undefined) return { action: 'step', next };
+  return d.loading ? { action: 'wait' } : { action: 'cancel' };
+}
