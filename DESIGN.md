@@ -140,7 +140,7 @@ Badge/Tag, Tabs, Checkbox, Switch, Toast (sonner-style), Skeleton, Command palet
 
 **Button — vô hiệu:** nền `disabled-bg`, chữ `disabled-fg`, không dùng opacity (ghost/outline: nền trong suốt, chỉ đổi chữ); đang tải giữ màu biến thể + spinner (`aria-busy`). Hover chỉ khi bật. Ô nhập/trigger vô hiệu dùng cùng token + `cursor-not-allowed`. Chip bật/tắt (`aria-pressed`) khi vô hiệu vẫn phải thấy rõ bật hay tắt: nhánh "bật" có kiểu vô hiệu riêng, nhánh "tắt" dùng token.
 
-**Nút Lưu/Tạo — chống bấm đúp:** thao tác tạo bản ghi từ nút hoặc phím tắt (Ctrl/⌘+Enter, giữ phím lặp) bọc bằng `singleFlight(ref, fn)` (`lib/singleFlight.ts`) — `ref` đặt **đồng bộ** nên lần gọi thứ hai trong cùng tick bị bỏ; `isPending` của react-query cập nhật sau một lượt render nên không đủ.
+**Nút Lưu/Tạo — chống bấm đúp:** thao tác tạo bản ghi từ nút hoặc phím tắt (Ctrl/⌘+Enter, giữ phím lặp) bọc bằng `singleFlight(ref, fn)` (`lib/singleFlight.ts`) — `ref` đặt **đồng bộ** nên lần gọi thứ hai trong cùng tick bị bỏ. Dùng ở chỗ chưa có cờ "đang chạy" đồng bộ (cờ `isPending` của react-query chỉ đổi sau một lượt render nên chưa chặn được lần gọi thứ hai).
 
 Đặc tả chủ đạo:
 
