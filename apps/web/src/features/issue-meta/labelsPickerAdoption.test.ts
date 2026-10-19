@@ -43,16 +43,32 @@ describe('IssueLabelsPicker — ô nhãn có màu', () => {
   });
 });
 
-describe('tạo nhãn khi gắn — lạc quan, hoàn lại khi lỗi', () => {
+describe('tạo nhãn khi gắn — nối dây', () => {
   const api = read('features/issue-meta/api.ts');
-  it('useCreateAndAttachLabel vá lạc quan chip tạm, hoàn lại khi lỗi, đồng bộ lại sau cùng', () => {
+  const picker = read('features/issue-meta/IssueLabelsPicker.tsx');
+  it('hook dùng hàm thuần createAndAttachLabel và báo lỗi ở onError của hook (không mất khi huỷ/unmount)', () => {
+    expect(api).toContain("from './createAndAttach'");
+    expect(api).toContain('createAndAttachLabel(');
+    expect(api).toContain('labelCreateErrorMessage');
+    expect(api).toContain("from 'sonner'");
+  });
+  it('hook tự báo lỗi nên đặt meta.silent (toast chung của MutationCache không báo thêm câu chung chung)', () => {
     const i = api.indexOf('export function useCreateAndAttachLabel');
-    expect(i).toBeGreaterThan(0);
-    const body = api.slice(i, i + 3500);
-    expect(body).toContain('patchIssueLabels');
-    expect(body).toMatch(/onError:[^]*undo/);
-    expect(body).toContain('onSettled');
-    expect(body).not.toMatch(/version/);
+    expect(api.slice(i, i + 1500)).toMatch(/meta:\s*\{\s*silent:\s*true\s*\}/);
+  });
+  it('nơi gọi KHÔNG tự bắt lỗi theo từng lần mutate (toast nằm ở hook)', () => {
+    expect(picker).not.toMatch(/createAttach\.mutate\([^)]*onError/s);
+    expect(picker).not.toContain('Chưa tạo được nhãn');
+  });
+  it('vá lạc quan dùng patchIssueLabels và không đụng version', () => {
+    expect(api).toContain('patchIssueLabels');
+  });
+  it('Backspace: bỏ qua phím lặp và khi đang gỡ; có gợi ý nhìn thấy trong popup; vòng báo chờ gỡ khác màu nhãn', () => {
+    expect(picker).toMatch(/repeat: e\.repeat/);
+    expect(picker).toMatch(/busy: detach\.isPending/);
+    expect(picker).toContain('searchHint');
+    expect(picker).toMatch(/ring-ink-strong/);
+    expect(read('components/ui/SearchSelect.tsx')).toMatch(/searchHint\?:/);
   });
 });
 

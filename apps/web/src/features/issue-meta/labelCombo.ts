@@ -32,6 +32,14 @@ interface LabelLike {
   color: string | null;
 }
 
+/**
+ * Tên nhãn gửi lên API: NFC (dấu gõ rời/dựng sẵn như nhau), cắt hai đầu, gộp mọi khoảng trắng liên tiếp thành một dấu cách.
+ * Cùng quan niệm "như nhau" với `labelKey`, nên nhãn sinh ra không bao giờ khác nhãn có sẵn chỉ ở những điểm này.
+ */
+export function normalizeLabelName(name: string): string {
+  return name.normalize('NFC').trim().replace(/\s+/g, ' ');
+}
+
 export type CreateOffer =
   | { kind: 'none' }
   /** Có thể tạo nhãn mới `name` ngay (có quyền + chưa có nhãn trùng). */
@@ -51,7 +59,7 @@ export function createOffer(input: {
   attachedIds: ReadonlySet<string>;
   canCreate: boolean;
 }): CreateOffer {
-  const name = input.q.trim();
+  const name = normalizeLabelName(input.q);
   if (name === '') return { kind: 'none' };
   const key = labelKey(name);
   const same = input.labels.find((l) => labelKey(l.name) === key);
@@ -140,7 +148,15 @@ export interface PendingState {
 }
 
 export type PendingAction =
-  | { type: 'backspace'; query: string; chipIds: readonly string[] }
+  | {
+      type: 'backspace';
+      query: string;
+      chipIds: readonly string[];
+      /** Phím đang giữ lặp (`e.repeat`). */
+      repeat?: boolean;
+      /** Đang gỡ một chip dở (chờ máy chủ). */
+      busy?: boolean;
+    }
   | { type: 'key'; key: string }
   | { type: 'input' }
   | { type: 'close' }
@@ -162,6 +178,8 @@ export function reducePending(
     case 'backspace': {
       if (action.query !== '' || action.chipIds.length === 0)
         return { state: idle, remove: null, handled: false };
+      // Giữ phím / đang gỡ dở: nuốt phím để không gỡ liên tiếp (DELETE đôi, toast đôi); trạng thái giữ nguyên.
+      if (action.repeat || action.busy) return { state, remove: null, handled: true };
       const pending = state.pendingId;
       if (pending !== null && action.chipIds.includes(pending))
         return { state: idle, remove: pending, handled: true };

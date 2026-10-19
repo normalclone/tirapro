@@ -116,6 +116,8 @@ interface SearchSelectControlProps {
   onSearchKeyDown?: (e: KeyboardEvent<HTMLElement>, q: string) => void;
   /** Báo mở/đóng danh sách. */
   onOpenChange?: (open: boolean) => void;
+  /** Dòng gợi ý ngắn nhìn thấy ngay dưới ô tìm (không thuộc listbox, ẩn với trình đọc màn hình — nơi dùng tự báo qua vùng status). */
+  searchHint?: string;
 }
 
 function SearchSelectControl({
@@ -139,6 +141,7 @@ function SearchSelectControl({
   pinnedOptions,
   onSearchKeyDown,
   onOpenChange,
+  searchHint,
 }: SearchSelectControlProps) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
@@ -238,6 +241,14 @@ function SearchSelectControl({
               }}
               onCompositionEnd={composed.onCompositionEnd}
             />
+          )}
+          {searchHint && (
+            <p
+              aria-hidden="true"
+              className="border-b border-border bg-surface-2 px-3 py-1 text-xs text-muted"
+            >
+              {searchHint}
+            </p>
           )}
           <ul
             ref={listRef}

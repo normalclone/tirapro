@@ -25,6 +25,31 @@ const TEMP_PREFIX = 'tmp-label-';
 const IDLE: PendingState = { pendingId: null };
 
 /**
+ * Trạng thái "chip chờ gỡ" (Backspace lần 1) quanh `reducePending`: ref giữ giá trị mới nhất cho các phím liên tiếp
+ * trước khi kịp vẽ lại; tự bỏ đánh dấu khi chip đó biến mất (gỡ xong/lỗi/gỡ từ nơi khác).
+ */
+function usePendingRemoval(chipIds: readonly string[]) {
+  const [pending, setPendingState] = useState<PendingState>(IDLE);
+  const ref = useRef(IDLE);
+  const set = (p: PendingState) => {
+    ref.current = p;
+    setPendingState(p);
+  };
+  const chipKey = chipIds.join(',');
+  useEffect(() => {
+    const r = reducePending(ref.current, { type: 'chips', chipIds });
+    if (r.state !== ref.current) set(r.state);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- chỉ khi tập chip đổi
+  }, [chipKey]);
+  function dispatch(action: PendingAction) {
+    const r = reducePending(ref.current, action);
+    if (r.state.pendingId !== ref.current.pendingId) set(r.state);
+    return r;
+  }
+  return { pending, dispatch };
+}
+
+/**
  * Ô nhãn cho chi tiết issue: chip màu (tông `labelToneStyle`, chữ ≥ 4.5:1 ở cả hai giao diện) có thể gỡ, và nút "+ Nhãn" mở
  * ô chọn có tìm kiếm (dựng trên `SearchSelect`: combobox + listbox + `aria-activedescendant`).
  * - Gõ để lọc; Enter chọn mục đang trỏ (nhãn trùng tên chính xác đứng đầu). KHÔNG bao giờ tạo nhãn trùng tên chỉ khác
@@ -42,35 +67,16 @@ export function IssueLabelsPicker({ issue, inline }: { issue: IssueDto; inline?:
   const createAttach = useCreateAndAttachLabel(issue);
 
   const [q, setQ] = useState('');
-  const [pending, setPendingState] = useState<PendingState>(IDLE);
-  const pendingRef = useRef(IDLE);
-  const setPending = (p: PendingState) => {
-    pendingRef.current = p;
-    setPendingState(p);
-  };
+  const removableIds = issue.labels.map((l) => l.id).filter((id) => !id.startsWith(TEMP_PREFIX));
+  const { pending, dispatch } = usePendingRemoval(removableIds);
 
   const labels = projectLabels ?? [];
   const attachedIds = new Set(issue.labels.map((l) => l.id));
-  const removableIds = issue.labels.map((l) => l.id).filter((id) => !id.startsWith(TEMP_PREFIX));
   const offer = createOffer({ q, labels, attachedIds, canCreate });
   const options = labelOptions(labels, attachedIds, q);
   const pinned: SearchSelectOption[] = (
     q.trim() === '' ? emptyRows(labels.length, options.length, canCreate) : pinnedRows(offer)
   ).map((o) => (o.value === CREATE_VALUE ? { ...o, icon: <Plus className="h-3.5 w-3.5" /> } : o));
-
-  // Chip đang chờ gỡ biến mất (gỡ xong/lỗi) → bỏ đánh dấu.
-  const chipKey = removableIds.join(',');
-  useEffect(() => {
-    const r = reducePending(pendingRef.current, { type: 'chips', chipIds: removableIds });
-    if (r.state !== pendingRef.current) setPending(r.state);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- chỉ khi tập chip đổi
-  }, [chipKey]);
-
-  function dispatch(action: PendingAction) {
-    const r = reducePending(pendingRef.current, action);
-    if (r.state.pendingId !== pendingRef.current.pendingId) setPending(r.state);
-    return r;
-  }
 
   async function onAttach(labelId: string) {
     try {
@@ -96,16 +102,20 @@ export function IssueLabelsPicker({ issue, inline }: { issue: IssueDto; inline?:
       return;
     }
     if (offer.kind !== 'create') return;
-    createAttach.mutate(
-      { name: offer.name, color: nextLabelColor(labels) },
-      { onError: (e) => toast.error(`Chưa tạo được nhãn “${offer.name}”: ${apiErrorMessage(e)}`) },
-    );
+    // Lỗi + hoàn lại do `useCreateAndAttachLabel` xử lý ở cấp hook (không mất khi lần gọi bị thay thế/panel unmount).
+    createAttach.mutate({ name: offer.name, color: nextLabelColor(labels) });
   }
 
   function onSearchKeyDown(e: KeyboardEvent<HTMLElement>, query: string) {
     const r = dispatch(
       e.key === 'Backspace'
-        ? { type: 'backspace', query, chipIds: removableIds }
+        ? {
+            type: 'backspace',
+            query,
+            chipIds: removableIds,
+            repeat: e.repeat,
+            busy: detach.isPending,
+          }
         : { type: 'key', key: e.key },
     );
     if (r.handled) e.preventDefault();
@@ -133,7 +143,8 @@ export function IssueLabelsPicker({ issue, inline }: { issue: IssueDto; inline?:
                 'inline-flex items-center gap-1 rounded-full py-0.5 pl-2 text-xs font-medium [@media(pointer:coarse)]:min-h-11',
                 canEdit ? 'pr-1' : 'pr-2',
                 temp && 'opacity-70',
-                marked && 'ring-2 ring-danger ring-offset-1 ring-offset-bg',
+                // Vòng trung tính (ink) dày + khe hở: vẫn rõ trên chip đỏ/cam (không đỏ-trên-đỏ).
+                marked && 'ring-[3px] ring-ink-strong ring-offset-2 ring-offset-bg',
               )}
               style={labelToneStyle(label.color)}
             >
@@ -172,6 +183,7 @@ export function IssueLabelsPicker({ issue, inline }: { issue: IssueDto; inline?:
               dispatch({ type: 'input' });
             }}
             onSearchKeyDown={onSearchKeyDown}
+            searchHint={pendingName ? `Nhấn Backspace lần nữa để gỡ “${pendingName}”` : undefined}
             onOpenChange={(o) => {
               if (!o) dispatch({ type: 'close' });
             }}

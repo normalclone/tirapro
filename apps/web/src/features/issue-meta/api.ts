@@ -1,9 +1,11 @@
 import { skipToken, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { IssueDto } from '@tirapro/types';
-import { api } from '@/lib/api';
+import { api, apiErrorMessage } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
 import { patchIssueLabels, patchIssueSets } from './patchIssueSets';
-import { labelKey } from './labelCombo';
+import { toast } from 'sonner';
+import { createAndAttachLabel, labelCreateErrorMessage } from './createAndAttach';
+import { normalizeLabelName } from './labelCombo';
 import { withComponent, withoutComponent, withVersion, withoutVersion } from './issueSets';
 
 /** Nhãn / thành phần / phiên bản ở cấp dự án — cho picker trong chi tiết issue. */
@@ -97,23 +99,19 @@ export function useCreateAndAttachLabel(issue: IssueDto) {
     void qc.invalidateQueries({ queryKey: keys.projectMeta.all(issue.projectId) });
   };
   return useMutation({
-    mutationFn: async (v: { name: string; color: string }): Promise<ProjectLabel> => {
-      let label: ProjectLabel;
-      try {
-        label = (await api.post<ProjectLabel>(`/projects/${issue.projectId}/labels`, v)).data;
-      } catch (e) {
-        // Trùng tên (người khác vừa tạo): dùng nhãn có sẵn; không tìm thấy thì báo lỗi gốc.
-        const list = await api
-          .get<ProjectLabel[]>(`/projects/${issue.projectId}/labels`)
-          .then((r) => r.data)
-          .catch(() => null);
-        const found = list?.find((l) => labelKey(l.name) === labelKey(v.name));
-        if (!found) throw e;
-        label = found;
-      }
-      await api.post(`/issues/${issue.id}/labels`, { labelId: label.id });
-      return label;
-    },
+    // Tự báo lỗi theo giai đoạn ở `onError` bên dưới; không để toast chung của MutationCache báo thêm câu khác.
+    meta: { silent: true },
+    mutationFn: (v: { name: string; color: string }): Promise<ProjectLabel> =>
+      createAndAttachLabel(
+        {
+          createLabel: async (body) =>
+            (await api.post<ProjectLabel>(`/projects/${issue.projectId}/labels`, body)).data,
+          listLabels: async () =>
+            (await api.get<ProjectLabel[]>(`/projects/${issue.projectId}/labels`)).data,
+          attach: (labelId) => api.post(`/issues/${issue.id}/labels`, { labelId }),
+        },
+        v,
+      ),
     onMutate: async (v) => {
       await cancelIssueQueries(qc, issue);
       const tempId = `tmp-label-${++tempLabelSeq}`;
@@ -147,7 +145,12 @@ export function useCreateAndAttachLabel(issue: IssueDto) {
         (i) => ({ labels: i.labels.filter((l) => l.id !== label.id) }),
       );
     },
-    onError: (_e, _v, ctx) => ctx?.undo(),
+    // Toast ở cấp hook (không phải `mutate(…, { onError })` theo từng lần gọi): vẫn chạy khi lần gọi bị thay thế hoặc panel
+    // đã unmount. Nhãn có thể đã được tạo dù bước gắn lỗi — `sync` nạp lại danh sách nhãn nên nó vẫn nằm trong danh sách.
+    onError: (e, v, ctx) => {
+      ctx?.undo();
+      toast.error(labelCreateErrorMessage(e, normalizeLabelName(v.name), apiErrorMessage));
+    },
     onSettled: sync,
   });
 }

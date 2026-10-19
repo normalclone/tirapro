@@ -8,6 +8,7 @@ import {
   labelKey,
   labelOptions,
   nextLabelColor,
+  normalizeLabelName,
   pendingAnnouncement,
   pinnedRows,
   reducePending,
@@ -30,6 +31,19 @@ describe('labelKey — so tên không phân biệt hoa/thường và dấu', () 
   });
 });
 
+describe('normalizeLabelName', () => {
+  it('NFC, cắt hai đầu, gộp khoảng trắng liên tiếp (kể cả tab/xuống dòng)', () => {
+    expect(normalizeLabelName('  Ca\u0302n   xem\t\nlại ')).toBe('C\u00e2n xem lại');
+    expect(normalizeLabelName('e\u0301')).toBe('\u00e9');
+  });
+  it('không đổi hoa/thường, dấu gạch nối', () => {
+    expect(normalizeLabelName('Tech-Debt')).toBe('Tech-Debt');
+  });
+  it('khớp với labelKey: sau chuẩn hoá hai tên "như nhau" có cùng khoá', () => {
+    expect(labelKey(normalizeLabelName(' a   b '))).toBe(labelKey('a b'));
+  });
+});
+
 describe('createOffer', () => {
   const base = { labels, attachedIds: new Set<string>(), canCreate: true };
   it('ô trống → none', () => {
@@ -37,6 +51,16 @@ describe('createOffer', () => {
   });
   it('chưa có nhãn trùng + có quyền → create với tên đã cắt khoảng trắng', () => {
     expect(createOffer({ ...base, q: '  mới  ' })).toEqual({ kind: 'create', name: 'mới' });
+  });
+  it('tên tạo đã chuẩn hoá (NFC + gộp khoảng trắng) và đo độ dài sau chuẩn hoá', () => {
+    expect(createOffer({ ...base, q: '  mới   nhãn ' })).toEqual({
+      kind: 'create',
+      name: 'mới nhãn',
+    });
+    const spaced = `${'x'.repeat(LABEL_NAME_MAX - 1)}     y`; // dài hơn 50 trước khi gộp, đúng 51 sau — vẫn quá dài
+    expect(createOffer({ ...base, q: spaced }).kind).toBe('tooLong');
+    const fits = `${'x'.repeat(LABEL_NAME_MAX - 2)}       y`; // 50 sau khi gộp
+    expect(createOffer({ ...base, q: fits }).kind).toBe('create');
   });
   it('trùng chỉ khác hoa/thường hoặc dấu → exists (KHÔNG tạo trùng), kể cả khi không có quyền', () => {
     for (const q of ['BACKEND', 'can xem lai', 'Cần XEM lại']) {
@@ -176,6 +200,24 @@ describe('reducePending — Backspace hai lần gỡ chip cuối', () => {
     const r = reducePending({ pendingId: 'c' }, { type: 'backspace', query: 'ab', chipIds: chips });
     expect(r.state).toEqual(none);
     expect(r.remove).toBeNull();
+    expect(r.handled).toBe(false);
+  });
+  it('giữ phím (e.repeat) hoặc đang gỡ dở: nuốt phím, KHÔNG đổi trạng thái, KHÔNG gỡ thêm', () => {
+    for (const extra of [{ repeat: true }, { busy: true }]) {
+      const marked = reducePending(
+        { pendingId: 'c' },
+        { type: 'backspace', query: '', chipIds: chips, ...extra },
+      );
+      expect(marked.state).toEqual({ pendingId: 'c' });
+      expect(marked.remove).toBeNull();
+      expect(marked.handled).toBe(true);
+      const idle = reducePending(none, { type: 'backspace', query: '', chipIds: chips, ...extra });
+      expect(idle.state).toEqual(none);
+      expect(idle.remove).toBeNull();
+    }
+  });
+  it('ô có chữ: giữ Backspace để xoá chữ KHÔNG bị nuốt', () => {
+    const r = reducePending(none, { type: 'backspace', query: 'ab', chipIds: chips, repeat: true });
     expect(r.handled).toBe(false);
   });
   it('không có chip nào: Backspace không làm gì', () => {
