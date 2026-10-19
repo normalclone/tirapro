@@ -26,7 +26,8 @@ export type RadioCardLabel =
  * Nhóm thẻ chọn MỘT trong vài lựa chọn có mô tả (mẫu dự án, nơi chuyển việc, phạm vi chia sẻ…). Cùng quy ước với
  * `SegmentedControl`: radiogroup, roving tabindex (một điểm dừng Tab = mục đang chọn; `value=null` → mục bật đầu tiên),
  * mũi tên/Home/End chuyển chọn và bỏ qua mục tắt, chỉ phát `onChange` khi chọn mục KHÁC.
- * - Cả thẻ là nút bấm (`role="radio"`); mô tả nối qua `aria-describedby`; `children` hiện dưới thẻ khi được chọn.
+ * - Cả thẻ là nút bấm (`role="radio"`); tên = CHỈ nhãn (`aria-labelledby`), mô tả nối riêng qua `aria-describedby` (không
+ *   đọc hai lần); `meta` là phần phụ nhìn thấy, không vào tên lẫn mô tả; `children` hiện dưới thẻ khi được chọn.
  * - Chọn không chỉ bằng màu: chấm radio đặc + viền/nền token primary. Không side-stripe.
  * - `invalid` như `Input`: `true` → aria-invalid + viền danger; chuỗi → thêm lời lỗi dưới nhóm (id `<id>-error`).
  * - `size="sm"` cho danh sách dày (đệm nhỏ); dưới `sm`/cảm ứng mỗi thẻ cao ≥ 44px. Thẻ luôn xếp một cột.
@@ -79,6 +80,7 @@ export function RadioCard<T extends string>({
         {options.map((o, i) => {
           const active = o.value === value;
           const off = isOff(o);
+          const labelId = `${base}-${i}-label`;
           const descId = o.description ? `${base}-${i}-desc` : undefined;
           return (
             <div
@@ -97,6 +99,7 @@ export function RadioCard<T extends string>({
                 type="button"
                 role="radio"
                 aria-checked={active}
+                aria-labelledby={labelId}
                 aria-describedby={descId}
                 aria-disabled={off ? 'true' : undefined}
                 disabled={off}
@@ -126,7 +129,9 @@ export function RadioCard<T extends string>({
                   </span>
                 )}
                 <span className="min-w-0 flex-1">
-                  <span className="block text-sm font-medium text-ink">{o.label}</span>
+                  <span id={labelId} className="block text-sm font-medium text-ink">
+                    {o.label}
+                  </span>
                   {o.description && (
                     <span id={descId} className="block text-xs text-muted">
                       {o.description}

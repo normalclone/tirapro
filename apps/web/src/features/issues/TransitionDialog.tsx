@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 import type { KeyboardEvent } from 'react';
 import { CheckCircle2, RotateCcw, Undo2 } from 'lucide-react';
 import { RadioCard } from '@/components/ui/RadioCard';
@@ -64,6 +64,7 @@ export function TransitionDialog({
   const isClose = kind === 'close';
   const [resolutionId, setResolutionId] = useState<string | null>(defaultResolutionId);
   const [comment, setComment] = useState('');
+  const resolutionLabelId = useId();
   const body = useRef<HTMLDivElement>(null);
   const people = useAssigneeOptions(projectId);
 
@@ -125,12 +126,12 @@ export function TransitionDialog({
       <div ref={body} onKeyDown={onKeyDown} className="flex flex-col gap-3">
         {isClose && resolutions.length > 0 && (
           <div>
-            <p id="tr-resolution-label" className="mb-1.5 text-sm font-medium text-ink">
+            <p id={resolutionLabelId} className="mb-1.5 text-sm font-medium text-ink">
               Cách giải quyết
             </p>
             <RadioCard
               size="sm"
-              ariaLabelledby="tr-resolution-label"
+              ariaLabelledby={resolutionLabelId}
               value={resolutionId}
               onChange={setResolutionId}
               options={resolutions.map((r) => ({

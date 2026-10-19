@@ -172,3 +172,45 @@ describe('015b · thay các khối lặp bằng RadioCard', () => {
     expect(read('features/issues/WorklogPanel.tsx')).toContain('type="radio"');
   });
 });
+
+describe('RadioCard — tên truy cập không lặp mô tả', () => {
+  const withMeta: RadioCardOption<K>[] = [
+    { value: 'a', label: 'Mục A', description: 'Mô tả A', meta: <span>CHIP-BƯỚC</span> },
+    { value: 'b', label: 'Mục B' },
+  ];
+  const h = renderToStaticMarkup(
+    <RadioCard<K> value="a" onChange={() => undefined} options={withMeta} ariaLabel="x" id="g" />,
+  );
+  const radios = [...h.matchAll(/<button[^>]*role="radio"[^>]*>/g)].map((m) => m[0]);
+  const attr = (tag: string, name: string) => new RegExp(` ${name}="([^"]*)"`).exec(tag)?.[1];
+
+  it('aria-labelledby trỏ tới span nhãn (chỉ chứa nhãn), không phải toàn bộ nội dung nút', () => {
+    const lab = attr(radios[0]!, 'aria-labelledby');
+    expect(lab).toBeTruthy();
+    expect(h).toMatch(new RegExp(`<span id="${lab}"[^>]*>Mục A</span>`));
+    // mục không mô tả cũng có tên từ nhãn
+    expect(attr(radios[1]!, 'aria-labelledby')).toBeTruthy();
+  });
+  it('mô tả nằm ở aria-describedby (id khác id nhãn); meta KHÔNG nằm trong tên lẫn mô tả', () => {
+    const lab = attr(radios[0]!, 'aria-labelledby')!;
+    const desc = attr(radios[0]!, 'aria-describedby')!;
+    expect(desc).toBeTruthy();
+    expect(desc).not.toBe(lab);
+    expect(desc.split(' ')).toHaveLength(1);
+    expect(h).toMatch(new RegExp(`<span id="${desc}"[^>]*>Mô tả A</span>`));
+    expect(h).not.toMatch(new RegExp(`id="[^"]*"[^>]*>[^<]*CHIP-BƯỚC`));
+    expect(attr(radios[1]!, 'aria-describedby')).toBeUndefined();
+  });
+  it('id nhãn theo useId, riêng từng thẻ', () => {
+    expect(attr(radios[0]!, 'aria-labelledby')).not.toBe(attr(radios[1]!, 'aria-labelledby'));
+    expect(src()).toContain('-label`');
+  });
+});
+
+describe('TransitionDialog — id nhãn nhóm', () => {
+  it('dùng useId, không hard-code', () => {
+    const t = read('features/issues/TransitionDialog.tsx');
+    expect(t).not.toContain('"tr-resolution-label"');
+    expect(t).toContain('useId');
+  });
+});
