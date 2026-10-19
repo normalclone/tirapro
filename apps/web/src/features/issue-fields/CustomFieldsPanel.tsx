@@ -382,10 +382,10 @@ function MultiSelectField({
             onClick={() => toggle(o.id)}
             className={cn(
               'rounded-full border px-2.5 py-0.5 text-xs transition-colors',
-              'disabled:cursor-not-allowed disabled:border-transparent disabled:bg-disabled-bg disabled:text-disabled-fg',
+              // Chip bật/tắt: khi vô hiệu (đang lưu) nhánh "bật" vẫn phải nhìn ra là đang chọn → màu chính nhạt, không dùng token xám.
               on
-                ? 'border-primary bg-primary text-primary-fg'
-                : 'border-border bg-surface text-muted hover:bg-surface-2',
+                ? 'border-primary bg-primary text-primary-fg disabled:cursor-not-allowed disabled:border-transparent disabled:bg-primary/50 disabled:text-primary-fg'
+                : 'border-border bg-surface text-muted hover:bg-surface-2 disabled:cursor-not-allowed disabled:border-transparent disabled:bg-disabled-bg disabled:text-disabled-fg',
             )}
           >
             {o.value}

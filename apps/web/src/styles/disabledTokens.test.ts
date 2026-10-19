@@ -101,6 +101,26 @@ describe('disabled:opacity- ngoài primitive', () => {
     expect(lines).toHaveLength(1);
     expect(lines[0]).toMatch(/type="checkbox"|accent-\[var\(--primary\)\]/);
   });
+  it('chip bật/tắt (aria-pressed): nhánh "bật" có dáng vô hiệu riêng, nhánh "tắt" mới dùng token xám (RA3)', () => {
+    for (const [p, onRe] of [
+      [
+        'features/issue-fields/CustomFieldsPanel.tsx',
+        /on\s*\?\s*'[^']*disabled:bg-primary\/50[^']*disabled:text-primary-fg[^']*'/,
+      ],
+      [
+        'features/backlog/StartSprintDialog.tsx',
+        /active\s*\?\s*'[^']*disabled:border-primary\/40[^']*disabled:text-primary\/60[^']*'/,
+      ],
+    ] as const) {
+      const code = src(p);
+      expect(code, p).toMatch(onRe);
+      // nhánh "bật" không bị token xám đè (twMerge lấy class cuối) và token xám nằm ở nhánh "tắt"
+      const m = /(?:on|active)\s*\?\s*'([^']*)'\s*:\s*'([^']*)'/.exec(code)!;
+      expect(m[1], p).not.toMatch(/disabled:bg-disabled-bg/);
+      expect(m[2], p).toMatch(/disabled:bg-disabled-bg/);
+      expect(m[2], p).toMatch(/disabled:text-disabled-fg/);
+    }
+  });
   it('ô/nút/chip tự viết đã chuyển có đủ token vô hiệu', () => {
     for (const p of CONVERTED)
       expect(src(p), p).toMatch(/disabled[:_]\S*(bg-disabled-bg|text-disabled-fg)/);

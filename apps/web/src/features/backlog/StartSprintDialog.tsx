@@ -214,10 +214,10 @@ function DurationChips({
             onClick={() => onPick(n)}
             className={cn(
               'rounded-full border px-2.5 py-0.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
-              'disabled:cursor-not-allowed disabled:border-transparent disabled:bg-disabled-bg disabled:text-disabled-fg',
+              // Chip bật/tắt: nhánh "bật" khi vô hiệu giữ nền nhạt + viền/chữ chính mờ để vẫn thấy đang chọn.
               active
-                ? 'border-primary bg-primary-subtle text-primary'
-                : 'border-border text-muted hover:bg-surface-2 hover:text-ink',
+                ? 'border-primary bg-primary-subtle text-primary disabled:cursor-not-allowed disabled:border-primary/40 disabled:text-primary/60'
+                : 'border-border text-muted hover:bg-surface-2 hover:text-ink disabled:cursor-not-allowed disabled:border-transparent disabled:bg-disabled-bg disabled:text-disabled-fg',
             )}
           >
             {n} tuần
