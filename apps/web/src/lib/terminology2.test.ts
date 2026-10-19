@@ -356,10 +356,9 @@ describe('dọn kỹ thuật đợt 2A (Task 6)', () => {
     ).toEqual([]);
   });
   it('BulkDock không còn lớp margin chết (cha `space-y-4` ghi đè mb-*)', () => {
-    const region = /aria-label="Thao tác hàng loạt"[\s\S]*?className=\{cn\(([\s\S]*?)\)\}/.exec(
-      src('features/bulk/BulkDock.tsx'),
-    )![1]!;
-    expect(region).not.toMatch(/\bmb-|lg:mb-/);
+    // Biến thể dính đáy (Việc chờ) nằm trong `STICKY_CLS`; biến thể `docked` của Bảng việc không có cha space-y nên được có mb-*.
+    const sticky = /const STICKY_CLS = '([^']*)'/.exec(src('features/bulk/BulkDock.tsx'))![1]!;
+    expect(sticky).not.toMatch(/\bmb-|lg:mb-/);
   });
   it('router: p/:key có route con `*` (404 giữ khung dự án); NotFoundPage nhận biết dự án', () => {
     const router = src('app/router.tsx');

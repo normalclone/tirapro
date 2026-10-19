@@ -181,7 +181,9 @@ describe('nối vào Bảng việc (đọc source)', () => {
   const page = read('BoardPage.tsx');
   it('nút Hiển thị nằm trong ToolbarStrip; context bọc BoardDnd (DragOverlay cũng nhận cùng tuỳ chọn)', () => {
     expect(page).toContain('<CardDisplayPopover');
-    expect(page).toMatch(/<CardDisplayContext\.Provider[^>]*>\s*<BoardDnd/);
+    expect(page).toMatch(
+      /<CardDisplayContext\.Provider[^>]*>\s*(<BulkSelectionContext\.Provider[^>]*>\s*)?<BoardDnd/,
+    );
     expect(page.indexOf('<CardDisplayPopover')).toBeGreaterThan(page.indexOf('<ToolbarStrip'));
     expect(page.indexOf('<CardDisplayPopover')).toBeLessThan(page.indexOf('</ToolbarStrip>'));
   });

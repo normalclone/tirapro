@@ -28,6 +28,13 @@ import { PEEKED_ROW_CLS, peekedAttrs } from '@/features/issues/peek/peekedRow';
 import { IssueKeyLink } from '@/features/issues/peek/IssueKeyLink';
 import { labelToneStyle } from '@/lib/labelPalette';
 import { IssueContextMenu, IssueRowMenuButton } from '@/features/issues/menu/IssueContextMenu';
+import {
+  BulkSelectionContext,
+  useHasSelection,
+  useIsSelected,
+} from '@/features/bulk/bulkSelectionContext';
+import { SelectCheckbox } from '@/features/bulk/SelectCheckbox';
+import { selectGesture } from '@/features/bulk/selectGesture';
 import { cardLayout, type CardDisplay } from './cardDisplay';
 import { CardDisplayContext } from './cardDisplayContext';
 
@@ -95,6 +102,8 @@ export function CardBody({
   peeked,
   display,
   menu,
+  selectBox,
+  selected,
 }: {
   issue: IssueDto;
   progress?: SubtreeProgress;
@@ -116,6 +125,10 @@ export function CardBody({
   display?: CardDisplay;
   /** Nút "…" (menu công việc) trong hàng mã; bản overlay/xem trước không truyền. */
   menu?: ReactNode;
+  /** Ô chọn nhiều ở góc trên-trái (chỉ thẻ thật); bản overlay/xem trước không truyền. */
+  selectBox?: ReactNode;
+  /** Thẻ đang được chọn (viền + nền `primary`; ô chọn đã cho biết trạng thái nên không chỉ dựa vào màu). */
+  selected?: boolean;
 }) {
   const fromContext = useContext(CardDisplayContext);
   const { fields } = display ?? fromContext;
@@ -134,13 +147,14 @@ export function CardBody({
         canDrag
           ? `cursor-grab touch-manipulation active:cursor-grabbing ${COARSE_NO_CALLOUT}`
           : 'cursor-pointer',
-        dueBorderClass(issue) || 'border-border',
+        selected ? 'border-primary bg-primary-subtle' : dueBorderClass(issue) || 'border-border',
         'hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
         isDragging && 'opacity-40',
         peeked && PEEKED_ROW_CLS,
         overlay && 'shadow-lg',
       )}
     >
+      {selectBox}
       <div className={cn(layout.gap, 'flex items-center gap-2')}>
         <IssueTypeBadge name={issue.type.name} color={issue.type.color} />
         <div className="ml-auto flex items-center gap-2">
@@ -258,6 +272,10 @@ export const Card = memo(
       attributes: { roleDescription: canDrag ? 'thẻ việc có thể kéo' : 'thẻ việc' },
     });
     const dropEdge = useDropEdge(issue.id);
+    // Chọn nhiều: kho nằm trong context ổn định; thẻ chỉ đăng ký "mình có được chọn không" nên đổi lựa chọn không vẽ lại cả bảng.
+    const bulk = useContext(BulkSelectionContext);
+    const selected = useIsSelected(bulk?.store, issue.id);
+    const selecting = useHasSelection(bulk?.store);
     const style: CSSProperties = {
       transform: transform
         ? `translate3d(${Math.round(transform.x)}px, ${Math.round(transform.y)}px, 0)`
@@ -286,11 +304,39 @@ export const Card = memo(
         focusCard(laneIdx, colIdx + dc, 0);
     }
 
+    /** Shift+click = chọn dải, Cmd/Ctrl+click = bật/tắt thẻ (không trên link mã); click thường vẫn mở xem nhanh. */
+    function onClickCapture(e: React.MouseEvent<HTMLDivElement>) {
+      const t = e.target as Element;
+      if (!bulk || !e.currentTarget.contains(t) || t.closest('[data-no-peek], button')) return;
+      const act = selectGesture(e, !!t.closest('a'));
+      if (!act) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (act === 'range') bulk.range(issue.id);
+      else bulk.toggle(issue.id);
+    }
+    /** Shift+mousedown không được bôi đen chữ (chọn dải); không đụng dnd (nghe pointerdown). */
+    function onMouseDownCapture(e: React.MouseEvent<HTMLDivElement>) {
+      if (bulk && e.shiftKey && e.currentTarget.contains(e.target as Node)) e.preventDefault();
+    }
+
     return (
       <IssueContextMenu issue={issue} surface="board" onPeek={onOpen} display="contents">
         <CardBody
           issue={issue}
           progress={progress}
+          selected={selected}
+          selectBox={
+            bulk && (
+              <SelectCheckbox
+                issueKey={issue.key}
+                checked={selected}
+                alwaysVisible={selecting}
+                onToggle={() => bulk.toggle(issue.id)}
+                onRange={() => bulk.range(issue.id)}
+              />
+            )
+          }
           menu={<IssueRowMenuButton issue={issue} surface="board" onPeek={onOpen} />}
           isDragging={isDragging}
           canDrag={canDrag}
@@ -309,11 +355,14 @@ export const Card = memo(
               'data-col': colIdx,
               'data-row': rowIdx,
               'data-issue-key': issue.key,
+              'data-selected': selected ? '' : undefined,
             } as object),
             ...rowPeekProps(issue.key, onOpen),
             role: 'button',
             tabIndex: 0,
             onKeyDown,
+            onClickCapture,
+            onMouseDownCapture,
           }}
         />
       </IssueContextMenu>

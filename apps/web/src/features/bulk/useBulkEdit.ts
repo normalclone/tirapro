@@ -13,28 +13,22 @@ import {
   type BulkIssuePatch,
 } from '@/features/backlog/api';
 import {
-  groupByPrev,
   labelsToUndo,
-  prevValueOf,
+  planRestoreField,
+  runUndoPlan,
   type BulkField,
   type BulkValue,
+  type UndoPlan,
   type VersionedItem,
 } from './bulkEdit';
 
-/** Một request Hoàn tác: cùng một `patch` cho một nhóm việc (kèm version mới của máy chủ). */
-type UndoPlan = Array<{ items: VersionedItem[]; patch: BulkIssuePatch }>;
 /** Dựng kế hoạch Hoàn tác từ các việc đã chọn (trước khi ghi) và kết quả `updated`; `null` = không hứa Hoàn tác. */
 type UndoBuilder = (targets: IssueDto[], updated: VersionedItem[]) => UndoPlan | null;
 
-/** Hoàn tác "đặt một giá trị cho cả lô": trả từng việc về giá trị cũ, gom theo giá trị cũ (mỗi giá trị một request). */
-function restoreField(field: BulkField, canRestore?: (prev: BulkValue) => boolean): UndoBuilder {
-  return (targets, updated) => {
-    const prev = new Map(targets.map((i) => [i.id, prevValueOf(i, field)]));
-    const groups = groupByPrev(updated, prev);
-    if (canRestore && [...groups.keys()].some((v) => !canRestore(v))) return null;
-    return [...groups].map(([value, items]) => ({ items, patch: { [field]: value } }));
-  };
-}
+const restoreField =
+  (field: BulkField, canRestore?: (prev: BulkValue) => boolean): UndoBuilder =>
+  (targets, updated) =>
+    planRestoreField(field, targets, updated, canRestore);
 
 /**
  * Thao tác hàng loạt (Việc chờ, Bảng việc): áp `patch` cho các việc đang chọn tuần tự theo lô ≤ 100 (`runBulkInChunks` trong
@@ -63,15 +57,9 @@ export function useBulkEdit(a: {
 
   async function undoAll(plan: UndoPlan) {
     try {
-      let stuck = 0;
-      let unsent = 0;
-      let firstError: unknown;
-      for (const { items, patch } of plan) {
-        const r = await bulkUpdate.mutateAsync({ items, patch });
-        stuck += r.conflicts.length;
-        unsent += r.unsent;
-        firstError ??= r.error;
-      }
+      const { stuck, unsent, firstError } = await runUndoPlan(plan, (items, patch) =>
+        bulkUpdate.mutateAsync({ items, patch }),
+      );
       if (stuck > 0) {
         toast.warning(`Chưa hoàn tác được ${stuck} việc`, {
           description: bulkShortfallHint(stuck, unsent, rejectionReason(firstError)),

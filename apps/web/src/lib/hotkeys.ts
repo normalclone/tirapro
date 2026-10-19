@@ -119,15 +119,16 @@ export function shouldIgnoreGlobalHotkey(
 /**
  * Esc có nên xoá vùng chọn hàng loạt không: không nếu Esc đã được xử lý (popover/kéo-thả bằng phím) hoặc lớp phủ đang mở.
  * `fromPeek`: Esc đến từ trong panel xem nhanh → dành cho việc đóng panel, không bỏ chọn.
+ * `typing`: Esc đến từ ô nhập / khối sửa tại chỗ → chỉ để rời ô (giữ nháp), không bỏ chọn.
  * `dragging`: đang kéo (dnd-kit active) → Esc chỉ huỷ kéo. Cần vì thanh chọn nghe ở `document`, chạy TRƯỚC listener dnd-kit
  * nên chưa thấy `defaultPrevented` của nó.
  */
 export function shouldClearSelectionOnEscape(
   e: Pick<KeyLike, 'key' | 'defaultPrevented'>,
   overlayOpen: boolean,
-  opts?: { fromPeek?: boolean; dragging?: boolean },
+  opts?: { fromPeek?: boolean; dragging?: boolean; typing?: boolean },
 ): boolean {
-  if (opts?.fromPeek || opts?.dragging) return false;
+  if (opts?.fromPeek || opts?.dragging || opts?.typing) return false;
   return e.key === 'Escape' && !e.defaultPrevented && !overlayOpen;
 }
 

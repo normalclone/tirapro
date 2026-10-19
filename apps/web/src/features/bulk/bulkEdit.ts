@@ -1,4 +1,5 @@
 import type { IssueDto } from '@tirapro/types';
+import type { BulkIssuePatch } from '@/features/backlog/api';
 import { computeNextStatuses, type NextStatus } from '@/features/issues/nextStatuses';
 import type { Workflow } from '@/features/workflow-settings/api';
 
@@ -60,4 +61,50 @@ export function labelsToUndo(
     before.filter((i) => (i.labels ?? []).some((l) => l.id === labelId)).map((i) => i.id),
   );
   return updated.filter((u) => !had.has(u.id));
+}
+
+/** Một request Hoàn tác: cùng một `patch` cho một nhóm việc (kèm version mới của máy chủ). */
+export type UndoPlan = Array<{ items: VersionedItem[]; patch: BulkIssuePatch }>;
+
+/**
+ * Kế hoạch Hoàn tác "đặt một giá trị cho cả lô": trả từng việc ĐÃ cập nhật (`updated`, kèm version mới) về giá trị cũ của
+ * nó, gom theo giá trị cũ (mỗi giá trị một request). `canRestore` từ chối một giá trị cũ nào đó → `null` (không hứa Hoàn tác).
+ */
+export function planRestoreField(
+  field: BulkField,
+  targets: IssueDto[],
+  updated: VersionedItem[],
+  canRestore?: (prev: BulkValue) => boolean,
+): UndoPlan | null {
+  const prev = new Map(targets.map((i) => [i.id, prevValueOf(i, field)]));
+  const groups = groupByPrev(updated, prev);
+  if (canRestore && [...groups.keys()].some((v) => !canRestore(v))) return null;
+  return [...groups].map(([value, items]) => ({ items, patch: { [field]: value } }));
+}
+
+/** Kết quả một lần gửi nhóm Hoàn tác (phần `useBulkUpdateIssues` trả về mà ta cần). */
+interface UndoSendResult {
+  conflicts: unknown[];
+  unsent: number;
+  error?: unknown;
+}
+
+/**
+ * Chạy lần lượt các nhóm Hoàn tác; cộng dồn số việc CHƯA hoàn tác được (`stuck`: người khác sửa trước hoặc chưa gửi được),
+ * số việc chưa gửi (`unsent`) và lỗi đầu tiên (để nêu lý do). Ném lỗi nếu `send` ném (lô đầu của một nhóm bị từ chối).
+ */
+export async function runUndoPlan(
+  plan: UndoPlan,
+  send: (items: VersionedItem[], patch: BulkIssuePatch) => Promise<UndoSendResult>,
+): Promise<{ stuck: number; unsent: number; firstError: unknown }> {
+  let stuck = 0;
+  let unsent = 0;
+  let firstError: unknown;
+  for (const { items, patch } of plan) {
+    const r = await send(items, patch);
+    stuck += r.conflicts.length;
+    unsent += r.unsent;
+    firstError ??= r.error;
+  }
+  return { stuck, unsent, firstError };
 }

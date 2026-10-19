@@ -165,6 +165,18 @@ describe('shouldClearSelectionOnEscape (thanh thao tác hàng loạt)', () => {
   it('phím khác → không', () => {
     expect(shouldClearSelectionOnEscape({ key: 'a', defaultPrevented: false }, false)).toBe(false);
   });
+  it('Esc đang gõ (ô nhập / sửa tại chỗ) → dành để rời ô, không xoá vùng chọn', () => {
+    expect(
+      shouldClearSelectionOnEscape({ key: 'Escape', defaultPrevented: false }, false, {
+        typing: true,
+      }),
+    ).toBe(false);
+    expect(
+      shouldClearSelectionOnEscape({ key: 'Escape', defaultPrevented: false }, false, {
+        typing: false,
+      }),
+    ).toBe(true);
+  });
 });
 
 describe('Esc với panel xem nhanh', () => {

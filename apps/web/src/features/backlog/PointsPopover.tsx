@@ -16,9 +16,12 @@ const FIBONACCI_POINTS = [1, 2, 3, 5, 8, 13, 21] as const;
 export function PointsPopover({
   onApply,
   disabled,
+  triggerClassName,
 }: {
   onApply: (points: number | null) => void;
   disabled?: boolean;
+  /** Class thêm cho nút mở (vd rộng hết hàng trong sheet). */
+  triggerClassName?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [raw, setRaw] = useState('');
@@ -47,6 +50,7 @@ export function PointsPopover({
           size="sm"
           variant="secondary"
           disabled={disabled}
+          className={triggerClassName}
           title="Đặt điểm ước lượng cho các việc đang chọn"
         >
           <Gauge className="h-4 w-4" />
