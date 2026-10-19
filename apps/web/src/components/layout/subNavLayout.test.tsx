@@ -62,6 +62,22 @@ describe('SubNavLayout — mobile ở basePath: danh sách mục', () => {
   });
 });
 
+describe('SubNavLayout — mobile ở trang con, có slot top', () => {
+  it('slot top nằm trong hàng quay lại, trước nội dung trang con (không chỉ ở rail/danh sách)', () => {
+    const out = render('/settings/roles');
+    const row = out.indexOf('lg:hidden');
+    expect(out.indexOf('Về dự án X', row)).toBeGreaterThan(row);
+    expect(out.indexOf('Về dự án X', row)).toBeLessThan(out.indexOf('<h1>Vai trò</h1>'));
+  });
+  it('hàng quay lại cùng bề rộng khung (max-w theo frameSize), giữ ?query ở link về danh sách', () => {
+    const out = render('/settings/roles?project=p1');
+    expect(out).toMatch(
+      /<div class="mx-auto [^"]*max-w-3xl[^"]*lg:hidden|<div class="mx-auto [^"]*lg:hidden[^"]*max-w-3xl/,
+    );
+    expect(out).toMatch(/<a [^>]*aria-label="Quay lại Cài đặt"[^>]*href="\/settings\?project=p1"/);
+  });
+});
+
 describe('SubNavLayout — mobile ở trang con', () => {
   const out = render('/settings/roles');
   it('có "‹ Cài đặt" (aria-label "Quay lại Cài đặt") về basePath, chỉ dưới lg', () => {

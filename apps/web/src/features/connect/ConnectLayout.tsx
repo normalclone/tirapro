@@ -37,6 +37,7 @@ export function ConnectLayout() {
       ariaLabel="Mục kết nối và tự động hoá"
       groups={[{ items }]}
       basePath="/connect"
+      frameSize="sm"
       top={
         fromProject && (
           <Link

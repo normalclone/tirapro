@@ -6,7 +6,7 @@ import { useMediaQuery } from '@/lib/useMediaQuery';
 import { cn } from '@/lib/utils';
 import { TruncatedLabel } from '@/components/ui/TruncatedLabel';
 import { BackLink } from './BackLink';
-import { PageFrame } from './PageFrame';
+import { PAGE_FRAME_WIDTH, PageFrame, type PageFrameSize } from './PageFrame';
 import { PageHeader } from './PageHeader';
 import { isIndexPath, visibleGroups, type SubNavGroup } from './subNavModel';
 
@@ -18,8 +18,13 @@ interface SubNavLayoutProps {
   groups: SubNavGroup[];
   /** Trang danh sách mục, vd "/settings". */
   basePath: string;
-  /** Chèn trên cùng rail và danh sách (vd link "Về dự án X"). */
+  /** Chèn trên cùng rail, danh sách và hàng quay lại ở trang con (vd link "Về dự án X"). */
   top?: ReactNode;
+  /**
+   * Cỡ `PageFrame` thường dùng của các trang con khu vực này (B-D1): hàng "‹ Khu vực" và danh sách mục dùng cùng bề
+   * rộng để thẳng lề với tiêu đề trang ở cỡ md. Trang con dùng cỡ khác thì chỉ lệch ở 768–1023px.
+   */
+  frameSize?: PageFrameSize;
 }
 
 /**
@@ -32,8 +37,15 @@ interface SubNavLayoutProps {
  *
  * Rail không có heading (h1 thuộc `PageHeader` của từng trang con; danh sách mục có h1 riêng là `title`).
  */
-export function SubNavLayout({ title, ariaLabel, groups, basePath, top }: SubNavLayoutProps) {
-  const { pathname } = useLocation();
+export function SubNavLayout({
+  title,
+  ariaLabel,
+  groups,
+  basePath,
+  top,
+  frameSize = 'sm',
+}: SubNavLayoutProps) {
+  const { pathname, search } = useLocation();
   const isDesktop = useMediaQuery(DESKTOP_MIN_QUERY);
   const shown = visibleGroups(groups);
   const showList = !isDesktop && isIndexPath(pathname, basePath);
@@ -72,12 +84,25 @@ export function SubNavLayout({ title, ariaLabel, groups, basePath, top }: SubNav
 
       <div className="min-w-0 flex-1 overflow-auto">
         {showList ? (
-          <SubNavList title={title} ariaLabel={ariaLabel} groups={shown} top={top} />
+          <SubNavList
+            title={title}
+            ariaLabel={ariaLabel}
+            groups={shown}
+            top={top}
+            frameSize={frameSize}
+          />
         ) : (
           <>
             {!isIndexPath(pathname, basePath) && (
-              <div className="px-4 pt-3 sm:px-6 lg:hidden">
-                <BackLink label={title} to={basePath} />
+              <div
+                className={cn(
+                  'mx-auto flex w-full flex-wrap items-center gap-x-3 px-4 pt-3 sm:px-6 lg:hidden',
+                  PAGE_FRAME_WIDTH[frameSize],
+                )}
+              >
+                {/* Giữ ?query (vd ?project=<id> của Kết nối) để danh sách mục còn nhớ dự án nguồn. */}
+                <BackLink label={title} to={`${basePath}${search}`} />
+                {top}
               </div>
             )}
             <Outlet />
@@ -94,9 +119,13 @@ function SubNavList({
   ariaLabel,
   groups,
   top,
-}: Pick<SubNavLayoutProps, 'title' | 'ariaLabel' | 'top'> & { groups: SubNavGroup[] }) {
+  frameSize,
+}: Pick<SubNavLayoutProps, 'title' | 'ariaLabel' | 'top'> & {
+  groups: SubNavGroup[];
+  frameSize: PageFrameSize;
+}) {
   return (
-    <PageFrame size="sm">
+    <PageFrame size={frameSize}>
       <PageHeader title={title} />
       <nav aria-label={ariaLabel} className="space-y-6">
         {top}

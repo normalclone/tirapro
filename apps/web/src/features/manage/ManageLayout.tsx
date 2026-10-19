@@ -35,6 +35,7 @@ export function ManageLayout() {
       ariaLabel="Mục danh mục"
       groups={[{ items: MANAGE_NAV }]}
       basePath="/manage"
+      frameSize="xl"
     />
   );
 }

@@ -121,6 +121,7 @@ export function SettingsLayout() {
       ariaLabel="Mục cài đặt"
       groups={groups}
       basePath="/settings"
+      frameSize="sm"
     />
   );
 }
