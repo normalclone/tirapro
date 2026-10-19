@@ -17,3 +17,27 @@ export function selectGesture(e: ClickMods, onLink: boolean): 'range' | 'toggle'
   if (e.metaKey || e.ctrlKey) return onLink ? null : 'toggle';
   return null;
 }
+
+interface RangeClickEvent extends ClickMods {
+  target: unknown;
+  currentTarget: { contains: (n: Node) => boolean };
+  preventDefault: () => void;
+  stopPropagation: () => void;
+}
+
+/**
+ * Pha BẮT trên dòng Bộ lọc: Shift+click ở thân dòng hoặc link mã = chọn dải (như thẻ Bảng việc). `preventDefault` chặn bôi
+ * đen chữ và cửa sổ mới của link; `stopPropagation` để link/dòng không mở xem nhanh. Cmd/Ctrl+click (tab mới) và click thường
+ * (xem nhanh) KHÔNG bị đụng; ô chọn/nút tự xử lý; sự kiện từ portal (ngoài dòng) bỏ qua. Trả về true nếu đã xử lý.
+ */
+export function handleShiftRangeClick(e: RangeClickEvent, onRange: () => void): boolean {
+  const t = e.target as { closest?: (s: string) => unknown } | null;
+  if (!e.currentTarget.contains(e.target as Node) || t?.closest?.('[data-no-peek], button'))
+    return false;
+  // `onLink = true` chỉ để lấy nhánh Shift: Cmd/Ctrl trả null (giữ hành vi mở tab mới của dòng).
+  if (selectGesture(e, true) !== 'range') return false;
+  e.preventDefault();
+  e.stopPropagation();
+  onRange();
+  return true;
+}

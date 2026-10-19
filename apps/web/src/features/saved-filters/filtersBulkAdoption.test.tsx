@@ -89,7 +89,10 @@ describe('ResultsTable — chọn nhiều', () => {
   it('Cmd/Ctrl+click dòng vẫn mở tab mới (RC15: Bộ lọc không dùng nó để chọn); phím ô chọn không nuốt phím toàn cục', () => {
     const s = src('features/saved-filters/ResultsTable.tsx');
     expect(s).toContain('rowPeekProps(issue.key, onOpen)');
-    expect(s).not.toContain('selectGesture');
+    // Shift+click thân dòng/link mã chọn dải ở pha bắt; Cmd/Ctrl không bị đụng (nhánh Shift của selectGesture).
+    expect(s).toContain('handleShiftRangeClick(e, () => selection.onRange(issue.id))');
+    expect(s).toContain('onClickCapture');
+    expect(s).not.toMatch(/'toggle'/);
     expect(src('features/bulk/SelectCheckbox.tsx')).toContain('onKeyDown={stopRowKeys}');
   });
 });
@@ -117,6 +120,14 @@ describe('Bộ lọc — hàng loạt nhiều dự án (nối dây)', () => {
     expect(hook).toContain('applyNotice(avail)');
     expect(hook).toContain('recordIssueChange(i)');
     expect(hook).not.toContain('keys.search');
+    // 409: tải bản mới của việc bị sửa trước (kết quả Bộ lọc không tự làm mới) để thử lại gửi đúng version
+    expect(hook).toContain('refreshConflicts(agg.editedConflictIds, keyById)');
+    expect(hook).toContain('`/issues/${key}`');
+    // lỗi giữa chừng không bị gọi là "người khác sửa": `unsent` được cộng dồn và chuyển tiếp
+    expect(hook).toContain('unsent: agg.unsentCount');
+    expect(hook).toContain('describeUnfinished(agg, issues ?? [])');
+    expect(hook).not.toMatch(/bulkShortfallHint\(\s*stuck,\s*0/);
+    expect(hook).toContain('avail.skipCount');
     // mutateAsync/try-catch hoặc try/catch ở hook, không per-call mutate
     expect(hook).not.toMatch(/\.mutate\(/);
   });

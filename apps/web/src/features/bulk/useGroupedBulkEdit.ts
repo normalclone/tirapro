@@ -29,14 +29,17 @@ import {
 import {
   aggregateGroupResults,
   applyNotice,
+  conflictHint,
   availableBulkActions,
   groupByProject,
   groupPermsFor,
   groupedBulkTitle,
   mapLimit,
+  planConflictRefresh,
   planGroupedUndo,
   type BulkActionId,
   type GroupOutcome,
+  type GroupedAggregate,
   type GroupedUndoPlan,
   type ProjectGroup,
 } from './groupedBulk';
@@ -63,6 +66,50 @@ function versionsByProject(updated: readonly IssueDto[]): Map<string, VersionedI
   return m;
 }
 
+/** Số việc tải lại song song khi làm mới các việc vừa bị 409. */
+const REFRESH_CONCURRENCY = 4;
+
+/**
+ * Sau 409: tải bản HIỆN TẠI của các việc bị người khác sửa (`GET /issues/:key`) và ghi vào lớp phủ — dòng hiện thay đổi của
+ * người kia và mang version mới, nên lần thử lại gửi đúng version (kết quả Bộ lọc nằm trong state, không tự làm mới).
+ * Việc tải lỗi vẫn được giữ chọn; trả số lượng để gợi ý trung thực.
+ */
+async function refreshConflicts(
+  ids: readonly string[],
+  keyById: ReadonlyMap<string, string>,
+): Promise<{ refreshed: number; failed: number }> {
+  const attempts = await mapLimit(ids, REFRESH_CONCURRENCY, async (id) => {
+    const key = keyById.get(id);
+    if (!key) return { id, issue: null };
+    try {
+      return { id, issue: (await api.get<IssueDto>(`/issues/${key}`)).data };
+    } catch {
+      return { id, issue: null };
+    }
+  });
+  const { fresh, failedIds } = planConflictRefresh(attempts);
+  recordAll(fresh);
+  return { refreshed: fresh.length, failed: failedIds.length };
+}
+
+/**
+ * Gợi ý cho phần chưa xong. 409: tải bản mới để lần thử lại gửi đúng version (không thì 409 mãi); lỗi giữa chừng KHÔNG bị
+ * gọi là "người khác sửa" (`unsent` + lý do thật).
+ */
+async function describeUnfinished(
+  agg: GroupedAggregate,
+  issues: readonly IssueDto[],
+): Promise<string | undefined> {
+  const keyById = new Map(issues.map((i) => [i.id, i.key]));
+  const r = await refreshConflicts(agg.editedConflictIds, keyById);
+  return conflictHint({
+    refreshed: r.refreshed,
+    refreshFailed: r.failed,
+    unsent: agg.unsentCount,
+    rejection: rejectionReason(agg.firstError),
+  });
+}
+
 /** Gửi `patch` cho MỘT nhóm (một dự án) theo lô; lỗi ở lô đầu → nhóm lỗi hẳn (chưa ghi gì). */
 async function sendGroup(
   projectId: string,
@@ -79,8 +126,9 @@ async function sendGroup(
       projectId,
       ok: true,
       updated: r.updated,
-      conflictIds: r.conflicts.map((c) => c.id),
-      unsent: r.unsent,
+      // `runBulkInChunks`: các việc CHƯA gửi (lô sau lỗi) nằm cuối danh sách conflicts, `r.unsent` việc.
+      conflictIds: r.conflicts.slice(0, r.conflicts.length - r.unsent).map((c) => c.id),
+      unsentIds: r.conflicts.slice(r.conflicts.length - r.unsent).map((c) => c.id),
       error: r.error,
     };
   } catch (error) {
@@ -150,7 +198,11 @@ export function useGroupedBulkEdit(a: {
           description:
             agg.failedProjects.length > 0
               ? agg.failedProjects.map((f) => `${keyOf(f.projectId)} — ${f.reason}`).join('; ')
-              : bulkShortfallHint(stuck, 0, null),
+              : bulkShortfallHint(
+                  agg.conflictCount + agg.unsentCount,
+                  agg.unsentCount,
+                  rejectionReason(agg.firstError),
+                ),
         });
       }
     } catch (err) {
@@ -190,18 +242,14 @@ export function useGroupedBulkEdit(a: {
       const action = plan
         ? { label: 'Hoàn tác', onClick: () => void undoGrouped(plan) }
         : undefined;
-      const title = groupedBulkTitle(verb, agg, keyOf);
+      const title = groupedBulkTitle(verb, agg, keyOf, avail.skipCount);
       if (agg.kind === 'all') {
         toast.success(title, { duration: 6000, action });
       } else {
-        const firstError = outcomes.find((o) => o.ok && o.error)?.error;
         toast.warning(title, {
           duration: plan ? 8000 : undefined,
           action,
-          description:
-            agg.conflictCount > 0
-              ? bulkShortfallHint(agg.conflictCount, 0, rejectionReason(firstError))
-              : undefined,
+          description: await describeUnfinished(agg, issues ?? []),
         });
       }
     } catch (err) {

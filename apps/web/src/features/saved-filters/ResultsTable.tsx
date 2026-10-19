@@ -18,6 +18,7 @@ import {
 import { rowPeekProps } from '@/features/issues/peek/rowPeekProps';
 import { IssueContextMenu, IssueRowMenuButton } from '@/features/issues/menu/IssueContextMenu';
 import { SelectCheckbox } from '@/features/bulk/SelectCheckbox';
+import { handleShiftRangeClick } from '@/features/bulk/selectGesture';
 import { categoryColor } from '@/lib/statusColor';
 import { useMediaQuery } from '@/lib/useMediaQuery';
 import { RESULTS_PAGE_SIZE, resultCountLabel } from './resultPaging';
@@ -523,6 +524,19 @@ function ResultRow({
         data-selected={checked ? '' : undefined}
         {...peekedAttrs(peeked)}
         {...rowPeekProps(issue.key, onOpen)}
+        // Shift+click thân dòng / link mã = chọn dải (như thẻ Bảng việc); Cmd/Ctrl+click vẫn mở tab mới, click thường mở xem nhanh.
+        onClickCapture={(e) => {
+          if (selection) handleShiftRangeClick(e, () => selection.onRange(issue.id));
+        }}
+        onMouseDownCapture={(e) => {
+          // Shift+nhấn không bôi đen chữ của dòng.
+          if (
+            selection &&
+            e.shiftKey &&
+            !(e.target as Element).closest('[data-no-peek], button, input')
+          )
+            e.preventDefault();
+        }}
         className={cn(
           'group/row cursor-pointer transition-colors focus-visible:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--ring)]',
           // Đang xem: nền token KHÔNG đổi khi rê chuột (hover thường sẽ đè lên và dòng đang xem biến mất).

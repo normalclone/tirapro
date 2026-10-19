@@ -8,6 +8,8 @@ import {
   groupPermsFor,
   groupedBulkTitle,
   mapLimit,
+  planConflictRefresh,
+  conflictHint,
   planGroupedUndo,
   type GroupOutcome,
   type GroupPerms,
@@ -94,12 +96,14 @@ describe('availableBulkActions (hành động nào áp được khi chọn trả
 });
 
 describe('applyNotice (nói số việc áp được TRƯỚC khi chạy)', () => {
-  it('có việc bị bỏ qua → "Áp cho 5/7 việc (2 việc ở dự án bạn không có quyền)"', () => {
+  it('có việc bị bỏ qua → nêu mọi lý do (thiếu quyền, lưu trữ, việc của người khác)', () => {
     const a = availableBulkActions([
       { projectId: 'p1', count: 5, perms: all },
       { projectId: 'p2', count: 2, perms: none },
     ]);
-    expect(applyNotice(a.priority)).toBe('Áp cho 5/7 việc (2 việc ở dự án bạn không có quyền)');
+    expect(applyNotice(a.priority)).toBe(
+      'Áp cho 5/7 việc (2 việc không áp được: thiếu quyền, dự án đã lưu trữ hoặc việc của người khác)',
+    );
   });
   it('áp hết → không cần nhắc', () => {
     const a = availableBulkActions([{ projectId: 'p1', count: 5, perms: all }]);
@@ -161,7 +165,7 @@ describe('aggregateGroupResults / groupedBulkTitle', () => {
     ok: true,
     updated: ids.map((id) => iss(id, projectId, { version: 2 })),
     conflictIds,
-    unsent: 0,
+    unsentIds: [],
   });
   it('mọi nhóm xong: không giữ chọn, tiêu đề nêu số dự án', () => {
     const agg = aggregateGroupResults([ok('p1', ['a', 'b']), ok('p2', ['c'])], reason);
@@ -209,18 +213,88 @@ describe('aggregateGroupResults / groupedBulkTitle', () => {
       'Chưa cập nhật được việc nào · 1 dự án lỗi: P1 — Lỗi mạng',
     );
   });
-  it('lô sau của một dự án lỗi giữa chừng: phần đã xong được tính, phần chưa gửi giữ chọn', () => {
+  it('lô sau lỗi giữa chừng (mạng): phần chưa gửi giữ chọn, được đếm RIÊNG khỏi conflict, kèm lỗi đầu tiên', () => {
+    const boom = new Error('Mất mạng');
     const o: GroupOutcome = {
       projectId: 'p1',
       ok: true,
       updated: [iss('a', 'p1')],
-      conflictIds: ['b'],
-      unsent: 1,
-      error: new Error('Mất mạng'),
+      conflictIds: ['c'],
+      unsentIds: ['b', 'd'],
+      error: boom,
     };
     const agg = aggregateGroupResults([o], reason);
     expect(agg.kind).toBe('partial');
-    expect([...agg.retainIds]).toEqual(['b']);
+    expect([...agg.retainIds].sort()).toEqual(['b', 'c', 'd']);
+    expect(agg.conflictCount).toBe(1);
+    expect(agg.editedConflictIds).toEqual(['c']); // chỉ việc bị sửa trước mới cần tải lại bản mới
+    expect(agg.unsentCount).toBe(2);
+    expect(agg.firstError).toBe(boom);
+    expect(groupedBulkTitle('chuyển', agg, keyOf)).toBe(
+      'Đã cập nhật 1 việc ở 1 dự án · 3 việc chưa cập nhật được',
+    );
+  });
+  it('"bỏ qua" (thiếu quyền/lưu trữ/việc của người khác) được nêu trong toast kết quả', () => {
+    const agg = aggregateGroupResults([ok('p1', ['a', 'b'])], reason);
+    expect(groupedBulkTitle('chuyển', agg, keyOf, 3)).toBe('Đã chuyển 2 việc · 3 việc bỏ qua.');
+    const part = aggregateGroupResults(
+      [ok('p1', ['a']), { projectId: 'p2', ok: false, ids: ['x'], error: new Error('Lỗi') }],
+      reason,
+    );
+    expect(groupedBulkTitle('chuyển', part, keyOf, 2)).toBe(
+      'Đã cập nhật 1 việc ở 1 dự án · 1 dự án lỗi: P2 — Lỗi · 2 việc bỏ qua',
+    );
+    const none = aggregateGroupResults(
+      [{ projectId: 'p1', ok: false, ids: ['a'], error: new Error('Lỗi') }],
+      reason,
+    );
+    expect(groupedBulkTitle('chuyển', none, keyOf, 1)).toBe(
+      'Chưa cập nhật được việc nào · 1 dự án lỗi: P1 — Lỗi · 1 việc bỏ qua',
+    );
+  });
+});
+
+describe('planConflictRefresh / conflictHint (thử lại sau 409 phải dùng version MỚI)', () => {
+  const fresh = (id: string, version: number) => iss(id, 'p1', { version });
+  it('tách bản đã tải lại được khỏi những id tải lỗi', () => {
+    const r = planConflictRefresh([
+      { id: 'a', issue: fresh('a', 7) },
+      { id: 'b', issue: null },
+      { id: 'c', issue: fresh('c', 9) },
+    ]);
+    expect(r.fresh.map((i) => [i.id, i.version])).toEqual([
+      ['a', 7],
+      ['c', 9],
+    ]);
+    expect(r.failedIds).toEqual(['b']);
+  });
+  it('không có gì để tải lại → rỗng', () => {
+    expect(planConflictRefresh([])).toEqual({ fresh: [], failedIds: [] });
+  });
+  it('gợi ý trung thực: đã cập nhật dòng theo bản mới / không tải lại được thì bảo chạy lại truy vấn', () => {
+    expect(conflictHint({ refreshed: 2, refreshFailed: 0, unsent: 0 })).toBe(
+      'Người khác vừa sửa 2 việc — dòng đã cập nhật theo bản mới, kiểm tra rồi thử lại.',
+    );
+    expect(conflictHint({ refreshed: 0, refreshFailed: 1, unsent: 0 })).toBe(
+      'Không tải lại được 1 việc — hãy chạy lại truy vấn để lấy bản mới.',
+    );
+    expect(conflictHint({ refreshed: 1, refreshFailed: 1, unsent: 0 })).toBe(
+      'Người khác vừa sửa 1 việc — dòng đã cập nhật theo bản mới, kiểm tra rồi thử lại. Không tải lại được 1 việc — hãy chạy lại truy vấn để lấy bản mới.',
+    );
+  });
+  it('lỗi giữa chừng KHÔNG bị báo là "người khác vừa sửa"', () => {
+    const h = conflictHint({ refreshed: 0, refreshFailed: 0, unsent: 3, rejection: null });
+    expect(h).toBe('Một số việc chưa gửi được — thử lại.');
+    expect(h).not.toContain('Người khác');
+    expect(
+      conflictHint({ refreshed: 0, refreshFailed: 0, unsent: 2, rejection: 'Bị từ chối' }),
+    ).toBe('Bị từ chối');
+    expect(conflictHint({ refreshed: 1, refreshFailed: 0, unsent: 2 })).toBe(
+      'Một số việc chưa gửi được. Người khác vừa sửa 1 việc — dòng đã cập nhật theo bản mới, kiểm tra rồi thử lại.',
+    );
+  });
+  it('không có việc chưa xong → không có gợi ý', () => {
+    expect(conflictHint({ refreshed: 0, refreshFailed: 0, unsent: 0 })).toBeUndefined();
   });
 });
 
