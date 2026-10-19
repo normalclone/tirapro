@@ -1019,7 +1019,7 @@ function narrate(
     } else {
       forecast.push({
         label: 'Cảnh báo tiến độ',
-        text: `14 ngày qua gần như không có việc nào hoàn tất trong khi còn ${notDone} việc tồn — tiến độ đang chững, nên rà soát nguồn lực/độ ưu tiên.`,
+        text: `14 ngày qua gần như không có việc nào hoàn tất trong khi còn ${notDone} việc tồn — tiến độ đang chững, nên rà soát nguồn lực/mức ưu tiên.`,
       });
     }
   } else if (totals.total > 0) {

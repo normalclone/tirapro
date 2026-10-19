@@ -75,9 +75,10 @@ export function IssueDescription({ issue }: { issue: IssueDto }) {
           onPasteImages={pasteImages}
           onBusyChange={setUploading}
         />
-        <div className="flex items-center gap-2">
+        <div className="flex items-center justify-end gap-2">
           <span className="mr-auto text-xs text-faint">
-            Viết được Markdown · ⌘/Ctrl+Enter để lưu · Esc để huỷ
+            Viết được Markdown
+            <span className="kbd-hint"> · ⌘/Ctrl+Enter để lưu · Esc để huỷ</span>
           </span>
           <Button size="sm" variant="ghost" onClick={cancel}>
             Huỷ

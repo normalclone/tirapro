@@ -180,8 +180,8 @@ export function StartSprintDialog({
         <WarningList warnings={warnings} />
 
         <p className="text-xs text-muted">
-          Không hoàn tác được: nếu bắt đầu nhầm, hãy kết thúc sprint sớm. Nhấn Ctrl/Cmd+Enter để xác
-          nhận.
+          Không hoàn tác được: nếu bắt đầu nhầm, hãy kết thúc sprint sớm.
+          <span className="kbd-hint"> Nhấn Ctrl/Cmd+Enter để xác nhận.</span>
         </p>
       </div>
     </Dialog>

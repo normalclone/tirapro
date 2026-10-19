@@ -96,11 +96,11 @@ export function CommentsSection({ issue }: { issue: IssueDto }) {
             textareaId={COMMENT_INPUT_ID}
             onPasteImages={pasteImages}
             onBusyChange={setUploading}
-            placeholder="Viết bình luận… (viết được Markdown · dán ảnh bằng Ctrl+V · ⌘/Ctrl+Enter để gửi)"
+            placeholder="Viết bình luận… (viết được Markdown · dán ảnh bằng Ctrl+V)"
           />
           <TypingIndicator issueId={issue.id} />
-          <div className="flex items-center gap-2">
-            <span className="mr-auto text-xs text-faint">⌘/Ctrl+Enter để gửi</span>
+          <div className="flex items-center justify-end gap-2">
+            <span className="kbd-hint mr-auto text-xs text-faint">⌘/Ctrl+Enter để gửi</span>
             <Button
               size="sm"
               loading={addComment.isPending}
@@ -192,8 +192,10 @@ function CommentRow({
               onPasteImages={pasteImages}
               onBusyChange={setUploading}
             />
-            <div className="flex items-center gap-2">
-              <span className="mr-auto text-xs text-faint">⌘/Ctrl+Enter để lưu · Esc huỷ</span>
+            <div className="flex items-center justify-end gap-2">
+              <span className="kbd-hint mr-auto text-xs text-faint">
+                ⌘/Ctrl+Enter để lưu · Esc huỷ
+              </span>
               <Button
                 variant="ghost"
                 size="sm"

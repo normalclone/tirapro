@@ -23,6 +23,11 @@ describe('thuật ngữ — bộ C', () => {
     expect(hits(/Huỷ/).length).toBeGreaterThan(20); // đối chứng: chuẩn vẫn đang được dùng
   });
 
+  it('không còn "Độ ưu tiên" hiển thị (menu gọi là "Mức ưu tiên")', () => {
+    expect(hits(/độ ưu tiên/i)).toEqual([]);
+    expect(hits(/Mức ưu tiên/).length).toBeGreaterThan(0); // đối chứng
+  });
+
   it('không còn "Project ID" hiển thị (dùng "Dự án")', () => {
     expect(hits(/Project ID/)).toEqual([]);
   });

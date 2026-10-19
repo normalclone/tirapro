@@ -192,7 +192,7 @@ export function RaidEditorModal({
       onSubmit={() => void save()}
       footer={
         <>
-          <span className="mr-auto text-xs text-faint">Ctrl/Cmd + Enter để lưu</span>
+          <span className="kbd-hint mr-auto text-xs text-faint">Ctrl/Cmd + Enter để lưu</span>
           <Button variant="ghost" onClick={onClose}>
             Huỷ
           </Button>

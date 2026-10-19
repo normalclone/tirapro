@@ -42,6 +42,19 @@ export function fmtMonthYear(v: DateLike): string {
   return d ? `T${d.getMonth() + 1}/${d.getFullYear()}` : '—';
 }
 
+/**
+ * Nhãn tháng trên trục thời gian theo bề rộng ô: `>= 64px` → `T10/2026`, `>= 34px` → `T10`,
+ * hẹp hơn → `''` (nơi gọi đặt `title={fmtMonthYear(...)}` để vẫn đọc được đầy đủ).
+ * Không hợp lệ → `—`.
+ */
+export function monthAxisLabel(v: DateLike, widthPx: number): string {
+  const d = toDate(v);
+  if (!d) return '—';
+  if (widthPx >= 64) return fmtMonthYear(d);
+  if (widthPx >= 34) return `T${d.getMonth() + 1}`;
+  return '';
+}
+
 const WEEKDAYS_VI = ['Chủ nhật', 'Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy'];
 
 /** `Thứ Bảy, 17/10/2026` — dòng ngày hôm nay ở Tổng quan; rỗng/không hợp lệ → `—`. */

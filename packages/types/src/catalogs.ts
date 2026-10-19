@@ -302,8 +302,8 @@ export const REPORT_METRIC_BLOCKS: ReportMetricBlock[] = [
   },
   {
     key: 'by_priority',
-    label: 'Theo độ ưu tiên',
-    description: 'Phân bố theo độ ưu tiên',
+    label: 'Theo mức ưu tiên',
+    description: 'Phân bố theo mức ưu tiên',
     scope: 'both',
   },
   { key: 'by_type', label: 'Theo loại công việc', description: 'Story/Task/Bug...', scope: 'both' },

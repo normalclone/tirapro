@@ -66,7 +66,7 @@ export function InfoRow({
   );
 }
 
-/** Badge độ ưu tiên (tô theo màu ưu tiên). */
+/** Badge mức ưu tiên (tô theo màu ưu tiên). */
 function PriorityBadge({ priority }: { priority: IssueDto['priority'] }) {
   const ranks = usePriorityRanks();
   if (!priority)

@@ -104,7 +104,7 @@ export const TRIGGER_LABELS: Record<RuleTrigger, string> = {
 
 export const FIELD_LABELS: Record<string, string> = {
   statusId: 'Trạng thái',
-  priorityId: 'Độ ưu tiên',
+  priorityId: 'Mức ưu tiên',
   assigneeId: 'Người làm',
   reporterId: 'Người báo cáo',
   typeId: 'Loại công việc',

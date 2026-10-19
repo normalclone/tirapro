@@ -35,7 +35,7 @@ const FIELD_DEFS: { field: JqlFieldName; label: string }[] = [
   { field: 'type', label: 'Loại' },
   { field: 'status', label: 'Trạng thái' },
   { field: 'statusCategory', label: 'Nhóm trạng thái' },
-  { field: 'priority', label: 'Độ ưu tiên' },
+  { field: 'priority', label: 'Mức ưu tiên' },
   { field: 'severity', label: 'Mức nghiêm trọng' },
   { field: 'assignee', label: 'Người được giao' },
   { field: 'reporter', label: 'Người báo cáo' },

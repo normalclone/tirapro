@@ -114,9 +114,10 @@ export function AcceptanceCriteria({ issue }: { issue: IssueDto }) {
             mentionProjectId={issue.projectId}
             placeholder="Mỗi dòng một tiêu chí, dạng - [ ] Người dùng đăng nhập được bằng email"
           />
-          <div className="flex items-center gap-2">
+          <div className="flex items-center justify-end gap-2">
             <span className="mr-auto text-xs text-faint">
-              Mỗi dòng một tiêu chí · ⌘/Ctrl+Enter để lưu · Esc để huỷ
+              Mỗi dòng một tiêu chí
+              <span className="kbd-hint"> · ⌘/Ctrl+Enter để lưu · Esc để huỷ</span>
             </span>
             <Button size="sm" variant="ghost" onClick={cancel}>
               Huỷ

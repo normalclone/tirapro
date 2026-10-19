@@ -3,6 +3,8 @@ import { DEFAULT_GUIDES } from '@tirapro/shared';
 import { GuidesBootstrapService } from './guides-bootstrap.service';
 
 describe('GuidesBootstrapService', () => {
+  // Bản trong DB của tour-home = đúng version hiện tại của seed (không khoá cứng số, để nâng version không vỡ test).
+  const homeVersion = DEFAULT_GUIDES.find((g) => g.key === 'tour-home')!.version;
   it('chèn guide chưa có, bỏ qua guide cùng version, nâng cấp guide version thấp hơn', async () => {
     const tx = {
       $executeRaw: vi.fn(() => Promise.resolve(1)),
@@ -10,7 +12,7 @@ describe('GuidesBootstrapService', () => {
         findFirst: vi.fn(({ where }: { where: { key: string } }) =>
           Promise.resolve(
             where.key === 'tour-home'
-              ? { id: 'g1', version: 1 }
+              ? { id: 'g1', version: homeVersion }
               : where.key === 'tour-board'
                 ? { id: 'g2', version: 0 }
                 : null,

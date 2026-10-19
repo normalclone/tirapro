@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/Button';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { QueryError } from '@/components/ui/QueryError';
 import { isOverdue } from '@/lib/dueDate';
-import { fmtDate, fmtDateTime, fmtDayMonth, fmtMonthYear } from '@/lib/dateFormat';
+import { fmtDate, fmtDateTime, fmtDayMonth, fmtMonthYear, monthAxisLabel } from '@/lib/dateFormat';
 import { categoryColor } from '@/lib/statusColor';
 import { apiErrorMessage } from '@/lib/api';
 import { useCanEditSchedule, useCanIn } from '@/features/projects/permissions';
@@ -29,6 +29,7 @@ import {
 import { useMediaQuery } from '@/lib/useMediaQuery';
 import { useBarDrag, type BarDragMode } from './useBarDrag';
 import { UnscheduledPanel } from './UnscheduledPanel';
+import { groupDaysByMonth, type MonthGroup } from './groupDaysByMonth';
 import { PlanningPanel } from '@/features/planning/PlanningPanel';
 import {
   useBaseline,
@@ -230,7 +231,7 @@ export function GanttPage() {
     const empty = {
       spans: ordered,
       days: [] as Date[],
-      months: [] as { label: string; span: number }[],
+      months: [] as MonthGroup[],
       minD: today,
       totalDays: 0,
       today,
@@ -260,20 +261,7 @@ export function GanttPage() {
     const days = Array.from({ length: totalDays }, (_, i) => addDays(minD, i));
 
     // Gộp ngày theo tháng để vẽ dải tháng ở header.
-    const months: { label: string; span: number }[] = [];
-    let i = 0;
-    while (i < days.length) {
-      const m = days[i]!;
-      let j = i;
-      while (
-        j < days.length &&
-        days[j]!.getMonth() === m.getMonth() &&
-        days[j]!.getFullYear() === m.getFullYear()
-      )
-        j++;
-      months.push({ label: fmtMonthYear(m), span: j - i });
-      i = j;
-    }
+    const months = groupDaysByMonth(days);
 
     const dayOffset = (d: Date) => differenceInCalendarDays(d, minD);
     const layout = new Map<string, BarBox>();
@@ -604,10 +592,11 @@ export function GanttPage() {
                     {model.months.map((m, i) => (
                       <div
                         key={i}
-                        className="border-r border-border py-1 text-center text-xs font-medium text-muted"
+                        className="overflow-hidden whitespace-nowrap border-r border-border py-1 text-center text-xs font-medium text-muted"
                         style={{ width: m.span * DAY_W }}
+                        title={fmtMonthYear(m.start)}
                       >
-                        {m.label}
+                        {monthAxisLabel(m.start, m.span * DAY_W)}
                       </div>
                     ))}
                   </div>

@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
@@ -119,5 +119,51 @@ describe('mobile nền chung', () => {
     expect(f).not.toMatch(/focus-visible sm:/);
     expect(f).not.toMatch(/flex-1:outline/);
     expect(f).toMatch(/sm:flex-1 focus-visible:outline-none/);
+  });
+});
+
+describe('gợi ý phím trên cảm ứng (.kbd-hint)', () => {
+  it('mọi gợi ý phím "Ctrl/Cmd+Enter" / "Ctrl+S" hiển thị trong features/ nằm trong phần tử .kbd-hint (cảm ứng không có bàn phím)', () => {
+    const walk = (dir: string, out: string[] = []): string[] => {
+      for (const f of readdirSync(dir)) {
+        const p = join(dir, f);
+        if (statSync(p).isDirectory()) walk(p, out);
+        else if (/\.tsx$/.test(f) && !/\.test\.tsx$/.test(f)) out.push(p);
+      }
+      return out;
+    };
+    const HINT = /(Ctrl|Cmd|⌘)[^<{]*\+\s*(Enter|S)\b/;
+    // Phần tử `.kbd-hint` mở trước chữ phím tối đa vài dòng (span mở rồi chữ xuống dòng).
+    const WINDOW = 6;
+    const bad: string[] = [];
+    for (const f of walk(join(__dirname, '..', 'features'))) {
+      const lines = readFileSync(f, 'utf8').split('\n');
+      lines.forEach((raw, i) => {
+        if (/^\s*(\/\/|\*|\/\*)/.test(raw)) return; // dòng comment
+        const code = raw.replace(/\s\/\/.*$/, ''); // comment cuối dòng
+        if (!HINT.test(code)) return;
+        const near = lines.slice(Math.max(0, i - WINDOW), i + 1).join('\n');
+        if (!/kbd-hint/.test(near)) bad.push(`${f.split('/src/')[1]}:${i + 1}`);
+      });
+    }
+    expect(bad).toEqual([]);
+  });
+  it('gợi ý phím có `.kbd-hint` KHÔNG kèm `sm:block` (utility này thắng .kbd-hint, tablet cảm ứng vẫn thấy) — dùng `max-sm:hidden`', () => {
+    for (const f of [
+      'features/intake/ReportIssueModal.tsx',
+      'features/issues/CreateIssueModal.tsx',
+    ])
+      expect(src(f), f).toMatch(/kbd-hint[^"]*max-sm:hidden/);
+    expect(src('features/intake/ReportIssueModal.tsx')).not.toMatch(/kbd-hint[^"]*sm:block/);
+    expect(src('features/issues/CreateIssueModal.tsx')).not.toMatch(/kbd-hint[^"]*sm:block/);
+  });
+  it('footer sửa nội tuyến dùng `mr-auto` cho gợi ý phím thì container có `justify-end` (ẩn gợi ý không đẩy nút sang trái)', () => {
+    for (const f of [
+      'features/issue-edit/CommentsSection.tsx',
+      'features/issue-edit/AcceptanceCriteria.tsx',
+      'features/issue-edit/DescriptionEditor.tsx',
+      'features/wiki/WikiPage.tsx',
+    ])
+      expect(src(f), f).toMatch(/flex items-center justify-end gap-2/);
   });
 });

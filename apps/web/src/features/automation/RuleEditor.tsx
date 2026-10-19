@@ -109,7 +109,7 @@ const kindOf = (f: FieldName) =>
 const UPDATE_FIELD_CHOICES: Array<[string, string]> = [
   ['summary', 'Tiêu đề'],
   ['description', 'Mô tả'],
-  ['priorityId', 'Độ ưu tiên'],
+  ['priorityId', 'Mức ưu tiên'],
   ['assigneeId', 'Người làm'],
   ['storyPoints', 'Điểm ước lượng'],
   ['sprintId', 'Sprint'],
@@ -614,7 +614,7 @@ function ActionCard({
             ariaLabel="Trường cần đặt"
             value={a.field}
             options={[
-              { value: 'priorityId', label: 'Độ ưu tiên' },
+              { value: 'priorityId', label: 'Mức ưu tiên' },
               { value: 'assigneeId', label: 'Người làm' },
               {
                 value: 'sprintId',

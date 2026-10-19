@@ -710,13 +710,13 @@ export function WikiPage() {
                         rows={18}
                         placeholder="Viết nội dung ở đây. Markdown cơ bản: # tiêu đề, **đậm**, - gạch đầu dòng… Gõ mã công việc (vd DEMO-STORY-3) để liên kết."
                       />
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center justify-end gap-2">
                         <span
                           className="mr-auto text-xs text-faint"
                           title="Markdown là cách viết chữ đậm, tiêu đề, danh sách bằng ký hiệu — ví dụ **đậm** hoặc # Tiêu đề."
                         >
-                          Markdown cơ bản · Gõ mã công việc (vd DEMO-STORY-3) để liên kết ·
-                          Ctrl/⌘+Enter để lưu · Esc để huỷ
+                          Markdown cơ bản · Gõ mã công việc (vd DEMO-STORY-3) để liên kết
+                          <span className="kbd-hint"> · Ctrl/⌘+Enter để lưu · Esc để huỷ</span>
                         </span>
                         <Button
                           size="sm"

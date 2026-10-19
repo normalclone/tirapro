@@ -123,7 +123,7 @@ function TemplatesPanel({ canManage }: { canManage: boolean }) {
         <div className="min-w-0">
           <h2 className="text-base font-semibold text-ink-strong">Mẫu công việc</h2>
           <p className="mt-0.5 text-sm text-muted">
-            Điền sẵn loại, độ ưu tiên, tiêu đề và mô tả cho những việc hay gặp.
+            Điền sẵn loại, mức ưu tiên, tiêu đề và mô tả cho những việc hay gặp.
           </p>
         </div>
         {canManage && (
@@ -142,7 +142,7 @@ function TemplatesPanel({ canManage }: { canManage: boolean }) {
             <EmptyState
               icon={<FileStack className="h-6 w-6" />}
               title="Chưa có mẫu công việc nào"
-              description="Mẫu điền sẵn loại, độ ưu tiên, tiêu đề và mô tả để bạn tạo việc chỉ trong một bước. Hãy tạo mẫu cho việc hay gặp: báo lỗi, yêu cầu tính năng, đón thành viên mới."
+              description="Mẫu điền sẵn loại, mức ưu tiên, tiêu đề và mô tả để bạn tạo việc chỉ trong một bước. Hãy tạo mẫu cho việc hay gặp: báo lỗi, yêu cầu tính năng, đón thành viên mới."
               action={
                 canManage ? (
                   <Button size="sm" onClick={() => edit(null)}>

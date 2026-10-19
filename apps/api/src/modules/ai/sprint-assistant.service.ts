@@ -77,7 +77,7 @@ const PLAN_SCHEMA: Record<string, unknown> = {
 };
 
 /**
- * Trợ lý lập sprint. Heuristic (velocity + khớp từ khoá mục tiêu + hạn chót/độ ưu tiên/thứ tự Việc chờ) luôn chạy
+ * Trợ lý lập sprint. Heuristic (velocity + khớp từ khoá mục tiêu + hạn chót/mức ưu tiên/thứ tự Việc chờ) luôn chạy
  * và là kết quả mặc định; Claude chỉ được gọi khi người dùng nhập mục tiêu sprint và AI sẵn sàng, để chọn lại
  * tập issue khớp mục tiêu trong năng lực.
  * Kết quả của Claude luôn bị ép lại theo capacity ở phía server — không tin tổng điểm model tự tính.
@@ -257,9 +257,9 @@ export class SprintAssistantService {
         ctx: { workspaceId, userId, feature: 'sprint-plan' },
         model: this.claude.modelFast,
         system:
-          'Bạn là trợ lý lập kế hoạch sprint Agile. Từ danh sách ứng viên trong Việc chờ (đã sắp theo độ ưu tiên) và mục tiêu sprint, ' +
+          'Bạn là trợ lý lập kế hoạch sprint Agile. Từ danh sách ứng viên trong Việc chờ (đã sắp theo mức ưu tiên) và mục tiêu sprint, ' +
           `chọn tập công việc phù hợp nhất với mục tiêu sao cho tổng điểm không vượt ${capacity}. ` +
-          'Ưu tiên công việc sắp đến hạn hoặc có độ ưu tiên cao. Mỗi công việc kèm lý do đúng một câu tiếng Việt. ' +
+          'Ưu tiên công việc sắp đến hạn hoặc có mức ưu tiên cao. Mỗi công việc kèm lý do đúng một câu tiếng Việt. ' +
           'Chỉ dùng mã c1…cN có trong danh sách; không bịa thông tin.' +
           DATA_NOT_INSTRUCTIONS,
         prompt: `Mục tiêu sprint:\n${wrap('user_request', goal)}\n\nNăng lực: ${capacity} điểm.\n\nỨng viên:\n${wrap('issue', lines)}`,

@@ -137,7 +137,7 @@ function CheckInForm({
         />
       </label>
       <div className="flex items-center justify-end gap-2 pt-0.5">
-        <span className="mr-auto text-[11px] text-faint">Ctrl/Cmd + Enter để lưu</span>
+        <span className="kbd-hint mr-auto text-[11px] text-faint">Ctrl/Cmd + Enter để lưu</span>
         <Button variant="ghost" size="sm" onClick={onDone}>
           Huỷ
         </Button>

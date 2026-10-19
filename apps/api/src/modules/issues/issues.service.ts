@@ -314,7 +314,7 @@ export class IssuesService {
     const found = await Promise.all(jobs);
     if (found.some((r) => r == null)) {
       throw new NotFoundAppException(
-        'Loại công việc, độ ưu tiên, sprint (phải cùng dự án), kết quả xử lý, việc cha hoặc epic bạn chọn không thuộc không gian làm việc này — hãy chọn lại từ danh sách gợi ý',
+        'Loại công việc, mức ưu tiên, sprint (phải cùng dự án), kết quả xử lý, việc cha hoặc epic bạn chọn không thuộc không gian làm việc này — hãy chọn lại từ danh sách gợi ý',
       );
     }
     // Sprint đã hoàn thành không nhận thêm việc (bỏ gán/giữ nguyên thì không đi qua đây — xem `sprintIfChanged`).

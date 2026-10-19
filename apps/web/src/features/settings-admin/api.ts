@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, type Ack } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
 
-/** ---- Độ ưu tiên (priorities) ---- */
+/** ---- Mức ưu tiên (priorities) ---- */
 
 export interface Priority {
   id: string;

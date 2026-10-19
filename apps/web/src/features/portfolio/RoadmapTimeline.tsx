@@ -3,7 +3,7 @@ import { CalendarRange } from 'lucide-react';
 import { EmptyState } from '@/components/ui/primitives';
 import { cn } from '@/lib/utils';
 import type { RollupGroup } from './api';
-import { fmtDate, fmtMonthYear } from '@/lib/dateFormat';
+import { fmtDate, fmtMonthYear, monthAxisLabel } from '@/lib/dateFormat';
 
 const DAY = 86_400_000;
 
@@ -118,13 +118,15 @@ export function RoadmapTimeline({ groups }: { groups: RollupGroup[] }) {
             Hạng mục
           </div>
           <div className="relative h-6 flex-1">
-            {months.map((m) => (
+            {months.map((m, i) => (
               <span
                 key={m.t}
-                className="absolute top-0 border-l border-border pl-1 text-[11px] text-faint"
-                style={{ left: `${m.left}%` }}
+                className="absolute top-0 truncate border-l border-border pl-1 text-[11px] text-faint"
+                style={{ left: `${m.left}%`, maxWidth: `${m.width}%` }}
+                title={fmtMonthYear(m.t)}
               >
-                {fmtMonthYear(m.t)}
+                {/* Chỉ ghi năm ở tháng đầu và tháng 1; các tháng còn lại rút gọn `T11`. */}
+                {monthAxisLabel(m.t, i === 0 || new Date(m.t).getMonth() === 0 ? 64 : 34)}
               </span>
             ))}
           </div>
