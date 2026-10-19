@@ -10,7 +10,8 @@ import { useToggleWatch, useWatchState } from './api';
 const PILL = cn(
   'inline-flex h-9 shrink-0 items-center gap-2 rounded-full border border-border bg-surface-2 px-4',
   'text-sm font-medium text-ink transition-colors hover:bg-surface-3',
-  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:opacity-50',
+  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
+  'disabled:cursor-not-allowed disabled:border-transparent disabled:bg-disabled-bg disabled:text-disabled-fg',
   'data-[state=open]:bg-surface-3',
 );
 

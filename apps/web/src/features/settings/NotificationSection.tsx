@@ -106,6 +106,7 @@ export function NotificationSection() {
                       checked={checked}
                       disabled={update.isPending}
                       onChange={(e) => toggle(key, e.target.checked)}
+                      // Giữ disabled:opacity (không dùng token vô hiệu) — checkbox native: trình duyệt tự vẽ, nền/chữ không tô lại được.
                       className="h-4 w-4 shrink-0 cursor-pointer rounded border-border accent-[var(--primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:opacity-50"
                     />
                   </li>
@@ -153,6 +154,7 @@ export function NotificationSection() {
                     checked={prefs.email[key]}
                     disabled={update.isPending}
                     onChange={(e) => toggleEmail(key, e.target.checked)}
+                    // Giữ disabled:opacity (không dùng token vô hiệu) — checkbox native: trình duyệt tự vẽ, nền/chữ không tô lại được.
                     className="h-4 w-4 shrink-0 cursor-pointer rounded border-border accent-[var(--primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:opacity-50"
                   />
                 </li>

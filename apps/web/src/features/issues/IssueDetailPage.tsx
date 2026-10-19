@@ -111,7 +111,7 @@ const EDIT_DENIED_NOTICE = 'Bạn không có quyền sửa công việc này.';
 
 /** Nút trên thanh thao tác dưới tiêu đề (secondary, viền). */
 const TOOLBAR_BTN =
-  'inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 py-1.5 text-sm font-medium text-ink transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:opacity-50';
+  'inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 py-1.5 text-sm font-medium text-ink transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:cursor-not-allowed disabled:border-transparent disabled:bg-disabled-bg disabled:text-disabled-fg';
 
 const CATEGORY_COLOR: Record<string, string> = {
   TODO: 'var(--status-todo)',
@@ -737,7 +737,7 @@ export function IssueDetailPage() {
                               ? `${o.label} → “${o.name}”`
                               : `Chuyển sang “${o.name}”`
                           }${i < 9 ? ` · phím tắt ${i + 1}` : ''}`}
-                          className="group inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 py-1.5 text-sm font-medium text-ink transition-colors hover:border-primary hover:bg-primary-subtle hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:opacity-50"
+                          className="group inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 py-1.5 text-sm font-medium text-ink transition-colors hover:border-primary hover:bg-primary-subtle hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:cursor-not-allowed disabled:border-transparent disabled:bg-disabled-bg disabled:text-disabled-fg"
                         >
                           <span
                             className="h-2 w-2 shrink-0 rounded-full"

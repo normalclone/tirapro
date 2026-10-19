@@ -161,6 +161,7 @@ export function TreePage() {
                       disabled={parentIds.size === 0}
                       aria-label={allCollapsed ? 'Mở rộng tất cả' : 'Thu gọn tất cả'}
                       title={allCollapsed ? 'Mở rộng tất cả' : 'Thu gọn tất cả'}
+                      // Giữ disabled:opacity (không dùng token vô hiệu) — icon-button không nền: token nền vô nghĩa, chỉ cần mờ đi.
                       className="grid h-5 w-5 shrink-0 place-items-center rounded text-faint hover:bg-surface-3 hover:text-ink disabled:pointer-events-none disabled:opacity-40"
                     >
                       {allCollapsed ? (

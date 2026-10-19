@@ -29,6 +29,7 @@ function Switch({
       disabled={disabled}
       onClick={() => onChange(!checked)}
       className={cn(
+        // Giữ disabled:opacity (không dùng token vô hiệu) — công tắc: trạng thái bật/tắt phải còn đọc được khi vô hiệu.
         'relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:opacity-50',
         checked ? 'bg-primary' : 'bg-surface-3',
       )}

@@ -559,6 +559,7 @@ function RoleDialog({
                         checked={checked}
                         disabled={readOnly}
                         onChange={() => togglePerm(p.key)}
+                        // Giữ disabled:opacity (không dùng token vô hiệu) — checkbox native: trình duyệt tự vẽ, nền/chữ không tô lại được.
                         className="h-4 w-4 shrink-0 rounded border-border-strong text-primary accent-[var(--primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:opacity-60"
                       />
                       <span className={cn('min-w-0 flex-1', checked ? 'text-ink' : 'text-muted')}>

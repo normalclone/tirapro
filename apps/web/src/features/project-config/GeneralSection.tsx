@@ -189,7 +189,7 @@ export function GeneralSection({ project, canAdmin }: { project: ProjectDto; can
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Dự án này làm gì, cho ai?"
               className={cn(
-                'w-full resize-y rounded-md border border-border bg-bg px-3 py-2 text-sm text-ink placeholder:text-faint disabled:opacity-50',
+                'w-full resize-y rounded-md border border-border bg-bg px-3 py-2 text-sm text-ink placeholder:text-faint disabled:cursor-not-allowed disabled:bg-disabled-bg disabled:text-disabled-fg',
                 'focus-visible:outline-none focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
               )}
             />

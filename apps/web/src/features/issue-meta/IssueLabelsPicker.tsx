@@ -71,6 +71,7 @@ export function IssueLabelsPicker({ issue, inline }: { issue: IssueDto; inline?:
                   className={cn(
                     'grid h-4 w-4 shrink-0 place-items-center rounded-full text-faint transition-colors',
                     'hover:bg-surface-3 hover:text-danger focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
+                    // Giữ disabled:opacity (không dùng token vô hiệu) — nút X nhỏ không nền trong chip nhãn: chỉ cần mờ đi.
                     'disabled:opacity-50',
                   )}
                 >
@@ -125,7 +126,7 @@ export function IssueLabelsPicker({ issue, inline }: { issue: IssueDto; inline?:
                           className={cn(
                             'flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm transition-colors',
                             'hover:bg-surface-2 focus-visible:bg-surface-2 focus-visible:outline-none',
-                            'disabled:pointer-events-none disabled:opacity-50',
+                            'disabled:pointer-events-none [&:disabled_.text-ink]:text-disabled-fg',
                           )}
                         >
                           <span

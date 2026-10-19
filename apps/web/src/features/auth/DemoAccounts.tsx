@@ -49,7 +49,7 @@ export default function DemoAccounts({
                 type="button"
                 disabled={loading}
                 onClick={() => onPick(a.email, DEMO_PASSWORD)}
-                className="flex w-full items-center gap-2.5 px-3 py-2 text-left transition-colors hover:bg-surface-2 focus-visible:bg-surface-2 focus-visible:outline-none disabled:opacity-50"
+                className="flex w-full items-center gap-2.5 px-3 py-2 text-left transition-colors hover:bg-surface-2 focus-visible:bg-surface-2 focus-visible:outline-none [&:disabled_.text-ink]:text-disabled-fg [&:disabled_.text-muted]:text-disabled-fg"
               >
                 <span
                   className={cn(

@@ -976,6 +976,7 @@ function TreeRow({
               onClick={() => onShift(node.id, -1)}
               aria-label={`Đưa ${node.title} lên trên`}
               title="Đổi chỗ với trang liền trên"
+              // Giữ disabled:opacity (không dùng token vô hiệu) — icon-button không nền: token nền vô nghĩa, chỉ cần mờ đi.
               className="grid h-6 w-6 place-items-center rounded text-faint transition-colors hover:text-ink disabled:opacity-30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
             >
               <ArrowUp className="h-3.5 w-3.5" />
@@ -986,6 +987,7 @@ function TreeRow({
               onClick={() => onShift(node.id, 1)}
               aria-label={`Đưa ${node.title} xuống dưới`}
               title="Đổi chỗ với trang liền dưới"
+              // Giữ disabled:opacity (không dùng token vô hiệu) — icon-button không nền: token nền vô nghĩa, chỉ cần mờ đi.
               className="grid h-6 w-6 place-items-center rounded text-faint transition-colors hover:text-ink disabled:opacity-30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
             >
               <ArrowDown className="h-3.5 w-3.5" />

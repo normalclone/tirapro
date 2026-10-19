@@ -89,7 +89,7 @@ export function WorkspaceSwitcher() {
                       className={cn(
                         'flex w-full items-center gap-2.5 px-3 py-2 text-left transition-colors',
                         'hover:bg-surface-2 focus-visible:bg-surface-2 focus-visible:outline-none',
-                        'disabled:pointer-events-none disabled:opacity-50',
+                        'disabled:pointer-events-none [&:disabled_.text-ink-strong]:text-disabled-fg [&:disabled_.text-muted]:text-disabled-fg',
                         isActive && 'bg-primary-subtle/60',
                       )}
                     >

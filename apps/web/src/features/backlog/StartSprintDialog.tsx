@@ -213,7 +213,8 @@ function DurationChips({
             disabled={!start}
             onClick={() => onPick(n)}
             className={cn(
-              'rounded-full border px-2.5 py-0.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:opacity-50',
+              'rounded-full border px-2.5 py-0.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
+              'disabled:cursor-not-allowed disabled:border-transparent disabled:bg-disabled-bg disabled:text-disabled-fg',
               active
                 ? 'border-primary bg-primary-subtle text-primary'
                 : 'border-border text-muted hover:bg-surface-2 hover:text-ink',

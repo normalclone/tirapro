@@ -739,6 +739,7 @@ function JqlPreview({ jql }: { jql: string }) {
           type="button"
           onClick={copy}
           disabled={!jql}
+          // Giữ disabled:opacity (không dùng token vô hiệu) — nút chữ ghost không nền: chỉ cần mờ đi.
           className="flex items-center gap-1 text-xs text-muted transition-colors hover:text-ink disabled:opacity-40"
         >
           <Copy className="h-3.5 w-3.5" aria-hidden />

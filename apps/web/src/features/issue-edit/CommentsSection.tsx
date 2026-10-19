@@ -243,6 +243,7 @@ function CommentRow({
                 </button>
                 <button
                   type="button"
+                  // Giữ disabled:opacity (không dùng token vô hiệu) — liên kết chữ không nền: token nền vô nghĩa, chỉ cần mờ đi.
                   className="text-muted transition-colors hover:text-danger disabled:opacity-50"
                   title="Xoá bình luận này"
                   disabled={remove.isPending}
