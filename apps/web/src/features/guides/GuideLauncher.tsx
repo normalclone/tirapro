@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/Button';
 import { firstVisible } from '@/lib/firstVisible';
 import { useScreenGuides, useMarkGuide, type ScreenGuide } from './api';
 import { isTour, primaryTourOf, routeToScreen } from './routeToScreen';
+import { ensureSkipButton, restoreTourFocus, tourOutcome } from './tourOutcome';
 
 /**
  * Đổi step shape (shared) → DriveStep (driver.js), lọc bỏ step không có phần tử nào ĐANG HIỂN THỊ khớp selector.
@@ -45,7 +46,7 @@ export function GuideLauncher() {
   const launching = useRef(false);
 
   const runTour = useCallback(
-    async (guide: ScreenGuide, opts: { markSeen?: boolean }) => {
+    async (guide: ScreenGuide, opts: { markSeen?: boolean; returnFocus?: HTMLElement | null }) => {
       if (!isTour(guide.content)) return;
       const steps = toDriveSteps(guide.content.steps);
       if (steps.length === 0) return;
@@ -63,16 +64,36 @@ export function GuideLauncher() {
         return; // mất mạng khi tải thư viện: bỏ qua, người dùng bấm lại “Hướng dẫn màn này” sau
       }
       if (opts.markSeen) markGuide.mutate({ key: guide.key, action: 'seen' });
+      // "complete" chỉ khi tới bước cuối và bấm "Xong" (xem tourOutcome); Bỏ qua/×/Esc/bấm nền = "seen".
+      let reachedLast = false;
+      let finishedViaDone = false;
       const d = driver({
         showProgress: true,
         nextBtnText: 'Tiếp',
-        prevBtnText: 'Trước',
+        prevBtnText: 'Quay lại',
         doneBtnText: 'Xong',
         progressText: '{{current}}/{{total}}',
         steps,
+        onHighlighted: (_el, _step, { driver }) => {
+          if (driver.isLastStep()) reachedLast = true;
+        },
+        // Nút "Tiếp" ở bước cuối chính là "Xong" (phím → cũng vậy): ghi nhận rồi đóng; bước khác đi tiếp như mặc định.
+        onNextClick: (_el, _step, { driver }) => {
+          if (driver.isLastStep()) {
+            finishedViaDone = true;
+            driver.destroy();
+          } else driver.moveNext();
+        },
+        onPopoverRender: (popover, { driver }) =>
+          ensureSkipButton(popover.footer, document, () => driver.destroy()),
         onDestroyed: () => {
           launching.current = false;
-          markGuide.mutate({ key: guide.key, action: 'complete' });
+          markGuide.mutate({
+            key: guide.key,
+            action: tourOutcome({ reachedLast, finishedViaDone }),
+          });
+          // driver.js tự trả focus về phần tử ở bước TRƯỚC (đã bị gỡ ở tour nhiều bước) → ta trả về nơi đã mở tour.
+          restoreTourFocus(opts.returnFocus, document.querySelector<HTMLElement>('main'));
         },
       });
       d.drive();
@@ -126,8 +147,11 @@ export function GuideLauncher() {
         size="icon"
         aria-label="Hướng dẫn màn này"
         title="Hướng dẫn màn này"
-        onClick={() => {
-          void runTour(primaryTour, { markSeen: !primaryTour.seen });
+        onClick={(e) => {
+          void runTour(primaryTour, {
+            markSeen: !primaryTour.seen,
+            returnFocus: e.currentTarget,
+          });
         }}
       >
         <HelpCircle className="h-4 w-4" />
@@ -171,6 +195,23 @@ const GUIDE_THEME_CSS = `
   border-color: var(--primary);
 }
 .driver-popover-footer .driver-popover-next-btn:hover { background: var(--primary-hover); }
+.driver-popover-footer { gap: 0.5rem; }
+/* "Bỏ qua": nút chữ bên trái footer (Quay lại / Tiếp ở bên phải). */
+.driver-popover-footer .tour-skip-btn {
+  border-color: transparent;
+  background: transparent;
+  color: var(--ink);
+  opacity: 0.75;
+  cursor: pointer;
+  padding: 3px 7px;
+  font-size: 12px;
+}
+.driver-popover-footer .tour-skip-btn:hover { background: var(--surface-2); opacity: 1; }
+.driver-popover-footer button:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+/* Cảm ứng: mọi nút ở footer đạt vùng chạm 44px (DESIGN.md). */
+@media (pointer: coarse) {
+  .driver-popover-footer button { min-height: 44px; min-width: 44px; padding: 0 12px; }
+}
 .driver-popover-close-btn { color: var(--ink); opacity: 0.6; }
 .driver-popover-close-btn:hover { opacity: 1; }
 `;
