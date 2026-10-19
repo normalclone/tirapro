@@ -26,7 +26,7 @@ import {
 } from './api';
 import { fmtDayMonth } from '@/lib/dateFormat';
 import { ScrollX } from '@/components/ui/ScrollX';
-import { useScrollFade } from '@/lib/useScrollFade';
+import { Tabs, TabPanel } from '@/components/ui/Tabs';
 import { MANAGE_LABELS } from '@/lib/navLabels';
 
 type Tab = 'load' | 'allocations' | 'time-off';
@@ -142,46 +142,6 @@ function ResourcesHeader({
   );
 }
 
-/** Dải tab "Xem theo": cuộn ngang trên điện thoại có mờ mép, tab đang chọn tự cuộn vào khung. */
-function ResourceTabs({
-  tabs,
-  tab,
-  onPick,
-}: {
-  tabs: { id: Tab; label: string }[];
-  tab: Tab;
-  onPick: (t: Tab) => void;
-}) {
-  const tabsFade = useScrollFade<HTMLDivElement>(tab, '[aria-selected="true"]');
-  // Chỉ cuộn ngang < sm: bọc overflow-x-auto cả desktop sẽ cắt 1px gạch chân của tab (`-mb-px`).
-  return (
-    <div
-      ref={tabsFade.ref}
-      style={tabsFade.style}
-      className="scroll-fade-x relative mb-5 flex gap-1 border-b border-border max-sm:overflow-x-auto max-sm:scrollbar-none"
-      role="tablist"
-      aria-label="Xem theo"
-    >
-      {tabs.map((t) => (
-        <button
-          key={t.id}
-          role="tab"
-          aria-selected={tab === t.id}
-          onClick={() => onPick(t.id)}
-          className={cn(
-            '-mb-px shrink-0 whitespace-nowrap border-b-2 px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
-            tab === t.id
-              ? 'border-primary text-ink-strong'
-              : 'border-transparent text-muted hover:text-ink',
-          )}
-        >
-          {t.label}
-        </button>
-      ))}
-    </div>
-  );
-}
-
 /**
  * Nhân lực & khối lượng việc — bảng nhiệt NGƯỜI × TUẦN, phân bổ theo dự án,
  * nghỉ phép & ngày lễ chung.
@@ -289,40 +249,51 @@ export function ResourcesPage() {
         )}
       </div>
 
-      <ResourceTabs tabs={tabs} tab={tab} onPick={setTab} />
+      <Tabs
+        idBase="resources"
+        ariaLabel="Xem theo"
+        value={tab}
+        onChange={setTab}
+        items={tabs}
+        fade
+        // Chỉ cuộn ngang < sm: bọc overflow-x-auto cả desktop sẽ cắt 1px gạch chân của tab (`-mb-px`).
+        className="mb-5 max-sm:overflow-x-auto max-sm:scrollbar-none"
+      />
 
-      {tab === 'load' && (
-        <section aria-label="Bảng khối lượng việc theo tuần">
-          <Legend />
-          {workload.isError ? (
-            <QueryError onRetry={() => void workload.refetch()} />
-          ) : workload.isLoading ? (
-            <div className="space-y-2">
-              {Array.from({ length: 6 }).map((_, i) => (
-                <Skeleton key={i} className="h-11 w-full" />
-              ))}
-            </div>
-          ) : !workload.data || workload.data.rows.length === 0 ? (
-            <EmptyState
-              icon={<Users className="h-6 w-6" />}
-              title="Chưa có ai để tính khối lượng việc"
-              description="Bảng này cho biết mỗi tuần một người gánh bao nhiêu giờ. Hãy thêm người vào không gian làm việc, rồi phân bổ họ vào dự án."
-            />
-          ) : (
-            <HeatMap
-              rows={workload.data.rows}
-              weeks={workload.data.weeks}
-              hoursPerDay={workload.data.hoursPerDay}
-            />
-          )}
-        </section>
-      )}
+      <TabPanel idBase="resources" value={tab}>
+        {tab === 'load' && (
+          <section aria-label="Bảng khối lượng việc theo tuần">
+            <Legend />
+            {workload.isError ? (
+              <QueryError onRetry={() => void workload.refetch()} />
+            ) : workload.isLoading ? (
+              <div className="space-y-2">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <Skeleton key={i} className="h-11 w-full" />
+                ))}
+              </div>
+            ) : !workload.data || workload.data.rows.length === 0 ? (
+              <EmptyState
+                icon={<Users className="h-6 w-6" />}
+                title="Chưa có ai để tính khối lượng việc"
+                description="Bảng này cho biết mỗi tuần một người gánh bao nhiêu giờ. Hãy thêm người vào không gian làm việc, rồi phân bổ họ vào dự án."
+              />
+            ) : (
+              <HeatMap
+                rows={workload.data.rows}
+                weeks={workload.data.weeks}
+                hoursPerDay={workload.data.hoursPerDay}
+              />
+            )}
+          </section>
+        )}
 
-      {tab === 'allocations' && (
-        <AllocationsPanel canManage={canManage} projectId={projectId} from={from} to={to} />
-      )}
+        {tab === 'allocations' && (
+          <AllocationsPanel canManage={canManage} projectId={projectId} from={from} to={to} />
+        )}
 
-      {tab === 'time-off' && <TimeOffPanel canManage={canManage} from={from} to={to} />}
+        {tab === 'time-off' && <TimeOffPanel canManage={canManage} from={from} to={to} />}
+      </TabPanel>
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import { useAuth } from '@/stores/auth';
+import type { CreateWikiInput } from './api';
 
 /** Bản nháp wiki tự lưu vào localStorage theo trang — hàm thuần/IO bọc try/catch (test được không cần DOM). */
 
@@ -80,4 +81,34 @@ export function draftOffer(
   page: { title: string; body: string },
 ): WikiDraft | null {
   return stored && isWikiDirty(stored, page) ? stored : null;
+}
+
+/**
+ * Trang MỚI chưa lưu (chưa có trên máy chủ): chỉ nhớ phía trình duyệt cha là ai và thuộc phạm vi nào. "Tạo trang mới"
+ * KHÔNG gọi máy chủ; `POST /wiki` chỉ chạy ở lần Lưu đầu → huỷ/đóng tab không để lại trang rỗng trong cây.
+ */
+export interface PendingNewPage {
+  parentId: string | null;
+  projectId: string | null;
+}
+
+/** Khoá nháp tự lưu của trang chưa có id thật (khác mọi id thật: cuid không bắt đầu bằng `new:`). */
+export const newDraftKey = (p: PendingNewPage): string =>
+  `new:${p.parentId ?? 'root'}:${p.projectId ?? 'shared'}`;
+
+export const isNewDraftKey = (id: string): boolean => id.startsWith('new:');
+
+/** Trang gốc theo phạm vi đang chọn; trang con LUÔN cùng phạm vi với trang cha (API từ chối nếu lệch). */
+export function pendingNewFor(
+  parent: { id: string; projectId: string | null } | null,
+  scopeProjectId: string | null,
+): PendingNewPage {
+  return parent
+    ? { parentId: parent.id, projectId: parent.projectId }
+    : { parentId: null, projectId: scopeProjectId };
+}
+
+/** Thân `POST /wiki` ở lần lưu đầu. */
+export function buildCreateInput(p: PendingNewPage, title: string, body: string): CreateWikiInput {
+  return { title: title.trim(), body, parentId: p.parentId, projectId: p.projectId };
 }

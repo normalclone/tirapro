@@ -6,7 +6,6 @@ import { Button } from '@/components/ui/Button';
 import { useConfirm } from '@/components/ui/useConfirm';
 import { pageContainer } from '@/components/layout/page';
 import { apiErrorMessage } from '@/lib/api';
-import { cn } from '@/lib/utils';
 import { useAuth } from '@/stores/auth';
 import { RecurringModal } from './RecurringModal';
 import { RulesPage } from './RulesPage';
@@ -23,7 +22,9 @@ import {
   type RecurringIssue,
 } from './api';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
+import { Tabs, TabPanel } from '@/components/ui/Tabs';
 import { fmtDateTime } from '@/lib/dateFormat';
+import { CONNECT_LABELS } from '@/lib/navLabels';
 
 type Tab = 'rules' | 'templates' | 'recurring';
 
@@ -46,7 +47,9 @@ export function AutomationPage() {
   return (
     <div className={pageContainer('md')}>
       <header className="mb-6">
-        <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">Tự động hoá</h1>
+        <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">
+          {CONNECT_LABELS.automation}
+        </h1>
         <p className="mt-1 text-sm text-muted">
           Quy tắc để hệ thống tự làm khi có sự kiện (khi… nếu… thì…). Mẫu công việc giúp bạn khỏi gõ
           lại những trường quen thuộc. Công việc lặp lại để hệ thống tự tạo việc theo lịch — họp
@@ -54,36 +57,24 @@ export function AutomationPage() {
         </p>
       </header>
 
-      <div
-        className="mb-6 flex gap-1 border-b border-border"
-        role="tablist"
-        aria-label="Loại tự động hoá"
-      >
-        {tabs.map((t) => (
-          <button
-            key={t.id}
-            role="tab"
-            aria-selected={tab === t.id}
-            onClick={() => setTab(t.id)}
-            className={cn(
-              '-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
-              tab === t.id
-                ? 'border-primary text-ink-strong'
-                : 'border-transparent text-muted hover:text-ink',
-            )}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+      <Tabs
+        idBase="automation"
+        ariaLabel="Loại tự động hoá"
+        value={tab}
+        onChange={setTab}
+        items={tabs}
+        className="mb-6"
+      />
 
-      {tab === 'rules' ? (
-        <RulesPage />
-      ) : tab === 'templates' ? (
-        <TemplatesPanel canManage={canManage} />
-      ) : (
-        <RecurringPanel canManage={canManage} />
-      )}
+      <TabPanel idBase="automation" value={tab}>
+        {tab === 'rules' ? (
+          <RulesPage />
+        ) : tab === 'templates' ? (
+          <TemplatesPanel canManage={canManage} />
+        ) : (
+          <RecurringPanel canManage={canManage} />
+        )}
+      </TabPanel>
     </div>
   );
 }
@@ -123,7 +114,7 @@ function TemplatesPanel({ canManage }: { canManage: boolean }) {
         <div className="min-w-0">
           <h2 className="text-base font-semibold text-ink-strong">Mẫu công việc</h2>
           <p className="mt-0.5 text-sm text-muted">
-            Điền sẵn loại, độ ưu tiên, tiêu đề và mô tả cho những việc hay gặp.
+            Điền sẵn loại, mức ưu tiên, tiêu đề và mô tả cho những việc hay gặp.
           </p>
         </div>
         {canManage && (
@@ -142,7 +133,7 @@ function TemplatesPanel({ canManage }: { canManage: boolean }) {
             <EmptyState
               icon={<FileStack className="h-6 w-6" />}
               title="Chưa có mẫu công việc nào"
-              description="Mẫu điền sẵn loại, độ ưu tiên, tiêu đề và mô tả để bạn tạo việc chỉ trong một bước. Hãy tạo mẫu cho việc hay gặp: báo lỗi, yêu cầu tính năng, đón thành viên mới."
+              description="Mẫu điền sẵn loại, mức ưu tiên, tiêu đề và mô tả để bạn tạo việc chỉ trong một bước. Hãy tạo mẫu cho việc hay gặp: báo lỗi, yêu cầu tính năng, đón thành viên mới."
               action={
                 canManage ? (
                   <Button size="sm" onClick={() => edit(null)}>

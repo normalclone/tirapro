@@ -287,6 +287,7 @@ export function AddPeopleDialog({
           onClick={toggleAll}
           disabled={filtered.length === 0}
           title="Chọn hoặc bỏ chọn tất cả những người đang hiện trong danh sách"
+          // Giữ disabled:opacity (không dùng token vô hiệu) — liên kết chữ không nền: chỉ cần mờ đi.
           className="font-medium text-primary hover:underline disabled:opacity-40"
         >
           {allFilteredSelected ? 'Bỏ chọn tất cả' : `Chọn tất cả (${filtered.length})`}

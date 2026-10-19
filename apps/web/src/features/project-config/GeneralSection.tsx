@@ -12,6 +12,7 @@ import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { useUnsavedChanges } from '@/lib/useUnsavedChanges';
 import { PrivacySection } from './PrivacySection';
+import { settleField } from '@/lib/settleField';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 
 function Card({
@@ -97,8 +98,9 @@ export function GeneralSection({ project, canAdmin }: { project: ProjectDto; can
         ...(next.assignMode !== saved.assignMode ? { defaultAssigneeMode: next.assignMode } : {}),
       });
       setSaved(next);
-      setName(next.name);
-      setDescription(next.description);
+      // Lưu có thể mất vài giây: người dùng có thể đã gõ tiếp → chỉ đặt lại ô chưa bị đổi (so với chuỗi đã gửi).
+      setName((cur) => settleField(cur, next.name));
+      setDescription((cur) => settleField(cur, next.description));
       toast.success('Đã lưu thông tin dự án');
     } catch (e) {
       toast.error(apiErrorMessage(e));
@@ -189,7 +191,7 @@ export function GeneralSection({ project, canAdmin }: { project: ProjectDto; can
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Dự án này làm gì, cho ai?"
               className={cn(
-                'w-full resize-y rounded-md border border-border bg-bg px-3 py-2 text-sm text-ink placeholder:text-faint disabled:opacity-50',
+                'w-full resize-y rounded-md border border-border bg-bg px-3 py-2 text-sm text-ink placeholder:text-faint disabled:cursor-not-allowed disabled:bg-disabled-bg disabled:text-disabled-fg',
                 'focus-visible:outline-none focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
               )}
             />

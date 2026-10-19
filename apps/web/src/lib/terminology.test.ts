@@ -29,6 +29,22 @@ export const hits = (re: RegExp, keep: (line: string) => boolean = () => true) =
       .map((x) => `${x.f.split('/src/')[1]}:${x.i}`),
   );
 
+/**
+ * Gộp mọi khoảng trắng (kể cả xuống dòng + thụt lề JSX) thành một dấu cách: cụm từ cấm bị prettier bẻ dòng
+ * (`độ\n          ưu tiên`) mà `hits()` theo từng dòng không bắt được thì bắt ở bản gộp.
+ */
+export const collapseWs = (text: string) => text.replace(/\s+/g, ' ');
+
+/** Như `hits` nhưng khớp trên NỘI DUNG ĐÃ GỘP khoảng trắng của cả file (bỏ dòng comment); trả tên file. */
+export const joinedHits = (re: RegExp) =>
+  walk(join(__dirname, '..')).flatMap((f) => {
+    const code = readFileSync(f, 'utf8')
+      .split('\n')
+      .filter((l) => !isComment(l))
+      .join('\n');
+    return re.test(collapseWs(code)) ? [f.split('/src/')[1]!] : [];
+  });
+
 describe('thuật ngữ (UX_CONVENTIONS §19) — bộ A', () => {
   it('không còn "Backlog" hiển thị (dùng "Việc chờ")', () => {
     expect(hits(/(["'`>][^"'`<>]*)\bBacklog\b/)).toEqual([]);

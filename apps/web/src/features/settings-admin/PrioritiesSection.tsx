@@ -76,7 +76,7 @@ export function PrioritiesSection() {
   function submitAdd() {
     const trimmed = name.trim();
     if (!trimmed) {
-      toast.error('Vui lòng nhập tên độ ưu tiên.');
+      toast.error('Vui lòng nhập tên mức ưu tiên.');
       return;
     }
     create.mutate(
@@ -105,7 +105,7 @@ export function PrioritiesSection() {
   async function handleDelete(p: Priority) {
     if (
       !(await confirm({
-        title: `Xoá độ ưu tiên "${p.name}"? Hành động này không thể hoàn tác.`,
+        title: `Xoá mức ưu tiên "${p.name}"? Hành động này không thể hoàn tác.`,
         destructive: true,
       }))
     )
@@ -133,17 +133,17 @@ export function PrioritiesSection() {
         emptyState={
           <EmptyState
             icon={<Flag className="h-6 w-6" />}
-            title="Chưa có độ ưu tiên nào"
+            title="Chưa có mức ưu tiên nào"
             description={
               canManage
                 ? 'Mức ưu tiên cho biết việc nào cần làm trước. Thêm mức đầu tiên để bắt đầu sắp xếp công việc.'
-                : 'Chưa có độ ưu tiên nào. Liên hệ quản trị chung để thêm.'
+                : 'Chưa có mức ưu tiên nào. Liên hệ quản trị chung để thêm.'
             }
             action={
               canManage ? (
                 <Button size="sm" onClick={() => setAdding(true)}>
                   <Plus className="h-4 w-4" />
-                  Thêm độ ưu tiên
+                  Thêm mức ưu tiên
                 </Button>
               ) : undefined
             }
@@ -221,7 +221,7 @@ export function PrioritiesSection() {
         )}
       </QueryBoundary>
 
-      {/* Form thêm độ ưu tiên — chỉ quản trị chung */}
+      {/* Form thêm mức ưu tiên — chỉ quản trị chung */}
       {canManage && adding ? (
         <div className="mt-4 rounded-md border border-border bg-surface-2 p-3">
           <div className="flex flex-wrap items-end gap-3">
@@ -280,7 +280,7 @@ export function PrioritiesSection() {
         priorities.length > 0 && (
           <Button variant="secondary" size="sm" className="mt-4" onClick={() => setAdding(true)}>
             <Plus className="h-4 w-4" />
-            Thêm độ ưu tiên
+            Thêm mức ưu tiên
           </Button>
         )
       )}
@@ -318,7 +318,7 @@ function PriorityEditRow({
         <Input
           value={name}
           autoFocus
-          aria-label="Tên độ ưu tiên"
+          aria-label="Tên mức ưu tiên"
           onChange={(e) => setName(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === 'Enter') save();

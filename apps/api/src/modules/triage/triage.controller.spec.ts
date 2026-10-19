@@ -15,10 +15,13 @@ describe('TriageController — quyền duyệt (S-I4)', () => {
     },
   );
 
-  it('xem hộp/đếm vẫn chỉ cần project:view', () => {
-    expect(perms('inbox')).toEqual([PERMISSIONS.PROJECT_VIEW]);
-    expect(perms('count')).toEqual([PERMISSIONS.PROJECT_VIEW]);
-  });
+  it.each(['inbox', 'count'] as const)(
+    'xem hộp/đếm (%s) đòi issue:triage — project:view một mình không đủ (403, không lộ việc chờ duyệt của người khác)',
+    (name) => {
+      expect(perms(name)).toEqual([PERMISSIONS.ISSUE_TRIAGE]);
+      expect(perms(name)).not.toContain(PERMISSIONS.PROJECT_VIEW);
+    },
+  );
 
   it('accept chuyển thẳng cho service, không còn nhánh own-only', async () => {
     const triage = { accept: vi.fn(() => Promise.resolve({})) };

@@ -358,9 +358,12 @@ export function DashboardEditor({
         onSave={() => void doSave()}
       />
       <p className="mb-4 text-xs text-muted">
-        Kéo tay nắm <GripVertical className="inline h-3.5 w-3.5" aria-hidden /> để đổi chỗ. Bằng bàn
-        phím: Tab tới tay nắm, Space nhấc, phím mũi tên di chuyển, Space thả. Esc để huỷ soạn,
-        Ctrl/Cmd+S để lưu.
+        Kéo tay nắm <GripVertical className="inline h-3.5 w-3.5" aria-hidden /> để đổi chỗ.
+        <span className="kbd-hint">
+          {' '}
+          Bằng bàn phím: Tab tới tay nắm, Space nhấc, phím mũi tên di chuyển, Space thả. Esc để huỷ
+          soạn, Ctrl/Cmd+S để lưu.
+        </span>
       </p>
       {shareError && (
         <p role="alert" className="mb-3 text-sm text-danger">

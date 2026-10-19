@@ -4,7 +4,7 @@ import type { IssueDto, PriorityDto, SprintDto } from '@tirapro/types';
 import { PriorityIcon } from '@/components/ui/PriorityIcon';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { useConfirm } from '@/components/ui/useConfirm';
-import { usePriorityRanks } from '@/features/settings-admin/api';
+import { usePriorityRanks } from '@/features/issue-meta/usePriorityRanks';
 import { pointsConfirmOptions, pointsEditWarning } from '@/features/issues/pointsWarning';
 import { parsePointsInput } from '@/lib/permissions';
 import { cn } from '@/lib/utils';

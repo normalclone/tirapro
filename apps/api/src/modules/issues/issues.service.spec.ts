@@ -142,7 +142,12 @@ describe('IssuesService.move — rebalance khi hết chỗ chèn', () => {
   it('rank hai mốc sát nhau => đánh số lại project rồi tính lại 1 lần', async () => {
     let rebalanced = false;
     const ranks: Record<string, [string, string]> = { a: ['n', 'i'], b: ['n0', 'r'] }; // [trước, sau rebalance]
-    const executeRaw = vi.fn(() => Promise.resolve(3));
+    // Cờ "đã rebalance" bật khi chạy câu UPDATE raw (project.update giờ còn là KHOÁ dự án của move, chạy trước khi đọc mốc).
+    const executeRaw = vi.fn(async () => {
+      await Promise.resolve();
+      rebalanced = true;
+      return 3;
+    });
     let movedRank: unknown;
     const updateMany = vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
       await Promise.resolve();
@@ -161,20 +166,14 @@ describe('IssuesService.move — rebalance khi hết chỗ chèn', () => {
         updateMany,
         findFirstOrThrow: vi.fn(() => Promise.resolve(issueRow({ rank: movedRank, version: 4 }))),
       },
-      project: {
-        update: vi.fn(async () => {
-          await Promise.resolve();
-          rebalanced = true;
-          return { id: 'p1' };
-        }),
-      },
+      project: { update: vi.fn(() => Promise.resolve({ id: 'p1' })) },
       $executeRaw: executeRaw,
     };
     const { service, events } = makeService(tx);
 
     const dto = await service.move('w1', 'u1', 'i1', { version: 3, afterId: 'a', beforeId: 'b' });
 
-    expect(tx.project.update).toHaveBeenCalledTimes(1);
+    expect(tx.project.update).toHaveBeenCalledTimes(2); // khoá dự án của move + khoá của rebalance
     expect(dto.rank > 'i' && dto.rank < 'r').toBe(true);
     // Rebalance = ĐÚNG MỘT câu raw cho cả project, hai mảng (id, rank) cùng độ dài
     expect(executeRaw).toHaveBeenCalledTimes(1);
@@ -250,6 +249,7 @@ describe('IssuesService.move — rebalance khi hết chỗ chèn', () => {
           Promise.resolve(where.id === 'i1' ? issueRow() : null),
         ),
       },
+      project: { update: vi.fn(() => Promise.resolve({ id: 'p1' })) },
     };
     const { service } = makeService(tx);
     await expect(
@@ -929,6 +929,8 @@ function wipTx(
     issueHistory: { createMany: vi.fn(), create: vi.fn() },
     project: {
       findUnique: vi.fn(() => Promise.resolve({ defaultWorkflowId: 'wf', archivedAt: null })),
+      // khoá hàng dự án khi move có mốc rank
+      update: vi.fn(() => Promise.resolve({ id: 'p1' })),
     },
     workflowTransition: { findFirst: vi.fn(() => Promise.resolve({ id: 'tr' })) },
     status: { findUnique: vi.fn(() => Promise.resolve({ category: 'IN_PROGRESS' })) },
@@ -2670,14 +2672,13 @@ describe('IssuesService.move — neighbor cũ (409) vs hết chỗ (rebalance)',
         }),
         findFirstOrThrow: vi.fn(() => Promise.resolve(issueRow({ rank: movedRank, version: 4 }))),
       },
-      project: {
-        update: vi.fn(async () => {
-          await Promise.resolve();
-          rebalanced = true;
-          return { id: 'p1' };
-        }),
-      },
-      $executeRaw: vi.fn(() => Promise.resolve(3)),
+      // project.update = khoá dự án của move (và của rebalance); cờ rebalance bật ở câu UPDATE raw.
+      project: { update: vi.fn(() => Promise.resolve({ id: 'p1' })) },
+      $executeRaw: vi.fn(async () => {
+        await Promise.resolve();
+        rebalanced = true;
+        return 3;
+      }),
     };
     return tx;
   }
@@ -2688,7 +2689,7 @@ describe('IssuesService.move — neighbor cũ (409) vs hết chỗ (rebalance)',
     await expect(
       service.move('w1', 'u1', 'i1', { version: 3, afterId: 'a', beforeId: 'b' }),
     ).rejects.toMatchObject({ status: 409, code: 'RANK_NEIGHBORS_STALE' });
-    expect(tx.project.update).not.toHaveBeenCalled();
+    expect(tx.project.update).toHaveBeenCalledTimes(1); // chỉ khoá dự án của move, không có khoá rebalance
     expect(tx.$executeRaw).not.toHaveBeenCalled();
     expect(tx.issue.updateMany).not.toHaveBeenCalled();
     expect(events.emit).not.toHaveBeenCalled();
@@ -2698,7 +2699,7 @@ describe('IssuesService.move — neighbor cũ (409) vs hết chỗ (rebalance)',
     const tx = makeTx({ a: ['n', 'i'], b: ['n', 'r'] });
     const { service, events } = makeService(tx);
     const dto = await service.move('w1', 'u1', 'i1', { version: 3, afterId: 'a', beforeId: 'b' });
-    expect(tx.project.update).toHaveBeenCalledTimes(1);
+    expect(tx.project.update).toHaveBeenCalledTimes(2); // khoá move + khoá rebalance
     expect(tx.$executeRaw).toHaveBeenCalledTimes(1);
     expect(dto.rank > 'i' && dto.rank < 'r').toBe(true);
     expect(events.emit).toHaveBeenCalledWith(DOMAIN_EVENTS.PROJECT_RANKS_REBALANCED, {
@@ -2713,6 +2714,206 @@ describe('IssuesService.move — neighbor cũ (409) vs hết chỗ (rebalance)',
       service.move('w1', 'u1', 'i1', { version: 3, afterId: 'a', beforeId: 'b' }),
     ).rejects.toMatchObject({ status: 409, code: 'RANK_NEIGHBORS_STALE' });
     expect(tx.issue.updateMany).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * `tx` và `this.prisma` tách bạch để biết mỗi lần đọc/ghi đi đường nào. `log` ghi đúng thứ tự:
+ * begin → lock (khoá hàng dự án) → tx-rank-read (mốc) → wip-lock (cột) → write → commit.
+ */
+function moveRankSetup(
+  opts: {
+    ranks?: Record<string, [string, string]>;
+    count?: number;
+    emitLog?: boolean;
+  } = {},
+) {
+  const ranks = opts.ranks ?? { a: ['i', 'i'], b: ['r', 'r'] };
+  const log: string[] = [];
+  let rebalanced = false;
+  const tx = wipTx({ count: opts.count ?? 0 });
+  tx.project = {
+    ...tx.project,
+    update: vi.fn(() => {
+      log.push('lock');
+      return Promise.resolve({ id: 'p1' });
+    }),
+  };
+  tx.$queryRaw = vi.fn(() => {
+    log.push('wip-lock');
+    return Promise.resolve([]);
+  });
+  const rankFor = (id: string) => {
+    const r = ranks[id];
+    return r ? { rank: rebalanced ? r[1] : r[0] } : null;
+  };
+  tx.issue.findFirst = vi.fn(({ where }: { where: { id: string } }) => {
+    if (where.id === 'i1') return Promise.resolve(issueRow());
+    log.push(`tx-rank-read:${where.id}`);
+    return Promise.resolve(rankFor(where.id));
+  });
+  tx.issue.findMany = vi.fn(() => Promise.resolve([{ id: 'a' }, { id: 'i1' }, { id: 'b' }]));
+  tx.issue.updateMany = vi.fn(() => {
+    log.push('write');
+    return Promise.resolve({ count: 1 });
+  });
+  (tx as unknown as { $executeRaw: unknown }).$executeRaw = vi.fn(() => {
+    rebalanced = true;
+    log.push('rebalance-update');
+    return Promise.resolve(3);
+  });
+  // ĐƯỜNG NGOÀI transaction (this.prisma): chỉ requireIssue được đọc ở đây; đọc mốc ở đây = lỗi (chạy trước khi giữ khoá).
+  const outsideIssue = {
+    findFirst: vi.fn(({ where }: { where: { id: string } }) => {
+      if (where.id === 'i1') return Promise.resolve(issueRow());
+      log.push(`OUTSIDE-rank-read:${where.id}`);
+      return Promise.resolve(rankFor(where.id));
+    }),
+  };
+  const transaction = vi.fn(async (fn: (t: unknown) => Promise<unknown>, _o?: unknown) => {
+    log.push('begin');
+    const r = await fn(tx);
+    log.push('commit');
+    return r;
+  });
+  const made = makeService(tx, { issue: outsideIssue, $transaction: transaction });
+  made.events.emit.mockImplementation((name: string) => {
+    if (name === DOMAIN_EVENTS.PROJECT_RANKS_REBALANCED) log.push('emit-rebalanced');
+    if (name === DOMAIN_EVENTS.ISSUE_MOVED) log.push('emit-moved');
+  });
+  return { ...made, tx, log, transaction, outsideIssue };
+}
+
+describe('IssuesService.move — rank tính TRONG tx, sau khoá dự án và khoá cột WIP (R3)', () => {
+  it('kéo vào GIỮA hai mốc: khoá dự án trước, rồi đọc cả hai mốc qua tx, rồi ghi; không đọc mốc ngoài tx', async () => {
+    const { service, log, outsideIssue } = moveRankSetup();
+    await service.move('w1', 'u1', 'i1', { version: 3, afterId: 'a', beforeId: 'b' });
+    expect(log).toEqual([
+      'begin',
+      'lock',
+      'tx-rank-read:a',
+      'tx-rank-read:b',
+      'write',
+      'commit',
+      'emit-moved',
+    ]);
+    expect(log.some((l) => l.startsWith('OUTSIDE'))).toBe(false);
+    // chỉ requireIssue đọc ngoài tx
+    expect(outsideIssue.findFirst).toHaveBeenCalledTimes(1);
+  });
+
+  it('kéo xuống CUỐI (chỉ afterId): cũng đi qua khoá dự án rồi mới đọc mốc qua tx', async () => {
+    const { service, log } = moveRankSetup();
+    await service.move('w1', 'u1', 'i1', { version: 3, afterId: 'b' });
+    expect(log.slice(0, 3)).toEqual(['begin', 'lock', 'tx-rank-read:b']);
+    expect(log.some((l) => l.startsWith('OUTSIDE'))).toBe(false);
+  });
+
+  it('kéo lên ĐẦU (chỉ beforeId): cũng đi qua khoá dự án', async () => {
+    const { service, log } = moveRankSetup();
+    await service.move('w1', 'u1', 'i1', { version: 3, beforeId: 'a' });
+    expect(log.slice(0, 3)).toEqual(['begin', 'lock', 'tx-rank-read:a']);
+  });
+
+  it('kéo sang cột khác có WIP: thứ tự khoá dự án → khoá cột (WIP) → mốc rank → ghi (cùng thứ tự cột-trước-dòng với mọi đường khác, tránh deadlock khi rebalance)', async () => {
+    const { service, log } = moveRankSetup();
+    await service.move('w1', 'u1', 'i1', {
+      version: 3,
+      statusId: 's2',
+      boardId: 'b1',
+      afterId: 'a',
+      beforeId: 'b',
+    });
+    const at = (x: string) => log.indexOf(x);
+    expect(at('lock')).toBeGreaterThan(at('begin'));
+    expect(at('wip-lock')).toBeGreaterThan(at('lock'));
+    expect(at('tx-rank-read:a')).toBeGreaterThan(at('wip-lock'));
+    expect(at('tx-rank-read:b')).toBeGreaterThan(at('wip-lock'));
+    expect(at('write')).toBeGreaterThan(at('tx-rank-read:b'));
+    expect(at('commit')).toBeGreaterThan(at('write'));
+  });
+
+  it('move có mốc nhưng KHÔNG có WIP (cùng cột): vẫn khoá dự án rồi đọc mốc, KHÔNG khoá cột', async () => {
+    const { service, log } = moveRankSetup();
+    await service.move('w1', 'u1', 'i1', { version: 3, afterId: 'a', beforeId: 'b' });
+    expect(log).not.toContain('wip-lock');
+    expect(log.slice(0, 4)).toEqual(['begin', 'lock', 'tx-rank-read:a', 'tx-rank-read:b']);
+  });
+
+  it('WIP vẫn chặn đúng khi có mốc rank: cột đầy => 422, không ghi, không emit (khoá dự án đã nhả do rollback)', async () => {
+    const { service, log, events, tx } = moveRankSetup({ count: 2 });
+    await expect(
+      service.move('w1', 'u1', 'i1', {
+        version: 3,
+        statusId: 's2',
+        boardId: 'b1',
+        afterId: 'a',
+        beforeId: 'b',
+      }),
+    ).rejects.toMatchObject({ response: { code: 'WIP_LIMIT_REACHED' } });
+    expect(log).toEqual(['begin', 'lock', 'wip-lock']); // WIP chặn TRƯỚC khi đọc mốc/rebalance
+    expect(log).not.toContain('write');
+    expect(log).not.toContain('commit');
+    expect(tx.issue.updateMany).not.toHaveBeenCalled();
+    expect(events.emit).not.toHaveBeenCalled();
+  });
+
+  it('không có mốc rank: KHÔNG khoá dự án, không đọc mốc, giữ rank cũ', async () => {
+    const { service, log, tx } = moveRankSetup();
+    await service.move('w1', 'u1', 'i1', { version: 3 });
+    expect(tx.project.update).not.toHaveBeenCalled();
+    expect(log.some((l) => l.includes('rank-read'))).toBe(false);
+    const where = (tx.issue.updateMany.mock.calls[0] as unknown as [{ data: { rank: string } }])[0];
+    expect(where.data.rank).toBe('n');
+  });
+
+  it('có mốc ⇒ transaction timeout 30s (có thể rebalance cả dự án); không mốc ⇒ mặc định', async () => {
+    const withNeighbor = moveRankSetup();
+    await withNeighbor.service.move('w1', 'u1', 'i1', { version: 3, afterId: 'a' });
+    expect(withNeighbor.transaction.mock.calls[0]![1]).toEqual({ timeout: 30_000 });
+    const without = moveRankSetup();
+    await without.service.move('w1', 'u1', 'i1', { version: 3 });
+    expect(without.transaction.mock.calls[0]![1]).toBeUndefined();
+  });
+});
+
+describe('IssuesService.move — rebalance trong tx, sự kiện chỉ phát sau commit (R3)', () => {
+  it('hết chỗ chèn: rebalance chạy trong tx (sau khoá), PROJECT_RANKS_REBALANCED chỉ phát SAU commit', async () => {
+    const { service, log, events } = moveRankSetup({ ranks: { a: ['n', 'i'], b: ['n0', 'r'] } });
+    await service.move('w1', 'u1', 'i1', { version: 3, afterId: 'a', beforeId: 'b' });
+    expect(log.indexOf('rebalance-update')).toBeGreaterThan(log.indexOf('lock'));
+    expect(log.indexOf('emit-rebalanced')).toBeGreaterThan(log.indexOf('commit'));
+    expect(log.indexOf('rebalance-update')).toBeLessThan(log.indexOf('commit'));
+    expect(
+      events.emit.mock.calls.filter((c) => c[0] === DOMAIN_EVENTS.PROJECT_RANKS_REBALANCED),
+    ).toHaveLength(1);
+  });
+
+  it('rebalance + WIP: khoá dự án → khoá cột → rebalance (khoá các dòng) — không khoá dòng trước khoá cột', async () => {
+    const { service, log } = moveRankSetup({ ranks: { a: ['n', 'i'], b: ['n0', 'r'] } });
+    await service.move('w1', 'u1', 'i1', {
+      version: 3,
+      statusId: 's2',
+      boardId: 'b1',
+      afterId: 'a',
+      beforeId: 'b',
+    });
+    expect(log.indexOf('lock')).toBeLessThan(log.indexOf('wip-lock'));
+    expect(log.indexOf('wip-lock')).toBeLessThan(log.indexOf('rebalance-update'));
+  });
+
+  it('rebalance xong nhưng ghi thất bại (OCC) => rollback, KHÔNG phát PROJECT_RANKS_REBALANCED', async () => {
+    const { service, log, events, tx } = moveRankSetup({
+      ranks: { a: ['n', 'i'], b: ['n0', 'r'] },
+    });
+    tx.issue.updateMany = vi.fn(() => Promise.resolve({ count: 0 }));
+    await expect(
+      service.move('w1', 'u1', 'i1', { version: 3, afterId: 'a', beforeId: 'b' }),
+    ).rejects.toMatchObject({ status: 409 });
+    expect(log).toContain('rebalance-update');
+    expect(log).not.toContain('commit');
+    expect(log).not.toContain('emit-rebalanced');
+    expect(events.emit).not.toHaveBeenCalled();
   });
 });
 

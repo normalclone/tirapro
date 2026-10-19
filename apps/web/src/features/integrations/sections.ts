@@ -19,3 +19,14 @@ export function parseIntegrationSection(
 ): IntegrationSectionId | null {
   return integrationSections(flags).find((s) => s.id === value)?.id ?? null;
 }
+
+/**
+ * `?section=` đổi trong lúc đang ở trang: khác mục đang mở → `ask` (đi qua `pick` có guard "bỏ thay đổi chưa lưu"),
+ * còn lại `none`. Thuần để test.
+ */
+export function resolveSectionIntent(args: {
+  fromUrl: IntegrationSectionId | null;
+  active: IntegrationSectionId;
+}): 'none' | 'ask' {
+  return args.fromUrl && args.fromUrl !== args.active ? 'ask' : 'none';
+}

@@ -63,7 +63,7 @@ export function OverviewTab({
         <SummaryStats totals={report.data.totals} completionRate={report.data.completionRate} />
       ) : null}
 
-      {/* Phân bố: trạng thái · loại · độ ưu tiên */}
+      {/* Phân bố: trạng thái · loại · mức ưu tiên */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <Card title="Phân bố trạng thái">
           {report.isLoading ? (

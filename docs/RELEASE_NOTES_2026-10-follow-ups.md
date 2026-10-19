@@ -395,7 +395,7 @@ Cập nhật `docs/design/api-contract.md` theo từng route khi sửa.
 - Triage: `accept` có đổi trường là hai bước không cùng giao dịch (lỗi bước hai → việc đã đổi loại/sprint nhưng vẫn PENDING, thử lại được).
 - Hiệu năng chưa đo ở quy mô lớn: `GET /users?projectId` với workspace rất lớn mà ít người xem được dự án (tối đa 10 lô × `min(2·limit, 400)` hàng + `canSee` mỗi người); `IssueHistory`/`Notification`/`WikiPageVersion` hàng triệu dòng; migration `…303000_wiki_page_history` nhân đôi dung lượng `WikiPage.body` một lần và hai `CREATE INDEX` thường (`…299000_mention_unique`, `…120000_*_index`) khoá ghi bảng đó lúc dựng (bảng nhỏ nên rủi ro thấp; `DEPLOY.md` chưa nhắc cạnh cảnh báo `perf_indexes`).
 - Mô tả (`DEFAULT_RESOLUTIONS`) và quyền ở DB cũ chỉ cập nhật khi chạy lại `db:seed` (đã nêu ở mục 2).
-- **Sau smoke vòng 2 (ruling, chưa sửa):** Wiki "Tạo trang mới" tạo ngay một trang rỗng trên máy chủ — bỏ ngang thì trang rỗng còn trong cây (có từ trước, xoá tay). `GET /triage` vẫn trả danh sách việc chờ duyệt cho người xem được dự án mà không có `issue:triage` (việc đó vẫn tìm được qua JQL; mọi nút Nhận/Từ chối/Tạm hoãn chặn bằng `issue:triage`). Kéo-thả xếp hạng đọc mốc ngoài khoá dự án — kéo xuống cuối đúng lúc có người tạo việc có thể ra hai việc cùng rank (server tự đánh số lại ở lần thả kế tiếp). Ô "Múi giờ" ở hồ sơ cá nhân vẫn là ô gõ tên IANA.
+- **Sau smoke vòng 2 (ruling, chưa sửa):** Wiki "Tạo trang mới" tạo ngay một trang rỗng trên máy chủ — bỏ ngang thì trang rỗng còn trong cây (có từ trước, xoá tay). **[đã sửa ở đợt 2·A: trang mới chỉ hiện khối soạn, chỉ tạo trên máy chủ khi bấm Lưu, nháp cục bộ giữ lại]** `GET /triage` vẫn trả danh sách việc chờ duyệt cho người xem được dự án mà không có `issue:triage` (việc đó vẫn tìm được qua JQL; mọi nút Nhận/Từ chối/Tạm hoãn chặn bằng `issue:triage`). **[đã sửa ở đợt 2·A: danh sách và số đếm Việc mới vào chỉ trả cho người có quyền duyệt việc; phạm vi và phần còn mở: xem "Còn mở" đợt 2·A]** Kéo-thả xếp hạng đọc mốc ngoài khoá dự án — kéo xuống cuối đúng lúc có người tạo việc có thể ra hai việc cùng rank (server tự đánh số lại ở lần thả kế tiếp). **[đã sửa ở đợt 2·A: vị trí được tính sau khi khoá dự án]** Ô "Múi giờ" ở hồ sơ cá nhân vẫn là ô gõ tên IANA. **[đã sửa ở đợt 2·A: chọn từ danh sách có tìm kiếm]**
 
 ---
 
@@ -461,14 +461,105 @@ Cập nhật `docs/design/api-contract.md` theo từng route khi sửa.
 
 Những điểm người dùng có thể nhận ra, đã biết và chưa sửa ở đợt 1:
 
-- **Gantt/Lộ trình:** khi khoảng thời gian chỉ 1 ngày, nhãn tháng bị tràn; nhãn `T10/2026` dài hơn trước nên dễ chật.
-- **Điện thoại:** nhóm nút chọn trạng thái ở mục Phiên bản (Cấu hình dự án) có thể chật ở màn 390px (chưa kiểm). Một số ô chọn mới thay (Bộ lọc, Tự động hoá, một vài biểu mẫu) chưa được xem lại bằng mắt ở mọi kích cỡ.
-- **Hướng dẫn lần đầu (tour):** bước 4 vẫn ghi "Nhấn ⌘K" dù trên điện thoại nó chỉ vào nút Tìm.
-- **Cảm ứng:** dòng gợi ý "Ctrl/Cmd+Enter để lưu" ở chân một số hộp thoại vẫn hiện.
-- **Ô nhập/nút vô hiệu:** khoảng 35 chỗ ngoài các thành phần dùng chung vẫn làm mờ bằng độ mờ cũ; nút đang xử lý còn đổi nền nhẹ khi rê chuột. Hai cách viết "Độ ưu tiên" (nhãn trường trong bộ lọc/automation) và "Mức ưu tiên" (menu) cùng tồn tại; một vài mô tả dưới tiêu đề còn lặp lại ý của tiêu đề.
-- **Thay đổi chưa lưu:** chuyển không gian làm việc rồi bị lỗi thì bản nháp đã mất; mở Tích hợp bằng đường dẫn có sẵn mục cần mở thì không hỏi trước khi bỏ bản nháp; trình duyệt tự điền mật khẩu có thể làm trang Tài khoản tưởng là đang sửa; gõ tiếp trong lúc đang lưu ở mục Chung có thể bị ghi đè; hộp xác nhận lồng nhau khi tạo không gian làm việc mới chưa được thử kỹ trên trình duyệt.
-- **Vai trò:** tiêu đề hộp thoại ở Vai trò & quyền và nhãn tài khoản mẫu ở màn đăng nhập còn tên vai trò gốc tiếng Anh. Một vài nhãn (Vai trò & quyền, Nhật ký quản trị, Tự động hoá, Danh mục dự án, bảng lệnh) vẫn viết tay thay vì lấy từ nguồn chung — hiện còn khớp, nhưng đổi tên menu sau này phải sửa thêm ở đó.
-- **Trợ năng:** các tab trong Cài đặt bảng được trình đọc màn hình đọc như nhóm nút chọn (cần thành phần Tab riêng); nhóm nút chọn chưa gắn được dòng mô tả/báo lỗi cho trình đọc màn hình; trang báo trạng thái hệ thống luôn dùng cấp tiêu đề lớn nhất.
-- **404:** đường dẫn lạ bên trong một dự án hiện trang không tìm thấy nhưng không có thanh điều hướng của dự án; gợi ý mã gần đúng ở trang công việc không tồn tại có thể thoáng hiện kết quả của mã trước.
+- **Gantt/Lộ trình:** khi khoảng thời gian chỉ 1 ngày, nhãn tháng bị tràn; nhãn `T10/2026` dài hơn trước nên dễ chật. — **đã sửa ở đợt 2·A** (nhãn tháng tự rút gọn theo bề rộng: `T10/2026` → `T10` → ẩn, rê chuột vẫn thấy đủ; Lộ trình chỉ ghi năm ở tháng đầu và tháng 1)
+- **Điện thoại:** nhóm nút chọn trạng thái ở mục Phiên bản (Cấu hình dự án) có thể chật ở màn 390px (chưa kiểm). Một số ô chọn mới thay (Bộ lọc, Tự động hoá, một vài biểu mẫu) chưa được xem lại bằng mắt ở mọi kích cỡ. — **nửa đầu đã kiểm ở đợt 2·A** (mục Phiên bản vừa 390px, không nhãn nào bị cắt); nửa sau (ô chọn mới ở Bộ lọc, Tự động hoá, biểu mẫu) **vẫn chưa xem lại bằng mắt**
+- **Hướng dẫn lần đầu (tour):** bước 4 vẫn ghi "Nhấn ⌘K" dù trên điện thoại nó chỉ vào nút Tìm. — **đã sửa ở đợt 2·A**
+- **Cảm ứng:** dòng gợi ý "Ctrl/Cmd+Enter để lưu" ở chân một số hộp thoại vẫn hiện. — **đã sửa ở đợt 2·A** (ẩn cả trên máy tính bảng cảm ứng)
+- **Ô nhập/nút vô hiệu:** khoảng 35 chỗ ngoài các thành phần dùng chung vẫn làm mờ bằng độ mờ cũ; nút đang xử lý còn đổi nền nhẹ khi rê chuột. Hai cách viết "Độ ưu tiên" (nhãn trường trong bộ lọc/automation) và "Mức ưu tiên" (menu) cùng tồn tại; một vài mô tả dưới tiêu đề còn lặp lại ý của tiêu đề. — **đã sửa ở đợt 2·A** (chuyển sang nền/chữ xám; nút đang xử lý không đổi nền khi rê chuột; "Độ ưu tiên" thành "Mức ưu tiên" mọi nơi; mô tả lặp tiêu đề đã bỏ ở Khách hàng, Cấu hình hệ thống, Thành viên, Nhập dữ liệu — còn lại vài chỗ nhỏ, xem mục 3 đợt 2). Cố ý giữ độ mờ ở nút chỉ có biểu tượng/nút chữ không nền, ô tích và công tắc
+- **Thay đổi chưa lưu:** chuyển không gian làm việc rồi bị lỗi thì bản nháp đã mất; mở Tích hợp bằng đường dẫn có sẵn mục cần mở thì không hỏi trước khi bỏ bản nháp; trình duyệt tự điền mật khẩu có thể làm trang Tài khoản tưởng là đang sửa; gõ tiếp trong lúc đang lưu ở mục Chung có thể bị ghi đè; hộp xác nhận lồng nhau khi tạo không gian làm việc mới chưa được thử kỹ trên trình duyệt. — **đã sửa ở đợt 2·A** (cả năm điểm đã sửa; tự điền mật khẩu chỉ tính là sửa dở khi có mật khẩu mới): đổi không gian làm việc lỗi không mất bản nháp; mở Ứng dụng bên ngoài bằng liên kết trỏ thẳng tới mục được hỏi trước; gõ tiếp lúc đang lưu không bị ghi đè; hộp xác nhận lồng khi tạo không gian mới đã bỏ
+- **Vai trò:** tiêu đề hộp thoại ở Vai trò & quyền và nhãn tài khoản mẫu ở màn đăng nhập còn tên vai trò gốc tiếng Anh. Một vài nhãn (Vai trò & quyền, Nhật ký quản trị, Tự động hoá, Danh mục dự án, bảng lệnh) vẫn viết tay thay vì lấy từ nguồn chung — hiện còn khớp, nhưng đổi tên menu sau này phải sửa thêm ở đó. — **đã sửa ở đợt 2·A** (tên vai trò tiếng Việt ở hộp thoại và màn đăng nhập; các nhãn lấy từ bộ tên chung, kể cả lệnh "Mở Rủi ro & vướng mắc")
+- **Trợ năng:** các tab trong Cài đặt bảng được trình đọc màn hình đọc như nhóm nút chọn (cần thành phần Tab riêng); nhóm nút chọn chưa gắn được dòng mô tả/báo lỗi cho trình đọc màn hình; trang báo trạng thái hệ thống luôn dùng cấp tiêu đề lớn nhất. — **đã sửa ở đợt 2·A** (các hàng tab là tab thật; nhóm nút chọn đọc được mô tả/báo lỗi; khung xem nhanh không giành tiêu đề chính)
+- **404:** đường dẫn lạ bên trong một dự án hiện trang không tìm thấy nhưng không có thanh điều hướng của dự án; gợi ý mã gần đúng ở trang công việc không tồn tại có thể thoáng hiện kết quả của mã trước. — **đã sửa ở đợt 2·A** (địa chỉ lạ trong dự án hiện "Không tìm thấy" ngay trong khung dự án, gợi ý các màn của dự án đó; gợi ý mã không còn thoáng hiện kết quả mã trước)
 - **Chưa kiểm sau khi triển khai:** việc điền tên thật cho thông báo cũ mới được kiểm bằng test của API, sẽ kiểm trên trình duyệt sau khi API được triển khai lại.
-- **Kỹ thuật (không ảnh hưởng người dùng):** vị trí hàm lấy hạng ưu tiên, một số kiểm thử còn thiếu (gợi ý đường dẫn, rào chắn giữ-trang, kiểm thuật ngữ với chuỗi xuống dòng), hai hàm định dạng số trùng nhau.
+- **Kỹ thuật (không ảnh hưởng người dùng):** vị trí hàm lấy hạng ưu tiên, một số kiểm thử còn thiếu (gợi ý đường dẫn, rào chắn giữ-trang, kiểm thuật ngữ với chuỗi xuống dòng), hai hàm định dạng số trùng nhau. — **đã sửa ở đợt 2·A** (chuyển vị trí hàm lấy hạng ưu tiên; thêm kiểm thử còn thiếu; gộp hai hàm định dạng số)
+
+---
+
+# Giao diện đợt 2 · Phần A (2026-10-19)
+
+Phần A của đợt chuẩn hoá thứ hai: dọn các tồn đọng của đợt 1 và sửa bốn việc "chưa sửa" sau smoke vòng 2. **Không đổi cấu trúc cơ sở dữ liệu** (không có migration mới); có đổi hành vi máy chủ ở hai chỗ (quyền Việc mới vào, khoá khi kéo-thả).
+
+## 1. Cần làm khi triển khai
+
+- Không cần chạy lệnh nào cho cơ sở dữ liệu.
+- **Triển khai API cùng lúc với web.** Hai chỗ phụ thuộc vào nhau:
+  - Việc mới vào: máy chủ nay chỉ trả danh sách và số đếm cho người có quyền **"duyệt việc"** (`issue:triage`); web mới ẩn mọi lối vào cho người không có quyền này. Web mới: người có quyền "duyệt việc" vẫn thấy mục Việc mới vào, người không có quyền thì không còn thấy. Web cũ + API mới: người không có quyền vẫn thấy mục rồi nhận lỗi "không có quyền" khi mở.
+  - Kéo-thả xếp hạng: máy chủ mới khoá theo dự án khi tính vị trí. Chỉ cần API mới; web không đổi.
+- **Hướng dẫn lần đầu tự cập nhật:** khi API khởi động, tour "Trang chủ" lên phiên bản 2 (bước 4 nói về nút Tìm trên điện thoại và ⌘K / Ctrl+K). Không cần chạy lại `db:seed`; các tour khác không đổi.
+- **Người không có quyền "duyệt việc" nữa không thấy Việc mới vào:** mục không còn trong menu "Thêm" (cả trên điện thoại) và bảng lệnh ⌘K; mở thẳng địa chỉ của mục này hiện "Không có quyền". Quản trị và các vai trò đã có quyền này (Project Admin, Project Developer, Business Analyst, Product Owner, Scrum Master, Tester) không đổi.
+  - **Các vai trò mặc định sẽ mất danh sách Việc mới vào vì không có `issue:triage`:** Lập trình viên (Developer, vai trò thành viên mặc định), Thiết kế (Designer), Vận hành hệ thống (DevOps), Người duyệt (Reviewer), Bên liên quan (Stakeholder), Người báo lỗi (Project Reporter). Vai trò cấp không gian làm việc (Workspace Member, Workspace Viewer) vốn không có quyền việc. Người triển khai cần cấp thêm `issue:triage` ở Vai trò & quyền cho vai trò nào vẫn phải duyệt việc (ví dụ Lập trình viên nếu nhóm không có người duyệt riêng); người báo việc vẫn theo dõi được việc của mình ở nơi khác.
+- **Kéo-thả xếp hạng khoá theo từng dự án:** nhiều người kéo thả cùng lúc trong **một** dự án sẽ xếp hàng chờ nhau (mỗi lần thả rất ngắn nên thường không nhận ra; khi phải đánh số lại cả dự án có thể chờ lâu hơn, tối đa 30 giây). Hai dự án khác nhau không chờ nhau.
+
+## 2. Thay đổi người dùng thấy
+
+### Chữ và nhãn
+
+- **"Mức ưu tiên"** là tên duy nhất ở mọi nơi (nhãn trường trong bộ lọc và tự động hoá, trang Nhập dữ liệu, mô tả công cụ cho trợ lý AI); không còn "Độ ưu tiên".
+- Menu, tiêu đề trang, bảng lệnh và tên trang trong khung dự án dùng chung một bộ tên nên không còn lệch (Vai trò & quyền, Nhật ký quản trị, Tự động hoá, Danh mục dự án, Rủi ro & vướng mắc…). Lệnh "Mở Rủi ro & vướng mắc" ở bảng lệnh dự án, tiêu đề "Cờ tính năng" ở Cấu hình hệ thống và nút Tìm trên điện thoại ("Tìm và chạy lệnh nhanh") nay khớp với chữ ở nơi khác.
+- Tên vai trò hiện bằng tiếng Việt ở tiêu đề hộp thoại Vai trò & quyền và ở các tài khoản mẫu màn đăng nhập.
+- Mô tả dưới tiêu đề không còn nhắc lại tiêu đề (Khách hàng, Cấu hình hệ thống, Thành viên, Nhập dữ liệu).
+- Hướng dẫn lần đầu, bước 4 ("Tìm và chạy lệnh nhanh"): "Bấm nút Tìm hoặc nhấn ⌘K / Ctrl+K để tìm công việc, dự án hoặc chạy lệnh."
+
+### Ngày tháng, Gantt và Lộ trình
+
+- Nhãn tháng trên trục tự rút gọn theo bề rộng ô: `T10/2026` khi đủ chỗ, `T10` khi chật, ẩn khi quá hẹp (rê chuột vẫn thấy tên đầy đủ). Lộ trình chỉ ghi năm ở tháng đầu và ở tháng 1 (`T10/2026, T11, T12, T1/2027`).
+
+### Nút và ô nhập vô hiệu
+
+- Phần còn lại của nút, ô nhập và ô chọn bị vô hiệu cũng dùng nền xám + chữ xám thay vì làm mờ. Riêng **nút bật/tắt dạng viên thuốc** (chọn tuỳ chọn ở Trường thông tin thêm, chọn tuần ở Bắt đầu sprint) vẫn thấy rõ đang bật hay tắt khi bị khoá.
+- Nút đang xử lý không còn đổi nền nhẹ khi rê chuột.
+- Cố ý vẫn làm mờ: nút chỉ có biểu tượng, nút chữ không nền, ô tích và công tắc (nền xám sẽ thành một đốm xám vô nghĩa).
+
+### Cảm ứng
+
+- Dòng gợi ý "Ctrl/Cmd+Enter để lưu/gửi" ở chân các hộp thoại và ô soạn thảo ẩn trên màn cảm ứng, kể cả máy tính bảng; chữ gợi ý trong ô bình luận không còn nhắc phím.
+
+### Tab và trợ năng
+
+- Mọi hàng tab (Vai trò & quyền, Tài nguyên, Hệ thống, Lịch sử wiki, Rủi ro, Thành viên, Danh mục dự án, Tự động hoá, Báo cáo, Thông báo, Cài đặt bảng) được trình đọc màn hình nhận ra là tab thật: phím ←/→/Home/End chuyển tab, phím Tab chỉ dừng ở tab đang chọn. Dùng chuột không đổi. Tab "Loại nhật ký" ở Hệ thống dùng cùng kiểu gạch chân như các tab khác.
+- "Sơ đồ / Danh sách" ở Quy trình là nhóm nút chọn (chọn một trong hai kiểu xem), không còn là tab.
+- Nhóm nút chọn đọc được dòng mô tả và báo lỗi bằng trình đọc màn hình; khung xem nhanh việc không còn giành tiêu đề chính của trang.
+
+### Không tìm thấy
+
+- Gõ sai địa chỉ **bên trong một dự án** (ví dụ ".../DEMO/bakclog") hiện trang "Không tìm thấy" ngay trong khung dự án (thanh điều hướng dự án còn), nút chính "Về Bảng việc" và gợi ý các màn của chính dự án đó.
+- Trang "Không tìm thấy công việc" không còn thoáng hiện gợi ý của mã trước.
+
+### Việc mới vào
+
+- Chỉ người có quyền duyệt việc mới thấy mục, danh sách và số đếm (xem mục 1). Người không có quyền mở thẳng địa chỉ thấy "Không có quyền", không phải chờ lâu.
+- Sau khi gửi báo lỗi/việc, thông báo ghi "Đã gửi <mã> — đang chờ người phụ trách duyệt" (không nhắc tên màn Việc mới vào, vì phần lớn người báo không còn mở được màn này).
+
+### Thay đổi chưa lưu
+
+- **Đổi không gian làm việc** khi đang sửa dở: chỉ bỏ bản nháp **sau khi đổi thành công**; nếu lỗi thì bản nháp còn nguyên.
+- Mở Ứng dụng bên ngoài bằng liên kết trỏ thẳng tới một mục khi đang sửa dở mục khác thì được hỏi trước; bấm Huỷ thì giữ nguyên mục cũ.
+- Gõ tiếp trong lúc đang lưu (Cấu hình dự án › Chung, Hồ sơ) không bị ghi đè: phần gõ thêm vẫn là thay đổi chưa lưu.
+- Nút "Tạo không gian làm việc" hỏi một lần duy nhất (hết hộp xác nhận lồng nhau).
+- Trang Tài khoản không còn tưởng là đang sửa chỉ vì trình duyệt tự điền mật khẩu hiện tại.
+
+### Kéo-thả xếp hạng
+
+- Kéo-thả việc xuống cuối đúng lúc người khác tạo việc mới không còn có thể cho hai việc cùng vị trí; vị trí được tính sau khi khoá dự án (xem mục 1 về hàng chờ).
+
+### Wiki
+
+- **"Tạo trang mới" không tạo trang rỗng nữa:** bấm là mở khung soạn trống, chỉ khi bấm **Lưu** (Ctrl/⌘+Enter) mới tạo trang. Huỷ/Esc thì không để lại gì. Tiêu đề trống thì báo như trước. Bản nháp tự lưu trên máy: đóng tab hoặc tải lại trang rồi mở lại sẽ được đề nghị khôi phục. Giữ phím Lưu không còn tạo hai trang.
+- Lưu ý nhỏ: gõ thêm trong khoảnh khắc đang tạo trang (giây đầu tiên sau khi bấm Lưu) có thể không được giữ.
+
+### Hồ sơ cá nhân
+
+- **Múi giờ** chọn từ danh sách có tìm kiếm bằng tên quen thuộc (gõ "Hà Nội", "Việt Nam", "Tokyo"), thay cho ô gõ tên kỹ thuật (như "Asia/Ho_Chi_Minh"). Cách lưu không đổi; tên cũ như "Asia/Saigon" được quy về tên chuẩn, tên lạ đã lưu từ trước vẫn hiện.
+
+## 3. Còn mở
+
+- **Ruling RA5, cần chủ sản phẩm quyết định có siết thêm không:** việc "đang chờ duyệt" chỉ bị ẩn khỏi **danh sách và số đếm Việc mới vào**. Người xem được dự án vẫn đọc được việc chờ duyệt qua đường dẫn trực tiếp (`GET /issues/<mã>`), dòng hoạt động và gợi ý trùng lặp khi báo việc (cùng loại với việc vẫn tìm thấy qua bộ lọc nâng cao và ⌘K như cũ). Nếu cần siết: kiểm trạng thái duyệt ở các đường đó, miễn cho người báo; chi phí là một đợt sửa nhỏ ở máy chủ.
+- **Wiki:** trang mới chưa lưu không cho biết nó sẽ nằm ở nhánh/dự án nào khi bạn đổi phạm vi; chữ gõ thêm trong lúc đang lưu lần đầu có thể mất.
+- **Đổi tên hồ sơ** cũng chuẩn hoá múi giờ cũ về tên chuẩn khi lưu (ví dụ "Asia/Saigon" thành "Asia/Ho_Chi_Minh"). Máy chủ chưa kiểm tên múi giờ có hợp lệ không (chỉ giao diện đưa ra danh sách).
+- **Kéo-thả:** các lần thả có mốc trong cùng dự án xếp hàng (mục 1); thời gian chờ tính vào hạn 30 giây của thao tác.
+- **Nút bật/tắt dạng viên thuốc:** ở Trường thông tin thêm, tất cả bị khoá cùng lúc trong khi lưu một lựa chọn.
+- **Chữ:** phần kiểm thuật ngữ tự động mới chỉ áp cho giao diện web, chưa áp cho công cụ MCP.
+- **Hộp thoại Từ chối** (Việc mới vào) trên màn cảm ứng còn một dòng trống ở chân.
+- **Tab:** bấm phím mũi tên là chuyển luôn sang tab đó (tab nào tải dữ liệu thì mỗi lần bấm là một lần tải); phím Tab chưa nhảy vào vùng nội dung của tab.
+- **Điều hướng:** đường lạ trong dự án chưa tồn tại có thể thoáng hiện trang "Không tìm thấy" trong lúc dự án đang tải; nếu tải quyền bị lỗi mạng thì Việc mới vào hiện "Không có quyền" thay vì báo lỗi; lệnh Việc mới vào ở ⌘K chỉ xuất hiện sau khi quyền đã tải xong.
+- **Kỹ thuật (không ảnh hưởng người dùng):** hai lần khoá dự án khi đánh số lại; test mới chủ yếu kiểm hàm thuần và đọc mã nguồn (chưa có test chạy trên trình duyệt thật).

@@ -4,6 +4,7 @@ import { setAccessToken } from '@/lib/auth-token';
 import { queryClient } from '@/lib/queryClient';
 import { clearSessionCaches } from '@/lib/sessionCache';
 import { keys } from '@/lib/queryKeys';
+import { commitLeaveApp } from '@/stores/leaveGuard';
 
 /** Không gian làm việc mà người dùng hiện tại là thành viên (kèm vai trò). */
 export interface MyWorkspace {
@@ -38,7 +39,7 @@ export function useMyWorkspaces() {
 
 /**
  * Đổi không gian làm việc đang hoạt động. Server cấp access token mới + xoay refresh cookie.
- * onSuccess: nạp token mới, xoá toàn bộ cache (để mọi dữ liệu refetch theo nơi mới),
+ * onSuccess: bỏ nháp chưa lưu (`commitLeaveApp`, người gọi đã hỏi trước bằng `useConfirmLeaveApp`), nạp token mới, xoá toàn bộ cache (để mọi dữ liệu refetch theo nơi mới),
  * rồi reload về trang chủ — bootstrap() sẽ nạp lại user/quyền theo nơi mới.
  */
 export function useSwitchWorkspace() {
@@ -48,9 +49,15 @@ export function useSwitchWorkspace() {
         .post<SwitchWorkspaceResponse>('/auth/switch-workspace', { workspaceId })
         .then((r) => r.data),
     onSuccess: (data) => {
-      setAccessToken(data.accessToken);
-      clearSessionCaches();
-      window.location.assign('/');
+      // Đổi thành công mới bỏ nháp chưa lưu (người dùng đã đồng ý ở bước hỏi); lỗi thì không tới đây → nháp còn.
+      // `try/finally`: một `onDiscard` ném lỗi không được chặn việc nạp token mới + tải lại (đã đổi xong ở máy chủ).
+      try {
+        commitLeaveApp();
+      } finally {
+        setAccessToken(data.accessToken);
+        clearSessionCaches();
+        window.location.assign('/');
+      }
     },
   });
 }

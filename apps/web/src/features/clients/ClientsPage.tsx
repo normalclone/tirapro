@@ -388,8 +388,8 @@ export function ClientsPage() {
             {MANAGE_LABELS.clients}
           </h1>
           <p className="mt-1 text-sm text-muted">
-            Khách hàng và hợp đồng: lưu thông tin liên hệ của khách hàng, nối họ với dự án đang làm
-            và ghi lại giá trị, thời hạn của từng hợp đồng để không bỏ sót cam kết.
+            Lưu thông tin liên hệ của khách hàng, nối họ với dự án đang làm và ghi lại giá trị, thời
+            hạn của từng hợp đồng để không bỏ sót cam kết.
           </p>
         </div>
         {canManage && (

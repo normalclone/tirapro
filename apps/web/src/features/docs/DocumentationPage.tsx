@@ -399,7 +399,7 @@ export function DocumentationPage() {
                 <Feature icon={<GitBranch className="h-4 w-4" />} title="Chuyển trạng thái">Đổi trạng thái theo quy trình của dự án; xem sơ đồ quy trình ngay trên công việc.</Feature>
                 <Feature icon={<MessageSquare className="h-4 w-4" />} title="Bình luận & @nhắc tên">Thảo luận bằng markdown (có danh sách tick được, bảng); gõ <Mono>@</Mono> để chọn đồng đội (tìm không dấu) — cả trong bình luận lẫn mô tả, họ nhận thông báo “X nhắc đến bạn” kèm trích đoạn. Đính kèm hoặc dán ảnh (<Kbd>Ctrl</Kbd> <Kbd>V</Kbd>), bấm ảnh để xem lớn.</Feature>
                 <Feature icon={<Link2 className="h-4 w-4" />} title="Liên kết & phân cấp">Liên kết các công việc liên quan (tìm theo mã hoặc tiêu đề không dấu; loại liên kết giữ tiếng Anh như <Mono>blocks</Mono>, <Mono>is caused by</Mono>, <Mono>is tested by</Mono>), tạo việc con, gắn vào epic bằng ô <em>Epic / Việc cha</em>. Ở Việc chờ có khung Epic để lọc và kéo công việc vào epic.</Feature>
-                <Feature icon={<Bug className="h-4 w-4" />} title="Mức nghiêm trọng & cách giải quyết">Bug có <strong>Mức nghiêm trọng</strong> (Severity) riêng, tách khỏi độ ưu tiên. Chuyển sang nhóm <em>Done</em> thì được hỏi <strong>cách giải quyết</strong> (Resolution, mặc định Done); <em>Mở lại</em> / <em>Trả lại</em> ghi kèm lý do vào bình luận.</Feature>
+                <Feature icon={<Bug className="h-4 w-4" />} title="Mức nghiêm trọng & cách giải quyết">Bug có <strong>Mức nghiêm trọng</strong> (Severity) riêng, tách khỏi mức ưu tiên. Chuyển sang nhóm <em>Done</em> thì được hỏi <strong>cách giải quyết</strong> (Resolution, mặc định Done); <em>Mở lại</em> / <em>Trả lại</em> ghi kèm lý do vào bình luận.</Feature>
                 <Feature icon={<History className="h-4 w-4" />} title="Lịch sử & theo dõi">Xem toàn bộ thay đổi; theo dõi (watch) để nhận cập nhật; log thời gian làm việc.</Feature>
               </div>
               <Note kind="tip">Trên trang chi tiết: <Kbd>i</Kbd> gán công việc cho tôi, <Kbd>y</Kbd> sao chép liên kết. Nút “Gán cho tôi” và nút sao chép mã cũng nằm ngay trên thanh công cụ.</Note>
@@ -575,7 +575,7 @@ export function DocumentationPage() {
               <div className="border-t border-border">
                 <Feature icon={<Sparkles className="h-4 w-4" />} title="Tạo công việc từ lời mô tả">Mô tả việc cần làm bằng lời, AI dựng sẵn tiêu đề, mô tả, loại và gợi ý trường.</Feature>
                 <Feature icon={<MessageSquare className="h-4 w-4" />} title="Tóm tắt công việc & thảo luận">Tóm tắt nhanh một công việc dài hoặc chuỗi bình luận.</Feature>
-                <Feature icon={<Sparkles className="h-4 w-4" />} title="Gợi ý & lập kế hoạch">Gợi ý người thực hiện / độ ưu tiên / story points; trợ lý lập kế hoạch sprint (dành cho quản trị dự án).</Feature>
+                <Feature icon={<Sparkles className="h-4 w-4" />} title="Gợi ý & lập kế hoạch">Gợi ý người thực hiện / mức ưu tiên / story points; trợ lý lập kế hoạch sprint (dành cho quản trị dự án).</Feature>
               </div>
             </section>
 
@@ -604,7 +604,7 @@ export function DocumentationPage() {
               <P>Kết nối Tirapro với công cụ khác. Do quản trị chung bật và cấu hình. Thiếu cấu hình thì tính năng tắt êm, app vẫn chạy.</P>
               <div className="border-t border-border">
                 <Feature icon={<Plug className="h-4 w-4" />} title="Telegram">Hệ thống chỉ <strong>gửi</strong> tin (thông báo, digest) — không nhận lệnh tạo việc. Quản trị chung làm theo trình hướng dẫn 4 bước: nhập token bot → thêm bot vào nhóm → gõ <Mono>/link@tên_bot MÃ</Mono> trong nhóm để liên kết nhóm với không gian làm việc → gửi thử. Trạng thái kết nối hiện thật trên trang.</Feature>
-                <Feature icon={<ArrowUpRight className="h-4 w-4" />} title="Nhập từ Jira">Nhập từ tệp CSV xuất từ Jira (công việc, bình luận, tệp đính kèm); tự khớp loại, độ ưu tiên và trạng thái, chạy nền có hiển thị tiến độ. Công việc nhập mang <strong>đúng mã gốc</strong> (vd <Mono>JRA-1</Mono>); việc tạo mới sau đó vẫn theo mã Tirapro. Nhập lại bỏ qua việc đã có mã. Người phụ trách chưa là thành viên sẽ tự được gán khi được thêm vào không gian làm việc.</Feature>
+                <Feature icon={<ArrowUpRight className="h-4 w-4" />} title="Nhập từ Jira">Nhập từ tệp CSV xuất từ Jira (công việc, bình luận, tệp đính kèm); tự khớp loại, mức ưu tiên và trạng thái, chạy nền có hiển thị tiến độ. Công việc nhập mang <strong>đúng mã gốc</strong> (vd <Mono>JRA-1</Mono>); việc tạo mới sau đó vẫn theo mã Tirapro. Nhập lại bỏ qua việc đã có mã. Người phụ trách chưa là thành viên sẽ tự được gán khi được thêm vào không gian làm việc.</Feature>
                 <Feature icon={<KeyRound className="h-4 w-4" />} title="API key & MCP">Tạo API key ở <strong>Cài đặt → API &amp; kết nối lập trình</strong> cho phần mềm ngoài hoặc trợ lý AI (MCP) truy cập dữ liệu — chọn chỉ-đọc hoặc đọc-ghi, thu hồi bất cứ lúc nào.</Feature>
               </div>
               <Note kind="info">Chi tiết kỹ thuật REST/MCP (endpoint, ví dụ code) nằm trong tài liệu kỹ thuật của repo, không thuộc hướng dẫn sử dụng này.</Note>

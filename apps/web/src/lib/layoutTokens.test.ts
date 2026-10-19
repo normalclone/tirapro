@@ -45,8 +45,8 @@ describe('FAB không che nội dung', () => {
   it('thanh thao tác hàng loạt né FAB chỉ từ lg (lg:mr-24); dưới lg không còn FAB nên không chừa mb-24, nằm sát thanh tab đáy', () => {
     const bar = src('features/backlog/BulkActionBar.tsx');
     expect(bar).toMatch(/lg:mr-24/);
-    expect(bar).toMatch(/\bmb-2\b[^'"]*\blg:mb-4\b/);
-    expect(bar).not.toMatch(/\bmb-24\b/);
+    // Cha `space-y-4` ghi đè margin-bottom của con nên không đặt mb-* (lớp chết đã bỏ ở đợt 2A).
+    expect(bar).not.toMatch(/\bmb-\d+\b|\blg:mb-\d+\b/);
   });
   it('FAB và toast tính vùng an toàn iOS; toast luôn nằm trên FAB kể cả khi FAB được nâng', () => {
     expect(FAB_BOTTOM_CSS).toBe(`max(${FAB_EDGE_PX}px, env(safe-area-inset-bottom))`);

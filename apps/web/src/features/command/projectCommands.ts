@@ -1,5 +1,6 @@
 import { sprintActionPath } from '@/features/backlog/sprintAction';
 import { TRIAGE_TITLE } from '@/features/triage/triageLogic';
+import { CONNECT_LABELS, MANAGE_LABELS } from '@/lib/navLabels';
 
 /**
  * Một lệnh của nhóm "Dự án hiện tại" trong Cmd+K: `to` = điều hướng. `keywords` không dấu để gõ không cần dấu
@@ -28,6 +29,8 @@ export interface ProjectCommandInput {
   canSprint: boolean;
   /** `automation:manage`. */
   canAutomation: boolean;
+  /** `issue:triage` (tính bằng `useCan`, không phải bản "đã trừ lưu trữ"): ẩn lệnh Việc mới vào nếu thiếu. */
+  canTriage: boolean;
 }
 
 /** Số sprint chưa bắt đầu tối đa được liệt kê thành lệnh "Bắt đầu sprint". */
@@ -92,26 +95,25 @@ export function buildProjectCommands(input: ProjectCommandInput): ProjectCommand
       icon: 'gantt',
     },
   );
-  out.push(
-    {
+  if (input.canTriage)
+    out.push({
       id: 'nav.triage',
       label: `Mở ${TRIAGE_TITLE}`,
       keywords: 'viec moi vao triage hop thu intake',
       to: `/p/${k}/triage`,
       icon: 'triage',
-    },
-    {
-      id: 'nav.risks',
-      label: 'Mở Rủi ro & vướng mắc',
-      keywords: 'rui ro vuong mac risks raid',
-      to: `/manage/risks?project=${projectId}`,
-      icon: 'risks',
-    },
-  );
+    });
+  out.push({
+    id: 'nav.risks',
+    label: `Mở ${MANAGE_LABELS.risks}`,
+    keywords: 'rui ro vuong mac risks raid',
+    to: `/manage/risks?project=${projectId}`,
+    icon: 'risks',
+  });
   if (input.canAutomation)
     out.push({
       id: 'nav.automation',
-      label: 'Mở Tự động hoá',
+      label: `Mở ${CONNECT_LABELS.automation}`,
       keywords: 'tu dong hoa automation quy tac rule',
       to: `/connect/automation?project=${projectId}`,
       icon: 'automation',

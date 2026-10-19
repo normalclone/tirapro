@@ -104,7 +104,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               variant="ghost"
               size="icon"
               className="lg:hidden"
-              aria-label="Tìm và lệnh nhanh"
+              aria-label="Tìm và chạy lệnh nhanh"
               data-tour="cmdk-hint"
               onClick={() => window.dispatchEvent(new Event('tirapro:command'))}
             >

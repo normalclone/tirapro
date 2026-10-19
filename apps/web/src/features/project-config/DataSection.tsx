@@ -168,7 +168,7 @@ export function DataSection({ projectId, canImport }: { projectId?: string; canI
                     'w-full rounded-md border border-border bg-bg px-3 py-2 font-mono text-sm text-ink',
                     'placeholder:text-faint transition-colors duration-150 resize-y',
                     'focus-visible:outline-none focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
-                    'disabled:opacity-50',
+                    'disabled:cursor-not-allowed disabled:bg-disabled-bg disabled:text-disabled-fg',
                   )}
                   disabled={!projectId || importing}
                 />

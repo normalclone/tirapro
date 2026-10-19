@@ -11,7 +11,8 @@ import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { ADMIN_LABELS } from '@/lib/navLabels';
 import { useAdminWorkspaces, usePatchWorkspace, type AdminWorkspace } from './api';
-import { fmtInt, relTime } from './_ui';
+import { relTime } from './_ui';
+import { fmtNumber } from '@/lib/locale';
 import { ScrollX } from '@/components/ui/ScrollX';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 
@@ -196,7 +197,7 @@ export function AdminWorkspacesPage() {
                     />
                   </td>
                   <td className="px-4 py-3 text-right tabular-nums text-muted">
-                    {fmtInt(w.members)} · {fmtInt(w.projects)} · {fmtInt(w.issues)}
+                    {fmtNumber(w.members)} · {fmtNumber(w.projects)} · {fmtNumber(w.issues)}
                   </td>
                   <td className="px-4 py-3 text-muted">{relTime(w.lastActivityAt)}</td>
                   <td className="px-4 py-3 text-right">

@@ -202,7 +202,7 @@ function PlanResult({
         {' · '}
         {result.source === 'claude'
           ? 'Chọn bởi AI theo mục tiêu'
-          : `${hasGoal ? 'Chọn theo từ khoá của mục tiêu, hạn chót và độ ưu tiên' : 'Chọn theo độ ưu tiên và hạn chót'} · Nguồn: ${aiSourceLabel(result.source, result.reason)}`}
+          : `${hasGoal ? 'Chọn theo từ khoá của mục tiêu, hạn chót và mức ưu tiên' : 'Chọn theo mức ưu tiên và hạn chót'} · Nguồn: ${aiSourceLabel(result.source, result.reason)}`}
       </p>
       <AiFallbackNote reason={result.reason} />
       {result.capacityPoints <= 0 && (

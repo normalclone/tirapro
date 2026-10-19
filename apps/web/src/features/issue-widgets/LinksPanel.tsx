@@ -101,6 +101,7 @@ export function LinksPanel({ issueId, canEdit }: { issueId: string; canEdit: boo
                 className={cn(
                   'shrink-0 rounded p-1 text-faint transition-colors',
                   'hover:bg-surface-3 hover:text-danger focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
+                  // Giữ disabled:opacity (không dùng token vô hiệu) — icon-button đang `opacity-0 group-hover:opacity-100`: đổi sang token sẽ xung đột opacity.
                   'opacity-0 group-hover:opacity-100 focus-visible:opacity-100 disabled:opacity-50',
                 )}
               >

@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { Tabs, TabPanel } from '@/components/ui/Tabs';
 import { ArrowDown, ArrowUp, Plus, Trash2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { SWIMLANE_BY, type BoardDto, type BoardType, type SwimlaneBy } from '@tirapro/types';
@@ -238,38 +239,48 @@ export function BoardSettingsDialog({
           />
         </div>
 
-        <SegmentedControl
+        <Tabs
+          idBase="board-settings"
           ariaLabel="Mục cài đặt bảng"
           value={tab}
           onChange={setTab}
-          options={TABS.map((t) => ({ value: t.id, label: t.label }))}
+          items={TABS}
         />
 
-        {tab === 'columns' && (
-          <ColumnsTab
-            statusesQ={statusesQ}
-            statuses={statuses}
-            statusById={statusById}
-            columns={columns}
-            unassigned={unassigned}
-            ops={{ patchColumn, moveColumn, removeColumn, addColumn, assignStatus, unassignStatus }}
-          />
-        )}
+        <TabPanel idBase="board-settings" value={tab} className="space-y-3">
+          {tab === 'columns' && (
+            <ColumnsTab
+              statusesQ={statusesQ}
+              statuses={statuses}
+              statusById={statusById}
+              columns={columns}
+              unassigned={unassigned}
+              ops={{
+                patchColumn,
+                moveColumn,
+                removeColumn,
+                addColumn,
+                assignStatus,
+                unassignStatus,
+              }}
+            />
+          )}
 
-        {tab === 'filter' && (
-          <FilterTab
-            jql={jql}
-            setJql={setJql}
-            jqlMode={jqlMode}
-            setJqlMode={setJqlMode}
-            jqlError={jqlError}
-            setJqlError={setJqlError}
-          />
-        )}
+          {tab === 'filter' && (
+            <FilterTab
+              jql={jql}
+              setJql={setJql}
+              jqlMode={jqlMode}
+              setJqlMode={setJqlMode}
+              jqlError={jqlError}
+              setJqlError={setJqlError}
+            />
+          )}
 
-        {tab === 'swimlane' && <SwimlaneTab swimlane={swimlane} setSwimlane={setSwimlane} />}
+          {tab === 'swimlane' && <SwimlaneTab swimlane={swimlane} setSwimlane={setSwimlane} />}
 
-        {tab === 'type' && <TypeTab type={type} setType={setType} />}
+          {tab === 'type' && <TypeTab type={type} setType={setType} />}
+        </TabPanel>
       </div>
     </Dialog>
   );

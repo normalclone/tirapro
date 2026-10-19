@@ -21,7 +21,7 @@ import { cn } from '@/lib/utils';
 import { pointsCell } from './pointsCell';
 import { ROOT_DROP_ID, rowDropId, useTreeDrag, type DropState } from './useTreeDrag';
 import { PriorityIcon } from '@/components/ui/PriorityIcon';
-import { usePriorityRanks } from '@/features/settings-admin/api';
+import { usePriorityRanks } from '@/features/issue-meta/usePriorityRanks';
 
 /**
  * Bố cục cột dùng chung cho hàng tiêu đề (header) và mọi hàng dữ liệu, để các cột
@@ -161,6 +161,7 @@ export function TreePage() {
                       disabled={parentIds.size === 0}
                       aria-label={allCollapsed ? 'Mở rộng tất cả' : 'Thu gọn tất cả'}
                       title={allCollapsed ? 'Mở rộng tất cả' : 'Thu gọn tất cả'}
+                      // Giữ disabled:opacity (không dùng token vô hiệu) — icon-button không nền: token nền vô nghĩa, chỉ cần mờ đi.
                       className="grid h-5 w-5 shrink-0 place-items-center rounded text-faint hover:bg-surface-3 hover:text-ink disabled:pointer-events-none disabled:opacity-40"
                     >
                       {allCollapsed ? (

@@ -29,8 +29,8 @@ export function Field({
 }
 
 /**
- * Nội dung điền sẵn của công việc (loại, độ ưu tiên, tiêu đề, mô tả) — dùng chung cho
- * mẫu công việc và công việc lặp lại. Loại & độ ưu tiên lấy theo cấu hình chung qua
+ * Nội dung điền sẵn của công việc (loại, mức ưu tiên, tiêu đề, mô tả) — dùng chung cho
+ * mẫu công việc và công việc lặp lại. Loại & mức ưu tiên lấy theo cấu hình chung qua
  * `/projects/:key/meta`; cần một mã dự án bất kỳ để nạp.
  */
 export function IssueDefaultsFields({
@@ -75,15 +75,15 @@ export function IssueDefaultsFields({
             disabled={!projectKey}
           />
         </Field>
-        <Field label="Độ ưu tiên" htmlFor={`${uid}-priority`}>
+        <Field label="Mức ưu tiên" htmlFor={`${uid}-priority`}>
           <SearchSelect
             id={`${uid}-priority`}
             value={value.priorityId ?? ''}
             onChange={(v) => set({ priorityId: v || null })}
             options={priorityOptions}
             placeholder="Theo mặc định chung"
-            searchPlaceholder="Tìm độ ưu tiên…"
-            ariaLabel="Độ ưu tiên"
+            searchPlaceholder="Tìm mức ưu tiên…"
+            ariaLabel="Mức ưu tiên"
             disabled={!projectKey}
           />
         </Field>

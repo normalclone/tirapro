@@ -212,7 +212,7 @@ function ReportFooter({
 }) {
   return (
     <>
-      <span className="mr-auto hidden text-xs text-faint sm:block">
+      <span className="kbd-hint mr-auto text-xs text-faint max-sm:hidden">
         ⌘/Ctrl + Enter để gửi nhanh
       </span>
       <Button type="button" variant="ghost" onClick={onClose}>

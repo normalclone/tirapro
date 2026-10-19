@@ -438,32 +438,16 @@ function WorkflowDetail({ workflow }: { workflow: Workflow }) {
   const [view, setView] = useState<'graph' | 'list'>('graph');
   return (
     <div className="mt-6 space-y-4">
-      <div
-        role="tablist"
-        aria-label="Kiểu xem quy trình"
-        className="inline-flex rounded-md border border-border bg-surface-2 p-0.5"
-      >
-        {(
-          [
-            ['graph', 'Sơ đồ'],
-            ['list', 'Danh sách'],
-          ] as const
-        ).map(([v, label]) => (
-          <button
-            key={v}
-            type="button"
-            role="tab"
-            aria-selected={view === v}
-            onClick={() => setView(v)}
-            className={cn(
-              'rounded-[5px] px-3 py-1 text-sm font-medium transition-colors',
-              view === v ? 'bg-surface text-ink shadow-sm' : 'text-muted hover:text-ink',
-            )}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+      <SegmentedControl
+        ariaLabel="Kiểu xem quy trình"
+        value={view}
+        onChange={setView}
+        options={[
+          { value: 'graph', label: 'Sơ đồ' },
+          { value: 'list', label: 'Danh sách' },
+        ]}
+        fullWidth={false}
+      />
 
       {view === 'graph' ? (
         <WorkflowGraph workflow={workflow} />

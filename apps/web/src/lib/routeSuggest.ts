@@ -1,5 +1,6 @@
 import { APP_NAV_LABELS } from '@/lib/navLabels';
 import { normalizeVi } from '@/lib/text';
+import { PROJECT_VIEW_ENTRIES } from '@/features/projects/projectTabs';
 
 export interface RouteEntry {
   path: string;
@@ -63,17 +64,13 @@ function termDistance(segment: string, term: string): number {
   return d <= Math.max(2, Math.floor(term.length * 0.4)) ? d : Infinity;
 }
 
-/**
- * Tối đa `limit` route gần `pathname` nhất, so khớp đoạn đầu của path (bỏ dấu, không phân biệt hoa thường) với
- * đoạn đầu path, nhãn và từ khoá của từng mục. Mục xa quá ngưỡng bị bỏ; không bao giờ trả chính `pathname`.
- */
-export function suggestRoutes(
+/** Xếp hạng `catalog` theo độ gần của `segment` (đã bỏ dấu/hạ thường); loại mục có path = `pathname`. */
+function rankEntries(
+  segment: string,
   pathname: string,
-  catalog: readonly RouteEntry[] = ROUTE_CATALOG,
-  limit = 3,
+  catalog: readonly RouteEntry[],
+  limit: number,
 ): RouteEntry[] {
-  const first = pathname.split('/').find(Boolean) ?? '';
-  const segment = normalizeVi(decodeSafe(first));
   if (!segment) return [];
   const scored: { entry: RouteEntry; d: number; i: number }[] = [];
   catalog.forEach((entry, i) => {
@@ -90,6 +87,38 @@ export function suggestRoutes(
     .sort((x, y) => x.d - y.d || x.i - y.i)
     .slice(0, limit)
     .map((s) => s.entry);
+}
+
+/**
+ * Tối đa `limit` route gần `pathname` nhất, so khớp đoạn đầu của path (bỏ dấu, không phân biệt hoa thường) với
+ * đoạn đầu path, nhãn và từ khoá của từng mục. Mục xa quá ngưỡng bị bỏ; không bao giờ trả chính `pathname`.
+ */
+export function suggestRoutes(
+  pathname: string,
+  catalog: readonly RouteEntry[] = ROUTE_CATALOG,
+  limit = 3,
+): RouteEntry[] {
+  const first = pathname.split('/').find(Boolean) ?? '';
+  return rankEntries(normalizeVi(decodeSafe(first)), pathname, catalog, limit);
+}
+
+/** Mã dự án của đường dẫn dạng `/p/KEY` hoặc `/p/KEY/…`; ngoài dự án → null. */
+export function projectKeyOf(pathname: string): string | null {
+  return /^\/p\/([^/]+)(?:\/|$)/.exec(pathname)?.[1] ?? null;
+}
+
+/** Tối đa `limit` màn trong dự án gần đoạn thứ ba của `/p/KEY/<gõ>` (đường dẫn gợi ý giữ nguyên mã dự án). */
+export function suggestProjectViews(pathname: string, limit = 3): RouteEntry[] {
+  const key = projectKeyOf(pathname);
+  if (!key) return [];
+  // `rankEntries` so với đoạn ĐẦU của path (= `p`) nên đưa `seg` vào từ khoá để khớp tên màn (backlog, reports…).
+  const catalog = PROJECT_VIEW_ENTRIES.map((v) => ({
+    path: `/p/${key}/${v.seg}`,
+    label: v.label,
+    keywords: [v.seg, ...v.keywords],
+  }));
+  const third = pathname.split('/')[3] ?? '';
+  return rankEntries(normalizeVi(decodeSafe(third)), pathname, catalog, limit);
 }
 
 function decodeSafe(s: string): string {

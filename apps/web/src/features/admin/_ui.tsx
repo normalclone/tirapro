@@ -1,10 +1,6 @@
 import type { ReactNode } from 'react';
 import { cn } from '@/lib/utils';
-import { LOCALE } from '@/lib/locale';
 import { fmtDate } from '@/lib/dateFormat';
-
-/** Định dạng số nguyên kiểu VN (1.234). */
-export const fmtInt = (n: number) => new Intl.NumberFormat(LOCALE).format(n);
 
 /** Dung lượng người-đọc-được. */
 export function fmtBytes(n: number): string {

@@ -14,17 +14,21 @@ const DISABLED_FILLED =
 const DISABLED_FLAT =
   '[&:disabled:not([aria-busy=true])]:bg-transparent [&:disabled:not([aria-busy=true])]:text-disabled-fg [&:disabled:not([aria-busy=true])]:shadow-none [&:disabled:not([aria-busy=true])]:cursor-not-allowed aria-busy:cursor-progress';
 
+// Đang tải (`aria-busy`) không bị selector vô hiệu bắt nên `hover:` của biến thể vẫn chạy → nút đổi màu khi rê lúc đang tải.
+// Mỗi biến thể thêm một class (0,3,0) trả về đúng màu gốc khi rê; KHÔNG gắn biến thể `enabled` vào hover (xem comment ở trên).
+const BUSY_NO_HOVER_FLAT = 'aria-busy:hover:bg-transparent';
+
 const button = cva(
   'inline-flex items-center justify-center gap-2 rounded-md font-medium whitespace-nowrap transition-colors duration-150 ease-out-quart focus-visible:outline-none select-none',
   {
     variants: {
       variant: {
-        primary: `bg-primary text-primary-fg hover:bg-primary-hover ${DISABLED_FILLED}`,
-        secondary: `bg-surface-2 text-ink hover:bg-surface-3 border border-border ${DISABLED_FILLED}`,
-        ghost: `text-ink hover:bg-surface-2 ${DISABLED_FLAT}`,
-        danger: `bg-danger text-white hover:opacity-90 ${DISABLED_FILLED}`,
+        primary: `bg-primary text-primary-fg hover:bg-primary-hover aria-busy:hover:bg-primary ${DISABLED_FILLED}`,
+        secondary: `bg-surface-2 text-ink hover:bg-surface-3 aria-busy:hover:bg-surface-2 border border-border ${DISABLED_FILLED}`,
+        ghost: `text-ink hover:bg-surface-2 ${BUSY_NO_HOVER_FLAT} ${DISABLED_FLAT}`,
+        danger: `bg-danger text-white hover:opacity-90 aria-busy:hover:opacity-100 ${DISABLED_FILLED}`,
         // Giữ viền khi vô hiệu: bỏ viền thì nút outline trông như chữ trơn.
-        outline: `border border-border text-ink hover:bg-surface-2 ${DISABLED_FLAT}`,
+        outline: `border border-border text-ink hover:bg-surface-2 ${BUSY_NO_HOVER_FLAT} ${DISABLED_FLAT}`,
       },
       size: {
         sm: 'h-8 px-3 text-sm',

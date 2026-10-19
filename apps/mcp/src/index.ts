@@ -60,7 +60,7 @@ const HELP_TEXT = [
   '- Issue key: {DỰ_ÁN}-{LOẠI}-{số}, vd DEMO-BUG-1. Xem/bình luận theo key.',
   '',
   'Quy trình gợi ý:',
-  '1) get_context (kèm projectKey) để biết dự án, loại issue, độ ưu tiên, thành viên.',
+  '1) get_context (kèm projectKey) để biết dự án, loại issue, mức ưu tiên, thành viên.',
   '2) list_issues / get_issue để đọc; search để lọc theo từ khoá.',
   '3) create_issue (projectKey + type tên loại + summary); add_comment; update_issue (tự xử lý version).',
   '',
@@ -85,9 +85,9 @@ function buildServer(tira: Tira): McpServer {
 
   server.tool(
     'get_context',
-    'Khám phá ngữ cảnh workspace (dự án, thành viên; kèm loại issue & độ ưu tiên nếu truyền projectKey). Nên gọi TRƯỚC khi tạo/sửa.',
+    'Khám phá ngữ cảnh workspace (dự án, thành viên; kèm loại issue & mức ưu tiên nếu truyền projectKey). Nên gọi TRƯỚC khi tạo/sửa.',
     {
-      projectKey: z.string().optional().describe('Mã dự án để lấy loại issue/độ ưu tiên, vd DEMO'),
+      projectKey: z.string().optional().describe('Mã dự án để lấy loại issue/mức ưu tiên, vd DEMO'),
     },
     async ({ projectKey }) => {
       try {

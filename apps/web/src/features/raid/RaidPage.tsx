@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { Tabs, TabPanel } from '@/components/ui/Tabs';
 import { Pencil, Plus, ShieldAlert, Trash2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
@@ -463,203 +464,190 @@ export function RaidPage() {
         </div>
       </header>
 
-      <div
-        className="mb-5 flex gap-1 overflow-x-auto border-b border-border"
-        role="tablist"
-        aria-label="Loại rủi ro và vướng mắc"
-      >
-        {RAID_KINDS.map((k) => (
-          <button
-            key={k.value}
-            role="tab"
-            aria-selected={kind === k.value}
-            title={k.description}
-            onClick={() => {
-              setKind(k.value);
-              setCell(null);
-            }}
-            className={cn(
-              '-mb-px whitespace-nowrap border-b-2 px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
-              kind === k.value
-                ? 'border-primary text-ink-strong'
-                : 'border-transparent text-muted hover:text-ink',
-            )}
-          >
-            {k.label}
-          </button>
-        ))}
-      </div>
+      <Tabs
+        idBase="raid"
+        ariaLabel="Loại rủi ro và vướng mắc"
+        value={kind}
+        onChange={(k) => {
+          setKind(k);
+          setCell(null);
+        }}
+        items={RAID_KINDS.map((k) => ({ id: k.value, label: k.label, title: k.description }))}
+        className="mb-5 overflow-x-auto"
+      />
 
-      {kindMeta && <p className="mb-4 text-sm text-muted">{kindMeta.description}</p>}
+      <TabPanel idBase="raid" value={kind}>
+        {kindMeta && <p className="mb-4 text-sm text-muted">{kindMeta.description}</p>}
 
-      <div className="mb-5 flex flex-wrap items-center gap-2">
-        <SearchSelect
-          value={projectId}
-          onChange={setProjectId}
-          options={projectOptions}
-          ariaLabel="Lọc theo dự án"
-          placeholder="Mọi dự án"
-          searchPlaceholder="Tìm dự án…"
-          className="w-52"
-        />
-        <SearchSelect
-          value={status}
-          onChange={(v) => setStatus(v as RaidStatus | '')}
-          options={STATUS_FILTER_OPTIONS}
-          ariaLabel="Lọc theo trạng thái"
-          className="w-44"
-        />
-        {(status || projectId || cell) && (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => {
-              setStatus('');
-              setProjectId('');
-              setCell(null);
-            }}
-          >
-            Xoá bộ lọc
-          </Button>
-        )}
-      </div>
+        <div className="mb-5 flex flex-wrap items-center gap-2">
+          <SearchSelect
+            value={projectId}
+            onChange={setProjectId}
+            options={projectOptions}
+            ariaLabel="Lọc theo dự án"
+            placeholder="Mọi dự án"
+            searchPlaceholder="Tìm dự án…"
+            className="w-52"
+          />
+          <SearchSelect
+            value={status}
+            onChange={(v) => setStatus(v as RaidStatus | '')}
+            options={STATUS_FILTER_OPTIONS}
+            ariaLabel="Lọc theo trạng thái"
+            className="w-44"
+          />
+          {(status || projectId || cell) && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setStatus('');
+                setProjectId('');
+                setCell(null);
+              }}
+            >
+              Xoá bộ lọc
+            </Button>
+          )}
+        </div>
 
-      <QueryBoundary
-        query={raidQuery}
-        skeleton={
-          <div className="space-y-4">
-            <Skeleton className="h-64 w-full" />
-            <Skeleton className="h-48 w-full" />
-          </div>
-        }
-      >
-        {() =>
-          (items ?? []).length === 0 ? (
-            // Chưa có mục nào (trước khi lọc ô): không vẽ ma trận 25 ô trống, chỉ nói rõ và mời thêm.
-            <EmptyState
-              icon={<ShieldAlert className="h-6 w-6" />}
-              title={
-                status || projectId
-                  ? `Không có ${kindMeta?.label.toLowerCase() ?? 'mục'} nào khớp bộ lọc`
-                  : `Chưa có ${kindMeta?.label.toLowerCase() ?? 'mục'} nào`
-              }
-              description={
-                status || projectId
-                  ? 'Bấm “Xoá bộ lọc” ở trên để xem toàn bộ.'
-                  : canManage
-                    ? 'Ghi lại điều bạn đang lo, chấm xác suất xảy ra và mức ảnh hưởng — ma trận rủi ro sẽ hiện ở đây ngay khi có mục đầu tiên.'
-                    : 'Khi nhóm ghi nhận mục mới, ma trận rủi ro sẽ hiện ở đây.'
-              }
-              action={
-                canManage && !status && !projectId ? (
-                  <Button variant="secondary" onClick={openCreate}>
-                    <Plus className="h-4 w-4" /> Thêm {kindMeta?.label.toLowerCase() ?? 'mục'}
-                  </Button>
-                ) : undefined
-              }
-            />
-          ) : (
-            <div className="space-y-5">
-              <HeatMatrix items={items ?? []} selected={cell} onSelect={setCell} />
-
-              <section className="rounded-lg border border-border bg-surface">
-                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3 sm:px-5">
-                  <h2 className="text-base font-semibold text-ink-strong">Danh sách chi tiết</h2>
-                  <span className="text-sm text-muted">
-                    {cell
-                      ? `${rows.length} mục ở ô xác suất ${cell.p} × ảnh hưởng ${cell.i}`
-                      : `${rows.length} mục`}
-                  </span>
-                </div>
-
-                {rows.length === 0 ? (
-                  <div className="p-5">
-                    <EmptyState
-                      icon={<ShieldAlert className="h-6 w-6" />}
-                      title={
-                        cell
-                          ? 'Không có mục nào trong ô này'
-                          : `Chưa có ${kindMeta?.label.toLowerCase() ?? 'mục'} nào`
-                      }
-                      description={
-                        cell
-                          ? 'Bấm lại vào ô đang chọn trong ma trận để xem toàn bộ danh sách.'
-                          : canManage
-                            ? 'Ghi lại điều bạn đang lo, chấm xác suất xảy ra và mức ảnh hưởng — cả nhóm sẽ thấy ngay trên ma trận và biết việc nào cần lo trước.'
-                            : 'Khi nhóm ghi nhận mục mới, bạn sẽ thấy ở đây.'
-                      }
-                      action={
-                        canManage && !cell ? (
-                          <Button onClick={openCreate}>
-                            <Plus className="h-4 w-4" /> Thêm{' '}
-                            {kindMeta?.label.toLowerCase() ?? 'mục'}
-                          </Button>
-                        ) : undefined
-                      }
-                    />
-                  </div>
-                ) : (
-                  <>
-                    {/* < sm: danh sách thẻ (bảng 46rem không vừa 390px); ≥ sm: bảng như cũ. */}
-                    <ul className="sm:hidden">
-                      {rows.map((item) => (
-                        <RaidCard
-                          key={item.id}
-                          item={item}
-                          canManage={canManage}
-                          onEdit={openEdit}
-                        />
-                      ))}
-                    </ul>
-                    <ScrollX className="max-sm:hidden">
-                      <table className="w-full min-w-[46rem] text-left">
-                        <thead>
-                          <tr className="text-xs font-medium text-faint">
-                            <th scope="col" className="px-3 py-2">
-                              Nội dung
-                            </th>
-                            <th
-                              scope="col"
-                              className="px-3 py-2"
-                              title="Người chịu trách nhiệm theo dõi và xử lý"
-                            >
-                              Người phụ trách
-                            </th>
-                            <th scope="col" className="px-3 py-2" title={RAID_LEVEL_LEGEND}>
-                              Xác suất × ảnh hưởng
-                            </th>
-                            <th scope="col" className="px-3 py-2">
-                              Trạng thái
-                            </th>
-                            <th scope="col" className="px-3 py-2" title="Ngày cần xử lý xong">
-                              Hạn xử lý
-                            </th>
-                            {canManage && (
-                              <th scope="col" className="px-3 py-2 text-right">
-                                Thao tác
-                              </th>
-                            )}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {rows.map((item) => (
-                            <RaidRow
-                              key={item.id}
-                              item={item}
-                              canManage={canManage}
-                              onEdit={openEdit}
-                            />
-                          ))}
-                        </tbody>
-                      </table>
-                    </ScrollX>
-                  </>
-                )}
-              </section>
+        <QueryBoundary
+          query={raidQuery}
+          skeleton={
+            <div className="space-y-4">
+              <Skeleton className="h-64 w-full" />
+              <Skeleton className="h-48 w-full" />
             </div>
-          )
-        }
-      </QueryBoundary>
+          }
+        >
+          {() =>
+            (items ?? []).length === 0 ? (
+              // Chưa có mục nào (trước khi lọc ô): không vẽ ma trận 25 ô trống, chỉ nói rõ và mời thêm.
+              <EmptyState
+                icon={<ShieldAlert className="h-6 w-6" />}
+                title={
+                  status || projectId
+                    ? `Không có ${kindMeta?.label.toLowerCase() ?? 'mục'} nào khớp bộ lọc`
+                    : `Chưa có ${kindMeta?.label.toLowerCase() ?? 'mục'} nào`
+                }
+                description={
+                  status || projectId
+                    ? 'Bấm “Xoá bộ lọc” ở trên để xem toàn bộ.'
+                    : canManage
+                      ? 'Ghi lại điều bạn đang lo, chấm xác suất xảy ra và mức ảnh hưởng — ma trận rủi ro sẽ hiện ở đây ngay khi có mục đầu tiên.'
+                      : 'Khi nhóm ghi nhận mục mới, ma trận rủi ro sẽ hiện ở đây.'
+                }
+                action={
+                  canManage && !status && !projectId ? (
+                    <Button variant="secondary" onClick={openCreate}>
+                      <Plus className="h-4 w-4" /> Thêm {kindMeta?.label.toLowerCase() ?? 'mục'}
+                    </Button>
+                  ) : undefined
+                }
+              />
+            ) : (
+              <div className="space-y-5">
+                <HeatMatrix items={items ?? []} selected={cell} onSelect={setCell} />
+
+                <section className="rounded-lg border border-border bg-surface">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3 sm:px-5">
+                    <h2 className="text-base font-semibold text-ink-strong">Danh sách chi tiết</h2>
+                    <span className="text-sm text-muted">
+                      {cell
+                        ? `${rows.length} mục ở ô xác suất ${cell.p} × ảnh hưởng ${cell.i}`
+                        : `${rows.length} mục`}
+                    </span>
+                  </div>
+
+                  {rows.length === 0 ? (
+                    <div className="p-5">
+                      <EmptyState
+                        icon={<ShieldAlert className="h-6 w-6" />}
+                        title={
+                          cell
+                            ? 'Không có mục nào trong ô này'
+                            : `Chưa có ${kindMeta?.label.toLowerCase() ?? 'mục'} nào`
+                        }
+                        description={
+                          cell
+                            ? 'Bấm lại vào ô đang chọn trong ma trận để xem toàn bộ danh sách.'
+                            : canManage
+                              ? 'Ghi lại điều bạn đang lo, chấm xác suất xảy ra và mức ảnh hưởng — cả nhóm sẽ thấy ngay trên ma trận và biết việc nào cần lo trước.'
+                              : 'Khi nhóm ghi nhận mục mới, bạn sẽ thấy ở đây.'
+                        }
+                        action={
+                          canManage && !cell ? (
+                            <Button onClick={openCreate}>
+                              <Plus className="h-4 w-4" /> Thêm{' '}
+                              {kindMeta?.label.toLowerCase() ?? 'mục'}
+                            </Button>
+                          ) : undefined
+                        }
+                      />
+                    </div>
+                  ) : (
+                    <>
+                      {/* < sm: danh sách thẻ (bảng 46rem không vừa 390px); ≥ sm: bảng như cũ. */}
+                      <ul className="sm:hidden">
+                        {rows.map((item) => (
+                          <RaidCard
+                            key={item.id}
+                            item={item}
+                            canManage={canManage}
+                            onEdit={openEdit}
+                          />
+                        ))}
+                      </ul>
+                      <ScrollX className="max-sm:hidden">
+                        <table className="w-full min-w-[46rem] text-left">
+                          <thead>
+                            <tr className="text-xs font-medium text-faint">
+                              <th scope="col" className="px-3 py-2">
+                                Nội dung
+                              </th>
+                              <th
+                                scope="col"
+                                className="px-3 py-2"
+                                title="Người chịu trách nhiệm theo dõi và xử lý"
+                              >
+                                Người phụ trách
+                              </th>
+                              <th scope="col" className="px-3 py-2" title={RAID_LEVEL_LEGEND}>
+                                Xác suất × ảnh hưởng
+                              </th>
+                              <th scope="col" className="px-3 py-2">
+                                Trạng thái
+                              </th>
+                              <th scope="col" className="px-3 py-2" title="Ngày cần xử lý xong">
+                                Hạn xử lý
+                              </th>
+                              {canManage && (
+                                <th scope="col" className="px-3 py-2 text-right">
+                                  Thao tác
+                                </th>
+                              )}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {rows.map((item) => (
+                              <RaidRow
+                                key={item.id}
+                                item={item}
+                                canManage={canManage}
+                                onEdit={openEdit}
+                              />
+                            ))}
+                          </tbody>
+                        </table>
+                      </ScrollX>
+                    </>
+                  )}
+                </section>
+              </div>
+            )
+          }
+        </QueryBoundary>
+      </TabPanel>
 
       <RaidEditorModal
         open={editorOpen}

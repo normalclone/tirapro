@@ -481,7 +481,7 @@ export function CreateIssueModal() {
       onSubmit={() => void submitCreate()}
       footer={
         <>
-          <span className="mr-auto hidden text-xs text-faint sm:block">
+          <span className="kbd-hint mr-auto text-xs text-faint max-sm:hidden">
             ⌘/Ctrl + Enter để tạo nhanh
           </span>
           <Button type="button" variant="ghost" onClick={close}>

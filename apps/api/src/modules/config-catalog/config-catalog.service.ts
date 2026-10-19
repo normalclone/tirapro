@@ -14,7 +14,7 @@ export interface SeverityDto {
   isSystem: boolean;
 }
 
-/** DTO trả về cho Priority (độ ưu tiên nghiệp vụ). */
+/** DTO trả về cho Priority (mức ưu tiên nghiệp vụ). */
 export interface PriorityDto {
   id: string;
   name: string;
@@ -59,7 +59,7 @@ type SeverityRow = Prisma.SeverityGetPayload<true>;
 type PriorityRow = Prisma.PriorityGetPayload<true>;
 
 const SEVERITY_DUPLICATE = 'Mức độ đã tồn tại';
-const PRIORITY_DUPLICATE = 'Độ ưu tiên đã tồn tại';
+const PRIORITY_DUPLICATE = 'Mức ưu tiên đã tồn tại';
 const SYSTEM_LOCKED = 'Không sửa được mục hệ thống';
 
 @Injectable()
@@ -222,7 +222,7 @@ export class ConfigCatalogService {
     const row = await this.prisma.priority.findFirst({
       where: { id, workspaceId },
     });
-    if (!row) throw new NotFoundAppException('Độ ưu tiên');
+    if (!row) throw new NotFoundAppException('Mức ưu tiên');
     return row;
   }
 

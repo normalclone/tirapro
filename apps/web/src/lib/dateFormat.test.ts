@@ -6,6 +6,7 @@ import {
   fmtLongDate,
   fmtMonthYear,
   fmtRelative,
+  monthAxisLabel,
   toDateInput,
   toDateTimeInput,
 } from './dateFormat';
@@ -82,5 +83,26 @@ describe('fmtDayMonth / fmtMonthYear / fmtLongDate', () => {
       expect(f(null)).toBe('—');
       expect(f('abc')).toBe('—');
     }
+  });
+});
+
+describe('monthAxisLabel', () => {
+  const oct = new Date(2026, 9, 1);
+  it('đủ rộng (>= 64px) → T10/2026', () => {
+    expect(monthAxisLabel(oct, 240)).toBe('T10/2026');
+    expect(monthAxisLabel(oct, 64)).toBe('T10/2026');
+  });
+  it('vừa (34-63px) → chỉ T10', () => {
+    expect(monthAxisLabel(oct, 63)).toBe('T10');
+    expect(monthAxisLabel(oct, 40)).toBe('T10');
+    expect(monthAxisLabel(oct, 34)).toBe('T10');
+  });
+  it('quá hẹp (< 34px) → rỗng', () => {
+    expect(monthAxisLabel(oct, 33)).toBe('');
+    expect(monthAxisLabel(oct, 30)).toBe('');
+  });
+  it('ngày không hợp lệ → —', () => {
+    expect(monthAxisLabel('abc', 240)).toBe('—');
+    expect(monthAxisLabel(null, 40)).toBe('—');
   });
 });

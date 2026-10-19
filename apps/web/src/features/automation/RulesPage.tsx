@@ -170,7 +170,7 @@ export function RulesPage() {
             <EmptyState
               icon={<Zap className="h-6 w-6" />}
               title="Chưa có quy tắc nào"
-              description="Ví dụ: khi tạo việc có độ ưu tiên cao thì giao cho trưởng dự án và báo cho cả nhóm; mỗi sáng thứ hai nhắc những việc quá hạn."
+              description="Ví dụ: khi tạo việc có mức ưu tiên cao thì giao cho trưởng dự án và báo cho cả nhóm; mỗi sáng thứ hai nhắc những việc quá hạn."
               action={
                 <Button size="sm" onClick={() => open(null)}>
                   <Plus className="h-4 w-4" /> Tạo quy tắc

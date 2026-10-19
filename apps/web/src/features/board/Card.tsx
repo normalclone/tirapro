@@ -8,7 +8,7 @@ import { IssueTypeBadge } from '@/components/ui/IssueTypeBadge';
 import { Avatar } from '@/components/ui/primitives';
 import { PriorityIcon } from '@/components/ui/PriorityIcon';
 import { SeverityBadge } from '@/components/ui/SeverityBadge';
-import { usePriorityRanks } from '@/features/settings-admin/api';
+import { usePriorityRanks } from '@/features/issue-meta/usePriorityRanks';
 import { isBugType } from '@/features/issue-edit/severity';
 import { cn } from '@/lib/utils';
 import { useDropEdge } from '@/lib/dropHint';

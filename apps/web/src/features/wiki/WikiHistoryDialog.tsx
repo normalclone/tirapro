@@ -1,5 +1,6 @@
-import { useMemo, useState, type KeyboardEvent } from 'react';
+import { useMemo, useState } from 'react';
 import { ArrowLeft, History, RotateCcw } from 'lucide-react';
+import { Tabs, TabPanel } from '@/components/ui/Tabs';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/Button';
 import { Dialog } from '@/components/ui/Dialog';
@@ -262,11 +263,17 @@ function VersionDetail({
                 </div>
               )}
             </div>
-            <ViewTabs tab={tab} onTab={setTab} />
-            <div
-              role="tabpanel"
-              id="wiki-ver-panel"
-              aria-labelledby={`wiki-ver-tab-${tab}`}
+            <Tabs
+              idBase="wiki-ver"
+              ariaLabel="Cách xem phiên bản"
+              value={tab}
+              onChange={setTab}
+              items={VIEW_TABS.map(([id, label]) => ({ id, label }))}
+              className="mb-3"
+            />
+            <TabPanel
+              idBase="wiki-ver"
+              value={tab}
               tabIndex={0}
               className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
             >
@@ -275,7 +282,7 @@ function VersionDetail({
               ) : (
                 <VersionDiff from={v} page={page} />
               )}
-            </div>
+            </TabPanel>
           </>
         )}
       </QueryBoundary>
@@ -287,57 +294,6 @@ const VIEW_TABS = [
   ['content', 'Nội dung'],
   ['diff', 'So với bản hiện tại'],
 ] as const;
-
-/** Hai tab xem một phiên bản: mũi tên trái/phải đổi tab (roving tabindex), Home/End về đầu/cuối. */
-function ViewTabs({ tab, onTab }: { tab: Tab; onTab: (t: Tab) => void }) {
-  function onKeyDown(e: KeyboardEvent<HTMLDivElement>) {
-    const i = VIEW_TABS.findIndex(([id]) => id === tab);
-    const next =
-      e.key === 'ArrowRight'
-        ? (i + 1) % VIEW_TABS.length
-        : e.key === 'ArrowLeft'
-          ? (i - 1 + VIEW_TABS.length) % VIEW_TABS.length
-          : e.key === 'Home'
-            ? 0
-            : e.key === 'End'
-              ? VIEW_TABS.length - 1
-              : -1;
-    if (next < 0) return;
-    e.preventDefault();
-    const id = VIEW_TABS[next]![0];
-    onTab(id);
-    document.getElementById(`wiki-ver-tab-${id}`)?.focus();
-  }
-  return (
-    <div
-      role="tablist"
-      aria-label="Cách xem phiên bản"
-      onKeyDown={onKeyDown}
-      className="mb-3 flex gap-1 border-b border-border"
-    >
-      {VIEW_TABS.map(([id, label]) => (
-        <button
-          key={id}
-          type="button"
-          role="tab"
-          id={`wiki-ver-tab-${id}`}
-          aria-selected={tab === id}
-          aria-controls="wiki-ver-panel"
-          tabIndex={tab === id ? 0 : -1}
-          onClick={() => onTab(id)}
-          className={cn(
-            '-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
-            tab === id
-              ? 'border-primary text-ink-strong'
-              : 'border-transparent text-muted hover:text-ink',
-          )}
-        >
-          {label}
-        </button>
-      ))}
-    </div>
-  );
-}
 
 function VersionBody({ version }: { version: WikiVersion }) {
   return version.body.trim() ? (

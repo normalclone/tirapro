@@ -185,7 +185,7 @@ export function TransitionDialog({
               ))}
             </div>
           )}
-          <p className="mt-1.5 text-xs text-faint">
+          <p className="kbd-hint mt-1.5 text-xs text-faint">
             Enter xác nhận · Cmd/Ctrl+Enter khi đang gõ · Esc huỷ
           </p>
         </div>

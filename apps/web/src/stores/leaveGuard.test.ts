@@ -1,6 +1,11 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  commitLeaveApp,
+  confirmLeaveApp,
   describeGuard,
+  discardDirty,
   dirtyGuardEntries,
   pickBlockingEntries,
   useLeaveGuardStore,
@@ -92,5 +97,93 @@ describe('leave guard store', () => {
     useLeaveGuardStore.getState().set('w', entry(true, { onDiscard: fn }));
     for (const [, e] of dirtyGuardEntries(useLeaveGuardStore.getState().entries)) e.onDiscard();
     expect(fn).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('discardDirty', () => {
+  it('chỉ gọi onDiscard của mục đang dirty, mục sạch giữ nguyên', () => {
+    const dirty = vi.fn();
+    const clean = vi.fn();
+    discardDirty({
+      a: entry(true, { onDiscard: dirty }),
+      b: entry(false, { onDiscard: clean }),
+    });
+    expect(dirty).toHaveBeenCalledTimes(1);
+    expect(clean).not.toHaveBeenCalled();
+  });
+});
+
+describe('confirmLeaveApp (hỏi — KHÔNG bỏ nháp)', () => {
+  it('không có mục dirty → true, không hỏi', async () => {
+    const ask = vi.fn(() => Promise.resolve(true));
+    expect(await confirmLeaveApp({ a: entry(false) }, ask)).toBe(true);
+    expect(ask).not.toHaveBeenCalled();
+  });
+
+  it('đồng ý → true nhưng KHÔNG gọi onDiscard (nháp còn nếu thao tác sau đó lỗi)', async () => {
+    const discard = vi.fn();
+    const ask = vi.fn(() => Promise.resolve(true));
+    const ok = await confirmLeaveApp(
+      { a: entry(true, { onDiscard: discard, description: () => 'Nháp wiki' }) },
+      ask,
+    );
+    expect(ok).toBe(true);
+    expect(ask).toHaveBeenCalledWith('Nháp wiki');
+    expect(discard).not.toHaveBeenCalled();
+  });
+
+  it('từ chối → false, không bỏ gì', async () => {
+    const discard = vi.fn();
+    const ok = await confirmLeaveApp({ a: entry(true, { onDiscard: discard }) }, () =>
+      Promise.resolve(false),
+    );
+    expect(ok).toBe(false);
+    expect(discard).not.toHaveBeenCalled();
+  });
+});
+
+describe('commitLeaveApp (sau khi đổi THÀNH CÔNG, ngay trước khi tải lại)', () => {
+  beforeEach(() => useLeaveGuardStore.setState({ entries: {}, suspended: false }));
+
+  it('bỏ nháp các mục dirty + tắt beforeunload; mục sạch không đụng', () => {
+    const dirty = vi.fn();
+    const clean = vi.fn();
+    const s = useLeaveGuardStore.getState();
+    s.set('w', entry(true, { onDiscard: dirty }));
+    s.set('c', entry(false, { onDiscard: clean }));
+    expect(useLeaveGuardStore.getState().suspended).toBe(false);
+    commitLeaveApp();
+    expect(dirty).toHaveBeenCalledTimes(1);
+    expect(clean).not.toHaveBeenCalled();
+    expect(useLeaveGuardStore.getState().suspended).toBe(true);
+  });
+
+  it('một onDiscard ném lỗi vẫn tắt beforeunload (try/finally) và lỗi được ném lại', () => {
+    const s = useLeaveGuardStore.getState();
+    s.set(
+      'w',
+      entry(true, {
+        onDiscard: () => {
+          throw new Error('boom');
+        },
+      }),
+    );
+    expect(() => commitLeaveApp()).toThrow('boom');
+    expect(useLeaveGuardStore.getState().suspended).toBe(true);
+  });
+
+  it('useSwitchWorkspace.onSuccess: nạp token + tải lại nằm trong finally sau commitLeaveApp', () => {
+    const api = readFileSync(join(__dirname, '..', 'features/workspace/api.ts'), 'utf8');
+    expect(api).toMatch(
+      /try \{\s*commitLeaveApp\(\);\s*\} finally \{\s*setAccessToken\(data\.accessToken\);[\s\S]*?window\.location\.assign\('\/'\);/,
+    );
+  });
+
+  it('chưa commit (đổi lỗi) thì nháp còn và beforeunload vẫn bật', async () => {
+    const dirty = vi.fn();
+    useLeaveGuardStore.getState().set('w', entry(true, { onDiscard: dirty }));
+    await confirmLeaveApp(useLeaveGuardStore.getState().entries, () => Promise.resolve(true));
+    expect(dirty).not.toHaveBeenCalled();
+    expect(useLeaveGuardStore.getState().suspended).toBe(false);
   });
 });

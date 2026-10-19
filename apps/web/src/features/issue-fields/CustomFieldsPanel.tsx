@@ -144,6 +144,7 @@ function FieldEditor({
           checked={value === true}
           disabled={saving}
           onChange={(e) => onSave(e.target.checked)}
+          // Giữ disabled:opacity (không dùng token vô hiệu) — checkbox native: trình duyệt tự vẽ, nền/chữ không tô lại được.
           className="mt-0.5 h-4 w-4 cursor-pointer rounded border-border accent-[var(--primary)] disabled:opacity-50"
         />
       );
@@ -380,10 +381,11 @@ function MultiSelectField({
             disabled={saving}
             onClick={() => toggle(o.id)}
             className={cn(
-              'rounded-full border px-2.5 py-0.5 text-xs transition-colors disabled:opacity-50',
+              'rounded-full border px-2.5 py-0.5 text-xs transition-colors',
+              // Chip bật/tắt: khi vô hiệu (đang lưu) nhánh "bật" vẫn phải nhìn ra là đang chọn → màu chính nhạt, không dùng token xám.
               on
-                ? 'border-primary bg-primary text-primary-fg'
-                : 'border-border bg-surface text-muted hover:bg-surface-2',
+                ? 'border-primary bg-primary text-primary-fg disabled:cursor-not-allowed disabled:border-transparent disabled:bg-primary/50 disabled:text-primary-fg'
+                : 'border-border bg-surface text-muted hover:bg-surface-2 disabled:cursor-not-allowed disabled:border-transparent disabled:bg-disabled-bg disabled:text-disabled-fg',
             )}
           >
             {o.value}

@@ -37,7 +37,7 @@ export class ApiHelpController {
       rest: [
         {
           group: 'Projects',
-          endpoints: ['GET /projects', 'GET /projects/:key/meta (loại issue, độ ưu tiên…)'],
+          endpoints: ['GET /projects', 'GET /projects/:key/meta (loại issue, mức ưu tiên…)'],
         },
         {
           group: 'Issues',

@@ -96,7 +96,7 @@ export class AiService {
       system:
         'Bạn là trợ lý quản lý dự án Agile. Phân rã yêu cầu thành các công việc rõ ràng, khả thi. ' +
         'Mỗi công việc có tiêu đề ngắn gọn, loại (Task/Bug/Story/Epic), mô tả, tiêu chí chấp nhận, ' +
-        'ước lượng story points (Fibonacci) và độ ưu tiên. Trả lời bằng tiếng Việt, không bịa thông tin.' +
+        'ước lượng story points (Fibonacci) và mức ưu tiên. Trả lời bằng tiếng Việt, không bịa thông tin.' +
         DATA_NOT_INSTRUCTIONS,
       prompt: `Dự án: ${project.name} (${project.key}).\n\nYêu cầu của người dùng:\n${wrap('user_request', input.text)}`,
       schema: GENERATE_ISSUES_SCHEMA,
@@ -189,7 +189,7 @@ export class AiService {
       ctx: { workspaceId, userId, feature: 'suggest' },
       model: this.claude.modelFast,
       system:
-        'Bạn là trợ lý Agile. Dựa trên nội dung công việc, đề xuất độ ưu tiên (Highest..Lowest) và ' +
+        'Bạn là trợ lý Agile. Dựa trên nội dung công việc, đề xuất mức ưu tiên (Highest..Lowest) và ' +
         'story points (Fibonacci: 1,2,3,5,8,13). Giải thích ngắn gọn bằng tiếng Việt.' +
         DATA_NOT_INSTRUCTIONS,
       prompt: wrap('issue', issueCtx),

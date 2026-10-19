@@ -3,7 +3,8 @@ import { pageContainer } from '@/components/layout/page';
 import { Skeleton } from '@/components/ui/primitives';
 import { QueryError } from '@/components/ui/QueryError';
 import { useAdminOverview } from './api';
-import { StatTile, StatusPill, fmtBytes, fmtInt, relTime } from './_ui';
+import { StatTile, StatusPill, fmtBytes, relTime } from './_ui';
+import { fmtNumber } from '@/lib/locale';
 import { ADMIN_LABELS } from '@/lib/navLabels';
 
 export function AdminOverviewPage() {
@@ -87,33 +88,33 @@ export function AdminOverviewPage() {
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
               <StatTile
                 label="Không gian làm việc"
-                value={fmtInt(data.workspaces.active)}
+                value={fmtNumber(data.workspaces.active)}
                 sub={
                   data.workspaces.archived > 0
-                    ? `${fmtInt(data.workspaces.archived)} đã lưu trữ`
+                    ? `${fmtNumber(data.workspaces.archived)} đã lưu trữ`
                     : 'chưa có nơi nào lưu trữ'
                 }
               />
               <StatTile
                 label="Người dùng"
-                value={fmtInt(data.users.active)}
-                sub={`${fmtInt(data.users.systemAdmins)} admin · ${fmtInt(data.users.deactivated)} vô hiệu`}
+                value={fmtNumber(data.users.active)}
+                sub={`${fmtNumber(data.users.systemAdmins)} admin · ${fmtNumber(data.users.deactivated)} vô hiệu`}
               />
-              <StatTile label="Dự án" value={fmtInt(data.projects)} />
+              <StatTile label="Dự án" value={fmtNumber(data.projects)} />
               <StatTile
                 label="Công việc"
-                value={fmtInt(data.issues.total)}
-                sub={`${fmtInt(data.issues.open)} đang mở · ${fmtInt(data.issues.done)} đã xong`}
+                value={fmtNumber(data.issues.total)}
+                sub={`${fmtNumber(data.issues.open)} đang mở · ${fmtNumber(data.issues.done)} đã xong`}
               />
               <StatTile
                 label="Tệp đính kèm"
-                value={fmtInt(data.attachments.count)}
+                value={fmtNumber(data.attachments.count)}
                 sub={fmtBytes(data.attachments.totalBytes)}
               />
               <StatTile
                 label="Hoạt động 24h"
-                value={fmtInt(data.activity.last24h)}
-                sub={`${fmtInt(data.activity.last7d)} trong 7 ngày`}
+                value={fmtNumber(data.activity.last24h)}
+                sub={`${fmtNumber(data.activity.last7d)} trong 7 ngày`}
               />
             </div>
           </section>
@@ -122,11 +123,11 @@ export function AdminOverviewPage() {
           <section>
             <h2 className="mb-3 text-sm font-semibold text-ink">AI · 30 ngày qua</h2>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              <StatTile label="Lượt gọi" value={fmtInt(data.ai.requests)} accent />
+              <StatTile label="Lượt gọi" value={fmtNumber(data.ai.requests)} accent />
               <StatTile
                 label="Token vào / ra"
-                value={`${fmtInt(data.ai.inputTokens)}`}
-                sub={`${fmtInt(data.ai.outputTokens)} token ra`}
+                value={`${fmtNumber(data.ai.inputTokens)}`}
+                sub={`${fmtNumber(data.ai.outputTokens)} token ra`}
               />
               <StatTile label="Chi phí ước tính" value={`$${data.ai.estCostUsd.toFixed(2)}`} />
               <StatTile

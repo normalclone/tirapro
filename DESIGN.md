@@ -138,7 +138,9 @@ Button (primary/secondary/ghost/danger), Input, Textarea, SearchSelect, Segmente
 `<dialog>`/portal — tránh bị clip trong overflow), Dropdown, Tooltip, Popover, Avatar,
 Badge/Tag, Tabs, Checkbox, Switch, Toast (sonner-style), Skeleton, Command palette (cmdk).
 
-**Button — vô hiệu:** nền `disabled-bg`, chữ `disabled-fg`, không dùng opacity (ghost/outline: nền trong suốt, chỉ đổi chữ); đang tải giữ màu biến thể + spinner (`aria-busy`). Hover chỉ khi bật. Ô nhập/trigger vô hiệu dùng cùng token + `cursor-not-allowed`.
+**Button — vô hiệu:** nền `disabled-bg`, chữ `disabled-fg`, không dùng opacity (ghost/outline: nền trong suốt, chỉ đổi chữ); đang tải giữ màu biến thể + spinner (`aria-busy`). Hover chỉ khi bật. Ô nhập/trigger vô hiệu dùng cùng token + `cursor-not-allowed`. Chip bật/tắt (`aria-pressed`) khi vô hiệu vẫn phải thấy rõ bật hay tắt: nhánh "bật" có kiểu vô hiệu riêng, nhánh "tắt" dùng token.
+
+**Nút Lưu/Tạo — chống bấm đúp:** thao tác tạo bản ghi từ nút hoặc phím tắt (Ctrl/⌘+Enter, giữ phím lặp) bọc bằng `singleFlight(ref, fn)` (`lib/singleFlight.ts`) — `ref` đặt **đồng bộ** nên lần gọi thứ hai trong cùng tick bị bỏ. Dùng ở chỗ chưa có cờ "đang chạy" đồng bộ (cờ `isPending` của react-query chỉ đổi sau một lượt render nên chưa chặn được lần gọi thứ hai).
 
 Đặc tả chủ đạo:
 
@@ -157,6 +159,7 @@ Badge/Tag, Tabs, Checkbox, Switch, Toast (sonner-style), Skeleton, Command palet
 
 - `SegmentedControl` (radiogroup) khi **≤ 4 lựa chọn ngắn, cố định**, loại trừ nhau (hướng sắp xếp, chế độ, phạm vi). Bấm lại mục đang chọn không làm gì.
 - `SearchSelect` cho mọi trường hợp còn lại (danh sách dài/động/nhóm). Có đủ bàn phím (↑↓ Home End, Enter, Esc) và ARIA combobox/listbox; mục được 2 dòng (mô tả) + icon; **≤ 6 mục thì ẩn ô tìm** (gõ chữ cái để nhảy), trừ khi tìm phía máy chủ hoặc đặt `searchable`. Chọn lại giá trị hiện tại không phát `onChange`.
+- `Tabs` + `TabPanel` cho hàng tab đổi **phần nội dung cùng trang** (kể cả khi lưu tab ở `?tab=`): `tablist`/`tab`/`tabpanel`, `aria-selected`, `aria-controls` ↔ `aria-labelledby`, roving tabindex, ←/→/Home/End vòng tròn bỏ qua tab tắt và kích hoạt ngay. Một kiểu duy nhất (gạch chân), không có biến thể pill. Chọn một trong vài **kiểu xem** của cùng nội dung (Sơ đồ/Danh sách) là `SegmentedControl`, không phải tab; chuyển **trang/route** thì dùng liên kết `aria-current`, không dùng `Tabs`.
 
 ## Điều hướng mobile (dưới `lg`)
 

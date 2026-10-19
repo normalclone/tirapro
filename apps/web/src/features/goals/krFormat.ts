@@ -1,5 +1,5 @@
 import type { KeyResultUnit } from '@tirapro/types';
-import { LOCALE } from '@/lib/locale';
+import { fmtNumber } from '@/lib/locale';
 
 interface KrLike {
   startValue: number;
@@ -17,7 +17,7 @@ const round = (n: number, digits: number): number => {
 /** Phần số theo đơn vị (không nhãn): % một chữ số thập phân, tiền theo locale, số hai chữ số. */
 function formatNumber(value: number, unit: KeyResultUnit): string {
   if (unit === 'PERCENT') return `${round(value, 1)}%`;
-  if (unit === 'CURRENCY') return new Intl.NumberFormat(LOCALE).format(value);
+  if (unit === 'CURRENCY') return fmtNumber(value);
   return String(round(value, 2));
 }
 

@@ -31,6 +31,7 @@ import { IssueContextGroup } from './IssueContextGroup';
 import { ProjectCommandGroup } from './ProjectCommandGroup';
 import { commandFilter, ISSUE_GO_VALUE_PREFIX, ISSUE_VALUE_PREFIX } from './commandFilter';
 import { guessIssueKey } from './issueKey';
+import { APP_NAV_LABELS } from '@/lib/navLabels';
 
 /** Đang xem trang chi tiết công việc `/issue/:key` → trả về key để hiện nhóm hành động theo ngữ cảnh. */
 const ISSUE_ROUTE_RE = /^\/issue\/([^/]+)/;
@@ -239,7 +240,7 @@ export function CommandPalette() {
           <ActionItem
             value="tong quan dashboard home"
             icon={<LayoutDashboard className="h-4 w-4 shrink-0 text-muted" aria-hidden="true" />}
-            label="Tổng quan"
+            label={APP_NAV_LABELS.home}
             onSelect={() => runAction(() => navigate('/'))}
           />
           {currentProjectKey(projects) && (
@@ -265,7 +266,7 @@ export function CommandPalette() {
           <ActionItem
             value="wiki tai lieu trang kien thuc"
             icon={<BookOpen className="h-4 w-4 shrink-0 text-muted" aria-hidden="true" />}
-            label="Wiki"
+            label={APP_NAV_LABELS.wiki}
             onSelect={() => runAction(() => navigate('/wiki'))}
           />
           <Command.Item

@@ -96,3 +96,16 @@ const MAX_PREVIEW_CHARS = 700;
 /** Mô tả dài hơn ~12 dòng / 700 ký tự thì phần xem trước bị cắt và hiện "Xem đầy đủ". */
 export const isLongDescription = (d: string | null | undefined): boolean =>
   !!d && (d.split('\n').length > MAX_PREVIEW_LINES || d.length > MAX_PREVIEW_CHARS);
+
+/**
+ * Ai được mở trang "Việc mới vào": chỉ người có `issue:triage` TRONG DỰ ÁN (hộp chứa việc chưa duyệt của người khác — API
+ * cũng trả 403 nếu thiếu). `permsPending` = quyền dự án chưa tải xong → `loading` (không kết luận sớm, không gọi API).
+ * Quyền xem tính bằng `useCan` (không phải `useCanIn`): dự án lưu trữ vẫn xem được hộp, chỉ không duyệt được.
+ */
+export function triageAccess(a: {
+  permsPending: boolean;
+  canTriage: boolean;
+}): 'loading' | 'allowed' | 'denied' {
+  if (a.permsPending) return 'loading';
+  return a.canTriage ? 'allowed' : 'denied';
+}

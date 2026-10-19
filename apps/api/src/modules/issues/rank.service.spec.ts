@@ -127,3 +127,20 @@ describe('RankService.rankOf', () => {
     });
   });
 });
+
+describe('RankService.rankOf — đọc qua tx khi được truyền (R3)', () => {
+  it('có db (tx): đọc bằng tx.issue.findFirst, KHÔNG đụng this.prisma', async () => {
+    const outside = { issue: { findFirst: vi.fn() } };
+    const tx = { issue: { findFirst: vi.fn(() => Promise.resolve({ rank: 'k' })) } };
+    const svc = new RankService(outside as never, { emit: vi.fn() } as never);
+    await expect(svc.rankOf('w1', 'p1', 'x', tx as never)).resolves.toBe('k');
+    expect(tx.issue.findFirst).toHaveBeenCalledTimes(1);
+    expect(outside.issue.findFirst).not.toHaveBeenCalled();
+  });
+  it('không truyền db: vẫn dùng this.prisma như cũ (tham số mặc định)', async () => {
+    const outside = { issue: { findFirst: vi.fn(() => Promise.resolve({ rank: 'z' })) } };
+    const svc = new RankService(outside as never, { emit: vi.fn() } as never);
+    await expect(svc.rankOf('w1', 'p1', 'x')).resolves.toBe('z');
+    expect(outside.issue.findFirst).toHaveBeenCalledTimes(1);
+  });
+});

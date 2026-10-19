@@ -6,7 +6,7 @@ import { roleLabel } from '@tirapro/types';
 import { useAuth } from '@/stores/auth';
 import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
-import { resumeLeaveGuard, useConfirmLeaveApp } from '@/lib/useLeaveGuard';
+import { useConfirmLeaveApp } from '@/lib/useLeaveGuard';
 import { useMyWorkspaces, useSwitchWorkspace, type MyWorkspace } from './api';
 import { CreateWorkspaceModal } from './CreateWorkspaceModal';
 
@@ -37,10 +37,8 @@ export function WorkspaceSwitcher() {
     setOpen(false);
     if (!(await confirmLeave())) return;
     switchWs.mutate(ws.id, {
-      onError: (e) => {
-        resumeLeaveGuard();
-        toast.error(apiErrorMessage(e));
-      },
+      // Lỗi: nháp chưa bị bỏ (chỉ bỏ khi đổi thành công, trong useSwitchWorkspace) nên chỉ cần báo lỗi.
+      onError: (e) => toast.error(apiErrorMessage(e)),
     });
   }
 
@@ -89,7 +87,7 @@ export function WorkspaceSwitcher() {
                       className={cn(
                         'flex w-full items-center gap-2.5 px-3 py-2 text-left transition-colors',
                         'hover:bg-surface-2 focus-visible:bg-surface-2 focus-visible:outline-none',
-                        'disabled:pointer-events-none disabled:opacity-50',
+                        'disabled:pointer-events-none [&:disabled_.text-ink-strong]:text-disabled-fg [&:disabled_.text-muted]:text-disabled-fg',
                         isActive && 'bg-primary-subtle/60',
                       )}
                     >
@@ -114,7 +112,8 @@ export function WorkspaceSwitcher() {
               type="button"
               onClick={() => {
                 setOpen(false);
-                setCreateOpen(true);
+                // Hỏi TRƯỚC khi mở hộp tạo (tạo xong sẽ tải lại trang) — không hỏi chồng lên hộp đang mở.
+                void confirmLeave().then((ok) => ok && setCreateOpen(true));
               }}
               className="flex w-full items-center gap-2 border-t border-border px-3 py-2 text-sm font-medium text-primary transition-colors hover:bg-surface-2"
             >

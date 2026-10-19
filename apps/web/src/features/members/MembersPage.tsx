@@ -14,11 +14,11 @@ import { apiErrorMessage } from '@/lib/api';
 import { fmtRelative } from '@/lib/dateFormat';
 import { normalizeVi } from '@/lib/text';
 import { pageContainer } from '@/components/layout/page';
-import { cn } from '@/lib/utils';
 import { useAuth } from '@/stores/auth';
 import { useRoles } from '@/features/roles/api';
 import { EditRolesPopover } from './EditRolesPopover';
 import { useRemoveMember, useSetMemberRoles, useWorkspaceMembers } from './api';
+import { Tabs, TabPanel } from '@/components/ui/Tabs';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
 import { APP_NAV_LABELS } from '@/lib/navLabels';
 
@@ -56,118 +56,109 @@ export function MembersPage() {
           {APP_NAV_LABELS.members}
         </h1>
         <p className="mt-1 text-sm text-muted">
-          Thành viên và nhóm. Thành viên thuộc về cả không gian làm việc, nên ai có tên ở đây đều
-          tham gia mọi dự án. Nhóm dùng để sắp xếp họ theo chức năng và giao vai trò hàng loạt.
+          Thành viên thuộc về cả không gian làm việc, nên ai có tên ở đây đều tham gia mọi dự án.
+          Nhóm dùng để sắp xếp họ theo chức năng và giao vai trò hàng loạt.
         </p>
       </header>
 
-      <div
-        className="mb-6 flex gap-1 border-b border-border"
-        role="tablist"
-        aria-label="Thành viên & nhóm"
+      <Tabs
+        idBase="members"
+        ariaLabel="Thành viên & nhóm"
+        value={tab}
+        onChange={setTab}
+        items={tabs}
+        className="mb-6"
         data-tour="members-tabs"
-      >
-        {tabs.map((t) => (
-          <button
-            key={t.id}
-            role="tab"
-            aria-selected={tab === t.id}
-            onClick={() => setTab(t.id)}
-            className={cn(
-              '-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
-              tab === t.id
-                ? 'border-primary text-ink-strong'
-                : 'border-transparent text-muted hover:text-ink',
-            )}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+      />
 
-      {tab === 'teams' ? (
-        <TeamsPanel />
-      ) : (
-        <div className="space-y-8">
-          <AddMemberPanel />
+      <TabPanel idBase="members" value={tab}>
+        {tab === 'teams' ? (
+          <TeamsPanel />
+        ) : (
+          <div className="space-y-8">
+            <AddMemberPanel />
 
-          <section className="rounded-lg border border-border bg-surface" data-tour="members-list">
-            <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-border px-4 py-4 sm:px-5">
-              <h2 className="text-base font-semibold text-ink-strong">Danh sách thành viên</h2>
-              <div className="flex items-center gap-3">
-                {members && members.length > 0 && (
-                  <span
-                    className="text-sm text-muted"
-                    title={`Không gian làm việc hiện có ${members.length} người`}
-                  >
-                    {members.length} người
-                  </span>
-                )}
-                {canManage && (
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    title="Chọn nhiều người có sẵn trong hệ thống và thêm cùng lúc"
-                    onClick={() => setBulkOpen(true)}
-                  >
-                    <UserPlus className="h-4 w-4" /> Thêm nhiều người
-                  </Button>
-                )}
-              </div>
-            </div>
-
-            {members && members.length > 0 && (
-              <div className="border-b border-border px-5 py-3">
-                <div className="relative">
-                  <Search
-                    className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-faint"
-                    aria-hidden
-                  />
-                  <Input
-                    type="search"
-                    value={memberSearch}
-                    onChange={(e) => setMemberSearch(e.target.value)}
-                    placeholder="Tìm thành viên…"
-                    aria-label="Tìm thành viên"
-                    className="pl-8"
-                  />
+            <section
+              className="rounded-lg border border-border bg-surface"
+              data-tour="members-list"
+            >
+              <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-border px-4 py-4 sm:px-5">
+                <h2 className="text-base font-semibold text-ink-strong">Danh sách thành viên</h2>
+                <div className="flex items-center gap-3">
+                  {members && members.length > 0 && (
+                    <span
+                      className="text-sm text-muted"
+                      title={`Không gian làm việc hiện có ${members.length} người`}
+                    >
+                      {members.length} người
+                    </span>
+                  )}
+                  {canManage && (
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      title="Chọn nhiều người có sẵn trong hệ thống và thêm cùng lúc"
+                      onClick={() => setBulkOpen(true)}
+                    >
+                      <UserPlus className="h-4 w-4" /> Thêm nhiều người
+                    </Button>
+                  )}
                 </div>
               </div>
-            )}
 
-            <div className="p-5">
-              <QueryBoundary
-                query={membersQuery}
-                skeleton={
-                  <div className="space-y-2.5">
-                    {Array.from({ length: 4 }).map((_, i) => (
-                      <Skeleton key={i} className="h-12 w-full" />
-                    ))}
+              {members && members.length > 0 && (
+                <div className="border-b border-border px-5 py-3">
+                  <div className="relative">
+                    <Search
+                      className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-faint"
+                      aria-hidden
+                    />
+                    <Input
+                      type="search"
+                      value={memberSearch}
+                      onChange={(e) => setMemberSearch(e.target.value)}
+                      placeholder="Tìm thành viên…"
+                      aria-label="Tìm thành viên"
+                      className="pl-8"
+                    />
                   </div>
-                }
-                empty={(d) => d.length === 0}
-                emptyState={
-                  <EmptyState
-                    icon={<Users className="h-6 w-6" />}
-                    title="Chưa có thành viên nào"
-                    description="Đây là danh sách người được vào không gian làm việc này. Chọn người dùng có sẵn ở ô phía trên để thêm người đầu tiên."
-                  />
-                }
-              >
-                {(members) => (
-                  <MemberList
-                    members={members}
-                    search={memberQuery}
-                    canManage={canManage}
-                    currentUserId={currentUserId}
-                    roleOptions={wsRoles ?? []}
-                  />
-                )}
-              </QueryBoundary>
-            </div>
-          </section>
-        </div>
-      )}
+                </div>
+              )}
+
+              <div className="p-5">
+                <QueryBoundary
+                  query={membersQuery}
+                  skeleton={
+                    <div className="space-y-2.5">
+                      {Array.from({ length: 4 }).map((_, i) => (
+                        <Skeleton key={i} className="h-12 w-full" />
+                      ))}
+                    </div>
+                  }
+                  empty={(d) => d.length === 0}
+                  emptyState={
+                    <EmptyState
+                      icon={<Users className="h-6 w-6" />}
+                      title="Chưa có thành viên nào"
+                      description="Đây là danh sách người được vào không gian làm việc này. Chọn người dùng có sẵn ở ô phía trên để thêm người đầu tiên."
+                    />
+                  }
+                >
+                  {(members) => (
+                    <MemberList
+                      members={members}
+                      search={memberQuery}
+                      canManage={canManage}
+                      currentUserId={currentUserId}
+                      roleOptions={wsRoles ?? []}
+                    />
+                  )}
+                </QueryBoundary>
+              </div>
+            </section>
+          </div>
+        )}
+      </TabPanel>
 
       <AddPeopleDialog mode="workspace" open={bulkOpen} onClose={() => setBulkOpen(false)} />
     </div>

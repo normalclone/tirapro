@@ -35,7 +35,7 @@ const FIELD_DEFS: { field: JqlFieldName; label: string }[] = [
   { field: 'type', label: 'Loại' },
   { field: 'status', label: 'Trạng thái' },
   { field: 'statusCategory', label: 'Nhóm trạng thái' },
-  { field: 'priority', label: 'Độ ưu tiên' },
+  { field: 'priority', label: 'Mức ưu tiên' },
   { field: 'severity', label: 'Mức nghiêm trọng' },
   { field: 'assignee', label: 'Người được giao' },
   { field: 'reporter', label: 'Người báo cáo' },
@@ -739,6 +739,7 @@ function JqlPreview({ jql }: { jql: string }) {
           type="button"
           onClick={copy}
           disabled={!jql}
+          // Giữ disabled:opacity (không dùng token vô hiệu) — nút chữ ghost không nền: chỉ cần mờ đi.
           className="flex items-center gap-1 text-xs text-muted transition-colors hover:text-ink disabled:opacity-40"
         >
           <Copy className="h-3.5 w-3.5" aria-hidden />

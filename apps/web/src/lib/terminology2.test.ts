@@ -9,7 +9,7 @@ import {
   PROJECT_CONFIG_LABELS,
   SETTINGS_LABELS,
 } from './navLabels';
-import { hits } from './terminology.test';
+import { collapseWs, hits, joinedHits } from './terminology.test';
 
 /**
  * Bộ C (UX_CONVENTIONS §19 + đợt 1 UI): nút huỷ, tên menu = tiêu đề trang, chữ chỉ hướng, "Project ID", "dashboard".
@@ -21,6 +21,11 @@ describe('thuật ngữ — bộ C', () => {
   it('nút huỷ viết "Huỷ", không viết "Hủy"', () => {
     expect(hits(/\bHủy\b/)).toEqual([]);
     expect(hits(/Huỷ/).length).toBeGreaterThan(20); // đối chứng: chuẩn vẫn đang được dùng
+  });
+
+  it('không còn "Độ ưu tiên" hiển thị (menu gọi là "Mức ưu tiên")', () => {
+    expect(hits(/độ ưu tiên/i)).toEqual([]);
+    expect(hits(/Mức ưu tiên/).length).toBeGreaterThan(0); // đối chứng
   });
 
   it('không còn "Project ID" hiển thị (dùng "Dự án")', () => {
@@ -116,6 +121,18 @@ describe('một nguồn nhãn (lib/navLabels.ts)', () => {
     ['features/clients/ClientsPage.tsx', 'MANAGE_LABELS.clients', MANAGE_LABELS.clients],
     ['features/members/MembersPage.tsx', 'APP_NAV_LABELS.members', APP_NAV_LABELS.members],
     ['features/wiki/WikiPage.tsx', 'APP_NAV_LABELS.wiki', APP_NAV_LABELS.wiki],
+    ['features/audit/AuditLogPage.tsx', 'SETTINGS_LABELS.audit', SETTINGS_LABELS.audit],
+    [
+      'features/automation/AutomationPage.tsx',
+      'CONNECT_LABELS.automation',
+      CONNECT_LABELS.automation,
+    ],
+    ['features/projects/ProjectLayout.tsx', 'CONNECT_LABELS.automation', CONNECT_LABELS.automation],
+    ['features/projects/ProjectLayout.tsx', 'MANAGE_LABELS.risks', MANAGE_LABELS.risks],
+    ['features/command/projectCommands.ts', 'CONNECT_LABELS.automation', CONNECT_LABELS.automation],
+    ['features/portfolio/PortfolioPage.tsx', 'MANAGE_LABELS.portfolio', MANAGE_LABELS.portfolio],
+    ['features/command/CommandPalette.tsx', 'APP_NAV_LABELS.home', APP_NAV_LABELS.home],
+    ['features/command/CommandPalette.tsx', 'APP_NAV_LABELS.wiki', APP_NAV_LABELS.wiki],
     ['features/connect/ConnectLayout.tsx', 'APP_NAV_LABELS.connect', APP_NAV_LABELS.connect],
     [
       'features/integrations/IntegrationsPage.tsx',
@@ -148,6 +165,43 @@ describe('một nguồn nhãn (lib/navLabels.ts)', () => {
   it.each(pageTitles)('%s dùng %s làm tiêu đề trang', (file, ref, label) => {
     expect(label.length).toBeGreaterThan(0);
     expect(src(file)).toContain(ref);
+  });
+
+  it('nhãn viết tay đã bỏ: aria-label Vai trò & quyền, tiêu đề, chữ lệnh lấy từ navLabels', () => {
+    expect(src('features/settings/RolesPage.tsx')).toMatch(/ariaLabel=\{SETTINGS_LABELS\.roles\}/);
+    expect(hits(/aria-label="Vai trò & quyền"/)).toEqual([]);
+    expect(hits(/>Nhật ký quản trị</)).toEqual([]);
+    expect(hits(/>Tự động hoá</)).toEqual([]);
+    expect(hits(/>Danh mục dự án</)).toEqual([]);
+    expect(
+      hits(/label: 'Tự động hoá'|label: 'Rủi ro & vướng mắc'|label: 'Mở Tự động hoá'/),
+    ).toEqual([]);
+    expect(
+      hits(/label="(Tổng quan|Wiki)"/).filter((x) => x.startsWith('features/command/')),
+    ).toEqual([]);
+  });
+
+  it('chữ lệnh "Mở <nhãn menu>" lấy từ navLabels, không viết tay (Bảng lệnh)', () => {
+    const labels = [
+      ...Object.values(APP_NAV_LABELS),
+      ...Object.values(SETTINGS_LABELS),
+      ...Object.values(MANAGE_LABELS),
+      ...Object.values(CONNECT_LABELS),
+      ...Object.values(ADMIN_LABELS),
+      ...Object.values(PROJECT_CONFIG_LABELS),
+    ].filter((l) => l.length > 0);
+    const esc = (t: string) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const re = new RegExp(`['"]Mở (${labels.map(esc).join('|')})['"]`);
+    expect(hits(re)).toEqual([]);
+    expect(src('features/command/projectCommands.ts')).toContain('`Mở ${MANAGE_LABELS.risks}`');
+  });
+
+  it('mô tả dưới tiêu đề không lặp lại tiêu đề', () => {
+    expect(
+      hits(
+        /(Khách hàng và hợp đồng|Thành viên và nhóm|Nhập từ Jira|Cấu hình hệ thống và feature flags)\s*[:.]/,
+      ),
+    ).toEqual([]);
   });
 
   it('nhãn khớp nhãn menu đã chốt (không đổi chữ menu)', () => {
@@ -219,6 +273,16 @@ describe('vai trò hiển thị bằng tiếng Việt (roleLabel)', () => {
   ])('%s dịch tên vai trò qua roleLabel', (file, re) => {
     expect(src(file)).toMatch(re);
   });
+  it('dialog Vai trò & quyền và tài khoản mẫu ở màn đăng nhập hiện tên vai trò tiếng Việt', () => {
+    const roles = src('features/settings/RolesPage.tsx');
+    expect(roles).toMatch(/roleLabel\(role\?\.name \?\? ''\)/);
+    expect(roles).toMatch(/Sửa "\$\{roleLabel\(role\?\.name \?\? ''\)\}"/);
+    const demo = src('features/auth/DemoAccounts.tsx');
+    expect(demo).toMatch(/roleLabel\(SYSTEM_ROLES\.DEVELOPER\)/);
+    expect(demo).toMatch(/roleLabel\(SYSTEM_ROLES\.TESTER\)/);
+    expect(demo).toMatch(/roleLabel\(SYSTEM_ROLES\.BUSINESS_ANALYST\)/);
+    expect(demo).not.toMatch(/role: '(Developer|Tester|Phân tích nghiệp vụ)'/);
+  });
   it('không còn in `{ws.roleName}` thô', () => {
     expect(hits(/\{ws\.roleName\}/)).toEqual([]);
   });
@@ -256,5 +320,51 @@ describe('định dạng ngày/tháng thống nhất (lib/dateFormat.ts)', () =>
 describe('thông báo: không nhận "Hệ thống" khi có người làm', () => {
   it('NotificationRow truyền actorId vào buildNotificationTitle', () => {
     expect(src('features/notifications/NotificationRow.tsx')).toMatch(/actorId:\s*item\.actorId/);
+  });
+});
+
+describe('cụm cấm bị bẻ dòng trong JSX vẫn bị bắt', () => {
+  it('collapseWs gộp xuống dòng + thụt lề thành một dấu cách', () => {
+    const wrapped = '<p>\n   Chọn theo mức\n          ưu tiên và hạn chót\n</p>';
+    expect(collapseWs(wrapped)).toContain('mức ưu tiên và hạn chót');
+    expect(/độ ưu tiên/i.test(collapseWs('độ\n      ưu tiên'))).toBe(true);
+    expect(/độ ưu tiên/i.test('độ\n      ưu tiên')).toBe(false); // theo từng dòng thì sót
+  });
+  it('không còn "độ ưu tiên" / "đợt làm việc" / "Project ID" kể cả khi bị bẻ dòng', () => {
+    expect(joinedHits(/độ ưu tiên/i)).toEqual([]);
+    expect(joinedHits(/đợt làm việc/i)).toEqual([]);
+    expect(joinedHits(/Project ID/)).toEqual([]);
+  });
+});
+
+describe('dọn kỹ thuật đợt 2A (Task 6)', () => {
+  it('chỉ MỘT hàm định dạng số: fmtNumber (lib/locale); không còn fmtInt / Intl.NumberFormat rải rác', () => {
+    expect(hits(/\bfmtInt\b/)).toEqual([]);
+    // Bản không tuỳ chọn trùng `fmtNumber`; bản có `currency`/`maximumFractionDigits` là biến thể hợp lệ.
+    expect(
+      hits(/new Intl\.NumberFormat\(LOCALE\)/).filter((x) => !x.startsWith('lib/locale.ts')),
+    ).toEqual([]);
+  });
+  it('usePriorityRanks nằm ở features/issue-meta, không còn export ở settings-admin/api', () => {
+    expect(src('features/issue-meta/usePriorityRanks.ts')).toMatch(
+      /export function usePriorityRanks/,
+    );
+    expect(src('features/settings-admin/api.ts')).not.toMatch(/usePriorityRanks/);
+    expect(
+      hits(/import \{[^}]*usePriorityRanks[^}]*\} from '@\/features\/settings-admin\/api'/),
+    ).toEqual([]);
+  });
+  it('BulkActionBar không còn lớp margin chết (cha `space-y-4` ghi đè mb-*)', () => {
+    const region = /aria-label="Thao tác hàng loạt"[\s\S]*?className=\{cn\(([\s\S]*?)\)\}/.exec(
+      src('features/backlog/BulkActionBar.tsx'),
+    )![1]!;
+    expect(region).not.toMatch(/\bmb-|lg:mb-/);
+  });
+  it('router: p/:key có route con `*` (404 giữ khung dự án); NotFoundPage nhận biết dự án', () => {
+    const router = src('app/router.tsx');
+    const block = router.slice(router.indexOf("path: 'p/:key'"));
+    const end = block.indexOf('\n      },');
+    expect(block.slice(0, end)).toMatch(/path: '\*'/);
+    expect(src('components/layout/NotFoundPage.tsx')).toMatch(/projectKeyOf\(pathname\)/);
   });
 });

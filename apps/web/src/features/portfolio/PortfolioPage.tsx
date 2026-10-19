@@ -34,7 +34,9 @@ import {
   type RollupStats,
 } from './api';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
+import { Tabs, TabPanel } from '@/components/ui/Tabs';
 import { fmtDate } from '@/lib/dateFormat';
+import { MANAGE_LABELS } from '@/lib/navLabels';
 
 type Tab = 'programs' | 'roadmap';
 
@@ -347,7 +349,9 @@ export function PortfolioPage() {
     <div className={pageContainer('xl')}>
       <header className="mb-6 flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-[16rem] max-w-2xl flex-1">
-          <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">Danh mục dự án</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">
+            {MANAGE_LABELS.portfolio}
+          </h1>
           <p className="mt-1 text-sm text-muted">
             Gom các dự án liên quan vào một chương trình để xem tiến độ chung, việc quá hạn và mốc
             thời gian ở một chỗ, thay vì mở từng dự án.
@@ -406,80 +410,67 @@ export function PortfolioPage() {
         </p>
       )}
 
-      <div
-        className="mb-5 flex gap-1 border-b border-border"
-        role="tablist"
-        aria-label="Cách xem danh mục dự án"
-      >
-        {tabs.map((t) => (
-          <button
-            key={t.id}
-            role="tab"
-            aria-selected={tab === t.id}
-            title={t.hint}
-            onClick={() => setTab(t.id)}
-            className={cn(
-              '-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
-              tab === t.id
-                ? 'border-primary text-ink-strong'
-                : 'border-transparent text-muted hover:text-ink',
-            )}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+      <Tabs
+        idBase="portfolio"
+        ariaLabel="Cách xem danh mục dự án"
+        value={tab}
+        onChange={setTab}
+        items={tabs.map((t) => ({ id: t.id, label: t.label, title: t.hint }))}
+        className="mb-5"
+      />
 
-      <QueryBoundary
-        query={rollupQuery}
-        skeleton={
-          <div className="space-y-3">
-            {Array.from({ length: 3 }).map((_, i) => (
-              <Skeleton key={i} className="h-28 w-full" />
-            ))}
-          </div>
-        }
-        empty={() => groups.length === 0}
-        emptyState={
-          <EmptyState
-            icon={<LayoutGrid className="h-6 w-6" />}
-            title="Chưa có chương trình nào"
-            description={
-              canManage
-                ? 'Chương trình là một nhóm dự án cùng phục vụ một mục đích. Tạo chương trình đầu tiên rồi gán vài dự án vào để xem tiến độ chung.'
-                : 'Chương trình là một nhóm dự án cùng phục vụ một mục đích. Khi quản trị viên tạo chương trình, bạn sẽ thấy ở đây.'
-            }
-            action={
-              canManage ? (
-                <Button size="sm" onClick={openCreate}>
-                  <Plus className="h-4 w-4" /> Tạo chương trình
-                </Button>
-              ) : undefined
-            }
-          />
-        }
-      >
-        {() =>
-          tab === 'roadmap' ? (
-            <section className="rounded-lg border border-border bg-surface p-4 sm:p-5">
-              <RoadmapTimeline groups={groups} />
-            </section>
-          ) : (
+      <TabPanel idBase="portfolio" value={tab}>
+        <QueryBoundary
+          query={rollupQuery}
+          skeleton={
             <div className="space-y-3">
-              {groups.map((g) => (
-                <GroupCard
-                  key={g.id ?? '__unassigned__'}
-                  group={g}
-                  canManage={canManage}
-                  onEdit={() => openEdit(g.id)}
-                  onAssign={() => openAssign(g.id)}
-                  onDelete={() => void handleDelete(g)}
-                />
+              {Array.from({ length: 3 }).map((_, i) => (
+                <Skeleton key={i} className="h-28 w-full" />
               ))}
             </div>
-          )
-        }
-      </QueryBoundary>
+          }
+          empty={() => groups.length === 0}
+          emptyState={
+            <EmptyState
+              icon={<LayoutGrid className="h-6 w-6" />}
+              title="Chưa có chương trình nào"
+              description={
+                canManage
+                  ? 'Chương trình là một nhóm dự án cùng phục vụ một mục đích. Tạo chương trình đầu tiên rồi gán vài dự án vào để xem tiến độ chung.'
+                  : 'Chương trình là một nhóm dự án cùng phục vụ một mục đích. Khi quản trị viên tạo chương trình, bạn sẽ thấy ở đây.'
+              }
+              action={
+                canManage ? (
+                  <Button size="sm" onClick={openCreate}>
+                    <Plus className="h-4 w-4" /> Tạo chương trình
+                  </Button>
+                ) : undefined
+              }
+            />
+          }
+        >
+          {() =>
+            tab === 'roadmap' ? (
+              <section className="rounded-lg border border-border bg-surface p-4 sm:p-5">
+                <RoadmapTimeline groups={groups} />
+              </section>
+            ) : (
+              <div className="space-y-3">
+                {groups.map((g) => (
+                  <GroupCard
+                    key={g.id ?? '__unassigned__'}
+                    group={g}
+                    canManage={canManage}
+                    onEdit={() => openEdit(g.id)}
+                    onAssign={() => openAssign(g.id)}
+                    onDelete={() => void handleDelete(g)}
+                  />
+                ))}
+              </div>
+            )
+          }
+        </QueryBoundary>
+      </TabPanel>
 
       <ProgramEditorModal
         open={editorOpen}

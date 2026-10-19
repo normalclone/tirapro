@@ -38,7 +38,7 @@ export function TemplateModal({
     setPayload(template?.payload ?? {});
   }, [open, template]);
 
-  // Loại công việc / độ ưu tiên là cấu hình cấp không gian làm việc — cần một mã dự án bất kỳ để nạp.
+  // Loại công việc / mức ưu tiên là cấu hình cấp không gian làm việc — cần một mã dự án bất kỳ để nạp.
   const metaKey = useMemo(() => {
     const list = projects ?? [];
     const chosen = projectId !== SHARED ? list.find((p) => p.id === projectId) : undefined;

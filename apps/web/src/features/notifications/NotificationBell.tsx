@@ -67,6 +67,7 @@ export function NotificationBell() {
               type="button"
               onClick={() => markAllRead.mutate()}
               disabled={unread === 0 || markAllRead.isPending}
+              // Giữ disabled:opacity (không dùng token vô hiệu) — nút chữ ghost không nền: chỉ cần mờ đi.
               className="inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-xs font-medium text-primary transition-colors hover:bg-primary-subtle disabled:pointer-events-none disabled:opacity-40 focus-visible:outline-none"
             >
               <CheckCheck className="h-3.5 w-3.5" />

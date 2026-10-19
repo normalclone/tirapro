@@ -123,7 +123,7 @@ function actionPhrase(a: ProjectActivityItem): ReactNode {
     case 'PRIORITY':
       return (
         <>
-          đã đổi <span className="text-muted">độ ưu tiên</span> {delta(oldV, newV)}
+          đã đổi <span className="text-muted">mức ưu tiên</span> {delta(oldV, newV)}
         </>
       );
     case 'STORY_POINTS':

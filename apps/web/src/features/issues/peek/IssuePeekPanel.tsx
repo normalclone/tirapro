@@ -148,6 +148,7 @@ function PeekBody({ issueKey, onClose }: { issueKey: string; onClose: () => void
     return (
       <StatusPanel
         variant="not-found"
+        headingLevel={2}
         title={`Không tìm thấy công việc ${issueKey}`}
         description="Mã này không còn tồn tại, hoặc bạn chưa được cấp quyền xem."
         className="py-10"
@@ -208,7 +209,7 @@ function PeekContent({ issue }: { issue: IssueDto }) {
                 disabled={isPending}
                 onClick={() => requestTransition(o.id)}
                 title={o.label !== o.name ? `${o.label} → “${o.name}”` : `Chuyển sang “${o.name}”`}
-                className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 py-1 text-sm font-medium text-ink transition-colors hover:border-primary hover:bg-primary-subtle hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:opacity-50"
+                className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 py-1 text-sm font-medium text-ink transition-colors hover:border-primary hover:bg-primary-subtle hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:cursor-not-allowed disabled:border-transparent disabled:bg-disabled-bg disabled:text-disabled-fg"
               >
                 <span
                   className="h-2 w-2 shrink-0 rounded-full"

@@ -10,11 +10,13 @@ export function RestoreDraftBanner({
   onDismiss,
 }: {
   offer: WikiDraft;
-  pageVersion: number;
+  /** Phiên bản trang hiện tại; null = trang mới chưa có trên máy chủ (không thể "lệch phiên bản"). */
+  pageVersion: number | null;
   onRestore: () => void;
   onDismiss: () => void;
 }) {
-  const stale = offer.baseVersion !== null && offer.baseVersion !== pageVersion;
+  const stale =
+    offer.baseVersion !== null && pageVersion !== null && offer.baseVersion !== pageVersion;
   return (
     <div
       role="region"

@@ -22,6 +22,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import type { PermissionKey } from '@tirapro/types';
+import { CONNECT_LABELS, MANAGE_LABELS } from '@/lib/navLabels';
 import { useProject, useProjects } from './api';
 import { ProjectRail } from './ProjectRail';
 import { GenerateIssuesDialog } from '@/features/ai/GenerateIssuesDialog';
@@ -37,15 +38,20 @@ import { useProjectRealtime } from '@/lib/realtime';
 import { LAST_ACTIVE_KEY, lastViewKey } from '@/lib/currentProject';
 import { withKey } from '@/lib/shortcuts';
 import { useScrollFade } from '@/lib/useScrollFade';
-import { activeMoreSeg, tabLabelVisible } from './projectTabs';
+import {
+  PROJECT_VIEW_LABELS,
+  activeMoreSeg,
+  tabLabelVisible,
+  visibleMoreItems,
+} from './projectTabs';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 
 const VIEWS = [
-  { seg: 'board', label: 'Bảng việc', icon: LayoutGrid },
-  { seg: 'backlog', label: 'Việc chờ', icon: ListTodo },
-  { seg: 'gantt', label: 'Lịch trình', icon: GanttChartSquare },
-  { seg: 'tree', label: 'Cây việc', icon: ListTree },
-  { seg: 'reports', label: 'Báo cáo', icon: BarChart3 },
+  { seg: 'board', label: PROJECT_VIEW_LABELS.board, icon: LayoutGrid },
+  { seg: 'backlog', label: PROJECT_VIEW_LABELS.backlog, icon: ListTodo },
+  { seg: 'gantt', label: PROJECT_VIEW_LABELS.gantt, icon: GanttChartSquare },
+  { seg: 'tree', label: PROJECT_VIEW_LABELS.tree, icon: ListTree },
+  { seg: 'reports', label: PROJECT_VIEW_LABELS.reports, icon: BarChart3 },
 ] as const;
 
 /** Mục menu "Thêm": `to` dựng đường dẫn; `needs` = quyền cấp dự án để hiện mục (không có thì ẩn). */
@@ -56,18 +62,25 @@ const MORE: {
   to: (p: { key: string; id: string }) => string;
   needs?: PermissionKey;
 }[] = [
-  { id: 'triage', label: TRIAGE_TITLE, icon: Inbox, to: (p) => `/p/${p.key}/triage` },
+  {
+    id: 'triage',
+    label: TRIAGE_TITLE,
+    icon: Inbox,
+    to: (p) => `/p/${p.key}/triage`,
+    // Hộp chứa việc chưa duyệt của người khác: chỉ người có quyền duyệt thấy mục này (API cũng 403 nếu thiếu).
+    needs: 'issue:triage',
+  },
   { id: 'activity', label: 'Hoạt động', icon: Activity, to: (p) => `/p/${p.key}/activity` },
   // Rủi ro và Tự động hoá dùng trang sẵn có, lọc sẵn theo dự án này qua `?project=<id>`.
   {
     id: 'risks',
-    label: 'Rủi ro & vướng mắc',
+    label: MANAGE_LABELS.risks,
     icon: ShieldAlert,
     to: (p) => `/manage/risks?project=${p.id}`,
   },
   {
     id: 'automation',
-    label: 'Tự động hoá',
+    label: CONNECT_LABELS.automation,
     icon: Repeat,
     to: (p) => `/connect/automation?project=${p.id}`,
     needs: 'automation:manage',
@@ -323,19 +336,17 @@ export function ProjectLayout() {
                   sideOffset={6}
                   className="z-dropdown w-48 overflow-hidden rounded-lg border border-border bg-surface p-1 shadow-lg animate-in fade-in zoom-in-95 duration-150"
                 >
-                  {MORE.filter((m) => !m.needs || canProject(m.needs))
-                    .filter((m) => project?.id || (m.id !== 'risks' && m.id !== 'automation'))
-                    .map((m) => (
-                      <DropdownMenu.Item key={m.id} asChild>
-                        <Link
-                          to={m.to({ key, id: project?.id ?? '' })}
-                          className="flex cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-2 text-sm text-ink outline-none transition-colors data-[highlighted]:bg-surface-2"
-                        >
-                          <m.icon className="h-4 w-4 text-muted" />
-                          {m.label}
-                        </Link>
-                      </DropdownMenu.Item>
-                    ))}
+                  {visibleMoreItems(MORE, canProject, !!project?.id).map((m) => (
+                    <DropdownMenu.Item key={m.id} asChild>
+                      <Link
+                        to={m.to({ key, id: project?.id ?? '' })}
+                        className="flex cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-2 text-sm text-ink outline-none transition-colors data-[highlighted]:bg-surface-2"
+                      >
+                        <m.icon className="h-4 w-4 text-muted" />
+                        {m.label}
+                      </Link>
+                    </DropdownMenu.Item>
+                  ))}
                 </DropdownMenu.Content>
               </DropdownMenu.Portal>
             </DropdownMenu.Root>

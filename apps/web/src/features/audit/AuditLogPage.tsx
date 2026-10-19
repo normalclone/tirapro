@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { ScrollText, ShieldOff } from 'lucide-react';
 import { AUDIT_ACTION_LABEL } from '@tirapro/types';
+import { SETTINGS_LABELS } from '@/lib/navLabels';
 import { pageContainer } from '@/components/layout/page';
 import { Avatar, Badge, EmptyState } from '@/components/ui/primitives';
 import { Button } from '@/components/ui/Button';
@@ -119,7 +120,9 @@ export function AuditLogPage() {
   return (
     <div className={pageContainer('md')}>
       <header className="mb-5">
-        <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">Nhật ký quản trị</h1>
+        <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">
+          {SETTINGS_LABELS.audit}
+        </h1>
         <p className="mt-1 text-sm text-muted">
           Ai đã thêm/gỡ thành viên, đổi vai trò, sửa tích hợp… trong không gian làm việc này.
         </p>

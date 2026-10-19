@@ -29,6 +29,7 @@ function Switch({
       disabled={disabled}
       onClick={() => onChange(!checked)}
       className={cn(
+        // Giữ disabled:opacity (không dùng token vô hiệu) — công tắc: trạng thái bật/tắt phải còn đọc được khi vô hiệu.
         'relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:opacity-50',
         checked ? 'bg-primary' : 'bg-surface-3',
       )}
@@ -148,15 +149,14 @@ export function AdminConfigPage() {
           {ADMIN_LABELS.config}
         </h1>
         <p className="mt-1 text-sm text-muted">
-          Cấu hình hệ thống và feature flags: cờ runtime bật/tắt ngay, không cần deploy. Cấu hình
-          nền lấy từ biến môi trường.
+          Cờ tính năng bật/tắt ngay, không cần triển khai lại. Cấu hình nền lấy từ biến môi trường.
         </p>
       </header>
 
       <div className="space-y-4">
         {/* Feature flags (chỉnh được) */}
         <section className="rounded-lg border border-border bg-surface p-4">
-          <h2 className="mb-1 text-sm font-semibold text-ink">Feature flags</h2>
+          <h2 className="mb-1 text-sm font-semibold text-ink">Cờ tính năng</h2>
           <div className="divide-y divide-border">
             <FlagRow
               label="Cho phép đăng ký công khai"

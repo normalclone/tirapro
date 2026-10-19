@@ -81,9 +81,11 @@ export function DeclineDialog({
           ))}
         </div>
         <p className="text-xs text-faint">
-          {valid
-            ? 'Cmd/Ctrl+Enter để từ chối · Esc huỷ'
-            : 'Cần ghi lý do (ít nhất 3 ký tự) — hoặc bấm một câu nhanh ở trên.'}
+          {valid ? (
+            <span className="kbd-hint">Cmd/Ctrl+Enter để từ chối · Esc huỷ</span>
+          ) : (
+            'Cần ghi lý do (ít nhất 3 ký tự) — hoặc bấm một câu nhanh ở trên.'
+          )}
         </p>
       </div>
     </Dialog>

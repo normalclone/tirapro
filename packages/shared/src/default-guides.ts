@@ -27,7 +27,7 @@ export const DEFAULT_GUIDES: GuideSeed[] = [
     title: 'Làm quen Tổng quan',
     description: 'Bốn điểm cần biết khi mới vào Tirapro.',
     order: 0,
-    version: 1,
+    version: 2,
     content: {
       autoStart: true,
       steps: [
@@ -54,8 +54,8 @@ export const DEFAULT_GUIDES: GuideSeed[] = [
         },
         {
           selector: sel('cmdk-hint'),
-          title: 'Lệnh nhanh',
-          body: 'Nhấn ⌘K (Ctrl+K trên Windows) để tìm công việc, dự án hoặc chạy lệnh mà không cần rời bàn phím.',
+          title: 'Tìm và chạy lệnh nhanh',
+          body: 'Bấm nút Tìm hoặc nhấn ⌘K / Ctrl+K để tìm công việc, dự án hoặc chạy lệnh.',
           placement: 'right',
           order: 3,
         },

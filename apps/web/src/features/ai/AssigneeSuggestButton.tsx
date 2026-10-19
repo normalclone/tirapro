@@ -45,6 +45,7 @@ export function AssigneeSuggestButton({
           type="button"
           disabled={disabled}
           title="Gợi ý người nên nhận việc này dựa trên kinh nghiệm xử lý việc tương tự và khối lượng đang làm"
+          // Giữ disabled:opacity (không dùng token vô hiệu) — nút chữ ghost không nền: chỉ cần mờ đi.
           className="inline-flex h-6 shrink-0 items-center gap-1 rounded-md px-1.5 text-xs text-primary hover:bg-primary-subtle disabled:pointer-events-none disabled:opacity-50 [@media(pointer:coarse)]:min-h-9"
         >
           <Sparkles className="h-3.5 w-3.5" aria-hidden />

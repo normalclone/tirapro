@@ -2,14 +2,15 @@ import { Link } from 'react-router-dom';
 import { StatusPanel } from '@/components/ui/StatusPanel';
 import { buttonVariants } from '@/components/ui/Button';
 import { useQuickSearch } from '@/features/command/api';
+import { similarIssues } from './similarIssues';
 
 /**
  * Trang công việc khi máy chủ trả NOT_FOUND (mã không có / đã xoá / không đủ quyền xem — API không phân biệt).
  * Gợi ý lấy từ tìm nhanh (server đã lọc theo quyền), tối đa 3, loại chính `issueKey`; không có kết quả thì không hiện khối gợi ý.
  */
 export function IssueNotFound({ issueKey }: { issueKey: string }) {
-  const { data } = useQuickSearch(issueKey);
-  const similar = (data ?? []).filter((i) => i.key !== issueKey).slice(0, 3);
+  const { data, isPlaceholderData } = useQuickSearch(issueKey);
+  const similar = similarIssues(data, issueKey, isPlaceholderData);
   return (
     <StatusPanel
       variant="not-found"
