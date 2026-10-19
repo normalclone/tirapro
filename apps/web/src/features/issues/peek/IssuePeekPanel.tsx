@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { Check, ChevronRight, ExternalLink, Hash, Link2, X } from 'lucide-react';
 import type { IssueDto } from '@tirapro/types';
@@ -24,6 +24,7 @@ import { ChecklistPanel } from '@/features/issue-extras/ChecklistPanel';
 import { LinksPanel } from '@/features/issue-widgets/LinksPanel';
 import { IssueRelations } from '@/features/tree/IssueRelations';
 import { activeDrag } from '@/lib/activeDrag';
+import { moveNavFocus } from '@/lib/listNav';
 import { hasDraftText, isOverlayOpen, shouldClosePeekOnEscape } from '@/lib/hotkeys';
 import { useIssue } from '../api';
 import { useIssueCopy } from '../useIssueCopy';
@@ -32,6 +33,8 @@ import { ActivityTabs } from '../ActivityTabs';
 import { LazyPanel } from '../LazyPanel';
 import { useIssueTransitions } from '../useIssueTransitions';
 import { IssueSummaryEdit } from '../IssueSummaryEdit';
+import { PeekNavControls } from './PeekNavControls';
+import { usePeekPosition } from './usePeekPosition';
 
 const CATEGORY_COLOR: Record<string, string> = {
   TODO: 'var(--status-todo)',
@@ -43,10 +46,20 @@ const CATEGORY_COLOR: Record<string, string> = {
  * Xem nhanh công việc ở cột phải — KHÔNG modal (không focus-trap, không lớp phủ) để bấm hết dòng này sang dòng khác.
  * Cột tĩnh 30rem ở `lg+`; ngăn kéo phủ phải ở màn nhỏ — cùng một `<aside>` bằng CSS.
  */
-export function IssuePeekPanel({ issueKey, onClose }: { issueKey: string; onClose: () => void }) {
+export function IssuePeekPanel({
+  issueKey,
+  onClose,
+  onNavigate,
+}: {
+  issueKey: string;
+  onClose: () => void;
+  /** Đổi sang việc khác (`useIssuePeek().open` — cùng hàm phím j/k gọi). Không truyền → không có nút ‹ › và "n/N". */
+  onNavigate?: (key: string) => void;
+}) {
   const ref = useRef<HTMLElement>(null);
   const keyRef = useRef(issueKey);
   keyRef.current = issueKey;
+  const position = usePeekPosition(issueKey, ref);
 
   // Esc đóng panel (nghe ở `window`, sau `document`): lớp phủ mở → nhường; Esc đã có người dùng (bỏ chọn hàng loạt,
   // huỷ sửa tại chỗ) → bỏ qua; Esc từ ô nhập TRONG panel đang có chữ chưa gửi (bình luận, bước checklist, liên kết…)
@@ -71,6 +84,14 @@ export function IssuePeekPanel({ issueKey, onClose }: { issueKey: string; onClos
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
+  // Việc đang xem đổi (bấm dòng, j/k, ‹ ›, quay lại): cuộn dòng/thẻ của nó vào khung CHỈ khi đang ngoài tầm nhìn (`nearest` không
+  // làm gì nếu đã thấy; `scroll-behavior` do CSS reduced-motion quản, không ép cuộn mượt).
+  useEffect(() => {
+    document
+      .querySelector<HTMLElement>(`[data-issue-key="${CSS.escape(issueKey)}"]`)
+      ?.scrollIntoView({ block: 'nearest' });
+  }, [issueKey]);
+
   // Focus: mở → vào khung panel; đóng → về dòng đang xem nếu còn trong DOM (dòng ảo hoá đã gỡ thì thôi).
   // Chỉ lúc mount/unmount, không mỗi lần đổi `issueKey`.
   useEffect(() => {
@@ -91,19 +112,46 @@ export function IssuePeekPanel({ issueKey, onClose }: { issueKey: string; onClos
       aria-label={`Xem nhanh ${issueKey}`}
       className="fixed inset-y-0 right-0 z-sticky flex w-full max-w-[30rem] flex-col border-l border-border bg-surface shadow-lg outline-none duration-base animate-in slide-in-from-right lg:static lg:z-auto lg:w-[min(30rem,40vw)] lg:min-w-[20rem] lg:max-w-none lg:shrink-0 lg:shadow-none"
     >
-      <PeekHeader issueKey={issueKey} onClose={onClose} />
+      <PeekHeader
+        issueKey={issueKey}
+        onClose={onClose}
+        nav={
+          onNavigate && (
+            <PeekNavControls
+              position={position}
+              // CÙNG hàm với phím j/k (`useGlobalHotkeys`): đi từ việc đang xem, kẹp ở hai đầu, panel theo qua `onPeek`.
+              onStep={(dir) =>
+                moveNavFocus(dir, {
+                  peekKey: issueKey,
+                  onPeek: onNavigate,
+                  fromPeek: true,
+                  focus: false,
+                })
+              }
+            />
+          )
+        }
+      />
       <PeekBody key={issueKey} issueKey={issueKey} onClose={onClose} />
     </aside>
   );
 }
 
-function PeekHeader({ issueKey, onClose }: { issueKey: string; onClose: () => void }) {
+function PeekHeader({
+  issueKey,
+  onClose,
+  nav,
+}: {
+  issueKey: string;
+  onClose: () => void;
+  nav?: ReactNode;
+}) {
   const { copyKey, copyLink, keyCopied, linkCopied } = useIssueCopy(issueKey);
   const copyBtn =
     'grid h-6 w-6 shrink-0 place-items-center rounded text-faint transition-colors hover:bg-surface-2 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] [@media(pointer:coarse)]:h-9 [@media(pointer:coarse)]:w-9';
   return (
     <div className="flex shrink-0 items-center gap-1.5 border-b border-border px-3 py-2">
-      <span className="font-mono text-xs text-muted">{issueKey}</span>
+      <span className="whitespace-nowrap font-mono text-xs text-muted">{issueKey}</span>
       <button
         type="button"
         onClick={copyKey}
@@ -130,12 +178,16 @@ function PeekHeader({ issueKey, onClose }: { issueKey: string; onClose: () => vo
           <Link2 className="h-3.5 w-3.5" />
         )}
       </button>
+      <span className="flex-1" aria-hidden />
+      {nav}
       <Link
         to={`/issue/${issueKey}`}
         title="Mở trang đầy đủ của công việc này. Phím tắt (1-9, i, y, w) chỉ có trên trang đầy đủ."
-        className="ml-auto inline-flex items-center gap-1 rounded-md px-2 py-1 text-sm font-medium text-primary transition-colors hover:bg-primary-subtle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+        className="inline-flex shrink-0 items-center justify-center gap-1 whitespace-nowrap rounded-md px-2 py-1 text-sm font-medium text-primary [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11 transition-colors hover:bg-primary-subtle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
       >
-        Mở trang <ExternalLink className="h-3.5 w-3.5" aria-hidden />
+        {/* Màn hẹp (< sm): chỉ biểu tượng, nhường chỗ cho ‹ n/N ›; tên truy cập vẫn là "Mở trang". */}
+        <span className="max-sm:sr-only">Mở trang</span>
+        <ExternalLink className="h-3.5 w-3.5" aria-hidden />
       </Link>
       <button
         type="button"

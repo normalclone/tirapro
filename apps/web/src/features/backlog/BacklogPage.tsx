@@ -1255,13 +1255,16 @@ function VirtualRows({
     rangeExtractor,
   });
 
+  const virtualItems = virtualizer.getVirtualItems();
   return (
     <div
       ref={setListEl}
       role="list"
+      // Thiếu dòng trong DOM → "n/N" của panel xem nhanh không đáng tin (xem `readNavKeys`).
+      data-nav-partial={virtualItems.length < issues.length ? '' : undefined}
       style={{ height: virtualizer.getTotalSize(), position: 'relative' }}
     >
-      {virtualizer.getVirtualItems().map((v) => {
+      {virtualItems.map((v) => {
         const issue = issues[v.index];
         if (!issue) return null;
         return (

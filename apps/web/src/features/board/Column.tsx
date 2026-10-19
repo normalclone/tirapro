@@ -15,6 +15,8 @@ export interface ColumnProps {
   issues: IssueDto[];
   progressMap: Map<string, SubtreeProgress>;
   onOpen: (key: string) => void;
+  /** Khoá việc đang xem nhanh NẾU nó nằm trong cột này (`peekedKeyIn`), ngược lại null — để chỉ cột liên quan vẽ lại. */
+  peekedKey?: string | null;
   projectKey: string;
   projectId: string;
   canCreate: boolean;
@@ -35,6 +37,7 @@ function ColumnImpl({
   issues,
   progressMap,
   onOpen,
+  peekedKey,
   projectKey,
   projectId,
   canCreate,
@@ -102,6 +105,7 @@ function ColumnImpl({
               issue={issue}
               progress={progressMap.get(issue.id)}
               onOpen={onOpen}
+              peeked={peekedKey === issue.key}
               laneIdx={laneIdx}
               colIdx={colIdx}
               rowIdx={rowIdx}
@@ -137,6 +141,7 @@ export const Column = memo(ColumnImpl, (p, n) => {
     p.col !== n.col ||
     p.issues !== n.issues ||
     p.onOpen !== n.onOpen ||
+    p.peekedKey !== n.peekedKey ||
     p.projectKey !== n.projectKey ||
     p.projectId !== n.projectId ||
     p.canCreate !== n.canCreate ||

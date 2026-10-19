@@ -37,23 +37,50 @@ function isVisible(el: HTMLElement): boolean {
   return el.offsetParent !== null || el.getClientRects().length > 0;
 }
 
+function navItems(root: ParentNode): HTMLElement[] {
+  return Array.from(root.querySelectorAll<HTMLElement>(NAV_ITEM_SELECTOR)).filter(isVisible);
+}
+
+/**
+ * Thứ tự điều hướng hiện tại trong DOM (khoá việc của từng phần tử, bỏ phần tử ẩn) — cùng nguồn với `moveNavFocus`.
+ * `partial`: có danh sách ảo hoá (gắn `data-nav-partial`) đang chỉ vẽ một phần các dòng.
+ */
+export function readNavKeys(root: ParentNode = document): {
+  keys: (string | null)[];
+  partial: boolean;
+} {
+  return {
+    keys: navItems(root).map(issueKeyOf),
+    partial: root.querySelector('[data-nav-partial]') !== null,
+  };
+}
+
 /**
  * Dời focus tới phần tử điều hướng kế (theo thứ tự DOM, bỏ phần tử ẩn) rồi cuộn vừa đủ để thấy.
  * Panel xem nhanh đang mở (`peekKey`): đi từ dòng đang xem (kể cả khi focus nằm trong panel) và gọi `onPeek` để xem nhanh
  * dòng mới — MỘT hành vi nhất quán (như Jira): panel luôn theo dòng đang chọn. Trả `true` nếu đã dời.
+ * Nút ‹ › của panel gọi đúng hàm này với `fromPeek` (luôn đi từ dòng đang xem, kể cả khi Safari không focus nút khi bấm nên
+ * focus còn nằm ở một dòng khác) và `focus: false` (giữ focus ở nút để bấm tiếp).
  */
 export function moveNavFocus(
   dir: 1 | -1,
-  opts: { peekKey?: string | null; onPeek?: (key: string) => void } = {},
+  opts: {
+    peekKey?: string | null;
+    onPeek?: (key: string) => void;
+    fromPeek?: boolean;
+    focus?: boolean;
+  } = {},
   root: ParentNode = document,
 ): boolean {
-  const items = Array.from(root.querySelectorAll<HTMLElement>(NAV_ITEM_SELECTOR)).filter(isVisible);
-  const active = document.activeElement;
-  const focusedIdx = items.findIndex((el) => el === active || el.contains(active));
+  const items = navItems(root);
+  const active = opts.fromPeek ? null : document.activeElement;
+  const focusedIdx = opts.fromPeek
+    ? -1
+    : items.findIndex((el) => el === active || el.contains(active));
   const current = navCurrentIndex(items.map(issueKeyOf), focusedIdx, opts.peekKey ?? null);
   const target = items[nextNavIndex(items.length, current, dir)];
   if (!target) return false;
-  target.focus({ preventScroll: true });
+  if (opts.focus !== false) target.focus({ preventScroll: true });
   target.scrollIntoView({ block: 'nearest' });
   const key = issueKeyOf(target);
   if (opts.peekKey && key && key !== opts.peekKey) opts.onPeek?.(key);

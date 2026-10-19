@@ -20,6 +20,7 @@ import { BoardDnd } from './BoardDnd';
 import { PeekShell } from '@/features/issues/peek/PeekShell';
 import { ASSIGN_DENIED_NOTICE } from '@/features/quick-assign/events';
 import { useIssuePeek } from '@/features/issues/peek/useIssuePeek';
+import { peekedKeyIn } from '@/lib/peekPosition';
 import { Column } from './Column';
 import { freshenBoardIssues } from './boardIssues';
 import { noActiveSprintHint, scopeBoardIssues, shortSprintName, swimlaneEmptyKind } from './scope';
@@ -798,6 +799,7 @@ export function BoardPage() {
                             issues={cols?.get(col.id) ?? EMPTY}
                             progressMap={progressMap}
                             onOpen={openIssue}
+                            peekedKey={peekedKeyIn(cols?.get(col.id) ?? EMPTY, peek.peekKey)}
                             projectKey={key}
                             projectId={project?.id ?? ''}
                             canCreate={false}
@@ -827,6 +829,7 @@ export function BoardPage() {
                   issues={byColumn.get(col.id) ?? []}
                   progressMap={progressMap}
                   onOpen={openIssue}
+                  peekedKey={peekedKeyIn(byColumn.get(col.id) ?? [], peek.peekKey)}
                   projectKey={key}
                   projectId={project?.id ?? ''}
                   canCreate={canCreate}

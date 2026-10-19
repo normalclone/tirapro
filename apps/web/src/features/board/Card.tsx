@@ -16,6 +16,7 @@ import { SORT_TRANSITION } from '@/lib/sortableDnd';
 import { sameProgress, type SubtreeProgress } from '@/lib/issueTree';
 import { openOnRowKey } from '@/lib/rowOpen';
 import { rowPeekProps } from '@/features/issues/peek/rowPeekProps';
+import { PEEKED_ROW_CLS, peekedAttrs } from '@/features/issues/peek/peekedRow';
 import { IssueKeyLink } from '@/features/issues/peek/IssueKeyLink';
 
 /** Roving focus giữa các card bằng phím mũi tên (theo data-lane/col/row). */
@@ -59,6 +60,7 @@ export function CardBody({
   rootRef,
   rootProps,
   onOpenKey,
+  peeked,
 }: {
   issue: IssueDto;
   progress?: SubtreeProgress;
@@ -74,6 +76,8 @@ export function CardBody({
   rootProps?: HTMLAttributes<HTMLDivElement>;
   /** Có → mã công việc là link thật (bấm = xem nhanh, Cmd/Ctrl+bấm = tab mới). Bản overlay không truyền. */
   onOpenKey?: (key: string) => void;
+  /** Đang được xem nhanh ở panel phải: tô nền + vòng (token) và `aria-current`. */
+  peeked?: boolean;
 }) {
   const labels = issue.labels ?? [];
   const ranks = usePriorityRanks();
@@ -81,6 +85,7 @@ export function CardBody({
     <div
       ref={rootRef}
       {...rootProps}
+      {...peekedAttrs(peeked)}
       style={style}
       className={cn(
         'relative rounded-md border bg-surface p-2.5 shadow-sm transition-shadow',
@@ -90,6 +95,7 @@ export function CardBody({
         dueBorderClass(issue) || 'border-border',
         'hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
         isDragging && 'opacity-40',
+        peeked && PEEKED_ROW_CLS,
         overlay && 'shadow-lg',
       )}
     >
@@ -195,6 +201,8 @@ interface CardProps {
   issue: IssueDto;
   progress?: SubtreeProgress;
   onOpen: (key: string) => void;
+  /** Thẻ này đang được xem nhanh (xem `CardBody.peeked`). */
+  peeked?: boolean;
   laneIdx?: number;
   colIdx?: number;
   rowIdx?: number;
@@ -211,6 +219,7 @@ export const Card = memo(
     issue,
     progress,
     onOpen,
+    peeked,
     laneIdx = 0,
     colIdx = 0,
     rowIdx = 0,
@@ -262,6 +271,7 @@ export const Card = memo(
         dropEdge={dropEdge}
         rootRef={setNodeRef}
         onOpenKey={onOpen}
+        peeked={peeked}
         rootProps={{
           ...listeners,
           ...attributes,
@@ -284,6 +294,7 @@ export const Card = memo(
   (prev, next) =>
     prev.issue === next.issue &&
     prev.onOpen === next.onOpen &&
+    prev.peeked === next.peeked &&
     prev.laneIdx === next.laneIdx &&
     prev.colIdx === next.colIdx &&
     prev.rowIdx === next.rowIdx &&
