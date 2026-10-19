@@ -15,7 +15,9 @@ import { Button } from '@/components/ui/Button';
 import { ExportMenu } from '@/components/ui/ExportMenu';
 import { HealthBadge } from '@/components/ui/HealthBadge';
 import { useConfirm } from '@/components/ui/useConfirm';
-import { pageContainer } from '@/components/layout/page';
+import { PageFrame } from '@/components/layout/PageFrame';
+import { PageHeader } from '@/components/layout/PageHeader';
+import { SectionCard } from '@/components/ui/SectionCard';
 import { apiErrorMessage } from '@/lib/api';
 import { downloadText } from '@/lib/download';
 import { cn } from '@/lib/utils';
@@ -346,41 +348,36 @@ export function PortfolioPage() {
   }
 
   return (
-    <div className={pageContainer('xl')}>
-      <header className="mb-6 flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-[16rem] max-w-2xl flex-1">
-          <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">
-            {MANAGE_LABELS.portfolio}
-          </h1>
-          <p className="mt-1 text-sm text-muted">
-            Gom các dự án liên quan vào một chương trình để xem tiến độ chung, việc quá hạn và mốc
-            thời gian ở một chỗ, thay vì mở từng dự án.
-          </p>
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          {rollup && totals && totals.projectCount > 0 && (
-            <ExportMenu
-              items={[
-                {
-                  id: 'csv',
-                  label: 'Tải CSV',
-                  hint: 'Mỗi dự án một dòng, mở được bằng Excel',
-                  run: () =>
-                    downloadText(
-                      `tirapro-danh-muc-${format(new Date(), 'yyyyMMdd')}.csv`,
-                      portfolioCsv(rollup),
-                    ),
-                },
-              ]}
-            />
-          )}
-          {canManage && (
-            <Button size="sm" onClick={openCreate}>
-              <Plus className="h-4 w-4" /> Tạo chương trình
-            </Button>
-          )}
-        </div>
-      </header>
+    <PageFrame size="xl">
+      <PageHeader
+        title={MANAGE_LABELS.portfolio}
+        description="Gom các dự án liên quan vào một chương trình để xem tiến độ chung, việc quá hạn và mốc thời gian ở một chỗ, thay vì mở từng dự án."
+        actions={
+          <>
+            {rollup && totals && totals.projectCount > 0 && (
+              <ExportMenu
+                items={[
+                  {
+                    id: 'csv',
+                    label: 'Tải CSV',
+                    hint: 'Mỗi dự án một dòng, mở được bằng Excel',
+                    run: () =>
+                      downloadText(
+                        `tirapro-danh-muc-${format(new Date(), 'yyyyMMdd')}.csv`,
+                        portfolioCsv(rollup),
+                      ),
+                  },
+                ]}
+              />
+            )}
+            {canManage && (
+              <Button size="sm" onClick={openCreate}>
+                <Plus className="h-4 w-4" /> Tạo chương trình
+              </Button>
+            )}
+          </>
+        }
+      />
 
       {totals && totals.projectCount > 0 && (
         <p className="tabular mb-5 flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-border pb-4 text-sm text-muted">
@@ -441,7 +438,7 @@ export function PortfolioPage() {
               }
               action={
                 canManage ? (
-                  <Button size="sm" onClick={openCreate}>
+                  <Button variant="secondary" size="sm" onClick={openCreate}>
                     <Plus className="h-4 w-4" /> Tạo chương trình
                   </Button>
                 ) : undefined
@@ -451,9 +448,9 @@ export function PortfolioPage() {
         >
           {() =>
             tab === 'roadmap' ? (
-              <section className="rounded-lg border border-border bg-surface p-4 sm:p-5">
+              <SectionCard>
                 <RoadmapTimeline groups={groups} />
-              </section>
+              </SectionCard>
             ) : (
               <div className="space-y-3">
                 {groups.map((g) => (
@@ -482,6 +479,6 @@ export function PortfolioPage() {
         program={assigning}
         onClose={() => setAssigning(null)}
       />
-    </div>
+    </PageFrame>
   );
 }

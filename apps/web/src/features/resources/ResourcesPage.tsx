@@ -5,7 +5,8 @@ import { Avatar, EmptyState, Skeleton } from '@/components/ui/primitives';
 import { DateInput } from '@/components/ui/DateInput';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { QueryError } from '@/components/ui/QueryError';
-import { pageContainer } from '@/components/layout/page';
+import { PageFrame } from '@/components/layout/PageFrame';
+import { PageHeader } from '@/components/layout/PageHeader';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/stores/auth';
 import { useProjects } from '@/features/projects/api';
@@ -125,20 +126,13 @@ function ResourcesHeader({
   to: string;
 }) {
   return (
-    <header className="mb-6 flex flex-wrap items-start justify-between gap-3">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">
-          {MANAGE_LABELS.resources}
-        </h1>
-        <p className="mt-1 max-w-2xl text-sm text-muted">
-          Nhân lực và khối lượng việc: xem mỗi người đang gánh bao nhiêu giờ so với số giờ họ thật
-          sự làm được. Số giờ làm được (năng lực) = ngày làm việc trong tuần, đã trừ nghỉ phép và
-          ngày lễ, nhân tỉ lệ phân bổ; khối lượng việc = ước lượng giờ của các việc được giao, chia
-          đều cho những ngày việc đó kéo dài.
-        </p>
-      </div>
-      {showExport && <WorkloadExport report={exportReport} from={from} to={to} />}
-    </header>
+    <PageHeader
+      title={MANAGE_LABELS.resources}
+      description="Nhân lực và khối lượng việc: xem mỗi người đang gánh bao nhiêu giờ so với số giờ họ thật sự làm được. Số giờ làm được (năng lực) = ngày làm việc trong tuần, đã trừ nghỉ phép và ngày lễ, nhân tỉ lệ phân bổ; khối lượng việc = ước lượng giờ của các việc được giao, chia đều cho những ngày việc đó kéo dài."
+      actions={
+        showExport ? <WorkloadExport report={exportReport} from={from} to={to} /> : undefined
+      }
+    />
   );
 }
 
@@ -182,7 +176,7 @@ export function ResourcesPage() {
   ];
 
   return (
-    <div className={pageContainer('xl')}>
+    <PageFrame size="xl">
       <ResourcesHeader
         exportReport={tab === 'load' ? workload.data : undefined}
         showExport={tab === 'load'}
@@ -294,7 +288,7 @@ export function ResourcesPage() {
 
         {tab === 'time-off' && <TimeOffPanel canManage={canManage} from={from} to={to} />}
       </TabPanel>
-    </div>
+    </PageFrame>
   );
 }
 

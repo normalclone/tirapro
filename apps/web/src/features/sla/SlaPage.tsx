@@ -36,7 +36,7 @@ import { MANAGE_LABELS, SETTINGS_LABELS } from '@/lib/navLabels';
 /** Bảng theo dõi công việc sắp trễ / đã trễ hạn cam kết (dùng trong mục Danh mục). */
 export function SlaBoardPage() {
   return (
-    <PageFrame size="sm">
+    <PageFrame size="xl">
       <PageHeader
         title={MANAGE_LABELS.responseTime}
         description="Các công việc đang chạy đồng hồ đếm ngược theo cam kết thời gian xử lý. Việc sắp tới hạn tô vàng, việc đã quá hạn tô đỏ — hãy xử lý từ trên xuống."
@@ -100,22 +100,24 @@ function SlaBoardTable({ rows }: { rows: SlaBoardRow[] }) {
   const soon = rows.filter((r) => !r.resolveBreached && r.remainingMins <= SLA_SOON_MINS).length;
 
   return (
-    <section className="rounded-lg border border-border bg-surface">
-      <div className="flex flex-wrap items-center gap-3 border-b border-border px-5 py-4">
-        <h2
-          className="text-base font-semibold text-ink-strong"
-          title="Đồng hồ chạy từ lúc công việc được tạo cho tới khi xử lý xong."
-        >
-          Đang chạy đồng hồ
-        </h2>
-        <span className="text-sm text-muted">{rows.length} công việc</span>
-        {breached > 0 && <Badge className="bg-danger/10 text-danger">{breached} đã quá hạn</Badge>}
-        {soon > 0 && (
-          <Badge className="bg-warning/15 text-warning">
-            {soon} {SLA_SOON_LABEL}
-          </Badge>
-        )}
-      </div>
+    <SectionCard
+      title="Đang chạy đồng hồ"
+      description="Đồng hồ chạy từ lúc công việc được tạo cho tới khi xử lý xong."
+      bare
+      actions={
+        <>
+          <span className="text-sm text-muted">{rows.length} công việc</span>
+          {breached > 0 && (
+            <Badge className="bg-danger/10 text-danger">{breached} đã quá hạn</Badge>
+          )}
+          {soon > 0 && (
+            <Badge className="bg-warning/15 text-warning">
+              {soon} {SLA_SOON_LABEL}
+            </Badge>
+          )}
+        </>
+      }
+    >
       <ul className="divide-y divide-border">
         {rows.map((r) => {
           const late = r.resolveBreached;
@@ -189,7 +191,7 @@ function SlaBoardTable({ rows }: { rows: SlaBoardRow[] }) {
           );
         })}
       </ul>
-    </section>
+    </SectionCard>
   );
 }
 

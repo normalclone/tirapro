@@ -19,6 +19,7 @@ import {
   type TimeOffDto,
   type TimeOffKind,
 } from './api';
+import { SectionCard } from '@/components/ui/SectionCard';
 import { fmtDayMonth } from '@/lib/dateFormat';
 import { blockOnInvalidDate } from '@/lib/dateGuard';
 
@@ -130,22 +131,23 @@ export function TimeOffPanel({
   }
 
   return (
-    <section className="rounded-lg border border-border bg-surface">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-4">
-        <div>
-          <h2 className="text-base font-semibold text-ink-strong">Nghỉ phép & ngày lễ</h2>
-          <p className="mt-0.5 text-sm text-muted">
-            Ngày nghỉ được trừ thẳng khỏi số giờ làm được, nên bảng khối lượng không tính nhầm. Đang
-            hiện khoảng {fmtDayMonth(from)} – {fmtDayMonth(to)}.
-          </p>
-        </div>
-        {canManage && !form && (
+    <SectionCard
+      title="Nghỉ phép & ngày lễ"
+      bare
+      description={
+        <>
+          Ngày nghỉ được trừ thẳng khỏi số giờ làm được, nên bảng khối lượng không tính nhầm. Đang
+          hiện khoảng {fmtDayMonth(from)} – {fmtDayMonth(to)}.
+        </>
+      }
+      actions={
+        canManage && !form ? (
           <Button size="sm" onClick={() => setForm(emptyForm(from, to))}>
             <Plus className="h-4 w-4" aria-hidden /> Thêm ngày nghỉ
           </Button>
-        )}
-      </div>
-
+        ) : undefined
+      }
+    >
       {form && (
         <div ref={formRef} className="border-b border-border bg-surface-2/60 px-5 py-4">
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -244,7 +246,7 @@ export function TimeOffPanel({
             description="Nghỉ phép và ngày lễ được trừ khỏi số giờ làm được. Khai báo ngay để bảng khối lượng không tính nhầm."
             action={
               canManage && !form ? (
-                <Button size="sm" onClick={() => setForm(emptyForm(from, to))}>
+                <Button variant="secondary" size="sm" onClick={() => setForm(emptyForm(from, to))}>
                   <Plus className="h-4 w-4" aria-hidden /> Thêm ngày nghỉ
                 </Button>
               ) : undefined
@@ -320,7 +322,7 @@ export function TimeOffPanel({
         onConfirm={confirmDelete}
         onCancel={() => setPendingDelete(null)}
       />
-    </section>
+    </SectionCard>
   );
 }
 

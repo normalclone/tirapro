@@ -9,7 +9,10 @@ import { ExportMenu } from '@/components/ui/ExportMenu';
 import { useConfirm } from '@/components/ui/useConfirm';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { DueBadge } from '@/components/ui/DueBadge';
-import { pageContainer } from '@/components/layout/page';
+import { PageFrame } from '@/components/layout/PageFrame';
+import { PageHeader } from '@/components/layout/PageHeader';
+import { SectionCard } from '@/components/ui/SectionCard';
+import { MANAGE_LABELS } from '@/lib/navLabels';
 import { apiErrorMessage } from '@/lib/api';
 import { downloadText } from '@/lib/download';
 import { cn } from '@/lib/utils';
@@ -428,41 +431,35 @@ export function RaidPage() {
   }
 
   return (
-    <div className={pageContainer('lg')}>
-      <header className="mb-6 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">
-            Rủi ro &amp; vướng mắc
-          </h1>
-          <p className="mt-1 text-sm text-muted">
-            Nơi ghi lại mọi thứ có thể cản tiến độ của cả tổ chức: rủi ro có thể xảy ra, giả định
-            đang tin là đúng, vấn đề đang xảy ra và việc phải chờ bên khác (quốc tế gọi là sổ RAID).
-            Điểm rủi ro = xác suất × mức ảnh hưởng, mục đáng lo nhất luôn nằm trên cùng.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <ExportMenu
-            disabled={rows.length === 0}
-            items={[
-              {
-                id: 'csv',
-                label: 'Tải CSV',
-                hint: 'Đúng danh sách đang xem (theo bộ lọc)',
-                run: () =>
-                  downloadText(
-                    `tirapro-rui-ro-${format(new Date(), 'yyyyMMdd')}.csv`,
-                    raidCsv(rows),
-                  ),
-              },
-            ]}
-          />
-          {canManage && (
-            <Button onClick={openCreate}>
-              <Plus className="h-4 w-4" /> Thêm {kindMeta?.label.toLowerCase() ?? 'mục'}
-            </Button>
-          )}
-        </div>
-      </header>
+    <PageFrame size="xl">
+      <PageHeader
+        title={MANAGE_LABELS.risks}
+        description="Nơi ghi lại mọi thứ có thể cản tiến độ của cả tổ chức: rủi ro có thể xảy ra, giả định đang tin là đúng, vấn đề đang xảy ra và việc phải chờ bên khác (quốc tế gọi là sổ RAID). Điểm rủi ro = xác suất × mức ảnh hưởng, mục đáng lo nhất luôn nằm trên cùng."
+        actions={
+          <>
+            <ExportMenu
+              disabled={rows.length === 0}
+              items={[
+                {
+                  id: 'csv',
+                  label: 'Tải CSV',
+                  hint: 'Đúng danh sách đang xem (theo bộ lọc)',
+                  run: () =>
+                    downloadText(
+                      `tirapro-rui-ro-${format(new Date(), 'yyyyMMdd')}.csv`,
+                      raidCsv(rows),
+                    ),
+                },
+              ]}
+            />
+            {canManage && (
+              <Button size="sm" onClick={openCreate}>
+                <Plus className="h-4 w-4" /> Thêm {kindMeta?.label.toLowerCase() ?? 'mục'}
+              </Button>
+            )}
+          </>
+        }
+      />
 
       <Tabs
         idBase="raid"
@@ -539,7 +536,7 @@ export function RaidPage() {
                 }
                 action={
                   canManage && !status && !projectId ? (
-                    <Button variant="secondary" onClick={openCreate}>
+                    <Button variant="secondary" size="sm" onClick={openCreate}>
                       <Plus className="h-4 w-4" /> Thêm {kindMeta?.label.toLowerCase() ?? 'mục'}
                     </Button>
                   ) : undefined
@@ -549,16 +546,17 @@ export function RaidPage() {
               <div className="space-y-5">
                 <HeatMatrix items={items ?? []} selected={cell} onSelect={setCell} />
 
-                <section className="rounded-lg border border-border bg-surface">
-                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3 sm:px-5">
-                    <h2 className="text-base font-semibold text-ink-strong">Danh sách chi tiết</h2>
+                <SectionCard
+                  title="Danh sách chi tiết"
+                  bare
+                  actions={
                     <span className="text-sm text-muted">
                       {cell
                         ? `${rows.length} mục ở ô xác suất ${cell.p} × ảnh hưởng ${cell.i}`
                         : `${rows.length} mục`}
                     </span>
-                  </div>
-
+                  }
+                >
                   {rows.length === 0 ? (
                     <div className="p-5">
                       <EmptyState
@@ -577,7 +575,7 @@ export function RaidPage() {
                         }
                         action={
                           canManage && !cell ? (
-                            <Button onClick={openCreate}>
+                            <Button variant="secondary" size="sm" onClick={openCreate}>
                               <Plus className="h-4 w-4" /> Thêm{' '}
                               {kindMeta?.label.toLowerCase() ?? 'mục'}
                             </Button>
@@ -642,7 +640,7 @@ export function RaidPage() {
                       </ScrollX>
                     </>
                   )}
-                </section>
+                </SectionCard>
               </div>
             )
           }
@@ -658,6 +656,6 @@ export function RaidPage() {
           setEditing(null);
         }}
       />
-    </div>
+    </PageFrame>
   );
 }
