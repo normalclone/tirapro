@@ -15,10 +15,22 @@ export function summaryErrorText(e: unknown): string {
 }
 
 /**
+ * Version gửi kèm lần lưu: LẦN ĐẦU của một lần sửa dùng version chụp lúc mở ô (thay đổi xen giữa → máy chủ trả 409, không
+ * bị ghi đè âm thầm); sau một lần lỗi ("Thử lại", ✓ sau 409) người dùng đã thấy xung đột nên dùng bản mới nhất — ghi đè có chủ đích.
+ */
+export function saveVersion(v: {
+  captured: number | null;
+  latest: number;
+  attempt: number;
+}): number {
+  return v.attempt === 0 && v.captured !== null ? v.captured : v.latest;
+}
+
+/**
  * Tiêu đề công việc sửa tại chỗ — dùng chung cho trang chi tiết (h1) và panel xem nhanh (h2).
- * Giữ khoá lạc quan: mỗi lần lưu gửi `version` MỚI NHẤT của việc (đọc qua ref lúc gửi, nên "Thử lại" sau khi nạp lại bản mới
- * dùng version mới; còn nếu bản mới chưa về thì máy chủ lại trả 409 — không bao giờ ghi đè âm thầm). Lỗi 409 hiện lời báo
- * xung đột ngay dưới ô, giữ nguyên chữ người dùng đang gõ.
+ * Giữ khoá lạc quan (`saveVersion`): lần lưu đầu gửi version chụp lúc mở ô; "Thử lại"/✓ sau lỗi gửi version MỚI NHẤT (đọc qua
+ * ref lúc gửi; nếu bản mới chưa về thì máy chủ lại trả 409 — không bao giờ ghi đè âm thầm). Lỗi 409 hiện lời báo xung đột
+ * ngay dưới ô, giữ nguyên chữ người dùng đang gõ.
  */
 export function IssueSummaryEdit({
   issue,
@@ -44,6 +56,7 @@ export function IssueSummaryEdit({
   const update = useUpdateIssue(issue.projectId);
   const issueRef = useRef(issue);
   issueRef.current = issue;
+  const captured = useRef<number | null>(null);
   return (
     <InlineText
       value={issue.summary}
@@ -56,14 +69,21 @@ export function IssueSummaryEdit({
       title={title}
       editRequest={editRequest}
       onEditingChange={onEditingChange}
+      onEditStart={() => {
+        captured.current = issueRef.current.version;
+      }}
       describeError={summaryErrorText}
-      onSave={(next) => {
+      onSave={(next, attempt) => {
         const cur = issueRef.current;
         return update.mutateAsync({
           id: cur.id,
           key: cur.key,
           patch: { summary: next },
-          version: cur.version,
+          version: saveVersion({
+            captured: captured.current,
+            latest: cur.version,
+            attempt,
+          }),
         });
       }}
     />

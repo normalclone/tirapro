@@ -2,6 +2,9 @@ import { shouldSubmitOnEnter } from './confirmText';
 import type { SaveStatusState } from './saveStatus';
 
 /**
+ * `attempt` = số lần lưu LỖI trong lần sửa này (0 = chưa lỗi lần nào → lần lưu đầu). Lần đầu nên dùng khoá lạc quan chụp lúc
+ * mở ô (thay đổi xen giữa → 409 thay vì bị ghi đè); sau lỗi người dùng đã thấy xung đột nên "Thử lại"/✓ dùng bản mới nhất.
+ *
  * Máy trạng thái sửa tại chỗ một dòng chữ (tiêu đề công việc): xem → sửa → đang lưu → (lỗi → thử lại) → xem.
  * Hàm THUẦN (test được); `InlineText` giữ trạng thái trong `useRef` đồng bộ để Enter rồi blur liền nhau
  * (cùng một tick, trước khi React vẽ lại) vẫn thấy `saving` và bị bỏ qua — không gửi đôi.
@@ -10,9 +13,9 @@ type InlineInvalid = 'empty' | 'tooLong';
 
 export type InlineEditState =
   | { phase: 'view' }
-  | { phase: 'editing'; draft: string; invalid: InlineInvalid | null }
-  | { phase: 'saving'; draft: string; value: string }
-  | { phase: 'error'; draft: string; value: string; message: string };
+  | { phase: 'editing'; draft: string; invalid: InlineInvalid | null; attempt: number }
+  | { phase: 'saving'; draft: string; value: string; attempt: number }
+  | { phase: 'error'; draft: string; value: string; message: string; attempt: number };
 
 export type InlineEditAction =
   | { type: 'start'; value: string }
@@ -29,19 +32,22 @@ export const INLINE_VIEW: InlineEditState = { phase: 'view' };
 export function inlineEditReducer(s: InlineEditState, a: InlineEditAction): InlineEditState {
   switch (a.type) {
     case 'start':
-      return s.phase === 'view' ? { phase: 'editing', draft: a.value, invalid: null } : s;
+      return s.phase === 'view'
+        ? { phase: 'editing', draft: a.value, invalid: null, attempt: 0 }
+        : s;
     case 'change':
       return s.phase === 'editing' || s.phase === 'error'
-        ? { phase: 'editing', draft: a.draft, invalid: null }
+        ? { phase: 'editing', draft: a.draft, invalid: null, attempt: s.attempt }
         : s;
     case 'submit': {
       if (s.phase !== 'editing' && s.phase !== 'error') return s; // view/saving: Enter rồi blur, blur sau khi đã xong
       const value = s.draft.trim();
       if (value === a.original) return INLINE_VIEW; // không đổi: không gửi
-      if (value === '') return { phase: 'editing', draft: s.draft, invalid: 'empty' };
+      if (value === '')
+        return { phase: 'editing', draft: s.draft, invalid: 'empty', attempt: s.attempt };
       if (a.max !== undefined && value.length > a.max)
-        return { phase: 'editing', draft: s.draft, invalid: 'tooLong' };
-      return { phase: 'saving', draft: s.draft, value };
+        return { phase: 'editing', draft: s.draft, invalid: 'tooLong', attempt: s.attempt };
+      return { phase: 'saving', draft: s.draft, value, attempt: s.attempt };
     }
     case 'cancel':
       return s.phase === 'editing' || s.phase === 'error' ? INLINE_VIEW : s; // đang lưu: không huỷ được
@@ -49,10 +55,18 @@ export function inlineEditReducer(s: InlineEditState, a: InlineEditAction): Inli
       return s.phase === 'saving' ? INLINE_VIEW : s;
     case 'failed':
       return s.phase === 'saving'
-        ? { phase: 'error', draft: s.draft, value: s.value, message: a.message }
+        ? {
+            phase: 'error',
+            draft: s.draft,
+            value: s.value,
+            message: a.message,
+            attempt: s.attempt + 1,
+          }
         : s;
     case 'retry':
-      return s.phase === 'error' ? { phase: 'saving', draft: s.draft, value: s.value } : s;
+      return s.phase === 'error'
+        ? { phase: 'saving', draft: s.draft, value: s.value, attempt: s.attempt }
+        : s;
   }
 }
 

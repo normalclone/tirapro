@@ -198,6 +198,7 @@ function PeekContent({ issue }: { issue: IssueDto }) {
           <IssuePrioritySelect issue={issue} />
         </div>
         <IssueSummaryEdit
+          key={issue.id}
           issue={issue}
           canEdit={canEditThis}
           as="h2"

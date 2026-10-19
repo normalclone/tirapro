@@ -22,6 +22,8 @@ export function isTypingTarget(el: EventTarget | null): boolean {
   const node = el as Partial<HTMLElement> | null;
   if (!node || typeof node.tagName !== 'string') return false;
   const tag = node.tagName;
+  // Khối sửa tại chỗ (InlineText ở chế độ sửa): ✓/✕/Thử lại cũng không được kích hoạt phím tắt (j/k làm panel gỡ ô đang sửa).
+  if (node.closest?.('[data-inline-edit]')) return true;
   // Chỉ ô nhập CHỮ/SỐ/NGÀY mới là "đang gõ": checkbox/radio/range/button (focus sau khi bấm) không được chặn phím tắt.
   if (tag === 'INPUT') {
     const type = ((node as Partial<HTMLInputElement>).type ?? 'text').toLowerCase();

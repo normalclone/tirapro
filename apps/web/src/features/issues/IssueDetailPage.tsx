@@ -296,7 +296,13 @@ export function IssueDetailPage() {
       if (!issue || e.metaKey || e.ctrlKey || e.altKey) return;
       const el = e.target as HTMLElement | null;
       const tag = el?.tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el?.isContentEditable)
+      if (
+        tag === 'INPUT' ||
+        tag === 'TEXTAREA' ||
+        tag === 'SELECT' ||
+        el?.isContentEditable ||
+        el?.closest?.('[data-inline-edit]')
+      )
         return;
       // Chặn khi còn overlay/menu Radix đang MỞ (dialog đã đóng nhưng còn chạy hiệu ứng không chặn).
       if (isOverlayOpen()) return;
@@ -530,6 +536,7 @@ export function IssueDetailPage() {
                   </div>
                   {/* h1 của trang = tiêu đề hiển thị (InlineText as="h1"; đang sửa thì h1 bọc ô nhập, vẫn đúng một h1). */}
                   <IssueSummaryEdit
+                    key={issue.id}
                     issue={issue}
                     canEdit={canEditThis}
                     as="h1"

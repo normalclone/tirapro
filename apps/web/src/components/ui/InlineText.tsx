@@ -52,6 +52,7 @@ export function InlineText({
   title,
   editRequest = 0,
   onEditingChange,
+  onEditStart,
   describeError = apiErrorMessage,
 }: {
   /** Giá trị đã lưu (nguồn sự thật; đổi từ ngoài khi đang xem thì hiện ngay). */
@@ -59,7 +60,7 @@ export function InlineText({
   /** Nhãn của ô nhập (tên truy cập), vd "Tiêu đề". */
   label: string;
   /** Lưu giá trị đã trim; ném lỗi để vào trạng thái lỗi. Đọc qua ref nên luôn dùng bản mới nhất (version OCC mới). */
-  onSave: (next: string) => Promise<unknown>;
+  onSave: (next: string, attempt: number) => Promise<unknown>;
   canEdit: boolean;
   as?: 'h1' | 'h2';
   className?: string;
@@ -71,11 +72,14 @@ export function InlineText({
   /** Tăng số này để mở ô sửa từ ngoài (phím `e`, điều hướng kèm state); bỏ qua khi không có quyền. */
   editRequest?: number;
   onEditingChange?: (editing: boolean) => void;
+  /** Gọi đồng bộ khi VÀO chế độ sửa (chụp version lạc quan cho lần lưu đầu). */
+  onEditStart?: () => void;
   describeError?: (e: unknown) => string;
 }) {
   const { state, stateRef, savedAt, submit, retry, start, cancel, change } = useInlineEdit({
     value,
     onSave,
+    onEditStart,
     describeError,
     maxLength,
   });
@@ -95,22 +99,8 @@ export function InlineText({
     if (canEdit) start();
   }, [editRequest, canEdit, start]);
 
-  // Vào chế độ sửa → focus + chọn hết chữ; ra khỏi sửa → trả focus về tiêu đề nếu focus đang trôi (body / trong khối này).
-  const phase = state.phase;
-  const wasEditing = useRef(false);
-  const editing = phase !== 'view';
-  useEffect(() => {
-    onEditingChange?.(editing);
-    if (editing && !wasEditing.current) {
-      inputRef.current?.focus();
-      inputRef.current?.select();
-    } else if (!editing && wasEditing.current) {
-      const a = document.activeElement;
-      if (!a || a === document.body || rootRef.current?.contains(a)) viewRef.current?.focus();
-    }
-    wasEditing.current = editing;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editing]);
+  const editing = state.phase !== 'view';
+  useEditFocus(editing, { rootRef, inputRef, viewRef }, onEditingChange);
   // Mất quyền sửa giữa chừng → thoát chế độ sửa.
   useEffect(() => {
     if (!canEdit) cancel();
@@ -145,11 +135,18 @@ export function InlineText({
   }
 
   const message = messageOf(state, label, maxLength);
-  const saving = phase === 'saving';
+  const saving = state.phase === 'saving';
   const status = inlineStatus(state, savedAt);
 
   return (
-    <div ref={rootRef} className={cn('min-w-0', className)} onKeyDown={onKeyDown} onBlur={onBlur}>
+    <div
+      ref={rootRef}
+      className={cn('min-w-0', className)}
+      // Phím tắt toàn cục bỏ qua khi focus ở BẤT KỲ nút nào trong khối đang sửa (✓/✕/Thử lại), không chỉ ô nhập.
+      data-inline-edit={editing ? '' : undefined}
+      onKeyDown={onKeyDown}
+      onBlur={onBlur}
+    >
       <div className="flex items-center gap-1.5">
         {editing ? (
           <Tag className="min-w-0 flex-1">
@@ -278,4 +275,33 @@ function EditButtons({
       </Button>
     </>
   );
+}
+
+/**
+ * Vào chế độ sửa → focus + chọn hết chữ; ra khỏi sửa → trả focus về tiêu đề (không cuộn trang) nếu focus đang trôi
+ * (body / trong khối này) — rời bằng blur sang chỗ khác thì không cướp focus.
+ */
+function useEditFocus(
+  editing: boolean,
+  refs: {
+    rootRef: RefObject<HTMLDivElement>;
+    inputRef: RefObject<HTMLInputElement>;
+    viewRef: RefObject<HTMLButtonElement>;
+  },
+  onEditingChange?: (editing: boolean) => void,
+) {
+  const wasEditing = useRef(false);
+  useEffect(() => {
+    onEditingChange?.(editing);
+    if (editing && !wasEditing.current) {
+      refs.inputRef.current?.focus();
+      refs.inputRef.current?.select();
+    } else if (!editing && wasEditing.current) {
+      const a = document.activeElement;
+      if (!a || a === document.body || refs.rootRef.current?.contains(a))
+        refs.viewRef.current?.focus({ preventScroll: true });
+    }
+    wasEditing.current = editing;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editing]);
 }

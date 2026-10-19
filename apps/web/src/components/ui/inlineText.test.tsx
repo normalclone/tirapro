@@ -4,7 +4,11 @@ import { AxiosError } from 'axios';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { wasErrorDescribed } from '@/lib/api';
-import { SUMMARY_CONFLICT_MESSAGE, summaryErrorText } from '@/features/issues/IssueSummaryEdit';
+import {
+  SUMMARY_CONFLICT_MESSAGE,
+  saveVersion,
+  summaryErrorText,
+} from '@/features/issues/IssueSummaryEdit';
 import { InlineText } from './InlineText';
 
 const read = (rel: string) => readFileSync(join(__dirname, '..', '..', rel), 'utf8');
@@ -104,7 +108,7 @@ describe('<InlineText> — nguồn (ô sửa)', () => {
   });
   it('hook: trạng thái trong ref đồng bộ (Enter rồi blur không gửi đôi); onSave/version đọc qua ref', () => {
     expect(hook).toContain('stateRef.current = next');
-    expect(hook).toContain('onSaveRef.current(next)');
+    expect(hook).toContain('onSaveRef.current(next, attempt)');
     expect(hook).toMatch(/before !== 'saving' && next\.phase === 'saving'/);
   });
 });
@@ -113,7 +117,7 @@ describe('IssueSummaryEdit — khoá lạc quan (OCC) và 409', () => {
   const s = read('features/issues/IssueSummaryEdit.tsx');
   it('mỗi lần lưu gửi version MỚI NHẤT của việc (qua ref lúc gửi), không phải bản chụp lúc mở ô', () => {
     expect(s).toContain('issueRef.current = issue');
-    expect(s).toMatch(/const cur = issueRef\.current;[\s\S]*version: cur\.version/);
+    expect(s).toMatch(/const cur = issueRef\.current;[\s\S]*latest: cur\.version/);
   });
   const conflict = new AxiosError('x', 'ERR_BAD_REQUEST', undefined, undefined, {
     status: 409,
@@ -150,5 +154,50 @@ describe('nối dây: chi tiết (h1) và panel xem nhanh (h2)', () => {
     expect(detail.match(/setSummaryEditRequest\(\(n\) => n \+ 1\)/g)!.length).toBe(2);
     expect(detail).toContain('onEditingChange={setEditingSummary}');
     expect(detail).toContain('!editingSummary');
+  });
+});
+
+describe('fix round 1', () => {
+  const detail = read('features/issues/IssueDetailPage.tsx');
+  const peek = read('features/issues/peek/IssuePeekPanel.tsx');
+  const inline = read('components/ui/InlineText.tsx');
+  const hook = read('components/ui/useInlineEdit.ts');
+  const adapter = read('features/issues/IssueSummaryEdit.tsx');
+
+  it('trang chi tiết (route issue/:key dùng lại trang) và peek: IssueSummaryEdit có key theo issue.id → đổi việc là ô sửa mới', () => {
+    expect(detail).toMatch(/<IssueSummaryEdit\s+key=\{issue\.id\}/);
+    expect(peek).toMatch(/<IssueSummaryEdit\s+key=\{issue\.id\}/);
+  });
+
+  describe('version khoá lạc quan: lần lưu đầu dùng version LÚC MỞ Ô', () => {
+    it('saveVersion: lần đầu (attempt 0) = version đã chụp; sau lỗi (attempt ≥ 1) hoặc không có bản chụp = mới nhất', () => {
+      expect(saveVersion({ captured: 3, latest: 5, attempt: 0 })).toBe(3);
+      expect(saveVersion({ captured: 3, latest: 5, attempt: 1 })).toBe(5);
+      expect(saveVersion({ captured: 3, latest: 5, attempt: 2 })).toBe(5);
+      expect(saveVersion({ captured: null, latest: 5, attempt: 0 })).toBe(5);
+      expect(saveVersion({ captured: 4, latest: 4, attempt: 0 })).toBe(4);
+    });
+    it('adapter chụp version khi BẮT ĐẦU sửa (onEditStart) và truyền attempt cho saveVersion', () => {
+      expect(adapter).toContain('onEditStart');
+      expect(adapter).toMatch(/captured\.current = issueRef\.current\.version/);
+      expect(adapter).toMatch(/saveVersion\(\{[\s\S]*attempt/);
+      expect(adapter).not.toMatch(/version: cur\.version/);
+    });
+    it('hook gọi onEditStart ngay trong start() và chuyển attempt của máy trạng thái cho onSave', () => {
+      expect(hook).toContain('onEditStartRef.current?.()');
+      expect(hook).toContain('onSaveRef.current(next, attempt)');
+      expect(hook).toMatch(/persist\(next\.value, next\.attempt\)/);
+    });
+  });
+
+  it('khối sửa gắn data-inline-edit chỉ khi KHÔNG ở chế độ xem (phím tắt toàn cục bỏ qua ✓/✕/Thử lại)', () => {
+    expect(inline).toContain("data-inline-edit={editing ? '' : undefined}");
+    expect(html()).not.toContain('data-inline-edit');
+  });
+  it('trang chi tiết: phím i/y/e/1..9 cũng bỏ qua khi focus nằm trong khối sửa', () => {
+    expect(detail).toContain("closest?.('[data-inline-edit]')");
+  });
+  it('sau lưu bằng blur, trả focus về tiêu đề KHÔNG cuộn trang', () => {
+    expect(inline).toContain('viewRef.current?.focus({ preventScroll: true })');
   });
 });

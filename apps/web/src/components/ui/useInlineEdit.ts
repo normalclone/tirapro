@@ -16,11 +16,14 @@ const SAVED_FLASH_MS = 4000;
 export function useInlineEdit({
   value,
   onSave,
+  onEditStart,
   describeError,
   maxLength,
 }: {
   value: string;
-  onSave: (next: string) => Promise<unknown>;
+  /** `attempt` = số lần lưu lỗi trước đó trong lần sửa này (0 = lần đầu). */
+  onSave: (next: string, attempt: number) => Promise<unknown>;
+  onEditStart?: () => void;
   describeError: (e: unknown) => string;
   maxLength: number;
 }) {
@@ -38,6 +41,8 @@ export function useInlineEdit({
   valueRef.current = value;
   const onSaveRef = useRef(onSave);
   onSaveRef.current = onSave;
+  const onEditStartRef = useRef(onEditStart);
+  onEditStartRef.current = onEditStart;
   const describeRef = useRef(describeError);
   describeRef.current = describeError;
   const [savedAt, setSavedAt] = useState<number | null>(null);
@@ -45,9 +50,9 @@ export function useInlineEdit({
   useEffect(() => () => window.clearTimeout(savedTimer.current), []);
 
   const persist = useCallback(
-    async (next: string) => {
+    async (next: string, attempt: number) => {
       try {
-        await onSaveRef.current(next);
+        await onSaveRef.current(next, attempt);
         dispatch({ type: 'saved' });
         setSavedAt(Date.now());
         window.clearTimeout(savedTimer.current);
@@ -61,15 +66,17 @@ export function useInlineEdit({
   const submit = useCallback(() => {
     const before = stateRef.current.phase;
     const next = dispatch({ type: 'submit', original: valueRef.current, max: maxLength });
-    if (before !== 'saving' && next.phase === 'saving') void persist(next.value);
+    if (before !== 'saving' && next.phase === 'saving') void persist(next.value, next.attempt);
   }, [dispatch, maxLength, persist]);
   const retry = useCallback(() => {
     const next = dispatch({ type: 'retry' });
-    if (next.phase === 'saving') void persist(next.value);
+    if (next.phase === 'saving') void persist(next.value, next.attempt);
   }, [dispatch, persist]);
   const start = useCallback(() => {
     window.clearTimeout(savedTimer.current);
     setSavedAt(null);
+    // Chụp khoá lạc quan NGAY lúc bắt đầu sửa (trước mọi thay đổi xen giữa), chỉ khi thật sự vào chế độ sửa.
+    if (stateRef.current.phase === 'view') onEditStartRef.current?.();
     dispatch({ type: 'start', value: valueRef.current });
   }, [dispatch]);
   const cancel = useCallback(() => dispatch({ type: 'cancel' }), [dispatch]);
