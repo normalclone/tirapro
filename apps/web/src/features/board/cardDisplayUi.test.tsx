@@ -165,6 +165,9 @@ describe('CardDisplayPanel', () => {
       'aria-disabled',
     );
   });
+  it('nhãn "Xem trước" cũng ẩn khỏi trình đọc màn hình (khối nó mô tả đã aria-hidden)', () => {
+    expect(panel()).toMatch(/<p[^>]*aria-hidden="true"[^>]*>Xem trước<\/p>/);
+  });
   it('xem trước không phải điều khiển: ẩn khỏi trình đọc màn hình, không bấm/focus được', () => {
     const h = panel();
     expect(h).toMatch(

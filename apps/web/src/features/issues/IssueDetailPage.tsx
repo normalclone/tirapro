@@ -38,6 +38,9 @@ import { useMyWorkspaces } from '@/features/workspace/api';
 import { useDeleteIssue, useRetractIssue } from '@/features/issue-edit/api';
 import { RetractMenuItem } from './RetractMenuItem';
 import { IssueSummaryEdit } from './IssueSummaryEdit';
+import { CATEGORY_COLOR, IssueKeyFacts, OtherFactsDisclosure } from './IssueKeyFacts';
+import { factLayout } from './issueFacts';
+import { useMediaQuery } from '@/lib/useMediaQuery';
 import { useIssueCopy } from './useIssueCopy';
 import { IssueRelations } from '@/features/tree/IssueRelations';
 import { CustomFieldsPanel } from '@/features/issue-fields/CustomFieldsPanel';
@@ -115,12 +118,6 @@ const EDIT_DENIED_NOTICE = 'Bạn không có quyền sửa công việc này.';
 const TOOLBAR_BTN =
   'inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 py-1.5 text-sm font-medium text-ink transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:cursor-not-allowed disabled:border-transparent disabled:bg-disabled-bg disabled:text-disabled-fg';
 
-const CATEGORY_COLOR: Record<string, string> = {
-  TODO: 'var(--status-todo)',
-  IN_PROGRESS: 'var(--status-progress)',
-  DONE: 'var(--status-done)',
-};
-
 /** Trang chi tiết công việc (URL /issue/:key) — rail dự án + nội dung + panel thông tin bên phải. */
 export function IssueDetailPage() {
   const { key = '' } = useParams();
@@ -144,6 +141,10 @@ export function IssueDetailPage() {
   const can = useCanIn(issue?.projectId);
   const canEditThis = useCanEditIssue(issue?.projectId)(issue ?? {});
   const canTransition = can('issue:transition');
+  // Thuộc tính chính: dưới md hiện dải ngay dưới tiêu đề + "Thuộc tính khác"; từ md như trước. Chọn bằng media query để
+  // MỖI control chỉ dựng một lần (không trùng id/focus/phím tắt), thay vì dựng hai bản rồi ẩn bằng CSS.
+  const isDesktop = useMediaQuery('(min-width: 768px)', true);
+  const layout = factLayout(isDesktop);
   const { data: devLinks } = useDevLinks(FEATURES.repos ? issue?.id : undefined);
   // Mã issue theo LOẠI (BUG-4…) → KHÔNG suy ra project key từ chuỗi; resolve theo projectId.
   // Kể cả dự án đã lưu trữ (danh sách mặc định chỉ có dự án hoạt động → breadcrumb trống, "Tạo việc con" sai dự án).
@@ -530,7 +531,7 @@ export function IssueDetailPage() {
                 <div className="flex flex-wrap items-center gap-2 sm:flex-nowrap sm:items-start">
                   <div className="order-1 flex shrink-0 flex-wrap items-center gap-1.5 sm:mt-1.5">
                     <IssueTypeSelect issue={issue} />
-                    <IssuePrioritySelect issue={issue} />
+                    {layout.priorityInHeader && <IssuePrioritySelect issue={issue} />}
                     <IssueSeveritySelect issue={issue} />
                     <IssueResolutionSelect issue={issue} />
                   </div>
@@ -553,6 +554,16 @@ export function IssueDetailPage() {
                     <WatchButton issueId={issue.id} />
                   </div>
                 </div>
+                {layout.strip.length > 0 && (
+                  <IssueKeyFacts
+                    issue={issue}
+                    canEditRestricted={canEditRestricted}
+                    canTransition={canTransition}
+                    nextStatuses={nextStatuses}
+                    transitionPending={transitionPending}
+                    onTransition={requestTransition}
+                  />
+                )}
                 <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
                   <IssueSprintSubtitle issue={issue} />
                   <span className="text-faint" aria-hidden>
@@ -654,19 +665,21 @@ export function IssueDetailPage() {
 
                 {/* Trạng thái hiện tại + xem quy trình, rồi các bước chuyển kế tiếp (theo workflow) */}
                 <div className="ml-auto flex flex-wrap items-center gap-1.5">
-                  <span
-                    className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-sm font-medium text-ink"
-                    title="Trạng thái hiện tại của công việc"
-                  >
+                  {layout.statusInToolbar && (
                     <span
-                      className="h-2 w-2 shrink-0 rounded-full"
-                      style={{
-                        background: CATEGORY_COLOR[issue.status.category] ?? 'var(--faint)',
-                      }}
-                      aria-hidden
-                    />
-                    {issue.status.name}
-                  </span>
+                      className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-sm font-medium text-ink"
+                      title="Trạng thái hiện tại của công việc"
+                    >
+                      <span
+                        className="h-2 w-2 shrink-0 rounded-full"
+                        style={{
+                          background: CATEGORY_COLOR[issue.status.category] ?? 'var(--faint)',
+                        }}
+                        aria-hidden
+                      />
+                      {issue.status.name}
+                    </span>
+                  )}
                   <button
                     type="button"
                     onClick={() => {
@@ -679,7 +692,7 @@ export function IssueDetailPage() {
                   >
                     <Workflow className="h-4 w-4" />
                   </button>
-                  {canTransition && nextStatuses.length > 0 && (
+                  {layout.statusInToolbar && canTransition && nextStatuses.length > 0 && (
                     <>
                       <ChevronRight className="h-4 w-4 shrink-0 text-faint" aria-hidden />
                       {nextStatuses.map((o, i) => (
@@ -715,6 +728,19 @@ export function IssueDetailPage() {
                   )}
                 </div>
               </div>
+
+              {/* Dưới md: phần còn lại của cột phải gom vào "Thuộc tính khác" (thu gọn mặc định), ngay trên thân trang. */}
+              {layout.other.length > 0 && (
+                <OtherFactsDisclosure>
+                  <EpicParentField issue={issue} />
+                  <IssuePeoplePanel issue={issue} omit={layout.strip} />
+                  <IssueDatesPanel
+                    issue={issue}
+                    canEditRestricted={canEditRestricted}
+                    omit={layout.strip}
+                  />
+                </OtherFactsDisclosure>
+              )}
 
               {/* Thân: trái = mô tả + nội dung + hoạt động; phải = người liên quan + mốc thời gian */}
               <div className="grid grid-cols-1 gap-x-8 gap-y-5 lg:grid-cols-[minmax(0,1fr)_300px]">
@@ -805,9 +831,13 @@ export function IssueDetailPage() {
                 {/* Cột phải: Người liên quan + Mốc thời gian */}
                 <aside className="min-w-0">
                   <div className="space-y-5 lg:sticky lg:top-4">
-                    <EpicParentField issue={issue} />
-                    <IssuePeoplePanel issue={issue} />
-                    <IssueDatesPanel issue={issue} canEditRestricted={canEditRestricted} />
+                    {layout.sidebar.length > 0 && (
+                      <>
+                        <EpicParentField issue={issue} />
+                        <IssuePeoplePanel issue={issue} />
+                        <IssueDatesPanel issue={issue} canEditRestricted={canEditRestricted} />
+                      </>
+                    )}
                     <LazyPanel id="issue-worklog" minHeight={96} force={worklogRequest > 0}>
                       <WorklogPanel issue={issue} openRequest={worklogRequest} />
                     </LazyPanel>

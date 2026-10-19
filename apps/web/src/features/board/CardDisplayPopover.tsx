@@ -104,7 +104,9 @@ export function CardDisplayPanel({
 
       {/* Dưới sm: lên đầu + dính mép trên khung cuộn → thấy thẻ đổi ngay khi bật/tắt mà không phải cuộn (bảng phía sau bị che). */}
       <div className="z-10 bg-surface max-sm:sticky max-sm:top-0 max-sm:order-first max-sm:-mx-4 max-sm:-mt-4 max-sm:border-b max-sm:border-border max-sm:px-4 max-sm:pb-2 max-sm:pt-3">
-        <p className="mb-1.5 text-xs font-medium text-muted">Xem trước</p>
+        <p aria-hidden="true" className="mb-1.5 text-xs font-medium text-muted">
+          Xem trước
+        </p>
         <div
           aria-hidden="true"
           className="pointer-events-none rounded-lg bg-surface-3 p-2 max-sm:p-1.5"

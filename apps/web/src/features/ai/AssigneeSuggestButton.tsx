@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { cn } from '@/lib/utils';
 import * as Popover from '@radix-ui/react-popover';
 import { Sparkles } from 'lucide-react';
 import { apiErrorMessage } from '@/lib/api';
@@ -16,11 +17,14 @@ export function AssigneeSuggestButton({
   issueId,
   disabled,
   onPick,
+  className,
 }: {
   projectId: string;
   issueId: string;
   disabled?: boolean;
   onPick: (userId: string) => void;
+  /** Ghi thêm lên nút (vd `min-h-11` cho dải thuộc tính trên điện thoại). */
+  className?: string;
 }) {
   const [open, setOpen] = useState(false);
   const suggest = useSuggestAssignee();
@@ -46,7 +50,10 @@ export function AssigneeSuggestButton({
           disabled={disabled}
           title="Gợi ý người nên nhận việc này dựa trên kinh nghiệm xử lý việc tương tự và khối lượng đang làm"
           // Giữ disabled:opacity (không dùng token vô hiệu) — nút chữ ghost không nền: chỉ cần mờ đi.
-          className="inline-flex h-6 shrink-0 items-center gap-1 rounded-md px-1.5 text-xs text-primary hover:bg-primary-subtle disabled:pointer-events-none disabled:opacity-50 [@media(pointer:coarse)]:min-h-9"
+          className={cn(
+            'inline-flex h-6 shrink-0 items-center gap-1 rounded-md px-1.5 text-xs text-primary hover:bg-primary-subtle disabled:pointer-events-none disabled:opacity-50 [@media(pointer:coarse)]:min-h-9',
+            className,
+          )}
         >
           <Sparkles className="h-3.5 w-3.5" aria-hidden />
           Gợi ý
