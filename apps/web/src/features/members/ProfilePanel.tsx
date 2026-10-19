@@ -1,4 +1,4 @@
-import { useRef, useState, type FormEvent } from 'react';
+import { useMemo, useRef, useState, type FormEvent } from 'react';
 import { UserCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { Input } from '@/components/ui/Input';
@@ -7,7 +7,9 @@ import { apiErrorMessage } from '@/lib/api';
 import { useAuth } from '@/stores/auth';
 import { useUnsavedChanges } from '@/lib/useUnsavedChanges';
 import { useUpdateProfile, useUploadUserAvatar, useRemoveUserAvatar } from './api';
-import { browserTimeZone, timeZoneOptions } from '@/features/digests/schedule';
+import { browserTimeZone, timeZoneChoices } from '@/features/digests/schedule';
+import { SearchSelect } from '@/components/ui/SearchSelect';
+import { initialProfileTimeZone } from './profileTimeZone';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { settleField } from '@/lib/settleField';
 
@@ -25,13 +27,15 @@ export function ProfilePanel() {
   // Mốc "đã lưu gần nhất": lưu xong cập nhật ngay, không chờ `bootstrap()` làm mới user → dirty về false tức thì.
   const [saved, setSaved] = useState({
     displayName: user?.displayName ?? '',
-    timezone: user?.timezone ?? '',
+    timezone: initialProfileTimeZone(user?.timezone, browserTimeZone()),
     locale: user?.locale ?? 'vi',
   });
   const [displayName, setDisplayName] = useState(saved.displayName);
   const [timezone, setTimezone] = useState(saved.timezone);
   const [locale, setLocale] = useState(saved.locale);
   const formRef = useRef<HTMLFormElement>(null);
+  // Danh sách chung dựng một lần cho cả phiên; chỉ thêm giá trị đang chọn lên đầu nếu là tên lạ (xem `timeZoneChoices`).
+  const zones = useMemo(() => timeZoneChoices(timezone), [timezone]);
 
   const dirty =
     displayName.trim() !== saved.displayName ||
@@ -117,27 +121,24 @@ export function ProfilePanel() {
             />
           </label>
 
-          <label className="block space-y-1.5">
-            <span
-              className="text-sm font-medium text-ink"
+          <div className="block space-y-1.5">
+            <label
+              htmlFor="profile-timezone"
+              className="block text-sm font-medium text-ink"
               title="Dùng để hiện đúng giờ hạn chót và lịch theo nơi bạn ngồi"
             >
               Múi giờ
-            </span>
-            <Input
+            </label>
+            <SearchSelect
+              id="profile-timezone"
               value={timezone}
-              placeholder={`VD: ${browserTimeZone()}`}
-              list="profile-timezones"
-              autoComplete="off"
-              onChange={(e) => setTimezone(e.target.value)}
+              onChange={setTimezone}
+              options={zones}
+              searchPlaceholder="Tìm múi giờ (vd Hà Nội, Tokyo)…"
               disabled={update.isPending}
+              className="w-full"
             />
-            <datalist id="profile-timezones">
-              {timeZoneOptions().map((tz) => (
-                <option key={tz} value={tz} />
-              ))}
-            </datalist>
-          </label>
+          </div>
 
           <div className="block space-y-1.5">
             <span id="profile-locale-label" className="block text-sm font-medium text-ink">
