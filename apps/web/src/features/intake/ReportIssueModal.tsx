@@ -532,7 +532,7 @@ function ReportIssueForm({
       footer={<ReportFooter busy={busy || queued} label={dup.decision.label} onClose={onClose} />}
     >
       <form id="report-issue-form" onSubmit={(e) => attempt(e)} className="space-y-4">
-        <ErrorSummary errors={flow.errors} />
+        <ErrorSummary errors={flow.errors} attempt={flow.attempts} />
         <ModeSwitch mode={mode} onChange={changeMode} />
         <KindPicker kind={kind} onChange={changeKind} />
         <ProjectField

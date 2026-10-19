@@ -552,7 +552,7 @@ export function CreateIssueModal() {
           void submitCreate();
         }}
       >
-        <ErrorSummary errors={flow.errors} className="mb-4" />
+        <ErrorSummary errors={flow.errors} attempt={flow.attempts} className="mb-4" />
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="Dự án" htmlFor="ci-project" error={errorOf('project')}>
             <SearchSelect

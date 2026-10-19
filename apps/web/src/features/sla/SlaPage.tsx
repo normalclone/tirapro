@@ -243,6 +243,7 @@ function SlaPolicies({
   }, [open]);
 
   function submit() {
+    if (create.isPending) return; // ⌘/Ctrl+Enter không đi qua trạng thái loading của nút
     if (allErrors.length > 0) return flow.fail();
     const n = name.trim();
     create.mutate(
@@ -390,7 +391,7 @@ function SlaPolicies({
         }
       >
         <div className="space-y-4">
-          <ErrorSummary errors={flow.errors} />
+          <ErrorSummary errors={flow.errors} attempt={flow.attempts} />
           <FormField id="sla-name" label="Tên cam kết" error={flow.errorOf('sla-name')}>
             {(a11y) => (
               <Input

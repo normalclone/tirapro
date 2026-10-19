@@ -1,35 +1,35 @@
-import { useEffect, useState } from 'react';
 import { errorCountLabel, focusField, type FieldError } from '@/lib/formErrors';
 
 /**
  * Tóm tắt lỗi biểu mẫu: "3 trường cần sửa" + mỗi lỗi là một nút đưa focus tới đúng trường (không đổi hash URL).
- * Báo màn hình đọc: `role="alert"` (assertive) CHỈ lần đầu hiện; sau đó khung tĩnh, còn số lỗi nằm trong vùng
- * `aria-live="polite"` — sửa từng lỗi không bị đọc lại cả khối. Không có lỗi → không vẽ gì (lần sau hiện lại báo như lần đầu).
- * Màu từ token danger.
+ * Báo màn hình đọc: MỖI lần gửi lỗi một thông báo — khối ẩn `role="alert"` gắn `key={attempt}` (truyền `flow.attempts` của
+ * `useErrorFlow`) nên được dựng lại và đọc lại cả khi focus không đổi. Số lỗi hiển thị nằm trong `aria-live="polite"`:
+ * sửa dần từng lỗi chỉ báo nhẹ khi số đổi, KHÔNG báo mỗi lần gõ. Không có lỗi → không vẽ gì. Màu từ token danger.
  */
 export function ErrorSummary({
   errors,
+  attempt = 0,
   onNavigate = (id) => void focusField(id),
   className,
 }: {
   errors: readonly FieldError[];
+  /** Số lần gửi lỗi (`useErrorFlow().attempts`): đổi → báo lại một lần. */
+  attempt?: number;
   /** Mặc định đưa focus tới ô có id đó; nơi có ô ngoài DOM thường (vd tab khác) có thể tự xử lý. */
   onNavigate?: (id: string) => void;
   className?: string;
 }) {
-  const has = errors.length > 0;
-  const [announced, setAnnounced] = useState(false);
-  useEffect(() => {
-    setAnnounced(has);
-  }, [has]);
-  if (!has) return null;
+  if (errors.length === 0) return null;
+  const count = errorCountLabel(errors.length);
   return (
     <div
-      role={announced ? undefined : 'alert'}
       className={`rounded-md border border-danger/40 bg-danger/5 px-3 py-2.5 ${className ?? ''}`.trim()}
     >
+      <p key={attempt} role="alert" className="sr-only">
+        {count}
+      </p>
       <p aria-live="polite" className="text-sm font-medium text-danger">
-        {errorCountLabel(errors.length)}
+        {count}
       </p>
       <ul className="mt-1 space-y-0.5">
         {errors.map((e) => (

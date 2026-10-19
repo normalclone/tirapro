@@ -72,6 +72,7 @@ export function DigestEditorDialog({
   const errorOf = (f: DigestField) => flow.errorOf(FIELD_META[f].id);
 
   function submit() {
+    if (saving) return; // ⌘/Ctrl+Enter không đi qua trạng thái loading của nút
     if (allErrors.length > 0) return flow.fail();
     const done = {
       onSuccess: () => {
@@ -104,7 +105,7 @@ export function DigestEditorDialog({
       }
     >
       <div className="space-y-4 pb-1">
-        <ErrorSummary errors={flow.errors} />
+        <ErrorSummary errors={flow.errors} attempt={flow.attempts} />
         <div className="grid gap-3 sm:grid-cols-2">
           <FormField id="digest-name" label="Tên báo cáo" error={errorOf('name')}>
             {(a11y) => (

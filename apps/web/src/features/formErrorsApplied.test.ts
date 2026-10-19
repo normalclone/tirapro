@@ -65,4 +65,25 @@ describe('244 · áp dụng báo lỗi theo trường (Báo cáo định kỳ, S
       expect(s.slice(at)).toContain('<FormField');
     });
   });
+
+  describe('thông báo mỗi lần gửi lỗi + chặn gửi đúp', () => {
+    const FILES = [
+      'features/sla/SlaPage.tsx',
+      'features/issues/CreateIssueModal.tsx',
+      'features/intake/ReportIssueModal.tsx',
+      'features/digests/DigestEditorDialog.tsx',
+    ];
+    for (const f of FILES)
+      it(`${f} truyền attempt của useErrorFlow cho ErrorSummary`, () => {
+        expect(read(f)).toMatch(/<ErrorSummary[^>]*attempt=\{flow\.attempts\}/);
+      });
+    it('SLA: submit thoát sớm khi đang tạo (⌘/Ctrl+Enter không đi qua trạng thái loading của nút)', () => {
+      const s = read('features/sla/SlaPage.tsx');
+      expect(s).toMatch(/function submit\(\) \{\s*if \(create\.isPending\) return;/);
+    });
+    it('Digest: submit thoát sớm khi đang lưu', () => {
+      const s = read('features/digests/DigestEditorDialog.tsx');
+      expect(s).toMatch(/function submit\(\) \{\s*if \(saving\) return;/);
+    });
+  });
 });

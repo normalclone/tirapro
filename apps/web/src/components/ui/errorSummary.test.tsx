@@ -192,13 +192,17 @@ describe('P-C2 · hoàn thiện nền báo lỗi', () => {
     expect(html).toContain(`id="${did}"`);
     expect(read('components/ui/SegmentedControl.tsx')).not.toContain("'segmented'");
   });
-  it('m3: ErrorSummary báo assertive lần đầu hiện; số lỗi đổi sau đó báo polite (vùng aria-live riêng)', () => {
-    const html = renderToStaticMarkup(<ErrorSummary errors={errs} />);
-    expect(html).toContain('role="alert"');
+  it('m3: mỗi lần gửi lỗi có đúng một thông báo (khối ẩn role="alert" gắn key theo lần thử); đổi số lỗi khi sửa báo polite', () => {
+    const html = renderToStaticMarkup(<ErrorSummary errors={errs} attempt={2} />);
+    expect(html).toMatch(
+      /<p[^>]*class="[^"]*sr-only[^"]*"[^>]*role="alert"[^>]*>3 trường cần sửa<\/p>|<p[^>]*role="alert"[^>]*class="[^"]*sr-only[^"]*"[^>]*>3 trường cần sửa<\/p>/,
+    );
     expect(html).toMatch(/<p[^>]*aria-live="polite"[^>]*>3 trường cần sửa<\/p>/);
+    // khung hiển thị KHÔNG còn là vùng alert (không đọc lại mỗi lần gõ)
+    expect(html.match(/role="alert"/g)?.length).toBe(1);
     const s = read('components/ui/ErrorSummary.tsx');
-    expect(s).toMatch(/role=\{announced \? undefined : 'alert'\}/);
-    expect(s).toMatch(/setAnnounced\(has\)/);
+    expect(s).toContain('key={attempt}');
+    expect(s).not.toMatch(/announced|setAnnounced/);
   });
   it('m4: doc của invalid nói rõ chuỗi vẽ <p> anh em → trong khung relative/nhãn dùng FormField với boolean', () => {
     for (const f of ['components/ui/Input.tsx', 'components/ui/SearchSelect.tsx']) {
