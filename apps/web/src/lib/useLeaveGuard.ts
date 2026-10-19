@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useRef } from 'react';
 import { type BlockerFunction } from 'react-router-dom';
 import { useConfirm } from '@/components/ui/useConfirm';
-import { describeGuard, dirtyGuardEntries, useLeaveGuardStore } from '@/stores/leaveGuard';
+import { confirmLeaveApp, useLeaveGuardStore } from '@/stores/leaveGuard';
 
 /**
  * Chặn rời trang khi còn thay đổi chưa lưu: điều hướng trong app (sidebar, breadcrumb, Back) hỏi "Bỏ thay đổi?",
@@ -32,29 +32,22 @@ export function useLeaveGuard(opts: {
 }
 
 /**
- * Gọi TRƯỚC thao tác sẽ tải lại cả trang (đổi không gian làm việc): còn bất kỳ mục chặn nào dirty (form, nháp wiki,
- * dashboard editor...) → hỏi "Bỏ các thay đổi chưa lưu?". Đồng ý → gọi `onDiscard` từng mục và tạm tắt `beforeunload`
- * (đã hỏi rồi, không hỏi lần hai); nếu thao tác sau đó thất bại, gọi `resumeLeaveGuard()`.
+ * Gọi TRƯỚC thao tác sẽ tải lại cả trang (đổi/tạo không gian làm việc): còn bất kỳ mục chặn nào dirty (form, nháp wiki,
+ * dashboard editor...) → hỏi "Bỏ các thay đổi chưa lưu?". Chỉ HỎI — không bỏ nháp. Bỏ nháp xảy ra ở
+ * `commitLeaveApp()` (gọi trong `useSwitchWorkspace.onSuccess`) nên đổi lỗi thì nháp còn nguyên.
  */
 export function useConfirmLeaveApp(): () => Promise<boolean> {
   const confirm = useConfirm();
-  return useCallback(async () => {
-    const dirty = dirtyGuardEntries(useLeaveGuardStore.getState().entries);
-    if (dirty.length === 0) return true;
-    const ok = await confirm({
-      title: 'Bỏ các thay đổi chưa lưu?',
-      description: describeGuard(dirty),
-      confirmLabel: 'Bỏ thay đổi',
-      destructive: true,
-    });
-    if (!ok) return false;
-    for (const [, e] of dirty) e.onDiscard();
-    useLeaveGuardStore.getState().setSuspended(true);
-    return true;
-  }, [confirm]);
-}
-
-/** Thao tác sau `useConfirmLeaveApp` thất bại (không tải lại trang) → bật lại `beforeunload`. */
-export function resumeLeaveGuard(): void {
-  useLeaveGuardStore.getState().setSuspended(false);
+  return useCallback(
+    () =>
+      confirmLeaveApp(useLeaveGuardStore.getState().entries, (description) =>
+        confirm({
+          title: 'Bỏ các thay đổi chưa lưu?',
+          description,
+          confirmLabel: 'Bỏ thay đổi',
+          destructive: true,
+        }),
+      ),
+    [confirm],
+  );
 }

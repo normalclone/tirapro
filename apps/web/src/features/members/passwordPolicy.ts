@@ -16,3 +16,15 @@ export function passwordPolicyError(password: string): string | null {
   if (!value) return null;
   return passwordSchema.safeParse(value).success ? null : PASSWORD_POLICY_MESSAGE;
 }
+
+/**
+ * Form đổi mật khẩu có "thay đổi chưa lưu" không. Mật khẩu hiện tại KHÔNG tính: trình duyệt hay tự điền ô này
+ * (autofill) và một mình nó không phải thay đổi người dùng cần giữ — chỉ khi đã gõ mật khẩu mới/xác nhận.
+ */
+export function isPasswordFormDirty(v: {
+  current: string;
+  next: string;
+  confirm: string;
+}): boolean {
+  return v.next !== '' || v.confirm !== '';
+}

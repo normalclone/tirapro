@@ -9,6 +9,7 @@ import { useUnsavedChanges } from '@/lib/useUnsavedChanges';
 import { useUpdateProfile, useUploadUserAvatar, useRemoveUserAvatar } from './api';
 import { browserTimeZone, timeZoneOptions } from '@/features/digests/schedule';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
+import { settleField } from '@/lib/settleField';
 
 const LOCALES: { value: string; label: string }[] = [
   { value: 'vi', label: 'Tiếng Việt' },
@@ -65,8 +66,9 @@ export function ProfilePanel() {
     update.mutate(next, {
       onSuccess: () => {
         setSaved(next);
-        setDisplayName(next.displayName);
-        setTimezone(next.timezone);
+        // Cùng cách với GeneralSection: chỉ đặt lại ô chưa bị đổi trong lúc lưu.
+        setDisplayName((cur) => settleField(cur, next.displayName));
+        setTimezone((cur) => settleField(cur, next.timezone));
         toast.success('Đã lưu hồ sơ của bạn');
       },
       onError: (err) => toast.error(apiErrorMessage(err)),

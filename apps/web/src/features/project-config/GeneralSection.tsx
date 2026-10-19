@@ -12,6 +12,7 @@ import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { useUnsavedChanges } from '@/lib/useUnsavedChanges';
 import { PrivacySection } from './PrivacySection';
+import { settleField } from '@/lib/settleField';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 
 function Card({
@@ -97,8 +98,9 @@ export function GeneralSection({ project, canAdmin }: { project: ProjectDto; can
         ...(next.assignMode !== saved.assignMode ? { defaultAssigneeMode: next.assignMode } : {}),
       });
       setSaved(next);
-      setName(next.name);
-      setDescription(next.description);
+      // Lưu có thể mất vài giây: người dùng có thể đã gõ tiếp → chỉ đặt lại ô chưa bị đổi (so với chuỗi đã gửi).
+      setName((cur) => settleField(cur, next.name));
+      setDescription((cur) => settleField(cur, next.description));
       toast.success('Đã lưu thông tin dự án');
     } catch (e) {
       toast.error(apiErrorMessage(e));

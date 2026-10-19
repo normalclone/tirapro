@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { PASSWORD_POLICY_HINT, passwordPolicyError } from './passwordPolicy';
+import { PASSWORD_POLICY_HINT, isPasswordFormDirty, passwordPolicyError } from './passwordPolicy';
 
 describe('passwordPolicyError', () => {
   it('mật khẩu yếu → thông điệp chính sách chung', () => {
@@ -27,5 +27,18 @@ describe('passwordPolicyError', () => {
 
   it('hint hiển thị khớp thông điệp lỗi', () => {
     expect(PASSWORD_POLICY_HINT).toContain('8 ký tự');
+  });
+});
+
+describe('isPasswordFormDirty — autofill mật khẩu hiện tại không phải thay đổi', () => {
+  it('chỉ có mật khẩu hiện tại (trình duyệt tự điền) → không dirty', () => {
+    expect(isPasswordFormDirty({ current: 'Password123', next: '', confirm: '' })).toBe(false);
+  });
+  it('trống hết → không dirty', () => {
+    expect(isPasswordFormDirty({ current: '', next: '', confirm: '' })).toBe(false);
+  });
+  it('đã gõ mật khẩu mới hoặc xác nhận → dirty', () => {
+    expect(isPasswordFormDirty({ current: '', next: 'a', confirm: '' })).toBe(true);
+    expect(isPasswordFormDirty({ current: 'x', next: '', confirm: 'b' })).toBe(true);
   });
 });

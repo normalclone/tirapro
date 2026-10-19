@@ -9,6 +9,7 @@ import { cn } from '@/lib/utils';
 import { useAuth } from '@/stores/auth';
 import { useUnsavedChanges } from '@/lib/useUnsavedChanges';
 import { useChangePassword, useLogoutAll } from './api';
+import { isPasswordFormDirty } from './passwordPolicy';
 
 /** Quy tắc mật khẩu — khớp với passwordSchema ở backend. */
 const RULES: { test: (v: string) => boolean; label: string }[] = [
@@ -39,9 +40,9 @@ export function ChangePasswordPanel() {
     setShow(false);
   }
 
-  // Chỉ chặn rời trang khi đã gõ vào ô nào; giữ nút "Đổi mật khẩu" riêng (không dùng thanh chung).
+  // Chỉ chặn rời trang khi đã gõ mật khẩu mới/xác nhận (mật khẩu hiện tại hay bị trình duyệt tự điền); giữ nút "Đổi mật khẩu" riêng (không dùng thanh chung).
   useUnsavedChanges({
-    dirty: current !== '' || next !== '' || confirm !== '',
+    dirty: isPasswordFormDirty({ current, next, confirm }),
     onSave: () => undefined,
     onReset: reset,
     description: 'Mật khẩu bạn vừa nhập chưa được gửi đi.',

@@ -12,6 +12,7 @@ import { RepositorySection, RepoStackIcon } from './RepositorySection';
 import {
   integrationSections,
   parseIntegrationSection,
+  resolveSectionIntent,
   type IntegrationSectionId,
 } from './sections';
 import { useScrollFade } from '@/lib/useScrollFade';
@@ -31,22 +32,30 @@ const INTEGRATION_NAV = integrationSections(FEATURES);
 
 export function IntegrationsPage() {
   // Lối vào trực tiếp: /connect/integrations?section=digest (vd từ Tổng quan → "Báo cáo định kỳ").
-  const [params] = useSearchParams();
+  const [params, setParams] = useSearchParams();
   const fromUrl = parseIntegrationSection(params.get('section'), FEATURES);
   const [picked, setPicked] = useState<IntegrationSectionId>(fromUrl ?? 'telegram');
-  // Đang ở trang này mà bấm liên kết mang `?section=` khác thì phải chuyển mục theo.
-  useEffect(() => {
-    if (fromUrl) setPicked(fromUrl);
-  }, [fromUrl]);
   // Mục đang chọn không còn trong danh sách (cờ tắt) → rơi về Telegram.
   const active = INTEGRATION_NAV.some((s) => s.id === picked) ? picked : 'telegram';
   const navFade = useScrollFade<HTMLElement>(active, '[aria-current="page"]');
   const confirmDiscard = useConfirmDiscard();
   // Đổi mục là `useState` (không qua router) nên `useBlocker` không bắt: còn form chưa lưu thì hỏi trước khi tháo nó.
-  async function pick(id: IntegrationSectionId) {
-    if (id === active) return;
-    if (await confirmDiscard()) setPicked(id);
+  async function pick(id: IntegrationSectionId): Promise<boolean> {
+    if (id === active) return true;
+    if (!(await confirmDiscard())) return false;
+    setPicked(id);
+    return true;
   }
+  // Đang ở trang này mà bấm liên kết mang `?section=` khác thì chuyển mục theo — QUA CÙNG guard với `pick`.
+  // Bị từ chối thì sửa lại URL cho khớp mục đang mở.
+  useEffect(() => {
+    if (resolveSectionIntent({ fromUrl, active }) !== 'ask' || !fromUrl) return;
+    void pick(fromUrl).then((ok) => {
+      if (!ok) setParams({ section: active }, { replace: true });
+    });
+    // Chỉ phản ứng khi URL đổi (pick/active đọc giá trị mới nhất ở lần render đó).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fromUrl]);
 
   return (
     <div className="flex h-full min-h-0 flex-col lg:flex-row">

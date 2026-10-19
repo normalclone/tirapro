@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { integrationSections, parseIntegrationSection } from './sections';
+import { integrationSections, parseIntegrationSection, resolveSectionIntent } from './sections';
 
 describe('integrationSections', () => {
   it('mặc định ẩn Kho mã', () => {
@@ -29,5 +29,15 @@ describe('parseIntegrationSection', () => {
     expect(integrationSections({ repos: false }).find((s) => s.id === 'digest')?.label).toBe(
       'Báo cáo định kỳ',
     );
+  });
+});
+
+describe('resolveSectionIntent — ?section= phải qua guard khi khác mục đang mở', () => {
+  it('không có ?section= hoặc trùng mục đang mở → none (không hỏi)', () => {
+    expect(resolveSectionIntent({ fromUrl: null, active: 'telegram' })).toBe('none');
+    expect(resolveSectionIntent({ fromUrl: 'digest', active: 'digest' })).toBe('none');
+  });
+  it('khác mục đang mở → ask (đi qua pick có guard)', () => {
+    expect(resolveSectionIntent({ fromUrl: 'digest', active: 'telegram' })).toBe('ask');
   });
 });
