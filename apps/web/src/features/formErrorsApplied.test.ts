@@ -87,3 +87,37 @@ describe('244 · áp dụng báo lỗi theo trường (Báo cáo định kỳ, S
     });
   });
 });
+
+describe('244 · quy tắc tự động hoá (RuleEditor) báo lỗi theo trường', () => {
+  const s = () => read('features/automation/RuleEditor.tsx');
+  it('bỏ banner lỗi đầu tiên: dùng useErrorFlow + ErrorSummary (attempt) + validateRulePayload', () => {
+    expect(s()).not.toMatch(/\bsetError\b|const \[error, /);
+    expect(s()).not.toContain("join(' › ')");
+    expect(s()).toContain('useErrorFlow(');
+    expect(s()).toMatch(/<ErrorSummary[^>]*attempt=\{flow\.attempts\}/);
+    expect(s()).toContain('validateRulePayload(');
+  });
+  it('payload giữ nguyên: vẫn dựng từ toPayload(draft), dữ liệu gửi API là parsed.data của createRuleSchema', () => {
+    expect(s()).toContain('validateRulePayload(toPayload(d)');
+    expect(s()).toContain('checkDraft(draft)');
+    expect(read('features/automation/ruleErrors.ts')).toContain('createRuleSchema.safeParse(');
+    expect(s()).toMatch(/create\.mutate\(result\.data/);
+  });
+  it('submit chặn gửi đúp (⌘/Ctrl+Enter không đi qua trạng thái loading của nút) và mở lại thì xoá lỗi', () => {
+    expect(s()).toMatch(/function submit\(\) \{\s*if \(busy\) return;/);
+    expect(s()).toMatch(/flow\.reset|resetErrors\(\)/);
+  });
+  it('các ô có id để đưa focus tới: tên, sự kiện, JQL, hành động', () => {
+    for (const id of [
+      'RULE_NAME_ID',
+      'RULE_TRIGGER_ID',
+      'RULE_ACTIONS_ID',
+      'conditionJqlId(',
+      'actionFieldId(',
+    ])
+      expect(s(), id).toContain(id);
+  });
+  it('điều kiện hiển thị thành câu bằng <ConditionSentence> (chữ đọc, không đổi dữ liệu)', () => {
+    expect(s()).toContain('<ConditionSentence');
+  });
+});

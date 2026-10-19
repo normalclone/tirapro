@@ -1,17 +1,19 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Plus, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { SYSTEM_ROLES, type RuleTrigger } from '@tirapro/types';
 import {
   RULE_CONDITION_FIELDS,
   RULE_TRIGGERS,
-  createRuleSchema,
   type CreateRuleInput,
   type RuleAction,
   type RuleCondition,
 } from '@tirapro/shared';
 import { Button } from '@/components/ui/Button';
 import { Dialog } from '@/components/ui/Dialog';
+import { ErrorSummary } from '@/components/ui/ErrorSummary';
+import { FieldErrorText } from '@/components/ui/FieldError';
+import { FormField } from '@/components/ui/FormField';
 import { Input } from '@/components/ui/Input';
 import { SearchSelect, type SearchSelectOption } from '@/components/ui/SearchSelect';
 import { useProjectMeta } from '@/features/ai/api';
@@ -21,7 +23,21 @@ import { useProjectLabels } from '@/features/issue-meta/api';
 import { useProjects } from '@/features/projects/api';
 import { QueryBuilder } from '@/features/saved-filters/QueryBuilder';
 import { useWorkflows } from '@/features/workflow-settings/api';
+import { INVALID_FIELD_CLS, fieldErrorId } from '@/lib/formErrors';
+import { useErrorFlow } from '@/lib/useErrorFlow';
+import { ConditionSentence } from './ConditionSentence';
 import { Field } from './IssueDefaultsFields';
+import {
+  RULE_ACTIONS_ID,
+  RULE_CONDITIONS_ID,
+  RULE_NAME_ID,
+  RULE_TRIGGER_ID,
+  actionFieldId,
+  conditionFieldId,
+  conditionJqlId,
+  validateRulePayload,
+  type RuleValidation,
+} from './ruleErrors';
 import {
   ACTION_LABELS,
   FIELD_LABELS,
@@ -272,6 +288,22 @@ function toPayload(d: Draft): unknown {
   };
 }
 
+/** Kiểm bản nháp: MỌI lỗi theo trường (xem `ruleErrors`). Payload vẫn là `toPayload(draft)`, không đổi. */
+function checkDraft(d: Draft): RuleValidation {
+  const ids = { conditions: d.conditions.map((c) => c.id), actions: d.actions.map((a) => a.id) };
+  try {
+    return validateRulePayload(toPayload(d), ids);
+  } catch {
+    // `toISOString` ném với ngày không biểu diễn được; coi là lỗi ở khối hành động thay vì làm hỏng trang.
+    return {
+      ok: false,
+      errors: [
+        { id: RULE_ACTIONS_ID, label: 'Hành động', message: 'Có giá trị ngày không hợp lệ' },
+      ],
+    };
+  }
+}
+
 /* ------------------------------ dữ liệu chọn ------------------------------ */
 
 interface UserPick {
@@ -372,6 +404,35 @@ const ASSIGN_MODE_OPTIONS: SearchSelectOption[] = [
   { value: 'user', label: 'Một người cụ thể', description: 'Chọn một người cố định bên cạnh' },
 ];
 
+/**
+ * Một ô + lời lỗi của nó (id `<id>-error`, nối vào `aria-describedby`). Bọc trong khung riêng để lời lỗi không thành ô
+ * lưới thừa trong các hàng `grid`. Ô nhận `{id, invalid, aria-describedby}` rải thẳng vào `Input`/`SearchSelect`.
+ */
+function Err({
+  id,
+  error,
+  children,
+}: {
+  id: string;
+  error?: string;
+  children: (a: {
+    id: string;
+    invalid: boolean;
+    'aria-describedby': string | undefined;
+  }) => ReactNode;
+}) {
+  return (
+    <div className="min-w-0">
+      {children({
+        id,
+        invalid: !!error,
+        'aria-describedby': error ? fieldErrorId(id) : undefined,
+      })}
+      {error && <FieldErrorText id={fieldErrorId(id)}>{error}</FieldErrorText>}
+    </div>
+  );
+}
+
 function Card({
   children,
   onRemove,
@@ -426,6 +487,9 @@ function MultiPick({
   empty,
   ariaLabel,
   pick,
+  id,
+  invalid,
+  'aria-describedby': describedByProp,
 }: {
   options: SearchSelectOption[];
   value: string[];
@@ -434,9 +498,17 @@ function MultiPick({
   ariaLabel: string;
   /** Chọn người: có ô tìm phía máy chủ; mục đã chọn không nằm trong kết quả vẫn hiện (tra tên theo id). */
   pick?: UserPick;
+  /** Id khối (đích của `ErrorSummary`); `invalid` → viền danger. */
+  id?: string;
+  invalid?: boolean;
+  'aria-describedby'?: string;
 }) {
   if (!options.length && !pick && !value.length)
-    return <p className="text-xs text-faint">{empty}</p>;
+    return (
+      <p id={id} className="text-xs text-faint">
+        {empty}
+      </p>
+    );
   const toggle = (v: string) =>
     onChange(value.includes(v) ? value.filter((x) => x !== v) : [...value, v]);
   const shown = pick
@@ -450,7 +522,10 @@ function MultiPick({
       ]
     : options;
   return (
-    <div className="rounded-md border border-border bg-surface">
+    <div
+      id={id}
+      className={`rounded-md border bg-surface ${invalid ? INVALID_FIELD_CLS : 'border-border'}`}
+    >
       {pick && (
         <Input
           aria-label={`Tìm — ${ariaLabel}`}
@@ -459,7 +534,12 @@ function MultiPick({
           className="h-8 rounded-b-none border-0 border-b border-border text-sm"
         />
       )}
-      <div role="group" aria-label={ariaLabel} className="max-h-36 overflow-y-auto p-1.5">
+      <div
+        role="group"
+        aria-label={ariaLabel}
+        aria-describedby={describedByProp}
+        className="max-h-36 overflow-y-auto p-1.5"
+      >
         {shown.map((o) => (
           <label
             key={o.value}
@@ -484,24 +564,32 @@ function ConditionCard({
   c,
   opts,
   onChange,
+  errorOf,
 }: {
   c: CondDraft;
   opts: Options;
   onChange: (c: CondDraft) => void;
+  errorOf: (id: string) => string | undefined;
 }) {
   if (c.kind === 'jql') {
+    const jqlId = conditionJqlId(c.id);
+    const jqlError = errorOf(jqlId);
     return (
       <div className="space-y-2">
         <p className="text-xs font-medium text-muted">Công việc phải khớp bộ lọc JQL</p>
         {c.raw ? (
           <>
             <Input
+              id={jqlId}
+              invalid={!!jqlError}
+              aria-describedby={jqlError ? fieldErrorId(jqlId) : undefined}
               className="font-mono text-sm"
               value={c.jql}
               onChange={(e) => onChange({ ...c, jql: e.target.value })}
               placeholder='priority = High AND status = "In Progress"'
               aria-label="Câu lệnh JQL"
             />
+            {jqlError && <FieldErrorText id={fieldErrorId(jqlId)}>{jqlError}</FieldErrorText>}
             <button
               type="button"
               className="text-xs text-primary hover:underline"
@@ -511,11 +599,14 @@ function ConditionCard({
             </button>
           </>
         ) : (
-          <QueryBuilder
-            value={c.jql}
-            onChange={(jql) => onChange({ ...c, jql })}
-            onEditAsJql={() => onChange({ ...c, raw: true })}
-          />
+          <div id={jqlId} aria-describedby={jqlError ? fieldErrorId(jqlId) : undefined}>
+            <QueryBuilder
+              value={c.jql}
+              onChange={(jql) => onChange({ ...c, jql })}
+              onEditAsJql={() => onChange({ ...c, raw: true })}
+            />
+            {jqlError && <FieldErrorText id={fieldErrorId(jqlId)}>{jqlError}</FieldErrorText>}
+          </div>
         )}
       </div>
     );
@@ -525,61 +616,66 @@ function ConditionCard({
   const needsValue = c.op !== 'empty' && c.op !== 'notEmpty';
   const multi = c.op === 'in' || c.op === 'nin';
   const options = optionsForField(c.field, opts);
+  const rowId = conditionFieldId(c.id);
+  const rowError = errorOf(rowId);
   return (
-    <div className="grid grid-cols-1 gap-2 sm:grid-cols-[10rem_11rem_1fr]">
-      <SearchSelect
-        ariaLabel="Trường điều kiện"
-        value={c.field}
-        options={UI_FIELDS.map((f) => ({ value: f, label: FIELD_LABELS[f] ?? f }))}
-        onChange={(v) => {
-          const field = v as FieldName;
-          onChange({
-            ...c,
-            field,
-            op: OPS_BY_KIND[kindOf(field)].includes(c.op) ? c.op : OPS_BY_KIND[kindOf(field)][0]!,
-            value: '',
-            values: [],
-          });
-        }}
-      />
-      <SearchSelect
-        ariaLabel="Phép so sánh"
-        value={c.op}
-        options={ops.map((o) => ({ value: o, label: OP_LABELS[o] ?? o }))}
-        onChange={(v) => onChange({ ...c, op: v as Op, values: [] })}
-      />
-      {needsValue ? (
-        multi ? (
-          <MultiPick
-            pick={options === opts.users ? opts.userPick : undefined}
-            options={options}
-            value={c.values}
-            onChange={(values) => onChange({ ...c, values })}
-            empty="Chưa có lựa chọn — hãy chọn phạm vi dự án ở bước 1."
-            ariaLabel="Các giá trị"
-          />
-        ) : options.length || ID_FIELDS.includes(c.field) || c.field === 'labelIds' ? (
-          <SearchSelect
-            {...(options === opts.users ? opts.userPick : {})}
-            value={c.value}
-            onChange={(value) => onChange({ ...c, value })}
-            options={options}
-            placeholder="Chọn…"
-            searchPlaceholder="Tìm…"
-            ariaLabel="Giá trị"
-          />
+    <div id={rowId}>
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-[10rem_11rem_1fr]">
+        <SearchSelect
+          ariaLabel="Trường điều kiện"
+          value={c.field}
+          options={UI_FIELDS.map((f) => ({ value: f, label: FIELD_LABELS[f] ?? f }))}
+          onChange={(v) => {
+            const field = v as FieldName;
+            onChange({
+              ...c,
+              field,
+              op: OPS_BY_KIND[kindOf(field)].includes(c.op) ? c.op : OPS_BY_KIND[kindOf(field)][0]!,
+              value: '',
+              values: [],
+            });
+          }}
+        />
+        <SearchSelect
+          ariaLabel="Phép so sánh"
+          value={c.op}
+          options={ops.map((o) => ({ value: o, label: OP_LABELS[o] ?? o }))}
+          onChange={(v) => onChange({ ...c, op: v as Op, values: [] })}
+        />
+        {needsValue ? (
+          multi ? (
+            <MultiPick
+              pick={options === opts.users ? opts.userPick : undefined}
+              options={options}
+              value={c.values}
+              onChange={(values) => onChange({ ...c, values })}
+              empty="Chưa có lựa chọn — hãy chọn phạm vi dự án ở bước 1."
+              ariaLabel="Các giá trị"
+            />
+          ) : options.length || ID_FIELDS.includes(c.field) || c.field === 'labelIds' ? (
+            <SearchSelect
+              {...(options === opts.users ? opts.userPick : {})}
+              value={c.value}
+              onChange={(value) => onChange({ ...c, value })}
+              options={options}
+              placeholder="Chọn…"
+              searchPlaceholder="Tìm…"
+              ariaLabel="Giá trị"
+            />
+          ) : (
+            <Input
+              aria-label="Giá trị"
+              type={kind === 'number' ? 'number' : kind === 'date' ? 'date' : 'text'}
+              value={c.value}
+              onChange={(e) => onChange({ ...c, value: e.target.value })}
+              placeholder={kind === 'text' ? 'Từ khoá trong tiêu đề' : ''}
+            />
+          )
         ) : (
-          <Input
-            aria-label="Giá trị"
-            type={kind === 'number' ? 'number' : kind === 'date' ? 'date' : 'text'}
-            value={c.value}
-            onChange={(e) => onChange({ ...c, value: e.target.value })}
-            placeholder={kind === 'text' ? 'Từ khoá trong tiêu đề' : ''}
-          />
-        )
-      ) : (
-        <span className="self-center text-xs text-faint">Không cần giá trị</span>
-      )}
+          <span className="self-center text-xs text-faint">Không cần giá trị</span>
+        )}
+      </div>
+      {rowError && <FieldErrorText id={fieldErrorId(rowId)}>{rowError}</FieldErrorText>}
     </div>
   );
 }
@@ -589,13 +685,17 @@ function ActionCard({
   opts,
   scoped,
   onChange,
+  errorOf,
 }: {
   a: ActionDraft;
   opts: Options;
   scoped: boolean;
   onChange: (a: ActionDraft) => void;
+  errorOf: (id: string) => string | undefined;
 }) {
   const set = (patch: Partial<ActionDraft>) => onChange({ ...a, ...patch });
+  const fid = (key: string) => actionFieldId(a.id, key);
+  const err = (key: string) => errorOf(fid(key));
   const types = (Object.keys(ACTION_LABELS) as ActionType[]).filter(
     (t) => scoped || (t !== 'addLabel' && t !== 'removeLabel'),
   );
@@ -627,33 +727,39 @@ function ActionCard({
             ]}
             onChange={(v) => set({ field: v as ActionDraft['field'], value: '' })}
           />
-          {a.field === 'priorityId' || a.field === 'assigneeId' || a.field === 'sprintId' ? (
-            <SearchSelect
-              {...(a.field === 'assigneeId' ? opts.userPick : {})}
-              value={a.value}
-              onChange={(value) => set({ value })}
-              options={[
-                { value: '', label: 'Để trống (gỡ giá trị)' },
-                ...(a.field === 'priorityId'
-                  ? opts.priorities
-                  : a.field === 'assigneeId'
-                    ? opts.users
-                    : opts.sprints),
-              ]}
-              placeholder="Chọn giá trị…"
-              searchPlaceholder="Tìm…"
-              ariaLabel="Giá trị mới"
-            />
-          ) : (
-            <Input
-              aria-label="Giá trị mới"
-              type={a.field === 'dueDate' ? 'date' : 'number'}
-              min={0}
-              value={a.value}
-              onChange={(e) => set({ value: e.target.value })}
-              placeholder="Để trống = gỡ giá trị"
-            />
-          )}
+          <Err id={fid('value')} error={err('value')}>
+            {(p) =>
+              a.field === 'priorityId' || a.field === 'assigneeId' || a.field === 'sprintId' ? (
+                <SearchSelect
+                  {...p}
+                  {...(a.field === 'assigneeId' ? opts.userPick : {})}
+                  value={a.value}
+                  onChange={(value) => set({ value })}
+                  options={[
+                    { value: '', label: 'Để trống (gỡ giá trị)' },
+                    ...(a.field === 'priorityId'
+                      ? opts.priorities
+                      : a.field === 'assigneeId'
+                        ? opts.users
+                        : opts.sprints),
+                  ]}
+                  placeholder="Chọn giá trị…"
+                  searchPlaceholder="Tìm…"
+                  ariaLabel="Giá trị mới"
+                />
+              ) : (
+                <Input
+                  {...p}
+                  aria-label="Giá trị mới"
+                  type={a.field === 'dueDate' ? 'date' : 'number'}
+                  min={0}
+                  value={a.value}
+                  onChange={(e) => set({ value: e.target.value })}
+                  placeholder="Để trống = gỡ giá trị"
+                />
+              )
+            }
+          </Err>
         </div>
       )}
 
@@ -666,52 +772,73 @@ function ActionCard({
             onChange={(v) => set({ mode: v as ActionDraft['mode'] })}
           />
           {a.mode === 'user' && (
-            <SearchSelect
-              {...opts.userPick}
-              value={a.userId}
-              onChange={(userId) => set({ userId })}
-              options={opts.users}
-              placeholder="Chọn người…"
-              searchPlaceholder="Tìm người…"
-              ariaLabel="Người được giao"
-            />
+            <Err id={fid('userId')} error={err('userId')}>
+              {(p) => (
+                <SearchSelect
+                  {...p}
+                  {...opts.userPick}
+                  value={a.userId}
+                  onChange={(userId) => set({ userId })}
+                  options={opts.users}
+                  placeholder="Chọn người…"
+                  searchPlaceholder="Tìm người…"
+                  ariaLabel="Người được giao"
+                />
+              )}
+            </Err>
           )}
         </div>
       )}
 
       {a.type === 'transition' && (
-        <SearchSelect
-          value={a.toStatusId}
-          onChange={(toStatusId) => set({ toStatusId })}
-          options={opts.statuses}
-          placeholder="Chuyển sang trạng thái…"
-          searchPlaceholder="Tìm trạng thái…"
-          ariaLabel="Trạng thái đích"
-        />
+        <Err id={fid('toStatusId')} error={err('toStatusId')}>
+          {(p) => (
+            <SearchSelect
+              {...p}
+              value={a.toStatusId}
+              onChange={(toStatusId) => set({ toStatusId })}
+              options={opts.statuses}
+              placeholder="Chuyển sang trạng thái…"
+              searchPlaceholder="Tìm trạng thái…"
+              ariaLabel="Trạng thái đích"
+            />
+          )}
+        </Err>
       )}
 
       {(a.type === 'addLabel' || a.type === 'removeLabel') && (
-        <SearchSelect
-          value={a.labelId}
-          onChange={(labelId) => set({ labelId })}
-          options={opts.labels}
-          placeholder="Chọn nhãn…"
-          searchPlaceholder="Tìm nhãn…"
-          ariaLabel="Nhãn"
-        />
+        <Err id={fid('labelId')} error={err('labelId')}>
+          {(p) => (
+            <SearchSelect
+              {...p}
+              value={a.labelId}
+              onChange={(labelId) => set({ labelId })}
+              options={opts.labels}
+              placeholder="Chọn nhãn…"
+              searchPlaceholder="Tìm nhãn…"
+              ariaLabel="Nhãn"
+            />
+          )}
+        </Err>
       )}
 
       {a.type === 'addComment' && (
         <div>
           <textarea
+            id={fid('body')}
             aria-label="Nội dung bình luận"
-            className="w-full rounded-md border border-border bg-bg px-3 py-2 text-sm text-ink placeholder:text-faint focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+            aria-invalid={err('body') ? true : undefined}
+            aria-describedby={err('body') ? fieldErrorId(fid('body')) : undefined}
+            className={`w-full rounded-md border border-border bg-bg px-3 py-2 text-sm text-ink placeholder:text-faint focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] ${err('body') ? INVALID_FIELD_CLS : ''}`}
             rows={3}
             maxLength={5000}
             value={a.body}
             onChange={(e) => set({ body: e.target.value })}
             placeholder="Ví dụ: {{actor.displayName}} vừa cập nhật {{issue.key}}"
           />
+          {err('body') && (
+            <FieldErrorText id={fieldErrorId(fid('body'))}>{err('body')}</FieldErrorText>
+          )}
           <p className="mt-1 text-xs text-faint">
             Chèn được {'{{issue.key}}'}, {'{{issue.summary}}'}, {'{{actor.displayName}}'}.
           </p>
@@ -720,22 +847,32 @@ function ActionCard({
 
       {a.type === 'notify' && (
         <div className="space-y-2">
-          <Input
-            aria-label="Nội dung thông báo"
-            value={a.message}
-            onChange={(e) => set({ message: e.target.value })}
-            placeholder="Nội dung thông báo (hỗ trợ {{issue.key}})"
-            maxLength={500}
-          />
+          <Err id={fid('message')} error={err('message')}>
+            {(p) => (
+              <Input
+                {...p}
+                aria-label="Nội dung thông báo"
+                value={a.message}
+                onChange={(e) => set({ message: e.target.value })}
+                placeholder="Nội dung thông báo (hỗ trợ {{issue.key}})"
+                maxLength={500}
+              />
+            )}
+          </Err>
           <p className="text-xs font-medium text-muted">Người nhận</p>
-          <MultiPick
-            pick={opts.userPick}
-            options={opts.users}
-            value={a.userIds}
-            onChange={(userIds) => set({ userIds })}
-            empty="Chưa tải được danh sách thành viên."
-            ariaLabel="Người nhận"
-          />
+          <Err id={fid('userIds')} error={err('userIds')}>
+            {(p) => (
+              <MultiPick
+                {...p}
+                pick={opts.userPick}
+                options={opts.users}
+                value={a.userIds}
+                onChange={(userIds) => set({ userIds })}
+                empty="Chưa tải được danh sách thành viên."
+                ariaLabel="Người nhận"
+              />
+            )}
+          </Err>
           <p className="text-xs font-medium text-muted">Hoặc mọi người có vai trò</p>
           <MultiPick
             options={Object.values(SYSTEM_ROLES).map((r) => ({ value: r, label: r }))}
@@ -749,20 +886,30 @@ function ActionCard({
 
       {a.type === 'webhook' && (
         <div className="space-y-2">
-          <Input
-            aria-label="Địa chỉ webhook"
-            value={a.url}
-            onChange={(e) => set({ url: e.target.value })}
-            placeholder="https://example.com/hooks/tirapro"
-          />
-          <Input
-            aria-label="Khoá bí mật (không bắt buộc)"
-            type="password"
-            autoComplete="off"
-            value={a.secret}
-            onChange={(e) => set({ secret: e.target.value })}
-            placeholder="Khoá bí mật để ký (không bắt buộc)"
-          />
+          <Err id={fid('url')} error={err('url')}>
+            {(p) => (
+              <Input
+                {...p}
+                aria-label="Địa chỉ webhook"
+                value={a.url}
+                onChange={(e) => set({ url: e.target.value })}
+                placeholder="https://example.com/hooks/tirapro"
+              />
+            )}
+          </Err>
+          <Err id={fid('secret')} error={err('secret')}>
+            {(p) => (
+              <Input
+                {...p}
+                aria-label="Khoá bí mật (không bắt buộc)"
+                type="password"
+                autoComplete="off"
+                value={a.secret}
+                onChange={(e) => set({ secret: e.target.value })}
+                placeholder="Khoá bí mật để ký (không bắt buộc)"
+              />
+            )}
+          </Err>
           <p className="text-xs text-faint">
             Hệ thống gửi POST JSON, chờ tối đa 5 giây, không thử lại. Có khoá thì kèm chữ ký
             HMAC-SHA256 ở header X-Tirapro-Signature. Địa chỉ nội bộ bị chặn.
@@ -772,21 +919,31 @@ function ActionCard({
 
       {a.type === 'createSubtask' && (
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_12rem]">
-          <Input
-            aria-label="Tiêu đề việc con"
-            value={a.summary}
-            onChange={(e) => set({ summary: e.target.value })}
-            placeholder="Tiêu đề việc con (hỗ trợ {{issue.key}})"
-            maxLength={255}
-          />
-          <SearchSelect
-            value={a.typeId}
-            onChange={(typeId) => set({ typeId })}
-            options={opts.subtaskTypes}
-            placeholder="Loại việc con…"
-            searchPlaceholder="Tìm loại…"
-            ariaLabel="Loại việc con"
-          />
+          <Err id={fid('summary')} error={err('summary')}>
+            {(p) => (
+              <Input
+                {...p}
+                aria-label="Tiêu đề việc con"
+                value={a.summary}
+                onChange={(e) => set({ summary: e.target.value })}
+                placeholder="Tiêu đề việc con (hỗ trợ {{issue.key}})"
+                maxLength={255}
+              />
+            )}
+          </Err>
+          <Err id={fid('typeId')} error={err('typeId')}>
+            {(p) => (
+              <SearchSelect
+                {...p}
+                value={a.typeId}
+                onChange={(typeId) => set({ typeId })}
+                options={opts.subtaskTypes}
+                placeholder="Loại việc con…"
+                searchPlaceholder="Tìm loại…"
+                ariaLabel="Loại việc con"
+              />
+            )}
+          </Err>
         </div>
       )}
     </div>
@@ -814,13 +971,17 @@ export function RuleEditor({
   const update = useUpdateRule();
   const { data: projects } = useProjects();
   const [draft, setDraft] = useState<Draft>(() => fromRule(rule, defaultProjectId));
-  const [error, setError] = useState<string | null>(null);
-  const bodyRef = useRef<HTMLDivElement>(null);
+
+  // Lỗi hiện sau lần Lưu lỗi đầu tiên (sửa tới đâu hết lỗi tới đó); mở lại hộp thì xoá.
+  const result = useMemo(() => checkDraft(draft), [draft]);
+  const flow = useErrorFlow(result.ok ? [] : result.errors);
+  const { reset: resetErrors } = flow;
 
   useEffect(() => {
     if (!open) return;
     setDraft(fromRule(rule, defaultProjectId));
-    setError(null);
+    resetErrors();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, rule, defaultProjectId]);
 
   const opts = useOptions(draft.projectId);
@@ -828,28 +989,25 @@ export function RuleEditor({
   const busy = create.isPending || update.isPending;
   const scoped = draft.projectId !== '';
 
+  // Tên hiển thị của mã trong câu điều kiện: tra theo danh sách chọn đã nạp (người: tra theo id phía máy chủ).
+  const nameOf = (field: string, id: string) =>
+    optionsForField(field as FieldName, opts).find((o) => o.value === id)?.label ??
+    (field === 'assigneeId' || field === 'reporterId'
+      ? opts.userPick.resolveOption(id)?.label
+      : undefined);
+
   function submit() {
-    const parsed = createRuleSchema.safeParse(toPayload(draft));
-    if (!parsed.success) {
-      const issue = parsed.error.issues[0];
-      setError(
-        issue
-          ? `${issue.message}${issue.path.length ? ` (${issue.path.join(' › ')})` : ''}`
-          : 'Quy tắc chưa hợp lệ',
-      );
-      bodyRef.current?.parentElement?.scrollTo({ top: 0, behavior: 'smooth' });
-      return;
-    }
-    setError(null);
+    if (busy) return; // ⌘/Ctrl+Enter không đi qua trạng thái loading của nút
+    if (!result.ok) return flow.fail();
     const done = () => {
       toast.success(rule ? 'Đã lưu quy tắc' : 'Đã tạo quy tắc');
       onClose();
     };
     if (rule) {
-      const { projectId: _projectId, ...rest } = parsed.data satisfies CreateRuleInput;
+      const { projectId: _projectId, ...rest } = result.data satisfies CreateRuleInput;
       update.mutate({ id: rule.id, ...rest }, { onSuccess: done });
     } else {
-      create.mutate(parsed.data, { onSuccess: done });
+      create.mutate(result.data, { onSuccess: done });
     }
   }
 
@@ -861,9 +1019,7 @@ export function RuleEditor({
       }}
       title={rule ? 'Sửa quy tắc' : 'Quy tắc mới'}
       size="xl"
-      onSubmit={() => {
-        if (!busy) submit();
-      }}
+      onSubmit={submit}
       footer={
         <>
           <Button variant="ghost" onClick={onClose} disabled={busy}>
@@ -875,30 +1031,25 @@ export function RuleEditor({
         </>
       }
     >
-      <div ref={bodyRef} className="space-y-6">
-        {error && (
-          <p
-            role="alert"
-            className="rounded-md border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger"
-          >
-            {error}
-          </p>
-        )}
+      <div className="space-y-6">
+        <ErrorSummary errors={flow.errors} attempt={flow.attempts} />
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <Field label="Tên quy tắc" htmlFor="rule-name">
-            <Input
-              id="rule-name"
-              value={draft.name}
-              onChange={(e) => set({ name: e.target.value })}
-              placeholder="Ví dụ: Việc khẩn giao cho lead"
-              maxLength={120}
-              autoFocus
-            />
-          </Field>
-          <Field
+          <FormField id={RULE_NAME_ID} label="Tên quy tắc" error={flow.errorOf(RULE_NAME_ID)}>
+            {(p) => (
+              <Input
+                {...p}
+                value={draft.name}
+                onChange={(e) => set({ name: e.target.value })}
+                placeholder="Ví dụ: Việc khẩn giao cho lead"
+                maxLength={120}
+                autoFocus
+              />
+            )}
+          </FormField>
+          <FormField
+            id="rule-scope"
             label="Phạm vi"
-            htmlFor="rule-scope"
             hint={
               rule
                 ? 'Không đổi được phạm vi sau khi tạo.'
@@ -917,18 +1068,23 @@ export function RuleEditor({
               searchPlaceholder="Tìm dự án…"
               ariaLabel="Phạm vi quy tắc"
             />
-          </Field>
+          </FormField>
         </div>
 
         <section aria-label="Khi">
           <StepHeader n={1} title="Khi…" hint="Sự kiện làm quy tắc chạy." />
           <div className="space-y-3">
-            <SearchSelect
-              ariaLabel="Sự kiện kích hoạt"
-              value={draft.trigger}
-              options={RULE_TRIGGERS.map((t) => ({ value: t, label: TRIGGER_LABELS[t] }))}
-              onChange={(v) => set({ trigger: v as RuleTrigger })}
-            />
+            <Err id={RULE_TRIGGER_ID} error={flow.errorOf(RULE_TRIGGER_ID)}>
+              {(p) => (
+                <SearchSelect
+                  {...p}
+                  ariaLabel="Sự kiện kích hoạt"
+                  value={draft.trigger}
+                  options={RULE_TRIGGERS.map((t) => ({ value: t, label: TRIGGER_LABELS[t] }))}
+                  onChange={(v) => set({ trigger: v as RuleTrigger })}
+                />
+              )}
+            </Err>
             {draft.trigger === 'ISSUE_TRANSITIONED' && (
               <Field
                 label="Chỉ khi chuyển đến trạng thái"
@@ -994,6 +1150,7 @@ export function RuleEditor({
             hint="Mọi điều kiện đều phải đúng thì hành động mới chạy."
           />
           <div className="space-y-2">
+            <ConditionSentence conditions={draft.conditions.map(toCondition)} nameOf={nameOf} />
             {draft.conditions.map((c, i) => (
               <Card
                 key={c.id}
@@ -1003,13 +1160,14 @@ export function RuleEditor({
                 <ConditionCard
                   c={c}
                   opts={opts}
+                  errorOf={flow.errorOf}
                   onChange={(next) =>
                     set({ conditions: draft.conditions.map((x) => (x.id === c.id ? next : x)) })
                   }
                 />
               </Card>
             ))}
-            <div className="flex flex-wrap gap-2">
+            <div id={RULE_CONDITIONS_ID} className="flex flex-wrap gap-2">
               <Button
                 type="button"
                 size="sm"
@@ -1034,6 +1192,11 @@ export function RuleEditor({
                 <Plus className="h-4 w-4" /> Thêm điều kiện JQL
               </Button>
             </div>
+            {flow.errorOf(RULE_CONDITIONS_ID) && (
+              <FieldErrorText id={fieldErrorId(RULE_CONDITIONS_ID)}>
+                {flow.errorOf(RULE_CONDITIONS_ID)}
+              </FieldErrorText>
+            )}
           </div>
         </section>
 
@@ -1058,20 +1221,28 @@ export function RuleEditor({
                   a={a}
                   opts={opts}
                   scoped={scoped}
+                  errorOf={flow.errorOf}
                   onChange={(next) =>
                     set({ actions: draft.actions.map((x) => (x.id === a.id ? next : x)) })
                   }
                 />
               </Card>
             ))}
-            <Button
-              type="button"
-              size="sm"
-              variant="secondary"
-              onClick={() => set({ actions: [...draft.actions, newAction('addComment')] })}
-            >
-              <Plus className="h-4 w-4" /> Thêm hành động
-            </Button>
+            <div id={RULE_ACTIONS_ID}>
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                onClick={() => set({ actions: [...draft.actions, newAction('addComment')] })}
+              >
+                <Plus className="h-4 w-4" /> Thêm hành động
+              </Button>
+            </div>
+            {flow.errorOf(RULE_ACTIONS_ID) && (
+              <FieldErrorText id={fieldErrorId(RULE_ACTIONS_ID)}>
+                {flow.errorOf(RULE_ACTIONS_ID)}
+              </FieldErrorText>
+            )}
           </div>
         </section>
       </div>
