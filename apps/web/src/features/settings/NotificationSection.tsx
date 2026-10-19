@@ -51,41 +51,63 @@ const EMAIL_TYPES: { key: keyof NotificationEmailPrefs; label: string; hint: str
   },
 ];
 
-/** Dòng con "Gửi cả qua email": mở bằng grid-rows 0fr→1fr (180ms ease-out-quart), tắt khi reduced-motion; đóng thì ẩn khỏi Tab. */
+/**
+ * Dòng con "Gửi qua email" (nhóm có tên = tên sự kiện): mở bằng grid-rows 0fr→1fr (180ms ease-out-quart), tắt khi
+ * reduced-motion; đóng thì ẩn khỏi Tab. Tên ô = nhãn + tên sự kiện; gợi ý nằm NGOÀI nhãn, nối qua `aria-describedby`.
+ */
 function EmailOption({
   id,
+  eventLabelId,
   open,
   checked,
   hint,
   onChange,
 }: {
   id: string;
+  /** Id span nhãn của Switch sự kiện (để tên ô có tên sự kiện). */
+  eventLabelId: string;
   open: boolean;
   checked: boolean;
   hint: string;
   onChange: (next: boolean) => void;
 }) {
+  const inputId = `${id}-input`;
+  const labelId = `${id}-label`;
+  const hintId = `${id}-hint`;
   return (
     <div
       id={id}
+      role="group"
+      aria-labelledby={eventLabelId}
       className={cn(
         'grid transition-[grid-template-rows,visibility] duration-base ease-out-quart motion-reduce:transition-none',
         open ? 'grid-rows-[1fr]' : 'invisible grid-rows-[0fr]',
       )}
     >
       <div className="overflow-hidden">
-        <label className="mt-2 flex cursor-pointer items-start gap-2.5 text-sm text-ink [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:items-center">
+        <div className="mt-2 flex items-start gap-2.5 text-sm text-ink [@media(pointer:coarse)]:min-h-11">
           <input
+            id={inputId}
             type="checkbox"
             checked={checked}
+            aria-labelledby={`${labelId} ${eventLabelId}`}
+            aria-describedby={hintId}
             onChange={(e) => onChange(e.target.checked)}
-            className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer rounded border-border accent-[var(--primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+            className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer rounded border-border accent-[var(--primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] [@media(pointer:coarse)]:mt-3"
           />
-          <span className="min-w-0">
-            <span className="block font-medium">Gửi cả qua email</span>
-            <span className="block text-xs text-faint">{hint}</span>
-          </span>
-        </label>
+          <div className="min-w-0">
+            <label
+              id={labelId}
+              htmlFor={inputId}
+              className="block cursor-pointer font-medium [@media(pointer:coarse)]:py-2.5"
+            >
+              Gửi qua email
+            </label>
+            <p id={hintId} className="text-xs text-faint [@media(pointer:coarse)]:-mt-2">
+              {hint}
+            </p>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -107,7 +129,7 @@ export function NotificationSection() {
   const [manual, setManual] = useState<Record<string, boolean>>({});
 
   const emailHint = (key: keyof NotificationEmailPrefs) =>
-    EMAIL_TYPES.find((e) => e.key === key)?.hint ?? '';
+    `${EMAIL_TYPES.find((e) => e.key === key)?.hint ?? ''}, kể cả khi tắt thông báo trong ứng dụng`;
 
   function toggle(key: string, next: boolean) {
     update.mutate({ preferences: { [key]: next } });
@@ -150,6 +172,7 @@ export function NotificationSection() {
               const emailOn = emailKey ? prefs.email[emailKey] : false;
               const open = emailKey ? isOptionsOpen(manual[key], inApp, emailOn) : false;
               const regionId = `notif-${key}-email`;
+              const eventLabelId = `notif-${key}-label`; // = id span nhãn do Switch dựng (`${id}-label`)
               return (
                 <li key={key} className="py-3 first:pt-0 last:pb-0">
                   <Switch
@@ -165,6 +188,7 @@ export function NotificationSection() {
                         type="button"
                         aria-expanded={open}
                         aria-controls={regionId}
+                        aria-labelledby={`${regionId}-toggle ${eventLabelId}`}
                         onClick={() => setManual((m) => ({ ...m, [key]: !open }))}
                         className="mt-1 inline-flex items-center gap-1 rounded text-xs text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] [@media(pointer:coarse)]:min-h-11"
                       >
@@ -175,14 +199,21 @@ export function NotificationSection() {
                             open && 'rotate-180',
                           )}
                         />
-                        Tuỳ chọn email{emailOn ? ' · đang bật' : ''}
+                        <span id={`${regionId}-toggle`}>
+                          Tuỳ chọn email{emailOn ? ' · đang bật' : ''}
+                        </span>
                       </button>
                       <EmailOption
                         id={regionId}
+                        eventLabelId={eventLabelId}
                         open={open}
                         checked={emailOn}
                         hint={emailHint(emailKey)}
-                        onChange={(next) => update.mutate({ email: { [emailKey]: next } })}
+                        onChange={(next) => {
+                          update.mutate({ email: { [emailKey]: next } });
+                          // Ghim dòng con mở: email-only bỏ tick sẽ làm `isOptionsOpen` thành false và dòng con đóng ngay dưới con trỏ.
+                          setManual((m) => ({ ...m, [key]: true }));
+                        }}
                       />
                     </>
                   )}

@@ -5,7 +5,7 @@ import {
   applyPrefsPatch,
   isOptionsOpen,
   prefsMutationOptions,
-  revertPrefsPatch,
+  restorePrefsKeys,
   type PrefsPatch,
 } from './notificationPrefs';
 import type { NotificationPrefsResponse } from './api';
@@ -30,18 +30,21 @@ describe('applyPrefsPatch / revertPrefsPatch (thuần)', () => {
     expect(n.email.assigned).toBe(false);
     expect(d.preferences.COMMENT_ADDED).toBe(false);
   });
-  it('hoàn tác CHỈ khoá của bản vá đó (khoá bị bản vá khác đổi sau vẫn giữ)', () => {
-    const d = base();
-    const failed: PrefsPatch = { preferences: { COMMENT_ADDED: true } };
-    let cur = applyPrefsPatch(d, failed);
-    cur = applyPrefsPatch(cur, { preferences: { MENTIONED: false } }); // lần bấm sau, khoá khác
-    const out = revertPrefsPatch(cur, failed, d);
+  it('khôi phục CHỈ các khoá được chỉ định về giá trị đã xác nhận (khoá khác giữ nguyên)', () => {
+    const cur = applyPrefsPatch(base(), {
+      preferences: { COMMENT_ADDED: true, MENTIONED: false },
+      email: { mention: true },
+    });
+    const out = restorePrefsKeys(cur, {
+      preferences: { COMMENT_ADDED: false },
+      email: { mention: false },
+    });
     expect(out.preferences).toEqual({ MENTIONED: false, COMMENT_ADDED: false });
+    expect(out.email.mention).toBe(false);
   });
-  it('khoá chưa từng có trong dữ liệu gốc → hoàn tác là xoá khoá (không để lại giá trị lạ)', () => {
-    const d = base();
-    const p: PrefsPatch = { preferences: { SPRINT_STARTED: true } };
-    const out = revertPrefsPatch(applyPrefsPatch(d, p), p, d);
+  it('giá trị xác nhận là undefined (khoá chưa từng có) → xoá khoá, không để lại giá trị lạ', () => {
+    const cur = applyPrefsPatch(base(), { preferences: { SPRINT_STARTED: true } });
+    const out = restorePrefsKeys(cur, { preferences: { SPRINT_STARTED: undefined } });
     expect('SPRINT_STARTED' in out.preferences).toBe(false);
   });
 });
@@ -151,5 +154,73 @@ describe('prefsMutationOptions — optimistic, nối tiếp, không đua', () =>
       [{ preferences: { MENTIONED: false } }],
       [{ email: { assigned: true } }],
     ]);
+  });
+});
+
+describe('rollback về giá trị ĐÃ XÁC NHẬN bởi máy chủ (không về ảnh chụp lạc quan)', () => {
+  const settle = () => new Promise((r) => setTimeout(r, 10));
+  it('(a) bật lỗi rồi tắt (xếp hàng) cũng lỗi: khoá về giá trị máy chủ (false), không kẹt ở true', async () => {
+    const gates = [defer<void>(), defer<void>()];
+    let n = 0;
+    const { run, data, invalidate } = setup(() => gates[n++]!.promise);
+    const p1 = run({ preferences: { COMMENT_ADDED: true } });
+    const p2 = run({ preferences: { COMMENT_ADDED: false } }); // onMutate thấy cache đang là true (lạc quan)
+    await settle();
+    gates[0]!.reject(new Error('500'));
+    await settle();
+    // lần tắt còn xếp hàng → lần lỗi đầu KHÔNG hoàn tác (để lần sau định đoạt); UI đang là kết quả lạc quan của lần tắt
+    expect(data().preferences.COMMENT_ADDED).toBe(false);
+    gates[1]!.reject(new Error('500'));
+    await Promise.all([p1, p2]);
+    expect(data().preferences.COMMENT_ADDED).toBe(false); // = máy chủ; KHÔNG phải true
+    expect(invalidate).toHaveBeenCalledTimes(1);
+  });
+  it('(a2) lỗi xong hẳn rồi mới bấm tiếp: lần sau lại lỗi vẫn về giá trị máy chủ', async () => {
+    const { run, data } = setup(() => Promise.reject(new Error('x')));
+    await run({ preferences: { COMMENT_ADDED: true } });
+    expect(data().preferences.COMMENT_ADDED).toBe(false);
+    await run({ preferences: { COMMENT_ADDED: false } });
+    expect(data().preferences.COMMENT_ADDED).toBe(false);
+    await run({ preferences: { COMMENT_ADDED: true } });
+    expect(data().preferences.COMMENT_ADDED).toBe(false);
+  });
+  it('(b) bật/tắt/bật, lần đầu lỗi: trạng thái cuối là BẬT, không để lại TẮT', async () => {
+    const gates = [defer<void>(), defer<void>(), defer<void>()];
+    let n = 0;
+    const seen: boolean[] = [];
+    const { run, data, qc } = setup(() => gates[n++]!.promise);
+    qc.getQueryCache().subscribe(() => seen.push(data().preferences.COMMENT_ADDED!));
+    const ps = [
+      run({ preferences: { COMMENT_ADDED: true } }),
+      run({ preferences: { COMMENT_ADDED: false } }),
+      run({ preferences: { COMMENT_ADDED: true } }),
+    ];
+    await settle();
+    gates[0]!.reject(new Error('500'));
+    await settle();
+    gates[1]!.resolve();
+    await settle();
+    expect(data().preferences.COMMENT_ADDED).toBe(true); // hai lần sau đã thắng, lần lỗi không kéo về false
+    gates[2]!.resolve();
+    await Promise.all(ps);
+    expect(data().preferences.COMMENT_ADDED).toBe(true);
+  });
+  it('(c) lần lỗi là lần cuối nhưng lần trước đã được máy chủ xác nhận: về giá trị đã xác nhận đó', async () => {
+    const gates = [defer<void>(), defer<void>()];
+    let n = 0;
+    const { run, data } = setup(() => gates[n++]!.promise);
+    const p1 = run({ preferences: { COMMENT_ADDED: true } });
+    const p2 = run({ preferences: { COMMENT_ADDED: false } });
+    await settle();
+    gates[0]!.resolve(); // máy chủ xác nhận true
+    await settle();
+    gates[1]!.reject(new Error('500')); // tắt lỗi → phải về TRUE (đã xác nhận), không về false ban đầu
+    await Promise.all([p1, p2]);
+    expect(data().preferences.COMMENT_ADDED).toBe(true);
+  });
+  it('khoá email tuân theo cùng quy tắc, độc lập khoá in-app', async () => {
+    const { run, data } = setup(() => Promise.reject(new Error('x')));
+    await run({ email: { mention: true } });
+    expect(data().email.mention).toBe(false);
   });
 });

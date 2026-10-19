@@ -39,4 +39,22 @@ describe('NotificationSection (023 + 355)', () => {
     expect(lib).toContain('cancelQueries');
     expect(lib).toContain('isMutating');
   });
+  it('đổi ô email thì GHIM dòng con mở (không đóng dưới chân con trỏ khi email-only bỏ tick)', () => {
+    const t = s();
+    const at = t.indexOf('update.mutate({ email: { [emailKey]: next } })');
+    expect(at).toBeGreaterThan(0);
+    expect(t.slice(at, at + 400)).toMatch(/setManual\(\(m\) => \(\{ \.\.\.m, \[key\]: true \}\)\)/);
+  });
+  it('nhãn "Gửi qua email" (độc lập in-app) + gợi ý "kể cả khi tắt thông báo trong ứng dụng"', () => {
+    expect(s()).toContain('Gửi qua email');
+    expect(s()).not.toContain('Gửi cả qua email');
+    expect(s()).toContain('kể cả khi tắt thông báo trong ứng dụng');
+  });
+  it('tên truy cập có tên sự kiện: nhóm + nút mở + ô email tham chiếu nhãn Switch; gợi ý ra khỏi <label> sang aria-describedby', () => {
+    const t = s();
+    expect(t).toContain('role="group"');
+    expect(t).toMatch(/aria-labelledby=\{`\$\{[a-zA-Z]+\} \$\{[a-zA-Z]+\}`\}/);
+    expect(t).toContain('aria-describedby');
+    expect(t).not.toMatch(/<label[^>]*>[^]*?\{hint\}[^]*?<\/label>/);
+  });
 });
