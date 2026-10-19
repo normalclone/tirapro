@@ -131,7 +131,7 @@ export function AdminSystemPage() {
 
       {/* Audit log */}
       <section>
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+        <div className="mb-3 flex flex-wrap items-center gap-x-6 gap-y-3">
           <h2 className="text-sm font-semibold text-ink">Nhật ký kiểm toán · gần đây</h2>
           <Tabs
             idBase="audit"
@@ -144,7 +144,7 @@ export function AdminSystemPage() {
             }}
             items={AUDIT_TABS.map((t) => ({ id: t.kind, label: t.label }))}
           />
-          <div className="flex items-center gap-2 text-xs text-muted">
+          <div className="ml-auto flex items-center gap-2 text-xs text-muted">
             <span>Lọc</span>
             <SearchSelect
               value={action}
