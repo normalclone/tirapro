@@ -1,4 +1,4 @@
-import type { KeyboardEvent, PointerEvent, ReactElement } from 'react';
+import { useRef, type KeyboardEvent, type PointerEvent, type ReactElement } from 'react';
 import * as ContextMenu from '@radix-ui/react-context-menu';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { MoreHorizontal } from 'lucide-react';
@@ -7,6 +7,7 @@ import { isTypingTarget } from '@/lib/hotkeys';
 import { useCoarsePointer } from '@/lib/useCoarsePointer';
 import { cn } from '@/lib/utils';
 import { IssueMenuItems, MENU_CONTENT_CLS, type MenuKit } from './IssueMenuItems';
+import { shouldSuppressContextMenu } from './contextGuard';
 import type { MenuSurface } from './issueMenuModel';
 
 const CONTEXT_KIT: MenuKit = {
@@ -60,14 +61,35 @@ export function IssueContextMenu({
   children: ReactElement;
 }) {
   const coarse = useCoarsePointer();
+  // Cử chỉ cuối ('mouse' | 'touch' | 'pen' | 'keyboard') và dòng/thẻ đã mở menu (để trả focus khi huỷ hộp xoá).
+  const lastGesture = useRef<string | null>(null);
+  const origin = useRef<HTMLElement | null>(null);
   return (
     <ContextMenu.Root>
       <ContextMenu.Trigger
         asChild
         disabled={coarse}
+        onPointerDownCapture={(e) => {
+          lastGesture.current = e.pointerType;
+        }}
+        onKeyDownCapture={() => {
+          lastGesture.current = 'keyboard'; // Shift+F10 / phím Menu luôn được mở dù trước đó là cảm ứng
+        }}
         onContextMenuCapture={(e) => {
           // Chặn ở pha bắt: Radix không thấy sự kiện → menu gốc của trình duyệt hiện như thường.
-          if (isTypingTarget(e.target)) e.stopPropagation();
+          if (isTypingTarget(e.target)) {
+            e.stopPropagation();
+            return;
+          }
+          // Máy lai: nhấn giữ cảm ứng/bút đã dành cho dnd-kit → không mở thêm menu (cũng bỏ menu gốc).
+          if (shouldSuppressContextMenu(lastGesture.current)) {
+            e.preventDefault();
+            e.stopPropagation();
+            return;
+          }
+          origin.current = (e.target as Element).closest<HTMLElement>(
+            '[data-nav-item][data-issue-key]',
+          );
         }}
         onPointerDown={(e: PointerEvent) => {
           if (e.pointerType !== 'mouse') e.preventDefault(); // Radix: nhấn giữ cảm ứng/bút = mở menu; dnd-kit đã giữ 250ms
@@ -82,7 +104,13 @@ export function IssueContextMenu({
           onKeyDown={stopKeys}
           aria-label={`Thao tác cho ${issue.key}`}
         >
-          <IssueMenuItems kit={CONTEXT_KIT} issue={issue} surface={surface} onPeek={onPeek} />
+          <IssueMenuItems
+            kit={CONTEXT_KIT}
+            issue={issue}
+            surface={surface}
+            onPeek={onPeek}
+            origin={() => origin.current}
+          />
         </ContextMenu.Content>
       </ContextMenu.Portal>
     </ContextMenu.Root>
@@ -112,10 +140,12 @@ export function IssueRowMenuButton({
   onPeek?: (key: string) => void;
   className?: string;
 }) {
+  const buttonRef = useRef<HTMLButtonElement>(null);
   return (
     <DropdownMenu.Root>
       <DropdownMenu.Trigger asChild>
         <button
+          ref={buttonRef}
           type="button"
           aria-label={`Thao tác cho ${issue.key}`}
           data-no-peek
@@ -138,7 +168,13 @@ export function IssueRowMenuButton({
           aria-label={`Thao tác cho ${issue.key}`}
           className={MENU_CONTENT_CLS}
         >
-          <IssueMenuItems kit={DROPDOWN_KIT} issue={issue} surface={surface} onPeek={onPeek} />
+          <IssueMenuItems
+            kit={DROPDOWN_KIT}
+            issue={issue}
+            surface={surface}
+            onPeek={onPeek}
+            origin={() => buttonRef.current}
+          />
         </DropdownMenu.Content>
       </DropdownMenu.Portal>
     </DropdownMenu.Root>

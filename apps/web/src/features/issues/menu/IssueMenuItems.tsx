@@ -119,12 +119,14 @@ function SimpleItem({
   label,
   issue,
   onPeek,
+  origin,
 }: {
   kit: MenuKit;
   id: MenuItemId;
   label: string;
   issue: IssueDto;
   onPeek?: (key: string) => void;
+  origin?: () => HTMLElement | null;
 }) {
   const navigate = useNavigate();
   const copy = useIssueCopy(issue.key);
@@ -135,7 +137,7 @@ function SimpleItem({
     copyKey: () => copy.copyKey(),
     copyLink: () => copy.copyLink(),
     assignMe: () => runIssueAction({ kind: 'assignMe', issue }),
-    delete: () => runIssueAction({ kind: 'delete', issue }),
+    delete: () => runIssueAction({ kind: 'delete', issue, returnFocus: origin?.() ?? null }),
   };
   return (
     <kit.Item className={cn(ITEM_CLS, id === 'delete' && DANGER_CLS)} onSelect={onSelect[id]}>
@@ -154,12 +156,15 @@ export function IssueMenuItems({
   issue,
   surface,
   onPeek,
+  origin,
 }: {
   kit: MenuKit;
   issue: IssueDto;
   surface: MenuSurface;
   /** Có → bề mặt có panel xem nhanh để mở. */
   onPeek?: (key: string) => void;
+  /** Phần tử đã mở menu (trả focus về đó khi huỷ hộp xác nhận xoá). */
+  origin?: () => HTMLElement | null;
 }) {
   const { entries, nextStatuses, priorities, sprintOptions } = useIssueMenuData(
     issue,
@@ -180,6 +185,7 @@ export function IssueMenuItems({
               label={e.label}
               issue={issue}
               onPeek={onPeek}
+              origin={origin}
             />
           );
         const trigger = (
@@ -188,8 +194,13 @@ export function IssueMenuItems({
             <ChevronRight className="h-4 w-4 text-faint" aria-hidden />
           </kit.SubTrigger>
         );
-        const prio = (id: string | null, name: string) =>
-          runIssueAction({ kind: 'priority', issue, priorityId: id, priorityName: name });
+        const prio = (p: (typeof priorities)[number] | null) =>
+          runIssueAction({
+            kind: 'priority',
+            issue,
+            priority: p ? { ...p, iconKey: null } : null,
+            priorityName: p?.name ?? 'Không đặt',
+          });
         return (
           <kit.Sub key={e.id}>
             {trigger}
@@ -210,19 +221,14 @@ export function IssueMenuItems({
               subContent(
                 kit,
                 <kit.RadioGroup value={issue.priority?.id ?? ''}>
-                  <Choice
-                    kit={kit}
-                    value=""
-                    label="Không đặt"
-                    onSelect={() => prio(null, 'Không đặt')}
-                  />
+                  <Choice kit={kit} value="" label="Không đặt" onSelect={() => prio(null)} />
                   {priorities.map((p) => (
                     <Choice
                       key={p.id}
                       kit={kit}
                       value={p.id}
                       label={p.name}
-                      onSelect={() => prio(p.id, p.name)}
+                      onSelect={() => prio(p)}
                     />
                   ))}
                 </kit.RadioGroup>,

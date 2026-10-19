@@ -17,6 +17,7 @@ import {
   writeIssue,
 } from '@/lib/optimistic';
 import { statusPatch, type TransitionVars } from '@/features/board/api';
+import { recordIssueChange } from './menu/issueOverlay';
 
 export interface DevLinkItem {
   id: string;
@@ -207,6 +208,8 @@ export function useTransitionDetail(projectId: string | undefined) {
         })
         .then((r) => r.data),
     onMutate: (v) => optimisticPatchIssue(qc, projectId, v.id, statusPatch(v), v.key),
+    // Bản thật (kể cả khi Hoàn tác) → lớp phủ kết quả Bộ lọc (kết quả bộ lọc không nằm trong cache dự án).
+    onSuccess: (updated) => recordIssueChange(updated),
     onError: (_e, _v, snap) => rollbackIssue(qc, snap),
     // Chuyển trạng thái có thể đổi resolution/resolvedAt → luôn nạp lại bản thật (hẹp: issue này + danh sách project).
     onSettled: (_r, _e, v, snap) => {

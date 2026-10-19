@@ -114,7 +114,7 @@ export function CardBody({
   peeked?: boolean;
   /** Ghi đè tuỳ chọn hiển thị (xem trước trong popover); bỏ trống = tuỳ chọn của người dùng từ context. */
   display?: CardDisplay;
-  /** Nút "…" (menu công việc) — góc phải trên; bản overlay/xem trước không truyền. */
+  /** Nút "…" (menu công việc) trong hàng mã; bản overlay/xem trước không truyền. */
   menu?: ReactNode;
 }) {
   const fromContext = useContext(CardDisplayContext);
@@ -141,15 +141,7 @@ export function CardBody({
         overlay && 'shadow-lg',
       )}
     >
-      {menu && <span className="absolute right-1 top-1 z-10">{menu}</span>}
-      {/* Cảm ứng: chừa chỗ cho nút "…" luôn hiện ở góc phải trên (chip hạn/điểm lùi sang trái). */}
-      <div
-        className={cn(
-          layout.gap,
-          'flex items-center gap-2',
-          menu && '[@media(pointer:coarse)]:pr-6',
-        )}
-      >
+      <div className={cn(layout.gap, 'flex items-center gap-2')}>
         <IssueTypeBadge name={issue.type.name} color={issue.type.color} />
         <div className="ml-auto flex items-center gap-2">
           <DueBadge issue={issue} warnOnly />
@@ -200,6 +192,8 @@ export function CardBody({
         {issue.severity && isBugType(issue.type) && (
           <SeverityBadge severity={issue.severity} compact />
         )}
+        {/* Nút "…" nằm TRONG hàng mã (khoảng trống giữa mã và người phụ trách): không đè chip hạn/điểm ở hàng trên. */}
+        {menu}
         {fields.assignee && <CardAssignee assignee={issue.assignee} />}
       </div>
 
@@ -297,14 +291,7 @@ export const Card = memo(
         <CardBody
           issue={issue}
           progress={progress}
-          menu={
-            <IssueRowMenuButton
-              issue={issue}
-              surface="board"
-              onPeek={onOpen}
-              className="bg-surface"
-            />
-          }
+          menu={<IssueRowMenuButton issue={issue} surface="board" onPeek={onOpen} />}
           isDragging={isDragging}
           canDrag={canDrag}
           style={style}

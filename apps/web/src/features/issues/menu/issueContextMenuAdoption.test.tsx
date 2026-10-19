@@ -51,6 +51,12 @@ describe('IssueContextMenu (đọc source)', () => {
     expect(s).toContain('disabled={coarse}');
     expect(s).toMatch(/pointerType !== 'mouse'[\s\S]{0,80}preventDefault/);
   });
+  it('máy lai: ghi pointerType ở pha bắt; cử chỉ cuối là cảm ứng/bút → chặn contextmenu; bàn phím luôn được mở', () => {
+    expect(s).toContain('onPointerDownCapture');
+    expect(s).toContain('lastGesture.current = e.pointerType');
+    expect(s).toContain("lastGesture.current = 'keyboard'");
+    expect(s).toContain('shouldSuppressContextMenu(lastGesture.current)');
+  });
   it('nhường menu gốc khi đang gõ (isTypingTarget, pha bắt)', () => {
     expect(s).toContain('onContextMenuCapture');
     expect(s).toContain('isTypingTarget(e.target)');
@@ -89,6 +95,32 @@ describe('IssueMenuItems / host (đọc source)', () => {
   it('ghi gửi version (OCC) của bản mới nhất', () => {
     expect((host.match(/version: latest\.version/g) ?? []).length).toBeGreaterThanOrEqual(2);
   });
+  it('host là DANH SÁCH runner, mỗi runner tự gỡ khi xong (kể cả cửa sổ Hoàn tác); hành động mới không gạt cái cũ', () => {
+    expect(host).toContain('runs.map(');
+    expect(host).not.toContain('(s) => s.current)');
+    expect((host.match(/done\(\)/g) ?? []).length).toBeGreaterThanOrEqual(4);
+    expect(host).toContain('UNDO_WINDOW_MS');
+    expect(host).toContain('SAFETY_MS');
+  });
+  it('ghi thành công → lớp phủ Bộ lọc (không invalidate /search, không refetch)', () => {
+    expect(host).toContain('recordIssueChange');
+    expect(host).toContain('recordIssueDeleted');
+    expect(host).not.toContain('invalidateQueries');
+    expect(host).not.toContain('keys.search');
+    // đổi trạng thái (cả Hoàn tác) ghi ngay ở mutation dùng chung
+    expect(src('features/issues/api.ts')).toContain(
+      'onSuccess: (updated) => recordIssueChange(updated)',
+    );
+  });
+  it('huỷ hộp xoá → trả focus về phần tử đã mở menu (dòng/thẻ hoặc nút "…")', () => {
+    expect(host).toContain('restoreFocus(returnFocus)');
+    expect(host).toMatch(/document\.activeElement[\s\S]{0,120}document\.body/);
+    expect(items).toContain('returnFocus: origin?.() ?? null');
+    const ctx = here('IssueContextMenu.tsx');
+    expect(ctx).toContain('origin={() => origin.current}');
+    expect(ctx).toContain('origin={() => buttonRef.current}');
+    expect(ctx).toMatch(/closest<HTMLElement>\(\s*'\[data-nav-item\]\[data-issue-key\]'/);
+  });
   it('host mount một lần ở AppShell', () => {
     expect(src('components/layout/AppShell.tsx')).toContain('<IssueActionHost />');
   });
@@ -126,11 +158,21 @@ describe('gắn vào các bề mặt (đọc source)', () => {
     expect(card).toContain('PEEKED_ROW_CLS');
     expect(card).toContain('peekedAttrs(peeked)');
   });
-  it('Bảng việc: ô chip hạn/điểm lùi chỗ cho nút "…" trên cảm ứng, bản overlay/xem trước không có nút', () => {
+  it('Bảng việc: nút "…" nằm TRONG hàng mã (không phủ chip hạn/điểm), bản overlay/xem trước không có nút', () => {
     const card = src('features/board/Card.tsx');
-    expect(card).toContain("menu && '[@media(pointer:coarse)]:pr-6'");
+    expect(card).not.toContain('absolute right-1 top-1');
+    expect(card).not.toContain('pointer:coarse)]:pr-6');
+    // `{menu}` đứng trong hàng mã: sau SeverityBadge, trước khối người phụ trách
+    expect(card).toMatch(/<SeverityBadge[\s\S]*?\{menu\}[\s\S]*?<CardAssignee/);
     expect(src('features/board/BoardDnd.tsx')).not.toContain('menu=');
     expect(src('features/board/CardDisplayPopover.tsx')).not.toContain('menu=');
+  });
+  it('Bộ lọc: phủ thay đổi lên danh sách đang hiện (không refetch), bỏ lớp phủ khi đổi nguồn', () => {
+    const page = src('features/saved-filters/FiltersPage.tsx');
+    expect(page).toContain('applyOverlay(shownSet?.items ?? null, overlay)');
+    expect(page).toMatch(
+      /clearIssueOverlay\(\);\s*return clearIssueOverlay;[\s\S]{0,40}\[active\]/,
+    );
   });
   it('Bộ lọc: bấm trơn vẫn xem nhanh / Cmd-bấm tab mới (rowPeekProps nguyên vẹn), chuột phải không phải click', () => {
     const s = src('features/saved-filters/ResultsTable.tsx');

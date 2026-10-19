@@ -79,8 +79,6 @@ export const keys = {
   },
 
   search: {
-    /** Tiền tố chung của mọi kết quả `/search` (JQL, bộ lọc) — để làm mới sau khi sửa việc từ nơi khác. */
-    all: ['search'] as const,
     jql: (jql: string) => ['search', jql] as const,
     validate: (jql: string) => ['search-validate', jql] as const,
     quick: (q: string, limit = 8) => ['quick-search', q, limit] as const,

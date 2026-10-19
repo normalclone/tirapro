@@ -54,6 +54,11 @@ import {
   type SavedFilter,
 } from './api';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
+import {
+  applyOverlay,
+  clearIssueOverlay,
+  useIssueOverlayStore,
+} from '@/features/issues/menu/issueOverlay';
 
 type BuilderMode = 'simple' | 'jql';
 
@@ -143,7 +148,17 @@ export function FiltersPage() {
     () => (baseResults ? (more ? appendResults(baseResults, more) : baseResults) : null),
     [baseResults, more],
   );
-  const shownResults: IssueDto[] | null = shownSet?.items ?? null;
+  // Thay đổi từ menu công việc (đổi trạng thái/ưu tiên/người, xoá) phủ lên danh sách ĐANG HIỆN mà không refetch: `baseResults`
+  // và `more` giữ nguyên → không về trang 1, không mất các trang "Tải thêm". Đổi nguồn thì bỏ lớp phủ.
+  const overlay = useIssueOverlayStore((s) => s.entries);
+  const shownResults: IssueDto[] | null = useMemo(
+    () => applyOverlay(shownSet?.items ?? null, overlay),
+    [shownSet, overlay],
+  );
+  useEffect(() => {
+    clearIssueOverlay();
+    return clearIssueOverlay;
+  }, [active]);
 
   // Đổi nguồn hoặc kết quả GỐC (chạy lại) → về trang 1. KHÔNG theo `shownResults`: "Tải thêm" nối vào đó và phải giữ trang.
   useEffect(() => {
