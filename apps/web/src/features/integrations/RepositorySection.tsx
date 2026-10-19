@@ -20,7 +20,7 @@ import { SectionCard } from '@/components/ui/SectionCard';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 
 /** Icon "kho mã" — chồng logo GitHub + GitLab để gợi ý nhóm nguồn. */
-export function RepoStackIcon() {
+function RepoStackIcon() {
   return (
     <span className="flex items-center" aria-hidden>
       <PlatformLogo platform="GITHUB" size={16} />

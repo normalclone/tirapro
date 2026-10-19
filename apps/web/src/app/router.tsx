@@ -80,6 +80,16 @@ const FiltersPage = lazy(() =>
 const IntegrationsPage = lazy(() =>
   import('@/features/integrations/IntegrationsPage').then((m) => ({ default: m.IntegrationsPage })),
 );
+const IntegrationsIndexRedirect = lazy(() =>
+  import('@/features/integrations/IntegrationsPage').then((m) => ({
+    default: m.IntegrationsIndexRedirect,
+  })),
+);
+const IntegrationSection = lazy(() =>
+  import('@/features/integrations/IntegrationsPage').then((m) => ({
+    default: m.IntegrationSection,
+  })),
+);
 const WorkflowSettingsPage = lazy(() =>
   import('@/features/workflow-settings/WorkflowSettingsPage').then((m) => ({
     default: m.WorkflowSettingsPage,
@@ -329,7 +339,17 @@ export const router = createBrowserRouter([
           { index: true, element: <ConnectIndexRedirect /> },
           {
             element: <RequireAccess rule={NAV_RULES.connectIntegrations} who="quản trị viên" />,
-            children: [{ path: 'integrations', element: <IntegrationsPage /> }],
+            children: [
+              {
+                path: 'integrations',
+                element: <IntegrationsPage />,
+                children: [
+                  // Liên kết cũ `/connect/integrations?section=digest` rơi vào index rồi chuyển tới route con.
+                  { index: true, element: <IntegrationsIndexRedirect /> },
+                  { path: ':section', element: <IntegrationSection /> },
+                ],
+              },
+            ],
           },
           { path: 'automation', element: <AutomationPage /> },
         ],

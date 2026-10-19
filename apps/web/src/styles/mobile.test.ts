@@ -56,8 +56,9 @@ describe('mobile nền chung', () => {
     ));
   it('dải menu phụ cuộn ngang có dấu hiệu còn nội dung', () => {
     for (const f of [
-      // Settings/Manage/Connect không còn dải chip (mobile = danh sách mục "bước vào", SubNavLayout); còn lại 2 nơi.
-      'features/integrations/IntegrationsPage.tsx',
+      // Settings/Manage/Connect không còn dải chip (mobile = danh sách mục "bước vào", SubNavLayout);
+      // Tích hợp dùng hàng tab theo route (LinkTabs); còn lại Cấu hình dự án (T10).
+      'components/ui/LinkTabs.tsx',
       'features/project-config/ProjectConfigPage.tsx',
     ])
       expect(src(f), f).toMatch(/scroll-fade-x/);

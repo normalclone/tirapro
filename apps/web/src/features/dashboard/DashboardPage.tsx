@@ -193,7 +193,7 @@ function AdminOverview() {
         <span className="flex items-center gap-3">
           {canDigest && (
             <Link
-              to="/connect/integrations?section=digest"
+              to="/connect/integrations/digest"
               className="inline-flex items-center gap-1 rounded-sm text-xs font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
             >
               <CalendarClock className="h-3.5 w-3.5" aria-hidden />
