@@ -73,6 +73,8 @@ Status category (Jira): TODO / IN_PROGRESS / DONE.
 | `--danger`          | `oklch(0.55 0.20 25)`   | `oklch(0.66 0.19 25)`  | lỗi/xóa (đỏ)                                                                                      |
 | `--info`            | `var(--primary)`        | `var(--primary)`       | thông tin                                                                                         |
 
+Khi in ấn, `--warning-fill` dùng giá trị của chế độ sáng (`oklch(0.55 0.11 75)`) dù màn hình đang ở chế độ tối.
+
 Priority ramp (highest→lowest): `danger` → `oklch(0.65 0.17 45)` (cam) → `warning` →
 `status-progress` → `faint`. Hiển thị kèm icon mũi tên, không chỉ màu.
 

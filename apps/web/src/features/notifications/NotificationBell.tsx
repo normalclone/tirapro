@@ -5,6 +5,7 @@ import { AtSign, Bell, CheckCheck, UserPlus } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { QueryError } from '@/components/ui/QueryError';
 import { EmptyState } from '@/components/ui/primitives';
+import { useAuth } from '@/stores/auth';
 import { TabPanel, Tabs } from '@/components/ui/Tabs';
 import {
   useMarkAllRead,
@@ -31,8 +32,9 @@ const EMPTY_ICON: Record<BellTab, JSX.Element> = {
 };
 
 export function NotificationBell() {
+  const userId = useAuth((s) => s.user?.id);
   const [open, setOpen] = useState(false);
-  const [tab, setTab] = useState<BellTab>(readBellTab);
+  const [tab, setTab] = useState<BellTab>(() => readBellTab(userId));
   // Chỉ tab đang mở truy vấn (và chỉ khi popover mở): không tải cả ba tab.
   const query = useNotificationsPopover(tab, open);
   const items = query.data ?? [];
@@ -43,7 +45,7 @@ export function NotificationBell() {
 
   function selectTab(next: BellTab) {
     setTab(next);
-    writeBellTab(next);
+    writeBellTab(userId, next);
   }
 
   const badge = unread > 9 ? '9+' : String(unread);
@@ -124,7 +126,7 @@ export function NotificationBell() {
                 <EmptyState size="compact" icon={EMPTY_ICON[tab]} title={bellEmptyText(tab)} />
               </div>
             ) : (
-              <ul className="max-h-96 overflow-y-auto py-1">
+              <ul className="max-h-[calc(100dvh-14rem)] overflow-y-auto py-1">
                 {items.map((n) => (
                   <NotificationRow key={n.id} item={n} dense onActivate={() => activate(n)} />
                 ))}

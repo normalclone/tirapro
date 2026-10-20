@@ -31,20 +31,23 @@ export function parseBellTab(raw: string | null | undefined): BellTab {
   return BELL_TABS.some((t) => t.id === raw) ? (raw as BellTab) : 'all';
 }
 
-const STORAGE_KEY = 'tirapro:bellTab:v1';
+/** Khoá theo người dùng — hai tài khoản dùng chung trình duyệt không lẫn tab (như rail/swimlane). */
+export const bellTabKey = (userId: string) => `tirapro:bellTab:v1:${userId}`;
 
-/** Tab dùng lần cuối (localStorage có thể bị chặn/ném lỗi → `all`). */
-export function readBellTab(): BellTab {
+/** Tab dùng lần cuối (chưa biết người dùng / localStorage bị chặn hoặc ném lỗi → `all`). */
+export function readBellTab(userId: string | null | undefined): BellTab {
+  if (!userId) return 'all';
   try {
-    return parseBellTab(window.localStorage.getItem(STORAGE_KEY));
+    return parseBellTab(window.localStorage.getItem(bellTabKey(userId)));
   } catch {
     return 'all';
   }
 }
 
-export function writeBellTab(tab: BellTab): void {
+export function writeBellTab(userId: string | null | undefined, tab: BellTab): void {
+  if (!userId) return;
   try {
-    window.localStorage.setItem(STORAGE_KEY, tab);
+    window.localStorage.setItem(bellTabKey(userId), tab);
   } catch {
     // trình duyệt chặn dữ liệu site: bỏ qua, tab chỉ không được nhớ
   }

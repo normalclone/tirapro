@@ -1,10 +1,13 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   actorDisplay,
   BELL_TABS,
   bellEmptyText,
   notificationsHref,
+  bellTabKey,
   parseBellTab,
+  readBellTab,
+  writeBellTab,
 } from './bellTabs';
 import type { NotificationItem } from './api';
 
@@ -56,5 +59,47 @@ describe('actorDisplay — avatar chỉ khi biết người làm (có tên)', ()
   it('không có người làm (hệ thống/sprint) hoặc thiếu tên (người đã xoá) → null: dùng ô icon như cũ', () => {
     expect(actorDisplay(item({ actorId: null }))).toBeNull();
     expect(actorDisplay(item({ payload: {} }))).toBeNull();
+  });
+});
+
+describe('tab nhớ theo người dùng', () => {
+  function stubStorage() {
+    const store = new Map<string, string>();
+    vi.stubGlobal('window', {
+      localStorage: {
+        getItem: (k: string) => store.get(k) ?? null,
+        setItem: (k: string, v: string) => void store.set(k, v),
+      },
+    });
+    return store;
+  }
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('khoá chứa id người dùng', () => {
+    expect(bellTabKey('u1')).toBe('tirapro:bellTab:v1:u1');
+    expect(bellTabKey('u1')).not.toBe(bellTabKey('u2'));
+  });
+  it('hai người dùng chung trình duyệt không lẫn tab', () => {
+    stubStorage();
+    writeBellTab('u1', 'mentioned');
+    writeBellTab('u2', 'assigned');
+    expect(readBellTab('u1')).toBe('mentioned');
+    expect(readBellTab('u2')).toBe('assigned');
+    expect(readBellTab('u3')).toBe('all');
+  });
+  it('chưa biết người dùng → all và không ghi', () => {
+    const store = stubStorage();
+    writeBellTab(undefined, 'assigned');
+    expect(store.size).toBe(0);
+    expect(readBellTab(undefined)).toBe('all');
+  });
+  it('localStorage ném lỗi → all, không ném', () => {
+    vi.stubGlobal('window', {
+      get localStorage(): never {
+        throw new Error('blocked');
+      },
+    });
+    expect(readBellTab('u1')).toBe('all');
+    expect(() => writeBellTab('u1', 'mentioned')).not.toThrow();
   });
 });

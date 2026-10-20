@@ -99,6 +99,19 @@ describe('NotificationBell (nguồn)', () => {
   it('popover không tràn màn hình hẹp', () => {
     expect(src).toMatch(/max-w-\[calc\(100vw-/);
   });
+  it('danh sách giới hạn chiều cao theo viewport, không cố định 24rem', () => {
+    expect(src).toMatch(/max-h-\[calc\(100dvh-14rem\)\]/);
+    expect(src).not.toMatch(/max-h-96/);
+  });
+  it('tab nhớ theo id người dùng từ useAuth', () => {
+    expect(src).toMatch(/useAuth\(\(s\) => s\.user\?\.id\)/);
+    expect(src).toMatch(/readBellTab\(userId\)/);
+    expect(src).toMatch(/writeBellTab\(userId, next\)/);
+  });
+  it('DESIGN.md ghi in ấn dùng giá trị sáng của --warning-fill', () => {
+    const design = readFileSync(join(__dirname, '..', '..', '..', '..', '..', 'DESIGN.md'), 'utf8');
+    expect(design).toMatch(/--warning-fill[^\n]*in ấn|in ấn[^\n]*--warning-fill/);
+  });
   it('tab nhớ bằng localStorage bọc try/catch', () => {
     const t = read('features/notifications/bellTabs.ts');
     expect(t).toMatch(/try \{/);
