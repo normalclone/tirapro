@@ -20,7 +20,7 @@ describe('toastReplace — thay hẳn toast cùng id (sonner gộp {...cũ, ...m
     const [msg, data] = error.mock.calls[0] as [string, Record<string, unknown>];
     expect(msg).toBe('Lỗi');
     expect(data.id).toBe('t1');
-    for (const k of ['action', 'description', 'onDismiss', 'onAutoClose']) {
+    for (const k of ['action', 'description', 'duration', 'onDismiss', 'onAutoClose']) {
       expect(k in data).toBe(true); // khoá PHẢI có mặt (spread của khoá undefined mới ghi đè được)
       expect(data[k]).toBeUndefined();
     }

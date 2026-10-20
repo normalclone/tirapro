@@ -53,6 +53,7 @@ import { emptyHomeActions, personaOf, type HomeAction } from '@/lib/persona';
 import { useCreateIssueModal } from '@/stores/createIssue';
 import { openReportIssue } from '@/stores/reportIssue';
 import { useAuth } from '@/stores/auth';
+import { useCan } from '@/features/projects/permissions';
 import { DelayedSpinner, EmptyState, Skeleton } from '@/components/ui/primitives';
 import { DueBadge } from '@/components/ui/DueBadge';
 import { dueState } from '@/lib/dueDate';
@@ -110,8 +111,7 @@ function useNow(): Date {
 
 export function DashboardPage() {
   const user = useAuth((s) => s.user);
-  const can = useAuth((s) => s.can);
-  const isAdmin = can('workspace:admin') || user?.isSystemAdmin === true;
+  const isAdmin = useAuth((s) => s.can('workspace:admin')) || user?.isSystemAdmin === true;
 
   const now = useNow();
 
@@ -842,7 +842,7 @@ function PersonalOverview() {
 /** "Việc của tôi" trống: nút hành động đúng vai (dev → nhận việc, tester → báo lỗi, BA/PO/SM → viết yêu cầu). */
 function PersonalEmptyState({ projects }: { projects: { key: string }[] }) {
   const navigate = useNavigate();
-  const can = useAuth((s) => s.can);
+  const can = useCan(); // phản ứng khi quyền workspace đổi
   const workspaceId = useAuth((s) => s.workspaceId);
   const memberships = useAuth((s) => s.memberships);
   const openCreate = useCreateIssueModal((s) => s.openCreate);

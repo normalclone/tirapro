@@ -60,8 +60,7 @@ function sortRoles(roles: RoleDto[]): RoleDto[] {
 }
 
 export function RolesPage() {
-  const can = useAuth((s) => s.can);
-  const canManage = can('member:manage');
+  const canManage = useAuth((s) => s.can('member:manage'));
   const rolesQuery = useRoles();
   const { data: roles } = rolesQuery;
 

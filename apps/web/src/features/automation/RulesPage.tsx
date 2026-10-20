@@ -46,8 +46,7 @@ const dateTime = fmtDateTime;
  * Cần quyền `automation:manage` (quy tắc cả workspace cần quyền cấp workspace).
  */
 export function RulesPage() {
-  const can = useAuth((s) => s.can);
-  const canManageWorkspace = can('automation:manage');
+  const canManageWorkspace = useAuth((s) => s.can('automation:manage'));
   const { data: projects } = useProjects();
   // Quản trị cấp workspace thấy tất cả (không tra quyền từng dự án); người chỉ quản trị một dự án bắt đầu từ dự án đầu tiên
   // CÓ quyền — tra quyền theo từng đợt nhỏ thay vì bắn request cho mọi dự án.

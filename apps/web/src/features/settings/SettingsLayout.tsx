@@ -17,7 +17,7 @@ import { NAV_RULES, useVisibleItems, type NavRule } from '@/lib/navAccess';
 import { APP_NAV_LABELS, SETTINGS_LABELS } from '@/lib/navLabels';
 import { SubNavLayout } from '@/components/layout/SubNavLayout';
 import type { SubNavGroup } from '@/components/layout/subNavModel';
-import { useAuth } from '@/stores/auth';
+import { useCan } from '@/features/projects/permissions';
 
 /** Cài đặt được chia nhóm để dễ tìm: chung → con người → cách làm việc → nâng cao. */
 const SETTINGS_GROUPS: {
@@ -108,7 +108,7 @@ const SETTINGS_GROUPS: {
 ];
 
 export function SettingsLayout() {
-  const can = useAuth((s) => s.can);
+  const can = useCan(); // phản ứng khi quyền workspace đổi
   const permitted = useVisibleItems(SETTINGS_GROUPS.flatMap((g) => g.items));
   // Lọc quyền/luật vai trò TRƯỚC khi đưa cho SubNavLayout (rail và danh sách mobile dùng chung kết quả này).
   const groups: SubNavGroup[] = SETTINGS_GROUPS.map((g) => ({

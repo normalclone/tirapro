@@ -424,8 +424,7 @@ function GoalsSkeleton() {
 
 /** MỤC TIÊU & KẾT QUẢ THEN CHỐT (OKR) — nhóm theo kỳ, mỗi mục tiêu là một khối có tiến độ riêng. */
 export function GoalsPage() {
-  const can = useAuth((s) => s.can);
-  const canManage = can('goal:manage');
+  const canManage = useAuth((s) => s.can('goal:manage'));
 
   const [period, setPeriod] = useState('');
   const [projectId, setProjectId] = useState('');

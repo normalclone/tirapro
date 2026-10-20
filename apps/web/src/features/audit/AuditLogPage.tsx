@@ -97,8 +97,7 @@ function AuditFilterBar({
 
 /** Cài đặt → Nhật ký quản trị: ai đã làm gì với vai trò, thành viên, tích hợp, tài khoản. Chỉ quản trị workspace. */
 export function AuditLogPage() {
-  const can = useAuth((s) => s.can);
-  const allowed = can('workspace:admin');
+  const allowed = useAuth((s) => s.can('workspace:admin'));
   const [filters, setFilters] = useState<AuditFilterInput>(EMPTY_FILTERS);
   const query = useMemo(() => toAuditQuery(filters), [filters]);
   const log = useAuditLog(query, allowed);
