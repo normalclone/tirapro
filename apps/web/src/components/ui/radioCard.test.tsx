@@ -135,7 +135,7 @@ describe('015b · thay các khối lặp bằng RadioCard', () => {
   const SITES = [
     'features/projects/CreateProjectModal.tsx',
     'features/backlog/CompleteSprintDialog.tsx',
-    'features/dashboards/ShareDialog.tsx',
+    'features/sharing/SharePicker.tsx',
     'features/board/BoardSettingsDialog.tsx', // 2 nhóm: swimlane + loại bảng
     'features/issues/TransitionDialog.tsx',
   ];
@@ -145,9 +145,9 @@ describe('015b · thay các khối lặp bằng RadioCard', () => {
       expect(s).toContain("from '@/components/ui/RadioCard'");
       expect(s).not.toContain('type="radio"');
     });
-  it('BoardSettingsDialog thay đủ 2 nhóm; ShareDialog giữ SearchSelect lồng qua children', () => {
+  it('BoardSettingsDialog thay đủ 2 nhóm; SharePicker (dùng chung cho hộp chia sẻ) giữ SearchSelect lồng qua children', () => {
     expect(read('features/board/BoardSettingsDialog.tsx').match(/<RadioCard\b/g)?.length).toBe(2);
-    const share = read('features/dashboards/ShareDialog.tsx');
+    const share = read('features/sharing/SharePicker.tsx');
     expect(share).toMatch(/children:/);
     expect(share).toContain('Dự án được chia sẻ');
     expect(share).toContain('Nhóm được chia sẻ');

@@ -138,6 +138,36 @@ export function useCreateFilter() {
   });
 }
 
+export interface UpdateFilterInput {
+  id: string;
+  name?: string;
+  jql?: string;
+  visibility?: FilterVisibility;
+  /** `null` = bỏ dự án đã gắn (mức khác "Dự án"). */
+  sharedProjectId?: string | null;
+}
+
+/** Thân PATCH /filters/:id: bỏ `id` và mọi trường không đổi (máy chủ coi `undefined` là không sửa; `null` là xoá dự án). */
+export function buildFilterPatch(input: UpdateFilterInput): Omit<UpdateFilterInput, 'id'> {
+  const { id: _id, ...rest } = input;
+  return Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== undefined));
+}
+
+/** Sửa bộ lọc đã lưu — hiện dùng để đổi phạm vi chia sẻ (`visibility`/`sharedProjectId`) sau khi tạo. Chỉ chủ (403 nếu khác). */
+export function useUpdateFilter() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: UpdateFilterInput) =>
+      (await api.patch<SavedFilter>(`/filters/${input.id}`, buildFilterPatch(input))).data,
+    onSuccess: (updated) => {
+      qc.setQueryData<SavedFilter[]>(keys.filters.all, (list) =>
+        list?.map((f) => (f.id === updated.id ? updated : f)),
+      );
+      void qc.invalidateQueries({ queryKey: keys.filters.all });
+    },
+  });
+}
+
 export function useDeleteFilter() {
   const qc = useQueryClient();
   return useMutation({

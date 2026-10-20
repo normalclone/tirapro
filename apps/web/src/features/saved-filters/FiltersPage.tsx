@@ -9,18 +9,27 @@ import {
   type ComponentProps,
 } from 'react';
 import { DocsLink } from '@/components/ui/DocsLink';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import type { UseQueryResult } from '@tanstack/react-query';
-import { Bookmark, ChevronDown, Filter as FilterIcon, Play, Plus, Trash2 } from 'lucide-react';
+import {
+  Bookmark,
+  ChevronDown,
+  Filter as FilterIcon,
+  Play,
+  Plus,
+  Share2,
+  Trash2,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import type { IssueDto } from '@tirapro/types';
-import { Button } from '@/components/ui/Button';
+import { Button, buttonVariants } from '@/components/ui/Button';
 import { useOpenSession } from '@/lib/useOpenSession';
 import { Dialog } from '@/components/ui/Dialog';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { useConfirm } from '@/components/ui/useConfirm';
 import { Input } from '@/components/ui/Input';
 import { Badge, EmptyState, Skeleton } from '@/components/ui/primitives';
+import { StatusPanel } from '@/components/ui/StatusPanel';
 import { PageFrame } from '@/components/layout/PageFrame';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { RailLayout } from '@/components/layout/RailLayout';
@@ -43,6 +52,8 @@ import {
   type ResultSet,
 } from './resultPaging';
 import { QueryBuilder } from './QueryBuilder';
+import { FilterShareDialog } from './FilterShareDialog';
+import { resolveRouteFilter } from './filterShare';
 import {
   useCreateFilter,
   useDeleteFilter,
@@ -69,6 +80,10 @@ const VISIBILITY_LABEL: Record<FilterVisibility, string> = {
   WORKSPACE: 'Cả tổ chức',
   PROJECT: 'Dự án',
 };
+
+/** Nút thao tác ở cuối hàng bộ lọc: hiện khi rê/focus; trên màn cảm ứng (không có rê) luôn hiện và đủ lớn để chạm. */
+const ROW_ACTION_CLS =
+  'h-7 w-7 shrink-0 text-muted opacity-0 transition-opacity motion-reduce:transition-none focus-visible:opacity-100 group-hover:opacity-100 [@media(pointer:coarse)]:h-9 [@media(pointer:coarse)]:w-9 [@media(pointer:coarse)]:opacity-100';
 
 const PLACEHOLDER = 'project = DEMO AND status = "In Progress" ORDER BY created DESC';
 
@@ -112,6 +127,11 @@ export function FiltersPage() {
   const [createInitialJql, setCreateInitialJql] = useState('');
   const [searchParams] = useSearchParams();
   const urlJql = searchParams.get('jql')?.trim() ?? '';
+  // `/filters/:id` — liên kết tới một bộ lọc đã lưu (nút "Sao chép liên kết" của hộp chia sẻ): nạp và chạy bộ lọc đó.
+  const { id: routeId } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  // Bộ lọc đang mở hộp "Chia sẻ" (null = đóng).
+  const [shareTarget, setShareTarget] = useState<SavedFilter | null>(null);
 
   // Ô nhập JQL nhanh (ad-hoc) trong khu nội dung.
   const [jqlDraft, setJqlDraft] = useState('');
@@ -123,6 +143,8 @@ export function FiltersPage() {
   const deleteFilter = useDeleteFilter();
   const confirm = useConfirm();
   const runFilter = useRunFilter();
+  const routeFilter = resolveRouteFilter(savedFilters, routeId);
+  const appliedRouteId = useRef<string | null>(null);
 
   // Bản đồ projectId -> projectKey để điều hướng về bảng của issue.
   const projectKeyById = useMemo(() => {
@@ -227,9 +249,37 @@ export function FiltersPage() {
     }
   }
 
+  // Đường dẫn có :id → nạp & chạy bộ lọc đó MỘT lần cho mỗi id (đổi id thì nạp lại; bỏ id thì quên để lần sau còn nạp).
+  const loadAndRunSavedRef = useRef(loadAndRunSaved);
+  loadAndRunSavedRef.current = loadAndRunSaved;
+  const routeFound = routeFilter.state === 'found' ? routeFilter.filter : null;
+  useEffect(() => {
+    if (!routeId) {
+      appliedRouteId.current = null;
+      return;
+    }
+    if (!routeFound || appliedRouteId.current === routeFound.id) return;
+    appliedRouteId.current = routeFound.id;
+    void loadAndRunSavedRef.current(routeFound);
+  }, [routeId, routeFound]);
+
+  /** Địa chỉ trên thanh trình duyệt luôn khớp nội dung: rời bộ lọc của đường dẫn (chạy JQL khác/xoá) thì bỏ `:id`. */
+  function leaveRouteFilter() {
+    if (routeId) navigate('/filters', { replace: true });
+  }
+
+  function selectSaved(f: SavedFilter) {
+    if (routeId === f.id || (!routeId && active.kind === 'filter' && active.filter.id === f.id)) {
+      void loadAndRunSaved(f); // cùng bộ lọc: chạy lại
+    } else {
+      navigate(`/filters/${f.id}`, { replace: true }); // effect ở trên nạp & chạy
+    }
+  }
+
   function runAdhoc() {
     const jql = jqlDraft.trim();
     if (!jql) return;
+    leaveRouteFilter();
     setResults(null);
     setActive({ kind: 'adhoc', jql });
     setAdhocJql(jql);
@@ -237,6 +287,7 @@ export function FiltersPage() {
 
   /** Gợi ý "Bỏ <điều kiện> → N việc": nạp JQL đã bỏ bớt vào ô JQL rồi chạy luôn, đưa con trỏ về ô để chỉnh tiếp. */
   function applyJql(jql: string) {
+    leaveRouteFilter();
     setJqlDraft(jql);
     setResults(null);
     setActive({ kind: 'adhoc', jql });
@@ -249,6 +300,7 @@ export function FiltersPage() {
     try {
       await deleteFilter.mutateAsync(f.id);
       toast.success('Đã xoá bộ lọc.');
+      if (routeId === f.id) leaveRouteFilter();
       if (active.kind === 'filter' && active.filter.id === f.id) {
         setActive({ kind: 'none' });
         setResults(null);
@@ -332,8 +384,9 @@ export function FiltersPage() {
                 activeId={activeFilterId}
                 onSelect={(f) => {
                   setRailOpen(false);
-                  void loadAndRunSaved(f);
+                  selectSaved(f);
                 }}
+                onShare={setShareTarget}
                 onDelete={handleDelete}
                 canManage={canManageFilters}
                 deleting={deleteFilter.isPending ? deleteFilter.variables : undefined}
@@ -385,31 +438,45 @@ export function FiltersPage() {
             }
           />
 
-          <ResultsTable
-            issues={shownResults}
-            loading={isRunning}
-            hasRun={hasRun}
-            error={runError}
-            page={page}
-            onPageChange={setPage}
-            projectKeyById={projectKeyById}
-            onOpen={peek.open}
-            peekedKey={peek.peekKey}
-            hasMore={shownSet?.hasMore ?? false}
-            loadingMore={loadingMore}
-            onLoadMore={() => void loadMore()}
-            scopeKey={active.kind === 'filter' ? `filter:${active.filter.id}` : 'adhoc'}
-            selection={selectionProps}
-            jql={sourceJql}
-            onApplyJql={applyJql}
-            exportJql={
-              active.kind === 'adhoc'
-                ? active.jql
-                : active.kind === 'filter'
-                  ? active.filter.jql
-                  : undefined
-            }
-          />
+          {routeFilter.state === 'missing' && active.kind === 'none' ? (
+            <StatusPanel
+              variant="not-found"
+              headingLevel={2}
+              title="Không tìm thấy bộ lọc"
+              description="Bộ lọc này không tồn tại hoặc bạn không có quyền xem."
+              actions={
+                <Link to="/filters" replace className={buttonVariants({ variant: 'primary' })}>
+                  Xem các bộ lọc khác
+                </Link>
+              }
+            />
+          ) : (
+            <ResultsTable
+              issues={shownResults}
+              loading={isRunning}
+              hasRun={hasRun}
+              error={runError}
+              page={page}
+              onPageChange={setPage}
+              projectKeyById={projectKeyById}
+              onOpen={peek.open}
+              peekedKey={peek.peekKey}
+              hasMore={shownSet?.hasMore ?? false}
+              loadingMore={loadingMore}
+              onLoadMore={() => void loadMore()}
+              scopeKey={active.kind === 'filter' ? `filter:${active.filter.id}` : 'adhoc'}
+              selection={selectionProps}
+              jql={sourceJql}
+              onApplyJql={applyJql}
+              exportJql={
+                active.kind === 'adhoc'
+                  ? active.jql
+                  : active.kind === 'filter'
+                    ? active.filter.jql
+                    : undefined
+              }
+            />
+          )}
         </PageFrame>
 
         {sel.selected.size > 0 && (
@@ -421,6 +488,12 @@ export function FiltersPage() {
             projectKeyById={projectKeyById}
           />
         )}
+
+        <FilterShareDialog
+          filter={shareTarget}
+          canManage={canManageFilters}
+          onClose={() => setShareTarget(null)}
+        />
 
         {canManageFilters && (
           <CreateFilterModal
@@ -510,6 +583,7 @@ function SavedFilterList({
   query,
   activeId,
   onSelect,
+  onShare,
   onDelete,
   canManage,
   deleting,
@@ -517,6 +591,7 @@ function SavedFilterList({
   query: UseQueryResult<SavedFilter[]>;
   activeId: string | null;
   onSelect: (f: SavedFilter) => void;
+  onShare: (f: SavedFilter) => void;
   onDelete: (f: SavedFilter) => void;
   canManage: boolean;
   deleting: string | undefined;
@@ -572,6 +647,15 @@ function SavedFilterList({
                       </Badge>
                     </span>
                   </button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => onShare(f)}
+                    aria-label={`Chia sẻ bộ lọc ${f.name}`}
+                    className={cn(ROW_ACTION_CLS, 'hover:text-ink')}
+                  >
+                    <Share2 className="h-4 w-4" aria-hidden />
+                  </Button>
                   {f.isOwner && canManage && (
                     <Button
                       variant="ghost"
@@ -579,7 +663,7 @@ function SavedFilterList({
                       onClick={() => onDelete(f)}
                       loading={deleting === f.id}
                       aria-label={`Xoá bộ lọc ${f.name}`}
-                      className="h-7 w-7 shrink-0 text-muted opacity-0 transition-opacity hover:text-danger focus-visible:opacity-100 group-hover:opacity-100"
+                      className={cn(ROW_ACTION_CLS, 'hover:text-danger')}
                     >
                       {deleting !== f.id && <Trash2 className="h-4 w-4" aria-hidden />}
                     </Button>
