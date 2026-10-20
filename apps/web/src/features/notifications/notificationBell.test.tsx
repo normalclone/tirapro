@@ -100,7 +100,7 @@ describe('NotificationBell (nguồn)', () => {
     expect(src).toMatch(/max-w-\[calc\(100vw-/);
   });
   it('danh sách giới hạn chiều cao theo viewport, không cố định 24rem', () => {
-    expect(src).toMatch(/max-h-\[calc\(100dvh-14rem\)\]/);
+    expect(src).toContain('max-h-[min(24rem,calc(100dvh-14rem))]');
     expect(src).not.toMatch(/max-h-96/);
   });
   it('tab nhớ theo id người dùng từ useAuth', () => {

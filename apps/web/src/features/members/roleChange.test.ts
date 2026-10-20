@@ -4,6 +4,8 @@ import {
   adminRoleIds,
   applyRolesToMembers,
   beginSave,
+  burstBaseline,
+  roleIdsWith,
   endSave,
   failSave,
   isLastAdmin,
@@ -103,6 +105,7 @@ describe('planRoleChange', () => {
     expect(planRoleChange({ ...base, prev: ['member'], next: ['member', 'viewer'] })).toEqual({
       kind: 'apply',
       next: ['member', 'viewer'],
+      canUndo: true,
     });
   });
   it('admin cuối cùng bị bỏ hết quyền admin → blocked kèm lý do', () => {
@@ -113,23 +116,25 @@ describe('planRoleChange', () => {
   it('admin cuối cùng nhưng vẫn giữ một vai trò admin → apply', () => {
     expect(
       planRoleChange({ ...base, lastAdmin: true, prev: ['admin', 'owner'], next: ['owner'] }),
-    ).toEqual({ kind: 'apply', next: ['owner'] });
+    ).toEqual({ kind: 'apply', next: ['owner'], canUndo: true });
   });
   it('tự bỏ quyền admin của mình (còn admin khác) → confirm', () => {
     expect(planRoleChange({ ...base, isSelf: true, prev: ['admin'], next: ['member'] })).toEqual({
       kind: 'confirm',
       next: ['member'],
+      canUndo: false,
     });
   });
   it('tự đổi vai trò nhưng giữ admin → apply, không hỏi', () => {
     expect(
       planRoleChange({ ...base, isSelf: true, prev: ['admin'], next: ['admin', 'member'] }),
-    ).toEqual({ kind: 'apply', next: ['admin', 'member'] });
+    ).toEqual({ kind: 'apply', next: ['admin', 'member'], canUndo: true });
   });
   it('người khác bị bỏ admin (không phải cuối) → apply, không hỏi', () => {
     expect(planRoleChange({ ...base, prev: ['admin'], next: ['member'] })).toEqual({
       kind: 'apply',
       next: ['member'],
+      canUndo: true,
     });
   });
   it('chặn cứng thắng xác nhận khi vừa là chính mình vừa là admin cuối', () => {
@@ -137,6 +142,55 @@ describe('planRoleChange', () => {
       planRoleChange({ ...base, isSelf: true, lastAdmin: true, prev: ['admin'], next: ['member'] })
         .kind,
     ).toBe('blocked');
+  });
+});
+
+describe('roleIdsWith', () => {
+  it('vai trò có một quyền cụ thể', () => {
+    expect([...roleIdsWith(roles, 'member:manage')]).toEqual(['owner']);
+  });
+});
+
+describe('planRoleChange — Hoàn tác và quyền quản lý thành viên', () => {
+  const MANAGE = roleIdsWith(roles, 'member:manage'); // chỉ 'owner'
+  const base = { adminIds: ADMINS, manageIds: MANAGE, lastAdmin: false };
+  it('người khác đổi vai trò: có Hoàn tác', () => {
+    expect(
+      planRoleChange({ ...base, isSelf: false, prev: ['owner'], next: ['member'] }),
+    ).toMatchObject({ kind: 'apply', canUndo: true });
+  });
+  it('tự đổi nhưng giữ quyền: có Hoàn tác, không hỏi', () => {
+    expect(
+      planRoleChange({ ...base, isSelf: true, prev: ['owner'], next: ['owner', 'member'] }),
+    ).toMatchObject({ kind: 'apply', canUndo: true });
+  });
+  it('tự bỏ quyền admin: hỏi xác nhận và KHÔNG có Hoàn tác (máy chủ đã thu quyền → 403)', () => {
+    expect(planRoleChange({ ...base, isSelf: true, prev: ['admin'], next: ['member'] })).toEqual({
+      kind: 'confirm',
+      next: ['member'],
+      canUndo: false,
+    });
+  });
+  it('tự mất member:manage nhưng còn admin: cũng hỏi và không Hoàn tác', () => {
+    expect(planRoleChange({ ...base, isSelf: true, prev: ['owner'], next: ['admin'] })).toEqual({
+      kind: 'confirm',
+      next: ['admin'],
+      canUndo: false,
+    });
+  });
+  it('người khác mất admin/manage: vẫn Hoàn tác được (người thao tác còn quyền)', () => {
+    expect(
+      planRoleChange({ ...base, isSelf: false, prev: ['owner'], next: ['member'] }),
+    ).toMatchObject({ canUndo: true });
+  });
+});
+
+describe('burstBaseline (Hoàn tác về trước CẢ chuỗi bấm)', () => {
+  it('chưa có baseline → lấy bộ trước lần đổi đầu', () => {
+    expect(burstBaseline(null, ['a'])).toEqual(['a']);
+  });
+  it('đã có baseline → giữ nguyên dù bộ trước lần này khác', () => {
+    expect(burstBaseline(['a'], ['a', 'b'])).toEqual(['a']);
   });
 });
 

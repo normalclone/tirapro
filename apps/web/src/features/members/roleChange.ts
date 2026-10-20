@@ -6,9 +6,25 @@ const WORKSPACE_ADMIN: PermissionKey = 'workspace:admin';
 export const LAST_ADMIN_REASON =
   'Đây là quản trị viên cuối cùng — hãy cấp quyền quản trị cho người khác trước khi bỏ vai trò này';
 
+/** Quyền thao tác trang Thành viên (cùng khoá `PUT /members/:userId/roles` đòi). */
+const MEMBER_MANAGE: PermissionKey = 'member:manage';
+
+/** Id các vai trò có quyền `key`. */
+export function roleIdsWith(
+  roles: readonly { id: string; permissionKeys: PermissionKey[] }[],
+  key: PermissionKey,
+): Set<string> {
+  return new Set(roles.filter((r) => r.permissionKeys.includes(key)).map((r) => r.id));
+}
+
 /** Id các vai trò có quyền quản trị workspace. */
 export function adminRoleIds(roles: readonly { id: string; permissionKeys: PermissionKey[] }[]) {
-  return new Set(roles.filter((r) => r.permissionKeys.includes(WORKSPACE_ADMIN)).map((r) => r.id));
+  return roleIdsWith(roles, WORKSPACE_ADMIN);
+}
+
+/** Id các vai trò có quyền quản lý thành viên. */
+export function manageRoleIds(roles: readonly { id: string; permissionKeys: PermissionKey[] }[]) {
+  return roleIdsWith(roles, MEMBER_MANAGE);
 }
 
 /** Hai bộ vai trò bằng nhau như tập hợp (bỏ qua thứ tự). */
@@ -50,27 +66,42 @@ export function lockedRoleReasons(
 export type RoleChangePlan =
   | { kind: 'noop' }
   | { kind: 'blocked'; reason: string }
-  | { kind: 'confirm'; next: string[] }
-  | { kind: 'apply'; next: string[] };
+  | { kind: 'confirm'; next: string[]; canUndo: boolean }
+  | { kind: 'apply'; next: string[]; canUndo: boolean };
 
 /**
  * Quyết định việc làm với một lần bật/tắt vai trò: không đổi/rỗng → bỏ qua; hạ quản trị viên cuối cùng → chặn (lý do);
- * TỰ bỏ quyền admin của mình → hỏi xác nhận; còn lại lưu ngay.
+ * TỰ mất quyền admin/quản lý thành viên của mình → hỏi xác nhận; còn lại lưu ngay.
+ * `canUndo`: false khi người thao tác tự mất quyền — máy chủ đã thu quyền nên Hoàn tác sẽ bị 403.
  */
 export function planRoleChange(input: {
   prev: readonly string[];
   next: string[];
   adminIds: ReadonlySet<string>;
+  manageIds?: ReadonlySet<string>;
   lastAdmin: boolean;
   isSelf: boolean;
 }): RoleChangePlan {
   const { prev, next, adminIds, lastAdmin, isSelf } = input;
+  const manageIds = input.manageIds ?? new Set<string>();
   if (next.length === 0 || sameRoleSet(prev, next)) return { kind: 'noop' };
-  const hadAdmin = prev.some((id) => adminIds.has(id));
-  const losesAdmin = hadAdmin && !next.some((id) => adminIds.has(id));
+  const loses = (ids: ReadonlySet<string>) =>
+    prev.some((id) => ids.has(id)) && !next.some((id) => ids.has(id));
+  const losesAdmin = loses(adminIds);
   if (losesAdmin && lastAdmin) return { kind: 'blocked', reason: LAST_ADMIN_REASON };
-  if (losesAdmin && isSelf) return { kind: 'confirm', next };
-  return { kind: 'apply', next };
+  if (isSelf && (losesAdmin || loses(manageIds))) return { kind: 'confirm', next, canUndo: false };
+  return { kind: 'apply', next, canUndo: true };
+}
+
+/**
+ * Baseline của một chuỗi bấm: bộ vai trò TRƯỚC lần đổi đầu tiên khi toast còn hiện. Hoàn tác khôi phục về đây
+ * (không chỉ lần bấm cuối). Đã có baseline thì giữ nguyên.
+ */
+export function burstBaseline(
+  baseline: readonly string[] | null,
+  prev: readonly string[],
+): string[] {
+  return [...(baseline ?? prev)];
 }
 
 /** Kế hoạch Hoàn tác: khôi phục bộ `before`; `null` khi không có gì khác hoặc bộ trước rỗng (máy chủ bắt buộc ≥ 1). */

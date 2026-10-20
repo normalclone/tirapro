@@ -21,6 +21,8 @@ interface AuthState {
   }) => Promise<void>;
   logout: () => Promise<void>;
   bootstrap: () => Promise<void>;
+  /** Nạp lại quyền/vai trò từ `/auth/me` (sau khi tự đổi vai trò của mình). Lỗi: giữ nguyên trạng thái. */
+  refreshMe: () => Promise<void>;
   can: (perm: PermissionKey) => boolean;
 }
 
@@ -67,6 +69,15 @@ export const useAuth = create<AuthState>((set, get) => ({
     } catch {
       setAccessToken(null);
       set({ status: 'guest', user: null, workspaceId: null, permissions: [], memberships: [] });
+    }
+  },
+
+  async refreshMe() {
+    if (get().status !== 'authed') return;
+    try {
+      await loadMe(set);
+    } catch {
+      /* mất mạng tạm thời: giữ quyền hiện có, lần nạp sau (đăng nhập/chuyển workspace) sẽ đồng bộ */
     }
   },
 

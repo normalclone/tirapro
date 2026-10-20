@@ -1,11 +1,17 @@
-import { useId } from 'react';
+import { useId, useRef } from 'react';
 import { ChevronDown } from 'lucide-react';
 import type { MemberDto, RoleDto } from '@tirapro/types';
 import { RoleBadge } from '@/components/ui/RoleBadge';
 import { useConfirm } from '@/components/ui/useConfirm';
 import { toast } from 'sonner';
 import { EditRolesPopover } from './EditRolesPopover';
-import { adminRoleIds, isLastAdmin, lockedRoleReasons, planRoleChange } from './roleChange';
+import {
+  adminRoleIds,
+  isLastAdmin,
+  lockedRoleReasons,
+  manageRoleIds,
+  planRoleChange,
+} from './roleChange';
 import { useInlineMemberRoles } from './useInlineMemberRoles';
 
 const ROLE_HINT = 'Vai trò quyết định người này được xem và làm gì ở đây';
@@ -32,7 +38,11 @@ export function MemberRolesCell({
   const user = member.user;
   const clusterId = useId();
   const confirm = useConfirm();
-  const inline = useInlineMemberRoles(user.id, user.displayName, roles);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const inline = useInlineMemberRoles(user.id, user.displayName, roles, {
+    isSelf,
+    focusTrigger: () => triggerRef.current?.focus(),
+  });
 
   const badges =
     member.roles.length > 0 ? (
@@ -55,7 +65,14 @@ export function MemberRolesCell({
   const lastAdmin = isLastAdmin(members, user.id, adminIds);
 
   async function onChange(next: string[]) {
-    const plan = planRoleChange({ prev: currentIds, next, adminIds, lastAdmin, isSelf });
+    const plan = planRoleChange({
+      prev: currentIds,
+      next,
+      adminIds,
+      manageIds: manageRoleIds(roles),
+      lastAdmin,
+      isSelf,
+    });
     if (plan.kind === 'noop') return;
     if (plan.kind === 'blocked') {
       toast.error(plan.reason);
@@ -69,9 +86,12 @@ export function MemberRolesCell({
         confirmLabel: 'Bỏ quyền quản trị',
         destructive: true,
       });
-      if (!ok) return;
+      if (!ok) {
+        triggerRef.current?.focus();
+        return;
+      }
     }
-    void inline.change(currentIds, plan.next);
+    void inline.change(currentIds, plan.next, { canUndo: plan.canUndo });
   }
 
   return (
@@ -86,6 +106,7 @@ export function MemberRolesCell({
         }}
         trigger={
           <button
+            ref={triggerRef}
             type="button"
             aria-label={`Đổi vai trò của ${user.displayName}`}
             aria-describedby={clusterId}

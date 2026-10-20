@@ -27,11 +27,11 @@ import { SectionCard } from '@/components/ui/SectionCard';
  * Gated bằng `member:manage` — trùng với cách MembersPage kiểm tra quyền.
  */
 export function AddMemberPanel() {
-  const can = useAuth((s) => s.can);
+  const canManage = useAuth((s) => s.can('member:manage'));
   const [mode, setMode] = useState<'pick' | 'create'>('pick');
   // Email vừa nhập nhưng đã có tài khoản → chuyển về "chọn người có sẵn" với ô tìm điền sẵn email.
   const [prefillEmail, setPrefillEmail] = useState('');
-  if (!can('member:manage')) return null;
+  if (!canManage) return null;
   return (
     <SectionCard
       icon={<UserPlus className="h-4 w-4" />}

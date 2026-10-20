@@ -126,7 +126,7 @@ export function NotificationBell() {
                 <EmptyState size="compact" icon={EMPTY_ICON[tab]} title={bellEmptyText(tab)} />
               </div>
             ) : (
-              <ul className="max-h-[calc(100dvh-14rem)] overflow-y-auto py-1">
+              <ul className="max-h-[min(24rem,calc(100dvh-14rem))] overflow-y-auto py-1">
                 {items.map((n) => (
                   <NotificationRow key={n.id} item={n} dense onActivate={() => activate(n)} />
                 ))}

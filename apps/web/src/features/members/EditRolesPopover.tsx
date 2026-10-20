@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import * as Popover from '@radix-ui/react-popover';
 import { toast } from 'sonner';
 import type { RoleRefDto } from '@tirapro/types';
@@ -38,6 +38,7 @@ const TITLE_HINT =
  */
 export function EditRolesPopover(props: SaveProps | InstantProps) {
   const [open, setOpen] = useState(false);
+  const contentRef = useRef<HTMLDivElement>(null);
   const { instant } = props;
   const options: RoleOption[] = props.roles.map((r) => ({
     id: r.id,
@@ -49,6 +50,21 @@ export function EditRolesPopover(props: SaveProps | InstantProps) {
       <Popover.Trigger asChild>{props.trigger}</Popover.Trigger>
       <Popover.Portal>
         <Popover.Content
+          ref={contentRef}
+          // Lưu ngay: Radix mặc định focus phần tử đầu (ô tìm) → bật bàn phím cảm ứng mỗi lần chạm. Focus dòng vai trò đầu.
+          onOpenAutoFocus={
+            instant
+              ? (e) => {
+                  e.preventDefault();
+                  // Sau một khung hình: danh sách đã gắn xong (Radix gọi sự kiện này ngay lúc mở).
+                  requestAnimationFrame(() =>
+                    contentRef.current
+                      ?.querySelector<HTMLElement>('[role=option]:not(:disabled)')
+                      ?.focus(),
+                  );
+                }
+              : undefined
+          }
           align="end"
           sideOffset={6}
           className="z-dropdown w-[min(24rem,calc(100vw-2rem))] rounded-lg border border-border bg-surface p-3 shadow-lg outline-none data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95"
@@ -99,6 +115,7 @@ function InstantBody({
           onChange={instant.onChange}
           locked={instant.locked}
           ariaLabel="Vai trò"
+          autoFocusSearch={false}
         />
       </div>
       <div className="mt-3 flex items-center justify-between gap-2">

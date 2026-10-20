@@ -101,6 +101,30 @@ describe('nối dây', () => {
     expect(hook).toMatch(/catch/);
     expect(hook).toMatch(/planUndo\(/);
   });
+  it('trả focus về nút vai trò sau Hoàn tác và sau khi Huỷ xác nhận', () => {
+    expect(cell).toMatch(/triggerRef/);
+    expect(cell).toMatch(/triggerRef\.current\?\.focus\(\)/);
+    expect(read('useInlineMemberRoles.ts')).toMatch(/focusTrigger/);
+  });
+  it('chế độ lưu ngay không tự focus ô tìm (không bật bàn phím cảm ứng)', () => {
+    const pop = read('EditRolesPopover.tsx');
+    expect(pop).toMatch(/autoFocusSearch=\{false\}/);
+  });
+  it('trang Thành viên chọn boolean quyền từ store (không chọn hàm can) để cập nhật khi quyền đổi', () => {
+    const page = read('MembersPage.tsx');
+    expect(page).toMatch(/useAuth\(\(s\) => s\.can\('member:manage'\)\)/);
+    expect(page).not.toMatch(/useAuth\(\(s\) => s\.can\)/);
+  });
+  it('toast không hứa Hoàn tác (canUndo=false) ghi đè action cũ vì sonner gộp theo id; baseline theo chuỗi bấm', () => {
+    const hook = read('useInlineMemberRoles.ts');
+    expect(hook).toMatch(/canUndo === false/);
+    expect(hook).toMatch(/action: undefined/);
+    expect(hook).toMatch(/burstBaseline\(/);
+    expect(hook).toMatch(/onAutoClose/);
+  });
+  it('lưu xong cho CHÍNH MÌNH thì làm mới quyền trong auth store', () => {
+    expect(read('useInlineMemberRoles.ts')).toMatch(/refreshMe\(\)/);
+  });
   it('EditRolesPopover: chế độ lưu ngay dùng RoleChecklist (không lồng dropdown thứ hai); chế độ cũ giữ nút Lưu', () => {
     const pop = read('EditRolesPopover.tsx');
     expect(pop).toMatch(/RoleChecklist/);

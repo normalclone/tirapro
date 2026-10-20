@@ -33,9 +33,9 @@ const STATUS_META: Record<UserStatus, { label: string; className: string }> = {
 type Tab = 'members' | 'teams';
 
 export function MembersPage() {
-  const can = useAuth((s) => s.can);
   const currentUserId = useAuth((s) => s.user?.id);
-  const canManage = can('member:manage');
+  // Chọn ra BOOLEAN (không chọn hàm `can`): trang theo dõi đúng quyền khi `refreshMe` đổi quyền sau tự đổi vai trò.
+  const canManage = useAuth((s) => s.can('member:manage'));
   const [tab, setTab] = useState<Tab>('members');
   const [bulkOpen, setBulkOpen] = useState(false);
   const [memberSearch, setMemberSearch] = useState('');
