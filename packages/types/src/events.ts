@@ -20,6 +20,8 @@ export const DOMAIN_EVENTS = {
   COMMENT_ADDED: 'comment.added',
   COMMENT_UPDATED: 'comment.updated',
   COMMENT_DELETED: 'comment.deleted',
+  // payload { commentId, issueId, projectId, actorId } — thả/bỏ cảm xúc vào bình luận (SAU ghi, chỉ khi có thay đổi thật). KHÔNG sinh Notification.
+  COMMENT_REACTED: 'comment.reacted',
   SPRINT_STARTED: 'sprint.started',
   SPRINT_COMPLETED: 'sprint.completed',
   SPRINT_UPDATED: 'sprint.updated',
@@ -69,6 +71,8 @@ export const WS_EVENTS = {
   COMMENT_ADDED: 'comment:added',
   COMMENT_UPDATED: 'comment:updated',
   COMMENT_DELETED: 'comment:deleted',
+  // payload { commentId, issueId } — chỉ báo "nạp lại"; reactions có trường theo người xem (`mine`) nên KHÔNG nằm trong payload.
+  COMMENT_REACTION: 'comment:reaction',
   SPRINT_UPDATED: 'sprint:updated',
   NOTIFICATION_NEW: 'notification:new',
   PRESENCE_STATE: 'presence:state',

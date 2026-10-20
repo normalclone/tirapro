@@ -3,6 +3,7 @@ import type { QueryClient } from '@tanstack/react-query';
 import type { IssueDto } from '@tirapro/types';
 import type { IssueMovedPayload, IssueSetsChangedPayload } from '@tirapro/shared';
 import { applyIssueSets } from '@/features/issue-meta/patchIssueSets';
+import { hasPendingReactions } from '@/features/issue-edit/commentReactionSave';
 import { keys } from './queryKeys';
 import { queryClient } from './queryClient';
 import { acquireRoom, getSocket } from './socket';
@@ -146,6 +147,16 @@ export function applyCommentChanged(qc: QueryClient, issueId: string) {
   void qc.invalidateQueries({ queryKey: keys.issues.activity(issueId) });
 }
 
+/**
+ * comment:reaction — ai đó thả/bỏ cảm xúc: nạp lại danh sách bình luận (chỉ đó: không sinh hoạt động). Đang có lần thả CỦA MÌNH
+ * chờ ở issue này thì bỏ qua — nạp giữa chừng trả về bản chưa có lần bấm sau của mình làm chip nháy về bản cũ; `onSettled` của
+ * mutation tự nạp lại khi lần cuối xong (và gồm cả thay đổi của người khác).
+ */
+export function applyCommentReaction(qc: QueryClient, issueId: string) {
+  if (hasPendingReactions(qc, issueId)) return;
+  void qc.invalidateQueries({ queryKey: keys.issues.comments(issueId) });
+}
+
 /** project:ranks_rebalanced — rank + version của cả dự án đã đổi: nạp lại danh sách và chi tiết đang giữ (tránh OCC sai). */
 export function applyRanksRebalanced(qc: QueryClient, projectId: string) {
   void qc.invalidateQueries({ queryKey: keys.issues.byProject(projectId) });
@@ -207,6 +218,7 @@ export function useProjectRealtime(projectId: string | undefined) {
       const issueId = 'comment' in p ? p.comment.issueId : p.issueId;
       applyCommentChanged(qc, issueId);
     };
+    const onReaction = (p: { issueId: string }) => applyCommentReaction(qc, p.issueId);
     const onSprint = (p: { sprintId: string; projectId: string }) => {
       if (p.projectId !== projectId) return;
       void qc.invalidateQueries({ queryKey: keys.sprints.byProject(projectId) });
@@ -223,6 +235,7 @@ export function useProjectRealtime(projectId: string | undefined) {
     s.on('comment:added', onComment);
     s.on('comment:updated', onComment);
     s.on('comment:deleted', onComment);
+    s.on('comment:reaction', onReaction);
     s.on('sprint:updated', onSprint);
 
     return () => {
@@ -235,6 +248,7 @@ export function useProjectRealtime(projectId: string | undefined) {
       s.off('comment:added', onComment);
       s.off('comment:updated', onComment);
       s.off('comment:deleted', onComment);
+      s.off('comment:reaction', onReaction);
       s.off('sprint:updated', onSprint);
       leave();
     };

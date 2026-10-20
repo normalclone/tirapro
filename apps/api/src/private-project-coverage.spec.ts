@@ -47,6 +47,7 @@ const PROJECT_MODELS = new Set([
   'milestone',
   'allocation',
   'comment',
+  'commentReaction',
   'issueLink',
   'issueWatcher',
   'issueDevLink',
@@ -795,6 +796,10 @@ describe('dự án riêng tư — R2: route controller truyền người dùng v
       'digests/digests.controller.ts::DigestsController.list -> digests.list',
       'dev-links/dev-links.controller.ts::DevLinksController.listRepositories -> devLinks.listRepositories',
       'custom-fields/custom-fields.controller.ts::CustomFieldsController.list -> customFields.listDefinitions',
+      // 077: danh sách bình luận cần người xem (`reactions[].mine`); route thả/bỏ cảm xúc truyền người thả
+      'comments/comments.controller.ts::CommentsController.list -> comments.list',
+      'comments/comments.controller.ts::CommentsController.react -> comments.setReaction',
+      'comments/comments.controller.ts::CommentsController.unreact -> comments.setReaction',
     ])
       expect(passes(k), `route đọc đã khoá không còn truyền người dùng: ${k}`).toBe(true);
   });

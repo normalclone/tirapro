@@ -197,6 +197,18 @@ describe('archived-coverage — dự án lưu trữ là chỉ đọc', () => {
     expect(missing).toEqual([]);
   });
 
+  it('thả/bỏ cảm xúc (077): setReaction ghi qua createMany/deleteMany và được guard lưu trữ (không nằm trong ngoại lệ nào)', () => {
+    const src = readFileSync(join(MODULES, 'comments/comments.service.ts'), 'utf8');
+    const m = parseMethods(src).find((x) => x.name === 'setReaction');
+    expect(m, 'không tìm thấy CommentsService.setReaction').toBeDefined();
+    expect(m!.body).toMatch(/commentReaction\.createMany\(/);
+    expect(m!.body).toMatch(/commentReaction\.deleteMany\(/);
+    expect(m!.body).toMatch(/assertIssueWritable\(/);
+    expect(unguardedWriteMethods(src)).not.toContain('setReaction');
+    expect('comments/comments.service.ts' in EXEMPT).toBe(false);
+    expect(Object.keys(EXEMPT_METHODS).some((k) => k.startsWith('comments/'))).toBe(false);
+  });
+
   it('EXEMPT không chứa service đã có guard hoặc không còn tồn tại (giữ danh sách sạch)', () => {
     const stale = Object.keys(EXEMPT).filter((k) => {
       const f = files.find((x) => rel(x) === k);

@@ -372,6 +372,16 @@ export interface BulkUpdateIssuesResult {
   conflicts: Array<{ id: ID; version: number }>;
 }
 
+/** Một emoji trên một bình luận. `mine` và `users` theo người xem → chỉ có ở `GET …/comments`, KHÔNG phát qua WS. */
+export interface CommentReactionDto {
+  emoji: string;
+  count: number;
+  /** Người đang xem đã thả emoji này. */
+  mine: boolean;
+  /** Tối đa 5 người thả sớm nhất (hiện trong tooltip); `count` mới là tổng. */
+  users: Array<{ id: ID; displayName: string }>;
+}
+
 export interface CommentDto {
   id: ID;
   issueId: ID;
@@ -382,6 +392,8 @@ export interface CommentDto {
   parentId: ID | null;
   isEdited: boolean;
   version: number;
+  /** Chỉ có ở danh sách bình luận (theo người xem); phản hồi tạo/sửa và payload WS không mang. */
+  reactions?: CommentReactionDto[];
   createdAt: ISODate;
   updatedAt: ISODate;
 }

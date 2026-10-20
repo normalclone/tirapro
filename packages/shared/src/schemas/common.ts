@@ -45,6 +45,14 @@ export const updateCommentSchema = z.object({
   version: z.number().int('Phiên bản không hợp lệ'),
 });
 
+/**
+ * Bộ emoji thả vào bình luận — CỐ ĐỊNH 6 (RC24; không 👎 trong công cụ làm việc, không emoji tự do: an toàn kích thước/XSS,
+ * thống kê dễ). Thứ tự này cũng là thứ tự chip và ô chọn. Đổi bộ = sửa hằng này (cột DB không ràng buộc).
+ */
+export const COMMENT_REACTION_EMOJIS = ['👍', '❤️', '🎉', '😄', '🙏', '👀'] as const;
+export type CommentReactionEmoji = (typeof COMMENT_REACTION_EMOJIS)[number];
+export const commentReactionEmojiSchema = z.enum(COMMENT_REACTION_EMOJIS);
+
 /** Kiểm tra cú pháp JQL — chỉ nhận chuỗi, không đọc dữ liệu. */
 export const validateJqlSchema = z.object({
   jql: z.string().max(5_000, 'JQL quá dài').optional(),

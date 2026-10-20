@@ -1,8 +1,10 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Put } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import {
+  commentReactionEmojiSchema,
   createCommentSchema,
   updateCommentSchema,
+  type CommentReactionEmoji,
   type CreateCommentInput,
   type UpdateCommentInput,
 } from '@tirapro/shared';
@@ -23,8 +25,12 @@ export class CommentsController {
   @Permissions(PERMISSIONS.PROJECT_VIEW)
   @ProjectRef('issue', 'issueId')
   @Get('issues/:issueId/comments')
-  async list(@WorkspaceId() workspaceId: string, @Param('issueId') issueId: string) {
-    return this.comments.list(workspaceId, issueId);
+  async list(
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
+    @Param('issueId') issueId: string,
+  ) {
+    return this.comments.list(workspaceId, issueId, user.id);
   }
 
   @Permissions(PERMISSIONS.COMMENT_CREATE)
@@ -63,5 +69,31 @@ export class CommentsController {
     const canDeleteAny =
       user.isSystemAdmin || (user.permissions?.includes(PERMISSIONS.COMMENT_DELETE) ?? false);
     return this.comments.softDelete(workspaceId, user.id, id, canDeleteAny);
+  }
+
+  // Thả/bỏ cảm xúc: ai XEM được việc đều thả được (kể cả chỉ-xem) — KHÔNG đòi COMMENT_CREATE. Dự án lưu trữ → 422 ở service.
+  // PUT/DELETE (đặt trạng thái rõ ràng) thay vì "toggle": thử lại một request không lật ngược kết quả.
+  @Permissions(PERMISSIONS.PROJECT_VIEW)
+  @ProjectRef('comment', 'id')
+  @Put('comments/:id/reactions/:emoji')
+  async react(
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Param('emoji', new ZodValidationPipe(commentReactionEmojiSchema)) emoji: CommentReactionEmoji,
+  ) {
+    return this.comments.setReaction(workspaceId, user.id, id, emoji, true);
+  }
+
+  @Permissions(PERMISSIONS.PROJECT_VIEW)
+  @ProjectRef('comment', 'id')
+  @Delete('comments/:id/reactions/:emoji')
+  async unreact(
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Param('emoji', new ZodValidationPipe(commentReactionEmojiSchema)) emoji: CommentReactionEmoji,
+  ) {
+    return this.comments.setReaction(workspaceId, user.id, id, emoji, false);
   }
 }

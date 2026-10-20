@@ -1,7 +1,17 @@
 import { Injectable } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { DOMAIN_EVENTS, type AutomationEventMeta, type CommentDto } from '@tirapro/types';
-import { extractMentionIds, MENTION_LIMIT, type CreateCommentInput } from '@tirapro/shared';
+import {
+  DOMAIN_EVENTS,
+  type AutomationEventMeta,
+  type CommentDto,
+  type CommentReactionDto,
+} from '@tirapro/types';
+import {
+  extractMentionIds,
+  MENTION_LIMIT,
+  type CommentReactionEmoji,
+  type CreateCommentInput,
+} from '@tirapro/shared';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { toUserRefDto } from '../../common/mappers/user.mapper';
@@ -13,6 +23,7 @@ import {
 import { assertIssueWritable } from '../../common/project-writable';
 import { resolveMentionedMembers } from '../../common/mentions';
 import { ProjectAccessService } from '../rbac/project-access.service';
+import { summarizeReactions } from './comment-reactions';
 
 const commentInclude = { author: true } satisfies Prisma.CommentInclude;
 type CommentRow = Prisma.CommentGetPayload<{ include: typeof commentInclude }>;
@@ -40,14 +51,71 @@ export class CommentsService {
     return userIds.filter((_, i) => ok[i]);
   }
 
-  async list(workspaceId: string, issueId: string): Promise<CommentDto[]> {
+  /** `viewerId` để tính `reactions[].mine` (trường theo người xem — vì vậy KHÔNG nằm trong DTO phát qua WS). */
+  async list(workspaceId: string, issueId: string, viewerId: string): Promise<CommentDto[]> {
     await this.requireIssue(workspaceId, issueId);
     const rows = await this.prisma.comment.findMany({
       where: { issueId, deletedAt: null },
       include: commentInclude,
       orderBy: { createdAt: 'asc' },
     });
-    return rows.map((r) => this.toDto(r));
+    const reactions = await this.reactionsFor(
+      rows.map((r) => r.id),
+      viewerId,
+    );
+    return rows.map((r) => ({ ...this.toDto(r), reactions: reactions.get(r.id) ?? [] }));
+  }
+
+  /** MỘT truy vấn cho cả trang bình luận (không N+1); rỗng thì khỏi truy vấn. Chỉ gọi với id đã thuộc một issue đã qua guard. */
+  private async reactionsFor(
+    commentIds: string[],
+    viewerId: string,
+  ): Promise<Map<string, CommentReactionDto[]>> {
+    if (commentIds.length === 0) return new Map();
+    const rows = await this.prisma.commentReaction.findMany({
+      where: { commentId: { in: commentIds } },
+      select: {
+        commentId: true,
+        emoji: true,
+        userId: true,
+        createdAt: true,
+        user: { select: { id: true, displayName: true } },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+    return summarizeReactions(rows, viewerId);
+  }
+
+  /**
+   * Bật (`on`) / tắt cảm xúc của CHÍNH người gọi trên một bình luận — idempotent: bật = INSERT … ON CONFLICT DO NOTHING
+   * (`createMany` + `skipDuplicates`, an toàn khi hai tab bấm cùng lúc), tắt = `deleteMany` của đúng (comment, user, emoji).
+   * Lặp lại không lỗi và không phát sự kiện thừa. Trả danh sách tóm tắt MỚI của bình luận (bản máy chủ xác nhận để FE rollback).
+   * Quyền: ai XEM được việc (route `PROJECT_VIEW` + `@ProjectRef('comment')`, người ngoài dự án riêng tư → 404); dự án lưu
+   * trữ là chỉ đọc (422). KHÔNG tạo thông báo (tránh spam — quyết định sản phẩm: reaction chỉ hiện trên bình luận + realtime).
+   */
+  async setReaction(
+    workspaceId: string,
+    userId: string,
+    commentId: string,
+    emoji: CommentReactionEmoji,
+    on: boolean,
+  ): Promise<CommentReactionDto[]> {
+    const current = await this.requireComment(workspaceId, commentId);
+    await assertIssueWritable(this.prisma, current.issueId);
+    const { count } = on
+      ? await this.prisma.commentReaction.createMany({
+          data: [{ commentId, userId, emoji }],
+          skipDuplicates: true,
+        })
+      : await this.prisma.commentReaction.deleteMany({ where: { commentId, userId, emoji } });
+    if (count > 0)
+      this.events.emit(DOMAIN_EVENTS.COMMENT_REACTED, {
+        commentId,
+        issueId: current.issueId,
+        projectId: current.issue.projectId,
+        actorId: userId,
+      });
+    return (await this.reactionsFor([commentId], userId)).get(commentId) ?? [];
   }
 
   async create(
