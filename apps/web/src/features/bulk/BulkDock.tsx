@@ -163,6 +163,7 @@ export function BulkDock({
         'flex flex-wrap items-center gap-2 rounded-xl border border-border bg-surface px-4 py-2.5 shadow-lg',
         'animate-in fade-in slide-in-from-bottom-2 duration-200 motion-reduce:animate-none',
         placement === 'sticky' ? STICKY_CLS : DOCKED_CLS,
+        PEEK_CLEAR_CLS,
         compact && 'flex-nowrap gap-1.5 px-3',
       )}
     >
@@ -356,6 +357,15 @@ const STICKY_CLS = 'sticky bottom-0 z-sticky mx-6 lg:mr-24';
  */
 const DOCKED_CLS =
   'mx-3 mb-3 shrink-0 sm:mx-4 lg:mr-24 lg:mb-[max(0.75rem,env(safe-area-inset-bottom))]';
+
+/**
+ * Ngăn xem nhanh dưới `lg` (768–1023px) bám mép phải (định vị cố định, `z-sticky`) rộng tới 30rem, cùng tầng với dock và nằm sau trong DOM
+ * nên che nó. Khi ngăn đang mở (`aside[data-peek-panel]`; dưới `md` là sheet modal, không có aside) dock chừa đúng bề rộng ngăn
+ * ở mép phải để vẫn thấy và dùng được ngay cạnh ngăn; các nhóm điều khiển tự xuống hàng trong chỗ còn lại. Từ `lg` ngăn nằm trong
+ * luồng nên không cần.
+ */
+const PEEK_CLEAR_CLS =
+  '[body:has(aside[data-peek-panel])_&]:max-lg:mr-[calc(min(30rem,100vw)+0.75rem)]';
 
 type Layout = 'row' | 'stack';
 /** Dưới `sm` (640px): dock gọn một hàng + sheet "…". */

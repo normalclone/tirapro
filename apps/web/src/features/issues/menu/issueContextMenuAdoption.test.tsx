@@ -79,7 +79,9 @@ describe('IssueContextMenu (đọc source)', () => {
 
 describe('IssueMenuItems / host (đọc source)', () => {
   const items = here('IssueMenuItems.tsx');
-  const host = here('IssueActionHost.tsx');
+  // Runner nằm ở IssueActionRunners (nạp lười); IssueActionHost chỉ giữ kho yêu cầu.
+  const host = here('IssueActionRunners.tsx');
+  const shell = here('IssueActionHost.tsx');
   it('mục ghi giao cho host, không tự gọi mutation; không dùng mutate(…, {onError}) từng lần gọi', () => {
     expect(items).toContain('runIssueAction');
     expect(items).not.toMatch(/useUpdateIssue|useMutation|\.mutate\(/);
@@ -98,8 +100,8 @@ describe('IssueMenuItems / host (đọc source)', () => {
     expect((host.match(/version: latest\.version/g) ?? []).length).toBeGreaterThanOrEqual(2);
   });
   it('host là DANH SÁCH runner, mỗi runner tự gỡ khi xong (kể cả cửa sổ Hoàn tác); hành động mới không gạt cái cũ', () => {
-    expect(host).toContain('runs.map(');
-    expect(host).not.toContain('(s) => s.current)');
+    expect(shell).toContain('runs.map(');
+    expect(shell).not.toContain('(s) => s.current)');
     expect((host.match(/done\(\)/g) ?? []).length).toBeGreaterThanOrEqual(4);
     // hẹn giờ gỡ do hàm thuần `runnerLifecycle` quyết định (hộp mở/đang chạy → huỷ hẹn)
     expect(host).toContain('runnerLifecycle(');
@@ -126,6 +128,27 @@ describe('IssueMenuItems / host (đọc source)', () => {
     expect(ctx).toContain('origin={() => origin.current}');
     expect(ctx).toContain('origin={() => buttonRef.current}');
     expect(ctx).toMatch(/closest<HTMLElement>\(\s*'\[data-nav-item\]\[data-issue-key\]'/);
+  });
+  it('M-perf: host eager chỉ giữ kho + nạp LƯỜI runner (không kéo hộp chuyển trạng thái/markdown/chọn người vào entry)', () => {
+    expect(shell).toMatch(/lazy\(\(\) => import\('\.\/IssueActionRunners'\)\)/);
+    expect(shell).toContain('<Suspense');
+    // không import tĩnh bất cứ thứ gì nặng
+    expect(shell).not.toMatch(/from '\.\.\/useIssueTransitions'/);
+    expect(shell).not.toMatch(/from '@\/features\/(issues\/api|backlog\/api|issue-edit\/api)'/);
+    expect(shell).not.toContain("from './IssueActionRunners'");
+    // yêu cầu nằm sẵn trong kho tới khi runner gỡ nó → hành động đầu không mất khi chunk còn đang tải
+    expect(shell).toContain('useIssueActionStore');
+  });
+  it('M-perf: tải chunk lỗi → toast + gỡ yêu cầu (biên riêng từng yêu cầu), không làm sập khung', () => {
+    expect(shell).toContain('getDerivedStateFromError');
+    expect(shell).toMatch(
+      /componentDidCatch[\s\S]{0,200}toast\.error[\s\S]{0,120}finishIssueAction\(this\.props\.seq\)/,
+    );
+    expect(shell).toMatch(/<RunnerBoundary key=\{req\.seq\} seq=\{req\.seq\}>/);
+  });
+  it('StrictMode/macrotask: runner vẫn khởi động bằng useOnce (setTimeout 0, đúng một lần)', () => {
+    expect(host).toContain('window.setTimeout(() => ref.current(), 0)');
+    expect(host).toContain('export default function IssueActionRunner');
   });
   it('host mount một lần ở AppShell', () => {
     expect(src('components/layout/AppShell.tsx')).toContain('<IssueActionHost />');
@@ -186,6 +209,14 @@ describe('gắn vào các bề mặt (đọc source)', () => {
     expect(card).toMatch(/menu && '\[@media\(pointer:coarse\)\]:pr-10'/);
     // vẫn 24px + ::after 44px (class gốc không đổi)
     expect(ROW_MENU_BUTTON_CLS).toContain('[@media(pointer:coarse)]:after:-inset-2.5');
+  });
+  it('Cây (cảm ứng): vùng ::after 44px của "…" không đè liên kết tiêu đề — nút lùi khỏi liên kết bằng đúng phần ::after nhô ra', () => {
+    const tree = src('features/tree/TreePage.tsx');
+    const call = /<IssueRowMenuButton[^>]*surface="tree"[^>]*\/>/.exec(tree)?.[0] ?? '';
+    expect(call).toContain('className={TREE_MENU_COARSE_CLS}');
+    const cls = /const TREE_MENU_COARSE_CLS =\s*'([^']+)'/.exec(tree)?.[1] ?? '';
+    // gap-2 (8px) của hàng + ml-1 (4px) = 12px ≥ 10px của after:-inset-2.5
+    expect(cls).toContain('[@media(pointer:coarse)]:ml-1');
   });
   it('Bộ lọc: phủ thay đổi lên danh sách đang hiện (không refetch), bỏ lớp phủ khi đổi nguồn', () => {
     const page = src('features/saved-filters/FiltersPage.tsx');

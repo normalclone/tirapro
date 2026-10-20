@@ -103,7 +103,7 @@ function EmailOption({
             >
               Gửi qua email
             </label>
-            <p id={hintId} className="text-xs text-faint [@media(pointer:coarse)]:-mt-2">
+            <p id={hintId} className="text-xs text-faint">
               {hint}
             </p>
           </div>

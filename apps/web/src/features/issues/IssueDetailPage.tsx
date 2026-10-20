@@ -717,6 +717,7 @@ export function IssueDetailPage() {
                             type="button"
                             disabled={transitionPending}
                             onClick={() => requestTransition(o.id)}
+                            aria-keyshortcuts={i < 9 ? String(i + 1) : undefined}
                             title={`${
                               o.label !== o.name
                                 ? `${o.label} → “${o.name}”`

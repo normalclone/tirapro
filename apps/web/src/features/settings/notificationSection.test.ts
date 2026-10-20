@@ -57,4 +57,10 @@ describe('NotificationSection (023 + 355)', () => {
     expect(t).toContain('aria-describedby');
     expect(t).not.toMatch(/<label[^>]*>[^]*?\{hint\}[^]*?<\/label>/);
   });
+  it('cảm ứng: gợi ý KHÔNG kéo ngược lên đè hộp nhãn (mobile:audit text-overlap) — nhãn có py-2.5 nên không dùng -mt-*', () => {
+    const t = s();
+    const hint = /<p id=\{hintId\}\s+className="([^"]+)"/.exec(t)?.[1] ?? '';
+    expect(hint).not.toBe('');
+    expect(hint).not.toMatch(/-mt-/);
+  });
 });

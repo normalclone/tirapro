@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Prisma } from '@prisma/client';
 import type { PreviewMatchInput } from '@tirapro/shared';
-import { BOUNDED_COUNT_SLOTS } from '../../common/bounded-count';
+import { boundedCountSlotsSemaphore } from '../../common/bounded-count';
 import { countSelected, type Row } from '../../common/testing/where-matcher';
 import { RulePreviewService } from './rule-preview.service';
 
@@ -218,10 +218,11 @@ describe('RulePreviewService — tài nguyên', () => {
     await expect(run(service, { conditions: [status('s1')] })).rejects.toThrow('ECONNREFUSED');
   });
 
-  it('dùng CHUNG trần kết nối với gợi ý nới bộ lọc: hết 3 chỗ thì chờ ~5s rồi count null (không chờ vô hạn)', async () => {
+  it('dùng CHUNG trần kết nối với gợi ý nới bộ lọc: hết mọi chỗ thì chờ ~5s rồi count null (không chờ vô hạn)', async () => {
     vi.useFakeTimers();
+    const sem = boundedCountSlotsSemaphore();
     const held = await Promise.all(
-      [1, 2, 3].map(() => BOUNDED_COUNT_SLOTS.acquire(Date.now() + 1e6)),
+      Array.from({ length: sem.capacity }, () => sem.acquire(Date.now() + 1e6)),
     );
     const { service, tx } = make();
     const p = run(service, { conditions: [status('s1')] });

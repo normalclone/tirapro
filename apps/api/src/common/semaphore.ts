@@ -14,6 +14,11 @@ export class Semaphore {
     this.free = max;
   }
 
+  /** Tổng số chỗ. */
+  get capacity(): number {
+    return this.max;
+  }
+
   /** Số chỗ đang bị giữ. */
   get inFlight(): number {
     return this.max - this.free;

@@ -236,6 +236,12 @@ function RootDropZone({ active }: { active: boolean }) {
   );
 }
 
+/**
+ * Cảm ứng: vùng bấm 44px của "…" (`::after` nhô ra 10px mỗi phía) nằm ngay sau liên kết tiêu đề (khoảng cách hàng gap-2 = 8px)
+ * nên đè 2px lên cuối liên kết — chạm mép cuối tiêu đề sẽ mở menu thay vì xem nhanh. Lùi nút thêm 4px (8 + 4 ≥ 10).
+ */
+const TREE_MENU_COARSE_CLS = '[@media(pointer:coarse)]:ml-1';
+
 function TreeRow({
   node,
   progress,
@@ -357,7 +363,12 @@ function TreeRow({
             )}
             <DueBadge issue={issue} warnOnly className="shrink-0" />
           </Link>
-          <IssueRowMenuButton issue={issue} surface="tree" onPeek={onOpen} />
+          <IssueRowMenuButton
+            issue={issue}
+            surface="tree"
+            onPeek={onOpen}
+            className={TREE_MENU_COARSE_CLS}
+          />
         </div>
 
         <TreeMetaCells issue={issue} cell={cell} ranks={ranks} />
