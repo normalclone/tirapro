@@ -29,7 +29,8 @@ function make(claude: Record<string, unknown>) {
     project: { findFirst: vi.fn().mockResolvedValue({ id: 'p1', key: 'TP', name: 'Tirapro' }) },
   };
   const base = { modelPrimary: 'primary-m', modelFast: 'fast-m', available: () => true };
-  return new AiService(prisma as never, { ...base, ...claude } as never);
+  const search = { similarIssueIds: vi.fn().mockResolvedValue([]) };
+  return new AiService(prisma as never, { ...base, ...claude } as never, search as never);
 }
 
 describe('AiService', () => {

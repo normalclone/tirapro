@@ -1,8 +1,9 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import type {
   AiCapabilities,
   AiGeneratedIssue,
   AiGenerateIssuesResult,
+  AiSource,
   AiSummaryResult,
   AiSuggestResult,
   GenerateIssuesInput,
@@ -13,6 +14,12 @@ import { NotFoundAppException } from '../../common/exceptions/app.exception';
 import { ClaudeService } from './claude.service';
 import { MAX_ITEMS, guessIssueType, splitRequirementsAll } from './heuristic-split';
 import { truncateCodePoints } from '../search/vi-text';
+import { SearchService } from '../search/search.service';
+import { TRIAGE_VISIBLE } from '../../common/triage-visibility';
+
+/** Số nguồn tối đa hiện cùng một gợi ý; lấy dư từ full-text để còn loại chính việc đó và việc chưa qua Triage. */
+const MAX_SOURCES = 3;
+const SOURCE_CANDIDATES = 8;
 
 /** JSON Schema cho structured outputs: đề xuất issues. */
 const GENERATE_ISSUES_SCHEMA: Record<string, unknown> = {
@@ -63,9 +70,12 @@ export function wrap(tag: string, content: string): string {
 
 @Injectable()
 export class AiService {
+  private readonly logger = new Logger(AiService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly claude: ClaudeService,
+    private readonly search: SearchService,
   ) {}
 
   capabilities(): AiCapabilities {
@@ -180,6 +190,11 @@ export class AiService {
     const issueCtx =
       `Công việc ${issue.key}: ${issue.summary}\nLoại: ${issue.type?.name ?? '—'}\n` +
       `Mô tả: ${stripText(issue.description) || '(trống)'}`;
+    // Nguồn do MÁY CHỦ tính (full-text, theo quyền người xem) — độc lập với AI nên heuristic cũng có. Mô hình chỉ viết lời
+    // giải thích; danh sách nguồn trả về luôn là `similar.sources`, không bao giờ lấy từ đầu ra của mô hình.
+    const similar = await this.similarSources(workspaceId, userId, issue);
+    const sources = similar.sources;
+    const similarCtx = similar.context;
 
     const { data: out, reason } = await this.claude.extract<{
       priority?: string;
@@ -190,9 +205,13 @@ export class AiService {
       model: this.claude.modelFast,
       system:
         'Bạn là trợ lý Agile. Dựa trên nội dung công việc, đề xuất mức ưu tiên (Highest..Lowest) và ' +
-        'story points (Fibonacci: 1,2,3,5,8,13). Giải thích ngắn gọn bằng tiếng Việt.' +
+        'story points (Fibonacci: 1,2,3,5,8,13). Giải thích ngắn gọn bằng tiếng Việt. ' +
+        'Có thể tham khảo các việc tương tự (nếu có) trong thẻ <issue> thứ hai, nhưng không tự trích dẫn hay nêu mã công việc: ' +
+        'danh sách nguồn do hệ thống hiển thị riêng.' +
         DATA_NOT_INSTRUCTIONS,
-      prompt: wrap('issue', issueCtx),
+      prompt: similarCtx
+        ? `${wrap('issue', issueCtx)}\n\nCác việc tương tự đã có trong dự án (chỉ để tham khảo):\n${wrap('issue', similarCtx)}`
+        : wrap('issue', issueCtx),
       schema: SUGGEST_SCHEMA,
       maxTokens: 600,
     });
@@ -202,6 +221,7 @@ export class AiService {
         priority: out.priority,
         storyPoints: out.storyPoints,
         rationale: out.rationale,
+        sources,
       };
     }
 
@@ -220,7 +240,72 @@ export class AiService {
       priority,
       storyPoints,
       rationale: `Đề xuất theo từ khoá & độ phức tạp ước lượng (heuristic — chưa bật AI).`,
+      sources,
     };
+  }
+
+  /**
+   * Tối đa 3 việc GIỐNG (không gồm chính việc này) làm bằng chứng cho gợi ý. Đi qua `SearchService.similarIssueIds` với
+   * `viewerId` = người gọi (KHÔNG null = ngữ cảnh hệ thống): dự án riêng tư người đó không thấy → 404 → trả rỗng, gợi ý vẫn chạy.
+   * Chỉ lấy việc còn sống, cùng không gian + dự án, đã qua Triage. Lỗi tìm kiếm nào cũng chỉ làm mất phần nguồn (ghi log).
+   * `context`: văn bản các việc đó để đưa vào prompt (mã, tiêu đề, ưu tiên, điểm) — người gọi bọc trong `<issue>`.
+   */
+  private async similarSources(
+    workspaceId: string,
+    viewerId: string,
+    issue: { id: string; projectId: string; summary: string },
+  ): Promise<{ sources: AiSource[]; context: string }> {
+    const none = { sources: [], context: '' };
+    try {
+      const ids = (
+        await this.search.similarIssueIds(
+          workspaceId,
+          issue.projectId,
+          issue.summary,
+          viewerId,
+          SOURCE_CANDIDATES,
+        )
+      )
+        .filter((id) => id !== issue.id)
+        .slice(0, SOURCE_CANDIDATES);
+      if (ids.length === 0) return none;
+      const rows = await this.prisma.issue.findMany({
+        where: {
+          id: { in: ids },
+          workspaceId,
+          projectId: issue.projectId,
+          deletedAt: null,
+          ...TRIAGE_VISIBLE,
+        },
+        select: {
+          id: true,
+          key: true,
+          summary: true,
+          storyPoints: true,
+          priority: { select: { name: true } },
+        },
+      });
+      const byId = new Map(rows.map((r) => [r.id, r]));
+      const picked = ids
+        .map((id) => byId.get(id))
+        .filter((r): r is NonNullable<typeof r> => !!r)
+        .slice(0, MAX_SOURCES);
+      return {
+        sources: picked.map((r) => ({ issueId: r.id, key: r.key, summary: r.summary })),
+        context: picked
+          .map(
+            (r) =>
+              `- ${r.key}: ${r.summary} (ưu tiên: ${r.priority?.name ?? '—'}, điểm: ${r.storyPoints ?? '—'})`,
+          )
+          .join('\n'),
+      };
+    } catch (err) {
+      if (!(err instanceof NotFoundAppException))
+        this.logger.warn(
+          `Tìm việc giống cho gợi ý AI thất bại — bỏ phần nguồn: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      return none;
+    }
   }
 
   private async loadIssue(workspaceId: string, issueId: string) {

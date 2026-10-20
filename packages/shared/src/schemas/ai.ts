@@ -41,6 +41,16 @@ export interface AiSummaryResult {
   summary: string;
 }
 
+/**
+ * Một nguồn dẫn chứng của gợi ý: việc GIỐNG đã có trong dự án. Do MÁY CHỦ tính (full-text theo quyền người xem), không phải
+ * do mô hình trích — mô hình chỉ viết lời giải thích nên không thể bịa mã công việc.
+ */
+export interface AiSource {
+  issueId: string;
+  key: string;
+  summary: string;
+}
+
 export interface AiSuggestResult {
   source: 'claude' | 'heuristic';
   reason?: AiFallbackReason;
@@ -48,6 +58,8 @@ export interface AiSuggestResult {
   storyPoints?: number;
   assigneeHint?: string;
   rationale: string;
+  /** Tối đa 3 việc giống (không gồm chính việc này), đã lọc theo quyền xem; `[]` khi không có/không xem được. Có cả ở chế độ heuristic. */
+  sources?: AiSource[];
 }
 
 export interface AiCapabilities {
