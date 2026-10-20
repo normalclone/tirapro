@@ -178,6 +178,15 @@ export const testRuleSchema = z.object({
   issueKey: z.string().trim().min(1, 'Hãy nhập mã công việc, ví dụ DEMO-TASK-1'),
 });
 
+/**
+ * Xem trước "khớp N việc hiện có" của danh sách điều kiện (chưa lưu quy tắc). `projectId` trong body: guard phân quyền
+ * đọc đúng trường này (`@ProjectRef('body', 'projectId')`); không có = quy tắc cấp workspace.
+ */
+export const previewMatchSchema = z.object({
+  projectId: z.string().min(1).optional(),
+  conditions: z.array(ruleConditionSchema).max(20),
+});
+
 export const listRulesQuerySchema = z.object({ projectId: z.string().optional() });
 
 export type RuleTriggerValue = (typeof RULE_TRIGGERS)[number];
@@ -187,3 +196,4 @@ export type TriggerConfig = z.infer<typeof triggerConfigSchema>;
 export type CreateRuleInput = z.infer<typeof createRuleSchema>;
 export type UpdateRuleInput = z.infer<typeof updateRuleSchema>;
 export type TestRuleInput = z.infer<typeof testRuleSchema>;
+export type PreviewMatchInput = z.infer<typeof previewMatchSchema>;

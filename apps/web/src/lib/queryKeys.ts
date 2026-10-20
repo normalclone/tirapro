@@ -279,6 +279,9 @@ export const keys = {
     rulesRoot: ['automation', 'rules'] as const,
     rules: (scope: string) => ['automation', 'rules', scope] as const,
     ruleRuns: (ruleId: string) => ['automation', 'rule-runs', ruleId] as const,
+    /** Số việc hiện có khớp điều kiện đang soạn (132b); `conditions` = JSON của danh sách điều kiện. */
+    preview: (projectId: string, conditions: string) =>
+      ['automation', 'preview', projectId, conditions] as const,
   },
 
   reports: {

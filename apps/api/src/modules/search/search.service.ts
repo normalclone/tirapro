@@ -16,7 +16,7 @@ import {
 } from '@tirapro/shared';
 import { BusinessRuleException } from '../../common/exceptions/app.exception';
 import { mapLimit } from '../../common/map-limit';
-import { Semaphore } from '../../common/semaphore';
+import { BOUNDED_COUNT_DEADLINE_MS, boundedIssueCount } from '../../common/bounded-count';
 import type { PageResult } from '../../common/dto/page-result';
 import { TRIAGE_VISIBLE } from '../../common/triage-visibility';
 import { PrismaService } from '../../infra/prisma/prisma.service';
@@ -73,18 +73,9 @@ const EXISTENCE_FIELDS: ReadonlySet<JqlFieldName> = new Set([
 ]);
 const MAX_LISTED_VALUES = 8;
 
-/**
- * Gợi ý nới bộ lọc (092). Mỗi lần đếm giữ MỘT kết nối DB (giao dịch tương tác) tới 3 giây, mà throttle tính theo IP chứ
- * không theo người dùng, nên cần trần chung: tối đa `RELAX_GLOBAL_SLOTS` lần đếm cùng lúc trong CẢ tiến trình (mọi
- * request, mọi người dùng — chừa kết nối cho phần còn lại của API), mỗi request tối đa `RELAX_CONCURRENCY`, và mỗi request
- * có hạn tổng `RELAX_DEADLINE_MS`: lần đếm chưa kịp bắt đầu khi hết hạn trả `count: null`, không ai chờ chỗ vô hạn.
- */
+/** Gợi ý nới bộ lọc (092): tối đa 8 mệnh đề, 2 lần đếm đồng thời mỗi request; trần toàn tiến trình + hạn tổng ở `common/bounded-count`. */
 const RELAX_MAX_CLAUSES = 8;
 const RELAX_CONCURRENCY = 2;
-const RELAX_GLOBAL_SLOTS = 3;
-const RELAX_DEADLINE_MS = 5_000;
-const RELAX_STATEMENT_TIMEOUT_MS = 3_000;
-const RELAX_SLOTS = new Semaphore(RELAX_GLOBAL_SLOTS);
 
 interface RelaxClause {
   /** Mệnh đề AND ở gốc, viết lại từ AST (hiển thị cho người dùng). */
@@ -99,22 +90,6 @@ export interface RelaxCountsResult {
   clauses: RelaxClause[];
   /** Số mệnh đề vượt `RELAX_MAX_CLAUSES` nên không được đếm. */
   remaining: number;
-}
-
-/**
- * Postgres huỷ truy vấn vì `statement_timeout`, hoặc giao dịch tương tác hết hạn/không lấy được kết nối (P2028).
- * Khớp HẸP: `meta.code === '57014'` (lỗi raw, P2010), cụm Postgres "canceling statement due to statement timeout", hoặc
- * thẻ `code: "57014"` (lỗi theo model của Prisma) — không khớp số 57014 hay chữ "statement timeout" rời rạc (cổng, tham số).
- */
-function isCountTimeout(e: unknown): boolean {
-  if (!(e instanceof Error)) return false;
-  const err = e as Error & { code?: unknown; meta?: { code?: unknown } };
-  return (
-    err.meta?.code === '57014' ||
-    err.code === 'P2028' ||
-    /canceling statement due to statement timeout/i.test(err.message) ||
-    /\bcode:\s*[`"']?57014(?!\d)/i.test(err.message)
-  );
 }
 
 /** Thông điệp khi JQL của KR tự đo phụ thuộc người xem (không có nghĩa với lịch sử chung). */
@@ -403,8 +378,8 @@ export class SearchService {
    * Gợi ý nới bộ lọc (092): với JQL không ra kết quả, đếm số việc khi bỏ TỪNG mệnh đề AND ở gốc.
    * - Cùng điều kiện xem như `count()`: workspace + `deletedAt: null` + dự án chưa xoá + `visibleWhere` của người xem
    *   (+ `projectId` nếu có, như `search()`), nên dự án riêng tư người đó không thấy không bao giờ nằm trong số đếm.
-   * - Tối đa `RELAX_MAX_CLAUSES` mệnh đề (phần dư → `remaining`), `RELAX_CONCURRENCY` truy vấn đồng thời mỗi request và
-   *   `RELAX_GLOBAL_SLOTS` trong cả tiến trình, hạn tổng `RELAX_DEADLINE_MS` (chưa kịp bắt đầu → null), full-text
+   * - Tối đa `RELAX_MAX_CLAUSES` mệnh đề (phần dư → `remaining`), `RELAX_CONCURRENCY` truy vấn đồng thời mỗi request; trần
+   *   toàn tiến trình + hạn tổng (chưa kịp bắt đầu → null) + statement_timeout nằm ở `boundedIssueCount`; full-text
    *   tra một lần. Không đếm JQL gốc: nơi gọi chỉ hỏi sau khi tìm kiếm đã trả 0 việc. Mỗi lần đếm chạy trong giao dịch riêng với `SET LOCAL statement_timeout`: quá hạn → `count: null`
    *   cho mệnh đề đó (không làm hỏng cả cuộc gọi); lỗi khác vẫn ném.
    * - Chỉ có ≤ 1 mệnh đề thì không có gì để nới → trả rỗng, không đếm. OR ở gốc / NOT / nhóm lồng là MỘT mệnh đề.
@@ -438,16 +413,10 @@ export class SearchService {
 
     const withoutNodes = counted.map((_, i) => andAll(conjuncts.filter((_c, j) => j !== i)));
     const wheres = withoutNodes.map((node) => ({ AND: [scope, compile(node)] }));
-    const deadlineAt = Date.now() + RELAX_DEADLINE_MS;
-    const results = await mapLimit(wheres, RELAX_CONCURRENCY, async (where) => {
-      const release = await RELAX_SLOTS.acquire(deadlineAt);
-      if (!release) return null; // hết hạn tổng mà chưa có chỗ
-      try {
-        return await this.countWithTimeout(where);
-      } finally {
-        release();
-      }
-    });
+    const deadlineAt = Date.now() + BOUNDED_COUNT_DEADLINE_MS;
+    const results = await mapLimit(wheres, RELAX_CONCURRENCY, (where) =>
+      boundedIssueCount(this.prisma, where, deadlineAt),
+    );
 
     return {
       clauses: counted.map((node, i) => ({
@@ -457,29 +426,6 @@ export class SearchService {
       })),
       remaining: conjuncts.length - counted.length,
     };
-  }
-
-  /**
-   * Một lần đếm có hạn: giao dịch tương tác + `SET LOCAL statement_timeout` (chỉ tác dụng trong giao dịch này,
-   * trả về kết nối sạch cho pool). Quá hạn → null; lỗi khác → ném lại.
-   */
-  private async countWithTimeout(where: Prisma.IssueWhereInput): Promise<number | null> {
-    try {
-      return await this.prisma.$transaction(
-        async (tx) => {
-          // Hằng số nguyên của mã nguồn (SET không nhận tham số ràng buộc) — không bao giờ nhận dữ liệu người dùng.
-          await tx.$executeRaw(
-            Prisma.sql`SET LOCAL statement_timeout = ${Prisma.raw(String(RELAX_STATEMENT_TIMEOUT_MS))}`,
-          );
-          // `deletedAt: null` lặp ở tầng thấp nhất: dù nơi gọi sai phạm vi, việc đã xoá mềm không bao giờ được đếm.
-          return tx.issue.count({ where: { deletedAt: null, AND: [where] } });
-        },
-        { maxWait: 2_000, timeout: RELAX_STATEMENT_TIMEOUT_MS + 2_000 },
-      );
-    } catch (e) {
-      if (isCountTimeout(e)) return null;
-      throw e;
-    }
   }
 
   /** JQL có dùng `currentUser`/`me` không (JQL lỗi cú pháp → false: để `validate`/`count` báo lỗi riêng). */

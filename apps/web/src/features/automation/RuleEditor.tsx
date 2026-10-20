@@ -27,6 +27,8 @@ import { INVALID_FIELD_CLS, fieldErrorId } from '@/lib/formErrors';
 import { useErrorFlow } from '@/lib/useErrorFlow';
 import { labelTone } from '@/lib/labelPalette';
 import { ConditionSentence } from './ConditionSentence';
+import { RulePreviewLine } from './RulePreviewLine';
+import { isCondDraftComplete } from './rulePreview';
 import { Field } from './IssueDefaultsFields';
 import {
   RULE_ACTIONS_ID,
@@ -1160,6 +1162,14 @@ export function RuleEditor({
           />
           <div className="space-y-2">
             <ConditionSentence conditions={draft.conditions.map(toCondition)} nameOf={nameOf} />
+            <RulePreviewLine
+              conditions={
+                draft.conditions.every(isCondDraftComplete)
+                  ? draft.conditions.map(toCondition)
+                  : null
+              }
+              projectId={draft.projectId}
+            />
             {draft.conditions.map((c, i) => (
               <Card
                 key={c.id}

@@ -14,6 +14,8 @@ import type {
 } from '@tirapro/shared';
 import { api } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
+import { useDebouncedValue } from '@/lib/useDebouncedValue';
+import type { PreviewMatch } from './rulePreview';
 
 /** Quy tắc với `conditions`/`actions`/`triggerConfig` đã gán kiểu (BE đã kiểm bằng zod khi lưu). */
 export interface AutomationRule extends Omit<
@@ -71,6 +73,37 @@ export function useDeleteRule() {
     mutationFn: (id: string) => api.delete(`/automation/rules/${id}`).then(() => undefined),
     onSuccess: invalidate,
   });
+}
+
+/**
+ * "Khớp N việc hiện có" cho điều kiện đang soạn. `conditions = null` (còn điều kiện dở) hoặc rỗng → tắt. Đợi 500 ms sau
+ * lần sửa cuối rồi mới hỏi máy chủ; trong lúc đợi `pending` = true. Lỗi (kể cả máy chủ cũ chưa có endpoint → 404) không
+ * toast, không thử lại: dòng xem trước đơn giản biến mất.
+ */
+export function useRulePreview(conditions: RuleCondition[] | null, projectId: string) {
+  const key = conditions && conditions.length > 0 ? JSON.stringify(conditions) : '';
+  const settled = useDebouncedValue(key, 500);
+  const query = useQuery({
+    queryKey: keys.automation.preview(projectId, settled),
+    queryFn:
+      settled !== ''
+        ? async ({ signal }) =>
+            (
+              await api.post<PreviewMatch>(
+                '/automation/rules/preview-match',
+                { ...(projectId ? { projectId } : {}), conditions: JSON.parse(settled) as unknown },
+                { signal },
+              )
+            ).data
+        : skipToken,
+    retry: false,
+    staleTime: 30_000,
+  });
+  return {
+    data: query.data,
+    isError: query.isError,
+    pending: settled !== key || query.isFetching,
+  };
 }
 
 export function useRuleRuns(ruleId: string | undefined) {
