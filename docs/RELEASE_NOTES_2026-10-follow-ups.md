@@ -625,3 +625,220 @@ Mục **Kho mã (`/repos`) chỉ có khi bật cờ build `VITE_FEATURE_REPOS=1`
 - **Chi tiết công việc trên điện thoại:** hàng "Quay lại / mã công việc" cao hơn trước một chút.
 - **Cố ý giữ nguyên:** thẻ thu/mở của Danh mục (chương trình), Khách hàng và Mục tiêu là *mục của danh sách*, không đổi sang kiểu thẻ khu vực; rail 288px của Bộ lọc và Wiki rộng hơn menu 240px vì là danh sách động.
 - **Kỹ thuật (không ảnh hưởng người dùng):** các test mới chủ yếu đọc mã nguồn và kết xuất tĩnh (chưa có test chạy trên trình duyệt thật); chưa có test chạy thật cho "trên điện thoại vẫn có một tiêu đề chính".
+
+---
+
+# Giao diện đợt 2 · Phần C (2026-10-20)
+
+Phần C của đợt chuẩn hoá thứ hai ("gợi ý Lucian còn lại"): biểu mẫu và báo lỗi, danh sách và thao tác hàng loạt, xem nhanh, số liệu, thành viên và quyền, chia sẻ, cảm xúc bình luận, trợ lý AI có nguồn. **Có một migration (thêm một bảng, không đổi dữ liệu cũ), có đổi API ở nhiều chỗ (phần lớn chỉ thêm trường hoặc đường dẫn), thêm một thư viện cho web** (`@radix-ui/react-context-menu`, ghim đúng 2.3.1). Các primitive mới và quy tắc rút ra nằm ở `DESIGN.md` (mục "Primitive biểu mẫu, dữ liệu và cộng tác") và `docs/UX_CONVENTIONS.md` (mục 20).
+
+## 1. Cần làm khi triển khai
+
+Thứ tự (theo "Checklist triển khai" của `docs/DEPLOY.md`):
+
+1. Sao lưu cơ sở dữ liệu như mọi lần.
+2. `pnpm install` — `apps/web/package.json` thêm `@radix-ui/react-context-menu` **2.3.1** (ghim, không dấu `^`); lockfile chỉ thêm gói này, vẫn đúng một bản `@radix-ui/react-menu` (2.1.18).
+3. `pnpm --filter @tirapro/shared build` — `packages/shared` đổi (lược đồ `relax-counts`, `preview-match`, bộ lọc đã lưu, bộ tuần tự hoá JQL, emoji cảm xúc, nguồn AI, kiểm NUL).
+4. `prisma migrate deploy` — migration **`20261019100000_comment_reaction`**: tạo bảng `CommentReaction` (id, commentId, userId, `emoji` VARCHAR(16), createdAt), chỉ mục duy nhất (commentId, userId, emoji), khoá ngoại xoá theo tầng tới `Comment` và `User` (xoá hẳn bình luận hay người dùng kéo theo xoá cảm xúc). Chỉ thêm bảng, an toàn với dữ liệu hiện có. Render/Docker tự chạy bước này khi API khởi động. Không cần `db:raw`.
+5. Build lại API (`prisma generate` + `build`) và khởi động lại. **Bản build phải gồm commit `c45d27e8` trở đi** (sửa lỗi `OR: []` của xem trước quy tắc: bản cũ đếm "mọi việc" cho điều kiện không thể khớp).
+6. Build lại web.
+
+Thứ tự API/web: nên API trước hoặc cùng lúc. Web mới + API cũ không hỏng nhưng tính năng tương ứng tự ẩn: không có chấm cảm xúc, không có "N thành viên" ở bộ chọn không gian, không có gợi ý nới bộ lọc, không có dòng "Khớp N việc", không có avatar người làm trong thông báo, không có vạch kỳ vọng OKR, không có nguồn AI. API mới + web cũ chạy bình thường (các trường mới chỉ được thêm); riêng các luật ở "Luật mới" bên dưới có hiệu lực ngay.
+
+### Thay đổi API
+
+**Đường dẫn mới**
+
+| Đường dẫn | Quyền | Ghi chú |
+|---|---|---|
+| `POST /search/relax-counts` | xem dự án (`@ProjectRef('body','projectId')`) | Body `{jql, projectId?}`. Trả `{clauses:[{text, jqlWithout, count}], remaining}` (tối đa 8 mệnh đề đầu; JQL một mệnh đề trả rỗng). Giới hạn 20 lần/phút theo IP. Phạm vi đếm = đúng phạm vi `GET /search` của người gọi. |
+| `POST /automation/rules/preview-match` | `automation:manage` | Body `{projectId?, conditions[≤20]}`. Trả `{count, reason, timedOut, currentUserInJql}`. Chỉ đếm theo quyền của NGƯỜI SOẠN, bỏ dự án lưu trữ/xoá mềm. 30 lần/phút theo IP. Không xem trước được → `count:null` kèm lý do (không đếm xấp xỉ). |
+| `PUT /comments/:id/reactions/:emoji` · `DELETE …` | xem dự án | Đặt/gỡ trạng thái tường minh (bấm đúp không đảo kết quả); chỉ gỡ cảm xúc của chính mình. Emoji ngoài bộ 👍 ❤️ 🎉 😄 🙏 👀 → 400. Dự án lưu trữ → 422; người ngoài dự án riêng tư → 404. |
+
+**Phản hồi có thay đổi (chỉ thêm trường)**
+
+- Mục tiêu và từng KR (`GoalDto`): thêm `expectedProgress` (số, hoặc `null` với kỳ tự do).
+- `GET /notifications`: thêm `actorAvatarUrl` (`null` nếu không có người làm hoặc ảnh). Dòng đã có sẵn tên vẫn kích hoạt một truy vấn người dùng cho cả trang để lấy ảnh.
+- `GET /auth/workspaces`: thêm `memberCount` = số thành viên **đang hoạt động** (không tính tài khoản vô hiệu hoá, không tính người dùng hệ thống). Bảng quản trị không gian (cột Thành viên) dùng cùng quy tắc.
+- `RoleDto` (`GET/POST/PATCH /roles`): thêm `updatedAt`.
+- `POST /ai/issues/:id/suggest`: thêm `sources?: [{issueId, key, summary}]` (tối đa 3). Nguồn do MÁY CHỦ chọn theo quyền xem của người gọi (không phải do mô hình), bỏ việc xoá mềm và việc báo từ ngoài chưa duyệt. Có cả khi chưa cấu hình `ANTHROPIC_API_KEY` (chế độ cơ bản).
+- `GET /issues/:id/comments`: mỗi bình luận có `reactions: [{emoji, count, mine, users≤5}]` (luôn có, rỗng nếu chưa có). Một truy vấn cảm xúc cho cả trang.
+- Sự kiện: domain `COMMENT_REACTED`, WebSocket `comment:reaction` `{commentId, issueId}` (không kèm tên) gửi tới phòng của dự án. **Cảm xúc không sinh thông báo.**
+
+**Luật mới**
+
+- `GET /issues/:id/watchers` chỉ trả người **không bị vô hiệu hoá** và **còn xem được dự án** (cùng cổng với việc gửi thông báo). Trước đây trả cả người đã rời, tức là lộ tên.
+- `PATCH /roles/:id` nhận thêm `expectedUpdatedAt` (tuỳ chọn): lệch → **409 `VERSION_CONFLICT`**; bỏ trống = không kiểm (client cũ vẫn chạy). Gỡ `workspace:admin` khỏi một vai trò khiến không còn quản trị hoạt động → **409 `LAST_WORKSPACE_ADMIN`** (trước đây chỉ đường đổi vai trò của THÀNH VIÊN bị chặn; đường sửa VAI TRÒ để hở).
+- Bộ lọc đã lưu mức **Dự án** (`PROJECT`) bắt buộc có `sharedProjectId`: tạo/sửa thiếu → 400. Bản ghi cũ không bị sửa (xem mục 2).
+- Ký tự NUL hoặc UTF-16 hỏng (surrogate lẻ) trong điều kiện quy tắc/JQL → **400** (trước là 500) ở xem trước, tạo và sửa quy tắc, và khi engine đọc lại điều kiện đã lưu.
+- Bình luận của **công việc đã xoá mềm**: thả cảm xúc, sửa, xoá → 404 (trước đây guard dự án không loại).
+- Engine tự động hoá, phép `contains` gấp hoa/thường **từng ký tự**: İ (Thổ Nhĩ Kỳ) nay khớp `i`; sigma Hy Lạp cuối từ không còn khớp chéo; tiếng Việt không đổi. Xem trước chỉ đếm khi chữ nằm trong tập Latin/không có hoa-thường, ngoài ra báo "chỉ hỗ trợ chữ Latin".
+
+**Giới hạn tài nguyên (cần biết khi chạy nhiều bản API).** Gợi ý nới bộ lọc và xem trước quy tắc dùng chung **một bộ đếm trong tiến trình, tối đa 3 lần đếm cùng lúc mỗi tiến trình API** (`common/bounded-count.ts`), hạn chờ tổng 5 giây, mỗi truy vấn `statement_timeout` 3 giây; lần đếm không kịp trả `count: null` ("không đếm kịp"). Số lượt đồng thời tối đa = 3 × số bản API (bộ đếm được tính để không vượt `connection_limit=10` của một bản). Giới hạn tốc độ tính **theo IP**, nên cần API thấy đúng IP người dùng khi chạy sau proxy.
+
+### Proxy
+
+- **nginx phải chuyển tiếp `/realtime` kèm nâng cấp WebSocket** (`proxy_http_version 1.1;` `proxy_set_header Upgrade $http_upgrade;` `proxy_set_header Connection "upgrade";`). Banner mất kết nối và việc nối lại phía web dựa vào kết nối này; chưa kiểm được trên máy chủ thật (xem mục 3, danh sách kiểm).
+- Cảm xúc đặt emoji trong đường dẫn (`/comments/:id/reactions/❤️`): cần kiểm là proxy chuyển tiếp đúng (xem danh sách kiểm).
+
+## 2. Thay đổi người dùng thấy
+
+### Biểu mẫu và báo lỗi
+
+- **Báo lỗi theo trường:** gửi biểu mẫu thiếu dữ liệu không còn tắt nút hay chỉ hiện toast; hộp hiện tóm tắt "3 trường cần sửa" (mỗi dòng bấm để nhảy tới trường), lời lỗi ngay tại ô, và con trỏ tự vào ô lỗi đầu tiên. Áp cho Báo cáo định kỳ, Cam kết SLA, Tạo công việc, Báo lỗi và Quy tắc tự động hoá. Trình đọc màn hình đọc số lỗi mỗi lần bấm Gửi.
+- **Nút "Tạo" có thêm lựa chọn:** ở hộp Tạo công việc, "Tạo" = tạo rồi mở việc (Ctrl/⌘+Enter như cũ); mũi tên ▾ có "Tạo & nhập tiếp" (Ctrl/⌘+Shift+Enter) và "Tạo & mở". Nhãn nút chính còn "Tạo" cho cả "Tạo việc con".
+- **Chọn có mô tả dùng thẻ chọn:** mẫu dự án, cách giải quyết khi chuyển trạng thái, phạm vi chia sẻ, loại bảng và swimlane, Sprint đích. Nhóm lựa chọn ngắn (loại báo lỗi, chế độ, RAID, sức khoẻ) là khung phân đoạn liền thay cho các chip rời. Thang 1–5 của Rủi ro & vướng mắc nay là một nhóm: Tab dừng một lần, mũi tên đổi giá trị (trước đây mũi tên không làm gì).
+- **Hai ngày bắt đầu–kết thúc** (Bắt đầu sprint, Sửa sprint, Hợp đồng, Chương trình, Nghỉ phép, Phân bổ) có dòng tóm tắt "14 ngày · 20/10 – 02/11" và báo lỗi ngay ở ô kết thúc khi kết thúc sớm hơn bắt đầu; lịch chọn ngày xám các ngày trước ngày bắt đầu.
+- **Chọn màu:** nhãn, nhóm, chương trình, cột mốc, vai trò dùng cùng bảng 8 màu có tên tiếng Việt (thay cho ô màu của trình duyệt và các bảng riêng). Màu đã lưu từ trước không bị đổi, hiện thêm ô "Màu hiện tại" cho tới khi bạn chọn lại. Chữ nhãn đủ tương phản ở cả giao diện sáng và tối.
+- **Gõ tên để xác nhận:** thu hồi API key, xoá quy trình, xoá trường thông tin thêm, xoá vai trò yêu cầu gõ đúng tên (bỏ qua khoảng trắng thừa, phân biệt hoa/thường). Các thao tác xoá khác xác nhận như cũ, kèm một dòng hậu quả.
+- **Sao chép:** "Sao chép mã" và "Sao chép liên kết" thống nhất ở chi tiết công việc, xem nhanh và menu thao tác; liên kết sao chép luôn là `…/issue/MÃ` (không kèm `?peek=`). Dấu ✓ hiện 1,2 giây (trước là 2 giây ở các nút sẵn có).
+
+### Bảng việc và Việc chờ
+
+- **Chọn nhiều và thao tác hàng loạt trên Bảng việc:** ô tick trên thẻ (hiện khi rê chuột, luôn hiện khi đã chọn và trên điện thoại); Shift-click chọn dải; thanh thao tác hiện ngay trên thanh tab đáy, gồm gán cho tôi, đổi người phụ trách, điểm, ưu tiên, nhãn, trạng thái, có **Hoàn tác**. Nếu một phần bị từ chối (đụng WIP, người khác vừa sửa), phần đó vẫn được giữ chọn và Hoàn tác chỉ áp cho phần đã cập nhật.
+- **Trên Bảng việc, Ctrl/⌘-click vào thẻ là chọn/bỏ chọn thẻ** (trước đây mở tab mới). Mở tab mới vẫn có ở: nhấp vào mã công việc, chuột giữa, và mục "Mở ở tab mới" trong menu. Ở Việc chờ, Bộ lọc và Cây việc, Ctrl/⌘-click vẫn mở tab mới.
+- **Việc chờ trên điện thoại:** thanh hàng loạt đổi thành một hàng ("Đã chọn N việc" + Trạng thái + "…" + bỏ chọn), các thao tác còn lại nằm trong sheet đáy; thay cho dải cuộn ngang cũ. Esc khi đang gõ trong ô nhập không còn bỏ chọn (cả Bảng việc lẫn Việc chờ).
+- **Menu chuột phải** trên thẻ/dòng ở Bảng việc, Việc chờ, Bộ lọc và Cây việc, cùng nút "…" ("Thao tác cho MÃ") với đúng các mục đó: xem nhanh, mở trang/tab mới, sao chép mã và liên kết, gán cho tôi, đổi trạng thái, ưu tiên… Trên màn cảm ứng không có chuột phải (nhấn giữ vẫn là kéo-thả); nút "…" nằm góc trên phải thẻ. Chuột phải vào mã công việc nay hiện menu này thay cho menu liên kết của trình duyệt.
+- **Nút "Hiển thị" của Bảng việc:** chọn thẻ Thường/Gọn và bật/tắt người phụ trách, điểm, nhãn, ưu tiên, tiến độ việc con; có xem trước (trên điện thoại nằm trên cùng). Lưu theo từng bảng trên từng trình duyệt. **Không có công tắc "Hạn":** cảnh báo quá hạn/sắp hạn (viền + nhãn) luôn hiện vì là tín hiệu rủi ro.
+- **Đồng hồ giới hạn:** cột có giới hạn WIP hiện thanh "WIP 3/5" (đổi màu và chữ "Đầy"/"Vượt N"); đầu mỗi sprint ở Việc chờ hiện "điểm đã xếp / velocity trung bình" (trung bình 3 sprint đã đóng gần nhất có làm việc; không hiện khi chưa có velocity hay không có quyền xem báo cáo).
+
+### Xem nhanh việc
+
+- Panel có nút **‹ ›** ("Việc trước/Việc sau") và "n/N" (hoặc "n/N+" khi còn trang chưa nạp); thẻ/dòng đang xem được tô nền. Nay có cả ở **Bộ lọc** (› ở cuối trang nạp thêm kết quả) và **Cây việc**. Trong Việc chờ, thứ tự và số đếm đúng cả khi danh sách dài chỉ vẽ một phần.
+- **Trên điện thoại (dưới 768px)** xem nhanh là **sheet đáy** hai nấc (nửa màn / gần toàn màn, đổi bằng nút tay nắm). Back của Android/trình duyệt, Esc và X đều đóng, con trỏ về đúng thẻ/dòng. Sheet là hộp thoại modal nên phím `j`/`k` tắt trên điện thoại. Từ 768px vẫn là panel bên phải như cũ (tablet 768–1023px: ngăn kéo).
+- **Chi tiết công việc trên điện thoại và tablet (dưới 1024px):** dải thuộc tính chính 2×2 (Trạng thái, Người phụ trách, Hạn, Ưu tiên) ngay đầu trang; các thuộc tính còn lại (Epic/Việc cha, Người tạo, Người tham gia, các ngày) trong mục "Thuộc tính khác" thu gọn. **Đổi trạng thái trên điện thoại là hai chạm** (mở menu rồi chọn bước kế, mỗi dòng ghi rõ trạng thái đích; phím 1–9 trên bàn phím vẫn còn). Từ 1024px bố cục như cũ.
+- **Sửa tiêu đề tại chỗ** (chi tiết và xem nhanh): bấm hoặc Enter để sửa, Enter lưu, Esc huỷ, có ✓/✕ và "Đang lưu… / Đã lưu / Lỗi · Thử lại". Tiêu đề trống không gửi. Nếu người khác vừa sửa việc: họ không đổi tiêu đề thì lưu tự thử lại một lần, họ đã đổi tiêu đề thì hiện lời báo kèm tiêu đề mới và bấm Lưu lần nữa mới ghi đè. Khi đang sửa, các phím tắt toàn cục tắt.
+- **Dưới ô bình luận** có dòng "Sẽ thông báo: …" (người được nhắc, người phụ trách, người theo dõi), chỉ hiện khi đang gõ; không tính cài đặt tắt thông báo của từng người nên chỉ là dự kiến.
+- **Cảm xúc bình luận:** nút "+" và các chấm 👍 ❤️ 🎉 😄 🙏 👀 dưới mỗi bình luận; rê chuột (hoặc trình đọc màn hình) thấy ai đã thả; bình luận của dự án đã lưu trữ chỉ xem. Cảm xúc không gửi thông báo.
+- **Trợ lý AI trên trang chi tiết công việc** (cần quyền dùng AI): "Gợi ý ưu tiên & điểm" và "Tóm tắt", kèm tối đa 3 **nguồn tham khảo** là việc tương tự bạn xem được (bấm mở việc đó). Chỉ chạy khi bấm nút; có nút Huỷ khi đang chờ (yêu cầu đã gửi vẫn có thể tính vào hạn mức AI). Từ 1024px là thẻ ở cột phải; dưới 1024px là mục "Trợ lý AI" thu gọn giữa phần mô tả và hoạt động.
+
+### Bộ lọc
+
+- **Cột của bảng kết quả sửa được:** bấm tiêu đề cột để dời trái/phải, ẩn, hiện lại cột đã ẩn; có "Đặt lại mặc định" ở bộ chọn Cột. Mã và Tiêu đề luôn ghim. Lưu theo từng bộ lọc, trên từng trình duyệt.
+- **Không có kết quả:** hiện "Thử bỏ một điều kiện" kèm số việc sẽ thấy nếu bỏ từng điều kiện (tối đa 5 gợi ý); bấm để chạy lại ngay. Điều kiện hiển thị dạng chuẩn hoá (chuỗi có nháy kép: `status = "Done"`).
+- **Hàng loạt trên kết quả nhiều dự án:** ô tick, "Chọn tất cả trên trang", Shift-click chọn dải. Hành động xuyên dự án chỉ có: Gán cho tôi, Ưu tiên, Điểm; đổi người phụ trách, nhãn, trạng thái chỉ khi chọn trong đúng một dự án. Nếu có việc ở dự án bạn không có quyền, hộp xác nhận nói rõ "Áp cho 5/7 việc (…)" trước khi chạy; kết quả gộp theo dự án, Hoàn tác theo từng dự án.
+- **Chia sẻ bộ lọc:** nút "Chia sẻ bộ lọc <tên>" ở mỗi hàng (chủ bộ lọc có quyền quản lý đổi mức rồi Lưu; người khác chỉ xem và sao chép liên kết). Địa chỉ `/filters/<id>` mở và chạy bộ lọc đã lưu (không thấy hoặc không tồn tại: "Không tìm thấy bộ lọc"). Biểu mẫu "Tạo bộ lọc" chỉ còn Riêng tư / Cả không gian làm việc; chia sẻ theo dự án đi qua hộp "Chia sẻ" và bắt buộc chọn dự án.
+- **Bộ lọc cũ mức "Dự án" nhưng chưa gắn dự án vẫn hiển thị cho cả không gian** (hành vi cũ của máy chủ, dữ liệu không đổi); nay hàng ghi đúng "Cả không gian làm việc". Muốn thu hẹp: mở "Chia sẻ" rồi chọn dự án hoặc Riêng tư.
+
+### Chia sẻ
+
+- Hộp chia sẻ (bảng tổng quan, bộ lọc) có dòng **"Ai có quyền xem"** (Chỉ bạn / Mọi thành viên không gian (N) / thành viên nhóm / thành viên dự án; dự án riêng tư và nhóm có thêm "và Quản trị chung" vì Quản trị chung thấy mọi mục) và nút **sao chép liên kết** (chỉ khi đã lưu). Không có liên kết công khai cho người ngoài; dòng ghi "Liên kết chỉ mở được với người có quyền xem ở trên".
+- Mức chia sẻ toàn không gian ghi **"Cả không gian làm việc"** (không còn "Cả tổ chức"); admin ghi **"Quản trị chung"**.
+
+### Thông báo và chuông
+
+- **Cài đặt › Thông báo:** mỗi sự kiện là một công tắc lưu ngay (kèm "Đang lưu… / Đã lưu lúc HH:mm / Lỗi · Thử lại"). Với 4 loại có email (được nhắc đến, được giao, bình luận, đổi trạng thái), nút "Tuỳ chọn email" mở dòng "Gửi qua email" ngay dưới; bật công tắc trong ứng dụng tự mở dòng này. Email độc lập với trong ứng dụng (tắt trong ứng dụng vẫn có thể chỉ nhận email). Hai thẻ cũ gộp thành một thẻ.
+- **Chuông thông báo** có ba tab Tất cả / Nhắc đến / Được giao (nhớ tab theo người dùng), avatar người làm kèm biểu tượng loại hành động. Trên điện thoại chuông không hiện ở thanh trên (đã có ô Thông báo ở thanh tab đáy); tab "Chưa đọc" vẫn chỉ ở trang đầy đủ.
+
+### Thành viên, vai trò, không gian
+
+- **Đổi vai trò ngay trên hàng thành viên** (cần quyền quản lý thành viên): bấm cụm vai trò để mở danh sách tick, lưu ngay, có Hoàn tác 6 giây. Không cho gỡ vai trò quản trị cuối cùng (lý do hiện ngay trên dòng); tự hạ quyền của chính mình thì hỏi xác nhận và không có Hoàn tác. Quyền của bạn cập nhật ngay sau khi tự đổi.
+- **Ma trận Vai trò & quyền chỉnh được:** bấm ô để bật/tắt quyền của vai trò tuỳ chỉnh (nhiều lần bấm gộp thành một lần lưu), ô nhóm bật/tắt cả nhóm, có Hoàn tác; vai trò hệ thống khoá (có chữ "Khoá") nhưng có nút **Nhân bản vai trò**. Vai trò tuỳ chỉnh hiện lên đầu bảng. Bật `workspace:admin` hỏi xác nhận; người khác vừa sửa vai trò thì báo "đã tải lại". Người không có quyền quản lý thành viên chỉ xem.
+- **Bộ chọn không gian làm việc** ghi số thành viên ("12 thành viên · Quản trị chung"). **Đầu trang Thành viên ghi "N đang hoạt động"** (kèm "· M đã vô hiệu hoá" khi có) — số này là số người đang hoạt động, không còn đếm tài khoản đã vô hiệu hoá; những tài khoản đó vẫn nằm trong danh sách. Con số trên bảng quản trị không gian khớp quy tắc này.
+
+### Tự động hoá
+
+- **Điều kiện hiển thị thành câu** ("Loại công việc là Bug **và** …"; thiếu giá trị ghi "(chưa chọn)") kèm dòng **"Khớp N việc hiện có"** (đếm trong các dự án bạn xem được; "không đếm kịp" hoặc lý do khi không xem trước được; quy tắc theo lịch ghi thêm giới hạn 500 việc mỗi lần chạy). Cần HOẶC thì dùng một điều kiện JQL có OR. Lỗi trong hộp quy tắc hiện theo trường như các biểu mẫu khác.
+
+### Sprint, ngày, năng lực
+
+- **Gợi ý ngày kết thúc sprint:** "2 tuần" = **14 ngày** (kết thúc ngày thứ 14, gồm cả ngày bắt đầu), không còn 15 ngày. Chỉ ảnh hưởng gợi ý của sprint mới; sprint đã có ngày không đổi.
+- **Phân bổ nhân lực:** mỗi người có đồng hồ "Đỉnh N%" so với 100% (ngày đỉnh, số ngày T2–T6 vượt 100%, chia theo dự án tại ngày đỉnh; ghi rõ "Chưa trừ nghỉ phép/ngày lễ — xem tab Khối lượng").
+- **Chọn người phụ trách** (chi tiết việc, Tạo công việc, Duyệt việc, nút Gợi ý): mỗi người có "còn trống N giờ" hoặc "quá tải" của tuần chứa hạn việc (cần quyền xem nguồn lực); chú thích ước lượng ở chân danh sách.
+
+### Số liệu
+
+- **Bỏ các ô số to:** Tổng quan, Báo cáo, Quản trị, widget "Số liệu" của bảng tổng quan dùng một hàng thống kê gọn; số liệu có đích dùng thanh có vạch ("so với cam kết +4"). Mục tiêu (OKR) hiện vạch tiến độ kỳ vọng theo thời gian cho mục tiêu đang chạy (không có cho kỳ tự do, mục tiêu nháp hay đã đóng). Thanh cảnh báo đủ tương phản ở giao diện sáng.
+
+### Kết nối và hướng dẫn
+
+- **Banner mất kết nối thời gian thực** (dưới thanh bảo trì): hiện sau 3 giây mất, nói "thay đổi vẫn được lưu"; khi không có mạng nói thay đổi sẽ được gửi khi có mạng lại và cần giữ trang mở. Máy chủ ngắt phiên (token hết hạn) thì thử làm mới token rồi nối lại tối đa 5 lần, sau đó ghi "tải lại trang" kèm nút "Tải lại".
+- **Hướng dẫn lần đầu có nút "Bỏ qua"** ở mọi bước (và "Quay lại"). Bỏ qua không làm tour tự chạy lại; chỉ "Xong" (hoặc phím → ở bước cuối) mới đánh dấu hoàn thành.
+
+### Chữ
+
+- Thống nhất "Cả không gian làm việc" và "Quản trị chung" ở hộp chia sẻ và Bộ lọc (xem `UX_CONVENTIONS.md` mục 19).
+
+## 3. Còn mở
+
+### Cần chủ sản phẩm / người triển khai quyết định
+
+- **BẢO MẬT (có từ trước, không phải do phần C) — P-C14:** người có quyền `member:manage` nhưng **không phải quản trị** vẫn có thể **cấp `workspace:admin`** cho mình hoặc người khác qua đổi vai trò của thành viên hoặc tạo/sửa/nhân bản vai trò tuỳ chỉnh có quyền đó. Phần C (ma trận quyền chỉnh được, đổi vai trò ngay trên hàng) thêm lối vào giao diện thuận tiện hơn nhưng không tạo ra lỗ hổng này; ở web chỉ có hộp xác nhận khi bật `workspace:admin`, máy chủ không chặn. Nên chặn ở máy chủ (chỉ quản trị mới cấp/gỡ `workspace:admin`) trước khi giao quyền `member:manage` rộng rãi.
+
+### Hoãn theo spec (chưa làm)
+
+- 132: điều kiện tự động hoá VÀ/HOẶC thật trong engine (hiện chỉ "và"; cần HOẶC thì dùng một điều kiện JQL có OR).
+- 109: nghỉ phép theo giờ.
+- 299: cột sức chứa sprint (bản nhẹ hiện so với velocity; chưa có `Sprint.capacityPoints`).
+- Xoá vĩnh viễn ở Thùng rác; xoá dự án và xoá không gian làm việc trên web.
+- Hàng loạt đa dự án phía máy chủ (Bộ lọc hiện gọi từng dự án một từ web).
+- Lịch hai đầu cho `DateRangeInput` (chọn khoảng trên một lịch).
+
+### Bỏ theo spec (cố ý không làm)
+
+- Lời mời và hàng "Đang chờ" của thành viên (285, mâu thuẫn quyết định vòng 2) · liên kết công khai ẩn danh (254) · AI truyền từng đoạn/SSE (224/086) · hàng đợi ghi ngoại tuyến thật (091; banner chỉ báo trung thực, không hứa lưu bền) · viết lại tour (197) · sửa ô vai trò hệ thống (184; chỉ khoá + nhân bản).
+
+### Mục đã ghi nhận (ledger) chưa làm
+
+- **P-C1** — phím tắt ở `IssueDetailPage` dính closure cũ: `copyLink` và `requestTransition` đã đi qua `ref`; theo ghi chú ledger mọi callback thêm vào effect này phải qua `ref` (`assignToMe` cần kiểm khi sửa lần sau). Có từ trước.
+- **P-C4** — thang RAID 1–5: trạng thái được chọn yếu hơn (chip trắng trong rãnh); nhóm loại RAID bị cắt chữ dưới ~340px.
+- **P-C9** — ràng buộc duy nhất của nhãn phân biệt hoa/thường ở máy chủ; `LabelsSection` (trang Nhãn) tạo nhãn chưa chống trùng không phân biệt hoa/thường/dấu như ô nhãn ở chi tiết việc.
+- **P-C10** — client coi `canAssign` là đủ, nhưng endpoint hàng loạt còn cần `issue:edit` (mọi bề mặt hàng loạt); cảnh báo điểm của sprint đã đóng ở Bộ lọc nhiều dự án chỉ kiểm "đã Done".
+- **P-C13** — `listWorkspaces` vẫn liệt kê không gian đã lưu trữ (`deletedAt`); có từ trước.
+- **P-C15** — `GET /resources/workload` nặng khi nhiều người (chưa có `userIds`/cache); "còn trống" gọi một tuần cho cả không gian mỗi lần mở danh sách.
+- Đã xử lý ngay trong phần C (không còn mở): P-C2, P-C3, P-C5 đến P-C8, P-C11, P-C12 (8 chỗ `useAuth((s)=>s.can)`).
+
+### Giới hạn đã biết
+
+- **Chưa chuyển hết sang primitive mới:** 5 công tắc tự viết (Ma trận quyền cũ, AdminUsers, AdminConfig, PrivacySection, DigestsSection); khoảng 10 `Field` cục bộ chưa sang `FormField` (Hợp đồng, Khách hàng, Mục tiêu, Nghỉ phép, Phân bổ, Môi trường, Duyệt việc, Widget, RAID, Nhóm…); ô màu của Mức nghiêm trọng, Mức ưu tiên, Quy trình, `RoleBadge` và biểu đồ vẫn là màu cũ (RC11); `PortfolioPage`, `EpicPanel`, thanh thời gian, checklist làm quen chưa gộp vào `BulletBar`; `IssueRow` của Việc chờ chưa dùng tuỳ chọn "Hiển thị".
+- **Lưu theo trình duyệt, không đồng bộ giữa thiết bị:** cột bảng kết quả, tuỳ chọn "Hiển thị" Bảng việc, tab chuông, trạng thái mục thu gọn. Bố cục cột ad-hoc không mang sang bộ lọc đã lưu.
+- **Xem nhanh:** nấc nửa của sheet đáy có thể che nửa dưới thẻ ở Bảng việc (đã bù cuộn, chưa hoàn hảo); sheet là modal nên `j`/`k` tắt trên điện thoại; "n/N+" ở Bộ lọc đếm số dòng đã nạp, không phải tổng thật; tiêu đề việc ở Cây là liên kết thật nên chuột phải hoặc nhấn giữ có menu liên kết của trình duyệt (kéo-thả đã chặn menu nhấn giữ iOS bằng CSS).
+- **Menu thao tác:** sau khi ghi từ menu, `/search` không làm mới (chỉ Bộ lọc phản ánh ngay qua lớp phủ; widget JQL của bảng tổng quan và ô tìm nhanh làm mới theo chu kỳ riêng); chuột phải vào mã công việc không còn menu liên kết gốc.
+- **Hàng loạt:** Bảng việc chỉ chọn được việc của sprint đang chạy đang hiện; Hoàn tác trạng thái chỉ khả thi khi quy trình cho bước ngược; Hoàn tác không nạp lại bản mới (một lần bấm, việc kẹt được báo số lượng); Bộ lọc: lỗi giữa chừng khi chạy hơn 100 việc chỉ kiểm bằng test thuần.
+- **Kết nối:** thông điệp "thay đổi vẫn được lưu" vẫn hiện khi chỉ đường thời gian thực đứt, kể cả nếu REST cũng hỏng (lỗi ghi vẫn báo bằng toast riêng); sau khi nối lại thật banner giữ trạng thái "đang thử lại" thêm tới 3 giây (chủ ý, chống chớp); mỗi lần thử nối làm mới một token.
+- **Sửa tiêu đề tại chỗ:** đổi trường khác của việc (kể cả của chính bạn) trong lúc đang sửa tiêu đề làm lần lưu đầu mất thêm một lượt nạp lại; lần tự thử lại cần một GET + một PATCH.
+- **"Sẽ thông báo":** danh sách người được nhắc lấy từ trang đầu của danh sách người (có giới hạn) nên có thể thiếu người; quy tắc "ai được báo" có hai bản (web và máy chủ), test web là tài liệu.
+- **Đếm và xem trước:** gợi ý nới bộ lọc và "Khớp N việc" dùng chung 3 chỗ mỗi tiến trình; giới hạn tốc độ theo IP; tối đa 8 mệnh đề được đếm; xem trước của JQL `text ~` đếm theo `contains` (như engine, không full-text); `dueDate contains` không xem trước được; điều kiện trường chưa điền giá trị vẫn qua kiểm tra (câu hiện "(chưa chọn)"); `fieldConditionSchema` nay là `ZodEffects` (ai dùng `.shape`/`.extend` sẽ vỡ — hiện không ai); NUL trong tên/hành động quy tắc chưa chặn (chỉ điều kiện).
+- **Chia sẻ:** nút Chia sẻ chỉ có ở danh sách Bộ lọc và trình soạn bảng tổng quan (người xem bảng chưa có đường sao chép liên kết); `WORKSPACE` kèm `sharedProjectId` khác null (chỉ khi client lạ gửi) máy chủ vẫn coi như mức dự án.
+- **Ma trận quyền:** chốt chặn "quản trị cuối cùng" ở web tính theo danh sách thành viên đã tải (máy chủ là quyết định cuối); bật "Chỉ hiện khác biệt" rồi sửa ô có thể làm dòng biến mất sau lưu; refetch giữa lúc đang lưu có thể làm ô nháy về giá trị cũ.
+- **Cảm xúc:** `list` nạp mọi cảm xúc của trang bình luận (một truy vấn, nhóm trong bộ nhớ; đủ cho quy mô hiện nay); trên cảm ứng không có rê chuột nên danh sách người chỉ đọc được qua trình đọc màn hình; không có giới hạn tốc độ riêng cho route.
+- **AI có nguồn:** tìm việc tương tự chỉ theo tiêu đề; Huỷ chỉ ngừng chờ (yêu cầu đã gửi vẫn chạy và tính hạn mức); trợ lý lập sprint không có nguồn (đã có liên kết sẵn).
+- **Đồng hồ năng lực:** phân bổ tính theo ngày T2–T6, chưa trừ nghỉ phép/ngày lễ (đã ghi trên màn); "còn trống" dùng ước lượng giờ (hoặc 4 giờ/điểm).
+- **Thuật ngữ:** "Cả tổ chức" vẫn còn ở phạm vi nghỉ của Nghỉ phép (khái niệm khác) và vài chữ "tổ chức" ngoài phạm vi chia sẻ; test thuật ngữ mới chỉ quét `features/sharing` và `features/saved-filters`.
+- **Kỹ thuật (không ảnh hưởng người dùng):** test chủ yếu là hàm thuần, kết xuất tĩnh và đọc mã nguồn; có thêm bộ đối chứng Postgres thật (`pnpm --filter @tirapro/api test:parity` với `PARITY_DATABASE_URL`, chỉ cơ sở dữ liệu tên kết thúc `_w2c`/`_parity`/`_scratch`; mặc định không chạy trong `pnpm test`) — **chạy lại trên cơ sở dữ liệu đích khi đổi phiên bản/hạ tầng Postgres** (phép `contains` phụ thuộc locale).
+
+### Cần kiểm trên API thật / thiết bị thật (đã gộp, bỏ trùng)
+
+Chưa có báo cáo nào xác nhận các mục này đã chạy; người kiểm chạy một lượt sau khi build lại API (≥ `c45d27e8`) và áp migration.
+
+**API thật (sau khi build lại API và `migrate deploy`)**
+
+- Migration `20261019100000_comment_reaction` trên cơ sở dữ liệu thật (`migrate deploy`, `migrate diff --exit-code` sạch).
+- Cảm xúc: `PUT`/`DELETE` bởi thành viên chỉ-xem (được), người ngoài dự án riêng tư (404), dự án lưu trữ (422), bình luận đã xoá mềm (404); ❤️ đi qua proxy đúng mã hoá; sự kiện `comment:reaction` chỉ tới phòng của dự án.
+- `GET /auth/workspaces` `memberCount` với tài khoản vô hiệu hoá; đầu trang Thành viên; cột Thành viên của bảng quản trị không gian.
+- `POST /search/relax-counts` bởi người không thuộc dự án riêng tư (số đếm không đổi) và khi truy vấn chậm (`count:null`).
+- `POST /automation/rules/preview-match` bởi người soạn không thuộc dự án riêng tư; một lần đối chiếu `pnpm test:parity` trên cơ sở dữ liệu đích.
+- `GET /projects/:id/members` bởi người không thuộc dự án riêng tư (kỳ vọng 403, web chỉ ghi chú); `PATCH /filters/:id` thật (và `/filters/:id`).
+- `PATCH /roles/:id` thật: 200 và 409 qua HTTP; `GET /roles` có `updatedAt`; thử gỡ quản trị cuối cùng trên không gian nháp (`LAST_WORKSPACE_ADMIN`).
+- `GET /issues/:id/watchers` (đã lọc) với dự án riêng tư thật, ở xem nhanh.
+- Gợi ý AI có nguồn: dự án riêng tư, việc đã xoá mềm, việc báo ngoài chưa duyệt; chế độ cơ bản không có `ANTHROPIC_API_KEY`.
+- Mục tiêu có `expectedProgress` (vạch kỳ vọng) và thông báo có `actorAvatarUrl` trên dữ liệu thật.
+- Đồng hồ năng lực với phân bổ chồng nhau thật; người dùng không có `workspace:view`; người xem dự án riêng tư.
+- Kết nối thời gian thực: phiên bị thu hồi hoặc thành viên bị gỡ trong lúc đang mở; nginx `/realtime` có nâng cấp WebSocket.
+
+**Trình duyệt / thiết bị thật**
+
+- Gõ tên để xác nhận bằng Telex/VNI thật (Safari và Chrome); các hộp xác nhận còn lại chưa mở tay.
+- Báo lỗi biểu mẫu: bàn phím ảo trên điện thoại che ô lỗi; trình đọc màn hình đọc "N trường cần sửa" mỗi lần Gửi.
+- Hộp Tạo công việc (menu nút tách) chạy lại trên dữ liệu thật; Telex/VNI ở ô nhãn và ô tiêu đề.
+- Sửa tiêu đề: trên trang chi tiết và xem nhanh thật — đổi việc bằng back/forward khi đang sửa, 409 thật từ hai tab, `j`/`k` khi focus ở ✓, Esc không đóng panel, chế độ tối.
+- Xem nhanh: Bảng việc (Scrum/Kanban, swimlane), Việc chờ khu hơn 50 dòng (ảo hoá), Bộ lọc nhiều trang bằng cursor thật và "Tải thêm" từ panel, Cây việc kéo-thả với tiêu đề là liên kết, iPhone thật nhấn giữ 250 ms trên Cây/thẻ (không menu xem trước, vẫn kéo được), Safari tô hàng `<tr>`, trình đọc màn hình đọc "Việc N trên ít nhất M".
+- Sheet đáy: Chrome Android và iOS Safari (chạm giữa thẻ, nút "…" góc trên phải), nút Back của Android, bàn phím ảo che sheet khi gõ bình luận, vùng an toàn (notch).
+- Sáu biểu mẫu có khoảng ngày (Bắt đầu/Sửa sprint, Hợp đồng, Chương trình, Nghỉ phép, Phân bổ): payload không đổi và lịch chọn ngày bản địa có `min` trên Chrome/Safari/iOS.
+- Bảng màu: lưu vai trò/nhóm/chương trình rồi kiểm payload; VoiceOver đọc tên màu; xem trước khi in.
+- Ô nhãn: tạo-và-gắn thật, tình huống trùng 422, bộ gõ thật.
+- Bảng việc: "Hiển thị" với trình đọc màn hình và thả thẻ thật ở chế độ Gọn; chọn nhiều — nhấn giữ trên ô tick (cảm ứng), Safari, Hoàn tác khi có xung đột phiên bản thật; Bộ lọc — dự án thứ hai thật, 409 thật, lỗi giữa chừng với hơn 100 dòng.
+- Chi tiết công việc trên điện thoại: chuyển giữa dải thuộc tính và cột phải khi xoay màn hình lúc đang sửa.
+- Menu thao tác: bộ lọc đã lưu (kiểm thật), máy lai (con trỏ chuột + cảm ứng), trình đọc màn hình.
+- Tour: chạy với dữ liệu hướng dẫn thật từ API.
+- Trình đọc màn hình thật (VoiceOver/NVDA) cho mọi điều khiển mới trước khi phát hành (yêu cầu sẵn có của `UX_CONVENTIONS.md`).
