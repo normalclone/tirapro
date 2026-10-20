@@ -11,13 +11,63 @@ function walk(dir: string): string[] {
   });
 }
 
-/** `useAuth((s) => s.can)` chọn HÀM ổn định → component không render lại khi quyền đổi. */
-const FN_SELECTOR = /useAuth\(\s*\(?\s*\w+\s*\)?\s*=>\s*\w+\.can\s*\)/;
+/** Văn bản trong cặp ngoặc của lời gọi bắt đầu tại `open` (vị trí dấu `(`), cân bằng ngoặc. */
+function callArgs(src: string, open: number): string {
+  let depth = 0;
+  for (let i = open; i < src.length; i++) {
+    if (src[i] === '(') depth++;
+    else if (src[i] === ')' && --depth === 0) return src.slice(open + 1, i);
+  }
+  return src.slice(open + 1);
+}
+
+/**
+ * Có chọn HÀM `can` từ auth store không? (hàm ổn định → component không render lại khi quyền đổi.)
+ * Bắt: `(s) => s.can`, `(s: AuthState) => s.can`, thân khối `{ return s.can; }`, dấu phẩy cuối, `s['can']`,
+ * destructuring trong tham số `({ can }) => can` và `const { can } = useAuth()`.
+ * Cho phép gọi ngay (`s.can('x')`, `s['can']('x')`) vì kết quả là boolean.
+ */
+export function selectsCanFunction(src: string): boolean {
+  for (const m of src.matchAll(/\buseAuth\s*\(/g)) {
+    const args = callArgs(src, m.index + m[0].length - 1);
+    if (/\.\s*can\b(?!\s*\()/.test(args)) return true; // s.can  /  s . can
+    if (/\[\s*['"]can['"]\s*\](?!\s*\()/.test(args)) return true; // s['can']
+    if (/\(\s*\{[^}]*\bcan\b[^}]*\}/.test(args)) return true; // ({ can }) => can
+  }
+  return /\{[^}]*\bcan\b[^}]*\}\s*=\s*useAuth\s*\(/.test(src); // const { can } = useAuth()
+}
+
+describe('selectsCanFunction — mẫu dò (fixture)', () => {
+  const bad = [
+    'const can = useAuth((s) => s.can);',
+    'const can = useAuth((state) => state.can);',
+    'const can = useAuth((s: AuthState) => s.can);',
+    'const can = useAuth((s) => { return s.can; });',
+    'const can = useAuth(\n  (s) => s.can,\n);',
+    "const can = useAuth((s) => s['can']);",
+    'const can = useAuth(({ can }) => can);',
+    'const can = useAuth(function (s) { return s.can; });',
+    'const can = useAuth((s) => s . can);',
+    'const { can } = useAuth();',
+    'const { user, can } = useAuth();',
+  ];
+  const good = [
+    "const ok = useAuth((s) => s.can('member:manage'));",
+    "const ok = useAuth((s) => s['can']('member:manage'));",
+    "const ok = useAuth((s) => s.can('a') || s.can('b'));",
+    'const u = useAuth((s) => s.user);',
+    'const p = useAuth((s) => s.permissions);',
+    "const x = useAuth.getState().can('a');",
+    'const canManage = useAuth((s) => s.user?.canManage);',
+  ];
+  it.each(bad)('bắt: %s', (code) => expect(selectsCanFunction(code)).toBe(true));
+  it.each(good)('cho qua: %s', (code) => expect(selectsCanFunction(code)).toBe(false));
+});
 
 describe('không chọn hàm `can` từ auth store (P-C12)', () => {
-  it('không file nguồn nào dùng useAuth((s) => s.can)', () => {
+  it('không file nguồn nào chọn hàm can', () => {
     const bad = walk(ROOT)
-      .filter((f) => FN_SELECTOR.test(readFileSync(f, 'utf8')))
+      .filter((f) => selectsCanFunction(readFileSync(f, 'utf8')))
       .map((f) => f.replace(ROOT, 'src'));
     expect(bad).toEqual([]);
   });

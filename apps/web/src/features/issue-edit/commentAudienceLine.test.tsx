@@ -56,6 +56,12 @@ describe('nối dây', () => {
     expect(comments).toMatch(/useCommentAudience\(issue, draft, people/);
     expect(comments).toMatch(/<CommentAudienceLine/);
   });
+  it('chỉ hiện khi đang gõ (draft.trim() khác rỗng) — không nhảy bố cục lúc tải', () => {
+    expect(comments).toMatch(/draft\.trim\(\)/);
+    expect(comments).toMatch(/<CommentAudienceLine/);
+    const h = read('useCommentAudience.ts');
+    expect(h).toMatch(/draft\.trim\(\)/);
+  });
   it('useCommentAudience: watchers qua useWatchers, memo theo draft', () => {
     const h = read('useCommentAudience.ts');
     expect(h).toMatch(/useWatchers\(/);

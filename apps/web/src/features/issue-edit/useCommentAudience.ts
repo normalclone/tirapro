@@ -5,7 +5,7 @@ import { useAuth } from '@/stores/auth';
 import { commentAudience, type AudienceEntry, type AudiencePerson } from './commentAudience';
 
 /**
- * Người sẽ nhận thông báo khi gửi `draft`. Watcher lấy một lần theo công việc (cache), phần còn lại tính thuần từ
+ * Người sẽ nhận thông báo khi gửi `draft` (rỗng khi chưa gõ gì). Watcher lấy một lần theo công việc (cache), phần còn lại tính thuần từ
  * `draft` — memo theo draft nên mỗi lần gõ chỉ chạy `extractMentionIds` trên chuỗi ngắn.
  */
 export function useCommentAudience(
@@ -17,8 +17,10 @@ export function useCommentAudience(
   const meId = useAuth((s) => s.user?.id);
   const watchers = useWatchers(issue.id, enabled).data?.watchers;
   const assignee = issue.assignee;
+  // Chỉ khi đang gõ: ô trống thì không có gì để "gửi" nên không hứa thông báo (cũng tránh nhảy bố cục lúc tải).
+  const typing = draft.trim() !== '';
   return useMemo(
-    () => (enabled ? commentAudience({ draft, people, assignee, watchers, meId }) : []),
-    [enabled, draft, people, assignee, watchers, meId],
+    () => (enabled && typing ? commentAudience({ draft, people, assignee, watchers, meId }) : []),
+    [enabled, typing, draft, people, assignee, watchers, meId],
   );
 }

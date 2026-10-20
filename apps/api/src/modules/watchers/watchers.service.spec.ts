@@ -61,3 +61,59 @@ describe('WatchersService — thông báo theo dõi đi qua NotificationsService
     expect(notifications.publish).toHaveBeenCalledTimes(2);
   });
 });
+
+describe('WatchersService.list — chỉ người còn nhận được thông báo (cùng luật với notifications.prepare)', () => {
+  type Row = {
+    user: { id: string; displayName: string; avatarUrl: string | null };
+    status: string;
+  };
+  const row = (id: string, status = 'ACTIVE'): Row => ({
+    user: { id, displayName: `Tên ${id}`, avatarUrl: null },
+    status,
+  });
+
+  function setupList(rows: Row[], canSee: string[]) {
+    const findMany = vi.fn((args: { where: { user?: { status?: { not?: string } } } }) => {
+      const not = args.where.user?.status?.not;
+      return Promise.resolve(rows.filter((r) => r.status !== not).map((r) => ({ user: r.user })));
+    });
+    const prisma = {
+      issueWatcher: { findMany },
+      issue: { findFirst: vi.fn(() => Promise.resolve({ id: 'i1', projectId: 'p1' })) },
+    };
+    const notifications = {
+      publish: vi.fn(),
+      filterCanSee: vi.fn((ids: string[]) =>
+        Promise.resolve(ids.filter((id) => canSee.includes(id))),
+      ),
+    };
+    const service = new WatchersService(prisma as never, notifications as never);
+    return { service, findMany, notifications };
+  }
+
+  it('watcher bình thường (còn xem được dự án, đang hoạt động) được trả về', async () => {
+    const { service } = setupList([row('a'), row('b')], ['a', 'b']);
+    const r = await service.list('w1', 'a', 'i1');
+    expect(r.watchers.map((w) => w.id)).toEqual(['a', 'b']);
+    expect(r.isWatching).toBe(true);
+  });
+
+  it('watcher không còn xem được dự án (ví dụ người báo ngoài nhóm, đã rời dự án riêng tư) bị loại', async () => {
+    const { service, notifications } = setupList([row('a'), row('ex')], ['a']);
+    const r = await service.list('w1', 'a', 'i1');
+    expect(r.watchers.map((w) => w.id)).toEqual(['a']);
+    expect(notifications.filterCanSee).toHaveBeenCalledWith(['a', 'ex'], 'w1', 'p1');
+  });
+
+  it('watcher đã bị vô hiệu hoá (DEACTIVATED) bị loại ngay ở truy vấn', async () => {
+    const { service, findMany } = setupList([row('a'), row('off', 'DEACTIVATED')], ['a', 'off']);
+    const r = await service.list('w1', 'a', 'i1');
+    expect(r.watchers.map((w) => w.id)).toEqual(['a']);
+    expect(findMany.mock.calls[0]![0].where.user).toEqual({ status: { not: 'DEACTIVATED' } });
+  });
+
+  it('isWatching phản ánh danh sách đã lọc', async () => {
+    const { service } = setupList([row('a')], ['a']);
+    expect((await service.list('w1', 'zzz', 'i1')).isWatching).toBe(false);
+  });
+});

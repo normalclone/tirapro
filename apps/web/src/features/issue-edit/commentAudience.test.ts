@@ -43,6 +43,16 @@ describe('commentAudience — người được giao (phản chiếu máy chủ)
   it('có người được giao khác mình → được báo', () => {
     expect(ids(commentAudience({ ...base, assignee }))).toEqual(['binh:assignee']);
   });
+  it('người được giao đã bị vô hiệu hoá (DEACTIVATED) → không (không báo được)', () => {
+    expect(
+      ids(commentAudience({ ...base, assignee: { ...assignee, status: 'DEACTIVATED' } })),
+    ).toEqual([]);
+  });
+  it('người được giao đang hoạt động / không rõ trạng thái → vẫn được báo', () => {
+    expect(ids(commentAudience({ ...base, assignee: { ...assignee, status: 'ACTIVE' } }))).toEqual([
+      'binh:assignee',
+    ]);
+  });
   it('người được giao là chính mình (tác giả) → không', () => {
     expect(ids(commentAudience({ ...base, assignee: { ...assignee, id: 'me' } }))).toEqual([]);
   });
@@ -76,7 +86,7 @@ describe('commentAudience — người theo dõi', () => {
   it('watchers chưa tải (undefined) → bỏ qua', () => {
     expect(ids(commentAudience({ ...base, watchers: undefined }))).toEqual([]);
   });
-  it('watcher cũng không bị lọc bởi people (máy chủ báo mọi watcher trừ tác giả)', () => {
+  it('watcher không bị lọc bởi people (máy chủ đã lọc theo quyền xem + trạng thái trước khi trả về)', () => {
     expect(ids(commentAudience({ ...base, watchers: [w('dung', 'Dũng')] }))).toEqual([
       'dung:watcher',
     ]);

@@ -10,6 +10,8 @@ interface UserLike {
   id: string;
   displayName: string;
   avatarUrl?: string | null;
+  /** `DEACTIVATED` → không nhận được thông báo (UserRefDto.status). */
+  status?: string;
 }
 
 type AudienceReason = 'mentioned' | 'assignee' | 'watcher';
@@ -26,7 +28,8 @@ export interface AudienceEntry {
  *  1. người được @ — chỉ người máy chủ giữ lại (thành viên xem được dự án) = giao với `people`; id lạ trong token tự gõ
  *     bị bỏ im lặng (KHÔNG tra user theo id tuỳ ý; tên lấy từ `people`, không tin tên trong token);
  *  2. người được giao — nếu không phải tác giả và chưa được @ (máy chủ không báo "bình luận mới" thêm lần nữa);
- *  3. người theo dõi — mọi watcher trừ tác giả, không trùng người đã nằm trong danh sách (máy chủ gộp thông báo trùng).
+ *  3. người theo dõi — `watchers` do máy chủ đã lọc (xem được dự án + chưa bị vô hiệu hoá, cùng luật gửi thông báo); FE chỉ
+ *     bỏ mình và người đã nằm trong danh sách (máy chủ gộp thông báo trùng).
  * Chính mình (`meId`) luôn bị loại.
  */
 export function commentAudience(input: {
@@ -57,7 +60,8 @@ export function commentAudience(input: {
       if (p) add(p.id, p.name, p.avatarUrl, 'mentioned');
     }
   }
-  if (assignee) {
+  // Tài khoản bị vô hiệu hoá không nhận thông báo. (Người được giao mất quyền xem dự án thì FE không biết được — giới hạn đã biết.)
+  if (assignee && assignee.status !== 'DEACTIVATED') {
     const p = people.find((x) => x.id === assignee.id);
     add(
       assignee.id,

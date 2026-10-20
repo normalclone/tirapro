@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { toast } from 'sonner';
 import type { CommentDto, IssueDto } from '@tirapro/types';
 import { usePastedImageUploader } from '@/features/attachments/api';
@@ -40,6 +40,9 @@ export function CommentsSection({ issue }: { issue: IssueDto }) {
   const [draft, setDraft] = useState('');
   const { notifyTyping, stopTyping } = useTypingEmitter(issue.id);
   const audience = useCommentAudience(issue, draft, people, canComment);
+  // Đã từng hiện dòng này thì giữ chiều cao dòng: xoá bớt chữ rồi gõ lại không làm nút Gửi nhảy lên xuống.
+  const audienceShown = useRef(false);
+  if (audience.length > 0) audienceShown.current = true;
 
   function onDraftChange(value: string) {
     setDraft(value);
@@ -101,7 +104,9 @@ export function CommentsSection({ issue }: { issue: IssueDto }) {
             onBusyChange={setUploading}
             placeholder="Viết bình luận… (viết được Markdown · dán ảnh bằng Ctrl+V)"
           />
-          <CommentAudienceLine entries={audience} />
+          <div className={audienceShown.current ? 'min-h-5' : undefined}>
+            <CommentAudienceLine entries={audience} />
+          </div>
           <TypingIndicator issueId={issue.id} />
           <div className="flex items-center justify-end gap-2">
             <span className="kbd-hint mr-auto text-xs text-faint">⌘/Ctrl+Enter để gửi</span>
