@@ -66,7 +66,7 @@ export function lockedRoleReasons(
 export type RoleChangePlan =
   | { kind: 'noop' }
   | { kind: 'blocked'; reason: string }
-  | { kind: 'confirm'; next: string[]; canUndo: boolean }
+  | { kind: 'confirm'; next: string[]; canUndo: boolean; reason: 'admin' | 'manage' }
   | { kind: 'apply'; next: string[]; canUndo: boolean };
 
 /**
@@ -89,8 +89,30 @@ export function planRoleChange(input: {
     prev.some((id) => ids.has(id)) && !next.some((id) => ids.has(id));
   const losesAdmin = loses(adminIds);
   if (losesAdmin && lastAdmin) return { kind: 'blocked', reason: LAST_ADMIN_REASON };
-  if (isSelf && (losesAdmin || loses(manageIds))) return { kind: 'confirm', next, canUndo: false };
+  if (isSelf && (losesAdmin || loses(manageIds)))
+    return { kind: 'confirm', next, canUndo: false, reason: losesAdmin ? 'admin' : 'manage' };
   return { kind: 'apply', next, canUndo: true };
+}
+
+/** Lời nhắc của hộp xác nhận khi TỰ mất quyền: nói đúng thứ sắp mất (admin hay chỉ quản lý thành viên). */
+export function selfDemoteCopy(reason: 'admin' | 'manage'): {
+  title: string;
+  description: string;
+  confirmLabel: string;
+} {
+  if (reason === 'admin')
+    return {
+      title: 'Bỏ quyền quản trị của chính bạn?',
+      description:
+        'Sau khi bỏ, bạn không thể tự cấp lại quyền quản trị — cần một quản trị viên khác cấp cho bạn.',
+      confirmLabel: 'Bỏ quyền quản trị',
+    };
+  return {
+    title: 'Bỏ quyền quản lý thành viên của chính bạn?',
+    description:
+      'Sau khi bỏ, bạn không thể tự đổi vai trò của ai nữa (kể cả của chính mình) — cần người có quyền này cấp lại cho bạn.',
+    confirmLabel: 'Bỏ quyền quản lý',
+  };
 }
 
 /**

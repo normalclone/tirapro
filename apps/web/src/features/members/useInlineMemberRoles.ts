@@ -1,7 +1,7 @@
 import { useRef } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { toast } from 'sonner';
 import type { MemberDto } from '@tirapro/types';
+import { toastReplace } from '@/lib/toastReplace';
 import { api, apiErrorCode, apiErrorMessage } from '@/lib/api';
 import type { RoleOption } from '@/components/ui/RoleMultiSelect';
 import { roleLabel } from '@tirapro/types';
@@ -47,36 +47,30 @@ export function useInlineMemberRoles(
     try {
       await mutation.mutateAsync({ roleIds: next, refs });
     } catch (e) {
-      toast.error(memberErrorText(apiErrorCode(e), personName) ?? apiErrorMessage(e), {
-        id: toastId,
-      });
+      // Lỗi thay hẳn toast Hoàn tác đang hiện → chuỗi bấm KẾT THÚC có chủ đích: không còn toast nào hứa Hoàn tác,
+      // nên baseline về null (lần đổi kế tiếp lấy baseline mới từ bộ vai trò lúc đó).
+      baseline.current = null;
+      toastReplace(
+        toastId,
+        'error',
+        memberErrorText(apiErrorCode(e), personName) ?? apiErrorMessage(e),
+      );
       return;
     }
     // Quyền của chính mình có thể đã đổi: nạp lại để trang lập tức theo quyền mới (không chờ tải lại trang).
     if (opts.isSelf) void useAuth.getState().refreshMe();
     if (flags.undo) {
       baseline.current = null;
-      toast.success(`Đã hoàn tác vai trò của ${personName}`, {
-        id: toastId,
-        description: undefined,
-        action: undefined,
-        onDismiss: undefined,
-        onAutoClose: undefined,
-      });
+      toastReplace(toastId, 'success', `Đã hoàn tác vai trò của ${personName}`);
       opts.focusTrigger(); // popover đã đóng từ lúc bấm toast: trả focus sau khi mọi thứ ổn định
       return;
     }
     const names = refs.map((r) => roleLabel(r.name)).join(', ');
     if (flags.canUndo === false) {
       baseline.current = null; // chuỗi kết thúc: không còn quyền để hoàn tác
-      toast.success(`Đã đổi vai trò của ${personName}: ${names}`, {
-        id: toastId,
+      toastReplace(toastId, 'success', `Đã đổi vai trò của ${personName}: ${names}`, {
         duration: UNDO_TOAST_MS,
         description: 'Bạn không còn quyền quản lý thành viên của không gian này.',
-        // sonner GỘP với toast cũ cùng id: phải ghi đè rõ ràng, nếu không nút Hoàn tác của lần trước còn lại.
-        action: undefined,
-        onDismiss: undefined,
-        onAutoClose: undefined,
       });
       return;
     }
@@ -86,8 +80,7 @@ export function useInlineMemberRoles(
     const endBurst = () => {
       if (seq === toastSeq.current) baseline.current = null; // chỉ toast MỚI NHẤT được kết thúc chuỗi
     };
-    toast.success(`Đã đổi vai trò của ${personName}: ${names}`, {
-      id: toastId,
+    toastReplace(toastId, 'success', `Đã đổi vai trò của ${personName}: ${names}`, {
       duration: UNDO_TOAST_MS,
       description: 'Quyền mới có hiệu lực ngay.',
       onDismiss: endBurst,

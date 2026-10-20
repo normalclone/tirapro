@@ -11,6 +11,7 @@ import {
   lockedRoleReasons,
   manageRoleIds,
   planRoleChange,
+  selfDemoteCopy,
 } from './roleChange';
 import { useInlineMemberRoles } from './useInlineMemberRoles';
 
@@ -79,13 +80,7 @@ export function MemberRolesCell({
       return;
     }
     if (plan.kind === 'confirm') {
-      const ok = await confirm({
-        title: 'Bỏ quyền quản trị của chính bạn?',
-        description:
-          'Sau khi bỏ, bạn không thể tự cấp lại quyền quản trị — cần một quản trị viên khác cấp cho bạn.',
-        confirmLabel: 'Bỏ quyền quản trị',
-        destructive: true,
-      });
+      const ok = await confirm({ ...selfDemoteCopy(plan.reason), destructive: true });
       if (!ok) {
         triggerRef.current?.focus();
         return;

@@ -115,12 +115,17 @@ describe('nối dây', () => {
     expect(page).toMatch(/useAuth\(\(s\) => s\.can\('member:manage'\)\)/);
     expect(page).not.toMatch(/useAuth\(\(s\) => s\.can\)/);
   });
-  it('toast không hứa Hoàn tác (canUndo=false) ghi đè action cũ vì sonner gộp theo id; baseline theo chuỗi bấm', () => {
+  it('mọi toast dùng id chung đi qua toastReplace (sonner gộp theo id); baseline theo chuỗi bấm', () => {
     const hook = read('useInlineMemberRoles.ts');
     expect(hook).toMatch(/canUndo === false/);
-    expect(hook).toMatch(/action: undefined/);
+    expect(hook).not.toMatch(/\btoast\.(success|error)\(/);
+    expect(hook).not.toMatch(/import \{ toast \}/);
+    expect(hook.match(/toastReplace\(\s*toastId,/g)?.length).toBeGreaterThanOrEqual(4);
     expect(hook).toMatch(/burstBaseline\(/);
     expect(hook).toMatch(/onAutoClose/);
+  });
+  it('hộp xác nhận chọn lời nhắc theo reason (admin / manage)', () => {
+    expect(cell).toMatch(/selfDemoteCopy\(plan\.reason\)/);
   });
   it('lưu xong cho CHÍNH MÌNH thì làm mới quyền trong auth store', () => {
     expect(read('useInlineMemberRoles.ts')).toMatch(/refreshMe\(\)/);

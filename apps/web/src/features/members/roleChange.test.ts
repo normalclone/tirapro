@@ -13,6 +13,7 @@ import {
   LAST_ADMIN_REASON,
   planRoleChange,
   planUndo,
+  selfDemoteCopy,
   sameRoleSet,
   succeedSave,
   type RoleSaveStates,
@@ -123,6 +124,7 @@ describe('planRoleChange', () => {
       kind: 'confirm',
       next: ['member'],
       canUndo: false,
+      reason: 'admin',
     });
   });
   it('tự đổi vai trò nhưng giữ admin → apply, không hỏi', () => {
@@ -169,6 +171,7 @@ describe('planRoleChange — Hoàn tác và quyền quản lý thành viên', ()
       kind: 'confirm',
       next: ['member'],
       canUndo: false,
+      reason: 'admin',
     });
   });
   it('tự mất member:manage nhưng còn admin: cũng hỏi và không Hoàn tác', () => {
@@ -176,12 +179,28 @@ describe('planRoleChange — Hoàn tác và quyền quản lý thành viên', ()
       kind: 'confirm',
       next: ['admin'],
       canUndo: false,
+      reason: 'manage',
     });
   });
   it('người khác mất admin/manage: vẫn Hoàn tác được (người thao tác còn quyền)', () => {
     expect(
       planRoleChange({ ...base, isSelf: false, prev: ['owner'], next: ['member'] }),
     ).toMatchObject({ canUndo: true });
+  });
+});
+
+describe('selfDemoteCopy — lời nhắc đúng với thứ sắp mất', () => {
+  it('mất admin → nói quyền quản trị', () => {
+    const c = selfDemoteCopy('admin');
+    expect(c.title).toMatch(/quản trị/);
+    expect(c.confirmLabel).toMatch(/quản trị/);
+  });
+  it('chỉ mất member:manage (còn admin) → nói quyền quản lý thành viên, không nói "quản trị"', () => {
+    const c = selfDemoteCopy('manage');
+    expect(c.title).toBe('Bỏ quyền quản lý thành viên của chính bạn?');
+    expect(c.title).not.toMatch(/quản trị/);
+    expect(c.description).not.toMatch(/quản trị/);
+    expect(c.confirmLabel).not.toMatch(/quản trị/);
   });
 });
 
