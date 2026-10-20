@@ -18,6 +18,7 @@ import { PageHeader } from '@/components/layout/PageHeader';
 import { useAuth } from '@/stores/auth';
 import { useRoles } from '@/features/roles/api';
 import { MemberRolesCell } from './MemberRolesCell';
+import { countActiveMembers } from './memberCount';
 import { useRemoveMember, useWorkspaceMembers } from './api';
 import { Tabs, TabPanel } from '@/components/ui/Tabs';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
@@ -83,9 +84,9 @@ export function MembersPage() {
                   {members && members.length > 0 && (
                     <span
                       className="text-sm text-muted"
-                      title={`Không gian làm việc hiện có ${members.length} người`}
+                      title={`Không gian làm việc hiện có ${countActiveMembers(members)} người đang hoạt động`}
                     >
-                      {members.length} người
+                      {countActiveMembers(members)} người
                     </span>
                   )}
                   {canManage && (

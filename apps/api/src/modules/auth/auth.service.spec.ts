@@ -1,6 +1,7 @@
 import { UnauthorizedException } from '@nestjs/common';
 import { describe, expect, it, vi } from 'vitest';
 import { AuthService } from './auth.service';
+import { SYSTEM_USER_EMAIL } from '../automation/rule-engine.service';
 
 /** `expect.any(Date)` có kiểu `any` → ép kiểu một lần để không dính no-unsafe-assignment. */
 const anyDate = expect.any(Date) as unknown as Date;
@@ -181,5 +182,70 @@ describe('AuthService.logoutAll', () => {
       where: { id: 'u1' },
       data: { sessionsRevokedAt: anyDate },
     });
+  });
+});
+
+describe('AuthService.listWorkspaces — memberCount (bộ chọn không gian làm việc)', () => {
+  function makeList(rows: unknown[]) {
+    const findMany = vi.fn((_args: unknown) => Promise.resolve(rows));
+    const prisma = { workspaceMembership: { findMany } };
+    const service = new AuthService(
+      prisma as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+    return { service, findMany };
+  }
+  const row = (id: string, count: number | undefined) => ({
+    workspace: {
+      id,
+      name: `WS ${id}`,
+      slug: id,
+      avatarUrl: null,
+      ...(count === undefined ? {} : { _count: { memberships: count } }),
+    },
+    role: { name: 'Workspace Admin' },
+  });
+
+  it('trả memberCount từ _count.memberships của từng workspace', async () => {
+    const { service } = makeList([row('a', 12), row('b', 1)]);
+    const out = await service.listWorkspaces('u1');
+    expect(out.map((w) => [w.id, w.memberCount])).toEqual([
+      ['a', 12],
+      ['b', 1],
+    ]);
+    expect(out[0]).toMatchObject({
+      name: 'WS a',
+      slug: 'a',
+      avatarUrl: null,
+      roleName: 'Workspace Admin',
+    });
+  });
+
+  it('MỘT truy vấn duy nhất (không N+1): _count có điều kiện trong select của workspace', async () => {
+    const { service, findMany } = makeList([row('a', 3), row('b', 4), row('c', 5)]);
+    await service.listWorkspaces('u1');
+    expect(findMany).toHaveBeenCalledTimes(1);
+    const arg = findMany.mock.calls[0]![0] as {
+      where: unknown;
+      select: {
+        workspace: { select: { _count: { select: { memberships: { where: unknown } } } } };
+      };
+    };
+    expect(arg.where).toEqual({ userId: 'u1' }); // chỉ workspace mà người này là thành viên
+    expect(arg.select.workspace.select._count.select.memberships.where).toEqual({
+      user: { status: { not: 'DEACTIVATED' }, email: { not: SYSTEM_USER_EMAIL } },
+    });
+  });
+
+  it('loại tài khoản bị vô hiệu hoá và user hệ thống khỏi số đếm (điều kiện nằm ở truy vấn)', async () => {
+    const { service, findMany } = makeList([row('a', 2)]);
+    await service.listWorkspaces('u1');
+    const where = JSON.stringify((findMany.mock.calls[0]![0] as { select: unknown }).select);
+    expect(where).toContain('"DEACTIVATED"');
+    expect(where).toContain(SYSTEM_USER_EMAIL);
   });
 });

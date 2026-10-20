@@ -1,14 +1,14 @@
 import { useState } from 'react';
 import * as Popover from '@radix-ui/react-popover';
-import { Check, ChevronsUpDown, Plus } from 'lucide-react';
+import { ChevronsUpDown, Plus } from 'lucide-react';
 import { toast } from 'sonner';
-import { roleLabel } from '@tirapro/types';
 import { useAuth } from '@/stores/auth';
 import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { useConfirmLeaveApp } from '@/lib/useLeaveGuard';
 import { useMyWorkspaces, useSwitchWorkspace, type MyWorkspace } from './api';
 import { CreateWorkspaceModal } from './CreateWorkspaceModal';
+import { WorkspaceOption, WsBadge } from './WorkspaceOption';
 
 /**
  * Nút chọn không gian làm việc ở THANH NAVBAR (góc trái): mở popover liệt kê các nơi (tên + vai trò),
@@ -74,39 +74,15 @@ export function WorkspaceSwitcher() {
               role="listbox"
               aria-label="Danh sách không gian làm việc"
             >
-              {workspaces.map((ws) => {
-                const isActive = ws.id === active?.id;
-                return (
-                  <li key={ws.id}>
-                    <button
-                      type="button"
-                      role="option"
-                      aria-selected={isActive}
-                      disabled={switchWs.isPending}
-                      onClick={() => void pick(ws)}
-                      className={cn(
-                        'flex w-full items-center gap-2.5 px-3 py-2 text-left transition-colors',
-                        'hover:bg-surface-2 focus-visible:bg-surface-2 focus-visible:outline-none',
-                        'disabled:pointer-events-none [&:disabled_.text-ink-strong]:text-disabled-fg [&:disabled_.text-muted]:text-disabled-fg',
-                        isActive && 'bg-primary-subtle/60',
-                      )}
-                    >
-                      <WsBadge name={ws.name} src={ws.avatarUrl} />
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-sm font-medium text-ink-strong">
-                          {ws.name}
-                        </span>
-                        <span className="block truncate text-[11px] text-muted">
-                          {roleLabel(ws.roleName)}
-                        </span>
-                      </span>
-                      {isActive && (
-                        <Check className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
-                      )}
-                    </button>
-                  </li>
-                );
-              })}
+              {workspaces.map((ws) => (
+                <WorkspaceOption
+                  key={ws.id}
+                  ws={ws}
+                  active={ws.id === active?.id}
+                  disabled={switchWs.isPending}
+                  onPick={(w) => void pick(w)}
+                />
+              ))}
             </ul>
             <button
               type="button"
@@ -126,33 +102,5 @@ export function WorkspaceSwitcher() {
 
       <CreateWorkspaceModal open={createOpen} onClose={() => setCreateOpen(false)} />
     </>
-  );
-}
-
-/** Ô vuông bo góc: hiện logo của không gian làm việc nếu có, không thì chữ cái đầu. */
-function WsBadge({
-  name,
-  src,
-  variant,
-}: {
-  name: string;
-  src?: string | null;
-  variant?: 'active';
-}) {
-  return (
-    <span
-      className={cn(
-        'grid h-6 w-6 shrink-0 place-items-center overflow-hidden rounded-md text-xs font-bold',
-        variant === 'active'
-          ? 'bg-primary text-primary-fg'
-          : 'bg-surface-2 font-semibold text-muted',
-      )}
-    >
-      {src ? (
-        <img src={src} alt={name} className="h-full w-full object-cover" />
-      ) : (
-        name.charAt(0).toUpperCase()
-      )}
-    </span>
   );
 }

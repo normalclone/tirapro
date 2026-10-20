@@ -266,7 +266,7 @@ describe('không lộ tên enum/trường thô trên giao diện', () => {
 
 describe('vai trò hiển thị bằng tiếng Việt (roleLabel)', () => {
   it.each([
-    ['features/workspace/WorkspaceSwitcher.tsx', /roleLabel\(ws\.roleName\)/],
+    ['features/workspace/workspaceSubline.ts', /roleLabel\(ws\.roleName\)/],
     ['features/issue-edit/useAssigneeOptions.ts', /roleNames\.map\(roleLabel\)/],
     ['features/quick-filters/AssigneeFilter.tsx', /label: roleLabel\(r\)/],
     ['features/members/AddPeopleDialog.tsx', /label: roleLabel\(n\)/],

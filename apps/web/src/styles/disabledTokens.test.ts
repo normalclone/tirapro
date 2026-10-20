@@ -50,7 +50,7 @@ const CONVERTED = [
   'features/backlog/StartSprintDialog.tsx',
   'features/issue-fields/CustomFieldsPanel.tsx', // chip nhãn (:383); checkbox native (:147) nằm trong ALLOW
   'features/auth/DemoAccounts.tsx',
-  'features/workspace/WorkspaceSwitcher.tsx',
+  'features/workspace/WorkspaceOption.tsx', // mục không gian làm việc (tách từ WorkspaceSwitcher)
 ];
 
 /**
