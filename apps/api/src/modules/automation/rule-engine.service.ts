@@ -13,6 +13,7 @@ import {
   type RuleTrigger,
 } from '@tirapro/types';
 import {
+  SCHEDULED_RUN_ISSUE_LIMIT,
   parseJql,
   ruleActionSchema,
   ruleConditionSchema,
@@ -37,8 +38,6 @@ import { RulesService, type CachedRule } from './rules.service';
 
 /** Chuỗi automation nối nhau quá số tầng này thì dừng (chống vòng lặp). */
 export const MAX_AUTOMATION_DEPTH = 3;
-/** Quy tắc theo lịch xử lý tối đa chừng này issue mỗi lần chạy. */
-const SCHEDULED_ISSUE_LIMIT = 500;
 const RUN_RETENTION_DAYS = 30;
 
 const conditionsSchema = z.array(ruleConditionSchema);
@@ -515,7 +514,7 @@ export class RuleEngineService implements OnModuleInit, OnApplicationShutdown {
       where,
       [],
       undefined,
-      SCHEDULED_ISSUE_LIMIT,
+      SCHEDULED_RUN_ISSUE_LIMIT,
       null,
     );
     for (const issue of page.data) {

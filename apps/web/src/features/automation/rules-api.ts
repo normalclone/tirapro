@@ -7,6 +7,7 @@ import type {
 } from '@tirapro/types';
 import type {
   CreateRuleInput,
+  PreviewMatchResult,
   RuleAction,
   RuleCondition,
   TriggerConfig,
@@ -15,7 +16,6 @@ import type {
 import { api } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
 import { useDebouncedValue } from '@/lib/useDebouncedValue';
-import type { PreviewMatch } from './rulePreview';
 
 /** Quy tắc với `conditions`/`actions`/`triggerConfig` đã gán kiểu (BE đã kiểm bằng zod khi lưu). */
 export interface AutomationRule extends Omit<
@@ -89,7 +89,7 @@ export function useRulePreview(conditions: RuleCondition[] | null, projectId: st
       settled !== ''
         ? async ({ signal }) =>
             (
-              await api.post<PreviewMatch>(
+              await api.post<PreviewMatchResult>(
                 '/automation/rules/preview-match',
                 { ...(projectId ? { projectId } : {}), conditions: JSON.parse(settled) as unknown },
                 { signal },

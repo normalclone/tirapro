@@ -1,6 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
-import { JqlParseError, parseJql, type PreviewMatchInput } from '@tirapro/shared';
+import {
+  JqlParseError,
+  containsUnstorableText,
+  parseJql,
+  type PreviewMatchInput,
+  type PreviewMatchResult,
+} from '@tirapro/shared';
 import { BOUNDED_COUNT_DEADLINE_MS, boundedIssueCount } from '../../common/bounded-count';
 import { WRITABLE_PROJECT_FILTER } from '../../common/project-writable';
 import { SYSTEM_USER_EMAIL } from '../../common/system-user';
@@ -9,18 +15,8 @@ import { ProjectAccessService } from '../rbac/project-access.service';
 import { compileJql, jqlDependsOnViewer } from '../search/jql-compiler';
 import { fieldConditionToWhere, isJqlCondition } from './rule-conditions';
 
-export interface PreviewMatchResult {
-  /** Số việc hiện có khớp MỌI điều kiện (trong phạm vi người soạn xem được); `null` = không đếm được (xem `reason`/`timedOut`). */
-  count: number | null;
-  /** Lý do không xem trước được (điều kiện không diễn đạt chính xác được, JQL sai cú pháp); `null` nếu không có. */
-  reason: string | null;
-  /** Đếm quá hạn (statement_timeout, hoặc không có chỗ trước hạn tổng). */
-  timedOut: boolean;
-  /** Có điều kiện JQL dùng `currentUser()`/`me`: trong tự động hoá nó là người dùng hệ thống, không phải ai đang xem. */
-  currentUserInJql: boolean;
-}
-
 const UNSUPPORTED = 'không xem trước được điều kiện này';
+const UNSTORABLE = 'điều kiện chứa ký tự không hợp lệ';
 const none = (over: Partial<PreviewMatchResult>): PreviewMatchResult => ({
   count: null,
   reason: null,
@@ -49,6 +45,10 @@ export class RulePreviewService {
     userId: string,
     input: PreviewMatchInput,
   ): Promise<PreviewMatchResult> {
+    // Route đã chặn bằng schema (400); đây là chốt cho mọi đường gọi khác — Postgres không nhận NUL/UTF-16 hỏng (sẽ thành 500).
+    if (input.conditions.some((c) => containsUnstorableText(c))) {
+      return none({ reason: UNSTORABLE });
+    }
     const hasJql = input.conditions.some(isJqlCondition);
     const systemId = hasJql ? await this.systemUserId() : '';
 

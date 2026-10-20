@@ -25,7 +25,12 @@ function listSources(dir: string): string[] {
   for (const name of readdirSync(dir)) {
     const full = join(dir, name);
     if (statSync(full).isDirectory()) out.push(...listSources(full));
-    else if (name.endsWith('.ts') && !name.endsWith('.spec.ts') && !name.endsWith('.d.ts'))
+    else if (
+      name.endsWith('.ts') &&
+      !name.endsWith('.spec.ts') &&
+      !name.endsWith('.int-spec.ts') &&
+      !name.endsWith('.d.ts')
+    )
       out.push(full);
   }
   return out;

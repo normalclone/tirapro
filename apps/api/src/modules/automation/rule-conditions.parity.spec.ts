@@ -323,3 +323,66 @@ describe('đối chứng — các ca được nêu tên', () => {
     ).toEqual([false]);
   });
 });
+
+describe('đối chứng — bài học từ Postgres thật (RC20)', () => {
+  /** Prisma bỏ qua `OR: []` khi nó nằm TRONG `AND: [...]` (trả MỌI hàng thay vì không hàng nào) — đo trên Postgres thật. */
+  const hasEmptyOr = (node: unknown): boolean =>
+    Array.isArray(node)
+      ? node.some(hasEmptyOr)
+      : node !== null && typeof node === 'object'
+        ? Object.entries(node).some(
+            ([k, v]) => (k === 'OR' && Array.isArray(v) && v.length === 0) || hasEmptyOr(v),
+          )
+        : false;
+
+  it('KHÔNG BAO GIỜ sinh `OR: []` (dùng { id: { in: [] } } cho "không khớp gì")', () => {
+    const offenders: string[] = [];
+    const values: unknown[] = [
+      undefined,
+      null,
+      '',
+      'x',
+      5,
+      '5.0',
+      [],
+      [null],
+      ['x'],
+      '2026-02-30',
+      {},
+      true,
+    ];
+    for (const field of RULE_CONDITION_FIELDS)
+      for (const op of RULE_CONDITION_OPS)
+        for (const value of values) {
+          const c: FieldCondition = { field, op, ...(value === undefined ? {} : { value }) };
+          if (hasEmptyOr(fieldConditionToWhere(c))) offenders.push(JSON.stringify(c));
+        }
+    expect(offenders).toEqual([]);
+  });
+
+  it('"không khớp gì" thật sự không chọn hàng nào (cả khi nằm trong AND)', () => {
+    const never = fieldConditionToWhere({ field: 'statusId', op: 'in', value: [] })!;
+    expect(selects(row(BASE), { AND: [never] })).toBe(false);
+    expect(selects(row(BASE), never)).toBe(false);
+  });
+
+  it('contains với chữ mà JS và Postgres gấp khác nhau (İ, sigma, ǅ, Hy Lạp, Kirin…) → null, KHÔNG đếm xấp xỉ', () => {
+    for (const v of ['İ', 'ΟΔΟΣ', 'ǅ', 'привет', 'ẞ'])
+      expect(fieldConditionToWhere({ field: 'summary', op: 'contains', value: v }), v).toBeNull();
+  });
+
+  it('contains với chữ Việt/ASCII/emoji vẫn có where', () => {
+    for (const v of ['lỗi', 'ĐƯỜNG', 'Ke\u0302\u0301', '100%', '😀', ''])
+      expect(
+        fieldConditionToWhere({ field: 'summary', op: 'contains', value: v }),
+        v,
+      ).not.toBeNull();
+  });
+
+  it('engine gấp chữ theo từng ký tự: İSTANBUL chứa "istanbul"; ΟΔΟΣ chứa "οδοσ" (không theo ngữ cảnh sigma cuối)', () => {
+    const c = (value: string) => ({ field: 'summary', op: 'contains', value }) as FieldCondition;
+    expect(evalFieldCondition(dto({ ...BASE, summary: 'İSTANBUL' }), c('istanbul'))).toBe(true);
+    expect(evalFieldCondition(dto({ ...BASE, summary: 'ΟΔΟΣ' }), c('οδοσ'))).toBe(true);
+    expect(evalFieldCondition(dto({ ...BASE, summary: 'Đăng nhập lỗi' }), c('LỖI'))).toBe(true);
+  });
+});

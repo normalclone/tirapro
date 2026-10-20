@@ -1,18 +1,10 @@
-import { parseJql } from '@tirapro/shared';
+import { SCHEDULED_RUN_ISSUE_LIMIT, parseJql, type PreviewMatchResult } from '@tirapro/shared';
 import { fmtNumber } from '@/lib/locale';
 
 /** Điều kiện nháp ở dạng cấu trúc tối thiểu (khớp `CondDraft` của RuleEditor, không import ngược). */
 type DraftLike =
   | { kind: 'field'; field: string; op: string; value: string; values: string[] }
   | { kind: 'jql'; jql: string };
-
-/** Phản hồi POST /automation/rules/preview-match. */
-export interface PreviewMatch {
-  count: number | null;
-  reason: string | null;
-  timedOut: boolean;
-  currentUserInJql: boolean;
-}
 
 /** Điều kiện nháp đã đủ để đếm? Còn dở (trống, sai cú pháp JQL, số/ngày chưa đúng) → tắt xem trước, khỏi gọi API. */
 export function isCondDraftComplete(c: DraftLike): boolean {
@@ -44,9 +36,11 @@ export interface PreviewViewInput {
   /** Đang chờ debounce hoặc đang gọi API. */
   pending: boolean;
   isError: boolean;
-  data?: PreviewMatch;
+  data?: PreviewMatchResult;
   /** Quy tắc cấp dự án (true) hay cả workspace (false). */
   scoped: boolean;
+  /** Quy tắc THEO LỊCH: mỗi lần chạy chỉ xử lý tối đa `SCHEDULED_RUN_ISSUE_LIMIT` việc → nhắc khi số khớp vượt. */
+  scheduled?: boolean;
 }
 
 /**
@@ -60,5 +54,9 @@ export function previewView(a: PreviewViewInput): { text: string; warning: strin
   if (a.data.timedOut) return { text: 'không đếm kịp', warning };
   if (a.data.count === null) return { text: a.data.reason ?? 'không đếm được', warning };
   const scope = a.scoped ? '' : ' (trong các dự án bạn xem được)';
-  return { text: `Khớp ${fmtNumber(a.data.count)} việc hiện có${scope}`, warning };
+  const cap =
+    a.scheduled && a.data.count > SCHEDULED_RUN_ISSUE_LIMIT
+      ? ` · mỗi lần chạy xử lý tối đa ${fmtNumber(SCHEDULED_RUN_ISSUE_LIMIT)} việc`
+      : '';
+  return { text: `Khớp ${fmtNumber(a.data.count)} việc hiện có${scope}${cap}`, warning };
 }

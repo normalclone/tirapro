@@ -1169,6 +1169,7 @@ export function RuleEditor({
                   : null
               }
               projectId={draft.projectId}
+              scheduled={draft.trigger === 'SCHEDULED'}
             />
             {draft.conditions.map((c, i) => (
               <Card

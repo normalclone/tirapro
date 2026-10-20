@@ -5,8 +5,9 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import type { RuleCondition } from '@tirapro/shared';
 import { keys } from '@/lib/queryKeys';
+import type { PreviewMatchResult } from '@tirapro/shared';
 import { RulePreviewLine } from './RulePreviewLine';
-import { isCondDraftComplete, previewView, type PreviewMatch } from './rulePreview';
+import { isCondDraftComplete, previewView } from './rulePreview';
 
 const src = (f: string) => readFileSync(join(__dirname, f), 'utf8');
 const field = (over: Partial<{ field: string; op: string; value: string; values: string[] }>) =>
@@ -45,7 +46,7 @@ describe('isCondDraftComplete — tắt xem trước khi còn điều kiện d�
   });
 });
 
-const m = (over: Partial<PreviewMatch> = {}): PreviewMatch => ({
+const m = (over: Partial<PreviewMatchResult> = {}): PreviewMatchResult => ({
   count: 12,
   reason: null,
   timedOut: false,
@@ -91,6 +92,29 @@ describe('previewView', () => {
     expect(previewView({ ...base, pending: true })?.text).toBe('Đang đếm…');
     expect(previewView({ ...base, pending: true, data: m() })?.text).toBe('Đang đếm…');
   });
+  it('quy tắc THEO LỊCH và số > 500: ghi rõ "mỗi lần chạy xử lý tối đa 500 việc"', () => {
+    const v = previewView({ ...base, scheduled: true, data: m({ count: 1234 }) });
+    expect(v?.text).toBe('Khớp 1.234 việc hiện có · mỗi lần chạy xử lý tối đa 500 việc');
+    expect(
+      previewView({ ...base, scheduled: true, scoped: false, data: m({ count: 501 }) })?.text,
+    ).toBe(
+      'Khớp 501 việc hiện có (trong các dự án bạn xem được) · mỗi lần chạy xử lý tối đa 500 việc',
+    );
+  });
+  it('không ghi chú khi ≤ 500, khi không theo lịch, hoặc khi không có số', () => {
+    expect(previewView({ ...base, scheduled: true, data: m({ count: 500 }) })?.text).toBe(
+      'Khớp 500 việc hiện có',
+    );
+    expect(previewView({ ...base, scheduled: false, data: m({ count: 9999 }) })?.text).toBe(
+      'Khớp 9.999 việc hiện có',
+    );
+    expect(previewView({ ...base, data: m({ count: 9999 }) })?.text).toBe(
+      'Khớp 9.999 việc hiện có',
+    );
+    expect(
+      previewView({ ...base, scheduled: true, data: m({ count: null, timedOut: true }) })?.text,
+    ).toBe('không đếm kịp');
+  });
   it('lỗi (API cũ 404, mạng) → không hiện gì; không có điều kiện → không hiện gì', () => {
     expect(previewView({ ...base, isError: true })).toBeNull();
     expect(previewView({ ...base, hasConditions: false, data: m() })).toBeNull();
@@ -99,7 +123,7 @@ describe('previewView', () => {
 
 const conds: RuleCondition[] = [{ field: 'priorityId', op: 'eq', value: 'p1' }];
 const render = (
-  data: PreviewMatch | undefined,
+  data: PreviewMatchResult | undefined,
   projectId = 'p1',
   conditions: RuleCondition[] | null = conds,
 ) => {
@@ -147,6 +171,17 @@ describe('nối dây', () => {
     expect(s.indexOf('<RulePreviewLine', i)).toBeGreaterThan(i);
     expect(s.indexOf('<RulePreviewLine', i) - i).toBeLessThan(400);
     expect(s).toMatch(/every\(isCondDraftComplete\)/);
+  });
+  it('kiểu phản hồi là MỘT định nghĩa trong @tirapro/shared (API và web cùng dùng), web không tự khai báo lại', () => {
+    expect(src('rulePreview.ts')).not.toMatch(/interface PreviewMatch\b/);
+    expect(src('rules-api.ts')).toMatch(/PreviewMatchResult/);
+    expect(src('RuleEditor.tsx')).toMatch(/scheduled=\{draft\.trigger === 'SCHEDULED'\}/);
+    const apiSrc = readFileSync(
+      join(__dirname, '../../../../api/src/modules/automation/rule-preview.service.ts'),
+      'utf8',
+    );
+    expect(apiSrc).toMatch(/type PreviewMatchResult/);
+    expect(apiSrc).not.toMatch(/export interface PreviewMatchResult/);
   });
   it('không dựng lại câu điều kiện: ConditionSentence/describeConditions giữ nguyên', () => {
     expect(src('ConditionSentence.tsx')).not.toMatch(/preview|Khớp/i);

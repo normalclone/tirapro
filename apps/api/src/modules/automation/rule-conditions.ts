@@ -1,6 +1,7 @@
 import type { Prisma } from '@prisma/client';
 import type { IssueDto } from '@tirapro/types';
 import type { RuleCondition } from '@tirapro/shared';
+import { foldCase, isPgFoldSafe } from '../../common/case-fold';
 import { insensitiveContains } from '../../common/like';
 
 export type FieldCondition = Extract<RuleCondition, { field: string }>;
@@ -78,7 +79,7 @@ export function evalFieldCondition(issue: IssueDto, c: FieldCondition): boolean 
     case 'contains': {
       if (arr) return asList(wanted).some((w) => (actual as unknown[]).some((x) => same(x, w)));
       if (typeof actual !== 'string' || typeof wanted !== 'string') return false;
-      return actual.toLowerCase().includes(wanted.toLowerCase());
+      return foldCase(actual).includes(foldCase(wanted));
     }
   }
 }
@@ -91,8 +92,11 @@ type IssueWhere = Prisma.IssueWhereInput;
 type Prim = string | number | boolean;
 const isPrim = (v: unknown): v is Prim => ['string', 'number', 'boolean'].includes(typeof v);
 
-/** Không issue nào khớp (Prisma: `OR: []` = tập rỗng). */
-const NEVER: IssueWhere = { OR: [] };
+/**
+ * Không issue nào khớp. KHÔNG dùng `OR: []`: Prisma chỉ coi nó là tập rỗng khi nằm ở cấp cao nhất, còn trong `AND: [...]`
+ * (đúng chỗ dịch vụ xem trước đặt nó) thì BỎ QUA → trả MỌI hàng (đo trên Postgres thật, RC20). `id IN ()` luôn là FALSE.
+ */
+const NEVER: IssueWhere = { id: { in: [] } };
 /** Mọi issue khớp. */
 const ALWAYS: IssueWhere = {};
 
@@ -200,7 +204,8 @@ function labelWhere(op: FieldCondition['op'], wanted: unknown): IssueWhere {
 /**
  * Điều kiện trường → `where` Prisma CHỌN ĐÚNG tập issue mà `evalFieldCondition` cho là thoả (spec đối chứng
  * `rule-conditions.parity.spec.ts` chạy cả hai trên cùng fixture). Trả `null` khi không diễn đạt chính xác được
- * (hiện chỉ `dueDate contains` — engine tìm chuỗi con trong ngày dạng chữ): nơi gọi bỏ qua xem trước, KHÔNG xấp xỉ.
+ * (`dueDate contains` — engine tìm chuỗi con trong ngày dạng chữ; `contains` có chữ hiếm mà gấp hoa/thường của JS và Postgres
+ * không chắc giống nhau — xem `isPgFoldSafe`): nơi gọi bỏ qua xem trước, KHÔNG xấp xỉ.
  */
 export function fieldConditionToWhere(c: FieldCondition): IssueWhere | null {
   if (c.field === 'labelIds') return labelWhere(c.op, c.value);
@@ -229,6 +234,9 @@ export function fieldConditionToWhere(c: FieldCondition): IssueWhere | null {
     case 'contains':
       if (col.kind === 'date') return null; // chuỗi con của "YYYY-MM-DD": không diễn đạt chính xác được
       if (col.kind === 'number' || typeof c.value !== 'string') return NEVER; // engine: chỉ chuỗi-trong-chuỗi
+      // ILIKE gấp hoa/thường theo `lower()` của DB, engine theo `foldCase`: chỉ chắc chắn giống nhau với chữ Latin (gồm
+      // tiếng Việt) và ký tự không có hoa/thường. Chữ hiếm (İ, sigma, ǅ, Hy Lạp, Kirin…) → không xem trước, không xấp xỉ.
+      if (!isPgFoldSafe(c.value)) return null;
       return { [col.column]: insensitiveContains(c.value) };
   }
 }

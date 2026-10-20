@@ -126,8 +126,16 @@ function matchRow(row: Row, where: object): Tri {
   for (const [k, v] of Object.entries(where as Record<string, unknown>)) {
     if (v === undefined) continue;
     if (k === 'AND') parts.push(and3(asArray(v).map((w) => matchRow(row, w))));
-    else if (k === 'OR') parts.push(or3(asArray(v).map((w) => matchRow(row, w))));
-    else if (k === 'NOT') parts.push(not3(and3(asArray(v).map((w) => matchRow(row, w)))));
+    else if (k === 'OR') {
+      // Prisma thật: `OR: []` ở cấp cao nhất = rỗng, nhưng trong `AND: [...]` bị BỎ QUA (trả mọi hàng) — đo trên Postgres
+      // thật. Mô phỏng một nghĩa sẽ che lỗi đó nên từ chối hẳn; dùng `{ id: { in: [] } }` cho "không khớp gì".
+      if (Array.isArray(v) && v.length === 0) {
+        throw new Error(
+          'where-matcher: `OR: []` không nhất quán trong Prisma — dùng { id: { in: [] } }',
+        );
+      }
+      parts.push(or3(asArray(v).map((w) => matchRow(row, w))));
+    } else if (k === 'NOT') parts.push(not3(and3(asArray(v).map((w) => matchRow(row, w)))));
     else parts.push(fieldMatch(row[k], v));
   }
   return and3(parts);

@@ -9,10 +9,13 @@ import { previewView } from './rulePreview';
 export function RulePreviewLine({
   conditions,
   projectId,
+  scheduled = false,
 }: {
   conditions: RuleCondition[] | null;
   /** '' = quy tắc cấp workspace. */
   projectId: string;
+  /** Quy tắc theo lịch: nhắc giới hạn mỗi lần chạy khi số khớp lớn. */
+  scheduled?: boolean;
 }) {
   const preview = useRulePreview(conditions, projectId);
   const view = previewView({
@@ -21,6 +24,7 @@ export function RulePreviewLine({
     isError: preview.isError,
     data: preview.data,
     scoped: projectId !== '',
+    scheduled,
   });
   if (!view) return null;
   return (

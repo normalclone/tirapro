@@ -235,3 +235,31 @@ describe('RulePreviewService — tài nguyên', () => {
     expect((await run(make().service, { conditions: [status('s1')] })).count).toBe(5);
   });
 });
+
+describe('RulePreviewService — đầu vào Postgres không nhận được', () => {
+  it('ký tự NUL ở giá trị / khoá / JQL → count:null + lý do, KHÔNG chạm DB (không phải lỗi 500)', async () => {
+    const bad = [
+      { field: 'summary', op: 'contains', value: 'a\u0000b' },
+      { field: 'summary', op: 'in', value: ['ok', 'a\u0000'] },
+      { field: 'summary', op: 'eq', value: { a: ['x\u0000'] } },
+      { jql: 'text ~ "a\u0000b"' },
+    ];
+    for (const c of bad) {
+      const { service, tx } = make();
+      const r = await run(service, { conditions: [c as never] });
+      expect(r).toMatchObject({ count: null, timedOut: false });
+      expect(r.reason).toMatch(/không hợp lệ/);
+      expect(tx.issue.count).not.toHaveBeenCalled();
+    }
+  });
+
+  it('contains với chữ gấp-hoa-thường không chắc chắn (İ, Hy Lạp…) → count:null + lý do, không đếm', async () => {
+    const { service, tx } = make();
+    const r = await run(service, {
+      conditions: [{ field: 'summary', op: 'contains', value: 'ΟΔΟΣ' }],
+    });
+    expect(r).toMatchObject({ count: null, timedOut: false });
+    expect(r.reason).toBe('không xem trước được điều kiện này');
+    expect(tx.issue.count).not.toHaveBeenCalled();
+  });
+});

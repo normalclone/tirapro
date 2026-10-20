@@ -255,7 +255,7 @@ export class FakeService {
     const dir = join(MODULES, 'automation', 'actions');
     const sources = Object.fromEntries(
       readdirSync(dir)
-        .filter((n) => n.endsWith('.ts') && !n.endsWith('.spec.ts'))
+        .filter((n) => n.endsWith('.ts') && !n.endsWith('.spec.ts') && !n.endsWith('.int-spec.ts'))
         .map((n) => [n, readFileSync(join(dir, n), 'utf8')]),
     );
     expect(Object.keys(sources).length).toBeGreaterThan(0);

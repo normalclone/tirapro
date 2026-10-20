@@ -104,7 +104,8 @@ const listFiles = (dir: string, pred: (f: string) => boolean, out: string[] = []
   }
   return out;
 };
-const isSource = (f: string): boolean => f.endsWith('.ts') && !f.endsWith('.spec.ts');
+const isSource = (f: string): boolean =>
+  f.endsWith('.ts') && !f.endsWith('.spec.ts') && !f.endsWith('.int-spec.ts');
 const rel = (f: string): string => relative(MODULES, f);
 const decoratorsOf = (n: ts.Node): readonly ts.Decorator[] =>
   ts.canHaveDecorators(n) ? (ts.getDecorators(n) ?? []) : [];
