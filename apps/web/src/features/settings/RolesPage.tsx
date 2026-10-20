@@ -31,6 +31,7 @@ import {
 } from '@/features/roles/api';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
 import { RoleMatrixTable } from './RoleMatrixTable';
+import { cloneName } from './rolePermEdit';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { ColorPicker } from '@/components/ui/ColorPicker';
 import { LABEL_PALETTE, paletteValue } from '@/lib/labelPalette';
@@ -67,16 +68,26 @@ export function RolesPage() {
   const [tab, setTab] = useState<RolesTab>('list');
   const [editing, setEditing] = useState<RoleDto | null>(null);
   const [creatingScope, setCreatingScope] = useState<RoleScope | null>(null);
+  // Nhân bản: tạo vai trò mới từ vai trò gốc (bộ quyền, mô tả, màu) — hộp mở sẵn để đặt tên.
+  const [cloning, setCloning] = useState<RoleDto | null>(null);
+  // Vai trò vừa tạo từ nhân bản: ma trận tự thêm cột cho nó.
+  const [revealRoleId, setRevealRoleId] = useState<string | null>(null);
   // Hộp thoại luôn mount để có hiệu ứng đóng; mỗi lần mở là một `session` mới → form khởi tạo lại.
   const [session, setSession] = useState(0);
-  const dialogOpen = !!(editing || creatingScope);
+  const dialogOpen = !!(editing || creatingScope || cloning);
   const dialogTarget = useRetained(
-    dialogOpen ? { role: editing, scope: creatingScope ?? 'WORKSPACE' } : null,
+    dialogOpen
+      ? { role: editing, scope: creatingScope ?? cloning?.scope ?? 'WORKSPACE', template: cloning }
+      : null,
   );
 
   function openEdit(r: RoleDto) {
     setSession((n) => n + 1);
     setEditing(r);
+  }
+  function openClone(r: RoleDto) {
+    setSession((n) => n + 1);
+    setCloning(r);
   }
   function openCreate(scope: RoleScope) {
     setSession((n) => n + 1);
@@ -151,7 +162,13 @@ export function RolesPage() {
         >
           {(all) =>
             tab === 'matrix' ? (
-              <RoleMatrixTable roles={all} />
+              <RoleMatrixTable
+                roles={all}
+                canEdit={canManage}
+                onClone={openClone}
+                revealRoleId={revealRoleId}
+                onRevealed={() => setRevealRoleId(null)}
+              />
             ) : (
               <div className="space-y-8">
                 {(['WORKSPACE', 'PROJECT'] as const).map((scope) => (
@@ -175,10 +192,13 @@ export function RolesPage() {
         open={dialogOpen}
         role={dialogTarget?.role ?? null}
         initialScope={dialogTarget?.scope ?? 'WORKSPACE'}
+        template={dialogTarget?.template ?? null}
         canManage={canManage}
+        onCreated={(r) => setRevealRoleId(r.id)}
         onClose={() => {
           setEditing(null);
           setCreatingScope(null);
+          setCloning(null);
         }}
       />
     </PageFrame>
@@ -289,13 +309,18 @@ function RoleDialog({
   open,
   role,
   initialScope,
+  template,
   canManage,
+  onCreated,
   onClose,
 }: {
   open: boolean;
   role: RoleDto | null;
   initialScope: RoleScope;
+  /** Nhân bản: vai trò gốc (chỉ dùng khi tạo mới) — điền sẵn bộ quyền, mô tả, màu và đề xuất tên. */
+  template: RoleDto | null;
   canManage: boolean;
+  onCreated: (role: RoleDto) => void;
   onClose: () => void;
 }) {
   const isCreate = role === null;
@@ -306,11 +331,16 @@ function RoleDialog({
   const deleteRole = useDeleteRole();
   const confirm = useConfirm();
 
-  const [name, setName] = useState(role?.name ?? '');
-  const [scope, setScope] = useState<RoleScope>(role?.scope ?? initialScope);
-  const [description, setDescription] = useState(role?.description ?? '');
-  const [color, setColor] = useState<string>(role?.color ?? DEFAULT_ROLE_COLOR);
-  const [perms, setPerms] = useState<Set<PermissionKey>>(() => new Set(role?.permissionKeys ?? []));
+  const source = role ?? template;
+  const [name, setName] = useState(() =>
+    role ? role.name : template ? cloneName(template.name) : '',
+  );
+  const [scope, setScope] = useState<RoleScope>(source?.scope ?? initialScope);
+  const [description, setDescription] = useState(source?.description ?? '');
+  const [color, setColor] = useState<string>(source?.color ?? DEFAULT_ROLE_COLOR);
+  const [perms, setPerms] = useState<Set<PermissionKey>>(
+    () => new Set(source?.permissionKeys ?? []),
+  );
 
   // Checklist hiển thị theo scope của vai trò (chung ↔ dự án). Khi đổi scope
   // lúc tạo mới, loại bỏ các quyền không còn thuộc scope đó.
@@ -348,7 +378,12 @@ function RoleDialog({
         color,
         permissionKeys: permKeys,
       };
-      createRole.mutate(body, { onSuccess: onClose });
+      createRole.mutate(body, {
+        onSuccess: (created) => {
+          onClose();
+          if (template) onCreated(created);
+        },
+      });
     } else {
       updateRole.mutate(
         {
@@ -358,6 +393,8 @@ function RoleDialog({
             description: description.trim() || null,
             color,
             permissionKeys: permKeys,
+            // Người khác vừa sửa vai trò này (kể cả bộ quyền) → 409, không ghi đè lặng lẽ.
+            expectedUpdatedAt: role.updatedAt,
           },
         },
         { onSuccess: onClose },
@@ -383,7 +420,9 @@ function RoleDialog({
   }
 
   const title: string = isCreate
-    ? 'Tạo vai trò'
+    ? template
+      ? 'Nhân bản vai trò'
+      : 'Tạo vai trò'
     : readOnly
       ? roleLabel(role?.name ?? '')
       : `Sửa "${roleLabel(role?.name ?? '')}"`;
@@ -418,7 +457,7 @@ function RoleDialog({
             </Button>
             {!readOnly && (
               <Button type="submit" form="role-form" loading={busy} disabled={!canSubmit}>
-                {isCreate ? 'Tạo vai trò' : 'Lưu'}
+                {isCreate ? (template ? 'Nhân bản' : 'Tạo vai trò') : 'Lưu'}
               </Button>
             )}
           </div>
@@ -447,6 +486,8 @@ function RoleDialog({
                 <Input
                   id="role-name"
                   autoFocus
+                  // Nhân bản: tên đề xuất được chọn sẵn → gõ là thay luôn.
+                  onFocus={template ? (e) => e.currentTarget.select() : undefined}
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="VD: QA Lead"

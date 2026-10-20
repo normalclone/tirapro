@@ -98,6 +98,8 @@ export interface RoleDto {
   color?: string | null;
   permissionKeys: PermissionKey[];
   memberCount?: number; // số membership đang gắn role này (để cảnh báo khi xoá)
+  /** Phiên bản của vai trò (ISO) — gửi lại ở PATCH làm `expectedUpdatedAt` để không ghi đè sửa của người khác. */
+  updatedAt?: ISODate;
 }
 
 /** Một thành viên kèm danh sách vai trò (workspace hoặc project). */

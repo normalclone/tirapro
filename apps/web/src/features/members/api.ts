@@ -142,9 +142,10 @@ export function useRemoveUserAvatar() {
 /* ------------------------------------------------------------------ */
 
 /** Danh sách thành viên của không gian làm việc hiện tại kèm vai trò (GET /members). */
-export function useWorkspaceMembers() {
+export function useWorkspaceMembers(enabled = true) {
   return useQuery({
     queryKey: keys.members.workspace,
+    enabled,
     queryFn: async () => (await api.get<MemberDto[]>('/members')).data,
   });
 }

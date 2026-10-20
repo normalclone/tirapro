@@ -19,6 +19,8 @@ export interface UpdateRoleInput {
   description?: string | null;
   color?: string | null;
   permissionKeys?: PermissionKey[];
+  /** `updatedAt` của vai trò mà client đã thấy; lệch (người khác vừa sửa) → 409 VERSION_CONFLICT. */
+  expectedUpdatedAt?: string;
 }
 
 /** Danh sách vai trò. Bỏ `scope` để lấy tất cả (cấp chung + cấp dự án). */
@@ -33,7 +35,7 @@ export function useRoles(scope?: RoleScope) {
 }
 
 /** Làm mới mọi biến thể cache vai trò (ALL/WORKSPACE/PROJECT). */
-function invalidateAllRoles(qc: ReturnType<typeof useQueryClient>) {
+export function invalidateAllRoles(qc: ReturnType<typeof useQueryClient>) {
   void qc.invalidateQueries({ queryKey: keys.roles.all });
   // Đổi quyền của vai trò → quyền hiệu lực của mọi dự án có thể đổi theo.
   void qc.invalidateQueries({ queryKey: keys.projects.permissionsAll });

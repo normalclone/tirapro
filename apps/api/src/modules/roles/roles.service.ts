@@ -3,12 +3,19 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
   AUDIT_ACTIONS,
   DOMAIN_EVENTS,
+  ERROR_CODES,
+  PERMISSIONS,
   PERMISSION_CATALOG,
   SYSTEM_ROLE_META,
   type RoleScope,
 } from '@tirapro/types';
 import { PrismaService } from '../../infra/prisma/prisma.service';
-import { ForbiddenAppException, NotFoundAppException } from '../../common/exceptions/app.exception';
+import {
+  ConflictAppException,
+  ForbiddenAppException,
+  NotFoundAppException,
+  VersionConflictException,
+} from '../../common/exceptions/app.exception';
 import { RbacService } from '../rbac/rbac.service';
 import { AuditService } from '../audit/audit.service';
 import type { CreateRoleInput, UpdateRoleInput } from './roles.schemas';
@@ -23,6 +30,7 @@ type RoleRow = {
   isSystem: boolean;
   description: string | null;
   color: string | null;
+  updatedAt: Date;
   permissions: { permission: { key: string } }[];
   _count: { wsMembershipRoles: number; projMembershipRoles: number };
 };
@@ -43,6 +51,7 @@ const roleSelect = (workspaceId: string) =>
     isSystem: true,
     description: true,
     color: true,
+    updatedAt: true,
     permissions: { select: { permission: { select: { key: true } } } },
     _count: { select: memberCountSelect(workspaceId) },
   }) as const;
@@ -107,16 +116,39 @@ export class RolesService {
       permIds = await this.permIds(input.permissionKeys);
       data.permissions = { create: permIds.map((permissionId) => ({ permissionId })) };
     }
-    // Xoá bộ quyền cũ + ghi vai trò (kèm bộ quyền mới) trong MỘT transaction: đổi tên trùng/lỗi giữa chừng không làm vai
-    // trò mất sạch quyền.
-    const role = permIds
-      ? (
-          await this.prisma.$transaction([
-            this.prisma.rolePermission.deleteMany({ where: { roleId: id } }),
-            this.prisma.role.update({ where: { id }, data, select: roleSelect(workspaceId) }),
-          ])
-        )[1]
-      : await this.prisma.role.update({ where: { id }, data, select: roleSelect(workspaceId) });
+    // Prisma không tự đóng dấu `updatedAt` khi lệnh chỉ ghi quan hệ lồng → đóng tay: dấu này là "phiên bản" của vai trò.
+    const now = new Date();
+    data.updatedAt = now;
+    const removesAdmin =
+      permIds !== null && !(input.permissionKeys ?? []).includes(PERMISSIONS.WORKSPACE_ADMIN);
+    // MỘT transaction cho cả: (1) so-sánh-và-đặt `updatedAt` (điều kiện tiên quyết của client), (2) xoá bộ quyền cũ + ghi
+    // vai trò kèm bộ mới (đổi tên trùng/lỗi giữa chừng không làm vai trò mất sạch quyền), (3) chặn gỡ quản trị cuối cùng.
+    const role = await this.prisma.$transaction(async (tx) => {
+      if (input.expectedUpdatedAt) {
+        // `updateMany` có điều kiện là phép CAS nguyên tử: hai PATCH đồng thời cùng bản cũ → người sau chờ khoá hàng rồi
+        // thấy `updatedAt` đã đổi → 0 hàng → 409 (không ghi đè lặng lẽ).
+        const hit = await tx.role.updateMany({
+          where: { id, updatedAt: new Date(input.expectedUpdatedAt) },
+          data: { updatedAt: now },
+        });
+        if (hit.count === 0) {
+          throw new VersionConflictException('Vai trò vừa được người khác sửa — hãy tải lại');
+        }
+      }
+      const hadAdmin =
+        removesAdmin &&
+        (await tx.rolePermission.count({
+          where: { roleId: id, permission: { key: PERMISSIONS.WORKSPACE_ADMIN } },
+        })) > 0;
+      if (permIds) await tx.rolePermission.deleteMany({ where: { roleId: id } });
+      const updated = await tx.role.update({
+        where: { id },
+        data,
+        select: roleSelect(workspaceId),
+      });
+      if (hadAdmin) await this.assertWorkspaceStillHasAdmin(tx, workspaceId);
+      return updated;
+    });
     await this.rbac.invalidateWorkspace(workspaceId); // quyền role đổi → xoá cache toàn workspace
     // Bộ quyền đổi → ảnh hưởng mọi người giữ vai trò này: gateway rà lại socket cả workspace (rút người mất quyền xem).
     if (input.permissionKeys) this.events?.emit(DOMAIN_EVENTS.ACCESS_CHANGED, { workspaceId });
@@ -129,7 +161,9 @@ export class RolesService {
       summary: `Sửa vai trò "${role.name}"`,
       meta: {
         name: role.name,
-        changed: Object.keys(input).filter((k) => input[k as keyof UpdateRoleInput] !== undefined),
+        changed: Object.keys(input).filter(
+          (k) => k !== 'expectedUpdatedAt' && input[k as keyof UpdateRoleInput] !== undefined,
+        ),
         permissionCount: role.permissions.length,
       },
     });
@@ -159,6 +193,32 @@ export class RolesService {
   }
 
   // ── helpers ──
+  /**
+   * Phản chiếu `MembersService.assertNotLastWorkspaceAdmin` cho đường SỬA VAI TRÒ: gỡ `workspace:admin` khỏi một vai trò
+   * không được làm workspace hết quản trị viên (còn hoạt động) — sau đó chỉ admin hệ thống mới khôi phục được.
+   */
+  private async assertWorkspaceStillHasAdmin(
+    tx: Pick<PrismaService, 'workspaceMembership'>,
+    workspaceId: string,
+  ): Promise<void> {
+    const admins = await tx.workspaceMembership.count({
+      where: {
+        workspaceId,
+        user: { status: { not: 'DEACTIVATED' } },
+        roles: {
+          some: {
+            role: { permissions: { some: { permission: { key: PERMISSIONS.WORKSPACE_ADMIN } } } },
+          },
+        },
+      },
+    });
+    if (admins > 0) return;
+    throw new ConflictAppException(
+      ERROR_CODES.LAST_WORKSPACE_ADMIN,
+      'Gỡ quyền này sẽ khiến không gian làm việc không còn quản trị viên — hãy cấp quyền quản trị cho vai trò khác trước',
+    );
+  }
+
   private toDto(r: RoleRow) {
     const meta = SYSTEM_ROLE_META[r.name as keyof typeof SYSTEM_ROLE_META];
     return {
@@ -171,6 +231,7 @@ export class RolesService {
       color: r.color ?? (r.isSystem ? (meta?.color ?? null) : null),
       permissionKeys: r.permissions.map((p) => p.permission.key),
       memberCount: r._count.wsMembershipRoles + r._count.projMembershipRoles,
+      updatedAt: r.updatedAt.toISOString(),
     };
   }
 
