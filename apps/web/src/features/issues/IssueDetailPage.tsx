@@ -33,12 +33,20 @@ import { useDevLinks, useIssue } from './api';
 import { useCreateIssue } from './create-api';
 import { useProjects } from '@/features/projects/api';
 import { ProjectRail } from '@/features/projects/ProjectRail';
-import { useCanEditIssue, useCanIn, useProjectPermissions } from '@/features/projects/permissions';
+import {
+  useCan,
+  useCanEditIssue,
+  useCanIn,
+  useProjectPermissions,
+} from '@/features/projects/permissions';
 import { useMyWorkspaces } from '@/features/workspace/api';
 import { useDeleteIssue, useRetractIssue } from '@/features/issue-edit/api';
 import { RetractMenuItem } from './RetractMenuItem';
 import { IssueSummaryEdit } from './IssueSummaryEdit';
 import { CATEGORY_COLOR, IssueKeyFacts, OtherFactsDisclosure } from './IssueKeyFacts';
+import { aiPanelKey } from './issueFacts';
+import { AiIssuePanel } from '@/features/ai/AiIssuePanel';
+import { useAi } from '@/stores/ai';
 import { factLayout } from './issueFacts';
 import { useMediaQuery } from '@/lib/useMediaQuery';
 import { useIssueCopy } from './useIssueCopy';
@@ -144,6 +152,10 @@ export function IssueDetailPage() {
   // Thuộc tính chính: dưới lg hiện dải ngay dưới tiêu đề + "Thuộc tính khác"; từ lg như trước. Chọn bằng media query để
   // MỖI control chỉ dựng một lần (không trùng id/focus/phím tắt), thay vì dựng hai bản rồi ẩn bằng CSS.
   const isDesktop = useMediaQuery('(min-width: 1024px)', true);
+  // Trợ lý AI: cần quyền ai:use ở dự án (KHÔNG đòi sửa việc; dự án lưu trữ vẫn dùng được vì không ghi gì) VÀ người dùng đang bật AI.
+  const canAi = useCan(issue?.projectId)('ai:use');
+  const aiEnabled = useAi((s) => s.enabled);
+  const showAi = canAi && aiEnabled;
   const layout = factLayout(isDesktop);
   const { data: devLinks } = useDevLinks(FEATURES.repos ? issue?.id : undefined);
   // Mã issue theo LOẠI (BUG-4…) → KHÔNG suy ra project key từ chuỗi; resolve theo projectId.
@@ -755,6 +767,13 @@ export function IssueDetailPage() {
                     <IssueDescription issue={issue} />
                   </div>
 
+                  {/* Dưới lg: "Trợ lý AI" thu gọn (nhớ theo người dùng), giữa mô tả và hoạt động; từ lg nằm ở cột phải. */}
+                  {!isDesktop && showAi && (
+                    <OtherFactsDisclosure title="Trợ lý AI" keyFor={aiPanelKey}>
+                      <AiIssuePanel key={issue.id} issueId={issue.id} variant="bare" />
+                    </OtherFactsDisclosure>
+                  )}
+
                   {/* Story luôn có khối này (kể cả rỗng); loại khác chỉ khi đã có nội dung */}
                   {(issue.type.key === 'STORY' || issue.acceptanceCriteria) && (
                     <AcceptanceCriteria issue={issue} />
@@ -843,6 +862,7 @@ export function IssueDetailPage() {
                         <IssueDatesPanel issue={issue} canEditRestricted={canEditRestricted} />
                       </>
                     )}
+                    {isDesktop && showAi && <AiIssuePanel key={issue.id} issueId={issue.id} />}
                     <LazyPanel id="issue-worklog" minHeight={96} force={worklogRequest > 0}>
                       <WorklogPanel issue={issue} openRequest={worklogRequest} />
                     </LazyPanel>

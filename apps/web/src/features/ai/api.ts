@@ -12,10 +12,11 @@ import { api } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
 import {
   createCancellable,
-  initialRequestState,
-  requestReducer,
-  type RequestAction,
-  type RequestState,
+  initialScopedState,
+  scopedReducer,
+  scopedView,
+  type ScopedAction,
+  type ScopedState,
 } from './cancellableRequest';
 
 export interface ProjectMeta {
@@ -83,9 +84,9 @@ export function useSummarizeIssue() {
 }
 
 const suggestReducer = (
-  s: RequestState<AiSuggestResult>,
-  a: RequestAction<AiSuggestResult>,
-): RequestState<AiSuggestResult> => requestReducer(s, a);
+  s: ScopedState<AiSuggestResult>,
+  a: ScopedAction<AiSuggestResult>,
+): ScopedState<AiSuggestResult> => scopedReducer(s, a);
 
 /**
  * Gợi ý ưu tiên & story points (kèm nguồn) cho một issue — HUỶ ĐƯỢC phía client (không stream): `cancel()` cắt request đang
@@ -93,7 +94,8 @@ const suggestReducer = (
  * (nơi gọi hiện toast). Huỷ chỉ ngừng chờ: yêu cầu đã tới máy chủ vẫn có thể tính vào hạn mức AI. Đổi issue/gỡ màn → tự huỷ.
  */
 export function useSuggestIssue(issueId: string, onFailed?: (error: unknown) => void) {
-  const [state, dispatch] = useReducer(suggestReducer, initialRequestState<AiSuggestResult>());
+  const [scoped, dispatch] = useReducer(suggestReducer, initialScopedState<AiSuggestResult>());
+  const state = scopedView(scoped, issueId); // issue khác → luôn idle (không treo "Đang phân tích…", không hiện kết quả của việc trước)
   const running = useRef<ReturnType<typeof createCancellable<AiSuggestResult>> | null>(null);
   const failed = useRef(onFailed);
   failed.current = onFailed;
@@ -101,8 +103,8 @@ export function useSuggestIssue(issueId: string, onFailed?: (error: unknown) => 
   const cancel = useCallback(() => {
     running.current?.cancel();
     running.current = null;
-    dispatch({ type: 'cancel' });
-  }, []);
+    dispatch({ type: 'cancel', forId: issueId });
+  }, [issueId]);
 
   const run = useCallback(() => {
     running.current?.cancel();
@@ -112,13 +114,13 @@ export function useSuggestIssue(issueId: string, onFailed?: (error: unknown) => 
         .then((r) => r.data),
     );
     running.current = call;
-    dispatch({ type: 'start' });
+    dispatch({ type: 'start', forId: issueId });
     void call.start().then((o) => {
       if (o.kind === 'cancelled') return; // đã huỷ/bị thay: không hiện kết quả, không toast
       if (running.current === call) running.current = null;
-      if (o.kind === 'done') dispatch({ type: 'done', value: o.value });
+      if (o.kind === 'done') dispatch({ type: 'done', forId: issueId, value: o.value });
       else {
-        dispatch({ type: 'failed', error: o.error });
+        dispatch({ type: 'failed', forId: issueId, error: o.error });
         failed.current?.(o.error);
       }
     });

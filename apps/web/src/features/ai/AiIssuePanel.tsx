@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useId, useRef } from 'react';
 import { Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/Button';
@@ -36,14 +36,21 @@ export function SuggestProgress({
   );
 }
 
-/** `onPeek`: mở xem nhanh khi bấm một nguồn (màn không có xem nhanh thì bỏ trống → điều hướng thường). */
+/**
+ * `onPeek`: mở xem nhanh khi bấm một nguồn (màn không có xem nhanh thì bỏ trống → điều hướng thường).
+ * `variant`: `card` = khung có tiêu đề h2 "Trợ lý AI" (vùng có tên); `bare` = không khung/tiêu đề, dùng trong phần mở/thu đã có nhãn
+ * "Trợ lý AI" (không đọc lặp). Chỉ chạy khi bấm nút — mỗi lần chạy tốn hạn mức nên KHÔNG bao giờ tự chạy.
+ */
 export function AiIssuePanel({
   issueId,
   onPeek,
+  variant = 'card',
 }: {
   issueId: string;
   onPeek?: (key: string) => void;
+  variant?: 'card' | 'bare';
 }) {
+  const headingId = useId();
   const { data: capabilities } = useAiCapabilities();
   const summarize = useSummarizeIssue();
   const suggest = useSuggestIssue(issueId, (e) => toast.error(apiErrorMessage(e)));
@@ -64,17 +71,30 @@ export function AiIssuePanel({
   const summary = summarize.data;
   const suggestion = suggest.data;
 
+  const basic = capabilities?.available === false;
+  const Root = variant === 'card' ? 'section' : 'div';
   return (
-    <div className="rounded-md border border-border bg-surface p-3">
-      <div className="flex items-center gap-2">
-        <Sparkles className="h-4 w-4 text-primary" />
-        <span className="text-sm font-medium text-ink">Trợ lý AI</span>
-        {capabilities?.available === false && (
-          <span className="ml-auto text-xs text-faint">chế độ cơ bản</span>
-        )}
-      </div>
+    <Root
+      className={variant === 'card' ? 'rounded-md border border-border bg-surface p-3' : undefined}
+      aria-labelledby={variant === 'card' ? headingId : undefined}
+    >
+      {variant === 'card' ? (
+        <div className="flex items-center gap-2">
+          <Sparkles className="h-4 w-4 text-primary" aria-hidden="true" />
+          <h2 id={headingId} className="text-sm font-medium text-ink">
+            Trợ lý AI
+          </h2>
+          {basic && <span className="ml-auto text-xs text-faint">chế độ cơ bản</span>}
+        </div>
+      ) : (
+        basic && <p className="text-xs text-faint">Chế độ cơ bản (chưa cấu hình AI)</p>
+      )}
 
-      <div className="mt-3 flex flex-wrap gap-2">
+      <div
+        className={
+          variant === 'card' || basic ? 'mt-3 flex flex-wrap gap-2' : 'flex flex-wrap gap-2'
+        }
+      >
         <Button
           size="sm"
           variant="secondary"
@@ -141,6 +161,6 @@ export function AiIssuePanel({
           <AiFallbackNote reason={suggestion.reason} variant="plain" />
         </div>
       )}
-    </div>
+    </Root>
   );
 }

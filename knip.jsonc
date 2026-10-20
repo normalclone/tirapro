@@ -11,9 +11,6 @@
     },
     "apps/web": {
       "entry": ["scripts/*.mjs"],
-      "ignore": [
-        "src/features/ai/AiIssuePanel.tsx", // chưa nối vào UI; xoá hay nối là quyết định riêng
-      ],
     },
     "apps/mcp": {},
     "packages/*": {},

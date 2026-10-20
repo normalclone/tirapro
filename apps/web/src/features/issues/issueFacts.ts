@@ -81,6 +81,9 @@ export type FactStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 
 export const otherFactsKey = (userId: string) => `tirapro:issueOtherFacts:v1:${userId}`;
 
+/** Mở/thu phần "Trợ lý AI" (dưới lg) — cùng cách lưu với "Thuộc tính khác", khoá riêng. */
+export const aiPanelKey = (userId: string) => `tirapro:issueAiPanel:v1:${userId}`;
+
 /** Mặc định thu gọn; chỉ chuỗi "1" là mở. */
 export const parseOtherOpen = (raw: string | null): boolean => raw === '1';
 

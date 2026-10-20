@@ -195,9 +195,19 @@ export function IssueKeyFacts({
  * "Thuộc tính khác" (dưới `md`): nút mở/thu có `aria-expanded` + `aria-controls`; mặc định thu gọn, nhớ mở/thu theo người
  * dùng (localStorage, mọi chạm có try/catch trong `issueFacts`). Nội dung chỉ dựng khi mở (nhẹ cho trang dài).
  */
-export function OtherFactsDisclosure({ children }: { children: ReactNode }) {
+export function OtherFactsDisclosure({
+  children,
+  title = 'Thuộc tính khác',
+  keyFor = otherFactsKey,
+}: {
+  children: ReactNode;
+  /** Nhãn nút + tên vùng (mặc định "Thuộc tính khác"; "Trợ lý AI" dùng cùng khung). */
+  title?: string;
+  /** Khoá localStorage theo người dùng để nhớ mở/thu. */
+  keyFor?: (userId: string) => string;
+}) {
   const userId = useAuth((s) => s.user?.id);
-  const key = userId ? otherFactsKey(userId) : null;
+  const key = userId ? keyFor(userId) : null;
   const [state, setState] = useState(() => ({ key, open: readOtherOpen(key) }));
   // Đổi người dùng → nạp lại lựa chọn của người đó.
   const current = state.key === key ? state : { key, open: readOtherOpen(key) };
@@ -220,7 +230,7 @@ export function OtherFactsDisclosure({ children }: { children: ReactNode }) {
         }}
         className="flex min-h-11 w-full items-center justify-between gap-2 border-y border-border px-1 text-sm font-medium text-ink transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
       >
-        Thuộc tính khác
+        {title}
         <ChevronDown
           className={cn(
             'h-4 w-4 shrink-0 text-faint transition-transform motion-reduce:transition-none',

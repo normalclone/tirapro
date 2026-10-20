@@ -71,3 +71,30 @@ export function requestReducer<T>(s: RequestState<T>, a: RequestAction<T>): Requ
       return s.phase === 'pending' ? { phase: 'failed', error: a.error } : s;
   }
 }
+
+/**
+ * Trạng thái gắn với MỘT issue (`forId`): đổi issue thì issue mới luôn thấy idle (không treo "Đang phân tích…", không hiện kết
+ * quả/nguồn của việc trước), và kết quả/lỗi/huỷ của issue khác đến muộn bị bỏ qua. Tính ở lúc render (`scopedView`) nên không cần
+ * effect đặt lại — không có khoảnh khắc nào hiện nhầm.
+ */
+export interface ScopedState<T> {
+  forId: string | null;
+  req: RequestState<T>;
+}
+export type ScopedAction<T> = RequestAction<T> & { forId: string };
+
+export const initialScopedState = <T>(): ScopedState<T> => ({
+  forId: null,
+  req: initialRequestState<T>(),
+});
+
+export function scopedReducer<T>(s: ScopedState<T>, a: ScopedAction<T>): ScopedState<T> {
+  if (a.type === 'start')
+    return { forId: a.forId, req: requestReducer(initialRequestState<T>(), a) };
+  if (a.forId !== s.forId) return s; // của issue khác (đến muộn / đã rời đi)
+  return { forId: s.forId, req: requestReducer(s.req, a) };
+}
+
+export function scopedView<T>(s: ScopedState<T>, forId: string): RequestState<T> {
+  return s.forId === forId ? s.req : initialRequestState<T>();
+}

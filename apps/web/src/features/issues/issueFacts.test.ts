@@ -3,6 +3,7 @@ import {
   OTHER_FACTS,
   STRIP_FACTS,
   factLayout,
+  aiPanelKey,
   otherFactsKey,
   parseOtherOpen,
   readOtherOpen,
@@ -111,5 +112,23 @@ describe('nhớ trạng thái mở "Thuộc tính khác" theo người dùng', (
     expect(() => writeOtherOpen('k', true, blocked)).not.toThrow();
     expect(readOtherOpen(null, mem())).toBe(false);
     expect(readOtherOpen('k', null)).toBe(false);
+  });
+});
+
+describe('aiPanelKey — nhớ mở/thu "Trợ lý AI" theo người dùng', () => {
+  it('khoá riêng từng người, khác khoá "Thuộc tính khác"; dùng chung readOtherOpen/writeOtherOpen (mặc định thu gọn)', () => {
+    expect(aiPanelKey('u1')).toBe('tirapro:issueAiPanel:v1:u1');
+    expect(aiPanelKey('u1')).not.toBe(aiPanelKey('u2'));
+    expect(aiPanelKey('u1')).not.toBe(otherFactsKey('u1'));
+    const mem = new Map<string, string>();
+    const st = {
+      getItem: (k: string) => mem.get(k) ?? null,
+      setItem: (k: string, v: string) => void mem.set(k, v),
+      removeItem: (k: string) => void mem.delete(k),
+    };
+    expect(readOtherOpen(aiPanelKey('u1'), st)).toBe(false);
+    writeOtherOpen(aiPanelKey('u1'), true, st);
+    expect(readOtherOpen(aiPanelKey('u1'), st)).toBe(true);
+    expect(readOtherOpen(otherFactsKey('u1'), st)).toBe(false);
   });
 });

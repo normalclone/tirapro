@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { createCancellable, initialRequestState, requestReducer } from './cancellableRequest';
+import {
+  createCancellable,
+  initialRequestState,
+  initialScopedState,
+  requestReducer,
+  scopedReducer,
+  scopedView,
+} from './cancellableRequest';
 
 const defer = <T>() => {
   let resolve!: (v: T) => void;
@@ -104,5 +111,42 @@ describe('requestReducer', () => {
     expect(requestReducer({ phase: 'idle' }, { type: 'failed', error: 'x' })).toEqual({
       phase: 'idle',
     });
+  });
+});
+
+describe('scopedReducer / scopedView — kết quả thuộc về MỘT issue (I1)', () => {
+  it('đang chờ ở issue A, sang issue B: B thấy idle (không "Đang phân tích…" mãi mãi)', () => {
+    const s = scopedReducer<number>(initialScopedState<number>(), { type: 'start', forId: 'A' });
+    expect(scopedView(s, 'A')).toEqual({ phase: 'pending' });
+    expect(scopedView(s, 'B')).toEqual({ phase: 'idle' });
+  });
+  it('đã có kết quả ở A, sang B: B KHÔNG thấy kết quả/nguồn của A', () => {
+    let s = scopedReducer<number>(initialScopedState<number>(), { type: 'start', forId: 'A' });
+    s = scopedReducer(s, { type: 'done', forId: 'A', value: 5 });
+    expect(scopedView(s, 'A')).toEqual({ phase: 'done', data: 5 });
+    expect(scopedView(s, 'B')).toEqual({ phase: 'idle' });
+  });
+  it('kết quả/lỗi của A đến muộn sau khi B đã bắt đầu bị bỏ qua', () => {
+    let s = scopedReducer<number>(initialScopedState<number>(), { type: 'start', forId: 'A' });
+    s = scopedReducer(s, { type: 'start', forId: 'B' });
+    s = scopedReducer(s, { type: 'done', forId: 'A', value: 1 });
+    expect(scopedView(s, 'B')).toEqual({ phase: 'pending' });
+    s = scopedReducer(s, { type: 'failed', forId: 'A', error: 'x' });
+    expect(scopedView(s, 'B')).toEqual({ phase: 'pending' });
+    s = scopedReducer(s, { type: 'done', forId: 'B', value: 2 });
+    expect(scopedView(s, 'B')).toEqual({ phase: 'done', data: 2 });
+  });
+  it('huỷ chỉ áp cho issue đang xem; huỷ của issue khác bị bỏ qua', () => {
+    let s = scopedReducer<number>(initialScopedState<number>(), { type: 'start', forId: 'B' });
+    s = scopedReducer(s, { type: 'cancel', forId: 'A' });
+    expect(scopedView(s, 'B')).toEqual({ phase: 'pending' });
+    s = scopedReducer(s, { type: 'cancel', forId: 'B' });
+    expect(scopedView(s, 'B')).toEqual({ phase: 'idle' });
+  });
+  it('quay lại A sau khi đã sang B không "sống lại" kết quả cũ của A', () => {
+    let s = scopedReducer<number>(initialScopedState<number>(), { type: 'start', forId: 'A' });
+    s = scopedReducer(s, { type: 'done', forId: 'A', value: 5 });
+    s = scopedReducer(s, { type: 'start', forId: 'B' });
+    expect(scopedView(s, 'A')).toEqual({ phase: 'idle' });
   });
 });
