@@ -1,7 +1,7 @@
 import { useDeferredValue, useState } from 'react';
-import { Pencil, Search, Trash2, UserPlus, Users } from 'lucide-react';
+import { Search, Trash2, UserPlus, Users } from 'lucide-react';
 import { toast } from 'sonner';
-import type { MemberDto, UserStatus } from '@tirapro/types';
+import type { MemberDto, RoleDto, UserStatus } from '@tirapro/types';
 import { AddMemberPanel } from './AddMemberPanel';
 import { TeamsPanel } from '@/features/teams/TeamsPanel';
 import { AddPeopleDialog } from './AddPeopleDialog';
@@ -10,7 +10,6 @@ import { Button } from '@/components/ui/Button';
 import { SectionCard } from '@/components/ui/SectionCard';
 import { Input } from '@/components/ui/Input';
 import { useConfirm } from '@/components/ui/useConfirm';
-import { RoleBadge } from '@/components/ui/RoleBadge';
 import { apiErrorMessage } from '@/lib/api';
 import { fmtRelative } from '@/lib/dateFormat';
 import { normalizeVi } from '@/lib/text';
@@ -18,8 +17,8 @@ import { PageFrame } from '@/components/layout/PageFrame';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { useAuth } from '@/stores/auth';
 import { useRoles } from '@/features/roles/api';
-import { EditRolesPopover } from './EditRolesPopover';
-import { useRemoveMember, useSetMemberRoles, useWorkspaceMembers } from './api';
+import { MemberRolesCell } from './MemberRolesCell';
+import { useRemoveMember, useWorkspaceMembers } from './api';
 import { Tabs, TabPanel } from '@/components/ui/Tabs';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
 import { APP_NAV_LABELS } from '@/lib/navLabels';
@@ -146,7 +145,7 @@ export function MembersPage() {
                       search={memberQuery}
                       canManage={canManage}
                       currentUserId={currentUserId}
-                      roleOptions={wsRoles ?? []}
+                      roles={wsRoles ?? []}
                     />
                   )}
                 </QueryBoundary>
@@ -167,13 +166,13 @@ function MemberList({
   search,
   canManage,
   currentUserId,
-  roleOptions,
+  roles,
 }: {
   members: MemberDto[];
   search: string;
   canManage: boolean;
   currentUserId: string | undefined;
-  roleOptions: { id: string; name: string; color?: string | null }[];
+  roles: RoleDto[];
 }) {
   const q = normalizeVi(search);
   const shown = q
@@ -196,7 +195,8 @@ function MemberList({
           member={m}
           canManage={canManage}
           isSelf={m.user.id === currentUserId}
-          roleOptions={roleOptions}
+          members={members}
+          roles={roles}
         />
       ))}
     </ul>
@@ -207,16 +207,17 @@ function MemberRow({
   member,
   canManage,
   isSelf,
-  roleOptions,
+  members,
+  roles,
 }: {
   member: MemberDto;
   canManage: boolean;
   isSelf: boolean;
-  roleOptions: { id: string; name: string; color?: string | null }[];
+  members: MemberDto[];
+  roles: RoleDto[];
 }) {
   const user = member.user;
   const status = STATUS_META[user.status] ?? STATUS_META.DEACTIVATED;
-  const setRoles = useSetMemberRoles();
   const remove = useRemoveMember();
   const confirm = useConfirm();
 
@@ -234,7 +235,7 @@ function MemberRow({
 
   return (
     <li className="flex flex-wrap items-center gap-x-3 gap-y-2 py-3 first:pt-0 last:pb-0">
-      {/* < sm: dòng 1 = avatar + tên/email; dòng 2 = vai trò + trạng thái + nút sửa. ≥ sm: một hàng (`sm:contents`). */}
+      {/* < sm: dòng 1 = avatar + tên/email; dòng 2 = vai trò + trạng thái + nút gỡ. ≥ sm: một hàng (`sm:contents`). */}
       <div className="flex min-w-0 basis-full items-center gap-3 sm:contents">
         <Avatar name={user.displayName} src={user.avatarUrl} size={36} />
         <div className="min-w-0 flex-1">
@@ -254,37 +255,18 @@ function MemberRow({
         </div>
       </div>
 
-      <div
-        className="flex flex-wrap items-center gap-1.5 sm:justify-end"
-        title="Vai trò quyết định người này được xem và làm gì ở đây"
-      >
-        {member.roles.length > 0 ? (
-          member.roles.map((r) => <RoleBadge key={r.id} name={r.name} color={r.color} />)
-        ) : (
-          <span className="text-xs text-faint">Chưa có vai trò</span>
-        )}
-      </div>
+      <MemberRolesCell
+        member={member}
+        members={members}
+        roles={roles}
+        canManage={canManage}
+        isSelf={isSelf}
+      />
 
       <Badge className={status.className}>{status.label}</Badge>
 
       {canManage && (
         <div className="flex shrink-0 items-center gap-1 max-sm:ml-auto">
-          <EditRolesPopover
-            roles={roleOptions}
-            current={member.roles}
-            saving={setRoles.isPending}
-            onSave={(roleIds) => setRoles.mutateAsync({ userId: user.id, roleIds })}
-            trigger={
-              <Button
-                variant="ghost"
-                size="icon"
-                title={`Đổi vai trò chung của ${user.displayName}`}
-                aria-label={`Sửa vai trò của ${user.displayName}`}
-              >
-                <Pencil className="h-4 w-4" />
-              </Button>
-            }
-          />
           {!isSelf && (
             <Button
               variant="ghost"

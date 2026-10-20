@@ -207,20 +207,6 @@ export function useAddMembersBulk() {
   });
 }
 
-/** Đặt lại toàn bộ vai trò (≥1) cho một thành viên chung. */
-export function useSetMemberRoles() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ userId, roleIds }: { userId: string; roleIds: string[] }) =>
-      api.put<MemberDto>(`/members/${userId}/roles`, { roleIds }).then((r) => r.data),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: keys.projects.permissionsAll });
-      void qc.invalidateQueries({ queryKey: keys.members.workspace });
-      void qc.invalidateQueries({ queryKey: keys.users.workspace });
-    },
-  });
-}
-
 /** Gỡ một thành viên khỏi không gian làm việc (BE chặn gỡ owner/chính mình). */
 export function useRemoveMember() {
   const qc = useQueryClient();
