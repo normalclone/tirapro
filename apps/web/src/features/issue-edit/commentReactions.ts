@@ -29,11 +29,13 @@ function whoText(r: CommentReactionDto): string {
 }
 
 /**
- * Tên truy cập của chip: bắt đầu bằng đúng chữ nhìn thấy ("👍 3") rồi tóm tắt ai thả — "👍 3 — bạn và 2 người khác".
+ * Tên truy cập của chip: bắt đầu bằng đúng chữ nhìn thấy ("👍 3"), rồi tên cảm xúc bằng tiếng Việt và tóm tắt ai thả —
+ * "👍 3 — Đồng ý: bạn và 2 người khác".
  * Danh sách tên đầy đủ KHÔNG nằm trong tên mà ở `aria-describedby` + tooltip (`reactionUsersText`).
  */
 export function reactionChipName(r: CommentReactionDto): string {
-  return `${r.emoji} ${r.count} — ${whoText(r)}`;
+  const label = REACTION_LABELS[r.emoji as CommentReactionEmoji];
+  return `${r.emoji} ${r.count} — ${label ? `${label}: ` : ''}${whoText(r)}`;
 }
 
 /** "Bạn, An, Bình và 3 người khác" — mình (nếu có) đứng đầu; API chỉ gửi tối đa 5 tên nên phần còn lại chỉ có số. */
@@ -98,15 +100,24 @@ export function putReactionEntry(
   return [...rest, entry].sort((a, b) => orderOf(a.emoji) - orderOf(b.emoji));
 }
 
-/** Phím mũi tên trong lưới emoji (quay vòng); phím khác → null (để Enter/Space bấm nút như thường). */
-export function nextPickerIndex(index: number, key: string, count: number): number | null {
+/**
+ * Phím mũi tên trong lưới emoji (quay vòng); phím khác → null (để Enter/Space bấm nút như thường). Giữ Alt/Cmd/Ctrl thì
+ * KHÔNG nhận mũi tên (Alt/Cmd+←/→ là Quay lại/Tiến của trình duyệt) — chỉ Home/End vẫn đi.
+ */
+export function nextPickerIndex(
+  index: number,
+  key: string,
+  count: number,
+  mods: { altKey?: boolean; metaKey?: boolean; ctrlKey?: boolean; shiftKey?: boolean } = {},
+): number | null {
+  const held = !!(mods.altKey || mods.metaKey || mods.ctrlKey);
   switch (key) {
     case 'ArrowRight':
     case 'ArrowDown':
-      return (index + 1) % count;
+      return held ? null : (index + 1) % count;
     case 'ArrowLeft':
     case 'ArrowUp':
-      return (index - 1 + count) % count;
+      return held ? null : (index - 1 + count) % count;
     case 'Home':
       return 0;
     case 'End':

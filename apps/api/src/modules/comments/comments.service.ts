@@ -274,7 +274,8 @@ export class CommentsService {
 
   private async requireComment(workspaceId: string, commentId: string) {
     const c = await this.prisma.comment.findFirst({
-      where: { id: commentId, deletedAt: null, issue: { workspaceId } },
+      // Việc đã xoá mềm cũng loại: bình luận của nó không nhận cảm xúc / sửa / xoá (guard @ProjectRef chỉ kiểm workspace + dự án).
+      where: { id: commentId, deletedAt: null, issue: { workspaceId, deletedAt: null } },
       include: { issue: { select: { projectId: true } } },
     });
     if (!c) throw new NotFoundAppException('Bình luận');

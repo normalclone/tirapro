@@ -27,7 +27,7 @@ describe('ReactionChip', () => {
     );
     expect(html).toMatch(/<button[^>]*type="button"/);
     expect(html).toContain('aria-pressed="true"');
-    expect(html).toContain('aria-label="👍 3 — bạn và 2 người khác"');
+    expect(html).toContain('aria-label="👍 3 — Đồng ý: bạn và 2 người khác"');
     const desc = /aria-describedby="([^"]+)"/.exec(html)?.[1];
     expect(desc).toBeTruthy();
     expect(html).toContain(`id="${desc}"`);
@@ -47,7 +47,7 @@ describe('ReactionChip', () => {
     expect(html).not.toContain('<button');
     expect(html).not.toContain('aria-pressed');
     expect(html).toContain('role="img"');
-    expect(html).toContain('aria-label="👍 2 — bạn và 1 người khác"');
+    expect(html).toContain('aria-label="👍 2 — Đồng ý: bạn và 1 người khác"');
   });
   it('mục tiêu chạm: chip dùng CHIP_TOUCH_HIT (mở dọc lên 44px trên cảm ứng), không dùng màu một mình để báo trạng thái', () => {
     const html = renderToStaticMarkup(

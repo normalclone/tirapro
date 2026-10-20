@@ -187,6 +187,19 @@ describe.skipIf(!DB_URL)('CommentReaction ↔ Postgres thật', () => {
     });
   });
 
+  it('công việc đã xoá mềm → thả cảm xúc 404 (bình luận của nó không nhận thao tác)', async () => {
+    await prisma.issue.update({ where: { id: ISSUE }, data: { deletedAt: new Date() } });
+    try {
+      const before = await countOf(C.main);
+      await expect(svc.setReaction(WS, U.a, C.main, '🎉', true)).rejects.toMatchObject({
+        status: 404,
+      });
+      expect(await countOf(C.main)).toBe(before);
+    } finally {
+      await prisma.issue.update({ where: { id: ISSUE }, data: { deletedAt: null } });
+    }
+  });
+
   it('dự án lưu trữ → 422 và không ghi (cả thả lẫn bỏ)', async () => {
     await prisma.project.update({ where: { id: PROJECT }, data: { archivedAt: new Date() } });
     try {

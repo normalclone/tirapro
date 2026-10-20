@@ -31,28 +31,30 @@ describe('REACTION_LABELS', () => {
 });
 
 describe('reactionChipName — tên truy cập của chip: bắt đầu bằng chữ nhìn thấy "emoji số"', () => {
-  it('mình + người khác: "👍 3 — bạn và 2 người khác"', () => {
+  it('mình + người khác: "👍 3 — Đồng ý: bạn và 2 người khác"', () => {
     expect(reactionChipName(r('👍', 3, true, ['An', 'Tôi', 'Bình']))).toBe(
-      '👍 3 — bạn và 2 người khác',
+      '👍 3 — Đồng ý: bạn và 2 người khác',
     );
   });
   it('chỉ mình: "👍 1 — bạn"', () => {
-    expect(reactionChipName(r('👍', 1, true, ['Tôi']))).toBe('👍 1 — bạn');
+    expect(reactionChipName(r('👍', 1, true, ['Tôi']))).toBe('👍 1 — Đồng ý: bạn');
   });
   it('mình + đúng một người khác: không đoán tên, "bạn và 1 người khác"', () => {
-    expect(reactionChipName(r('🎉', 2, true, ['An', 'Tôi']))).toBe('🎉 2 — bạn và 1 người khác');
+    expect(reactionChipName(r('🎉', 2, true, ['An', 'Tôi']))).toBe(
+      '🎉 2 — Chúc mừng: bạn và 1 người khác',
+    );
   });
   it('một người khác: nêu tên', () => {
-    expect(reactionChipName(r('❤️', 1, false, ['An']))).toBe('❤️ 1 — An');
+    expect(reactionChipName(r('❤️', 1, false, ['An']))).toBe('❤️ 1 — Yêu thích: An');
   });
   it('nhiều người khác (không có mình): tên đầu và số còn lại', () => {
     expect(reactionChipName(r('😄', 3, false, ['An', 'Bình', 'Cường']))).toBe(
-      '😄 3 — An và 2 người khác',
+      '😄 3 — Vui: An và 2 người khác',
     );
   });
   it('không có tên (người đã bị xoá): vẫn đúng số', () => {
-    expect(reactionChipName(r('👀', 1, false, []))).toBe('👀 1 — 1 người');
-    expect(reactionChipName(r('👀', 4, false, []))).toBe('👀 4 — 4 người');
+    expect(reactionChipName(r('👀', 1, false, []))).toBe('👀 1 — Đang xem: 1 người');
+    expect(reactionChipName(r('👀', 4, false, []))).toBe('👀 4 — Đang xem: 4 người');
   });
 });
 
@@ -137,5 +139,15 @@ describe('nextPickerIndex — phím mũi tên trong ô chọn emoji (6 ô, quay 
     expect(nextPickerIndex(3, 'End', 6)).toBe(5);
     expect(nextPickerIndex(3, 'a', 6)).toBeNull();
     expect(nextPickerIndex(3, 'Enter', 6)).toBeNull();
+  });
+  it('giữ Alt/Cmd/Ctrl thì KHÔNG chặn (Alt/Cmd+←/→ là Quay lại/Tiến của trình duyệt), trừ Home/End', () => {
+    for (const mod of ['altKey', 'metaKey', 'ctrlKey'] as const) {
+      expect(nextPickerIndex(2, 'ArrowLeft', 6, { [mod]: true })).toBeNull();
+      expect(nextPickerIndex(2, 'ArrowRight', 6, { [mod]: true })).toBeNull();
+      expect(nextPickerIndex(2, 'ArrowDown', 6, { [mod]: true })).toBeNull();
+      expect(nextPickerIndex(2, 'Home', 6, { [mod]: true })).toBe(0);
+      expect(nextPickerIndex(2, 'End', 6, { [mod]: true })).toBe(5);
+    }
+    expect(nextPickerIndex(2, 'ArrowRight', 6, { shiftKey: false })).toBe(3);
   });
 });

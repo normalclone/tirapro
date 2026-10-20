@@ -130,7 +130,7 @@ export function ReactionPickerPanel({
             onClick={() => onPick(emoji, !mine)}
             onFocus={() => setActive(i)}
             onKeyDown={(e) => {
-              const next = nextPickerIndex(i, e.key, count);
+              const next = nextPickerIndex(i, e.key, count, e.nativeEvent);
               if (next === null) return;
               e.preventDefault();
               setActive(next);

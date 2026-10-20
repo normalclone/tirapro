@@ -29,7 +29,9 @@ describe('soft-delete — project scope phòng thủ', () => {
     const body = m![0];
     expect(body.indexOf('this.requireComment(')).toBeGreaterThan(-1);
     expect(body.indexOf('this.requireComment(')).toBeLessThan(body.indexOf('commentReaction.'));
-    expect(src).toMatch(/where: \{ id: commentId, deletedAt: null, issue: \{ workspaceId \} \}/);
+    expect(src).toMatch(
+      /where: \{ id: commentId, deletedAt: null, issue: \{ workspaceId, deletedAt: null \} \}/,
+    );
     // `list` chỉ gom reaction của bình luận đã lọc deletedAt: null ở truy vấn trước đó
     expect(src).toMatch(/where: \{ issueId, deletedAt: null \}/);
   });

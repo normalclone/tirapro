@@ -10,7 +10,14 @@ type Row = {
   user: { id: string; displayName: string } | null;
 };
 
-function make(opts: { archivedAt?: Date | null; commentExists?: boolean; rows?: Row[] } = {}) {
+function make(
+  opts: {
+    archivedAt?: Date | null;
+    commentExists?: boolean;
+    issueDeleted?: boolean;
+    rows?: Row[];
+  } = {},
+) {
   const rows: Row[] = [...(opts.rows ?? [])];
   // Mô phỏng chỉ mục duy nhất (commentId, userId, emoji): `skipDuplicates` bỏ hàng đã có.
   const createMany = vi.fn(
@@ -75,13 +82,15 @@ function make(opts: { archivedAt?: Date | null; commentExists?: boolean; rows?: 
       updatedAt: new Date(),
     },
   ]);
-  const commentFindFirst = vi
-    .fn()
-    .mockResolvedValue(
-      opts.commentExists === false
-        ? null
-        : { id: 'c1', issueId: 'i1', authorId: 'a', version: 1, issue: { projectId: 'p1' } },
-    );
+  // Mô phỏng điều kiện lọc của `requireComment`: việc đã xoá mềm chỉ bị loại khi `where.issue.deletedAt === null`.
+  const commentFindFirst = vi.fn(
+    (a: { where: { issue?: { deletedAt?: null } } }): Promise<unknown> =>
+      Promise.resolve(
+        opts.commentExists === false || (opts.issueDeleted && a.where.issue?.deletedAt === null)
+          ? null
+          : { id: 'c1', issueId: 'i1', authorId: 'a', version: 1, issue: { projectId: 'p1' } },
+      ),
+  );
   const prisma = {
     comment: { findFirst: commentFindFirst, findMany: commentFindMany },
     commentReaction: { createMany, deleteMany, findMany },
@@ -184,7 +193,7 @@ describe('CommentsService.setReaction — thả/bỏ cảm xúc (idempotent)', (
     // requireComment phải lọc đúng: chưa xoá mềm + trong workspace
     expect(commentFindFirst).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: 'c1', deletedAt: null, issue: { workspaceId: 'w1' } },
+        where: { id: 'c1', deletedAt: null, issue: { workspaceId: 'w1', deletedAt: null } },
       }),
     );
     expect(createMany).not.toHaveBeenCalled();
@@ -244,5 +253,42 @@ describe('CommentsService.list — reactions gộp một truy vấn cho cả tra
     commentFindMany.mockResolvedValue([]);
     await expect(service.list('w1', 'i1', 'u1')).resolves.toEqual([]);
     expect(findMany).not.toHaveBeenCalled();
+  });
+});
+
+describe('requireComment — bình luận của công việc đã xoá mềm không nhận cảm xúc / sửa / xoá', () => {
+  it('thả và bỏ cảm xúc → 404, không ghi, không phát sự kiện', async () => {
+    const { service, createMany, deleteMany, events } = make({ issueDeleted: true });
+    await expect(service.setReaction('w1', 'u1', 'c1', '👍', true)).rejects.toMatchObject({
+      status: 404,
+    });
+    await expect(service.setReaction('w1', 'u1', 'c1', '👍', false)).rejects.toMatchObject({
+      status: 404,
+    });
+    expect(createMany).not.toHaveBeenCalled();
+    expect(deleteMany).not.toHaveBeenCalled();
+    expect(events.emit).not.toHaveBeenCalled();
+  });
+
+  it('sửa bình luận → 404 và không mở giao dịch', async () => {
+    const { service, prisma } = make({ issueDeleted: true });
+    await expect(service.update('w1', 'u1', 'c1', 'nội dung mới', 1)).rejects.toMatchObject({
+      status: 404,
+    });
+    expect(prisma.comment.findFirst).toHaveBeenCalled();
+  });
+
+  it('xoá bình luận → 404, không đánh dấu xoá', async () => {
+    const { service, prisma, events } = make({ issueDeleted: true });
+    const update = vi.fn();
+    (prisma.comment as unknown as { update: typeof update }).update = update;
+    await expect(service.softDelete('w1', 'u1', 'c1', true)).rejects.toMatchObject({ status: 404 });
+    expect(update).not.toHaveBeenCalled();
+    expect(events.emit).not.toHaveBeenCalled();
+  });
+
+  it('việc còn sống thì cùng các thao tác đó vẫn chạy (điều kiện không loại nhầm)', async () => {
+    const { service } = make();
+    await expect(service.setReaction('w1', 'u1', 'c1', '👍', true)).resolves.toBeDefined();
   });
 });
