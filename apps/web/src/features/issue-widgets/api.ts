@@ -42,6 +42,29 @@ export function useWatchState(issueId: string) {
   });
 }
 
+export interface WatcherUser {
+  id: string;
+  displayName: string;
+  avatarUrl: string | null;
+}
+
+/** Người đang theo dõi công việc (GET /issues/:id/watchers, PROJECT_VIEW) — cache 60s, mutation watch làm mới. */
+export function useWatchers(issueId: string, enabled = true) {
+  return useQuery({
+    queryKey: keys.issues.watchers(issueId),
+    queryFn:
+      issueId && enabled
+        ? async () =>
+            (
+              await api.get<{ watchers: WatcherUser[]; isWatching: boolean }>(
+                `/issues/${issueId}/watchers`,
+              )
+            ).data
+        : skipToken,
+    staleTime: 60_000,
+  });
+}
+
 /** Toggle: gọi POST nếu muốn theo dõi, DELETE nếu muốn bỏ. `watching` = trạng thái hiện tại. */
 export function useToggleWatch(issueId: string) {
   const qc = useQueryClient();

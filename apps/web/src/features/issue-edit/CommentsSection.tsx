@@ -17,6 +17,8 @@ import { MarkdownView } from './MarkdownView';
 import { useAssigneeOptions } from './useAssigneeOptions';
 import { useCommentTaskToggle } from './useCommentTaskToggle';
 import { useDeleteComment, useUpdateComment } from './api';
+import { CommentAudienceLine } from './CommentAudienceLine';
+import { useCommentAudience } from './useCommentAudience';
 import { TypingIndicator } from '@/features/presence/TypingIndicator';
 import { useTypingEmitter } from '@/features/presence/usePresence';
 import { fmtRelative } from '@/lib/dateFormat';
@@ -37,6 +39,7 @@ export function CommentsSection({ issue }: { issue: IssueDto }) {
   const canEditOwn = can('comment:edit:own');
   const [draft, setDraft] = useState('');
   const { notifyTyping, stopTyping } = useTypingEmitter(issue.id);
+  const audience = useCommentAudience(issue, draft, people, canComment);
 
   function onDraftChange(value: string) {
     setDraft(value);
@@ -98,6 +101,7 @@ export function CommentsSection({ issue }: { issue: IssueDto }) {
             onBusyChange={setUploading}
             placeholder="Viết bình luận… (viết được Markdown · dán ảnh bằng Ctrl+V)"
           />
+          <CommentAudienceLine entries={audience} />
           <TypingIndicator issueId={issue.id} />
           <div className="flex items-center justify-end gap-2">
             <span className="kbd-hint mr-auto text-xs text-faint">⌘/Ctrl+Enter để gửi</span>
