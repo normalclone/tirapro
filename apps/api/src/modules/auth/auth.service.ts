@@ -7,7 +7,7 @@ import type { LoginInput, RegisterInput } from '@tirapro/shared';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { ForbiddenAppException } from '../../common/exceptions/app.exception';
 import { RbacService } from '../rbac/rbac.service';
-import { SYSTEM_USER_EMAIL } from '../automation/rule-engine.service';
+import { ACTIVE_MEMBERSHIP_COUNT } from '../../common/active-member';
 import { WorkspaceBootstrapService } from '../workspaces/workspace-bootstrap.service';
 import { SystemSettingsService } from '../system-settings/system-settings.service';
 import { TokenService, type RefreshMeta } from './token.service';
@@ -233,8 +233,10 @@ export class AuthService {
 
   /**
    * Danh sách workspace mà user là thành viên (kèm role và `memberCount`).
-   * `memberCount` = số thành viên ĐANG HOẠT ĐỘNG: bỏ tài khoản bị vô hiệu hoá và user hệ thống (automation). Một truy vấn
-   * (`_count` có điều kiện), chỉ của workspace mà người gọi là thành viên — không lộ workspace khác, không trả danh sách tên.
+   * `memberCount` = số thành viên ĐANG HOẠT ĐỘNG: bỏ tài khoản bị vô hiệu hoá và user hệ thống (automation).
+   * Một lời gọi Prisma (khoảng 3 câu SQL: membership, workspace, đếm), không N+1 — chỉ của workspace mà người gọi là
+   * thành viên; không lộ workspace khác, không trả danh sách tên.
+   * Vị từ `SYSTEM_USER_EMAIL` là lưới an toàn: user hệ thống không bao giờ có membership (`addWorkspace` chặn).
    */
   async listWorkspaces(userId: string) {
     const memberships = await this.prisma.workspaceMembership.findMany({
@@ -248,13 +250,7 @@ export class AuthService {
             slug: true,
             avatarUrl: true,
             _count: {
-              select: {
-                memberships: {
-                  where: {
-                    user: { status: { not: 'DEACTIVATED' }, email: { not: SYSTEM_USER_EMAIL } },
-                  },
-                },
-              },
+              select: { memberships: ACTIVE_MEMBERSHIP_COUNT },
             },
           },
         },

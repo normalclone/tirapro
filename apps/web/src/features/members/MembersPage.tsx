@@ -18,7 +18,7 @@ import { PageHeader } from '@/components/layout/PageHeader';
 import { useAuth } from '@/stores/auth';
 import { useRoles } from '@/features/roles/api';
 import { MemberRolesCell } from './MemberRolesCell';
-import { countActiveMembers } from './memberCount';
+import { memberCountParts } from './memberCount';
 import { useRemoveMember, useWorkspaceMembers } from './api';
 import { Tabs, TabPanel } from '@/components/ui/Tabs';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
@@ -81,14 +81,7 @@ export function MembersPage() {
               data-tour="members-list"
               actions={
                 <>
-                  {members && members.length > 0 && (
-                    <span
-                      className="text-sm text-muted"
-                      title={`Không gian làm việc hiện có ${countActiveMembers(members)} người đang hoạt động`}
-                    >
-                      {countActiveMembers(members)} người
-                    </span>
-                  )}
+                  {members && members.length > 0 && <MemberCountText members={members} />}
                   {canManage && (
                     <Button
                       size="sm"
@@ -158,6 +151,17 @@ export function MembersPage() {
 
       <AddPeopleDialog mode="workspace" open={bulkOpen} onClose={() => setBulkOpen(false)} />
     </PageFrame>
+  );
+}
+
+/** Đầu danh sách: "N đang hoạt động" (+ " · M đã vô hiệu hoá") — nói rõ quy tắc đếm ngay trên mặt chữ. */
+function MemberCountText({ members }: { members: Parameters<typeof memberCountParts>[0] }) {
+  const parts = memberCountParts(members);
+  return (
+    <span className="text-sm text-muted">
+      <span className="tabular-nums">{parts.active}</span>
+      {parts.deactivated && <span className="tabular-nums"> · {parts.deactivated}</span>}
+    </span>
   );
 }
 

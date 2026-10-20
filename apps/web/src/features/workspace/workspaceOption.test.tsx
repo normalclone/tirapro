@@ -93,7 +93,7 @@ describe('nối dây', () => {
 describe('trang Thành viên', () => {
   it('đầu danh sách đếm bằng countActiveMembers (cùng số với bộ chọn)', () => {
     const page = readFileSync(join(__dirname, '../members/MembersPage.tsx'), 'utf8');
-    expect(page).toMatch(/countActiveMembers\(members\)\} người/);
+    expect(page).toMatch(/memberCountParts\(members\)/);
     expect(page).not.toMatch(/\{members\.length\} người/);
   });
 });

@@ -51,7 +51,7 @@ export function WorkspaceOption({
   const descId = useId();
   const sub = workspaceSubline(ws);
   return (
-    <li>
+    <li role="presentation">
       <button
         type="button"
         role="option"

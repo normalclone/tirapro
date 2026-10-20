@@ -3,6 +3,7 @@ import { PrismaService } from '../../infra/prisma/prisma.service';
 import { BusinessRuleException, NotFoundAppException } from '../../common/exceptions/app.exception';
 import { offsetPage } from '../../common/dto/page-result';
 import type { PatchWorkspaceInput } from './admin-console.schemas';
+import { ACTIVE_MEMBERSHIP_COUNT } from '../../common/active-member';
 
 const WS_SELECT = {
   id: true,
@@ -12,7 +13,8 @@ const WS_SELECT = {
   deletedAt: true,
   createdAt: true,
   owner: { select: { id: true, displayName: true, email: true, avatarUrl: true } },
-  _count: { select: { memberships: true, projects: true, issues: true } },
+  // `memberships` = số thành viên ĐANG HOẠT ĐỘNG (cùng quy tắc bộ chọn không gian), không phải mọi dòng membership.
+  _count: { select: { memberships: ACTIVE_MEMBERSHIP_COUNT, projects: true, issues: true } },
 } as const;
 
 /** Quản trị mọi workspace (tenant) toàn hệ thống — chỉ admin hệ thống. */
