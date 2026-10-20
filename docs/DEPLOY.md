@@ -37,6 +37,7 @@ git clone https://github.com/normalclone/tirapro.git && cd tirapro
 cp .env.example .env            # sửa secret JWT, CORS_ORIGIN = domain web, DATABASE_URL/REDIS_URL
 corepack enable && pnpm install
 docker compose up -d postgres redis          # hạ tầng
+pnpm --filter @tirapro/types build
 pnpm --filter @tirapro/shared build
 pnpm --filter @tirapro/api exec prisma generate
 pnpm --filter @tirapro/api build

@@ -630,15 +630,15 @@ Mục **Kho mã (`/repos`) chỉ có khi bật cờ build `VITE_FEATURE_REPOS=1`
 
 # Giao diện đợt 2 · Phần C (2026-10-20)
 
-Phần C của đợt chuẩn hoá thứ hai ("gợi ý Lucian còn lại"): biểu mẫu và báo lỗi, danh sách và thao tác hàng loạt, xem nhanh, số liệu, thành viên và quyền, chia sẻ, cảm xúc bình luận, trợ lý AI có nguồn. **Có một migration (thêm một bảng, không đổi dữ liệu cũ), có đổi API ở nhiều chỗ (phần lớn chỉ thêm trường hoặc đường dẫn), thêm một thư viện cho web** (`@radix-ui/react-context-menu`, ghim đúng 2.3.1). Các primitive mới và quy tắc rút ra nằm ở `DESIGN.md` (mục "Primitive biểu mẫu, dữ liệu và cộng tác") và `docs/UX_CONVENTIONS.md` (mục 20).
+Phần C của đợt chuẩn hoá thứ hai ("gợi ý Lucian còn lại"): biểu mẫu và báo lỗi, danh sách và thao tác hàng loạt, xem nhanh, số liệu, thành viên và quyền, chia sẻ, cảm xúc bình luận, trợ lý AI có nguồn. **Có một migration (thêm một bảng, không đổi dữ liệu cũ), có đổi API ở nhiều chỗ (phần lớn chỉ thêm trường hoặc đường dẫn), thêm một thư viện cho web** (`@radix-ui/react-context-menu`, ghim đúng 2.3.1). **Cần chủ sản phẩm xem sớm: lỗ hổng bảo mật có từ trước P-C14 (người có `member:manage` không phải quản trị vẫn cấp được `workspace:admin`) — xem mục 3, đầu phần "Còn mở".** Các primitive mới và quy tắc rút ra nằm ở `DESIGN.md` (mục "Primitive biểu mẫu, dữ liệu và cộng tác") và `docs/UX_CONVENTIONS.md` (mục 20).
 
 ## 1. Cần làm khi triển khai
 
 Thứ tự (theo "Checklist triển khai" của `docs/DEPLOY.md`):
 
 1. Sao lưu cơ sở dữ liệu như mọi lần.
-2. `pnpm install` — `apps/web/package.json` thêm `@radix-ui/react-context-menu` **2.3.1** (ghim, không dấu `^`); lockfile chỉ thêm gói này, vẫn đúng một bản `@radix-ui/react-menu` (2.1.18).
-3. `pnpm --filter @tirapro/shared build` — `packages/shared` đổi (lược đồ `relax-counts`, `preview-match`, bộ lọc đã lưu, bộ tuần tự hoá JQL, emoji cảm xúc, nguồn AI, kiểm NUL).
+2. `pnpm install --frozen-lockfile` — `apps/web/package.json` thêm `@radix-ui/react-context-menu` **2.3.1** (ghim, không dấu `^`); lockfile chỉ thêm gói này, vẫn đúng một bản `@radix-ui/react-menu` (2.1.18).
+3. `pnpm --filter @tirapro/types build`, rồi `pnpm --filter @tirapro/shared build` (shared phụ thuộc types; cả hai phải build trước API và web). `packages/types` đổi (`CommentReactionDto`, `COMMENT_REACTED`, `RoleDto.updatedAt`, các trường `expectedProgress`…) và `packages/shared` đổi (lược đồ `relax-counts`, `preview-match`, bộ lọc đã lưu, bộ tuần tự hoá JQL, emoji cảm xúc, nguồn AI, kiểm NUL).
 4. `prisma migrate deploy` — migration **`20261019100000_comment_reaction`**: tạo bảng `CommentReaction` (id, commentId, userId, `emoji` VARCHAR(16), createdAt), chỉ mục duy nhất (commentId, userId, emoji), khoá ngoại xoá theo tầng tới `Comment` và `User` (xoá hẳn bình luận hay người dùng kéo theo xoá cảm xúc). Chỉ thêm bảng, an toàn với dữ liệu hiện có. Render/Docker tự chạy bước này khi API khởi động. Không cần `db:raw`.
 5. Build lại API (`prisma generate` + `build`) và khởi động lại. **Bản build phải gồm commit `c45d27e8` trở đi** (sửa lỗi `OR: []` của xem trước quy tắc: bản cũ đếm "mọi việc" cho điều kiện không thể khớp).
 6. Build lại web.
@@ -763,7 +763,7 @@ Thứ tự API/web: nên API trước hoặc cùng lúc. Web mới + API cũ kh�
 
 ### Cần chủ sản phẩm / người triển khai quyết định
 
-- **BẢO MẬT (có từ trước, không phải do phần C) — P-C14:** người có quyền `member:manage` nhưng **không phải quản trị** vẫn có thể **cấp `workspace:admin`** cho mình hoặc người khác qua đổi vai trò của thành viên hoặc tạo/sửa/nhân bản vai trò tuỳ chỉnh có quyền đó. Phần C (ma trận quyền chỉnh được, đổi vai trò ngay trên hàng) thêm lối vào giao diện thuận tiện hơn nhưng không tạo ra lỗ hổng này; ở web chỉ có hộp xác nhận khi bật `workspace:admin`, máy chủ không chặn. Nên chặn ở máy chủ (chỉ quản trị mới cấp/gỡ `workspace:admin`) trước khi giao quyền `member:manage` rộng rãi.
+- **BẢO MẬT (có từ trước, không phải do phần C) — P-C14:** người có quyền `member:manage` nhưng **không phải quản trị** vẫn có thể **cấp `workspace:admin`** cho mình hoặc người khác qua đổi vai trò của thành viên hoặc tạo/sửa/nhân bản vai trò tuỳ chỉnh có quyền đó. Phần C (ma trận quyền chỉnh được, đổi vai trò ngay trên hàng) thêm lối vào giao diện thuận tiện hơn nhưng không tạo ra lỗ hổng này; ở web chỉ có hộp xác nhận khi bật `workspace:admin` **ở ma trận quyền**; hộp thoại sửa vai trò và danh sách vai trò ngay trên hàng thành viên không hỏi, và máy chủ không chặn. Nên chặn ở máy chủ (chỉ quản trị mới cấp/gỡ `workspace:admin`) trước khi giao quyền `member:manage` rộng rãi.
 
 ### Hoãn theo spec (chưa làm)
 
@@ -814,14 +814,14 @@ Chưa có báo cáo nào xác nhận các mục này đã chạy; người kiể
 **API thật (sau khi build lại API và `migrate deploy`)**
 
 - Migration `20261019100000_comment_reaction` trên cơ sở dữ liệu thật (`migrate deploy`, `migrate diff --exit-code` sạch).
-- Cảm xúc: `PUT`/`DELETE` bởi thành viên chỉ-xem (được), người ngoài dự án riêng tư (404), dự án lưu trữ (422), bình luận đã xoá mềm (404); ❤️ đi qua proxy đúng mã hoá; sự kiện `comment:reaction` chỉ tới phòng của dự án.
+- Cảm xúc: `PUT`/`DELETE` bởi thành viên chỉ-xem (được), người ngoài dự án riêng tư (404), dự án lưu trữ (422), bình luận của việc đã xoá mềm (404); sửa/xoá bình luận của việc đã xoá mềm cũng trả 404; ❤️ đi qua proxy đúng mã hoá; sự kiện `comment:reaction` chỉ tới phòng của dự án.
 - `GET /auth/workspaces` `memberCount` với tài khoản vô hiệu hoá; đầu trang Thành viên; cột Thành viên của bảng quản trị không gian.
 - `POST /search/relax-counts` bởi người không thuộc dự án riêng tư (số đếm không đổi) và khi truy vấn chậm (`count:null`).
 - `POST /automation/rules/preview-match` bởi người soạn không thuộc dự án riêng tư; một lần đối chiếu `pnpm test:parity` trên cơ sở dữ liệu đích.
 - `GET /projects/:id/members` bởi người không thuộc dự án riêng tư (kỳ vọng 403, web chỉ ghi chú); `PATCH /filters/:id` thật (và `/filters/:id`).
-- `PATCH /roles/:id` thật: 200 và 409 qua HTTP; `GET /roles` có `updatedAt`; thử gỡ quản trị cuối cùng trên không gian nháp (`LAST_WORKSPACE_ADMIN`).
+- `PATCH /roles/:id` thật: 200 và 409 qua HTTP (hai quản trị cùng sửa một vai trò từ hai tab → 409 thật); một vai trò tuỳ chỉnh thật được sửa qua ma trận; `GET /roles` có `updatedAt`; thử gỡ quản trị cuối cùng trên không gian nháp (`LAST_WORKSPACE_ADMIN`).
 - `GET /issues/:id/watchers` (đã lọc) với dự án riêng tư thật, ở xem nhanh.
-- Gợi ý AI có nguồn: dự án riêng tư, việc đã xoá mềm, việc báo ngoài chưa duyệt; chế độ cơ bản không có `ANTHROPIC_API_KEY`.
+- Gợi ý AI có nguồn: dự án riêng tư, việc đã xoá mềm, việc báo ngoài chưa duyệt; chế độ cơ bản không có `ANTHROPIC_API_KEY`; phản hồi AI đến muộn sau khi bấm Huỷ không hiện toast; quyền `ai:use` chỉ cấp qua vai trò dự án vẫn thấy trợ lý.
 - Mục tiêu có `expectedProgress` (vạch kỳ vọng) và thông báo có `actorAvatarUrl` trên dữ liệu thật.
 - Đồng hồ năng lực với phân bổ chồng nhau thật; người dùng không có `workspace:view`; người xem dự án riêng tư.
 - Kết nối thời gian thực: phiên bị thu hồi hoặc thành viên bị gỡ trong lúc đang mở; nginx `/realtime` có nâng cấp WebSocket.
@@ -841,4 +841,4 @@ Chưa có báo cáo nào xác nhận các mục này đã chạy; người kiể
 - Chi tiết công việc trên điện thoại: chuyển giữa dải thuộc tính và cột phải khi xoay màn hình lúc đang sửa.
 - Menu thao tác: bộ lọc đã lưu (kiểm thật), máy lai (con trỏ chuột + cảm ứng), trình đọc màn hình.
 - Tour: chạy với dữ liệu hướng dẫn thật từ API.
-- Trình đọc màn hình thật (VoiceOver/NVDA) cho mọi điều khiển mới trước khi phát hành (yêu cầu sẵn có của `UX_CONVENTIONS.md`).
+- Trình đọc màn hình thật: ma trận Vai trò & quyền và các chip nguồn AI; sau đó (VoiceOver/NVDA) cho mọi điều khiển mới trước khi phát hành (yêu cầu sẵn có của `UX_CONVENTIONS.md`).
