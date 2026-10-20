@@ -109,11 +109,16 @@ function invalidateResources(qc: ReturnType<typeof useQueryClient>) {
 /* ─────────────────────────── Hooks ─────────────────────────── */
 
 /** Bảng tải NGƯỜI × TUẦN trong khoảng thời gian đã chọn. */
-export function useWorkload(params: { from: string; to: string; projectId?: string }) {
+export function useWorkload(
+  params: { from: string; to: string; projectId?: string },
+  opts: { enabled?: boolean; staleTime?: number } = {},
+) {
   const p = { from: params.from, to: params.to, projectId: params.projectId || undefined };
   return useQuery({
     queryKey: keys.resources.workload(p),
     queryFn: async () => (await api.get<WorkloadReport>('/resources/workload', { params: p })).data,
+    enabled: opts.enabled,
+    staleTime: opts.staleTime,
   });
 }
 

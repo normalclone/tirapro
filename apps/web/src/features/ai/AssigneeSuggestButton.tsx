@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { cn } from '@/lib/utils';
 import * as Popover from '@radix-ui/react-popover';
 import { Sparkles } from 'lucide-react';
@@ -7,6 +7,7 @@ import { Avatar } from '@/components/ui/primitives';
 import { DelayedSpinner } from '@/components/ui/primitives';
 import { useSuggestAssignee } from './api';
 import { AiFallbackNote } from './AiFallbackNote';
+import { useAssigneeAvailability } from '@/features/resources/useAssigneeAvailability';
 
 /**
  * Nút "Gợi ý" cạnh ô chọn người phụ trách: hỏi máy chủ top 3 người phù hợp (kèm lý do),
@@ -15,12 +16,17 @@ import { AiFallbackNote } from './AiFallbackNote';
 export function AssigneeSuggestButton({
   projectId,
   issueId,
+  dueDate,
+  startDate,
   disabled,
   onPick,
   className,
 }: {
   projectId: string;
   issueId: string;
+  /** Hạn / ngày bắt đầu của việc — chọn tuần để hiện "còn trống" (không có → tuần hiện tại). */
+  dueDate?: string | null;
+  startDate?: string | null;
   disabled?: boolean;
   onPick: (userId: string) => void;
   /** Ghi thêm lên nút (vd `min-h-11` cho dải thuộc tính trên điện thoại). */
@@ -28,6 +34,8 @@ export function AssigneeSuggestButton({
 }) {
   const [open, setOpen] = useState(false);
   const suggest = useSuggestAssignee();
+  const availability = useAssigneeAvailability({ dueDate, startDate });
+  const idBase = useId();
 
   function load() {
     suggest.reset();
@@ -41,6 +49,7 @@ export function AssigneeSuggestButton({
       open={open}
       onOpenChange={(o) => {
         setOpen(o);
+        availability.onOpenChange(o);
         if (o) load();
       }}
     >
@@ -84,34 +93,64 @@ export function AssigneeSuggestButton({
           {data && data.suggestions.length > 0 && (
             <>
               <ul className="space-y-1">
-                {data.suggestions.map((s) => (
-                  <li key={s.userId}>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setOpen(false);
-                        onPick(s.userId);
-                      }}
-                      className="flex w-full items-start gap-2 rounded-md p-2 text-left hover:bg-surface-2"
-                    >
-                      <Avatar name={s.displayName} src={s.avatarUrl} size={24} />
-                      <span className="min-w-0 flex-1">
-                        <span className="flex items-center justify-between gap-2">
-                          <span className="truncate text-sm font-medium text-ink-strong">
-                            {s.displayName}
+                {data.suggestions.map((s) => {
+                  const hint = availability.hintFor(s.userId);
+                  const nameId = `${idBase}-${s.userId}-n`;
+                  const reasonId = `${idBase}-${s.userId}-r`;
+                  const hintId = `${idBase}-${s.userId}-h`;
+                  return (
+                    <li key={s.userId}>
+                      <button
+                        type="button"
+                        // Có "còn trống": TÊN là tên truy cập; lý do + còn trống đọc qua mô tả (Task 7).
+                        aria-labelledby={hint ? nameId : undefined}
+                        aria-describedby={hint ? `${reasonId} ${hintId}` : undefined}
+                        onClick={() => {
+                          setOpen(false);
+                          onPick(s.userId);
+                        }}
+                        className="flex w-full items-start gap-2 rounded-md p-2 text-left hover:bg-surface-2"
+                      >
+                        <Avatar name={s.displayName} src={s.avatarUrl} size={24} />
+                        <span className="min-w-0 flex-1">
+                          <span className="flex items-center justify-between gap-2">
+                            <span
+                              id={nameId}
+                              className="truncate text-sm font-medium text-ink-strong"
+                            >
+                              {s.displayName}
+                            </span>
+                            <span className="shrink-0 text-xs text-muted" title="Mức độ phù hợp">
+                              {Math.round(s.score * 100)}%
+                            </span>
                           </span>
-                          <span className="shrink-0 text-xs text-muted" title="Mức độ phù hợp">
-                            {Math.round(s.score * 100)}%
+                          <span id={reasonId} className="mt-0.5 block text-xs text-muted">
+                            {s.reasons.slice(0, 2).join(' · ')}
                           </span>
+                          {hint && (
+                            <span
+                              id={hintId}
+                              className={cn(
+                                'mt-0.5 block text-xs tabular-nums',
+                                hint.kind === 'over'
+                                  ? 'font-medium text-danger'
+                                  : hint.kind === 'full'
+                                    ? 'text-warning-ink'
+                                    : 'text-muted',
+                              )}
+                            >
+                              {hint.text}
+                            </span>
+                          )}
                         </span>
-                        <span className="mt-0.5 block text-xs text-muted">
-                          {s.reasons.slice(0, 2).join(' · ')}
-                        </span>
-                      </span>
-                    </button>
-                  </li>
-                ))}
+                      </button>
+                    </li>
+                  );
+                })}
               </ul>
+              {availability.footerNote && (
+                <p className="mt-1 px-2 text-[11px] text-faint">{availability.footerNote}</p>
+              )}
               {data.source === 'heuristic' && data.reason ? (
                 <AiFallbackNote reason={data.reason} variant="footnote" />
               ) : (

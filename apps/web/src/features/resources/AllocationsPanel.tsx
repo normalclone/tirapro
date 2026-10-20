@@ -23,6 +23,8 @@ import {
 import { SectionCard } from '@/components/ui/SectionCard';
 import { fmtDayMonth } from '@/lib/dateFormat';
 import { blockOnInvalidDate } from '@/lib/dateGuard';
+import { allocationBudgets } from './allocationBudget';
+import { AllocationBudgetList } from './AllocationBudgetList';
 
 interface FormState {
   id: string | null;
@@ -59,6 +61,16 @@ export function AllocationsPanel({
   to: string;
 }) {
   const list = useAllocations({ projectId, from, to });
+  // Ngân sách tính trên MỌI dự án (khi bảng lọc theo dự án thì cần lấy thêm phần của các dự án khác); không lọc → cùng khoá, một lần gọi.
+  const everything = useAllocations({ from, to });
+  const budgets = useMemo(
+    () => allocationBudgets(everything.data ?? [], from, to),
+    [everything.data, from, to],
+  );
+  const shownUserIds = useMemo(
+    () => (list.data ? [...new Set(list.data.map((a) => a.userId))] : []),
+    [list.data],
+  );
   // Chọn người: tìm phía máy chủ (không giới hạn 50 người), loại tài khoản khoá; chủ cũ đã khoá vẫn hiện tên.
   const people = useAssigneePicker();
   const { data: projects } = useProjects();
@@ -251,102 +263,116 @@ export function AllocationsPanel({
             }
           />
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border text-left text-xs font-medium text-muted">
-                  <th scope="col" className="py-2 pr-3">
-                    Thành viên
-                  </th>
-                  <th scope="col" className="py-2 pr-3">
-                    Dự án
-                  </th>
-                  <th
-                    scope="col"
-                    className="py-2 pr-3 text-right"
-                    title="Phần thời gian làm việc dành cho dự án này."
-                  >
-                    Tỉ lệ thời gian
-                  </th>
-                  <th
-                    scope="col"
-                    className="py-2 pr-3"
-                    title="Phân bổ chỉ có hiệu lực trong khoảng ngày này."
-                  >
-                    Hiệu lực
-                  </th>
-                  <th scope="col" className="py-2 pr-3">
-                    Ghi chú
-                  </th>
-                  {canManage && (
-                    <th scope="col" className="py-2 text-right">
-                      Thao tác
+          <>
+            {budgets.length > 0 && (
+              <section aria-labelledby="alloc-budget-title" className="mb-5">
+                <h3 id="alloc-budget-title" className="text-sm font-medium text-ink-strong">
+                  Ngân sách thời gian theo người
+                </h3>
+                <p className="mb-2 text-xs text-muted">
+                  Cộng các phân bổ chồng nhau trong cùng ngày, lấy ngày cao nhất trong khoảng. Quá
+                  100% là đặt người này làm nhiều hơn thời gian có — chỉ cảnh báo.
+                </p>
+                <AllocationBudgetList budgets={budgets} only={shownUserIds} />
+              </section>
+            )}
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border text-left text-xs font-medium text-muted">
+                    <th scope="col" className="py-2 pr-3">
+                      Thành viên
                     </th>
-                  )}
-                </tr>
-              </thead>
-              <tbody>
-                {list.data.map((a) => (
-                  <tr key={a.id} className="border-b border-border last:border-0">
-                    <td className="py-2.5 pr-3">
-                      <span className="flex items-center gap-2">
-                        <Avatar name={a.user.displayName} src={a.user.avatarUrl} size={24} />
-                        <span className="truncate text-ink">{a.user.displayName}</span>
-                      </span>
-                    </td>
-                    <td className="py-2.5 pr-3">
-                      <span className="text-ink">{a.project.name}</span>
-                      <span className="ml-1.5 font-mono text-xs text-faint">{a.project.key}</span>
-                    </td>
-                    <td
-                      className={cn(
-                        'py-2.5 pr-3 text-right tabular-nums',
-                        a.percent > 100 ? 'font-medium text-warning' : 'text-ink',
-                      )}
-                      title={
-                        a.percent > 100
-                          ? 'Trên 100% nghĩa là người này được kỳ vọng làm thêm ngoài giờ cho dự án.'
-                          : `${a.user.displayName} dành ${a.percent}% thời gian làm việc cho dự án này.`
-                      }
+                    <th scope="col" className="py-2 pr-3">
+                      Dự án
+                    </th>
+                    <th
+                      scope="col"
+                      className="py-2 pr-3 text-right"
+                      title="Phần thời gian làm việc dành cho dự án này."
                     >
-                      {a.percent}%
-                    </td>
-                    <td className="whitespace-nowrap py-2.5 pr-3 tabular-nums text-muted">
-                      {fmtDayMonth(a.startDate)} – {fmtDayMonth(a.endDate)}
-                    </td>
-                    <td className="max-w-[16rem] truncate py-2.5 pr-3 text-muted">
-                      {a.note ?? '—'}
-                    </td>
+                      Tỉ lệ thời gian
+                    </th>
+                    <th
+                      scope="col"
+                      className="py-2 pr-3"
+                      title="Phân bổ chỉ có hiệu lực trong khoảng ngày này."
+                    >
+                      Hiệu lực
+                    </th>
+                    <th scope="col" className="py-2 pr-3">
+                      Ghi chú
+                    </th>
                     {canManage && (
-                      <td className="py-2.5 text-right">
-                        <span className="inline-flex items-center gap-1">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            title="Sửa"
-                            aria-label={`Sửa phân bổ của ${a.user.displayName}`}
-                            onClick={() => startEdit(a)}
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="text-muted hover:text-danger"
-                            title="Xoá"
-                            aria-label={`Xoá phân bổ của ${a.user.displayName}`}
-                            onClick={() => setPendingDelete(a)}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </span>
-                      </td>
+                      <th scope="col" className="py-2 text-right">
+                        Thao tác
+                      </th>
                     )}
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {list.data.map((a) => (
+                    <tr key={a.id} className="border-b border-border last:border-0">
+                      <td className="py-2.5 pr-3">
+                        <span className="flex items-center gap-2">
+                          <Avatar name={a.user.displayName} src={a.user.avatarUrl} size={24} />
+                          <span className="truncate text-ink">{a.user.displayName}</span>
+                        </span>
+                      </td>
+                      <td className="py-2.5 pr-3">
+                        <span className="text-ink">{a.project.name}</span>
+                        <span className="ml-1.5 font-mono text-xs text-faint">{a.project.key}</span>
+                      </td>
+                      <td
+                        className={cn(
+                          'py-2.5 pr-3 text-right tabular-nums',
+                          a.percent > 100 ? 'font-medium text-warning' : 'text-ink',
+                        )}
+                        title={
+                          a.percent > 100
+                            ? 'Trên 100% nghĩa là người này được kỳ vọng làm thêm ngoài giờ cho dự án.'
+                            : `${a.user.displayName} dành ${a.percent}% thời gian làm việc cho dự án này.`
+                        }
+                      >
+                        {a.percent}%
+                      </td>
+                      <td className="whitespace-nowrap py-2.5 pr-3 tabular-nums text-muted">
+                        {fmtDayMonth(a.startDate)} – {fmtDayMonth(a.endDate)}
+                      </td>
+                      <td className="max-w-[16rem] truncate py-2.5 pr-3 text-muted">
+                        {a.note ?? '—'}
+                      </td>
+                      {canManage && (
+                        <td className="py-2.5 text-right">
+                          <span className="inline-flex items-center gap-1">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              title="Sửa"
+                              aria-label={`Sửa phân bổ của ${a.user.displayName}`}
+                              onClick={() => startEdit(a)}
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="text-muted hover:text-danger"
+                              title="Xoá"
+                              aria-label={`Xoá phân bổ của ${a.user.displayName}`}
+                              onClick={() => setPendingDelete(a)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </span>
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </div>
 

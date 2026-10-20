@@ -21,6 +21,7 @@ import { DateTimeInput } from '@/components/ui/DateInput';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { PeoplePicker } from '@/components/ui/PeoplePicker';
 import { useAssigneePicker } from '@/features/issue-edit/useAssigneeOptions';
+import { useAssigneeAvailability } from '@/features/resources/useAssigneeAvailability';
 import { useCreateIssueModal } from '@/stores/createIssue';
 import { openReportIssue } from '@/stores/reportIssue';
 import { isBugType } from '@/features/issue-edit/severity';
@@ -202,6 +203,7 @@ export function CreateIssueModal() {
     enabled: open,
   });
   const assignees = useAssigneePicker(selId || undefined);
+  const availability = useAssigneeAvailability({ dueDate: due || null });
   const create = useCreateIssue(selId);
 
   const last = useMemo(() => loadLast(), [open]);
@@ -700,6 +702,7 @@ export function CreateIssueModal() {
               }}
               emptyLabel="Chưa gán"
               {...assignees}
+              {...availability}
             />
           </Field>
           <Field

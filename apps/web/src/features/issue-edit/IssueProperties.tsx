@@ -11,6 +11,7 @@ import { useUpdateIssue } from '@/features/issues/api';
 import { pointsConfirmOptions, pointsEditWarning } from '@/features/issues/pointsWarning';
 import { useConfirm } from '@/components/ui/useConfirm';
 import { useAssigneePicker } from '@/features/issue-edit/useAssigneeOptions';
+import { useAssigneeAvailability } from '@/features/resources/useAssigneeAvailability';
 import { ParticipantsRow } from '@/features/issue-extras/ParticipantsRow';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { PeoplePicker } from '@/components/ui/PeoplePicker';
@@ -469,6 +470,8 @@ export function IssueAssigneeControl({
   flushStart?: boolean;
 }) {
   const assignees = useAssigneePicker(issue.projectId);
+  // "Còn trống ~N giờ/tuần" theo tuần của hạn/ngày bắt đầu việc này; chỉ nạp khi danh sách mở.
+  const availability = useAssigneeAvailability(issue);
   const patch = useUpdateIssue(issue.projectId);
   const canEditThis = useCanEditIssue(issue.projectId)(issue);
   const canSuggest = useAuth((s) => s.can('ai:use')) && canEditThis;
@@ -478,6 +481,8 @@ export function IssueAssigneeControl({
         <AssigneeSuggestButton
           projectId={issue.projectId}
           issueId={issue.id}
+          dueDate={issue.dueDate}
+          startDate={issue.startDate}
           disabled={patch.isPending}
           className={cn(flushStart && '-ml-1.5', suggestClassName)}
           onPick={(userId) => {
@@ -501,6 +506,7 @@ export function IssueAssigneeControl({
           disabled={patch.isPending}
           align="end"
           {...assignees}
+          {...availability}
           selectedFallback={issue.assignee ?? undefined}
           onChange={(v) => {
             const next = v || null;

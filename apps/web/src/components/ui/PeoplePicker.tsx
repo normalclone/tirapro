@@ -3,6 +3,7 @@ import * as Popover from '@radix-ui/react-popover';
 import { Check, ChevronDown } from 'lucide-react';
 import { Input } from '@/components/ui/Input';
 import { Avatar } from '@/components/ui/primitives';
+import { PersonOptionRow, type PersonHint } from './PersonOptionRow';
 import { cn } from '@/lib/utils';
 import { registerSessionCleaner } from '@/lib/sessionCache';
 
@@ -29,19 +30,6 @@ export function rememberPeople(options: readonly PersonOption[]): void {
   for (const o of options) knownPeople.set(o.id, o);
 }
 
-function MiniTeam({ name, color }: { name: string; color?: string | null }) {
-  const c = color ?? 'var(--faint)';
-  return (
-    <span
-      className="inline-flex items-center gap-1 rounded px-1 py-px text-[10px] font-medium"
-      style={{ backgroundColor: `color-mix(in oklch, ${c} 16%, transparent)`, color: c }}
-    >
-      <span className="h-1 w-1 shrink-0 rounded-full" style={{ background: c }} aria-hidden />
-      {name}
-    </span>
-  );
-}
-
 /**
  * Dropdown chọn MỘT NGƯỜI (assignee) — mỗi dòng hiện avatar + tên + vị trí + nhóm.
  * Ô tìm kiếm khớp đồng thời tên / vị trí / nhóm (qua `option.search`).
@@ -62,6 +50,9 @@ export function PeoplePicker({
   onSearchChange,
   moreHint,
   selectedFallback,
+  onOpenChange,
+  hintFor,
+  footerNote,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -81,6 +72,12 @@ export function PeoplePicker({
   moreHint?: boolean;
   /** Người đang chọn khi họ không nằm trong `options` (vd người được giao nằm ngoài 50 dòng đầu). */
   selectedFallback?: { id: string; displayName: string; avatarUrl?: string | null };
+  /** Báo mở/đóng danh sách (để nơi gọi nạp dữ liệu phụ ĐÚNG MỘT LẦN mỗi lần mở, không theo từng ký tự gõ). */
+  onOpenChange?: (open: boolean) => void;
+  /** Gợi ý phụ cho từng người (vd "còn trống ~6 giờ/tuần"); null = không hiện gì cho người đó. */
+  hintFor?: (userId: string) => PersonHint | null;
+  /** Ghi chú cuối danh sách (giải thích cách tính gợi ý). */
+  footerNote?: string | null;
 }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
@@ -113,6 +110,7 @@ export function PeoplePicker({
       open={open}
       onOpenChange={(o) => {
         setOpen(o);
+        onOpenChange?.(o);
         if (!o) {
           setQ('');
           onSearchChange?.('');
@@ -193,43 +191,16 @@ export function PeoplePicker({
                 </button>
               </li>
             )}
-            {filtered.map((o) => {
-              const active = o.id === value;
-              return (
-                <li key={o.id}>
-                  <button
-                    type="button"
-                    role="option"
-                    aria-selected={active}
-                    onClick={() => pick(o.id)}
-                    className={cn(
-                      'flex w-full items-start gap-2.5 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-surface-2',
-                      active && 'bg-surface-2',
-                    )}
-                  >
-                    <Check
-                      className={cn(
-                        'mt-1.5 h-4 w-4 shrink-0 text-primary',
-                        active ? 'opacity-100' : 'opacity-0',
-                      )}
-                      aria-hidden
-                    />
-                    <Avatar name={o.name} src={o.avatarUrl} size={28} />
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm text-ink">{o.name}</span>
-                      {(o.position || (o.teams && o.teams.length > 0)) && (
-                        <span className="mt-0.5 flex flex-wrap items-center gap-1 text-[11px] text-muted">
-                          {o.position && <span className="truncate">{o.position}</span>}
-                          {o.teams?.map((t) => (
-                            <MiniTeam key={t.name} name={t.name} color={t.color} />
-                          ))}
-                        </span>
-                      )}
-                    </span>
-                  </button>
-                </li>
-              );
-            })}
+            {filtered.map((o) => (
+              <li key={o.id}>
+                <PersonOptionRow
+                  option={o}
+                  active={o.id === value}
+                  onPick={() => pick(o.id)}
+                  hint={hintFor?.(o.id)}
+                />
+              </li>
+            ))}
             {filtered.length === 0 && (
               <li className="px-2 py-3 text-center text-sm text-muted">Không tìm thấy</li>
             )}
@@ -237,6 +208,11 @@ export function PeoplePicker({
               <li className="px-2 py-2 text-center text-xs text-faint">Gõ để tìm thêm</li>
             )}
           </ul>
+          {footerNote && (
+            <p className="border-t border-border px-3 py-1.5 text-[11px] text-faint">
+              {footerNote}
+            </p>
+          )}
         </Popover.Content>
       </Popover.Portal>
     </Popover.Root>
