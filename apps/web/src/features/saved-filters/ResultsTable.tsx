@@ -26,6 +26,21 @@ import { cn } from '@/lib/utils';
 import { ColumnHeader } from './ColumnHeader';
 import { RESULT_COLUMNS, cellText, isDefaultColumns, type ResultColumnId } from './resultColumns';
 import { useResultColumns } from './useResultColumns';
+import { RelaxSuggestions } from './RelaxSuggestions';
+
+/** Đã chạy, không lỗi, không có việc nào: câu giải thích + (≥ 2 điều kiện) các gợi ý "Bỏ <điều kiện> → N việc" (092). */
+function NoResults({ jql, onApplyJql }: { jql?: string; onApplyJql?: (jql: string) => void }) {
+  return (
+    <EmptyState
+      icon={<SearchX className="h-8 w-8" aria-hidden />}
+      title="Không có công việc nào khớp"
+      description="Bộ lọc hiện tại quá hẹp. Thử bớt điều kiện hoặc nới rộng khoảng giá trị rồi tìm lại."
+      action={
+        jql && onApplyJql ? <RelaxSuggestions jql={jql} onApplyJql={onApplyJql} /> : undefined
+      }
+    />
+  );
+}
 
 /** Chọn nhiều cho bảng kết quả (trạng thái nằm ở trang; `useBulkSelection`). */
 export interface RowSelection {
@@ -53,6 +68,8 @@ export function ResultsTable({
   onLoadMore,
   scopeKey = 'adhoc',
   selection,
+  jql,
+  onApplyJql,
 }: {
   issues: IssueDto[] | null;
   loading: boolean;
@@ -76,6 +93,10 @@ export function ResultsTable({
   scopeKey?: string;
   /** Chọn nhiều (hàng loạt): ô chọn ở đầu mỗi dòng/thẻ + ô "chọn tất cả trên trang". Không truyền = không chọn nhiều. */
   selection?: RowSelection;
+  /** JQL của kết quả đang xem. Cùng `onApplyJql`: khi không có kết quả, gợi ý "Bỏ <điều kiện> → N việc" (092). */
+  jql?: string;
+  /** Nạp JQL đã bỏ bớt điều kiện vào ô JQL và chạy luôn. */
+  onApplyJql?: (jql: string) => void;
 }) {
   const cols = useResultColumns(scopeKey);
   const { columns } = cols;
@@ -104,15 +125,7 @@ export function ResultsTable({
 
   if (error && !issues) return null;
 
-  if (!issues || issues.length === 0) {
-    return (
-      <EmptyState
-        icon={<SearchX className="h-8 w-8" aria-hidden />}
-        title="Không có công việc nào khớp"
-        description="Bộ lọc hiện tại quá hẹp. Thử bớt điều kiện hoặc nới rộng khoảng giá trị rồi tìm lại."
-      />
-    );
-  }
+  if (!issues || issues.length === 0) return <NoResults jql={jql} onApplyJql={onApplyJql} />;
 
   const total = issues.length;
   const totalPages = Math.max(1, Math.ceil(total / RESULTS_PAGE_SIZE));

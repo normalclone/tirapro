@@ -1,5 +1,6 @@
 import { Body, Controller, Get, Post, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { BusinessRuleException } from '../../common/exceptions/app.exception';
 import { WorkspaceId } from '../../common/decorators/workspace-id.decorator';
@@ -7,7 +8,12 @@ import type { AuthUser } from '../../common/types/request';
 import { SearchService } from './search.service';
 import { Permissions } from '../../common/decorators/permissions.decorator';
 import { ProjectRef } from '../../common/decorators/project-ref.decorator';
-import { validateJqlSchema, type ValidateJqlInput } from '@tirapro/shared';
+import {
+  relaxCountsSchema,
+  validateJqlSchema,
+  type RelaxCountsInput,
+  type ValidateJqlInput,
+} from '@tirapro/shared';
 import { PERMISSIONS } from '@tirapro/types';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 
@@ -69,5 +75,21 @@ export class SearchController {
     @Body(new ZodValidationPipe(validateJqlSchema)) body: ValidateJqlInput,
   ) {
     return this.search.validate(workspaceId, user.id, body.jql ?? '');
+  }
+
+  /**
+   * Bộ lọc không ra kết quả → đếm số việc khi bỏ từng điều kiện (092). Quyền như `GET /search`; `projectId` trong body
+   * để guard kiểm dự án xem được. Mỗi lần gọi chạy tới 9 truy vấn đếm nên throttle riêng 20 lần/phút.
+   */
+  @Permissions(PERMISSIONS.PROJECT_VIEW)
+  @ProjectRef('body', 'projectId')
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  @Post('relax-counts')
+  relaxCounts(
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
+    @Body(new ZodValidationPipe(relaxCountsSchema)) body: RelaxCountsInput,
+  ) {
+    return this.search.relaxCounts(workspaceId, user.id, body);
   }
 }

@@ -235,6 +235,15 @@ export function FiltersPage() {
     setAdhocJql(jql);
   }
 
+  /** Gợi ý "Bỏ <điều kiện> → N việc": nạp JQL đã bỏ bớt vào ô JQL rồi chạy luôn, đưa con trỏ về ô để chỉnh tiếp. */
+  function applyJql(jql: string) {
+    setJqlDraft(jql);
+    setResults(null);
+    setActive({ kind: 'adhoc', jql });
+    setAdhocJql(jql);
+    requestAnimationFrame(() => document.getElementById('adhoc-jql')?.focus());
+  }
+
   async function handleDelete(f: SavedFilter) {
     if (!(await confirm({ title: `Xoá bộ lọc "${f.name}"?`, destructive: true }))) return;
     try {
@@ -274,6 +283,8 @@ export function FiltersPage() {
   const isRunning = active.kind === 'adhoc' ? adhoc.isFetching : runFilter.isPending;
   const runError = active.kind === 'adhoc' && adhoc.error ? apiErrorMessage(adhoc.error) : null;
   const hasRun = active.kind !== 'none';
+  const sourceJql =
+    active.kind === 'adhoc' ? active.jql : active.kind === 'filter' ? active.filter.jql : undefined;
 
   const activeFilterId = active.kind === 'filter' ? active.filter.id : null;
   const heading =
@@ -389,6 +400,8 @@ export function FiltersPage() {
             onLoadMore={() => void loadMore()}
             scopeKey={active.kind === 'filter' ? `filter:${active.filter.id}` : 'adhoc'}
             selection={selectionProps}
+            jql={sourceJql}
+            onApplyJql={applyJql}
             exportJql={
               active.kind === 'adhoc'
                 ? active.jql

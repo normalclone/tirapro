@@ -20,6 +20,7 @@ export * from './ws';
 export * from './jql';
 export * from './jql-parser';
 export * from './jql-builder';
+export * from './jql-serialize';
 export * from './did-you-mean';
 export * from './jql-suggest';
 export * from './issue-key';
