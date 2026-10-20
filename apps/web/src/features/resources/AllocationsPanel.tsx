@@ -270,8 +270,8 @@ export function AllocationsPanel({
                   Ngân sách thời gian theo người
                 </h3>
                 <p className="mb-2 text-xs text-muted">
-                  Cộng các phân bổ chồng nhau trong cùng ngày, lấy ngày cao nhất trong khoảng. Quá
-                  100% là đặt người này làm nhiều hơn thời gian có — chỉ cảnh báo.
+                  Cộng các phân bổ chồng nhau trong cùng ngày (T2–T6), lấy ngày cao nhất trong
+                  khoảng. Quá 100% là đặt người này làm nhiều hơn thời gian có — chỉ cảnh báo.
                 </p>
                 <AllocationBudgetList budgets={budgets} only={shownUserIds} />
               </section>

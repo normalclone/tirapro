@@ -62,7 +62,7 @@ export interface CapacityCell {
 }
 
 export interface AvailabilityHint {
-  kind: 'free' | 'full' | 'over' | 'off';
+  kind: 'free' | 'full' | 'over' | 'off' | 'unallocated';
   /** Giờ còn trống (kind free) hoặc giờ quá tải (kind over); 0 với full/off. */
   hours: number;
   text: string;
@@ -82,9 +82,25 @@ export function availabilityHint(cell: CapacityCell | undefined): AvailabilityHi
   const free = cap - used;
   if (cell.workingDays === 0 && cell.offDays > 0 && used < FULL_EPSILON_HOURS)
     return { kind: 'off', hours: 0, text: 'nghỉ cả tuần' };
+  // Năng lực 0 mà không nghỉ ngày nào = có phân bổ ở tuần khác nhưng tuần này chưa có (khác "kín lịch": chưa có chỗ làm).
+  if (cap === 0 && cell.offDays === 0 && used < FULL_EPSILON_HOURS)
+    return { kind: 'unallocated', hours: 0, text: 'chưa phân bổ tuần này' };
   if (Math.abs(free) < FULL_EPSILON_HOURS) return { kind: 'full', hours: 0, text: 'kín lịch' };
   const hours = Math.round(Math.abs(free));
   return free > 0
     ? { kind: 'free', hours, text: `còn trống ~${hours} giờ/tuần` }
     : { kind: 'over', hours, text: `quá tải ~${hours} giờ` };
+}
+
+const dm = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
+
+/**
+ * Chú thích cuối danh sách "còn trống". Số là UỚC LƯỢNG, chỉ tính việc VÀ phân bổ người xem thấy được, và CHƯA tính việc đang
+ * gán/tạo: riêng người đang phụ trách việc (`assigneeIncluded`) thì số đã gồm việc này vì họ đã được giao nó.
+ */
+export function availabilityNote(weekStart: string, assigneeIncluded: boolean): string {
+  const base = `Còn trống = giờ làm được − giờ việc được giao, tuần ${dm(weekStart)}–${dm(weekEndOf(weekStart))}. Ước lượng, chỉ tính việc và phân bổ bạn xem được.`;
+  return assigneeIncluded
+    ? `${base} Chưa tính việc này; riêng người đang phụ trách đã gồm việc này.`
+    : `${base} Chưa tính việc này.`;
 }

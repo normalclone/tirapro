@@ -471,7 +471,11 @@ export function IssueAssigneeControl({
 }) {
   const assignees = useAssigneePicker(issue.projectId);
   // "Còn trống ~N giờ/tuần" theo tuần của hạn/ngày bắt đầu việc này; chỉ nạp khi danh sách mở.
-  const availability = useAssigneeAvailability(issue);
+  const availability = useAssigneeAvailability({
+    dueDate: issue.dueDate,
+    startDate: issue.startDate,
+    assigneeId: issue.assignee?.id ?? null,
+  });
   const patch = useUpdateIssue(issue.projectId);
   const canEditThis = useCanEditIssue(issue.projectId)(issue);
   const canSuggest = useAuth((s) => s.can('ai:use')) && canEditThis;
@@ -483,6 +487,7 @@ export function IssueAssigneeControl({
           issueId={issue.id}
           dueDate={issue.dueDate}
           startDate={issue.startDate}
+          assigneeId={issue.assignee?.id ?? null}
           disabled={patch.isPending}
           className={cn(flushStart && '-ml-1.5', suggestClassName)}
           onPick={(userId) => {

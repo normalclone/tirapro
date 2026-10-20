@@ -41,12 +41,18 @@ describe('AllocationBudgetList (171)', () => {
     expect(h).toContain('Vượt 30%');
     expect(h).toContain('bg-danger');
     expect(h).toContain('Đỉnh 130% vào 21/10');
-    expect(h).toContain('3 ngày làm việc vượt 100%');
+    expect(h).toContain('3 ngày (T2–T6) vượt 100%');
+    expect(h).not.toContain('ngày làm việc');
   });
   it('chia theo dự án tại ngày đỉnh, bằng chữ', () => {
     const h = html([A('u1', 'p1', 60, FROM, TO), A('u1', 'p2', 70, '2026-10-21', TO)]);
     const text = h.replace(/<!-- -->/g, '').replace(/<[^>]+>/g, '');
     expect(text).toContain('P2 70% · P1 60%');
+  });
+  it('nói rõ CHƯA trừ nghỉ phép/ngày lễ và chỉ tới tab Khối lượng', () => {
+    const h = html([A('u1', 'p1', 60, FROM, TO)]);
+    const text = h.replace(/<!-- -->/g, '').replace(/<[^>]+>/g, '');
+    expect(text).toContain('Chưa trừ nghỉ phép/ngày lễ — xem tab Khối lượng');
   });
   it('không vượt: không có dòng cảnh báo', () => {
     const h = html([A('u1', 'p1', 60, FROM, TO)]);

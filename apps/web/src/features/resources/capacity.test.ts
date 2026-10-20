@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   availabilityHint,
+  availabilityNote,
   issueWeekStart,
   weekEndOf,
   weekStartOf,
@@ -90,6 +91,11 @@ describe('availabilityHint — "còn trống ~N giờ/tuần" / "quá tải ~N g
       availabilityHint(cell({ capacityHours: 0, assignedHours: 0, workingDays: 0, offDays: 5 })),
     ).toEqual({ kind: 'off', hours: 0, text: 'nghỉ cả tuần' });
   });
+  it('năng lực 0 mà KHÔNG nghỉ ngày nào (có phân bổ ở tuần khác, tuần này chưa có) → "chưa phân bổ tuần này", không phải "kín lịch"', () => {
+    expect(
+      availabilityHint(cell({ capacityHours: 0, assignedHours: 0, workingDays: 5, offDays: 0 })),
+    ).toEqual({ kind: 'unallocated', hours: 0, text: 'chưa phân bổ tuần này' });
+  });
   it('không có năng lực mà vẫn bị giao việc (phân bổ 0%) → quá tải theo số giờ được giao', () => {
     expect(
       availabilityHint(cell({ capacityHours: 0, assignedHours: 8, workingDays: 5, offDays: 0 })),
@@ -102,5 +108,23 @@ describe('availabilityHint — "còn trống ~N giờ/tuần" / "quá tải ~N g
   it('thiếu dữ liệu / NaN → null (không hiện gì)', () => {
     expect(availabilityHint(undefined)).toBeNull();
     expect(availabilityHint(cell({ capacityHours: Number.NaN }))).toBeNull();
+  });
+});
+
+describe('availabilityNote — chú thích cuối danh sách', () => {
+  it('nói rõ: ước lượng, chỉ tính việc VÀ phân bổ bạn xem được, tuần dd/MM–dd/MM', () => {
+    const n = availabilityNote('2026-10-19', false);
+    expect(n).toContain('tuần 19/10–25/10');
+    expect(n).toContain('Ước lượng');
+    expect(n).toContain('chỉ tính việc và phân bổ bạn xem được');
+    expect(n).not.toContain('chỉ tính việc bạn xem được');
+  });
+  it('luôn nói "chưa tính việc này"', () => {
+    expect(availabilityNote('2026-10-19', false)).toContain('Chưa tính việc này.');
+  });
+  it('việc đã có người phụ trách: nêu riêng người đó đã gồm việc này', () => {
+    const n = availabilityNote('2026-10-19', true);
+    expect(n).toContain('Chưa tính việc này');
+    expect(n).toContain('riêng người đang phụ trách đã gồm việc này');
   });
 });

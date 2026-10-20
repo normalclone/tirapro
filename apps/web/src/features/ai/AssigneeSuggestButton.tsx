@@ -18,6 +18,7 @@ export function AssigneeSuggestButton({
   issueId,
   dueDate,
   startDate,
+  assigneeId,
   disabled,
   onPick,
   className,
@@ -27,6 +28,8 @@ export function AssigneeSuggestButton({
   /** Hạn / ngày bắt đầu của việc — chọn tuần để hiện "còn trống" (không có → tuần hiện tại). */
   dueDate?: string | null;
   startDate?: string | null;
+  /** Người đang phụ trách (nếu có) — số "còn trống" của họ đã gồm việc này (xem chú thích). */
+  assigneeId?: string | null;
   disabled?: boolean;
   onPick: (userId: string) => void;
   /** Ghi thêm lên nút (vd `min-h-11` cho dải thuộc tính trên điện thoại). */
@@ -34,8 +37,15 @@ export function AssigneeSuggestButton({
 }) {
   const [open, setOpen] = useState(false);
   const suggest = useSuggestAssignee();
-  const availability = useAssigneeAvailability({ dueDate, startDate });
+  const availability = useAssigneeAvailability({ dueDate, startDate, assigneeId });
   const idBase = useId();
+
+  /** MỌI đổi trạng thái mở/đóng đi qua đây (chọn gợi ý, Esc, bấm ra ngoài…) để truy vấn "còn trống" tắt đúng lúc. */
+  function changeOpen(o: boolean) {
+    setOpen(o);
+    availability.onOpenChange(o);
+    if (o) load();
+  }
 
   function load() {
     suggest.reset();
@@ -45,14 +55,7 @@ export function AssigneeSuggestButton({
   const data = suggest.data;
 
   return (
-    <Popover.Root
-      open={open}
-      onOpenChange={(o) => {
-        setOpen(o);
-        availability.onOpenChange(o);
-        if (o) load();
-      }}
-    >
+    <Popover.Root open={open} onOpenChange={changeOpen}>
       <Popover.Trigger asChild>
         <button
           type="button"
@@ -106,7 +109,7 @@ export function AssigneeSuggestButton({
                         aria-labelledby={hint ? nameId : undefined}
                         aria-describedby={hint ? `${reasonId} ${hintId}` : undefined}
                         onClick={() => {
-                          setOpen(false);
+                          changeOpen(false);
                           onPick(s.userId);
                         }}
                         className="flex w-full items-start gap-2 rounded-md p-2 text-left hover:bg-surface-2"

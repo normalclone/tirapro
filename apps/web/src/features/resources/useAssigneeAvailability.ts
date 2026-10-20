@@ -1,9 +1,9 @@
 import { useCallback, useMemo, useState } from 'react';
 import type { PersonHint } from '@/components/ui/PersonOptionRow';
-import { fmtDayMonth, toDateInput } from '@/lib/dateFormat';
+import { toDateInput } from '@/lib/dateFormat';
 import { useAuth } from '@/stores/auth';
 import { useWorkload } from './api';
-import { availabilityHint, issueWeekStart, weekEndOf } from './capacity';
+import { availabilityHint, availabilityNote, issueWeekStart } from './capacity';
 
 /** Số liệu tải đổi chậm: dùng lại trong 1 phút khi mở lại danh sách (không nạp lại theo từng lần mở). */
 const STALE_MS = 60_000;
@@ -18,7 +18,7 @@ const STALE_MS = 60_000;
  * - Tuần = tuần (thứ Hai) của hạn → ngày bắt đầu → tuần hiện tại, cùng định nghĩa tuần với máy chủ (xem `capacity.ts`).
  */
 export function useAssigneeAvailability(
-  issue: { dueDate?: string | null; startDate?: string | null } = {},
+  issue: { dueDate?: string | null; startDate?: string | null; assigneeId?: string | null } = {},
 ) {
   const canView = useAuth((s) => s.can('workspace:view'));
   const [open, setOpen] = useState(false);
@@ -45,9 +45,6 @@ export function useAssigneeAvailability(
   }, [data, week]);
 
   const hintFor = useCallback((userId: string) => byUser.get(userId) ?? null, [byUser]);
-  const footerNote =
-    byUser.size > 0
-      ? `Còn trống = giờ làm được − giờ việc được giao, tuần ${fmtDayMonth(week)}–${fmtDayMonth(weekEndOf(week))}. Ước lượng, chỉ tính việc bạn xem được.`
-      : null;
+  const footerNote = byUser.size > 0 ? availabilityNote(week, !!issue.assigneeId) : null;
   return { onOpenChange: setOpen, hintFor, footerNote };
 }

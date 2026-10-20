@@ -98,25 +98,23 @@ export function PeoplePicker({
   const query = q.trim().toLowerCase();
   const filtered = query ? options.filter((o) => o.search.includes(query)) : options;
 
+  /** MỌI đổi trạng thái mở/đóng đi qua đây (chọn người, Esc, bấm ra ngoài…) để `onOpenChange` luôn được báo. */
+  function changeOpen(o: boolean) {
+    setOpen(o);
+    onOpenChange?.(o);
+    if (!o) {
+      setQ('');
+      onSearchChange?.('');
+    }
+  }
+
   function pick(v: string) {
     onChange(v);
-    setOpen(false);
-    setQ('');
-    onSearchChange?.('');
+    changeOpen(false);
   }
 
   return (
-    <Popover.Root
-      open={open}
-      onOpenChange={(o) => {
-        setOpen(o);
-        onOpenChange?.(o);
-        if (!o) {
-          setQ('');
-          onSearchChange?.('');
-        }
-      }}
-    >
+    <Popover.Root open={open} onOpenChange={changeOpen}>
       <Popover.Trigger asChild>
         <button
           type="button"

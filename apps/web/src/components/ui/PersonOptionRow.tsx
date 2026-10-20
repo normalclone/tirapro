@@ -6,13 +6,14 @@ import type { PersonOption } from './PeoplePicker';
 
 /** Gợi ý phụ cạnh một người (vd "còn trống ~6 giờ/tuần"); `kind` chỉ để chọn màu — chữ luôn nói đủ. */
 export interface PersonHint {
-  kind: 'free' | 'full' | 'over' | 'off';
+  kind: 'free' | 'full' | 'over' | 'off' | 'unallocated';
   text: string;
 }
 
 const HINT_TONE: Record<PersonHint['kind'], string> = {
   free: 'text-muted',
   off: 'text-muted',
+  unallocated: 'text-muted',
   full: 'text-warning-ink',
   over: 'font-medium text-danger',
 };
