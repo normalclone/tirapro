@@ -97,7 +97,7 @@ describe('AudiencePanel — ai có quyền', () => {
   });
   it('TEAM: 5 avatar + "+N" (trang trí, ẩn khỏi trình đọc) + MỘT câu sr-only liệt kê tên', () => {
     const h = wrap(<AudiencePanel value={val({ scope: 'TEAM', teamId: 't1' })} />);
-    expect(h).toContain('Thành viên nhóm Web (8)');
+    expect(h).toContain('Thành viên nhóm Web (8) và quản trị viên không gian');
     expect(
       h.match(/aria-hidden="true"[^>]*title=|title="[^"]*"[^>]*aria-hidden="true"/g),
     ).toBeNull(); // avatar decorative → không tooltip
@@ -107,10 +107,11 @@ describe('AudiencePanel — ai có quyền', () => {
   });
   it('PROJECT công khai: mọi thành viên không gian; riêng tư: danh sách thành viên dự án', () => {
     const pub = wrap(<AudiencePanel value={val({ scope: 'PROJECT', projectId: 'pub' })} />);
-    expect(pub).toContain('Mọi thành viên không gian (25)');
+    expect(pub).toContain('Mọi thành viên có quyền xem dự án');
+    expect(pub).not.toContain('(25)');
     expect(pub).toContain('công khai');
     const sec = wrap(<AudiencePanel value={val({ scope: 'PROJECT', projectId: 'sec' })} />);
-    expect(sec).toContain('Thành viên dự án Dự án sec (7)');
+    expect(sec).toContain('Thành viên dự án Dự án sec (7) và quản trị viên không gian');
     expect(sec).toContain('Dự án riêng tư: chỉ thành viên dự án thấy.');
     expect(sec).toContain('+2');
   });

@@ -259,7 +259,15 @@ describe('RulePreviewService — đầu vào Postgres không nhận được', (
       conditions: [{ field: 'summary', op: 'contains', value: 'ΟΔΟΣ' }],
     });
     expect(r).toMatchObject({ count: null, timedOut: false });
-    expect(r.reason).toBe('không xem trước được điều kiện này');
+    expect(r.reason).toBe('không xem trước được điều kiện này (chỉ hỗ trợ chữ Latin)');
     expect(tx.issue.count).not.toHaveBeenCalled();
+  });
+
+  it('lý do chỉ gợi "chữ Latin" khi nguyên nhân là chữ; `dueDate contains` giữ lý do chung', async () => {
+    const { service } = make();
+    const r = await run(service, {
+      conditions: [{ field: 'dueDate', op: 'contains', value: '2026' }],
+    });
+    expect(r).toMatchObject({ count: null, reason: 'không xem trước được điều kiện này' });
   });
 });

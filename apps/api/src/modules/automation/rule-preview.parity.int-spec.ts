@@ -10,6 +10,7 @@ import {
   ruleConditionSchema,
 } from '@tirapro/shared';
 import { foldCase, isPgFoldSafe } from '../../common/case-fold';
+import { assertParityDatabase } from '../../common/testing/parity-db-guard';
 import { compileJql } from '../search/jql-compiler';
 import { ProjectAccessService } from '../rbac/project-access.service';
 import type { PrismaService } from '../../infra/prisma/prisma.service';
@@ -29,6 +30,8 @@ import { evalFieldCondition, fieldConditionToWhere, type FieldCondition } from '
  * riêng (tiền tố ngẫu nhiên) và dọn sạch khi xong; chỉ dùng DB nháp, KHÔNG BAO GIỜ trỏ vào DB demo/thật.
  */
 const DB_URL = process.env.PARITY_DATABASE_URL;
+// TRƯỚC mọi thứ khác (nạp dữ liệu, đổi process.env): DB thật/demo bị từ chối bằng lỗi to ngay khi nạp tệp.
+if (DB_URL) assertParityDatabase(DB_URL);
 
 interface Fx {
   summary: string;
@@ -549,6 +552,34 @@ describe.skipIf(!DB_URL)('xem trước quy tắc ↔ engine trên Postgres thậ
     const r = await service.previewMatch(WS, EDITOR, { conditions: [{ jql }] });
     expect(r.reason).toBeNull();
     expect(r.count).toBe(expected);
+  });
+
+  /**
+   * `IN ()` / `NOT IN ()` (danh sách rỗng): Prisma `in: []` = FALSE, `notIn: []` = TRUE, và phải đảo đúng bên trong NOT/AND/OR.
+   * Kết quả MONG ĐỢI tính độc lập bằng logic tập hợp (không từ chính bộ biên dịch): IN () = tập rỗng, NOT IN () = mọi việc.
+   */
+  describe('JQL danh sách rỗng IN () / NOT IN ()', () => {
+    const N = FIXTURES.length;
+    const high = FIXTURES.filter((f) => f.priorityId === P.p1).length;
+    it.each([
+      ['status IN ()', 0],
+      ['status NOT IN ()', N],
+      ['NOT (status IN ())', N],
+      ['NOT (status NOT IN ())', 0],
+      ['assignee IN ()', 0],
+      ['labels IN ()', 0],
+      ['priority = High AND status IN ()', 0],
+      ['priority = High AND status NOT IN ()', high],
+      ['status IN () OR priority = High', high],
+      ['NOT (status IN () AND priority = High)', N],
+      ['NOT (status NOT IN () AND priority = High)', N - high],
+      ['NOT (priority = High AND (status IN () OR status NOT IN ()))', N - high],
+    ] as const)('%s → %i', async (jql, expected) => {
+      const r = await service.previewMatch(WS, EDITOR, { conditions: [{ jql }] });
+      expect(r.reason).toBeNull();
+      expect(r.count).toBe(expected);
+      expect(await engineJqlCount(jql)).toBe(expected); // đường chạy của engine (từng việc một) cho cùng số
+    });
   });
 
   /* ------------------------------------------------------------------ NUL ------------------------------------------------------------------ */

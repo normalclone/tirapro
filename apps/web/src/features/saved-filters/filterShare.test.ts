@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { buildFilterPatch, type SavedFilter } from './api';
-import { canChangeFilterShare, resolveRouteFilter } from './filterShare';
+import { canChangeFilterShare, effectiveVisibility, resolveRouteFilter } from './filterShare';
 
 const src = (f: string) => readFileSync(join(__dirname, f), 'utf8');
 const app = (f: string) => readFileSync(join(__dirname, '..', '..', f), 'utf8');
@@ -44,6 +44,17 @@ describe('useUpdateFilter', () => {
     expect(s).toMatch(/export function useUpdateFilter\(/);
     expect(s).toMatch(/api\.patch<SavedFilter>\(`\/filters\/\$\{input\.id\}`/);
     expect(s).toMatch(/keys\.filters\.all/);
+  });
+});
+
+describe('effectiveVisibility — nhãn nói đúng ai thấy', () => {
+  it('PROJECT chưa gắn dự án (bộ lọc cũ) = cả không gian thấy → WORKSPACE; còn lại giữ nguyên', () => {
+    expect(effectiveVisibility({ visibility: 'PROJECT', sharedProjectId: null })).toBe('WORKSPACE');
+    expect(effectiveVisibility({ visibility: 'PROJECT', sharedProjectId: 'p1' })).toBe('PROJECT');
+    expect(effectiveVisibility({ visibility: 'PRIVATE', sharedProjectId: null })).toBe('PRIVATE');
+    expect(effectiveVisibility({ visibility: 'WORKSPACE', sharedProjectId: null })).toBe(
+      'WORKSPACE',
+    );
   });
 });
 
@@ -105,5 +116,20 @@ describe('nối dây', () => {
     expect(d).toContain('useUpdateFilter');
     expect(d).toContain('canChangeFilterShare');
     expect(d).toContain('filterUrl(');
+  });
+  it('biểu mẫu "Tạo bộ lọc" không còn mức "Dự án" (không có ô chọn dự án → máy chủ coi là cả không gian thấy); chia sẻ theo dự án qua hộp "Chia sẻ"', () => {
+    const s = src('FiltersPage.tsx');
+    const form = s.slice(s.indexOf('function CreateFilterModalInner'));
+    expect(form).not.toMatch(/value: 'PROJECT'/);
+    expect(form).toMatch(/value: 'PRIVATE'/);
+    expect(form).toMatch(/value: 'WORKSPACE'/);
+  });
+  it('đường dẫn đổi sang id KHÔNG thấy khi đang có kết quả → bỏ kết quả cũ (không để kết quả sai dưới URL sai)', () => {
+    const s = src('FiltersPage.tsx');
+    expect(s).toMatch(
+      /routeFilter\.state === 'missing'[\s\S]{0,260}setActive\(\{ kind: 'none' \}\)/,
+    );
+    expect(s).toMatch(/routeFilter\.state === 'missing'[\s\S]{0,260}setResults\(null\)/);
+    expect(s).toMatch(/routeFilter\.state === 'missing'[\s\S]{0,260}setAdhocJql\(''\)/);
   });
 });

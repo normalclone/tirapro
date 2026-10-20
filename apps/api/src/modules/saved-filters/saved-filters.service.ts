@@ -1,6 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { parseJql, JqlParseError, FilterVisibility, type IssueDto } from '@tirapro/shared';
+import {
+  parseJql,
+  JqlParseError,
+  FilterVisibility,
+  effectiveFilterShareError,
+  type IssueDto,
+} from '@tirapro/shared';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { SearchService } from '../search/search.service';
 import { ProjectAccessService } from '../rbac/project-access.service';
@@ -83,6 +89,7 @@ export class SavedFiltersService {
     input: CreateSavedFilterInput,
   ): Promise<SavedFilterDto> {
     this.validateJql(input.jql);
+    this.assertShareValid(null, input);
     await this.assertSharedProjectVisible(workspaceId, userId, input.sharedProjectId);
     const row = await this.prisma.savedFilter.create({
       data: {
@@ -105,8 +112,9 @@ export class SavedFiltersService {
     id: string,
     input: UpdateSavedFilterInput,
   ): Promise<SavedFilterDto> {
-    await this.requireOwned(workspaceId, userId, id);
+    const current = await this.requireOwned(workspaceId, userId, id);
     if (input.jql !== undefined) this.validateJql(input.jql);
+    this.assertShareValid(current, input);
     await this.assertSharedProjectVisible(workspaceId, userId, input.sharedProjectId);
 
     const data: Prisma.SavedFilterUncheckedUpdateInput = {};
@@ -206,6 +214,15 @@ export class SavedFiltersService {
   ): Promise<void> {
     if (sharedProjectId)
       await this.access.assertCanSee(userId, workspaceId, sharedProjectId, 'Dự án');
+  }
+
+  /** Mức PROJECT phải có dự án (xem `effectiveFilterShareError`): 422 thay vì lưu thành "cả không gian thấy". */
+  private assertShareValid(
+    current: SavedFilterRow | null,
+    input: { visibility?: FilterVisibility; sharedProjectId?: string | null },
+  ): void {
+    const error = effectiveFilterShareError(current, input);
+    if (error) throw new BusinessRuleException(error);
   }
 
   /** Validate cú pháp JQL; ném BusinessRuleException kèm message + vị trí khi sai. */

@@ -1,4 +1,4 @@
-import type { SavedFilter } from './api';
+import type { FilterVisibility, SavedFilter } from './api';
 
 /** Chỉ CHỦ bộ lọc (có `filter:manage`) đổi được phạm vi chia sẻ — khớp `requireOwned` + `@Permissions(FILTER_MANAGE)` ở máy chủ. */
 export const canChangeFilterShare = (
@@ -27,3 +27,12 @@ export function resolveRouteFilter(
   const filter = q.data.find((f) => f.id === id);
   return filter ? { state: 'found', filter } : { state: 'missing' };
 }
+
+/**
+ * Mức chia sẻ THỰC của bộ lọc: `PROJECT` mà chưa gắn dự án (dữ liệu cũ) được máy chủ cho cả không gian thấy nên hiện là
+ * `WORKSPACE` — nhãn trên hàng không nói thu hẹp hơn thực tế.
+ */
+export const effectiveVisibility = (
+  f: Pick<SavedFilter, 'visibility' | 'sharedProjectId'>,
+): FilterVisibility =>
+  f.visibility === 'PROJECT' && !f.sharedProjectId ? 'WORKSPACE' : f.visibility;

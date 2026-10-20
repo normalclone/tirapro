@@ -16,6 +16,7 @@ import { compileJql, jqlDependsOnViewer } from '../search/jql-compiler';
 import { fieldConditionToWhere, isJqlCondition } from './rule-conditions';
 
 const UNSUPPORTED = 'không xem trước được điều kiện này';
+const UNSUPPORTED_NON_LATIN = `${UNSUPPORTED} (chỉ hỗ trợ chữ Latin)`;
 const UNSTORABLE = 'điều kiện chứa ký tự không hợp lệ';
 const none = (over: Partial<PreviewMatchResult>): PreviewMatchResult => ({
   count: null,
@@ -69,7 +70,12 @@ export class RulePreviewService {
         wheres.push(compileJql(ast, { currentUserId: systemId }).where);
       } else {
         const where = fieldConditionToWhere(c);
-        if (!where) return none({ reason: UNSUPPORTED });
+        // `contains` trên chữ (không phải ngày) chỉ trả null vì có chữ ngoài tập gấp-hoa-thường chắc chắn → gợi ý cho người soạn.
+        if (!where)
+          return none({
+            reason:
+              c.op === 'contains' && c.field !== 'dueDate' ? UNSUPPORTED_NON_LATIN : UNSUPPORTED,
+          });
         wheres.push(where);
       }
     }

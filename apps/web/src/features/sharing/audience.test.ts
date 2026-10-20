@@ -36,7 +36,8 @@ describe('splitPeople — tối đa 5 avatar + "+N"', () => {
 describe('audienceView — ai có quyền xem', () => {
   it('PRIVATE → "Chỉ bạn", không avatar', () => {
     const v = audienceView({ scope: 'PRIVATE' });
-    expect(v.headline).toBe('Chỉ bạn');
+    expect(v.headline).toBe('Chỉ bạn'); // quản trị viên KHÔNG thấy mục riêng tư của người khác → không nhắc quản trị viên
+    expect(v.headline).not.toContain('quản trị');
     expect(v.people).toEqual([]);
     expect(v.names).toBeNull();
   });
@@ -46,6 +47,7 @@ describe('audienceView — ai có quyền xem', () => {
     );
     expect(audienceView({ scope: 'GLOBAL' }).headline).toBe('Mọi thành viên không gian');
     expect(audienceView({ scope: 'GLOBAL', memberCount: 25 }).people).toEqual([]);
+    expect(audienceView({ scope: 'GLOBAL', memberCount: 25 }).headline).not.toContain('quản trị'); // quản trị viên đã là thành viên
   });
   describe('TEAM', () => {
     it('chưa chọn nhóm → lời nhắc, không avatar', () => {
@@ -57,7 +59,7 @@ describe('audienceView — ai có quyền xem', () => {
       const lead = user(1);
       const members = [user(1), ...many(10).slice(1), user(99, { status: 'DEACTIVATED' })];
       const v = audienceView({ scope: 'TEAM', team: { name: 'Web', lead, members } });
-      expect(v.headline).toBe('Thành viên nhóm Web (10)');
+      expect(v.headline).toBe('Thành viên nhóm Web (10) và quản trị viên không gian');
       expect(v.people).toHaveLength(5);
       expect(v.extra).toBe(5);
       expect(v.people[0]?.id).toBe('u1'); // trưởng nhóm đứng đầu
@@ -83,15 +85,16 @@ describe('audienceView — ai có quyền xem', () => {
         'Chọn dự án để xem ai có quyền',
       );
     });
-    it('dự án CÔNG KHAI → mọi thành viên không gian (không liệt kê thành viên dự án)', () => {
+    it('dự án CÔNG KHAI → mọi thành viên CÓ QUYỀN XEM DỰ ÁN (người chỉ-theo-dự-án không thấy dự án công khai), không kèm số', () => {
       const v = audienceView({
         scope: 'PROJECT',
         memberCount: 25,
         project: { name: 'Web', isPrivate: false },
         projectMembers: { status: 'ready', people: activePeople(many(3)) },
       });
-      expect(v.headline).toBe('Mọi thành viên không gian (25)');
-      expect(v.note).toContain('công khai');
+      expect(v.headline).toBe('Mọi thành viên có quyền xem dự án');
+      expect(v.headline).not.toContain('25'); // số thành viên không gian ≠ số người thấy dự án
+      expect(v.note).toBe('Dự án Web công khai nên mọi thành viên có quyền xem dự án đều thấy.');
       expect(v.people).toEqual([]);
     });
     it('dự án RIÊNG TƯ → thành viên dự án (avatar + N)', () => {
@@ -100,7 +103,7 @@ describe('audienceView — ai có quyền xem', () => {
         project: { name: 'Bí mật', isPrivate: true },
         projectMembers: { status: 'ready', people: activePeople(many(8)) },
       });
-      expect(v.headline).toBe('Thành viên dự án Bí mật (8)');
+      expect(v.headline).toBe('Thành viên dự án Bí mật (8) và quản trị viên không gian');
       expect(v.people).toHaveLength(5);
       expect(v.extra).toBe(3);
       expect(v.note).toBe('Dự án riêng tư: chỉ thành viên dự án thấy.');
@@ -108,10 +111,10 @@ describe('audienceView — ai có quyền xem', () => {
     it('đang tải / lỗi danh sách thành viên → không (N), không avatar, có chú thích', () => {
       const base = { scope: 'PROJECT', project: { name: 'Bí mật', isPrivate: true } } as const;
       const loading = audienceView({ ...base, projectMembers: { status: 'loading', people: [] } });
-      expect(loading.headline).toBe('Thành viên dự án Bí mật');
+      expect(loading.headline).toBe('Thành viên dự án Bí mật và quản trị viên không gian');
       expect(loading.note).toBe('Đang tải danh sách thành viên…');
       const failed = audienceView({ ...base, projectMembers: { status: 'error', people: [] } });
-      expect(failed.headline).toBe('Thành viên dự án Bí mật');
+      expect(failed.headline).toBe('Thành viên dự án Bí mật và quản trị viên không gian');
       expect(failed.note).toBe('Không tải được danh sách thành viên.');
       expect(failed.people).toEqual([]);
     });

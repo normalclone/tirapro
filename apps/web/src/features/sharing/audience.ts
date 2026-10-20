@@ -63,6 +63,11 @@ export interface AudienceView {
 const withCount = (label: string, n: number | undefined) =>
   n === undefined ? label : `${label} (${fmtNumber(n)})`;
 const WORKSPACE_LABEL = 'Mọi thành viên không gian';
+/**
+ * Quản trị viên (không gian / hệ thống) thấy MỌI mục đã chia sẻ theo nhóm hoặc dự án, kể cả dự án riêng tư và nhóm họ không
+ * thuộc (`dashboardVisibleWhere`, `visibilityScope` ← `visibleWhere` = `{}` cho admin). Mục RIÊNG TƯ thì không: admin không thấy.
+ */
+const WITH_ADMINS = ' và quản trị viên không gian';
 
 function view(headline: string, note: string | null, all: readonly AudiencePerson[]): AudienceView {
   const { shown, extra } = splitPeople(all);
@@ -83,27 +88,34 @@ export function audienceView(i: AudienceInput): AudienceView {
     case 'TEAM': {
       if (!i.team) return view('Chọn nhóm để xem ai có quyền', null, []);
       const people = activePeople([i.team.lead, ...i.team.members]);
-      return view(withCount(`Thành viên nhóm ${i.team.name}`, people.length), null, people);
+      return view(
+        `${withCount(`Thành viên nhóm ${i.team.name}`, people.length)}${WITH_ADMINS}`,
+        null,
+        people,
+      );
     }
     case 'PROJECT': {
       const p = i.project;
       if (!p) return view('Chọn dự án để xem ai có quyền', null, []);
       if (!p.isPrivate) {
+        // Không in `memberCount`: đó là số thành viên không gian, còn người chỉ có vai theo-dự-án (không có `project:view`
+        // cấp không gian) KHÔNG thấy dự án công khai — nên số đó sẽ nói quá.
         return view(
-          withCount(WORKSPACE_LABEL, i.memberCount),
-          `Dự án ${p.name} công khai nên mọi thành viên đều thấy.`,
+          'Mọi thành viên có quyền xem dự án',
+          `Dự án ${p.name} công khai nên mọi thành viên có quyền xem dự án đều thấy.`,
           [],
         );
       }
       const m = i.projectMembers;
       const label = `Thành viên dự án ${p.name}`;
-      if (!m || m.status === 'loading') return view(label, 'Đang tải danh sách thành viên…', []);
-      if (m.status === 'error') return view(label, 'Không tải được danh sách thành viên.', []);
-      return view(
-        withCount(label, m.people.length),
-        'Dự án riêng tư: chỉ thành viên dự án thấy.',
-        m.people,
-      );
+      const full = (n: number | undefined) => `${withCount(label, n)}${WITH_ADMINS}`;
+      if (!m || m.status === 'loading') {
+        return view(full(undefined), 'Đang tải danh sách thành viên…', []);
+      }
+      if (m.status === 'error') {
+        return view(full(undefined), 'Không tải được danh sách thành viên.', []);
+      }
+      return view(full(m.people.length), 'Dự án riêng tư: chỉ thành viên dự án thấy.', m.people);
     }
   }
 }

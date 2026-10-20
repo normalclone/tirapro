@@ -53,7 +53,7 @@ import {
 } from './resultPaging';
 import { QueryBuilder } from './QueryBuilder';
 import { FilterShareDialog } from './FilterShareDialog';
-import { resolveRouteFilter } from './filterShare';
+import { effectiveVisibility, resolveRouteFilter } from './filterShare';
 import {
   useCreateFilter,
   useDeleteFilter,
@@ -262,6 +262,16 @@ export function FiltersPage() {
     appliedRouteId.current = routeFound.id;
     void loadAndRunSavedRef.current(routeFound);
   }, [routeId, routeFound]);
+
+  // Đường dẫn đổi sang id KHÔNG thấy: bỏ kết quả đang hiện (của bộ lọc/JQL khác) — không để kết quả sai nằm dưới URL sai.
+  const routeMissing = routeFilter.state === 'missing';
+  useEffect(() => {
+    if (!routeMissing) return;
+    appliedRouteId.current = null;
+    setActive({ kind: 'none' });
+    setResults(null);
+    setAdhocJql('');
+  }, [routeMissing, routeId]);
 
   /** Địa chỉ trên thanh trình duyệt luôn khớp nội dung: rời bộ lọc của đường dẫn (chạy JQL khác/xoá) thì bỏ `:id`. */
   function leaveRouteFilter() {
@@ -643,7 +653,7 @@ function SavedFilterList({
                     </span>
                     <span className="mt-1 flex items-center gap-2">
                       <Badge className="bg-surface-2 text-muted">
-                        {VISIBILITY_LABEL[f.visibility]}
+                        {VISIBILITY_LABEL[effectiveVisibility(f)]}
                       </Badge>
                     </span>
                   </button>
@@ -803,7 +813,6 @@ function CreateFilterModalInner({
               options={[
                 { value: 'PRIVATE', label: VISIBILITY_LABEL.PRIVATE },
                 { value: 'WORKSPACE', label: VISIBILITY_LABEL.WORKSPACE },
-                { value: 'PROJECT', label: VISIBILITY_LABEL.PROJECT },
               ]}
             />
           </div>

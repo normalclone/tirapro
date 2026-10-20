@@ -14,6 +14,7 @@ export * from './schemas/sprint';
 export * from './schemas/project';
 export * from './schemas/worklog.schema';
 export * from './schemas/automation-rule.schema';
+export * from './schemas/saved-filter';
 
 // Realtime + JQL + utils
 export * from './ws';
