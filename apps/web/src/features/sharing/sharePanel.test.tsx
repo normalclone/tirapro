@@ -97,7 +97,7 @@ describe('AudiencePanel — ai có quyền', () => {
   });
   it('TEAM: 5 avatar + "+N" (trang trí, ẩn khỏi trình đọc) + MỘT câu sr-only liệt kê tên', () => {
     const h = wrap(<AudiencePanel value={val({ scope: 'TEAM', teamId: 't1' })} />);
-    expect(h).toContain('Thành viên nhóm Web (8) và quản trị viên không gian');
+    expect(h).toContain('Thành viên nhóm Web (8) và Quản trị chung');
     expect(
       h.match(/aria-hidden="true"[^>]*title=|title="[^"]*"[^>]*aria-hidden="true"/g),
     ).toBeNull(); // avatar decorative → không tooltip
@@ -111,8 +111,8 @@ describe('AudiencePanel — ai có quyền', () => {
     expect(pub).not.toContain('(25)');
     expect(pub).toContain('công khai');
     const sec = wrap(<AudiencePanel value={val({ scope: 'PROJECT', projectId: 'sec' })} />);
-    expect(sec).toContain('Thành viên dự án Dự án sec (7) và quản trị viên không gian');
-    expect(sec).toContain('Dự án riêng tư: chỉ thành viên dự án thấy.');
+    expect(sec).toContain('Thành viên dự án Dự án sec (7) và Quản trị chung');
+    expect(sec).toContain('Người ngoài dự án không thấy (trừ Quản trị chung).');
     expect(sec).toContain('+2');
   });
   it('chỉ gọi danh sách thành viên dự án khi dự án RIÊNG TƯ (dự án công khai không cần)', () => {
@@ -176,7 +176,7 @@ describe('SharePanel', () => {
       />,
     );
     expect(h).toContain('Dự án được chia sẻ');
-    expect(h).toContain('Dự án riêng tư: chỉ thành viên dự án thấy.');
+    expect(h).toContain('Người ngoài dự án không thấy (trừ Quản trị chung).');
     expect(h).not.toContain('Dự án old');
   });
   it('khối "Ai có quyền" luôn hiện ngay dưới các mức', () => {

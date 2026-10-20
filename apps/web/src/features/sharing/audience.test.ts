@@ -59,7 +59,7 @@ describe('audienceView — ai có quyền xem', () => {
       const lead = user(1);
       const members = [user(1), ...many(10).slice(1), user(99, { status: 'DEACTIVATED' })];
       const v = audienceView({ scope: 'TEAM', team: { name: 'Web', lead, members } });
-      expect(v.headline).toBe('Thành viên nhóm Web (10) và quản trị viên không gian');
+      expect(v.headline).toBe('Thành viên nhóm Web (10) và Quản trị chung');
       expect(v.people).toHaveLength(5);
       expect(v.extra).toBe(5);
       expect(v.people[0]?.id).toBe('u1'); // trưởng nhóm đứng đầu
@@ -103,18 +103,18 @@ describe('audienceView — ai có quyền xem', () => {
         project: { name: 'Bí mật', isPrivate: true },
         projectMembers: { status: 'ready', people: activePeople(many(8)) },
       });
-      expect(v.headline).toBe('Thành viên dự án Bí mật (8) và quản trị viên không gian');
+      expect(v.headline).toBe('Thành viên dự án Bí mật (8) và Quản trị chung');
       expect(v.people).toHaveLength(5);
       expect(v.extra).toBe(3);
-      expect(v.note).toBe('Dự án riêng tư: chỉ thành viên dự án thấy.');
+      expect(v.note).toBe('Người ngoài dự án không thấy (trừ Quản trị chung).');
     });
     it('đang tải / lỗi danh sách thành viên → không (N), không avatar, có chú thích', () => {
       const base = { scope: 'PROJECT', project: { name: 'Bí mật', isPrivate: true } } as const;
       const loading = audienceView({ ...base, projectMembers: { status: 'loading', people: [] } });
-      expect(loading.headline).toBe('Thành viên dự án Bí mật và quản trị viên không gian');
+      expect(loading.headline).toBe('Thành viên dự án Bí mật và Quản trị chung');
       expect(loading.note).toBe('Đang tải danh sách thành viên…');
       const failed = audienceView({ ...base, projectMembers: { status: 'error', people: [] } });
-      expect(failed.headline).toBe('Thành viên dự án Bí mật và quản trị viên không gian');
+      expect(failed.headline).toBe('Thành viên dự án Bí mật và Quản trị chung');
       expect(failed.note).toBe('Không tải được danh sách thành viên.');
       expect(failed.people).toEqual([]);
     });

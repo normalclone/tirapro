@@ -67,7 +67,9 @@ const WORKSPACE_LABEL = 'Mọi thành viên không gian';
  * Quản trị viên (không gian / hệ thống) thấy MỌI mục đã chia sẻ theo nhóm hoặc dự án, kể cả dự án riêng tư và nhóm họ không
  * thuộc (`dashboardVisibleWhere`, `visibilityScope` ← `visibleWhere` = `{}` cho admin). Mục RIÊNG TƯ thì không: admin không thấy.
  */
-const WITH_ADMINS = ' và quản trị viên không gian';
+const WITH_ADMINS = ' và Quản trị chung';
+/** Ghi chú dưới mức "Dự án" riêng tư — khớp tiêu đề: Quản trị chung vẫn thấy (xem `WITH_ADMINS`). */
+export const PRIVATE_PROJECT_NOTE = 'Người ngoài dự án không thấy (trừ Quản trị chung).';
 
 function view(headline: string, note: string | null, all: readonly AudiencePerson[]): AudienceView {
   const { shown, extra } = splitPeople(all);
@@ -115,7 +117,7 @@ export function audienceView(i: AudienceInput): AudienceView {
       if (m.status === 'error') {
         return view(full(undefined), 'Không tải được danh sách thành viên.', []);
       }
-      return view(full(m.people.length), 'Dự án riêng tư: chỉ thành viên dự án thấy.', m.people);
+      return view(full(m.people.length), PRIVATE_PROJECT_NOTE, m.people);
     }
   }
 }

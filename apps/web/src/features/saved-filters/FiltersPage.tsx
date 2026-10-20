@@ -77,7 +77,7 @@ type BuilderMode = 'simple' | 'jql';
 
 const VISIBILITY_LABEL: Record<FilterVisibility, string> = {
   PRIVATE: 'Riêng tư',
-  WORKSPACE: 'Cả tổ chức',
+  WORKSPACE: 'Cả không gian làm việc',
   PROJECT: 'Dự án',
 };
 

@@ -4,6 +4,7 @@ import { SearchSelect } from '@/components/ui/SearchSelect';
 import { useProjects } from '@/features/projects/api';
 import { useTeams } from '@/features/teams/api';
 import { useAuth } from '@/stores/auth';
+import { PRIVATE_PROJECT_NOTE } from './audience';
 import {
   projectOptionsFor,
   teamOptionsFor,
@@ -99,9 +100,7 @@ export function SharePicker({
                 ariaLabel="Dự án được chia sẻ"
               />
               {selectedProject?.isPrivate && (
-                <p className="mt-1 text-xs text-muted">
-                  Dự án riêng tư: chỉ thành viên dự án thấy.
-                </p>
+                <p className="mt-1 text-xs text-muted">{PRIVATE_PROJECT_NOTE}</p>
               )}
             </>
           ) : kind === 'TEAM' ? (
