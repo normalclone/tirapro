@@ -3,6 +3,8 @@ import { roleLabel, type MemberDto } from '@tirapro/types';
 import {
   applyDesired,
   cloneName,
+  grantAdminCopy,
+  grantsAdmin,
   groupState,
   groupTargetOn,
   guardRoleEdit,
@@ -238,5 +240,25 @@ describe('cloneName', () => {
   });
   it('tên ngắn giữ nguyên + hậu tố', () => {
     expect(cloneName('QA')).toBe('QA (bản sao)');
+  });
+});
+
+describe('grantsAdmin / grantAdminCopy (bật quyền quản trị cho vai trò)', () => {
+  it('chỉ true khi bộ trước KHÔNG có và bộ sau CÓ workspace:admin', () => {
+    expect(grantsAdmin(['issue:create'], ['issue:create', 'workspace:admin'])).toBe(true);
+    expect(grantsAdmin(['workspace:admin'], ['workspace:admin', 'issue:create'])).toBe(false);
+    expect(grantsAdmin(['workspace:admin'], [])).toBe(false);
+    expect(grantsAdmin([], ['member:manage'])).toBe(false);
+  });
+  it('lời nhắc nêu tên vai trò, số người đang giữ và hệ quả "toàn quyền quản trị"', () => {
+    const c = grantAdminCopy('QA Lead', 3);
+    expect(c.title).toContain('Quản trị không gian làm việc');
+    expect(c.description).toContain('"QA Lead"');
+    expect(c.description).toContain('3 thành viên');
+    expect(c.description).toContain('toàn quyền quản trị');
+    expect(c.confirmLabel).toBe('Cấp quyền quản trị');
+  });
+  it('vai trò chưa ai giữ: nói sẽ áp dụng cho người được gán sau', () => {
+    expect(grantAdminCopy('QA Lead', 0).description).toContain('chưa gán cho ai');
   });
 });

@@ -182,3 +182,23 @@ const CLONE_SUFFIX = ' (bản sao)';
 export function cloneName(sourceName: string): string {
   return `${roleLabel(sourceName).slice(0, 60 - CLONE_SUFFIX.length)}${CLONE_SUFFIX}`;
 }
+
+/** Lần đổi này BẬT `workspace:admin` cho vai trò (trước chưa có, sau có)? */
+export const grantsAdmin = (before: readonly string[], after: readonly string[]): boolean =>
+  !before.includes(ADMIN) && after.includes(ADMIN);
+
+/** Lời nhắc xác nhận trước khi bật quyền "Quản trị không gian làm việc" cho một vai trò tuỳ chỉnh. */
+export function grantAdminCopy(
+  roleName: string,
+  memberCount: number,
+): { title: string; description: string; confirmLabel: string } {
+  const who =
+    memberCount > 0
+      ? `Vai trò "${roleName}" đang gán cho ${memberCount} thành viên — tất cả sẽ`
+      : `Vai trò "${roleName}" chưa gán cho ai; người được gán sau này sẽ`;
+  return {
+    title: 'Cấp quyền "Quản trị không gian làm việc"?',
+    description: `Mọi người giữ vai trò này sẽ có toàn quyền quản trị không gian làm việc (thành viên, vai trò, cấu hình, mọi dự án). ${who} có quyền đó ngay khi lưu.`,
+    confirmLabel: 'Cấp quyền quản trị',
+  };
+}

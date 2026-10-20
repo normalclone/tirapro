@@ -18,7 +18,7 @@ import {
   sortMatrixRoles,
 } from './roleMatrix';
 import { SYSTEM_LOCK_REASON } from './RoleMatrixCells';
-import { MatrixGrid } from './RoleMatrixGrid';
+import { MatrixGrid, type GridMode } from './RoleMatrixGrid';
 import { useRolePermEditor } from './useRolePermEditor';
 
 const SCOPES: { value: PermissionScope; label: string }[] = [
@@ -64,6 +64,7 @@ export function RoleMatrixTable({
   const members = useWorkspaceMembers(canEdit);
   // Chỉ cho sửa khi đã có danh sách thành viên: chốt "quản trị cuối cùng" và "tự mất quyền" cần nó.
   const editable = canEdit && members.isSuccess;
+  const mode: GridMode = editable ? 'edit' : canEdit ? 'loading' : 'readonly';
   const editor = useRolePermEditor({ roles, members: members.data });
   const saving =
     useIsMutating({ mutationKey: ['role-perms'] }) > 0 || Object.keys(editor.pending).length > 0;
@@ -170,7 +171,7 @@ export function RoleMatrixTable({
           scope={scope}
           captionId={captionId}
           lockNoteId={lockNoteId}
-          editable={editable}
+          mode={mode}
           pending={editor.pending}
           onToggle={(role, key) => void editor.toggle(role, key)}
           onToggleGroup={(role, keys) => void editor.toggleGroup(role, keys)}

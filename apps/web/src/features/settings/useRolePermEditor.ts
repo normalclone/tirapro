@@ -17,6 +17,8 @@ import { keys } from '@/lib/queryKeys';
 import {
   applyDesired,
   groupState,
+  grantAdminCopy,
+  grantsAdmin,
   groupTargetOn,
   guardRoleEdit,
   planFlush,
@@ -107,9 +109,14 @@ function useRoleSaver(live: { current: Live }, cancelDraft: (roleId: string) => 
       const id = role.id;
       const name = roleLabel(role.name);
       const toastId = toastIdOf(id);
-      const loss = selfLoss(guardCtx(live.current, id), prev, next);
+      // Bộ máy chủ đã xác nhận TRƯỚC lần lưu này (mốc Hoàn tác đúng kể cả khi lần xếp hàng trước thất bại).
+      const got: { before: string[] | null } = { before: null };
       try {
-        await observerFor(id).mutate({ keys: next, onOptimistic: flags.onOptimistic });
+        await observerFor(id).mutate({
+          keys: next,
+          onOptimistic: flags.onOptimistic,
+          onConfirmed: (b) => (got.before = b),
+        });
       } catch (e) {
         // Lỗi thay hẳn toast Hoàn tác đang hiện → chuỗi bấm KẾT THÚC: không còn toast nào hứa Hoàn tác.
         baselines.current.delete(id);
@@ -134,7 +141,9 @@ function useRoleSaver(live: { current: Live }, cancelDraft: (roleId: string) => 
         toastReplace(toastId, 'success', `Đã hoàn tác quyền của vai trò "${name}"`);
         return;
       }
-      baselines.current.set(id, burstBaseline(baselines.current.get(id) ?? null, prev));
+      const was = got.before ?? prev;
+      const loss = selfLoss(guardCtx(live.current, id), was, next);
+      baselines.current.set(id, burstBaseline(baselines.current.get(id) ?? null, was));
       // Tự mất quyền thiết yếu → máy chủ đã thu quyền nên Hoàn tác sẽ bị 403: không hứa.
       const undo = loss ? null : planPermUndo(baselines.current.get(id)!, next);
       const seq = (toastSeq.current.get(id) ?? 0) + 1;
@@ -251,6 +260,14 @@ export function useRolePermEditor(input: {
       }
       if (verdict.kind === 'confirm') {
         const ok = await confirm({ ...selfDemoteCopy(verdict.reason), destructive: true });
+        if (!ok) return;
+      }
+      // Bật quyền quản trị cho một vai trò = trao toàn quyền cho mọi người giữ nó: hỏi trước.
+      if (grantsAdmin(before, after)) {
+        const ok = await confirm({
+          ...grantAdminCopy(roleLabel(role.name), role.memberCount ?? 0),
+          destructive: true,
+        });
         if (!ok) return;
       }
       // Tính lại trên bản nháp/bản máy chủ MỚI NHẤT (có thể đã đổi trong lúc hộp xác nhận mở).

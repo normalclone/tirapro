@@ -152,6 +152,64 @@ describe('rolePermsMutationOptions', () => {
     await run(vars('a', 'b'));
     expect(invalidate).toHaveBeenCalled();
   });
+});
+
+describe('rolePermsMutationOptions — sau thành công / mốc Hoàn tác', () => {
+  it('thành công: GHI updatedAt trả về vào MỌI biến thể cache (không đợi nạp lại) — bó bấm kế tiếp không gửi bản cũ', async () => {
+    const gate = defer<RoleDto>();
+    const { run, cached, qc } = setup(() => gate.promise);
+    const p = run(vars('a', 'b'));
+    await settle();
+    gate.resolve(role('r1', ['a', 'b'], 't1'));
+    await p;
+    const at = (scope?: 'PROJECT') =>
+      qc.getQueryData<RoleDto[]>(keys.roles.byScope(scope))!.find((r) => r.id === 'r1')!.updatedAt;
+    expect(at()).toBe('t1');
+    expect(at('PROJECT')).toBe('t1');
+    expect(cached()).toEqual(['a', 'b']);
+  });
+
+  it('bó bấm thứ hai sau khi bó đầu xong (cache chưa nạp lại) gửi updatedAt MỚI, không 409 giả', async () => {
+    const calls: Array<string | undefined> = [];
+    const { run, qc } = setup((ks, at) => {
+      calls.push(at);
+      return Promise.resolve(role('r1', ks, `t${calls.length}`));
+    });
+    await run(vars('a', 'b'));
+    // invalidate bị giả (mockResolvedValue) → cache KHÔNG được nạp lại; vẫn phải mang updatedAt mới
+    expect(qc.getQueryData<RoleDto[]>(keys.roles.byScope(undefined))![0]!.updatedAt).toBe('t1');
+    await run(vars('a', 'b', 'c'));
+    expect(calls).toEqual(['t0', 't1']);
+  });
+
+  it('thành công giữa chuỗi: chỉ đóng dấu updatedAt, KHÔNG ghi đè bộ quyền lạc quan của lần xếp hàng sau', async () => {
+    const gates = [defer<RoleDto>(), defer<RoleDto>()];
+    let n = 0;
+    const { run, cached } = setup(() => gates[n++]!.promise);
+    const p1 = run(vars('a', 'b'));
+    const p2 = run(vars('a', 'b', 'c'));
+    await settle();
+    gates[0]!.resolve(role('r1', ['a', 'b'], 't1'));
+    await settle();
+    expect(cached()).toEqual(['a', 'b', 'c']);
+    gates[1]!.resolve(role('r1', ['a', 'b', 'c'], 't2'));
+    await Promise.all([p1, p2]);
+  });
+
+  it('onConfirmed báo bộ ĐÃ XÁC NHẬN TRƯỚC lần lưu: lần 1 lỗi (không phải 409), lần 2 thành công → trước = bản máy chủ cũ, không phải ảnh lạc quan của lần 1', async () => {
+    const gates = [defer<RoleDto>(), defer<RoleDto>()];
+    let n = 0;
+    const { run } = setup(() => gates[n++]!.promise);
+    const before: string[][] = [];
+    const p1 = run(vars('a', 'b'));
+    const p2 = run({ keys: ['a', 'b', 'c'], onConfirmed: (b) => before.push(b) });
+    await settle();
+    gates[0]!.reject(new Error('500'));
+    await settle();
+    gates[1]!.resolve(role('r1', ['a', 'b', 'c'], 't2'));
+    await Promise.all([p1, p2]);
+    expect(before).toEqual([['a']]);
+  });
 
   it('không có vai trò trong cache → không ghi lạc quan, không hoàn tác bậy', async () => {
     const { qc, run } = setup(() => Promise.reject(new Error('x')));

@@ -10,6 +10,11 @@ export interface PermsVars {
   keys: string[];
   /** Gọi ngay sau khi bộ quyền mới đã được vẽ vào cache — nơi gọi bỏ bản nháp cục bộ lúc này để không nhấp nháy. */
   onOptimistic?: () => void;
+  /**
+   * Gọi khi lần lưu THÀNH CÔNG, kèm bộ quyền máy chủ đã xác nhận TRƯỚC lần lưu này (không phải ảnh lạc quan trong cache):
+   * mốc đúng cho Hoàn tác khi một lần xếp hàng trước đó thất bại.
+   */
+  onConfirmed?: (confirmedBefore: string[]) => void;
 }
 
 /** Điều máy chủ đã xác nhận gần nhất cho một vai trò. */
@@ -91,9 +96,21 @@ export function rolePermsMutationOptions(
       onOptimistic?.();
       return { states };
     },
-    onSuccess: (role, _vars, ctx) => {
+    onSuccess: (role, vars, ctx) => {
       const st = liveStates(qc, ctx)?.get(roleId);
-      if (st) st.confirmed = { keys: [...role.permissionKeys], updatedAt: role.updatedAt };
+      if (st) {
+        vars.onConfirmed?.([...st.confirmed.keys]);
+        st.confirmed = { keys: [...role.permissionKeys], updatedAt: role.updatedAt };
+      }
+      // Ghi bản máy chủ vừa trả vào MỌI biến thể cache: `states` bị xoá ở lần cuối, còn cache giữ `updatedAt` cũ tới khi nạp
+      // lại → bó bấm kế tiếp (hoặc hộp thoại sửa vai trò) sẽ gửi bản cũ và bị 409 giả. Còn lần xếp hàng sau thì chỉ đóng
+      // dấu `updatedAt` — không ghi đè bộ quyền lạc quan của chúng.
+      const last = !st || st.pending <= 1;
+      qc.setQueriesData<RoleDto[]>({ queryKey: keys.roles.all }, (cur) =>
+        cur?.map((r) =>
+          r.id !== roleId ? r : last ? { ...r, ...role } : { ...r, updatedAt: role.updatedAt },
+        ),
+      );
     },
     onError: (_e, _vars, ctx) => {
       const states = liveStates(qc, ctx);

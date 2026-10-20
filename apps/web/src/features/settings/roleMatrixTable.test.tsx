@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { roleLabel, type MemberDto, type RoleDto } from '@tirapro/types';
 import { keys } from '@/lib/queryKeys';
 import { RoleMatrixTable } from './RoleMatrixTable';
-import { GroupCell, PermCell, SYSTEM_LOCK_REASON } from './RoleMatrixCells';
+import { GroupCell, PermCell } from './RoleMatrixCells';
 
 // renderToStaticMarkup đọc "trạng thái khởi tạo" của zustand → thay kho bằng bản chỉ-đọc-state (như sharePanel.test).
 vi.mock('@/stores/auth', () => {
@@ -71,13 +71,14 @@ describe('RoleMatrixTable — chỉnh được', () => {
     expect(h).toMatch(/aria-pressed="false"[^>]*aria-label="[^"]+ — QA Lead"/);
   });
 
-  it('ô của vai trò hệ thống bị khoá: aria-disabled, biểu tượng ổ khoá, lý do (hiện + tooltip + mô tả)', () => {
+  it('ô của vai trò hệ thống bị khoá: aria-disabled, biểu tượng ổ khoá, lý do (hiện trên bảng + mô tả của ô)', () => {
     const h = render({ canEdit: true, members: MEMBERS });
     const m = h.match(
       new RegExp(`<button[^>]*aria-label="[^"]+ — ${roleLabel('Scrum Master')}"[^>]*>`),
     );
     expect(m?.[0]).toContain('aria-disabled="true"');
-    expect(m?.[0]).toContain(`title="${SYSTEM_LOCK_REASON}"`);
+    // Lý do chỉ qua MỘT đường (aria-describedby) — không kèm title cùng nội dung (đọc hai lần).
+    expect(m?.[0]).not.toContain('title=');
     const describedBy = m?.[0].match(/aria-describedby="([^"]+)"/)?.[1];
     expect(describedBy).toBeTruthy();
     expect(h).toContain(`id="${describedBy}"`);
@@ -128,10 +129,18 @@ describe('RoleMatrixTable — chỉ đọc / chưa đủ điều kiện sửa', 
     expect(h).not.toContain('Bấm một ô của vai trò tuỳ chỉnh');
   });
 
-  it('có quyền nhưng danh sách thành viên chưa tải → vẫn chỉ đọc + nói rõ vì sao (chốt quyền thiết yếu cần nó)', () => {
+  it('có quyền nhưng danh sách thành viên chưa tải → nút VÔ HIỆU cùng kích thước (bảng không giãn khi tải xong), không điểm dừng Tab, nói rõ vì sao', () => {
     const h = render({ canEdit: true });
-    expect(h).not.toMatch(/data-r="\d+"/);
+    const cells = h.match(/<button[^>]*data-r="\d+"[^>]*>/g) ?? [];
+    expect(cells.length).toBeGreaterThan(10);
+    expect(cells.every((c) => c.includes('disabled=""') && c.includes('tabindex="-1"'))).toBe(true);
+    expect(cells.some((c) => c.includes('h-8'))).toBe(true);
     expect(h).toContain('Đang tải danh sách thành viên để kiểm tra quyền thiết yếu');
+    // tiêu đề cột giữ nguyên chiều cao: nhãn "Khoá" + nút nhân bản có sẵn
+    expect(h).toContain('Khoá');
+    expect(h).toContain('Nhân bản');
+    // chưa phải ô khoá: không ổ khoá trong ô
+    expect(cells.some((c) => c.includes('aria-disabled'))).toBe(false);
   });
 });
 
@@ -151,6 +160,28 @@ describe('ô nhóm 3 trạng thái', () => {
     expect(html('none', 0)).toContain('aria-pressed="false"');
     expect(html('partial', 2)).toContain('2/5');
     expect(html('full', 5)).toContain('5/5');
+  });
+  it('tên ô nhóm KHÔNG chứa số đếm; số đếm đọc qua aria-describedby (aria-pressed đã nói trạng thái)', () => {
+    const h = renderToStaticMarkup(
+      <GroupCell {...base} g={{ state: 'partial', count: 2, total: 5 }} />,
+    );
+    expect(h).toContain('aria-label="Công việc — QA Lead"');
+    const id = h.match(/aria-describedby="([^"]+)"/)?.[1];
+    expect(id).toBeTruthy();
+    expect(h).toContain(`id="${id}"`);
+    expect(h).toContain('2/5');
+  });
+  it('ô nhóm khoá: mô tả gồm cả số đếm và lý do khoá; không title', () => {
+    const h = renderToStaticMarkup(
+      <GroupCell
+        {...base}
+        locked
+        describedBy="lock-note"
+        g={{ state: 'partial', count: 2, total: 5 }}
+      />,
+    );
+    expect(h).toMatch(/aria-describedby="[^"]+ lock-note"/);
+    expect(h).not.toContain('title=');
   });
   it('ô khoá vẫn nêu trạng thái, không có onClick xử lý (aria-disabled)', () => {
     const h = renderToStaticMarkup(
@@ -177,6 +208,11 @@ describe('quy ước nguồn', () => {
     const hook = src('useRolePermEditor.ts');
     expect(hook).toContain("'Vai trò vừa được người khác sửa — đã tải lại'");
     expect(hook).toContain('const FLUSH_DELAY_MS = 500');
+  });
+  it('lưới kẹp ô đang chọn theo kích thước hiện tại lúc vẽ (không còn lưới 0 điểm dừng Tab)', () => {
+    const grid = src('RoleMatrixGrid.tsx');
+    expect(grid).toContain('isTabStop(nav.active, size, r, c)');
+    expect(grid).toContain('clampCell(active, size)');
   });
   it('toast nằm trong hook (try/catch quanh mutate), không ở callback từng lần gọi', () => {
     const hook = src('useRolePermEditor.ts');

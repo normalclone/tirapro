@@ -11,7 +11,7 @@ import { roleLabel, type PermissionScope, type RoleDto } from '@tirapro/types';
 import { RoleBadge } from '@/components/ui/RoleBadge';
 import { cn } from '@/lib/utils';
 import type { GroupedMatrix, MatrixGroup, MatrixRow, RoleMatrix } from './roleMatrix';
-import { nextCell, type CellPos } from './matrixNav';
+import { clampCell, isTabStop, nextCell, type CellPos } from './matrixNav';
 import { GroupCell, PermCell } from './RoleMatrixCells';
 import { groupState, hasKey, type Desired, type GroupState } from './rolePermEdit';
 
@@ -60,12 +60,17 @@ type GridRow =
   | { kind: 'perm'; row: MatrixRow; indent: boolean }
   | { kind: 'group'; group: MatrixGroup };
 
+/** Chế độ vẽ ô — xem `RowEnv.mode`. */
+export type GridMode = 'readonly' | 'loading' | 'edit';
+
 const groupOfRow = (gr: GridRow) => (gr.kind === 'group' ? gr.group.group : gr.row.group);
 
 /** Mọi thứ một dòng cần để vẽ ô. */
 interface RowEnv {
   columns: RoleDto[];
-  editable: boolean;
+  /** `edit`: nút bật/tắt; `loading`: nút vô hiệu cùng kích thước (chờ điều kiện sửa); `readonly`: ✓/– không phải nút. */
+  mode: GridMode;
+  loading: boolean;
   lockNoteId: string;
   has: (role: RoleDto, key: string) => boolean;
   cellPos: (r: number, c: number) => { pos: CellPos; tabIndex: 0 | -1 };
@@ -75,11 +80,12 @@ interface RowEnv {
 
 function GridHead({
   columns,
-  editable,
+  showLocks,
   onClone,
 }: {
   columns: RoleDto[];
-  editable: boolean;
+  /** Hiện nhãn "Khoá" ở cột vai trò hệ thống (cả lúc đang chờ điều kiện sửa — để dòng tiêu đề không đổi chiều cao). */
+  showLocks: boolean;
   onClone?: (role: RoleDto) => void;
 }) {
   return (
@@ -105,7 +111,7 @@ function GridHead({
               <span className="text-xs text-faint" title={`${c.memberCount ?? 0} thành viên`}>
                 {c.memberCount ?? 0}
               </span>
-              {editable && c.isSystem && (
+              {showLocks && c.isSystem && (
                 <span className="inline-flex items-center gap-1 text-xs text-faint">
                   <Lock className="h-3 w-3" aria-hidden />
                   Khoá
@@ -170,11 +176,12 @@ function GroupRowView({
         const g = groupState(group.keys, (k) => env.has(role, k));
         return (
           <td key={role.id} className="border-b border-border bg-surface-2 px-3 py-2 text-center">
-            {env.editable ? (
+            {env.mode !== 'readonly' ? (
               <GroupCell
                 g={g}
-                label={`${group.group} — ${roleLabel(role.name)}, ${g.count}/${g.total} quyền`}
-                locked={role.isSystem}
+                label={`${group.group} — ${roleLabel(role.name)}`}
+                locked={env.mode === 'edit' && role.isSystem}
+                loading={env.loading}
                 describedBy={env.lockNoteId}
                 onToggle={() => env.onToggleGroup(role, group.keys)}
                 {...env.cellPos(index, ci)}
@@ -214,11 +221,12 @@ function PermRowView({
       </th>
       {env.columns.map((role, ci) => (
         <td key={role.id} className="border-b border-border px-3 py-2 text-center">
-          {env.editable ? (
+          {env.mode !== 'readonly' ? (
             <PermCell
               on={env.has(role, row.key)}
               label={`${row.label} — ${roleLabel(role.name)}`}
-              locked={role.isSystem}
+              locked={env.mode === 'edit' && role.isSystem}
+              loading={env.loading}
               describedBy={env.lockNoteId}
               onToggle={() => env.onToggle(role, row.key)}
               {...env.cellPos(index, ci)}
@@ -235,6 +243,8 @@ function PermRowView({
 /** Điều hướng mũi tên giữa các ô (roving tabindex): trả vị trí đang là điểm dừng Tab + hai handler cho `<tbody>`. */
 function useGridNav(tableRef: RefObject<HTMLTableElement>, size: { rows: number; cols: number }) {
   const [active, setActive] = useState<CellPos>({ r: 0, c: 0 });
+  // Kẹp lúc VẼ: lưới co lại thì ô đang chọn có thể không còn → vẫn phải còn đúng MỘT điểm dừng Tab.
+  const cur = clampCell(active, size);
   const cellOf = (e: { target: EventTarget }) => {
     const t = e.target as HTMLElement;
     return t.dataset.r === undefined || t.dataset.c === undefined
@@ -244,7 +254,12 @@ function useGridNav(tableRef: RefObject<HTMLTableElement>, size: { rows: number;
   function onKeyDown(e: KeyboardEvent<HTMLTableSectionElement>) {
     const from = cellOf(e);
     if (!from) return;
-    const to = nextCell(from, e.key, size, e.ctrlKey || e.metaKey);
+    const to = nextCell(from, e.key, size, {
+      ctrl: e.ctrlKey,
+      alt: e.altKey,
+      meta: e.metaKey,
+      shift: e.shiftKey,
+    });
     if (!to) return;
     e.preventDefault();
     setActive(to);
@@ -252,9 +267,9 @@ function useGridNav(tableRef: RefObject<HTMLTableElement>, size: { rows: number;
   }
   function onFocus(e: FocusEvent<HTMLTableSectionElement>) {
     const next = cellOf(e);
-    if (next && (next.r !== active.r || next.c !== active.c)) setActive(next);
+    if (next && (next.r !== cur.r || next.c !== cur.c)) setActive(next);
   }
-  return { active, onKeyDown, onFocus };
+  return { active: cur, onKeyDown, onFocus };
 }
 
 /** Bảng ✓/– hoặc nút bật/tắt (cuộn ngang trên màn hẹp, cột "Quyền" dính trái). */
@@ -267,7 +282,7 @@ export function MatrixGrid({
   scope,
   captionId,
   lockNoteId,
-  editable,
+  mode,
   pending,
   onToggle,
   onToggleGroup,
@@ -281,7 +296,7 @@ export function MatrixGrid({
   scope: PermissionScope;
   captionId: string;
   lockNoteId: string;
-  editable: boolean;
+  mode: GridMode;
   pending: Record<string, Desired>;
   onToggle: (role: RoleDto, key: string) => void;
   onToggleGroup: (role: RoleDto, keys: readonly string[]) => void;
@@ -301,14 +316,16 @@ export function MatrixGrid({
     : matrix.rows.map((row): GridRow => ({ kind: 'perm', row, indent: false }));
 
   const nav = useGridNav(tableRef, { rows: gridRows.length, cols: columns.length });
+  const size = { rows: gridRows.length, cols: columns.length };
   const env: RowEnv = {
     columns,
-    editable,
+    mode,
+    loading: mode === 'loading',
     lockNoteId,
     has: (role, key) => hasKey(role.permissionKeys, pending[role.id], key),
     cellPos: (r, c) => ({
       pos: { r, c },
-      tabIndex: r === nav.active.r && c === nav.active.c ? 0 : -1,
+      tabIndex: isTabStop(nav.active, size, r, c) ? 0 : -1,
     }),
     onToggle,
     onToggleGroup,
@@ -320,13 +337,13 @@ export function MatrixGrid({
     <div className="overflow-x-auto rounded-lg border border-border bg-surface">
       <table ref={tableRef} className="w-full min-w-max border-separate border-spacing-0 text-sm">
         <caption id={captionId} className="sr-only">
-          {editable ? 'Quyền của các vai trò' : 'So sánh quyền giữa các vai trò'} —{' '}
+          {mode === 'edit' ? 'Quyền của các vai trò' : 'So sánh quyền giữa các vai trò'} —{' '}
           {scope === 'PROJECT' ? 'cấp dự án' : 'cấp không gian làm việc'}
         </caption>
-        <GridHead columns={columns} editable={editable} onClone={onClone} />
+        <GridHead columns={columns} showLocks={mode !== 'readonly'} onClone={onClone} />
         <tbody
-          onKeyDown={editable ? nav.onKeyDown : undefined}
-          onFocus={editable ? nav.onFocus : undefined}
+          onKeyDown={mode === 'edit' ? nav.onKeyDown : undefined}
+          onFocus={mode === 'edit' ? nav.onFocus : undefined}
         >
           {empty && (
             <tr>
