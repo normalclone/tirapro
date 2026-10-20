@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { AdminWorkspacesService } from './admin-workspaces.service';
-import { SYSTEM_USER_EMAIL } from '../automation/rule-engine.service';
+import { SYSTEM_USER_EMAIL } from '../../common/system-user';
 
 function setup() {
   const row = {

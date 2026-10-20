@@ -90,7 +90,7 @@ describe('SearchController.relaxCounts — POST /search/relax-counts (092)', () 
     expect(meta('method')).toBe(1); // RequestMethod.POST
     expect(meta('path')).toBe('relax-counts');
   });
-  it('giới hạn riêng 20 lần / 60 giây (mỗi lần gọi = tới 9 truy vấn)', () => {
+  it('giới hạn riêng 20 lần / 60 giây (mỗi lần gọi = tới 8 truy vấn)', () => {
     expect(meta('THROTTLER:LIMITdefault')).toBe(20);
     expect(meta('THROTTLER:TTLdefault')).toBe(60_000);
   });

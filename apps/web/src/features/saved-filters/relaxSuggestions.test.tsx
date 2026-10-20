@@ -16,7 +16,6 @@ const clause = (text: string, count: number | null) => ({
   count,
 });
 const dto = (clauses: RelaxCountsDto['clauses'], remaining = 0): RelaxCountsDto => ({
-  total: 0,
   clauses,
   remaining,
 });

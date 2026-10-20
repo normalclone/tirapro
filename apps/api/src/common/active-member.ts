@@ -1,4 +1,4 @@
-import { SYSTEM_USER_EMAIL } from '../modules/automation/rule-engine.service';
+import { SYSTEM_USER_EMAIL } from './system-user';
 
 /**
  * Điều kiện đếm thành viên "đang hoạt động" của một không gian làm việc: bỏ tài khoản bị vô hiệu hoá và user hệ

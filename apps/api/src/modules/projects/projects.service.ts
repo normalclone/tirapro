@@ -24,7 +24,7 @@ import { assertNotArchived } from '../../common/project-writable';
 import { MediaService } from '../media/media.service';
 import { ProjectHealthService } from '../analytics/project-health.service';
 import { AuditService, type AuditEntry } from '../audit/audit.service';
-import { SYSTEM_USER_EMAIL } from '../automation/rule-engine.service';
+import { SYSTEM_USER_EMAIL } from '../../common/system-user';
 import { ProjectAccessService } from '../rbac/project-access.service';
 
 /**

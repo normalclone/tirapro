@@ -6,7 +6,7 @@ import * as argon2 from 'argon2';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { BusinessRuleException } from '../../common/exceptions/app.exception';
 import { MailService } from '../mail/mail.service';
-import { SYSTEM_USER_EMAIL } from '../automation/rule-engine.service';
+import { SYSTEM_USER_EMAIL } from '../../common/system-user';
 import { generateOneTimeToken, hashOneTimeToken } from './auth-token';
 
 const PASSWORD_RESET_TTL_MS = 60 * 60_000;

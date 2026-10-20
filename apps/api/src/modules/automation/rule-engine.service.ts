@@ -27,6 +27,7 @@ import { NotFoundAppException } from '../../common/exceptions/app.exception';
 import { WRITABLE_PROJECT_FILTER } from '../../common/project-writable';
 import { isUnreviewed } from '../../common/triage-visibility';
 import { CommentsService } from '../comments/comments.service';
+import { SYSTEM_USER_EMAIL } from '../../common/system-user';
 import { IssuesService } from '../issues/issues.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { compileJql } from '../search/jql-compiler';
@@ -34,7 +35,6 @@ import { runActions, type ActionContext, type StepLog } from './actions';
 import { describeCondition, evalFieldCondition, isJqlCondition } from './rule-conditions';
 import { RulesService, type CachedRule } from './rules.service';
 
-export const SYSTEM_USER_EMAIL = 'automation@tirapro.local';
 /** Chuỗi automation nối nhau quá số tầng này thì dừng (chống vòng lặp). */
 export const MAX_AUTOMATION_DEPTH = 3;
 /** Quy tắc theo lịch xử lý tối đa chừng này issue mỗi lần chạy. */

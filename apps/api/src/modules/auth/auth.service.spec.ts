@@ -1,7 +1,7 @@
 import { UnauthorizedException } from '@nestjs/common';
 import { describe, expect, it, vi } from 'vitest';
 import { AuthService } from './auth.service';
-import { SYSTEM_USER_EMAIL } from '../automation/rule-engine.service';
+import { SYSTEM_USER_EMAIL } from '../../common/system-user';
 
 /** `expect.any(Date)` có kiểu `any` → ép kiểu một lần để không dính no-unsafe-assignment. */
 const anyDate = expect.any(Date) as unknown as Date;

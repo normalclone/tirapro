@@ -31,7 +31,7 @@ import { generateTempPassword } from '../../common/password';
 import { RbacService } from '../rbac/rbac.service';
 import { ApiKeyService } from '../api-keys/api-key.service';
 import { AuditService } from '../audit/audit.service';
-import { SYSTEM_USER_EMAIL } from '../automation/rule-engine.service';
+import { SYSTEM_USER_EMAIL } from '../../common/system-user';
 import type { CreateMemberAccountInput } from './members.schemas';
 
 /** Người xem (AuthUser rút gọn) để quyết định có trả `isSystemAdmin`/`lastSeenAt` của thành viên không. */

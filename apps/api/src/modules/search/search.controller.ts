@@ -79,7 +79,10 @@ export class SearchController {
 
   /**
    * Bộ lọc không ra kết quả → đếm số việc khi bỏ từng điều kiện (092). Quyền như `GET /search`; `projectId` trong body
-   * để guard kiểm dự án xem được. Mỗi lần gọi chạy tới 9 truy vấn đếm nên throttle riêng 20 lần/phút.
+   * để guard kiểm dự án xem được. Mỗi lần gọi chạy tới 8 truy vấn đếm nên throttle riêng 20 lần/phút.
+   * Throttle này tính theo IP (tracker mặc định): `ThrottlerGuard` chạy TRƯỚC `JwtAuthGuard` nên chưa có `req.user`, đổi
+   * sang khoá theo người dùng cần giải mã JWT trong guard — không rẻ. Trần chống cạn kết nối DB nằm ở
+   * `SearchService` (semaphore toàn tiến trình + hạn tổng mỗi request), không dựa vào throttle.
    */
   @Permissions(PERMISSIONS.PROJECT_VIEW)
   @ProjectRef('body', 'projectId')

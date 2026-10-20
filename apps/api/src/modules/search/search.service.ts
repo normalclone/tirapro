@@ -16,6 +16,7 @@ import {
 } from '@tirapro/shared';
 import { BusinessRuleException } from '../../common/exceptions/app.exception';
 import { mapLimit } from '../../common/map-limit';
+import { Semaphore } from '../../common/semaphore';
 import type { PageResult } from '../../common/dto/page-result';
 import { TRIAGE_VISIBLE } from '../../common/triage-visibility';
 import { PrismaService } from '../../infra/prisma/prisma.service';
@@ -72,10 +73,18 @@ const EXISTENCE_FIELDS: ReadonlySet<JqlFieldName> = new Set([
 ]);
 const MAX_LISTED_VALUES = 8;
 
-/** Gợi ý nới bộ lọc (092): số mệnh đề tối đa được đếm, số lần đếm đồng thời, và thời hạn mỗi lần đếm. */
+/**
+ * Gợi ý nới bộ lọc (092). Mỗi lần đếm giữ MỘT kết nối DB (giao dịch tương tác) tới 3 giây, mà throttle tính theo IP chứ
+ * không theo người dùng, nên cần trần chung: tối đa `RELAX_GLOBAL_SLOTS` lần đếm cùng lúc trong CẢ tiến trình (mọi
+ * request, mọi người dùng — chừa kết nối cho phần còn lại của API), mỗi request tối đa `RELAX_CONCURRENCY`, và mỗi request
+ * có hạn tổng `RELAX_DEADLINE_MS`: lần đếm chưa kịp bắt đầu khi hết hạn trả `count: null`, không ai chờ chỗ vô hạn.
+ */
 const RELAX_MAX_CLAUSES = 8;
-const RELAX_CONCURRENCY = 3;
+const RELAX_CONCURRENCY = 2;
+const RELAX_GLOBAL_SLOTS = 3;
+const RELAX_DEADLINE_MS = 5_000;
 const RELAX_STATEMENT_TIMEOUT_MS = 3_000;
+const RELAX_SLOTS = new Semaphore(RELAX_GLOBAL_SLOTS);
 
 interface RelaxClause {
   /** Mệnh đề AND ở gốc, viết lại từ AST (hiển thị cho người dùng). */
@@ -87,21 +96,24 @@ interface RelaxClause {
 }
 
 export interface RelaxCountsResult {
-  /** Số việc khớp JQL gốc; `null` khi không tính (chỉ có ≤ 1 mệnh đề) hoặc quá hạn. */
-  total: number | null;
   clauses: RelaxClause[];
   /** Số mệnh đề vượt `RELAX_MAX_CLAUSES` nên không được đếm. */
   remaining: number;
 }
 
-/** Postgres huỷ truy vấn vì `statement_timeout` (SQLSTATE 57014), hoặc giao dịch tương tác hết hạn/không lấy được kết nối. */
+/**
+ * Postgres huỷ truy vấn vì `statement_timeout`, hoặc giao dịch tương tác hết hạn/không lấy được kết nối (P2028).
+ * Khớp HẸP: `meta.code === '57014'` (lỗi raw, P2010), cụm Postgres "canceling statement due to statement timeout", hoặc
+ * thẻ `code: "57014"` (lỗi theo model của Prisma) — không khớp số 57014 hay chữ "statement timeout" rời rạc (cổng, tham số).
+ */
 function isCountTimeout(e: unknown): boolean {
   if (!(e instanceof Error)) return false;
   const err = e as Error & { code?: unknown; meta?: { code?: unknown } };
   return (
     err.meta?.code === '57014' ||
     err.code === 'P2028' ||
-    /57014|statement timeout/i.test(err.message)
+    /canceling statement due to statement timeout/i.test(err.message) ||
+    /\bcode:\s*[`"']?57014(?!\d)/i.test(err.message)
   );
 }
 
@@ -391,8 +403,9 @@ export class SearchService {
    * Gợi ý nới bộ lọc (092): với JQL không ra kết quả, đếm số việc khi bỏ TỪNG mệnh đề AND ở gốc.
    * - Cùng điều kiện xem như `count()`: workspace + `deletedAt: null` + dự án chưa xoá + `visibleWhere` của người xem
    *   (+ `projectId` nếu có, như `search()`), nên dự án riêng tư người đó không thấy không bao giờ nằm trong số đếm.
-   * - Tối đa `RELAX_MAX_CLAUSES` mệnh đề (phần dư → `remaining`), `RELAX_CONCURRENCY` truy vấn đồng thời, full-text
-   *   tra một lần. Mỗi lần đếm chạy trong giao dịch riêng với `SET LOCAL statement_timeout`: quá hạn → `count: null`
+   * - Tối đa `RELAX_MAX_CLAUSES` mệnh đề (phần dư → `remaining`), `RELAX_CONCURRENCY` truy vấn đồng thời mỗi request và
+   *   `RELAX_GLOBAL_SLOTS` trong cả tiến trình, hạn tổng `RELAX_DEADLINE_MS` (chưa kịp bắt đầu → null), full-text
+   *   tra một lần. Không đếm JQL gốc: nơi gọi chỉ hỏi sau khi tìm kiếm đã trả 0 việc. Mỗi lần đếm chạy trong giao dịch riêng với `SET LOCAL statement_timeout`: quá hạn → `count: null`
    *   cho mệnh đề đó (không làm hỏng cả cuộc gọi); lỗi khác vẫn ném.
    * - Chỉ có ≤ 1 mệnh đề thì không có gì để nới → trả rỗng, không đếm. OR ở gốc / NOT / nhóm lồng là MỘT mệnh đề.
    * - JQL sai cú pháp hoặc giá trị không có thật → cùng lỗi 422 như `GET /search`.
@@ -407,7 +420,7 @@ export class SearchService {
     if (invalid) throw new BusinessRuleException(invalid.message);
 
     const conjuncts = flattenAnd(ast.where);
-    if (conjuncts.length < 2) return { total: null, clauses: [], remaining: 0 };
+    if (conjuncts.length < 2) return { clauses: [], remaining: 0 };
     const counted = conjuncts.slice(0, RELAX_MAX_CLAUSES);
 
     const fulltext = await this.fulltextMap(workspaceId, ast.where, input.projectId, userId);
@@ -424,18 +437,23 @@ export class SearchService {
         : {};
 
     const withoutNodes = counted.map((_, i) => andAll(conjuncts.filter((_c, j) => j !== i)));
-    // Việc đầu = JQL gốc (total), sau đó từng mệnh đề bị bỏ.
-    const wheres = [ast.where, ...withoutNodes].map((node) => ({ AND: [scope, compile(node)] }));
-    const results = await mapLimit(wheres, RELAX_CONCURRENCY, (where) =>
-      this.countWithTimeout(where),
-    );
+    const wheres = withoutNodes.map((node) => ({ AND: [scope, compile(node)] }));
+    const deadlineAt = Date.now() + RELAX_DEADLINE_MS;
+    const results = await mapLimit(wheres, RELAX_CONCURRENCY, async (where) => {
+      const release = await RELAX_SLOTS.acquire(deadlineAt);
+      if (!release) return null; // hết hạn tổng mà chưa có chỗ
+      try {
+        return await this.countWithTimeout(where);
+      } finally {
+        release();
+      }
+    });
 
     return {
-      total: results[0] ?? null,
       clauses: counted.map((node, i) => ({
         text: serializeJqlNode(node),
         jqlWithout: serializeJqlQuery({ where: withoutNodes[i]!, orderBy: ast.orderBy }),
-        count: results[i + 1] ?? null,
+        count: results[i] ?? null,
       })),
       remaining: conjuncts.length - counted.length,
     };

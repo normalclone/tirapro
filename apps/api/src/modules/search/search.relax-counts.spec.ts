@@ -145,11 +145,10 @@ const run = (s: SearchService, jql: string, projectId?: string) =>
 
 /* ------------------------------------------------ test ------------------------------------------------ */
 describe('SearchService.relaxCounts', () => {
-  it('đếm khi bỏ từng mệnh đề: total + text + jqlWithout + count', async () => {
+  it('đếm khi bỏ từng mệnh đề: text + jqlWithout + count', async () => {
     const { service } = make();
     const r = await run(service, 'status = Open AND priority = Low');
     expect(r).toEqual({
-      total: 1, // V3: Open + Low
       remaining: 0,
       clauses: [
         { text: 'status = "Open"', jqlWithout: 'priority = "Low"', count: 2 }, // V2, V3
@@ -169,9 +168,8 @@ describe('SearchService.relaxCounts', () => {
 
   it('currentUser() dùng đúng người xem', async () => {
     const { service } = make();
-    // total 0 (V3 là Open+Low nhưng của U2). Bỏ assignee → V3; bỏ status → V2; bỏ priority → V1.
+    // Bỏ assignee → V3; bỏ status → V2; bỏ priority → V1.
     const r = await run(service, 'assignee = currentUser() AND status = Open AND priority = Low');
-    expect(r.total).toBe(0);
     expect(r.clauses.map((c) => c.count)).toEqual([1, 1, 1]);
   });
 });
@@ -193,7 +191,7 @@ describe('SearchService.relaxCounts — RIÊNG TƯ (cùng bộ lọc xem như co
     const { service, counts, access } = make();
     await run(service, 'status = Open AND priority = Low AND labels = x');
     expect(access.visibleWhere).toHaveBeenCalledWith('U1', 'W1');
-    expect(counts.length).toBe(4); // total + 3 mệnh đề
+    expect(counts.length).toBe(3); // đúng 3 mệnh đề, không có truy vấn tổng
     for (const where of counts) {
       expect((where as { deletedAt: null }).deletedAt).toBeNull(); // chốt chặn tầng thấp nhất
       expect(scopeOf(where)).toEqual({
@@ -218,7 +216,6 @@ describe('SearchService.relaxCounts — RIÊNG TƯ (cùng bộ lọc xem như co
   it('JQL toàn dự án riêng tư người xem không thấy → mọi số đếm 0 (không lộ "có N việc")', async () => {
     const { service } = make({ rows: HIDDEN });
     const r = await run(service, 'status = Done AND priority = Low');
-    expect(r.total).toBe(0);
     expect(r.clauses.map((c) => c.count)).toEqual([0, 0]);
   });
 });
@@ -227,7 +224,6 @@ describe('SearchService.relaxCounts — mệnh đề', () => {
   it('một mệnh đề → không có gì để nới: không chạm DB đếm', async () => {
     const { service, tx } = make();
     expect(await run(service, 'status = Open')).toEqual({
-      total: null,
       clauses: [],
       remaining: 0,
     });
@@ -250,7 +246,6 @@ describe('SearchService.relaxCounts — mệnh đề', () => {
     ]);
     expect(r.clauses[0]!.jqlWithout).toBe('status = "Open" OR status = "Done"');
     expect(r.clauses[1]!.jqlWithout).toBe('priority = "Low"');
-    expect(r.total).toBe(2); // V2, V3
   });
 
   it('quá 8 mệnh đề: chỉ đếm 8 đầu, remaining = phần dư; jqlWithout vẫn chứa cả các mệnh đề sau', async () => {
@@ -259,7 +254,7 @@ describe('SearchService.relaxCounts — mệnh đề', () => {
     const r = await run(service, jql);
     expect(r.clauses).toHaveLength(8);
     expect(r.remaining).toBe(3);
-    expect(counts).toHaveLength(9); // total + 8
+    expect(counts).toHaveLength(8);
     expect(r.clauses[0]!.jqlWithout.match(/summary/g)).toHaveLength(10);
     expect(r.clauses[0]!.jqlWithout).toContain('"t10"');
   });
@@ -274,22 +269,22 @@ describe('SearchService.relaxCounts — mệnh đề', () => {
 });
 
 describe('SearchService.relaxCounts — hiệu năng & an toàn', () => {
-  it('đồng thời tối đa 3', async () => {
+  it('đồng thời tối đa 2 trong một request', async () => {
     const { service, state } = make();
     const jql = Array.from({ length: 8 }, (_, i) => `summary ~ "t${i}"`).join(' AND ');
     await run(service, jql);
-    expect(state.peak).toBeLessThanOrEqual(3);
+    expect(state.peak).toBeLessThanOrEqual(2); // mỗi request tối đa 2 (trên trần toàn tiến trình 3)
     expect(state.peak).toBeGreaterThan(1);
   });
 
   it('mỗi số đếm nằm trong giao dịch và SET LOCAL statement_timeout = 3000 chạy TRƯỚC khi đếm', async () => {
     const { service, order, prisma } = make();
     await run(service, 'status = Open AND priority = Low');
-    expect(prisma.$transaction).toHaveBeenCalledTimes(3);
+    expect(prisma.$transaction).toHaveBeenCalledTimes(2);
     expect(prisma.issue.count).not.toHaveBeenCalled(); // không đếm ngoài giao dịch
     // Mỗi giao dịch: tx → raw → count (các giao dịch có thể xen kẽ, nên kiểm theo từng đoạn)
     expect(order.filter((o) => o.startsWith('raw:'))).toEqual(
-      Array(3).fill('raw:SET LOCAL statement_timeout = 3000'),
+      Array(2).fill('raw:SET LOCAL statement_timeout = 3000'),
     );
     expect(order.indexOf('count')).toBeGreaterThan(order.findIndex((o) => o.startsWith('raw:')));
   });
@@ -300,12 +295,11 @@ describe('SearchService.relaxCounts — hiệu năng & an toàn', () => {
       meta: { code: '57014' },
     });
     const { service } = make({
-      // lần đếm thứ 2 (mệnh đề đầu) hết hạn
+      // lần đếm thứ 2 (mệnh đề thứ hai) hết hạn
       countImpl: (where, n) => (n === 1 ? Promise.reject(timeout) : Promise.resolve(5)),
     });
     const r = await run(service, 'status = Open AND priority = Low');
-    expect(r.clauses.map((c) => c.count)).toEqual([null, 5]);
-    expect(r.total).toBe(5);
+    expect(r.clauses.map((c) => c.count)).toEqual([5, null]);
   });
 
   it('Prisma báo timeout dạng PrismaClientUnknownRequestError (đếm theo model) cũng thành null', async () => {
@@ -316,8 +310,7 @@ describe('SearchService.relaxCounts — hiệu năng & an toàn', () => {
       countImpl: (_w, n) => (n === 0 ? Promise.reject(e) : Promise.resolve(2)),
     });
     const r = await run(service, 'status = Open AND priority = Low');
-    expect(r.total).toBeNull();
-    expect(r.clauses.map((c) => c.count)).toEqual([2, 2]);
+    expect(r.clauses.map((c) => c.count)).toEqual([null, 2]);
   });
 
   it('lỗi KHÔNG phải timeout vẫn ném (không nuốt lỗi thật)', async () => {
@@ -335,7 +328,7 @@ describe('SearchService.relaxCounts — hiệu năng & an toàn', () => {
     expect(fulltextSearch).toHaveBeenCalledTimes(1);
     // Bỏ `status` → vẫn còn điều kiện full-text trong where; bỏ `text` → không còn.
     const json = counts.map((w) => JSON.stringify(w));
-    expect(json.filter((j) => j.includes('"id":{"in":["I1"]}'))).toHaveLength(3); // total + bỏ status + bỏ priority
+    expect(json.filter((j) => j.includes('"id":{"in":["I1"]}'))).toHaveLength(2); // bỏ status + bỏ priority (bỏ text thì không còn)
   });
 });
 
@@ -352,5 +345,128 @@ describe('SearchService.relaxCounts — JQL không hợp lệ', () => {
       /ý bạn là "Open"/,
     );
     expect(tx.issue.count).not.toHaveBeenCalled();
+  });
+});
+
+/** Một lời gọi đếm "treo" cho tới khi `releaseAll()`; việc khác trả ngay. */
+function hangingCounts() {
+  const resolvers: Array<() => void> = [];
+  return {
+    countImpl: (where: object): Promise<number> =>
+      JSON.stringify(where).includes('hang')
+        ? new Promise<number>((res) => resolvers.push(() => res(7)))
+        : Promise.resolve(1),
+    releaseAll: () => resolvers.splice(0).forEach((r) => r()),
+    held: () => resolvers.length,
+  };
+}
+const MANY = (tag: string, n: number) =>
+  Array.from({ length: n }, (_, i) => `summary ~ "${tag}${i}"`).join(' AND ');
+
+describe('SearchService.relaxCounts — trần TOÀN TIẾN TRÌNH (mọi request)', () => {
+  it('4 request đồng thời × 8 mệnh đề: tổng đếm cùng lúc không quá 3', async () => {
+    const shared = { live: 0, peak: 0 };
+    const makeOne = () => {
+      const m = make({
+        countImpl: async () => {
+          shared.live++;
+          shared.peak = Math.max(shared.peak, shared.live);
+          await new Promise((r) => setTimeout(r, 3));
+          shared.live--;
+          return 1;
+        },
+      });
+      return m.service;
+    };
+    const results = await Promise.all(
+      Array.from({ length: 4 }, (_, i) => run(makeOne(), MANY(`t${i}x`, 8))),
+    );
+    expect(results.every((r) => r.clauses.every((c) => c.count === 1))).toBe(true);
+    expect(shared.peak).toBeLessThanOrEqual(3);
+    expect(shared.peak).toBe(3);
+  });
+
+  it('hết hạn tổng ~5 giây: đếm chưa kịp bắt đầu trả null (không chờ chỗ vô hạn); đã bắt đầu thì vẫn trả số', async () => {
+    vi.useFakeTimers();
+    try {
+      const hang = hangingCounts();
+      // Hai request treo chiếm đủ 3 chỗ toàn tiến trình (2 + 1).
+      const a = run(make({ countImpl: hang.countImpl }).service, MANY('hangA', 4));
+      const a2 = run(make({ countImpl: hang.countImpl }).service, MANY('hangB', 4));
+      await vi.advanceTimersByTimeAsync(20);
+      expect(hang.held()).toBe(3);
+      // Request thứ ba không có chỗ: chờ rồi hết hạn → toàn null.
+      const c = run(make().service, MANY('free', 3));
+      await vi.advanceTimersByTimeAsync(4_900);
+      let settled = false;
+      void c.then(() => (settled = true));
+      await vi.advanceTimersByTimeAsync(10);
+      expect(settled).toBe(false); // chưa tới hạn
+      await vi.advanceTimersByTimeAsync(200);
+      expect((await c).clauses.map((x) => x.count)).toEqual([null, null, null]);
+      // Nhả các việc treo: chúng vẫn ra số, và chỗ được trả lại.
+      hang.releaseAll();
+      await vi.advanceTimersByTimeAsync(20);
+      hang.releaseAll();
+      await vi.advanceTimersByTimeAsync(20);
+      hang.releaseAll();
+      await vi.advanceTimersByTimeAsync(2_000);
+      const [ra, rb] = await Promise.all([a, a2]);
+      expect(ra.clauses.some((x) => x.count === 7)).toBe(true);
+      expect(rb.clauses.length).toBe(4);
+    } finally {
+      vi.useRealTimers();
+    }
+    // Sau tất cả, không rò chỗ: một request mới chạy bình thường, đủ số.
+    const after = await run(make().service, MANY('after', 4));
+    expect(after.clauses.map((x) => x.count)).toEqual(
+      [1, 1, 1, 1].map(() => expect.any(Number) as number),
+    );
+  });
+
+  it('nhả chỗ cả khi đếm ném lỗi thật: request kế tiếp không bị kẹt', async () => {
+    const bad = make({ countImpl: () => Promise.reject(new Error('connection refused')) });
+    for (let i = 0; i < 5; i++) {
+      await expect(run(bad.service, MANY(`e${i}x`, 4))).rejects.toThrow('connection refused');
+    }
+    const ok = await run(make().service, MANY('ok', 8));
+    expect(ok.clauses).toHaveLength(8);
+    expect(ok.clauses.every((c) => c.count !== null)).toBe(true);
+  });
+
+  it('nhả chỗ cả khi đếm quá hạn (count null)', async () => {
+    const timeout = Object.assign(new Error('x'), { code: 'P2010', meta: { code: '57014' } });
+    const slow = make({ countImpl: () => Promise.reject(timeout) });
+    for (let i = 0; i < 5; i++) {
+      const r = await run(slow.service, MANY(`s${i}x`, 4));
+      expect(r.clauses.every((c) => c.count === null)).toBe(true);
+    }
+    const ok = await run(make().service, MANY('ok2', 8));
+    expect(ok.clauses.every((c) => c.count !== null)).toBe(true);
+  });
+});
+
+describe('SearchService.relaxCounts — nhận diện timeout hẹp', () => {
+  const failWith = (e: Error) =>
+    run(make({ countImpl: () => Promise.reject(e) }).service, 'status = Open AND priority = Low');
+
+  it('"canceling statement due to statement timeout" và meta.code 57014 và P2028 → null', async () => {
+    const a = await failWith(new Error('ERROR: canceling statement due to statement timeout'));
+    expect(a.clauses.map((c) => c.count)).toEqual([null, null]);
+    const b = await failWith(Object.assign(new Error('x'), { meta: { code: '57014' } }));
+    expect(b.clauses.map((c) => c.count)).toEqual([null, null]);
+    const c = await failWith(Object.assign(new Error('x'), { code: 'P2028' }));
+    expect(c.clauses.map((x) => x.count)).toEqual([null, null]);
+    const d = await failWith(new Error('PostgresError { code: "57014", message: "boom" }'));
+    expect(d.clauses.map((x) => x.count)).toEqual([null, null]);
+  });
+  it('lỗi KHÁC có chứa "57014" hoặc "statement timeout" (cổng, tham số) vẫn ném', async () => {
+    await expect(failWith(new Error('connect ECONNREFUSED 127.0.0.1:57014'))).rejects.toThrow(
+      'ECONNREFUSED',
+    );
+    await expect(failWith(new Error('port 570145 refused'))).rejects.toThrow('570145');
+    await expect(failWith(new Error('invalid statement timeout setting'))).rejects.toThrow(
+      'invalid statement timeout',
+    );
   });
 });

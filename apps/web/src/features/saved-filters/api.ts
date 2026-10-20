@@ -84,8 +84,6 @@ export function useRunJql(jql: string, enabled: boolean) {
 
 /** Kết quả POST /search/relax-counts: số việc khi bỏ TỪNG điều kiện AND ở gốc của JQL không ra kết quả. */
 export interface RelaxCounts {
-  /** Số việc khớp JQL gốc; null = không tính/quá hạn. */
-  total: number | null;
   clauses: RelaxClauseCount[];
   /** Số điều kiện vượt giới hạn đếm của máy chủ (không được thử). */
   remaining: number;
