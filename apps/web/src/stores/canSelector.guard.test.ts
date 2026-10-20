@@ -24,7 +24,8 @@ function callArgs(src: string, open: number): string {
 /**
  * Có chọn HÀM `can` từ auth store không? (hàm ổn định → component không render lại khi quyền đổi.)
  * Bắt: `(s) => s.can`, `(s: AuthState) => s.can`, thân khối `{ return s.can; }`, dấu phẩy cuối, `s['can']`,
- * destructuring trong tham số `({ can }) => can` và `const { can } = useAuth()`.
+ * destructuring trong tham số `({ can }) => can`.
+ * (Không bắt `const { can } = useAuth()` không selector: đăng ký MỌI thay đổi của store nên vẫn render lại khi quyền đổi.)
  * Cho phép gọi ngay (`s.can('x')`, `s['can']('x')`) vì kết quả là boolean.
  */
 export function selectsCanFunction(src: string): boolean {
@@ -34,7 +35,7 @@ export function selectsCanFunction(src: string): boolean {
     if (/\[\s*['"]can['"]\s*\](?!\s*\()/.test(args)) return true; // s['can']
     if (/\(\s*\{[^}]*\bcan\b[^}]*\}/.test(args)) return true; // ({ can }) => can
   }
-  return /\{[^}]*\bcan\b[^}]*\}\s*=\s*useAuth\s*\(/.test(src); // const { can } = useAuth()
+  return false;
 }
 
 describe('selectsCanFunction — mẫu dò (fixture)', () => {
@@ -48,14 +49,13 @@ describe('selectsCanFunction — mẫu dò (fixture)', () => {
     'const can = useAuth(({ can }) => can);',
     'const can = useAuth(function (s) { return s.can; });',
     'const can = useAuth((s) => s . can);',
-    'const { can } = useAuth();',
-    'const { user, can } = useAuth();',
   ];
   const good = [
     "const ok = useAuth((s) => s.can('member:manage'));",
     "const ok = useAuth((s) => s['can']('member:manage'));",
     "const ok = useAuth((s) => s.can('a') || s.can('b'));",
     'const u = useAuth((s) => s.user);',
+    'const { can } = useAuth();', // đăng ký toàn store → vẫn phản ứng, không phải lỗi
     'const p = useAuth((s) => s.permissions);',
     "const x = useAuth.getState().can('a');",
     'const canManage = useAuth((s) => s.user?.canManage);',

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { mentionToken } from '@tirapro/shared';
-import { audienceSummary, commentAudience, type AudiencePerson } from './commentAudience';
+import { audienceSummary, commentAudience, isTyping, type AudiencePerson } from './commentAudience';
 
 const P = (id: string, name: string, avatarUrl: string | null = null): AudiencePerson => ({
   id,
@@ -121,5 +121,14 @@ describe('audienceSummary — câu cho trình đọc màn hình và title', () =
   });
   it('rỗng → chuỗi rỗng', () => {
     expect(audienceSummary([])).toBe('');
+  });
+});
+
+describe('isTyping — chỉ hứa thông báo khi đang soạn nội dung thật', () => {
+  it('rỗng / chỉ khoảng trắng / xuống dòng → không', () => {
+    for (const d of ['', '   ', '\n\t  \n']) expect(isTyping(d)).toBe(false);
+  });
+  it('có ký tự (kể cả bao quanh bởi khoảng trắng) → có', () => {
+    for (const d of ['a', '  a  ', '\n@[An](user:an)']) expect(isTyping(d)).toBe(true);
   });
 });

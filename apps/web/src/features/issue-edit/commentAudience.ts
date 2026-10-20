@@ -86,3 +86,8 @@ export function audienceSummary(entries: readonly AudienceEntry[]): string {
   const text = head ? `${head} và ${parts[parts.length - 1]}` : parts[0]!;
   return `Sẽ thông báo cho ${text}`;
 }
+
+/** Chỉ hứa "sẽ thông báo" khi ô soạn có nội dung thật (rỗng/khoảng trắng thì không có gì để gửi). */
+export function isTyping(draft: string): boolean {
+  return draft.trim() !== '';
+}

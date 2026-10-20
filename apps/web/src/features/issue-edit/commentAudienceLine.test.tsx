@@ -56,11 +56,9 @@ describe('nối dây', () => {
     expect(comments).toMatch(/useCommentAudience\(issue, draft, people/);
     expect(comments).toMatch(/<CommentAudienceLine/);
   });
-  it('chỉ hiện khi đang gõ (draft.trim() khác rỗng) — không nhảy bố cục lúc tải', () => {
-    expect(comments).toMatch(/draft\.trim\(\)/);
-    expect(comments).toMatch(/<CommentAudienceLine/);
-    const h = read('useCommentAudience.ts');
-    expect(h).toMatch(/draft\.trim\(\)/);
+  it('chỉ hiện khi đang gõ (isTyping) và wrapper chỉ có trong DOM sau lần hiện đầu', () => {
+    expect(read('useCommentAudience.ts')).toMatch(/isTyping\(draft\)/);
+    expect(comments).toMatch(/audienceShown\.current && \(/);
   });
   it('useCommentAudience: watchers qua useWatchers, memo theo draft', () => {
     const h = read('useCommentAudience.ts');

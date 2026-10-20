@@ -2,7 +2,12 @@ import { useMemo } from 'react';
 import type { IssueDto } from '@tirapro/types';
 import { useWatchers } from '@/features/issue-widgets/api';
 import { useAuth } from '@/stores/auth';
-import { commentAudience, type AudienceEntry, type AudiencePerson } from './commentAudience';
+import {
+  commentAudience,
+  isTyping,
+  type AudienceEntry,
+  type AudiencePerson,
+} from './commentAudience';
 
 /**
  * Người sẽ nhận thông báo khi gửi `draft` (rỗng khi chưa gõ gì). Watcher lấy một lần theo công việc (cache), phần còn lại tính thuần từ
@@ -18,7 +23,7 @@ export function useCommentAudience(
   const watchers = useWatchers(issue.id, enabled).data?.watchers;
   const assignee = issue.assignee;
   // Chỉ khi đang gõ: ô trống thì không có gì để "gửi" nên không hứa thông báo (cũng tránh nhảy bố cục lúc tải).
-  const typing = draft.trim() !== '';
+  const typing = isTyping(draft);
   return useMemo(
     () => (enabled && typing ? commentAudience({ draft, people, assignee, watchers, meId }) : []),
     [enabled, typing, draft, people, assignee, watchers, meId],

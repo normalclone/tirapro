@@ -104,9 +104,11 @@ export function CommentsSection({ issue }: { issue: IssueDto }) {
             onBusyChange={setUploading}
             placeholder="Viết bình luận… (viết được Markdown · dán ảnh bằng Ctrl+V)"
           />
-          <div className={audienceShown.current ? 'min-h-5' : undefined}>
-            <CommentAudienceLine entries={audience} />
-          </div>
+          {audienceShown.current && (
+            <div className="min-h-5">
+              <CommentAudienceLine entries={audience} />
+            </div>
+          )}
           <TypingIndicator issueId={issue.id} />
           <div className="flex items-center justify-end gap-2">
             <span className="kbd-hint mr-auto text-xs text-faint">⌘/Ctrl+Enter để gửi</span>
