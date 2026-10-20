@@ -437,6 +437,8 @@ export interface NotificationDto {
   type: NotificationType;
   issueId: ID | null;
   actorId: ID | null;
+  /** Ảnh đại diện của người làm — chỉ có khi ĐỌC danh sách (`GET /notifications`); event realtime không kèm. */
+  actorAvatarUrl?: string | null;
   payload: Record<string, unknown>;
   readAt: ISODate | null;
   createdAt: ISODate;

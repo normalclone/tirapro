@@ -252,7 +252,7 @@ export function useNotificationRealtime() {
     if (!s.connected) s.connect();
 
     const refresh = () => {
-      void qc.invalidateQueries({ queryKey: keys.notifications.list });
+      void qc.invalidateQueries({ queryKey: keys.notifications.popoverRoot });
       void qc.invalidateQueries({ queryKey: keys.notifications.unread });
       void qc.invalidateQueries({ queryKey: keys.notifications.pageRoot });
     };

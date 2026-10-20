@@ -9,7 +9,15 @@ import type { NotificationFilter, NotificationPayload } from '@tirapro/shared';
 import type { ListResponse } from '@tirapro/types';
 import { api } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
-import { isUnreadInPages, markAllReadInPages, markReadInPages } from './pages';
+import type { BellTab } from './bellTabs';
+import {
+  isUnreadInList,
+  isUnreadInPages,
+  markAllReadInList,
+  markAllReadInPages,
+  markReadInList,
+  markReadInPages,
+} from './pages';
 
 /** Loại thông báo trả về từ API. */
 export type NotificationType =
@@ -29,6 +37,8 @@ export interface NotificationItem {
   issueId: string | null;
   commentId: string | null;
   actorId: string | null;
+  /** Ảnh người làm — API mới trả khi đọc danh sách; bản cũ/event realtime không có (rơi về chữ cái đầu). */
+  actorAvatarUrl?: string | null;
   payload: NotificationPayload;
   readAt: string | null;
   createdAt: string;
@@ -38,14 +48,26 @@ export interface NotificationItem {
 // Poll 5 phút chỉ là lưới an toàn khi WS đứt. refetchIntervalInBackground=false → KHÔNG fetch khi tab nền.
 const POLL_MS = 5 * 60_000;
 
-/** Danh sách thông báo gần đây (bọc envelope → `.data.data`), lưới an toàn 5 phút (chỉ khi tab hiển thị). */
-export function useNotifications() {
+const POPOVER_LIMIT = 20;
+
+/** Popover chuông: 20 thông báo mới nhất của MỘT tab (`GET /notifications?filter=&limit=20`, bọc envelope → `.data.data`). */
+async function fetchNotificationsPopover(filter: BellTab): Promise<NotificationItem[]> {
+  return (
+    await api.get<ListResponse<NotificationItem>>('/notifications', {
+      params: { filter, limit: POPOVER_LIMIT },
+    })
+  ).data.data;
+}
+
+/**
+ * Danh sách của tab đang mở. Chỉ chạy khi popover mở (`enabled`) và chỉ cho tab được truyền vào — các tab khác không
+ * tải. Cập nhật nhờ `notification:new` (realtime làm mới `popoverRoot`) và khi mở lại popover sau 30 giây.
+ */
+export function useNotificationsPopover(filter: BellTab, enabled: boolean) {
   return useQuery({
-    queryKey: keys.notifications.list,
-    queryFn: async () =>
-      (await api.get<ListResponse<NotificationItem>>('/notifications?limit=20')).data.data,
-    refetchInterval: POLL_MS,
-    refetchIntervalInBackground: false,
+    queryKey: keys.notifications.popover(filter),
+    queryFn: () => fetchNotificationsPopover(filter),
+    enabled,
   });
 }
 
@@ -88,11 +110,13 @@ export function useMarkRead() {
     mutationFn: (id: string) => api.post(`/notifications/${id}/read`),
     onMutate: async (id: string) => {
       await Promise.all([
-        qc.cancelQueries({ queryKey: keys.notifications.list }),
+        qc.cancelQueries({ queryKey: keys.notifications.popoverRoot }),
         qc.cancelQueries({ queryKey: keys.notifications.unread }),
         qc.cancelQueries({ queryKey: keys.notifications.pageRoot }),
       ]);
-      const prevList = qc.getQueryData<NotificationItem[]>(keys.notifications.list);
+      const prevPopover = qc.getQueriesData<NotificationItem[]>({
+        queryKey: keys.notifications.popoverRoot,
+      });
       const prevUnread = qc.getQueryData<number>(keys.notifications.unread);
       const prevPages = qc.getQueriesData<InfiniteData<NotificationsPage>>({
         queryKey: keys.notifications.pageRoot,
@@ -100,10 +124,10 @@ export function useMarkRead() {
       const now = new Date().toISOString();
       // Chỉ giảm số chưa đọc nếu item này trước đó thực sự chưa đọc (ở chuông hoặc ở trang đầy đủ).
       const wasUnread =
-        (prevList?.some((n) => n.id === id && n.readAt === null) ?? false) ||
+        prevPopover.some(([, items]) => isUnreadInList(items, id)) ||
         prevPages.some(([, d]) => isUnreadInPages(d, id));
-      qc.setQueryData<NotificationItem[]>(keys.notifications.list, (old) =>
-        old?.map((n) => (n.id === id && n.readAt === null ? { ...n, readAt: now } : n)),
+      qc.setQueriesData<NotificationItem[]>({ queryKey: keys.notifications.popoverRoot }, (old) =>
+        markReadInList(old, id, now),
       );
       qc.setQueriesData<InfiniteData<NotificationsPage>>(
         { queryKey: keys.notifications.pageRoot },
@@ -112,15 +136,15 @@ export function useMarkRead() {
       if (wasUnread) {
         qc.setQueryData<number>(keys.notifications.unread, (c) => Math.max(0, (c ?? 0) - 1));
       }
-      return { prevList, prevUnread, prevPages };
+      return { prevPopover, prevUnread, prevPages };
     },
     onError: (_err, _id, ctx) => {
-      if (ctx?.prevList !== undefined) qc.setQueryData(keys.notifications.list, ctx.prevList);
+      ctx?.prevPopover.forEach(([key, d]) => qc.setQueryData(key, d));
       if (ctx?.prevUnread !== undefined) qc.setQueryData(keys.notifications.unread, ctx.prevUnread);
       ctx?.prevPages.forEach(([key, d]) => qc.setQueryData(key, d));
     },
     onSettled: () => {
-      void qc.invalidateQueries({ queryKey: keys.notifications.list });
+      void qc.invalidateQueries({ queryKey: keys.notifications.popoverRoot });
       void qc.invalidateQueries({ queryKey: keys.notifications.unread });
       void qc.invalidateQueries({ queryKey: keys.notifications.pageRoot });
     },
@@ -134,33 +158,35 @@ export function useMarkAllRead() {
     mutationFn: () => api.post('/notifications/read-all'),
     onMutate: async () => {
       await Promise.all([
-        qc.cancelQueries({ queryKey: keys.notifications.list }),
+        qc.cancelQueries({ queryKey: keys.notifications.popoverRoot }),
         qc.cancelQueries({ queryKey: keys.notifications.unread }),
         qc.cancelQueries({ queryKey: keys.notifications.pageRoot }),
       ]);
-      const prevList = qc.getQueryData<NotificationItem[]>(keys.notifications.list);
+      const prevPopover = qc.getQueriesData<NotificationItem[]>({
+        queryKey: keys.notifications.popoverRoot,
+      });
       const prevUnread = qc.getQueryData<number>(keys.notifications.unread);
       const prevPages = qc.getQueriesData<InfiniteData<NotificationsPage>>({
         queryKey: keys.notifications.pageRoot,
       });
       const now = new Date().toISOString();
-      qc.setQueryData<NotificationItem[]>(keys.notifications.list, (old) =>
-        old?.map((n) => (n.readAt === null ? { ...n, readAt: now } : n)),
+      qc.setQueriesData<NotificationItem[]>({ queryKey: keys.notifications.popoverRoot }, (old) =>
+        markAllReadInList(old, now),
       );
       qc.setQueriesData<InfiniteData<NotificationsPage>>(
         { queryKey: keys.notifications.pageRoot },
         (old) => markAllReadInPages(old, now),
       );
       qc.setQueryData<number>(keys.notifications.unread, 0);
-      return { prevList, prevUnread, prevPages };
+      return { prevPopover, prevUnread, prevPages };
     },
     onError: (_err, _vars, ctx) => {
-      if (ctx?.prevList !== undefined) qc.setQueryData(keys.notifications.list, ctx.prevList);
+      ctx?.prevPopover.forEach(([key, d]) => qc.setQueryData(key, d));
       if (ctx?.prevUnread !== undefined) qc.setQueryData(keys.notifications.unread, ctx.prevUnread);
       ctx?.prevPages.forEach(([key, d]) => qc.setQueryData(key, d));
     },
     onSettled: () => {
-      void qc.invalidateQueries({ queryKey: keys.notifications.list });
+      void qc.invalidateQueries({ queryKey: keys.notifications.popoverRoot });
       void qc.invalidateQueries({ queryKey: keys.notifications.unread });
       void qc.invalidateQueries({ queryKey: keys.notifications.pageRoot });
     },

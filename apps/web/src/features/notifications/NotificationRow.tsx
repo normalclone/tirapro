@@ -11,9 +11,11 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { buildNotificationTitle } from '@tirapro/shared';
+import { Avatar } from '@/components/ui/primitives';
 import { cn } from '@/lib/utils';
 import { fmtDateTime, fmtRelative } from '@/lib/dateFormat';
 import type { NotificationItem, NotificationType } from './api';
+import { actorDisplay } from './bellTabs';
 
 /** Icon theo loại thông báo (nhãn chữ đã nằm trong câu tiêu đề). */
 const TYPE_ICON: Record<NotificationType, LucideIcon> = {
@@ -55,6 +57,7 @@ export function NotificationRow({
   });
   const excerpt = SHOWS_EXCERPT.has(item.type) ? payload.excerpt : undefined;
   const time = fmtRelative(item.createdAt);
+  const actor = actorDisplay(item);
 
   return (
     <li>
@@ -66,9 +69,22 @@ export function NotificationRow({
           unread && 'bg-primary-subtle/60 hover:bg-primary-subtle',
         )}
       >
-        <span className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-md bg-surface-2 text-muted">
-          <Icon className="h-3.5 w-3.5" />
-        </span>
+        {actor ? (
+          // Avatar trang trí (tên đã có trong câu tiêu đề) + chip icon loại hành động ở góc.
+          <span className="relative mt-0.5 shrink-0">
+            <Avatar name={actor.name} src={actor.avatarUrl} size={28} decorative />
+            <span
+              aria-hidden="true"
+              className="absolute -bottom-1 -right-1 grid h-4 w-4 place-items-center rounded-full bg-surface text-muted ring-2 ring-surface"
+            >
+              <Icon className="h-2.5 w-2.5" />
+            </span>
+          </span>
+        ) : (
+          <span className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-md bg-surface-2 text-muted">
+            <Icon className="h-3.5 w-3.5" />
+          </span>
+        )}
 
         <span className="min-w-0 flex-1">
           <span className="block text-sm font-medium text-ink-strong">{title}</span>

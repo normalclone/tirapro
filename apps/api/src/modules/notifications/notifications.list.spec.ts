@@ -12,7 +12,7 @@ function setup(opts: { isSystemAdmin?: boolean; workspaces?: string[]; visible?:
     user: {
       findUnique: vi.fn(() => Promise.resolve({ isSystemAdmin: !!opts.isSystemAdmin })),
       findMany: vi.fn((_a?: unknown) =>
-        Promise.resolve([] as { id: string; displayName: string }[]),
+        Promise.resolve([] as { id: string; displayName: string; avatarUrl?: string | null }[]),
       ),
     },
     workspaceMembership: {
@@ -134,7 +134,8 @@ describe('NotificationsService.listMine — điền tên người thực hiện 
     expect(names).toEqual(['Dũng', 'Dũng', 'Đã có tên', 'Trang', undefined]);
     expect(prisma.user.findMany).toHaveBeenCalledTimes(1);
     const arg = prisma.user.findMany.mock.calls[0]![0] as { where: { id: { in: string[] } } };
-    expect([...arg.where.id.in].sort()).toEqual(['a1', 'a3']);
+    // a2 đã có tên vẫn được tra (lấy ảnh) — vẫn MỘT truy vấn cho cả trang
+    expect([...arg.where.id.in].sort()).toEqual(['a1', 'a2', 'a3']);
   });
 
   it('người đã xoá (không tra được): giữ nguyên payload, không bịa tên', async () => {
@@ -146,13 +147,14 @@ describe('NotificationsService.listMine — điền tên người thực hiện 
     expect(page.data[0]!.payload).toEqual({ key: 'D-1' });
   });
 
-  it('không dòng nào cần tra tên: không truy vấn user', async () => {
+  it('không dòng nào có người làm (actorId null): không truy vấn user', async () => {
     const { service, prisma } = setup();
     prisma.notification.findMany.mockImplementation(() =>
-      Promise.resolve([row('n1', 'a1', { actorName: 'X' }), row('n2', null, {})]),
+      Promise.resolve([row('n1', null, { actorName: 'X' }), row('n2', null, {})]),
     );
-    await service.listMine('u1', undefined, 30);
+    const page = await service.listMine('u1', undefined, 30);
     expect(prisma.user.findMany).not.toHaveBeenCalled();
+    expect(page.data.map((n) => n.actorAvatarUrl)).toEqual([null, null]);
   });
 
   it('chỉ điền khi đọc: không ghi DB', async () => {
@@ -165,5 +167,62 @@ describe('NotificationsService.listMine — điền tên người thực hiện 
     );
     await service.listMine('u1', undefined, 30);
     expect((prisma.notification as Record<string, unknown>).update).toBeUndefined();
+  });
+});
+
+describe('NotificationsService.listMine — actorAvatarUrl (đọc, không ghi DB, không migration)', () => {
+  const row = (id: string, actorId: string | null, payload: Record<string, unknown>) => ({
+    id,
+    type: 'MENTIONED',
+    issueId: 'i1',
+    commentId: null,
+    actorId,
+    payload,
+    readAt: null,
+    createdAt: new Date('2026-10-15T00:00:00Z'),
+  });
+
+  it('mỗi dòng có người làm nhận actorAvatarUrl; MỘT truy vấn user chọn displayName + avatarUrl cho cả trang', async () => {
+    const { service, prisma } = setup();
+    prisma.notification.findMany.mockImplementation(() =>
+      Promise.resolve([
+        row('n1', 'a1', { actorName: 'Đã có tên' }), // có tên sẵn vẫn cần ảnh
+        row('n2', 'a1', { key: 'D-2' }),
+        row('n3', 'a2', { key: 'D-3' }),
+        row('n4', null, { key: 'D-4' }),
+      ]),
+    );
+    prisma.user.findMany.mockImplementation(() =>
+      Promise.resolve([
+        { id: 'a1', displayName: 'Dũng', avatarUrl: '/files/a1.png' },
+        { id: 'a2', displayName: 'Trang', avatarUrl: null },
+      ]),
+    );
+    const page = await service.listMine('u1', undefined, 30);
+    expect(page.data.map((n) => n.actorAvatarUrl)).toEqual([
+      '/files/a1.png',
+      '/files/a1.png',
+      null,
+      null,
+    ]);
+    expect(prisma.user.findMany).toHaveBeenCalledTimes(1);
+    const arg = prisma.user.findMany.mock.calls[0]![0] as {
+      where: { id: { in: string[] } };
+      select: Record<string, boolean>;
+    };
+    expect([...arg.where.id.in].sort()).toEqual(['a1', 'a2']);
+    expect(arg.select).toEqual({ id: true, displayName: true, avatarUrl: true });
+    // tên của dòng có sẵn không bị ghi đè
+    expect((page.data[0]!.payload as { actorName?: string }).actorName).toBe('Đã có tên');
+    expect((page.data[1]!.payload as { actorName?: string }).actorName).toBe('Dũng');
+  });
+
+  it('người đã xoá: actorAvatarUrl null (không lỗi)', async () => {
+    const { service, prisma } = setup();
+    prisma.notification.findMany.mockImplementation(() =>
+      Promise.resolve([row('n1', 'gone', { key: 'D-1' })]),
+    );
+    const page = await service.listMine('u1', undefined, 30);
+    expect(page.data[0]!.actorAvatarUrl).toBeNull();
   });
 });

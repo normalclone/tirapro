@@ -7,18 +7,26 @@ export function Avatar({
   name,
   src,
   size = 24,
+  decorative = false,
 }: {
   name: string;
   src?: string | null;
   size?: number;
+  /** Tên đã nằm trong chữ kế bên (vd tiêu đề thông báo): ẩn khỏi trình đọc màn hình, không tooltip, `alt=""`. */
+  decorative?: boolean;
 }) {
   return (
     <span
       className="inline-flex shrink-0 items-center justify-center rounded-full bg-primary-subtle text-[10px] font-semibold text-primary overflow-hidden"
       style={{ width: size, height: size, fontSize: Math.max(9, size * 0.4) }}
-      title={name}
+      title={decorative ? undefined : name}
+      aria-hidden={decorative ? true : undefined}
     >
-      {src ? <img src={src} alt={name} className="h-full w-full object-cover" /> : initials(name)}
+      {src ? (
+        <img src={src} alt={decorative ? '' : name} className="h-full w-full object-cover" />
+      ) : (
+        initials(name)
+      )}
     </span>
   );
 }
