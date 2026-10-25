@@ -71,6 +71,9 @@ function isSyntaxError(err: unknown): boolean {
   return typeof e.message === 'string' && e.message.includes('42601');
 }
 
+/** Client của một giao dịch tương tác (đã `SET LOCAL statement_timeout`): truy vấn chạy trong đó + SAVEPOINT cho đường lui. */
+export type TxClient = Pick<PrismaClient, '$queryRaw' | '$executeRaw'>;
+
 export interface SearchOptions {
   projectId?: string;
   /** Thu hẹp theo nhiều dự án (giao với `projectId` nếu truyền cả hai do người gọi tự xử lý). Mảng rỗng => không có kết quả. */
@@ -121,7 +124,9 @@ export class FulltextSearcher {
     workspaceId: string,
     raw: string,
     opts: SearchOptions = {},
+    tx?: TxClient,
   ): Promise<{ ids: string[] } | null> {
+    const db: Pick<PrismaClient, '$queryRaw'> = tx ?? this.prisma;
     const built = buildFulltextQuery(raw);
     if (!built) return { ids: [] };
     const limit = Math.min(Math.max(opts.limit ?? FULLTEXT_LIMIT, 1), FULLTEXT_LIMIT);
@@ -132,7 +137,9 @@ export class FulltextSearcher {
       : Prisma.empty;
     try {
       try {
-        return await this.ranked(built, workspaceId, projectFilter, limit);
+        return await this.attempt(tx, () =>
+          this.ranked(db, built, workspaceId, projectFilter, limit),
+        );
       } catch (err) {
         // Phòng thủ: tsquery vẫn bị từ chối (42601) ⇒ chạy lại chỉ bằng nhánh ILIKE/trigram thay vì 500.
         if (!isSyntaxError(err) || !built.tsquery) throw err;
@@ -143,7 +150,9 @@ export class FulltextSearcher {
             `to_tsquery bị từ chối (42601) — chạy lại bằng nhánh ILIKE/trigram. Có ký tự lạ lọt qua searchTokens; hãy bổ sung bộ lọc nếu lặp lại (nội dung tìm không được ghi vào log).`,
           );
         }
-        return await this.ranked({ ...built, tsquery: '' }, workspaceId, projectFilter, limit);
+        return await this.attempt(tx, () =>
+          this.ranked(db, { ...built, tsquery: '' }, workspaceId, projectFilter, limit),
+        );
       }
     } catch (err) {
       if (!isMissingSearchObject(err)) throw err;
@@ -154,7 +163,7 @@ export class FulltextSearcher {
         );
       }
       // Không cần extension/cột sinh: translate() là hàm có sẵn. Lỗi lạ ở đây được ném lại (không nuốt).
-      const rows = await this.prisma.$queryRaw<{ id: string }[]>`
+      const rows = await db.$queryRaw<{ id: string }[]>`
         SELECT i."id" FROM "Issue" i
         JOIN "Project" p ON p."id" = i."projectId"
         WHERE i."workspaceId" = ${workspaceId}
@@ -170,13 +179,32 @@ export class FulltextSearcher {
     }
   }
 
+  /**
+   * Trong GIAO DỊCH (`tx`): một câu lỗi làm cả giao dịch "aborted" nên các đường lui (42601, thiếu searchVector) sẽ hỏng
+   * theo. Bọc từng lần thử trong SAVEPOINT để lỗi chỉ hoàn lại chính nó rồi ném lên (đường lui chạy tiếp được).
+   * Ngoài giao dịch: chạy thẳng như cũ.
+   */
+  private async attempt<T>(tx: TxClient | undefined, run: () => Promise<T>): Promise<T> {
+    if (!tx) return run();
+    await tx.$executeRaw`SAVEPOINT ft_attempt`;
+    try {
+      const out = await run();
+      await tx.$executeRaw`RELEASE SAVEPOINT ft_attempt`;
+      return out;
+    } catch (e) {
+      await tx.$executeRaw`ROLLBACK TO SAVEPOINT ft_attempt`;
+      throw e;
+    }
+  }
+
   private async ranked(
+    db: Pick<PrismaClient, '$queryRaw'>,
     built: FulltextQuery,
     workspaceId: string,
     projectFilter: Prisma.Sql,
     limit: number,
   ): Promise<{ ids: string[] }> {
-    const rows = await this.prisma.$queryRaw<{ id: string; rank: number }[]>`
+    const rows = await db.$queryRaw<{ id: string; rank: number }[]>`
         WITH q AS (
           SELECT to_tsquery('simple', immutable_unaccent(${built.tsquery})) AS tsq, ${built.qn}::text AS qn
         )

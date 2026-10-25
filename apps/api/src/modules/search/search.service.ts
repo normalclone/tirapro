@@ -16,7 +16,11 @@ import {
 } from '@tirapro/shared';
 import { BusinessRuleException } from '../../common/exceptions/app.exception';
 import { mapLimit } from '../../common/map-limit';
-import { BOUNDED_COUNT_DEADLINE_MS, boundedIssueCount } from '../../common/bounded-count';
+import {
+  BOUNDED_COUNT_DEADLINE_MS,
+  boundedIssueCount,
+  runBounded,
+} from '../../common/bounded-count';
 import type { PageResult } from '../../common/dto/page-result';
 import { TRIAGE_VISIBLE } from '../../common/triage-visibility';
 import { PrismaService } from '../../infra/prisma/prisma.service';
@@ -360,6 +364,32 @@ export class SearchService {
   }
 
   /**
+   * Như `fulltextMap` nhưng CHỈ cho đường gợi ý nới bộ lọc (`GET /search` giữ nguyên): tra trong cùng ngân sách với các lần
+   * đếm — một chỗ của semaphore toàn tiến trình + giao dịch `SET LOCAL statement_timeout` + hạn tổng `deadlineAt`.
+   * Không kịp (chưa lấy được chỗ, quá statement_timeout, giao dịch hết hạn) → `null`; lỗi khác vẫn ném.
+   */
+  private async fulltextMapBounded(
+    workspaceId: string,
+    where: JqlNode | null,
+    projectId: string | undefined,
+    viewerId: string,
+    deadlineAt: number,
+  ): Promise<Map<string, readonly string[]> | null> {
+    const terms = collectFulltextTerms(where);
+    if (!terms.length) return new Map();
+    const scopeIds = await this.fulltextProjectScope(workspaceId, where, projectId, viewerId);
+    const opts = scopeIds ? { projectIds: scopeIds } : {};
+    return runBounded(this.prisma, deadlineAt, async (tx) => {
+      const found = new Map<string, readonly string[]>();
+      for (const term of terms) {
+        const res = await this.fulltext.search(workspaceId, term, opts, tx);
+        if (res) found.set(term, res.ids);
+      }
+      return found;
+    });
+  }
+
+  /**
    * Đếm việc khớp JQL trong phạm vi người xem thấy (cùng `where` và cùng điều kiện dự án như `search()`): dự án riêng
    * tư người đó không thấy không bao giờ nằm trong số đếm. JQL lỗi cú pháp/giá trị sai → `BusinessRuleException`.
    * Dùng cho Key Result tự đo (L25).
@@ -379,8 +409,8 @@ export class SearchService {
    * - Cùng điều kiện xem như `count()`: workspace + `deletedAt: null` + dự án chưa xoá + `visibleWhere` của người xem
    *   (+ `projectId` nếu có, như `search()`), nên dự án riêng tư người đó không thấy không bao giờ nằm trong số đếm.
    * - Tối đa `RELAX_MAX_CLAUSES` mệnh đề (phần dư → `remaining`), `RELAX_CONCURRENCY` truy vấn đồng thời mỗi request; trần
-   *   toàn tiến trình + hạn tổng (chưa kịp bắt đầu → null) + statement_timeout nằm ở `boundedIssueCount`; full-text
-   *   tra một lần. Không đếm JQL gốc: nơi gọi chỉ hỏi sau khi tìm kiếm đã trả 0 việc. Mỗi lần đếm chạy trong giao dịch riêng với `SET LOCAL statement_timeout`: quá hạn → `count: null`
+   *   toàn tiến trình + hạn tổng (chưa kịp bắt đầu → null) + statement_timeout nằm ở `runBounded`; full-text
+   *   tra một lần, CŨNG trong ngân sách đó (`fulltextMapBounded`; không kịp → mọi mệnh đề `count: null`). Không đếm JQL gốc: nơi gọi chỉ hỏi sau khi tìm kiếm đã trả 0 việc. Mỗi lần đếm chạy trong giao dịch riêng với `SET LOCAL statement_timeout`: quá hạn → `count: null`
    *   cho mệnh đề đó (không làm hỏng cả cuộc gọi); lỗi khác vẫn ném.
    * - Chỉ có ≤ 1 mệnh đề thì không có gì để nới → trả rỗng, không đếm. OR ở gốc / NOT / nhóm lồng là MỘT mệnh đề.
    * - JQL sai cú pháp hoặc giá trị không có thật → cùng lỗi 422 như `GET /search`.
@@ -397,8 +427,26 @@ export class SearchService {
     const conjuncts = flattenAnd(ast.where);
     if (conjuncts.length < 2) return { clauses: [], remaining: 0 };
     const counted = conjuncts.slice(0, RELAX_MAX_CLAUSES);
+    const withoutNodes = counted.map((_, i) => andAll(conjuncts.filter((_c, j) => j !== i)));
+    const deadlineAt = Date.now() + BOUNDED_COUNT_DEADLINE_MS;
+    const result = (counts: (number | null)[]): RelaxCountsResult => ({
+      clauses: counted.map((node, i) => ({
+        text: serializeJqlNode(node),
+        jqlWithout: serializeJqlQuery({ where: withoutNodes[i]!, orderBy: ast.orderBy }),
+        count: counts[i] ?? null,
+      })),
+      remaining: conjuncts.length - counted.length,
+    });
 
-    const fulltext = await this.fulltextMap(workspaceId, ast.where, input.projectId, userId);
+    // Tra toàn văn cũng nằm trong ngân sách (slot + statement_timeout + hạn tổng): không kịp → mọi mệnh đề "không đếm kịp".
+    const fulltext = await this.fulltextMapBounded(
+      workspaceId,
+      ast.where,
+      input.projectId,
+      userId,
+      deadlineAt,
+    );
+    if (!fulltext) return result([]);
     const visible = await this.access.visibleWhere(userId, workspaceId);
     const scope: Prisma.IssueWhereInput = {
       workspaceId,
@@ -411,21 +459,11 @@ export class SearchService {
         ? compileJql({ where: node, orderBy: [] }, { currentUserId: userId, fulltext }).where
         : {};
 
-    const withoutNodes = counted.map((_, i) => andAll(conjuncts.filter((_c, j) => j !== i)));
     const wheres = withoutNodes.map((node) => ({ AND: [scope, compile(node)] }));
-    const deadlineAt = Date.now() + BOUNDED_COUNT_DEADLINE_MS;
     const results = await mapLimit(wheres, RELAX_CONCURRENCY, (where) =>
       boundedIssueCount(this.prisma, where, deadlineAt),
     );
-
-    return {
-      clauses: counted.map((node, i) => ({
-        text: serializeJqlNode(node),
-        jqlWithout: serializeJqlQuery({ where: withoutNodes[i]!, orderBy: ast.orderBy }),
-        count: results[i] ?? null,
-      })),
-      remaining: conjuncts.length - counted.length,
-    };
+    return result(results);
   }
 
   /** JQL có dùng `currentUser`/`me` không (JQL lỗi cú pháp → false: để `validate`/`count` báo lỗi riêng). */

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { Prisma } from '@prisma/client';
 import { parseJql } from '@tirapro/shared';
+import { boundedCountSlotsSemaphore } from '../../common/bounded-count';
 import { SearchService } from './search.service';
 
 /* ----------------------------- bộ đánh giá `where` Prisma tối giản ----------------------------- */
@@ -468,5 +469,79 @@ describe('SearchService.relaxCounts — nhận diện timeout hẹp', () => {
     await expect(failWith(new Error('invalid statement timeout setting'))).rejects.toThrow(
       'invalid statement timeout',
     );
+  });
+});
+
+describe('SearchService.relaxCounts — tra toàn văn nằm trong CÙNG ngân sách (F1)', () => {
+  const JQL = 'text ~ "lỗi" AND status = Open AND priority = Low';
+  const timeoutErr = () =>
+    Object.assign(new Error('canceling statement due to statement timeout'), {
+      meta: { code: '57014' },
+    });
+
+  it('tra toàn văn chạy trong giao dịch có SET LOCAL statement_timeout, trước mọi lần đếm, và nhận client của giao dịch', async () => {
+    const { service, order, fulltextSearch, tx } = make();
+    await run(service, JQL);
+    expect(order[0]).toMatch(/^tx:/);
+    expect(order[1]).toBe('raw:SET LOCAL statement_timeout = 3000');
+    expect(fulltextSearch).toHaveBeenCalledTimes(1);
+    expect(fulltextSearch.mock.calls[0]![3]).toBe(tx); // client của giao dịch
+    // các lần đếm đến SAU lượt tra toàn văn (giao dịch riêng của chúng)
+    expect(order.indexOf('count')).toBeGreaterThan(1);
+  });
+
+  it('quá statement_timeout ở bước toàn văn → mọi mệnh đề count:null, KHÔNG ném, không đếm gì', async () => {
+    const { service, fulltextSearch, counts } = make();
+    fulltextSearch.mockRejectedValue(timeoutErr());
+    const r = await run(service, JQL);
+    expect(r.remaining).toBe(0);
+    expect(r.clauses.map((c) => c.count)).toEqual([null, null, null]);
+    expect(r.clauses[0]).toMatchObject({
+      text: 'text ~ "lỗi"',
+      jqlWithout: 'status = "Open" AND priority = "Low"',
+    });
+    expect(counts).toHaveLength(0);
+  });
+
+  it('giao dịch hết hạn/không lấy được kết nối (P2028) cũng là "không đếm kịp"', async () => {
+    const { service, fulltextSearch } = make();
+    fulltextSearch.mockRejectedValue(
+      Object.assign(new Error('Transaction already closed'), { code: 'P2028' }),
+    );
+    const r = await run(service, JQL);
+    expect(r.clauses.map((c) => c.count)).toEqual([null, null, null]);
+  });
+
+  it('lỗi KHÁC ở bước toàn văn vẫn ném (không nuốt lỗi thật)', async () => {
+    const { service, fulltextSearch } = make();
+    fulltextSearch.mockRejectedValue(new Error('connection refused'));
+    await expect(run(service, JQL)).rejects.toThrow('connection refused');
+  });
+
+  it('dùng CHUNG semaphore toàn tiến trình: hết chỗ tới hạn → count:null, không chạm DB', async () => {
+    const sem = boundedCountSlotsSemaphore();
+    const held = await Promise.all(
+      Array.from({ length: sem.capacity }, () => sem.acquire(Date.now() + 1e6)),
+    );
+    try {
+      vi.useFakeTimers();
+      const { service, fulltextSearch, prisma } = make();
+      const p = run(service, JQL);
+      await vi.advanceTimersByTimeAsync(5_100);
+      const r = await p;
+      expect(r.clauses.map((c) => c.count)).toEqual([null, null, null]);
+      expect(fulltextSearch).not.toHaveBeenCalled();
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+      held.forEach((rel) => rel!());
+    }
+  });
+
+  it('JQL không có text ~ → không mở giao dịch tra toàn văn (chỉ các lần đếm)', async () => {
+    const { service, fulltextSearch, order } = make();
+    await run(service, 'status = Open AND priority = Low');
+    expect(fulltextSearch).not.toHaveBeenCalled();
+    expect(order.filter((o) => o.startsWith('tx:'))).toHaveLength(2); // đúng 2 lần đếm
   });
 });
