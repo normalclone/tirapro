@@ -60,16 +60,15 @@ export function isCountTimeout(e: unknown): boolean {
 }
 
 /**
- * MỘT lần đếm issue: xin chỗ trong semaphore chung (chờ tối đa đến `deadlineAt`), rồi giao dịch tương tác với
+ * Chạy `fn` trong ngân sách chung: xin chỗ trong semaphore (chờ tối đa đến `deadlineAt`), rồi giao dịch tương tác với
  * `SET LOCAL statement_timeout` (chỉ tác dụng trong giao dịch này, trả về kết nối sạch cho pool). Hết hạn/quá giờ → `null`;
- * lỗi khác → ném lại. Chỗ luôn được nhả. `where` do nơi gọi dựng (phải đã gồm phạm vi workspace/dự án/quyền xem);
- * ở đây chỉ lặp `deletedAt: null` làm chốt chặn tầng thấp nhất để việc đã xoá mềm không bao giờ được đếm.
+ * lỗi khác → ném lại. Chỗ luôn được nhả. Dùng cho mọi việc nặng của endpoint "xem trước/gợi ý" (đếm, tra toàn văn).
  */
-export async function boundedIssueCount(
+export async function runBounded<T>(
   prisma: Pick<PrismaClient, '$transaction'>,
-  where: Prisma.IssueWhereInput,
   deadlineAt: number,
-): Promise<number | null> {
+  fn: (tx: Prisma.TransactionClient) => Promise<T>,
+): Promise<T | null> {
   const release = await boundedCountSlotsSemaphore().acquire(deadlineAt);
   if (!release) return null;
   try {
@@ -79,7 +78,7 @@ export async function boundedIssueCount(
         await tx.$executeRaw(
           Prisma.sql`SET LOCAL statement_timeout = ${Prisma.raw(String(BOUNDED_COUNT_STATEMENT_TIMEOUT_MS))}`,
         );
-        return tx.issue.count({ where: { deletedAt: null, AND: [where] } });
+        return fn(tx);
       },
       { maxWait: 2_000, timeout: BOUNDED_COUNT_STATEMENT_TIMEOUT_MS + 2_000 },
     );
@@ -89,4 +88,19 @@ export async function boundedIssueCount(
   } finally {
     release();
   }
+}
+
+/**
+ * MỘT lần đếm issue trong ngân sách chung (`runBounded`). `where` do nơi gọi dựng (phải đã gồm phạm vi
+ * workspace/dự án/quyền xem); ở đây chỉ lặp `deletedAt: null` làm chốt chặn tầng thấp nhất để việc đã xoá mềm không
+ * bao giờ được đếm.
+ */
+export function boundedIssueCount(
+  prisma: Pick<PrismaClient, '$transaction'>,
+  where: Prisma.IssueWhereInput,
+  deadlineAt: number,
+): Promise<number | null> {
+  return runBounded(prisma, deadlineAt, (tx) =>
+    tx.issue.count({ where: { deletedAt: null, AND: [where] } }),
+  );
 }

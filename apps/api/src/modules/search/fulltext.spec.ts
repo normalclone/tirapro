@@ -293,3 +293,50 @@ describe('FulltextSearcher.search — log đường phòng thủ 42601', () => {
     }
   });
 });
+
+describe('FulltextSearcher.search — trong giao dịch (client truyền vào, F1)', () => {
+  const rankedRows = [{ id: 'I1', rank: 1 }];
+
+  it('dùng client được truyền (không dùng prisma gốc) và bọc truy vấn trong SAVEPOINT', async () => {
+    const base = makePrisma(() => rankedRows);
+    const calls: string[] = [];
+    const tx = {
+      $queryRaw: vi.fn(() => {
+        calls.push('query');
+        return Promise.resolve(rankedRows);
+      }),
+      $executeRaw: vi.fn((strings: TemplateStringsArray) => {
+        calls.push(strings.join('?').trim());
+        return Promise.resolve(0);
+      }),
+    };
+    const res = await new FulltextSearcher(base as never).search('W1', 'lỗi', {}, tx as never);
+    expect(res).toEqual({ ids: ['I1'] });
+    expect(base.$queryRaw).not.toHaveBeenCalled();
+    expect(calls).toEqual(['SAVEPOINT ft_attempt', 'query', 'RELEASE SAVEPOINT ft_attempt']);
+  });
+
+  it('truy vấn lỗi → ROLLBACK TO SAVEPOINT rồi ném lại (giao dịch không bị "aborted")', async () => {
+    const calls: string[] = [];
+    const boom = Object.assign(new Error('canceling statement due to statement timeout'), {
+      meta: { code: '57014' },
+    });
+    const tx = {
+      $queryRaw: vi.fn(() => Promise.reject(boom)),
+      $executeRaw: vi.fn((strings: TemplateStringsArray) => {
+        calls.push(strings.join('?').trim());
+        return Promise.resolve(0);
+      }),
+    };
+    await expect(
+      new FulltextSearcher(makePrisma(() => []) as never).search('W1', 'lỗi', {}, tx as never),
+    ).rejects.toBe(boom);
+    expect(calls).toEqual(['SAVEPOINT ft_attempt', 'ROLLBACK TO SAVEPOINT ft_attempt']);
+  });
+
+  it('không truyền client (GET /search) → hành vi cũ: không SAVEPOINT', async () => {
+    const prisma = { ...makePrisma(() => rankedRows), $executeRaw: vi.fn() };
+    await new FulltextSearcher(prisma as never).search('W1', 'lỗi');
+    expect(prisma.$executeRaw).not.toHaveBeenCalled();
+  });
+});
