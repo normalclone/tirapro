@@ -437,6 +437,26 @@ describe('RealtimeGateway — bridge notification & sprint', () => {
     expect(to).not.toHaveBeenCalled();
   });
 
+  it('comment.reacted -> comment:reaction CHỈ {commentId, issueId} tới room project (không tên người thả, không actorId); thiếu projectId thì bỏ qua', () => {
+    const { gateway, to, emit } = makeGateway();
+    gateway.onCommentReacted({
+      commentId: 'C1',
+      issueId: 'I1',
+      projectId: 'P1',
+      actorId: 'U1',
+    });
+    expect(to).toHaveBeenCalledWith('project:P1');
+    expect(emit).toHaveBeenCalledTimes(1);
+    expect(emit).toHaveBeenCalledWith(WS_EVENTS.COMMENT_REACTION, {
+      commentId: 'C1',
+      issueId: 'I1',
+    });
+    expect(WS_EVENTS.COMMENT_REACTION).toBe('comment:reaction');
+    to.mockClear();
+    gateway.onCommentReacted({ commentId: 'C1', issueId: 'I1', actorId: 'U1' });
+    expect(to).not.toHaveBeenCalled();
+  });
+
   it('project.ranks_rebalanced -> project:ranks_rebalanced tới room project', () => {
     const { gateway, to, emit } = makeGateway();
     gateway.onProjectRanksRebalanced({ projectId: 'P1' });

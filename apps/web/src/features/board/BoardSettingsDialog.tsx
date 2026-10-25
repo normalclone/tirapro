@@ -1,9 +1,10 @@
-import { useMemo, useState } from 'react';
+import { useId, useMemo, useState } from 'react';
 import { Tabs, TabPanel } from '@/components/ui/Tabs';
 import { ArrowDown, ArrowUp, Plus, Trash2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { SWIMLANE_BY, type BoardDto, type BoardType, type SwimlaneBy } from '@tirapro/types';
 import { Button } from '@/components/ui/Button';
+import { RadioCard } from '@/components/ui/RadioCard';
 import { Dialog } from '@/components/ui/Dialog';
 import { Input } from '@/components/ui/Input';
 import { DelayedSpinner } from '@/components/ui/primitives';
@@ -546,64 +547,46 @@ function SwimlaneTab({
   swimlane: SwimlaneBy;
   setSwimlane: (v: SwimlaneBy) => void;
 }) {
+  const labelId = useId();
   return (
-    <fieldset className="space-y-2">
-      <legend className="mb-1 text-sm text-muted">Chia bảng thành các hàng (swimlane) theo:</legend>
-      {SWIMLANE_BY.map((opt) => (
-        <label
-          key={opt}
-          className={cn(
-            'flex cursor-pointer items-start gap-3 rounded-lg border px-3 py-2.5 transition-colors',
-            swimlane === opt
-              ? 'border-primary bg-primary-subtle'
-              : 'border-border hover:bg-surface-2',
-          )}
-        >
-          <input
-            type="radio"
-            name="swimlane"
-            checked={swimlane === opt}
-            onChange={() => setSwimlane(opt)}
-            className="mt-0.5 accent-[var(--primary)]"
-          />
-          <span>
-            <span className="block text-sm font-medium text-ink">{SWIMLANE_LABEL[opt]}</span>
-            <span className="block text-xs text-muted">{SWIMLANE_HINT[opt]}</span>
-          </span>
-        </label>
-      ))}
-    </fieldset>
+    <div>
+      <p id={labelId} className="mb-1 text-sm text-muted">
+        Chia bảng thành các hàng (swimlane) theo:
+      </p>
+      <RadioCard
+        ariaLabelledby={labelId}
+        value={swimlane}
+        onChange={setSwimlane}
+        options={SWIMLANE_BY.map((opt) => ({
+          value: opt,
+          label: SWIMLANE_LABEL[opt],
+          description: SWIMLANE_HINT[opt],
+        }))}
+      />
+    </div>
   );
 }
 
 function TypeTab({ type, setType }: { type: BoardType; setType: (v: BoardType) => void }) {
+  const labelId = useId();
   return (
-    <fieldset className="space-y-2">
-      <legend className="mb-1 text-sm text-muted">Loại bảng:</legend>
-      {(Object.keys(BOARD_TYPE_LABEL) as BoardType[]).map((opt) => (
-        <label
-          key={opt}
-          className={cn(
-            'flex cursor-pointer items-start gap-3 rounded-lg border px-3 py-2.5 transition-colors',
-            type === opt ? 'border-primary bg-primary-subtle' : 'border-border hover:bg-surface-2',
-          )}
-        >
-          <input
-            type="radio"
-            name="board-type"
-            checked={type === opt}
-            onChange={() => setType(opt)}
-            className="mt-0.5 accent-[var(--primary)]"
-          />
-          <span>
-            <span className="block text-sm font-medium text-ink">{BOARD_TYPE_LABEL[opt]}</span>
-            <span className="block text-xs text-muted">{BOARD_TYPE_HINT[opt]}</span>
-          </span>
-        </label>
-      ))}
+    <div className="space-y-2">
+      <p id={labelId} className="mb-1 text-sm text-muted">
+        Loại bảng:
+      </p>
+      <RadioCard
+        ariaLabelledby={labelId}
+        value={type}
+        onChange={setType}
+        options={(Object.keys(BOARD_TYPE_LABEL) as BoardType[]).map((opt) => ({
+          value: opt,
+          label: BOARD_TYPE_LABEL[opt],
+          description: BOARD_TYPE_HINT[opt],
+        }))}
+      />
       <p className="text-xs text-faint">
         Đổi loại không xoá hay di chuyển việc nào; có thể đổi lại bất cứ lúc nào.
       </p>
-    </fieldset>
+    </div>
   );
 }

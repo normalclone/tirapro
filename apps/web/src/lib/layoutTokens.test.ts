@@ -43,10 +43,15 @@ describe('FAB không che nội dung', () => {
       expect(src(f), f).toMatch(/\blg:pb-2[48]\b/);
   });
   it('thanh thao tác hàng loạt né FAB chỉ từ lg (lg:mr-24); dưới lg không còn FAB nên không chừa mb-24, nằm sát thanh tab đáy', () => {
-    const bar = src('features/backlog/BulkActionBar.tsx');
-    expect(bar).toMatch(/lg:mr-24/);
-    // Cha `space-y-4` ghi đè margin-bottom của con nên không đặt mb-* (lớp chết đã bỏ ở đợt 2A).
-    expect(bar).not.toMatch(/\bmb-\d+\b|\blg:mb-\d+\b/);
+    const bar = src('features/bulk/BulkDock.tsx');
+    const sticky = /const STICKY_CLS = '([^']*)'/.exec(bar)![1]!;
+    const docked = /const DOCKED_CLS =\s*'([^']*)'/.exec(bar)![1]!;
+    expect(sticky).toMatch(/lg:mr-24/);
+    expect(docked).toMatch(/lg:mr-24/);
+    // Cha `space-y-4` ghi đè margin-bottom của con nên biến thể dính đáy không đặt mb-* (lớp chết đã bỏ ở đợt 2A).
+    expect(sticky).not.toMatch(/\bmb-\d+\b|\blg:mb-\d+\b/);
+    // Biến thể Bảng việc: con flex trên thanh tab đáy, chừa vùng an toàn từ lg (không có thanh tab).
+    expect(docked).toMatch(/lg:mb-\[max\(0\.75rem,env\(safe-area-inset-bottom\)\)\]/);
   });
   it('FAB và toast tính vùng an toàn iOS; toast luôn nằm trên FAB kể cả khi FAB được nâng', () => {
     expect(FAB_BOTTOM_CSS).toBe(`max(${FAB_EDGE_PX}px, env(safe-area-inset-bottom))`);

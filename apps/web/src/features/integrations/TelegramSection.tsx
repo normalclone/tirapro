@@ -93,7 +93,9 @@ export function TelegramSection() {
   async function handleDelete(it: Integration) {
     if (
       !(await confirm({
-        title: `Xoá kết nối "${it.name}"? Hành động này không thể hoàn tác.`,
+        title: `Xoá kết nối "${it.name}"?`,
+        description:
+          'Các kênh của kết nối này sẽ ngừng gửi thông báo. Hành động này không thể hoàn tác.',
         destructive: true,
       }))
     )
@@ -296,7 +298,12 @@ function ChannelList({
   const channels = data ?? [];
 
   async function handleDelete(channelId: string, label: string) {
-    if (!(await confirm({ title: `Xoá kênh "${label}"?`, destructive: true }))) return;
+    const ok = await confirm({
+      title: `Xoá kênh "${label}"?`,
+      description: 'Kênh sẽ ngừng nhận thông báo. Hành động này không thể hoàn tác.',
+      destructive: true,
+    });
+    if (!ok) return;
     remove.mutate(channelId, {
       onSuccess: () => toast.success('Đã xoá kênh.'),
       onError: (e) => toast.error(apiErrorMessage(e)),

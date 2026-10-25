@@ -9,8 +9,10 @@ import {
 } from 'react';
 import { CalendarDays } from 'lucide-react';
 import { Input } from '@/components/ui/Input';
+import { INVALID_FIELD_CLS, describedBy } from '@/lib/formErrors';
 import { cn } from '@/lib/utils';
 import {
+  dateFieldError,
   formatViDate,
   inDateRange,
   joinDateTime,
@@ -21,24 +23,13 @@ import {
   splitDateTime,
 } from '@/lib/dateInput';
 
-const DATE_ERR = 'Ngày chưa đúng (dd/MM/yyyy)';
-const RANGE_ERR = 'Ngày nằm ngoài khoảng cho phép';
 const TIME_ERR = 'Giờ chưa đúng (HH:mm)';
 
-/** Viền + ring đỏ kể cả khi đang focus (đè `focus-visible:border-primary` của `Input`). */
-const INVALID_CLS = 'border-danger focus-visible:!border-danger focus-visible:ring-danger/40';
+const INVALID_CLS = INVALID_FIELD_CLS;
 
 const CAN_PICK =
   typeof HTMLInputElement !== 'undefined' &&
   typeof HTMLInputElement.prototype.showPicker === 'function';
-
-/** Thông điệp lỗi của chữ đang gõ ('' nếu trống hoặc hợp lệ). */
-function dateError(text: string, min?: string, max?: string, rangeError = RANGE_ERR): string {
-  if (text === '') return '';
-  const iso = parseViDate(text);
-  if (iso === null) return DATE_ERR;
-  return inDateRange(iso, min, max) ? '' : rangeError;
-}
 
 /**
  * Đặt `customValidity` của ô theo lỗi hiện có → form native không gửi đi giá trị cũ khi ô đang hiện chữ sai
@@ -114,6 +105,8 @@ export interface DateInputProps {
   required?: boolean;
   disabled?: boolean;
   className?: string;
+  /** Id phần tử mô tả thêm (gợi ý, tóm tắt); id dòng lỗi của chính ô được nối sau. */
+  'aria-describedby'?: string;
 }
 
 export function DateInput({
@@ -130,6 +123,7 @@ export function DateInput({
   required,
   disabled,
   className,
+  'aria-describedby': describedByProp,
 }: DateInputProps) {
   const [text, setText] = useState(() => formatViDate(value));
   const [touched, setTouched] = useState(false);
@@ -147,7 +141,7 @@ export function DateInput({
     setTouched(false);
   }, [value]);
 
-  const err = dateError(text, min, max, rangeError);
+  const err = dateFieldError(text, min, max, rangeError);
   const showErr = err !== '' && (touched || text.length === 10);
   useCustomValidity(inputRef, err);
   useEffect(() => onErrorChange?.(err), [err, onErrorChange]);
@@ -178,13 +172,9 @@ export function DateInput({
     const masked = maskViDate(raw);
     setText(masked);
     setTouched(false);
-    if (masked === '') {
-      latest.current = '';
-      onChange('');
-      return;
-    }
     const iso = parseViDate(masked);
-    if (masked.length === 10 && iso !== null && inDateRange(iso, min, max)) {
+    if (masked === '') apply('');
+    else if (masked.length === 10 && iso !== null && inDateRange(iso, min, max)) {
       latest.current = iso;
       onChange(iso);
     }
@@ -220,7 +210,7 @@ export function DateInput({
         disabled={disabled}
         aria-label={ariaLabel}
         aria-invalid={showErr || undefined}
-        aria-describedby={showErr ? errId : undefined}
+        aria-describedby={describedBy(describedByProp, showErr && errId)}
         data-custom-validity=""
         className={cn(CAN_PICK && 'pr-10', showErr && INVALID_CLS, className)}
         onChange={(e) => handleText(e.target.value)}
@@ -282,7 +272,10 @@ export function DateInput({
  * Xoá trống ô giờ rồi rời ô → hiển thị khôi phục giờ đang có trong `value` (không bao giờ hiện trống mà vẫn gửi giờ cũ).
  * Giờ sai/dở dang: viền đỏ + dòng "Giờ chưa đúng (HH:mm)" + `customValidity`, giữ chữ để sửa.
  */
-export interface DateTimeInputProps extends Omit<DateInputProps, 'onCommit' | 'onErrorChange'> {
+export interface DateTimeInputProps extends Omit<
+  DateInputProps,
+  'onCommit' | 'onErrorChange' | 'aria-describedby'
+> {
   onCommit?: (isoLocal: string) => void;
   /** Giờ mặc định khi vừa chọn ngày mà chưa có giờ (mặc định 17:00 = cuối giờ làm việc). */
   defaultTime?: string;

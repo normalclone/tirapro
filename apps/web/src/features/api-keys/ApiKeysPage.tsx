@@ -11,6 +11,7 @@ import {
   TriangleAlert,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useCopyToClipboard } from '@/lib/useCopyToClipboard';
 import axios from 'axios';
 import { PageFrame } from '@/components/layout/PageFrame';
 import { PageHeader } from '@/components/layout/PageHeader';
@@ -49,16 +50,8 @@ const EXPIRY_OPTIONS: { value: number; label: string }[] = [
 ];
 
 function CopyRow({ label, value }: { label: string; value: string }) {
-  const [done, setDone] = useState(false);
-  async function copy() {
-    try {
-      await navigator.clipboard.writeText(value);
-      setDone(true);
-      setTimeout(() => setDone(false), 1500);
-    } catch {
-      toast.error('Không sao chép được');
-    }
-  }
+  const { copied: done, copy: copyValue } = useCopyToClipboard();
+  const copy = () => void copyValue(value);
   return (
     <div className="flex items-center gap-2">
       <span className="w-28 shrink-0 text-xs text-muted">{label}</span>
@@ -87,7 +80,6 @@ export function ApiKeysPage() {
   const [write, setWrite] = useState(false);
   const [expiresInDays, setExpiresInDays] = useState(0);
   const [created, setCreated] = useState<CreatedApiKey | null>(null);
-  const [copiedKey, setCopiedKey] = useState(false);
   const [hideRevoked, setHideRevoked] = useState(true);
 
   // 403 = không có quyền workspace:admin → hiện trạng thái "không có quyền" thay vì form tạo (sẽ 403).
@@ -116,10 +108,10 @@ export function ApiKeysPage() {
     );
   }
 
-  async function copyFullKey() {
+  const { copied: copiedKey, copy: copyKeyText } = useCopyToClipboard();
+  function copyFullKey() {
     if (!created) return;
-    await navigator.clipboard.writeText(created.key).catch(() => {});
-    setCopiedKey(true);
+    void copyKeyText(created.key);
   }
 
   return (
@@ -204,7 +196,6 @@ export function ApiKeysPage() {
               size="sm"
               onClick={() => {
                 setCreated(null);
-                setCopiedKey(false);
               }}
             >
               Đã lưu, đóng
@@ -328,6 +319,7 @@ export function ApiKeysPage() {
       description: 'Mọi tích hợp dùng khoá này sẽ ngừng hoạt động.',
       confirmLabel: 'Thu hồi',
       destructive: true,
+      requireText: k.name,
     });
     if (!ok) return;
     revoke.mutate(k.id, { onError: (e) => toast.error(apiErrorMessage(e)) });

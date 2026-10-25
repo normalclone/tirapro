@@ -50,7 +50,7 @@ const CONVERTED = [
   'features/backlog/StartSprintDialog.tsx',
   'features/issue-fields/CustomFieldsPanel.tsx', // chip nhãn (:383); checkbox native (:147) nằm trong ALLOW
   'features/auth/DemoAccounts.tsx',
-  'features/workspace/WorkspaceSwitcher.tsx',
+  'features/workspace/WorkspaceOption.tsx', // mục không gian làm việc (tách từ WorkspaceSwitcher)
 ];
 
 /**
@@ -70,7 +70,6 @@ const ALLOW: Record<string, string> = {
   'features/saved-filters/QueryBuilder.tsx': 'nút chữ ghost không nền',
   'features/issue-meta/IssueLabelsPicker.tsx': 'nút X nhỏ (icon-button không nền) trong chip nhãn',
   // checkbox native: trình duyệt tự vẽ, không tô lại được bằng nền/chữ
-  'features/settings/NotificationSection.tsx': 'checkbox native',
   'features/settings/RolesPage.tsx': 'checkbox native',
   // công tắc (switch): trạng thái bật/tắt phải còn đọc được khi vô hiệu
   'features/admin/AdminConfigPage.tsx': 'switch',

@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Dialog } from '@/components/ui/Dialog';
+import { RequireTextField, useRequireText } from '@/components/ui/RequireText';
 
 export interface ConfirmOptions {
   title: string;
@@ -10,6 +11,11 @@ export interface ConfirmOptions {
   confirmLabel?: string;
   /** Thao tác không hoàn tác được → nút đỏ, focus ban đầu rơi vào "Huỷ". */
   destructive?: boolean;
+  /**
+   * Thao tác KHÔNG đảo được (xoá cứng, thu hồi khoá): người dùng phải gõ đúng chữ này (tên/mã hiển thị của đối tượng)
+   * thì nút xác nhận mới bật. So khớp bỏ khoảng trắng thừa, phân biệt hoa/thường. Nên kèm `description` nêu hậu quả.
+   */
+  requireText?: string;
 }
 
 interface ConfirmState {
@@ -17,12 +23,15 @@ interface ConfirmState {
   /** Giữ lại cả khi đã đóng để nội dung không biến mất giữa chừng hiệu ứng đóng. */
   opts: ConfirmOptions | null;
   resolve: ((ok: boolean) => void) | null;
+  /** Đếm số lần mở hộp — ô gõ tên gắn với số này để mở lại luôn trống. */
+  seq: number;
 }
 
 export const useConfirmStore = create<ConfirmState>(() => ({
   open: false,
   opts: null,
   resolve: null,
+  seq: 0,
 }));
 
 function settle(ok: boolean) {
@@ -51,7 +60,7 @@ function ask(opts: ConfirmOptions): Promise<boolean> {
   return new Promise<boolean>((resolve) => {
     const timer = setTimeout(() => {
       pendingOpen = null;
-      useConfirmStore.setState({ open: true, opts, resolve });
+      useConfirmStore.setState((s) => ({ open: true, opts, resolve, seq: s.seq + 1 }));
     }, 0);
     pendingOpen = { timer, resolve };
   });
@@ -69,8 +78,11 @@ export function useConfirm(): (opts: ConfirmOptions) => Promise<boolean> {
 export function ConfirmHost(): JSX.Element | null {
   const open = useConfirmStore((s) => s.open);
   const opts = useConfirmStore((s) => s.opts);
+  const seq = useConfirmStore((s) => s.seq);
+  const text = useRequireText(opts?.requireText, seq);
   if (!opts) return null;
   const destructive = !!opts.destructive;
+  const needsText = text.required;
   return (
     <Dialog
       open={open}
@@ -82,21 +94,39 @@ export function ConfirmHost(): JSX.Element | null {
       size="sm"
       icon={destructive ? <AlertTriangle className="h-4 w-4" /> : undefined}
       iconTone="danger"
+      // Cmd/Ctrl+Enter chỉ có nghĩa khi có ô gõ tên (xác nhận thường giữ hành vi cũ: không làm gì).
+      onSubmit={
+        needsText
+          ? () => {
+              if (text.matches) settle(true);
+            }
+          : undefined
+      }
       footer={
         <>
-          <Button variant="ghost" size="sm" onClick={() => settle(false)} autoFocus={destructive}>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => settle(false)}
+            autoFocus={destructive && !needsText}
+          >
             Huỷ
           </Button>
           <Button
             variant={destructive ? 'danger' : 'primary'}
             size="sm"
             onClick={() => settle(true)}
-            autoFocus={!destructive}
+            disabled={!text.matches}
+            autoFocus={!destructive && !needsText}
           >
             {opts.confirmLabel ?? (destructive ? 'Xoá' : 'Đồng ý')}
           </Button>
         </>
       }
-    />
+    >
+      {needsText && opts.requireText && (
+        <RequireTextField expected={opts.requireText} text={text} onEnter={() => settle(true)} />
+      )}
+    </Dialog>
   );
 }

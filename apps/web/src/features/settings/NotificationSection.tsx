@@ -1,11 +1,15 @@
-import { Bell, Mail } from 'lucide-react';
+import { useRef, useState } from 'react';
+import { Bell, ChevronDown } from 'lucide-react';
 import type { NotificationEmailPrefs } from '@tirapro/types';
-import { toast } from 'sonner';
 import { Skeleton } from '@/components/ui/primitives';
-import { apiErrorMessage } from '@/lib/api';
+import { SaveStatus } from '@/components/ui/SaveStatus';
 import { SectionCard } from '@/components/ui/SectionCard';
-import { useNotificationPrefs, useUpdateNotificationPrefs } from './api';
+import { Switch } from '@/components/ui/Switch';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
+import { useSaveTracker } from '@/lib/useSaveTracker';
+import { cn } from '@/lib/utils';
+import { useNotificationPrefs, useUpdateNotificationPrefs } from './api';
+import { EMAIL_KEY_OF_TYPE, isOptionsOpen, type PrefsPatch } from './notificationPrefs';
 
 /** Thứ tự + nhãn tiếng Việt cho từng loại thông báo. */
 const NOTIFICATION_TYPES: { key: string; label: string; hint: string }[] = [
@@ -47,118 +51,178 @@ const EMAIL_TYPES: { key: keyof NotificationEmailPrefs; label: string; hint: str
   },
 ];
 
+/**
+ * Dòng con "Gửi qua email" (nhóm có tên = tên sự kiện): mở bằng grid-rows 0fr→1fr (180ms ease-out-quart), tắt khi
+ * reduced-motion; đóng thì ẩn khỏi Tab. Tên ô = nhãn + tên sự kiện; gợi ý nằm NGOÀI nhãn, nối qua `aria-describedby`.
+ */
+function EmailOption({
+  id,
+  eventLabelId,
+  open,
+  checked,
+  hint,
+  onChange,
+}: {
+  id: string;
+  /** Id span nhãn của Switch sự kiện (để tên ô có tên sự kiện). */
+  eventLabelId: string;
+  open: boolean;
+  checked: boolean;
+  hint: string;
+  onChange: (next: boolean) => void;
+}) {
+  const inputId = `${id}-input`;
+  const labelId = `${id}-label`;
+  const hintId = `${id}-hint`;
+  return (
+    <div
+      id={id}
+      role="group"
+      aria-labelledby={eventLabelId}
+      className={cn(
+        'grid transition-[grid-template-rows,visibility] duration-base ease-out-quart motion-reduce:transition-none',
+        open ? 'grid-rows-[1fr]' : 'invisible grid-rows-[0fr]',
+      )}
+    >
+      <div className="overflow-hidden">
+        <div className="mt-2 flex items-start gap-2.5 text-sm text-ink [@media(pointer:coarse)]:min-h-11">
+          <input
+            id={inputId}
+            type="checkbox"
+            checked={checked}
+            aria-labelledby={`${labelId} ${eventLabelId}`}
+            aria-describedby={hintId}
+            onChange={(e) => onChange(e.target.checked)}
+            className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer rounded border-border accent-[var(--primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] [@media(pointer:coarse)]:mt-3"
+          />
+          <div className="min-w-0">
+            <label
+              id={labelId}
+              htmlFor={inputId}
+              className="block cursor-pointer font-medium [@media(pointer:coarse)]:py-2.5"
+            >
+              Gửi qua email
+            </label>
+            <p id={hintId} className="text-xs text-faint">
+              {hint}
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function NotificationSection() {
   const prefsQuery = useNotificationPrefs();
-  const { data } = prefsQuery;
-  const update = useUpdateNotificationPrefs();
+  const { status, start, ok, fail } = useSaveTracker();
+  const lastFailed = useRef<PrefsPatch | null>(null);
+  const update = useUpdateNotificationPrefs({
+    onStart: start,
+    onSaved: ok,
+    onFailed: (patch) => {
+      lastFailed.current = patch;
+      fail();
+    },
+  });
+  /** Người dùng tự mở/đóng dòng con (chưa chạm thì theo `isOptionsOpen`). */
+  const [manual, setManual] = useState<Record<string, boolean>>({});
 
-  const effective = data?.preferences ?? {};
+  const emailHint = (key: keyof NotificationEmailPrefs) =>
+    `${EMAIL_TYPES.find((e) => e.key === key)?.hint ?? ''}, kể cả khi tắt thông báo trong ứng dụng`;
 
   function toggle(key: string, next: boolean) {
-    update.mutate(
-      { preferences: { [key]: next } },
-      { onError: (e) => toast.error(apiErrorMessage(e)) },
-    );
-  }
-
-  function toggleEmail(key: keyof NotificationEmailPrefs, next: boolean) {
-    update.mutate({ email: { [key]: next } }, { onError: (e) => toast.error(apiErrorMessage(e)) });
+    update.mutate({ preferences: { [key]: next } });
+    if (key in EMAIL_KEY_OF_TYPE)
+      setManual((m) => {
+        const { [key]: _drop, ...rest } = m;
+        return next ? { ...m, [key]: true } : rest; // bật → mở dòng con ngay; tắt → theo suy diễn
+      });
   }
 
   return (
-    <div className="space-y-6">
-      <SectionCard icon={<Bell className="h-4 w-4" />} title="Trong ứng dụng">
-        <QueryBoundary
-          query={prefsQuery}
-          skeleton={
-            <div className="space-y-2.5">
-              {Array.from({ length: 5 }).map((_, i) => (
-                <Skeleton key={i} className="h-12 w-full" />
-              ))}
-            </div>
-          }
-        >
-          {() => (
-            <ul className="divide-y divide-border">
-              {NOTIFICATION_TYPES.map(({ key, label, hint }) => {
-                const checked = effective[key] ?? false;
-                return (
-                  <li
-                    key={key}
-                    className="flex items-center justify-between gap-4 py-3 first:pt-0 last:pb-0"
-                  >
-                    <div className="min-w-0">
-                      <label
-                        htmlFor={`notif-${key}`}
-                        className="block text-sm font-medium text-ink"
-                      >
-                        {label}
-                      </label>
-                      <p className="mt-0.5 truncate text-xs text-faint">{hint}</p>
-                    </div>
-                    <input
-                      id={`notif-${key}`}
-                      type="checkbox"
-                      checked={checked}
-                      disabled={update.isPending}
-                      onChange={(e) => toggle(key, e.target.checked)}
-                      // Giữ disabled:opacity (không dùng token vô hiệu) — checkbox native: trình duyệt tự vẽ, nền/chữ không tô lại được.
-                      className="h-4 w-4 shrink-0 cursor-pointer rounded border-border accent-[var(--primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:opacity-50"
-                    />
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </QueryBoundary>
-      </SectionCard>
-
-      <SectionCard
-        icon={<Mail className="h-4 w-4" />}
-        title="Thông báo qua email"
-        description="Các thông báo trong vòng 5 phút được gộp thành một email để hộp thư không bị ngập."
+    <SectionCard
+      icon={<Bell className="h-4 w-4" />}
+      title="Thông báo"
+      description="Bấm là lưu ngay. Các thông báo email trong vòng 5 phút được gộp thành một email để hộp thư không bị ngập."
+    >
+      <div className="sticky top-0 z-10 -mx-5 -mt-5 mb-2 flex justify-end bg-surface px-5 py-1.5">
+        <SaveStatus
+          status={status}
+          onRetry={() => {
+            if (lastFailed.current) update.mutate(lastFailed.current);
+          }}
+        />
+      </div>
+      <QueryBoundary
+        query={prefsQuery}
+        skeleton={
+          <div className="space-y-2.5">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <Skeleton key={i} className="h-12 w-full" />
+            ))}
+          </div>
+        }
       >
-        <QueryBoundary
-          query={prefsQuery}
-          skeleton={
-            <div className="space-y-2.5">
-              {Array.from({ length: 4 }).map((_, i) => (
-                <Skeleton key={i} className="h-12 w-full" />
-              ))}
-            </div>
-          }
-        >
-          {(prefs) => (
-            <ul className="divide-y divide-border">
-              {EMAIL_TYPES.map(({ key, label, hint }) => (
-                <li
-                  key={key}
-                  className="flex items-center justify-between gap-4 py-3 first:pt-0 last:pb-0"
-                >
-                  <div className="min-w-0">
-                    <label
-                      htmlFor={`notif-email-${key}`}
-                      className="block text-sm font-medium text-ink"
-                    >
-                      {label}
-                    </label>
-                    <p className="mt-0.5 truncate text-xs text-faint">{hint}</p>
-                  </div>
-                  <input
-                    id={`notif-email-${key}`}
-                    type="checkbox"
-                    checked={prefs.email[key]}
-                    disabled={update.isPending}
-                    onChange={(e) => toggleEmail(key, e.target.checked)}
-                    // Giữ disabled:opacity (không dùng token vô hiệu) — checkbox native: trình duyệt tự vẽ, nền/chữ không tô lại được.
-                    className="h-4 w-4 shrink-0 cursor-pointer rounded border-border accent-[var(--primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:opacity-50"
+        {(prefs) => (
+          <ul className="divide-y divide-border">
+            {NOTIFICATION_TYPES.map(({ key, label, hint }) => {
+              const inApp = prefs.preferences[key] ?? false;
+              const emailKey = EMAIL_KEY_OF_TYPE[key];
+              const emailOn = emailKey ? prefs.email[emailKey] : false;
+              const open = emailKey ? isOptionsOpen(manual[key], inApp, emailOn) : false;
+              const regionId = `notif-${key}-email`;
+              const eventLabelId = `notif-${key}-label`; // = id span nhãn do Switch dựng (`${id}-label`)
+              return (
+                <li key={key} className="py-3 first:pt-0 last:pb-0">
+                  <Switch
+                    id={`notif-${key}`}
+                    checked={inApp}
+                    onChange={(next) => toggle(key, next)}
+                    label={label}
+                    description={hint}
                   />
+                  {emailKey && (
+                    <>
+                      <button
+                        type="button"
+                        aria-expanded={open}
+                        aria-controls={regionId}
+                        aria-labelledby={`${regionId}-toggle ${eventLabelId}`}
+                        onClick={() => setManual((m) => ({ ...m, [key]: !open }))}
+                        className="mt-1 inline-flex items-center gap-1 rounded text-xs text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] [@media(pointer:coarse)]:min-h-11"
+                      >
+                        <ChevronDown
+                          aria-hidden="true"
+                          className={cn(
+                            'h-3.5 w-3.5 transition-transform duration-fast motion-reduce:transition-none',
+                            open && 'rotate-180',
+                          )}
+                        />
+                        <span id={`${regionId}-toggle`}>
+                          Tuỳ chọn email{emailOn ? ' · đang bật' : ''}
+                        </span>
+                      </button>
+                      <EmailOption
+                        id={regionId}
+                        eventLabelId={eventLabelId}
+                        open={open}
+                        checked={emailOn}
+                        hint={emailHint(emailKey)}
+                        onChange={(next) => {
+                          update.mutate({ email: { [emailKey]: next } });
+                          // Ghim dòng con mở: email-only bỏ tick sẽ làm `isOptionsOpen` thành false và dòng con đóng ngay dưới con trỏ.
+                          setManual((m) => ({ ...m, [key]: true }));
+                        }}
+                      />
+                    </>
+                  )}
                 </li>
-              ))}
-            </ul>
-          )}
-        </QueryBoundary>
-      </SectionCard>
-    </div>
+              );
+            })}
+          </ul>
+        )}
+      </QueryBoundary>
+    </SectionCard>
   );
 }

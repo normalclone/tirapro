@@ -4,16 +4,17 @@ import { LineChart, Link2, Pencil, Plus, Target, Trash2, X } from 'lucide-react'
 import { toast } from 'sonner';
 import { Avatar, Badge, EmptyState, Skeleton } from '@/components/ui/primitives';
 import { Button } from '@/components/ui/Button';
+import { BulletBar } from '@/components/ui/BulletBar';
 import { useConfirm } from '@/components/ui/useConfirm';
 import { Input } from '@/components/ui/Input';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { PageFrame } from '@/components/layout/PageFrame';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { apiErrorMessage } from '@/lib/api';
-import { cn } from '@/lib/utils';
 import { useAuth } from '@/stores/auth';
 import { useProjects } from '@/features/projects/api';
 import { GoalEditorModal } from './GoalEditorModal';
+import { paceTarget } from './goalPace';
 import { AttachIssuesModal } from './AttachIssuesModal';
 import {
   useDeleteGoal,
@@ -62,36 +63,6 @@ const STATUS_FILTER_OPTIONS = [
 function periodHint(period: string): string {
   const m = /^(\d{4})-Q([1-4])$/.exec(period.trim());
   return m ? `Quý ${m[2]} năm ${m[1]}` : `Kỳ ${period}`;
-}
-
-function ProgressBar({
-  value,
-  label,
-  size = 'md',
-}: {
-  value: number;
-  label: string;
-  size?: 'sm' | 'md';
-}) {
-  const pct = Math.min(100, Math.max(0, value));
-  return (
-    <div
-      className={cn(
-        'w-full overflow-hidden rounded-full bg-surface-3',
-        size === 'md' ? 'h-2' : 'h-1.5',
-      )}
-      role="progressbar"
-      aria-valuenow={pct}
-      aria-valuemin={0}
-      aria-valuemax={100}
-      aria-label={label}
-    >
-      <span
-        className="block h-full rounded-full transition-[width] duration-300 ease-out-quart"
-        style={{ width: `${pct}%`, background: pct >= 100 ? 'var(--success)' : 'var(--primary)' }}
-      />
-    </div>
-  );
 }
 
 /** Một kết quả then chốt: thanh tiến độ + ô sửa giá trị hiện tại ngay tại chỗ. */
@@ -198,7 +169,16 @@ function KeyResultRow({
         </div>
       </div>
       <div className="mt-1.5">
-        <ProgressBar value={kr.progress} label={`Tiến độ ${kr.name}`} size="sm" />
+        <BulletBar
+          value={kr.progress}
+          max={100}
+          target={paceTarget(goal.status, kr.expectedProgress)}
+          targetLabel="kỳ vọng"
+          unit="%"
+          tone={kr.progress >= 100 ? 'done' : 'primary'}
+          label={`Tiến độ ${kr.name}`}
+          showDelta={false}
+        />
       </div>
       <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5">
         <p
@@ -333,7 +313,16 @@ function GoalCard({
       <div className="px-4 pb-3.5 sm:px-5">
         <div className="flex items-center gap-3">
           <div className="min-w-0 flex-1">
-            <ProgressBar value={goal.progress} label={`Tiến độ tổng của ${goal.name}`} />
+            <BulletBar
+              size="md"
+              value={goal.progress}
+              max={100}
+              target={paceTarget(goal.status, goal.expectedProgress)}
+              targetLabel="kỳ vọng"
+              unit="%"
+              tone={goal.progress >= 100 ? 'done' : 'primary'}
+              label={`Tiến độ tổng của ${goal.name}`}
+            />
           </div>
           <span
             className="shrink-0 text-sm font-semibold tabular-nums text-ink-strong"
@@ -435,8 +424,7 @@ function GoalsSkeleton() {
 
 /** MỤC TIÊU & KẾT QUẢ THEN CHỐT (OKR) — nhóm theo kỳ, mỗi mục tiêu là một khối có tiến độ riêng. */
 export function GoalsPage() {
-  const can = useAuth((s) => s.can);
-  const canManage = can('goal:manage');
+  const canManage = useAuth((s) => s.can('goal:manage'));
 
   const [period, setPeriod] = useState('');
   const [projectId, setProjectId] = useState('');

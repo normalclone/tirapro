@@ -1,12 +1,12 @@
 import { useAuth } from '@/stores/auth';
 import { useWorkspaceOverview } from '@/features/dashboard/api';
 import { useCreatedResolved, useProjectReport } from '@/features/reports/api';
-import { cn } from '@/lib/utils';
+import { StatRow } from '@/components/ui/StatRow';
 import {
   resolvedLast14Days,
   sourceFromProjectReport,
   STAT_METRIC_META,
-  statValue,
+  statCell,
   type StatMetric,
   type StatSource,
 } from '../statMetrics';
@@ -18,7 +18,7 @@ import type { WidgetProps } from './types';
 const METRICS = Object.keys(STAT_METRIC_META) as StatMetric[];
 const isMetric = (v: unknown): v is StatMetric => METRICS.includes(v as StatMetric);
 
-/** Một con số lớn. Có `projectId` → số của dự án đó; không có → toàn workspace (cần quyền xem báo cáo). */
+/** Một chỉ số (số cỡ vừa, kiểu `StatRow`; không còn số khổng lồ). Có `projectId` → số của dự án đó; không có → toàn workspace (cần quyền xem báo cáo). */
 export function StatNumberWidget({ title, config }: WidgetProps) {
   const metric: StatMetric = isMetric(config.metric) ? config.metric : 'open';
   const projectId = cfgString(config, 'projectId');
@@ -52,7 +52,7 @@ export function StatNumberWidget({ title, config }: WidgetProps) {
     src && !waitingResolved
       ? 'ready'
       : queryWidgetState({ data: undefined, isError: active.isError, error: active.error });
-  const value = src ? statValue(metric, src) : null;
+  const cell = src ? statCell(metric, src) : null;
   const meta = STAT_METRIC_META[metric];
 
   return (
@@ -62,17 +62,11 @@ export function StatNumberWidget({ title, config }: WidgetProps) {
       error={active.error}
       onRetry={() => void active.refetch()}
     >
-      <div title={meta.hint}>
-        <p
-          className={cn(
-            'tabular text-4xl font-semibold leading-none',
-            metric === 'overdue' && value ? 'text-danger' : 'text-ink-strong',
-          )}
-        >
-          {value ?? '—'}
-        </p>
-        <p className="mt-2 text-xs text-muted">{meta.label}</p>
-      </div>
+      <StatRow
+        cols="grid-cols-1"
+        bare // đã nằm trong khung ô: không viền/đệm thứ hai
+        items={[{ ...cell, label: meta.label, value: cell?.value ?? '—', title: meta.hint }]}
+      />
     </WidgetFrame>
   );
 }

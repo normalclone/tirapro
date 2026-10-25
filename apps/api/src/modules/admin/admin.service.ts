@@ -10,7 +10,7 @@ import { generateTempPassword } from '../../common/password';
 import { AuditService } from '../audit/audit.service';
 import { ApiKeyService } from '../api-keys/api-key.service';
 import { MembersService } from '../members/members.service';
-import { SYSTEM_USER_EMAIL } from '../automation/rule-engine.service';
+import { SYSTEM_USER_EMAIL } from '../../common/system-user';
 import type {
   AddToWorkspaceInput,
   CreateUserInput,

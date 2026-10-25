@@ -21,7 +21,11 @@ describe('MembersService.addWorkspaceMany', () => {
       user: { findMany: vi.fn(() => Promise.resolve([{ id: 'u1' }, { id: 'u2' }, { id: 'u3' }])) },
       workspaceMembership: tx.workspaceMembership,
     };
-    const rbac = { invalidate: vi.fn(), invalidateWorkspace: vi.fn() };
+    const rbac = {
+      invalidate: vi.fn(),
+      invalidateWorkspace: vi.fn(),
+      holdsWorkspaceAdmin: vi.fn(() => Promise.resolve(true)),
+    };
     const audit = { record: vi.fn() };
     return {
       service: new MembersService(
@@ -86,6 +90,7 @@ describe('MembersService.removeWorkspace', () => {
     };
     const rbac = {
       invalidate: vi.fn(() => Promise.resolve()),
+      holdsWorkspaceAdmin: vi.fn(() => Promise.resolve(true)), // người gọi là quản trị (P-C14)
       assertProjectVisible: vi.fn((..._a: unknown[]) => Promise.resolve()),
     };
     const apiKeys = {
@@ -301,7 +306,7 @@ describe('MembersService — ghi nhật ký quản trị', () => {
     const events = { emit: vi.fn() };
     const svc = new MembersService(
       prisma as never,
-      { invalidate: vi.fn() } as never,
+      { invalidate: vi.fn(), holdsWorkspaceAdmin: vi.fn(() => Promise.resolve(true)) } as never,
       {} as never,
       events as never,
       audit as never,
@@ -425,7 +430,7 @@ describe('MembersService.createAccount', () => {
       },
     };
     const audit = { record: vi.fn() };
-    const rbac = { invalidate: vi.fn() };
+    const rbac = { invalidate: vi.fn(), holdsWorkspaceAdmin: vi.fn(() => Promise.resolve(true)) };
     const svc = new MembersService(
       prisma as never,
       rbac as never,
@@ -523,7 +528,11 @@ describe('MembersService — chặn tài khoản không hợp lệ (M2/M3/M4)', 
     };
     const svc = new MembersService(
       prisma as never,
-      { invalidate: vi.fn(), invalidateWorkspace: vi.fn() } as never,
+      {
+        invalidate: vi.fn(),
+        invalidateWorkspace: vi.fn(),
+        holdsWorkspaceAdmin: vi.fn(() => Promise.resolve(true)),
+      } as never,
       {} as never,
       { emit: vi.fn() } as never,
       { record: vi.fn() } as never,
@@ -637,7 +646,11 @@ function setupProject(opts: {
   const events = { emit: vi.fn() };
   const svc = new MembersService(
     prisma as never,
-    { invalidate: vi.fn(), invalidateWorkspace: vi.fn() } as never,
+    {
+      invalidate: vi.fn(),
+      invalidateWorkspace: vi.fn(),
+      holdsWorkspaceAdmin: vi.fn(() => Promise.resolve(true)),
+    } as never,
     {} as never,
     events as never,
     audit as never,
@@ -769,7 +782,7 @@ describe('MembersService — dự án riêng tư', () => {
     };
     const audit = { record: vi.fn() };
     const events = { emit: vi.fn() };
-    const rbac = { invalidate: vi.fn() };
+    const rbac = { invalidate: vi.fn(), holdsWorkspaceAdmin: vi.fn(() => Promise.resolve(true)) };
     const svc = new MembersService(
       prisma as never,
       rbac as never,
@@ -834,7 +847,7 @@ describe('MembersService.clearProjectOverride — phát sự kiện rút socket 
     const events = { emit: vi.fn() };
     const svc = new MembersService(
       prisma as never,
-      { invalidate: vi.fn() } as never,
+      { invalidate: vi.fn(), holdsWorkspaceAdmin: vi.fn(() => Promise.resolve(true)) } as never,
       {} as never,
       events as never,
       { record: vi.fn() } as never,
@@ -930,7 +943,11 @@ describe('MembersService — phát member.added SAU commit (L28)', () => {
     };
     const svc = new MembersService(
       prisma as never,
-      { invalidate: vi.fn(), invalidateWorkspace: vi.fn() } as never,
+      {
+        invalidate: vi.fn(),
+        invalidateWorkspace: vi.fn(),
+        holdsWorkspaceAdmin: vi.fn(() => Promise.resolve(true)),
+      } as never,
       {} as never,
       events as never,
       { record: vi.fn() } as never,

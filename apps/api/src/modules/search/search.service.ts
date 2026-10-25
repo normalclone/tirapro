@@ -2,15 +2,21 @@ import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import {
   parseJql,
+  andAll,
   closestMatch,
+  flattenAnd,
   foldForMatch,
   JqlParseError,
+  serializeJqlNode,
+  serializeJqlQuery,
   type IssueDto,
   type JqlFieldName,
   type JqlNode,
   type JqlValue,
 } from '@tirapro/shared';
 import { BusinessRuleException } from '../../common/exceptions/app.exception';
+import { mapLimit } from '../../common/map-limit';
+import { BOUNDED_COUNT_DEADLINE_MS, boundedIssueCount } from '../../common/bounded-count';
 import type { PageResult } from '../../common/dto/page-result';
 import { TRIAGE_VISIBLE } from '../../common/triage-visibility';
 import { PrismaService } from '../../infra/prisma/prisma.service';
@@ -66,6 +72,25 @@ const EXISTENCE_FIELDS: ReadonlySet<JqlFieldName> = new Set([
   'affectedVersion',
 ]);
 const MAX_LISTED_VALUES = 8;
+
+/** Gợi ý nới bộ lọc (092): tối đa 8 mệnh đề, 2 lần đếm đồng thời mỗi request; trần toàn tiến trình + hạn tổng ở `common/bounded-count`. */
+const RELAX_MAX_CLAUSES = 8;
+const RELAX_CONCURRENCY = 2;
+
+interface RelaxClause {
+  /** Mệnh đề AND ở gốc, viết lại từ AST (hiển thị cho người dùng). */
+  text: string;
+  /** JQL khi bỏ đúng mệnh đề này (giữ mọi mệnh đề khác — kể cả các mệnh đề quá giới hạn đếm — và ORDER BY). */
+  jqlWithout: string;
+  /** Số việc người xem thấy; `null` = đếm không kịp (quá hạn). */
+  count: number | null;
+}
+
+export interface RelaxCountsResult {
+  clauses: RelaxClause[];
+  /** Số mệnh đề vượt `RELAX_MAX_CLAUSES` nên không được đếm. */
+  remaining: number;
+}
 
 /** Thông điệp khi JQL của KR tự đo phụ thuộc người xem (không có nghĩa với lịch sử chung). */
 export const VIEWER_JQL_MESSAGE = 'JQL của KR tự đo không được dùng currentUser/me';
@@ -296,19 +321,7 @@ export class SearchService {
         const [first] = await this.findInvalidValues(workspaceId, currentUserId, ast.where);
         if (first) throw new BusinessRuleException(first.message);
       }
-      const fulltext = new Map<string, readonly string[]>();
-      const terms = collectFulltextTerms(ast.where);
-      const scopeIds = terms.length
-        ? await this.fulltextProjectScope(workspaceId, ast.where, projectId, currentUserId)
-        : undefined;
-      for (const term of terms) {
-        const res = await this.fulltext.search(
-          workspaceId,
-          term,
-          scopeIds ? { projectIds: scopeIds } : {},
-        );
-        if (res) fulltext.set(term, res.ids); // null = chưa có searchVector → compiler dùng contains
-      }
+      const fulltext = await this.fulltextMap(workspaceId, ast.where, projectId, currentUserId);
       const compiled = compileJql(ast, { currentUserId: currentUserId ?? '', fulltext });
       where = compiled.where;
       orderBy = compiled.orderBy;
@@ -319,6 +332,31 @@ export class SearchService {
       if (ids && !orderBy.length && !orderByRank) rankHint = [...ids];
     }
     return { where, orderBy, rankHint };
+  }
+
+  /**
+   * Tra full-text MỘT lần cho mọi `text ~ "…"` của truy vấn → map term → id đã xếp hạng (term không có searchVector
+   * thì vắng mặt, compiler dùng `contains`). Dùng chung cho `buildWhere` và `relaxCounts`.
+   */
+  private async fulltextMap(
+    workspaceId: string,
+    where: JqlNode | null,
+    projectId: string | undefined,
+    viewerId: string | null,
+  ): Promise<Map<string, readonly string[]>> {
+    const fulltext = new Map<string, readonly string[]>();
+    const terms = collectFulltextTerms(where);
+    if (!terms.length) return fulltext;
+    const scopeIds = await this.fulltextProjectScope(workspaceId, where, projectId, viewerId);
+    for (const term of terms) {
+      const res = await this.fulltext.search(
+        workspaceId,
+        term,
+        scopeIds ? { projectIds: scopeIds } : {},
+      );
+      if (res) fulltext.set(term, res.ids); // null = chưa có searchVector → compiler dùng contains
+    }
+    return fulltext;
   }
 
   /**
@@ -334,6 +372,60 @@ export class SearchService {
         AND: [{ workspaceId, deletedAt: null, project: { deletedAt: null, ...visible } }, where],
       },
     });
+  }
+
+  /**
+   * Gợi ý nới bộ lọc (092): với JQL không ra kết quả, đếm số việc khi bỏ TỪNG mệnh đề AND ở gốc.
+   * - Cùng điều kiện xem như `count()`: workspace + `deletedAt: null` + dự án chưa xoá + `visibleWhere` của người xem
+   *   (+ `projectId` nếu có, như `search()`), nên dự án riêng tư người đó không thấy không bao giờ nằm trong số đếm.
+   * - Tối đa `RELAX_MAX_CLAUSES` mệnh đề (phần dư → `remaining`), `RELAX_CONCURRENCY` truy vấn đồng thời mỗi request; trần
+   *   toàn tiến trình + hạn tổng (chưa kịp bắt đầu → null) + statement_timeout nằm ở `boundedIssueCount`; full-text
+   *   tra một lần. Không đếm JQL gốc: nơi gọi chỉ hỏi sau khi tìm kiếm đã trả 0 việc. Mỗi lần đếm chạy trong giao dịch riêng với `SET LOCAL statement_timeout`: quá hạn → `count: null`
+   *   cho mệnh đề đó (không làm hỏng cả cuộc gọi); lỗi khác vẫn ném.
+   * - Chỉ có ≤ 1 mệnh đề thì không có gì để nới → trả rỗng, không đếm. OR ở gốc / NOT / nhóm lồng là MỘT mệnh đề.
+   * - JQL sai cú pháp hoặc giá trị không có thật → cùng lỗi 422 như `GET /search`.
+   */
+  async relaxCounts(
+    workspaceId: string,
+    userId: string,
+    input: { jql: string; projectId?: string },
+  ): Promise<RelaxCountsResult> {
+    const ast = this.parse(input.jql);
+    const [invalid] = await this.findInvalidValues(workspaceId, userId, ast.where);
+    if (invalid) throw new BusinessRuleException(invalid.message);
+
+    const conjuncts = flattenAnd(ast.where);
+    if (conjuncts.length < 2) return { clauses: [], remaining: 0 };
+    const counted = conjuncts.slice(0, RELAX_MAX_CLAUSES);
+
+    const fulltext = await this.fulltextMap(workspaceId, ast.where, input.projectId, userId);
+    const visible = await this.access.visibleWhere(userId, workspaceId);
+    const scope: Prisma.IssueWhereInput = {
+      workspaceId,
+      deletedAt: null,
+      project: { deletedAt: null, ...visible },
+      ...(input.projectId ? { projectId: input.projectId } : {}),
+    };
+    const compile = (node: JqlNode | null): Prisma.IssueWhereInput =>
+      node
+        ? compileJql({ where: node, orderBy: [] }, { currentUserId: userId, fulltext }).where
+        : {};
+
+    const withoutNodes = counted.map((_, i) => andAll(conjuncts.filter((_c, j) => j !== i)));
+    const wheres = withoutNodes.map((node) => ({ AND: [scope, compile(node)] }));
+    const deadlineAt = Date.now() + BOUNDED_COUNT_DEADLINE_MS;
+    const results = await mapLimit(wheres, RELAX_CONCURRENCY, (where) =>
+      boundedIssueCount(this.prisma, where, deadlineAt),
+    );
+
+    return {
+      clauses: counted.map((node, i) => ({
+        text: serializeJqlNode(node),
+        jqlWithout: serializeJqlQuery({ where: withoutNodes[i]!, orderBy: ast.orderBy }),
+        count: results[i] ?? null,
+      })),
+      remaining: conjuncts.length - counted.length,
+    };
   }
 
   /** JQL có dùng `currentUser`/`me` không (JQL lỗi cú pháp → false: để `validate`/`count` báo lỗi riêng). */

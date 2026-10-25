@@ -12,11 +12,13 @@ import { CreateDialogsHost } from '@/components/layout/createActions';
 import { LeaveGuardHost } from '@/components/layout/LeaveGuardHost';
 import { UnsavedBar } from '@/components/layout/UnsavedBar';
 import { MaintenanceBanner } from '@/components/layout/MaintenanceBanner';
+import { ConnectionBanner } from '@/components/layout/ConnectionBanner';
 import { ShortcutsDialog } from '@/components/layout/ShortcutsDialog';
 import { useShellEffects } from '@/components/layout/useShellEffects';
 import { ADMIN_NAV, NAV_ITEMS } from '@/components/layout/navItems';
 import { Button } from '@/components/ui/Button';
 import { ConfirmHost } from '@/components/ui/useConfirm';
+import { IssueActionHost } from '@/features/issues/menu/IssueActionHost';
 import { useAi } from '@/stores/ai';
 import { useIsSystemAdmin, useVisibleItems } from '@/lib/navAccess';
 import { useGlobalHotkeys } from '@/lib/useGlobalHotkeys';
@@ -141,6 +143,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         </header>
         <div className="print:hidden">
           <MaintenanceBanner />
+          <ConnectionBanner />
         </div>
         {/* scrollbar-gutter:stable — nội dung căn giữa không lệch ngang giữa trang dài (có scrollbar) và trang ngắn */}
         <main className="min-h-0 flex-1 overflow-auto [scrollbar-gutter:stable] print:overflow-visible">
@@ -161,6 +164,8 @@ export function AppShell({ children }: { children: ReactNode }) {
       <ShortcutsDialog open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
       {/* Hộp xác nhận dùng chung cho useConfirm() — chỉ mount một lần. */}
       <ConfirmHost />
+      {/* Hành động ghi từ menu công việc (chuột phải / nút "…") — sống lâu hơn menu. */}
+      <IssueActionHost />
       {/* Bộ chặn rời trang duy nhất (useBlocker + beforeunload) cho mọi useLeaveGuard. */}
       <LeaveGuardHost />
     </div>

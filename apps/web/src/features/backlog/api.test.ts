@@ -9,6 +9,7 @@ import {
   bulkShortfallHint,
   postStartSprint,
   rejectionReason,
+  bulkRequestBody,
   runBulkInChunks,
   sprintReportKeys,
 } from './api';
@@ -141,5 +142,20 @@ describe('sprintReportKeys', () => {
       ['report', 'velocity', 'p1'],
       ['report', 'project', 'p1'],
     ]);
+  });
+});
+
+describe('bulkRequestBody', () => {
+  const items = [{ id: 'a', version: 1 }];
+  it('không có boardId → thân y như trước (Việc chờ không đổi)', () => {
+    expect(bulkRequestBody('p1', items, { statusId: 's' })).toEqual({
+      projectId: 'p1',
+      items,
+      patch: { statusId: 's' },
+    });
+    expect('boardId' in bulkRequestBody('p1', items, {})).toBe(false);
+  });
+  it('có boardId → gửi kèm để máy chủ kiểm WIP', () => {
+    expect(bulkRequestBody('p1', items, { statusId: 's' }, 'b1').boardId).toBe('b1');
   });
 });

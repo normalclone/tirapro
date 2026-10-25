@@ -1,12 +1,15 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { PERMISSIONS } from '@tirapro/types';
 import {
   createRuleSchema,
   listRulesQuerySchema,
+  previewMatchSchema,
   testRuleSchema,
   updateRuleSchema,
   type CreateRuleInput,
+  type PreviewMatchInput,
   type TestRuleInput,
   type UpdateRuleInput,
 } from '@tirapro/shared';
@@ -17,6 +20,7 @@ import { WorkspaceId } from '../../common/decorators/workspace-id.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import type { AuthUser } from '../../common/types/request';
 import { RuleEngineService } from './rule-engine.service';
+import { RulePreviewService } from './rule-preview.service';
 import { RulesService } from './rules.service';
 
 /**
@@ -29,6 +33,7 @@ export class RulesController {
   constructor(
     private readonly rules: RulesService,
     private readonly engine: RuleEngineService,
+    private readonly preview: RulePreviewService,
   ) {}
 
   @ProjectRef('query', 'projectId')
@@ -40,6 +45,23 @@ export class RulesController {
     @Query(new ZodValidationPipe(listRulesQuerySchema)) query: { projectId?: string },
   ) {
     return this.rules.list(workspaceId, query.projectId, user.id);
+  }
+
+  /**
+   * "Khớp N việc hiện có" cho điều kiện đang soạn (chưa lưu). Chỉ đếm trong phạm vi NGƯỜI SOẠN xem được. Mỗi lần gọi là
+   * MỘT truy vấn đếm qua semaphore chung (xem `common/bounded-count`); throttle 30/phút theo IP (tracker mặc định —
+   * `ThrottlerGuard` chạy trước `JwtAuthGuard` nên chưa có người dùng), trần kết nối thật nằm ở service.
+   */
+  @ProjectRef('body', 'projectId')
+  @Permissions(PERMISSIONS.AUTOMATION_MANAGE)
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  @Post('preview-match')
+  async previewMatch(
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
+    @Body(new ZodValidationPipe(previewMatchSchema)) dto: PreviewMatchInput,
+  ) {
+    return this.preview.previewMatch(workspaceId, user.id, dto);
   }
 
   @ProjectRef('automationRule', 'id')

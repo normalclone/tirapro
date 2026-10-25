@@ -67,6 +67,8 @@ export const ERROR_CODES = {
   ALREADY_MEMBER: 'ALREADY_MEMBER',
   /** Hạ/gỡ quản trị workspace cuối cùng — workspace sẽ không còn ai quản trị. */
   LAST_WORKSPACE_ADMIN: 'LAST_WORKSPACE_ADMIN',
+  /** 403: chỉ người đang giữ `workspace:admin` (hoặc admin hệ thống) mới cấp/gỡ quyền quản trị (P-C14). */
+  ADMIN_GRANT_REQUIRES_ADMIN: 'ADMIN_GRANT_REQUIRES_ADMIN',
   INTERNAL: 'INTERNAL',
 } as const;
 export type ErrorCode = (typeof ERROR_CODES)[keyof typeof ERROR_CODES];

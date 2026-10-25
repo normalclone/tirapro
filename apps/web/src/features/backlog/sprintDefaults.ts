@@ -11,10 +11,13 @@ export function defaultStart(now: Date): string {
   return toDayIso(format(now, 'yyyy-MM-dd'));
 }
 
-/** Ngày kết thúc gợi ý = bắt đầu + `weeks` tuần (ISO UTC 00:00 vào, ISO UTC 00:00 ra). */
+/**
+ * Ngày kết thúc gợi ý = bắt đầu + 7×`weeks` − 1 ngày (ISO UTC 00:00 vào, ISO UTC 00:00 ra): khoảng ngày được đếm cả
+ * hai đầu (`inclusiveDayCount`) nên "2 tuần" là đúng 14 ngày (20/10 → 02/11), không phải 15.
+ */
 export function suggestEnd(startISO: string, weeks: number): string {
   const d = new Date(startISO);
-  d.setUTCDate(d.getUTCDate() + weeks * 7);
+  d.setUTCDate(d.getUTCDate() + weeks * 7 - 1);
   return d.toISOString().slice(0, 10) + 'T00:00:00.000Z';
 }
 
@@ -41,9 +44,4 @@ export function startWarnings(input: StartWarningInput): string[] {
     if (unestimated > 0) out.push(`Có việc chưa ước lượng điểm: ${unestimated}.`);
   }
   return out;
-}
-
-/** Lỗi khoảng ngày của hộp Bắt đầu sprint (ngày yyyy-MM-dd; bằng nhau được phép); null khi hợp lệ hoặc còn thiếu ngày. */
-export function startRangeError(start: string, end: string): string | null {
-  return start && end && end < start ? 'Ngày kết thúc không được trước ngày bắt đầu.' : null;
 }

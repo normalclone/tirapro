@@ -188,22 +188,43 @@ export async function runBulkInChunks(
   return out;
 }
 
+/** Thân request `PATCH /issues/bulk`; `boardId` (nếu có) để máy chủ kiểm giới hạn WIP của cột đích. */
+export function bulkRequestBody(
+  projectId: string,
+  items: Array<{ id: string; version: number }>,
+  patch: BulkIssuePatch,
+  boardId?: string,
+) {
+  return { projectId, items, patch, ...(boardId ? { boardId } : {}) };
+}
+
 /**
  * Sửa hàng loạt, tuần tự theo lô ≤ 100 việc/request (`BULK_CHUNK`). Kết quả: `updated` (kèm version mới của máy chủ — dùng cho "Hoàn tác")
- * và `conflicts` (việc bị người khác sửa trước, không làm hỏng cả lô).
+ * và `conflicts` (việc bị người khác sửa trước, không làm hỏng cả lô). `opts.boardId`: gửi kèm để máy chủ kiểm WIP;
+ * `opts.invalidate`: làm mới thêm cache của nơi gọi (vd việc của bảng có bộ lọc) sau mỗi lần ghi.
  */
-export function useBulkUpdateIssues(projectId: string) {
+export function useBulkUpdateIssues(
+  projectId: string,
+  opts?: { boardId?: string; invalidate?: () => void },
+) {
   const invalidate = useInvalidateBacklog(projectId);
+  const extra = opts?.invalidate;
   return useMutation({
     // Im lặng: trang tự gom lỗi/conflict thành một toast tổng kết (khớp cơ chế `meta.silent` của MutationCache).
     meta: { silent: true },
     mutationFn: (v: { items: Array<{ id: string; version: number }>; patch: BulkIssuePatch }) =>
       runBulkInChunks(v.items, (items) =>
         api
-          .patch<BulkUpdateIssuesResult>('/issues/bulk', { projectId, items, patch: v.patch })
+          .patch<BulkUpdateIssuesResult>(
+            '/issues/bulk',
+            bulkRequestBody(projectId, items, v.patch, opts?.boardId),
+          )
           .then((r) => r.data),
       ),
-    onSettled: invalidate,
+    onSettled: () => {
+      invalidate();
+      extra?.();
+    },
   });
 }
 

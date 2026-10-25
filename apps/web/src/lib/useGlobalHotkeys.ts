@@ -13,6 +13,7 @@ import { useCreateTarget } from './useCreateTarget';
 import { SHORTCUTS_EVENT } from '@/components/layout/ShortcutsDialog';
 import { activeDrag } from './activeDrag';
 import { moveNavFocus } from './listNav';
+import { getPeekSource } from './peekRegistry';
 import { useIssuePeek } from '@/features/issues/peek/useIssuePeek';
 import { PEEK_PARAM } from '@/features/issues/peek/peekParam';
 import { requestAssign } from '@/features/quick-assign/events';
@@ -127,13 +128,22 @@ export function useGlobalHotkeys() {
           // Đang kéo bằng bàn phím (Space nhấc thẻ): phím thuộc về dnd-kit, không dời focus.
           if (shouldSkipListHotkey(key, { dragging: !!activeDrag.get(), onIssuePage: false }))
             break;
-          if (
-            moveNavFocus(key.toLowerCase() === 'j' ? 1 : -1, {
-              peekKey: new URLSearchParams(window.location.search).get(PEEK_PARAM),
-              onPeek: openPeekRef.current,
-            })
-          )
-            e.preventDefault();
+          {
+            // Thứ tự + khung danh sách của trang đang mở (cùng nguồn với nút ‹ › của panel); không có → thứ tự DOM.
+            const src = getPeekSource();
+            if (
+              moveNavFocus(
+                key.toLowerCase() === 'j' ? 1 : -1,
+                {
+                  peekKey: new URLSearchParams(window.location.search).get(PEEK_PARAM),
+                  onPeek: openPeekRef.current,
+                  order: src?.getOrder() ?? undefined,
+                },
+                src?.getRoot() ?? document,
+              )
+            )
+              e.preventDefault();
+          }
           break;
         case 'a':
         case 'A': {

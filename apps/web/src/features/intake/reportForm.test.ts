@@ -12,6 +12,7 @@ import {
   reportDialogTitle,
   reportKindLabel,
   reportTemplate,
+  validateReport,
 } from './reportForm';
 
 const form = (o: Partial<Parameters<typeof buildReportPayload>[0]> = {}) => ({
@@ -85,6 +86,36 @@ describe('buildReportPayload', () => {
     expect(buildReportPayload(form({ description: 'Dòng 1\n\nDòng 2' }))).toMatchObject({
       description: 'Dòng 1\n\nDòng 2',
     });
+  });
+});
+
+describe('validateReport', () => {
+  it('đủ dự án + tiêu đề ≥ 3 ký tự → []', () => {
+    expect(validateReport({ projectId: 'p', summary: 'abc' })).toEqual([]);
+  });
+  it('khớp canSubmitReport: [] ⇔ canSubmitReport', () => {
+    for (const f of [
+      { projectId: '', summary: 'abc' },
+      { projectId: 'p', summary: 'ab' },
+      { projectId: 'p', summary: '  abc ' },
+      { projectId: 'p', summary: '   ' },
+    ]) {
+      expect(validateReport(f).length === 0).toBe(canSubmitReport({ ...form(), ...f }));
+    }
+  });
+  it('báo đủ lỗi theo thứ tự form: dự án rồi tiêu đề', () => {
+    expect(validateReport({ projectId: '', summary: '' }).map((e) => e.field)).toEqual([
+      'project',
+      'summary',
+    ]);
+  });
+  it('tiêu đề trống và quá ngắn có câu riêng', () => {
+    expect(validateReport({ projectId: 'p', summary: ' ' })[0]?.message).toBe(
+      'Hãy nhập tiêu đề cho báo cáo.',
+    );
+    expect(validateReport({ projectId: 'p', summary: 'ab' })[0]?.message).toBe(
+      'Tiêu đề cần ít nhất 3 ký tự.',
+    );
   });
 });
 

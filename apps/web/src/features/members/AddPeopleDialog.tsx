@@ -10,6 +10,9 @@ import { Dialog } from '@/components/ui/Dialog';
 import { Input } from '@/components/ui/Input';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { RoleMultiSelect } from '@/components/ui/RoleMultiSelect';
+import { useAuth } from '@/stores/auth';
+import { frozenAdminRoles } from './adminGrant';
+import { adminRoleIds } from './roleChange';
 import { useRoles } from '@/features/roles/api';
 import { useTeams } from '@/features/teams/api';
 import { cn } from '@/lib/utils';
@@ -61,6 +64,9 @@ export function AddPeopleDialog({
   const { data: projMembers } = useProjectMembers(isProject ? projectId : undefined);
   const { data: teams } = useTeams();
   const { data: roles } = useRoles(isProject ? 'PROJECT' : 'WORKSPACE');
+  // P-C14: người không phải quản trị không gán được vai trò mang `workspace:admin` (máy chủ trả 403).
+  const canGrantAdmin = useAuth((s) => s.can('workspace:admin'));
+  const frozen = frozenAdminRoles(canGrantAdmin, adminRoleIds(roles ?? []));
   const addWs = useAddMembersBulk();
   const addProj = useAddProjectMembersBulk(projectId ?? '');
 
@@ -81,7 +87,9 @@ export function AddPeopleDialog({
     const def = (roles ?? []).find((r) =>
       (isProject ? /developer|lập trình/i : /member|thành viên/i).test(r.name),
     );
-    setRoleIds(def ? [def.id] : roles?.[0] ? [roles[0].id] : []);
+    const firstFree = (roles ?? []).find((r) => !frozen[r.id]); // không chọn sẵn vai trò đang bị khoá
+    setRoleIds(def && !frozen[def.id] ? [def.id] : firstFree ? [firstFree.id] : []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `frozen` suy ra từ roles + quyền; chỉ đặt lại khi mở hộp/đổi danh mục
   }, [open, roles, isProject]);
 
   const candidates = useMemo<Cand[]>(() => {
@@ -212,7 +220,12 @@ export function AddPeopleDialog({
             Vai trò khi thêm:
           </label>
           <div className="min-w-[14rem] flex-1">
-            <RoleMultiSelect options={roleOptions} value={roleIds} onChange={setRoleIds} />
+            <RoleMultiSelect
+              options={roleOptions}
+              value={roleIds}
+              onChange={setRoleIds}
+              frozen={frozen}
+            />
           </div>
           <Button variant="ghost" onClick={onClose}>
             Huỷ

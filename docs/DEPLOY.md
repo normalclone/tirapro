@@ -37,6 +37,7 @@ git clone https://github.com/normalclone/tirapro.git && cd tirapro
 cp .env.example .env            # sửa secret JWT, CORS_ORIGIN = domain web, DATABASE_URL/REDIS_URL
 corepack enable && pnpm install
 docker compose up -d postgres redis          # hạ tầng
+pnpm --filter @tirapro/types build
 pnpm --filter @tirapro/shared build
 pnpm --filter @tirapro/api exec prisma generate
 pnpm --filter @tirapro/api build
@@ -63,7 +64,7 @@ Build/Start/env giống cột trong `render.yaml`. Đặt `DATABASE_URL/DIRECT_U
 
 | Biến | Cho | Ghi chú |
 |---|---|---|
-| `DATABASE_URL`, `DIRECT_URL` | API | Postgres (pgvector). DIRECT_URL cho migrate. |
+| `DATABASE_URL`, `DIRECT_URL` | API | Postgres (pgvector). DIRECT_URL cho migrate. **Nên đặt `connection_limit` tường minh trong `DATABASE_URL`** (khuyến nghị `&connection_limit=10`): thiếu thì Prisma dùng `num_cpus*2+1` (1 vCPU = 3 kết nối) và `render.yaml` lấy chuỗi kết nối của DB quản lý, vốn KHÔNG có tham số này. API tự tính số lần đếm xem trước đồng thời (`common/bounded-count.ts`) = clamp(⌊pool/3⌋, 1, 3), nên pool 3 chỉ nhường 1 chỗ, pool ≥ 9 nhường 3. |
 | `REDIS_URL` | API | realtime/cache; thiếu vẫn chạy REST (degrade). |
 | `PORT` | API | PaaS tự cấp; local dùng `API_PORT` (4000). |
 | `CORS_ORIGIN` | API | = URL web (phân tách bằng dấu phẩy nếu nhiều). |

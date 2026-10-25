@@ -14,12 +14,14 @@ export * from './schemas/sprint';
 export * from './schemas/project';
 export * from './schemas/worklog.schema';
 export * from './schemas/automation-rule.schema';
+export * from './schemas/saved-filter';
 
 // Realtime + JQL + utils
 export * from './ws';
 export * from './jql';
 export * from './jql-parser';
 export * from './jql-builder';
+export * from './jql-serialize';
 export * from './did-you-mean';
 export * from './jql-suggest';
 export * from './issue-key';

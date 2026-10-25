@@ -23,15 +23,8 @@ import {
   type ReportAssignee,
   type ReportSlice,
 } from './api';
-import {
-  AXIS_PROPS,
-  Card,
-  ChartSkeleton,
-  LEGEND_STYLE,
-  StatStrip,
-  TOOLTIP_STYLE,
-  type StatItem,
-} from './charts';
+import { AXIS_PROPS, Card, ChartSkeleton, LEGEND_STYLE, TOOLTIP_STYLE } from './charts';
+import { StatRow, type StatItem } from '@/components/ui/StatRow';
 import { STATUS_CATEGORY_LABEL } from '@/lib/terms';
 import { ScrollX } from '@/components/ui/ScrollX';
 
@@ -158,6 +151,7 @@ function SummaryStats({
   totals: ProjectReportTotals;
   completionRate: number;
 }) {
+  const open = Math.max(totals.total - totals.done, 0);
   const items: StatItem[] = [
     { label: 'Tổng công việc', value: totals.total },
     { label: STATUS_CATEGORY_LABEL.TODO, value: totals.todo },
@@ -166,16 +160,28 @@ function SummaryStats({
     {
       label: 'Quá hạn',
       value: totals.overdue,
-      tone: 'danger',
+      tone: totals.overdue > 0 ? 'danger' : undefined,
       highlight: totals.overdue > 0,
+      sub: open > 0 ? `trên ${open} việc chưa xong` : undefined,
+      bullet:
+        open > 0 ? { value: totals.overdue, max: open, tone: 'danger', unit: 'việc' } : undefined,
     },
     { label: 'Story points', value: totals.points },
-    { label: 'Hoàn tất', value: `${completionRate}%`, tone: 'done' },
+    {
+      label: 'Hoàn tất',
+      value: `${completionRate}%`,
+      tone: 'done',
+      sub: `${totals.done}/${totals.total} việc`,
+      bullet:
+        totals.total > 0
+          ? { value: totals.done, max: totals.total, tone: 'done', unit: 'việc' }
+          : undefined,
+    },
   ];
   return (
-    <StatStrip
+    <StatRow
       items={items}
-      className="sm:grid-cols-4 xl:grid-cols-7 max-sm:[&>:last-child:nth-child(odd)]:col-span-2"
+      cols="sm:grid-cols-4 xl:grid-cols-7 max-sm:[&>:last-child:nth-child(odd)]:col-span-2"
     />
   );
 }

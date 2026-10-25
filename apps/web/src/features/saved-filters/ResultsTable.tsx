@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState, type KeyboardEvent, type MouseEvent } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import * as Popover from '@radix-ui/react-popover';
 import { ChevronLeft, ChevronRight, Columns3, Filter as FilterIcon, SearchX } from 'lucide-react';
 import type { IssueDto } from '@tirapro/types';
@@ -9,50 +9,47 @@ import { SeverityBadge } from '@/components/ui/SeverityBadge';
 import { Avatar, EmptyState, Skeleton } from '@/components/ui/primitives';
 import { ExportMenu } from '@/components/ui/ExportMenu';
 import { exportIssuesCsvWithToast } from '@/features/export/api';
-import { openOnClick, openOnRowKey } from '@/lib/rowOpen';
+import { IssueKeyLink } from '@/features/issues/peek/IssueKeyLink';
+import {
+  PEEKED_ROW_CLS,
+  PEEKED_TABLE_ROW_CLS,
+  peekedAttrs,
+} from '@/features/issues/peek/peekedRow';
+import { rowPeekProps } from '@/features/issues/peek/rowPeekProps';
+import { IssueContextMenu, IssueRowMenuButton } from '@/features/issues/menu/IssueContextMenu';
+import { SelectCheckbox } from '@/features/bulk/SelectCheckbox';
+import { handleShiftRangeClick } from '@/features/bulk/selectGesture';
 import { categoryColor } from '@/lib/statusColor';
 import { useMediaQuery } from '@/lib/useMediaQuery';
-import { resultCountLabel } from './resultPaging';
+import { RESULTS_PAGE_SIZE, resultCountLabel } from './resultPaging';
 import { cn } from '@/lib/utils';
-import { useAuth } from '@/stores/auth';
-import {
-  RESULT_COLUMNS,
-  cellText,
-  loadColumns,
-  saveColumns,
-  type ResultColumnId,
-} from './resultColumns';
+import { ColumnHeader } from './ColumnHeader';
+import { RESULT_COLUMNS, cellText, isDefaultColumns, type ResultColumnId } from './resultColumns';
+import { useResultColumns } from './useResultColumns';
+import { RelaxSuggestions } from './RelaxSuggestions';
 
-const RESULTS_PAGE_SIZE = 25;
-
-/**
- * Cột đang chọn của người dùng (nhớ trong localStorage theo `userId`). `columns` luôn có `key` + `summary`.
- * L2 (Xuất CSV) dùng chính hook này + `cellText`/`RESULT_COLUMNS` để xuất đúng cột đang xem.
- */
-function useResultColumns(): {
-  columns: ResultColumnId[];
-  toggle: (id: ResultColumnId) => void;
-} {
-  const userId = useAuth((s) => s.user?.id ?? 'anonymous');
-  const [state, setState] = useState(() => ({ userId, columns: loadColumns(userId) }));
-  // Đổi người dùng (đăng xuất/đăng nhập tài khoản khác) → nạp lại cột của người đó.
-  const current = state.userId === userId ? state : { userId, columns: loadColumns(userId) };
-  if (current !== state) setState(current);
-
-  const toggle = useCallback(
-    (id: ResultColumnId) => {
-      const def = RESULT_COLUMNS.find((c) => c.id === id);
-      if (!def || def.locked) return;
-      const has = current.columns.includes(id);
-      const next = RESULT_COLUMNS.filter((c) =>
-        c.id === id ? !has : current.columns.includes(c.id),
-      ).map((c) => c.id);
-      saveColumns(userId, next);
-      setState({ userId, columns: next });
-    },
-    [current.columns, userId],
+/** Đã chạy, không lỗi, không có việc nào: câu giải thích + (≥ 2 điều kiện) các gợi ý "Bỏ <điều kiện> → N việc" (092). */
+function NoResults({ jql, onApplyJql }: { jql?: string; onApplyJql?: (jql: string) => void }) {
+  return (
+    <EmptyState
+      icon={<SearchX className="h-8 w-8" aria-hidden />}
+      title="Không có công việc nào khớp"
+      description="Bộ lọc hiện tại quá hẹp. Thử bớt điều kiện hoặc nới rộng khoảng giá trị rồi tìm lại."
+      action={
+        jql && onApplyJql ? <RelaxSuggestions jql={jql} onApplyJql={onApplyJql} /> : undefined
+      }
+    />
   );
-  return { columns: current.columns, toggle };
+}
+
+/** Chọn nhiều cho bảng kết quả (trạng thái nằm ở trang; `useBulkSelection`). */
+export interface RowSelection {
+  selected: ReadonlySet<string>;
+  onToggle: (id: string) => void;
+  /** Shift+click: chọn dải theo thứ tự các dòng đã nạp. */
+  onRange: (id: string) => void;
+  /** Chọn/bỏ chọn cả trang đang hiện. */
+  onTogglePage: (ids: string[], on: boolean) => void;
 }
 
 export function ResultsTable({
@@ -64,10 +61,15 @@ export function ResultsTable({
   onPageChange,
   projectKeyById,
   onOpen,
+  peekedKey = null,
   exportJql,
   hasMore = false,
   loadingMore = false,
   onLoadMore,
+  scopeKey = 'adhoc',
+  selection,
+  jql,
+  onApplyJql,
 }: {
   issues: IssueDto[] | null;
   loading: boolean;
@@ -77,15 +79,27 @@ export function ResultsTable({
   page: number;
   onPageChange: (p: number) => void;
   projectKeyById: Map<string, string>;
+  /** Bấm dòng/mã → xem nhanh ở panel phải (Cmd/Ctrl+bấm, chuột giữa → trang đầy đủ ở tab mới). */
   onOpen: (key: string) => void;
+  /** Khoá việc đang xem nhanh → dòng/thẻ đó được tô + `aria-current`. */
+  peekedKey?: string | null;
   /** JQL của kết quả đang xem; có thì hiện nút Xuất CSV (tải ĐỦ mọi dòng ở máy chủ, theo cột đang chọn). */
   exportJql?: string;
   /** Máy chủ còn kết quả sau phần đã nạp: nhãn đếm không ghi như tổng, có nút "Tải thêm" + gợi ý Xuất CSV. */
   hasMore?: boolean;
   loadingMore?: boolean;
   onLoadMore?: () => void;
+  /** Phạm vi nhớ bố cục cột: `adhoc` (JQL nhanh) hoặc `filter:<id>` (bộ lọc đã lưu). */
+  scopeKey?: string;
+  /** Chọn nhiều (hàng loạt): ô chọn ở đầu mỗi dòng/thẻ + ô "chọn tất cả trên trang". Không truyền = không chọn nhiều. */
+  selection?: RowSelection;
+  /** JQL của kết quả đang xem. Cùng `onApplyJql`: khi không có kết quả, gợi ý "Bỏ <điều kiện> → N việc" (092). */
+  jql?: string;
+  /** Nạp JQL đã bỏ bớt điều kiện vào ô JQL và chạy luôn. */
+  onApplyJql?: (jql: string) => void;
 }) {
-  const { columns, toggle } = useResultColumns();
+  const cols = useResultColumns(scopeKey);
+  const { columns } = cols;
   const wide = useMediaQuery('(min-width: 640px)', true);
   const ctx = useMemo(() => ({ projectKeyById }), [projectKeyById]);
 
@@ -111,15 +125,7 @@ export function ResultsTable({
 
   if (error && !issues) return null;
 
-  if (!issues || issues.length === 0) {
-    return (
-      <EmptyState
-        icon={<SearchX className="h-8 w-8" aria-hidden />}
-        title="Không có công việc nào khớp"
-        description="Bộ lọc hiện tại quá hẹp. Thử bớt điều kiện hoặc nới rộng khoảng giá trị rồi tìm lại."
-      />
-    );
-  }
+  if (!issues || issues.length === 0) return <NoResults jql={jql} onApplyJql={onApplyJql} />;
 
   const total = issues.length;
   const totalPages = Math.max(1, Math.ceil(total / RESULTS_PAGE_SIZE));
@@ -129,6 +135,9 @@ export function ResultsTable({
 
   return (
     <div className="flex flex-col rounded-lg border border-border bg-surface">
+      <p className="sr-only" role="status">
+        {cols.announce}
+      </p>
       <ResultsToolbar
         countLabel={resultCountLabel(total, hasMore)}
         range={
@@ -137,46 +146,31 @@ export function ResultsTable({
         hasMore={hasMore}
         wide={wide}
         columns={columns}
-        onToggleColumn={toggle}
+        onToggleColumn={cols.toggle}
+        onResetColumns={cols.reset}
         exportJql={exportJql}
       />
 
       {wide ? (
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-max border-collapse text-sm">
-            <thead>
-              <tr className="border-b border-border text-left text-xs font-medium text-muted">
-                {columns.map((id) => (
-                  <th
-                    key={id}
-                    scope="col"
-                    className={cn(
-                      'whitespace-nowrap px-3 py-2 first:pl-4 last:pr-4',
-                      id === 'points' && 'text-right',
-                    )}
-                  >
-                    {RESULT_COLUMNS.find((c) => c.id === id)!.label}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {pageItems.map((issue) => (
-                <ResultRow
-                  key={issue.id}
-                  issue={issue}
-                  columns={columns}
-                  ctx={ctx}
-                  onOpen={onOpen}
-                />
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <ResultsGrid
+          columns={columns}
+          cols={cols}
+          pageItems={pageItems}
+          ctx={ctx}
+          onOpen={onOpen}
+          peekedKey={peekedKey}
+          selection={selection}
+        />
       ) : (
         <ul className="divide-y divide-border">
           {pageItems.map((issue) => (
-            <ResultCard key={issue.id} issue={issue} onOpen={onOpen} />
+            <ResultCard
+              key={issue.id}
+              issue={issue}
+              onOpen={onOpen}
+              peeked={peekedKey === issue.key}
+              selection={selection}
+            />
           ))}
         </ul>
       )}
@@ -217,6 +211,102 @@ export function ResultsTable({
   );
 }
 
+/** Bảng kết quả (màn rộng): tiêu đề cột là nút mở menu sửa cột; cuộn ngang khi quá rộng. */
+function ResultsGrid({
+  columns,
+  cols,
+  pageItems,
+  ctx,
+  onOpen,
+  peekedKey,
+  selection,
+}: {
+  columns: ResultColumnId[];
+  cols: ReturnType<typeof useResultColumns>;
+  pageItems: IssueDto[];
+  ctx: { projectKeyById: Map<string, string> };
+  onOpen: (key: string) => void;
+  peekedKey: string | null;
+  selection?: RowSelection;
+}) {
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full min-w-max border-collapse text-sm">
+        <thead ref={cols.theadRef}>
+          <tr className="border-b border-border text-left text-xs font-medium text-muted">
+            {selection && <SelectAllHeader pageItems={pageItems} selection={selection} />}
+            {columns.map((id) => (
+              <th
+                key={id}
+                scope="col"
+                className={cn(
+                  'whitespace-nowrap px-3 py-2 first:pl-4 last:pr-4',
+                  id === 'points' && 'text-right',
+                )}
+              >
+                <ColumnHeader
+                  id={id}
+                  columns={columns}
+                  onMove={cols.move}
+                  onHide={cols.hide}
+                  onShow={cols.show}
+                />
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-border">
+          {pageItems.map((issue) => (
+            <ResultRow
+              key={issue.id}
+              issue={issue}
+              columns={columns}
+              ctx={ctx}
+              onOpen={onOpen}
+              peeked={peekedKey === issue.key}
+              selection={selection}
+            />
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/** Ô "chọn tất cả trên trang" ở đầu bảng; trạng thái lưng chừng (indeterminate) khi chỉ chọn một phần của trang. */
+function SelectAllHeader({
+  pageItems,
+  selection,
+}: {
+  pageItems: IssueDto[];
+  selection: RowSelection;
+}) {
+  const ref = useRef<HTMLInputElement>(null);
+  const n = pageItems.filter((i) => selection.selected.has(i.id)).length;
+  const all = n > 0 && n === pageItems.length;
+  useEffect(() => {
+    if (ref.current) ref.current.indeterminate = n > 0 && !all;
+  }, [n, all]);
+  return (
+    <th scope="col" className="w-10 py-2 pl-4 pr-0" data-no-peek>
+      <input
+        ref={ref}
+        type="checkbox"
+        checked={all}
+        onChange={() =>
+          selection.onTogglePage(
+            pageItems.map((i) => i.id),
+            !all,
+          )
+        }
+        aria-label="Chọn tất cả trên trang"
+        title="Chọn tất cả việc trên trang này"
+        className="h-4 w-4 cursor-pointer accent-[var(--primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] [@media(pointer:coarse)]:h-5 [@media(pointer:coarse)]:w-5"
+      />
+    </th>
+  );
+}
+
 /** Thanh đầu bảng kết quả: nhãn đếm (không ghi số bị cắt như tổng), chọn cột, xuất CSV, gợi ý khi còn nữa. */
 function ResultsToolbar({
   countLabel,
@@ -225,6 +315,7 @@ function ResultsToolbar({
   wide,
   columns,
   onToggleColumn,
+  onResetColumns,
   exportJql,
 }: {
   countLabel: string;
@@ -233,6 +324,7 @@ function ResultsToolbar({
   wide: boolean;
   columns: ResultColumnId[];
   onToggleColumn: (id: ResultColumnId) => void;
+  onResetColumns: () => void;
   exportJql?: string;
 }) {
   return (
@@ -244,7 +336,9 @@ function ResultsToolbar({
             {countLabel}
             {range}
           </span>
-          {wide && <ColumnPicker columns={columns} onToggle={onToggleColumn} />}
+          {wide && (
+            <ColumnPicker columns={columns} onToggle={onToggleColumn} onReset={onResetColumns} />
+          )}
           {exportJql && (
             <ExportMenu
               items={[
@@ -277,9 +371,11 @@ function ResultsToolbar({
 function ColumnPicker({
   columns,
   onToggle,
+  onReset,
 }: {
   columns: ResultColumnId[];
   onToggle: (id: ResultColumnId) => void;
+  onReset: () => void;
 }) {
   return (
     <Popover.Root>
@@ -318,6 +414,16 @@ function ColumnPicker({
               </li>
             ))}
           </ul>
+          <div className="mt-1 border-t border-border pt-1">
+            <button
+              type="button"
+              onClick={onReset}
+              disabled={isDefaultColumns(columns)}
+              className="w-full rounded-md px-2 py-1.5 text-left text-sm text-ink hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:cursor-not-allowed disabled:text-faint disabled:hover:bg-transparent [@media(pointer:coarse)]:min-h-11"
+            >
+              Đặt lại mặc định
+            </button>
+          </div>
         </Popover.Content>
       </Popover.Portal>
     </Popover.Root>
@@ -351,15 +457,22 @@ function Cell({
   issue,
   col,
   ctx,
+  onPeek,
 }: {
   issue: IssueDto;
   col: ResultColumnId;
   ctx: { projectKeyById: Map<string, string> };
+  onPeek: (key: string) => void;
 }) {
   const text = cellText(issue, col, ctx);
   switch (col) {
     case 'key':
-      return <span className="font-mono text-xs font-medium text-muted">{text}</span>;
+      // Link thật: bấm = xem nhanh, Cmd/Ctrl+bấm / chuột giữa = trang đầy đủ ở tab mới (chuột phải → "Mở trong tab mới").
+      return (
+        <IssueKeyLink issueKey={issue.key} onPeek={onPeek} className="font-medium">
+          {text}
+        </IssueKeyLink>
+      );
     case 'summary':
       return <span className="block max-w-[32rem] truncate text-ink-strong">{text}</span>;
     case 'type':
@@ -402,53 +515,138 @@ function ResultRow({
   columns,
   ctx,
   onOpen,
+  peeked,
+  selection,
 }: {
   issue: IssueDto;
   columns: ResultColumnId[];
   ctx: { projectKeyById: Map<string, string> };
   onOpen: (key: string) => void;
+  peeked: boolean;
+  selection?: RowSelection;
 }) {
+  const checked = selection?.selected.has(issue.id) ?? false;
+  const anySelected = (selection?.selected.size ?? 0) > 0;
   return (
-    <tr
-      tabIndex={0}
-      data-nav-item
-      data-issue-key={issue.key}
-      aria-roledescription="dòng việc"
-      onClick={(e: MouseEvent<HTMLTableRowElement>) => void openOnClick(e, issue.key, onOpen)}
-      onKeyDown={(e: KeyboardEvent<HTMLTableRowElement>) =>
-        void openOnRowKey(e, { key: issue.key, open: onOpen })
-      }
-      className="cursor-pointer transition-colors hover:bg-surface-2 focus-visible:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--ring)]"
-    >
-      {columns.map((col) => (
-        <td key={col} className="whitespace-nowrap px-3 py-2.5 first:pl-4 last:pr-4">
-          <Cell issue={issue} col={col} ctx={ctx} />
-        </td>
-      ))}
-    </tr>
+    <IssueContextMenu issue={issue} surface="filters" onPeek={onOpen}>
+      <tr
+        tabIndex={0}
+        data-nav-item
+        data-issue-key={issue.key}
+        aria-roledescription="dòng việc"
+        data-selected={checked ? '' : undefined}
+        {...peekedAttrs(peeked)}
+        {...rowPeekProps(issue.key, onOpen)}
+        // Shift+click thân dòng / link mã = chọn dải (như thẻ Bảng việc); Cmd/Ctrl+click vẫn mở tab mới, click thường mở xem nhanh.
+        onClickCapture={(e) => {
+          if (selection) handleShiftRangeClick(e, () => selection.onRange(issue.id));
+        }}
+        onMouseDownCapture={(e) => {
+          // Shift+nhấn không bôi đen chữ của dòng.
+          if (
+            selection &&
+            e.shiftKey &&
+            !(e.target as Element).closest('[data-no-peek], button, input')
+          )
+            e.preventDefault();
+        }}
+        className={cn(
+          'group/row cursor-pointer transition-colors focus-visible:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--ring)]',
+          // Đang xem: nền token KHÔNG đổi khi rê chuột (hover thường sẽ đè lên và dòng đang xem biến mất).
+          peeked
+            ? PEEKED_TABLE_ROW_CLS
+            : checked
+              ? 'bg-primary-subtle hover:bg-primary-subtle'
+              : 'hover:bg-surface-2',
+        )}
+      >
+        {selection && (
+          <td className="w-10 py-2.5 pl-4 pr-0" data-no-peek>
+            <SelectCheckbox
+              placement="inline"
+              issueKey={issue.key}
+              checked={checked}
+              alwaysVisible={anySelected}
+              onToggle={() => selection.onToggle(issue.id)}
+              onRange={() => selection.onRange(issue.id)}
+            />
+          </td>
+        )}
+        {columns.map((col) => (
+          <td key={col} className="whitespace-nowrap px-3 py-2.5 first:pl-4 last:pr-4">
+            {col === 'key' ? (
+              // Mã + nút "…" (menu công việc): nút chỉ hiện khi rê/focus dòng, luôn hiện trên cảm ứng.
+              <span className="inline-flex items-center gap-1">
+                <Cell issue={issue} col={col} ctx={ctx} onPeek={onOpen} />
+                <IssueRowMenuButton issue={issue} surface="filters" onPeek={onOpen} />
+              </span>
+            ) : (
+              <Cell issue={issue} col={col} ctx={ctx} onPeek={onOpen} />
+            )}
+          </td>
+        ))}
+      </tr>
+    </IssueContextMenu>
   );
 }
 
 /** Dạng thẻ cho điện thoại: mã + tiêu đề, kèm hai chip trạng thái / người được giao — không cuộn ngang. */
-function ResultCard({ issue, onOpen }: { issue: IssueDto; onOpen: (key: string) => void }) {
+function ResultCard({
+  issue,
+  onOpen,
+  peeked,
+  selection,
+}: {
+  issue: IssueDto;
+  onOpen: (key: string) => void;
+  peeked: boolean;
+  selection?: RowSelection;
+}) {
+  const checked = selection?.selected.has(issue.id) ?? false;
   return (
-    <li>
-      <button
-        type="button"
-        data-nav-item
-        data-issue-key={issue.key}
-        onClick={() => onOpen(issue.key)}
-        className="flex w-full flex-col gap-1.5 px-4 py-3 text-left transition-colors hover:bg-surface-2 focus-visible:bg-surface-2 focus-visible:outline-none"
+    <IssueContextMenu issue={issue} surface="filters" onPeek={onOpen}>
+      <li
+        className={cn('group/row relative', checked && 'bg-primary-subtle')}
+        data-selected={checked ? '' : undefined}
       >
-        <span className="flex items-baseline gap-2">
-          <span className="shrink-0 font-mono text-xs font-medium text-muted">{issue.key}</span>
-          <span className="min-w-0 flex-1 truncate text-sm text-ink-strong">{issue.summary}</span>
+        {selection && (
+          // Điện thoại: ô chọn luôn hiện (vùng bấm 44px), nằm cạnh nút thẻ chứ không lồng trong nó.
+          <span className="absolute left-3 top-3.5 z-10">
+            <SelectCheckbox
+              placement="inline"
+              issueKey={issue.key}
+              checked={checked}
+              alwaysVisible
+              onToggle={() => selection.onToggle(issue.id)}
+              onRange={() => selection.onRange(issue.id)}
+            />
+          </span>
+        )}
+        <span className="absolute right-2 top-2 z-10">
+          <IssueRowMenuButton issue={issue} surface="filters" onPeek={onOpen} />
         </span>
-        <span className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
-          <StatusCell issue={issue} />
-          {issue.assignee ? <PersonCell person={issue.assignee} /> : null}
-        </span>
-      </button>
-    </li>
+        <button
+          type="button"
+          data-nav-item
+          data-issue-key={issue.key}
+          {...peekedAttrs(peeked)}
+          {...rowPeekProps(issue.key, onOpen)}
+          className={cn(
+            'flex w-full flex-col gap-1.5 py-3 pr-12 text-left transition-colors hover:bg-surface-2 focus-visible:bg-surface-2 focus-visible:outline-none',
+            selection ? 'pl-11' : 'pl-4',
+            peeked && PEEKED_ROW_CLS,
+          )}
+        >
+          <span className="flex items-baseline gap-2">
+            <span className="shrink-0 font-mono text-xs font-medium text-muted">{issue.key}</span>
+            <span className="min-w-0 flex-1 truncate text-sm text-ink-strong">{issue.summary}</span>
+          </span>
+          <span className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
+            <StatusCell issue={issue} />
+            {issue.assignee ? <PersonCell person={issue.assignee} /> : null}
+          </span>
+        </button>
+      </li>
+    </IssueContextMenu>
   );
 }

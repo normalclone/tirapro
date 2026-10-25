@@ -1,7 +1,11 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
-import { z } from 'zod';
-import { FilterVisibility } from '@tirapro/shared';
+import {
+  savedFilterCreateSchema,
+  savedFilterUpdateSchema,
+  type SavedFilterCreateInput,
+  type SavedFilterUpdateInput,
+} from '@tirapro/shared';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { WorkspaceId } from '../../common/decorators/workspace-id.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
@@ -10,26 +14,8 @@ import { SavedFiltersService } from './saved-filters.service';
 import { Permissions } from '../../common/decorators/permissions.decorator';
 import { PERMISSIONS } from '@tirapro/types';
 
-const visibilitySchema = z.nativeEnum(FilterVisibility);
-
-const createSavedFilterSchema = z.object({
-  name: z.string().min(1, 'Tên bắt buộc').max(120),
-  jql: z.string().min(1, 'JQL bắt buộc').max(10_000),
-  visibility: visibilitySchema.optional(),
-  sharedProjectId: z.string().min(1).optional().nullable(),
-});
-
-const updateSavedFilterSchema = z
-  .object({
-    name: z.string().min(1).max(120).optional(),
-    jql: z.string().min(1).max(10_000).optional(),
-    visibility: visibilitySchema.optional(),
-    sharedProjectId: z.string().min(1).optional().nullable(),
-  })
-  .refine((v) => Object.keys(v).length > 0, { message: 'Cần ít nhất một trường để cập nhật' });
-
-export type CreateSavedFilterBody = z.infer<typeof createSavedFilterSchema>;
-export type UpdateSavedFilterBody = z.infer<typeof updateSavedFilterSchema>;
+export type CreateSavedFilterBody = SavedFilterCreateInput;
+export type UpdateSavedFilterBody = SavedFilterUpdateInput;
 
 @ApiTags('saved-filters')
 @Controller('filters')
@@ -47,7 +33,7 @@ export class SavedFiltersController {
   async create(
     @WorkspaceId() workspaceId: string,
     @CurrentUser() user: AuthUser,
-    @Body(new ZodValidationPipe(createSavedFilterSchema)) body: CreateSavedFilterBody,
+    @Body(new ZodValidationPipe(savedFilterCreateSchema)) body: CreateSavedFilterBody,
   ) {
     return this.filters.create(workspaceId, user.id, body);
   }
@@ -58,7 +44,7 @@ export class SavedFiltersController {
     @WorkspaceId() workspaceId: string,
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
-    @Body(new ZodValidationPipe(updateSavedFilterSchema)) body: UpdateSavedFilterBody,
+    @Body(new ZodValidationPipe(savedFilterUpdateSchema)) body: UpdateSavedFilterBody,
   ) {
     return this.filters.update(workspaceId, user.id, id, body);
   }

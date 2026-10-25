@@ -19,8 +19,9 @@ describe('SegmentedControl dùng chung', () => {
     const src = control();
     expect(src).toMatch(/ariaDescribedby\?: string/);
     expect(src).toMatch(/ariaInvalid\?: boolean/);
-    expect(src).toMatch(/aria-describedby=\{ariaDescribedby\}/);
-    expect(src).toMatch(/aria-invalid=\{ariaInvalid \? true : undefined\}/);
+    expect(src).toMatch(/aria-describedby=\{attrs\.describedBy\}/);
+    expect(src).toMatch(/aria-invalid=\{isInvalid \? true : undefined\}/);
+    expect(src).toMatch(/invalidAttrs\(invalid, id \?\? autoId, ariaDescribedby\)/);
   });
   it('chỉ phát onChange khi chọn mục khác (qua shouldEmitChange)', () => {
     const src = control();

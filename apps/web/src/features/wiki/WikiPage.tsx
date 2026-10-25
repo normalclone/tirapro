@@ -20,6 +20,7 @@ import {
   X,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useCopyToClipboard } from '@/lib/useCopyToClipboard';
 import { setTaskChecked } from '@tirapro/shared';
 import { Button } from '@/components/ui/Button';
 import { useConfirm } from '@/components/ui/useConfirm';
@@ -1113,13 +1114,9 @@ function EditIssueBanner({
 }) {
   const [showLatest, setShowLatest] = useState(false);
 
-  async function copyMine() {
-    try {
-      await navigator.clipboard.writeText(draftBody);
-      toast.success('Đã sao chép nội dung của bạn');
-    } catch {
-      toast.error('Không sao chép được — hãy bôi đen nội dung trong ô rồi sao chép thủ công');
-    }
+  const { copy } = useCopyToClipboard();
+  function copyMine() {
+    void copy(draftBody, 'Đã sao chép nội dung của bạn');
   }
 
   return (

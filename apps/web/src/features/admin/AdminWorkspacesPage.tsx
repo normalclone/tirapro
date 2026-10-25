@@ -150,7 +150,10 @@ export function AdminWorkspacesPage() {
                 <th className="px-4 py-2.5 font-medium">Không gian làm việc</th>
                 <th className="px-4 py-2.5 font-medium">Chủ sở hữu</th>
                 <th className="px-4 py-2.5 font-medium">Gói</th>
-                <th className="px-4 py-2.5 text-right font-medium">
+                <th
+                  className="px-4 py-2.5 text-right font-medium"
+                  title="Thành viên tính người đang hoạt động (không gồm tài khoản đã vô hiệu hoá)"
+                >
                   Thành viên · Dự án · Công việc
                 </th>
                 <th className="px-4 py-2.5 font-medium">Hoạt động</th>

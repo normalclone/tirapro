@@ -12,6 +12,7 @@ import { PageHeader } from '@/components/layout/PageHeader';
 import { useProjects } from '@/features/projects/api';
 import { useTeams } from '@/features/teams/api';
 import { apiErrorCode, apiErrorMessage } from '@/lib/api';
+import { dashboardUrl } from '@/lib/copyText';
 import { useLeaveGuard } from '@/lib/useLeaveGuard';
 import { isOverlayOpen, isTypingTarget, shouldLeaveEditorOnEscape } from '@/lib/hotkeys';
 import { useSaveDashboard } from './api';
@@ -153,6 +154,21 @@ function useEditorHotkeys({
     return () => window.removeEventListener('keydown', onKey);
   }, [draggingRef]);
 }
+
+/** Liên kết sao chép của hộp chia sẻ: chỉ khi bảng đã lưu (có id); `saved` = mức chia sẻ đang lưu thật. */
+function shareLinkOf(
+  dashboard: CustomDashboardDto | null,
+  saved: ShareValue,
+): { url: string; saved: ShareValue } | undefined {
+  if (!dashboard) return undefined;
+  return { url: dashboardUrl(dashboard.id), saved: pickShare(saved) };
+}
+
+const pickShare = (d: ShareValue): ShareValue => ({
+  scope: d.scope,
+  projectId: d.projectId,
+  teamId: d.teamId,
+});
 
 /** Tên dự án (mã) / nhóm đang được chọn để chia sẻ — hiện cạnh nhãn mức trên thanh công cụ. */
 function shareTargetName(
@@ -331,11 +347,7 @@ export function DashboardEditor({
     removeToastsRef.current.add(toastId);
   }
 
-  const share: ShareValue = {
-    scope: draft.scope,
-    projectId: draft.projectId,
-    teamId: draft.teamId,
-  };
+  const share = pickShare(draft);
   const shareName = shareTargetName(draft, projects, teams);
   const configWidget = widgets.find((w) => w.id === configId) ?? null;
 
@@ -406,6 +418,7 @@ export function DashboardEditor({
         onOpenChange={setShareOpen}
         value={share}
         onApply={(v) => setDraft((d) => ({ ...d, ...v }))}
+        link={shareLinkOf(dashboard, saved)}
       />
       <WidgetConfigDialog
         widget={configWidget}

@@ -1,17 +1,35 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent, type ComponentProps } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+  type FormEvent,
+  type ComponentProps,
+} from 'react';
 import { DocsLink } from '@/components/ui/DocsLink';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import type { UseQueryResult } from '@tanstack/react-query';
-import { Bookmark, ChevronDown, Filter as FilterIcon, Play, Plus, Trash2 } from 'lucide-react';
+import {
+  Bookmark,
+  ChevronDown,
+  Filter as FilterIcon,
+  Play,
+  Plus,
+  Share2,
+  Trash2,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import type { IssueDto } from '@tirapro/types';
-import { Button } from '@/components/ui/Button';
+import { Button, buttonVariants } from '@/components/ui/Button';
 import { useOpenSession } from '@/lib/useOpenSession';
 import { Dialog } from '@/components/ui/Dialog';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { useConfirm } from '@/components/ui/useConfirm';
 import { Input } from '@/components/ui/Input';
 import { Badge, EmptyState, Skeleton } from '@/components/ui/primitives';
+import { StatusPanel } from '@/components/ui/StatusPanel';
 import { PageFrame } from '@/components/layout/PageFrame';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { RailLayout } from '@/components/layout/RailLayout';
@@ -21,8 +39,21 @@ import { useProjects } from '@/features/projects/api';
 import { useAuth } from '@/stores/auth';
 import { JqlEditor } from './JqlEditor';
 import { ResultsTable } from './ResultsTable';
-import { appendResults, type ResultSet } from './resultPaging';
+import { FiltersBulkDock } from './FiltersBulkDock';
+import { useBulkSelection } from '@/features/bulk/useBulkSelection';
+import { PeekShell } from '@/features/issues/peek/PeekShell';
+import { useIssuePeek } from '@/features/issues/peek/useIssuePeek';
+import type { PeekOrder } from '@/features/issues/peek/PeekOrderContext';
+import {
+  appendResults,
+  initialPaging,
+  pageOfIndex,
+  pagingReducer,
+  type ResultSet,
+} from './resultPaging';
 import { QueryBuilder } from './QueryBuilder';
+import { FilterShareDialog } from './FilterShareDialog';
+import { effectiveVisibility, resolveRouteFilter } from './filterShare';
 import {
   useCreateFilter,
   useDeleteFilter,
@@ -36,14 +67,23 @@ import {
   type SavedFilter,
 } from './api';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
+import {
+  applyOverlay,
+  clearIssueOverlay,
+  useIssueOverlayStore,
+} from '@/features/issues/menu/issueOverlay';
 
 type BuilderMode = 'simple' | 'jql';
 
 const VISIBILITY_LABEL: Record<FilterVisibility, string> = {
   PRIVATE: 'Riêng tư',
-  WORKSPACE: 'Cả tổ chức',
+  WORKSPACE: 'Cả không gian làm việc',
   PROJECT: 'Dự án',
 };
+
+/** Nút thao tác ở cuối hàng bộ lọc: hiện khi rê/focus; trên màn cảm ứng (không có rê) luôn hiện và đủ lớn để chạm. */
+const ROW_ACTION_CLS =
+  'h-7 w-7 shrink-0 text-muted opacity-0 transition-opacity motion-reduce:transition-none focus-visible:opacity-100 group-hover:opacity-100 [@media(pointer:coarse)]:h-9 [@media(pointer:coarse)]:w-9 [@media(pointer:coarse)]:opacity-100';
 
 const PLACEHOLDER = 'project = DEMO AND status = "In Progress" ORDER BY created DESC';
 
@@ -72,7 +112,7 @@ async function saveWithToast(
 
 // eslint-disable-next-line max-lines-per-function -- U17/U18 dựng cả bộ lọc + bảng kết quả trong một trang (173 dòng); tách trang là việc riêng
 export function FiltersPage() {
-  const navigate = useNavigate();
+  const peek = useIssuePeek();
   const { data: projects } = useProjects();
   const canManageFilters = useAuth((s) => s.can('filter:manage'));
 
@@ -81,13 +121,17 @@ export function FiltersPage() {
   // Các trang đã nạp THÊM sau trang đầu ("Tải thêm"); đổi nguồn/chạy lại thì bỏ.
   const [more, setMore] = useState<ResultSet | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [page, setPage] = useState(1);
   const [createOpen, setCreateOpen] = useState(false);
   const [railOpen, setRailOpen] = useState(false);
   // JQL đổ sẵn vào hộp "Tạo bộ lọc" (nút "Lưu truy vấn" cạnh "Chạy JQL"); '' = mở hộp trống.
   const [createInitialJql, setCreateInitialJql] = useState('');
   const [searchParams] = useSearchParams();
   const urlJql = searchParams.get('jql')?.trim() ?? '';
+  // `/filters/:id` — liên kết tới một bộ lọc đã lưu (nút "Sao chép liên kết" của hộp chia sẻ): nạp và chạy bộ lọc đó.
+  const { id: routeId } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  // Bộ lọc đang mở hộp "Chia sẻ" (null = đóng).
+  const [shareTarget, setShareTarget] = useState<SavedFilter | null>(null);
 
   // Ô nhập JQL nhanh (ad-hoc) trong khu nội dung.
   const [jqlDraft, setJqlDraft] = useState('');
@@ -99,6 +143,8 @@ export function FiltersPage() {
   const deleteFilter = useDeleteFilter();
   const confirm = useConfirm();
   const runFilter = useRunFilter();
+  const routeFilter = resolveRouteFilter(savedFilters, routeId);
+  const appliedRouteId = useRef<string | null>(null);
 
   // Bản đồ projectId -> projectKey để điều hướng về bảng của issue.
   const projectKeyById = useMemo(() => {
@@ -109,6 +155,11 @@ export function FiltersPage() {
 
   // Kết quả ad-hoc lấy trực tiếp từ query; kết quả bộ lọc đã lưu giữ trong state.
   const baseResults = active.kind === 'adhoc' ? (adhoc.data ?? null) : results;
+  const [paging, dispatchPaging] = useReducer(pagingReducer, undefined, () =>
+    initialPaging(active, baseResults),
+  );
+  const page = paging.page;
+  const setPage = useCallback((p: number) => dispatchPaging({ type: 'go', page: p }), []);
   // Đổi bộ lọc/chạy lại trong lúc đang "Tải thêm": trang về trễ của nguồn cũ bị bỏ (so `loadSeq`).
   const loadSeq = useRef(0);
   useEffect(() => {
@@ -116,13 +167,45 @@ export function FiltersPage() {
     setMore(null);
     setLoadingMore(false);
   }, [baseResults]);
-  const shownSet = baseResults ? (more ? appendResults(baseResults, more) : baseResults) : null;
-  const shownResults: IssueDto[] | null = shownSet?.items ?? null;
-
-  // Đổi nguồn kết quả → về trang 1.
+  // Memo: `appendResults` dựng đối tượng mới mỗi lần gọi → không memo thì `shownResults` đổi tham chiếu MỖI lần vẽ.
+  const shownSet = useMemo(
+    () => (baseResults ? (more ? appendResults(baseResults, more) : baseResults) : null),
+    [baseResults, more],
+  );
+  // Thay đổi từ menu công việc (đổi trạng thái/ưu tiên/người, xoá) phủ lên danh sách ĐANG HIỆN mà không refetch: `baseResults`
+  // và `more` giữ nguyên → không về trang 1, không mất các trang "Tải thêm". Đổi nguồn thì bỏ lớp phủ.
+  const overlay = useIssueOverlayStore((s) => s.entries);
+  const shownResults: IssueDto[] | null = useMemo(
+    () => applyOverlay(shownSet?.items ?? null, overlay),
+    [shownSet, overlay],
+  );
   useEffect(() => {
-    setPage(1);
-  }, [active, shownResults]);
+    clearIssueOverlay();
+    return clearIssueOverlay;
+  }, [active]);
+
+  // Chọn nhiều (hàng loạt): thứ tự = các dòng đã nạp (Shift+click chọn dải qua cả trang). Dòng biến mất khỏi kết quả (xoá,
+  // chạy lại, đổi nguồn) thì bỏ khỏi lựa chọn.
+  const resultOrder = useMemo(() => (shownResults ?? []).map((i) => i.id), [shownResults]);
+  const sel = useBulkSelection(resultOrder);
+  const pruneSelection = sel.prune;
+  useEffect(() => {
+    pruneSelection(new Set(resultOrder));
+  }, [pruneSelection, resultOrder]);
+  const selectionProps = useMemo(
+    () => ({
+      selected: sel.selected,
+      onToggle: sel.toggle,
+      onRange: sel.range,
+      onTogglePage: sel.setMany,
+    }),
+    [sel.selected, sel.toggle, sel.range, sel.setMany],
+  );
+
+  // Đổi nguồn hoặc kết quả GỐC (chạy lại) → về trang 1. KHÔNG theo `shownResults`: "Tải thêm" nối vào đó và phải giữ trang.
+  useEffect(() => {
+    dispatchPaging({ type: 'sync', active, base: baseResults });
+  }, [active, baseResults]);
 
   // `?jql=…` trên URL (vd "Xem tất cả" từ trang chủ) → điền vào ô và chạy ngay; chỉ áp lại khi tham số đổi.
   useEffect(() => {
@@ -166,16 +249,60 @@ export function FiltersPage() {
     }
   }
 
+  // Đường dẫn có :id → nạp & chạy bộ lọc đó MỘT lần cho mỗi id (đổi id thì nạp lại; bỏ id thì quên để lần sau còn nạp).
+  const loadAndRunSavedRef = useRef(loadAndRunSaved);
+  loadAndRunSavedRef.current = loadAndRunSaved;
+  const routeFound = routeFilter.state === 'found' ? routeFilter.filter : null;
+  useEffect(() => {
+    if (!routeId) {
+      appliedRouteId.current = null;
+      return;
+    }
+    if (!routeFound || appliedRouteId.current === routeFound.id) return;
+    appliedRouteId.current = routeFound.id;
+    void loadAndRunSavedRef.current(routeFound);
+  }, [routeId, routeFound]);
+
+  // Đường dẫn đổi sang id KHÔNG thấy: bỏ kết quả đang hiện (của bộ lọc/JQL khác) — không để kết quả sai nằm dưới URL sai.
+  const routeMissing = routeFilter.state === 'missing';
+  useEffect(() => {
+    if (!routeMissing) return;
+    appliedRouteId.current = null;
+    setActive({ kind: 'none' });
+    setResults(null);
+    setAdhocJql('');
+  }, [routeMissing, routeId]);
+
+  /** Địa chỉ trên thanh trình duyệt luôn khớp nội dung: rời bộ lọc của đường dẫn (chạy JQL khác/xoá) thì bỏ `:id`. */
+  function leaveRouteFilter() {
+    if (routeId) navigate('/filters', { replace: true });
+  }
+
+  function selectSaved(f: SavedFilter) {
+    if (routeId === f.id || (!routeId && active.kind === 'filter' && active.filter.id === f.id)) {
+      void loadAndRunSaved(f); // cùng bộ lọc: chạy lại
+    } else {
+      navigate(`/filters/${f.id}`, { replace: true }); // effect ở trên nạp & chạy
+    }
+  }
+
   function runAdhoc() {
     const jql = jqlDraft.trim();
     if (!jql) return;
+    leaveRouteFilter();
     setResults(null);
     setActive({ kind: 'adhoc', jql });
     setAdhocJql(jql);
   }
 
-  function openIssue(key: string) {
-    navigate(`/issue/${key}`);
+  /** Gợi ý "Bỏ <điều kiện> → N việc": nạp JQL đã bỏ bớt vào ô JQL rồi chạy luôn, đưa con trỏ về ô để chỉnh tiếp. */
+  function applyJql(jql: string) {
+    leaveRouteFilter();
+    setJqlDraft(jql);
+    setResults(null);
+    setActive({ kind: 'adhoc', jql });
+    setAdhocJql(jql);
+    requestAnimationFrame(() => document.getElementById('adhoc-jql')?.focus());
   }
 
   async function handleDelete(f: SavedFilter) {
@@ -183,6 +310,7 @@ export function FiltersPage() {
     try {
       await deleteFilter.mutateAsync(f.id);
       toast.success('Đã xoá bộ lọc.');
+      if (routeId === f.id) leaveRouteFilter();
       if (active.kind === 'filter' && active.filter.id === f.id) {
         setActive({ kind: 'none' });
         setResults(null);
@@ -192,9 +320,33 @@ export function FiltersPage() {
     }
   }
 
+  // Thứ tự THẬT cho panel xem nhanh: mọi dòng đã nạp (không chỉ trang 25 dòng đang hiện) → "n/N+" đúng với phần đã nạp, ‹ › bước
+  // qua cả trang khác (reveal = sang trang chứa dòng đó) và nạp thêm ở cuối khi máy chủ còn kết quả. Hàm đọc state qua ref.
+  const peekKeys = useMemo(() => (shownResults ?? []).map((i) => i.key), [shownResults]);
+  const peekKeysRef = useRef(peekKeys);
+  peekKeysRef.current = peekKeys;
+  const loadMoreRef = useRef(loadMore);
+  loadMoreRef.current = loadMore;
+  const hasMore = shownSet?.hasMore ?? false;
+  const peekOrder = useMemo<PeekOrder>(
+    () => ({
+      keys: peekKeys,
+      hasMore,
+      loadMore: hasMore ? () => void loadMoreRef.current() : undefined,
+      loadingMore,
+      reveal: (key) => {
+        const i = peekKeysRef.current.indexOf(key);
+        if (i >= 0) setPage(pageOfIndex(i));
+      },
+    }),
+    [peekKeys, hasMore, loadingMore, setPage],
+  );
+
   const isRunning = active.kind === 'adhoc' ? adhoc.isFetching : runFilter.isPending;
   const runError = active.kind === 'adhoc' && adhoc.error ? apiErrorMessage(adhoc.error) : null;
   const hasRun = active.kind !== 'none';
+  const sourceJql =
+    active.kind === 'adhoc' ? active.jql : active.kind === 'filter' ? active.filter.jql : undefined;
 
   const activeFilterId = active.kind === 'filter' ? active.filter.id : null;
   const heading =
@@ -205,129 +357,167 @@ export function FiltersPage() {
         : 'Bộ lọc';
 
   return (
-    <RailLayout
-      ariaLabel="Bộ lọc đã lưu"
-      rail={
-        <>
-          <p className="px-2 pb-1 text-xs font-medium text-muted max-lg:hidden">Bộ lọc đã lưu</p>
-          {/* < lg: rail thu thành một nút (mặc định đóng) để thấy ô JQL ngay; mở ra xổ danh sách tại chỗ. */}
-          <button
-            type="button"
-            onClick={() => setRailOpen((v) => !v)}
-            aria-expanded={railOpen}
-            aria-controls="saved-filters-body"
-            className="flex min-h-9 w-full items-center gap-1.5 rounded-md px-1 text-left text-sm font-medium text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] lg:hidden"
-          >
-            <Bookmark className="h-4 w-4 text-faint" aria-hidden />
-            <span>
-              Bộ lọc đã lưu
-              {savedFilters.data ? ` (${savedFilters.data.length})` : ''}
-            </span>
-            <ChevronDown
-              className={cn(
-                'ml-auto h-4 w-4 text-faint transition-transform',
-                railOpen && 'rotate-180',
-              )}
-              aria-hidden
-            />
-          </button>
+    <PeekShell order={peekOrder}>
+      <RailLayout
+        ariaLabel="Bộ lọc đã lưu"
+        rail={
+          <>
+            <p className="px-2 pb-1 text-xs font-medium text-muted max-lg:hidden">Bộ lọc đã lưu</p>
+            {/* < lg: rail thu thành một nút (mặc định đóng) để thấy ô JQL ngay; mở ra xổ danh sách tại chỗ. */}
+            <button
+              type="button"
+              onClick={() => setRailOpen((v) => !v)}
+              aria-expanded={railOpen}
+              aria-controls="saved-filters-body"
+              className="flex min-h-9 w-full items-center gap-1.5 rounded-md px-1 text-left text-sm font-medium text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] lg:hidden"
+            >
+              <Bookmark className="h-4 w-4 text-faint" aria-hidden />
+              <span>
+                Bộ lọc đã lưu
+                {savedFilters.data ? ` (${savedFilters.data.length})` : ''}
+              </span>
+              <ChevronDown
+                className={cn(
+                  'ml-auto h-4 w-4 text-faint transition-transform',
+                  railOpen && 'rotate-180',
+                )}
+                aria-hidden
+              />
+            </button>
 
-          <div
-            id="saved-filters-body"
-            className={cn('flex flex-col gap-2', !railOpen && 'max-lg:hidden')}
-          >
-            <SavedFilterList
-              query={savedFilters}
-              activeId={activeFilterId}
-              onSelect={(f) => {
-                setRailOpen(false);
-                void loadAndRunSaved(f);
-              }}
-              onDelete={handleDelete}
-              canManage={canManageFilters}
-              deleting={deleteFilter.isPending ? deleteFilter.variables : undefined}
-            />
-          </div>
-        </>
-      }
-    >
-      {/* Nội dung: JQL nhanh + kết quả có phân trang */}
-      <PageFrame size="lg" className="flex flex-col gap-5">
-        <PageHeader
-          className="mb-0"
-          title={heading}
-          description={
-            <>
-              Chọn một bộ lọc đã lưu để xem kết quả, hoặc chạy nhanh một truy vấn JQL.{' '}
-              <DocsLink anchor="tim-kiem" />
-            </>
-          }
-          actions={
-            canManageFilters ? (
-              <Button
-                size="sm"
-                onClick={() => {
-                  setCreateInitialJql('');
-                  setCreateOpen(true);
+            <div
+              id="saved-filters-body"
+              className={cn('flex flex-col gap-2', !railOpen && 'max-lg:hidden')}
+            >
+              <SavedFilterList
+                query={savedFilters}
+                activeId={activeFilterId}
+                onSelect={(f) => {
+                  setRailOpen(false);
+                  selectSaved(f);
                 }}
-              >
-                <Plus className="h-4 w-4" aria-hidden />
-                Tạo bộ lọc
-              </Button>
-            ) : undefined
-          }
-        />
+                onShare={setShareTarget}
+                onDelete={handleDelete}
+                canManage={canManageFilters}
+                deleting={deleteFilter.isPending ? deleteFilter.variables : undefined}
+              />
+            </div>
+          </>
+        }
+      >
+        {/* Nội dung: JQL nhanh + kết quả có phân trang */}
+        <PageFrame size="lg" className="flex flex-col gap-5">
+          <PageHeader
+            className="mb-0"
+            title={heading}
+            description={
+              <>
+                Chọn một bộ lọc đã lưu để xem kết quả, hoặc chạy nhanh một truy vấn JQL.{' '}
+                <DocsLink anchor="tim-kiem" />
+              </>
+            }
+            actions={
+              canManageFilters ? (
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    setCreateInitialJql('');
+                    setCreateOpen(true);
+                  }}
+                >
+                  <Plus className="h-4 w-4" aria-hidden />
+                  Tạo bộ lọc
+                </Button>
+              ) : undefined
+            }
+          />
 
-        <AdhocBar
-          value={jqlDraft}
-          onChange={setJqlDraft}
-          onRun={runAdhoc}
-          running={active.kind === 'adhoc' && isRunning}
-          error={runError}
-          onSave={
-            canManageFilters
-              ? () => {
-                  setCreateInitialJql(jqlDraft.trim());
-                  setCreateOpen(true);
-                }
-              : undefined
-          }
-        />
-
-        <ResultsTable
-          issues={shownResults}
-          loading={isRunning}
-          hasRun={hasRun}
-          error={runError}
-          page={page}
-          onPageChange={setPage}
-          projectKeyById={projectKeyById}
-          onOpen={openIssue}
-          hasMore={shownSet?.hasMore ?? false}
-          loadingMore={loadingMore}
-          onLoadMore={() => void loadMore()}
-          exportJql={
-            active.kind === 'adhoc'
-              ? active.jql
-              : active.kind === 'filter'
-                ? active.filter.jql
+          <AdhocBar
+            value={jqlDraft}
+            onChange={setJqlDraft}
+            onRun={runAdhoc}
+            running={active.kind === 'adhoc' && isRunning}
+            error={runError}
+            onSave={
+              canManageFilters
+                ? () => {
+                    setCreateInitialJql(jqlDraft.trim());
+                    setCreateOpen(true);
+                  }
                 : undefined
-          }
-        />
-      </PageFrame>
+            }
+          />
 
-      {canManageFilters && (
-        <CreateFilterModal
-          open={createOpen}
-          onClose={() => setCreateOpen(false)}
-          initialJql={createInitialJql}
-          saving={createFilter.isPending}
-          onSave={(name, jql, visibility) =>
-            saveWithToast(createFilter.mutateAsync, name, jql, visibility)
-          }
+          {routeFilter.state === 'missing' && active.kind === 'none' ? (
+            <StatusPanel
+              variant="not-found"
+              headingLevel={2}
+              title="Không tìm thấy bộ lọc"
+              description="Bộ lọc này không tồn tại hoặc bạn không có quyền xem."
+              actions={
+                <Link to="/filters" replace className={buttonVariants({ variant: 'primary' })}>
+                  Xem các bộ lọc khác
+                </Link>
+              }
+            />
+          ) : (
+            <ResultsTable
+              issues={shownResults}
+              loading={isRunning}
+              hasRun={hasRun}
+              error={runError}
+              page={page}
+              onPageChange={setPage}
+              projectKeyById={projectKeyById}
+              onOpen={peek.open}
+              peekedKey={peek.peekKey}
+              hasMore={shownSet?.hasMore ?? false}
+              loadingMore={loadingMore}
+              onLoadMore={() => void loadMore()}
+              scopeKey={active.kind === 'filter' ? `filter:${active.filter.id}` : 'adhoc'}
+              selection={selectionProps}
+              jql={sourceJql}
+              onApplyJql={applyJql}
+              exportJql={
+                active.kind === 'adhoc'
+                  ? active.jql
+                  : active.kind === 'filter'
+                    ? active.filter.jql
+                    : undefined
+              }
+            />
+          )}
+        </PageFrame>
+
+        {sel.selected.size > 0 && (
+          <FiltersBulkDock
+            issues={shownResults}
+            selected={sel.selected}
+            onClear={sel.clear}
+            onRetain={sel.prune}
+            projectKeyById={projectKeyById}
+          />
+        )}
+
+        <FilterShareDialog
+          filter={shareTarget}
+          canManage={canManageFilters}
+          onClose={() => setShareTarget(null)}
         />
-      )}
-    </RailLayout>
+
+        {canManageFilters && (
+          <CreateFilterModal
+            open={createOpen}
+            onClose={() => setCreateOpen(false)}
+            initialJql={createInitialJql}
+            saving={createFilter.isPending}
+            onSave={(name, jql, visibility) =>
+              saveWithToast(createFilter.mutateAsync, name, jql, visibility)
+            }
+          />
+        )}
+      </RailLayout>
+    </PeekShell>
   );
 }
 
@@ -403,6 +593,7 @@ function SavedFilterList({
   query,
   activeId,
   onSelect,
+  onShare,
   onDelete,
   canManage,
   deleting,
@@ -410,6 +601,7 @@ function SavedFilterList({
   query: UseQueryResult<SavedFilter[]>;
   activeId: string | null;
   onSelect: (f: SavedFilter) => void;
+  onShare: (f: SavedFilter) => void;
   onDelete: (f: SavedFilter) => void;
   canManage: boolean;
   deleting: string | undefined;
@@ -461,10 +653,19 @@ function SavedFilterList({
                     </span>
                     <span className="mt-1 flex items-center gap-2">
                       <Badge className="bg-surface-2 text-muted">
-                        {VISIBILITY_LABEL[f.visibility]}
+                        {VISIBILITY_LABEL[effectiveVisibility(f)]}
                       </Badge>
                     </span>
                   </button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => onShare(f)}
+                    aria-label={`Chia sẻ bộ lọc ${f.name}`}
+                    className={cn(ROW_ACTION_CLS, 'hover:text-ink')}
+                  >
+                    <Share2 className="h-4 w-4" aria-hidden />
+                  </Button>
                   {f.isOwner && canManage && (
                     <Button
                       variant="ghost"
@@ -472,7 +673,7 @@ function SavedFilterList({
                       onClick={() => onDelete(f)}
                       loading={deleting === f.id}
                       aria-label={`Xoá bộ lọc ${f.name}`}
-                      className="h-7 w-7 shrink-0 text-muted opacity-0 transition-opacity hover:text-danger focus-visible:opacity-100 group-hover:opacity-100"
+                      className={cn(ROW_ACTION_CLS, 'hover:text-danger')}
                     >
                       {deleting !== f.id && <Trash2 className="h-4 w-4" aria-hidden />}
                     </Button>
@@ -612,7 +813,6 @@ function CreateFilterModalInner({
               options={[
                 { value: 'PRIVATE', label: VISIBILITY_LABEL.PRIVATE },
                 { value: 'WORKSPACE', label: VISIBILITY_LABEL.WORKSPACE },
-                { value: 'PROJECT', label: VISIBILITY_LABEL.PROJECT },
               ]}
             />
           </div>

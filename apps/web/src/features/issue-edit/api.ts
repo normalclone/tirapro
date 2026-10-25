@@ -1,8 +1,11 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import type { CommentDto, IssueDto } from '@tirapro/types';
-import { api } from '@/lib/api';
+import { toast } from 'sonner';
+import type { CommentDto, CommentReactionDto, IssueDto } from '@tirapro/types';
+import { api, apiErrorMessage } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
+import { useAuth } from '@/stores/auth';
 import { useRecents } from '@/stores/recentIssues';
+import { reactionMutationOptions, type ReactionVars } from './commentReactionSave';
 
 /**
  * Xoá mềm một issue. Thành công thì tự gỡ khỏi cache (danh sách dự án + chi tiết theo mã) —
@@ -61,5 +64,39 @@ export function useDeleteComment(issueId: string) {
   return useMutation({
     mutationFn: (id: string) => api.delete(`/comments/${id}`),
     onSuccess: () => qc.invalidateQueries({ queryKey: keys.issues.comments(issueId) }),
+  });
+}
+
+/**
+ * Thả/bỏ cảm xúc vào bình luận — PUT/DELETE (đặt trạng thái, idempotent), cập nhật lạc quan + hoàn tác về bản máy chủ xác nhận
+ * (`reactionMutationOptions`). Toast lỗi ở ĐÂY (callback cấp hook, không phải `mutate(…, { onError })` vốn mất khi huỷ/unmount);
+ * `meta.silent` để toast chung của MutationCache không báo đôi.
+ */
+export function useReactToComment(issueId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    meta: { silent: true },
+    ...reactionMutationOptions(
+      qc,
+      issueId,
+      () => {
+        const u = useAuth.getState().user;
+        return u ? { id: u.id, displayName: u.displayName } : null;
+      },
+      async (v: ReactionVars) => {
+        const url = `/comments/${v.commentId}/reactions/${encodeURIComponent(v.emoji)}`;
+        const res = v.on
+          ? await api.put<CommentReactionDto[]>(url)
+          : await api.delete<CommentReactionDto[]>(url);
+        return res.data;
+      },
+      () => ({
+        onFailed: (e, v) =>
+          toast.error(
+            `Chưa ${v.on ? 'thả' : 'bỏ'} được cảm xúc ${v.emoji}: ${apiErrorMessage(e)}`,
+            { id: 'comment-reaction-error' },
+          ),
+      }),
+    ),
   });
 }

@@ -118,6 +118,7 @@ export function WorkflowSettingsPage() {
         ? 'Mẫu chỉ dùng để tham khảo; dự án đã tạo không bị ảnh hưởng. Hành động này không thể hoàn tác.'
         : 'Quy trình và các trạng thái, chuyển tiếp của nó sẽ bị xoá. Hành động này không thể hoàn tác.',
       destructive: true,
+      requireText: wf.name,
     });
     if (!ok) return;
     deleteWorkflow.mutate(wf.id, {

@@ -1,5 +1,8 @@
+import type { Prisma } from '@prisma/client';
 import type { IssueDto } from '@tirapro/types';
 import type { RuleCondition } from '@tirapro/shared';
+import { foldCase, isPgFoldSafe } from '../../common/case-fold';
+import { insensitiveContains } from '../../common/like';
 
 export type FieldCondition = Extract<RuleCondition, { field: string }>;
 export type JqlCondition = Extract<RuleCondition, { jql: string }>;
@@ -76,8 +79,165 @@ export function evalFieldCondition(issue: IssueDto, c: FieldCondition): boolean 
     case 'contains': {
       if (arr) return asList(wanted).some((w) => (actual as unknown[]).some((x) => same(x, w)));
       if (typeof actual !== 'string' || typeof wanted !== 'string') return false;
-      return actual.toLowerCase().includes(wanted.toLowerCase());
+      return foldCase(actual).includes(foldCase(wanted));
     }
+  }
+}
+
+/* ------------------------------------------------------------------------------------------------ */
+/* Cùng điều kiện, dịch sang `where` Prisma — cho "xem trước số việc khớp" (chạy ở DB thay vì từng issue)  */
+/* ------------------------------------------------------------------------------------------------ */
+
+type IssueWhere = Prisma.IssueWhereInput;
+type Prim = string | number | boolean;
+const isPrim = (v: unknown): v is Prim => ['string', 'number', 'boolean'].includes(typeof v);
+
+/**
+ * Không issue nào khớp. KHÔNG dùng `OR: []`: Prisma chỉ coi nó là tập rỗng khi nằm ở cấp cao nhất, còn trong `AND: [...]`
+ * (đúng chỗ dịch vụ xem trước đặt nó) thì BỎ QUA → trả MỌI hàng (đo trên Postgres thật, RC20). `id IN ()` luôn là FALSE.
+ */
+const NEVER: IssueWhere = { id: { in: [] } };
+/** Mọi issue khớp. */
+const ALWAYS: IssueWhere = {};
+
+interface Col {
+  kind: 'string' | 'number' | 'date';
+  column: string;
+  nullable: boolean;
+}
+const COLUMNS: Record<Exclude<FieldCondition['field'], 'labelIds'>, Col> = {
+  statusId: { kind: 'string', column: 'statusId', nullable: false },
+  priorityId: { kind: 'string', column: 'priorityId', nullable: true },
+  assigneeId: { kind: 'string', column: 'assigneeId', nullable: true },
+  reporterId: { kind: 'string', column: 'reporterId', nullable: true },
+  typeId: { kind: 'string', column: 'typeId', nullable: false },
+  sprintId: { kind: 'string', column: 'sprintId', nullable: true },
+  resolutionId: { kind: 'string', column: 'resolutionId', nullable: true },
+  storyPoints: { kind: 'number', column: 'storyPoints', nullable: true },
+  summary: { kind: 'string', column: 'summary', nullable: false },
+  dueDate: { kind: 'date', column: 'dueDate', nullable: true },
+};
+
+/** Một giá trị cần so của cột đơn: NULL, hoặc một giá trị đã quy về dạng của cột. */
+type Atom =
+  | { kind: 'null' }
+  | { kind: 'value'; v: string | number }
+  | { kind: 'day'; from: Date; to: Date };
+
+/** Ngày dạng `YYYY-MM-DD` hợp lệ → khoảng [00:00, +1 ngày) UTC — engine so 10 ký tự đầu của ISO UTC. */
+function dayRange(s: string): { from: Date; to: Date } | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
+  const from = new Date(`${s}T00:00:00.000Z`);
+  if (Number.isNaN(from.getTime()) || from.toISOString().slice(0, 10) !== s) return null;
+  return { from, to: new Date(from.getTime() + 86_400_000) };
+}
+
+/**
+ * Giá trị người dùng nhập → cái mà `same(actual, w)` của engine có thể khớp ở cột này; `undefined` = không bao giờ khớp.
+ * `same` so `String(a) === String(b)` cho số/chuỗi/boolean, nên: cột chuỗi nhận mọi giá trị nguyên thuỷ (viết ra chữ),
+ * cột số chỉ nhận chuỗi/số có dạng chữ CHUẨN của một số ("5" và 5 khớp; "5.0", "05" thì không), cột ngày chỉ nhận
+ * chuỗi `YYYY-MM-DD` hợp lệ. `null` khớp cột NULL (`same(null, null)`).
+ */
+function toAtom(col: Col, w: unknown): Atom | undefined {
+  if (w === null) return col.nullable ? { kind: 'null' } : undefined;
+  if (!isPrim(w)) return undefined;
+  if (col.kind === 'string') return { kind: 'value', v: String(w) };
+  if (col.kind === 'number') {
+    if (typeof w === 'boolean') return undefined;
+    const n = typeof w === 'number' ? w : Number(w);
+    return Number.isFinite(n) && String(n) === String(w) ? { kind: 'value', v: n } : undefined;
+  }
+  const d = typeof w === 'string' ? dayRange(w) : null;
+  return d ? { kind: 'day', ...d } : undefined;
+}
+
+const atomsOf = (col: Col, list: readonly unknown[]): Atom[] =>
+  list.flatMap((w) => {
+    const a = toAtom(col, w);
+    return a ? [a] : [];
+  });
+
+/** Atom → điều kiện "bằng". */
+function atomIs(col: Col, a: Atom): IssueWhere {
+  if (a.kind === 'null') return { [col.column]: null };
+  if (a.kind === 'value') return { [col.column]: a.v };
+  return { [col.column]: { gte: a.from, lt: a.to } };
+}
+
+/** Atom → phần BÙ chính xác của "bằng" (kể cả NULL: SQL `NOT (col = x)` cho NULL nên phải viết tường minh). */
+function atomIsNot(col: Col, a: Atom): IssueWhere {
+  if (a.kind === 'null') return { [col.column]: { not: null } };
+  const other: IssueWhere[] =
+    a.kind === 'value'
+      ? [{ [col.column]: { not: a.v } }]
+      : [{ [col.column]: { lt: a.from } }, { [col.column]: { gte: a.to } }];
+  return col.nullable ? { OR: [{ [col.column]: null }, ...other] } : { OR: other };
+}
+
+const anyOf = (col: Col, atoms: Atom[]): IssueWhere =>
+  atoms.length ? { OR: atoms.map((a) => atomIs(col, a)) } : NEVER;
+const noneOf = (col: Col, atoms: Atom[]): IssueWhere =>
+  atoms.length ? { AND: atoms.map((a) => atomIsNot(col, a)) } : ALWAYS;
+
+/** Id nhãn cần so (chữ) — `same(x, w)` của engine với x là id chuỗi. */
+const labelIdsOf = (wanted: unknown): string[] => asList(wanted).filter(isPrim).map(String);
+
+function labelWhere(op: FieldCondition['op'], wanted: unknown): IssueWhere {
+  const ids = labelIdsOf(wanted);
+  const some: IssueWhere = ids.length ? { labels: { some: { labelId: { in: ids } } } } : NEVER;
+  const none: IssueWhere = ids.length ? { labels: { none: { labelId: { in: ids } } } } : ALWAYS;
+  switch (op) {
+    case 'empty':
+      return { labels: { none: {} } };
+    case 'notEmpty':
+      return { labels: { some: {} } };
+    case 'eq':
+    case 'in':
+    case 'contains':
+      return some;
+    case 'neq':
+    case 'nin':
+      return none;
+  }
+}
+
+/**
+ * Điều kiện trường → `where` Prisma CHỌN ĐÚNG tập issue mà `evalFieldCondition` cho là thoả (spec đối chứng
+ * `rule-conditions.parity.spec.ts` chạy cả hai trên cùng fixture). Trả `null` khi không diễn đạt chính xác được
+ * (`dueDate contains` — engine tìm chuỗi con trong ngày dạng chữ; `contains` có chữ hiếm mà gấp hoa/thường của JS và Postgres
+ * không chắc giống nhau — xem `isPgFoldSafe`): nơi gọi bỏ qua xem trước, KHÔNG xấp xỉ.
+ */
+export function fieldConditionToWhere(c: FieldCondition): IssueWhere | null {
+  if (c.field === 'labelIds') return labelWhere(c.op, c.value);
+  const col = COLUMNS[c.field];
+  switch (c.op) {
+    case 'empty':
+      if (col.kind === 'string')
+        return col.nullable
+          ? { OR: [{ [col.column]: null }, { [col.column]: '' }] }
+          : { [col.column]: '' };
+      return { [col.column]: null };
+    case 'notEmpty':
+      if (col.kind === 'string')
+        return col.nullable
+          ? { AND: [{ [col.column]: { not: null } }, { [col.column]: { not: '' } }] }
+          : { [col.column]: { not: '' } };
+      return { [col.column]: { not: null } };
+    case 'eq':
+      return anyOf(col, Array.isArray(c.value) ? [] : atomsOf(col, [c.value]));
+    case 'neq':
+      return noneOf(col, Array.isArray(c.value) ? [] : atomsOf(col, [c.value]));
+    case 'in':
+      return anyOf(col, atomsOf(col, asList(c.value)));
+    case 'nin':
+      return noneOf(col, atomsOf(col, asList(c.value)));
+    case 'contains':
+      if (col.kind === 'date') return null; // chuỗi con của "YYYY-MM-DD": không diễn đạt chính xác được
+      if (col.kind === 'number' || typeof c.value !== 'string') return NEVER; // engine: chỉ chuỗi-trong-chuỗi
+      // ILIKE gấp hoa/thường theo `lower()` của DB, engine theo `foldCase`: chỉ chắc chắn giống nhau với chữ Latin (gồm
+      // tiếng Việt) và ký tự không có hoa/thường. Chữ hiếm (İ, sigma, ǅ, Hy Lạp, Kirin…) → không xem trước, không xấp xỉ.
+      if (!isPgFoldSafe(c.value)) return null;
+      return { [col.column]: insensitiveContains(c.value) };
   }
 }
 

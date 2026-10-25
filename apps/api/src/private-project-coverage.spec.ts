@@ -47,6 +47,7 @@ const PROJECT_MODELS = new Set([
   'milestone',
   'allocation',
   'comment',
+  'commentReaction',
   'issueLink',
   'issueWatcher',
   'issueDevLink',
@@ -104,7 +105,8 @@ const listFiles = (dir: string, pred: (f: string) => boolean, out: string[] = []
   }
   return out;
 };
-const isSource = (f: string): boolean => f.endsWith('.ts') && !f.endsWith('.spec.ts');
+const isSource = (f: string): boolean =>
+  f.endsWith('.ts') && !f.endsWith('.spec.ts') && !f.endsWith('.int-spec.ts');
 const rel = (f: string): string => relative(MODULES, f);
 const decoratorsOf = (n: ts.Node): readonly ts.Decorator[] =>
   ts.canHaveDecorators(n) ? (ts.getDecorators(n) ?? []) : [];
@@ -794,6 +796,10 @@ describe('dự án riêng tư — R2: route controller truyền người dùng v
       'digests/digests.controller.ts::DigestsController.list -> digests.list',
       'dev-links/dev-links.controller.ts::DevLinksController.listRepositories -> devLinks.listRepositories',
       'custom-fields/custom-fields.controller.ts::CustomFieldsController.list -> customFields.listDefinitions',
+      // 077: danh sách bình luận cần người xem (`reactions[].mine`); route thả/bỏ cảm xúc truyền người thả
+      'comments/comments.controller.ts::CommentsController.list -> comments.list',
+      'comments/comments.controller.ts::CommentsController.react -> comments.setReaction',
+      'comments/comments.controller.ts::CommentsController.unreact -> comments.setReaction',
     ])
       expect(passes(k), `route đọc đã khoá không còn truyền người dùng: ${k}`).toBe(true);
   });

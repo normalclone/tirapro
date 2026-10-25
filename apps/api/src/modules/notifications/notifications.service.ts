@@ -32,6 +32,8 @@ export interface NotificationDto {
   issueId: string | null;
   commentId: string | null;
   actorId: string | null;
+  /** Ảnh đại diện người làm — chỉ điền khi ĐỌC danh sách (`listMine`); event realtime không kèm. */
+  actorAvatarUrl?: string | null;
   payload: Prisma.JsonValue;
   readAt: string | null;
   createdAt: string;
@@ -257,41 +259,53 @@ export class NotificationsService {
       take: limit + 1,
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
     });
-    const named = await this.fillActorNames(rows);
+    const { rows: named, avatarOf } = await this.fillActors(rows);
     return cursorPage(
-      named.map((n) => this.toDto(n)),
+      named.map((n) => ({
+        ...this.toDto(n),
+        actorAvatarUrl: n.actorId ? (avatarOf.get(n.actorId) ?? null) : null,
+      })),
       limit,
       (n) => n.id,
     );
   }
 
   /**
-   * Payload cũ có `actorId` nhưng không có ảnh chụp `actorName`: điền tên khi ĐỌC (không ghi DB) bằng MỘT truy vấn
-   * `user.findMany` cho cả trang. Người đã xoá (không tra được) giữ nguyên — giao diện hiện "Một thành viên".
+   * Điền thông tin người thực hiện khi ĐỌC (không ghi DB, không migration) bằng MỘT truy vấn `user.findMany` cho cả trang:
+   * - payload cũ có `actorId` nhưng không có ảnh chụp `actorName` → điền tên (người đã xoá giữ nguyên — giao diện hiện
+   *   "Một thành viên");
+   * - mọi dòng có `actorId` → `avatarUrl` của người đó (trả `actorAvatarUrl`; thiếu/đã xoá → null).
    */
-  private async fillActorNames(rows: Notification[]): Promise<Notification[]> {
+  private async fillActors(
+    rows: Notification[],
+  ): Promise<{ rows: Notification[]; avatarOf: Map<string, string | null> }> {
     const lacksName = (n: Notification): boolean =>
       !!n.actorId &&
       (typeof n.payload !== 'object' ||
         n.payload === null ||
         Array.isArray(n.payload) ||
         !(n.payload as { actorName?: unknown }).actorName);
-    const ids = [...new Set(rows.filter(lacksName).map((n) => n.actorId!))];
-    if (ids.length === 0) return rows;
+    const ids = [...new Set(rows.filter((n) => !!n.actorId).map((n) => n.actorId!))];
+    const avatarOf = new Map<string, string | null>();
+    if (ids.length === 0) return { rows, avatarOf };
     const users = await this.prisma.user.findMany({
       where: { id: { in: ids } },
-      select: { id: true, displayName: true },
+      select: { id: true, displayName: true, avatarUrl: true },
     });
     const nameOf = new Map(users.map((u) => [u.id, u.displayName]));
-    return rows.map((n) => {
-      const name = lacksName(n) ? nameOf.get(n.actorId!) : undefined;
-      if (!name) return n;
-      const base =
-        typeof n.payload === 'object' && n.payload !== null && !Array.isArray(n.payload)
-          ? n.payload
-          : {};
-      return { ...n, payload: { ...base, actorName: name } };
-    });
+    for (const u of users) avatarOf.set(u.id, u.avatarUrl ?? null);
+    return {
+      avatarOf,
+      rows: rows.map((n) => {
+        const name = lacksName(n) ? nameOf.get(n.actorId!) : undefined;
+        if (!name) return n;
+        const base =
+          typeof n.payload === 'object' && n.payload !== null && !Array.isArray(n.payload)
+            ? n.payload
+            : {};
+        return { ...n, payload: { ...base, actorName: name } };
+      }),
+    };
   }
 
   /** Số thông báo chưa đọc của tôi. */

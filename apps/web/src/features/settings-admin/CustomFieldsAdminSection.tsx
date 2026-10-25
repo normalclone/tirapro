@@ -107,8 +107,10 @@ export function CustomFieldsAdminSection() {
   async function handleDelete(f: CustomField) {
     if (
       !(await confirm({
-        title: `Xoá trường "${f.name}"? Trường sẽ bị ẩn khỏi mọi công việc.`,
+        title: `Xoá trường "${f.name}"?`,
+        description: 'Trường sẽ bị ẩn khỏi mọi công việc.',
         destructive: true,
+        requireText: f.name,
       }))
     )
       return;

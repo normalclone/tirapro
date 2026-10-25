@@ -89,3 +89,78 @@ describe('SavedFiltersService — dự án riêng tư (P13)', () => {
     expect(prisma.savedFilter.create).not.toHaveBeenCalled();
   });
 });
+
+describe('SavedFiltersService — mức "Dự án" bắt buộc có dự án', () => {
+  it('create(): PROJECT không kèm dự án → 422, không ghi', async () => {
+    const { service, prisma } = make();
+    for (const sharedProjectId of [null, undefined]) {
+      await expect(
+        service.create('w1', 'u1', {
+          name: 'x',
+          jql: 'project = HR',
+          visibility: 'PROJECT',
+          sharedProjectId,
+        }),
+      ).rejects.toMatchObject({ status: 422 });
+    }
+    expect(prisma.savedFilter.create).not.toHaveBeenCalled();
+  });
+  it('update(): đổi sang PROJECT không kèm dự án → 422; gỡ dự án của bộ lọc đang PROJECT → 422', async () => {
+    const { service, prisma } = make();
+    prisma.savedFilter.findFirst.mockResolvedValueOnce({
+      id: 'f1',
+      name: 'n',
+      jql: 'a = b',
+      visibility: 'WORKSPACE',
+      sharedProjectId: null,
+      ownerId: 'u1',
+      createdAt: new Date(),
+    });
+    await expect(service.update('w1', 'u1', 'f1', { visibility: 'PROJECT' })).rejects.toMatchObject(
+      { status: 422 },
+    );
+    prisma.savedFilter.findFirst.mockResolvedValueOnce({
+      id: 'f1',
+      name: 'n',
+      jql: 'a = b',
+      visibility: 'PROJECT',
+      sharedProjectId: 'p1',
+      ownerId: 'u1',
+      createdAt: new Date(),
+    } as never);
+    await expect(service.update('w1', 'u1', 'f1', { sharedProjectId: null })).rejects.toMatchObject(
+      { status: 422 },
+    );
+    expect(prisma.savedFilter.update).not.toHaveBeenCalled();
+  });
+  it('update(): bộ lọc CŨ đang PROJECT + null vẫn đổi tên được, và vẫn rời được sang mức khác', async () => {
+    const { service, prisma } = make();
+    const legacy = {
+      id: 'f1',
+      name: 'n',
+      jql: 'a = b',
+      visibility: 'PROJECT',
+      sharedProjectId: null,
+      ownerId: 'u1',
+      createdAt: new Date(),
+    };
+    prisma.savedFilter.findFirst.mockResolvedValueOnce(legacy);
+    await expect(service.update('w1', 'u1', 'f1', { name: 'mới' })).resolves.toBeDefined();
+    prisma.savedFilter.findFirst.mockResolvedValueOnce(legacy);
+    await expect(
+      service.update('w1', 'u1', 'f1', { visibility: 'WORKSPACE', sharedProjectId: null }),
+    ).resolves.toBeDefined();
+    expect(prisma.savedFilter.update).toHaveBeenCalledTimes(2);
+  });
+  it('create()/update() đủ dự án vẫn qua (và vẫn đi qua kiểm quyền thấy dự án)', async () => {
+    const { service, access, prisma } = make();
+    await service.create('w1', 'u1', {
+      name: 'x',
+      jql: 'project = HR',
+      visibility: 'PROJECT',
+      sharedProjectId: 'hr',
+    });
+    expect(access.assertCanSee).toHaveBeenCalledWith('u1', 'w1', 'hr', 'Dự án');
+    expect(prisma.savedFilter.create).toHaveBeenCalledTimes(1);
+  });
+});

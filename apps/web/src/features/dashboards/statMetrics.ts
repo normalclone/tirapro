@@ -1,6 +1,7 @@
 import type { CreatedResolvedPoint } from '@tirapro/shared';
 import type { ProjectReport } from '@/features/reports/api';
 import { STATUS_CATEGORY_LABEL } from '@/lib/terms';
+import type { StatItem } from '@/components/ui/StatRow';
 
 export type StatMetric = 'open' | 'overdue' | 'bugs' | 'done14' | 'projects';
 
@@ -48,6 +49,27 @@ export function statValue(metric: StatMetric, src: StatSource): number | null {
     case 'done14':
       return src.resolved14 ?? null;
   }
+}
+
+/**
+ * Ô "Chỉ số" kiểu `StatRow`: số cỡ vừa + (nếu có mẫu số thật) thanh. Chỉ "Quá hạn" có thanh — trên số việc chưa xong;
+ * các số còn lại không có đích thật nên chỉ là số (KHÔNG bịa đích; `done14` chưa có số kỳ trước để so).
+ */
+export function statCell(
+  metric: StatMetric,
+  src: StatSource,
+): Pick<StatItem, 'tone' | 'highlight' | 'sub' | 'bullet'> & { value: number | null } {
+  const value = statValue(metric, src);
+  if (metric !== 'overdue' || value === null) return { value };
+  const open = statValue('open', src) ?? 0;
+  return {
+    value,
+    // 0 việc quá hạn là tin tốt: không tô đỏ.
+    tone: value > 0 ? 'danger' : undefined,
+    highlight: value > 0,
+    sub: open > 0 ? `trên ${open} việc chưa xong` : undefined,
+    bullet: open > 0 ? { value, max: open, tone: 'danger', unit: 'việc' } : undefined,
+  };
 }
 
 /** Tổng `resolved` của 14 ngày cuối trong chuỗi theo ngày (`GET /reports/created-resolved`). */

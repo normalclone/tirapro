@@ -142,9 +142,10 @@ export function useRemoveUserAvatar() {
 /* ------------------------------------------------------------------ */
 
 /** Danh sách thành viên của không gian làm việc hiện tại kèm vai trò (GET /members). */
-export function useWorkspaceMembers() {
+export function useWorkspaceMembers(enabled = true) {
   return useQuery({
     queryKey: keys.members.workspace,
+    enabled,
     queryFn: async () => (await api.get<MemberDto[]>('/members')).data,
   });
 }
@@ -203,20 +204,6 @@ export function useAddMembersBulk() {
       void qc.invalidateQueries({ queryKey: keys.members.workspace });
       void qc.invalidateQueries({ queryKey: keys.users.workspace });
       void qc.invalidateQueries({ queryKey: keys.users.allRoot });
-    },
-  });
-}
-
-/** Đặt lại toàn bộ vai trò (≥1) cho một thành viên chung. */
-export function useSetMemberRoles() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ userId, roleIds }: { userId: string; roleIds: string[] }) =>
-      api.put<MemberDto>(`/members/${userId}/roles`, { roleIds }).then((r) => r.data),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: keys.projects.permissionsAll });
-      void qc.invalidateQueries({ queryKey: keys.members.workspace });
-      void qc.invalidateQueries({ queryKey: keys.users.workspace });
     },
   });
 }

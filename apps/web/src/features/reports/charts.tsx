@@ -16,7 +16,6 @@ import {
 import type { BurndownReport, VelocityReport } from '@tirapro/shared';
 import { Skeleton } from '@/components/ui/primitives';
 import { fmtDate, fmtDayMonth } from '@/lib/dateFormat';
-import { cn } from '@/lib/utils';
 import { burndownSummary, todayMarker, velocitySummary } from './burndown';
 
 export const AXIS_PROPS = {
@@ -61,60 +60,6 @@ export function Card({
 
 export function ChartSkeleton() {
   return <Skeleton className="h-[260px] w-full" />;
-}
-
-/* ------------------------------------------------------------------ */
-/* Hàng chỉ số                                                         */
-/* ------------------------------------------------------------------ */
-
-type StatTone = 'default' | 'progress' | 'done' | 'danger' | 'warning';
-
-const STAT_TONE: Record<StatTone, string> = {
-  default: 'text-ink-strong',
-  progress: 'text-status-progress',
-  done: 'text-status-done',
-  danger: 'text-danger',
-  warning: 'text-warning-ink',
-};
-
-export interface StatItem {
-  label: string;
-  value: number | string;
-  /** Dòng phụ nhỏ dưới giá trị (đơn vị, số việc, khoảng ngày…). */
-  sub?: string;
-  tone?: StatTone;
-  /** Nền nhấn nhẹ (vd quá hạn > 0). */
-  highlight?: boolean;
-  /** Giải nghĩa số liệu, hiện khi rê chuột (tooltip toàn cục bắt thuộc tính `title`). */
-  title?: string;
-}
-
-/** Hàng chỉ số liền khối (không phải lưới thẻ lặp): mỗi ô nhãn + giá trị + dòng phụ. */
-export function StatStrip({ items, className }: { items: StatItem[]; className?: string }) {
-  return (
-    <div
-      className={cn(
-        'print-avoid-break grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-border bg-border',
-        className,
-      )}
-    >
-      {items.map((s) => (
-        <div
-          key={s.label}
-          title={s.title}
-          className={cn('px-4 py-2.5', s.highlight ? 'bg-danger/5' : 'bg-surface')}
-        >
-          <p className="text-xs font-medium text-muted">{s.label}</p>
-          <p
-            className={cn('mt-0.5 text-2xl font-semibold tabular', STAT_TONE[s.tone ?? 'default'])}
-          >
-            {s.value}
-          </p>
-          {s.sub && <p className="mt-0.5 truncate text-xs text-muted">{s.sub}</p>}
-        </div>
-      ))}
-    </div>
-  );
 }
 
 /* ------------------------------------------------------------------ */

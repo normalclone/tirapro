@@ -63,12 +63,29 @@ describe('initialForm — múi giờ đã lưu', () => {
 
 describe('validateForm', () => {
   const ok = { ...initialForm(null), name: 'A' };
-  it('tên bắt buộc, ≥1 khối, bật email phải có người nhận', () => {
-    expect(validateForm(initialForm(null))).toMatch(/tên/);
-    expect(validateForm({ ...ok, blocks: [] })).toMatch(/khối/);
-    expect(validateForm({ ...ok, deliverEmail: true })).toMatch(/người nhận/);
-    expect(validateForm({ ...ok, deliverEmail: true, recipients: ['u1'] })).toBeNull();
-    expect(validateForm(ok)).toBeNull();
+  it('hợp lệ → mảng rỗng', () => {
+    expect(validateForm(ok)).toEqual([]);
+    expect(validateForm({ ...ok, deliverEmail: true, recipients: ['u1'] })).toEqual([]);
+  });
+  it('tên bắt buộc (tên toàn khoảng trắng cũng thiếu)', () => {
+    expect(validateForm(initialForm(null))).toEqual([
+      { field: 'name', message: 'Vui lòng nhập tên báo cáo.' },
+    ]);
+    expect(validateForm({ ...ok, name: '   ' }).map((e) => e.field)).toEqual(['name']);
+  });
+  it('≥1 khối nội dung', () => {
+    expect(validateForm({ ...ok, blocks: [] })).toEqual([
+      { field: 'blocks', message: 'Chọn ít nhất một khối nội dung.' },
+    ]);
+  });
+  it('bật email phải có người nhận', () => {
+    expect(validateForm({ ...ok, deliverEmail: true })).toEqual([
+      { field: 'recipients', message: 'Chọn ít nhất một người nhận email.' },
+    ]);
+  });
+  it('báo ĐỦ mọi lỗi cùng lúc, theo thứ tự trường trong form', () => {
+    const bad = { ...initialForm(null), name: '', blocks: [], deliverEmail: true };
+    expect(validateForm(bad).map((e) => e.field)).toEqual(['name', 'blocks', 'recipients']);
   });
 });
 

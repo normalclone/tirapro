@@ -6,6 +6,7 @@ import {
   fmtLongDate,
   fmtMonthYear,
   fmtRelative,
+  fmtTime,
   monthAxisLabel,
   toDateInput,
   toDateTimeInput,
@@ -104,5 +105,14 @@ describe('monthAxisLabel', () => {
   it('ngày không hợp lệ → —', () => {
     expect(monthAxisLabel('abc', 240)).toBe('—');
     expect(monthAxisLabel(null, 40)).toBe('—');
+  });
+});
+
+describe('fmtTime', () => {
+  it('HH:mm 24h có đệm số 0; không hợp lệ → —', () => {
+    expect(fmtTime(new Date(2026, 7, 5, 9, 7))).toBe('09:07');
+    expect(fmtTime(new Date(2026, 7, 5, 23, 59))).toBe('23:59');
+    expect(fmtTime(null)).toBe('—');
+    expect(fmtTime('không phải ngày')).toBe('—');
   });
 });

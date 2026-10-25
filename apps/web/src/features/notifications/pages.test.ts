@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import type { InfiniteData } from '@tanstack/react-query';
-import { markAllReadInPages, markReadInPages } from './pages';
+import {
+  isUnreadInList,
+  markAllReadInList,
+  markAllReadInPages,
+  markReadInList,
+  markReadInPages,
+} from './pages';
 import type { NotificationItem } from './api';
 
 const n = (id: string, readAt: string | null) => ({ id, readAt }) as unknown as NotificationItem;
@@ -29,5 +35,27 @@ describe('pages cache helpers', () => {
   });
   it('dòng đã đọc giữ nguyên thời điểm cũ khi đánh dấu tất cả', () => {
     expect(markAllReadInPages(data(), 'T')!.pages[0]!.data[1]!.readAt).toBe('2026-10-01T00:00:00Z');
+  });
+});
+
+describe('cache của popover chuông (mảng phẳng, không phải infinite)', () => {
+  const list = () => [n('a', null), n('b', '2026-10-01T00:00:00Z'), n('c', null)];
+  it('markReadInList đổi đúng dòng chưa đọc, giữ dòng khác; undefined giữ nguyên', () => {
+    const out = markReadInList(list(), 'c', 'T')!;
+    expect(out.map((x) => x.readAt)).toEqual([null, '2026-10-01T00:00:00Z', 'T']);
+    expect(markReadInList(list(), 'b', 'T')![1]!.readAt).toBe('2026-10-01T00:00:00Z');
+    expect(markReadInList(undefined, 'a', 'T')).toBeUndefined();
+  });
+  it('markAllReadInList đánh dấu mọi dòng chưa đọc', () => {
+    expect(markAllReadInList(list(), 'T')!.map((x) => x.readAt)).toEqual([
+      'T',
+      '2026-10-01T00:00:00Z',
+      'T',
+    ]);
+  });
+  it('isUnreadInList', () => {
+    expect(isUnreadInList(list(), 'a')).toBe(true);
+    expect(isUnreadInList(list(), 'b')).toBe(false);
+    expect(isUnreadInList(undefined, 'a')).toBe(false);
   });
 });

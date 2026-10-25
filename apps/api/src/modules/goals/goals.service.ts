@@ -966,6 +966,9 @@ export class GoalsService {
   }
 
   private toDto(o: ObjectiveRow, ctx: DtoContext) {
+    // Phần thời gian đã trôi của kỳ (0–100; null với kỳ tự do) — chỉ đọc, tính mỗi lần trả, không lưu. KR dùng chung giá trị
+    // này làm vạch "kỳ vọng" trên thanh tiến độ.
+    const expected = expectedProgress(o.period, new Date());
     const keyResults = o.keyResults.map((kr) => {
       const m = ctx.measured.get(kr.id);
       // KR tự đo: số hiện tại = số đo trực tiếp; đo lỗi → giữ giá trị cũ trong DB (kèm `measureError`).
@@ -986,6 +989,7 @@ export class GoalsService {
         checkInCount: kr._count.checkIns,
         lastCheckInAt: kr.checkIns[0]?.createdAt.toISOString() ?? null,
         progress: krProgress(kr.startValue, kr.targetValue, currentValue),
+        expectedProgress: expected,
       };
     });
 
@@ -1026,6 +1030,8 @@ export class GoalsService {
       issueProgress,
       /** Tiến độ hiển thị: ưu tiên Key Result; chưa có KR thì lấy % issue Done. */
       progress: keyResultProgress ?? issueProgress ?? 0,
+      /** Phần thời gian đã trôi của kỳ (vạch kỳ vọng); null khi kỳ không phải dạng `YYYY-Qn`. */
+      expectedProgress: expected,
       createdAt: o.createdAt.toISOString(),
       updatedAt: o.updatedAt.toISOString(),
     };

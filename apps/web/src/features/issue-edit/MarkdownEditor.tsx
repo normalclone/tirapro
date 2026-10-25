@@ -17,6 +17,7 @@ import { MentionPopup } from './MentionPopup';
 import { useMentionPopup } from './useMentionPopup';
 import { useAssigneeOptions } from './useAssigneeOptions';
 import { useDebouncedValue } from '@/lib/useDebouncedValue';
+import { pickSubmit } from '@/lib/submitShortcut';
 import { usePasteImages, type PasteImagesHandler } from './usePasteImages';
 
 function ToolBtn({
@@ -111,6 +112,7 @@ export function MarkdownEditor({
   value,
   onChange,
   onSubmit,
+  onSubmitAlt,
   onCancel,
   autoFocus,
   rows = 6,
@@ -124,6 +126,8 @@ export function MarkdownEditor({
   value: string;
   onChange: (v: string) => void;
   onSubmit?: () => void;
+  /** Cmd/Ctrl+Shift+Enter: hành động phụ; không truyền → Shift gửi như Cmd/Ctrl+Enter. */
+  onSubmitAlt?: () => void;
   onCancel?: () => void;
   autoFocus?: boolean;
   rows?: number;
@@ -261,9 +265,10 @@ export function MarkdownEditor({
           onPaste={onPaste}
           onKeyDown={(e) => {
             if (mention.handleKey(e)) return;
-            if (onSubmit && (e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+            const submit = pickSubmit(e, { onSubmit, onSubmitAlt });
+            if (submit) {
               e.preventDefault();
-              if (!busy) onSubmit(); // còn ảnh đang tải: chưa lưu/gửi để chữ giữ chỗ không bị lưu
+              if (!busy) submit(); // còn ảnh đang tải: chưa lưu/gửi để chữ giữ chỗ không bị lưu
             }
             // Esc trong lúc bộ gõ (Telex/VNI) đang soạn thuộc về bộ gõ, không huỷ sửa.
             if (onCancel && e.key === 'Escape' && !e.nativeEvent.isComposing) {

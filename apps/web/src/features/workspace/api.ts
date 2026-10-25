@@ -13,6 +13,8 @@ export interface MyWorkspace {
   slug: string;
   avatarUrl: string | null;
   roleName: string;
+  /** Số thành viên đang hoạt động. Tuỳ chọn: API cũ (chưa triển khai) không trả trường này. */
+  memberCount?: number;
 }
 
 /** Phản hồi sau khi đổi/gỡ logo: thông tin rút gọn của không gian làm việc. */

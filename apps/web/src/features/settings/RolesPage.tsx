@@ -1,6 +1,6 @@
 import { useMemo, useState, type FormEvent } from 'react';
 import { DocsLink } from '@/components/ui/DocsLink';
-import { Plus, Shield, ShieldCheck, Trash2 } from 'lucide-react';
+import { Lock, Plus, Shield, ShieldCheck, Trash2 } from 'lucide-react';
 import {
   PERMISSION_CATALOG,
   roleLabel,
@@ -31,7 +31,15 @@ import {
 } from '@/features/roles/api';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
 import { RoleMatrixTable } from './RoleMatrixTable';
+import { cloneName } from './rolePermEdit';
+import {
+  ADMIN_GRANT_REASON,
+  permLockedForAdminGrant,
+  roleLockedForAdminGrant,
+} from '@/features/members/adminGrant';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
+import { ColorPicker } from '@/components/ui/ColorPicker';
+import { LABEL_PALETTE, paletteValue } from '@/lib/labelPalette';
 import { Tabs, TabPanel } from '@/components/ui/Tabs';
 import { SETTINGS_LABELS } from '@/lib/navLabels';
 
@@ -41,17 +49,8 @@ const ROLES_TABS: { id: RolesTab; label: string }[] = [
   { id: 'matrix', label: 'So sánh vai trò' },
 ];
 
-/** Bộ màu OKLCH gợi ý cho vai trò tuỳ chỉnh (đồng bộ tông với system role). */
-const PRESET_COLORS = [
-  'oklch(0.55 0.20 25)',
-  'oklch(0.58 0.16 330)',
-  'oklch(0.55 0.16 300)',
-  'oklch(0.55 0.13 245)',
-  'oklch(0.60 0.13 200)',
-  'oklch(0.58 0.13 150)',
-  'oklch(0.72 0.15 75)',
-  'oklch(0.60 0.018 256)',
-];
+/** Màu mặc định của vai trò mới (Xanh dương — chuỗi OKLCH như các vai trò đã lưu). */
+const DEFAULT_ROLE_COLOR = paletteValue(LABEL_PALETTE[0]!, 'oklch');
 
 const SCOPE_LABEL: Record<RoleScope, string> = {
   WORKSPACE: 'Cấp không gian làm việc',
@@ -67,24 +66,33 @@ function sortRoles(roles: RoleDto[]): RoleDto[] {
 }
 
 export function RolesPage() {
-  const can = useAuth((s) => s.can);
-  const canManage = can('member:manage');
+  const canManage = useAuth((s) => s.can('member:manage'));
   const rolesQuery = useRoles();
   const { data: roles } = rolesQuery;
 
   const [tab, setTab] = useState<RolesTab>('list');
   const [editing, setEditing] = useState<RoleDto | null>(null);
   const [creatingScope, setCreatingScope] = useState<RoleScope | null>(null);
+  // Nhân bản: tạo vai trò mới từ vai trò gốc (bộ quyền, mô tả, màu) — hộp mở sẵn để đặt tên.
+  const [cloning, setCloning] = useState<RoleDto | null>(null);
+  // Vai trò vừa tạo từ nhân bản: ma trận tự thêm cột cho nó.
+  const [revealRoleId, setRevealRoleId] = useState<string | null>(null);
   // Hộp thoại luôn mount để có hiệu ứng đóng; mỗi lần mở là một `session` mới → form khởi tạo lại.
   const [session, setSession] = useState(0);
-  const dialogOpen = !!(editing || creatingScope);
+  const dialogOpen = !!(editing || creatingScope || cloning);
   const dialogTarget = useRetained(
-    dialogOpen ? { role: editing, scope: creatingScope ?? 'WORKSPACE' } : null,
+    dialogOpen
+      ? { role: editing, scope: creatingScope ?? cloning?.scope ?? 'WORKSPACE', template: cloning }
+      : null,
   );
 
   function openEdit(r: RoleDto) {
     setSession((n) => n + 1);
     setEditing(r);
+  }
+  function openClone(r: RoleDto) {
+    setSession((n) => n + 1);
+    setCloning(r);
   }
   function openCreate(scope: RoleScope) {
     setSession((n) => n + 1);
@@ -159,7 +167,13 @@ export function RolesPage() {
         >
           {(all) =>
             tab === 'matrix' ? (
-              <RoleMatrixTable roles={all} />
+              <RoleMatrixTable
+                roles={all}
+                canEdit={canManage}
+                onClone={openClone}
+                revealRoleId={revealRoleId}
+                onRevealed={() => setRevealRoleId(null)}
+              />
             ) : (
               <div className="space-y-8">
                 {(['WORKSPACE', 'PROJECT'] as const).map((scope) => (
@@ -183,10 +197,13 @@ export function RolesPage() {
         open={dialogOpen}
         role={dialogTarget?.role ?? null}
         initialScope={dialogTarget?.scope ?? 'WORKSPACE'}
+        template={dialogTarget?.template ?? null}
         canManage={canManage}
+        onCreated={(r) => setRevealRoleId(r.id)}
         onClose={() => {
           setEditing(null);
           setCreatingScope(null);
+          setCloning(null);
         }}
       />
     </PageFrame>
@@ -297,28 +314,41 @@ function RoleDialog({
   open,
   role,
   initialScope,
+  template,
   canManage,
+  onCreated,
   onClose,
 }: {
   open: boolean;
   role: RoleDto | null;
   initialScope: RoleScope;
+  /** Nhân bản: vai trò gốc (chỉ dùng khi tạo mới) — điền sẵn bộ quyền, mô tả, màu và đề xuất tên. */
+  template: RoleDto | null;
   canManage: boolean;
+  onCreated: (role: RoleDto) => void;
   onClose: () => void;
 }) {
   const isCreate = role === null;
-  const readOnly = !canManage || (role?.isSystem ?? false);
+  // P-C14: chỉ quản trị mới cấp/gỡ `workspace:admin` — người chỉ có `member:manage` không sửa được vai trò đang giữ nó.
+  const canGrantAdmin = useAuth((s) => s.can('workspace:admin'));
+  const adminRoleLocked = roleLockedForAdminGrant(canGrantAdmin, role?.permissionKeys ?? []);
+  const readOnly = !canManage || (role?.isSystem ?? false) || adminRoleLocked;
 
   const createRole = useCreateRole();
   const updateRole = useUpdateRole();
   const deleteRole = useDeleteRole();
   const confirm = useConfirm();
 
-  const [name, setName] = useState(role?.name ?? '');
-  const [scope, setScope] = useState<RoleScope>(role?.scope ?? initialScope);
-  const [description, setDescription] = useState(role?.description ?? '');
-  const [color, setColor] = useState<string>(role?.color ?? PRESET_COLORS[3]!);
-  const [perms, setPerms] = useState<Set<PermissionKey>>(() => new Set(role?.permissionKeys ?? []));
+  const source = role ?? template;
+  const [name, setName] = useState(() =>
+    role ? role.name : template ? cloneName(template.name) : '',
+  );
+  const [scope, setScope] = useState<RoleScope>(source?.scope ?? initialScope);
+  const [description, setDescription] = useState(source?.description ?? '');
+  const [color, setColor] = useState<string>(source?.color ?? DEFAULT_ROLE_COLOR);
+  const [perms, setPerms] = useState<Set<PermissionKey>>(
+    () => new Set(source?.permissionKeys ?? []),
+  );
 
   // Checklist hiển thị theo scope của vai trò (chung ↔ dự án). Khi đổi scope
   // lúc tạo mới, loại bỏ các quyền không còn thuộc scope đó.
@@ -331,7 +361,7 @@ function RoleDialog({
   }
 
   function togglePerm(key: PermissionKey) {
-    if (readOnly) return;
+    if (readOnly || permLockedForAdminGrant(canGrantAdmin, [], key)) return;
     setPerms((prev) => {
       const next = new Set(prev);
       if (next.has(key)) next.delete(key);
@@ -342,7 +372,10 @@ function RoleDialog({
 
   const trimmedName = name.trim();
   const permKeys = [...perms];
-  const canSubmit = trimmedName.length > 0 && permKeys.length > 0 && !readOnly;
+  // Nhân bản từ vai trò đang có workspace:admin: ô quyền khoá nhưng vẫn tích sẵn → gửi đi sẽ bị 403, nên chặn ở đây.
+  const needsAdminToSubmit = !canGrantAdmin && perms.has('workspace:admin');
+  const canSubmit =
+    trimmedName.length > 0 && permKeys.length > 0 && !readOnly && !needsAdminToSubmit;
   const busy = createRole.isPending || updateRole.isPending;
 
   function submit(e: FormEvent) {
@@ -356,7 +389,12 @@ function RoleDialog({
         color,
         permissionKeys: permKeys,
       };
-      createRole.mutate(body, { onSuccess: onClose });
+      createRole.mutate(body, {
+        onSuccess: (created) => {
+          onClose();
+          if (template) onCreated(created);
+        },
+      });
     } else {
       updateRole.mutate(
         {
@@ -366,6 +404,8 @@ function RoleDialog({
             description: description.trim() || null,
             color,
             permissionKeys: permKeys,
+            // Người khác vừa sửa vai trò này (kể cả bộ quyền) → 409, không ghi đè lặng lẽ.
+            expectedUpdatedAt: role.updatedAt,
           },
         },
         { onSuccess: onClose },
@@ -376,16 +416,24 @@ function RoleDialog({
   async function handleDelete() {
     if (!role || role.isSystem) return;
     const count = role.memberCount ?? 0;
-    const warn =
-      count > 0
-        ? `Vai trò "${roleLabel(role.name)}" đang gán cho ${count} thành viên. Xoá vai trò?`
-        : `Xoá vai trò "${roleLabel(role.name)}"? Hành động này không thể hoàn tác.`;
-    if (!(await confirm({ title: warn, destructive: true }))) return;
+    const label = roleLabel(role.name);
+    const ok = await confirm({
+      title: `Xoá vai trò "${label}"?`,
+      description:
+        count > 0
+          ? `Vai trò đang gán cho ${count} thành viên. Hành động này không thể hoàn tác.`
+          : 'Hành động này không thể hoàn tác.',
+      destructive: true,
+      requireText: label,
+    });
+    if (!ok) return;
     deleteRole.mutate(role.id, { onSuccess: onClose });
   }
 
   const title: string = isCreate
-    ? 'Tạo vai trò'
+    ? template
+      ? 'Nhân bản vai trò'
+      : 'Tạo vai trò'
     : readOnly
       ? roleLabel(role?.name ?? '')
       : `Sửa "${roleLabel(role?.name ?? '')}"`;
@@ -420,7 +468,7 @@ function RoleDialog({
             </Button>
             {!readOnly && (
               <Button type="submit" form="role-form" loading={busy} disabled={!canSubmit}>
-                {isCreate ? 'Tạo vai trò' : 'Lưu'}
+                {isCreate ? (template ? 'Nhân bản' : 'Tạo vai trò') : 'Lưu'}
               </Button>
             )}
           </div>
@@ -449,6 +497,8 @@ function RoleDialog({
                 <Input
                   id="role-name"
                   autoFocus
+                  // Nhân bản: tên đề xuất được chọn sẵn → gõ là thay luôn.
+                  onFocus={template ? (e) => e.currentTarget.select() : undefined}
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="VD: QA Lead"
@@ -487,25 +537,16 @@ function RoleDialog({
             </div>
 
             <div>
-              <span className="mb-1.5 block text-sm font-medium text-muted">Màu</span>
+              <span id="role-color-label" className="mb-1.5 block text-sm font-medium text-muted">
+                Màu
+              </span>
               <div className="flex flex-wrap items-center gap-2">
-                {PRESET_COLORS.map((c) => {
-                  const active = c === color;
-                  return (
-                    <button
-                      key={c}
-                      type="button"
-                      onClick={() => setColor(c)}
-                      aria-label={`Chọn màu ${c}`}
-                      aria-pressed={active}
-                      className={cn(
-                        'h-7 w-7 rounded-full transition-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
-                        active ? 'ring-2 ring-offset-2 ring-offset-surface' : 'hover:scale-110',
-                      )}
-                      style={{ backgroundColor: c, ['--tw-ring-color' as string]: c }}
-                    />
-                  );
-                })}
+                <ColorPicker
+                  value={color}
+                  onChange={setColor}
+                  format="oklch"
+                  ariaLabelledby="role-color-label"
+                />
                 <span className="ml-1">
                   <RoleBadge name={trimmedName || 'Xem trước'} color={color} />
                 </span>
@@ -514,6 +555,12 @@ function RoleDialog({
           </>
         )}
 
+        {readOnly && adminRoleLocked && !role?.isSystem && (
+          <p className="flex items-center gap-1.5 text-sm text-muted">
+            <Lock className="h-3.5 w-3.5 shrink-0" aria-hidden />
+            Vai trò này đang giữ quyền quản trị. {ADMIN_GRANT_REASON}.
+          </p>
+        )}
         {readOnly && role?.description && <p className="text-sm text-muted">{role.description}</p>}
 
         {/* Checklist quyền */}
@@ -530,6 +577,8 @@ function RoleDialog({
               <div className="space-y-0.5">
                 {PERMS_BY_SCOPE[ps].map((p) => {
                   const checked = perms.has(p.key);
+                  const adminLocked =
+                    !readOnly && permLockedForAdminGrant(canGrantAdmin, [], p.key);
                   return (
                     <label
                       key={p.key}
@@ -541,7 +590,8 @@ function RoleDialog({
                       <input
                         type="checkbox"
                         checked={checked}
-                        disabled={readOnly}
+                        disabled={readOnly || adminLocked}
+                        aria-describedby={adminLocked ? 'role-admin-lock' : undefined}
                         onChange={() => togglePerm(p.key)}
                         // Giữ disabled:opacity (không dùng token vô hiệu) — checkbox native: trình duyệt tự vẽ, nền/chữ không tô lại được.
                         className="h-4 w-4 shrink-0 rounded border-border-strong text-primary accent-[var(--primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:opacity-60"
@@ -549,6 +599,15 @@ function RoleDialog({
                       <span className={cn('min-w-0 flex-1', checked ? 'text-ink' : 'text-muted')}>
                         {p.description}
                       </span>
+                      {adminLocked && (
+                        <span
+                          id="role-admin-lock"
+                          className="inline-flex shrink-0 items-center gap-1 text-xs text-faint"
+                        >
+                          <Lock className="h-3 w-3" aria-hidden />
+                          {ADMIN_GRANT_REASON}
+                        </span>
+                      )}
                       <span className="shrink-0 font-mono text-xs text-faint">{p.key}</span>
                     </label>
                   );

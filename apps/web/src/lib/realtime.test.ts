@@ -1,13 +1,15 @@
 import { describe, expect, it, vi } from 'vitest';
-import { QueryClient } from '@tanstack/react-query';
+import { MutationObserver, QueryClient } from '@tanstack/react-query';
 
 vi.mock('./socket', () => ({ acquireRoom: vi.fn(), getSocket: vi.fn() }));
 
 import { keys } from './queryKeys';
 import type { IssueDto } from '@tirapro/types';
 import { mk as fixture } from './issueFixture';
+import { reactionMutationOptions } from '@/features/issue-edit/commentReactionSave';
 import {
   applyCommentChanged,
+  applyCommentReaction,
   applyIssueCreated,
   applyIssueUpdated,
   applyRanksRebalanced,
@@ -23,6 +25,45 @@ describe('applyCommentChanged', () => {
     expect(qc.getQueryState(keys.issues.comments('i1'))?.isInvalidated).toBe(true);
     expect(qc.getQueryState(keys.issues.activity('i1'))?.isInvalidated).toBe(true);
     expect(qc.getQueryState(keys.issues.comments('i2'))?.isInvalidated).toBe(false);
+  });
+});
+
+describe('applyCommentReaction (comment:reaction)', () => {
+  it('chỉ nạp lại bình luận của đúng issue (thả cảm xúc không sinh hoạt động)', () => {
+    const qc = new QueryClient();
+    qc.setQueryData(keys.issues.comments('i1'), []);
+    qc.setQueryData(keys.issues.activity('i1'), []);
+    qc.setQueryData(keys.issues.comments('i2'), []);
+    applyCommentReaction(qc, 'i1');
+    expect(qc.getQueryState(keys.issues.comments('i1'))?.isInvalidated).toBe(true);
+    expect(qc.getQueryState(keys.issues.activity('i1'))?.isInvalidated).toBe(false);
+    expect(qc.getQueryState(keys.issues.comments('i2'))?.isInvalidated).toBe(false);
+  });
+
+  it('bỏ qua khi MÌNH đang có lần thả chờ ở issue đó (tránh chip nháy về bản cũ); lần cuối xong sẽ tự nạp lại', async () => {
+    const qc = new QueryClient();
+    qc.setQueryData(keys.issues.comments('i1'), [{ id: 'c1', reactions: [] }]);
+    let release!: () => void;
+    const gate = new Promise<never[]>((res) => {
+      release = () => res([]);
+    });
+    const o = new MutationObserver(
+      qc,
+      reactionMutationOptions(
+        qc,
+        'i1',
+        () => ({ id: 'me', displayName: 'Tôi' }),
+        () => gate,
+      ),
+    );
+    const p = o.mutate({ commentId: 'c1', emoji: '👍', on: true });
+    await new Promise((r) => setTimeout(r, 5));
+    applyCommentReaction(qc, 'i1');
+    expect(qc.getQueryState(keys.issues.comments('i1'))?.isInvalidated).toBe(false);
+    release();
+    await p;
+    expect(qc.getQueryState(keys.issues.comments('i1'))?.isInvalidated).toBe(true); // do onSettled của chính mutation
+    applyCommentReaction(qc, 'i2'); // issue khác thì vẫn nạp lại bình thường
   });
 });
 

@@ -33,13 +33,53 @@ export const RULE_CONDITION_OPS = [
   'contains',
 ] as const;
 
-export const fieldConditionSchema = z.object({
-  field: z.enum(RULE_CONDITION_FIELDS),
-  op: z.enum(RULE_CONDITION_OPS),
-  value: z.unknown().optional(),
-});
+/**
+ * Chuỗi mà Postgres/Prisma không nhận được: ký tự NUL (`\u0000` — "invalid byte sequence", jsonb cũng từ chối) hoặc
+ * surrogate UTF-16 lẻ (không tuần tự hoá được sang UTF-8). Quét sâu cả khoá đối tượng, vì `value` của điều kiện là
+ * `unknown`. Không được lọt tới DB: nếu lọt, kết quả là lỗi 500 thay vì 400.
+ */
+export function containsUnstorableText(v: unknown): boolean {
+  if (typeof v === 'string') return v.includes('\u0000') || !isWellFormedUtf16(v);
+  if (Array.isArray(v)) return v.some(containsUnstorableText);
+  if (v !== null && typeof v === 'object') {
+    return Object.entries(v).some(
+      ([k, x]) => containsUnstorableText(k) || containsUnstorableText(x),
+    );
+  }
+  return false;
+}
+
+function isWellFormedUtf16(s: string): boolean {
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    if (c >= 0xd800 && c <= 0xdbff) {
+      const d = s.charCodeAt(i + 1);
+      if (!(d >= 0xdc00 && d <= 0xdfff)) return false;
+      i++;
+    } else if (c >= 0xdc00 && c <= 0xdfff) return false;
+  }
+  return true;
+}
+
+const UNSTORABLE_MESSAGE = 'Giá trị chứa ký tự không hợp lệ (ký tự NUL hoặc UTF-16 hỏng)';
+
+export const fieldConditionSchema = z
+  .object({
+    field: z.enum(RULE_CONDITION_FIELDS),
+    op: z.enum(RULE_CONDITION_OPS),
+    value: z.unknown().optional(),
+  })
+  .refine((c) => !containsUnstorableText(c.value), {
+    message: UNSTORABLE_MESSAGE,
+    path: ['value'],
+  });
 export const jqlConditionSchema = z.object({
-  jql: z.string().trim().min(1, 'JQL không được để trống').max(2000),
+  jql: z
+    .string()
+    .trim()
+    .min(1, 'JQL không được để trống')
+    .max(2000)
+    .refine((j) => !containsUnstorableText(j), UNSTORABLE_MESSAGE),
 });
 export const ruleConditionSchema = z.union([fieldConditionSchema, jqlConditionSchema]);
 
@@ -178,6 +218,15 @@ export const testRuleSchema = z.object({
   issueKey: z.string().trim().min(1, 'Hãy nhập mã công việc, ví dụ DEMO-TASK-1'),
 });
 
+/**
+ * Xem trước "khớp N việc hiện có" của danh sách điều kiện (chưa lưu quy tắc). `projectId` trong body: guard phân quyền
+ * đọc đúng trường này (`@ProjectRef('body', 'projectId')`); không có = quy tắc cấp workspace.
+ */
+export const previewMatchSchema = z.object({
+  projectId: z.string().min(1).optional(),
+  conditions: z.array(ruleConditionSchema).max(20),
+});
+
 export const listRulesQuerySchema = z.object({ projectId: z.string().optional() });
 
 export type RuleTriggerValue = (typeof RULE_TRIGGERS)[number];
@@ -187,3 +236,19 @@ export type TriggerConfig = z.infer<typeof triggerConfigSchema>;
 export type CreateRuleInput = z.infer<typeof createRuleSchema>;
 export type UpdateRuleInput = z.infer<typeof updateRuleSchema>;
 export type TestRuleInput = z.infer<typeof testRuleSchema>;
+export type PreviewMatchInput = z.infer<typeof previewMatchSchema>;
+
+/** Quy tắc theo lịch xử lý tối đa chừng này việc mỗi lần chạy (engine dùng; xem trước nhắc người soạn khi số khớp vượt). */
+export const SCHEDULED_RUN_ISSUE_LIMIT = 500;
+
+/** Phản hồi `POST /automation/rules/preview-match` — API trả, web dùng (một định nghĩa duy nhất). */
+export interface PreviewMatchResult {
+  /** Số việc hiện có khớp MỌI điều kiện (trong phạm vi người soạn xem được); `null` = không đếm được (xem `reason`/`timedOut`). */
+  count: number | null;
+  /** Lý do không xem trước được (điều kiện không diễn đạt chính xác được, JQL sai cú pháp, giá trị không hợp lệ); `null` nếu không có. */
+  reason: string | null;
+  /** Đếm quá hạn (statement_timeout, hoặc không có chỗ trước hạn tổng). */
+  timedOut: boolean;
+  /** Có điều kiện JQL dùng `currentUser()`/`me`: trong tự động hoá nó là người dùng hệ thống, không phải ai đang xem. */
+  currentUserInJql: boolean;
+}

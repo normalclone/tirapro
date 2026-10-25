@@ -11,7 +11,7 @@ import { normalizeVi, VI_TRANSLATE_FROM, VI_TRANSLATE_TO } from '../search/vi-te
 import { ProjectAccessService } from '../rbac/project-access.service';
 import { AppException, NotFoundAppException } from '../../common/exceptions/app.exception';
 import { MediaService } from '../media/media.service';
-import { SYSTEM_USER_EMAIL } from '../automation/rule-engine.service';
+import { SYSTEM_USER_EMAIL } from '../../common/system-user';
 
 @Injectable()
 export class UsersService {

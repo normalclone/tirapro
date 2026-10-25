@@ -12,7 +12,11 @@ interface ClickLike {
 export const isModifiedClick = (e: ClickLike): boolean =>
   e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0;
 
-/** Trên DÒNG/THẺ: Cmd/Ctrl+click hoặc chuột giữa = mở trang đầy đủ ở tab mới (Shift/Alt không đổi nghĩa). */
+/**
+ * Trên DÒNG (Việc chờ, Triage, Bộ lọc, Cây): Cmd/Ctrl+click hoặc chuột giữa = mở trang đầy đủ ở tab mới (Shift/Alt không
+ * đổi nghĩa). RC15: trên THẺ Bảng việc, Cmd/Ctrl+click KHÔNG tới đây — thẻ bắt nó ở pha bắt (`selectGesture`) để bật/tắt
+ * chọn; chỉ chuột giữa, link mã (Cmd/Ctrl+click) và menu "Mở ở tab mới" mở tab.
+ */
 export const wantsNewTab = (e: Pick<ClickLike, 'metaKey' | 'ctrlKey' | 'button'>): boolean =>
   e.metaKey || e.ctrlKey || e.button === 1;
 
@@ -67,7 +71,7 @@ export function rowRootProps(o: { draggable: boolean; hasOpen: boolean }): Recor
 }
 
 /** Mở trang đầy đủ của công việc ở tab mới (một nơi cho mọi dòng/thẻ). */
-function openIssueInNewTab(key: string): void {
+export function openIssueInNewTab(key: string): void {
   window.open(`/issue/${key}`, '_blank', 'noopener');
 }
 

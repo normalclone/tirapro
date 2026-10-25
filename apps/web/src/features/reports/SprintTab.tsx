@@ -12,16 +12,10 @@ import { fmtDate } from '@/lib/dateFormat';
 import { sprintTimeInfo } from '@/lib/sprintTime';
 import { useBurndown, useProjectSprints, useSprintSummary, useVelocity } from './api';
 import { orderSprints, resolveSprint, SPRINT_STATE_LABEL } from './burndown';
-import {
-  BurndownChart,
-  Card,
-  ChartSkeleton,
-  StatStrip,
-  VelocityChart,
-  type StatItem,
-} from './charts';
+import { BurndownChart, Card, ChartSkeleton, VelocityChart } from './charts';
+import { StatRow, type StatItem } from '@/components/ui/StatRow';
 import { SprintSummaryPanel } from './SprintSummaryPanel';
-import { completionPct, fmtPoints } from './sprintSummary';
+import { completedSub, fmtPoints } from './sprintSummary';
 
 function burndownEmptyHint(state: string): string {
   return state === 'FUTURE'
@@ -231,8 +225,22 @@ function SprintSummaryCards({ summary }: { summary: SprintSummaryReport }) {
     {
       label: 'Hoàn thành',
       value: `${fmtPoints(completed.points)} điểm`,
-      sub: `${completed.count} việc · ${completionPct(completed.points, committed.points)}%`,
+      sub: completedSub(completed, committed, initialCommitted),
       tone: 'done',
+      // Đích thật = cam kết của sprint; vạch phụ khi phạm vi đổi giữa chừng.
+      bullet:
+        committed.points > 0
+          ? {
+              value: completed.points,
+              target: committed.points,
+              targetLabel: 'cam kết',
+              unit: 'điểm',
+              tone: 'done',
+              markers: scopeChanged
+                ? [{ at: initialCommitted.points, label: 'cam kết lúc bắt đầu' }]
+                : undefined,
+            }
+          : undefined,
     },
     {
       label: 'Còn lại',
@@ -253,12 +261,20 @@ function SprintSummaryCards({ summary }: { summary: SprintSummaryReport }) {
         velocity.sprintsCounted > 0
           ? `${velocity.sprintsCounted} sprint đã đóng trước đó`
           : 'Chưa có sprint đã đóng để so',
+      bullet:
+        velocity.sprintsCounted > 0
+          ? {
+              label: 'Điểm hoàn thành của sprint này',
+              value: completed.points,
+              target: velocity.average,
+              targetLabel: 'velocity TB',
+              unit: 'điểm',
+              tone: 'progress',
+            }
+          : undefined,
     },
   ];
   return (
-    <StatStrip
-      items={items}
-      className="lg:grid-cols-5 max-lg:[&>:last-child:nth-child(odd)]:col-span-2"
-    />
+    <StatRow items={items} cols="lg:grid-cols-5 max-lg:[&>:last-child:nth-child(odd)]:col-span-2" />
   );
 }

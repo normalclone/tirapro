@@ -10,6 +10,8 @@ import { DateInput } from '@/components/ui/DateInput';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { EmptyState, Skeleton } from '@/components/ui/primitives';
 import { cn } from '@/lib/utils';
+import { ColorPicker } from '@/components/ui/ColorPicker';
+import { LABEL_PALETTE } from '@/lib/labelPalette';
 import {
   DEPENDENCY_TYPES,
   DEPENDENCY_TYPE_HINTS,
@@ -28,9 +30,8 @@ import { QueryBoundary } from '@/components/ui/QueryBoundary';
 import { blockOnInvalidDate } from '@/lib/dateGuard';
 import { fmtDate, toDateInput } from '@/lib/dateFormat';
 
-const MILESTONE_COLORS = ['#7c3aed', '#2563eb', '#0d9488', '#16a34a', '#f59e0b', '#dc2626'];
-/** Tên màu đọc được, dùng cho nhãn trợ năng thay vì mã hex. */
-const MILESTONE_COLOR_NAMES = ['Tím', 'Xanh dương', 'Xanh ngọc', 'Xanh lá', 'Cam', 'Đỏ'];
+/** Màu mặc định của cột mốc mới (Tím của bảng màu chung — như trước đây). */
+const DEFAULT_MILESTONE_COLOR = LABEL_PALETTE.find((e) => e.key === 'purple')!.hex;
 
 /** 'YYYY-MM-DD' (input date) → ISO UTC nửa đêm, để BE lưu đúng ngày lịch. */
 function dateInputToIso(v: string): string {
@@ -287,7 +288,7 @@ function MilestoneSection({ projectId, canManage }: { projectId: string; canMana
   const [name, setName] = useState('');
   const formRef = useRef<HTMLDivElement>(null);
   const [dueDate, setDueDate] = useState(() => toDateInput(new Date()));
-  const [color, setColor] = useState(MILESTONE_COLORS[0]);
+  const [color, setColor] = useState(DEFAULT_MILESTONE_COLOR);
 
   async function add() {
     const trimmed = name.trim();
@@ -429,25 +430,12 @@ function MilestoneSection({ projectId, canManage }: { projectId: string; canMana
               </label>
               <DateInput id="ms-date" value={dueDate} onChange={setDueDate} className="text-sm" />
             </div>
-            <div className="flex shrink-0 gap-1.5 pb-1.5">
-              {MILESTONE_COLORS.map((c, i) => (
-                <button
-                  key={c}
-                  type="button"
-                  onClick={() => setColor(c)}
-                  title={`Màu ${MILESTONE_COLOR_NAMES[i]} cho hình thoi cột mốc trên biểu đồ`}
-                  aria-label={`Màu ${MILESTONE_COLOR_NAMES[i]}`}
-                  aria-pressed={color === c}
-                  className={cn(
-                    'h-5 w-5 rotate-45 transition-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
-                    color === c
-                      ? 'ring-2 ring-ink-strong ring-offset-2 ring-offset-surface-2'
-                      : 'hover:scale-110',
-                  )}
-                  style={{ background: c }}
-                />
-              ))}
-            </div>
+          </div>
+          <div>
+            <span id="ms-color-label" className="mb-1 block text-xs font-medium text-muted">
+              Màu cột mốc
+            </span>
+            <ColorPicker value={color} onChange={setColor} ariaLabelledby="ms-color-label" />
           </div>
           <Button
             size="sm"

@@ -6,6 +6,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
 import { AutomationController } from './automation.controller';
 import { AutomationService } from './automation.service';
 import { RuleEngineService } from './rule-engine.service';
+import { RulePreviewService } from './rule-preview.service';
 import { RulesController } from './rules.controller';
 import { RulesService } from './rules.service';
 
@@ -18,7 +19,7 @@ import { RulesService } from './rules.service';
 @Module({
   imports: [IssuesModule, CommentsModule, IntegrationsModule, NotificationsModule],
   controllers: [AutomationController, RulesController],
-  providers: [AutomationService, RulesService, RuleEngineService],
+  providers: [AutomationService, RulesService, RuleEngineService, RulePreviewService],
   exports: [AutomationService, RulesService],
 })
 export class AutomationModule {}

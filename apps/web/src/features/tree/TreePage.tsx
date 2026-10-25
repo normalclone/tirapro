@@ -1,7 +1,8 @@
-import { useMemo, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useMemo, useState, type MouseEvent } from 'react';
+import { Link, useParams } from 'react-router-dom';
 import { ChevronRight, ChevronsDownUp, ChevronsUpDown, CornerUpLeft, ListTree } from 'lucide-react';
 import { DndContext, DragOverlay, useDraggable, useDroppable } from '@dnd-kit/core';
+import type { IssueDto } from '@tirapro/types';
 import { useProject } from '@/features/projects/api';
 import { useProjectIssues } from '@/features/issues/api';
 import { DueBadge } from '@/components/ui/DueBadge';
@@ -22,6 +23,14 @@ import { pointsCell } from './pointsCell';
 import { ROOT_DROP_ID, rowDropId, useTreeDrag, type DropState } from './useTreeDrag';
 import { PriorityIcon } from '@/components/ui/PriorityIcon';
 import { usePriorityRanks } from '@/features/issue-meta/usePriorityRanks';
+import { PeekShell } from '@/features/issues/peek/PeekShell';
+import { useIssuePeek } from '@/features/issues/peek/useIssuePeek';
+import { PEEKED_ROW_CLS, peekedAttrs } from '@/features/issues/peek/peekedRow';
+import { rowPeekProps } from '@/features/issues/peek/rowPeekProps';
+import { COARSE_NO_CALLOUT } from '@/lib/dragTouch';
+import { isModifiedClick } from '@/lib/rowOpen';
+import { IssueContextMenu, IssueRowMenuButton } from '@/features/issues/menu/IssueContextMenu';
+import { flattenVisible, visibleKeys } from './treeOrder';
 
 /**
  * Bố cục cột dùng chung cho hàng tiêu đề (header) và mọi hàng dữ liệu, để các cột
@@ -34,19 +43,6 @@ const GRID_COLS =
 
 /** Bậc thụt lề mỗi cấp (px) ở cột tiêu đề. */
 const INDENT_STEP = 20;
-
-/** Làm phẳng cây thành danh sách hàng hiển thị, tôn trọng node đang thu gọn. */
-function flatten(
-  nodes: IssueTreeNode[],
-  collapsed: Set<string>,
-  out: IssueTreeNode[] = [],
-): IssueTreeNode[] {
-  for (const n of nodes) {
-    out.push(n);
-    if (n.children.length && !collapsed.has(n.issue.id)) flatten(n.children, collapsed, out);
-  }
-  return out;
-}
 
 /** Bản sao của `set` không có `id` (giữ nguyên tham chiếu nếu `id` vốn không có để khỏi vẽ lại thừa). */
 function without(set: Set<string>, id: string): Set<string> {
@@ -69,7 +65,7 @@ function collectParentIds(nodes: IssueTreeNode[], out: Set<string> = new Set()):
 
 export function TreePage() {
   const { key = '' } = useParams();
-  const navigate = useNavigate();
+  const peek = useIssuePeek();
   const {
     data: project,
     isLoading: lp,
@@ -84,7 +80,9 @@ export function TreePage() {
 
   const tree = useMemo(() => buildIssueTree(issues ?? []), [issues]);
   const progressById = useMemo(() => buildProgressMap(issues ?? []), [issues]);
-  const rows = useMemo(() => flatten(tree, collapsed), [tree, collapsed]);
+  const rows = useMemo(() => flattenVisible(tree, collapsed), [tree, collapsed]);
+  // Thứ tự cho panel xem nhanh = hàng đang thấy theo thứ tự màn hình (duyệt sâu trước); ‹ › và j/k bỏ qua con của nhánh thu gọn.
+  const peekOrder = useMemo(() => ({ keys: visibleKeys(rows) }), [rows]);
   const parentIds = useMemo(() => collectParentIds(tree), [tree]);
   // Điểm cộng dồn dựng một lần theo `issues` (Epic dùng định nghĩa thành viên epic dùng chung với panel Epic/Việc chờ).
   const rollups = useMemo(() => buildRowRollups(issues ?? [], parentIds), [issues, parentIds]);
@@ -110,100 +108,103 @@ export function TreePage() {
 
   return (
     <DndContext {...drag.dndProps}>
-      <div className="flex h-full flex-col">
-        <div className="min-h-0 flex-1 overflow-auto">
-          <PageFrame size="full" className="lg:pb-24">
-            {pe || issuesQ.isError ? (
-              <QueryError
-                error={pErr ?? issuesQ.error}
-                onRetry={() => {
-                  void refetchProject();
-                  if (!pe) void issuesQ.refetch();
-                }}
-              />
-            ) : isLoading ? (
-              <div className="space-y-1.5">
-                {Array.from({ length: 6 }).map((_, i) => (
-                  <Skeleton key={i} className="h-9 w-full" />
-                ))}
-                <DelayedSpinner />
-              </div>
-            ) : rows.length === 0 ? (
-              <EmptyState
-                icon={<ListTree className="h-8 w-8" aria-hidden />}
-                title="Chưa có công việc nào"
-                description="Mở một công việc, đặt trường “Việc cha” cho nó — cây phân cấp sẽ tự hiện ở đây."
-              />
-            ) : (
-              <>
-                {canEditAny && (
-                  <p className="mb-2 text-xs text-faint">
-                    Kéo một dòng thả lên dòng khác để đổi Epic / Việc cha. Không kéo được? Mở công
-                    việc và đổi ở ô “Epic / Việc cha”.
-                  </p>
-                )}
-                <div className="overflow-hidden rounded-lg border border-border bg-surface">
-                  {/* Hàng tiêu đề cột — dính khi cuộn để luôn biết đang xem cột nào */}
-                  <div
-                    className={cn(
-                      GRID_COLS,
-                      'sticky top-0 z-10 border-b border-border bg-surface-2 px-3 py-2',
-                      'text-[11px] font-medium uppercase tracking-wide text-faint',
-                    )}
-                  >
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={toggleAll}
-                        disabled={parentIds.size === 0}
-                        aria-label={allCollapsed ? 'Mở rộng tất cả' : 'Thu gọn tất cả'}
-                        title={allCollapsed ? 'Mở rộng tất cả' : 'Thu gọn tất cả'}
-                        // Giữ disabled:opacity (không dùng token vô hiệu) — icon-button không nền: token nền vô nghĩa, chỉ cần mờ đi.
-                        className="grid h-5 w-5 shrink-0 place-items-center rounded text-faint hover:bg-surface-3 hover:text-ink disabled:pointer-events-none disabled:opacity-40"
-                      >
-                        {allCollapsed ? (
-                          <ChevronsUpDown className="h-3.5 w-3.5" aria-hidden />
-                        ) : (
-                          <ChevronsDownUp className="h-3.5 w-3.5" aria-hidden />
-                        )}
-                      </button>
-                      <span>Tiêu đề</span>
-                    </div>
-                    <span className="max-sm:hidden">Trạng thái</span>
-                    <span className="max-sm:hidden">Người phụ trách</span>
-                    <span className="max-sm:hidden">Ưu tiên</span>
-                    <span
-                      className="text-right tabular max-sm:hidden"
-                      title="Dòng có việc bên trong hiện điểm cộng dồn: đã xong / tổng"
-                    >
-                      Điểm
-                    </span>
-                  </div>
-
-                  <ul className="divide-y divide-border">
-                    {rows.map((node) => (
-                      <TreeRow
-                        key={node.issue.id}
-                        node={node}
-                        progress={progressById.get(node.issue.id)}
-                        rollup={rollups.get(node.issue.id) ?? null}
-                        collapsed={collapsed.has(node.issue.id)}
-                        canDrag={canEditIssue(node.issue)}
-                        dragging={dragId === node.issue.id}
-                        dropState={drag.dropStateOf(node.issue.id)}
-                        onToggle={() => toggle(node.issue.id)}
-                        onOpen={() => navigate(`/issue/${node.issue.key}`)}
-                      />
-                    ))}
-                  </ul>
+      <PeekShell order={peekOrder}>
+        <div className="flex h-full flex-col">
+          <div className="min-h-0 flex-1 overflow-auto">
+            <PageFrame size="full" className="lg:pb-24">
+              {pe || issuesQ.isError ? (
+                <QueryError
+                  error={pErr ?? issuesQ.error}
+                  onRetry={() => {
+                    void refetchProject();
+                    if (!pe) void issuesQ.refetch();
+                  }}
+                />
+              ) : isLoading ? (
+                <div className="space-y-1.5">
+                  {Array.from({ length: 6 }).map((_, i) => (
+                    <Skeleton key={i} className="h-9 w-full" />
+                  ))}
+                  <DelayedSpinner />
                 </div>
-              </>
-            )}
-          </PageFrame>
+              ) : rows.length === 0 ? (
+                <EmptyState
+                  icon={<ListTree className="h-8 w-8" aria-hidden />}
+                  title="Chưa có công việc nào"
+                  description="Mở một công việc, đặt trường “Việc cha” cho nó — cây phân cấp sẽ tự hiện ở đây."
+                />
+              ) : (
+                <>
+                  {canEditAny && (
+                    <p className="mb-2 text-xs text-faint">
+                      Kéo một dòng thả lên dòng khác để đổi Epic / Việc cha. Không kéo được? Mở công
+                      việc và đổi ở ô “Epic / Việc cha”.
+                    </p>
+                  )}
+                  <div className="overflow-hidden rounded-lg border border-border bg-surface">
+                    {/* Hàng tiêu đề cột — dính khi cuộn để luôn biết đang xem cột nào */}
+                    <div
+                      className={cn(
+                        GRID_COLS,
+                        'sticky top-0 z-10 border-b border-border bg-surface-2 px-3 py-2',
+                        'text-[11px] font-medium uppercase tracking-wide text-faint',
+                      )}
+                    >
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={toggleAll}
+                          disabled={parentIds.size === 0}
+                          aria-label={allCollapsed ? 'Mở rộng tất cả' : 'Thu gọn tất cả'}
+                          title={allCollapsed ? 'Mở rộng tất cả' : 'Thu gọn tất cả'}
+                          // Giữ disabled:opacity (không dùng token vô hiệu) — icon-button không nền: token nền vô nghĩa, chỉ cần mờ đi.
+                          className="grid h-5 w-5 shrink-0 place-items-center rounded text-faint hover:bg-surface-3 hover:text-ink disabled:pointer-events-none disabled:opacity-40"
+                        >
+                          {allCollapsed ? (
+                            <ChevronsUpDown className="h-3.5 w-3.5" aria-hidden />
+                          ) : (
+                            <ChevronsDownUp className="h-3.5 w-3.5" aria-hidden />
+                          )}
+                        </button>
+                        <span>Tiêu đề</span>
+                      </div>
+                      <span className="max-sm:hidden">Trạng thái</span>
+                      <span className="max-sm:hidden">Người phụ trách</span>
+                      <span className="max-sm:hidden">Ưu tiên</span>
+                      <span
+                        className="text-right tabular max-sm:hidden"
+                        title="Dòng có việc bên trong hiện điểm cộng dồn: đã xong / tổng"
+                      >
+                        Điểm
+                      </span>
+                    </div>
+
+                    <ul className="divide-y divide-border">
+                      {rows.map((node) => (
+                        <TreeRow
+                          key={node.issue.id}
+                          node={node}
+                          progress={progressById.get(node.issue.id)}
+                          rollup={rollups.get(node.issue.id) ?? null}
+                          collapsed={collapsed.has(node.issue.id)}
+                          canDrag={canEditIssue(node.issue)}
+                          dragging={dragId === node.issue.id}
+                          dropState={drag.dropStateOf(node.issue.id)}
+                          onToggle={() => toggle(node.issue.id)}
+                          peeked={peek.peekKey === node.issue.key}
+                          onOpen={peek.open}
+                        />
+                      ))}
+                    </ul>
+                  </div>
+                </>
+              )}
+            </PageFrame>
+          </div>
+          {/* Ngoài khung cuộn: không phủ lên dòng nào, vị trí không phụ thuộc cuộn/tự cuộn khi kéo. */}
+          {dragId && <RootDropZone active={overId === ROOT_DROP_ID} />}
         </div>
-        {/* Ngoài khung cuộn: không phủ lên dòng nào, vị trí không phụ thuộc cuộn/tự cuộn khi kéo. */}
-        {dragId && <RootDropZone active={overId === ROOT_DROP_ID} />}
-      </div>
+      </PeekShell>
       <DragOverlay dropAnimation={null}>
         {dragged ? (
           <div className="flex max-w-md items-center gap-2 rounded-md border border-border bg-surface px-3 py-2 text-sm shadow-lg">
@@ -235,6 +236,12 @@ function RootDropZone({ active }: { active: boolean }) {
   );
 }
 
+/**
+ * Cảm ứng: vùng bấm 44px của "…" (`::after` nhô ra 10px mỗi phía) nằm ngay sau liên kết tiêu đề (khoảng cách hàng gap-2 = 8px)
+ * nên đè 2px lên cuối liên kết — chạm mép cuối tiêu đề sẽ mở menu thay vì xem nhanh. Lùi nút thêm 4px (8 + 4 ≥ 10).
+ */
+const TREE_MENU_COARSE_CLS = '[@media(pointer:coarse)]:ml-1';
+
 function TreeRow({
   node,
   progress,
@@ -245,6 +252,7 @@ function TreeRow({
   dropState,
   onToggle,
   onOpen,
+  peeked,
 }: {
   node: IssueTreeNode;
   progress?: SubtreeProgress;
@@ -254,7 +262,10 @@ function TreeRow({
   dragging: boolean;
   dropState: DropState;
   onToggle: () => void;
-  onOpen: () => void;
+  /** Bấm dòng/tiêu đề → xem nhanh (Cmd/Ctrl+bấm, chuột giữa → trang đầy đủ ở tab mới). */
+  onOpen: (key: string) => void;
+  /** Đang xem nhanh ở panel phải: tô + `aria-current`. */
+  peeked: boolean;
 }) {
   const { issue, children, depth } = node;
   const hasChildren = children.length > 0;
@@ -263,80 +274,121 @@ function TreeRow({
   const drag = useDraggable({ id: issue.id, disabled: !canDrag });
   const drop = useDroppable({ id: rowDropId(issue.id) });
   const ranks = usePriorityRanks();
+  const rowOpen = rowPeekProps(issue.key, onOpen); // chỉ lấy click/auxclick (keydown của li thuộc dnd-kit)
 
   return (
-    <li
-      ref={(el) => {
-        drag.setNodeRef(el);
-        drop.setNodeRef(el);
-      }}
-      {...drag.listeners}
-      onClick={onOpen}
-      data-dragging={dragging || undefined}
-      className={cn(
-        GRID_COLS,
-        'group cursor-pointer px-3 py-2 transition-colors hover:bg-surface-2',
-        dragging && 'opacity-40',
-        dropState === 'ok' && 'bg-surface-2 ring-2 ring-inset ring-[var(--ring)]',
-        dropState === 'bad' && 'cursor-not-allowed ring-2 ring-inset ring-danger',
-      )}
-    >
-      {/* Cột 1 — Tiêu đề: thụt lề theo cấp + chevron + loại + key + summary + tiến độ con */}
-      <div className="flex min-w-0 items-center gap-2">
-        <span style={{ width: depth * INDENT_STEP }} className="shrink-0" aria-hidden />
-        {hasChildren ? (
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation(); // chỉ đóng/mở nhánh, không mở issue
-              onToggle();
-            }}
-            aria-label={collapsed ? 'Mở rộng' : 'Thu gọn'}
-            aria-expanded={!collapsed}
-            className="grid h-5 w-5 shrink-0 place-items-center rounded text-muted hover:bg-surface-3 hover:text-ink"
-          >
-            <ChevronRight
-              className={cn('h-4 w-4 transition-transform', !collapsed && 'rotate-90')}
-              aria-hidden
-            />
-          </button>
-        ) : (
-          <span className="h-5 w-5 shrink-0" aria-hidden />
+    <IssueContextMenu issue={issue} surface="tree" onPeek={onOpen}>
+      <li
+        ref={(el) => {
+          drag.setNodeRef(el);
+          drop.setNodeRef(el);
+        }}
+        {...drag.listeners}
+        {...peekedAttrs(peeked)}
+        onClick={rowOpen.onClick}
+        onAuxClick={rowOpen.onAuxClick}
+        data-dragging={dragging || undefined}
+        className={cn(
+          GRID_COLS,
+          'group group/row cursor-pointer px-3 py-2 transition-colors',
+          // Kéo bằng cảm ứng (nhấn giữ): không chọn chữ / không menu xem trước liên kết của iOS giành mất cử chỉ.
+          'touch-manipulation',
+          COARSE_NO_CALLOUT,
+          // Đang xem: nền token không đổi khi rê chuột (hover thường sẽ đè lên).
+          peeked ? PEEKED_ROW_CLS : 'hover:bg-surface-2',
+          dragging && 'opacity-40',
+          dropState === 'ok' && 'bg-surface-2 ring-2 ring-inset ring-[var(--ring)]',
+          dropState === 'bad' && 'cursor-not-allowed ring-2 ring-inset ring-danger',
         )}
-
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            onOpen();
-          }}
-          className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-0.5 text-left focus-visible:rounded max-sm:py-1 sm:flex-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
-          title={issue.summary}
-        >
-          <span
-            role="img"
-            aria-label={`Trạng thái: ${issue.status.name}`}
-            title={issue.status.name}
-            className="h-2 w-2 shrink-0 rounded-full sm:hidden"
-            style={{ background: categoryColor(issue.status.category) }}
-          />
-          <span
-            className="shrink-0 rounded bg-surface-2 px-1 py-0.5 text-[10px] text-muted group-hover:bg-surface-3"
-            style={issue.type.color ? { color: issue.type.color } : undefined}
-          >
-            {issue.type.name}
-          </span>
-          <span className="shrink-0 font-mono text-xs text-muted">{issue.key}</span>
-          <span className="min-w-0 text-sm text-ink group-hover:text-ink-strong max-sm:order-last max-sm:basis-full max-sm:line-clamp-2 sm:flex-1 sm:truncate">
-            {issue.summary}
-          </span>
-          {showProgress && (
-            <TaskProgress progress={progress} compact className="hidden w-24 shrink-0 lg:block" />
+      >
+        {/* Cột 1 — Tiêu đề: thụt lề theo cấp + chevron + loại + key + summary + tiến độ con */}
+        <div className="flex min-w-0 items-center gap-2">
+          <span style={{ width: depth * INDENT_STEP }} className="shrink-0" aria-hidden />
+          {hasChildren ? (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation(); // chỉ đóng/mở nhánh, không mở issue
+                onToggle();
+              }}
+              aria-label={collapsed ? 'Mở rộng' : 'Thu gọn'}
+              aria-expanded={!collapsed}
+              className="grid h-5 w-5 shrink-0 place-items-center rounded text-muted hover:bg-surface-3 hover:text-ink"
+            >
+              <ChevronRight
+                className={cn('h-4 w-4 transition-transform', !collapsed && 'rotate-90')}
+                aria-hidden
+              />
+            </button>
+          ) : (
+            <span className="h-5 w-5 shrink-0" aria-hidden />
           )}
-          <DueBadge issue={issue} warnOnly className="shrink-0" />
-        </button>
-      </div>
 
+          <Link
+            to={`/issue/${issue.key}`}
+            draggable={false}
+            data-nav-item
+            data-issue-key={issue.key}
+            onClick={(e: MouseEvent<HTMLAnchorElement>) => {
+              if (isModifiedClick(e)) return; // link thật: Cmd/Ctrl+bấm → tab mới
+              e.preventDefault();
+              e.stopPropagation();
+              onOpen(issue.key);
+            }}
+            className={cn(
+              COARSE_NO_CALLOUT,
+              'flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-0.5 text-left focus-visible:rounded max-sm:py-1 sm:flex-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40',
+            )}
+            title={issue.summary}
+          >
+            <span
+              role="img"
+              aria-label={`Trạng thái: ${issue.status.name}`}
+              title={issue.status.name}
+              className="h-2 w-2 shrink-0 rounded-full sm:hidden"
+              style={{ background: categoryColor(issue.status.category) }}
+            />
+            <span
+              className="shrink-0 rounded bg-surface-2 px-1 py-0.5 text-[10px] text-muted group-hover:bg-surface-3"
+              style={issue.type.color ? { color: issue.type.color } : undefined}
+            >
+              {issue.type.name}
+            </span>
+            <span className="shrink-0 font-mono text-xs text-muted">{issue.key}</span>
+            <span className="min-w-0 text-sm text-ink group-hover:text-ink-strong max-sm:order-last max-sm:basis-full max-sm:line-clamp-2 sm:flex-1 sm:truncate">
+              {issue.summary}
+            </span>
+            {showProgress && (
+              <TaskProgress progress={progress} compact className="hidden w-24 shrink-0 lg:block" />
+            )}
+            <DueBadge issue={issue} warnOnly className="shrink-0" />
+          </Link>
+          <IssueRowMenuButton
+            issue={issue}
+            surface="tree"
+            onPeek={onOpen}
+            className={TREE_MENU_COARSE_CLS}
+          />
+        </div>
+
+        <TreeMetaCells issue={issue} cell={cell} ranks={ranks} />
+      </li>
+    </IssueContextMenu>
+  );
+}
+
+/** Cột 2–5 của hàng cây: trạng thái, người phụ trách, ưu tiên, điểm (tách khỏi `TreeRow` cho gọn). */
+function TreeMetaCells({
+  issue,
+  cell,
+  ranks,
+}: {
+  issue: IssueDto;
+  cell: ReturnType<typeof pointsCell>;
+  ranks: ReturnType<typeof usePriorityRanks>;
+}) {
+  return (
+    <>
       {/* Cột 2 — Trạng thái: chấm theo nhóm + tên trạng thái */}
       <div className="hidden min-w-0 items-center gap-2 sm:flex">
         <span
@@ -388,6 +440,6 @@ function TreeRow({
       >
         {cell.text}
       </span>
-    </li>
+    </>
   );
 }

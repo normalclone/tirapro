@@ -11,6 +11,7 @@ import { useUpdateIssue } from '@/features/issues/api';
 import { pointsConfirmOptions, pointsEditWarning } from '@/features/issues/pointsWarning';
 import { useConfirm } from '@/components/ui/useConfirm';
 import { useAssigneePicker } from '@/features/issue-edit/useAssigneeOptions';
+import { useAssigneeAvailability } from '@/features/resources/useAssigneeAvailability';
 import { ParticipantsRow } from '@/features/issue-extras/ParticipantsRow';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { PeoplePicker } from '@/components/ui/PeoplePicker';
@@ -29,6 +30,7 @@ import { parsePointsInput } from '@/lib/permissions';
 import { cn } from '@/lib/utils';
 import { fmtDate, fmtDateTime, fmtRelative, toDateInput, toDateTimeInput } from '@/lib/dateFormat';
 import { DateInput, DateTimeInput } from '@/components/ui/DateInput';
+import type { FactField } from '@/features/issues/issueFacts';
 
 /** Trigger SearchSelect ở dạng badge/label (không viền, hover nền) — bấm để đổi. */
 export const INLINE_TRIGGER =
@@ -140,7 +142,14 @@ export function IssueTypeSelect({ issue }: { issue: IssueDto }) {
 }
 
 /** Badge ƯU TIÊN (đứng sau loại), bấm để đổi. */
-export function IssuePrioritySelect({ issue }: { issue: IssueDto }) {
+export function IssuePrioritySelect({
+  issue,
+  className,
+}: {
+  issue: IssueDto;
+  /** Ghi thêm lên nút (vd `min-h-11` cho dải thuộc tính trên điện thoại). */
+  className?: string;
+}) {
   const { data: projects } = useProjects();
   const projectKey = projects?.find((p) => p.id === issue.projectId)?.key;
   const { data: meta } = useProjectMeta(projectKey);
@@ -164,7 +173,7 @@ export function IssuePrioritySelect({ issue }: { issue: IssueDto }) {
           { onError: (e) => toast.error(apiErrorMessage(e)) },
         );
       }}
-      className={INLINE_TRIGGER}
+      className={cn(INLINE_TRIGGER, className)}
       renderTrigger={() => <PriorityBadge priority={issue.priority} />}
     />
   );
@@ -442,115 +451,174 @@ export function IssueStoryPointsInline({ issue, canEdit }: { issue: IssueDto; ca
 /* Người liên quan (cột phải — người phụ trách / người tạo / tham gia) */
 /* ------------------------------------------------------------------ */
 
-export function IssuePeoplePanel({ issue }: { issue: IssueDto }) {
+/**
+ * Người phụ trách: nút gợi ý AI (nếu có quyền) + ô chọn người (hoặc chữ thường khi chỉ xem). MỘT nơi định nghĩa cho cả
+ * hàng ở cột phải và ô trong dải thuộc tính (điện thoại) → cùng quyền, cùng `version` (OCC), cùng thông báo lỗi.
+ */
+export function IssueAssigneeControl({
+  issue,
+  className,
+  suggestClassName,
+  flushStart,
+}: {
+  issue: IssueDto;
+  /** Ghi thêm lên nút chọn (vd `min-h-11 max-w-full`). */
+  className?: string;
+  /** Ghi thêm lên nút "Gợi ý". */
+  suggestClassName?: string;
+  /** Phần tử đầu dòng tự bù đệm trái để chữ thẳng hàng với nhãn phía trên (ô trong dải thuộc tính). */
+  flushStart?: boolean;
+}) {
   const assignees = useAssigneePicker(issue.projectId);
+  // "Còn trống ~N giờ/tuần" theo tuần của hạn/ngày bắt đầu việc này; chỉ nạp khi danh sách mở.
+  const availability = useAssigneeAvailability({
+    dueDate: issue.dueDate,
+    startDate: issue.startDate,
+    assigneeId: issue.assignee?.id ?? null,
+  });
   const patch = useUpdateIssue(issue.projectId);
   const canEditThis = useCanEditIssue(issue.projectId)(issue);
   const canSuggest = useAuth((s) => s.can('ai:use')) && canEditThis;
+  return (
+    <div className="flex min-w-0 items-center gap-1">
+      {canSuggest && (
+        <AssigneeSuggestButton
+          projectId={issue.projectId}
+          issueId={issue.id}
+          dueDate={issue.dueDate}
+          startDate={issue.startDate}
+          assigneeId={issue.assignee?.id ?? null}
+          disabled={patch.isPending}
+          className={cn(flushStart && '-ml-1.5', suggestClassName)}
+          onPick={(userId) => {
+            if (userId === (issue.assignee?.id ?? null)) return;
+            patch.mutate(
+              {
+                id: issue.id,
+                key: issue.key,
+                patch: { assigneeId: userId },
+                version: issue.version,
+              },
+              { onError: (e) => toast.error(apiErrorMessage(e)) },
+            );
+          }}
+        />
+      )}
+      {canEditThis ? (
+        <PeoplePicker
+          ariaLabel="Người phụ trách"
+          value={issue.assignee?.id ?? ''}
+          disabled={patch.isPending}
+          align="end"
+          {...assignees}
+          {...availability}
+          selectedFallback={issue.assignee ?? undefined}
+          onChange={(v) => {
+            const next = v || null;
+            if (next !== (issue.assignee?.id ?? null)) {
+              patch.mutate(
+                {
+                  id: issue.id,
+                  key: issue.key,
+                  patch: { assigneeId: next },
+                  version: issue.version,
+                },
+                { onError: (e) => toast.error(apiErrorMessage(e)) },
+              );
+            }
+          }}
+          className={cn(
+            INLINE_TRIGGER,
+            'justify-end',
+            flushStart && !canSuggest && '-ml-1',
+            className,
+          )}
+          renderTrigger={() =>
+            issue.assignee ? (
+              <span className="flex min-w-0 items-center gap-1.5">
+                <Avatar
+                  name={issue.assignee.displayName}
+                  src={issue.assignee.avatarUrl}
+                  size={18}
+                />
+                <span className="truncate">{issue.assignee.displayName}</span>
+              </span>
+            ) : (
+              <span
+                className="text-faint"
+                title="Chưa có ai nhận việc này. Bấm để chọn người phụ trách."
+              >
+                Chưa gán
+              </span>
+            )
+          }
+        />
+      ) : (
+        <span className="flex min-w-0 items-center gap-1.5">
+          {issue.assignee ? (
+            <>
+              <Avatar name={issue.assignee.displayName} src={issue.assignee.avatarUrl} size={18} />
+              <span className="truncate">{issue.assignee.displayName}</span>
+            </>
+          ) : (
+            <span className="text-faint">Chưa gán</span>
+          )}
+        </span>
+      )}
+    </div>
+  );
+}
 
+/**
+ * Cột phải: người phụ trách / người tạo / tham gia. `omit` = trường đã hiện ở nơi khác trên trang (dải thuộc tính ở điện
+ * thoại) → không dựng lại ở đây; bỏ hết thì không vẽ cả mục.
+ */
+export function IssuePeoplePanel({
+  issue,
+  omit = [],
+}: {
+  issue: IssueDto;
+  omit?: readonly FactField[];
+}) {
+  const show = (f: FactField) => !omit.includes(f);
+  if (!show('assignee') && !show('reporter') && !show('participants')) return null;
   return (
     <PanelSection title="Người liên quan">
       <div className="divide-y divide-border">
         {/* Người phụ trách — inline, bấm để chọn */}
-        <div className="flex items-center justify-between gap-3 py-1.5 text-sm">
-          <span className="shrink-0 text-muted" title="Người chịu trách nhiệm làm xong việc này">
-            Người phụ trách
-          </span>
-          <div className="flex min-w-0 items-center gap-1">
-            {canSuggest && (
-              <AssigneeSuggestButton
-                projectId={issue.projectId}
-                issueId={issue.id}
-                disabled={patch.isPending}
-                onPick={(userId) => {
-                  if (userId === (issue.assignee?.id ?? null)) return;
-                  patch.mutate(
-                    {
-                      id: issue.id,
-                      key: issue.key,
-                      patch: { assigneeId: userId },
-                      version: issue.version,
-                    },
-                    { onError: (e) => toast.error(apiErrorMessage(e)) },
-                  );
-                }}
-              />
-            )}
-            {canEditThis ? (
-              <PeoplePicker
-                ariaLabel="Người phụ trách"
-                value={issue.assignee?.id ?? ''}
-                disabled={patch.isPending}
-                align="end"
-                {...assignees}
-                selectedFallback={issue.assignee ?? undefined}
-                onChange={(v) => {
-                  const next = v || null;
-                  if (next !== (issue.assignee?.id ?? null)) {
-                    patch.mutate(
-                      {
-                        id: issue.id,
-                        key: issue.key,
-                        patch: { assigneeId: next },
-                        version: issue.version,
-                      },
-                      { onError: (e) => toast.error(apiErrorMessage(e)) },
-                    );
-                  }
-                }}
-                className={`${INLINE_TRIGGER} justify-end`}
-                renderTrigger={() =>
-                  issue.assignee ? (
-                    <span className="flex items-center gap-1.5">
-                      <Avatar
-                        name={issue.assignee.displayName}
-                        src={issue.assignee.avatarUrl}
-                        size={18}
-                      />
-                      <span className="truncate">{issue.assignee.displayName}</span>
-                    </span>
-                  ) : (
-                    <span
-                      className="text-faint"
-                      title="Chưa có ai nhận việc này. Bấm để chọn người phụ trách."
-                    >
-                      Chưa gán
-                    </span>
-                  )
-                }
-              />
-            ) : (
-              <span className="flex min-w-0 items-center gap-1.5">
-                {issue.assignee ? (
-                  <>
-                    <Avatar
-                      name={issue.assignee.displayName}
-                      src={issue.assignee.avatarUrl}
-                      size={18}
-                    />
-                    <span className="truncate">{issue.assignee.displayName}</span>
-                  </>
-                ) : (
-                  <span className="text-faint">Chưa gán</span>
-                )}
-              </span>
-            )}
-          </div>
-        </div>
-
-        <InfoRow label="Người tạo" hint="Người đã tạo công việc này — thường là người cần kết quả">
-          {issue.reporter ? (
-            <span className="flex items-center justify-end gap-1.5">
-              <Avatar name={issue.reporter.displayName} src={issue.reporter.avatarUrl} size={18} />
-              <span className="truncate">{issue.reporter.displayName}</span>
+        {show('assignee') && (
+          <div className="flex items-center justify-between gap-3 py-1.5 text-sm">
+            <span className="shrink-0 text-muted" title="Người chịu trách nhiệm làm xong việc này">
+              Người phụ trách
             </span>
-          ) : (
-            '—'
-          )}
-        </InfoRow>
+            <IssueAssigneeControl issue={issue} />
+          </div>
+        )}
+
+        {show('reporter') && (
+          <InfoRow
+            label="Người tạo"
+            hint="Người đã tạo công việc này — thường là người cần kết quả"
+          >
+            {issue.reporter ? (
+              <span className="flex items-center justify-end gap-1.5">
+                <Avatar
+                  name={issue.reporter.displayName}
+                  src={issue.reporter.avatarUrl}
+                  size={18}
+                />
+                <span className="truncate">{issue.reporter.displayName}</span>
+              </span>
+            ) : (
+              '—'
+            )}
+          </InfoRow>
+        )}
 
         {/* Người tham gia — nhiều người cùng theo việc này (ngoài người phụ trách và người tạo). */}
-        <ParticipantsRow issueId={issue.id} projectId={issue.projectId} owner={issue} />
+        {show('participants') && (
+          <ParticipantsRow issueId={issue.id} projectId={issue.projectId} owner={issue} />
+        )}
       </div>
     </PanelSection>
   );
@@ -563,22 +631,30 @@ export function IssuePeoplePanel({ issue }: { issue: IssueDto }) {
 export function IssueDatesPanel({
   issue,
   canEditRestricted,
+  omit = [],
 }: {
   issue: IssueDto;
   canEditRestricted: boolean;
+  /** Trường đã hiện ở nơi khác trên trang (xem `IssuePeoplePanel`). */
+  omit?: readonly FactField[];
 }) {
+  const show = (f: FactField) => !omit.includes(f);
   return (
     <PanelSection title="Mốc thời gian">
       <div className="divide-y divide-border">
-        <StartRow issue={issue} canEdit={canEditRestricted} />
-        <DueRow issue={issue} canEdit={canEditRestricted} />
-        <InfoRow label="Ngày tạo" hint="Lúc công việc được tạo">
-          <span title={fmtRelative(issue.createdAt)}>{fmtDateTime(issue.createdAt)}</span>
-        </InfoRow>
-        <InfoRow label="Sửa lần cuối" hint="Lần gần nhất có người thay đổi việc này">
-          <span title={fmtRelative(issue.updatedAt)}>{fmtDateTime(issue.updatedAt)}</span>
-        </InfoRow>
-        {issue.resolvedAt && (
+        {show('startDate') && <StartRow issue={issue} canEdit={canEditRestricted} />}
+        {show('due') && <IssueDueField issue={issue} canEdit={canEditRestricted} />}
+        {show('createdAt') && (
+          <InfoRow label="Ngày tạo" hint="Lúc công việc được tạo">
+            <span title={fmtRelative(issue.createdAt)}>{fmtDateTime(issue.createdAt)}</span>
+          </InfoRow>
+        )}
+        {show('updatedAt') && (
+          <InfoRow label="Sửa lần cuối" hint="Lần gần nhất có người thay đổi việc này">
+            <span title={fmtRelative(issue.updatedAt)}>{fmtDateTime(issue.updatedAt)}</span>
+          </InfoRow>
+        )}
+        {show('resolvedAt') && issue.resolvedAt && (
           <InfoRow label="Hoàn tất" hint="Lúc công việc chuyển sang trạng thái đã xong">
             <span title={fmtRelative(issue.resolvedAt)}>{fmtDateTime(issue.resolvedAt)}</span>
           </InfoRow>
@@ -604,6 +680,7 @@ function DateRowShell({
   valueClass,
   valueTip,
   onEdit,
+  layout = 'row',
 }: {
   label: string;
   hint: string;
@@ -617,7 +694,42 @@ function DateRowShell({
   valueClass?: string;
   valueTip?: string | null;
   onEdit: () => void;
+  /** `row` = hàng nhãn:giá trị ở cột phải; `tile` = ô trong dải thuộc tính (nhãn do khung ngoài vẽ, vùng bấm ≥ 44px). */
+  layout?: 'row' | 'tile';
 }) {
+  if (layout === 'tile') {
+    const shown = display ?? (canEdit ? emptyAction : '—');
+    return (
+      <div className="flex min-h-11 min-w-0 items-center gap-1 text-sm">
+        {!canEdit && <Lock className="h-3 w-3 shrink-0 text-faint" aria-label={lockedTip} />}
+        {editing && canEdit ? (
+          <div className="min-w-0 flex-1">{editor}</div>
+        ) : canEdit ? (
+          <button
+            type="button"
+            onClick={onEdit}
+            aria-label={`${label}: ${shown}`}
+            title={
+              valueTip ? `${valueTip} — bấm để đổi` : `Bấm để đặt hoặc đổi ${label.toLowerCase()}`
+            }
+            className={cn(
+              '-ml-1.5 min-h-11 min-w-0 rounded px-1.5 text-left transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
+              display ? valueClass : 'text-faint',
+            )}
+          >
+            {shown}
+          </button>
+        ) : (
+          <span
+            className={cn('min-w-0 rounded py-0.5', display ? valueClass : 'text-ink')}
+            title={valueTip ?? (display ? undefined : `Việc này chưa đặt ${label.toLowerCase()}`)}
+          >
+            {shown}
+          </span>
+        )}
+      </div>
+    );
+  }
   return (
     <div className="flex items-center justify-between gap-3 py-1.5 text-sm">
       <span className="flex shrink-0 items-center gap-1 text-muted" title={hint}>
@@ -729,8 +841,19 @@ function StartRow({ issue, canEdit }: { issue: IssueDto; canEdit: boolean }) {
   );
 }
 
-/** Hàng "Hạn": nhãn ngày, bấm mới sửa (khoá nếu không có quyền). */
-function DueRow({ issue, canEdit }: { issue: IssueDto; canEdit: boolean }) {
+/**
+ * "Hạn": nhãn ngày, bấm mới sửa (khoá nếu không có quyền). Dùng cho hàng ở cột phải (`row`) và ô ở dải thuộc tính trên
+ * điện thoại (`tile`) — cùng quyền (`canEdit`), cùng ô sửa, cùng mutation + `version`.
+ */
+export function IssueDueField({
+  issue,
+  canEdit,
+  layout = 'row',
+}: {
+  issue: IssueDto;
+  canEdit: boolean;
+  layout?: 'row' | 'tile';
+}) {
   const patch = useUpdateIssue(issue.projectId);
   const [editing, setEditing] = useState(false);
   const display = issue.dueDate ? fmtDateTime(issue.dueDate) : null;
@@ -779,6 +902,7 @@ function DueRow({ issue, canEdit }: { issue: IssueDto; canEdit: boolean }) {
       emptyAction="Đặt hạn"
       valueClass={toneCls}
       valueTip={toneTip}
+      layout={layout}
       onEdit={() => {
         setDraft(currentDue);
         setEditing(true);
@@ -791,7 +915,7 @@ function DueRow({ issue, canEdit }: { issue: IssueDto; canEdit: boolean }) {
             onCommit={save}
             ariaLabel="Hạn hoàn thành"
             disabled={patch.isPending}
-            className="w-56"
+            className={layout === 'tile' ? 'w-full' : 'w-56'}
           />
         </InlineEditor>
       }

@@ -2,6 +2,7 @@ import type { KeyboardEvent, ReactNode } from 'react';
 import * as RadixDialog from '@radix-ui/react-dialog';
 import { X } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { pickSubmit } from '@/lib/submitShortcut';
 
 const SIZE: Record<'sm' | 'md' | 'lg' | 'xl', string> = {
   sm: 'max-w-sm',
@@ -22,6 +23,8 @@ export interface DialogProps {
   size?: 'sm' | 'md' | 'lg' | 'xl';
   /** Cmd/Ctrl+Enter gọi onSubmit nếu có (kể cả khi đang gõ trong textarea). */
   onSubmit?: () => void;
+  /** Cmd/Ctrl+Shift+Enter (hành động phụ, vd "Tạo & nhập tiếp"). Không truyền → Shift gửi như Cmd/Ctrl+Enter. */
+  onSubmitAlt?: () => void;
   /** Class thêm cho vùng nội dung cuộn (vd bỏ padding khi nội dung tự quản lý bố cục). */
   bodyClassName?: string;
   /** Ẩn tiêu đề khỏi mắt nhìn nhưng vẫn giữ cho trình đọc màn hình (vd bảng lệnh có ô tìm riêng). */
@@ -46,6 +49,13 @@ export interface DialogProps {
    * mà hộp này mở bằng state nên không có trigger → focus rơi về `body`; nơi mở từ một nút nên tự trả focus về nút đó.
    */
   onCloseAutoFocus?: (e: Event) => void;
+  /**
+   * Chỉ `placement="bottom"`: thay tay nắm trang trí bằng nội dung riêng (vd nút đổi nấc chiều cao của sheet xem nhanh).
+   * Không truyền → vẫn là tay nắm trang trí như cũ.
+   */
+  handle?: ReactNode;
+  /** Không vẽ nút X mặc định — nơi dùng tự đặt nút đóng (vd trong `handle`, kích thước chạm 44px). */
+  hideClose?: boolean;
   /** Chặn Esc đóng hộp (gọi `e.preventDefault()`) — vd Esc đang dành để đóng một panel con. */
   onEscapeKeyDown?: (e: globalThis.KeyboardEvent) => void;
 }
@@ -87,6 +97,7 @@ export function Dialog({
   footer,
   size = 'md',
   onSubmit,
+  onSubmitAlt,
   bodyClassName,
   hideTitle = false,
   className,
@@ -94,17 +105,20 @@ export function Dialog({
   iconTone = 'primary',
   headerExtra,
   placement = 'center',
+  handle,
+  hideClose = false,
   onOpenAutoFocus,
   onCloseAutoFocus,
   onEscapeKeyDown,
 }: DialogProps) {
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
-    if (!onSubmit) return;
-    if (e.key !== 'Enter' || !(e.metaKey || e.ctrlKey) || e.defaultPrevented) return;
+    if (e.defaultPrevented) return;
+    const run = pickSubmit(e, { onSubmit, onSubmitAlt });
+    if (!run) return;
     // Dialog lồng nhau: sự kiện React nổi lên qua portal — chỉ xử lý phím gõ bên trong chính hộp này.
     if (!e.currentTarget.contains(e.target as Node)) return;
     e.preventDefault();
-    onSubmit();
+    run();
   };
 
   return (
@@ -127,13 +141,14 @@ export function Dialog({
             className,
           )}
         >
-          {placement === 'bottom' && (
-            // Tay nắm trang trí (không kéo được) — gợi ý đây là sheet trượt từ đáy.
-            <div
-              aria-hidden
-              className="mx-auto mt-2 h-1 w-8 shrink-0 rounded-full bg-border-strong"
-            />
-          )}
+          {placement === 'bottom' &&
+            (handle ?? (
+              // Tay nắm trang trí (không kéo được) — gợi ý đây là sheet trượt từ đáy.
+              <div
+                aria-hidden
+                className="mx-auto mt-2 h-1 w-8 shrink-0 rounded-full bg-border-strong"
+              />
+            ))}
           <div
             className={cn(
               'shrink-0 px-5 pt-4 pr-14',
@@ -177,12 +192,14 @@ export function Dialog({
               {footer}
             </div>
           )}
-          <RadixDialog.Close
-            aria-label="Đóng"
-            className="absolute right-3 top-3 grid h-8 w-8 place-items-center rounded-md text-muted transition-colors duration-fast hover:bg-surface-2 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-          >
-            <X className="h-4 w-4" aria-hidden />
-          </RadixDialog.Close>
+          {!hideClose && (
+            <RadixDialog.Close
+              aria-label="Đóng"
+              className="absolute right-3 top-3 grid h-8 w-8 place-items-center rounded-md text-muted transition-colors duration-fast hover:bg-surface-2 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            >
+              <X className="h-4 w-4" aria-hidden />
+            </RadixDialog.Close>
+          )}
         </RadixDialog.Content>
       </RadixDialog.Portal>
     </RadixDialog.Root>

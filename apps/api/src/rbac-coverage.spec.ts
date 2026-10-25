@@ -6,6 +6,8 @@ import { AUTH_ONLY_KEY } from './common/decorators/auth-only.decorator';
 import { OPTIONAL_AUTH_KEY } from './common/decorators/optional-auth.decorator';
 import { PERMISSIONS_KEY } from './common/decorators/permissions.decorator';
 import { IS_PUBLIC_KEY } from './common/decorators/public.decorator';
+import { PROJECT_REF_KEY } from './common/decorators/project-ref.decorator';
+import { PERMISSIONS } from '@tirapro/types';
 
 // Spec này nạp toàn bộ module để dò decorator: một mình chạy < 1 giây nhưng khi máy bận (CI, chạy song song
 // với build) có thể quá 5 giây mặc định — nới timeout để tránh đỏ giả.
@@ -65,5 +67,19 @@ describe('RBAC coverage', () => {
     expect(missing, `Route thiếu @Permissions/@Public/@AuthOnly:\n${missing.join('\n')}`).toEqual(
       [],
     );
+  });
+
+  it('route thả cảm xúc (077): chỉ cần XEM được việc (PROJECT_VIEW), KHÔNG COMMENT_CREATE; khoá theo bình luận → dự án', async () => {
+    const { CommentsController } = await import('./modules/comments/comments.controller');
+    const proto = CommentsController.prototype as unknown as Record<string, object>;
+    for (const name of ['react', 'unreact']) {
+      expect(Reflect.getMetadata(PERMISSIONS_KEY, proto[name]!), name).toEqual([
+        PERMISSIONS.PROJECT_VIEW,
+      ]);
+      expect(Reflect.getMetadata(PROJECT_REF_KEY, proto[name]!), name).toMatchObject({
+        kind: 'comment',
+        param: 'id',
+      });
+    }
   });
 });

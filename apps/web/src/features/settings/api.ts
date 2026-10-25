@@ -1,7 +1,9 @@
+import { useRef } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { NotificationEmailPrefs } from '@tirapro/types';
 import { api, type Ack } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
+import { prefsMutationOptions, type PrefsSaveEvents } from './notificationPrefs';
 
 /** ---- Thông báo (notification preferences) ---- */
 
@@ -21,17 +23,21 @@ export function useNotificationPrefs() {
   });
 }
 
-export function useUpdateNotificationPrefs() {
+/**
+ * Lưu tức thì từng công tắc: cập nhật lạc quan + nối tiếp (xem `prefsMutationOptions`). `events` (đọc qua ref, không cần
+ * ổn định) cho nơi dùng gắn chỉ báo lưu (`SaveStatus`) mà không phụ thuộc callback theo từng lần `mutate`.
+ */
+export function useUpdateNotificationPrefs(events?: PrefsSaveEvents) {
   const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (patch: {
-      preferences?: Partial<Record<string, boolean>>;
-      email?: Partial<NotificationEmailPrefs>;
-    }) => api.put<unknown>('/notifications/preferences', patch).then((r) => r.data),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: keys.notificationPrefs });
-    },
-  });
+  const ref = useRef(events);
+  ref.current = events;
+  return useMutation(
+    prefsMutationOptions(
+      qc,
+      (patch) => api.put<unknown>('/notifications/preferences', patch).then((r) => r.data),
+      () => ref.current,
+    ),
+  );
 }
 
 /** ---- Mức độ nghiêm trọng (severities) ---- */

@@ -69,6 +69,12 @@ export function fmtDateTime(v: DateLike): string {
   return d ? format(d, 'dd/MM/yyyy HH:mm') : '—';
 }
 
+/** `14:30` — chỉ giờ (24h), vd "Đã lưu lúc 14:30"; rỗng/không hợp lệ → `—`. */
+export function fmtTime(v: DateLike): string {
+  const d = toDate(v);
+  return d ? format(d, 'HH:mm') : '—';
+}
+
 /** `05/08/2026 14:30:09` — cho nhật ký chạy cần tới giây. */
 export function fmtDateTimeSec(v: DateLike): string {
   const d = toDate(v);

@@ -49,16 +49,18 @@ describe('Bộ lọc, Wiki, chi tiết công việc dùng khung chung (T9)', () 
   });
   it('Chi tiết công việc (RB7): h1 là ô tiêu đề hiển thị; PageHeader title-less khi đã có việc, sr-only chỉ lúc tải/lỗi', () => {
     const s = src('features/issues/IssueDetailPage.tsx');
-    // đúng một <h1 trong file, bọc cả ô nhập khi đang sửa (luôn có đúng một h1)
-    expect(s.match(/<h1\b/g)).toHaveLength(1);
-    expect(s).toMatch(/<h1[^>]*>\s*\{editingSummary \?/);
-    expect(s).toMatch(/aria-label="Tiêu đề công việc"/);
+    // h1 do InlineText vẽ (as="h1"): đúng MỘT chỗ dùng as="h1" trong trang, không còn <h1 thủ công; InlineText bọc ô nhập
+    // khi đang sửa trong cùng thẻ tiêu đề (luôn có đúng một h1)
+    expect(s.match(/<h1\b/g)).toBeNull();
+    expect(s.match(/<IssueSummaryEdit[\s\S]*?as="h1"/g)).toHaveLength(1);
+    const inline = src('components/ui/InlineText.tsx');
+    expect(inline.match(/<Tag\b/g)).toHaveLength(2); // xem / sửa — loại trừ nhau
+    expect(inline).toMatch(/aria-label=\{label\}/);
     // PageHeader: sr-only (titleHidden + title) chỉ khi chưa có việc; có việc thì bỏ title
     expect(s).toMatch(
       /<PageHeader\s+titleHidden=\{!showIssue\}\s+title=\{showIssue \? undefined : key\}/,
     );
-    expect(s).toContain('setEditingSummary(true)');
-    expect(s).toContain("e.key === 'Escape'");
+    expect(s).toContain('setSummaryEditRequest(');
     expect(s).not.toMatch(/breadcrumbMobile=\{false\}/);
     expect(s).not.toContain('aria-label="Breadcrumb"');
   });

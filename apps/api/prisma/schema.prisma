@@ -250,6 +250,7 @@ model User {
   reportedIssues       Issue[]               @relation("IssueReporter")
   assignedIssues       Issue[]               @relation("IssueAssignee")
   comments             Comment[]
+  commentReactions     CommentReaction[]
   refreshTokens        RefreshToken[]
   notifications        Notification[]        @relation("NotificationRecipient")
   watching             IssueWatcher[]
@@ -1079,9 +1080,27 @@ model Comment {
   replies     Comment[] @relation("CommentParent")
   mentions    Mention[]
   attachments Attachment[]
+  reactions   CommentReaction[]
 
   @@index([issueId, createdAt])
   @@index([authorId])
+}
+
+/// Cảm xúc (emoji) thả vào bình luận. Một người thả được NHIỀU emoji khác nhau trên một bình luận, mỗi emoji tối đa một lần
+/// (unique commentId+userId+emoji). Chỉ nhận 6 emoji cố định ở tầng API (`COMMENT_REACTION_EMOJIS`); cột không ràng buộc để
+/// đổi bảng emoji không cần migration. Xoá bình luận (cứng) / xoá người dùng → xoá theo.
+model CommentReaction {
+  id        String   @id @default(cuid())
+  commentId String
+  userId    String
+  emoji     String   @db.VarChar(16)
+  createdAt DateTime @default(now())
+
+  comment Comment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([commentId, userId, emoji])
+  @@index([commentId])
 }
 
 model Mention {

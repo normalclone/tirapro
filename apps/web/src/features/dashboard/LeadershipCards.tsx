@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import * as Popover from '@radix-ui/react-popover';
 import { AlertTriangle, Flame, Gauge, Info, Target, Users } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
+import { BulletBar } from '@/components/ui/BulletBar';
 import { Avatar, Skeleton } from '@/components/ui/primitives';
 import { RAID_LEVEL_META } from '@/features/raid/constants';
 import { cn } from '@/lib/utils';
@@ -157,7 +158,16 @@ export function GoalRow({ goal: g }: { goal: Goal }) {
         <span className="min-w-0 truncate text-sm text-ink">{g.name}</span>
         {g.owner && <span className="shrink-0 text-xs text-muted">{g.owner.displayName}</span>}
       </span>
-      <PaceBar progress={g.progress} expected={g.expectedProgress} />
+      <BulletBar
+        value={g.progress}
+        max={100}
+        target={g.expectedProgress}
+        targetLabel="kỳ vọng"
+        unit="%"
+        tone="warning"
+        label={`Tiến độ ${g.name}`}
+        showDelta={false}
+      />
       <span className="text-xs text-muted tabular">{goalPaceText(g)}</span>
     </Link>
   );
@@ -270,21 +280,5 @@ function LeadershipCard({
         </ul>
       )}
     </section>
-  );
-}
-
-/** Thanh tiến độ thật, vạch đứng đánh dấu phần thời gian đã trôi (chỉ để nhìn; chữ bên dưới đã nói đủ). */
-function PaceBar({ progress, expected }: { progress: number; expected: number }) {
-  return (
-    <span className="relative block h-1.5 rounded-full bg-surface-2" aria-hidden>
-      <span
-        className="absolute inset-y-0 left-0 rounded-full bg-warning"
-        style={{ width: `${Math.min(100, Math.max(0, progress))}%` }}
-      />
-      <span
-        className="absolute -top-0.5 h-2.5 w-0.5 rounded bg-ink-strong"
-        style={{ left: `${Math.min(100, Math.max(0, expected))}%` }}
-      />
-    </span>
   );
 }

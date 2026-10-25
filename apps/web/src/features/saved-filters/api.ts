@@ -82,6 +82,38 @@ export function useRunJql(jql: string, enabled: boolean) {
   });
 }
 
+/** Kết quả POST /search/relax-counts: số việc khi bỏ TỪNG điều kiện AND ở gốc của JQL không ra kết quả. */
+export interface RelaxCounts {
+  clauses: RelaxClauseCount[];
+  /** Số điều kiện vượt giới hạn đếm của máy chủ (không được thử). */
+  remaining: number;
+}
+
+export interface RelaxClauseCount {
+  /** Điều kiện (chữ thuần, hiển thị nguyên văn). */
+  text: string;
+  /** JQL khi bỏ điều kiện này — nạp thẳng vào ô JQL, FE không tự cắt chuỗi. */
+  jqlWithout: string;
+  /** null = đếm không kịp. */
+  count: number | null;
+}
+
+/**
+ * Gợi ý nới bộ lọc khi không có kết quả (092). Chỉ gọi khi `enabled`; lỗi (kể cả máy chủ cũ chưa có endpoint) → không có
+ * gợi ý, không toast: đây là phần phụ của trạng thái trống.
+ */
+export function useRelaxCounts(jql: string, enabled: boolean) {
+  return useQuery({
+    queryKey: keys.search.relax(jql),
+    queryFn: enabled
+      ? async ({ signal }) =>
+          (await api.post<RelaxCounts>('/search/relax-counts', { jql }, { signal })).data
+      : skipToken,
+    retry: false,
+    staleTime: 60_000,
+  });
+}
+
 export function useSavedFilters() {
   return useQuery({
     queryKey: keys.filters.all,
@@ -101,6 +133,36 @@ export function useCreateFilter() {
     mutationFn: async (input: CreateFilterInput) =>
       (await api.post<SavedFilter>('/filters', input)).data,
     onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: keys.filters.all });
+    },
+  });
+}
+
+export interface UpdateFilterInput {
+  id: string;
+  name?: string;
+  jql?: string;
+  visibility?: FilterVisibility;
+  /** `null` = bỏ dự án đã gắn (mức khác "Dự án"). */
+  sharedProjectId?: string | null;
+}
+
+/** Thân PATCH /filters/:id: bỏ `id` và mọi trường không đổi (máy chủ coi `undefined` là không sửa; `null` là xoá dự án). */
+export function buildFilterPatch(input: UpdateFilterInput): Omit<UpdateFilterInput, 'id'> {
+  const { id: _id, ...rest } = input;
+  return Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== undefined));
+}
+
+/** Sửa bộ lọc đã lưu — hiện dùng để đổi phạm vi chia sẻ (`visibility`/`sharedProjectId`) sau khi tạo. Chỉ chủ (403 nếu khác). */
+export function useUpdateFilter() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: UpdateFilterInput) =>
+      (await api.patch<SavedFilter>(`/filters/${input.id}`, buildFilterPatch(input))).data,
+    onSuccess: (updated) => {
+      qc.setQueryData<SavedFilter[]>(keys.filters.all, (list) =>
+        list?.map((f) => (f.id === updated.id ? updated : f)),
+      );
       void qc.invalidateQueries({ queryKey: keys.filters.all });
     },
   });

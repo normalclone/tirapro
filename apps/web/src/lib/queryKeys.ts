@@ -67,11 +67,13 @@ export const keys = {
 
   notifications: {
     all: ['notifications'] as const,
-    list: ['notifications', 'list'] as const,
     unread: ['notifications', 'unread'] as const,
     /** Gốc của mọi danh sách phân trang ở trang /notifications (để vá/làm mới cùng lúc). */
     pageRoot: ['notifications', 'page'] as const,
     page: (filter: string) => ['notifications', 'page', filter] as const,
+    /** Gốc danh sách phẳng (20 dòng) của popover chuông, mỗi tab một key. KHÔNG nằm dưới `pageRoot` (đó là infinite query). */
+    popoverRoot: ['notifications', 'popover'] as const,
+    popover: (filter: string) => ['notifications', 'popover', filter] as const,
   },
 
   system: {
@@ -81,6 +83,8 @@ export const keys = {
   search: {
     jql: (jql: string) => ['search', jql] as const,
     validate: (jql: string) => ['search-validate', jql] as const,
+    /** Số việc nếu bỏ từng điều kiện khi bộ lọc không có kết quả (092). */
+    relax: (jql: string) => ['search-relax', jql] as const,
     quick: (q: string, limit = 8) => ['quick-search', q, limit] as const,
   },
 
@@ -275,6 +279,9 @@ export const keys = {
     rulesRoot: ['automation', 'rules'] as const,
     rules: (scope: string) => ['automation', 'rules', scope] as const,
     ruleRuns: (ruleId: string) => ['automation', 'rule-runs', ruleId] as const,
+    /** Số việc hiện có khớp điều kiện đang soạn (132b); `conditions` = JSON của danh sách điều kiện. */
+    preview: (projectId: string, conditions: string) =>
+      ['automation', 'preview', projectId, conditions] as const,
   },
 
   reports: {

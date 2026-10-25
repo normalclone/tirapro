@@ -266,7 +266,7 @@ describe('không lộ tên enum/trường thô trên giao diện', () => {
 
 describe('vai trò hiển thị bằng tiếng Việt (roleLabel)', () => {
   it.each([
-    ['features/workspace/WorkspaceSwitcher.tsx', /roleLabel\(ws\.roleName\)/],
+    ['features/workspace/workspaceSubline.ts', /roleLabel\(ws\.roleName\)/],
     ['features/issue-edit/useAssigneeOptions.ts', /roleNames\.map\(roleLabel\)/],
     ['features/quick-filters/AssigneeFilter.tsx', /label: roleLabel\(r\)/],
     ['features/members/AddPeopleDialog.tsx', /label: roleLabel\(n\)/],
@@ -355,11 +355,10 @@ describe('dọn kỹ thuật đợt 2A (Task 6)', () => {
       hits(/import \{[^}]*usePriorityRanks[^}]*\} from '@\/features\/settings-admin\/api'/),
     ).toEqual([]);
   });
-  it('BulkActionBar không còn lớp margin chết (cha `space-y-4` ghi đè mb-*)', () => {
-    const region = /aria-label="Thao tác hàng loạt"[\s\S]*?className=\{cn\(([\s\S]*?)\)\}/.exec(
-      src('features/backlog/BulkActionBar.tsx'),
-    )![1]!;
-    expect(region).not.toMatch(/\bmb-|lg:mb-/);
+  it('BulkDock không còn lớp margin chết (cha `space-y-4` ghi đè mb-*)', () => {
+    // Biến thể dính đáy (Việc chờ) nằm trong `STICKY_CLS`; biến thể `docked` của Bảng việc không có cha space-y nên được có mb-*.
+    const sticky = /const STICKY_CLS = '([^']*)'/.exec(src('features/bulk/BulkDock.tsx'))![1]!;
+    expect(sticky).not.toMatch(/\bmb-|lg:mb-/);
   });
   it('router: p/:key có route con `*` (404 giữ khung dự án); NotFoundPage nhận biết dự án', () => {
     const router = src('app/router.tsx');

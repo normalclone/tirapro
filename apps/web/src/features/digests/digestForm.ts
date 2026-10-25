@@ -53,12 +53,21 @@ export function initialForm(digest: Digest | null): DigestFormState {
   };
 }
 
-/** Lỗi nhập liệu phía giao diện (server vẫn kiểm lại); null = hợp lệ. */
-export function validateForm(f: DigestFormState): string | null {
-  if (!f.name.trim()) return 'Vui lòng nhập tên báo cáo.';
-  if (f.blocks.length === 0) return 'Chọn ít nhất một khối nội dung.';
-  if (f.deliverEmail && f.recipients.length === 0) return 'Chọn ít nhất một người nhận email.';
-  return null;
+export type DigestField = 'name' | 'blocks' | 'recipients';
+export interface DigestFieldIssue {
+  field: DigestField;
+  message: string;
+}
+
+/** Lỗi nhập liệu phía giao diện (server vẫn kiểm lại), ĐỦ mọi lỗi theo thứ tự trường trong form; [] = hợp lệ. */
+export function validateForm(f: DigestFormState): DigestFieldIssue[] {
+  const issues: DigestFieldIssue[] = [];
+  if (!f.name.trim()) issues.push({ field: 'name', message: 'Vui lòng nhập tên báo cáo.' });
+  if (f.blocks.length === 0)
+    issues.push({ field: 'blocks', message: 'Chọn ít nhất một khối nội dung.' });
+  if (f.deliverEmail && f.recipients.length === 0)
+    issues.push({ field: 'recipients', message: 'Chọn ít nhất một người nhận email.' });
+  return issues;
 }
 
 /**

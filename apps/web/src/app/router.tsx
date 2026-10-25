@@ -376,7 +376,7 @@ export const router = createBrowserRouter([
       { path: 'clients', element: <Navigate to="/manage/clients" replace /> },
       { path: 'integrations', element: <Navigate to="/connect/integrations" replace /> },
       { path: 'automation', element: <Navigate to="/connect/automation" replace /> },
-      { path: 'filters', element: <FiltersPage /> },
+      { path: 'filters/:id?', element: <FiltersPage /> },
       { path: 'issue/:key', element: <IssueDetailPage /> },
       {
         path: 'p/:key',

@@ -1,4 +1,4 @@
-import { memo, type CSSProperties, type HTMLAttributes, type Ref } from 'react';
+import { memo, type CSSProperties, type HTMLAttributes, type ReactNode, type Ref } from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import type { IssueDto, PriorityDto, SprintDto } from '@tirapro/types';
 import { IssueTypeIcon } from '@/components/ui/IssueTypeIcon';
@@ -22,8 +22,12 @@ import { useDropEdge } from '@/lib/dropHint';
 import { SORT_TRANSITION } from '@/lib/sortableDnd';
 import { sameProgress, type SubtreeProgress } from '@/lib/issueTree';
 import { openOnRowKey, rowRootProps } from '@/lib/rowOpen';
+import { COARSE_NO_CALLOUT } from '@/lib/dragTouch';
 import { rowPeekProps } from '@/features/issues/peek/rowPeekProps';
+import { PEEKED_ROW_CLS, peekedAttrs } from '@/features/issues/peek/peekedRow';
 import { IssueKeyLink } from '@/features/issues/peek/IssueKeyLink';
+import { labelToneStyle } from '@/lib/labelPalette';
+import { IssueContextMenu, IssueRowMenuButton } from '@/features/issues/menu/IssueContextMenu';
 
 /** Tối đa 2 nhãn đầu của dòng (chỉ từ `lg`), phần còn lại gộp "+N". */
 function RowLabels({ labels }: { labels: IssueDto['labels'] }) {
@@ -34,10 +38,7 @@ function RowLabels({ labels }: { labels: IssueDto['labels'] }) {
         <span
           key={l.id}
           className="max-w-[7rem] truncate rounded px-1.5 py-px text-[10px] font-medium"
-          style={{
-            backgroundColor: `color-mix(in oklch, ${l.color || 'var(--faint)'} 16%, transparent)`,
-            color: l.color || 'var(--faint)',
-          }}
+          style={labelToneStyle(l.color)}
           title={`Nhãn: ${l.name}`}
         >
           {l.name}
@@ -99,6 +100,7 @@ export function IssueRowBody({
   peeked,
   edit,
   canEdit,
+  menu,
 }: {
   issue: IssueDto;
   overlay?: boolean;
@@ -121,6 +123,8 @@ export function IssueRowBody({
   edit?: RowEdit;
   /** Người dùng sửa được công việc này (`canEditIssue`) — một cờ cho cả điểm lẫn ưu tiên. */
   canEdit?: boolean;
+  /** Nút "…" (menu công việc) ở cuối dòng; bản overlay không truyền. */
+  menu?: ReactNode;
 }) {
   const warn = dueBorderClass(issue);
   return (
@@ -128,16 +132,17 @@ export function IssueRowBody({
       ref={rootRef}
       style={style}
       {...rootProps}
+      {...peekedAttrs(peeked)}
       className={cn(
-        'relative flex items-center gap-3 rounded-md border bg-surface px-2.5 py-2 transition-colors',
+        'group/row relative flex items-center gap-3 rounded-md border bg-surface px-2.5 py-2 transition-colors',
         readOnly
           ? 'cursor-default'
-          : 'cursor-grab touch-manipulation active:cursor-grabbing [@media(pointer:coarse)]:select-none [@media(pointer:coarse)]:[-webkit-touch-callout:none]',
+          : `cursor-grab touch-manipulation active:cursor-grabbing ${COARSE_NO_CALLOUT}`,
         warn || 'border-transparent hover:border-border',
         'hover:bg-surface-2',
         checked && 'border-primary bg-primary-subtle',
         isDragging && 'opacity-40',
-        peeked && 'bg-primary-subtle/60 ring-1 ring-primary/40',
+        peeked && PEEKED_ROW_CLS,
         overlay && 'rotate-1 border-border bg-surface shadow-lg',
       )}
     >
@@ -216,6 +221,7 @@ export function IssueRowBody({
           Chưa gán
         </span>
       )}
+      {menu}
       {dropEdge && (
         <span
           aria-hidden
@@ -296,35 +302,38 @@ export const IssueRow = memo(
       if (draggable) listeners?.onKeyDown?.(e);
     };
     return (
-      <IssueRowBody
-        issue={issue}
-        progress={progress}
-        readOnly={readOnly || dragDisabled}
-        selectable={selectable}
-        checked={checked}
-        onToggleSelect={onToggleSelect}
-        isDragging={isDragging}
-        dropEdge={dropEdge}
-        // LUÔN gắn: dòng không kéo được vẫn là điểm thả hợp lệ (khu chỉ đọc đã tắt droppable).
-        rootRef={setNodeRef}
-        style={style}
-        onOpen={onOpen}
-        peeked={peeked}
-        edit={edit}
-        canEdit={canEdit}
-        // `onKeyDown` đứng SAU spread listeners: ghi đè có chủ đích, `rowKeyDown` tự chuyển tiếp cho dnd-kit.
-        rootProps={
-          {
-            ...(draggable ? { ...listeners, ...attributes } : {}),
-            ...rowRootProps({ draggable, hasOpen: !!onOpen }),
-            'data-issue-key': key,
-            'data-nav-item': true,
-            onClick: openProps?.onClick,
-            onAuxClick: openProps?.onAuxClick,
-            onKeyDown: rowKeyDown,
-          } as HTMLAttributes<HTMLDivElement>
-        }
-      />
+      <IssueContextMenu issue={issue} surface="backlog" onPeek={onOpen} display="contents">
+        <IssueRowBody
+          issue={issue}
+          progress={progress}
+          menu={<IssueRowMenuButton issue={issue} surface="backlog" onPeek={onOpen} />}
+          readOnly={readOnly || dragDisabled}
+          selectable={selectable}
+          checked={checked}
+          onToggleSelect={onToggleSelect}
+          isDragging={isDragging}
+          dropEdge={dropEdge}
+          // LUÔN gắn: dòng không kéo được vẫn là điểm thả hợp lệ (khu chỉ đọc đã tắt droppable).
+          rootRef={setNodeRef}
+          style={style}
+          onOpen={onOpen}
+          peeked={peeked}
+          edit={edit}
+          canEdit={canEdit}
+          // `onKeyDown` đứng SAU spread listeners: ghi đè có chủ đích, `rowKeyDown` tự chuyển tiếp cho dnd-kit.
+          rootProps={
+            {
+              ...(draggable ? { ...listeners, ...attributes } : {}),
+              ...rowRootProps({ draggable, hasOpen: !!onOpen }),
+              'data-issue-key': key,
+              'data-nav-item': true,
+              onClick: openProps?.onClick,
+              onAuxClick: openProps?.onAuxClick,
+              onKeyDown: rowKeyDown,
+            } as HTMLAttributes<HTMLDivElement>
+          }
+        />
+      </IssueContextMenu>
     );
   },
   (p, n) =>

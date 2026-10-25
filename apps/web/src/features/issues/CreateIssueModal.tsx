@@ -11,12 +11,17 @@ import { uploadAttachmentFile } from '@/features/attachments/api';
 import { FileDrop } from '@/features/attachments/FileDrop';
 import { MarkdownEditor } from '@/features/issue-edit/MarkdownEditor';
 import { Button } from '@/components/ui/Button';
+import { SplitButton } from '@/components/ui/SplitButton';
+import { SUBMIT_ALT_SHORTCUT, SUBMIT_SHORTCUT } from '@/lib/submitShortcut';
 import { Dialog } from '@/components/ui/Dialog';
+import { ErrorSummary } from '@/components/ui/ErrorSummary';
+import { FieldErrorText } from '@/components/ui/FieldError';
 import { Input } from '@/components/ui/Input';
 import { DateTimeInput } from '@/components/ui/DateInput';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { PeoplePicker } from '@/components/ui/PeoplePicker';
 import { useAssigneePicker } from '@/features/issue-edit/useAssigneeOptions';
+import { useAssigneeAvailability } from '@/features/resources/useAssigneeAvailability';
 import { useCreateIssueModal } from '@/stores/createIssue';
 import { openReportIssue } from '@/stores/reportIssue';
 import { isBugType } from '@/features/issue-edit/severity';
@@ -25,8 +30,11 @@ import { useCreateIssue } from './create-api';
 import { useProjectIssues } from './api';
 import { epicChoices, parentChoices } from '@/lib/epic';
 import { blockOnInvalidDate } from '@/lib/dateGuard';
+import { fieldErrorId, type FieldError } from '@/lib/formErrors';
+import { useErrorFlow } from '@/lib/useErrorFlow';
 import { dueDaysFromToday } from '@/lib/dueDate';
 import { TokenTitleInput } from './TokenTitleInput';
+import { validateCreateIssue, type CreateIssueField } from './createIssueForm';
 import {
   parseTitleTokens,
   resolveCreateValues,
@@ -97,27 +105,45 @@ const TEMPLATES: Record<string, string> = {
 const TEMPLATE_VALUES = Object.values(TEMPLATES);
 const isTemplate = (s: string) => TEMPLATE_VALUES.includes(s);
 
+/** Trường của form → id phần tử trong hộp + nhãn hiện ở phần tóm tắt lỗi (theo thứ tự trong form). */
+const FIELD_META: Record<CreateIssueField, { id: string; label: string }> = {
+  project: { id: 'ci-project', label: 'Dự án' },
+  type: { id: 'ci-type', label: 'Loại việc' },
+  summary: { id: 'ci-summary', label: 'Tiêu đề' },
+};
+
 /** Nhãn + gợi ý ngắn cho một ô nhập. `title` = giải nghĩa thuật ngữ (hiện khi rê chuột vào nhãn). */
 function Field({
   label,
   hint,
   title,
   className,
+  htmlFor,
+  error,
   children,
 }: {
   label: string;
   hint?: string;
   title?: string;
   className?: string;
+  /** Id của ô điều khiển (gắn nhãn) — cần khi có `error` để lời lỗi có id ổn định. */
+  htmlFor?: string;
+  /** Lời lỗi của trường (hiện dưới ô, đã nối aria-describedby ở ô qua `fieldErrorId(htmlFor)`). */
+  error?: string;
   children: React.ReactNode;
 }) {
   return (
     <div className={className}>
-      <label className="mb-1.5 block text-sm font-medium text-muted" title={title}>
+      <label
+        htmlFor={htmlFor}
+        className="mb-1.5 block text-sm font-medium text-muted"
+        title={title}
+      >
         {label}
         {hint && <span className="font-normal text-faint"> {hint}</span>}
       </label>
       {children}
+      {error && htmlFor && <FieldErrorText id={fieldErrorId(htmlFor)}>{error}</FieldErrorText>}
     </div>
   );
 }
@@ -177,6 +203,7 @@ export function CreateIssueModal() {
     enabled: open,
   });
   const assignees = useAssigneePicker(selId || undefined);
+  const availability = useAssigneeAvailability({ dueDate: due || null });
   const create = useCreateIssue(selId);
 
   const last = useMemo(() => loadLast(), [open]);
@@ -347,21 +374,39 @@ export function CreateIssueModal() {
   }, [typeId, meta]);
 
   const isStory = meta?.issueTypes.find((t) => t.id === typeId)?.key === 'STORY';
-  const trimmed = summary.trim();
-  const canSubmit =
-    !!meta && !!selId && !!typeId && trimmed.length > 0 && !create.isPending && !busy;
+  // Chọn dự án rồi mà danh sách loại việc chưa về: chưa gửi được (không phải lỗi của người dùng) → nút chờ.
+  const metaLoading = !!selId && !meta;
+  // Lỗi hiện sau lần Tạo lỗi đầu tiên (sửa tới đâu hết lỗi tới đó); mở lại hộp thì xoá.
+  const allErrors: FieldError[] = validateCreateIssue({
+    projectId: selId,
+    metaReady: !!meta,
+    typeId,
+    summary,
+    cleanSummary: parseTitleTokens(summary, tokenCtx).clean,
+  }).map((i) => ({ ...FIELD_META[i.field], message: i.message }));
+  const flow = useErrorFlow(allErrors);
+  const { reset: resetErrors } = flow;
+  const errorOf = (f: CreateIssueField) => flow.errorOf(FIELD_META[f].id);
+  useEffect(() => {
+    if (open) resetErrors();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
   // Cảnh báo mềm: không chặn gửi (đường Tạo / Tạo & nhập tiếp / Cmd+Enter đều như nhau).
   // Cùng định nghĩa "quá hạn" với mọi nơi khác: hạn HÔM NAY (theo ngày VN) chưa phải quá khứ.
   const dueInPast = due !== '' && dueDaysFromToday(due) < 0;
   const title = preset.subtask ? 'Tạo việc con' : 'Tạo công việc';
 
   async function doCreate() {
-    if (!canSubmit) return null;
+    if (create.isPending || busy || metaLoading) return null;
+    const tk = parseTitleTokens(summary, tokenCtx);
+    if (allErrors.length > 0) {
+      flow.fail();
+      return null;
+    }
     // Ô ngày/giờ đang gõ sai: chặn mọi đường gửi (nút Tạo & nhập tiếp, Cmd+Enter không đi qua form native).
     if (blockOnInvalidDate()) return null;
     // Giá trị trên ô = giá trị được gửi: ô đổi tay thắng; token chỉ chèn cho ô chưa bị đổi tay và token chưa kịp
     // đồng bộ (đang gõ dở ở đuôi). Chỉ lược token khỏi tiêu đề khi TẠO.
-    const tk = parseTitleTokens(summary, tokenCtx);
     const v = resolveCreateValues(
       { priorityId, assigneeId, sprintId, points, due },
       lastTokens.current,
@@ -369,10 +414,6 @@ export function CreateIssueModal() {
       manualRef.current,
     );
     const finalSummary = tk.clean.trim();
-    if (!finalSummary) {
-      toast.error('Hãy nhập tiêu đề mô tả việc cần làm');
-      return null;
-    }
     setBusy(true);
     try {
       const created = await create.mutateAsync({
@@ -479,32 +520,41 @@ export function CreateIssueModal() {
       title={title}
       size="xl"
       onSubmit={() => void submitCreate()}
+      onSubmitAlt={() => void createAnother()}
       footer={
         <>
           <span className="kbd-hint mr-auto text-xs text-faint max-sm:hidden">
-            ⌘/Ctrl + Enter để tạo nhanh
+            ⌘/Ctrl + Enter: tạo · thêm Shift: tạo &amp; nhập tiếp
           </span>
           <Button type="button" variant="ghost" onClick={close}>
             Huỷ
           </Button>
-          <Button
-            type="button"
-            variant="secondary"
-            title="Tạo việc này rồi giữ nguyên cửa sổ để nhập việc tiếp theo"
-            onClick={() => void createAnother()}
-            loading={busy}
-            disabled={!canSubmit}
-          >
-            Tạo &amp; nhập tiếp
-          </Button>
-          <Button
+          <SplitButton
             type="submit"
             form="create-issue-form"
+            title="Tạo rồi mở công việc vừa tạo"
+            menuLabel="Tuỳ chọn tạo khác"
             loading={create.isPending || busy}
-            disabled={!canSubmit}
+            disabled={metaLoading}
+            items={[
+              {
+                id: 'another',
+                label: 'Tạo & nhập tiếp',
+                hint: 'Giữ cửa sổ, chỉ xoá tiêu đề và mô tả',
+                onSelect: () => createAnother(),
+                shortcut: SUBMIT_ALT_SHORTCUT,
+              },
+              {
+                id: 'open',
+                label: 'Tạo & mở',
+                hint: 'Đóng cửa sổ và mở công việc vừa tạo',
+                onSelect: () => submitCreate(),
+                shortcut: SUBMIT_SHORTCUT,
+              },
+            ]}
           >
-            {title}
-          </Button>
+            Tạo
+          </SplitButton>
         </>
       }
     >
@@ -515,10 +565,13 @@ export function CreateIssueModal() {
           void submitCreate();
         }}
       >
+        <ErrorSummary errors={flow.errors} attempt={flow.attempts} className="mb-4" />
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <Field label="Dự án">
+          <Field label="Dự án" htmlFor="ci-project" error={errorOf('project')}>
             <SearchSelect
               id="ci-project"
+              invalid={!!errorOf('project')}
+              aria-describedby={errorOf('project') ? fieldErrorId('ci-project') : undefined}
               value={selKey}
               onChange={(v) => {
                 // Đổi dự án → nạp bản nháp của DỰ ÁN MỚI (không mang chữ dự án cũ sang, không đè nháp dự án mới).
@@ -565,8 +618,11 @@ export function CreateIssueModal() {
               </p>
             )}
           </Field>
-          <Field label="Loại việc">
+          <Field label="Loại việc" htmlFor="ci-type" error={errorOf('type')}>
             <SearchSelect
+              id="ci-type"
+              invalid={!!errorOf('type')}
+              aria-describedby={errorOf('type') ? fieldErrorId('ci-type') : undefined}
               value={typeId}
               onChange={setTypeId}
               disabled={!meta}
@@ -592,9 +648,16 @@ export function CreateIssueModal() {
             </p>
           )}
 
-          <Field label="Tiêu đề" className="relative z-20 sm:col-span-2">
+          <Field
+            label="Tiêu đề"
+            htmlFor="ci-summary"
+            error={errorOf('summary')}
+            className="relative z-20 sm:col-span-2"
+          >
             <TokenTitleInput
               id="ci-summary"
+              invalid={!!errorOf('summary')}
+              ariaDescribedby={errorOf('summary') ? fieldErrorId('ci-summary') : undefined}
               autoFocus={!preset.pickProject}
               value={summary}
               onChange={setSummary}
@@ -639,6 +702,7 @@ export function CreateIssueModal() {
               }}
               emptyLabel="Chưa gán"
               {...assignees}
+              {...availability}
             />
           </Field>
           <Field
@@ -769,6 +833,7 @@ export function CreateIssueModal() {
               value={description}
               onChange={setDescription}
               onSubmit={() => void submitCreate()}
+              onSubmitAlt={() => void createAnother()}
               rows={10}
               mentionPeople={assignees.options}
               mentionProjectId={selId || undefined}
@@ -788,6 +853,7 @@ export function CreateIssueModal() {
                 value={acceptance}
                 onChange={setAcceptance}
                 onSubmit={() => void submitCreate()}
+                onSubmitAlt={() => void createAnother()}
                 rows={4}
                 mentionPeople={assignees.options}
                 mentionProjectId={selId || undefined}

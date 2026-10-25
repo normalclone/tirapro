@@ -2,8 +2,8 @@ import { useState } from 'react';
 import { CheckCircle2 } from 'lucide-react';
 import type { SprintDto } from '@tirapro/types';
 import { Button } from '@/components/ui/Button';
+import { RadioCard } from '@/components/ui/RadioCard';
 import { Dialog } from '@/components/ui/Dialog';
-import { cn } from '@/lib/utils';
 import type { MoveIncompleteTo } from './api';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 
@@ -94,44 +94,29 @@ export function CompleteSprintDialog({
             Còn <span className="font-medium text-ink">{notDone}</span> việc chưa xong. Bạn muốn đưa
             chúng đi đâu?
           </p>
-          <fieldset className="mt-3 space-y-2">
-            <legend className="sr-only">Nơi chuyển việc chưa xong</legend>
-            {options.map((o) => (
-              <label
-                key={o.id}
-                className={cn(
-                  'flex items-start gap-3 rounded-lg border px-3 py-2.5 transition-colors',
-                  o.disabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer',
-                  choice === o.id
-                    ? 'border-primary bg-primary-subtle'
-                    : 'border-border hover:bg-surface-2',
-                )}
-              >
-                <input
-                  type="radio"
-                  name="complete-dest"
-                  className="mt-0.5 accent-[var(--primary)]"
-                  checked={choice === o.id}
-                  disabled={o.disabled}
-                  onChange={() => setChoice(o.id)}
-                />
-                <span className="min-w-0 flex-1">
-                  <span className="block text-sm font-medium text-ink">{o.label}</span>
-                  <span className="block text-xs text-muted">{o.hint}</span>
-                  {o.id === 'existing' && choice === 'existing' && canPickExisting && (
-                    <SearchSelect
-                      ariaLabel="Sprint đích"
-                      value={target}
-                      onChange={setTargetId}
-                      options={futureSprints.map((s) => ({ value: s.id, label: s.name }))}
-                      searchPlaceholder="Tìm sprint…"
-                      className="mt-2 h-8"
-                    />
-                  )}
-                </span>
-              </label>
-            ))}
-          </fieldset>
+          <RadioCard
+            className="mt-3"
+            ariaLabel="Nơi chuyển việc chưa xong"
+            value={choice}
+            onChange={setChoice}
+            options={options.map((o) => ({
+              value: o.id,
+              label: o.label,
+              description: o.hint,
+              disabled: o.disabled,
+              children:
+                o.id === 'existing' && canPickExisting ? (
+                  <SearchSelect
+                    ariaLabel="Sprint đích"
+                    value={target}
+                    onChange={setTargetId}
+                    options={futureSprints.map((s) => ({ value: s.id, label: s.name }))}
+                    searchPlaceholder="Tìm sprint…"
+                    className="h-8"
+                  />
+                ) : undefined,
+            }))}
+          />
         </>
       )}
     </Dialog>

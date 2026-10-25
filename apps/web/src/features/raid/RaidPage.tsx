@@ -388,8 +388,7 @@ function RaidRow({
 
 /** RỦI RO & VƯỚNG MẮC (RAID) — tab theo loại, bảng danh sách và ma trận nhiệt 5×5. */
 export function RaidPage() {
-  const can = useAuth((s) => s.can);
-  const canManage = can('risk:manage');
+  const canManage = useAuth((s) => s.can('risk:manage'));
 
   const [kind, setKind] = useState<RaidKind>('RISK');
   const [status, setStatus] = useState<RaidStatus | ''>('');

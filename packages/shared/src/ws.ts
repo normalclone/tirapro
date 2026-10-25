@@ -73,6 +73,7 @@ export interface ServerToClientEvents {
   'comment:added': (p: { comment: CommentDto }) => void;
   'comment:updated': (p: { comment: CommentDto }) => void;
   'comment:deleted': (p: { commentId: ID; issueId: ID }) => void;
+  'comment:reaction': (p: { commentId: ID; issueId: ID }) => void;
   'sprint:updated': (p: { sprintId: ID; projectId: ID }) => void;
   'notification:new': (p: { notification: NotificationDto }) => void;
   'presence:state': (p: { room: string; users: PresenceUser[] }) => void;

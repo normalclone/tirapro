@@ -98,6 +98,8 @@ export interface RoleDto {
   color?: string | null;
   permissionKeys: PermissionKey[];
   memberCount?: number; // số membership đang gắn role này (để cảnh báo khi xoá)
+  /** Phiên bản của vai trò (ISO) — gửi lại ở PATCH làm `expectedUpdatedAt` để không ghi đè sửa của người khác. */
+  updatedAt?: ISODate;
 }
 
 /** Một thành viên kèm danh sách vai trò (workspace hoặc project). */
@@ -370,6 +372,16 @@ export interface BulkUpdateIssuesResult {
   conflicts: Array<{ id: ID; version: number }>;
 }
 
+/** Một emoji trên một bình luận. `mine` và `users` theo người xem → chỉ có ở `GET …/comments`, KHÔNG phát qua WS. */
+export interface CommentReactionDto {
+  emoji: string;
+  count: number;
+  /** Người đang xem đã thả emoji này. */
+  mine: boolean;
+  /** Tối đa 5 người thả sớm nhất (hiện trong tooltip); `count` mới là tổng. */
+  users: Array<{ id: ID; displayName: string }>;
+}
+
 export interface CommentDto {
   id: ID;
   issueId: ID;
@@ -380,6 +392,8 @@ export interface CommentDto {
   parentId: ID | null;
   isEdited: boolean;
   version: number;
+  /** Chỉ có ở danh sách bình luận (theo người xem); phản hồi tạo/sửa và payload WS không mang. */
+  reactions?: CommentReactionDto[];
   createdAt: ISODate;
   updatedAt: ISODate;
 }
@@ -437,6 +451,8 @@ export interface NotificationDto {
   type: NotificationType;
   issueId: ID | null;
   actorId: ID | null;
+  /** Ảnh đại diện của người làm — chỉ có khi ĐỌC danh sách (`GET /notifications`); event realtime không kèm. */
+  actorAvatarUrl?: string | null;
   payload: Record<string, unknown>;
   readAt: ISODate | null;
   createdAt: ISODate;

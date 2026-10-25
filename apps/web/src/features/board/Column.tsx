@@ -2,6 +2,7 @@ import { memo, useMemo } from 'react';
 import { useDroppable } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import type { BoardColumnDto, IssueDto } from '@tirapro/types';
+import { LimitMeter } from '@/components/ui/LimitMeter';
 import { QuickAddRow } from '@/components/ui/QuickAddRow';
 import type { CreateIssueInput } from '@/features/issues/create-api';
 import { categoryColor } from '@/lib/statusColor';
@@ -15,6 +16,8 @@ export interface ColumnProps {
   issues: IssueDto[];
   progressMap: Map<string, SubtreeProgress>;
   onOpen: (key: string) => void;
+  /** Khoá việc đang xem nhanh NẾU nó nằm trong cột này (`peekedKeyIn`), ngược lại null — để chỉ cột liên quan vẽ lại. */
+  peekedKey?: string | null;
   projectKey: string;
   projectId: string;
   canCreate: boolean;
@@ -30,11 +33,19 @@ export interface ColumnProps {
   wipUsed?: number;
 }
 
+/** Giải thích WIP (tooltip + aria-describedby). Giữ nguyên lời cũ của chip. */
+function wipDescription(used: number, limit: number): string {
+  return used >= limit
+    ? `Cột đã đầy: ${used}/${limit} việc đang làm. Hoàn thành bớt việc trước khi kéo thêm vào (quản trị dự án có thể chọn “Vẫn chuyển”).`
+    : `Giới hạn việc đang làm (WIP): ${used}/${limit}`;
+}
+
 function ColumnImpl({
   col,
   issues,
   progressMap,
   onOpen,
+  peekedKey,
   projectKey,
   projectId,
   canCreate,
@@ -72,26 +83,22 @@ function ColumnImpl({
         >
           {issues.length}
         </span>
-        {col.wipLimit != null && (
-          <span
-            className={cn(
-              'tabular rounded-full px-1.5 py-px text-[11px] font-medium',
-              wipUsed >= col.wipLimit ? 'bg-danger/10 text-danger' : 'bg-surface-2 text-muted',
-            )}
-            title={
-              wipUsed >= col.wipLimit
-                ? `Cột đã đầy: ${wipUsed}/${col.wipLimit} việc đang làm. Hoàn thành bớt việc trước khi kéo thêm vào (quản trị dự án có thể chọn “Vẫn chuyển”).`
-                : `Giới hạn việc đang làm (WIP): ${wipUsed}/${col.wipLimit}`
-            }
-          >
-            WIP {wipUsed}/{col.wipLimit}
-          </span>
-        )}
       </div>
+      {col.wipLimit != null && (
+        <LimitMeter
+          className="px-3 pb-1.5"
+          used={wipUsed}
+          limit={col.wipLimit}
+          label={`Giới hạn WIP của cột ${col.name}`}
+          prefix="WIP"
+          description={wipDescription(wipUsed, col.wipLimit)}
+        />
+      )}
       <div
         className={cn(
           // pt-1.5: chừa chỗ cho đường kẻ chèn phía trên thẻ đầu (-top-[5px]) khỏi bị overflow cắt.
-          'flex flex-1 flex-col gap-2 overflow-y-auto px-2 pb-2 pt-1.5',
+          // Đệm đáy 50dvh chỉ khi sheet xem nhanh (nấc nửa) đang che nửa dưới: cột ngắn mới cuộn được thẻ cuối lên trên sheet.
+          'flex flex-1 flex-col gap-2 overflow-y-auto px-2 pb-2 pt-1.5 [[data-peek-sheet-half]_&]:pb-[50dvh]',
           grouped && 'min-h-[3rem]',
         )}
       >
@@ -102,6 +109,7 @@ function ColumnImpl({
               issue={issue}
               progress={progressMap.get(issue.id)}
               onOpen={onOpen}
+              peeked={peekedKey === issue.key}
               laneIdx={laneIdx}
               colIdx={colIdx}
               rowIdx={rowIdx}
@@ -137,6 +145,7 @@ export const Column = memo(ColumnImpl, (p, n) => {
     p.col !== n.col ||
     p.issues !== n.issues ||
     p.onOpen !== n.onOpen ||
+    p.peekedKey !== n.peekedKey ||
     p.projectKey !== n.projectKey ||
     p.projectId !== n.projectId ||
     p.canCreate !== n.canCreate ||

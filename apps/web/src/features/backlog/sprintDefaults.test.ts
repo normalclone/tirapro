@@ -1,22 +1,22 @@
 import { describe, expect, it } from 'vitest';
-import {
-  dayOf,
-  defaultStart,
-  startRangeError,
-  startWarnings,
-  suggestEnd,
-  toDayIso,
-} from './sprintDefaults';
+import { inclusiveDayCount } from '@/lib/dateRange';
+import { dayOf, defaultStart, startWarnings, suggestEnd, toDayIso } from './sprintDefaults';
 
 describe('suggestEnd', () => {
-  it('cộng đúng số tuần, giữ định dạng ISO UTC 00:00', () => {
-    expect(suggestEnd('2026-10-15T00:00:00.000Z', 2)).toBe('2026-10-29T00:00:00.000Z');
-    expect(suggestEnd('2026-10-15T00:00:00.000Z', 1)).toBe('2026-10-22T00:00:00.000Z');
-    expect(suggestEnd('2026-10-15T00:00:00.000Z', 3)).toBe('2026-11-05T00:00:00.000Z');
+  it('start + 7×tuần − 1: đếm cả hai đầu thì "2 tuần" = 14 ngày; giữ định dạng ISO UTC 00:00', () => {
+    expect(suggestEnd('2026-10-15T00:00:00.000Z', 2)).toBe('2026-10-28T00:00:00.000Z');
+    expect(suggestEnd('2026-10-15T00:00:00.000Z', 1)).toBe('2026-10-21T00:00:00.000Z');
+    expect(suggestEnd('2026-10-15T00:00:00.000Z', 3)).toBe('2026-11-04T00:00:00.000Z');
   });
 
   it('qua cuối tháng/năm vẫn đúng', () => {
-    expect(suggestEnd('2026-12-25T00:00:00.000Z', 2)).toBe('2027-01-08T00:00:00.000Z');
+    expect(suggestEnd('2026-12-25T00:00:00.000Z', 2)).toBe('2027-01-07T00:00:00.000Z');
+  });
+
+  it.each([1, 2, 3])('%i tuần = đúng 7×số tuần ngày (inclusiveDayCount)', (w) => {
+    const start = '2026-10-20';
+    const end = dayOf(suggestEnd(toDayIso(start), w));
+    expect(inclusiveDayCount(start, end)).toBe(7 * w);
   });
 });
 
@@ -79,23 +79,5 @@ describe('startWarnings', () => {
       unestimatedCount: 0,
     });
     expect(w).toEqual(['Sprint chưa có việc nào.']);
-  });
-});
-
-describe('startRangeError', () => {
-  it('kết thúc trước bắt đầu → lỗi, nói "không được trước"', () => {
-    expect(startRangeError('2026-10-15', '2026-10-10')).toBe(
-      'Ngày kết thúc không được trước ngày bắt đầu.',
-    );
-  });
-
-  it('bằng nhau hoặc sau → hợp lệ (khớp luật máy chủ: cho phép bằng nhau)', () => {
-    expect(startRangeError('2026-10-15', '2026-10-15')).toBeNull();
-    expect(startRangeError('2026-10-15', '2026-10-29')).toBeNull();
-  });
-
-  it('thiếu một trong hai ngày → không báo lỗi', () => {
-    expect(startRangeError('', '2026-10-10')).toBeNull();
-    expect(startRangeError('2026-10-15', '')).toBeNull();
   });
 });

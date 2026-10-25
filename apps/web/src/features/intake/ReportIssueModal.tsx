@@ -1,12 +1,15 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type FormEvent } from 'react';
 import { Bug, Monitor } from 'lucide-react';
 import type { EnvironmentInput } from '@tirapro/shared';
 import type { ProjectDto } from '@tirapro/types';
-import { cn } from '@/lib/utils';
-import { radioGroupKeyDown } from '@/lib/radioNav';
+import { useErrorFlow } from '@/lib/useErrorFlow';
+import { describedBy, fieldErrorId, type FieldError } from '@/lib/formErrors';
 import { Button } from '@/components/ui/Button';
 import { Dialog } from '@/components/ui/Dialog';
+import { ErrorSummary } from '@/components/ui/ErrorSummary';
+import { FieldErrorText } from '@/components/ui/FieldError';
 import { Input } from '@/components/ui/Input';
+import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { useOpenSession } from '@/lib/useOpenSession';
 import { useCreateTarget } from '@/lib/useCreateTarget';
@@ -33,7 +36,6 @@ import { useReportSubmit } from './useReportSubmit';
 import { useQueuedSubmit } from './useQueuedSubmit';
 import { defaultSeverityId } from '@/features/issue-edit/severity';
 import {
-  canSubmitReport,
   descriptionForMode,
   descriptionOnKindChange,
   environmentSummary,
@@ -42,6 +44,9 @@ import {
   reportDialogTitle,
   reportKindLabel,
   severityForSubmit,
+  validateReport,
+  type ReportField,
+  type ReportFormState,
   type ReportMode,
   type RequestKind,
 } from './reportForm';
@@ -59,34 +64,19 @@ export function ReportIssueModal() {
   return <ReportIssueForm key={session} open={open} preset={preset} onClose={close} />;
 }
 
+const KIND_OPTIONS = REPORT_KINDS.map((k) => ({ value: k, label: reportKindLabel(k) }));
+
 /** Ba nút phân đoạn chọn loại yêu cầu. */
 function KindPicker({ kind, onChange }: { kind: RequestKind; onChange: (k: RequestKind) => void }) {
   return (
-    <div
-      role="radiogroup"
-      aria-label="Loại yêu cầu"
-      onKeyDown={radioGroupKeyDown}
-      className="flex gap-1.5"
-    >
-      {REPORT_KINDS.map((k) => (
-        <button
-          key={k}
-          type="button"
-          role="radio"
-          aria-checked={kind === k}
-          tabIndex={kind === k ? 0 : -1}
-          onClick={() => onChange(k)}
-          className={cn(
-            'h-8 flex-1 rounded-md border px-2 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
-            kind === k
-              ? 'border-primary bg-primary-subtle font-medium text-primary'
-              : 'border-border text-muted hover:bg-surface-2 hover:text-ink',
-          )}
-        >
-          {reportKindLabel(k)}
-        </button>
-      ))}
-    </div>
+    <SegmentedControl
+      ariaLabel="Loại yêu cầu"
+      size="sm"
+      fullWidth
+      value={kind}
+      onChange={onChange}
+      options={KIND_OPTIONS}
+    />
   );
 }
 
@@ -97,12 +87,14 @@ function ProjectField({
   picking,
   onPick,
   onChange,
+  error,
 }: {
   projects: ProjectDto[];
   selected: ProjectDto | undefined;
   picking: boolean;
   onPick: () => void;
   onChange: (key: string) => void;
+  error?: string;
 }) {
   if (selected && !picking)
     return (
@@ -124,58 +116,62 @@ function ProjectField({
       </label>
       <SearchSelect
         id="ri-project"
+        invalid={!!error}
+        aria-describedby={error ? fieldErrorId('ri-project') : undefined}
         value={selected?.key ?? ''}
         onChange={onChange}
         placeholder="Chọn dự án nhận báo cáo…"
         searchPlaceholder="Tìm dự án…"
         options={projects.map((p) => ({ value: p.key, label: p.name, hint: p.key }))}
       />
-      {!selected && (
-        <p className="mt-1 text-xs text-muted" role="status">
-          Chọn dự án để gửi — hộp này không tự đoán dự án.
-        </p>
+      {error ? (
+        <FieldErrorText id={fieldErrorId('ri-project')}>{error}</FieldErrorText>
+      ) : (
+        !selected && (
+          <p className="mt-1 text-xs text-muted" role="status">
+            Chọn dự án để gửi — hộp này không tự đoán dự án.
+          </p>
+        )
       )}
     </div>
   );
 }
 
+/** Trường của form → id phần tử trong hộp + nhãn hiện ở phần tóm tắt lỗi (theo thứ tự trong form). */
+const FIELD_META: Record<ReportField, { id: string; label: string }> = {
+  project: { id: 'ri-project', label: 'Dự án' },
+  summary: { id: 'ri-summary', label: 'Tiêu đề' },
+};
+
+/**
+ * Lỗi của form theo trường dưới dạng `FieldError` (theo thứ tự form). Lỗi hiện sau lần Gửi lỗi đầu tiên rồi tính lại theo
+ * form (sửa tới đâu hết lỗi tới đó) — xem `useErrorFlow`; Gửi từ nút, Enter trong form, ⌘/Ctrl+Enter hay ô mô tả đều đi
+ * qua `attempt`.
+ */
+function reportFieldErrors(f: Pick<ReportFormState, 'projectId' | 'summary'>): FieldError[] {
+  return validateReport(f).map((i) => ({ ...FIELD_META[i.field], message: i.message }));
+}
+
+const MODE_OPTIONS: { value: ReportMode; label: string; title: string }[] = [
+  { value: 'basic', label: 'Cơ bản', title: 'Chỉ cần tiêu đề — gửi nhanh nhất' },
+  {
+    value: 'advanced',
+    label: 'Nâng cao',
+    title: 'Mẫu bước tái hiện, mức nghiêm trọng, môi trường, tệp',
+  },
+];
+
 /** Công tắc phân đoạn "Cơ bản | Nâng cao" ở đầu form — nhớ theo người. */
 function ModeSwitch({ mode, onChange }: { mode: ReportMode; onChange: (m: ReportMode) => void }) {
-  const opts: { id: ReportMode; label: string; hint: string }[] = [
-    { id: 'basic', label: 'Cơ bản', hint: 'Chỉ cần tiêu đề — gửi nhanh nhất' },
-    {
-      id: 'advanced',
-      label: 'Nâng cao',
-      hint: 'Mẫu bước tái hiện, mức nghiêm trọng, môi trường, tệp',
-    },
-  ];
   return (
-    <div
-      role="radiogroup"
-      aria-label="Chế độ form"
-      onKeyDown={radioGroupKeyDown}
-      className="inline-flex rounded-md border border-border bg-surface-2 p-0.5"
-    >
-      {opts.map((o) => (
-        <button
-          key={o.id}
-          type="button"
-          role="radio"
-          aria-checked={mode === o.id}
-          tabIndex={mode === o.id ? 0 : -1}
-          title={o.hint}
-          onClick={() => onChange(o.id)}
-          className={cn(
-            'h-7 rounded px-3 text-sm transition-colors max-sm:h-11 max-sm:px-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
-            mode === o.id
-              ? 'bg-surface font-medium text-ink shadow-sm'
-              : 'text-muted hover:text-ink',
-          )}
-        >
-          {o.label}
-        </button>
-      ))}
-    </div>
+    <SegmentedControl
+      ariaLabel="Chế độ form"
+      size="sm"
+      fullWidth={false}
+      value={mode}
+      onChange={onChange}
+      options={MODE_OPTIONS}
+    />
   );
 }
 
@@ -201,12 +197,10 @@ function AutoEnvLine({ summary, onEdit }: { summary: string; onEdit: () => void 
 /** Hàng nút đáy: gợi ý phím tắt, Huỷ, Gửi. */
 function ReportFooter({
   busy,
-  canSubmit,
   label,
   onClose,
 }: {
   busy: boolean;
-  canSubmit: boolean;
   label: string;
   onClose: () => void;
 }) {
@@ -218,7 +212,7 @@ function ReportFooter({
       <Button type="button" variant="ghost" onClick={onClose}>
         Huỷ
       </Button>
-      <Button type="submit" form="report-issue-form" loading={busy} disabled={!canSubmit}>
+      <Button type="submit" form="report-issue-form" loading={busy}>
         {label}
       </Button>
     </>
@@ -235,7 +229,9 @@ function TitleField({
   dup,
   canMerge,
   onSelect,
+  error,
 }: {
+  error?: string;
   kind: RequestKind;
   summary: string;
   onChange: (v: string) => void;
@@ -266,8 +262,13 @@ function TitleField({
         }}
         placeholder={TITLE_PLACEHOLDER[kind]}
         className="text-sm"
-        aria-describedby={dupDescribedBy(showPanel, dup.sel.mode)}
+        invalid={!!error}
+        aria-describedby={describedBy(
+          dupDescribedBy(showPanel, dup.sel.mode),
+          error && fieldErrorId('ri-summary'),
+        )}
       />
+      {error && <FieldErrorText id={fieldErrorId('ri-summary')}>{error}</FieldErrorText>}
       {/* Vùng aria-live luôn có trong DOM để trình đọc màn hình đọc được khi panel xuất hiện. */}
       <div aria-live="polite">
         {showPanel && (
@@ -443,7 +444,7 @@ function ReportIssueForm({
     mergeIntoIssueId: dup.decision.mergeInto?.id ?? null,
     forceNew: dup.decision.forceNew,
   };
-  const { busy, canSubmit, submit } = useReportSubmit({
+  const { busy, submit } = useReportSubmit({
     form,
     files: details.files,
     onEnvInvalid: details.showEnvError,
@@ -456,10 +457,12 @@ function ReportIssueForm({
   const draft = useDraftAutosave(open, selKey, { kind, summary, description });
   const merging = !!dup.decision.mergeInto;
   const { queued, trySubmit } = useQueuedSubmit({
-    valid: canSubmitReport(form),
+    valid: validateReport(form).length === 0,
     waiting: metaWaiting,
     submit,
   });
+  const flow = useErrorFlow(reportFieldErrors(form));
+  const attempt = (e?: FormEvent) => flow.attempt(e, trySubmit);
   const envText = environmentSummary(details.envDraft);
 
   /** Đổi chế độ (nhớ theo người). Dữ liệu đã nhập giữ nguyên; chỉ mẫu chưa sửa được chèn/bỏ theo chế độ. */
@@ -491,18 +494,12 @@ function ReportIssueForm({
       onOpenChange={(o) => !o && onClose()}
       title={reportDialogTitle(kind)}
       size="lg"
-      onSubmit={() => trySubmit()}
+      onSubmit={() => attempt()}
       onEscapeKeyDown={(e) => escapeInDupPanel(e, () => dup.setDismissed(true))}
-      footer={
-        <ReportFooter
-          busy={busy || queued}
-          canSubmit={canSubmit}
-          label={dup.decision.label}
-          onClose={onClose}
-        />
-      }
+      footer={<ReportFooter busy={busy || queued} label={dup.decision.label} onClose={onClose} />}
     >
-      <form id="report-issue-form" onSubmit={(e) => trySubmit(e)} className="space-y-4">
+      <form id="report-issue-form" onSubmit={(e) => attempt(e)} className="space-y-4">
+        <ErrorSummary errors={flow.errors} attempt={flow.attempts} />
         <ModeSwitch mode={mode} onChange={changeMode} />
         <KindPicker kind={kind} onChange={changeKind} />
         <ProjectField
@@ -510,6 +507,7 @@ function ReportIssueForm({
           selected={selProject}
           picking={changingProject}
           onPick={() => setChangingProject(true)}
+          error={flow.errorOf(FIELD_META.project.id)}
           onChange={(k) => {
             if (k !== selKey) clearDraft(selKey); // nháp theo chữ đang gõ — chuyển sang dự án mới, không để bản cũ mồ côi
             setSelKey(k);
@@ -528,12 +526,13 @@ function ReportIssueForm({
           dup={dup}
           canMerge={canComment}
           onSelect={chooseDup}
+          error={flow.errorOf(FIELD_META.summary.id)}
         />
         <DescriptionField
           merging={merging}
           description={description}
           onChange={setDescription}
-          onSubmit={() => trySubmit()}
+          onSubmit={() => attempt()}
           rows={mode === 'basic' ? 3 : 6}
           onPasteImages={details.pasteFiles}
         />

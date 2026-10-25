@@ -4,39 +4,17 @@ import { apiErrorMessage } from '@/lib/api';
 import { Button } from '@/components/ui/Button';
 import { Dialog } from '@/components/ui/Dialog';
 import { Input } from '@/components/ui/Input';
-import { DateInput } from '@/components/ui/DateInput';
+import { DateRangeInput } from '@/components/ui/DateRangeInput';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { RoleMultiSelect } from '@/components/ui/RoleMultiSelect';
 import { useUserSelect } from '@/features/members/useUserSelect';
 import { useProjects } from '@/features/projects/api';
-import { cn } from '@/lib/utils';
+import { ColorPicker } from '@/components/ui/ColorPicker';
+import { LABEL_PALETTE } from '@/lib/labelPalette';
 import { useCreateProgram, useUpdateProgram, type ProgramDto } from './api';
 import { toDateInput } from '@/lib/dateFormat';
 import { blockOnInvalidDate } from '@/lib/dateGuard';
-
-/** Bảng màu nhãn chương trình — cùng hệ với nhãn nhóm để đọc nhanh trên dòng thời gian. */
-const PROGRAM_COLORS = [
-  '#2563eb',
-  '#16a34a',
-  '#a855f7',
-  '#f59e0b',
-  '#dc2626',
-  '#0d9488',
-  '#db2777',
-  '#6366f1',
-];
-
-/** Tên tiếng Việt của từng màu — để tooltip và trình đọc màn hình không đọc mã hex. */
-const COLOR_NAMES: Record<string, string> = {
-  '#2563eb': 'Xanh dương',
-  '#16a34a': 'Xanh lá',
-  '#a855f7': 'Tím',
-  '#f59e0b': 'Cam',
-  '#dc2626': 'Đỏ',
-  '#0d9488': 'Xanh ngọc',
-  '#db2777': 'Hồng',
-  '#6366f1': 'Chàm',
-};
+import { dateRangeError } from '@/lib/dateRange';
 
 function Field({
   label,
@@ -60,6 +38,9 @@ function Field({
   );
 }
 
+/** Màu mặc định của chương trình mới (Xanh dương của bảng màu chung). */
+const DEFAULT_PROGRAM_COLOR = LABEL_PALETTE[0]!.hex;
+
 /** Modal tạo/sửa chương trình: tên, màu, người phụ trách, thời hạn và tập dự án. */
 export function ProgramEditorModal({
   open,
@@ -77,17 +58,19 @@ export function ProgramEditorModal({
   const editing = !!program;
 
   const [name, setName] = useState('');
-  const [color, setColor] = useState(PROGRAM_COLORS[0]);
+  const [color, setColor] = useState(DEFAULT_PROGRAM_COLOR);
   const [description, setDescription] = useState('');
   const [ownerId, setOwnerId] = useState('');
   const [startDate, setStartDate] = useState('');
   const [targetDate, setTargetDate] = useState('');
   const [projectIds, setProjectIds] = useState<string[]>([]);
+  // Lỗi hiện có của cặp ngày (chữ sai/ngoài khoảng ở một ô) — DateRangeInput báo lên.
+  const [dateErr, setDateErr] = useState('');
 
   useEffect(() => {
     if (!open) return;
     setName(program?.name ?? '');
-    setColor(program?.color ?? PROGRAM_COLORS[0]);
+    setColor(program?.color ?? DEFAULT_PROGRAM_COLOR);
     setDescription(program?.description ?? '');
     setOwnerId(program?.owner?.id ?? '');
     setStartDate(toDateInput(program?.startDate));
@@ -104,10 +87,10 @@ export function ProgramEditorModal({
     [projects],
   );
 
-  const dateOrderInvalid = !!startDate && !!targetDate && startDate > targetDate;
+  const dateOrderInvalid = dateRangeError(startDate, targetDate) !== null;
 
   const busy = create.isPending || update.isPending;
-  const canSave = name.trim().length > 0 && !dateOrderInvalid && !busy;
+  const canSave = name.trim().length > 0 && !dateOrderInvalid && !dateErr && !busy;
 
   async function save() {
     if (!canSave) return;
@@ -168,25 +151,7 @@ export function ProgramEditorModal({
         </Field>
 
         <Field label="Màu nhãn" hint="(để nhận ra chương trình trên dòng thời gian)">
-          <div className="flex flex-wrap gap-2">
-            {PROGRAM_COLORS.map((c) => (
-              <button
-                key={c}
-                type="button"
-                onClick={() => setColor(c)}
-                title={COLOR_NAMES[c] ?? 'Màu nhãn'}
-                aria-label={`Màu nhãn ${COLOR_NAMES[c] ?? c}`}
-                aria-pressed={color === c}
-                className={cn(
-                  'h-7 w-7 rounded-full transition-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
-                  color === c
-                    ? 'ring-2 ring-offset-2 ring-offset-surface ring-ink-strong'
-                    : 'hover:scale-110',
-                )}
-                style={{ background: c }}
-              />
-            ))}
-          </div>
+          <ColorPicker value={color} onChange={setColor} ariaLabel="Màu nhãn chương trình" />
         </Field>
 
         <Field label="Mô tả" hint="(tùy chọn)" htmlFor="program-desc">
@@ -213,19 +178,21 @@ export function ProgramEditorModal({
           />
         </Field>
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Ngày bắt đầu" hint="(tùy chọn)" htmlFor="program-start">
-            <DateInput id="program-start" value={startDate} onChange={setStartDate} />
-          </Field>
-          <Field label="Ngày mục tiêu" hint="(tùy chọn — ngày muốn xong)" htmlFor="program-target">
-            <DateInput id="program-target" value={targetDate} onChange={setTargetDate} />
-          </Field>
-        </div>
-        {dateOrderInvalid && (
-          <p className="text-xs text-danger" role="alert">
-            Ngày mục tiêu đang sớm hơn ngày bắt đầu — hãy sửa lại một trong hai ngày.
-          </p>
-        )}
+        <DateRangeInput
+          groupLabel="Thời hạn chương trình"
+          startId="program-start"
+          endId="program-target"
+          startLabel="Ngày bắt đầu"
+          endLabel="Ngày mục tiêu"
+          startHint="(tùy chọn)"
+          endHint="(tùy chọn — ngày muốn xong)"
+          start={startDate}
+          end={targetDate}
+          onStartChange={setStartDate}
+          onEndChange={setTargetDate}
+          onErrorChange={setDateErr}
+          errorMessage="Ngày mục tiêu đang sớm hơn ngày bắt đầu — hãy sửa lại một trong hai ngày."
+        />
 
         <Field
           label="Dự án thuộc chương trình"

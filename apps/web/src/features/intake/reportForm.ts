@@ -43,9 +43,26 @@ export interface ReportPayload {
   forceNew?: boolean;
 }
 
+export type ReportField = 'project' | 'summary';
+export interface ReportFieldIssue {
+  field: ReportField;
+  message: string;
+}
+
+/** Lỗi theo trường, đủ mọi lỗi theo thứ tự form: cần dự án + tiêu đề ≥ 3 ký tự sau trim (khớp schema BE). */
+export function validateReport(
+  f: Pick<ReportFormState, 'projectId' | 'summary'>,
+): ReportFieldIssue[] {
+  const issues: ReportFieldIssue[] = [];
+  if (!f.projectId) issues.push({ field: 'project', message: 'Chọn dự án để gửi báo cáo.' });
+  const n = f.summary.trim().length;
+  if (n === 0) issues.push({ field: 'summary', message: 'Hãy nhập tiêu đề cho báo cáo.' });
+  else if (n < 3) issues.push({ field: 'summary', message: 'Tiêu đề cần ít nhất 3 ký tự.' });
+  return issues;
+}
+
 /** Cần dự án + tiêu đề ≥ 3 ký tự sau trim (khớp schema BE). */
-export const canSubmitReport = (f: ReportFormState): boolean =>
-  !!f.projectId && f.summary.trim().length >= 3;
+export const canSubmitReport = (f: ReportFormState): boolean => validateReport(f).length === 0;
 
 /**
  * Body gửi `POST /intake/report`. Mô tả chỉ còn mẫu thì bỏ; Severity + Môi trường chỉ có ý nghĩa với Bug

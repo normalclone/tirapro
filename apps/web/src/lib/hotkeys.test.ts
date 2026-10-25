@@ -112,6 +112,12 @@ describe('isTypingTarget', () => {
     expect(isTypingTarget(el({ isContentEditable: true }))).toBe(true);
     expect(isTypingTarget(el({ closest: () => ({}) }))).toBe(true);
   });
+  it('trong khối sửa tại chỗ (data-inline-edit): ✓/✕/Thử lại cũng KHÔNG kích hoạt phím tắt', () => {
+    const inInline = (sel: string) => (sel === '[data-inline-edit]' ? {} : null);
+    expect(isTypingTarget(el({ tagName: 'BUTTON', closest: inInline }))).toBe(true);
+    // chế độ xem không có data-inline-edit → nút tiêu đề không chặn phím tắt
+    expect(isTypingTarget(el({ tagName: 'BUTTON', closest: () => null }))).toBe(false);
+  });
   it('phần tử thường / null / không phải phần tử → false', () => {
     expect(isTypingTarget(el({}))).toBe(false);
     expect(isTypingTarget(null)).toBe(false);
@@ -158,6 +164,18 @@ describe('shouldClearSelectionOnEscape (thanh thao tác hàng loạt)', () => {
   });
   it('phím khác → không', () => {
     expect(shouldClearSelectionOnEscape({ key: 'a', defaultPrevented: false }, false)).toBe(false);
+  });
+  it('Esc đang gõ (ô nhập / sửa tại chỗ) → dành để rời ô, không xoá vùng chọn', () => {
+    expect(
+      shouldClearSelectionOnEscape({ key: 'Escape', defaultPrevented: false }, false, {
+        typing: true,
+      }),
+    ).toBe(false);
+    expect(
+      shouldClearSelectionOnEscape({ key: 'Escape', defaultPrevented: false }, false, {
+        typing: false,
+      }),
+    ).toBe(true);
   });
 });
 

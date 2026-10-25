@@ -4,6 +4,8 @@ import type { IssueDto } from '@tirapro/types';
 import { keys } from '@/lib/queryKeys';
 
 type Sets = Pick<IssueDto, 'components' | 'fixVersions'>;
+/** Phần của việc được vá lạc quan: tập Thành phần/Phiên bản hoặc nhãn. */
+type Patch = Partial<Sets & Pick<IssueDto, 'labels'>>;
 
 /**
  * Áp `fn` lên MỘT công việc ở MỌI cache đang giữ nó: chi tiết (`byKey`), danh sách dự án (`byProject`) và các board có
@@ -13,7 +15,7 @@ type Sets = Pick<IssueDto, 'components' | 'fixVersions'>;
 function mapIssueEverywhere(
   qc: QueryClient,
   ref: { id: string; key: string; projectId: string },
-  fn: (i: IssueDto) => Sets,
+  fn: (i: IssueDto) => Patch,
 ): void {
   const apply = (i: IssueDto): IssueDto => ({ ...i, ...fn(i) });
   qc.setQueryData<IssueDto>(keys.issues.byKey(ref.key), (o) => (o ? apply(o) : o));
@@ -34,6 +36,20 @@ export function patchIssueSets(
   issue: IssueDto,
   fn: (i: IssueDto) => Sets,
   inverse: (i: IssueDto) => Sets,
+): () => void {
+  mapIssueEverywhere(qc, issue, fn);
+  return () => mapIssueEverywhere(qc, issue, inverse);
+}
+
+/**
+ * Vá lạc quan NHÃN của một việc (cùng cơ chế `patchIssueSets`: mọi cache giữ việc, không đổi `version`, trả phép ngược).
+ * Dùng cho chip nhãn tạm lúc "tạo nhãn khi gắn" — máy chủ không tăng version khi gắn nhãn.
+ */
+export function patchIssueLabels(
+  qc: QueryClient,
+  issue: IssueDto,
+  fn: (i: IssueDto) => Pick<IssueDto, 'labels'>,
+  inverse: (i: IssueDto) => Pick<IssueDto, 'labels'>,
 ): () => void {
   mapIssueEverywhere(qc, issue, fn);
   return () => mapIssueEverywhere(qc, issue, inverse);

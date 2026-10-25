@@ -12,6 +12,7 @@ import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import {
   Archive,
   ArrowLeft,
+  Check,
   ChevronRight,
   Copy,
   GitCommit,
@@ -32,10 +33,23 @@ import { useDevLinks, useIssue } from './api';
 import { useCreateIssue } from './create-api';
 import { useProjects } from '@/features/projects/api';
 import { ProjectRail } from '@/features/projects/ProjectRail';
-import { useCanEditIssue, useCanIn, useProjectPermissions } from '@/features/projects/permissions';
+import {
+  useCan,
+  useCanEditIssue,
+  useCanIn,
+  useProjectPermissions,
+} from '@/features/projects/permissions';
 import { useMyWorkspaces } from '@/features/workspace/api';
 import { useDeleteIssue, useRetractIssue } from '@/features/issue-edit/api';
 import { RetractMenuItem } from './RetractMenuItem';
+import { IssueSummaryEdit } from './IssueSummaryEdit';
+import { CATEGORY_COLOR, IssueKeyFacts, OtherFactsDisclosure } from './IssueKeyFacts';
+import { aiPanelKey } from './issueFacts';
+import { AiIssuePanel } from '@/features/ai/AiIssuePanel';
+import { useAi } from '@/stores/ai';
+import { factLayout } from './issueFacts';
+import { useMediaQuery } from '@/lib/useMediaQuery';
+import { useIssueCopy } from './useIssueCopy';
 import { IssueRelations } from '@/features/tree/IssueRelations';
 import { CustomFieldsPanel } from '@/features/issue-fields/CustomFieldsPanel';
 import { AttachmentsPanel } from '@/features/attachments/AttachmentsPanel';
@@ -82,7 +96,6 @@ import { apiErrorCode } from '@/lib/api';
 import { PageFrame } from '@/components/layout/PageFrame';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
 import { useAuth } from '@/stores/auth';
 import { PresenceAvatars } from '@/features/presence/PresenceAvatars';
 import { useCreateIssueModal } from '@/stores/createIssue';
@@ -92,7 +105,6 @@ import { useCachedProjectIssue, useUpdateIssue } from './api';
 import { withKey } from '@/lib/shortcuts';
 import { isCommentHotkey, isOverlayOpen, isTypingTarget, isWorklogHotkey } from '@/lib/hotkeys';
 import { apiErrorMessage } from '@/lib/api';
-import { cn } from '@/lib/utils';
 import { FEATURES } from '@/lib/features';
 import type { WorkflowViewDialog as WorkflowViewDialogType } from '@/features/workflow-settings/WorkflowViewDialog';
 
@@ -113,12 +125,6 @@ const EDIT_DENIED_NOTICE = 'Bạn không có quyền sửa công việc này.';
 /** Nút trên thanh thao tác dưới tiêu đề (secondary, viền). */
 const TOOLBAR_BTN =
   'inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 py-1.5 text-sm font-medium text-ink transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:cursor-not-allowed disabled:border-transparent disabled:bg-disabled-bg disabled:text-disabled-fg';
-
-const CATEGORY_COLOR: Record<string, string> = {
-  TODO: 'var(--status-todo)',
-  IN_PROGRESS: 'var(--status-progress)',
-  DONE: 'var(--status-done)',
-};
 
 /** Trang chi tiết công việc (URL /issue/:key) — rail dự án + nội dung + panel thông tin bên phải. */
 export function IssueDetailPage() {
@@ -143,6 +149,14 @@ export function IssueDetailPage() {
   const can = useCanIn(issue?.projectId);
   const canEditThis = useCanEditIssue(issue?.projectId)(issue ?? {});
   const canTransition = can('issue:transition');
+  // Thuộc tính chính: dưới lg hiện dải ngay dưới tiêu đề + "Thuộc tính khác"; từ lg như trước. Chọn bằng media query để
+  // MỖI control chỉ dựng một lần (không trùng id/focus/phím tắt), thay vì dựng hai bản rồi ẩn bằng CSS.
+  const isDesktop = useMediaQuery('(min-width: 1024px)', true);
+  // Trợ lý AI: cần quyền ai:use ở dự án (KHÔNG đòi sửa việc; dự án lưu trữ vẫn dùng được vì không ghi gì) VÀ người dùng đang bật AI.
+  const canAi = useCan(issue?.projectId)('ai:use');
+  const aiEnabled = useAi((s) => s.enabled);
+  const showAi = canAi && aiEnabled;
+  const layout = factLayout(isDesktop);
   const { data: devLinks } = useDevLinks(FEATURES.repos ? issue?.id : undefined);
   // Mã issue theo LOẠI (BUG-4…) → KHÔNG suy ra project key từ chuỗi; resolve theo projectId.
   // Kể cả dự án đã lưu trữ (danh sách mặc định chỉ có dự án hoạt động → breadcrumb trống, "Tạo việc con" sai dự án).
@@ -172,13 +186,9 @@ export function IssueDetailPage() {
     isPending: transitionPending,
   } = useIssueTransitions(issue);
 
+  // Ô sửa tiêu đề do InlineText quản lý; trang chỉ biết "đang sửa" (tắt phím tắt) và yêu cầu mở từ ngoài (phím `e`, state điều hướng).
   const [editingSummary, setEditingSummary] = useState(false);
-  // Esc huỷ sửa tiêu đề: blur xảy ra ngay sau đó không được lưu.
-  const summaryCancelled = useRef(false);
-  useEffect(() => {
-    if (editingSummary) summaryCancelled.current = false; // lần sửa mới: bỏ cờ huỷ cũ (unmount không bắn blur)
-  }, [editingSummary]);
-  const [summary, setSummary] = useState('');
+  const [summaryEditRequest, setSummaryEditRequest] = useState(0);
   // Phím `e` ở danh sách điều hướng tới đây kèm `state.editSummary`: mở sẵn ô sửa tiêu đề khi đã biết được sửa (quyền tải xong).
   const location = useLocation();
   const editRequested = useRef(
@@ -190,8 +200,7 @@ export function IssueDetailPage() {
     if (!editRequested.current || !issue || !permsSettled) return;
     editRequested.current = false;
     if (canEditThis) {
-      setSummary(issue.summary);
-      setEditingSummary(true);
+      setSummaryEditRequest((n) => n + 1);
     } else toast.info(EDIT_DENIED_NOTICE);
     // Xoá cờ khỏi history để tải lại/Back không tự mở ô sửa lần nữa.
     navigate(
@@ -204,9 +213,6 @@ export function IssueDetailPage() {
   const [wfSeen, setWfSeen] = useState(false); // đã từng mở → giữ dialog trong cây để hiệu ứng đóng chạy được
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmRetract, setConfirmRetract] = useState(false);
-  useEffect(() => {
-    if (issue) setSummary(issue.summary);
-  }, [issue?.id]);
 
   // Phím `w` ghi thời gian: đăng ký ở cấp trang vì WorklogPanel chỉ mount khi cuộn tới (LazyPanel).
   // Mỗi lần bấm tăng `worklogRequest` → ép dựng panel, cuộn tới và mở form (đếm số để bấm lại sau khi đóng vẫn mở).
@@ -303,7 +309,13 @@ export function IssueDetailPage() {
       if (!issue || e.metaKey || e.ctrlKey || e.altKey) return;
       const el = e.target as HTMLElement | null;
       const tag = el?.tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el?.isContentEditable)
+      if (
+        tag === 'INPUT' ||
+        tag === 'TEXTAREA' ||
+        tag === 'SELECT' ||
+        el?.isContentEditable ||
+        el?.closest?.('[data-inline-edit]')
+      )
         return;
       // Chặn khi còn overlay/menu Radix đang MỞ (dialog đã đóng nhưng còn chạy hiệu ứng không chặn).
       if (isOverlayOpen()) return;
@@ -315,7 +327,7 @@ export function IssueDetailPage() {
       }
       if (e.key === 'y' || e.key === 'Y') {
         e.preventDefault();
-        copyLink();
+        copyLinkRef.current();
         return;
       }
       // e = sửa tiêu đề tại chỗ (cùng đường với bấm vào tiêu đề); preventDefault để chữ "e" không lọt vào ô vừa mở.
@@ -325,8 +337,7 @@ export function IssueDetailPage() {
           toast.info(EDIT_DENIED_NOTICE);
           return;
         }
-        setSummary(issue.summary);
-        setEditingSummary(true);
+        setSummaryEditRequest((n) => n + 1);
         return;
       }
       const n = Number(e.key);
@@ -349,25 +360,10 @@ export function IssueDetailPage() {
     canEditThis,
   ]);
 
-  function copyLink() {
-    navigator.clipboard
-      ?.writeText(window.location.href)
-      .then(() => toast.success('Đã sao chép liên kết. Dán vào chat hoặc email để chia sẻ.'))
-      .catch(() =>
-        toast.error('Trình duyệt chặn sao chép — hãy chép thủ công đường dẫn trên thanh địa chỉ.'),
-      );
-  }
-
-  function copyKey() {
-    navigator.clipboard
-      ?.writeText(key)
-      .then(() => toast.success(`Đã sao chép mã ${key}`))
-      .catch(() =>
-        toast.error(
-          'Trình duyệt chặn sao chép — hãy chép thủ công mã hiển thị trên thanh điều hướng.',
-        ),
-      );
-  }
+  const { copyKey, copyLink, keyCopied } = useIssueCopy(issue?.key ?? key);
+  // Bộ nghe phím (effect ở trên) không đăng ký lại khi đổi công việc cùng status/version → đọc copyLink mới nhất qua ref.
+  const copyLinkRef = useRef(copyLink);
+  copyLinkRef.current = copyLink;
 
   const isMine = !!issue && !!me && issue.assigneeId === me.id;
   function assignToMe() {
@@ -432,28 +428,6 @@ export function IssueDetailPage() {
   }, []);
 
   const canEditRestricted = useCanEditRestricted(issue);
-
-  async function saveSummary() {
-    if (summaryCancelled.current) {
-      summaryCancelled.current = false;
-      return;
-    }
-    if (!issue || summary.trim() === issue.summary) {
-      setEditingSummary(false);
-      return;
-    }
-    try {
-      await updateIssue.mutateAsync({
-        id: issue.id,
-        key: issue.key,
-        patch: { summary: summary.trim() },
-        version: issue.version,
-      });
-      setEditingSummary(false);
-    } catch (e) {
-      toast.error(apiErrorMessage(e));
-    }
-  }
 
   async function onDelete() {
     if (!issue) return;
@@ -532,9 +506,13 @@ export function IssueDetailPage() {
                   onClick={copyKey}
                   title={`Sao chép mã công việc (${key}) để dán vào chat, commit…`}
                   aria-label="Sao chép mã công việc"
-                  className="grid h-6 w-6 shrink-0 place-items-center rounded text-faint transition-colors hover:bg-surface-2 hover:text-ink [@media(pointer:coarse)]:h-9 [@media(pointer:coarse)]:w-9"
+                  className="grid h-6 w-6 shrink-0 place-items-center rounded text-faint transition-colors hover:bg-surface-2 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] [@media(pointer:coarse)]:h-9 [@media(pointer:coarse)]:w-9"
                 >
-                  <Hash className="h-3.5 w-3.5" />
+                  {keyCopied ? (
+                    <Check className="h-3.5 w-3.5 text-success" aria-hidden />
+                  ) : (
+                    <Hash className="h-3.5 w-3.5" />
+                  )}
                 </button>
               </>
             }
@@ -565,52 +543,43 @@ export function IssueDetailPage() {
                 <div className="flex flex-wrap items-center gap-2 sm:flex-nowrap sm:items-start">
                   <div className="order-1 flex shrink-0 flex-wrap items-center gap-1.5 sm:mt-1.5">
                     <IssueTypeSelect issue={issue} />
-                    <IssuePrioritySelect issue={issue} />
+                    {layout.priorityInHeader && <IssuePrioritySelect issue={issue} />}
                     <IssueSeveritySelect issue={issue} />
                     <IssueResolutionSelect issue={issue} />
                   </div>
-                  {/* h1 của trang = ô tiêu đề hiển thị (đang sửa thì h1 bọc ô nhập, vẫn đúng một h1). */}
-                  <h1 className="order-3 min-w-0 basis-full sm:order-2 sm:basis-0 sm:flex-1">
-                    {editingSummary ? (
-                      <Input
-                        autoFocus
-                        aria-label="Tiêu đề công việc"
-                        value={summary}
-                        onChange={(e) => setSummary(e.target.value)}
-                        onBlur={saveSummary}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') void saveSummary();
-                          else if (e.key === 'Escape' && !e.nativeEvent.isComposing) {
-                            // Esc huỷ sửa (đúng UX_CONVENTIONS) — trả lại tiêu đề cũ, không lưu.
-                            e.preventDefault();
-                            summaryCancelled.current = true;
-                            setSummary(issue.summary);
-                            setEditingSummary(false);
-                          }
-                        }}
-                        className="h-10 text-xl font-semibold tracking-tight sm:text-2xl"
-                      />
-                    ) : (
-                      <span
-                        className={cn(
-                          '-mx-1 block break-words rounded px-1 text-xl font-semibold tracking-tight sm:text-2xl',
-                          canEditThis && 'cursor-text hover:bg-surface-2',
-                        )}
-                        onClick={canEditThis ? () => setEditingSummary(true) : undefined}
-                        title={
-                          canEditThis ? withKey('Bấm để sửa tiêu đề', 'issue.edit') : undefined
-                        }
-                      >
-                        {issue.summary}
-                      </span>
-                    )}
-                  </h1>
+                  {/* h1 của trang = tiêu đề hiển thị (InlineText as="h1"; đang sửa thì h1 bọc ô nhập, vẫn đúng một h1). */}
+                  <IssueSummaryEdit
+                    key={issue.id}
+                    issue={issue}
+                    canEdit={canEditThis}
+                    as="h1"
+                    className="order-3 basis-full sm:order-2 sm:basis-0 sm:flex-1"
+                    textClassName="text-xl font-semibold tracking-tight sm:text-2xl"
+                    inputClassName="h-10 text-xl font-semibold tracking-tight sm:text-2xl"
+                    title={withKey('Bấm để sửa tiêu đề', 'issue.edit')}
+                    editRequest={summaryEditRequest}
+                    onEditingChange={setEditingSummary}
+                  />
                   <div className="order-2 ml-auto flex shrink-0 items-center gap-2 sm:order-3 sm:ml-0 sm:mt-1">
                     <PresenceAvatars room="issue" projectId={issue.projectId} issueId={issue.id} />
                     <IssueSlaBadge issueId={issue.id} />
                     <WatchButton issueId={issue.id} />
                   </div>
                 </div>
+                {layout.strip.length > 0 && (
+                  <IssueKeyFacts
+                    issue={issue}
+                    canEditRestricted={canEditRestricted}
+                    canTransition={canTransition}
+                    nextStatuses={nextStatuses}
+                    transitionPending={transitionPending}
+                    onTransition={requestTransition}
+                    onOpenWorkflow={() => {
+                      setWfSeen(true);
+                      setWfOpen(true);
+                    }}
+                  />
+                )}
                 <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
                   <IssueSprintSubtitle issue={issue} />
                   <span className="text-faint" aria-hidden>
@@ -711,68 +680,85 @@ export function IssueDetailPage() {
                 </DropdownMenu.Root>
 
                 {/* Trạng thái hiện tại + xem quy trình, rồi các bước chuyển kế tiếp (theo workflow) */}
-                <div className="ml-auto flex flex-wrap items-center gap-1.5">
-                  <span
-                    className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-sm font-medium text-ink"
-                    title="Trạng thái hiện tại của công việc"
-                  >
+                {layout.statusInToolbar && (
+                  <div className="ml-auto flex flex-wrap items-center gap-1.5">
+                    {/* Chip trạng thái (từ lg; dưới lg đã ở dải thuộc tính) */}
                     <span
-                      className="h-2 w-2 shrink-0 rounded-full"
-                      style={{
-                        background: CATEGORY_COLOR[issue.status.category] ?? 'var(--faint)',
+                      className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-sm font-medium text-ink"
+                      title="Trạng thái hiện tại của công việc"
+                    >
+                      <span
+                        className="h-2 w-2 shrink-0 rounded-full"
+                        style={{
+                          background: CATEGORY_COLOR[issue.status.category] ?? 'var(--faint)',
+                        }}
+                        aria-hidden
+                      />
+                      {issue.status.name}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setWfSeen(true);
+                        setWfOpen(true);
                       }}
-                      aria-hidden
-                    />
-                    {issue.status.name}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setWfSeen(true);
-                      setWfOpen(true);
-                    }}
-                    aria-label="Xem quy trình"
-                    title="Xem quy trình: các trạng thái có thể có và bước chuyển hợp lệ"
-                    className="grid h-8 w-8 place-items-center rounded-md text-faint transition-colors hover:bg-surface-2 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
-                  >
-                    <Workflow className="h-4 w-4" />
-                  </button>
-                  {canTransition && nextStatuses.length > 0 && (
-                    <>
-                      <ChevronRight className="h-4 w-4 shrink-0 text-faint" aria-hidden />
-                      {nextStatuses.map((o, i) => (
-                        <button
-                          key={o.id}
-                          type="button"
-                          disabled={transitionPending}
-                          onClick={() => requestTransition(o.id)}
-                          title={`${
-                            o.label !== o.name
-                              ? `${o.label} → “${o.name}”`
-                              : `Chuyển sang “${o.name}”`
-                          }${i < 9 ? ` · phím tắt ${i + 1}` : ''}`}
-                          className="group inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 py-1.5 text-sm font-medium text-ink transition-colors hover:border-primary hover:bg-primary-subtle hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:cursor-not-allowed disabled:border-transparent disabled:bg-disabled-bg disabled:text-disabled-fg"
-                        >
-                          <span
-                            className="h-2 w-2 shrink-0 rounded-full"
-                            style={{ background: CATEGORY_COLOR[o.category] ?? 'var(--faint)' }}
-                            aria-hidden
-                          />
-                          {o.label}
-                          {i < 9 && (
-                            <kbd
+                      aria-label="Xem quy trình"
+                      title="Xem quy trình: các trạng thái có thể có và bước chuyển hợp lệ"
+                      className="grid h-8 w-8 place-items-center rounded-md text-faint transition-colors hover:bg-surface-2 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+                    >
+                      <Workflow className="h-4 w-4" />
+                    </button>
+                    {canTransition && nextStatuses.length > 0 && (
+                      <>
+                        <ChevronRight className="h-4 w-4 shrink-0 text-faint" aria-hidden />
+                        {nextStatuses.map((o, i) => (
+                          <button
+                            key={o.id}
+                            type="button"
+                            disabled={transitionPending}
+                            onClick={() => requestTransition(o.id)}
+                            aria-keyshortcuts={i < 9 ? String(i + 1) : undefined}
+                            title={`${
+                              o.label !== o.name
+                                ? `${o.label} → “${o.name}”`
+                                : `Chuyển sang “${o.name}”`
+                            }${i < 9 ? ` · phím tắt ${i + 1}` : ''}`}
+                            className="group inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 py-1.5 text-sm font-medium text-ink transition-colors hover:border-primary hover:bg-primary-subtle hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:cursor-not-allowed disabled:border-transparent disabled:bg-disabled-bg disabled:text-disabled-fg"
+                          >
+                            <span
+                              className="h-2 w-2 shrink-0 rounded-full"
+                              style={{ background: CATEGORY_COLOR[o.category] ?? 'var(--faint)' }}
                               aria-hidden
-                              className="kbd-hint ml-0.5 grid h-4 min-w-4 place-items-center rounded border border-border bg-surface-2 px-1 font-mono text-[10px] leading-none text-faint transition-colors group-hover:border-primary/40 group-hover:text-primary"
-                            >
-                              {i + 1}
-                            </kbd>
-                          )}
-                        </button>
-                      ))}
-                    </>
-                  )}
-                </div>
+                            />
+                            {o.label}
+                            {i < 9 && (
+                              <kbd
+                                aria-hidden
+                                className="kbd-hint ml-0.5 grid h-4 min-w-4 place-items-center rounded border border-border bg-surface-2 px-1 font-mono text-[10px] leading-none text-faint transition-colors group-hover:border-primary/40 group-hover:text-primary"
+                              >
+                                {i + 1}
+                              </kbd>
+                            )}
+                          </button>
+                        ))}
+                      </>
+                    )}
+                  </div>
+                )}
               </div>
+
+              {/* Dưới lg: phần còn lại của cột phải gom vào "Thuộc tính khác" (thu gọn mặc định), ngay trên thân trang. */}
+              {layout.other.length > 0 && (
+                <OtherFactsDisclosure>
+                  <EpicParentField issue={issue} />
+                  <IssuePeoplePanel issue={issue} omit={layout.strip} />
+                  <IssueDatesPanel
+                    issue={issue}
+                    canEditRestricted={canEditRestricted}
+                    omit={layout.strip}
+                  />
+                </OtherFactsDisclosure>
+              )}
 
               {/* Thân: trái = mô tả + nội dung + hoạt động; phải = người liên quan + mốc thời gian */}
               <div className="grid grid-cols-1 gap-x-8 gap-y-5 lg:grid-cols-[minmax(0,1fr)_300px]">
@@ -781,6 +767,13 @@ export function IssueDetailPage() {
                     <p className="mb-1.5 text-sm font-medium text-muted">Mô tả</p>
                     <IssueDescription issue={issue} />
                   </div>
+
+                  {/* Dưới lg: "Trợ lý AI" thu gọn (nhớ theo người dùng), giữa mô tả và hoạt động; từ lg nằm ở cột phải. */}
+                  {!isDesktop && showAi && (
+                    <OtherFactsDisclosure title="Trợ lý AI" keyFor={aiPanelKey}>
+                      <AiIssuePanel key={issue.id} issueId={issue.id} variant="bare" />
+                    </OtherFactsDisclosure>
+                  )}
 
                   {/* Story luôn có khối này (kể cả rỗng); loại khác chỉ khi đã có nội dung */}
                   {(issue.type.key === 'STORY' || issue.acceptanceCriteria) && (
@@ -863,9 +856,14 @@ export function IssueDetailPage() {
                 {/* Cột phải: Người liên quan + Mốc thời gian */}
                 <aside className="min-w-0">
                   <div className="space-y-5 lg:sticky lg:top-4">
-                    <EpicParentField issue={issue} />
-                    <IssuePeoplePanel issue={issue} />
-                    <IssueDatesPanel issue={issue} canEditRestricted={canEditRestricted} />
+                    {layout.sidebar.length > 0 && (
+                      <>
+                        <EpicParentField issue={issue} />
+                        <IssuePeoplePanel issue={issue} />
+                        <IssueDatesPanel issue={issue} canEditRestricted={canEditRestricted} />
+                      </>
+                    )}
+                    {isDesktop && showAi && <AiIssuePanel key={issue.id} issueId={issue.id} />}
                     <LazyPanel id="issue-worklog" minHeight={96} force={worklogRequest > 0}>
                       <WorklogPanel issue={issue} openRequest={worklogRequest} />
                     </LazyPanel>

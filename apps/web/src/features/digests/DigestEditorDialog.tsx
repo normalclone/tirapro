@@ -3,28 +3,34 @@ import { Eye } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/Button';
 import { Dialog } from '@/components/ui/Dialog';
+import { ErrorSummary } from '@/components/ui/ErrorSummary';
+import { FormField } from '@/components/ui/FormField';
 import { Input } from '@/components/ui/Input';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { apiErrorMessage } from '@/lib/api';
+import type { FieldError } from '@/lib/formErrors';
+import { useErrorFlow } from '@/lib/useErrorFlow';
 import { useAuth } from '@/stores/auth';
 import { cn } from '@/lib/utils';
 import { useProjects } from '@/features/projects/api';
 import { useCreateDigest, usePreviewDigest, useUpdateDigest, type Digest } from './api';
-import {
-  BlocksField,
-  ChannelFields,
-  Field,
-  ScheduleFields,
-  type SetDigestForm,
-} from './DigestFormFields';
+import { BlocksField, ChannelFields, ScheduleFields, type SetDigestForm } from './DigestFormFields';
 import {
   effectiveAllowPrivate,
   initialForm,
   toCreatePayload,
   toUpdatePayload,
   validateForm,
+  type DigestField,
   type DigestFormState,
 } from './digestForm';
+
+/** Trường của form → id phần tử trong hộp + nhãn hiện ở phần tóm tắt lỗi. */
+const FIELD_META: Record<DigestField, { id: string; label: string }> = {
+  name: { id: 'digest-name', label: 'Tên báo cáo' },
+  blocks: { id: 'digest-blocks', label: 'Nội dung báo cáo' },
+  recipients: { id: 'digest-recipients', label: 'Người nhận email' },
+};
 
 /**
  * Tạo / sửa báo cáo định kỳ trong MỘT hộp thoại: tên, phạm vi, lịch, kênh (Telegram + Email), khối nội dung, xem
@@ -57,12 +63,17 @@ export function DigestEditorDialog({
       ...(key === 'projectId' ? { allowPrivateToChannel: false } : {}),
     }));
 
+  // Sau lần Lưu lỗi đầu tiên, lỗi được tính lại theo form: sửa tới đâu hết lỗi tới đó.
+  const allErrors: FieldError[] = validateForm(form).map((i) => ({
+    ...FIELD_META[i.field],
+    message: i.message,
+  }));
+  const flow = useErrorFlow(allErrors);
+  const errorOf = (f: DigestField) => flow.errorOf(FIELD_META[f].id);
+
   function submit() {
-    const error = validateForm(form);
-    if (error) {
-      toast.error(error);
-      return;
-    }
+    if (saving) return; // ⌘/Ctrl+Enter không đi qua trạng thái loading của nút
+    if (allErrors.length > 0) return flow.fail();
     const done = {
       onSuccess: () => {
         toast.success(digest ? 'Đã lưu báo cáo.' : 'Đã tạo báo cáo định kỳ.');
@@ -94,20 +105,32 @@ export function DigestEditorDialog({
       }
     >
       <div className="space-y-4 pb-1">
+        <ErrorSummary errors={flow.errors} attempt={flow.attempts} />
         <div className="grid gap-3 sm:grid-cols-2">
-          <Field id="digest-name" label="Tên báo cáo">
-            <Input
-              id="digest-name"
-              value={form.name}
-              placeholder="VD: Tổng kết tuần"
-              onChange={(e) => set('name', e.target.value)}
-            />
-          </Field>
+          <FormField id="digest-name" label="Tên báo cáo" error={errorOf('name')}>
+            {(a11y) => (
+              <Input
+                {...a11y}
+                value={form.name}
+                placeholder="VD: Tổng kết tuần"
+                onChange={(e) => set('name', e.target.value)}
+              />
+            )}
+          </FormField>
           <ProjectField form={form} set={set} locked={digest !== null} />
         </div>
         <ScheduleFields form={form} set={set} />
-        <ChannelFields form={form} set={set} projectIsPrivate={projectIsPrivate} />
-        <BlocksField value={form.blocks} onChange={(v) => set('blocks', v)} />
+        <ChannelFields
+          form={form}
+          set={set}
+          projectIsPrivate={projectIsPrivate}
+          recipientsError={errorOf('recipients')}
+        />
+        <BlocksField
+          value={form.blocks}
+          onChange={(v) => set('blocks', v)}
+          error={errorOf('blocks')}
+        />
         <PreviewPanel form={form} projectIsPrivate={flagPrivate} />
       </div>
     </Dialog>
@@ -237,22 +260,24 @@ function ProjectField({
 }) {
   const { data } = useProjects();
   return (
-    <Field
+    <FormField
       id="digest-project"
       label="Phạm vi"
       hint={locked ? 'Không đổi được phạm vi sau khi tạo.' : undefined}
     >
-      <SearchSelect
-        id="digest-project"
-        value={form.projectId}
-        onChange={(v) => set('projectId', v)}
-        options={[
-          { value: '', label: 'Tất cả dự án' },
-          ...(data ?? []).map((p) => ({ value: p.id, label: p.name })),
-        ]}
-        disabled={locked}
-        className="w-full"
-      />
-    </Field>
+      {(a11y) => (
+        <SearchSelect
+          {...a11y}
+          value={form.projectId}
+          onChange={(v) => set('projectId', v)}
+          options={[
+            { value: '', label: 'Tất cả dự án' },
+            ...(data ?? []).map((p) => ({ value: p.id, label: p.name })),
+          ]}
+          disabled={locked}
+          className="w-full"
+        />
+      )}
+    </FormField>
   );
 }

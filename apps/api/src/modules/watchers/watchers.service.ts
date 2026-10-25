@@ -76,23 +76,38 @@ export class WatchersService {
     return { watching: false };
   }
 
-  /** Danh sách người theo dõi issue + cờ isWatching cho user hiện tại. */
+  /**
+   * Danh sách người theo dõi issue + cờ isWatching cho user hiện tại.
+   * Chỉ trả người CÒN nhận được thông báo — cùng luật với cổng trung tâm của `NotificationsService` (`filterCanSee`):
+   * xem được dự án của issue và tài khoản chưa bị vô hiệu hoá. Dòng `IssueWatcher` không bị xoá khi người đó mất quyền
+   * (người báo ngoài nhóm do intake/triage tự thêm, người rời dự án riêng tư, tài khoản bị khoá), nên không lọc thì
+   * danh sách vừa lộ tên người đã rời vừa hứa thông báo sẽ không bao giờ tới.
+   */
   async list(
     workspaceId: string,
     userId: string,
     issueId: string,
   ): Promise<{ watchers: WatcherUser[]; isWatching: boolean }> {
-    await this.requireIssue(workspaceId, issueId);
+    const issue = await this.requireIssue(workspaceId, issueId);
     const rows = await this.prisma.issueWatcher.findMany({
-      where: { issueId },
+      where: { issueId, user: { status: { not: 'DEACTIVATED' } } },
       select: { user: { select: { id: true, displayName: true, avatarUrl: true } } },
       orderBy: { user: { displayName: 'asc' } },
     });
-    const watchers = rows.map((r) => ({
-      id: r.user.id,
-      displayName: r.user.displayName,
-      avatarUrl: r.user.avatarUrl,
-    }));
+    const visible = new Set(
+      await this.notifications.filterCanSee(
+        rows.map((r) => r.user.id),
+        workspaceId,
+        issue.projectId,
+      ),
+    );
+    const watchers = rows
+      .filter((r) => visible.has(r.user.id))
+      .map((r) => ({
+        id: r.user.id,
+        displayName: r.user.displayName,
+        avatarUrl: r.user.avatarUrl,
+      }));
     return { watchers, isWatching: watchers.some((w) => w.id === userId) };
   }
 
@@ -193,10 +208,13 @@ export class WatchersService {
   }
 
   /** Issue phải thuộc workspace của user và chưa xóa mềm. */
-  private async requireIssue(workspaceId: string, issueId: string): Promise<{ id: string }> {
+  private async requireIssue(
+    workspaceId: string,
+    issueId: string,
+  ): Promise<{ id: string; projectId: string }> {
     const issue = await this.prisma.issue.findFirst({
       where: { id: issueId, workspaceId, deletedAt: null },
-      select: { id: true },
+      select: { id: true, projectId: true },
     });
     if (!issue) throw new NotFoundAppException('Công việc');
     return issue;

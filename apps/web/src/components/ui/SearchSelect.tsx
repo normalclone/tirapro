@@ -10,7 +10,9 @@ import {
 } from 'react';
 import * as Popover from '@radix-ui/react-popover';
 import { Check, ChevronDown } from 'lucide-react';
+import { FieldErrorText } from '@/components/ui/FieldError';
 import { Input } from '@/components/ui/Input';
+import { INVALID_FIELD_CLS, invalidAttrs } from '@/lib/formErrors';
 import { groupHeadingAt } from './searchSelectGroups';
 import {
   filterOptions,
@@ -20,6 +22,8 @@ import {
   typeaheadIndex,
 } from './searchSelectNav';
 import { shouldEmitChange } from '@/lib/radioNav';
+import { shouldSubmitOnEnter } from '@/lib/confirmText';
+import { useJustComposed } from '@/lib/useJustComposed';
 import { cn } from '@/lib/utils';
 
 const TYPEAHEAD_MS = 600;
@@ -51,24 +55,31 @@ export interface SearchSelectOption {
  * Chọn lại giá trị đang chọn KHÔNG phát `onChange` (như select native, xem `shouldEmitChange`): menu dạng "hành động"
  * phải truyền `value=""` và để mọi option có `value` khác rỗng thì mới luôn phát.
  */
-export function SearchSelect({
-  value,
-  onChange,
-  options,
-  placeholder = 'Chọn…',
-  searchPlaceholder = 'Tìm…',
-  disabled,
-  id,
-  ariaLabel,
-  className,
-  align = 'start',
+const TRIGGER_CLS = [
+  'flex h-9 w-full items-center gap-2 rounded-md border border-border bg-bg px-3 text-left text-sm transition-colors',
+  'focus-visible:outline-none focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
+  'disabled:bg-disabled-bg disabled:text-disabled-fg disabled:cursor-not-allowed data-[state=open]:border-primary',
+].join(' ');
+
+function TriggerLabel({
+  selected,
+  placeholder,
   renderTrigger,
-  hideChevron,
-  onSearchChange,
-  moreHint,
-  resolveOption,
-  searchable,
 }: {
+  selected: SearchSelectOption | undefined;
+  placeholder: string;
+  renderTrigger?: (selected: SearchSelectOption | undefined) => ReactNode;
+}) {
+  if (renderTrigger)
+    return <span className="min-w-0 flex-1 truncate">{renderTrigger(selected)}</span>;
+  return (
+    <span className={cn('min-w-0 flex-1 truncate', selected ? 'text-ink' : 'text-faint')}>
+      {selected ? selected.label : placeholder}
+    </span>
+  );
+}
+
+interface SearchSelectControlProps {
   value: string;
   onChange: (value: string) => void;
   options: SearchSelectOption[];
@@ -91,7 +102,47 @@ export function SearchSelect({
   resolveOption?: (value: string) => SearchSelectOption | undefined;
   /** Ép hiện/ẩn ô tìm. Mặc định: hiện khi > 6 mục hoặc có `onSearchChange` (tìm phía máy chủ). */
   searchable?: boolean;
-}) {
+  /** Thuộc tính aria của lỗi (từ `invalidAttrs`); có `aria-invalid` thì trigger viền danger. */
+  invalidAria?: { 'aria-invalid'?: true; 'aria-describedby'?: string };
+  /**
+   * Dòng GHIM cuối danh sách, KHÔNG bị bộ lọc tìm kiếm loại (vd "Tạo nhãn “abc”" theo chữ đang gõ, hoặc câu giải thích
+   * vì sao không tạo được). Chọn được thì đi qua `onChange` như mục thường; `disabled` thì chỉ là chữ.
+   */
+  pinnedOptions?: SearchSelectOption[];
+  /**
+   * Móc phím của ô tìm — chạy TRƯỚC điều hướng mặc định, với chữ đang gõ `q`. `preventDefault()` để chặn điều hướng/chọn
+   * mặc định cho phím đó (vd Backspace ở ô trống). Không gọi khi bộ gõ đang soạn chữ.
+   */
+  onSearchKeyDown?: (e: KeyboardEvent<HTMLElement>, q: string) => void;
+  /** Báo mở/đóng danh sách. */
+  onOpenChange?: (open: boolean) => void;
+  /** Dòng gợi ý ngắn nhìn thấy ngay dưới ô tìm (không thuộc listbox, ẩn với trình đọc màn hình — nơi dùng tự báo qua vùng status). */
+  searchHint?: string;
+}
+
+function SearchSelectControl({
+  value,
+  onChange,
+  options,
+  placeholder = 'Chọn…',
+  searchPlaceholder = 'Tìm…',
+  disabled,
+  id,
+  ariaLabel,
+  className,
+  align = 'start',
+  renderTrigger,
+  hideChevron,
+  onSearchChange,
+  moreHint,
+  resolveOption,
+  searchable,
+  invalidAria,
+  pinnedOptions,
+  onSearchKeyDown,
+  onOpenChange,
+  searchHint,
+}: SearchSelectControlProps) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
   const baseId = useId();
@@ -106,14 +157,17 @@ export function SearchSelect({
     options.find((o) => o.value === value) ?? (value ? resolveOption?.(value) : undefined);
   // Không phân biệt hoa thường/dấu, tìm theo nhãn + mã hiển thị (`hint`) + `description`, KHÔNG theo `value` (id nội bộ).
   const filtered = filterOptions(options, q);
+  const items = pinnedOptions?.length ? [...filtered, ...pinnedOptions] : filtered;
+  const composed = useJustComposed();
 
   const { activeIndex, setActive, source, onNavKeyDown } = useActiveOption({
     open,
     q,
     value,
-    items: filtered,
+    items,
     typeahead: !showSearch,
     onPick: (v) => pick(v),
+    composed,
   });
 
   const focusSearchOrList = useFocusFollowsSearch(open, showSearch, inputRef, listRef);
@@ -138,6 +192,7 @@ export function SearchSelect({
       open={open}
       onOpenChange={(o) => {
         setOpen(o);
+        onOpenChange?.(o);
         if (!o) resetSearch();
       }}
     >
@@ -147,20 +202,14 @@ export function SearchSelect({
           id={id}
           disabled={disabled}
           aria-label={ariaLabel}
-          className={cn(
-            'flex h-9 w-full items-center gap-2 rounded-md border border-border bg-bg px-3 text-left text-sm transition-colors',
-            'focus-visible:outline-none focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
-            'disabled:bg-disabled-bg disabled:text-disabled-fg disabled:cursor-not-allowed data-[state=open]:border-primary',
-            className,
-          )}
+          {...invalidAria}
+          className={cn(TRIGGER_CLS, invalidAria?.['aria-invalid'] && INVALID_FIELD_CLS, className)}
         >
-          {renderTrigger ? (
-            <span className="min-w-0 flex-1 truncate">{renderTrigger(selected)}</span>
-          ) : (
-            <span className={cn('min-w-0 flex-1 truncate', selected ? 'text-ink' : 'text-faint')}>
-              {selected ? selected.label : placeholder}
-            </span>
-          )}
+          <TriggerLabel
+            selected={selected}
+            placeholder={placeholder}
+            renderTrigger={renderTrigger}
+          />
           {!hideChevron && <ChevronDown className="h-4 w-4 shrink-0 text-faint" aria-hidden />}
         </button>
       </Popover.Trigger>
@@ -179,15 +228,27 @@ export function SearchSelect({
             <SearchBox
               inputRef={inputRef}
               listId={listId}
-              activeId={filtered[activeIndex] ? optionId(activeIndex) : undefined}
+              activeId={items[activeIndex] ? optionId(activeIndex) : undefined}
               placeholder={searchPlaceholder}
               value={q}
               onChange={(v) => {
                 setQ(v);
                 onSearchChange?.(v);
               }}
-              onKeyDown={onNavKeyDown}
+              onKeyDown={(e) => {
+                if (!e.nativeEvent.isComposing) onSearchKeyDown?.(e, q);
+                if (!e.defaultPrevented) onNavKeyDown(e);
+              }}
+              onCompositionEnd={composed.onCompositionEnd}
             />
+          )}
+          {searchHint && (
+            <p
+              aria-hidden="true"
+              className="border-b border-border bg-surface-2 px-3 py-1 text-xs text-muted"
+            >
+              {searchHint}
+            </p>
           )}
           <ul
             ref={listRef}
@@ -198,12 +259,12 @@ export function SearchSelect({
             tabIndex={showSearch ? undefined : 0}
             onMouseDown={(e) => e.preventDefault()}
             aria-activedescendant={
-              !showSearch && filtered[activeIndex] ? optionId(activeIndex) : undefined
+              !showSearch && items[activeIndex] ? optionId(activeIndex) : undefined
             }
             onKeyDown={showSearch ? undefined : onNavKeyDown}
           >
             <OptionRows
-              items={filtered}
+              items={items}
               value={value}
               activeIndex={activeIndex}
               source={source}
@@ -228,6 +289,7 @@ function SearchBox({
   value,
   onChange,
   onKeyDown,
+  onCompositionEnd,
 }: {
   inputRef: RefObject<HTMLInputElement>;
   listId: string;
@@ -236,6 +298,7 @@ function SearchBox({
   value: string;
   onChange: (value: string) => void;
   onKeyDown: (e: KeyboardEvent<HTMLElement>) => void;
+  onCompositionEnd: () => void;
 }) {
   return (
     <div className="border-b border-border p-2">
@@ -252,6 +315,7 @@ function SearchBox({
         placeholder={placeholder}
         className="h-8 text-sm max-sm:text-[16px]"
         onKeyDown={onKeyDown}
+        onCompositionEnd={onCompositionEnd}
       />
     </div>
   );
@@ -302,6 +366,7 @@ function useActiveOption({
   items,
   typeahead,
   onPick,
+  composed,
 }: {
   open: boolean;
   q: string;
@@ -309,6 +374,8 @@ function useActiveOption({
   items: SearchSelectOption[];
   typeahead: boolean;
   onPick: (value: string) => void;
+  /** Cờ "bộ gõ vừa chốt chữ" (Safari phát Enter ngay sau compositionend) — Enter chốt chữ không được chọn mục. */
+  composed: ReturnType<typeof useJustComposed>;
 }) {
   const [activeIndex, setActiveIndex] = useState(-1);
   const [source, setSource] = useState<ActiveSource>('init');
@@ -330,6 +397,7 @@ function useActiveOption({
   };
 
   function onNavKeyDown(e: KeyboardEvent<HTMLElement>) {
+    const justComposed = composed.take();
     if (e.nativeEvent.isComposing) return;
     const next = nextActiveIndex(items, activeIndex, e.key);
     if (next !== null) {
@@ -341,6 +409,14 @@ function useActiveOption({
     const buffering = Date.now() - t.at < TYPEAHEAD_MS;
     if (e.key === 'Enter' || (typeahead && e.key === ' ' && !buffering)) {
       e.preventDefault();
+      const enterOk = shouldSubmitOnEnter({
+        key: e.key,
+        isComposing: false,
+        keyCode: e.nativeEvent.keyCode,
+        justComposed,
+        matches: true,
+      });
+      if (e.key === 'Enter' && !enterOk) return;
       const cur = items[activeIndex];
       if (cur && !cur.disabled) onPick(cur.value);
       return;
@@ -501,5 +577,39 @@ function OptionRow({
         </span>
       )}
     </li>
+  );
+}
+
+type SearchSelectProps = Parameters<typeof SearchSelectControl>[0];
+
+/**
+ * Như `SearchSelectControl` + `invalid`: `true` → viền danger + aria-invalid; chuỗi → thêm lời lỗi dưới ô (id `<id>-error`,
+ * nối vào aria-describedby, sau `aria-describedby` truyền vào). Chuỗi cần `id` để id lời lỗi ổn định và trùng với ô mà
+ * `ErrorSummary`/`focusFirstError` tìm.
+ * Lưu ý: chuỗi vẽ thêm một `<p>` ANH EM sau ô — trong khung `relative`/có icon hay trong `<label>` sẽ vỡ bố cục; khi đó dùng
+ * `FormField` và truyền `invalid` boolean (FormField tự vẽ lời lỗi).
+ */
+export function SearchSelect({
+  invalid,
+  'aria-describedby': describedByProp,
+  ...props
+}: Omit<SearchSelectProps, 'invalidAria'> & {
+  invalid?: boolean | string;
+  'aria-describedby'?: string;
+}) {
+  const autoId = useId();
+  const a = invalidAttrs(invalid, props.id ?? autoId, describedByProp);
+  const control = (
+    <SearchSelectControl
+      {...props}
+      invalidAria={{ 'aria-invalid': a.ariaInvalid, 'aria-describedby': a.describedBy }}
+    />
+  );
+  if (!a.errorId) return control;
+  return (
+    <>
+      {control}
+      <FieldErrorText id={a.errorId}>{a.errorText}</FieldErrorText>
+    </>
   );
 }

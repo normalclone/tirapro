@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { completionPct, fmtPoints, movedToLabel, velocityVerdict } from './sprintSummary';
+import {
+  completedSub,
+  completionPct,
+  fmtPoints,
+  movedToLabel,
+  velocityVerdict,
+} from './sprintSummary';
 
 describe('completionPct', () => {
   it('kẹp 0..100 và an toàn khi committed = 0', () => {
@@ -71,5 +77,26 @@ describe('movedToLabel', () => {
 
   it('null (sprint đóng trước khi lưu danh sách chuyển tiếp) → null', () => {
     expect(movedToLabel(null)).toBeNull();
+  });
+});
+
+describe('completedSub (dòng phụ ô "Hoàn thành")', () => {
+  it('phạm vi không đổi: "n việc · x%"', () => {
+    expect(completedSub({ count: 4, points: 13 }, { count: 12, points: 63 }, null)).toBe(
+      '4 việc · 21%',
+    );
+    expect(
+      completedSub({ count: 4, points: 13 }, { count: 12, points: 63 }, { count: 12, points: 63 }),
+    ).toBe('4 việc · 21%');
+  });
+  it('phạm vi đổi giữa sprint: ghi rõ cam kết ban đầu bằng CHỮ (vạch mảnh không thấy trên cảm ứng/khi in)', () => {
+    expect(
+      completedSub({ count: 4, points: 13 }, { count: 12, points: 63 }, { count: 9, points: 50 }),
+    ).toBe('4 việc · 21% · cam kết ban đầu 50 điểm');
+  });
+  it('đổi số việc mà điểm không đổi vẫn tính là đổi phạm vi', () => {
+    expect(
+      completedSub({ count: 4, points: 10 }, { count: 12, points: 40 }, { count: 9, points: 40 }),
+    ).toBe('4 việc · 25% · cam kết ban đầu 40 điểm');
   });
 });

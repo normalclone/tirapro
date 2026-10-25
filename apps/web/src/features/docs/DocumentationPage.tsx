@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
+import { useCopyToClipboard } from '@/lib/useCopyToClipboard';
 import { Link } from 'react-router-dom';
 import {
   ArrowUpRight, Bell, BookOpen, Bug, Building2, Check, ClipboardList, Code2, Command, Copy, Eye,
@@ -15,12 +16,12 @@ import { ScrollX } from '@/components/ui/ScrollX';
 /* ============================ Khối trợ giúp UI ============================ */
 
 function Cmd({ code }: { code: string }) {
-  const [done, setDone] = useState(false);
+  const { copied: done, copy } = useCopyToClipboard();
   return (
     <div className="relative mb-3 overflow-hidden rounded-lg border border-border bg-surface-2">
       <button
         type="button"
-        onClick={() => navigator.clipboard?.writeText(code).then(() => { setDone(true); setTimeout(() => setDone(false), 1400); }).catch(() => undefined)}
+        onClick={() => void copy(code)}
         className={cn('absolute right-2 top-2 inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs font-medium transition-colors',
           done ? 'border-success/40 text-success' : 'border-border bg-surface text-muted hover:text-ink')}
       >

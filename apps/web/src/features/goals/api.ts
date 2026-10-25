@@ -41,6 +41,8 @@ export interface KeyResultDto {
   lastCheckInAt: string | null;
   /** % hoàn thành đã kẹp trong [0,100] — BE tính (current-start)/(target-start). */
   progress: number;
+  /** Phần thời gian đã trôi của kỳ (0–100) — vạch kỳ vọng; null khi kỳ tự do (không phải YYYY-Qn). */
+  expectedProgress: number | null;
 }
 
 interface GoalIssueDto {
@@ -71,6 +73,8 @@ export interface GoalDto {
   keyResultProgress: number | null;
   issueProgress: number | null;
   progress: number;
+  /** Phần thời gian đã trôi của kỳ (0–100), chỉ đọc — null khi kỳ tự do. */
+  expectedProgress: number | null;
   createdAt: string;
   updatedAt: string;
 }

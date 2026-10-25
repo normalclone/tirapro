@@ -1,4 +1,4 @@
-import { useState, type FormEvent, type ComponentProps } from 'react';
+import { useId, useState, type FormEvent, type ComponentProps } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FolderKanban } from 'lucide-react';
 import { toast } from 'sonner';
@@ -6,6 +6,7 @@ import type { ProjectTemplateKey } from '@tirapro/types';
 import { apiErrorMessage } from '@/lib/api';
 import { Button } from '@/components/ui/Button';
 import { useOpenSession } from '@/lib/useOpenSession';
+import { RadioCard } from '@/components/ui/RadioCard';
 import { Dialog } from '@/components/ui/Dialog';
 import { Input } from '@/components/ui/Input';
 import { cn } from '@/lib/utils';
@@ -188,31 +189,21 @@ function TemplatePicker({
   value: ProjectTemplateKey;
   onChange: (k: ProjectTemplateKey) => void;
 }) {
+  const labelId = useId();
   return (
-    <fieldset className="space-y-2">
-      <legend className="mb-1.5 text-sm font-medium text-muted">Mẫu dự án</legend>
-      {TEMPLATES.map((t) => (
-        <label
-          key={t.key}
-          className={cn(
-            'flex cursor-pointer items-start gap-3 rounded-lg border px-3 py-2.5 transition-colors',
-            'focus-within:ring-2 focus-within:ring-[var(--ring)]',
-            value === t.key
-              ? 'border-primary bg-primary-subtle'
-              : 'border-border hover:bg-surface-2',
-          )}
-        >
-          <input
-            type="radio"
-            name="cp-template"
-            value={t.key}
-            checked={value === t.key}
-            onChange={() => onChange(t.key)}
-            className="mt-0.5 accent-[var(--primary)]"
-          />
-          <span className="min-w-0 flex-1">
-            <span className="block text-sm font-medium text-ink">{t.name}</span>
-            <span className="block text-xs text-muted">{t.description}</span>
+    <div>
+      <p id={labelId} className="mb-1.5 text-sm font-medium text-muted">
+        Mẫu dự án
+      </p>
+      <RadioCard
+        ariaLabelledby={labelId}
+        value={value}
+        onChange={onChange}
+        options={TEMPLATES.map((t) => ({
+          value: t.key,
+          label: t.name,
+          description: t.description,
+          meta: (
             <span className="mt-1.5 flex flex-wrap items-center gap-x-1 gap-y-1 text-xs text-faint">
               {t.steps.map((step, i) => (
                 <span key={step} className="inline-flex items-center gap-1">
@@ -223,9 +214,9 @@ function TemplatePicker({
                 </span>
               ))}
             </span>
-          </span>
-        </label>
-      ))}
-    </fieldset>
+          ),
+        }))}
+      />
+    </div>
   );
 }

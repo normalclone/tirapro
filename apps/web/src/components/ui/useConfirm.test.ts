@@ -33,4 +33,15 @@ describe('useConfirm — mở hộp sau sự kiện hiện tại', () => {
     void ask({ title: 'B' });
     await expect(first).resolves.toBe(false);
   });
+
+  it('requireText đi cùng opts tới host (mỗi lần mở là một opts mới → ô nhập được reset)', () => {
+    const ask = useConfirm();
+    void ask({ title: 'A', requireText: 'CI deploy' });
+    vi.runAllTimers();
+    const first = useConfirmStore.getState().opts;
+    expect(first?.requireText).toBe('CI deploy');
+    void ask({ title: 'A', requireText: 'CI deploy' });
+    vi.runAllTimers();
+    expect(useConfirmStore.getState().opts).not.toBe(first);
+  });
 });

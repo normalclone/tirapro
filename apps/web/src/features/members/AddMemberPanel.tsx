@@ -27,11 +27,11 @@ import { SectionCard } from '@/components/ui/SectionCard';
  * Gated bằng `member:manage` — trùng với cách MembersPage kiểm tra quyền.
  */
 export function AddMemberPanel() {
-  const can = useAuth((s) => s.can);
+  const canManage = useAuth((s) => s.can('member:manage'));
   const [mode, setMode] = useState<'pick' | 'create'>('pick');
   // Email vừa nhập nhưng đã có tài khoản → chuyển về "chọn người có sẵn" với ô tìm điền sẵn email.
   const [prefillEmail, setPrefillEmail] = useState('');
-  if (!can('member:manage')) return null;
+  if (!canManage) return null;
   return (
     <SectionCard
       icon={<UserPlus className="h-4 w-4" />}
@@ -82,7 +82,8 @@ function AddExistingUser({
   const { data: members } = useWorkspaceMembers();
   const { data: users, isLoading: usersLoading } = useAllUsers(search);
   const addMember = useAddMember();
-  const { roleOptions, effectiveRoleIds, setRoleIds, resetRoles } = useWorkspaceRoleChoice();
+  const { roleOptions, effectiveRoleIds, setRoleIds, resetRoles, frozen } =
+    useWorkspaceRoleChoice();
 
   // Loại người đã ở trong không gian làm việc khỏi pool.
   const memberUserIds = useMemo(() => new Set((members ?? []).map((m) => m.user.id)), [members]);
@@ -183,6 +184,7 @@ function AddExistingUser({
             options={roleOptions}
             value={effectiveRoleIds}
             onChange={setRoleIds}
+            frozen={frozen}
             requireOne={false}
             disabled={addMember.isPending}
             placeholder="Mặc định — Thành viên"
@@ -247,7 +249,8 @@ function CreateAccountForm({
   const [password, setPassword] = useState('');
   const [created, setCreated] = useState<CreateMemberAccountResult | null>(null);
 
-  const { roleOptions, effectiveRoleIds, setRoleIds, resetRoles } = useWorkspaceRoleChoice();
+  const { roleOptions, effectiveRoleIds, setRoleIds, resetRoles, frozen } =
+    useWorkspaceRoleChoice();
   const create = useCreateMemberAccount();
   // Mật khẩu tạm không được nằm lại trong MutationCache sau khi rời form ("chỉ hiện một lần").
   const resetCreate = create.reset;
@@ -341,6 +344,7 @@ function CreateAccountForm({
             options={roleOptions}
             value={effectiveRoleIds}
             onChange={setRoleIds}
+            frozen={frozen}
             requireOne={false}
             disabled={create.isPending}
             placeholder="Mặc định — Thành viên"

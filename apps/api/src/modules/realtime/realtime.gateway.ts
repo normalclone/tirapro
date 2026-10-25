@@ -678,6 +678,20 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     });
   }
 
+  /** Chỉ `{commentId, issueId}`: không tên người thả, không `mine` (trường theo người xem) — client nạp lại danh sách qua REST. */
+  @OnEvent(DOMAIN_EVENTS.COMMENT_REACTED)
+  onCommentReacted(p: {
+    commentId: string;
+    issueId: string;
+    projectId?: string;
+    actorId?: string;
+  }) {
+    this.toProject(p.projectId, WS_EVENTS.COMMENT_REACTION, {
+      commentId: p.commentId,
+      issueId: p.issueId,
+    });
+  }
+
   @OnEvent(DOMAIN_EVENTS.NOTIFICATION_CREATED)
   onNotificationCreated(p: { recipientId?: string; notification: NotificationDto }) {
     if (!p?.recipientId || !this.server) return;

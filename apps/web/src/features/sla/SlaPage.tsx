@@ -1,15 +1,19 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { DocsLink } from '@/components/ui/DocsLink';
 import { Link } from 'react-router-dom';
 import { AlarmClock, Plus, Trash2, TriangleAlert } from 'lucide-react';
 import { toast } from 'sonner';
 import { apiErrorMessage } from '@/lib/api';
+import type { FieldError } from '@/lib/formErrors';
+import { useErrorFlow } from '@/lib/useErrorFlow';
 import { PageFrame } from '@/components/layout/PageFrame';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { SectionCard } from '@/components/ui/SectionCard';
 import { Avatar, Badge, EmptyState, Skeleton } from '@/components/ui/primitives';
 import { Button } from '@/components/ui/Button';
 import { Dialog } from '@/components/ui/Dialog';
+import { ErrorSummary } from '@/components/ui/ErrorSummary';
+import { FormField } from '@/components/ui/FormField';
 import { useConfirm } from '@/components/ui/useConfirm';
 import { Input } from '@/components/ui/Input';
 import { SearchSelect } from '@/components/ui/SearchSelect';
@@ -33,6 +37,7 @@ import {
 import { PriorityIcon } from '@/components/ui/PriorityIcon';
 import { usePriorityRanks } from '@/features/issue-meta/usePriorityRanks';
 import { MANAGE_LABELS, SETTINGS_LABELS } from '@/lib/navLabels';
+import { validateSlaForm } from './slaForm';
 
 /** Bảng theo dõi công việc sắp trễ / đã trễ hạn cam kết (dùng trong mục Danh mục). */
 export function SlaBoardPage() {
@@ -224,9 +229,23 @@ function SlaPolicies({
 
   const list = data ?? [];
 
+  // Lỗi hiện sau lần Tạo lỗi đầu tiên (sửa tới đâu hết lỗi tới đó); mở lại hộp thì xoá.
+  const allErrors: FieldError[] = validateSlaForm({ name }).map((i) => ({
+    id: 'sla-name',
+    label: 'Tên cam kết',
+    message: i.message,
+  }));
+  const flow = useErrorFlow(allErrors);
+  const { reset: resetErrors } = flow;
+  useEffect(() => {
+    if (open) resetErrors();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
   function submit() {
+    if (create.isPending) return; // ⌘/Ctrl+Enter không đi qua trạng thái loading của nút
+    if (allErrors.length > 0) return flow.fail();
     const n = name.trim();
-    if (!n) return toast.error('Hãy nhập tên cam kết để dễ nhận ra sau này');
     create.mutate(
       {
         name: n,
@@ -335,7 +354,9 @@ function SlaPolicies({
                       onClick={async () => {
                         if (
                           !(await confirm({
-                            title: `Xoá cam kết “${p.name}”? Các công việc đang tính giờ theo cam kết này sẽ ngừng được theo dõi.`,
+                            title: `Xoá cam kết “${p.name}”?`,
+                            description:
+                              'Các công việc đang tính giờ theo cam kết này sẽ ngừng được theo dõi.',
                             destructive: true,
                           }))
                         )
@@ -363,65 +384,68 @@ function SlaPolicies({
             <Button variant="ghost" onClick={() => onOpenChange(false)}>
               Huỷ
             </Button>
-            <Button onClick={submit} loading={create.isPending} disabled={!name.trim()}>
+            <Button onClick={submit} loading={create.isPending}>
               Tạo cam kết
             </Button>
           </>
         }
       >
         <div className="space-y-4">
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-muted">Tên cam kết</label>
-            <Input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Ví dụ: Hỗ trợ tiêu chuẩn"
-              title="Tên hiện trên bảng theo dõi để bạn biết công việc đang chạy theo cam kết nào."
-              autoFocus
-            />
-          </div>
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-muted">
-              Dự án <span className="font-normal text-faint">(để trống = áp cho mọi dự án)</span>
-            </label>
-            <SearchSelect
-              value={projectId}
-              onChange={setProjectId}
-              options={[
-                { value: '', label: 'Mọi dự án' },
-                ...(projects ?? []).map((p) => ({ value: p.id, label: p.name, hint: p.key })),
-              ]}
-              placeholder="Mọi dự án"
-              searchPlaceholder="Tìm dự án…"
-            />
-          </div>
+          <ErrorSummary errors={flow.errors} attempt={flow.attempts} />
+          <FormField id="sla-name" label="Tên cam kết" error={flow.errorOf('sla-name')}>
+            {(a11y) => (
+              <Input
+                {...a11y}
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Ví dụ: Hỗ trợ tiêu chuẩn"
+                title="Tên hiện trên bảng theo dõi để bạn biết công việc đang chạy theo cam kết nào."
+                autoFocus
+              />
+            )}
+          </FormField>
+          <FormField id="sla-project" label="Dự án" hint="Để trống = áp cho mọi dự án.">
+            {(a11y) => (
+              <SearchSelect
+                {...a11y}
+                value={projectId}
+                onChange={setProjectId}
+                options={[
+                  { value: '', label: 'Mọi dự án' },
+                  ...(projects ?? []).map((p) => ({ value: p.id, label: p.name, hint: p.key })),
+                ]}
+                placeholder="Mọi dự án"
+                searchPlaceholder="Tìm dự án…"
+              />
+            )}
+          </FormField>
           <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-muted">
-                Phải phản hồi trong (giờ)
-              </label>
-              <Input
-                type="number"
-                min={0.5}
-                step={0.5}
-                value={responseH}
-                onChange={(e) => setResponseH(e.target.value)}
-                title="Tính từ lúc công việc được tạo cho tới phản hồi đầu tiên."
-              />
-            </div>
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-muted">
-                Phải xử lý xong trong (giờ)
-              </label>
-              <Input
-                type="number"
-                min={1}
-                step={1}
-                value={resolveH}
-                onChange={(e) => setResolveH(e.target.value)}
-                title="Tính từ lúc công việc được tạo cho tới khi chuyển sang trạng thái đã xong."
-              />
-            </div>
+            <FormField id="sla-response" label="Phải phản hồi trong (giờ)">
+              {(a11y) => (
+                <Input
+                  {...a11y}
+                  type="number"
+                  min={0.5}
+                  step={0.5}
+                  value={responseH}
+                  onChange={(e) => setResponseH(e.target.value)}
+                  title="Tính từ lúc công việc được tạo cho tới phản hồi đầu tiên."
+                />
+              )}
+            </FormField>
+            <FormField id="sla-resolve" label="Phải xử lý xong trong (giờ)">
+              {(a11y) => (
+                <Input
+                  {...a11y}
+                  type="number"
+                  min={1}
+                  step={1}
+                  value={resolveH}
+                  onChange={(e) => setResolveH(e.target.value)}
+                  title="Tính từ lúc công việc được tạo cho tới khi chuyển sang trạng thái đã xong."
+                />
+              )}
+            </FormField>
           </div>
         </div>
       </Dialog>

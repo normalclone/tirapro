@@ -4,13 +4,14 @@ import { apiErrorMessage } from '@/lib/api';
 import { Button } from '@/components/ui/Button';
 import { Dialog } from '@/components/ui/Dialog';
 import { Input } from '@/components/ui/Input';
-import { DateInput } from '@/components/ui/DateInput';
+import { DateRangeInput } from '@/components/ui/DateRangeInput';
 import { useRetained } from '@/lib/useRetained';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { useProjects } from '@/features/projects/api';
 import { useCreateContract, useUpdateContract, formatMoney, type ContractDto } from './api';
 import { toDateInput } from '@/lib/dateFormat';
 import { blockOnInvalidDate } from '@/lib/dateGuard';
+import { dateRangeError } from '@/lib/dateRange';
 
 const CURRENCIES = [
   { value: 'VND', label: 'VND — Đồng' },
@@ -83,6 +84,8 @@ export function ContractEditorModal({
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [note, setNote] = useState('');
+  // Lỗi hiện có của cặp ngày (chữ sai/ngoài khoảng ở một ô) — DateRangeInput báo lên.
+  const [dateErr, setDateErr] = useState('');
 
   useEffect(() => {
     if (!open) return;
@@ -105,12 +108,12 @@ export function ContractEditorModal({
   );
 
   const parsedValue = parseMoney(value);
-  const dateOrderInvalid = !!startDate && !!endDate && startDate > endDate;
+  const dateOrderInvalid = dateRangeError(startDate, endDate) !== null;
 
   if (!clientId) return null;
 
   const busy = create.isPending || update.isPending;
-  const canSave = name.trim().length > 0 && !dateOrderInvalid && !busy;
+  const canSave = name.trim().length > 0 && !dateOrderInvalid && !dateErr && !busy;
 
   async function save() {
     if (!canSave || !clientId) return;
@@ -225,19 +228,21 @@ export function ContractEditorModal({
           </Field>
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Ngày bắt đầu" hint="(tùy chọn)" htmlFor="contract-start">
-            <DateInput id="contract-start" value={startDate} onChange={setStartDate} />
-          </Field>
-          <Field label="Ngày kết thúc" hint="(tùy chọn)" htmlFor="contract-end">
-            <DateInput id="contract-end" value={endDate} onChange={setEndDate} />
-          </Field>
-        </div>
-        {dateOrderInvalid && (
-          <p className="text-xs text-danger" role="alert">
-            Ngày kết thúc đang sớm hơn ngày bắt đầu — hãy sửa lại một trong hai ngày.
-          </p>
-        )}
+        <DateRangeInput
+          groupLabel="Thời hạn hợp đồng"
+          startId="contract-start"
+          endId="contract-end"
+          startLabel="Ngày bắt đầu"
+          endLabel="Ngày kết thúc"
+          startHint="(tùy chọn)"
+          endHint="(tùy chọn)"
+          start={startDate}
+          end={endDate}
+          onStartChange={setStartDate}
+          onEndChange={setEndDate}
+          onErrorChange={setDateErr}
+          errorMessage="Ngày kết thúc đang sớm hơn ngày bắt đầu — hãy sửa lại một trong hai ngày."
+        />
 
         <Field label="Ghi chú" hint="(tùy chọn)" htmlFor="contract-note">
           <Input

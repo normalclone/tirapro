@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { toast } from 'sonner';
 import type { CommentDto, IssueDto } from '@tirapro/types';
 import { usePastedImageUploader } from '@/features/attachments/api';
@@ -17,6 +17,9 @@ import { MarkdownView } from './MarkdownView';
 import { useAssigneeOptions } from './useAssigneeOptions';
 import { useCommentTaskToggle } from './useCommentTaskToggle';
 import { useDeleteComment, useUpdateComment } from './api';
+import { CommentAudienceLine } from './CommentAudienceLine';
+import { CommentReactions } from './CommentReactionStrip';
+import { useCommentAudience } from './useCommentAudience';
 import { TypingIndicator } from '@/features/presence/TypingIndicator';
 import { useTypingEmitter } from '@/features/presence/usePresence';
 import { fmtRelative } from '@/lib/dateFormat';
@@ -37,6 +40,10 @@ export function CommentsSection({ issue }: { issue: IssueDto }) {
   const canEditOwn = can('comment:edit:own');
   const [draft, setDraft] = useState('');
   const { notifyTyping, stopTyping } = useTypingEmitter(issue.id);
+  const audience = useCommentAudience(issue, draft, people, canComment);
+  // Đã từng hiện dòng này thì giữ chiều cao dòng: xoá bớt chữ rồi gõ lại không làm nút Gửi nhảy lên xuống.
+  const audienceShown = useRef(false);
+  if (audience.length > 0) audienceShown.current = true;
 
   function onDraftChange(value: string) {
     setDraft(value);
@@ -98,6 +105,11 @@ export function CommentsSection({ issue }: { issue: IssueDto }) {
             onBusyChange={setUploading}
             placeholder="Viết bình luận… (viết được Markdown · dán ảnh bằng Ctrl+V)"
           />
+          {audienceShown.current && (
+            <div className="min-h-5">
+              <CommentAudienceLine entries={audience} />
+            </div>
+          )}
           <TypingIndicator issueId={issue.id} />
           <div className="flex items-center justify-end gap-2">
             <span className="kbd-hint mr-auto text-xs text-faint">⌘/Ctrl+Enter để gửi</span>
@@ -228,31 +240,20 @@ function CommentRow({
                 }
               />
             </div>
-            {canEdit && (
-              <div className="mt-1 flex items-center gap-3 text-xs">
-                <button
-                  type="button"
-                  className="text-muted transition-colors hover:text-ink"
-                  title="Sửa lại bình luận này"
-                  onClick={() => {
+            {/* Hàng dưới thân: cảm xúc (chip + "+") rồi Sửa/Xoá của tác giả; `empty:hidden` khi không có gì để hiện. */}
+            <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs empty:hidden">
+              <CommentReactions comment={comment} issueId={issueId} projectId={projectId} />
+              {canEdit && (
+                <CommentOwnerActions
+                  deleting={remove.isPending}
+                  onEdit={() => {
                     setBody(comment.body);
                     setEditing(true);
                   }}
-                >
-                  Sửa
-                </button>
-                <button
-                  type="button"
-                  // Giữ disabled:opacity (không dùng token vô hiệu) — liên kết chữ không nền: token nền vô nghĩa, chỉ cần mờ đi.
-                  className="text-muted transition-colors hover:text-danger disabled:opacity-50"
-                  title="Xoá bình luận này"
-                  disabled={remove.isPending}
-                  onClick={() => setConfirmDelete(true)}
-                >
-                  Xoá
-                </button>
-              </div>
-            )}
+                  onDelete={() => setConfirmDelete(true)}
+                />
+              )}
+            </div>
           </>
         )}
       </div>
@@ -267,5 +268,39 @@ function CommentRow({
         onCancel={() => setConfirmDelete(false)}
       />
     </div>
+  );
+}
+
+/** "Sửa" / "Xoá" của tác giả: liên kết chữ không nền, nằm cùng hàng với dải cảm xúc. */
+function CommentOwnerActions({
+  deleting,
+  onEdit,
+  onDelete,
+}: {
+  deleting: boolean;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <>
+      <button
+        type="button"
+        className="text-muted transition-colors hover:text-ink"
+        title="Sửa lại bình luận này"
+        onClick={onEdit}
+      >
+        Sửa
+      </button>
+      <button
+        type="button"
+        // Giữ disabled:opacity (không dùng token vô hiệu) — liên kết chữ không nền: token nền vô nghĩa, chỉ cần mờ đi.
+        className="text-muted transition-colors hover:text-danger disabled:opacity-50"
+        title="Xoá bình luận này"
+        disabled={deleting}
+        onClick={onDelete}
+      >
+        Xoá
+      </button>
+    </>
   );
 }

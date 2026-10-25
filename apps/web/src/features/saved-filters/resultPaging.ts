@@ -31,3 +31,39 @@ export function appendResults(base: ResultSet, next: ResultSet): ResultSet {
 export function resultCountLabel(count: number, hasMore: boolean): string {
   return hasMore ? `${count} công việc đầu tiên` : `${count} công việc`;
 }
+
+/** Số dòng mỗi trang của bảng kết quả. */
+export const RESULTS_PAGE_SIZE = 25;
+
+/** Trang (1-based) chứa dòng thứ `index` (0-based) của kết quả đã nạp — để `reveal` mở đúng trang. */
+export function pageOfIndex(index: number, pageSize = RESULTS_PAGE_SIZE): number {
+  return index < 0 ? 1 : Math.floor(index / pageSize) + 1;
+}
+
+/** Trạng thái trang của bảng kết quả + nguồn/kết quả gốc mà trang đó thuộc về (so theo tham chiếu). */
+export interface PagingState {
+  page: number;
+  active: unknown;
+  base: unknown;
+}
+
+export type PagingAction =
+  | { type: 'go'; page: number }
+  /** Nguồn hoặc kết quả GỐC có thể đã đổi (so tham chiếu). "Tải thêm" chỉ nối thêm vào `more`, không đổi gốc → giữ trang. */
+  | { type: 'sync'; active: unknown; base: unknown };
+
+export const initialPaging = (active: unknown, base: unknown): PagingState => ({
+  page: 1,
+  active,
+  base,
+});
+
+/**
+ * Trang hiện tại: chuyển trang = đặt trang; đổi bộ lọc/nguồn hoặc chạy lại (kết quả gốc mới) → về trang 1; nối thêm kết quả
+ * ("Tải thêm") thì GIỮ trang — nếu không dòng đang xem nhanh sẽ biến mất khỏi khung và "Việc sau" ở cuối nhảy về trang 1 giữa chừng.
+ */
+export function pagingReducer(s: PagingState, a: PagingAction): PagingState {
+  if (a.type === 'go') return { ...s, page: Math.max(1, a.page) };
+  if (a.active === s.active && a.base === s.base) return s;
+  return { page: 1, active: a.active, base: a.base };
+}
