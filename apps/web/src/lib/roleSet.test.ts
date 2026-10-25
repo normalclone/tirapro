@@ -28,4 +28,14 @@ describe('toggleRoleIds', () => {
     toggleRoleIds(v, 'b', { requireOne: true });
     expect(v).toEqual(['a']);
   });
+  it('frozen (P-C14): không bật cũng không tắt được, trả nguyên mảng đầu vào', () => {
+    const v = ['a', 'b'];
+    expect(toggleRoleIds(v, 'a', { requireOne: false, frozen: { a: 'lý do' } })).toBe(v); // tắt
+    expect(toggleRoleIds(v, 'c', { requireOne: false, frozen: { c: 'lý do' } })).toBe(v); // bật
+    expect(toggleRoleIds(v, 'd', { requireOne: false, frozen: { c: 'lý do' } })).toEqual([
+      'a',
+      'b',
+      'd',
+    ]);
+  });
 });

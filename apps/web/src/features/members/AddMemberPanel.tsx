@@ -82,7 +82,8 @@ function AddExistingUser({
   const { data: members } = useWorkspaceMembers();
   const { data: users, isLoading: usersLoading } = useAllUsers(search);
   const addMember = useAddMember();
-  const { roleOptions, effectiveRoleIds, setRoleIds, resetRoles } = useWorkspaceRoleChoice();
+  const { roleOptions, effectiveRoleIds, setRoleIds, resetRoles, frozen } =
+    useWorkspaceRoleChoice();
 
   // Loại người đã ở trong không gian làm việc khỏi pool.
   const memberUserIds = useMemo(() => new Set((members ?? []).map((m) => m.user.id)), [members]);
@@ -183,6 +184,7 @@ function AddExistingUser({
             options={roleOptions}
             value={effectiveRoleIds}
             onChange={setRoleIds}
+            frozen={frozen}
             requireOne={false}
             disabled={addMember.isPending}
             placeholder="Mặc định — Thành viên"
@@ -247,7 +249,8 @@ function CreateAccountForm({
   const [password, setPassword] = useState('');
   const [created, setCreated] = useState<CreateMemberAccountResult | null>(null);
 
-  const { roleOptions, effectiveRoleIds, setRoleIds, resetRoles } = useWorkspaceRoleChoice();
+  const { roleOptions, effectiveRoleIds, setRoleIds, resetRoles, frozen } =
+    useWorkspaceRoleChoice();
   const create = useCreateMemberAccount();
   // Mật khẩu tạm không được nằm lại trong MutationCache sau khi rời form ("chỉ hiện một lần").
   const resetCreate = create.reset;
@@ -341,6 +344,7 @@ function CreateAccountForm({
             options={roleOptions}
             value={effectiveRoleIds}
             onChange={setRoleIds}
+            frozen={frozen}
             requireOne={false}
             disabled={create.isPending}
             placeholder="Mặc định — Thành viên"

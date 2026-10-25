@@ -1,6 +1,6 @@
 import { useMemo, useState, type FormEvent } from 'react';
 import { DocsLink } from '@/components/ui/DocsLink';
-import { Plus, Shield, ShieldCheck, Trash2 } from 'lucide-react';
+import { Lock, Plus, Shield, ShieldCheck, Trash2 } from 'lucide-react';
 import {
   PERMISSION_CATALOG,
   roleLabel,
@@ -32,6 +32,11 @@ import {
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
 import { RoleMatrixTable } from './RoleMatrixTable';
 import { cloneName } from './rolePermEdit';
+import {
+  ADMIN_GRANT_REASON,
+  permLockedForAdminGrant,
+  roleLockedForAdminGrant,
+} from '@/features/members/adminGrant';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { ColorPicker } from '@/components/ui/ColorPicker';
 import { LABEL_PALETTE, paletteValue } from '@/lib/labelPalette';
@@ -324,7 +329,10 @@ function RoleDialog({
   onClose: () => void;
 }) {
   const isCreate = role === null;
-  const readOnly = !canManage || (role?.isSystem ?? false);
+  // P-C14: chỉ quản trị mới cấp/gỡ `workspace:admin` — người chỉ có `member:manage` không sửa được vai trò đang giữ nó.
+  const canGrantAdmin = useAuth((s) => s.can('workspace:admin'));
+  const adminRoleLocked = roleLockedForAdminGrant(canGrantAdmin, role?.permissionKeys ?? []);
+  const readOnly = !canManage || (role?.isSystem ?? false) || adminRoleLocked;
 
   const createRole = useCreateRole();
   const updateRole = useUpdateRole();
@@ -353,7 +361,7 @@ function RoleDialog({
   }
 
   function togglePerm(key: PermissionKey) {
-    if (readOnly) return;
+    if (readOnly || permLockedForAdminGrant(canGrantAdmin, [], key)) return;
     setPerms((prev) => {
       const next = new Set(prev);
       if (next.has(key)) next.delete(key);
@@ -364,7 +372,10 @@ function RoleDialog({
 
   const trimmedName = name.trim();
   const permKeys = [...perms];
-  const canSubmit = trimmedName.length > 0 && permKeys.length > 0 && !readOnly;
+  // Nhân bản từ vai trò đang có workspace:admin: ô quyền khoá nhưng vẫn tích sẵn → gửi đi sẽ bị 403, nên chặn ở đây.
+  const needsAdminToSubmit = !canGrantAdmin && perms.has('workspace:admin');
+  const canSubmit =
+    trimmedName.length > 0 && permKeys.length > 0 && !readOnly && !needsAdminToSubmit;
   const busy = createRole.isPending || updateRole.isPending;
 
   function submit(e: FormEvent) {
@@ -544,6 +555,12 @@ function RoleDialog({
           </>
         )}
 
+        {readOnly && adminRoleLocked && !role?.isSystem && (
+          <p className="flex items-center gap-1.5 text-sm text-muted">
+            <Lock className="h-3.5 w-3.5 shrink-0" aria-hidden />
+            Vai trò này đang giữ quyền quản trị. {ADMIN_GRANT_REASON}.
+          </p>
+        )}
         {readOnly && role?.description && <p className="text-sm text-muted">{role.description}</p>}
 
         {/* Checklist quyền */}
@@ -560,6 +577,8 @@ function RoleDialog({
               <div className="space-y-0.5">
                 {PERMS_BY_SCOPE[ps].map((p) => {
                   const checked = perms.has(p.key);
+                  const adminLocked =
+                    !readOnly && permLockedForAdminGrant(canGrantAdmin, [], p.key);
                   return (
                     <label
                       key={p.key}
@@ -571,7 +590,8 @@ function RoleDialog({
                       <input
                         type="checkbox"
                         checked={checked}
-                        disabled={readOnly}
+                        disabled={readOnly || adminLocked}
+                        aria-describedby={adminLocked ? 'role-admin-lock' : undefined}
                         onChange={() => togglePerm(p.key)}
                         // Giữ disabled:opacity (không dùng token vô hiệu) — checkbox native: trình duyệt tự vẽ, nền/chữ không tô lại được.
                         className="h-4 w-4 shrink-0 rounded border-border-strong text-primary accent-[var(--primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:opacity-60"
@@ -579,6 +599,15 @@ function RoleDialog({
                       <span className={cn('min-w-0 flex-1', checked ? 'text-ink' : 'text-muted')}>
                         {p.description}
                       </span>
+                      {adminLocked && (
+                        <span
+                          id="role-admin-lock"
+                          className="inline-flex shrink-0 items-center gap-1 text-xs text-faint"
+                        >
+                          <Lock className="h-3 w-3" aria-hidden />
+                          {ADMIN_GRANT_REASON}
+                        </span>
+                      )}
                       <span className="shrink-0 font-mono text-xs text-faint">{p.key}</span>
                     </label>
                   );

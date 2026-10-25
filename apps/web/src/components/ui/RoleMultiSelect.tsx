@@ -33,12 +33,15 @@ export function RoleMultiSelect({
   moreHint,
   resolveOption,
   locked,
+  frozen,
 }: {
   options: RoleOption[];
   value: string[];
   onChange: (ids: string[]) => void;
   /** Vai trò KHÔNG được bỏ chọn (id → lý do hiển thị ngay dưới nhãn). */
   locked?: Record<string, string>;
+  /** Vai trò KHÔNG bật cũng không tắt được (id → lý do), vd vai trò quản trị với người không phải quản trị (P-C14). */
+  frozen?: Record<string, string>;
   disabled?: boolean;
   requireOne?: boolean;
   placeholder?: string;
@@ -100,6 +103,7 @@ export function RoleMultiSelect({
             onChange={onChange}
             requireOne={requireOne}
             locked={locked}
+            frozen={frozen}
             ariaLabel={ariaLabel}
             searchPlaceholder={searchPlaceholder}
             onSearchChange={onSearchChange}
@@ -121,6 +125,7 @@ export function RoleChecklist({
   onChange,
   requireOne = true,
   locked,
+  frozen,
   ariaLabel = 'Chọn vai trò',
   searchPlaceholder = 'Tìm vai trò…',
   onSearchChange,
@@ -133,6 +138,8 @@ export function RoleChecklist({
   requireOne?: boolean;
   /** Vai trò KHÔNG được bỏ chọn (id → lý do). */
   locked?: Record<string, string>;
+  /** Vai trò KHÔNG bật cũng không tắt được (id → lý do) — P-C14. */
+  frozen?: Record<string, string>;
   ariaLabel?: string;
   searchPlaceholder?: string;
   onSearchChange?: (q: string) => void;
@@ -146,7 +153,7 @@ export function RoleChecklist({
     : options;
 
   function toggle(id: string) {
-    const next = toggleRoleIds(value, id, { requireOne, locked });
+    const next = toggleRoleIds(value, id, { requireOne, locked, frozen });
     if (next !== value) onChange(next);
   }
 
@@ -176,7 +183,7 @@ export function RoleChecklist({
             option={o}
             active={value.includes(o.id)}
             lockedLast={requireOne && value.includes(o.id) && value.length <= 1}
-            lockedReason={value.includes(o.id) ? locked?.[o.id] : undefined}
+            lockedReason={frozen?.[o.id] ?? (value.includes(o.id) ? locked?.[o.id] : undefined)}
             onToggle={toggle}
           />
         ))}

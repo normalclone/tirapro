@@ -46,12 +46,16 @@ const MEMBERS = [
   },
 ] as unknown as MemberDto[];
 
-function render(opts: { canEdit: boolean; members?: MemberDto[] }) {
+function render(opts: { canEdit: boolean; members?: MemberDto[]; roles?: RoleDto[] }) {
   const qc = new QueryClient();
   if (opts.members) qc.setQueryData(keys.members.workspace, opts.members);
   return renderToStaticMarkup(
     <QueryClientProvider client={qc}>
-      <RoleMatrixTable roles={ROLES} canEdit={opts.canEdit} onClone={() => undefined} />
+      <RoleMatrixTable
+        roles={opts.roles ?? ROLES}
+        canEdit={opts.canEdit}
+        onClone={() => undefined}
+      />
     </QueryClientProvider>,
   );
 }
@@ -61,6 +65,7 @@ beforeEach(() => {
     user: { id: 'me', isSystemAdmin: false } as never,
     workspaceId: 'w1',
     permissions: [],
+    can: () => true, // mặc định người sửa là quản trị (P-C14: luật khoá chỉ áp khi KHÔNG phải quản trị)
   });
 });
 
@@ -219,5 +224,41 @@ describe('quy ước nguồn', () => {
     expect(hook).toContain('toastReplace');
     expect(hook).not.toMatch(/\.mutate\([^)]*onError/);
     expect(hook).toMatch(/await observerFor\(id\)\.mutate/);
+  });
+});
+
+describe('RoleMatrixTable — người chỉ có member:manage (không phải quản trị), P-C14', () => {
+  const ADMIN_ROLES = [
+    ...ROLES,
+    role('c2', 'Điều hành', false, ['issue:create', 'workspace:admin']),
+  ];
+  const asNonAdmin = () =>
+    useAuth.setState({ can: (p: string) => p !== 'workspace:admin' } as never);
+
+  it('khoá MỌI ô của vai trò đang giữ workspace:admin, có ghi chú lý do và mô tả trỏ vào ghi chú', () => {
+    asNonAdmin();
+    const h = render({ canEdit: true, members: MEMBERS, roles: ADMIN_ROLES });
+    expect(h).toContain('Chỉ quản trị mới cấp/gỡ quyền này');
+    const cellsOfAdminRole = h.match(/<button[^>]*aria-label="[^"]+ — Điều hành"[^>]*>/g) ?? [];
+    expect(cellsOfAdminRole.length).toBeGreaterThan(0);
+    for (const c of cellsOfAdminRole) expect(c).toContain('aria-disabled="true"');
+    // vai trò tuỳ chỉnh KHÔNG dính quản trị vẫn sửa được
+    const qaCells = h.match(/<button[^>]*aria-label="[^"]+ — QA Lead"[^>]*>/g) ?? [];
+    expect(qaCells.length).toBeGreaterThan(0);
+    for (const c of qaCells) expect(c).not.toContain('aria-disabled');
+  });
+
+  it('nút "Nhân bản" của vai trò đang giữ quản trị khoá kèm lý do; các cột khác nguyên vẹn', () => {
+    asNonAdmin();
+    const h = render({ canEdit: true, members: MEMBERS, roles: ADMIN_ROLES });
+    const clones =
+      h.match(/<button[^>]*>(?:(?!<\/button>).)*Nhân bản(?:(?!<\/button>).)*<\/button>/g) ?? [];
+    expect(clones).toHaveLength(3);
+    expect(clones.filter((c) => c.includes('aria-disabled="true"'))).toHaveLength(1);
+  });
+
+  it('quản trị: không khoá gì thêm, không có ghi chú lý do', () => {
+    const h = render({ canEdit: true, members: MEMBERS, roles: ADMIN_ROLES });
+    expect(h).not.toContain('Chỉ quản trị mới cấp/gỡ quyền này');
   });
 });

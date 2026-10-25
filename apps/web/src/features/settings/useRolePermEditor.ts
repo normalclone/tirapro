@@ -47,6 +47,8 @@ interface Live {
   members: readonly MemberDto[] | undefined;
   selfId: string | null;
   selfIsSystemAdmin: boolean;
+  /** Đang giữ `workspace:admin` (đã gồm admin hệ thống) — P-C14. */
+  callerIsAdmin: boolean;
 }
 
 /** Ngữ cảnh chốt quyền thiết yếu từ trạng thái mới nhất. */
@@ -57,6 +59,7 @@ function guardCtx(l: Live, roleId: string): GuardCtx {
     members: l.members,
     selfId: l.selfId,
     selfIsSystemAdmin: l.selfIsSystemAdmin,
+    callerIsAdmin: l.callerIsAdmin,
   };
 }
 
@@ -191,6 +194,7 @@ export function useRolePermEditor(input: {
   const confirm = useConfirm();
   const selfId = useAuth((s) => s.user?.id ?? null);
   const selfIsSystemAdmin = useAuth((s) => s.user?.isSystemAdmin === true);
+  const callerIsAdmin = useAuth((s) => s.can('workspace:admin')); // boolean (đã gồm admin hệ thống)
 
   const [pending, setPending] = useState<Record<string, Desired>>({});
   const pendingRef = useRef(pending);
@@ -201,8 +205,15 @@ export function useRolePermEditor(input: {
     members: input.members,
     selfId,
     selfIsSystemAdmin,
+    callerIsAdmin,
   });
-  live.current = { roles: input.roles, members: input.members, selfId, selfIsSystemAdmin };
+  live.current = {
+    roles: input.roles,
+    members: input.members,
+    selfId,
+    selfIsSystemAdmin,
+    callerIsAdmin,
+  };
 
   const setDesired = useCallback((roleId: string, next: Desired) => {
     const all = { ...pendingRef.current };

@@ -18,6 +18,7 @@ import {
   toggleDesired,
   type GuardCtx,
 } from './rolePermEdit';
+import { ADMIN_GRANT_REASON } from '@/features/members/adminGrant';
 
 describe('toggleDesired / applyDesired', () => {
   const base = ['a', 'b'];
@@ -260,5 +261,41 @@ describe('grantsAdmin / grantAdminCopy (bật quyền quản trị cho vai trò)
   });
   it('vai trò chưa ai giữ: nói sẽ áp dụng cho người được gán sau', () => {
     expect(grantAdminCopy('QA Lead', 0).description).toContain('chưa gán cho ai');
+  });
+});
+
+describe('guardRoleEdit — chỉ quản trị mới cấp/gỡ workspace:admin (P-C14, phản chiếu máy chủ)', () => {
+  const notAdmin = () => ctx({ callerIsAdmin: false });
+  it('người không phải quản trị: BẬT hoặc TẮT workspace:admin bị chặn với lý do ngắn', () => {
+    expect(guardRoleEdit(notAdmin(), [MANAGE], [MANAGE, ADMIN])).toEqual({
+      kind: 'blocked',
+      reason: ADMIN_GRANT_REASON,
+    });
+    expect(guardRoleEdit(notAdmin(), [ADMIN, MANAGE], [MANAGE])).toEqual({
+      kind: 'blocked',
+      reason: ADMIN_GRANT_REASON,
+    });
+  });
+  it('vai trò ĐANG có workspace:admin: sửa quyền khác cũng bị chặn (máy chủ đòi quản trị)', () => {
+    expect(guardRoleEdit(notAdmin(), [ADMIN, MANAGE], [ADMIN, MANAGE, 'issue:edit'])).toEqual({
+      kind: 'blocked',
+      reason: ADMIN_GRANT_REASON,
+    });
+  });
+  it('vai trò không dính quản trị: người không phải quản trị sửa bình thường', () => {
+    expect(guardRoleEdit(notAdmin(), ['issue:edit'], ['issue:edit', 'issue:create'])).toEqual({
+      kind: 'ok',
+    });
+  });
+  it('quản trị (hoặc ctx cũ không nêu callerIsAdmin) không bị chặn bởi luật này', () => {
+    expect(guardRoleEdit(ctx({ callerIsAdmin: true }), [MANAGE], [MANAGE, ADMIN])).toEqual({
+      kind: 'ok',
+    });
+    expect(guardRoleEdit(ctx(), [MANAGE], [MANAGE, ADMIN])).toEqual({ kind: 'ok' });
+  });
+  it('luật này đứng TRƯỚC chốt thành viên chưa tải', () => {
+    expect(
+      guardRoleEdit(ctx({ callerIsAdmin: false, members: undefined }), [MANAGE], [MANAGE, ADMIN]),
+    ).toEqual({ kind: 'blocked', reason: ADMIN_GRANT_REASON });
   });
 });

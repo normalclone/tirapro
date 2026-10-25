@@ -11,6 +11,8 @@ interface InstantRoles {
   onChange: (next: string[]) => void;
   /** Vai trò không bỏ chọn được (id → lý do), vd quản trị viên cuối cùng. */
   locked?: Record<string, string>;
+  /** Vai trò không bật cũng không tắt được (id → lý do) — người không phải quản trị với vai trò quản trị (P-C14). */
+  frozen?: Record<string, string>;
 }
 
 type Common = {
@@ -114,6 +116,7 @@ function InstantBody({
           value={current.map((r) => r.id)}
           onChange={instant.onChange}
           locked={instant.locked}
+          frozen={instant.frozen}
           ariaLabel="Vai trò"
           autoFocusSearch={false}
         />

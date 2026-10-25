@@ -630,7 +630,7 @@ Mục **Kho mã (`/repos`) chỉ có khi bật cờ build `VITE_FEATURE_REPOS=1`
 
 # Giao diện đợt 2 · Phần C (2026-10-20)
 
-Phần C của đợt chuẩn hoá thứ hai ("gợi ý Lucian còn lại"): biểu mẫu và báo lỗi, danh sách và thao tác hàng loạt, xem nhanh, số liệu, thành viên và quyền, chia sẻ, cảm xúc bình luận, trợ lý AI có nguồn. **Có một migration (thêm một bảng, không đổi dữ liệu cũ), có đổi API ở nhiều chỗ (phần lớn chỉ thêm trường hoặc đường dẫn), thêm một thư viện cho web** (`@radix-ui/react-context-menu`, ghim đúng 2.3.1). **Cần chủ sản phẩm xem sớm: lỗ hổng bảo mật có từ trước P-C14 (người có `member:manage` không phải quản trị vẫn cấp được `workspace:admin`) — xem mục 3, đầu phần "Còn mở".** Các primitive mới và quy tắc rút ra nằm ở `DESIGN.md` (mục "Primitive biểu mẫu, dữ liệu và cộng tác") và `docs/UX_CONVENTIONS.md` (mục 20).
+Phần C của đợt chuẩn hoá thứ hai ("gợi ý Lucian còn lại"): biểu mẫu và báo lỗi, danh sách và thao tác hàng loạt, xem nhanh, số liệu, thành viên và quyền, chia sẻ, cảm xúc bình luận, trợ lý AI có nguồn. **Có một migration (thêm một bảng, không đổi dữ liệu cũ), có đổi API ở nhiều chỗ (phần lớn chỉ thêm trường hoặc đường dẫn), thêm một thư viện cho web** (`@radix-ui/react-context-menu`, ghim đúng 2.3.1). **Đã sửa trong phần C — P-C14 (lỗ hổng có từ trước): người chỉ có `member:manage` không còn cấp/gỡ được `workspace:admin`; máy chủ trả 403 `ADMIN_GRANT_REQUIRES_ADMIN` — xem "Thay đổi API" và mục 3.** Các primitive mới và quy tắc rút ra nằm ở `DESIGN.md` (mục "Primitive biểu mẫu, dữ liệu và cộng tác") và `docs/UX_CONVENTIONS.md` (mục 20).
 
 ## 1. Cần làm khi triển khai
 
@@ -675,6 +675,19 @@ Thứ tự API/web: nên API trước hoặc cùng lúc. Web mới + API cũ kh�
 - Engine tự động hoá, phép `contains` gấp hoa/thường **từng ký tự**: İ (Thổ Nhĩ Kỳ) nay khớp `i`; sigma Hy Lạp cuối từ không còn khớp chéo; tiếng Việt không đổi. Xem trước chỉ đếm khi chữ nằm trong tập Latin/không có hoa-thường, ngoài ra báo "chỉ hỗ trợ chữ Latin".
 
 **Giới hạn tài nguyên (cần biết khi chạy nhiều bản API).** Gợi ý nới bộ lọc và xem trước quy tắc dùng chung **một bộ đếm trong tiến trình** (`common/bounded-count.ts`) với số lần đếm cùng lúc = clamp(⌊cỡ pool Prisma / 3⌋, 1, 3) cho mỗi tiến trình API, hạn chờ tổng 5 giây, mỗi truy vấn `statement_timeout` 3 giây; lần đếm không kịp trả `count: null` ("không đếm kịp"). Cỡ pool lấy từ `connection_limit` trong `DATABASE_URL`, nếu không có thì mặc định của Prisma `num_cpus*2+1` (1 vCPU = 3 kết nối → 1 chỗ; `connection_limit=10` → 3 chỗ, chừa 7 kết nối cho phần còn lại). `render.yaml` lấy `DATABASE_URL` từ DB quản lý và chuỗi đó không có `connection_limit`: **khuyến nghị thêm `&connection_limit=10` vào `DATABASE_URL` khi triển khai** (xem `docs/DEPLOY.md`). Số lượt đồng thời tối đa = số chỗ × số bản API. Giới hạn tốc độ tính **theo IP**, nên cần API thấy đúng IP người dùng khi chạy sau proxy.
+
+**Thay đổi hành vi (P-C14 — chỉ quản trị mới cấp/gỡ `workspace:admin`)**
+
+Chỉ người **đang giữ `workspace:admin`** (hoặc **admin hệ thống**) mới được cấp hoặc gỡ quyền quản trị. `member:manage` một mình không còn đủ. Người có `member:manage` nhưng không phải quản trị bị **403 `ADMIN_GRANT_REQUIRES_ADMIN`** ("Chỉ quản trị không gian làm việc mới cấp hoặc gỡ quyền quản trị.") khi:
+
+- `PUT /members/:userId/roles` làm bộ vai trò **thêm hoặc bớt** một vai trò mang `workspace:admin` (kể cả vai trò hệ thống "Workspace Admin"); giữ nguyên vai trò quản trị đang có và chỉ đổi vai trò thường thì vẫn được.
+- `POST /members`, `POST /members/bulk`, `POST /members/accounts` gán vai trò mang `workspace:admin`.
+- `DELETE /members/:userId` gỡ khỏi không gian làm việc một người đang là quản trị (gỡ họ là gỡ quyền quản trị).
+- Cấp dự án: `PUT /projects/:id/members/:userId/roles`, `POST …/members`, `POST …/members/bulk`, `DELETE …/members/:userId` thêm/gỡ vai trò dự án mang `workspace:admin` (hiện chỉ có thể xảy ra nếu một quản trị tạo vai trò dự án như vậy).
+- `POST /roles` (gồm **Nhân bản**) với `permissionKeys` có `workspace:admin`.
+- `PATCH /roles/:id` thêm hoặc gỡ `workspace:admin`, **và cả khi sửa bất kỳ phần nào (quyền khác, tên, mô tả, màu) của một vai trò đang giữ `workspace:admin`** — vì nó đổi quyền của mọi quản trị đang giữ vai trò đó. Sửa vai trò không dính quản trị thì không đổi.
+
+Web phản chiếu: ô quyền `workspace:admin` và mọi ô của vai trò đang giữ nó bị khoá trên ma trận; nút Nhân bản của vai trò đó khoá; hộp sửa vai trò thành "chỉ xem" và ô `workspace:admin` vô hiệu; vai trò quản trị bị khoá khi đổi vai trò ngay trên hàng thành viên, khi thêm người và khi thêm hàng loạt — tất cả kèm lý do "Chỉ quản trị mới cấp/gỡ quyền này". Hộp xác nhận cấp quyền quản trị của người là quản trị vẫn giữ nguyên. Gọi nội bộ không có người gọi (seed, đăng ký, nhóm) không bị áp luật.
 
 ### Proxy
 
@@ -763,7 +776,7 @@ Thứ tự API/web: nên API trước hoặc cùng lúc. Web mới + API cũ kh�
 
 ### Cần chủ sản phẩm / người triển khai quyết định
 
-- **BẢO MẬT (có từ trước, không phải do phần C) — P-C14:** người có quyền `member:manage` nhưng **không phải quản trị** vẫn có thể **cấp `workspace:admin`** cho mình hoặc người khác qua đổi vai trò của thành viên hoặc tạo/sửa/nhân bản vai trò tuỳ chỉnh có quyền đó. Phần C (ma trận quyền chỉnh được, đổi vai trò ngay trên hàng) thêm lối vào giao diện thuận tiện hơn nhưng không tạo ra lỗ hổng này; ở web chỉ có hộp xác nhận khi bật `workspace:admin` **ở ma trận quyền**; hộp thoại sửa vai trò và danh sách vai trò ngay trên hàng thành viên không hỏi, và máy chủ không chặn. Nên chặn ở máy chủ (chỉ quản trị mới cấp/gỡ `workspace:admin`) trước khi giao quyền `member:manage` rộng rãi.
+- **BẢO MẬT — P-C14: đã sửa trong phần C.** Trước đây người có `member:manage` nhưng không phải quản trị cấp được `workspace:admin` cho mình hoặc người khác (đổi vai trò thành viên, tạo/sửa/nhân bản vai trò). Nay máy chủ chặn bằng 403 `ADMIN_GRANT_REQUIRES_ADMIN` và web khoá các điều khiển tương ứng (xem "Thay đổi API"). Chủ sản phẩm đã chốt luật; không còn là điều kiện chặn khi giao `member:manage` rộng rãi. Lưu ý: người **đã** nhận quyền quản trị qua lỗ hổng này trước khi sửa vẫn giữ nguyên — nên rà danh sách người giữ vai trò mang `workspace:admin`.
 
 ### Hoãn theo spec (chưa làm)
 

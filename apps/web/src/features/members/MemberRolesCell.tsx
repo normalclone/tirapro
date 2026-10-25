@@ -1,10 +1,12 @@
 import { useId, useRef } from 'react';
+import { useAuth } from '@/stores/auth';
 import { ChevronDown } from 'lucide-react';
 import type { MemberDto, RoleDto } from '@tirapro/types';
 import { RoleBadge } from '@/components/ui/RoleBadge';
 import { useConfirm } from '@/components/ui/useConfirm';
 import { toast } from 'sonner';
 import { EditRolesPopover } from './EditRolesPopover';
+import { frozenAdminRoles } from './adminGrant';
 import {
   adminRoleIds,
   isLastAdmin,
@@ -37,6 +39,7 @@ export function MemberRolesCell({
   isSelf: boolean;
 }) {
   const user = member.user;
+  const canGrantAdmin = useAuth((s) => s.can('workspace:admin')); // P-C14: boolean (đã gồm admin hệ thống)
   const clusterId = useId();
   const confirm = useConfirm();
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -98,6 +101,7 @@ export function MemberRolesCell({
         instant={{
           onChange: (next) => void onChange(next),
           locked: lockedRoleReasons(currentIds, adminIds, lastAdmin),
+          frozen: frozenAdminRoles(canGrantAdmin, adminIds),
         }}
         trigger={
           <button

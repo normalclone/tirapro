@@ -11,6 +11,7 @@ import {
 } from '@tirapro/types';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import {
+  AdminGrantRequiresAdminException,
   ConflictAppException,
   ForbiddenAppException,
   NotFoundAppException,
@@ -80,6 +81,9 @@ export class RolesService {
   }
 
   async create(workspaceId: string, input: CreateRoleInput, actorId: string) {
+    // P-C14: vai trò (kể cả bản nhân bản) mang workspace:admin chỉ quản trị mới tạo được.
+    if (input.permissionKeys.includes(PERMISSIONS.WORKSPACE_ADMIN))
+      await this.assertCallerHoldsAdmin(workspaceId, actorId);
     const permIds = await this.permIds(input.permissionKeys);
     const role = await this.prisma.role.create({
       data: {
@@ -107,6 +111,7 @@ export class RolesService {
 
   async update(workspaceId: string, id: string, input: UpdateRoleInput, actorId: string) {
     await this.assertCustom(workspaceId, id);
+    await this.assertMayEditAdminRole(workspaceId, id, input.permissionKeys, actorId);
     const data: Record<string, unknown> = {};
     if (input.name !== undefined) data.name = input.name.trim();
     if (input.description !== undefined) data.description = input.description;
@@ -193,6 +198,32 @@ export class RolesService {
   }
 
   // ── helpers ──
+  /** P-C14: người gọi phải đang giữ `workspace:admin` (hoặc là admin hệ thống) — `member:manage` một mình không đủ. */
+  private async assertCallerHoldsAdmin(workspaceId: string, actorId: string): Promise<void> {
+    if (!(await this.rbac.holdsWorkspaceAdmin(actorId, workspaceId)))
+      throw new AdminGrantRequiresAdminException();
+  }
+
+  /**
+   * P-C14: sửa vai trò cần quản trị khi bộ quyền MỚI có `workspace:admin` (thêm) hoặc vai trò ĐANG có nó (gỡ, hoặc sửa
+   * quyền khác/tên/mô tả — đổi quyền của mọi quản trị đang giữ vai trò này). Sửa vai trò không dính quản trị thì không đổi.
+   */
+  private async assertMayEditAdminRole(
+    workspaceId: string,
+    roleId: string,
+    newKeys: string[] | undefined,
+    actorId: string,
+  ): Promise<void> {
+    if (await this.rbac.holdsWorkspaceAdmin(actorId, workspaceId)) return;
+    const addsAdmin = newKeys?.includes(PERMISSIONS.WORKSPACE_ADMIN) ?? false;
+    const hasAdmin =
+      addsAdmin ||
+      (await this.prisma.rolePermission.count({
+        where: { roleId, permission: { key: PERMISSIONS.WORKSPACE_ADMIN } },
+      })) > 0;
+    if (hasAdmin) throw new AdminGrantRequiresAdminException();
+  }
+
   /**
    * Phản chiếu `MembersService.assertNotLastWorkspaceAdmin` cho đường SỬA VAI TRÒ: gỡ `workspace:admin` khỏi một vai trò
    * không được làm workspace hết quản trị viên (còn hoạt động) — sau đó chỉ admin hệ thống mới khôi phục được.

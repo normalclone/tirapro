@@ -10,6 +10,7 @@ import {
 import { RoleBadge } from '@/components/ui/RoleBadge';
 import { Button } from '@/components/ui/Button';
 import { useWorkspaceMembers } from '@/features/members/api';
+import { useAuth } from '@/stores/auth';
 import { cn } from '@/lib/utils';
 import {
   buildGroupedMatrix,
@@ -18,6 +19,7 @@ import {
   sortMatrixRoles,
 } from './roleMatrix';
 import { SYSTEM_LOCK_REASON } from './RoleMatrixCells';
+import { ADMIN_GRANT_REASON } from '@/features/members/adminGrant';
 import { MatrixGrid, type GridMode } from './RoleMatrixGrid';
 import { useRolePermEditor } from './useRolePermEditor';
 
@@ -60,6 +62,8 @@ export function RoleMatrixTable({
   const [picked, setPicked] = useState<Picked>({ PROJECT: null, WORKSPACE: null });
   const captionId = useId();
   const lockNoteId = useId();
+  const adminNoteId = useId();
+  const canGrantAdmin = useAuth((s) => s.can('workspace:admin')); // P-C14: boolean (đã gồm admin hệ thống)
 
   const members = useWorkspaceMembers(canEdit);
   // Chỉ cho sửa khi đã có danh sách thành viên: chốt "quản trị cuối cùng" và "tự mất quyền" cần nó.
@@ -131,6 +135,8 @@ export function RoleMatrixTable({
         members={members}
         lockNoteId={lockNoteId}
         showLock={columns.some((c) => c.isSystem)}
+        adminNoteId={adminNoteId}
+        showAdminLock={!canGrantAdmin}
       />
 
       <div>
@@ -171,6 +177,8 @@ export function RoleMatrixTable({
           scope={scope}
           captionId={captionId}
           lockNoteId={lockNoteId}
+          adminNoteId={adminNoteId}
+          canGrantAdmin={canGrantAdmin}
           mode={mode}
           pending={editor.pending}
           onToggle={(role, key) => void editor.toggle(role, key)}
@@ -239,11 +247,16 @@ function EditNotes({
   members,
   lockNoteId,
   showLock,
+  adminNoteId,
+  showAdminLock,
 }: {
   canEdit: boolean;
   members: UseQueryResult<MemberDto[]>;
   lockNoteId: string;
   showLock: boolean;
+  adminNoteId: string;
+  /** Người sửa không phải quản trị: ghi chú lý do khoá quyền quản trị (P-C14). */
+  showAdminLock: boolean;
 }) {
   if (!canEdit) return null;
   if (!members.isSuccess) {
@@ -271,6 +284,15 @@ function EditNotes({
           <span id={lockNoteId} className="inline-flex items-center gap-1 text-faint">
             <Lock className="h-3 w-3" aria-hidden />
             {SYSTEM_LOCK_REASON}.
+          </span>
+        </>
+      )}
+      {showAdminLock && (
+        <>
+          {' '}
+          <span id={adminNoteId} className="inline-flex items-center gap-1 text-faint">
+            <Lock className="h-3 w-3" aria-hidden />
+            Quyền “Quản trị không gian làm việc” và vai trò đang giữ quyền đó: {ADMIN_GRANT_REASON}.
           </span>
         </>
       )}

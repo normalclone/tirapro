@@ -26,6 +26,16 @@ export class ForbiddenAppException extends AppException {
   }
 }
 
+/**
+ * P-C14: cấp/gỡ `workspace:admin` (qua vai trò của thành viên hoặc qua bộ quyền của vai trò) chỉ dành cho người đang giữ
+ * `workspace:admin` hoặc admin hệ thống — `member:manage` một mình không đủ. Mã riêng để web hiện đúng lý do.
+ */
+export class AdminGrantRequiresAdminException extends AppException {
+  constructor(message = 'Chỉ quản trị không gian làm việc mới cấp hoặc gỡ quyền quản trị.') {
+    super(ERROR_CODES.ADMIN_GRANT_REQUIRES_ADMIN, message, HttpStatus.FORBIDDEN);
+  }
+}
+
 export class VersionConflictException extends AppException {
   constructor(
     message = 'Dữ liệu đã thay đổi bởi người khác',

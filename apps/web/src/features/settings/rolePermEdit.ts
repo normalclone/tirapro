@@ -1,4 +1,5 @@
 import { roleLabel, type MemberDto, type PermissionKey } from '@tirapro/types';
+import { ADMIN_GRANT_REASON } from '@/features/members/adminGrant';
 import { sameRoleSet } from '@/features/members/roleChange';
 
 /**
@@ -118,6 +119,11 @@ export interface GuardCtx {
   members: readonly MemberDto[] | undefined;
   selfId: string | null;
   selfIsSystemAdmin: boolean;
+  /**
+   * Người sửa đang giữ `workspace:admin` (đã gồm admin hệ thống)? `false` → không được cấp/gỡ quyền quản trị (P-C14).
+   * Bỏ trống = không áp luật (máy chủ vẫn là nơi quyết định cuối cùng).
+   */
+  callerIsAdmin?: boolean;
 }
 
 export type GuardResult =
@@ -163,6 +169,10 @@ export function guardRoleEdit(
   before: readonly string[],
   after: readonly string[],
 ): GuardResult {
+  // P-C14 (máy chủ: 403 ADMIN_GRANT_REQUIRES_ADMIN): bật/tắt workspace:admin, hoặc sửa bất kỳ quyền nào của vai trò đang giữ
+  // nó, cần là quản trị. Đứng trước chốt thành viên vì không cần danh sách thành viên để biết.
+  if (ctx.callerIsAdmin === false && (before.includes(ADMIN) || after.includes(ADMIN)))
+    return { kind: 'blocked', reason: ADMIN_GRANT_REASON };
   if (!ctx.members) return { kind: 'ok' };
   const lostAdmin = before.includes(ADMIN) && !after.includes(ADMIN);
   const lostManage = before.includes(MANAGE) && !after.includes(MANAGE);

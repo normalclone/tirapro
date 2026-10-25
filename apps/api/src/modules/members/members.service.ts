@@ -21,6 +21,7 @@ import {
   type UserDtoSource,
 } from '../../common/mappers/user.mapper';
 import {
+  AdminGrantRequiresAdminException,
   BusinessRuleException,
   ConflictAppException,
   EmailAlreadyRegisteredException,
@@ -29,6 +30,7 @@ import {
 } from '../../common/exceptions/app.exception';
 import { generateTempPassword } from '../../common/password';
 import { RbacService } from '../rbac/rbac.service';
+import { touchedAdminRoleIds } from '../rbac/admin-grant';
 import { ApiKeyService } from '../api-keys/api-key.service';
 import { AuditService } from '../audit/audit.service';
 import { SYSTEM_USER_EMAIL } from '../../common/system-user';
@@ -102,6 +104,7 @@ export class MembersService {
     if (existing) throw this.alreadyMember();
     this.assertAddable([user]);
     const ids = await this.validateRoles(workspaceId, roleIds, 'WORKSPACE');
+    await this.assertMayChangeAdminRoles(workspaceId, actorId, () => Promise.resolve([]), ids);
     try {
       await this.prisma.workspaceMembership.create({
         data: {
@@ -181,6 +184,7 @@ export class MembersService {
     });
     if (exists) throw this.emailTakenError(email, exists.status);
     const ids = await this.validateRoles(workspaceId, input.roleIds, 'WORKSPACE');
+    await this.assertMayChangeAdminRoles(workspaceId, actorId, () => Promise.resolve([]), ids);
     const tempPassword = input.password ? undefined : generateTempPassword();
     const passwordHash = await argon2.hash(input.password ?? tempPassword!); // băm NGOÀI transaction (chậm)
     const userId = await this.createAccountTx(
@@ -331,6 +335,12 @@ export class MembersService {
     });
     if (!membership) throw new NotFoundAppException('Thành viên');
     const ids = await this.validateRoles(workspaceId, roleIds, 'WORKSPACE');
+    await this.assertMayChangeAdminRoles(
+      workspaceId,
+      actorId,
+      () => this.currentWorkspaceRoleIds(workspaceId, userId),
+      ids,
+    );
     // Bộ vai trò mới không còn quyền quản trị workspace → người này không được là quản trị viên cuối cùng.
     const keepsAdmin =
       (await this.prisma.role.count({
@@ -373,6 +383,7 @@ export class MembersService {
     actorId?: string,
   ) {
     const ids = await this.validateRoles(workspaceId, roleIds, 'WORKSPACE');
+    await this.assertMayChangeAdminRoles(workspaceId, actorId, () => Promise.resolve([]), ids);
     const unique = [...new Set(userIds)];
     const existUsers = await this.prisma.user.findMany({
       where: { id: { in: unique } },
@@ -432,6 +443,13 @@ export class MembersService {
       throw new ForbiddenAppException(
         'Không thể gỡ chủ sở hữu của không gian làm việc — hãy chuyển quyền sở hữu cho người khác trước',
       );
+    // Gỡ một quản trị khỏi workspace = gỡ quyền quản trị của họ → cũng chỉ quản trị mới làm được (P-C14).
+    await this.assertMayChangeAdminRoles(
+      workspaceId,
+      actingUserId,
+      () => this.currentWorkspaceRoleIds(workspaceId, userId),
+      [],
+    );
     await this.assertNotLastWorkspaceAdmin(workspaceId, userId);
     const who = await this.userLabel(userId);
     // Không để dự án riêng tư mất người cuối cùng (chỉ còn quản trị workspace thấy) — chặn kèm lối thoát.
@@ -599,6 +617,12 @@ export class MembersService {
     actorId?: string,
   ) {
     const project = await this.requireProject(workspaceId, projectId);
+    await this.assertMayChangeAdminRoles(
+      workspaceId,
+      actorId,
+      () => this.currentProjectRoleIds(projectId, userId),
+      [],
+    );
     if (project.isPrivate) {
       // Dự án riêng tư: gỡ ghi đè = GỠ KHỎI DỰ ÁN. Không để dự án không còn thành viên nào (mồ côi).
       const members = await this.prisma.projectMembership.count({
@@ -647,6 +671,7 @@ export class MembersService {
       select: { id: true },
     });
     if (existing) return this.setProjectRoles(workspaceId, projectId, userId, roleIds, actorId);
+    await this.assertMayChangeAdminRoles(workspaceId, actorId, () => Promise.resolve([]), ids);
 
     const member = await this.createProjectMembership(workspaceId, projectId, userId, ids);
     await this.audit.record({
@@ -679,6 +704,7 @@ export class MembersService {
     if (!membership) {
       await this.assertWorkspaceMember(workspaceId, userId);
       const newIds = await this.validateRoles(workspaceId, roleIds, 'PROJECT');
+      await this.assertMayChangeAdminRoles(workspaceId, actorId, () => Promise.resolve([]), newIds);
       const created = await this.createProjectMembership(workspaceId, projectId, userId, newIds);
       await this.audit.record({
         workspaceId,
@@ -693,6 +719,12 @@ export class MembersService {
       return created;
     }
     const ids = await this.validateRoles(workspaceId, roleIds, 'PROJECT');
+    await this.assertMayChangeAdminRoles(
+      workspaceId,
+      actorId,
+      () => this.currentProjectRoleIds(projectId, userId),
+      ids,
+    );
     await this.prisma.$transaction([
       this.prisma.projectMembershipRole.deleteMany({ where: { membershipId: membership.id } }),
       this.prisma.projectMembershipRole.createMany({
@@ -766,6 +798,7 @@ export class MembersService {
   ) {
     const project = await this.requireProject(workspaceId, projectId);
     const ids = await this.validateRoles(workspaceId, roleIds, 'PROJECT');
+    await this.assertMayChangeAdminRoles(workspaceId, actorId, () => Promise.resolve([]), ids);
     const unique = [...new Set(userIds)];
     const wsMembers = await this.prisma.workspaceMembership.findMany({
       where: { workspaceId, userId: { in: unique } },
@@ -814,6 +847,44 @@ export class MembersService {
   }
 
   // ───────────────────────── helpers ─────────────────────────
+
+  /**
+   * P-C14: chỉ người đang giữ `workspace:admin` (hoặc admin hệ thống) mới THÊM/GỠ vai trò mang `workspace:admin` cho ai đó
+   * — `member:manage` một mình không đủ (nếu không, người quản lý thành viên tự nâng mình lên quản trị). Quản trị: một lần
+   * hỏi quyền (có cache), không tra thêm. Chưa phải quản trị: so bộ vai trò trước/sau, chỉ chặn khi có vai trò quản trị
+   * bị thêm/gỡ. Không có `actorId` (gọi nội bộ: seed, đăng ký, nhóm) → không áp luật.
+   */
+  private async assertMayChangeAdminRoles(
+    workspaceId: string,
+    actorId: string | undefined,
+    before: () => Promise<string[]>,
+    after: string[],
+  ): Promise<void> {
+    if (!actorId) return;
+    if (await this.rbac.holdsWorkspaceAdmin(actorId, workspaceId)) return;
+    const prev = await before();
+    const admins = await this.rbac.adminRoleIds([...prev, ...after]);
+    if (touchedAdminRoleIds(prev, after, admins).length > 0)
+      throw new AdminGrantRequiresAdminException();
+  }
+
+  /** Mọi vai trò workspace hiện có của người này (bảng nối + vai trò chính, phòng membership cũ chưa ghi bảng nối). */
+  private async currentWorkspaceRoleIds(workspaceId: string, userId: string): Promise<string[]> {
+    const m = await this.prisma.workspaceMembership.findUnique({
+      where: { workspaceId_userId: { workspaceId, userId } },
+      select: { roleId: true, roles: { select: { roleId: true } } },
+    });
+    return m ? [...new Set([m.roleId, ...m.roles.map((r) => r.roleId)].filter(Boolean))] : [];
+  }
+
+  /** Vai trò RIÊNG của người này ở dự án (ghi đè); rỗng nếu chưa có. */
+  private async currentProjectRoleIds(projectId: string, userId: string): Promise<string[]> {
+    const m = await this.prisma.projectMembership.findUnique({
+      where: { projectId_userId: { projectId, userId } },
+      select: { roleId: true, roles: { select: { roleId: true } } },
+    });
+    return m ? [...new Set([m.roleId, ...m.roles.map((r) => r.roleId)].filter(Boolean))] : [];
+  }
 
   /** "Tên (email)" để dựng câu mô tả nhật ký. */
   private label(user: { displayName: string; email: string }): string {

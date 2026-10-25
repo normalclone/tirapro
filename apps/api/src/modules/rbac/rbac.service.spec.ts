@@ -43,6 +43,11 @@ function setup(redis: 'ok' | 'down' = 'ok') {
     issueLink: { findFirst: vi.fn() },
     version: { findFirst: vi.fn() },
     wikiPage: { findFirst: vi.fn() },
+    user: {
+      findUnique: vi.fn((_a?: unknown) =>
+        Promise.resolve({ isSystemAdmin: false } as { isSystemAdmin: boolean } | null),
+      ),
+    },
     workspaceMembership: { findUnique: vi.fn(() => Promise.resolve(null)) },
     projectMembership: { findUnique: vi.fn(() => Promise.resolve(null)) },
     rolePermission: { findMany: vi.fn(() => Promise.resolve([])) },
@@ -489,5 +494,43 @@ describe('RbacService — dự án riêng tư', () => {
         (prisma as unknown as { user: { findUnique: ReturnType<typeof vi.fn> } }).user.findUnique,
       ).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe('RbacService — P-C14: holdsWorkspaceAdmin / adminRoleIds', () => {
+  it('admin hệ thống → true, không cần tính quyền workspace', async () => {
+    const { svc, prisma } = setup();
+    prisma.user.findUnique.mockResolvedValue({ isSystemAdmin: true });
+    const spy = vi.spyOn(svc, 'getEffectivePermissions');
+    await expect(svc.holdsWorkspaceAdmin('U1', 'W1')).resolves.toBe(true);
+    expect(spy).not.toHaveBeenCalled();
+  });
+  it('quyền hiệu lực của workspace có workspace:admin → true', async () => {
+    const { svc } = setup();
+    vi.spyOn(svc, 'getEffectivePermissions').mockResolvedValue(new Set(['workspace:admin']));
+    await expect(svc.holdsWorkspaceAdmin('U1', 'W1')).resolves.toBe(true);
+  });
+  it('chỉ có member:manage (không có workspace:admin) → false; người không tồn tại → false', async () => {
+    const { svc, prisma } = setup();
+    vi.spyOn(svc, 'getEffectivePermissions').mockResolvedValue(new Set(['member:manage']));
+    await expect(svc.holdsWorkspaceAdmin('U1', 'W1')).resolves.toBe(false);
+    prisma.user.findUnique.mockResolvedValue(null);
+    await expect(svc.holdsWorkspaceAdmin('U1', 'W1')).resolves.toBe(false);
+  });
+  it('adminRoleIds: lọc theo quyền workspace:admin; danh sách rỗng không chạm DB', async () => {
+    const { svc, prisma } = setup();
+    prisma.role.findMany.mockResolvedValue([{ id: 'r2' }] as never);
+    const set = await svc.adminRoleIds(['r1', 'r2', 'r1']);
+    expect([...set]).toEqual(['r2']);
+    expect(prisma.role.findMany).toHaveBeenCalledWith({
+      where: {
+        id: { in: ['r1', 'r2'] },
+        permissions: { some: { permission: { key: 'workspace:admin' } } },
+      },
+      select: { id: true },
+    });
+    prisma.role.findMany.mockClear();
+    expect((await svc.adminRoleIds([])).size).toBe(0);
+    expect(prisma.role.findMany).not.toHaveBeenCalled();
   });
 });

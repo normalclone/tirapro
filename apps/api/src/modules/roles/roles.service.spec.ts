@@ -102,6 +102,7 @@ function setup() {
       calls.push('invalidate');
       return Promise.resolve();
     }),
+    holdsWorkspaceAdmin: vi.fn(() => Promise.resolve(true)), // người gọi là quản trị (P-C14)
   };
   const events = {
     emit: vi.fn(() => {

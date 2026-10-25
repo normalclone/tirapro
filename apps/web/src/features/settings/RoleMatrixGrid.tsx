@@ -1,5 +1,6 @@
 import {
   Fragment,
+  useId,
   useRef,
   useState,
   type FocusEvent,
@@ -10,6 +11,12 @@ import { Check, ChevronDown, ChevronRight, Copy, Lock, Minus } from 'lucide-reac
 import { roleLabel, type PermissionScope, type RoleDto } from '@tirapro/types';
 import { RoleBadge } from '@/components/ui/RoleBadge';
 import { cn } from '@/lib/utils';
+import {
+  ADMIN_GRANT_REASON,
+  groupLockedForAdminGrant,
+  permLockedForAdminGrant,
+  roleLockedForAdminGrant,
+} from '@/features/members/adminGrant';
 import type { GroupedMatrix, MatrixGroup, MatrixRow, RoleMatrix } from './roleMatrix';
 import { clampCell, isTabStop, nextCell, type CellPos } from './matrixNav';
 import { GroupCell, PermCell } from './RoleMatrixCells';
@@ -72,6 +79,10 @@ interface RowEnv {
   mode: GridMode;
   loading: boolean;
   lockNoteId: string;
+  /** Đang giữ `workspace:admin` (P-C14)? Không → khoá ô quyền quản trị và mọi ô của vai trò đang giữ nó. */
+  canGrantAdmin: boolean;
+  /** id ghi chú lý do khoá kiểu P-C14 (mô tả của các ô khoá vì quản trị). */
+  adminNoteId: string;
   has: (role: RoleDto, key: string) => boolean;
   cellPos: (r: number, c: number) => { pos: CellPos; tabIndex: 0 | -1 };
   onToggle: (role: RoleDto, key: string) => void;
@@ -82,8 +93,11 @@ function GridHead({
   columns,
   showLocks,
   onClone,
+  canGrantAdmin,
 }: {
   columns: RoleDto[];
+  /** Không phải quản trị: không nhân bản vai trò đang giữ `workspace:admin` (máy chủ từ chối, P-C14). */
+  canGrantAdmin: boolean;
   /** Hiện nhãn "Khoá" ở cột vai trò hệ thống (cả lúc đang chờ điều kiện sửa — để dòng tiêu đề không đổi chiều cao). */
   showLocks: boolean;
   onClone?: (role: RoleDto) => void;
@@ -118,20 +132,56 @@ function GridHead({
                 </span>
               )}
               {onClone && (
-                <button
-                  type="button"
-                  onClick={() => onClone(c)}
-                  className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-muted hover:bg-surface-2 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:px-2"
-                >
-                  <Copy className="h-3 w-3" aria-hidden />
-                  Nhân bản<span className="sr-only"> vai trò {roleLabel(c.name)}</span>
-                </button>
+                <CloneButton
+                  role={c}
+                  locked={roleLockedForAdminGrant(canGrantAdmin, c.permissionKeys)}
+                  onClone={onClone}
+                />
               )}
             </div>
           </th>
         ))}
       </tr>
     </thead>
+  );
+}
+
+/**
+ * "Nhân bản" của một cột vai trò. Vai trò đang giữ `workspace:admin` + người không phải quản trị (P-C14): khoá kèm lý do
+ * (`aria-disabled` vẫn focus được để đọc lý do; máy chủ vẫn từ chối tạo vai trò có quyền đó).
+ */
+function CloneButton({
+  role,
+  locked,
+  onClone,
+}: {
+  role: RoleDto;
+  locked: boolean;
+  onClone: (role: RoleDto) => void;
+}) {
+  const reasonId = useId();
+  return (
+    <>
+      <button
+        type="button"
+        aria-disabled={locked ? 'true' : undefined}
+        aria-describedby={locked ? reasonId : undefined}
+        title={locked ? ADMIN_GRANT_REASON : undefined}
+        onClick={locked ? undefined : () => onClone(role)}
+        className={cn(
+          'inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:px-2',
+          locked ? 'cursor-not-allowed opacity-60' : 'hover:bg-surface-2 hover:text-ink',
+        )}
+      >
+        <Copy className="h-3 w-3" aria-hidden />
+        Nhân bản<span className="sr-only"> vai trò {roleLabel(role.name)}</span>
+      </button>
+      {locked && (
+        <span id={reasonId} className="sr-only">
+          {ADMIN_GRANT_REASON}
+        </span>
+      )}
+    </>
   );
 }
 
@@ -174,15 +224,20 @@ function GroupRowView({
       </th>
       {env.columns.map((role, ci) => {
         const g = groupState(group.keys, (k) => env.has(role, k));
+        const adminLocked = groupLockedForAdminGrant(
+          env.canGrantAdmin,
+          role.permissionKeys,
+          group.keys,
+        );
         return (
           <td key={role.id} className="border-b border-border bg-surface-2 px-3 py-2 text-center">
             {env.mode !== 'readonly' ? (
               <GroupCell
                 g={g}
                 label={`${group.group} — ${roleLabel(role.name)}`}
-                locked={env.mode === 'edit' && role.isSystem}
+                locked={env.mode === 'edit' && (role.isSystem || adminLocked)}
                 loading={env.loading}
-                describedBy={env.lockNoteId}
+                describedBy={role.isSystem ? env.lockNoteId : env.adminNoteId}
                 onToggle={() => env.onToggleGroup(role, group.keys)}
                 {...env.cellPos(index, ci)}
               />
@@ -219,23 +274,30 @@ function PermRowView({
       >
         {row.label}
       </th>
-      {env.columns.map((role, ci) => (
-        <td key={role.id} className="border-b border-border px-3 py-2 text-center">
-          {env.mode !== 'readonly' ? (
-            <PermCell
-              on={env.has(role, row.key)}
-              label={`${row.label} — ${roleLabel(role.name)}`}
-              locked={env.mode === 'edit' && role.isSystem}
-              loading={env.loading}
-              describedBy={env.lockNoteId}
-              onToggle={() => env.onToggle(role, row.key)}
-              {...env.cellPos(index, ci)}
-            />
-          ) : (
-            <ReadonlyCell has={env.has(role, row.key)} />
-          )}
-        </td>
-      ))}
+      {env.columns.map((role, ci) => {
+        const adminLocked = permLockedForAdminGrant(
+          env.canGrantAdmin,
+          role.permissionKeys,
+          row.key,
+        );
+        return (
+          <td key={role.id} className="border-b border-border px-3 py-2 text-center">
+            {env.mode !== 'readonly' ? (
+              <PermCell
+                on={env.has(role, row.key)}
+                label={`${row.label} — ${roleLabel(role.name)}`}
+                locked={env.mode === 'edit' && (role.isSystem || adminLocked)}
+                loading={env.loading}
+                describedBy={role.isSystem ? env.lockNoteId : env.adminNoteId}
+                onToggle={() => env.onToggle(role, row.key)}
+                {...env.cellPos(index, ci)}
+              />
+            ) : (
+              <ReadonlyCell has={env.has(role, row.key)} />
+            )}
+          </td>
+        );
+      })}
     </tr>
   );
 }
@@ -282,6 +344,8 @@ export function MatrixGrid({
   scope,
   captionId,
   lockNoteId,
+  adminNoteId,
+  canGrantAdmin,
   mode,
   pending,
   onToggle,
@@ -296,6 +360,8 @@ export function MatrixGrid({
   scope: PermissionScope;
   captionId: string;
   lockNoteId: string;
+  adminNoteId: string;
+  canGrantAdmin: boolean;
   mode: GridMode;
   pending: Record<string, Desired>;
   onToggle: (role: RoleDto, key: string) => void;
@@ -322,6 +388,8 @@ export function MatrixGrid({
     mode,
     loading: mode === 'loading',
     lockNoteId,
+    canGrantAdmin,
+    adminNoteId,
     has: (role, key) => hasKey(role.permissionKeys, pending[role.id], key),
     cellPos: (r, c) => ({
       pos: { r, c },
@@ -340,7 +408,12 @@ export function MatrixGrid({
           {mode === 'edit' ? 'Quyền của các vai trò' : 'So sánh quyền giữa các vai trò'} —{' '}
           {scope === 'PROJECT' ? 'cấp dự án' : 'cấp không gian làm việc'}
         </caption>
-        <GridHead columns={columns} showLocks={mode !== 'readonly'} onClone={onClone} />
+        <GridHead
+          columns={columns}
+          showLocks={mode !== 'readonly'}
+          onClone={onClone}
+          canGrantAdmin={canGrantAdmin}
+        />
         <tbody
           onKeyDown={mode === 'edit' ? nav.onKeyDown : undefined}
           onFocus={mode === 'edit' ? nav.onFocus : undefined}

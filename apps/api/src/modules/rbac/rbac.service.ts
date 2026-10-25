@@ -366,6 +366,36 @@ export class RbacService {
     if (mode === 'memberOnly' || row.isPrivate) throw new NotFoundAppException(notFoundLabel);
   }
 
+  /**
+   * P-C14: `userId` đang giữ `workspace:admin` trong workspace (hoặc là admin hệ thống)? `member:manage` KHÔNG đủ — chỉ
+   * người thoả điều này mới được cấp/gỡ quyền quản trị (qua vai trò thành viên hoặc bộ quyền của vai trò).
+   */
+  async holdsWorkspaceAdmin(userId: string, workspaceId: string): Promise<boolean> {
+    const u = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { isSystemAdmin: true },
+    });
+    if (!u) return false;
+    if (u.isSystemAdmin) return true;
+    return (await this.getEffectivePermissions(userId, workspaceId)).has(
+      PERMISSIONS.WORKSPACE_ADMIN,
+    );
+  }
+
+  /** Trong `roleIds`, những vai trò nào mang quyền `workspace:admin` (hệ thống hay tuỳ biến). */
+  async adminRoleIds(roleIds: readonly string[]): Promise<Set<string>> {
+    const ids = [...new Set(roleIds)];
+    if (ids.length === 0) return new Set();
+    const rows = await this.prisma.role.findMany({
+      where: {
+        id: { in: ids },
+        permissions: { some: { permission: { key: PERMISSIONS.WORKSPACE_ADMIN } } },
+      },
+      select: { id: true },
+    });
+    return new Set(rows.map((r) => r.id));
+  }
+
   /** Invalidate cache khi đổi vai trò của 1 user (gọi từ MembersModule). */
   async invalidate(userId: string, workspaceId: string): Promise<void> {
     await this.unlinkByPattern(`rbac:${workspaceId}:${userId}:*`);
