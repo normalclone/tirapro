@@ -127,6 +127,8 @@ export interface AdminOverview {
     embeddingProvider: string;
     storage: boolean;
     storageDriver: string;
+    /** Tên bucket khi driver = s3 (không bao giờ có khoá). */
+    storageBucket?: string | null;
   };
   generatedAt: string;
 }

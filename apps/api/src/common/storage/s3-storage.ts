@@ -1,0 +1,203 @@
+import { createHash } from 'node:crypto';
+import type { Readable } from 'node:stream';
+import {
+  DeleteObjectCommand,
+  GetObjectCommand,
+  HeadBucketCommand,
+  HeadObjectCommand,
+  ListObjectsV2Command,
+  PutObjectCommand,
+  S3Client,
+} from '@aws-sdk/client-s3';
+import {
+  ObjectExistsError,
+  ObjectNotFoundError,
+  StorageUnavailableError,
+  assertSafeKey,
+  type GetResult,
+  type ListedObject,
+  type ObjectStat,
+  type ObjectStorage,
+  type PutOptions,
+  type PutResult,
+  type StorageCheck,
+} from './object-storage';
+
+export interface S3StorageConfig {
+  /** `http://host:port` (không SSL được phép — MinIO nội bộ). */
+  endpoint: string;
+  region: string;
+  bucket: string;
+  accessKey: string;
+  secretKey: string;
+  /** MinIO cần path-style (`host/bucket/key`). */
+  forcePathStyle: boolean;
+}
+
+/** Tối thiểu của client để test tiêm bản giả. */
+interface S3Like {
+  send(command: never): Promise<unknown>;
+}
+
+const REQUEST_TIMEOUT_MS = 15_000;
+const CONNECTION_TIMEOUT_MS = 5_000;
+const MAX_ATTEMPTS = 2;
+
+const status = (e: unknown): number | undefined =>
+  (e as { $metadata?: { httpStatusCode?: number } } | undefined)?.$metadata?.httpStatusCode;
+const errName = (e: unknown): string => (e as { name?: string } | undefined)?.name ?? '';
+
+const isNotFound = (e: unknown) =>
+  status(e) === 404 || ['NoSuchKey', 'NotFound', 'NoSuchBucket'].includes(errName(e));
+const isPreconditionFailed = (e: unknown) =>
+  status(e) === 412 || status(e) === 409 || errName(e) === 'PreconditionFailed';
+
+/**
+ * Lưu trên S3/MinIO bằng `@aws-sdk/client-s3`. Khoá object = khoá lưu trữ (giống đường dẫn của LocalStorage).
+ * Lỗi hạ tầng → `StorageUnavailableError` với thông báo chung; chi tiết nằm ở `cause` để log nội bộ.
+ * Không bao giờ đưa khoá bí mật vào thông báo/log.
+ */
+export class S3Storage implements ObjectStorage {
+  readonly driver = 's3' as const;
+  readonly bucket: string;
+  private readonly client: S3Like;
+
+  constructor(cfg: S3StorageConfig, client?: S3Like) {
+    this.bucket = cfg.bucket;
+    this.client =
+      client ??
+      new S3Client({
+        endpoint: cfg.endpoint,
+        region: cfg.region,
+        forcePathStyle: cfg.forcePathStyle,
+        credentials: { accessKeyId: cfg.accessKey, secretAccessKey: cfg.secretKey },
+        maxAttempts: MAX_ATTEMPTS,
+        requestHandler: {
+          requestTimeout: REQUEST_TIMEOUT_MS,
+          connectionTimeout: CONNECTION_TIMEOUT_MS,
+        },
+        // Tương thích MinIO/S3-clone cũ: không tự thêm checksum CRC32 mà server không đòi.
+        requestChecksumCalculation: 'WHEN_REQUIRED',
+        responseChecksumValidation: 'WHEN_REQUIRED',
+      });
+  }
+
+  private send<T>(command: object): Promise<T> {
+    return this.client.send(command as never) as Promise<T>;
+  }
+
+  async put(key: string, body: Buffer, opts: PutOptions = {}): Promise<PutResult> {
+    assertSafeKey(key);
+    try {
+      await this.send(
+        new PutObjectCommand({
+          Bucket: this.bucket,
+          Key: key,
+          Body: body,
+          ContentLength: body.length,
+          ContentType: opts.contentType,
+          ...(opts.ifNotExists ? { IfNoneMatch: '*' } : {}),
+        }),
+      );
+    } catch (err) {
+      if (opts.ifNotExists && isPreconditionFailed(err)) throw new ObjectExistsError(key);
+      throw new StorageUnavailableError('Kho lưu trữ tệp không phản hồi', err);
+    }
+    return { key, checksum: createHash('sha256').update(body).digest('hex') };
+  }
+
+  async get(key: string): Promise<GetResult> {
+    assertSafeKey(key);
+    try {
+      const out = await this.send<{
+        Body?: unknown;
+        ContentLength?: number;
+        ContentType?: string;
+      }>(new GetObjectCommand({ Bucket: this.bucket, Key: key }));
+      if (!out.Body) throw new ObjectNotFoundError(key);
+      return {
+        stream: out.Body as Readable,
+        size: out.ContentLength,
+        contentType: out.ContentType,
+      };
+    } catch (err) {
+      if (err instanceof ObjectNotFoundError) throw err;
+      if (isNotFound(err)) throw new ObjectNotFoundError(key);
+      throw new StorageUnavailableError('Kho lưu trữ tệp không phản hồi', err);
+    }
+  }
+
+  async delete(key: string): Promise<void> {
+    assertSafeKey(key);
+    try {
+      await this.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: key }));
+    } catch (err) {
+      if (isNotFound(err) && errName(err) !== 'NoSuchBucket') return; // S3 vốn trả 204 khi thiếu; phòng server khác trả 404
+      throw new StorageUnavailableError('Kho lưu trữ tệp không phản hồi', err);
+    }
+  }
+
+  async exists(key: string): Promise<boolean> {
+    return (await this.stat(key)) !== null;
+  }
+
+  async stat(key: string): Promise<ObjectStat | null> {
+    assertSafeKey(key);
+    try {
+      const out = await this.send<{ ContentLength?: number; LastModified?: Date }>(
+        new HeadObjectCommand({ Bucket: this.bucket, Key: key }),
+      );
+      return { size: out.ContentLength ?? 0, lastModified: out.LastModified ?? new Date(0) };
+    } catch (err) {
+      if (isNotFound(err)) return null;
+      throw new StorageUnavailableError('Kho lưu trữ tệp không phản hồi', err);
+    }
+  }
+
+  async list(prefix: string, limit = 1000): Promise<ListedObject[]> {
+    try {
+      const out = await this.send<{
+        Contents?: { Key?: string; Size?: number; LastModified?: Date }[];
+      }>(
+        new ListObjectsV2Command({
+          Bucket: this.bucket,
+          Prefix: prefix,
+          MaxKeys: Math.min(Math.max(limit, 1), 1000),
+        }),
+      );
+      return (out.Contents ?? [])
+        .filter((o): o is { Key: string; Size?: number; LastModified?: Date } => !!o.Key)
+        .map((o) => ({
+          key: o.Key,
+          size: o.Size ?? 0,
+          lastModified: o.LastModified ?? new Date(0),
+        }));
+    } catch (err) {
+      throw new StorageUnavailableError('Kho lưu trữ tệp không phản hồi', err);
+    }
+  }
+
+  /** HeadBucket — KHÔNG bao giờ tạo bucket (tạo bucket là bước triển khai thủ công). */
+  async check(): Promise<StorageCheck> {
+    try {
+      await this.send(new HeadBucketCommand({ Bucket: this.bucket }));
+      return { ok: true };
+    } catch (err) {
+      const st = status(err);
+      if (st === 404 || errName(err) === 'NotFound' || errName(err) === 'NoSuchBucket')
+        return {
+          ok: false,
+          detail: `Bucket "${this.bucket}" không tồn tại — hãy tạo bucket thủ công trên MinIO/S3 (ứng dụng không tự tạo) rồi khởi động lại.`,
+        };
+      if (st === 403 || errName(err) === 'Forbidden' || errName(err) === 'AccessDenied')
+        return {
+          ok: false,
+          detail: `Không đủ quyền truy cập bucket "${this.bucket}" — kiểm tra S3_ACCESS_KEY/S3_SECRET_KEY và policy của tài khoản.`,
+        };
+      return {
+        ok: false,
+        detail: `Không kết nối được tới S3 endpoint (${errName(err) || 'lỗi mạng'}) — kiểm tra S3_ENDPOINT (MinIO thường cổng API 9000, 9001 hay là console), mạng và tường lửa.`,
+      };
+    }
+  }
+}

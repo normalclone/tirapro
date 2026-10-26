@@ -15,6 +15,8 @@ import {
   BusinessRuleException,
   NotFoundAppException,
 } from '../../../common/exceptions/app.exception';
+import { LocalStorage } from '../../../common/storage/local-storage';
+import { StorageUnavailableError } from '../../../common/storage/object-storage';
 import type { PreparedItem } from '../import.service';
 import { JiraImportService } from './jira-import.service';
 
@@ -158,14 +160,14 @@ function setup(
     ),
   };
   const projects = { create: vi.fn(() => Promise.resolve({ id: 'p-new', key: 'NEW' })) };
-  const config = { get: vi.fn(() => localDir) };
+  const storage = new LocalStorage(localDir);
   const service = new JiraImportService(
     prisma as never,
     importService as never,
     projects as never,
-    config as never,
+    storage,
   );
-  return { service, prisma, importService, projects, localDir, created, phases };
+  return { service, prisma, importService, projects, localDir, storage, created, phases };
 }
 
 const file = (buf: Buffer = CSV) =>
@@ -746,18 +748,20 @@ describe('JiraImportService.run — chống chạy trùng theo analyzeId', () =>
     await service.waitForJob('job1');
   });
 
-  it('rename lỗi không phải ENOENT (vd EACCES) → ném lại lỗi gốc, không báo "đã import"', async () => {
+  it('claim lỗi hạ tầng (không phải "đã tồn tại") → ném lại lỗi gốc, không báo "đã import", không tạo job', async () => {
     const c = await prepared();
-    const fsp = (await import('node:fs')).promises;
+    const realPut = c.storage.put.bind(c.storage);
     const spy = vi
-      .spyOn(fsp, 'rename')
-      .mockRejectedValueOnce(
-        Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES' }),
+      .spyOn(c.storage, 'put')
+      .mockImplementation((key, body, opts) =>
+        key.endsWith('.claimed')
+          ? Promise.reject(new StorageUnavailableError('Kho lưu trữ tệp không phản hồi'))
+          : realPut(key, body, opts),
       );
     try {
       const err = await c.service.run('w1', 'u1', c.input).catch((e: unknown) => e);
       expect(err).not.toBeInstanceOf(BusinessRuleException);
-      expect((err as Error).message).toContain('EACCES');
+      expect(err).toBeInstanceOf(StorageUnavailableError);
       expect(c.prisma.importJob.create).not.toHaveBeenCalled();
     } finally {
       spy.mockRestore();

@@ -1,7 +1,14 @@
 import { Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { promises as fs } from 'node:fs';
-import { dirname, join } from 'node:path';
+import {
+  ObjectNotFoundError,
+  OBJECT_STORAGE,
+  causeMessage,
+  streamToBuffer,
+  type ObjectStorage,
+} from '../../common/storage/object-storage';
+
+/** Khoá lưu trữ của tệp cờ (local: `{STORAGE_LOCAL_DIR}/system-settings.json`). */
+const SETTINGS_KEY = 'system-settings.json';
 
 /** Cờ cấu hình runtime cấp hệ thống — admin bật/tắt, không cần deploy lại. */
 export interface SystemFlags {
@@ -23,26 +30,25 @@ const DEFAULTS: SystemFlags = {
 };
 
 /**
- * Lưu cờ hệ thống ra file JSON (degrade-graceful, không cần migration).
+ * Lưu cờ hệ thống thành một tệp JSON qua ObjectStorage (degrade-graceful, không cần migration).
  * Đọc 1 lần lúc khởi động vào cache, ghi xuyên (write-through) khi cập nhật.
  */
 @Injectable()
 export class SystemSettingsService implements OnModuleInit {
   private readonly logger = new Logger(SystemSettingsService.name);
   private cache: SystemFlags = { ...DEFAULTS };
-  private readonly file: string;
 
-  constructor(@Inject(ConfigService) config: ConfigService) {
-    const dir = config.get<string>('storage.localDir') ?? './var/storage';
-    this.file = join(dir, 'system-settings.json');
-  }
+  constructor(@Inject(OBJECT_STORAGE) private readonly storage: ObjectStorage) {}
 
   async onModuleInit(): Promise<void> {
     try {
-      const raw = await fs.readFile(this.file, 'utf8');
+      const { stream } = await this.storage.get(SETTINGS_KEY);
+      const raw = (await streamToBuffer(stream)).toString('utf8');
       this.cache = { ...DEFAULTS, ...(JSON.parse(raw) as Partial<SystemFlags>) };
-    } catch {
-      // Chưa có file → dùng mặc định (bình thường ở lần chạy đầu).
+    } catch (err) {
+      // Chưa có tệp → dùng mặc định (bình thường ở lần chạy đầu); lỗi khác chỉ cảnh báo, vẫn chạy với mặc định.
+      if (!(err instanceof ObjectNotFoundError))
+        this.logger.warn(`Không đọc được ${SETTINGS_KEY}, dùng mặc định: ${causeMessage(err)}`);
     }
   }
 
@@ -62,10 +68,11 @@ export class SystemSettingsService implements OnModuleInit {
       next.maintenanceBanner = patch.maintenanceBanner.slice(0, 500);
     this.cache = next;
     try {
-      await fs.mkdir(dirname(this.file), { recursive: true });
-      await fs.writeFile(this.file, JSON.stringify(next, null, 2), 'utf8');
+      await this.storage.put(SETTINGS_KEY, Buffer.from(JSON.stringify(next, null, 2), 'utf8'), {
+        contentType: 'application/json',
+      });
     } catch (err) {
-      this.logger.warn(`Không ghi được system-settings.json: ${(err as Error).message}`);
+      this.logger.warn(`Không ghi được ${SETTINGS_KEY}: ${causeMessage(err)}`);
     }
     return next;
   }

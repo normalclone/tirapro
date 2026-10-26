@@ -10,7 +10,7 @@ const boolEnv = (def: boolean) =>
     .transform((v) => (typeof v === 'boolean' ? v : v === 'true' || v === '1'))
     .default(def);
 
-const envSchema = z.object({
+const baseEnvSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
 
   DATABASE_URL: z.string().min(1),
@@ -95,6 +95,37 @@ const envSchema = z.object({
       (v) => v === '' || v.length >= 32,
       'INTEGRATION_ENCRYPTION_KEY_PREVIOUS để trống hoặc tối thiểu 32 ký tự',
     ),
+});
+
+/** STORAGE_DRIVER=s3 ⇒ bắt buộc đủ 4 biến kết nối, endpoint phải là URL http(s). Thông báo KHÔNG in giá trị biến. */
+const envSchema = baseEnvSchema.superRefine((env, ctx) => {
+  if (env.STORAGE_DRIVER !== 's3') return;
+  const required = [
+    [
+      'S3_ENDPOINT',
+      env.S3_ENDPOINT,
+      'vd http://172.20.20.100:9000 (cổng API của MinIO, thường 9000)',
+    ],
+    ['S3_BUCKET', env.S3_BUCKET, 'tên bucket riêng của Tirapro, tạo sẵn thủ công'],
+    ['S3_ACCESS_KEY', env.S3_ACCESS_KEY, 'access key của tài khoản có quyền trên bucket'],
+    ['S3_SECRET_KEY', env.S3_SECRET_KEY, 'secret key tương ứng'],
+  ] as const;
+  for (const [name, value, hint] of required) {
+    if (!value.trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [name],
+        message: `bắt buộc khi STORAGE_DRIVER=s3 (${hint})`,
+      });
+    }
+  }
+  if (env.S3_ENDPOINT.trim() && !/^https?:\/\/[^\s/]+/i.test(env.S3_ENDPOINT.trim())) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['S3_ENDPOINT'],
+      message: 'phải là URL bắt đầu bằng http:// hoặc https://, vd http://172.20.20.100:9000',
+    });
+  }
 });
 
 export type Env = z.infer<typeof envSchema>;

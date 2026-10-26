@@ -12,6 +12,7 @@ import { RequestIdMiddleware, resolveRequestId } from './common/middleware/reque
 import { ResilientThrottlerStorage } from './common/throttler/resilient-throttler-storage';
 import type { AuthedRequest } from './common/types/request';
 import { PrismaModule } from './infra/prisma/prisma.module';
+import { StorageModule } from './common/storage/storage.module';
 import { RedisModule } from './infra/redis/redis.module';
 import { RedisService } from './infra/redis/redis.service';
 import { HealthModule } from './modules/health/health.module';
@@ -130,6 +131,7 @@ import { ApiKeyModule } from './modules/api-keys/api-key.module';
       },
     }),
     PrismaModule,
+    StorageModule,
     RedisModule,
     SystemSettingsModule,
     ApiKeyModule,

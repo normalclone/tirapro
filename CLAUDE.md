@@ -29,6 +29,7 @@ Jira clone + nâng cấp (AI, realtime, analytics). Monorepo pnpm + Turborepo.
 - Response: list bọc envelope `{success,data,pageInfo,meta}`; single trả raw object. Error `{success:false,error:{code,...}}`.
 - Naming: REST `api/v1/<plural>`; domain event `domain.action`; WS event `domain:action`; error code `SCREAMING_SNAKE`.
 - Degrade gracefully: thiếu `ANTHROPIC_API_KEY` → AI heuristic; Redis down → REST vẫn chạy; search = JQL → Prisma `where`; ô tìm văn bản dùng full-text Postgres (`searchVector` trong `apps/api/prisma/sql/01_pgvector_fts.sql`, bật bằng `pnpm --filter @tirapro/api run db:raw`) — chưa chạy `db:raw` thì tự rơi về ILIKE. Phần pgvector (embedding) trong file đó vẫn **chưa dùng**.
+- Lưu tệp: mọi tệp người dùng (đính kèm, avatar, tệp phân tích import Jira, `system-settings.json`) đi qua `ObjectStorage` (`apps/api/src/common/storage/`, `STORAGE_DRIVER=local|s3`) — **không** dùng `node:fs` ngoài `local-storage.ts` (guard `storage-guard.spec.ts`). Driver s3 thiếu bucket/sai quyền: API **vẫn khởi động**, log lỗi rõ ở `Storage` + đèn "Lưu trữ" đỏ trên console admin, upload trả 422 "Không lưu được tệp, thử lại" (không lộ chi tiết); xoá object lỗi chỉ log. Không bao giờ tự tạo bucket. Test thật với MinIO cục bộ: `pnpm --filter @tirapro/api test:parity` (opt-in, xem đầu `s3-storage.int-spec.ts`).
 
 ## Thiết kế UI — impeccable + ease-of-use
 

@@ -48,7 +48,8 @@ COPY --from=build --chown=node:node /out/prisma ./prisma
 # Script vận hành một lần (không phải một phần server): `docker run --rm --env-file … <image> node scripts/seal-webhook-secrets.mjs --dry-run`.
 # Chỉ cần node:crypto + @prisma/client (đã có trong node_modules production). Xem docs/DEPLOY.md mục "Checklist triển khai".
 # `check-system-roles.mjs` kiểm bộ quyền vai trò hệ thống (docker run … node scripts/check-system-roles.mjs) — cùng cách chạy với hai script trên.
-COPY --from=build --chown=node:node /repo/apps/api/scripts/rekey-integrations.mjs /repo/apps/api/scripts/seal-webhook-secrets.mjs /repo/apps/api/scripts/check-system-roles.mjs ./scripts/
+COPY --from=build --chown=node:node /repo/apps/api/scripts/rekey-integrations.mjs /repo/apps/api/scripts/seal-webhook-secrets.mjs /repo/apps/api/scripts/check-system-roles.mjs /repo/apps/api/scripts/storage-migrate-local-to-s3.mjs ./scripts/
+# `storage-migrate-local-to-s3.mjs` chuyển tệp local → S3/MinIO (dùng dist/ + @prisma/client; xem docs/DEPLOY.md mục "Lưu tệp trên S3/MinIO").
 # Thư mục upload (STORAGE_DRIVER=local) — mount volume vào đây nếu cần giữ file.
 RUN mkdir -p /app/uploads && chown node:node /app/uploads
 USER node

@@ -1,9 +1,6 @@
-import { Injectable, Logger, type OnApplicationBootstrap } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import { Inject, Injectable, Logger, type OnApplicationBootstrap } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { createId } from '@paralleldrive/cuid2';
-import { promises as fs } from 'node:fs';
-import * as path from 'node:path';
 import type { Prisma } from '@prisma/client';
 import {
   JIRA_CREATE,
@@ -19,6 +16,15 @@ import {
   BusinessRuleException,
   NotFoundAppException,
 } from '../../../common/exceptions/app.exception';
+import {
+  ObjectExistsError,
+  OBJECT_STORAGE,
+  StorageUnavailableError,
+  causeMessage,
+  putOrThrowBusiness,
+  streamToBuffer,
+  type ObjectStorage,
+} from '../../../common/storage/object-storage';
 import { ProjectsService } from '../../projects/projects.service';
 import { ImportService, type PreparedItem } from '../import.service';
 import {
@@ -137,7 +143,6 @@ const EXPIRED_MESSAGE =
 @Injectable()
 export class JiraImportService implements OnApplicationBootstrap {
   private readonly logger = new Logger(JiraImportService.name);
-  private readonly localDir: string;
   /** Các job đang chạy trong process (để test/tắt máy chờ được). */
   private readonly running = new Map<string, Promise<void>>();
 
@@ -145,10 +150,8 @@ export class JiraImportService implements OnApplicationBootstrap {
     private readonly prisma: PrismaService,
     private readonly importService: ImportService,
     private readonly projects: ProjectsService,
-    config: ConfigService,
-  ) {
-    this.localDir = config.get<string>('storage.localDir') ?? './uploads';
-  }
+    @Inject(OBJECT_STORAGE) private readonly storage: ObjectStorage,
+  ) {}
 
   // ---------------------------------------------------------------- khôi phục job kẹt
 
@@ -235,11 +238,17 @@ export class JiraImportService implements OnApplicationBootstrap {
 
     await this.purgeExpired();
     const analyzeId = createId();
-    const dir = this.dir();
-    await fs.mkdir(dir, { recursive: true });
-    await fs.writeFile(path.join(dir, `${analyzeId}.csv`), file.buffer);
+    await putOrThrowBusiness(this.logger, this.storage, this.key(analyzeId, 'csv'), file.buffer, {
+      contentType: 'text/csv',
+    });
     const meta: AnalyzeMeta = { workspaceId, userId };
-    await fs.writeFile(path.join(dir, `${analyzeId}.json`), JSON.stringify(meta));
+    await putOrThrowBusiness(
+      this.logger,
+      this.storage,
+      this.key(analyzeId, 'json'),
+      Buffer.from(JSON.stringify(meta)),
+      { contentType: 'application/json' },
+    );
 
     return { analyzeId, ...analyzeJira(parsed) };
   }
@@ -1116,86 +1125,83 @@ export class JiraImportService implements OnApplicationBootstrap {
 
   // ---------------------------------------------------------------- tệp phân tích
 
-  private dir(): string {
-    return path.join(this.localDir, 'imports');
+  /** Khoá lưu trữ của tệp phân tích (`imports/<id>.csv|json|claimed`) — cùng bố cục thư mục cũ. */
+  private key(analyzeId: string, ext: 'csv' | 'json' | 'claimed'): string {
+    return `imports/${analyzeId}.${ext}`;
   }
 
   /** Đọc + parse tệp đã analyze; kiểm tra thuộc workspace và chưa hết hạn. */
   private async load(workspaceId: string, analyzeId: string): Promise<JiraParseResult> {
     if (!jiraAnalyzeIdSchema.safeParse(analyzeId).success)
       throw new BusinessRuleException(EXPIRED_MESSAGE);
-    const csvPath = path.join(this.dir(), `${analyzeId}.csv`);
+    let claimed = false;
     try {
-      const [stat, metaRaw] = await Promise.all([
-        fs.stat(csvPath),
-        fs.readFile(path.join(this.dir(), `${analyzeId}.json`), 'utf8'),
+      // Có `.claimed` ⇒ phiên này đã/đang được import, khác với hết hạn/không tồn tại.
+      claimed = await this.storage.exists(this.key(analyzeId, 'claimed'));
+      if (claimed) throw new Error('đã claim');
+      const [stat, metaObj] = await Promise.all([
+        this.storage.stat(this.key(analyzeId, 'csv')),
+        this.storage.get(this.key(analyzeId, 'json')),
       ]);
-      const meta = JSON.parse(metaRaw) as AnalyzeMeta;
+      if (!stat) throw new Error('không có tệp');
+      const meta = JSON.parse(
+        (await streamToBuffer(metaObj.stream)).toString('utf8'),
+      ) as AnalyzeMeta;
       if (meta.workspaceId !== workspaceId) throw new Error('khác không gian làm việc');
-      if (Date.now() - stat.mtimeMs > ANALYZE_TTL_MS) {
+      if (Date.now() - stat.lastModified.getTime() > ANALYZE_TTL_MS) {
         await this.removeFiles(analyzeId);
         throw new Error('hết hạn');
       }
-      return await parseJiraCsvAsync(await fs.readFile(csvPath));
-    } catch {
-      // Có `.claimed` ⇒ phiên này đã/đang được import, khác với hết hạn/không tồn tại.
-      const claimed = await fs
-        .access(path.join(this.dir(), `${analyzeId}.claimed`))
-        .then(() => true)
-        .catch(() => false);
+      const csv = await this.storage.get(this.key(analyzeId, 'csv'));
+      return await parseJiraCsvAsync(await streamToBuffer(csv.stream));
+    } catch (err) {
+      if (err instanceof StorageUnavailableError) {
+        this.logger.error(`Đọc tệp phân tích ${analyzeId} thất bại: ${causeMessage(err)}`);
+        throw new BusinessRuleException('Không đọc được tệp phân tích, thử lại');
+      }
       throw new BusinessRuleException(claimed ? ALREADY_RUN_MESSAGE : EXPIRED_MESSAGE);
     }
   }
 
-  /** Claim nguyên tử: chỉ MỘT request đổi tên được `<id>.json` → `<id>.claimed` (ENOENT ⇒ đã bị claim). */
+  /**
+   * Claim nguyên tử: chỉ MỘT request tạo được `<id>.claimed` (ghi có điều kiện "chưa tồn tại"; local `wx`, S3 `If-None-Match: *`).
+   * Request thua ⇒ đã bị claim.
+   */
   private async claim(analyzeId: string): Promise<void> {
     try {
-      await fs.rename(
-        path.join(this.dir(), `${analyzeId}.json`),
-        path.join(this.dir(), `${analyzeId}.claimed`),
-      );
+      await this.storage.put(this.key(analyzeId, 'claimed'), Buffer.from('{}'), {
+        ifNotExists: true,
+      });
     } catch (err) {
-      // ENOENT = tệp `.json` không còn ⇒ request khác đã claim. Lỗi khác (EACCES, EIO…) là sự cố thật.
-      if ((err as NodeJS.ErrnoException).code === 'ENOENT')
-        throw new BusinessRuleException(ALREADY_RUN_MESSAGE);
-      throw err;
+      if (err instanceof ObjectExistsError) throw new BusinessRuleException(ALREADY_RUN_MESSAGE);
+      throw err; // lỗi hạ tầng là sự cố thật, không giả làm "đã import"
     }
   }
 
   /** Nhả claim khi chưa tạo được job để người dùng bấm "Chạy" lại. */
   private async unclaim(analyzeId: string): Promise<void> {
-    await fs
-      .rename(
-        path.join(this.dir(), `${analyzeId}.claimed`),
-        path.join(this.dir(), `${analyzeId}.json`),
-      )
-      .catch(() => undefined);
+    await this.storage.delete(this.key(analyzeId, 'claimed')).catch(() => undefined);
   }
 
   /** Xoá tệp phân tích quá 1 giờ (gọi ở mỗi lần analyze — không cần cron). */
   private async purgeExpired(): Promise<void> {
-    let names: string[];
+    let objects: Awaited<ReturnType<ObjectStorage['list']>>;
     try {
-      names = await fs.readdir(this.dir());
+      objects = await this.storage.list('imports/');
     } catch {
-      return; // chưa có thư mục
+      return; // chưa có thư mục / kho lưu trữ tạm không dùng được — bỏ qua, lần sau dọn
     }
     const now = Date.now();
-    for (const name of names) {
-      const full = path.join(this.dir(), name);
-      try {
-        const stat = await fs.stat(full);
-        if (now - stat.mtimeMs > ANALYZE_TTL_MS) await fs.unlink(full);
-      } catch {
-        // tệp biến mất giữa chừng — bỏ qua
-      }
+    for (const o of objects) {
+      if (now - o.lastModified.getTime() > ANALYZE_TTL_MS)
+        await this.storage.delete(o.key).catch(() => undefined);
     }
   }
 
   private async removeFiles(analyzeId: string): Promise<void> {
-    if (!jiraAnalyzeIdSchema.safeParse(analyzeId).success) return; // không bao giờ unlink theo id lạ (path traversal)
-    for (const ext of ['csv', 'json', 'claimed']) {
-      await fs.unlink(path.join(this.dir(), `${analyzeId}.${ext}`)).catch(() => undefined);
+    if (!jiraAnalyzeIdSchema.safeParse(analyzeId).success) return; // không bao giờ xoá theo id lạ (path traversal)
+    for (const ext of ['csv', 'json', 'claimed'] as const) {
+      await this.storage.delete(this.key(analyzeId, ext)).catch(() => undefined);
     }
   }
 
