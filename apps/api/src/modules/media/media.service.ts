@@ -1,9 +1,16 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createId } from '@paralleldrive/cuid2';
-import { promises as fs, createReadStream, type ReadStream } from 'node:fs';
 import * as path from 'node:path';
+import type { Readable } from 'node:stream';
 import type { Request } from 'express';
+import {
+  OBJECT_STORAGE,
+  deleteBestEffort,
+  getOrNull,
+  putOrThrowBusiness,
+  type ObjectStorage,
+} from '../../common/storage/object-storage';
 import { BusinessRuleException, NotFoundAppException } from '../../common/exceptions/app.exception';
 
 /** MIME ảnh được phép → đuôi file chuẩn hoá. SVG bị loại (tránh rủi ro nội dung script). */
@@ -24,23 +31,22 @@ const MAX_AVATAR_BYTES = 5 * 1024 * 1024;
 
 /**
  * Lưu/serve ảnh đại diện (avatar/logo) cho user, workspace, project.
- * Ảnh là dữ liệu công khai → serve qua route @Public, lưu cục bộ dưới {STORAGE_LOCAL_DIR}/avatars.
+ * Ảnh là dữ liệu công khai → serve qua route @Public (stream qua API), lưu qua ObjectStorage với khoá `avatars/<file>`
+ * (local: {STORAGE_LOCAL_DIR}/avatars; s3: object cùng khoá trong bucket).
  * URL trả về là tuyệt đối (dựng từ request lúc upload) để nhúng trực tiếp bằng URL ảnh.
  */
 @Injectable()
 export class MediaService {
-  private readonly localDir: string;
+  private readonly logger = new Logger(MediaService.name);
   private readonly urlPrefix: string; // ví dụ /api/v1
 
-  constructor(config: ConfigService) {
-    this.localDir = config.get<string>('storage.localDir') ?? './uploads';
+  constructor(
+    config: ConfigService,
+    @Inject(OBJECT_STORAGE) private readonly storage: ObjectStorage,
+  ) {
     const gp = config.get<string>('api.globalPrefix') ?? 'api';
     const v = config.get<string>('api.version') ?? 'v1';
     this.urlPrefix = `/${gp}/${v}`;
-  }
-
-  private dir(): string {
-    return path.join(this.localDir, 'avatars');
   }
 
   /** Ghi ảnh xuống đĩa, trả về URL tuyệt đối để lưu vào avatarUrl. */
@@ -55,8 +61,10 @@ export class MediaService {
     if (file.size > MAX_AVATAR_BYTES) throw new BusinessRuleException('Ảnh vượt quá 5MB');
 
     const fileName = `${scope}-${createId()}.${ext}`;
-    await fs.mkdir(this.dir(), { recursive: true });
-    await fs.writeFile(path.join(this.dir(), fileName), file.buffer);
+    await putOrThrowBusiness(this.logger, this.storage, `avatars/${fileName}`, file.buffer, {
+      contentType: file.mimetype,
+      size: file.buffer.length,
+    });
     return this.publicUrl(fileName, req);
   }
 
@@ -68,19 +76,18 @@ export class MediaService {
   }
 
   /** Stream ảnh cho route công khai (chống path traversal). */
-  async serve(fileRaw: string): Promise<{ stream: ReadStream; mimeType: string }> {
+  async serve(fileRaw: string): Promise<{ stream: Readable; mimeType: string; size?: number }> {
     const file = path.basename(fileRaw);
+    // `.`/`..` khớp regex tên nhưng là khoá không hợp lệ: từ chối sạch (400), không chạm storage, không log lỗi.
+    if (/^\.+$/.test(file)) throw new BadRequestException('Tên ảnh không hợp lệ');
     if (!/^[\w.-]+$/.test(file)) throw new NotFoundAppException('Ảnh');
     const ext = file.split('.').pop()?.toLowerCase() ?? '';
-    const abs = path.join(this.dir(), file);
-    try {
-      await fs.access(abs);
-    } catch {
-      throw new NotFoundAppException('Ảnh');
-    }
+    const obj = await getOrNull(this.logger, this.storage, `avatars/${file}`);
+    if (!obj) throw new NotFoundAppException('Ảnh');
     return {
-      stream: createReadStream(abs),
+      stream: obj.stream,
       mimeType: EXT_TO_MIME[ext] ?? 'application/octet-stream',
+      size: obj.size,
     };
   }
 
@@ -94,11 +101,7 @@ export class MediaService {
     const idx = url.indexOf(marker);
     if (idx === -1) return;
     const file = path.basename(url.slice(idx + marker.length));
-    if (!/^[\w.-]+$/.test(file)) return;
-    try {
-      await fs.unlink(path.join(this.dir(), file));
-    } catch {
-      /* best-effort: file có thể đã bị xoá */
-    }
+    if (!/^[\w.-]+$/.test(file) || /^\.+$/.test(file)) return;
+    await deleteBestEffort(this.logger, this.storage, `avatars/${file}`);
   }
 }

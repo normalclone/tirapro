@@ -855,3 +855,38 @@ Chưa có báo cáo nào xác nhận các mục này đã chạy; người kiể
 - Menu thao tác: bộ lọc đã lưu (kiểm thật), máy lai (con trỏ chuột + cảm ứng), trình đọc màn hình.
 - Tour: chạy với dữ liệu hướng dẫn thật từ API.
 - Trình đọc màn hình thật: ma trận Vai trò & quyền và các chip nguồn AI; sau đó (VoiceOver/NVDA) cho mọi điều khiển mới trước khi phát hành (yêu cầu sẵn có của `UX_CONVENTIONS.md`).
+
+---
+
+# Lưu tệp trên S3/MinIO (2026-10-26)
+
+## 1. Cần làm khi triển khai
+
+- **Không đổi cơ sở dữ liệu** (không migration). Mặc định vẫn `STORAGE_DRIVER=local`, hành vi và đường dẫn tệp không đổi — nâng cấp mà không đặt gì thì mọi thứ chạy như cũ.
+- Muốn dùng MinIO/S3: làm theo `docs/DEPLOY.md` mục "Lưu tệp trên S3/MinIO" (tạo bucket riêng → đặt `S3_*` → dừng API → `storage:migrate-local-to-s3 [-- --dry-run]` → đổi `STORAGE_DRIVER=s3` → khởi động → kiểm HeadBucket trong log). Cổng API S3 của MinIO công ty khác mặc định (9001) — thử HeadBucket để xác định.
+- Dependency mới: `@aws-sdk/client-s3@3.1156.0` (API, ghim đúng phiên bản).
+- Image Docker chứa thêm `scripts/storage-migrate-local-to-s3.mjs`.
+
+## 2. Thay đổi
+
+- Mọi tệp người dùng (đính kèm, ảnh đại diện, tệp phân tích import Jira, `system-settings.json`) đi qua một lớp lưu trữ chung `ObjectStorage` (Local giữ nguyên bố cục thư mục; S3 dùng cùng khoá). Có test guard cấm dùng `fs` ngoài `LocalStorage`.
+- `STORAGE_DRIVER=s3` bắt buộc `S3_ENDPOINT`, `S3_BUCKET`, `S3_ACCESS_KEY`, `S3_SECRET_KEY` (API không khởi động nếu thiếu, thông báo tiếng Việt nêu đúng biến). Lúc khởi động gọi HeadBucket: thiếu bucket/sai quyền chỉ log lỗi rõ và đèn "Lưu trữ" đỏ — **không tự tạo bucket**.
+- Tải tệp vẫn stream qua API sau kiểm quyền (không presigned công khai); thêm `Content-Length` cho tải đính kèm và ảnh đại diện.
+- Upload lỗi S3 → "Không lưu được tệp, thử lại" (422, không lộ chi tiết); đọc lỗi hạ tầng → "Không tải được tệp, thử lại" (không giả làm 404). Upload thành công nhưng ghi DB lỗi → object vừa ghi được dọn.
+- Console quản trị: Tổng quan hiện `s3 · <bucket>` và trạng thái HeadBucket; Cấu hình hiện driver + bucket. Không lộ khoá/endpoint.
+- Công cụ vận hành `storage:migrate-local-to-s3` (idempotent, `--dry-run`, không xoá local).
+
+## 2b. Sau đợt rà soát (fix round 1)
+
+- **Cờ hệ thống không bị ghi đè khi S3 chập chờn:** đọc lỗi ≠ không có tệp; chưa đọc được thì `setFlags` từ chối (503) và đăng ký công khai tạm đóng, tự đọc lại có backoff; lưu cờ lỗi giờ báo lỗi thay vì "thành công giả".
+- **Chống chạy trùng import Jira ở DB** (advisory lock + `ImportJob`), không phụ thuộc `If-None-Match`; thử lại sau khi mất phản hồi nhận lại đúng job cũ. Probe lúc khởi động báo nếu máy chủ S3 bỏ qua ghi có điều kiện.
+- **Khởi động chặt** (`STORAGE_STARTUP_STRICT`, mặc định bật ở production): cấu hình S3 sai dứt khoát → API dừng ngay; lỗi mạng → vẫn lên, thử lại mỗi 30 giây.
+- **Cắt chuyển an toàn hơn:** thứ tự "dừng API → chép lần cuối → đổi driver → khởi động"; `system-settings.json` so theo nội dung; không đè object S3 mới hơn nếu không `--force`; báo nguyên nhân từng khoá lỗi.
+- **Tên tệp tiếng Việt đúng:** giải mã lại tên multer đọc sai, `Content-Disposition` theo RFC 6266/5987; script tuỳ chọn `attachments:fix-filenames` sửa dòng cũ.
+- Khác: giới hạn dung lượng ở multer, NoSuchBucket không còn thành 404 im lặng, tên avatar `.`/`..` trả 400, tổng quan admin nhớ kết quả HeadBucket ~30 giây, huỷ client S3 khi tắt.
+
+## 3. Còn mở
+
+- Chưa chạy trên MinIO công ty (172.20.20.100) và VM 172.20.20.128 — đã kiểm với MinIO cục bộ (`pnpm test:parity` + e2e API thật); cần một lượt kiểm trên hạ tầng thật khi triển khai (cổng API, quyền của access key, `If-None-Match` ở bản MinIO của công ty).
+- Không có vòng đời/dọn object mồ côi (xoá object lỗi chỉ log); bucket versioning/lifecycle do người vận hành cấu hình.
+

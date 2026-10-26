@@ -13,7 +13,7 @@ import {
   UploadedFile,
   UseInterceptors,
 } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
+import { AvatarUploadInterceptor } from '../../common/upload/upload.interceptor';
 import { ApiConsumes, ApiTags } from '@nestjs/swagger';
 import type { Request, Response } from 'express';
 import { ConfigService } from '@nestjs/config';
@@ -124,7 +124,7 @@ export class UsersController {
   @AuthOnly()
   @Post('me/avatar')
   @ApiConsumes('multipart/form-data')
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(AvatarUploadInterceptor)
   async uploadAvatar(
     @CurrentUser() user: AuthUser,
     @UploadedFile() file: Express.Multer.File,

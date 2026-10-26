@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { RedisService } from '../../infra/redis/redis.service';
+import { StorageHealthService } from '../../common/storage/storage-health.service';
 import { SystemSettingsService } from '../system-settings/system-settings.service';
 
 const DAY = 86_400_000;
@@ -14,6 +15,7 @@ export class AdminOverviewService {
     private readonly config: ConfigService,
     private readonly redis: RedisService,
     private readonly settings: SystemSettingsService,
+    private readonly storage: StorageHealthService,
   ) {}
 
   /** Trạng thái degrade các phụ thuộc (đúng nguyên tắc degrade-graceful). */
@@ -35,6 +37,8 @@ export class AdminOverviewService {
     const aiConfigured =
       !!this.config.get<boolean>('ai.enabled') && !!this.config.get<string>('ai.anthropicApiKey');
     const storageDriver = this.config.get<string>('storage.driver') ?? 'local';
+    // s3: HeadBucket thật (không liệt kê bucket); local: luôn sẵn sàng.
+    const storageOk = storageDriver === 'local' ? true : (await this.storage.cachedCheck()).ok;
     return {
       db,
       redis: this.redis.isAvailable(),
@@ -42,8 +46,10 @@ export class AdminOverviewService {
       aiConfigured,
       embedding: provider !== 'none' && !!embKey,
       embeddingProvider: provider,
-      storage: storageDriver === 'local' ? true : !!this.config.get<string>('storage.s3.bucket'),
+      storage: storageOk,
       storageDriver,
+      storageBucket:
+        storageDriver === 's3' ? this.config.get<string>('storage.s3.bucket') || null : null,
     };
   }
 

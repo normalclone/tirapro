@@ -10,7 +10,7 @@ const boolEnv = (def: boolean) =>
     .transform((v) => (typeof v === 'boolean' ? v : v === 'true' || v === '1'))
     .default(def);
 
-const envSchema = z.object({
+const baseEnvSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
 
   DATABASE_URL: z.string().min(1),
@@ -45,6 +45,17 @@ const envSchema = z.object({
   S3_ACCESS_KEY: z.string().optional().default(''),
   S3_SECRET_KEY: z.string().optional().default(''),
   S3_FORCE_PATH_STYLE: boolEnv(true),
+  // Khởi động chặt: lỗi cấu hình S3 dứt khoát (bucket thiếu, 403, khoá sai) ⇒ dừng ngay. Không đặt ⇒ true ở production, false còn lại.
+  STORAGE_STARTUP_STRICT: z
+    .union([z.boolean(), z.string()])
+    .optional()
+    .transform((v) =>
+      v === undefined || v === ''
+        ? undefined
+        : typeof v === 'boolean'
+          ? v
+          : v === 'true' || v === '1',
+    ),
 
   ANTHROPIC_API_KEY: z.string().optional().default(''),
   AI_FEATURES_ENABLED: boolEnv(true),
@@ -95,6 +106,37 @@ const envSchema = z.object({
       (v) => v === '' || v.length >= 32,
       'INTEGRATION_ENCRYPTION_KEY_PREVIOUS để trống hoặc tối thiểu 32 ký tự',
     ),
+});
+
+/** STORAGE_DRIVER=s3 ⇒ bắt buộc đủ 4 biến kết nối, endpoint phải là URL http(s). Thông báo KHÔNG in giá trị biến. */
+const envSchema = baseEnvSchema.superRefine((env, ctx) => {
+  if (env.STORAGE_DRIVER !== 's3') return;
+  const required = [
+    [
+      'S3_ENDPOINT',
+      env.S3_ENDPOINT,
+      'vd http://<host>:<cổng API S3> — cổng API, không phải cổng trang quản trị; thử HeadBucket để xác định',
+    ],
+    ['S3_BUCKET', env.S3_BUCKET, 'tên bucket riêng của Tirapro, tạo sẵn thủ công'],
+    ['S3_ACCESS_KEY', env.S3_ACCESS_KEY, 'access key của tài khoản có quyền trên bucket'],
+    ['S3_SECRET_KEY', env.S3_SECRET_KEY, 'secret key tương ứng'],
+  ] as const;
+  for (const [name, value, hint] of required) {
+    if (!value.trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [name],
+        message: `bắt buộc khi STORAGE_DRIVER=s3 (${hint})`,
+      });
+    }
+  }
+  if (env.S3_ENDPOINT.trim() && !/^https?:\/\/[^\s/]+/i.test(env.S3_ENDPOINT.trim())) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['S3_ENDPOINT'],
+      message: 'phải là URL bắt đầu bằng http:// hoặc https://, vd http://<host>:<cổng API S3>',
+    });
+  }
 });
 
 export type Env = z.infer<typeof envSchema>;

@@ -58,3 +58,28 @@ describe('AttachmentsController.uploadForComment — người chỉ có quyền 
     expect(attachments.upload).toHaveBeenCalledWith('w1', 'u1', 'i1', file);
   });
 });
+
+describe('AttachmentsController.download — header (I5)', () => {
+  it('Content-Disposition theo RFC 6266: ASCII dự phòng + filename*=UTF-8, kèm Content-Type/Length', async () => {
+    const headers: Record<string, string | number> = {};
+    const res = { setHeader: (k: string, v: string | number) => (headers[k] = v) };
+    const { Readable } = await import('node:stream');
+    const attachments = {
+      download: vi.fn(() =>
+        Promise.resolve({
+          stream: Readable.from(['x']),
+          fileName: 'báo cáo tháng 10.pdf',
+          mimeType: 'application/pdf',
+          size: 1,
+        }),
+      ),
+    };
+    const ctrl = new AttachmentsController(attachments as never, {} as never);
+    await ctrl.download('w1', 'a1', res as never);
+    expect(headers['Content-Disposition']).toBe(
+      `attachment; filename="bao cao thang 10.pdf"; filename*=UTF-8''b%C3%A1o%20c%C3%A1o%20th%C3%A1ng%2010.pdf`,
+    );
+    expect(headers['Content-Type']).toBe('application/pdf');
+    expect(headers['Content-Length']).toBe(1);
+  });
+});

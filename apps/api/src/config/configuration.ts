@@ -33,6 +33,7 @@ export function configuration() {
       driver: e.STORAGE_DRIVER,
       localDir: e.STORAGE_LOCAL_DIR,
       maxFileSizeMb: e.MAX_FILE_SIZE_MB,
+      startupStrict: e.STORAGE_STARTUP_STRICT ?? e.NODE_ENV === 'production',
       s3: {
         endpoint: e.S3_ENDPOINT,
         region: e.S3_REGION,

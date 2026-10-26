@@ -9,12 +9,15 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { Logger } from '@nestjs/common';
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { JiraImportRunInput } from '@tirapro/shared';
 import {
   BusinessRuleException,
   NotFoundAppException,
 } from '../../../common/exceptions/app.exception';
+import { LocalStorage } from '../../../common/storage/local-storage';
+import { StorageUnavailableError } from '../../../common/storage/object-storage';
 import type { PreparedItem } from '../import.service';
 import { JiraImportService } from './jira-import.service';
 
@@ -30,6 +33,50 @@ type ExistingIssue = {
   project: { key: string };
 };
 
+/** ImportJob trong bộ nhớ + `$transaction` tuần tự hoá (mô phỏng pg_advisory_xact_lock; khoá thật được kiểm ở jira-claim.int-spec.ts). */
+function jobStore() {
+  const jobs: {
+    id: string;
+    workspaceId: string;
+    source: string;
+    config: Record<string, unknown>;
+  }[] = [];
+  let txChain: Promise<unknown> = Promise.resolve();
+  const prismaRef: { current: unknown } = { current: null };
+  return {
+    jobs,
+    prismaRef,
+    $executeRaw: vi.fn(() => Promise.resolve(1)),
+    $transaction: vi.fn((cb: (tx: unknown) => Promise<unknown>) => {
+      const run = txChain.then(() => cb(prismaRef.current));
+      txChain = run.catch(() => undefined);
+      return run;
+    }),
+    create: vi.fn((args: { data: Record<string, unknown> }) => {
+      jobs.push({
+        id: 'job1',
+        workspaceId: String(args.data.workspaceId),
+        source: String(args.data.source),
+        config: args.data.config as Record<string, unknown>,
+      });
+      return Promise.resolve({ id: 'job1' });
+    }),
+    findFirst: vi.fn(
+      (args: {
+        where: { workspaceId: string; source: string; config: { path: string[]; equals: string } };
+      }) =>
+        Promise.resolve(
+          jobs.find(
+            (j) =>
+              j.workspaceId === args.where.workspaceId &&
+              j.source === args.where.source &&
+              j.config[args.where.config.path[0] ?? ''] === args.where.config.equals,
+          ) ?? null,
+        ),
+    ),
+  };
+}
+
 function setup(
   opts: {
     failSummaries?: string[];
@@ -42,9 +89,15 @@ function setup(
   const created: PreparedItem[] = [];
   const phases: PreparedItem[][] = [];
 
+  const store = jobStore();
+  const prismaRef = store.prismaRef;
+
   const prisma = {
+    $executeRaw: store.$executeRaw,
+    $transaction: store.$transaction,
     importJob: {
-      create: vi.fn(() => Promise.resolve({ id: 'job1' })),
+      create: store.create,
+      findFirst: store.findFirst,
       update: vi.fn(() => Promise.resolve({})),
       updateMany: vi.fn(() => Promise.resolve({ count: 0 })),
     },
@@ -158,14 +211,15 @@ function setup(
     ),
   };
   const projects = { create: vi.fn(() => Promise.resolve({ id: 'p-new', key: 'NEW' })) };
-  const config = { get: vi.fn(() => localDir) };
+  prismaRef.current = prisma;
+  const storage = new LocalStorage(localDir);
   const service = new JiraImportService(
     prisma as never,
     importService as never,
     projects as never,
-    config as never,
+    storage,
   );
-  return { service, prisma, importService, projects, localDir, created, phases };
+  return { service, prisma, importService, projects, localDir, storage, created, phases };
 }
 
 const file = (buf: Buffer = CSV) =>
@@ -682,28 +736,39 @@ describe('JiraImportService.run — chạy thật', () => {
   });
 });
 
-describe('JiraImportService.run — chống chạy trùng theo analyzeId', () => {
-  async function prepared(c = setup()) {
-    const { analyzeId } = await c.service.analyze('w1', 'u1', file());
-    return { ...c, analyzeId, input: runInput(analyzeId) };
-  }
-  const importsDir = (localDir: string) => join(localDir, 'imports');
+async function prepared(c = setup()) {
+  const { analyzeId } = await c.service.analyze('w1', 'u1', file());
+  return { ...c, analyzeId, input: runInput(analyzeId) };
+}
+const importsDir = (localDir: string) => join(localDir, 'imports');
 
-  it('hai run() song song cùng analyzeId => chỉ MỘT job được tạo, lần hai bị từ chối', async () => {
+describe('JiraImportService.run — chống chạy trùng theo analyzeId', () => {
+  it('hai run() song song cùng analyzeId => chỉ MỘT job được tạo, cả hai nhận CÙNG jobId', async () => {
     const { service, prisma, input } = await prepared();
     const results = await Promise.allSettled([
       service.run('w1', 'u1', input),
       service.run('w1', 'u1', input),
+      service.run('w1', 'u1', input),
     ]);
-    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+    expect(results.every((r) => r.status === 'fulfilled')).toBe(true);
+    const values = results.map((r) => (r as PromiseFulfilledResult<Record<string, unknown>>).value);
+    expect(values.every((v) => v.jobId === 'job1')).toBe(true);
+    // đúng MỘT request tạo job; các request còn lại báo đã chạy sẵn (client hiển thị "đang theo dõi tiến trình hiện có")
+    expect(values.filter((v) => v.alreadyStarted === true)).toHaveLength(2);
+    expect(values.filter((v) => v.alreadyStarted === undefined)).toHaveLength(1);
     expect(prisma.importJob.create).toHaveBeenCalledTimes(1);
-    const rej = results.find((r) => r.status === 'rejected') as PromiseRejectedResult;
-    expect(rej.reason).toBeInstanceOf(BusinessRuleException);
-    expect((rej.reason as Error).message).toContain('đã (hoặc đang) được import');
     await service.waitForJob('job1');
   });
 
-  it('chạy lần hai khi job đầu còn đang chạy => bị từ chối, chỉ tạo issue một lần', async () => {
+  it('claim ở DB: advisory lock lấy trong cùng transaction với tìm/tạo job', async () => {
+    const { service, prisma, input } = await prepared();
+    await service.run('w1', 'u1', input);
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(prisma.$executeRaw).toHaveBeenCalledTimes(1);
+    await service.waitForJob('job1');
+  });
+
+  it('chạy lần hai khi job đầu còn đang chạy => trả lại CÙNG job, chỉ tạo issue một lần', async () => {
     const c = await prepared();
     let release!: () => void;
     const gate = new Promise<void>((r) => (release = r));
@@ -712,10 +777,11 @@ describe('JiraImportService.run — chống chạy trùng theo analyzeId', () =>
       return { created: 0, labels: 0, comments: 0, errors: [], duplicates: [] };
     });
     const first = await c.service.run('w1', 'u1', c.input);
-    expect(first).toEqual({ jobId: 'job1' });
-    await expect(c.service.run('w1', 'u1', c.input)).rejects.toThrow(
-      /đã \(hoặc đang\) được import/,
-    );
+    expect(first).toEqual({ jobId: 'job1' }); // lần tạo job: KHÔNG có cờ alreadyStarted
+    await expect(c.service.run('w1', 'u1', c.input)).resolves.toEqual({
+      jobId: 'job1',
+      alreadyStarted: true,
+    });
     expect(c.prisma.importJob.create).toHaveBeenCalledTimes(1);
     release();
     await c.service.waitForJob('job1');
@@ -723,6 +789,56 @@ describe('JiraImportService.run — chống chạy trùng theo analyzeId', () =>
     expect(readdirSync(importsDir(c.localDir))).toEqual([]);
   });
 
+  it('thử lại SAU khi job đã xong và tệp đã dọn (phản hồi đầu bị mất) => vẫn trả jobId cũ, không "hết hạn", không tạo job thứ hai', async () => {
+    const c = await prepared();
+    await expect(c.service.run('w1', 'u1', c.input)).resolves.toEqual({ jobId: 'job1' });
+    await c.service.waitForJob('job1');
+    expect(existsSync(join(importsDir(c.localDir), `${c.analyzeId}.csv`))).toBe(false);
+    const chunkCalls = c.importService.createIssuesInChunks.mock.calls.length;
+    await expect(c.service.run('w1', 'u1', c.input)).resolves.toEqual({
+      jobId: 'job1',
+      alreadyStarted: true,
+    });
+    expect(c.prisma.importJob.create).toHaveBeenCalledTimes(1);
+    expect(c.importService.createIssuesInChunks.mock.calls.length).toBe(chunkCalls); // không tạo issue lần hai
+  });
+
+  it('request đã load trước đó nhưng tới sau khi job xong và `.claimed` bị dọn => KHÔNG claim lại được (DB giữ)', async () => {
+    const c = await prepared();
+    const first = await c.service.run('w1', 'u1', c.input);
+    await c.service.waitForJob('job1');
+    // tái tạo trạng thái "tệp còn nguyên" như request chậm đã đọc từ trước
+    writeFileSync(join(importsDir(c.localDir), `${c.analyzeId}.csv`), CSV);
+    writeFileSync(
+      join(importsDir(c.localDir), `${c.analyzeId}.json`),
+      JSON.stringify({ workspaceId: 'w1', userId: 'u1' }),
+    );
+    await expect(c.service.run('w1', 'u1', c.input)).resolves.toEqual({
+      ...first,
+      alreadyStarted: true,
+    });
+    expect(c.prisma.importJob.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('job của analyzeId này ở KHÔNG GIAN KHÁC không được trả cho workspace này', async () => {
+    const c = await prepared();
+    await c.service.run('w1', 'u1', c.input);
+    await c.service.waitForJob('job1');
+    // workspace w2 dùng cùng analyzeId: tệp thuộc w1 (hoặc đã dọn) nên không được lộ jobId của w1
+    await expect(c.service.run('w2', 'u2', c.input)).rejects.toThrow(/hết hạn|không tồn tại/);
+  });
+
+  it('dry-run với analyzeId đã có job => báo "đã (hoặc đang) được import"', async () => {
+    const c = await prepared();
+    await c.service.run('w1', 'u1', c.input);
+    await c.service.waitForJob('job1');
+    await expect(
+      c.service.run('w1', 'u1', { ...c.input, options: { ...c.input.options, dryRun: true } }),
+    ).rejects.toThrow(/đã \(hoặc đang\) được import/);
+  });
+});
+
+describe('JiraImportService.run — claim: nhả, lớp phụ và dọn tệp', () => {
   it('dry-run KHÔNG claim: chạy dry-run rồi chạy thật vẫn được', async () => {
     const { service, prisma, input } = await prepared();
     const dry = await service.run('w1', 'u1', {
@@ -736,7 +852,7 @@ describe('JiraImportService.run — chống chạy trùng theo analyzeId', () =>
     await service.waitForJob('job1');
   });
 
-  it('importJob.create ném lỗi => nhả claim, lần sau chạy lại được', async () => {
+  it('importJob.create ném lỗi => nhả claim storage, lần sau chạy lại được', async () => {
     const { service, prisma, input, analyzeId, localDir } = await prepared();
     prisma.importJob.create.mockRejectedValueOnce(new Error('DB sập'));
     await expect(service.run('w1', 'u1', input)).rejects.toThrow('DB sập');
@@ -746,31 +862,60 @@ describe('JiraImportService.run — chống chạy trùng theo analyzeId', () =>
     await service.waitForJob('job1');
   });
 
-  it('rename lỗi không phải ENOENT (vd EACCES) → ném lại lỗi gốc, không báo "đã import"', async () => {
+  it('claim storage lỗi hạ tầng => KHÔNG chặn (lớp phụ), chỉ log; DB vẫn là nguồn sự thật', async () => {
     const c = await prepared();
-    const fsp = (await import('node:fs')).promises;
+    const warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    const realPut = c.storage.put.bind(c.storage);
     const spy = vi
-      .spyOn(fsp, 'rename')
-      .mockRejectedValueOnce(
-        Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES' }),
+      .spyOn(c.storage, 'put')
+      .mockImplementation((key, body, opts) =>
+        key.endsWith('.claimed')
+          ? Promise.reject(new StorageUnavailableError('Kho lưu trữ tệp không phản hồi'))
+          : realPut(key, body, opts),
       );
     try {
-      const err = await c.service.run('w1', 'u1', c.input).catch((e: unknown) => e);
-      expect(err).not.toBeInstanceOf(BusinessRuleException);
-      expect((err as Error).message).toContain('EACCES');
-      expect(c.prisma.importJob.create).not.toHaveBeenCalled();
+      await expect(c.service.run('w1', 'u1', c.input)).resolves.toEqual({ jobId: 'job1' });
+      expect(warn).toHaveBeenCalled();
+      await c.service.waitForJob('job1');
     } finally {
       spy.mockRestore();
     }
   });
 
-  it('analyzeId đã claim: load() báo "đã/đang được import" thay vì "hết hạn"', async () => {
-    const { service, input, analyzeId, localDir } = await prepared();
-    await service.run('w1', 'u1', input);
-    await service.waitForJob('job1');
-    // giả lập trạng thái "đang chạy": chỉ còn tệp claim (json đã đổi tên)
+  it('`.claimed` mồ côi (claim lần trước ghi được nhưng phản hồi mất, không có job) => KHÔNG kẹt "đã import"', async () => {
+    const { service, prisma, input, analyzeId, localDir } = await prepared();
     writeFileSync(join(importsDir(localDir), `${analyzeId}.claimed`), '{}');
-    await expect(service.run('w1', 'u1', input)).rejects.toThrow(/đã \(hoặc đang\) được import/);
+    await expect(service.run('w1', 'u1', input)).resolves.toEqual({ jobId: 'job1' });
+    expect(prisma.importJob.create).toHaveBeenCalledTimes(1);
+    await service.waitForJob('job1');
+  });
+
+  it('M8: nhả claim lỗi thì LOG cảnh báo (không nuốt im lặng) và vẫn ném lỗi gốc của DB', async () => {
+    const c = await prepared();
+    const warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    c.prisma.importJob.create.mockRejectedValueOnce(new Error('DB sập'));
+    const realDelete = c.storage.delete.bind(c.storage);
+    const spy = vi
+      .spyOn(c.storage, 'delete')
+      .mockImplementation((key) =>
+        key.endsWith('.claimed')
+          ? Promise.reject(new StorageUnavailableError('x'))
+          : realDelete(key),
+      );
+    try {
+      await expect(c.service.run('w1', 'u1', c.input)).rejects.toThrow('DB sập');
+      expect(warn.mock.calls.some((a) => String(a[0]).includes('claim'))).toBe(true);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('M2: tệp csv đã bị dọn => không mở luồng json (không bỏ rơi Body giữ socket)', async () => {
+    const c = await prepared();
+    rmSync(join(importsDir(c.localDir), `${c.analyzeId}.csv`));
+    const get = vi.spyOn(c.storage, 'get');
+    await expect(c.service.run('w1', 'u1', c.input)).rejects.toThrow(/hết hạn|không tồn tại/);
+    expect(get).not.toHaveBeenCalled();
   });
 });
 

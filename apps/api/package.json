@@ -23,13 +23,16 @@
     "db:studio": "prisma studio",
     "db:check-roles": "node scripts/check-system-roles.mjs",
     "integrations:rekey": "node scripts/rekey-integrations.mjs",
-    "automation:seal-secrets": "node scripts/seal-webhook-secrets.mjs"
+    "automation:seal-secrets": "node scripts/seal-webhook-secrets.mjs",
+    "storage:migrate-local-to-s3": "node scripts/storage-migrate-local-to-s3.mjs",
+    "attachments:fix-filenames": "node scripts/attachments-fix-filenames.mjs"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.134.0",
+    "@aws-sdk/client-s3": "3.1156.0",
     "@nest-lab/throttler-storage-redis": "^1.2.0",
     "@nestjs/common": "^10.4.15",
     "@nestjs/config": "^3.3.0",

@@ -73,12 +73,51 @@ Build/Start/env giống cột trong `render.yaml`. Đặt `DATABASE_URL/DIRECT_U
 | `EMBEDDING_PROVIDER` | API | `none` → tìm kiếm dùng full-text. |
 | `INTEGRATION_ENCRYPTION_KEY` | API | Khoá mã hoá token tích hợp (≥32 ký tự, khác mặc định ở production). Render `generateValue` tự sinh. |
 | `INTEGRATION_ENCRYPTION_KEY_PREVIOUS` | API | (tùy chọn) khoá CŨ — để vẫn giải mã token đã mã hoá trước khi đổi khoá. Xem mục dưới. |
+| `STORAGE_DRIVER` | API | `local` (mặc định, ghi `STORAGE_LOCAL_DIR`) hoặc `s3` (S3/MinIO). Khi `s3` bắt buộc `S3_ENDPOINT`, `S3_BUCKET`, `S3_ACCESS_KEY`, `S3_SECRET_KEY` (thiếu → API không khởi động, báo rõ). Xem mục "Lưu tệp trên S3/MinIO". |
+| `STORAGE_STARTUP_STRICT` | API | (tuỳ chọn) khi `s3`: `true` = lỗi cấu hình dứt khoát (bucket thiếu, 403, sai khoá) làm API dừng ngay. Mặc định `true` ở production, `false` còn lại. Lỗi mạng không bao giờ làm API dừng. |
 | `VITE_API_URL` | Web | `https://<api>/api/v1` (nhúng lúc build). |
 | `VITE_WS_URL` | Web | `https://<api>` (WebSocket). |
 | `VITE_SHOW_DEMO_ACCOUNTS` | Web | (tùy chọn) `true` = hiện khối "Tài khoản demo" + mật khẩu chung ở trang đăng nhập và trang tài liệu. Chỉ bật cho staging/demo; production để trống (bản build không chứa mật khẩu demo). |
 | `VITE_FEATURE_REPOS` | Web | (tùy chọn) `1` = bật lại mục Kho mã (GitHub/GitLab) + khối "Liên kết code" trên công việc. Mặc định **ẩn** (hoãn tới đợt sau). Nhúng lúc build. |
 
 Chi tiết đầy đủ: [`.env.example`](../.env.example).
+
+## Lưu tệp trên S3/MinIO
+
+Mặc định tệp (đính kèm, ảnh đại diện, tệp phân tích import Jira, cờ hệ thống `system-settings.json`) nằm trên đĩa ở `STORAGE_LOCAL_DIR`. Đặt `STORAGE_DRIVER=s3` để lưu trên S3/MinIO. Tệp vẫn tải về **qua API** (giữ nguyên kiểm quyền; không dùng đường dẫn presigned công khai) và khoá object giống hệt đường dẫn local (`{workspaceId}/{id}-{tên}`, `avatars/…`, `imports/…`, `system-settings.json`).
+
+**Thứ tự triển khai khi chuyển một hệ thống đang chạy từ local sang S3**
+
+1. **Tạo bucket RIÊNG** cho Tirapro trên MinIO/S3 (vd `tirapro`) và một tài khoản/access key chỉ có quyền trên bucket đó (`s3:GetObject`, `PutObject`, `DeleteObject`, `ListBucket`, `GetBucketLocation`). **Ứng dụng không tự tạo bucket.** Ví dụ MinIO: `mc mb company/tirapro`.
+2. Đặt biến môi trường của API: `S3_ENDPOINT` (URL **API S3**, dạng `http://<host>:<cổng API S3>`; `http://` được phép), `S3_BUCKET`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`, tuỳ chọn `S3_REGION` (mặc định `us-east-1`), `S3_FORCE_PATH_STYLE` (mặc định `true`, đúng cho MinIO). MinIO tách hai cổng (API S3 và trang quản trị) và **cổng nào là cổng nào tuỳ cài đặt** (MinIO công ty có API ở 9001, 9000 là console — ngược với mặc định của MinIO): không chắc thì **thử HeadBucket để xác định cổng API** (cổng sai trả lỗi kết nối/403/trang HTML). **Chưa** đổi `STORAGE_DRIVER` ở bước này.
+3. **Cắt chuyển theo ĐÚNG thứ tự này**:
+   1. **Dừng API** (hoặc bật bảo trì) để không còn ai ghi tệp/cờ mới.
+   2. **Chép tệp** (từ máy/container đọc được `STORAGE_LOCAL_DIR`, kết nối được DB + MinIO; cần `pnpm --filter @tirapro/api build` trước, hoặc dùng image). Chạy `--dry-run` xem trước, rồi chạy thật; có thể chạy trước vài lần khi API còn chạy để giảm khối lượng, **nhưng lần cuối phải chạy khi API đã dừng**:
+
+      ```bash
+      pnpm --filter @tirapro/api run storage:migrate-local-to-s3 -- --dry-run   # chỉ báo cáo
+      pnpm --filter @tirapro/api run storage:migrate-local-to-s3                # chép thật
+      # Docker: docker run --rm --env-file .env -v <thư-mục-uploads>:/app/uploads <image> node scripts/storage-migrate-local-to-s3.mjs
+      ```
+
+      Script đọc mọi khoá DB đang tham chiếu (đính kèm, ảnh đại diện người dùng/không gian/dự án) + `system-settings.json`, **idempotent**: tệp bất biến bỏ qua nếu S3 đã có cùng kích thước; `system-settings.json` so theo **nội dung (sha256)**. **Không bao giờ ghi đè object S3 mới hơn bản local mà khác nội dung** (báo "xung đột", thoát mã 2; chắc chắn muốn đè mới dùng `-- --force`). Không xoá tệp local, không tạo bucket. Kết thúc báo số đã chép / bỏ qua / thiếu trên đĩa / xung đột / lỗi (kèm nguyên nhân từng khoá lỗi); mã 2 nếu còn lỗi hoặc xung đột (chạy lại để thử lại), mã 1 nếu cấu hình sai hoặc không tới được bucket. Khoá "thiếu trên đĩa" là tệp DB có tham chiếu nhưng đã mất từ trước (không do script). Script cảnh báo nếu môi trường của nó đang đặt `STORAGE_DRIVER=s3`.
+   3. Đổi `STORAGE_DRIVER=s3`.
+   4. Khởi động API.
+4. **Kiểm HeadBucket**: log khởi động có dòng `S3 sẵn sàng: bucket "…" truy cập được` (logger `Storage`). Chính sách khi HeadBucket lỗi (`STORAGE_STARTUP_STRICT`, mặc định **bật ở production**, tắt ở môi trường khác):
+   - **Lỗi cấu hình dứt khoát** (bucket không tồn tại, 403/AccessDenied, sai access key/secret): ở chế độ chặt **API dừng ngay** với thông báo tiếng Việt nêu nguyên nhân (cổng API sai, quên tạo bucket, sai khoá…). Không chặt (`STORAGE_STARTUP_STRICT=false`, chỉ để chữa cháy): API lên nhưng upload/tải tệp lỗi, log `Kho tệp S3 KHÔNG dùng được`.
+   - **Lỗi mạng/timeout** (MinIO tạm tắt, mạng chập chờn): API **vẫn khởi động**, log lỗi, thử lại HeadBucket mỗi **30 giây** và log khi kho phục hồi; cờ hệ thống tự đọc lại (backoff 2s → 30s), trong lúc chưa đọc được cờ thì đăng ký công khai tạm đóng và **không lưu được** cờ mới (tránh ghi đè cờ thật).
+   - Khi kho khởi động ổn, API thăm dò ghi có điều kiện (`If-None-Match: *`) một lần; nếu máy chủ S3 bỏ qua header sẽ log lỗi rõ (chống chạy trùng import Jira vẫn được bảo vệ bởi claim ở DB).
+   - Console quản trị → Tổng quan, đèn "Lưu trữ" hiện `s3 · <bucket>` và đỏ khi HeadBucket lỗi (kết quả được nhớ ~30 giây); Cấu hình hiện driver + bucket (không bao giờ có khoá).
+5. Tải thử một đính kèm và một ảnh đại diện cũ trên giao diện; khi chắc chắn, giữ thư mục local làm bản lưu thêm một thời gian rồi mới xoá tay.
+6. **(Tuỳ chọn) Sửa tên tệp tiếng Việt đã lưu méo** — bản trước đợt này lưu tên "báo cáo" thành "bÃ¡o cÃ¡o" (multer giải mã latin1). Từ giờ tên mới được lưu đúng. Muốn sửa các dòng cũ (chỉ đổi cột hiển thị `fileName`, không đụng tệp): `pnpm --filter @tirapro/api run attachments:fix-filenames -- --dry-run` rồi chạy không `--dry-run`. Chỉ đổi tên giải mã sạch được; idempotent.
+
+**Hành vi cần biết**
+
+- Upload khi S3 không tới được/quá hạn (client: timeout 15 giây, thử tối đa 2 lần) → lỗi 422 "Không lưu được tệp, thử lại"; chi tiết kỹ thuật chỉ vào log. Xoá đính kèm/ảnh mà xoá object lỗi → chỉ log cảnh báo, thao tác của người dùng vẫn thành công (có thể còn object mồ côi, dọn tay).
+- Phiên phân tích import Jira (`imports/`, giữ tối đa 1 giờ) cũng nằm trong bucket. Chống chạy trùng ("Chạy" hai lần/song song) dựa vào **DB** (khoá advisory Postgres + kiểm `ImportJob` đã có `analyzeId`, trong một transaction, không cần migration), nên không phụ thuộc phiên bản máy chủ S3; dấu `.claimed` ghi có điều kiện chỉ là lớp phụ. Bấm lại/thử lại nhận đúng job cũ.
+- Giới hạn dung lượng upload được cắt ngay ở multer theo `MAX_FILE_SIZE_MB` (ảnh đại diện 5MB) để tệp lớn không đệm hết vào RAM; **đặt thêm `client_max_body_size` ở reverse proxy** (nginx) lớn hơn `MAX_FILE_SIZE_MB` một chút.
+- Tổng dung lượng đính kèm trên console lấy từ DB (không liệt kê bucket).
+- Test tích hợp với MinIO thật (opt-in): xem đầu `apps/api/src/common/storage/s3-storage.int-spec.ts`.
 
 ## Checklist triển khai / nâng cấp
 

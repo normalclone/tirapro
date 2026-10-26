@@ -80,7 +80,11 @@ export function AdminOverviewPage() {
               <StatusPill
                 tone={data.degrade.storage ? 'ok' : 'down'}
                 label="Lưu trữ"
-                note={data.degrade.storageDriver}
+                note={
+                  data.degrade.storageBucket
+                    ? `${data.degrade.storageDriver} · ${data.degrade.storageBucket}`
+                    : data.degrade.storageDriver
+                }
               />
             </div>
           </section>

@@ -1,9 +1,6 @@
-import { Injectable, Logger, type OnApplicationBootstrap } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import { Inject, Injectable, Logger, type OnApplicationBootstrap } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { createId } from '@paralleldrive/cuid2';
-import { promises as fs } from 'node:fs';
-import * as path from 'node:path';
 import type { Prisma } from '@prisma/client';
 import {
   JIRA_CREATE,
@@ -19,7 +16,17 @@ import {
   BusinessRuleException,
   NotFoundAppException,
 } from '../../../common/exceptions/app.exception';
+import {
+  ObjectExistsError,
+  OBJECT_STORAGE,
+  StorageUnavailableError,
+  causeMessage,
+  putOrThrowBusiness,
+  streamToBuffer,
+  type ObjectStorage,
+} from '../../../common/storage/object-storage';
 import { ProjectsService } from '../../projects/projects.service';
+import { claimImportJob, findImportJobByAnalyzeId } from './jira-claim';
 import { ImportService, type PreparedItem } from '../import.service';
 import {
   analyzeJira,
@@ -137,7 +144,6 @@ const EXPIRED_MESSAGE =
 @Injectable()
 export class JiraImportService implements OnApplicationBootstrap {
   private readonly logger = new Logger(JiraImportService.name);
-  private readonly localDir: string;
   /** Các job đang chạy trong process (để test/tắt máy chờ được). */
   private readonly running = new Map<string, Promise<void>>();
 
@@ -145,10 +151,8 @@ export class JiraImportService implements OnApplicationBootstrap {
     private readonly prisma: PrismaService,
     private readonly importService: ImportService,
     private readonly projects: ProjectsService,
-    config: ConfigService,
-  ) {
-    this.localDir = config.get<string>('storage.localDir') ?? './uploads';
-  }
+    @Inject(OBJECT_STORAGE) private readonly storage: ObjectStorage,
+  ) {}
 
   // ---------------------------------------------------------------- khôi phục job kẹt
 
@@ -235,11 +239,17 @@ export class JiraImportService implements OnApplicationBootstrap {
 
     await this.purgeExpired();
     const analyzeId = createId();
-    const dir = this.dir();
-    await fs.mkdir(dir, { recursive: true });
-    await fs.writeFile(path.join(dir, `${analyzeId}.csv`), file.buffer);
+    await putOrThrowBusiness(this.logger, this.storage, this.key(analyzeId, 'csv'), file.buffer, {
+      contentType: 'text/csv',
+    });
     const meta: AnalyzeMeta = { workspaceId, userId };
-    await fs.writeFile(path.join(dir, `${analyzeId}.json`), JSON.stringify(meta));
+    await putOrThrowBusiness(
+      this.logger,
+      this.storage,
+      this.key(analyzeId, 'json'),
+      Buffer.from(JSON.stringify(meta)),
+      { contentType: 'application/json' },
+    );
 
     return { analyzeId, ...analyzeJira(parsed) };
   }
@@ -298,13 +308,21 @@ export class JiraImportService implements OnApplicationBootstrap {
 
   /**
    * Kiểm tra mapping rồi (nếu không dry-run) tạo ImportJob và chạy nền trong process.
-   * Trả `{ jobId }` ngay; web poll `GET /import/jobs/:id`.
+   * Trả `{ jobId }` ngay; web poll `GET /import/jobs/:id`. Nếu analyzeId đã có job (bấm lại/thử lại) trả lại đúng job đó kèm
+   * `alreadyStarted: true` để client báo "đã chạy — đang theo dõi tiến trình hiện có".
    */
   async run(
     workspaceId: string,
     userId: string,
     input: JiraImportRunInput,
-  ): Promise<{ jobId: string } | JiraDryRunResult> {
+  ): Promise<{ jobId: string; alreadyStarted?: true } | JiraDryRunResult> {
+    // Thử lại sau khi phản hồi đầu bị mất (hoặc bấm lần hai): đã có job cho analyzeId này → trả lại đúng job đó,
+    // kể cả khi tệp phân tích đã được dọn. Dry-run thì không có gì để xem trước nữa.
+    const prior = await findImportJobByAnalyzeId(this.prisma, workspaceId, input.analyzeId);
+    if (prior) {
+      if (input.options.dryRun) throw new BusinessRuleException(ALREADY_RUN_MESSAGE);
+      return { jobId: prior.id, alreadyStarted: true };
+    }
     const parsed = await this.load(workspaceId, input.analyzeId);
     const analysis = analyzeJira(parsed);
 
@@ -372,30 +390,30 @@ export class JiraImportService implements OnApplicationBootstrap {
       };
     }
 
-    // Claim nguyên tử `<id>.json` → `<id>.claimed`: chỉ MỘT request qua được; request song song
-    // hoặc bấm "Chạy" lần hai nhận lỗi thay vì tạo job + issue trùng.
-    await this.claim(input.analyzeId);
+    // Lớp phụ: ghi có điều kiện `<id>.claimed` (không chặn nếu lỗi/mồ côi — DB mới là nguồn sự thật).
+    await this.claimStorage(input.analyzeId);
+    // Lớp chính: claim ở DB (advisory lock + tìm/tạo ImportJob trong một transaction). Request song song hoặc
+    // bấm "Chạy" lần hai nhận lại CÙNG job thay vì tạo job + issue trùng.
     let job: { id: string };
     try {
-      job = await this.prisma.importJob.create({
-        data: {
-          workspaceId,
-          source: 'JIRA_CLOUD',
-          status: 'RUNNING',
-          createdById: userId,
-          startedAt: new Date(),
-          totalItems: parsed.issues.length,
-          config: {
-            format: JIRA_JOB_FORMAT,
-            analyzeId: input.analyzeId,
-            projectId: input.projectId ?? null,
-            newProject: input.newProject ?? null,
-            mapping: input.mapping,
-            options: input.options,
-          },
+      const claim = await claimImportJob(this.prisma, workspaceId, input.analyzeId, {
+        workspaceId,
+        source: 'JIRA_CLOUD',
+        status: 'RUNNING',
+        createdById: userId,
+        startedAt: new Date(),
+        totalItems: parsed.issues.length,
+        config: {
+          format: JIRA_JOB_FORMAT,
+          analyzeId: input.analyzeId,
+          projectId: input.projectId ?? null,
+          newProject: input.newProject ?? null,
+          mapping: input.mapping,
+          options: input.options,
         },
-        select: { id: true },
       });
+      if (!claim.created) return { jobId: claim.id, alreadyStarted: true }; // request khác đã tạo job
+      job = { id: claim.id };
     } catch (err) {
       await this.unclaim(input.analyzeId); // chưa có job nào → cho người dùng thử lại
       throw err;
@@ -1116,86 +1134,88 @@ export class JiraImportService implements OnApplicationBootstrap {
 
   // ---------------------------------------------------------------- tệp phân tích
 
-  private dir(): string {
-    return path.join(this.localDir, 'imports');
+  /** Khoá lưu trữ của tệp phân tích (`imports/<id>.csv|json|claimed`) — cùng bố cục thư mục cũ. */
+  private key(analyzeId: string, ext: 'csv' | 'json' | 'claimed'): string {
+    return `imports/${analyzeId}.${ext}`;
   }
 
   /** Đọc + parse tệp đã analyze; kiểm tra thuộc workspace và chưa hết hạn. */
   private async load(workspaceId: string, analyzeId: string): Promise<JiraParseResult> {
     if (!jiraAnalyzeIdSchema.safeParse(analyzeId).success)
       throw new BusinessRuleException(EXPIRED_MESSAGE);
-    const csvPath = path.join(this.dir(), `${analyzeId}.csv`);
     try {
-      const [stat, metaRaw] = await Promise.all([
-        fs.stat(csvPath),
-        fs.readFile(path.join(this.dir(), `${analyzeId}.json`), 'utf8'),
-      ]);
-      const meta = JSON.parse(metaRaw) as AnalyzeMeta;
+      // stat TRƯỚC khi mở luồng json: thiếu csv (hết hạn/đã dọn) thì không mở luồng nào để bỏ rơi (giữ socket S3).
+      const stat = await this.storage.stat(this.key(analyzeId, 'csv'));
+      if (!stat) throw new Error('không có tệp');
+      const metaObj = await this.storage.get(this.key(analyzeId, 'json'));
+      const meta = JSON.parse(
+        (await streamToBuffer(metaObj.stream)).toString('utf8'),
+      ) as AnalyzeMeta;
       if (meta.workspaceId !== workspaceId) throw new Error('khác không gian làm việc');
-      if (Date.now() - stat.mtimeMs > ANALYZE_TTL_MS) {
+      if (Date.now() - stat.lastModified.getTime() > ANALYZE_TTL_MS) {
         await this.removeFiles(analyzeId);
         throw new Error('hết hạn');
       }
-      return await parseJiraCsvAsync(await fs.readFile(csvPath));
-    } catch {
-      // Có `.claimed` ⇒ phiên này đã/đang được import, khác với hết hạn/không tồn tại.
-      const claimed = await fs
-        .access(path.join(this.dir(), `${analyzeId}.claimed`))
-        .then(() => true)
-        .catch(() => false);
-      throw new BusinessRuleException(claimed ? ALREADY_RUN_MESSAGE : EXPIRED_MESSAGE);
-    }
-  }
-
-  /** Claim nguyên tử: chỉ MỘT request đổi tên được `<id>.json` → `<id>.claimed` (ENOENT ⇒ đã bị claim). */
-  private async claim(analyzeId: string): Promise<void> {
-    try {
-      await fs.rename(
-        path.join(this.dir(), `${analyzeId}.json`),
-        path.join(this.dir(), `${analyzeId}.claimed`),
-      );
+      const csv = await this.storage.get(this.key(analyzeId, 'csv'));
+      return await parseJiraCsvAsync(await streamToBuffer(csv.stream));
     } catch (err) {
-      // ENOENT = tệp `.json` không còn ⇒ request khác đã claim. Lỗi khác (EACCES, EIO…) là sự cố thật.
-      if ((err as NodeJS.ErrnoException).code === 'ENOENT')
-        throw new BusinessRuleException(ALREADY_RUN_MESSAGE);
-      throw err;
+      if (err instanceof StorageUnavailableError) {
+        this.logger.error(`Đọc tệp phân tích ${analyzeId} thất bại: ${causeMessage(err)}`);
+        throw new BusinessRuleException('Không đọc được tệp phân tích, thử lại');
+      }
+      throw new BusinessRuleException(EXPIRED_MESSAGE);
     }
   }
 
-  /** Nhả claim khi chưa tạo được job để người dùng bấm "Chạy" lại. */
+  /**
+   * Lớp phụ chống chạy trùng: ghi có điều kiện `<id>.claimed` (local `wx`, S3 `If-None-Match: *`). Chỉ để dấu vết/phát hiện sớm:
+   * đã tồn tại hay lỗi hạ tầng đều KHÔNG chặn — claim ở DB (`claimImportJob`) mới là nguồn sự thật, nên claim mồ côi
+   * (ghi được nhưng phản hồi mất) không bao giờ làm kẹt người dùng.
+   */
+  private async claimStorage(analyzeId: string): Promise<void> {
+    try {
+      await this.storage.put(this.key(analyzeId, 'claimed'), Buffer.from('{}'), {
+        ifNotExists: true,
+      });
+    } catch (err) {
+      if (err instanceof ObjectExistsError) {
+        this.logger.warn(
+          `Đã có dấu claim cho phiên ${analyzeId} (request khác đang chạy hoặc claim mồ côi); tiếp tục theo claim ở DB`,
+        );
+      } else {
+        this.logger.warn(`Không ghi được dấu claim cho phiên ${analyzeId}: ${causeMessage(err)}`);
+      }
+    }
+  }
+
+  /** Nhả dấu claim khi chưa tạo được job. Lỗi chỉ log: claim ở DB không bị ảnh hưởng nên không có gì kẹt. */
   private async unclaim(analyzeId: string): Promise<void> {
-    await fs
-      .rename(
-        path.join(this.dir(), `${analyzeId}.claimed`),
-        path.join(this.dir(), `${analyzeId}.json`),
-      )
-      .catch(() => undefined);
+    try {
+      await this.storage.delete(this.key(analyzeId, 'claimed'));
+    } catch (err) {
+      this.logger.warn(`Không nhả được dấu claim của phiên ${analyzeId}: ${causeMessage(err)}`);
+    }
   }
 
   /** Xoá tệp phân tích quá 1 giờ (gọi ở mỗi lần analyze — không cần cron). */
   private async purgeExpired(): Promise<void> {
-    let names: string[];
+    let objects: Awaited<ReturnType<ObjectStorage['list']>>;
     try {
-      names = await fs.readdir(this.dir());
+      objects = await this.storage.list('imports/');
     } catch {
-      return; // chưa có thư mục
+      return; // chưa có thư mục / kho lưu trữ tạm không dùng được — bỏ qua, lần sau dọn
     }
     const now = Date.now();
-    for (const name of names) {
-      const full = path.join(this.dir(), name);
-      try {
-        const stat = await fs.stat(full);
-        if (now - stat.mtimeMs > ANALYZE_TTL_MS) await fs.unlink(full);
-      } catch {
-        // tệp biến mất giữa chừng — bỏ qua
-      }
+    for (const o of objects) {
+      if (now - o.lastModified.getTime() > ANALYZE_TTL_MS)
+        await this.storage.delete(o.key).catch(() => undefined);
     }
   }
 
   private async removeFiles(analyzeId: string): Promise<void> {
-    if (!jiraAnalyzeIdSchema.safeParse(analyzeId).success) return; // không bao giờ unlink theo id lạ (path traversal)
-    for (const ext of ['csv', 'json', 'claimed']) {
-      await fs.unlink(path.join(this.dir(), `${analyzeId}.${ext}`)).catch(() => undefined);
+    if (!jiraAnalyzeIdSchema.safeParse(analyzeId).success) return; // không bao giờ xoá theo id lạ (path traversal)
+    for (const ext of ['csv', 'json', 'claimed'] as const) {
+      await this.storage.delete(this.key(analyzeId, ext)).catch(() => undefined);
     }
   }
 
