@@ -46,7 +46,12 @@ export function useJiraTargets(projectId: string) {
 export function useJiraRun() {
   return useMutation({
     mutationFn: async (body: JiraImportRunInput) =>
-      (await api.post<{ jobId: string } | JiraDryRunResult>('/import/jira/run', body)).data,
+      (
+        await api.post<{ jobId: string; alreadyStarted?: boolean } | JiraDryRunResult>(
+          '/import/jira/run',
+          body,
+        )
+      ).data,
   });
 }
 

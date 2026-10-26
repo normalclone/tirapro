@@ -159,6 +159,43 @@ describe('S3Storage — phân loại lỗi HeadBucket (kind) và các lỗi khá
     );
   });
 
+  it('N1: có phản hồi HTTP nhưng không phải lỗi S3 quen thuộc (name Unknown + 200/400, vd cổng console trả HTML) → config, gợi ý sai cổng', async () => {
+    for (const st of [200, 400, 301, 401, 418]) {
+      const r = await kindOf(awsError('Unknown', st));
+      expect(r.kind, `status ${st}`).toBe('config');
+      expect(r.detail).toMatch(/sai cổng S3 API/);
+      expect(r.detail).toMatch(/9000 là console, 9001 là API/);
+      expect(r.detail).toMatch(/không phải S3/);
+    }
+  });
+
+  it('N1: chỉ coi là network khi KHÔNG có phản hồi HTTP, hoặc 5xx/429/408', async () => {
+    for (const st of [500, 502, 503, 504, 429, 408]) {
+      expect((await kindOf(awsError('Whatever', st))).kind, `status ${st}`).toBe('network');
+    }
+    const noResp = await kindOf(
+      Object.assign(new Error('getaddrinfo ENOTFOUND h'), { name: 'Error' }),
+    );
+    expect(noResp.kind).toBe('network');
+    expect((await kindOf(Object.assign(new Error('x'), { name: 'TimeoutError' }))).kind).toBe(
+      'network',
+    );
+  });
+
+  it('N4: RequestTimeTooSkewed (403) → config với thông báo LỆCH GIỜ riêng, không nói "sai khoá"', async () => {
+    const r = await kindOf(awsError('RequestTimeTooSkewed', 403));
+    expect(r.kind).toBe('config');
+    expect(r.detail).toMatch(/Đồng hồ máy chủ lệch với S3/);
+    expect(r.detail).toMatch(/NTP/);
+    expect(r.detail).not.toMatch(/sai khoá/);
+  });
+
+  it('N4: 403 chung (HEAD không có body nên không thấy mã lỗi) vẫn gợi ý kiểm tra lệch giờ NTP', async () => {
+    const r = await kindOf(awsError('Forbidden', 403));
+    expect(r.kind).toBe('config');
+    expect(r.detail).toMatch(/NTP/);
+  });
+
   it('ok → không có kind', async () => {
     expect(await mk().storage.check()).toEqual({ ok: true });
   });

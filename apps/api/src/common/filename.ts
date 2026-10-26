@@ -10,6 +10,14 @@ export function fixLatin1Utf8(name: string): string {
   return decoded !== name && !decoded.includes('\uFFFD') ? decoded : name;
 }
 
+/** Thay surrogate lẻ (UTF-16 không hợp lệ) bằng U+FFFD. */
+function replaceLoneSurrogates(s: string): string {
+  return s.replace(
+    /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g,
+    '\uFFFD',
+  );
+}
+
 /** Bỏ dấu tiếng Việt để làm tên dự phòng ASCII. */
 function asciiFold(s: string): string {
   return s
@@ -32,7 +40,8 @@ function encodeRfc5987(s: string): string {
  * Bản dự phòng chỉ gồm ASCII in được, không có `"`, `\`, `;`, `/`, `%` hay ký tự điều khiển (chống chèn header);
  * bản `filename*` được percent-encode hoàn toàn nên không thoát được khỏi giá trị.
  */
-export function contentDispositionAttachment(fileName: string): string {
+export function contentDispositionAttachment(rawName: string): string {
+  const fileName = replaceLoneSurrogates(rawName); // encodeURIComponent ném URIError với surrogate lẻ
   const fallback =
     asciiFold(fileName)
       .replace(/[^\x20-\x7e]/g, '_')

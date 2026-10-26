@@ -308,19 +308,20 @@ export class JiraImportService implements OnApplicationBootstrap {
 
   /**
    * Kiểm tra mapping rồi (nếu không dry-run) tạo ImportJob và chạy nền trong process.
-   * Trả `{ jobId }` ngay; web poll `GET /import/jobs/:id`.
+   * Trả `{ jobId }` ngay; web poll `GET /import/jobs/:id`. Nếu analyzeId đã có job (bấm lại/thử lại) trả lại đúng job đó kèm
+   * `alreadyStarted: true` để client báo "đã chạy — đang theo dõi tiến trình hiện có".
    */
   async run(
     workspaceId: string,
     userId: string,
     input: JiraImportRunInput,
-  ): Promise<{ jobId: string } | JiraDryRunResult> {
+  ): Promise<{ jobId: string; alreadyStarted?: true } | JiraDryRunResult> {
     // Thử lại sau khi phản hồi đầu bị mất (hoặc bấm lần hai): đã có job cho analyzeId này → trả lại đúng job đó,
     // kể cả khi tệp phân tích đã được dọn. Dry-run thì không có gì để xem trước nữa.
     const prior = await findImportJobByAnalyzeId(this.prisma, workspaceId, input.analyzeId);
     if (prior) {
       if (input.options.dryRun) throw new BusinessRuleException(ALREADY_RUN_MESSAGE);
-      return { jobId: prior.id };
+      return { jobId: prior.id, alreadyStarted: true };
     }
     const parsed = await this.load(workspaceId, input.analyzeId);
     const analysis = analyzeJira(parsed);
@@ -411,7 +412,7 @@ export class JiraImportService implements OnApplicationBootstrap {
           options: input.options,
         },
       });
-      if (!claim.created) return { jobId: claim.id }; // request khác đã tạo job
+      if (!claim.created) return { jobId: claim.id, alreadyStarted: true }; // request khác đã tạo job
       job = { id: claim.id };
     } catch (err) {
       await this.unclaim(input.analyzeId); // chưa có job nào → cho người dùng thử lại

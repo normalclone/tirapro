@@ -595,7 +595,10 @@ function MappingStep({
     run.mutate(body, {
       onSuccess: (res) => {
         if ('dryRun' in res) setDryRun(res);
-        else onStarted(res.jobId, [...new Set(Object.values(body.mapping.pendingEmails))]);
+        else {
+          if (res.alreadyStarted) toast.info('Đã chạy — đang theo dõi tiến trình hiện có.');
+          onStarted(res.jobId, [...new Set(Object.values(body.mapping.pendingEmails))]);
+        }
       },
       onError: (err) => toast.error(apiErrorMessage(err)),
     });

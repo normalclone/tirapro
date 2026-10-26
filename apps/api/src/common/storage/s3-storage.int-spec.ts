@@ -70,6 +70,7 @@ describe.skipIf(!ENABLED)('S3Storage ↔ MinIO thật (cục bộ)', () => {
     const ghost = `tirapro-it-ghost-${randomBytes(3).toString('hex')}`;
     const r = await new S3Storage(cfg(ghost)).check();
     expect(r.ok).toBe(false);
+    expect(r.kind).toBe('config');
     expect(r.detail).toContain(ghost);
     // chắc chắn không bị tạo
     expect((await new S3Storage(cfg(ghost)).check()).ok).toBe(false);
@@ -89,6 +90,20 @@ describe.skipIf(!ENABLED)('S3Storage ↔ MinIO thật (cục bộ)', () => {
     const got = await s.get('w1/big-báo cáo (1).bin');
     expect(got.size).toBe(body.length);
     expect((await readAll(got.stream)).equals(body)).toBe(true);
+  });
+
+  it('N1: nhầm sang cổng CONSOLE của MinIO (trả HTML) → check() là config + gợi ý sai cổng (không phải network)', async (ctx) => {
+    const consoleUrl = process.env.S3_IT_CONSOLE_ENDPOINT ?? 'http://127.0.0.1:9101';
+    assertLocalS3Endpoint(consoleUrl);
+    const up = await fetch(consoleUrl).then(
+      (r) => r.ok,
+      () => false,
+    );
+    if (!up) return ctx.skip(); // máy test không bật console MinIO
+    const r = await new S3Storage(cfg(BUCKET, consoleUrl)).check();
+    expect(r.ok).toBe(false);
+    expect(r.kind).toBe('config');
+    expect(r.detail).toMatch(/sai cổng S3 API/);
   });
 
   it('endpoint không tới được → StorageUnavailableError nhanh, thông báo chung', async () => {

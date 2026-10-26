@@ -73,24 +73,20 @@ describe('StorageHealthService — khởi động', () => {
     h.onModuleDestroy();
   });
 
-  it('strict + lỗi mạng: KHÔNG ném, khởi động, thử lại HeadBucket mỗi 30 giây, báo khi phục hồi', async () => {
+  it('strict + lỗi mạng: KHÔNG ném, khởi động, thử lại HeadBucket mỗi 30 giây, log khi phục hồi', async () => {
     const s = fakeS3([
       { ok: false, kind: 'network', detail: 'không kết nối được' },
       { ok: false, kind: 'network', detail: 'không kết nối được' },
       { ok: true },
     ]);
     const h = new StorageHealthService(s, cfg(true));
-    const recovered = vi.fn();
-    h.onRecovered(recovered);
     await h.onModuleInit();
     expect(s.check).toHaveBeenCalledTimes(1);
-    expect(recovered).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(30_000);
     expect(s.check).toHaveBeenCalledTimes(2);
-    expect(recovered).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(30_000);
     expect(s.check).toHaveBeenCalledTimes(3);
-    expect(recovered).toHaveBeenCalledTimes(1);
+    expect(log.mock.calls.some((c) => String(c[0]).includes('phục hồi'))).toBe(true);
     expect(vi.getTimerCount()).toBe(0); // hết lỗi → dừng hẹn giờ
     await vi.advanceTimersByTimeAsync(120_000);
     expect(s.check).toHaveBeenCalledTimes(3);

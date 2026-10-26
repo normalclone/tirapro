@@ -179,7 +179,11 @@ export class S3Storage implements ObjectStorage {
     }
   }
 
-  /** HeadBucket — KHÔNG bao giờ tạo bucket (tạo bucket là bước triển khai thủ công). */
+  /**
+   * HeadBucket — KHÔNG bao giờ tạo bucket (tạo bucket là bước triển khai thủ công).
+   * Phân loại lỗi: `network` CHỈ khi không có phản hồi HTTP (từ chối kết nối, DNS, timeout) hoặc 5xx/429/408 (có thể tự hết);
+   * mọi lỗi khác đã nhận được phản hồi HTTP (404, 403, 400, 200 HTML của cổng console…) là `config` — không tự hết.
+   */
   async check(): Promise<StorageCheck> {
     try {
       await this.send(new HeadBucketCommand({ Bucket: this.bucket }));
@@ -187,6 +191,12 @@ export class S3Storage implements ObjectStorage {
     } catch (err) {
       const st = status(err);
       const name = errName(err);
+      if (name === 'RequestTimeTooSkewed' || name === 'RequestExpired')
+        return {
+          ok: false,
+          kind: 'config',
+          detail: `Đồng hồ máy chủ lệch với S3 (${name}) — kiểm tra NTP/đồng bộ giờ giữa máy chạy API và máy chủ S3 rồi khởi động lại.`,
+        };
       if (st === 404 || name === 'NotFound' || name === 'NoSuchBucket')
         return {
           ok: false,
@@ -200,12 +210,19 @@ export class S3Storage implements ObjectStorage {
         return {
           ok: false,
           kind: 'config',
-          detail: `Không đủ quyền truy cập bucket "${this.bucket}" hoặc sai khoá — kiểm tra S3_ACCESS_KEY/S3_SECRET_KEY và policy của tài khoản.`,
+          detail: `Không đủ quyền truy cập bucket "${this.bucket}" hoặc sai khoá — kiểm tra S3_ACCESS_KEY/S3_SECRET_KEY và policy của tài khoản. Nếu chắc khoá đúng, kiểm tra đồng hồ máy chủ có lệch với S3 không (NTP).`,
+        };
+      const transient = st === undefined || st >= 500 || st === 429 || st === 408;
+      if (transient)
+        return {
+          ok: false,
+          kind: 'network',
+          detail: `Không kết nối được tới S3 endpoint (${name || 'lỗi mạng'}) — kiểm tra S3_ENDPOINT (thử HeadBucket để xác định cổng API; MinIO thường tách cổng API S3 và cổng trang quản trị), mạng và tường lửa.`,
         };
       return {
         ok: false,
-        kind: 'network',
-        detail: `Không kết nối được tới S3 endpoint (${name || 'lỗi mạng'}) — kiểm tra S3_ENDPOINT (thử HeadBucket để xác định cổng API; MinIO thường tách cổng API S3 và cổng trang quản trị), mạng và tường lửa.`,
+        kind: 'config',
+        detail: `S3 endpoint trả phản hồi HTTP ${st} không phải của S3 (${name || 'không rõ lỗi'}). Có thể sai cổng S3 API (vd 9000 là console, 9001 là API) hoặc endpoint không phải S3 — kiểm tra S3_ENDPOINT (thử HeadBucket để xác định cổng API).`,
       };
     }
   }

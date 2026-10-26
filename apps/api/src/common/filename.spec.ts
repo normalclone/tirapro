@@ -73,4 +73,17 @@ describe('contentDispositionAttachment — RFC 6266/5987', () => {
       /filename\*=UTF-8''(\S*)$/.exec(contentDispositionAttachment("a'b(c)*.txt"))?.[1] ?? '';
     expect(ext).toBe('a%27b%28c%29%2A.txt');
   });
+
+  it('N3: surrogate lẻ (tên tệp lỗi) KHÔNG làm ném URIError; thay bằng U+FFFD rồi mã hoá', () => {
+    for (const bad of ['a\uD800b.txt', 'a\uDC00b.txt', '\uD83D', 'x\uD83Dy\uDE00z']) {
+      expect(() => contentDispositionAttachment(bad)).not.toThrow();
+    }
+    const h = contentDispositionAttachment('a\uD800b.txt');
+    expect(h).toContain("filename*=UTF-8''a%EF%BF%BDb.txt");
+    expect(h).toContain('filename="a_b.txt"');
+  });
+
+  it('N3: cặp surrogate hợp lệ (emoji) vẫn được mã hoá đúng', () => {
+    expect(contentDispositionAttachment('a😀.txt')).toContain("filename*=UTF-8''a%F0%9F%98%80.txt");
+  });
 });

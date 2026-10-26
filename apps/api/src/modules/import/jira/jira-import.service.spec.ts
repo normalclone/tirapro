@@ -751,11 +751,11 @@ describe('JiraImportService.run — chống chạy trùng theo analyzeId', () =>
       service.run('w1', 'u1', input),
     ]);
     expect(results.every((r) => r.status === 'fulfilled')).toBe(true);
-    expect(results.map((r) => (r as PromiseFulfilledResult<unknown>).value)).toEqual([
-      { jobId: 'job1' },
-      { jobId: 'job1' },
-      { jobId: 'job1' },
-    ]);
+    const values = results.map((r) => (r as PromiseFulfilledResult<Record<string, unknown>>).value);
+    expect(values.every((v) => v.jobId === 'job1')).toBe(true);
+    // đúng MỘT request tạo job; các request còn lại báo đã chạy sẵn (client hiển thị "đang theo dõi tiến trình hiện có")
+    expect(values.filter((v) => v.alreadyStarted === true)).toHaveLength(2);
+    expect(values.filter((v) => v.alreadyStarted === undefined)).toHaveLength(1);
     expect(prisma.importJob.create).toHaveBeenCalledTimes(1);
     await service.waitForJob('job1');
   });
@@ -777,8 +777,11 @@ describe('JiraImportService.run — chống chạy trùng theo analyzeId', () =>
       return { created: 0, labels: 0, comments: 0, errors: [], duplicates: [] };
     });
     const first = await c.service.run('w1', 'u1', c.input);
-    expect(first).toEqual({ jobId: 'job1' });
-    await expect(c.service.run('w1', 'u1', c.input)).resolves.toEqual({ jobId: 'job1' });
+    expect(first).toEqual({ jobId: 'job1' }); // lần tạo job: KHÔNG có cờ alreadyStarted
+    await expect(c.service.run('w1', 'u1', c.input)).resolves.toEqual({
+      jobId: 'job1',
+      alreadyStarted: true,
+    });
     expect(c.prisma.importJob.create).toHaveBeenCalledTimes(1);
     release();
     await c.service.waitForJob('job1');
@@ -792,7 +795,10 @@ describe('JiraImportService.run — chống chạy trùng theo analyzeId', () =>
     await c.service.waitForJob('job1');
     expect(existsSync(join(importsDir(c.localDir), `${c.analyzeId}.csv`))).toBe(false);
     const chunkCalls = c.importService.createIssuesInChunks.mock.calls.length;
-    await expect(c.service.run('w1', 'u1', c.input)).resolves.toEqual({ jobId: 'job1' });
+    await expect(c.service.run('w1', 'u1', c.input)).resolves.toEqual({
+      jobId: 'job1',
+      alreadyStarted: true,
+    });
     expect(c.prisma.importJob.create).toHaveBeenCalledTimes(1);
     expect(c.importService.createIssuesInChunks.mock.calls.length).toBe(chunkCalls); // không tạo issue lần hai
   });
@@ -807,7 +813,10 @@ describe('JiraImportService.run — chống chạy trùng theo analyzeId', () =>
       join(importsDir(c.localDir), `${c.analyzeId}.json`),
       JSON.stringify({ workspaceId: 'w1', userId: 'u1' }),
     );
-    await expect(c.service.run('w1', 'u1', c.input)).resolves.toEqual(first);
+    await expect(c.service.run('w1', 'u1', c.input)).resolves.toEqual({
+      ...first,
+      alreadyStarted: true,
+    });
     expect(c.prisma.importJob.create).toHaveBeenCalledTimes(1);
   });
 

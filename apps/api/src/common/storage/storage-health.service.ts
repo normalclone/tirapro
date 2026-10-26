@@ -23,7 +23,7 @@ const CACHE_MS = 30_000;
  *
  * - Lỗi CẤU HÌNH dứt khoát (bucket thiếu, 403, khoá sai): `STORAGE_STARTUP_STRICT` (mặc định true ở production) ⇒ NÉM lỗi để
  *   tiến trình dừng ngay với thông báo rõ; không strict ⇒ chỉ log.
- * - Lỗi MẠNG/timeout: luôn cho API khởi động, thử lại HeadBucket mỗi 30 giây, báo khi kho sống lại.
+ * - Lỗi MẠNG/timeout: luôn cho API khởi động, thử lại HeadBucket mỗi 30 giây, log khi kho sống lại (cờ hệ thống tự đọc lại bằng backoff riêng của SystemSettingsService).
  * - Probe ghi có điều kiện (`If-None-Match: *`): máy chủ S3 bỏ qua header ⇒ log lỗi rõ (claim import Jira ở DB vẫn bảo vệ).
  */
 @Injectable()
@@ -31,7 +31,6 @@ export class StorageHealthService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger('Storage');
   private readonly strict: boolean;
   private timer: NodeJS.Timeout | null = null;
-  private readonly listeners: (() => void)[] = [];
   private cache: { at: number; result: StorageCheck } | null = null;
   private lastDetail = '';
 
@@ -84,11 +83,6 @@ export class StorageHealthService implements OnModuleInit, OnModuleDestroy {
     return this.check();
   }
 
-  /** Gọi khi kho từ lỗi trở lại bình thường (sau khởi động). */
-  onRecovered(fn: () => void): void {
-    this.listeners.push(fn);
-  }
-
   private bucketName(): string {
     return (this.storage as { bucket?: string }).bucket ?? '';
   }
@@ -106,13 +100,6 @@ export class StorageHealthService implements OnModuleInit, OnModuleDestroy {
       this.timer = null;
       this.logger.log(`Kho tệp S3 đã phục hồi: bucket "${this.bucketName()}" truy cập được`);
       await this.probeConditionalWrites();
-      for (const fn of this.listeners) {
-        try {
-          fn();
-        } catch (err) {
-          this.logger.warn(`Callback phục hồi lỗi: ${causeMessage(err)}`);
-        }
-      }
     } else if (res.detail && res.detail !== this.lastDetail) {
       this.lastDetail = res.detail;
       this.logger.error(`Kho tệp S3 vẫn lỗi: ${res.detail}`);
