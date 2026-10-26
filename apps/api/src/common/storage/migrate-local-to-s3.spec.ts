@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { MemoryStorage } from './memory-storage.testutil';
 import { StorageUnavailableError } from './object-storage';
 import { avatarKeyFromUrl, collectKeys, migrateObjects } from './migrate-local-to-s3';
@@ -87,6 +87,15 @@ describe('migrateObjects', () => {
     const r = await migrateObjects({ source: src, dest: dst, keys: ['w1/a.txt'], dryRun: false });
     expect(r.copied).toBe(1);
     expect(dst.files.get('w1/a.txt')?.body.toString()).toBe('abcdef');
+  });
+});
+
+describe('migrateObjects — xung đột, nội dung và onItem', () => {
+  let src = new MemoryStorage();
+  let dst = new MemoryStorage();
+  beforeEach(() => {
+    src = new MemoryStorage();
+    dst = new MemoryStorage();
   });
 
   it('I4: đích MỚI hơn nguồn và khác nội dung → KHÔNG ghi đè (conflict), trừ khi --force', async () => {
@@ -186,5 +195,24 @@ describe('migrateObjects', () => {
       dryRun: false,
     });
     expect(r).toMatchObject({ failed: 1, copied: 0 });
+  });
+
+  it('onItem báo từng khoá và hành động (copy/skip/conflict/missing) — để dry-run in khoá đích', async () => {
+    await put(src, 'w1/a.txt', 'abc');
+    await put(src, 'w1/b.txt', 'abc');
+    await put(dst, 'w1/b.txt', 'abc');
+    const seen: [string, string][] = [];
+    await migrateObjects({
+      source: src,
+      dest: dst,
+      keys: ['w1/a.txt', 'w1/b.txt', 'w1/c.txt'],
+      dryRun: true,
+      onItem: (key, action) => seen.push([key, action]),
+    });
+    expect(seen).toEqual([
+      ['w1/a.txt', 'copy'],
+      ['w1/b.txt', 'skip'],
+      ['w1/c.txt', 'missing'],
+    ]);
   });
 });

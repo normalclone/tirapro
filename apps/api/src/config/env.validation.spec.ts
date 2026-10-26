@@ -154,3 +154,21 @@ describe('validateEnv — STORAGE_STARTUP_STRICT', () => {
     }
   });
 });
+
+describe('validateEnv — S3_KEY_PREFIX', () => {
+  it('mặc định rỗng', () => {
+    expect(validateEnv(base).S3_KEY_PREFIX).toBe('');
+  });
+
+  it('chuẩn hoá về dạng kết thúc bằng "/"', () => {
+    expect(validateEnv({ ...base, S3_KEY_PREFIX: 'tirapro' }).S3_KEY_PREFIX).toBe('tirapro/');
+    expect(validateEnv({ ...base, S3_KEY_PREFIX: 'tirapro/' }).S3_KEY_PREFIX).toBe('tirapro/');
+  });
+
+  it.each(['/tirapro', '../x', 'a/../b', 'a\\b', 'tira pro', 'a//b'])(
+    'từ chối %j (không khởi động)',
+    (v) => {
+      expect(() => validateEnv({ ...base, S3_KEY_PREFIX: v })).toThrow(/S3_KEY_PREFIX/);
+    },
+  );
+});

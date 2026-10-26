@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { normalizeKeyPrefix } from '../common/storage/s3-key-prefix';
 
 /** Giá trị mặc định của khoá mã hoá — chỉ để chạy dev, tuyệt đối không dùng ở production. */
 export const DEFAULT_INTEGRATION_ENCRYPTION_KEY = 'dev_integration_encryption_key_change_me_0001';
@@ -45,6 +46,19 @@ const baseEnvSchema = z.object({
   S3_ACCESS_KEY: z.string().optional().default(''),
   S3_SECRET_KEY: z.string().optional().default(''),
   S3_FORCE_PATH_STYLE: boolEnv(true),
+  // Tiền tố khoá khi dùng chung bucket với app khác (vd `tirapro/`). Chuẩn hoá để kết thúc bằng "/"; sai định dạng thì không khởi động.
+  S3_KEY_PREFIX: z
+    .string()
+    .optional()
+    .default('')
+    .transform((v, ctx) => {
+      try {
+        return normalizeKeyPrefix(v);
+      } catch (e) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: (e as Error).message });
+        return z.NEVER;
+      }
+    }),
   // Khởi động chặt: lỗi cấu hình S3 dứt khoát (bucket thiếu, 403, khoá sai) ⇒ dừng ngay. Không đặt ⇒ true ở production, false còn lại.
   STORAGE_STARTUP_STRICT: z
     .union([z.boolean(), z.string()])

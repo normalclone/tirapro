@@ -55,14 +55,22 @@ try {
   process.exit(1);
 }
 
-const dest = new S3Storage({
-  endpoint: env.S3_ENDPOINT.trim(),
-  region: env.S3_REGION || 'us-east-1',
-  bucket: env.S3_BUCKET.trim(),
-  accessKey: env.S3_ACCESS_KEY,
-  secretKey: env.S3_SECRET_KEY,
-  forcePathStyle: !['false', '0'].includes(String(env.S3_FORCE_PATH_STYLE ?? 'true')),
-});
+let dest;
+try {
+  const dest = new S3Storage({
+    endpoint: env.S3_ENDPOINT.trim(),
+    region: env.S3_REGION || 'us-east-1',
+    bucket: env.S3_BUCKET.trim(),
+    accessKey: env.S3_ACCESS_KEY,
+    secretKey: env.S3_SECRET_KEY,
+    forcePathStyle: !['false', '0'].includes(String(env.S3_FORCE_PATH_STYLE ?? 'true')),
+    keyPrefix: env.S3_KEY_PREFIX ?? '', // dùng chung bucket: mọi khoá đích = tiền tố + khoá (S3Storage ném nếu tiền tố sai)
+  });
+} catch (err) {
+  console.error(`Cấu hình S3 không hợp lệ: ${err.message}`);
+  process.exit(1);
+}
+const prefix = dest.keyPrefix;
 const source = new LocalStorage(localDir);
 
 const health = await dest.check();
@@ -86,7 +94,7 @@ try {
   });
   const contentTypes = new Map(attachments.map((a) => [a.storageKey, a.mimeType]));
   console.log(
-    `${dryRun ? '[DRY-RUN] ' : ''}Chuyển ${keys.length} khoá từ "${localDir}" lên bucket "${env.S3_BUCKET.trim()}"…`,
+    `${dryRun ? '[DRY-RUN] ' : ''}Chuyển ${keys.length} khoá từ "${localDir}" lên bucket "${env.S3_BUCKET.trim()}"${prefix ? ` (tiền tố "${prefix}")` : ''}…`,
   );
   report = await migrateObjects({
     source,
@@ -95,6 +103,11 @@ try {
     dryRun,
     force,
     contentTypes,
+    onItem: (key, action) => {
+      // Dry-run: in KHOÁ ĐÍCH THẬT (có tiền tố) để kiểm tra trước khi chép.
+      if (dryRun)
+        console.log(`  [${action}] ${key} → s3://${env.S3_BUCKET.trim()}/${prefix}${key}`);
+    },
     onProgress: (done, total) => {
       if (done % 100 === 0 || done === total) console.log(`  ${done}/${total}`);
     },

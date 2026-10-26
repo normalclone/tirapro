@@ -165,7 +165,12 @@ export interface AdminConfig {
   };
   embedding: { provider: string; dim: number | null; hasKey: boolean };
   redis: { configured: boolean; available: boolean };
-  storage: { driver: string; maxFileSizeMb: number | null; s3Bucket: string | null };
+  storage: {
+    driver: string;
+    maxFileSizeMb: number | null;
+    s3Bucket: string | null;
+    s3KeyPrefix?: string | null;
+  };
   integrations: { telegram: boolean };
   throttle: { ttl: number | null; limit: number | null };
   flags: SystemFlags;

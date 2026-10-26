@@ -41,6 +41,7 @@ export function configuration() {
         accessKey: e.S3_ACCESS_KEY,
         secretKey: e.S3_SECRET_KEY,
         forcePathStyle: e.S3_FORCE_PATH_STYLE,
+        keyPrefix: e.S3_KEY_PREFIX,
       },
     },
     ai: {

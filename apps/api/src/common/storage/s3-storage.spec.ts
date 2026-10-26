@@ -5,7 +5,7 @@ import { ObjectExistsError, ObjectNotFoundError, StorageUnavailableError } from 
 import { S3Storage } from './s3-storage';
 
 const SECRET = 'SUPER-SECRET-KEY-do-not-leak';
-const mk = (client = new FakeS3Client()) => ({
+const mk = (client = new FakeS3Client(), keyPrefix?: string) => ({
   client,
   storage: new S3Storage(
     {
@@ -15,6 +15,7 @@ const mk = (client = new FakeS3Client()) => ({
       accessKey: 'AK',
       secretKey: SECRET,
       forcePathStyle: true,
+      keyPrefix,
     },
     client,
   ),
@@ -216,5 +217,118 @@ describe('S3Storage — phân loại lỗi HeadBucket (kind) và các lỗi khá
     const { storage, client } = mk();
     storage.destroy();
     expect(client.destroyed).toBe(true);
+  });
+});
+
+describe('S3Storage — S3_KEY_PREFIX (dùng chung bucket, chỉ thao tác trong tiền tố)', () => {
+  const PREFIX = 'tirapro/';
+  const FOREIGN = [
+    'bucket-test/runner/job-1.json',
+    'bucket-test/boctach/report.pdf',
+    'bucket-test/root.txt',
+    'bucket-test/tirapro-other/x.txt', // gần giống tiền tố nhưng KHÔNG thuộc tiền tố
+  ];
+  const withForeign = () => {
+    const client = new FakeS3Client();
+    for (const k of FOREIGN)
+      client.objects.set(k, { body: Buffer.from('của app khác'), lastModified: new Date(0) });
+    return { client, storage: mk(client, PREFIX).storage };
+  };
+  const foreignIntact = (client: FakeS3Client) => {
+    for (const k of FOREIGN) expect(client.objects.get(k)?.body.toString(), k).toBe('của app khác');
+  };
+
+  runObjectStorageContract(
+    'S3Storage + client giả + tiền tố',
+    () => Promise.resolve({ storage: withForeign().storage, cleanup: () => Promise.resolve() }),
+    'contract-prefix',
+  );
+
+  it('mọi lệnh gửi lên S3 có Key = tiền tố + storageKey (kể cả put/get/stat/exists/delete)', async () => {
+    const { client, storage } = withForeign();
+    await storage.put('ws1/a.txt', Buffer.from('1'), { contentType: 'text/plain' });
+    await storage.get('ws1/a.txt');
+    await storage.stat('ws1/a.txt');
+    await storage.exists('ws1/a.txt');
+    await storage.delete('ws1/a.txt');
+    const keyed = client.calls.filter((c) => typeof c.input.Key === 'string');
+    expect(keyed.length).toBe(5);
+    for (const c of keyed) expect(c.input.Key, c.command).toBe('tirapro/ws1/a.txt');
+  });
+
+  it('object lưu thật nằm dưới tiền tố, còn storageKey trả về cho DB KHÔNG có tiền tố', async () => {
+    const { client, storage } = withForeign();
+    const r = await storage.put('ws1/a.txt', Buffer.from('1'));
+    expect(r.key).toBe('ws1/a.txt');
+    expect(client.objects.has('bucket-test/tirapro/ws1/a.txt')).toBe(true);
+    expect(client.objects.has('bucket-test/ws1/a.txt')).toBe(false);
+  });
+
+  it('get/delete/stat KHÔNG BAO GIỜ chạm khoá không có tiền tố: cùng tên với object ngoài tiền tố vẫn nguyên', async () => {
+    const { client, storage } = withForeign();
+    client.objects.set('bucket-test/ws1/a.txt', {
+      body: Buffer.from('ngoài'),
+      lastModified: new Date(0),
+    });
+    await expect(storage.get('ws1/a.txt')).rejects.toThrow(); // chỉ có bản ngoài tiền tố → coi như không có
+    expect(await storage.exists('ws1/a.txt')).toBe(false);
+    await storage.delete('ws1/a.txt');
+    expect(client.objects.get('bucket-test/ws1/a.txt')?.body.toString()).toBe('ngoài');
+    foreignIntact(client);
+    for (const c of client.calls)
+      if (typeof c.input.Key === 'string') expect(c.input.Key).toMatch(/^tirapro\//);
+  });
+
+  it('từ chối khoá thoát khỏi tiền tố: "..", tuyệt đối, "./" — và không gửi lệnh nào lên S3', async () => {
+    const { client, storage } = withForeign();
+    for (const bad of [
+      '../runner/job-1.json',
+      'a/../../runner/job-1.json',
+      '/runner/job-1.json',
+      './x',
+      'a/./b',
+    ]) {
+      await expect(storage.get(bad)).rejects.toThrow(/khoá/i);
+      await expect(storage.delete(bad)).rejects.toThrow(/khoá/i);
+      await expect(storage.put(bad, Buffer.from('x'))).rejects.toThrow(/khoá/i);
+      await expect(storage.stat(bad)).rejects.toThrow(/khoá/i);
+    }
+    expect(client.calls).toEqual([]);
+    foreignIntact(client);
+  });
+
+  it('list luôn có Prefix (kể cả prefix rỗng), chỉ trả object trong tiền tố và cắt tiền tố khỏi khoá trả về', async () => {
+    const { client, storage } = withForeign();
+    await storage.put('imports/a.csv', Buffer.from('1'));
+    await storage.put('ws/b.txt', Buffer.from('22'));
+    const imports = await storage.list('imports/');
+    expect(imports.map((o) => o.key)).toEqual(['imports/a.csv']);
+    const all = await storage.list('');
+    expect(all.map((o) => o.key).sort()).toEqual(['imports/a.csv', 'ws/b.txt']);
+    for (const c of client.calls.filter((x) => x.command === 'ListObjectsV2Command')) {
+      expect(String(c.input.Prefix)).toMatch(/^tirapro\//);
+    }
+  });
+
+  it('khoá bí mật/tiền tố: storage.keyPrefix hiển thị được, không có khoá', () => {
+    expect(mk(new FakeS3Client(), PREFIX).storage.keyPrefix).toBe(PREFIX);
+  });
+
+  it('cấu hình tiền tố sai (thoát bucket) → ném ngay khi dựng S3Storage', () => {
+    for (const bad of ['../x', '/x', 'a\\b'])
+      expect(() => mk(new FakeS3Client(), bad)).toThrow(/S3_KEY_PREFIX/);
+  });
+
+  it('tiền tố không có "/" cuối được chuẩn hoá (tirapro → tirapro/)', async () => {
+    const client = new FakeS3Client();
+    const s = mk(client, 'tirapro').storage;
+    await s.put('k.txt', Buffer.from('1'));
+    expect(client.calls[0]?.input.Key).toBe('tirapro/k.txt');
+  });
+
+  it('không tiền tố (mặc định): khoá giữ nguyên như trước', async () => {
+    const client = new FakeS3Client();
+    await mk(client).storage.put('ws1/a.txt', Buffer.from('1'));
+    expect(client.calls[0]?.input.Key).toBe('ws1/a.txt');
   });
 });

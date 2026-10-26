@@ -245,6 +245,9 @@ export function AdminConfigPage() {
               {data.storage.maxFileSizeMb ? `${data.storage.maxFileSizeMb} MB` : '—'}
             </InfoRow>
             <InfoRow label="S3 bucket">{data.storage.s3Bucket ?? '—'}</InfoRow>
+            {data.storage.s3KeyPrefix ? (
+              <InfoRow label="Tiền tố khoá">{data.storage.s3KeyPrefix}</InfoRow>
+            ) : null}
             <InfoRow label="Rate limit">
               {data.throttle.limit != null ? `${data.throttle.limit} / ${data.throttle.ttl}s` : '—'}
             </InfoRow>

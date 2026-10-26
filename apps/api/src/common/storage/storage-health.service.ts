@@ -84,7 +84,8 @@ export class StorageHealthService implements OnModuleInit, OnModuleDestroy {
   }
 
   private bucketName(): string {
-    return (this.storage as { bucket?: string }).bucket ?? '';
+    const { bucket = '', keyPrefix = '' } = this.storage as { bucket?: string; keyPrefix?: string };
+    return keyPrefix ? `${bucket}" (tiền tố "${keyPrefix}` : bucket;
   }
 
   private startRecheck(): void {

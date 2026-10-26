@@ -9,6 +9,7 @@ import {
   PutObjectCommand,
   S3Client,
 } from '@aws-sdk/client-s3';
+import { normalizeKeyPrefix } from './s3-key-prefix';
 import {
   ObjectExistsError,
   ObjectNotFoundError,
@@ -32,6 +33,11 @@ export interface S3StorageConfig {
   secretKey: string;
   /** MinIO cần path-style (`host/bucket/key`). */
   forcePathStyle: boolean;
+  /**
+   * Tiền tố khoá khi DÙNG CHUNG bucket với app khác (vd `tirapro/`). Mọi object gửi lên S3 có khoá = tiền tố + storageKey;
+   * storageKey lưu trong DB KHÔNG có tiền tố (sau này chuyển sang bucket riêng chỉ cần sao chép và bỏ tiền tố).
+   */
+  keyPrefix?: string;
 }
 
 /** Tối thiểu của client để test tiêm bản giả. */
@@ -62,10 +68,13 @@ const isPreconditionFailed = (e: unknown) =>
 export class S3Storage implements ObjectStorage {
   readonly driver = 's3' as const;
   readonly bucket: string;
+  /** Tiền tố đã chuẩn hoá ('' = không có, hoặc kết thúc bằng `/`). */
+  readonly keyPrefix: string;
   private readonly client: S3Like;
 
   constructor(cfg: S3StorageConfig, client?: S3Like) {
     this.bucket = cfg.bucket;
+    this.keyPrefix = normalizeKeyPrefix(cfg.keyPrefix ?? '');
     this.client =
       client ??
       new S3Client({
@@ -84,6 +93,23 @@ export class S3Storage implements ObjectStorage {
       });
   }
 
+  /**
+   * CHỐT CHẶN DUY NHẤT dựng khoá object gửi lên S3: kiểm khoá an toàn, gắn tiền tố, rồi assert kết quả thuộc tiền tố
+   * (ném nếu không). Mọi lệnh theo khoá PHẢI dùng hàm này (có guard test `s3-key-guard.spec.ts`).
+   */
+  private objectKey(key: string): string {
+    assertSafeKey(key);
+    const full = this.keyPrefix + key;
+    if (!full.startsWith(this.keyPrefix) || full.includes('..'))
+      throw new Error('Khoá lưu trữ không hợp lệ');
+    return full;
+  }
+
+  /** Prefix cho ListObjectsV2: luôn nằm trong tiền tố (prefix rỗng = toàn bộ tiền tố, KHÔNG phải toàn bucket). */
+  private listPrefix(prefix: string): string {
+    return prefix === '' ? this.keyPrefix : this.objectKey(prefix);
+  }
+
   private send<T>(command: object): Promise<T> {
     return this.client.send(command as never) as Promise<T>;
   }
@@ -94,7 +120,7 @@ export class S3Storage implements ObjectStorage {
       await this.send(
         new PutObjectCommand({
           Bucket: this.bucket,
-          Key: key,
+          Key: this.objectKey(key),
           Body: body,
           ContentLength: body.length,
           ContentType: opts.contentType,
@@ -115,7 +141,7 @@ export class S3Storage implements ObjectStorage {
         Body?: unknown;
         ContentLength?: number;
         ContentType?: string;
-      }>(new GetObjectCommand({ Bucket: this.bucket, Key: key }));
+      }>(new GetObjectCommand({ Bucket: this.bucket, Key: this.objectKey(key) }));
       if (!out.Body) throw new ObjectNotFoundError(key);
       return {
         stream: out.Body as Readable,
@@ -132,7 +158,7 @@ export class S3Storage implements ObjectStorage {
   async delete(key: string): Promise<void> {
     assertSafeKey(key);
     try {
-      await this.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: key }));
+      await this.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: this.objectKey(key) }));
     } catch (err) {
       if (isNotFound(err)) return; // S3 vốn trả 204 khi thiếu; phòng server khác trả 404
       throw new StorageUnavailableError('Kho lưu trữ tệp không phản hồi', err);
@@ -147,7 +173,7 @@ export class S3Storage implements ObjectStorage {
     assertSafeKey(key);
     try {
       const out = await this.send<{ ContentLength?: number; LastModified?: Date }>(
-        new HeadObjectCommand({ Bucket: this.bucket, Key: key }),
+        new HeadObjectCommand({ Bucket: this.bucket, Key: this.objectKey(key) }),
       );
       return { size: out.ContentLength ?? 0, lastModified: out.LastModified ?? new Date(0) };
     } catch (err) {
@@ -163,14 +189,15 @@ export class S3Storage implements ObjectStorage {
       }>(
         new ListObjectsV2Command({
           Bucket: this.bucket,
-          Prefix: prefix,
+          Prefix: this.listPrefix(prefix),
           MaxKeys: Math.min(Math.max(limit, 1), 1000),
         }),
       );
       return (out.Contents ?? [])
         .filter((o): o is { Key: string; Size?: number; LastModified?: Date } => !!o.Key)
+        .filter((o) => o.Key.startsWith(this.keyPrefix)) // phòng máy chủ trả thừa: không bao giờ lộ object ngoài tiền tố
         .map((o) => ({
-          key: o.Key,
+          key: o.Key.slice(this.keyPrefix.length),
           size: o.Size ?? 0,
           lastModified: o.LastModified ?? new Date(0),
         }));
