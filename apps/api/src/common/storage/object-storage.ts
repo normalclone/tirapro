@@ -38,6 +38,8 @@ export interface StorageCheck {
   kind?: 'config' | 'network';
   /** Mô tả lỗi đọc được (tiếng Việt) — KHÔNG chứa khoá bí mật. */
   detail?: string;
+  /** Ghi chú khi `ok=true` nhưng đáng chú ý (vd policy chỉ cho phép trong tiền tố). */
+  note?: string;
 }
 
 /**

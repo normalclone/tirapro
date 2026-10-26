@@ -24,6 +24,8 @@ export class FakeS3Client {
   buckets = new Set<string>(['bucket-test']);
   /** Bucket mà người gọi không có quyền (HeadBucket → 403). */
   forbiddenBuckets = new Set<string>();
+  /** ListObjectsV2 trả 403 (policy không cho liệt kê). */
+  forbidList = false;
 
   send(cmd: { constructor: { name: string }; input: Record<string, unknown> }): Promise<unknown> {
     const name = cmd.constructor.name;
@@ -66,6 +68,7 @@ export class FakeS3Client {
         this.objects.delete(key);
         return Promise.resolve({});
       case 'ListObjectsV2Command': {
+        if (this.forbidList) return Promise.reject(awsError('AccessDenied', 403));
         const pre = `${String(input.Bucket)}/${typeof input.Prefix === 'string' ? input.Prefix : ''}`;
         const strip = `${String(input.Bucket)}/`;
         const Contents = [...this.objects.entries()]

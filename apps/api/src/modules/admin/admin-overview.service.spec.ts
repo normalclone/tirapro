@@ -71,7 +71,12 @@ describe('AdminOverviewService — trạng thái lưu trữ', () => {
       () => Promise.resolve({ ok: true }),
     );
     const st = svc.configStatus();
-    expect(st.storage).toEqual({ driver: 's3', maxFileSizeMb: 25, s3Bucket: 'tirapro' });
+    expect(st.storage).toEqual({
+      driver: 's3',
+      maxFileSizeMb: 25,
+      s3Bucket: 'tirapro',
+      s3KeyPrefix: null,
+    });
     expect(JSON.stringify(st)).not.toMatch(/LEAK/);
   });
 });

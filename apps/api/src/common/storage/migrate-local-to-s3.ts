@@ -89,6 +89,8 @@ export async function migrateObjects(opts: {
   /** Content-Type theo khoá (vd mimeType của Attachment); khoá không có thì đoán theo đuôi. */
   contentTypes?: ReadonlyMap<string, string>;
   onProgress?: (done: number, total: number) => void;
+  /** Báo từng khoá với hành động (để dry-run in khoá đích). */
+  onItem?: (key: string, action: 'copy' | 'skip' | 'conflict' | 'missing') => void;
 }): Promise<MigrateReport> {
   const report: MigrateReport = {
     total: opts.keys.length,
@@ -111,6 +113,7 @@ export async function migrateObjects(opts: {
       if (!src) {
         report.missing++;
         report.missingKeys.push(key);
+        opts.onItem?.(key, 'missing');
       } else {
         const existing = await opts.dest.stat(key);
         let body: Buffer | null = null;
@@ -125,6 +128,7 @@ export async function migrateObjects(opts: {
           else if (!opts.force && existing.lastModified.getTime() > src.lastModified.getTime())
             action = 'conflict';
         }
+        opts.onItem?.(key, action);
         if (action === 'skip') {
           report.skipped++;
         } else if (action === 'conflict') {

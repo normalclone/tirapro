@@ -885,6 +885,10 @@ Chưa có báo cáo nào xác nhận các mục này đã chạy; người kiể
 - **Tên tệp tiếng Việt đúng:** giải mã lại tên multer đọc sai, `Content-Disposition` theo RFC 6266/5987; script tuỳ chọn `attachments:fix-filenames` sửa dòng cũ.
 - Khác: giới hạn dung lượng ở multer, NoSuchBucket không còn thành 404 im lặng, tên avatar `.`/`..` trả 400, tổng quan admin nhớ kết quả HeadBucket ~30 giây, huỷ client S3 khi tắt.
 
+## 2c. Dùng chung bucket: `S3_KEY_PREFIX`
+
+- Biến mới `S3_KEY_PREFIX` (mặc định rỗng) cho trường hợp key chỉ có quyền trên một bucket dùng chung (vd `auto-test`): mọi object của Tirapro có khoá `<tiền tố><storageKey>` (vd `tirapro/…`); `storageKey` trong DB vẫn không có tiền tố. Chỉ `S3Storage` áp tiền tố (một hàm duy nhất dựng khoá + assert thuộc tiền tố; guard test cấm lệnh S3 dựng khoá ngoài hàm đó); mọi `ListObjects` đều có `Prefix`. Gồm cả claim Jira, probe lúc khởi động và `system-settings.json`. Script `storage:migrate-local-to-s3` tôn trọng tiền tố và `--dry-run` in khoá đích. Không tiền tố ⇒ hành vi như cũ.
+
 ## 3. Còn mở
 
 - Chưa chạy trên MinIO công ty (172.20.20.100) và VM 172.20.20.128 — đã kiểm với MinIO cục bộ (`pnpm test:parity` + e2e API thật); cần một lượt kiểm trên hạ tầng thật khi triển khai (cổng API, quyền của access key, `If-None-Match` ở bản MinIO của công ty).

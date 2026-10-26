@@ -81,6 +81,7 @@ export class AdminOverviewService {
         driver: c.get<string>('storage.driver') ?? 'local',
         maxFileSizeMb: c.get<number>('storage.maxFileSizeMb') ?? null,
         s3Bucket: c.get<string>('storage.s3.bucket') || null,
+        s3KeyPrefix: c.get<string>('storage.s3.keyPrefix') || null,
       },
       integrations: { telegram: !!c.get<boolean>('integrations.telegram.enabled') },
       throttle: {

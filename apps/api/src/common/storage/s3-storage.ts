@@ -9,6 +9,7 @@ import {
   PutObjectCommand,
   S3Client,
 } from '@aws-sdk/client-s3';
+import { normalizeKeyPrefix } from './s3-key-prefix';
 import {
   ObjectExistsError,
   ObjectNotFoundError,
@@ -32,12 +33,27 @@ export interface S3StorageConfig {
   secretKey: string;
   /** MinIO cần path-style (`host/bucket/key`). */
   forcePathStyle: boolean;
+  /**
+   * Tiền tố khoá khi DÙNG CHUNG bucket với app khác (vd `tirapro/`). Mọi object gửi lên S3 có khoá = tiền tố + storageKey;
+   * storageKey lưu trong DB KHÔNG có tiền tố (sau này chuyển sang bucket riêng chỉ cần sao chép và bỏ tiền tố).
+   */
+  keyPrefix?: string;
 }
 
 /** Tối thiểu của client để test tiêm bản giả. */
 interface S3Like {
   send(command: never): Promise<unknown>;
 }
+
+/** Các lệnh S3 DUY NHẤT được phép gửi đi (không xoá hàng loạt, không liệt kê bucket, không tạo/xoá bucket, không copy). */
+const ALLOWED_COMMANDS = [
+  PutObjectCommand,
+  GetObjectCommand,
+  HeadObjectCommand,
+  DeleteObjectCommand,
+  ListObjectsV2Command,
+  HeadBucketCommand,
+] as const;
 
 const REQUEST_TIMEOUT_MS = 15_000;
 const CONNECTION_TIMEOUT_MS = 5_000;
@@ -62,10 +78,13 @@ const isPreconditionFailed = (e: unknown) =>
 export class S3Storage implements ObjectStorage {
   readonly driver = 's3' as const;
   readonly bucket: string;
+  /** Tiền tố đã chuẩn hoá ('' = không có, hoặc kết thúc bằng `/`). */
+  readonly keyPrefix: string;
   private readonly client: S3Like;
 
   constructor(cfg: S3StorageConfig, client?: S3Like) {
     this.bucket = cfg.bucket;
+    this.keyPrefix = normalizeKeyPrefix(cfg.keyPrefix ?? '');
     this.client =
       client ??
       new S3Client({
@@ -84,7 +103,60 @@ export class S3Storage implements ObjectStorage {
       });
   }
 
+  /**
+   * CHỐT CHẶN DUY NHẤT dựng khoá object gửi lên S3: kiểm khoá an toàn, gắn tiền tố, rồi assert kết quả thuộc tiền tố
+   * (ném nếu không). Mọi lệnh theo khoá PHẢI dùng hàm này (có guard test `s3-key-guard.spec.ts`).
+   */
+  private objectKey(key: string): string {
+    assertSafeKey(key);
+    const full = this.keyPrefix + key;
+    // Kiểm theo TỪNG ĐOẠN: chỉ đoạn đúng bằng "." hoặc ".." mới thoát được; tên như `a...png`, `report..final.pdf` hợp lệ.
+    if (
+      !full.startsWith(this.keyPrefix) ||
+      full.split('/').some((seg) => seg === '.' || seg === '..')
+    )
+      throw new Error('Khoá lưu trữ không hợp lệ');
+    return full;
+  }
+
+  /** Prefix cho ListObjectsV2: luôn nằm trong tiền tố (prefix rỗng = toàn bộ tiền tố, KHÔNG phải toàn bucket). */
+  private listPrefix(prefix: string): string {
+    return prefix === '' ? this.keyPrefix : this.objectKey(prefix);
+  }
+
+  /**
+   * CHỐT CHẶN LÚC CHẠY trước MỌI lệnh (lớp thứ hai sau guard mã nguồn; bucket dùng chung với app khác): lệnh phải thuộc danh
+   * sách cho phép, `Bucket` đúng bucket cấu hình, mọi `Key`/`Prefix` thuộc tiền tố, lệnh liệt kê luôn có `Prefix`.
+   * Vi phạm → ném NGAY, chưa gọi mạng.
+   */
+  private assertCommandAllowed(command: object): void {
+    const input = ((command as { input?: Record<string, unknown> }).input ?? {}) as {
+      Bucket?: unknown;
+      Key?: unknown;
+      Prefix?: unknown;
+    };
+    const allowed = ALLOWED_COMMANDS.some((C) => command instanceof C);
+    if (!allowed) throw new Error('Lệnh S3 không được phép');
+    if (input.Bucket !== this.bucket) throw new Error('Lệnh S3 trỏ sai bucket');
+    const inPrefix = (v: unknown) => typeof v === 'string' && v.startsWith(this.keyPrefix);
+    if (command instanceof HeadBucketCommand) return;
+    if (command instanceof ListObjectsV2Command) {
+      if (typeof input.Prefix !== 'string' || !inPrefix(input.Prefix))
+        throw new Error('Lệnh liệt kê S3 thiếu Prefix hoặc Prefix ngoài tiền tố');
+      return;
+    }
+    if (typeof input.Key !== 'string' || input.Key === '' || !inPrefix(input.Key))
+      throw new Error('Khoá S3 ngoài tiền tố');
+    if (input.Key.split('/').some((seg) => seg === '.' || seg === '..'))
+      throw new Error('Khoá S3 không hợp lệ');
+  }
+
   private send<T>(command: object): Promise<T> {
+    try {
+      this.assertCommandAllowed(command);
+    } catch (err) {
+      return Promise.reject(err instanceof Error ? err : new Error(String(err)));
+    }
     return this.client.send(command as never) as Promise<T>;
   }
 
@@ -94,7 +166,7 @@ export class S3Storage implements ObjectStorage {
       await this.send(
         new PutObjectCommand({
           Bucket: this.bucket,
-          Key: key,
+          Key: this.objectKey(key),
           Body: body,
           ContentLength: body.length,
           ContentType: opts.contentType,
@@ -115,7 +187,7 @@ export class S3Storage implements ObjectStorage {
         Body?: unknown;
         ContentLength?: number;
         ContentType?: string;
-      }>(new GetObjectCommand({ Bucket: this.bucket, Key: key }));
+      }>(new GetObjectCommand({ Bucket: this.bucket, Key: this.objectKey(key) }));
       if (!out.Body) throw new ObjectNotFoundError(key);
       return {
         stream: out.Body as Readable,
@@ -132,7 +204,7 @@ export class S3Storage implements ObjectStorage {
   async delete(key: string): Promise<void> {
     assertSafeKey(key);
     try {
-      await this.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: key }));
+      await this.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: this.objectKey(key) }));
     } catch (err) {
       if (isNotFound(err)) return; // S3 vốn trả 204 khi thiếu; phòng server khác trả 404
       throw new StorageUnavailableError('Kho lưu trữ tệp không phản hồi', err);
@@ -147,7 +219,7 @@ export class S3Storage implements ObjectStorage {
     assertSafeKey(key);
     try {
       const out = await this.send<{ ContentLength?: number; LastModified?: Date }>(
-        new HeadObjectCommand({ Bucket: this.bucket, Key: key }),
+        new HeadObjectCommand({ Bucket: this.bucket, Key: this.objectKey(key) }),
       );
       return { size: out.ContentLength ?? 0, lastModified: out.LastModified ?? new Date(0) };
     } catch (err) {
@@ -163,14 +235,15 @@ export class S3Storage implements ObjectStorage {
       }>(
         new ListObjectsV2Command({
           Bucket: this.bucket,
-          Prefix: prefix,
+          Prefix: this.listPrefix(prefix),
           MaxKeys: Math.min(Math.max(limit, 1), 1000),
         }),
       );
       return (out.Contents ?? [])
         .filter((o): o is { Key: string; Size?: number; LastModified?: Date } => !!o.Key)
+        .filter((o) => o.Key.startsWith(this.keyPrefix)) // phòng máy chủ trả thừa: không bao giờ lộ object ngoài tiền tố
         .map((o) => ({
-          key: o.Key,
+          key: o.Key.slice(this.keyPrefix.length),
           size: o.Size ?? 0,
           lastModified: o.LastModified ?? new Date(0),
         }));
@@ -203,6 +276,26 @@ export class S3Storage implements ObjectStorage {
           kind: 'config',
           detail: `Bucket "${this.bucket}" không tồn tại — hãy tạo bucket thủ công trên MinIO/S3 (ứng dụng không tự tạo) rồi khởi động lại. Nếu bucket đã có, kiểm tra S3_ENDPOINT có đúng cổng API S3 không (thử HeadBucket để xác định cổng API; cổng còn lại thường là trang quản trị).`,
         };
+      const wrongCredentials = ['InvalidAccessKeyId', 'SignatureDoesNotMatch'].includes(name);
+      // Policy chỉ cho phép trong tiền tố thì HeadBucket (cần quyền cấp bucket) bị 403 dù thao tác trong tiền tố vẫn được:
+      // thử liệt kê TRONG tiền tố; được thì coi là OK. Cả hai đều lỗi mới là `config`.
+      if (this.keyPrefix && st === 403 && !wrongCredentials) {
+        try {
+          await this.send(
+            new ListObjectsV2Command({
+              Bucket: this.bucket,
+              Prefix: this.listPrefix(''),
+              MaxKeys: 1,
+            }),
+          );
+          return {
+            ok: true,
+            note: `HeadBucket bị từ chối (403) nhưng liệt kê trong tiền tố "${this.keyPrefix}" được — policy của key chỉ cho phép thao tác trong tiền tố này; chấp nhận.`,
+          };
+        } catch {
+          /* rơi xuống: sai quyền thật */
+        }
+      }
       if (
         st === 403 ||
         ['Forbidden', 'AccessDenied', 'InvalidAccessKeyId', 'SignatureDoesNotMatch'].includes(name)
