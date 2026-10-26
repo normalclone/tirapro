@@ -125,3 +125,32 @@ describe('validateEnv — STORAGE_DRIVER=s3', () => {
     expect(() => validateEnv({ ...base, STORAGE_DRIVER: 'local' })).not.toThrow();
   });
 });
+
+describe('validateEnv — STORAGE_STARTUP_STRICT', () => {
+  it('không đặt → undefined (mặc định tính theo NODE_ENV ở configuration)', () => {
+    expect(validateEnv(base).STORAGE_STARTUP_STRICT).toBeUndefined();
+    expect(
+      validateEnv({ ...base, STORAGE_STARTUP_STRICT: '' }).STORAGE_STARTUP_STRICT,
+    ).toBeUndefined();
+  });
+
+  it.each([
+    ['true', true],
+    ['1', true],
+    ['false', false],
+    ['0', false],
+    [false, false],
+  ])('đặt %s → %s', (v, want) => {
+    expect(validateEnv({ ...base, STORAGE_STARTUP_STRICT: v }).STORAGE_STARTUP_STRICT).toBe(want);
+  });
+
+  it('M9: thông báo thiếu S3_ENDPOINT không khẳng định cổng 9000', () => {
+    try {
+      validateEnv({ ...base, STORAGE_DRIVER: 's3' });
+      throw new Error('phải ném');
+    } catch (e) {
+      expect((e as Error).message).not.toMatch(/9000/);
+      expect((e as Error).message).toMatch(/cổng API/);
+    }
+  });
+});

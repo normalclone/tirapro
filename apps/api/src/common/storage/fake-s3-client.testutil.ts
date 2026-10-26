@@ -88,7 +88,8 @@ export class FakeS3Client {
     }
   }
 
+  destroyed = false;
   destroy(): void {
-    /* no-op */
+    this.destroyed = true;
   }
 }

@@ -132,3 +132,52 @@ describe('S3Storage.check — HeadBucket lúc khởi động', () => {
     expect(r.detail).not.toContain(SECRET);
   });
 });
+
+describe('S3Storage — phân loại lỗi HeadBucket (kind) và các lỗi khác', () => {
+  const kindOf = async (err: Error) => {
+    const client = new FakeS3Client();
+    client.failWith = err;
+    return mk(client).storage.check();
+  };
+
+  it('bucket thiếu / 403 / khoá sai → kind=config (lỗi cấu hình dứt khoát)', async () => {
+    expect((await kindOf(awsError('NotFound', 404))).kind).toBe('config');
+    expect((await kindOf(awsError('NoSuchBucket', 404))).kind).toBe('config');
+    expect((await kindOf(awsError('Forbidden', 403))).kind).toBe('config');
+    expect((await kindOf(awsError('AccessDenied', 403))).kind).toBe('config');
+    expect((await kindOf(awsError('InvalidAccessKeyId', 403))).kind).toBe('config');
+    expect((await kindOf(awsError('SignatureDoesNotMatch', 403))).kind).toBe('config');
+  });
+
+  it('mạng/timeout/5xx → kind=network (có thể tự hết)', async () => {
+    expect((await kindOf(Object.assign(new Error('x'), { name: 'TimeoutError' }))).kind).toBe(
+      'network',
+    );
+    expect((await kindOf(awsError('InternalError', 500))).kind).toBe('network');
+    expect((await kindOf(Object.assign(new Error('ECONNREFUSED'), { name: 'Error' }))).kind).toBe(
+      'network',
+    );
+  });
+
+  it('ok → không có kind', async () => {
+    expect(await mk().storage.check()).toEqual({ ok: true });
+  });
+
+  it('M9: gợi ý cổng không khẳng định 9000; nhắc dùng HeadBucket để xác định cổng API', async () => {
+    const r = await kindOf(Object.assign(new Error('x'), { name: 'TimeoutError' }));
+    expect(r.detail).not.toMatch(/thường cổng 9000/);
+    expect(r.detail).toMatch(/cổng API/);
+  });
+
+  it('M1: NoSuchBucket khi get KHÔNG bị coi là "không có tệp" (404 im lặng) mà là lỗi hạ tầng', async () => {
+    const { storage, client } = mk();
+    client.failWith = awsError('NoSuchBucket', 404);
+    await expect(storage.get('x')).rejects.toBeInstanceOf(StorageUnavailableError);
+  });
+
+  it('M7: destroy() huỷ client S3', () => {
+    const { storage, client } = mk();
+    storage.destroy();
+    expect(client.destroyed).toBe(true);
+  });
+});

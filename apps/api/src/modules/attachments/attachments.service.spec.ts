@@ -55,6 +55,18 @@ describe('AttachmentsService — qua ObjectStorage', () => {
     expect(JSON.stringify(dto)).not.toContain(key); // DTO không lộ storageKey
   });
 
+  it('I5: tên tiếng Việt bị multer giải mã latin1 được khôi phục (DB + khoá), tên UTF-8 đúng giữ nguyên', async () => {
+    const { service, prisma } = setup();
+    const mangled = Buffer.from('báo cáo tháng 10.pdf', 'utf8').toString('latin1');
+    const dto = await service.upload('w1', 'u1', 'i1', file(mangled, 'x'));
+    expect(dto.fileName).toBe('báo cáo tháng 10.pdf');
+    const key = (prisma.attachment.create.mock.calls[0]?.[0] as { data: { storageKey: string } })
+      .data.storageKey;
+    expect(key).toMatch(/^w1\/[a-z0-9]+-b_o_c_o_th_ng_10\.pdf$/);
+    const ok = await service.upload('w1', 'u1', 'i1', file('báo cáo tháng 10.pdf', 'x'));
+    expect(ok.fileName).toBe('báo cáo tháng 10.pdf');
+  });
+
   it('upload: lưu trữ lỗi → thông báo nghiệp vụ rõ, KHÔNG lộ chi tiết, KHÔNG tạo dòng DB, có log', async () => {
     const { service, storage, prisma } = setup();
     const logged = vi.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);

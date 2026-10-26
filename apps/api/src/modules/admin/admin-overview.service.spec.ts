@@ -9,7 +9,8 @@ function make(
   const prisma = { $queryRaw: vi.fn(() => Promise.resolve([{ '?column?': 1 }])) };
   const redis = { isAvailable: () => true };
   const settings = { flags: () => ({ aiKillSwitch: false }) };
-  const storage = { driver: cfg['storage.driver'] ?? 'local', check: vi.fn(check) };
+  // Dịch vụ sức khoẻ lưu trữ (StorageHealthService): `check` = HeadBucket thật, `cachedCheck` = có nhớ 30 giây (M4).
+  const storage = { check: vi.fn(check), cachedCheck: vi.fn(check) };
   const svc = new AdminOverviewService(
     prisma as never,
     config as never,
@@ -27,7 +28,7 @@ describe('AdminOverviewService — trạng thái lưu trữ', () => {
     );
     const d = await svc.degrade();
     expect(d).toMatchObject({ storage: true, storageDriver: 'local', storageBucket: null });
-    expect(storage.check).not.toHaveBeenCalled();
+    expect(storage.cachedCheck).not.toHaveBeenCalled();
   });
 
   it('s3 ổn: hiện driver + bucket, storage=true', async () => {
@@ -39,6 +40,16 @@ describe('AdminOverviewService — trạng thái lưu trữ', () => {
       storageDriver: 's3',
       storageBucket: 'tirapro',
     });
+  });
+
+  it('M4: s3 dùng kết quả HeadBucket có nhớ (cachedCheck), không gọi HeadBucket thật mỗi lần mở trang', async () => {
+    const { svc, storage } = make({ 'storage.driver': 's3', 'storage.s3.bucket': 'tirapro' }, () =>
+      Promise.resolve({ ok: true }),
+    );
+    await svc.degrade();
+    await svc.degrade();
+    expect(storage.cachedCheck).toHaveBeenCalledTimes(2);
+    expect(storage.check).not.toHaveBeenCalled();
   });
 
   it('s3 HeadBucket lỗi: storage=false (hiện đỏ trên console)', async () => {

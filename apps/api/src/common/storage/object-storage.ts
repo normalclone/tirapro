@@ -31,6 +31,11 @@ export interface ListedObject extends ObjectStat {
 }
 export interface StorageCheck {
   ok: boolean;
+  /**
+   * Khi `ok=false`: `config` = lỗi cấu hình dứt khoá (bucket không có, sai quyền/khoá) — không tự hết;
+   * `network` = mạng/timeout/máy chủ lỗi — có thể tự hết.
+   */
+  kind?: 'config' | 'network';
   /** Mô tả lỗi đọc được (tiếng Việt) — KHÔNG chứa khoá bí mật. */
   detail?: string;
 }
@@ -53,6 +58,8 @@ export interface ObjectStorage {
   list(prefix: string, limit?: number): Promise<ListedObject[]>;
   /** Kiểm tra sức khoẻ cấu hình (S3: HeadBucket). Không ném. */
   check(): Promise<StorageCheck>;
+  /** Giải phóng tài nguyên (socket của client S3) khi tắt ứng dụng. */
+  destroy?(): void;
 }
 
 export class ObjectNotFoundError extends Error {

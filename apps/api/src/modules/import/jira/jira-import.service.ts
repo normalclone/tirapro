@@ -26,6 +26,7 @@ import {
   type ObjectStorage,
 } from '../../../common/storage/object-storage';
 import { ProjectsService } from '../../projects/projects.service';
+import { claimImportJob, findImportJobByAnalyzeId } from './jira-claim';
 import { ImportService, type PreparedItem } from '../import.service';
 import {
   analyzeJira,
@@ -314,6 +315,13 @@ export class JiraImportService implements OnApplicationBootstrap {
     userId: string,
     input: JiraImportRunInput,
   ): Promise<{ jobId: string } | JiraDryRunResult> {
+    // Thử lại sau khi phản hồi đầu bị mất (hoặc bấm lần hai): đã có job cho analyzeId này → trả lại đúng job đó,
+    // kể cả khi tệp phân tích đã được dọn. Dry-run thì không có gì để xem trước nữa.
+    const prior = await findImportJobByAnalyzeId(this.prisma, workspaceId, input.analyzeId);
+    if (prior) {
+      if (input.options.dryRun) throw new BusinessRuleException(ALREADY_RUN_MESSAGE);
+      return { jobId: prior.id };
+    }
     const parsed = await this.load(workspaceId, input.analyzeId);
     const analysis = analyzeJira(parsed);
 
@@ -381,30 +389,30 @@ export class JiraImportService implements OnApplicationBootstrap {
       };
     }
 
-    // Claim nguyên tử `<id>.json` → `<id>.claimed`: chỉ MỘT request qua được; request song song
-    // hoặc bấm "Chạy" lần hai nhận lỗi thay vì tạo job + issue trùng.
-    await this.claim(input.analyzeId);
+    // Lớp phụ: ghi có điều kiện `<id>.claimed` (không chặn nếu lỗi/mồ côi — DB mới là nguồn sự thật).
+    await this.claimStorage(input.analyzeId);
+    // Lớp chính: claim ở DB (advisory lock + tìm/tạo ImportJob trong một transaction). Request song song hoặc
+    // bấm "Chạy" lần hai nhận lại CÙNG job thay vì tạo job + issue trùng.
     let job: { id: string };
     try {
-      job = await this.prisma.importJob.create({
-        data: {
-          workspaceId,
-          source: 'JIRA_CLOUD',
-          status: 'RUNNING',
-          createdById: userId,
-          startedAt: new Date(),
-          totalItems: parsed.issues.length,
-          config: {
-            format: JIRA_JOB_FORMAT,
-            analyzeId: input.analyzeId,
-            projectId: input.projectId ?? null,
-            newProject: input.newProject ?? null,
-            mapping: input.mapping,
-            options: input.options,
-          },
+      const claim = await claimImportJob(this.prisma, workspaceId, input.analyzeId, {
+        workspaceId,
+        source: 'JIRA_CLOUD',
+        status: 'RUNNING',
+        createdById: userId,
+        startedAt: new Date(),
+        totalItems: parsed.issues.length,
+        config: {
+          format: JIRA_JOB_FORMAT,
+          analyzeId: input.analyzeId,
+          projectId: input.projectId ?? null,
+          newProject: input.newProject ?? null,
+          mapping: input.mapping,
+          options: input.options,
         },
-        select: { id: true },
       });
+      if (!claim.created) return { jobId: claim.id }; // request khác đã tạo job
+      job = { id: claim.id };
     } catch (err) {
       await this.unclaim(input.analyzeId); // chưa có job nào → cho người dùng thử lại
       throw err;
@@ -1134,16 +1142,11 @@ export class JiraImportService implements OnApplicationBootstrap {
   private async load(workspaceId: string, analyzeId: string): Promise<JiraParseResult> {
     if (!jiraAnalyzeIdSchema.safeParse(analyzeId).success)
       throw new BusinessRuleException(EXPIRED_MESSAGE);
-    let claimed = false;
     try {
-      // Có `.claimed` ⇒ phiên này đã/đang được import, khác với hết hạn/không tồn tại.
-      claimed = await this.storage.exists(this.key(analyzeId, 'claimed'));
-      if (claimed) throw new Error('đã claim');
-      const [stat, metaObj] = await Promise.all([
-        this.storage.stat(this.key(analyzeId, 'csv')),
-        this.storage.get(this.key(analyzeId, 'json')),
-      ]);
+      // stat TRƯỚC khi mở luồng json: thiếu csv (hết hạn/đã dọn) thì không mở luồng nào để bỏ rơi (giữ socket S3).
+      const stat = await this.storage.stat(this.key(analyzeId, 'csv'));
       if (!stat) throw new Error('không có tệp');
+      const metaObj = await this.storage.get(this.key(analyzeId, 'json'));
       const meta = JSON.parse(
         (await streamToBuffer(metaObj.stream)).toString('utf8'),
       ) as AnalyzeMeta;
@@ -1159,28 +1162,38 @@ export class JiraImportService implements OnApplicationBootstrap {
         this.logger.error(`Đọc tệp phân tích ${analyzeId} thất bại: ${causeMessage(err)}`);
         throw new BusinessRuleException('Không đọc được tệp phân tích, thử lại');
       }
-      throw new BusinessRuleException(claimed ? ALREADY_RUN_MESSAGE : EXPIRED_MESSAGE);
+      throw new BusinessRuleException(EXPIRED_MESSAGE);
     }
   }
 
   /**
-   * Claim nguyên tử: chỉ MỘT request tạo được `<id>.claimed` (ghi có điều kiện "chưa tồn tại"; local `wx`, S3 `If-None-Match: *`).
-   * Request thua ⇒ đã bị claim.
+   * Lớp phụ chống chạy trùng: ghi có điều kiện `<id>.claimed` (local `wx`, S3 `If-None-Match: *`). Chỉ để dấu vết/phát hiện sớm:
+   * đã tồn tại hay lỗi hạ tầng đều KHÔNG chặn — claim ở DB (`claimImportJob`) mới là nguồn sự thật, nên claim mồ côi
+   * (ghi được nhưng phản hồi mất) không bao giờ làm kẹt người dùng.
    */
-  private async claim(analyzeId: string): Promise<void> {
+  private async claimStorage(analyzeId: string): Promise<void> {
     try {
       await this.storage.put(this.key(analyzeId, 'claimed'), Buffer.from('{}'), {
         ifNotExists: true,
       });
     } catch (err) {
-      if (err instanceof ObjectExistsError) throw new BusinessRuleException(ALREADY_RUN_MESSAGE);
-      throw err; // lỗi hạ tầng là sự cố thật, không giả làm "đã import"
+      if (err instanceof ObjectExistsError) {
+        this.logger.warn(
+          `Đã có dấu claim cho phiên ${analyzeId} (request khác đang chạy hoặc claim mồ côi); tiếp tục theo claim ở DB`,
+        );
+      } else {
+        this.logger.warn(`Không ghi được dấu claim cho phiên ${analyzeId}: ${causeMessage(err)}`);
+      }
     }
   }
 
-  /** Nhả claim khi chưa tạo được job để người dùng bấm "Chạy" lại. */
+  /** Nhả dấu claim khi chưa tạo được job. Lỗi chỉ log: claim ở DB không bị ảnh hưởng nên không có gì kẹt. */
   private async unclaim(analyzeId: string): Promise<void> {
-    await this.storage.delete(this.key(analyzeId, 'claimed')).catch(() => undefined);
+    try {
+      await this.storage.delete(this.key(analyzeId, 'claimed'));
+    } catch (err) {
+      this.logger.warn(`Không nhả được dấu claim của phiên ${analyzeId}: ${causeMessage(err)}`);
+    }
   }
 
   /** Xoá tệp phân tích quá 1 giờ (gọi ở mỗi lần analyze — không cần cron). */

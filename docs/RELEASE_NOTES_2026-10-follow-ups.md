@@ -863,7 +863,7 @@ Chưa có báo cáo nào xác nhận các mục này đã chạy; người kiể
 ## 1. Cần làm khi triển khai
 
 - **Không đổi cơ sở dữ liệu** (không migration). Mặc định vẫn `STORAGE_DRIVER=local`, hành vi và đường dẫn tệp không đổi — nâng cấp mà không đặt gì thì mọi thứ chạy như cũ.
-- Muốn dùng MinIO/S3: làm theo `docs/DEPLOY.md` mục "Lưu tệp trên S3/MinIO" (tạo bucket riêng → đặt `S3_*` → `storage:migrate-local-to-s3 [-- --dry-run]` → đổi `STORAGE_DRIVER=s3` → kiểm HeadBucket trong log).
+- Muốn dùng MinIO/S3: làm theo `docs/DEPLOY.md` mục "Lưu tệp trên S3/MinIO" (tạo bucket riêng → đặt `S3_*` → dừng API → `storage:migrate-local-to-s3 [-- --dry-run]` → đổi `STORAGE_DRIVER=s3` → khởi động → kiểm HeadBucket trong log). Cổng API S3 của MinIO công ty khác mặc định (9001) — thử HeadBucket để xác định.
 - Dependency mới: `@aws-sdk/client-s3@3.1156.0` (API, ghim đúng phiên bản).
 - Image Docker chứa thêm `scripts/storage-migrate-local-to-s3.mjs`.
 
@@ -876,9 +876,17 @@ Chưa có báo cáo nào xác nhận các mục này đã chạy; người kiể
 - Console quản trị: Tổng quan hiện `s3 · <bucket>` và trạng thái HeadBucket; Cấu hình hiện driver + bucket. Không lộ khoá/endpoint.
 - Công cụ vận hành `storage:migrate-local-to-s3` (idempotent, `--dry-run`, không xoá local).
 
+## 2b. Sau đợt rà soát (fix round 1)
+
+- **Cờ hệ thống không bị ghi đè khi S3 chập chờn:** đọc lỗi ≠ không có tệp; chưa đọc được thì `setFlags` từ chối (503) và đăng ký công khai tạm đóng, tự đọc lại có backoff; lưu cờ lỗi giờ báo lỗi thay vì "thành công giả".
+- **Chống chạy trùng import Jira ở DB** (advisory lock + `ImportJob`), không phụ thuộc `If-None-Match`; thử lại sau khi mất phản hồi nhận lại đúng job cũ. Probe lúc khởi động báo nếu máy chủ S3 bỏ qua ghi có điều kiện.
+- **Khởi động chặt** (`STORAGE_STARTUP_STRICT`, mặc định bật ở production): cấu hình S3 sai dứt khoát → API dừng ngay; lỗi mạng → vẫn lên, thử lại mỗi 30 giây.
+- **Cắt chuyển an toàn hơn:** thứ tự "dừng API → chép lần cuối → đổi driver → khởi động"; `system-settings.json` so theo nội dung; không đè object S3 mới hơn nếu không `--force`; báo nguyên nhân từng khoá lỗi.
+- **Tên tệp tiếng Việt đúng:** giải mã lại tên multer đọc sai, `Content-Disposition` theo RFC 6266/5987; script tuỳ chọn `attachments:fix-filenames` sửa dòng cũ.
+- Khác: giới hạn dung lượng ở multer, NoSuchBucket không còn thành 404 im lặng, tên avatar `.`/`..` trả 400, tổng quan admin nhớ kết quả HeadBucket ~30 giây, huỷ client S3 khi tắt.
+
 ## 3. Còn mở
 
 - Chưa chạy trên MinIO công ty (172.20.20.100) và VM 172.20.20.128 — đã kiểm với MinIO cục bộ (`pnpm test:parity` + e2e API thật); cần một lượt kiểm trên hạ tầng thật khi triển khai (cổng API, quyền của access key, `If-None-Match` ở bản MinIO của công ty).
 - Không có vòng đời/dọn object mồ côi (xoá object lỗi chỉ log); bucket versioning/lifecycle do người vận hành cấu hình.
-- Tên tệp tiếng Việt có dấu tải lên từ một số client bị multer giải mã latin1 (hành vi có từ trước, không đổi trong đợt này).
 

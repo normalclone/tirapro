@@ -5,19 +5,23 @@
  *
  *   pnpm --filter @tirapro/api run storage:migrate-local-to-s3 -- --dry-run   # chỉ báo cáo, không ghi
  *   pnpm --filter @tirapro/api run storage:migrate-local-to-s3                # sao chép thật
+ *   pnpm --filter @tirapro/api run storage:migrate-local-to-s3 -- --force     # ghi đè cả khi bản S3 MỚI hơn bản local (cẩn thận)
  *   docker run --rm --env-file .env <image> node scripts/storage-migrate-local-to-s3.mjs --dry-run
  *
  * Cần: DATABASE_URL, STORAGE_LOCAL_DIR (thư mục tệp cũ), S3_ENDPOINT, S3_BUCKET, S3_ACCESS_KEY, S3_SECRET_KEY
  * (S3_REGION, S3_FORCE_PATH_STYLE tuỳ chọn). Cần `pnpm --filter @tirapro/api build` trước (script dùng mã đã biên dịch ở dist/).
  *
- * - Idempotent: bỏ qua object đã có cùng kích thước ⇒ chạy lại bao nhiêu lần cũng được (vd chạy lần nữa ngay trước lúc cắt chuyển).
+ * - Idempotent: bỏ qua object đã có cùng kích thước (tệp bất biến) hoặc cùng NỘI DUNG sha256 (`system-settings.json`) ⇒ chạy lại
+ *   bao nhiêu lần cũng được. Thứ tự cắt chuyển: DỪNG API → chạy script lần cuối → đổi STORAGE_DRIVER=s3 → khởi động API.
+ * - KHÔNG bao giờ ghi đè object S3 MỚI hơn bản local và khác nội dung (đếm là "xung đột") trừ khi có --force.
  * - KHÔNG xoá tệp local, KHÔNG tạo bucket (thiếu bucket ⇒ dừng và báo).
- * - Thoát 0 khi không có lỗi; 2 nếu còn tệp lỗi; 1 nếu cấu hình sai / không tới được bucket.
+ * - Thoát 0 khi không có lỗi/xung đột; 2 nếu còn tệp lỗi hoặc xung đột; 1 nếu cấu hình sai / không tới được bucket.
  * - Tệp phân tích import Jira (`imports/`, giữ tối đa 1 giờ) cố ý KHÔNG chuyển.
  */
 import { PrismaClient } from '@prisma/client';
 
 const dryRun = process.argv.includes('--dry-run');
+const force = process.argv.includes('--force');
 const env = process.env;
 
 const missing = [
@@ -32,6 +36,12 @@ if (missing.length) {
   process.exit(1);
 }
 const localDir = env.STORAGE_LOCAL_DIR || './uploads';
+if ((env.STORAGE_DRIVER ?? '').trim() === 's3') {
+  console.warn(
+    'CẢNH BÁO: STORAGE_DRIVER=s3 trong môi trường này — API có thể đang ghi trực tiếp lên bucket. ' +
+      'Thứ tự đúng: dừng API → chạy script lần cuối (với STORAGE_DRIVER chưa đổi) → đổi driver → khởi động API.',
+  );
+}
 
 let LocalStorage, S3Storage, collectKeys, migrateObjects;
 try {
@@ -83,6 +93,7 @@ try {
     dest,
     keys,
     dryRun,
+    force,
     contentTypes,
     onProgress: (done, total) => {
       if (done % 100 === 0 || done === total) console.log(`  ${done}/${total}`);
@@ -95,7 +106,7 @@ try {
 console.log(
   `\nKết quả${dryRun ? ' (dry-run — chưa ghi gì)' : ''}: ` +
     `${dryRun ? 'sẽ chép' : 'đã chép'} ${report.copied}, bỏ qua (đã có cùng kích thước) ${report.skipped}, ` +
-    `thiếu trên đĩa ${report.missing}, lỗi ${report.failed}.`,
+    `thiếu trên đĩa ${report.missing}, xung đột (S3 mới hơn, không ghi đè) ${report.conflicts}, lỗi ${report.failed}.`,
 );
 if (report.missingKeys.length)
   console.log(
@@ -103,9 +114,17 @@ if (report.missingKeys.length)
       report.missingKeys.slice(0, 50).join('\n  ') +
       (report.missingKeys.length > 50 ? `\n  … và ${report.missingKeys.length - 50} khoá nữa` : ''),
   );
-if (report.failedKeys.length)
+if (report.conflictKeys.length)
+  console.error(
+    `Xung đột — object trên S3 MỚI hơn bản local và khác nội dung nên KHÔNG bị ghi đè (kiểm tra tay; chắc chắn muốn đè thì chạy lại với --force):\n  ` +
+      report.conflictKeys.slice(0, 50).join('\n  '),
+  );
+if (report.failures.length)
   console.error(
     `Lỗi (chạy lại script để thử lại các khoá này):\n  ` +
-      report.failedKeys.slice(0, 50).join('\n  '),
+      report.failures
+        .slice(0, 50)
+        .map((f) => `${f.key} — ${f.cause}`)
+        .join('\n  '),
   );
-process.exit(report.failed > 0 ? 2 : 0);
+process.exit(report.failed > 0 || report.conflicts > 0 ? 2 : 0);

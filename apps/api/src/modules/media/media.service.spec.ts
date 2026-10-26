@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MemoryStorage } from '../../common/storage/memory-storage.testutil';
 import { readAll } from '../../common/storage/object-storage.contract.testutil';
@@ -42,6 +43,20 @@ describe('MediaService — qua ObjectStorage', () => {
     expect((await readAll(r.stream)).toString()).toBe('JPG');
     await expect(svc.serve('nope.png')).rejects.toThrow('Ảnh không tồn tại');
     await expect(svc.serve('../secret')).rejects.toThrow('Ảnh không tồn tại');
+  });
+
+  it('M3: tên `.`/`..` bị từ chối sạch (400), KHÔNG chạm storage, KHÔNG ghi log lỗi', async () => {
+    const storage = new MemoryStorage();
+    const get = vi.spyOn(storage, 'get');
+    const logged = vi.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    const svc = new MediaService(config as never, storage);
+    for (const bad of ['.', '..', '...']) {
+      const err = await svc.serve(bad).catch((e: unknown) => e);
+      expect((err as { getStatus: () => number }).getStatus()).toBe(400);
+    }
+    expect(get).not.toHaveBeenCalled();
+    expect(logged).not.toHaveBeenCalled();
+    await expect(svc.removeByUrl('https://h/api/v1/media/avatars/..')).resolves.toBeUndefined();
   });
 
   it('serve: storage sập (không phải 404) → lỗi nghiệp vụ, không giả làm 404', async () => {

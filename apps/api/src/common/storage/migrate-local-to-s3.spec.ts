@@ -4,6 +4,11 @@ import { StorageUnavailableError } from './object-storage';
 import { avatarKeyFromUrl, collectKeys, migrateObjects } from './migrate-local-to-s3';
 
 const put = (s: MemoryStorage, key: string, body: string) => s.put(key, Buffer.from(body));
+/** Đẩy thời điểm sửa của một tệp về quá khứ (mô phỏng bản cũ). */
+const older = (s: MemoryStorage, key: string) => {
+  const f = s.files.get(key);
+  if (f) f.lastModified = new Date(Date.now() - 3_600_000);
+};
 
 describe('avatarKeyFromUrl', () => {
   it('trích khoá `avatars/<file>` từ URL media của ta; URL ngoài/lạ → null', () => {
@@ -75,12 +80,75 @@ describe('migrateObjects', () => {
     expect(again).toMatchObject({ copied: 0, skipped: 1 });
   });
 
-  it('khác kích thước → chép đè (bản dở dang / đã sửa)', async () => {
+  it('khác kích thước và nguồn MỚI hơn đích → chép đè (bản dở dang / đã sửa)', async () => {
     await put(src, 'w1/a.txt', 'abcdef');
     await put(dst, 'w1/a.txt', 'abc');
+    older(dst, 'w1/a.txt');
     const r = await migrateObjects({ source: src, dest: dst, keys: ['w1/a.txt'], dryRun: false });
     expect(r.copied).toBe(1);
     expect(dst.files.get('w1/a.txt')?.body.toString()).toBe('abcdef');
+  });
+
+  it('I4: đích MỚI hơn nguồn và khác nội dung → KHÔNG ghi đè (conflict), trừ khi --force', async () => {
+    await put(src, 'w1/a.txt', 'cu-cu-cu');
+    older(src, 'w1/a.txt');
+    await put(dst, 'w1/a.txt', 'moi');
+    const r = await migrateObjects({ source: src, dest: dst, keys: ['w1/a.txt'], dryRun: false });
+    expect(r).toMatchObject({ copied: 0, conflicts: 1 });
+    expect(r.conflictKeys).toEqual(['w1/a.txt']);
+    expect(dst.files.get('w1/a.txt')?.body.toString()).toBe('moi');
+    const forced = await migrateObjects({
+      source: src,
+      dest: dst,
+      keys: ['w1/a.txt'],
+      dryRun: false,
+      force: true,
+    });
+    expect(forced).toMatchObject({ copied: 1, conflicts: 0 });
+    expect(dst.files.get('w1/a.txt')?.body.toString()).toBe('cu-cu-cu');
+  });
+
+  it('I4: system-settings.json so theo NỘI DUNG — cùng kích thước nhưng khác nội dung vẫn được chép (nguồn mới hơn)', async () => {
+    const x = '{"signupEnabled":true,"aiKillSwitch":false}';
+    const y = '{"signupEnabled":true,"aiKillSwitch":true_}';
+    expect(x.length).toBe(y.length);
+    await put(src, 'system-settings.json', x);
+    await put(dst, 'system-settings.json', y);
+    older(dst, 'system-settings.json');
+    const r = await migrateObjects({
+      source: src,
+      dest: dst,
+      keys: ['system-settings.json'],
+      dryRun: false,
+    });
+    expect(r).toMatchObject({ copied: 1, skipped: 0 });
+    expect(dst.files.get('system-settings.json')?.body.toString()).toBe(x);
+  });
+
+  it('I4: system-settings.json giống hệt nội dung → bỏ qua', async () => {
+    await put(src, 'system-settings.json', '{"a":1}');
+    await put(dst, 'system-settings.json', '{"a":1}');
+    const r = await migrateObjects({
+      source: src,
+      dest: dst,
+      keys: ['system-settings.json'],
+      dryRun: false,
+    });
+    expect(r).toMatchObject({ copied: 0, skipped: 1 });
+  });
+
+  it('I4: system-settings.json ở S3 MỚI hơn và khác → giữ bản S3 (admin vừa sửa), báo conflict', async () => {
+    await put(src, 'system-settings.json', '{"signupEnabled":true}');
+    older(src, 'system-settings.json');
+    await put(dst, 'system-settings.json', '{"signupEnabled":false}');
+    const r = await migrateObjects({
+      source: src,
+      dest: dst,
+      keys: ['system-settings.json'],
+      dryRun: false,
+    });
+    expect(r).toMatchObject({ copied: 0, conflicts: 1 });
+    expect(dst.files.get('system-settings.json')?.body.toString()).toBe('{"signupEnabled":false}');
   });
 
   it('dry-run: chỉ đếm, KHÔNG ghi', async () => {

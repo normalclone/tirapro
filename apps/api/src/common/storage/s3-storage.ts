@@ -47,8 +47,10 @@ const status = (e: unknown): number | undefined =>
   (e as { $metadata?: { httpStatusCode?: number } } | undefined)?.$metadata?.httpStatusCode;
 const errName = (e: unknown): string => (e as { name?: string } | undefined)?.name ?? '';
 
+/** "Không có tệp". `NoSuchBucket` KHÔNG tính (bucket mất/sai tên là sự cố cấu hình, không được che thành 404 im lặng). */
 const isNotFound = (e: unknown) =>
-  status(e) === 404 || ['NoSuchKey', 'NotFound', 'NoSuchBucket'].includes(errName(e));
+  errName(e) !== 'NoSuchBucket' &&
+  (status(e) === 404 || ['NoSuchKey', 'NotFound'].includes(errName(e)));
 const isPreconditionFailed = (e: unknown) =>
   status(e) === 412 || status(e) === 409 || errName(e) === 'PreconditionFailed';
 
@@ -132,7 +134,7 @@ export class S3Storage implements ObjectStorage {
     try {
       await this.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: key }));
     } catch (err) {
-      if (isNotFound(err) && errName(err) !== 'NoSuchBucket') return; // S3 vốn trả 204 khi thiếu; phòng server khác trả 404
+      if (isNotFound(err)) return; // S3 vốn trả 204 khi thiếu; phòng server khác trả 404
       throw new StorageUnavailableError('Kho lưu trữ tệp không phản hồi', err);
     }
   }
@@ -184,20 +186,31 @@ export class S3Storage implements ObjectStorage {
       return { ok: true };
     } catch (err) {
       const st = status(err);
-      if (st === 404 || errName(err) === 'NotFound' || errName(err) === 'NoSuchBucket')
+      const name = errName(err);
+      if (st === 404 || name === 'NotFound' || name === 'NoSuchBucket')
         return {
           ok: false,
-          detail: `Bucket "${this.bucket}" không tồn tại — hãy tạo bucket thủ công trên MinIO/S3 (ứng dụng không tự tạo) rồi khởi động lại.`,
+          kind: 'config',
+          detail: `Bucket "${this.bucket}" không tồn tại — hãy tạo bucket thủ công trên MinIO/S3 (ứng dụng không tự tạo) rồi khởi động lại. Nếu bucket đã có, kiểm tra S3_ENDPOINT có đúng cổng API S3 không (thử HeadBucket để xác định cổng API; cổng còn lại thường là trang quản trị).`,
         };
-      if (st === 403 || errName(err) === 'Forbidden' || errName(err) === 'AccessDenied')
+      if (
+        st === 403 ||
+        ['Forbidden', 'AccessDenied', 'InvalidAccessKeyId', 'SignatureDoesNotMatch'].includes(name)
+      )
         return {
           ok: false,
-          detail: `Không đủ quyền truy cập bucket "${this.bucket}" — kiểm tra S3_ACCESS_KEY/S3_SECRET_KEY và policy của tài khoản.`,
+          kind: 'config',
+          detail: `Không đủ quyền truy cập bucket "${this.bucket}" hoặc sai khoá — kiểm tra S3_ACCESS_KEY/S3_SECRET_KEY và policy của tài khoản.`,
         };
       return {
         ok: false,
-        detail: `Không kết nối được tới S3 endpoint (${errName(err) || 'lỗi mạng'}) — kiểm tra S3_ENDPOINT (MinIO thường cổng API 9000, 9001 hay là console), mạng và tường lửa.`,
+        kind: 'network',
+        detail: `Không kết nối được tới S3 endpoint (${name || 'lỗi mạng'}) — kiểm tra S3_ENDPOINT (thử HeadBucket để xác định cổng API; MinIO thường tách cổng API S3 và cổng trang quản trị), mạng và tường lửa.`,
       };
     }
+  }
+
+  destroy(): void {
+    (this.client as { destroy?: () => void }).destroy?.();
   }
 }

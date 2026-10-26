@@ -8,7 +8,7 @@ import {
   UploadedFile,
   UseInterceptors,
 } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
+import { AvatarUploadInterceptor } from '../../common/upload/upload.interceptor';
 import { ApiConsumes, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
 import { createWorkspaceSchema, type CreateWorkspaceInput } from '@tirapro/shared';
@@ -51,7 +51,7 @@ export class WorkspacesController {
   @Permissions(PERMISSIONS.WORKSPACE_ADMIN)
   @Post(':id/avatar')
   @ApiConsumes('multipart/form-data')
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(AvatarUploadInterceptor)
   async uploadAvatar(
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,

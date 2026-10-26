@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createId } from '@paralleldrive/cuid2';
 import * as path from 'node:path';
@@ -78,6 +78,8 @@ export class MediaService {
   /** Stream ảnh cho route công khai (chống path traversal). */
   async serve(fileRaw: string): Promise<{ stream: Readable; mimeType: string; size?: number }> {
     const file = path.basename(fileRaw);
+    // `.`/`..` khớp regex tên nhưng là khoá không hợp lệ: từ chối sạch (400), không chạm storage, không log lỗi.
+    if (/^\.+$/.test(file)) throw new BadRequestException('Tên ảnh không hợp lệ');
     if (!/^[\w.-]+$/.test(file)) throw new NotFoundAppException('Ảnh');
     const ext = file.split('.').pop()?.toLowerCase() ?? '';
     const obj = await getOrNull(this.logger, this.storage, `avatars/${file}`);
@@ -99,7 +101,7 @@ export class MediaService {
     const idx = url.indexOf(marker);
     if (idx === -1) return;
     const file = path.basename(url.slice(idx + marker.length));
-    if (!/^[\w.-]+$/.test(file)) return;
+    if (!/^[\w.-]+$/.test(file) || /^\.+$/.test(file)) return;
     await deleteBestEffort(this.logger, this.storage, `avatars/${file}`);
   }
 }

@@ -9,7 +9,6 @@ import {
   UploadedFile,
   UseInterceptors,
 } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiConsumes, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { PERMISSIONS } from '@tirapro/types';
@@ -18,6 +17,8 @@ import { WorkspaceId } from '../../common/decorators/workspace-id.decorator';
 import { ProjectRef } from '../../common/decorators/project-ref.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
 import type { AuthUser } from '../../common/types/request';
+import { AttachmentUploadInterceptor } from '../../common/upload/upload.interceptor';
+import { contentDispositionAttachment } from '../../common/filename';
 import { AttachmentsService } from './attachments.service';
 import { IssueOwnershipService } from '../rbac/issue-ownership.service';
 import { OwnOnly } from '../../common/decorators/own-only.decorator';
@@ -34,7 +35,7 @@ export class AttachmentsController {
   @Post('issues/:issueId/attachments')
   @Permissions(PERMISSIONS.ISSUE_EDIT)
   @ApiConsumes('multipart/form-data')
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(AttachmentUploadInterceptor)
   async upload(
     @WorkspaceId() workspaceId: string,
     @CurrentUser() user: AuthUser,
@@ -54,7 +55,7 @@ export class AttachmentsController {
   @Post('issues/:issueId/comment-attachments')
   @Permissions(PERMISSIONS.COMMENT_CREATE)
   @ApiConsumes('multipart/form-data')
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(AttachmentUploadInterceptor)
   async uploadForComment(
     @WorkspaceId() workspaceId: string,
     @CurrentUser() user: AuthUser,
@@ -82,7 +83,7 @@ export class AttachmentsController {
     const { stream, fileName, mimeType, size } = await this.attachments.download(workspaceId, id);
     res.setHeader('Content-Type', mimeType);
     if (size !== undefined) res.setHeader('Content-Length', size);
-    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(fileName)}"`);
+    res.setHeader('Content-Disposition', contentDispositionAttachment(fileName));
     return new StreamableFile(stream);
   }
 

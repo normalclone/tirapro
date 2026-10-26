@@ -10,6 +10,7 @@ import {
   putOrThrowBusiness,
   type ObjectStorage,
 } from '../../common/storage/object-storage';
+import { fixLatin1Utf8 } from '../../common/filename';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { BusinessRuleException, NotFoundAppException } from '../../common/exceptions/app.exception';
 import { assertIssueWritable } from '../../common/project-writable';
@@ -69,7 +70,9 @@ export class AttachmentsService {
       throw new BusinessRuleException(`Tệp vượt quá kích thước tối đa ${this.maxFileSizeMb}MB`);
     }
 
-    const { storageKey, checksum } = await this.writeFile(workspaceId, file);
+    // multer đọc tên tệp theo latin1 → khôi phục UTF-8 (tiếng Việt) trước khi lưu DB/khoá; chỉ khi giải mã sạch.
+    const fileName = fixLatin1Utf8(file.originalname);
+    const { storageKey, checksum } = await this.writeFile(workspaceId, file, fileName);
 
     let row;
     try {
@@ -77,7 +80,7 @@ export class AttachmentsService {
         data: {
           issueId,
           uploadedById: userId,
-          fileName: file.originalname,
+          fileName,
           mimeType: file.mimetype,
           sizeBytes: file.size,
           storageKey,
@@ -128,8 +131,9 @@ export class AttachmentsService {
   private async writeFile(
     workspaceId: string,
     file: Express.Multer.File,
+    fileName: string,
   ): Promise<{ storageKey: string; checksum: string }> {
-    const storageKey = `${workspaceId}/${createId()}-${this.sanitizeName(file.originalname)}`;
+    const storageKey = `${workspaceId}/${createId()}-${this.sanitizeName(fileName)}`;
     const { checksum } = await putOrThrowBusiness(
       this.logger,
       this.storage,

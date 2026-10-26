@@ -11,7 +11,7 @@ import {
   UploadedFile,
   UseInterceptors,
 } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
+import { AvatarUploadInterceptor } from '../../common/upload/upload.interceptor';
 import { ApiConsumes, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
 import {
@@ -152,7 +152,7 @@ export class ProjectsController {
   @ProjectRef('projectKey', 'key')
   @Post(':key/avatar')
   @ApiConsumes('multipart/form-data')
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(AvatarUploadInterceptor)
   async uploadAvatar(
     @WorkspaceId() workspaceId: string,
     @Param('key') key: string,

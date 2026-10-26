@@ -14,7 +14,7 @@ import {
 
 /** `ObjectStorage` trong bộ nhớ cho test điểm chạm (không đụng đĩa/mạng). Có thể bơm lỗi qua `failNext`. */
 export class MemoryStorage implements ObjectStorage {
-  readonly driver = 'local' as const;
+  readonly driver: 'local' | 's3' = 'local';
   readonly files = new Map<string, { body: Buffer; contentType?: string; lastModified: Date }>();
   /** Lỗi ném ở lần gọi kế tiếp của phương thức tương ứng. */
   failNext: Partial<Record<'put' | 'get' | 'delete' | 'stat' | 'list', Error>> = {};

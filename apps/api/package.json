@@ -24,7 +24,8 @@
     "db:check-roles": "node scripts/check-system-roles.mjs",
     "integrations:rekey": "node scripts/rekey-integrations.mjs",
     "automation:seal-secrets": "node scripts/seal-webhook-secrets.mjs",
-    "storage:migrate-local-to-s3": "node scripts/storage-migrate-local-to-s3.mjs"
+    "storage:migrate-local-to-s3": "node scripts/storage-migrate-local-to-s3.mjs",
+    "attachments:fix-filenames": "node scripts/attachments-fix-filenames.mjs"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

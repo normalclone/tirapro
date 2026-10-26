@@ -45,6 +45,17 @@ const baseEnvSchema = z.object({
   S3_ACCESS_KEY: z.string().optional().default(''),
   S3_SECRET_KEY: z.string().optional().default(''),
   S3_FORCE_PATH_STYLE: boolEnv(true),
+  // Khởi động chặt: lỗi cấu hình S3 dứt khoát (bucket thiếu, 403, khoá sai) ⇒ dừng ngay. Không đặt ⇒ true ở production, false còn lại.
+  STORAGE_STARTUP_STRICT: z
+    .union([z.boolean(), z.string()])
+    .optional()
+    .transform((v) =>
+      v === undefined || v === ''
+        ? undefined
+        : typeof v === 'boolean'
+          ? v
+          : v === 'true' || v === '1',
+    ),
 
   ANTHROPIC_API_KEY: z.string().optional().default(''),
   AI_FEATURES_ENABLED: boolEnv(true),
@@ -104,7 +115,7 @@ const envSchema = baseEnvSchema.superRefine((env, ctx) => {
     [
       'S3_ENDPOINT',
       env.S3_ENDPOINT,
-      'vd http://172.20.20.100:9000 (cổng API của MinIO, thường 9000)',
+      'vd http://<host>:<cổng API S3> — cổng API, không phải cổng trang quản trị; thử HeadBucket để xác định',
     ],
     ['S3_BUCKET', env.S3_BUCKET, 'tên bucket riêng của Tirapro, tạo sẵn thủ công'],
     ['S3_ACCESS_KEY', env.S3_ACCESS_KEY, 'access key của tài khoản có quyền trên bucket'],
@@ -123,7 +134,7 @@ const envSchema = baseEnvSchema.superRefine((env, ctx) => {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       path: ['S3_ENDPOINT'],
-      message: 'phải là URL bắt đầu bằng http:// hoặc https://, vd http://172.20.20.100:9000',
+      message: 'phải là URL bắt đầu bằng http:// hoặc https://, vd http://<host>:<cổng API S3>',
     });
   }
 });
