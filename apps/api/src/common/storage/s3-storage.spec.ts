@@ -1,3 +1,13 @@
+import {
+  CopyObjectCommand,
+  DeleteObjectCommand,
+  DeleteObjectsCommand,
+  GetObjectCommand,
+  HeadBucketCommand,
+  ListBucketsCommand,
+  ListObjectsV2Command,
+  PutObjectCommand,
+} from '@aws-sdk/client-s3';
 import { describe, expect, it } from 'vitest';
 import { FakeS3Client, awsError } from './fake-s3-client.testutil';
 import { runObjectStorageContract } from './object-storage.contract.testutil';
@@ -330,5 +340,154 @@ describe('S3Storage — S3_KEY_PREFIX (dùng chung bucket, chỉ thao tác trong
     const client = new FakeS3Client();
     await mk(client).storage.put('ws1/a.txt', Buffer.from('1'));
     expect(client.calls[0]?.input.Key).toBe('ws1/a.txt');
+  });
+});
+
+describe('S3Storage — I1: kiểm khoá theo từng đoạn (không chặn nhầm tên có ".." trong tên tệp)', () => {
+  it.each(['a...png', 'report..final.pdf', 'ws1/id-b_o..c_o.pdf', '..hidden', 'a..', 'x/..y/z'])(
+    'chấp nhận %s (có "..", nhưng không phải đoạn ".."), có tiền tố',
+    async (name) => {
+      const client = new FakeS3Client();
+      const s = mk(client, 'tirapro/').storage;
+      await s.put(name, Buffer.from('1'));
+      expect(client.calls[0]?.input.Key).toBe(`tirapro/${name}`);
+      expect((await s.get(name)).size).toBe(1);
+      await s.delete(name);
+      expect(await s.exists(name)).toBe(false);
+    },
+  );
+
+  it.each(['../x', 'a/../x', 'a/..', '..', './x', 'a/./b', '/abs'])(
+    'vẫn TỪ CHỐI %s và không gửi lệnh nào',
+    async (name) => {
+      const client = new FakeS3Client();
+      const s = mk(client, 'tirapro/').storage;
+      await expect(s.put(name, Buffer.from('1'))).rejects.toThrow(/khoá/i);
+      await expect(s.get(name)).rejects.toThrow(/khoá/i);
+      expect(client.calls).toEqual([]);
+    },
+  );
+});
+
+describe('S3Storage — chốt chặn lúc chạy trước MỌI lệnh (bucket dùng chung)', () => {
+  const setup = () => {
+    const client = new FakeS3Client();
+    const storage = mk(client, 'tirapro/').storage;
+    const send = (cmd: object) =>
+      (storage as unknown as { send: (c: object) => Promise<unknown> }).send(cmd);
+    return { client, send };
+  };
+  const ok = 'bucket-test';
+
+  it('lệnh hợp lệ đi qua', async () => {
+    const { client, send } = setup();
+    await send(new PutObjectCommand({ Bucket: ok, Key: 'tirapro/a', Body: Buffer.from('1') }));
+    await send(new GetObjectCommand({ Bucket: ok, Key: 'tirapro/a' }));
+    await send(new ListObjectsV2Command({ Bucket: ok, Prefix: 'tirapro/imports/' }));
+    await send(new HeadBucketCommand({ Bucket: ok }));
+    expect(client.calls).toHaveLength(4);
+  });
+
+  it.each([
+    [
+      'lệnh ngoài danh sách cho phép: DeleteObjects',
+      () => new DeleteObjectsCommand({ Bucket: ok, Delete: { Objects: [{ Key: 'tirapro/a' }] } }),
+    ],
+    ['lệnh ngoài danh sách cho phép: ListBuckets', () => new ListBucketsCommand({})],
+    [
+      'lệnh ngoài danh sách cho phép: CopyObject',
+      () => new CopyObjectCommand({ Bucket: ok, Key: 'tirapro/b', CopySource: 'bucket-test/x' }),
+    ],
+    ['sai Bucket', () => new GetObjectCommand({ Bucket: 'auto-test-khac', Key: 'tirapro/a' })],
+    ['thiếu Bucket', () => new GetObjectCommand({ Key: 'tirapro/a' } as never)],
+    ['Key ngoài tiền tố', () => new GetObjectCommand({ Bucket: ok, Key: 'runner/job-1.json' })],
+    [
+      'Key gần giống tiền tố',
+      () => new DeleteObjectCommand({ Bucket: ok, Key: 'tirapro-other/x' }),
+    ],
+    ['Key rỗng', () => new GetObjectCommand({ Bucket: ok, Key: '' })],
+    [
+      'Key thoát bằng ..',
+      () => new DeleteObjectCommand({ Bucket: ok, Key: 'tirapro/../runner/job-1.json' }),
+    ],
+    ['List thiếu Prefix', () => new ListObjectsV2Command({ Bucket: ok })],
+    ['List Prefix rỗng', () => new ListObjectsV2Command({ Bucket: ok, Prefix: '' })],
+    [
+      'List Prefix ngoài tiền tố',
+      () => new ListObjectsV2Command({ Bucket: ok, Prefix: 'runner/' }),
+    ],
+    [
+      'List Prefix gần giống tiền tố',
+      () => new ListObjectsV2Command({ Bucket: ok, Prefix: 'tirapro-other/' }),
+    ],
+    [
+      'Put Key ngoài tiền tố',
+      () => new PutObjectCommand({ Bucket: ok, Key: 'root.txt', Body: Buffer.from('1') }),
+    ],
+  ])('%s → ném TRƯỚC khi gọi mạng', async (_name, make) => {
+    const { client, send } = setup();
+    await expect(send(make())).rejects.toThrow();
+    expect(client.calls).toEqual([]);
+  });
+
+  it('không tiền tố: vẫn kiểm Bucket + danh sách lệnh, nhưng List không bắt buộc Prefix khác rỗng', async () => {
+    const client = new FakeS3Client();
+    const storage = mk(client).storage;
+    const send = (cmd: object) =>
+      (storage as unknown as { send: (c: object) => Promise<unknown> }).send(cmd);
+    await expect(send(new GetObjectCommand({ Bucket: 'khac', Key: 'a' }))).rejects.toThrow();
+    await expect(send(new ListBucketsCommand({}))).rejects.toThrow();
+    await send(new ListObjectsV2Command({ Bucket: ok, Prefix: '' }));
+    expect(client.calls).toHaveLength(1);
+  });
+});
+
+describe('S3Storage.check — HeadBucket 403 + tiền tố → thử liệt kê trong tiền tố (policy theo tiền tố)', () => {
+  it('có tiền tố, HeadBucket 403 nhưng ListObjectsV2(Prefix, MaxKeys=1) được → OK kèm ghi chú policy theo tiền tố', async () => {
+    const client = new FakeS3Client();
+    client.forbiddenBuckets.add('bucket-test');
+    const r = await mk(client, 'tirapro/').storage.check();
+    expect(r.ok).toBe(true);
+    expect(r.note).toMatch(/policy.*tiền tố/i);
+    const list = client.calls.find((c) => c.command === 'ListObjectsV2Command');
+    expect(list?.input).toMatchObject({ Bucket: 'bucket-test', Prefix: 'tirapro/', MaxKeys: 1 });
+  });
+
+  it('có tiền tố, cả HeadBucket lẫn List đều 403 → config (sai quyền/khoá)', async () => {
+    const client = new FakeS3Client();
+    client.forbiddenBuckets.add('bucket-test');
+    client.forbidList = true;
+    const r = await mk(client, 'tirapro/').storage.check();
+    expect(r).toMatchObject({ ok: false, kind: 'config' });
+    expect(r.detail).toMatch(/quyền/);
+  });
+
+  it('không tiền tố: 403 KHÔNG thử List (không có gì để thu hẹp)', async () => {
+    const client = new FakeS3Client();
+    client.forbiddenBuckets.add('bucket-test');
+    const r = await mk(client).storage.check();
+    expect(r).toMatchObject({ ok: false, kind: 'config' });
+    expect(client.calls.map((c) => c.command)).toEqual(['HeadBucketCommand']);
+  });
+
+  it('sai khoá/lệch giờ (không phải 403 chung) KHÔNG đi đường List', async () => {
+    for (const name of ['InvalidAccessKeyId', 'SignatureDoesNotMatch', 'RequestTimeTooSkewed']) {
+      const client = new FakeS3Client();
+      client.failWith = awsError(name, 403);
+      const r = await mk(client, 'tirapro/').storage.check();
+      expect(r.ok, name).toBe(false);
+      expect(
+        client.calls.map((c) => c.command),
+        name,
+      ).toEqual(['HeadBucketCommand']);
+    }
+  });
+
+  it('bucket không tồn tại (404) với tiền tố → vẫn config, không List', async () => {
+    const client = new FakeS3Client();
+    client.buckets.clear();
+    const r = await mk(client, 'tirapro/').storage.check();
+    expect(r).toMatchObject({ ok: false, kind: 'config' });
+    expect(client.calls.map((c) => c.command)).toEqual(['HeadBucketCommand']);
   });
 });

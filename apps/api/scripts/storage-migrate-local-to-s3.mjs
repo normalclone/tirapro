@@ -57,7 +57,7 @@ try {
 
 let dest;
 try {
-  const dest = new S3Storage({
+  dest = new S3Storage({
     endpoint: env.S3_ENDPOINT.trim(),
     region: env.S3_REGION || 'us-east-1',
     bucket: env.S3_BUCKET.trim(),

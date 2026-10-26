@@ -46,6 +46,7 @@ export class StorageHealthService implements OnModuleInit, OnModuleDestroy {
     const res = await this.check();
     if (res.ok) {
       this.logger.log(`S3 sẵn sàng: bucket "${this.bucketName()}" truy cập được`);
+      if (res.note) this.logger.warn(res.note);
       await this.probeConditionalWrites();
       return;
     }

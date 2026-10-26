@@ -45,6 +45,16 @@ interface S3Like {
   send(command: never): Promise<unknown>;
 }
 
+/** Các lệnh S3 DUY NHẤT được phép gửi đi (không xoá hàng loạt, không liệt kê bucket, không tạo/xoá bucket, không copy). */
+const ALLOWED_COMMANDS = [
+  PutObjectCommand,
+  GetObjectCommand,
+  HeadObjectCommand,
+  DeleteObjectCommand,
+  ListObjectsV2Command,
+  HeadBucketCommand,
+] as const;
+
 const REQUEST_TIMEOUT_MS = 15_000;
 const CONNECTION_TIMEOUT_MS = 5_000;
 const MAX_ATTEMPTS = 2;
@@ -100,7 +110,11 @@ export class S3Storage implements ObjectStorage {
   private objectKey(key: string): string {
     assertSafeKey(key);
     const full = this.keyPrefix + key;
-    if (!full.startsWith(this.keyPrefix) || full.includes('..'))
+    // Kiểm theo TỪNG ĐOẠN: chỉ đoạn đúng bằng "." hoặc ".." mới thoát được; tên như `a...png`, `report..final.pdf` hợp lệ.
+    if (
+      !full.startsWith(this.keyPrefix) ||
+      full.split('/').some((seg) => seg === '.' || seg === '..')
+    )
       throw new Error('Khoá lưu trữ không hợp lệ');
     return full;
   }
@@ -110,7 +124,39 @@ export class S3Storage implements ObjectStorage {
     return prefix === '' ? this.keyPrefix : this.objectKey(prefix);
   }
 
+  /**
+   * CHỐT CHẶN LÚC CHẠY trước MỌI lệnh (lớp thứ hai sau guard mã nguồn; bucket dùng chung với app khác): lệnh phải thuộc danh
+   * sách cho phép, `Bucket` đúng bucket cấu hình, mọi `Key`/`Prefix` thuộc tiền tố, lệnh liệt kê luôn có `Prefix`.
+   * Vi phạm → ném NGAY, chưa gọi mạng.
+   */
+  private assertCommandAllowed(command: object): void {
+    const input = ((command as { input?: Record<string, unknown> }).input ?? {}) as {
+      Bucket?: unknown;
+      Key?: unknown;
+      Prefix?: unknown;
+    };
+    const allowed = ALLOWED_COMMANDS.some((C) => command instanceof C);
+    if (!allowed) throw new Error('Lệnh S3 không được phép');
+    if (input.Bucket !== this.bucket) throw new Error('Lệnh S3 trỏ sai bucket');
+    const inPrefix = (v: unknown) => typeof v === 'string' && v.startsWith(this.keyPrefix);
+    if (command instanceof HeadBucketCommand) return;
+    if (command instanceof ListObjectsV2Command) {
+      if (typeof input.Prefix !== 'string' || !inPrefix(input.Prefix))
+        throw new Error('Lệnh liệt kê S3 thiếu Prefix hoặc Prefix ngoài tiền tố');
+      return;
+    }
+    if (typeof input.Key !== 'string' || input.Key === '' || !inPrefix(input.Key))
+      throw new Error('Khoá S3 ngoài tiền tố');
+    if (input.Key.split('/').some((seg) => seg === '.' || seg === '..'))
+      throw new Error('Khoá S3 không hợp lệ');
+  }
+
   private send<T>(command: object): Promise<T> {
+    try {
+      this.assertCommandAllowed(command);
+    } catch (err) {
+      return Promise.reject(err instanceof Error ? err : new Error(String(err)));
+    }
     return this.client.send(command as never) as Promise<T>;
   }
 
@@ -230,6 +276,26 @@ export class S3Storage implements ObjectStorage {
           kind: 'config',
           detail: `Bucket "${this.bucket}" không tồn tại — hãy tạo bucket thủ công trên MinIO/S3 (ứng dụng không tự tạo) rồi khởi động lại. Nếu bucket đã có, kiểm tra S3_ENDPOINT có đúng cổng API S3 không (thử HeadBucket để xác định cổng API; cổng còn lại thường là trang quản trị).`,
         };
+      const wrongCredentials = ['InvalidAccessKeyId', 'SignatureDoesNotMatch'].includes(name);
+      // Policy chỉ cho phép trong tiền tố thì HeadBucket (cần quyền cấp bucket) bị 403 dù thao tác trong tiền tố vẫn được:
+      // thử liệt kê TRONG tiền tố; được thì coi là OK. Cả hai đều lỗi mới là `config`.
+      if (this.keyPrefix && st === 403 && !wrongCredentials) {
+        try {
+          await this.send(
+            new ListObjectsV2Command({
+              Bucket: this.bucket,
+              Prefix: this.listPrefix(''),
+              MaxKeys: 1,
+            }),
+          );
+          return {
+            ok: true,
+            note: `HeadBucket bị từ chối (403) nhưng liệt kê trong tiền tố "${this.keyPrefix}" được — policy của key chỉ cho phép thao tác trong tiền tố này; chấp nhận.`,
+          };
+        } catch {
+          /* rơi xuống: sai quyền thật */
+        }
+      }
       if (
         st === 403 ||
         ['Forbidden', 'AccessDenied', 'InvalidAccessKeyId', 'SignatureDoesNotMatch'].includes(name)
