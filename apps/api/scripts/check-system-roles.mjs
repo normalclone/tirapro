@@ -19,7 +19,7 @@ try {
       select: { permissions: { select: { permission: { select: { key: true } } } } },
     });
     if (!role) {
-      console.log(`${name}: THIẾU vai trò trong DB (chạy db:seed?)`);
+      console.log(`${name}: THIẾU vai trò trong DB (chạy db:seed:roles)`);
       diff++;
       continue;
     }

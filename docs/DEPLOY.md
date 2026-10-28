@@ -43,7 +43,8 @@ pnpm --filter @tirapro/api exec prisma generate
 pnpm --filter @tirapro/api build
 pnpm --filter @tirapro/api exec prisma migrate deploy
 pnpm --filter @tirapro/api run db:raw         # extension pgvector + FTS
-pnpm --filter @tirapro/api run db:seed        # dữ liệu demo (1 lần)
+pnpm --filter @tirapro/api run db:seed:roles  # quyền + vai trò hệ thống (BẮT BUỘC với DB mới, không có demo)
+# hoặc: pnpm --filter @tirapro/api run db:seed  # demo (1 lần, đã gồm vai trò) — KHÔNG dùng cho dữ liệu thật
 # API: chạy nền bằng pm2/systemd
 VITE_API_URL=https://api.your-domain/api/v1 VITE_WS_URL=https://api.your-domain \
   pnpm --filter @tirapro/web build            # → apps/web/dist (phục vụ qua Nginx/Caddy)
@@ -131,6 +132,7 @@ Thứ tự **duy nhất** cho mọi lần nâng cấp (bản đầu tiên của 
 | 2 | SQL thô (extension, `searchVector`, chỉ mục) | `pnpm --filter @tirapro/api run db:raw` | Luôn. **DB lớn: chạy TAY trong giờ thấp điểm TRƯỚC khi rollout image mới** (xem cảnh báo bên dưới) |
 | 3 | Mã hoá lại token/khoá bí mật khi ĐỔI `INTEGRATION_ENCRYPTION_KEY` | `integrations:rekey` | Chỉ khi đổi khoá (xem mục "đổi khoá mã hoá" bên dưới) |
 | 4 | Mã hoá khoá bí mật webhook automation cũ | `automation:seal-secrets` | Một lần, **sau khi bản mới đã ổn định** (xem cảnh báo rollback) |
+| 1c | Nạp quyền + vai trò hệ thống (DB mới, không demo) | `pnpm --filter @tirapro/api run db:seed:roles [-- --dry-run]` | **Bắt buộc lần đầu với DB sạch** — thiếu thì đăng ký/tạo workspace lỗi 500 "System role chưa được seed". Chỉ THÊM quyền/vai trò/lượt gán còn thiếu, không gỡ gì nên chạy lại an toàn; cũng dùng để bù phần `+thiếu` mà bước 5 báo. Trong container: `node scripts/seed-system-roles.mjs` |
 | 5 | Kiểm bộ quyền vai trò hệ thống khớp code | `pnpm --filter @tirapro/api run db:check-roles` | Sau `migrate deploy` (tuỳ chọn): in `+thiếu`/`-thừa` theo `SYSTEM_ROLE_PERMISSIONS`, thoát mã 1 nếu lệch. Migration chỉ THÊM quyền, không gỡ. Trong container: `docker run --rm --env-file .env <image> node scripts/check-system-roles.mjs` (giống hai script ở bước 3-4; cần image đã copy script này) |
 
 Render/Docker (`render.yaml` `startCommand`, `Dockerfile` `CMD`) tự chạy bước 1 + 2 mỗi lần khởi động; bước 3-4 luôn là thao tác tay.

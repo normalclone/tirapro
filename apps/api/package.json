@@ -19,6 +19,7 @@
     "db:seed": "tsx prisma/seed.ts",
     "db:seed:init": "node prisma/seed-if-empty.mjs",
     "db:seed:rich": "node prisma/seed-rich.mjs",
+    "db:seed:roles": "node scripts/seed-system-roles.mjs",
     "db:reset": "prisma migrate reset --force",
     "db:studio": "prisma studio",
     "db:check-roles": "node scripts/check-system-roles.mjs",

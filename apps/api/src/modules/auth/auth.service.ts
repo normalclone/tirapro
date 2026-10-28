@@ -58,7 +58,10 @@ export class AuthService {
         },
         select: { id: true },
       });
-      if (!adminRole) throw new Error('System role chưa được seed (chạy pnpm db:seed)');
+      if (!adminRole)
+        throw new Error(
+          'System role chưa được seed (chạy pnpm --filter @tirapro/api run db:seed:roles)',
+        );
       await tx.workspaceMembership.create({
         data: {
           workspaceId: ws.id,
