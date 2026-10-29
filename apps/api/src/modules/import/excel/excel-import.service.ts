@@ -117,7 +117,7 @@ export class ExcelImportService {
         this.prisma.sprint.findMany({
           where: { projectId, deletedAt: null, state: { in: ['ACTIVE', 'FUTURE'] } },
           select: { id: true, name: true },
-          orderBy: [{ state: 'asc' }, { sequence: 'asc' }],
+          orderBy: { sequence: 'asc' },
         }),
         this.prisma.issue.findMany({
           where: {

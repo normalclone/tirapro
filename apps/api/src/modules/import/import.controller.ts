@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  HttpCode,
   Param,
   Post,
   Query,
@@ -104,6 +105,7 @@ export class ImportController {
 
   /** Excel: xem trước lỗi từng dòng/cột — không ghi DB. */
   @Post('excel/preview')
+  @HttpCode(200)
   @Permissions(PERMISSIONS.IMPORT_RUN)
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: EXCEL_IMPORT_MAX_BYTES } }))
