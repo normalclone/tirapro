@@ -97,7 +97,7 @@ export class ExcelImportService {
       await Promise.all([
         this.prisma.issueType.findMany({
           where: { workspaceId },
-          select: { id: true, name: true, key: true, hierarchyLevel: true },
+          select: { id: true, name: true, key: true, hierarchyLevel: true, isSubtask: true },
           orderBy: [{ hierarchyLevel: 'desc' }, { name: 'asc' }],
         }),
         this.prisma.priority.findMany({
@@ -318,6 +318,13 @@ export class ExcelImportService {
       type = byName(c.types, typeText)[0];
       if (!type)
         err('type', `'${typeText}' không phải loại việc của dự án — hãy chọn từ danh sách`);
+      else if (type.isSubtask) {
+        err(
+          'type',
+          `'${type.name}' cần việc cha nên không nhập được từ biểu mẫu — hãy chọn loại khác`,
+        );
+        type = undefined;
+      }
     }
 
     // Ưu tiên
@@ -480,11 +487,8 @@ export class ExcelImportService {
     return {
       row,
       input,
+      reporterId: f.reporterId,
       after: async (tx, issue, labelCache) => {
-        // Người báo cáo: createWithin luôn đặt người nhập → ghi đè khi cột có giá trị.
-        if (f.reporterId) {
-          await tx.issue.update({ where: { id: issue.id }, data: { reporterId: f.reporterId } });
-        }
         const labelIds = new Set<string>();
         for (const name of f.labelNames) {
           labelIds.add(await this.importer.resolveOrCreateLabel(tx, projectId, name, labelCache));

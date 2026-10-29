@@ -8,10 +8,12 @@ import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { downloadExcelTemplate, useExcelPreview, useImportExcel } from './api';
 import {
+  FILE_CHANGED_MESSAGE,
   PREVIEW_TABLE_LIMIT,
   excelFileError,
   importButtonLabel,
   importSkipNote,
+  isFileChangedError,
   previewIssueRows,
   previewSummaryText,
 } from './excelImportView';
@@ -24,9 +26,11 @@ import { importResultMessage } from './importResult';
 export function ExcelImportBlock({
   projectId,
   projectKey,
+  archived = false,
 }: {
   projectId?: string;
   projectKey?: string;
+  archived?: boolean;
 }) {
   const inputId = useId();
   const preview = useExcelPreview();
@@ -85,7 +89,8 @@ export function ExcelImportBlock({
           const { level, text } = importResultMessage(r);
           toast[level](text);
         },
-        onError: (e) => toast.error(apiErrorMessage(e)),
+        onError: (e) =>
+          toast.error(isFileChangedError(e) ? FILE_CHANGED_MESSAGE : apiErrorMessage(e)),
       },
     );
   }
@@ -114,10 +119,16 @@ export function ExcelImportBlock({
         <span className="text-xs text-faint">Bước 1 — tải về, điền, rồi chọn tệp ở bước 2.</span>
       </div>
 
+      {archived && (
+        <p className="mt-3 rounded-md border border-border bg-surface-2 px-3 py-2 text-sm text-muted">
+          Dự án đã lưu trữ — hãy khôi phục dự án trước khi nhập. Bạn vẫn tải được biểu mẫu.
+        </p>
+      )}
+
       {!result && (
         <DropZone
           inputId={inputId}
-          disabled={!projectId}
+          disabled={!projectId || archived}
           busy={busy}
           previewing={preview.isPending}
           importing={importer.isPending}
@@ -131,7 +142,9 @@ export function ExcelImportBlock({
           role="alert"
           className="mt-3 rounded-md border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-danger"
         >
-          {apiErrorMessage(preview.error)}
+          {isFileChangedError(preview.error)
+            ? FILE_CHANGED_MESSAGE
+            : apiErrorMessage(preview.error)}
         </p>
       )}
 
@@ -204,6 +217,8 @@ function DropZone({
         type="file"
         accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         className="sr-only"
+        aria-label="Chọn tệp Excel .xlsx"
+        tabIndex={-1}
         disabled={disabled || busy}
         onChange={(e) => {
           const f = e.target.files?.[0];

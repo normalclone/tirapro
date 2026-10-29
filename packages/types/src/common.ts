@@ -69,6 +69,8 @@ export const ERROR_CODES = {
   LAST_WORKSPACE_ADMIN: 'LAST_WORKSPACE_ADMIN',
   /** 403: chỉ người đang giữ `workspace:admin` (hoặc admin hệ thống) mới cấp/gỡ quyền quản trị (P-C14). */
   ADMIN_GRANT_REQUIRES_ADMIN: 'ADMIN_GRANT_REQUIRES_ADMIN',
+  /** 413: tệp tải lên vượt giới hạn dung lượng. */
+  PAYLOAD_TOO_LARGE: 'PAYLOAD_TOO_LARGE',
   INTERNAL: 'INTERNAL',
 } as const;
 export type ErrorCode = (typeof ERROR_CODES)[keyof typeof ERROR_CODES];

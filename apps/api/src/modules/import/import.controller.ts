@@ -13,6 +13,7 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiConsumes, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
+import { Throttle } from '@nestjs/throttler';
 import { z } from 'zod';
 import {
   EXCEL_IMPORT_MAX_BYTES,
@@ -49,6 +50,9 @@ const importJsonSchema = z.object({
   data: z.object({ issues: z.array(z.any()) }).passthrough(),
 });
 export type ImportJsonBody = z.infer<typeof importJsonSchema>;
+
+/** Mỗi lần xem trước/nhập là tác vụ nặng CPU/RAM (giải nén + duyệt cả bảng): 10 lần/phút/IP. */
+const EXCEL_THROTTLE = { default: { limit: 10, ttl: 60_000 } };
 
 @ApiTags('import')
 @Controller('import')
@@ -102,6 +106,7 @@ export class ImportController {
 
   /** Excel: xem trước lỗi từng dòng/cột — không ghi DB. */
   @Post('excel/preview')
+  @Throttle(EXCEL_THROTTLE)
   @HttpCode(200)
   @Permissions(PERMISSIONS.IMPORT_RUN)
   @ApiConsumes('multipart/form-data')
@@ -116,6 +121,7 @@ export class ImportController {
 
   /** Excel: nhập các dòng hợp lệ (validate lại từ đầu), bỏ dòng lỗi. */
   @Post('excel')
+  @Throttle(EXCEL_THROTTLE)
   @Permissions(PERMISSIONS.IMPORT_RUN)
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: EXCEL_IMPORT_MAX_BYTES } }))

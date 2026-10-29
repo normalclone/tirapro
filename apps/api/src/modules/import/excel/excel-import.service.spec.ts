@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment, max-lines-per-function -- spec: matcher lồng nhau và bộ test dài */
+import { deflateRawSync, crc32 } from 'node:zlib';
 import ExcelJS from 'exceljs';
 import { describe, expect, it, vi } from 'vitest';
 import { ImportService } from '../import.service';
@@ -68,7 +69,9 @@ const good = (over: Cells = {}): Cells => ({
 function setup() {
   const tx = {
     issue: { update: vi.fn(() => Promise.resolve({})) },
-    issueLabel: { createMany: vi.fn(() => Promise.resolve({})) },
+    issueLabel: {
+      createMany: vi.fn((_a: { data: unknown[] }) => Promise.resolve({})),
+    },
     issueComponent: { createMany: vi.fn(() => Promise.resolve({})) },
     issueFixVersion: { createMany: vi.fn(() => Promise.resolve({})) },
     label: {
@@ -103,7 +106,15 @@ function setup() {
   };
   const issues = {
     createWithin: vi.fn(
-      async (_tx: unknown, _w: string, _u: string, input: { summary: string }) => {
+      async (
+        _tx: unknown,
+        _w: string,
+        _u: string,
+        input: { summary: string; startDate?: string },
+        _deferred?: unknown,
+        _fixedKey?: string,
+        _overrides?: { reporterId?: string },
+      ) => {
         await Promise.resolve();
         if (input.summary === 'LỖI DB') throw new Error('lỗi DB giả lập');
         return { id: `id-${input.summary}` };
@@ -407,10 +418,9 @@ describe('ExcelImportService.commit', () => {
       data: [{ issueId: 'id-Tốt', versionId: 'v1', type: 'FIX' }],
       skipDuplicates: true,
     });
-    expect(s.tx.issue.update).toHaveBeenCalledWith({
-      where: { id: 'id-Tốt' },
-      data: { reporterId: 'u2' },
-    });
+    // Người báo cáo đặt NGAY trong create (tham số nội bộ thứ 7), không update sau → sự kiện mang đúng reporter.
+    expect(tốt[6]).toEqual({ reporterId: 'u2' });
+    expect(s.tx.issue.update).not.toHaveBeenCalled();
   });
 
   it('validate lại từ đầu: tệp toàn dòng lỗi → không tạo gì, job FAILED, không gọi createWithin', async () => {
@@ -433,6 +443,175 @@ describe('ExcelImportService.commit', () => {
     await s.service.commit('w1', 'u9', 'p1', upload(await xlsxOf([good()])));
     expect(s.tx.issue.update).not.toHaveBeenCalled();
     expect(s.tx.issueFixVersion.createMany).not.toHaveBeenCalled();
+  });
+});
+
+/** Zip tối giản 1 entry (deflate) để dựng tệp "bom": 60 MB số 0 nén còn vài chục KB. */
+function zipOf(name: string, data: Buffer): Buffer {
+  const comp = deflateRawSync(data);
+  const n = Buffer.from(name);
+  const crc = crc32(data);
+  const lh = Buffer.alloc(30);
+  lh.writeUInt32LE(0x04034b50, 0);
+  lh.writeUInt16LE(20, 4);
+  lh.writeUInt16LE(8, 8);
+  lh.writeUInt32LE(crc, 14);
+  lh.writeUInt32LE(comp.length, 18);
+  lh.writeUInt32LE(data.length, 22);
+  lh.writeUInt16LE(n.length, 26);
+  const cd = Buffer.alloc(46);
+  cd.writeUInt32LE(0x02014b50, 0);
+  cd.writeUInt16LE(20, 4);
+  cd.writeUInt16LE(20, 6);
+  cd.writeUInt16LE(8, 10);
+  cd.writeUInt32LE(crc, 16);
+  cd.writeUInt32LE(comp.length, 20);
+  cd.writeUInt32LE(data.length, 24);
+  cd.writeUInt16LE(n.length, 28);
+  const cdOff = lh.length + n.length + comp.length;
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0);
+  end.writeUInt16LE(1, 8);
+  end.writeUInt16LE(1, 10);
+  end.writeUInt32LE(cd.length + n.length, 12);
+  end.writeUInt32LE(cdOff, 16);
+  return Buffer.concat([lh, n, comp, cd, n, end]);
+}
+
+describe('chặn tệp xlsx độc hại TRƯỚC khi exceljs nạp vào RAM', () => {
+  it('zip bomb (1 entry 60 MB số 0, nén cao) bị từ chối bằng thông báo tiếng Việt', async () => {
+    const s = setup();
+    const bomb = zipOf('xl/worksheets/sheet1.xml', Buffer.alloc(60 * 1024 * 1024));
+    expect(bomb.length).toBeLessThan(5 * 1024 * 1024);
+    await expect(s.service.preview('w1', 'p1', upload(bomb))).rejects.toThrow(
+      'Tệp Excel giải nén quá lớn',
+    );
+    expect(s.prisma.importJob.create).not.toHaveBeenCalled();
+  });
+  it('entry có đường dẫn lạ / chứa .. bị từ chối', async () => {
+    const s = setup();
+    for (const name of ['evil.sh', 'xl/../../etc/passwd'])
+      await expect(
+        s.service.preview('w1', 'p1', upload(zipOf(name, Buffer.from('x')))),
+      ).rejects.toThrow('Tệp Excel giải nén quá lớn');
+  });
+  it('sheet khai báo tới dòng quá lớn bị dừng trước khi duyệt', async () => {
+    const s = setup();
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet(EXCEL_SHEET_DATA);
+    ws.addRow(Object.values(H));
+    ws.getCell(20_000, 1).value = 'x';
+    const buf = Buffer.from(await wb.xlsx.writeBuffer());
+    await expect(s.service.preview('w1', 'p1', upload(buf))).rejects.toThrow(
+      'Sheet khai báo tới dòng 20000',
+    );
+  });
+  it('tệp hợp lệ bình thường vẫn qua', async () => {
+    const { res } = await preview([good()]);
+    expect(res.valid).toBe(1);
+  });
+});
+
+describe('ngày không lệch theo múi giờ máy chủ', () => {
+  it.each(['America/Los_Angeles', 'Asia/Ho_Chi_Minh', 'UTC', 'Pacific/Kiritimati'])(
+    'TZ=%s: ô ngày (Date), serial và chuỗi cùng ra 15/03/2026',
+    async (tz) => {
+      const prev = process.env.TZ;
+      process.env.TZ = tz;
+      try {
+        const { res, prisma } = await preview([
+          good({ [H.start]: new Date(Date.UTC(2026, 2, 15)) }),
+          good({ [H.start]: 46096 }),
+          good({ [H.start]: '15/03/2026' }),
+        ]);
+        expect(res.invalid).toBe(0);
+        // đọc lại bằng exceljs thật: ô ngày trong tệp thực → cùng ngày lịch
+        expect(prisma.project.findFirst).toHaveBeenCalled();
+        const s = setup();
+        const r = await s.service.commit(
+          'w1',
+          'u9',
+          'p1',
+          upload(
+            await xlsxOf([
+              good({ [H.start]: new Date(Date.UTC(2026, 2, 15)) }),
+              good({ [H.start]: 46096 }),
+              good({ [H.start]: '15/03/2026' }),
+            ]),
+          ),
+        );
+        expect(r.created).toBe(3);
+        expect(s.issues.createWithin.mock.calls.map((c) => c[3].startDate)).toEqual([
+          '2026-03-15T00:00:00.000Z',
+          '2026-03-15T00:00:00.000Z',
+          '2026-03-15T00:00:00.000Z',
+        ]);
+      } finally {
+        if (prev === undefined) delete process.env.TZ;
+        else process.env.TZ = prev;
+      }
+    },
+  );
+});
+
+describe('ExcelImportService — nhãn, danh mục, sub-task', () => {
+  it('hai dòng cùng nhãn mới trong một lô → chỉ 1 upsert; "UI" khớp nhãn có sẵn "ui" (không tạo)', async () => {
+    const s = setup();
+    const r = await s.service.commit(
+      'w1',
+      'u9',
+      'p1',
+      upload(
+        await xlsxOf([
+          good({ [H.summary]: 'A', [H.labels]: 'mới; UI' }),
+          good({ [H.summary]: 'B', [H.labels]: 'MỚI' }),
+        ]),
+      ),
+    );
+    expect(r.created).toBe(2);
+    expect(s.tx.label.upsert).toHaveBeenCalledTimes(1);
+    const links = s.tx.issueLabel.createMany.mock.calls.map((c) => c[0].data);
+    expect(links[0]).toEqual([
+      { issueId: 'id-A', labelId: 'new-mới' },
+      { issueId: 'id-A', labelId: 'l1' },
+    ]);
+    expect(links[1]).toEqual([{ issueId: 'id-B', labelId: 'new-mới' }]);
+  });
+
+  it('loại Sub-task gõ tay → lỗi dòng tiếng Việt, không nhập', async () => {
+    const s = setup();
+    s.prisma.issueType.findMany.mockResolvedValue([...catalog.types] as never);
+    const res = await s.service.preview(
+      'w1',
+      'p1',
+      upload(await xlsxOf([good({ [H.type]: 'Sub-task' })])),
+    );
+    expect(res.rows[0]!.errors).toEqual([
+      {
+        column: 'Loại việc',
+        message: "'Sub-task' cần việc cha nên không nhập được từ biểu mẫu — hãy chọn loại khác",
+      },
+    ]);
+  });
+
+  it('mọi truy vấn danh mục đều ràng workspaceId/projectId', async () => {
+    const s = setup();
+    await s.service.preview('w1', 'p1', upload(await xlsxOf([good()])));
+    const where = (m: { mock: { calls: unknown[][] } }) =>
+      JSON.stringify((m.mock.calls[0]![0] as { where: unknown }).where);
+    expect(where(s.prisma.issueType.findMany)).toContain('"workspaceId":"w1"');
+    expect(where(s.prisma.priority.findMany)).toContain('"workspaceId":"w1"');
+    expect(where(s.prisma.status.findMany)).toContain('"workflowId":"wf1"');
+    for (const m of [
+      s.prisma.projectMembership.findMany,
+      s.prisma.sprint.findMany,
+      s.prisma.label.findMany,
+      s.prisma.component.findMany,
+      s.prisma.version.findMany,
+    ])
+      expect(where(m)).toContain('"projectId":"p1"');
+    expect(where(s.prisma.issue.findMany)).toContain('"projectId":"p1"');
+    expect(where(s.prisma.issue.findMany)).toContain('"workspaceId":"w1"');
   });
 });
 

@@ -74,3 +74,11 @@ export function excelFileError(file: { name: string; size: number }): string | n
   if (file.size === 0) return 'Tệp trống — hãy chọn tệp đã điền dữ liệu.';
   return null;
 }
+
+/** Lỗi khi gửi/đọc tệp: tệp bị sửa/xoá trên đĩa sau khi chọn → câu rõ ràng thay vì thông báo lạ của trình duyệt. */
+export function isFileChangedError(e: unknown): boolean {
+  const name = (e as { name?: string } | null)?.name;
+  return name === 'NotReadableError' || name === 'NotFoundError';
+}
+
+export const FILE_CHANGED_MESSAGE = 'Tệp đã thay đổi hoặc không đọc được — hãy chọn lại tệp.';

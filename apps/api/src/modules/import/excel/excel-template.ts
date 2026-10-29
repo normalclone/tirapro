@@ -16,7 +16,13 @@ import {
 /** Dữ liệu cấu hình dự án mà cả drop-list lẫn bước kiểm tra tệp tải lên cùng dựa vào. */
 export interface ProjectCatalog {
   project: { id: string; key: string; name: string };
-  types: Array<{ id: string; name: string; key: string | null; hierarchyLevel: number }>;
+  types: Array<{
+    id: string;
+    name: string;
+    key: string | null;
+    hierarchyLevel: number;
+    isSubtask: boolean;
+  }>;
   priorities: Array<{ id: string; name: string }>;
   statuses: Array<{ id: string; name: string; isInitial: boolean }>;
   members: Array<{ id: string; displayName: string; email: string }>;
@@ -26,6 +32,9 @@ export interface ProjectCatalog {
   components: Array<{ id: string; name: string }>;
   versions: Array<{ id: string; name: string }>;
 }
+
+/** Cột list cho gõ tay (email / mã epic) — validation `warning` thay vì `stop`. */
+const SOFT_LIST_COLUMNS = new Set(['assignee', 'reporter', 'epic']);
 
 const REQUIRED_FILL: ExcelJS.Fill = {
   type: 'pattern',
@@ -47,7 +56,8 @@ const REQUIRED_HEADER_FILL: ExcelJS.Fill = {
 function listValues(catalog: ProjectCatalog): Record<ExcelListKey, string[]> {
   const clean = (xs: string[]): string[] => xs.filter((x) => x.trim() !== '' && !x.includes(';'));
   return {
-    type: clean(catalog.types.map((t) => t.name)),
+    // Loại việc con (sub-task) cần việc cha — biểu mẫu không có cột đó nên không đưa vào danh sách.
+    type: clean(catalog.types.filter((t) => !t.isSubtask).map((t) => t.name)),
     priority: clean(catalog.priorities.map((p) => p.name)),
     status: clean(catalog.statuses.map((s) => s.name)),
     member: clean(catalog.members.map(personLabel)),
@@ -133,13 +143,25 @@ export async function buildExcelTemplate(
                 errorStyle: 'information' as const,
                 errorTitle: def.header,
                 error:
-                  'Nhiều giá trị: cách nhau dấu ";". Giá trị không có trong danh sách vẫn được chấp nhận.',
+                  def.key === 'labels'
+                    ? 'Nhiều nhãn: cách nhau dấu ";". Nhãn chưa có sẽ được tạo mới.'
+                    : 'Nhiều thành phần: cách nhau dấu ";". Mỗi giá trị phải là thành phần đã có của dự án.',
               }
-            : {
-                errorStyle: 'stop' as const,
-                errorTitle: def.header,
-                error: 'Hãy chọn một giá trị trong danh sách thả xuống.',
-              }),
+            : SOFT_LIST_COLUMNS.has(def.key)
+              ? {
+                  // Người/Epic: cho gõ email hoặc mã epic trần (hướng dẫn nói vậy) → cảnh báo, người dùng vẫn bấm "Có" để giữ.
+                  errorStyle: 'warning' as const,
+                  errorTitle: def.header,
+                  error:
+                    def.key === 'epic'
+                      ? 'Giá trị không có trong danh sách. Chọn "KEY — tiêu đề" hoặc gõ đúng mã epic của dự án.'
+                      : 'Giá trị không có trong danh sách. Chọn "Tên <email>" hoặc gõ đúng email thành viên dự án.',
+                }
+              : {
+                  errorStyle: 'stop' as const,
+                  errorTitle: def.header,
+                  error: 'Hãy chọn một giá trị trong danh sách thả xuống.',
+                }),
         });
       }
     } else if (def.kind === 'number') {

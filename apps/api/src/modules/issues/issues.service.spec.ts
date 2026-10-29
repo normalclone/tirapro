@@ -1537,6 +1537,23 @@ describe('IssuesService — sprint CLOSED không nhận việc (FW1)', () => {
     expect(w.created).toHaveBeenCalledTimes(1);
   });
 
+  it('createWithin(overrides.reporterId) đặt người báo cáo NGAY lúc tạo; không truyền thì là người nhập', async () => {
+    const input = {
+      projectId: 'p1',
+      typeId: 't1',
+      summary: 's',
+      descriptionFormat: 'MARKDOWN' as const,
+    };
+    const w = createTx([{ id: 's1', category: 'TODO', isInitial: true }]);
+    const { service } = makeService(w.tx);
+    await service.createWithin(w.tx as never, 'w1', 'u1', input, [], undefined, {
+      reporterId: 'u7',
+    });
+    expect(w.created.mock.calls[0]![0].data.reporterId).toBe('u7');
+    await service.createWithin(w.tx as never, 'w1', 'u1', input, []);
+    expect(w.created.mock.calls[1]![0].data.reporterId).toBe('u1');
+  });
+
   it('update(sprintId đã đóng) => 422, chưa ghi', async () => {
     const tx = {
       issue: {

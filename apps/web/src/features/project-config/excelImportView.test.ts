@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   excelFileError,
   importButtonLabel,
+  isFileChangedError,
   importSkipNote,
   previewIssueRows,
   previewSummaryText,
@@ -49,5 +50,10 @@ describe('excelImportView', () => {
     expect(excelFileError({ name: 'a.csv', size: 10 })).toContain('.xlsx');
     expect(excelFileError({ name: 'a.xlsx', size: 6 * 1024 * 1024 })).toContain('5 MB');
     expect(excelFileError({ name: 'a.xlsx', size: 0 })).toContain('trống');
+  });
+  it('nhận ra tệp bị đổi/xoá sau khi chọn (NotReadableError)', () => {
+    expect(isFileChangedError(new DOMException('x', 'NotReadableError'))).toBe(true);
+    expect(isFileChangedError(new Error('khác'))).toBe(false);
+    expect(isFileChangedError(null)).toBe(false);
   });
 });

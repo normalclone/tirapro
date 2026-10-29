@@ -45,10 +45,13 @@ const CSV_HEADER_HINT = 'Summary, Type, Description, Priority, Story Points';
 export function DataSection({
   projectId,
   projectKey,
+  archived = false,
   canImport,
 }: {
   projectId?: string;
   projectKey?: string;
+  /** Dự án đã lưu trữ: chỉ đọc — khối Excel vẫn cho tải biểu mẫu nhưng khoá chọn tệp. */
+  archived?: boolean;
   canImport: boolean;
 }) {
   const jobsQuery = useImportJobs();
@@ -156,7 +159,7 @@ export function DataSection({
 
             {/* Nhập */}
             <div>
-              <ExcelImportBlock projectId={projectId} projectKey={projectKey} />
+              <ExcelImportBlock projectId={projectId} projectKey={projectKey} archived={archived} />
 
               <hr className="my-6 border-border" />
 

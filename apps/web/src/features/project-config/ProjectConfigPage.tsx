@@ -155,7 +155,12 @@ export function ConfigSection() {
         {section === 'versions' && <VersionsSection projectId={projectId} canAdmin={canAdmin} />}
         {section === 'labels' && <LabelsSection projectId={projectId} canAdmin={canAdmin} />}
         {section === 'data' && (
-          <DataSection projectId={projectId} projectKey={key} canImport={canImport} />
+          <DataSection
+            projectId={projectId}
+            projectKey={key}
+            archived={!!project?.archivedAt}
+            canImport={canImport}
+          />
         )}
       </div>
     </PageFrame>

@@ -12,9 +12,10 @@ import { buildExcelTemplate, type ProjectCatalog } from './excel-template';
 export const catalog: ProjectCatalog = {
   project: { id: 'p1', key: 'DEMO', name: 'Dự án mẫu' },
   types: [
-    { id: 't-epic', name: 'Epic', key: 'EPIC', hierarchyLevel: 1 },
-    { id: 't-task', name: 'Task', key: 'TASK', hierarchyLevel: 0 },
-    { id: 't-bug', name: 'Bug, nặng', key: 'BUG', hierarchyLevel: 0 }, // có dấu phẩy: inline list sẽ vỡ
+    { id: 't-epic', name: 'Epic', key: 'EPIC', hierarchyLevel: 1, isSubtask: false },
+    { id: 't-task', name: 'Task', key: 'TASK', hierarchyLevel: 0, isSubtask: false },
+    { id: 't-bug', name: 'Bug, nặng', key: 'BUG', hierarchyLevel: 0, isSubtask: false }, // có dấu phẩy: inline list sẽ vỡ
+    { id: 't-sub', name: 'Sub-task', key: 'SUBTASK', hierarchyLevel: 0, isSubtask: true },
   ],
   priorities: [
     { id: 'pr-h', name: 'High' },
@@ -137,5 +138,38 @@ describe('buildExcelTemplate', () => {
     expect(all).toContain('dd/mm/yyyy');
     expect(all).toContain('";"');
     expect(all).toContain('1000');
+  });
+
+  it('Sub-task không có trong drop-list Loại việc (biểu mẫu không có cột Việc cha)', async () => {
+    const wb = await load(await buildExcelTemplate(catalog));
+    const lists = wb.getWorksheet(EXCEL_SHEET_LISTS)!;
+    const col: string[] = [];
+    lists.getColumn(1).eachCell((c, r) => {
+      if (r > 1) col.push(c.text);
+    });
+    expect(col).toEqual(['Epic', 'Task', 'Bug, nặng']);
+  });
+
+  it('Người/Epic dùng errorStyle warning (cho gõ email/mã epic như hướng dẫn); Loại việc vẫn chặn', async () => {
+    const wb = await load(await buildExcelTemplate(catalog));
+    const ws = wb.getWorksheet(EXCEL_SHEET_DATA)!;
+    for (const c of ['F2', 'G2', 'I2']) expect(dvAt(ws, c)?.errorStyle).toBe('warning');
+    expect(dvAt(ws, 'C2')?.errorStyle).toBe('stop');
+  });
+
+  it('giá trị bắt đầu bằng = + - @ được ghi là CHUỖI (không thành công thức)', async () => {
+    const evil = ['=HYPERLINK("http://x","y")', '+cmd', '-1+1', '@SUM(1)'];
+    const wb = await load(
+      await buildExcelTemplate({
+        ...catalog,
+        labels: evil.map((name, i) => ({ id: `e${i}`, name })),
+      }),
+    );
+    const lists = wb.getWorksheet(EXCEL_SHEET_LISTS)!;
+    evil.forEach((v, i) => {
+      const cell = lists.getCell(i + 2, 7);
+      expect(cell.type).toBe(ExcelJS.ValueType.String);
+      expect(cell.value).toBe(v);
+    });
   });
 });

@@ -34,7 +34,7 @@ Chỉ mục `(workspaceId, status)`. Migration thêm giá trị enum: `202610291
 | Bảng | Khi nào | Ghi chú |
 |---|---|---|
 | `Issue` | luôn | Tạo qua `IssuesService.createWithin` (đánh số, mã, rank cuối danh sách, trạng thái khởi tạo, lịch sử `STATUS`) |
-| `Issue.reporterId` | cột *Người báo cáo* có giá trị | Cập nhật trong `after` cùng transaction (mặc định người nhập tệp) |
+| `Issue.reporterId` | cột *Người báo cáo* có giá trị | Đặt NGAY lúc tạo qua tham số nội bộ `overrides.reporterId` của `createWithin` (chỉ đường nhập dùng; API công khai không đặt được) nên sự kiện `ISSUE_CREATED` mang đúng người báo cáo. Mặc định là người nhập tệp |
 | `Label`, `IssueLabel` | cột *Nhãn* | Tạo nhãn mới theo `(projectId, name)` bằng `upsert`, gắn qua `IssueLabel` |
 | `IssueComponent` | cột *Thành phần* | Chỉ gắn thành phần đã có |
 | `IssueFixVersion` | cột *Phiên bản* | `type = FIX` |
@@ -59,13 +59,13 @@ Drop-list **không** dùng danh sách inline (giới hạn 255 ký tự, vỡ kh
 |---|---|---|---|---|
 | A | Tiêu đề* | chữ ≤ 255 | — | Bắt buộc |
 | B | Mô tả | chữ (Markdown) | — | ≤ 50.000 ký tự; lưu `descriptionFormat = MARKDOWN` |
-| C | Loại việc* | list | `list`, chặn (`stop`) | Loại việc của workspace; không phân biệt hoa/thường |
+| C | Loại việc* | list | `list`, chặn (`stop`) | Loại việc của workspace **trừ loại việc con (sub-task)** — loại này cần việc cha mà biểu mẫu không có; không phân biệt hoa/thường |
 | D | Ưu tiên | list | `list`, chặn | `Priority` của workspace, xếp theo `rank` giảm dần; bỏ trống = ưu tiên mặc định của workspace |
 | E | Trạng thái | list | `list`, chặn | Trạng thái trong workflow mặc định của dự án, theo `order`; bỏ trống = trạng thái khởi tạo |
-| F | Người phụ trách | list | `list`, chặn | Thành viên dự án đang `ACTIVE`, hiển thị `Tên <email>` |
-| G | Người báo cáo | list | `list`, chặn | Như trên; bỏ trống = người nhập tệp |
+| F | Người phụ trách | list | `list`, cảnh báo (`warning`, cho gõ email) | Thành viên dự án đang `ACTIVE`, hiển thị `Tên <email>` |
+| G | Người báo cáo | list | `list`, cảnh báo (`warning`) | Như trên; bỏ trống = người nhập tệp |
 | H | Sprint | list | `list`, chặn | Sprint chưa xoá và chưa đóng (`ACTIVE`, `FUTURE`), theo `sequence`; bỏ trống = Việc chờ |
-| I | Epic | list | `list`, chặn | Công việc loại Epic của dự án (`key = EPIC` hoặc `hierarchyLevel ≥ 1`), hiển thị `KEY — tiêu đề`; nhận cả mã epic trần |
+| I | Epic | list | `list`, cảnh báo (`warning`, cho gõ mã epic) | Công việc loại Epic của dự án (`key = EPIC` hoặc `hierarchyLevel ≥ 1`), hiển thị `KEY — tiêu đề`; nhận cả mã epic trần |
 | J | Nhãn | list gợi ý | `list`, `errorStyle = information` (không chặn) | Nhãn của dự án; nhiều nhãn cách nhau `;`; nhãn mới được tạo |
 | K | Điểm | số thập phân | `decimal` giữa 0 và 1000, chặn | Chấp nhận dấu phẩy thập phân |
 | L | Ngày bắt đầu | ngày | `date` > 01/01/1900, ô định dạng `dd/mm/yyyy` | Xem §3.3 |
@@ -75,7 +75,7 @@ Drop-list **không** dùng danh sách inline (giới hạn 255 ký tự, vỡ kh
 
 ## 3. API
 
-Tiền tố `/api/v1`. Cả ba endpoint cần quyền `import:run` (`PERMISSIONS.IMPORT_RUN`). Lỗi có dạng `{ success:false, error:{ code, message, statusCode, details? }, meta }`.
+Tiền tố `/api/v1`. Cả ba endpoint cần quyền `import:run` (`PERMISSIONS.IMPORT_RUN`). Hai `POST` (xem trước, nhập) có throttle riêng **10 lần/phút/IP** vì mỗi lần giải nén và duyệt cả bảng (vượt: 429). Lỗi có dạng `{ success:false, error:{ code, message, statusCode, details? }, meta }`.
 
 ### 3.1 Tải biểu mẫu — `GET /import/excel/template?projectId=…`
 
@@ -121,8 +121,11 @@ Cùng input như xem trước. Máy chủ **kiểm tra lại từ đầu** (khô
 |---|---|---|
 | Thiếu `projectId` | 400 | "Dữ liệu không hợp lệ" (`details[0].message` = "Thiếu mã dự án") |
 | Không có tệp | 422 | "Thiếu tệp Excel — hãy chọn tệp .xlsx tải từ biểu mẫu rồi thử lại" |
-| Sai đuôi `.xlsx`, mimetype không thuộc nhóm xlsx/zip/octet-stream, hoặc 2 byte đầu khác `PK` | 422 | "Chỉ nhận tệp .xlsx — hãy dùng biểu mẫu Excel tải từ Tirapro (không nhận .xls, .csv hay tệp đổi đuôi)" |
-| Tệp > 5 MB (multer `limits.fileSize`) | 413 | "File too large" (⚠️ mã lỗi `INTERNAL`, chưa Việt hoá; web chặn trước ở trình duyệt) |
+| Sai đuôi `.xlsx`, mimetype không thuộc nhóm xlsx/zip/octet-stream **hoặc rỗng** (trình duyệt hay không gửi mimetype), hoặc 2 byte đầu khác `PK` | 422 | "Chỉ nhận tệp .xlsx — hãy dùng biểu mẫu Excel tải từ Tirapro (không nhận .xls, .csv hay tệp đổi đuôi)" |
+| Tệp > 5 MB (multer `limits.fileSize`) | 413 | mã `PAYLOAD_TOO_LARGE`; "Tệp quá lớn — vượt giới hạn dung lượng của chức năng này (biểu mẫu Excel tối đa 5 MB). Hãy giảm dung lượng hoặc chia thành nhiều tệp nhỏ hơn" (web còn chặn trước ở trình duyệt) |
+| Zip bất thường, kiểm central directory TRƯỚC khi nạp: tổng giải nén > 50 MB, > 100 entry, entry > 30 MB, entry > 1 MB nén quá 100:1, zip64, tên entry ngoài `xl/`, `docProps/`, `_rels/`, `customXml/`, `[Content_Types].xml` hoặc chứa `..` | 422 | "Tệp Excel giải nén quá lớn hoặc có cấu trúc bất thường — hãy dùng biểu mẫu tải từ Tirapro, tối đa 1000 dòng" |
+| Sheet khai báo dòng cuối > 10.000 (kể cả dòng chỉ có định dạng) | 422 | "Sheet khai báo tới dòng N, vượt giới hạn — hãy xoá các dòng thừa (kể cả dòng chỉ có định dạng) hoặc dùng biểu mẫu mới, tối đa 1000 dòng dữ liệu" |
+| Vượt throttle | 429 | |
 | Mở zip/xlsx thất bại | 422 | "Không đọc được tệp Excel — tệp có thể bị hỏng hoặc không phải .xlsx. Hãy tải lại biểu mẫu và điền lại" |
 | Không có sheet `Công việc` và không có sheet hiện nào khác ngoài `Hướng dẫn`/`DanhSach` | 422 | `Không thấy sheet "Công việc" — hãy dùng biểu mẫu Excel tải từ Tirapro` |
 | Thiếu cột bắt buộc (so theo tên) | 422 | "Thiếu cột bắt buộc: Tiêu đề, Loại việc — hãy kiểm tra dòng tiêu đề (dòng 1) hoặc tải lại biểu mẫu" (liệt kê cột thiếu) |
@@ -140,6 +143,7 @@ Cùng input như xem trước. Máy chủ **kiểm tra lại từ đầu** (khô
 | Mô tả | > 50.000 ký tự | "Mô tả quá dài (tối đa 50.000 ký tự)" |
 | Loại việc | rỗng | "Bắt buộc chọn loại việc" |
 | Loại việc | không khớp | "'X' không phải loại việc của dự án — hãy chọn từ danh sách" |
+| Loại việc | là loại việc con (gõ tay) | "'X' cần việc cha nên không nhập được từ biểu mẫu — hãy chọn loại khác" |
 | Ưu tiên | không khớp | "'X' không phải mức ưu tiên hợp lệ — hãy chọn từ danh sách" |
 | Trạng thái | không khớp | "'X' không có trong quy trình của dự án — hãy chọn từ danh sách" |
 | Người phụ trách / Người báo cáo | email không thuộc thành viên dự án (kể cả đã bị khoá) | "'X' không phải thành viên dự án" |
@@ -185,7 +189,7 @@ Cảnh báo (không chặn): cột **Nhãn** — "Nhãn mới 'X' sẽ được 
 ### 4.5 Nhập
 1. Đọc và kiểm tra lại toàn bộ tệp (§4.2). Lỗi cấp tệp thì **không** tạo `ImportJob`.
 2. Tạo `ImportJob` (`source = EXCEL`, `status = RUNNING`, `totalItems = total`, `config = { projectId, format: "excel" }`).
-3. Chỉ các dòng hợp lệ được ghi, theo lô 100 dòng / transaction (`createIssuesInChunks`). Mỗi dòng: tạo công việc rồi trong **cùng transaction** gắn nhãn (tạo nhãn mới nếu cần), thành phần, phiên bản (`FIX`) và đặt người báo cáo. Một dòng lỗi DB làm lô rollback và chạy lại từng dòng để cô lập; sự kiện `ISSUE_CREATED` chỉ phát sau commit.
+3. Chỉ các dòng hợp lệ được ghi, theo lô 100 dòng / transaction (`createIssuesInChunks`). Mỗi dòng: tạo công việc (người báo cáo đặt ngay lúc tạo) rồi trong **cùng transaction** gắn nhãn (tạo nhãn mới nếu cần; hai dòng cùng nhãn mới chỉ tạo một lần, không phân biệt hoa/thường), thành phần, phiên bản (`FIX`). Một dòng lỗi DB làm lô rollback và chạy lại từng dòng để cô lập; sự kiện `ISSUE_CREATED` chỉ phát sau commit.
 4. Kết thúc: `status = COMPLETED`, hoặc `FAILED` nếu `created = 0` và `failed > 0`; `processedItems = created`; `result = { created, failed, labels, errors }`. Ngoại lệ không lường trước: `status = FAILED`, `errorLog` ghi lỗi, ném lại lỗi.
 5. Công việc tạo bằng đường `import` của `IssuesService`: không đòi quyền chuyển trạng thái khi chọn trạng thái khác trạng thái khởi tạo; chọn trạng thái thuộc nhóm DONE thì tự đặt `resolvedAt` và resolution mặc định.
 6. Nhập lại cùng một tệp **tạo trùng** công việc (không có khoá chống trùng) — ⚠️ người dùng cần được nhắc không nhập hai lần; sửa các dòng lỗi rồi nhập lại thì chỉ nên giữ các dòng chưa nhập.
@@ -198,7 +202,8 @@ Khối **"Nhập từ Excel"** nằm trên khối "Nhập dữ liệu khác" (D�
 4. Nút chính **"Nhập N công việc"** — vô hiệu khi N = 0 (kèm câu "Không có dòng hợp lệ để nhập — hãy sửa tệp rồi chọn lại."); khi có lỗi ghi "Bỏ qua M dòng lỗi (sửa trong tệp rồi nhập lại sau)."
 5. Kết quả: toast (xanh nếu không lỗi, cảnh báo nếu có), bảng kết quả, danh sách lỗi (≤ 20), liên kết **"Xem trong Việc chờ"** (`/p/<KEY>/backlog`), nút **"Chọn tệp khác"**; **Lịch sử nhập** được làm mới (nguồn hiển thị `EXCEL`).
 6. Trạng thái: đang kiểm tra tệp (nút loading + "Đang kiểm tra tệp…"), lỗi xem trước (khung báo lỗi `role="alert"`, giữ khả năng chọn lại tệp), tệp không có dòng ("Tệp chưa có dòng dữ liệu nào — hãy điền từ dòng 2 rồi chọn lại."), không lỗi ("Không có lỗi hay lưu ý nào.").
-7. **Cmd+K → "Nhập công việc từ Excel"** (nhóm lệnh *Dự án hiện tại*, hiện khi có `import:run` và dự án chưa lưu trữ) → `/p/<KEY>/config/data`.
+7. Dự án đã lưu trữ: khối vẫn hiện, ghi "Dự án đã lưu trữ — hãy khôi phục dự án trước khi nhập. Bạn vẫn tải được biểu mẫu."; nút/ô chọn tệp bị khoá, nút tải biểu mẫu vẫn dùng được. Ô chọn tệp ẩn có tên truy cập "Chọn tệp Excel .xlsx"; tệp bị sửa/xoá sau khi chọn → "Tệp đã thay đổi hoặc không đọc được — hãy chọn lại tệp."
+8. **Cmd+K → "Nhập công việc từ Excel"** (nhóm lệnh *Dự án hiện tại*, hiện khi có `import:run` và dự án chưa lưu trữ) → `/p/<KEY>/config/data`.
 
 ## 5. Phân quyền
 
@@ -221,7 +226,9 @@ Người được gán/báo cáo bởi biểu mẫu phải là thành viên dự
 - **AC-6.6 Nhập bỏ dòng lỗi.** Given tệp 3 dòng, một dòng lỗi kiểm tra và một dòng lỗi DB; When `POST /import/excel`; Then trả `created=1, failed=2, total=3, source="EXCEL"`, `errors[0].error` bắt đầu bằng "Dòng 3 · …", `ImportJob.status = COMPLETED`, `processedItems = 1`.
 - **AC-6.7 Nhãn mới, thành phần, phiên bản, người báo cáo.** Given dòng hợp lệ có Nhãn `ui; mới` (chỉ `ui` đã có), Thành phần `Backend`, Phiên bản `1.0`, Người báo cáo là thành viên khác người nhập; When nhập; Then nhãn `mới` được tạo trong dự án, công việc có 2 nhãn, 1 thành phần, fix version `1.0` (`type = FIX`) và `reporterId` là người được chọn.
 - **AC-6.8 Không tin xem trước.** Given tệp toàn dòng lỗi; When gọi thẳng `POST /import/excel`; Then `created = 0`, job `FAILED`, không tạo công việc.
-- **AC-6.9 Giới hạn tệp.** Given tệp có 1001 dòng dữ liệu; When xem trước; Then 422 "Tệp có 1001 dòng dữ liệu, vượt giới hạn 1000 dòng — hãy chia thành nhiều tệp". Given tệp CSV đổi đuôi `.xlsx`; Then 422 "Chỉ nhận tệp .xlsx — …". Given tệp > 5 MB; Then 413.
+- **AC-6.9 Giới hạn tệp.** Given tệp có 1001 dòng dữ liệu; When xem trước; Then 422 "Tệp có 1001 dòng dữ liệu, vượt giới hạn 1000 dòng — hãy chia thành nhiều tệp". Given tệp CSV đổi đuôi `.xlsx`; Then 422 "Chỉ nhận tệp .xlsx — …". Given tệp > 5 MB; Then 413 với mã `PAYLOAD_TOO_LARGE` và thông báo "Tệp quá lớn — …".
+- **AC-6.9b Chặn tệp độc hại.** Given tệp .xlsx ≤ 5 MB có một entry giải nén 60 MB (zip bomb) hoặc entry tên `xl/../../x`; When xem trước; Then 422 "Tệp Excel giải nén quá lớn hoặc có cấu trúc bất thường — …" và exceljs không được nạp tệp.
+- **AC-6.9c Sub-task.** Given dự án có loại việc con "Sub-task"; When tải biểu mẫu; Then drop-list Loại việc không chứa "Sub-task"; When dòng gõ tay "Sub-task"; Then lỗi cột Loại việc "'Sub-task' cần việc cha nên không nhập được từ biểu mẫu — hãy chọn loại khác".
 - **AC-6.10 Cô lập và quyền.** Given người dùng workspace B; When gọi template/preview/nhập với `projectId` của workspace A; Then 404 "Dự án không tồn tại". Given người không có `import:run`; Then 403. Given dự án lưu trữ; When xem trước hoặc nhập; Then 422 "Dự án đã lưu trữ — hãy khôi phục dự án trước khi thay đổi".
 - **AC-6.11 Giao diện.** Given tệp có 2 dòng lỗi; When người dùng chọn tệp ở khối "Nhập từ Excel"; Then bảng xem trước hiện ngay "N dòng hợp lệ · 2 dòng lỗi", ô "Chỉ dòng lỗi" bật, nút "Nhập N công việc" kèm "Bỏ qua 2 dòng lỗi"; khi N = 0 nút bị vô hiệu; sau khi nhập hiện toast, liên kết "Xem trong Việc chờ", nút "Chọn tệp khác" và dòng mới (nguồn `EXCEL`) ở Lịch sử nhập.
 - **AC-6.12 Cmd+K.** Given người dùng có `import:run` đang ở một dự án; When mở Cmd+K và chọn "Nhập công việc từ Excel"; Then chuyển tới `/p/<KEY>/config/data`.
