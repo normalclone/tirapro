@@ -14,7 +14,7 @@ import type { AuthedRequest } from '../types/request';
 /** Thông báo chung cho lỗi 500 ở production — chi tiết chỉ nằm trong log server. */
 /** multer ném `File too large` (413) khi vượt `limits.fileSize` — Việt hoá, mã `PAYLOAD_TOO_LARGE`. */
 export const FILE_TOO_LARGE_MESSAGE =
-  'Tệp quá lớn — vượt giới hạn dung lượng của chức năng này (biểu mẫu Excel tối đa 5 MB). Hãy giảm dung lượng hoặc chia thành nhiều tệp nhỏ hơn';
+  'Tệp quá lớn — vượt giới hạn dung lượng cho phép của chức năng này. Hãy giảm dung lượng hoặc chia thành nhiều tệp nhỏ hơn';
 
 export const INTERNAL_ERROR_MESSAGE =
   'Lỗi hệ thống — hãy thử lại, nếu vẫn lỗi hãy báo quản trị kèm mã yêu cầu';

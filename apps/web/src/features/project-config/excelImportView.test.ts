@@ -55,5 +55,14 @@ describe('excelImportView', () => {
     expect(isFileChangedError(new DOMException('x', 'NotReadableError'))).toBe(true);
     expect(isFileChangedError(new Error('khác'))).toBe(false);
     expect(isFileChangedError(null)).toBe(false);
+    // axios bọc DOMException trong cause
+    const wrapped = Object.assign(new Error('Network Error'), {
+      name: 'AxiosError',
+      cause: new DOMException('x', 'NotReadableError'),
+    });
+    expect(isFileChangedError(wrapped)).toBe(true);
+    expect(isFileChangedError(Object.assign(new Error('a'), { cause: new Error('b') }))).toBe(
+      false,
+    );
   });
 });

@@ -1,3 +1,4 @@
+import zlib from 'node:zlib';
 import ExcelJS from 'exceljs';
 import { EXCEL_IMPORT_MAX_ROWS } from '@tirapro/shared';
 import { BusinessRuleException } from '../../../common/exceptions/app.exception';
@@ -91,8 +92,15 @@ const ZIP_TOO_BIG =
 const ZIP_ENTRY_NAME = /^(xl\/|docProps\/|_rels\/|customXml\/|\[Content_Types\]\.xml$)/;
 
 /**
- * Đọc central directory của zip (KHÔNG giải nén) và từ chối tệp có tổng dung lượng giải nén/số entry/tỉ lệ nén bất thường,
- * tên entry lạ hoặc chứa `..`. Kích thước khai báo không thể khai man: JSZip (exceljs dùng) kiểm lại kích thước thật khi giải nén.
+ * Kiểm zip TRƯỚC khi exceljs nạp vào RAM. KHÔNG tin kích thước khai báo: JSZip (exceljs dùng) chỉ so `uncompressedSize`
+ * khai báo với kích thước thật SAU khi đã giải nén hết vào bộ nhớ, nên zip khai size nhỏ mà bung hàng trăm MB vẫn qua được
+ * một kiểm tra chỉ đọc header. Vì vậy ở đây:
+ * - duyệt central directory GIỐNG JSZip (lặp tới khi hết chữ ký 0x02014b50, bỏ qua số entry ở EOCD — nếu không, nhét thêm
+ *   entry sau số khai ở EOCD sẽ lọt kiểm tra);
+ * - mỗi entry nén deflate được giải nén thật nhưng CÓ CHẶN (`maxOutputLength`), cộng tổng kích thước THẬT; entry lưu thẳng
+ *   (stored) phải có kích thước nén = kích thước khai;
+ * - dữ liệu lấy qua local header của chính entry (cách JSZip định vị), method chỉ 0 hoặc 8.
+ * Chi phí: inflate tối đa 50 MB hai lần (một lần kiểm ở đây, một lần exceljs) — chấp nhận được vì có throttle riêng.
  */
 function assertSafeZip(buf: Buffer): void {
   const bad = (): never => {
@@ -110,26 +118,47 @@ function assertSafeZip(buf: Buffer): void {
     throw new BusinessRuleException(
       'Không đọc được tệp Excel — tệp có thể bị hỏng hoặc không phải .xlsx. Hãy tải lại biểu mẫu và điền lại',
     );
-  const entries = buf.readUInt16LE(eocd + 10);
   let off = buf.readUInt32LE(eocd + 16);
-  if (entries === 0xffff || off === 0xffffffff || entries > ZIP_MAX_ENTRIES) return bad(); // zip64 / quá nhiều entry
+  if (off === 0xffffffff || buf.readUInt16LE(eocd + 10) === 0xffff) return bad(); // zip64
+  let entries = 0;
   let total = 0;
-  for (let n = 0; n < entries; n++) {
-    if (off + 46 > buf.length || buf.readUInt32LE(off) !== 0x02014b50) return bad();
+  while (off + 46 <= buf.length && buf.readUInt32LE(off) === 0x02014b50) {
+    if (++entries > ZIP_MAX_ENTRIES) return bad();
+    const method = buf.readUInt16LE(off + 10);
     const comp = buf.readUInt32LE(off + 20);
     const size = buf.readUInt32LE(off + 24);
     const nameLen = buf.readUInt16LE(off + 28);
     const extraLen = buf.readUInt16LE(off + 30);
     const commentLen = buf.readUInt16LE(off + 32);
+    const lhOff = buf.readUInt32LE(off + 42);
     const name = buf.toString('utf8', off + 46, off + 46 + nameLen);
-    if (size === 0xffffffff || comp === 0xffffffff) return bad();
-    if (name.includes('..') || name.includes('\\') || !ZIP_ENTRY_NAME.test(name)) return bad();
-    if (size > ZIP_MAX_ENTRY_BYTES) return bad();
-    if (size > ZIP_RATIO_FLOOR_BYTES && size / Math.max(comp, 1) > ZIP_MAX_RATIO) return bad();
-    total += size;
-    if (total > ZIP_MAX_TOTAL_BYTES) return bad();
     off += 46 + nameLen + extraLen + commentLen;
+    if (size === 0xffffffff || comp === 0xffffffff || lhOff === 0xffffffff) return bad();
+    if (name.includes('..') || name.includes('\\') || !ZIP_ENTRY_NAME.test(name)) return bad();
+    if (size > ZIP_MAX_ENTRY_BYTES || total + size > ZIP_MAX_TOTAL_BYTES) return bad();
+    if (name.endsWith('/')) continue; // thư mục
+    if (method !== 0 && method !== 8) return bad();
+    // Dữ liệu nằm sau local header của chính entry.
+    if (lhOff + 30 > buf.length || buf.readUInt32LE(lhOff) !== 0x04034b50) return bad();
+    const start = lhOff + 30 + buf.readUInt16LE(lhOff + 26) + buf.readUInt16LE(lhOff + 28);
+    if (start + comp > buf.length) return bad();
+    const slice = buf.subarray(start, start + comp);
+    let real: number;
+    if (method === 0) {
+      real = comp;
+    } else {
+      try {
+        // Chặn ngay khi vượt số khai báo (+1 để phát hiện khai thiếu), không bao giờ cấp phát quá giới hạn.
+        real = zlib.inflateRawSync(slice, { maxOutputLength: size + 1 }).length;
+      } catch {
+        return bad();
+      }
+    }
+    if (real !== size) return bad(); // khai man (khai thiếu/khai thừa)
+    if (size > ZIP_RATIO_FLOOR_BYTES && size / Math.max(comp, 1) > ZIP_MAX_RATIO) return bad();
+    total += real;
   }
+  if (entries === 0) return bad();
 }
 
 /** Đọc bảng tính thành các dòng thô theo TÊN cột (không theo vị trí). Dòng trống hoàn toàn bị bỏ. */

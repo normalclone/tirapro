@@ -446,37 +446,55 @@ describe('ExcelImportService.commit', () => {
   });
 });
 
-/** Zip tối giản 1 entry (deflate) để dựng tệp "bom": 60 MB số 0 nén còn vài chục KB. */
-function zipOf(name: string, data: Buffer): Buffer {
-  const comp = deflateRawSync(data);
-  const n = Buffer.from(name);
-  const crc = crc32(data);
-  const lh = Buffer.alloc(30);
-  lh.writeUInt32LE(0x04034b50, 0);
-  lh.writeUInt16LE(20, 4);
-  lh.writeUInt16LE(8, 8);
-  lh.writeUInt32LE(crc, 14);
-  lh.writeUInt32LE(comp.length, 18);
-  lh.writeUInt32LE(data.length, 22);
-  lh.writeUInt16LE(n.length, 26);
-  const cd = Buffer.alloc(46);
-  cd.writeUInt32LE(0x02014b50, 0);
-  cd.writeUInt16LE(20, 4);
-  cd.writeUInt16LE(20, 6);
-  cd.writeUInt16LE(8, 10);
-  cd.writeUInt32LE(crc, 16);
-  cd.writeUInt32LE(comp.length, 20);
-  cd.writeUInt32LE(data.length, 24);
-  cd.writeUInt16LE(n.length, 28);
-  const cdOff = lh.length + n.length + comp.length;
+interface ZipEntry {
+  name: string;
+  data: Buffer;
+  /** Kích thước giải nén ghi trong central directory (mặc định = thật). Đặt nhỏ hơn để dựng zip "khai man". */
+  declaredSize?: number;
+}
+
+/** Zip tối giản (deflate). `eocdCount`: số entry ghi ở EOCD (mặc định = số thật) — đặt nhỏ hơn để nhét entry thừa. */
+function zipOfEntries(entries: ZipEntry[], eocdCount = entries.length): Buffer {
+  const parts: Buffer[] = [];
+  const cds: Buffer[] = [];
+  let offset = 0;
+  for (const e of entries) {
+    const comp = deflateRawSync(e.data);
+    const n = Buffer.from(e.name);
+    const crc = crc32(e.data);
+    const lh = Buffer.alloc(30);
+    lh.writeUInt32LE(0x04034b50, 0);
+    lh.writeUInt16LE(20, 4);
+    lh.writeUInt16LE(8, 8);
+    lh.writeUInt32LE(crc, 14);
+    lh.writeUInt32LE(comp.length, 18);
+    lh.writeUInt32LE(e.declaredSize ?? e.data.length, 22);
+    lh.writeUInt16LE(n.length, 26);
+    const cd = Buffer.alloc(46);
+    cd.writeUInt32LE(0x02014b50, 0);
+    cd.writeUInt16LE(20, 4);
+    cd.writeUInt16LE(20, 6);
+    cd.writeUInt16LE(8, 10);
+    cd.writeUInt32LE(crc, 16);
+    cd.writeUInt32LE(comp.length, 20);
+    cd.writeUInt32LE(e.declaredSize ?? e.data.length, 24);
+    cd.writeUInt16LE(n.length, 28);
+    cd.writeUInt32LE(offset, 42);
+    parts.push(lh, n, comp);
+    cds.push(cd, n);
+    offset += lh.length + n.length + comp.length;
+  }
+  const cdBuf = Buffer.concat(cds);
   const end = Buffer.alloc(22);
   end.writeUInt32LE(0x06054b50, 0);
-  end.writeUInt16LE(1, 8);
-  end.writeUInt16LE(1, 10);
-  end.writeUInt32LE(cd.length + n.length, 12);
-  end.writeUInt32LE(cdOff, 16);
-  return Buffer.concat([lh, n, comp, cd, n, end]);
+  end.writeUInt16LE(eocdCount, 8);
+  end.writeUInt16LE(eocdCount, 10);
+  end.writeUInt32LE(cdBuf.length, 12);
+  end.writeUInt32LE(offset, 16);
+  return Buffer.concat([...parts, cdBuf, end]);
 }
+
+const zipOf = (name: string, data: Buffer): Buffer => zipOfEntries([{ name, data }]);
 
 describe('chặn tệp xlsx độc hại TRƯỚC khi exceljs nạp vào RAM', () => {
   it('zip bomb (1 entry 60 MB số 0, nén cao) bị từ chối bằng thông báo tiếng Việt', async () => {
@@ -504,6 +522,67 @@ describe('chặn tệp xlsx độc hại TRƯỚC khi exceljs nạp vào RAM', (
     const buf = Buffer.from(await wb.xlsx.writeBuffer());
     await expect(s.service.preview('w1', 'p1', upload(buf))).rejects.toThrow(
       'Sheet khai báo tới dòng 20000',
+    );
+  });
+  it('zip KHAI size nhỏ nhưng nội dung thật 60 MB: bị chặn TRƯỚC exceljs.load (không cấp phát)', async () => {
+    const s = setup();
+    const bomb = zipOfEntries([
+      {
+        name: 'xl/worksheets/sheet1.xml',
+        data: Buffer.alloc(60 * 1024 * 1024),
+        declaredSize: 1000,
+      },
+    ]);
+    expect(bomb.length).toBeLessThan(5 * 1024 * 1024);
+    const workbookCtor = vi.spyOn(ExcelJS, 'Workbook');
+    try {
+      const rssBefore = process.memoryUsage().rss; // sau khi dựng bom: chỉ đo phần parser làm
+      await expect(s.service.preview('w1', 'p1', upload(bomb))).rejects.toThrow(
+        'Tệp Excel giải nén quá lớn',
+      );
+      expect(workbookCtor).not.toHaveBeenCalled(); // exceljs không được khởi tạo/nạp;
+      // inflate bị chặn ở size+1 byte nên không phình bộ nhớ (bung thật 60 MB sẽ làm RSS tăng ≥ 60 MB).
+      expect(process.memoryUsage().rss - rssBefore).toBeLessThan(40 * 1024 * 1024);
+    } finally {
+      workbookCtor.mockRestore();
+    }
+  });
+  it('khai size LỚN HƠN thật cũng bị từ chối (không khớp)', async () => {
+    const s = setup();
+    const zip = zipOfEntries([
+      { name: 'xl/workbook.xml', data: Buffer.from('<a/>'), declaredSize: 5000 },
+    ]);
+    await expect(s.service.preview('w1', 'p1', upload(zip))).rejects.toThrow(
+      'Tệp Excel giải nén quá lớn',
+    );
+  });
+  it('entry nằm SAU số entry khai ở EOCD vẫn bị kiểm (duyệt như JSZip)', async () => {
+    const s = setup();
+    const workbookCtor = vi.spyOn(ExcelJS, 'Workbook');
+    try {
+      const zip = zipOfEntries(
+        [
+          { name: 'xl/workbook.xml', data: Buffer.from('<a/>') },
+          { name: 'evil.sh', data: Buffer.from('x') },
+        ],
+        1,
+      );
+      await expect(s.service.preview('w1', 'p1', upload(zip))).rejects.toThrow(
+        'Tệp Excel giải nén quá lớn',
+      );
+      expect(workbookCtor).not.toHaveBeenCalled(); // exceljs không được khởi tạo/nạp;
+    } finally {
+      workbookCtor.mockRestore();
+    }
+  });
+  it('quá 100 entry (kể cả khi EOCD khai ít) bị từ chối', async () => {
+    const s = setup();
+    const many = Array.from({ length: 101 }, (_, i) => ({
+      name: `xl/f${i}.xml`,
+      data: Buffer.from('<a/>'),
+    }));
+    await expect(s.service.preview('w1', 'p1', upload(zipOfEntries(many, 1)))).rejects.toThrow(
+      'Tệp Excel giải nén quá lớn',
     );
   });
   it('tệp hợp lệ bình thường vẫn qua', async () => {

@@ -77,8 +77,14 @@ export function excelFileError(file: { name: string; size: number }): string | n
 
 /** Lỗi khi gửi/đọc tệp: tệp bị sửa/xoá trên đĩa sau khi chọn → câu rõ ràng thay vì thông báo lạ của trình duyệt. */
 export function isFileChangedError(e: unknown): boolean {
-  const name = (e as { name?: string } | null)?.name;
-  return name === 'NotReadableError' || name === 'NotFoundError';
+  // Qua axios lỗi bị bọc thành AxiosError (name 'AxiosError'), DOMException gốc nằm ở `cause` → đi dọc chuỗi cause.
+  let cur: unknown = e;
+  for (let depth = 0; depth < 4 && cur; depth++) {
+    const name = (cur as { name?: string }).name;
+    if (name === 'NotReadableError' || name === 'NotFoundError') return true;
+    cur = (cur as { cause?: unknown }).cause;
+  }
+  return false;
 }
 
 export const FILE_CHANGED_MESSAGE = 'Tệp đã thay đổi hoặc không đọc được — hãy chọn lại tệp.';
