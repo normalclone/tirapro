@@ -680,7 +680,7 @@ function SavedFilterList({
                   ) : (
                     // Giữ chỗ nút xoá: nút "Chia sẻ" không xê dịch giữa bộ lọc của mình và của người khác.
                     <span
-                      className="invisible h-7 w-7 shrink-0 [@media(pointer:coarse)]:h-9 [@media(pointer:coarse)]:w-9"
+                      className="invisible h-7 w-7 shrink-0 max-sm:hidden [@media(pointer:coarse)]:h-9 [@media(pointer:coarse)]:w-9"
                       aria-hidden
                       data-testid="row-action-placeholder"
                     />

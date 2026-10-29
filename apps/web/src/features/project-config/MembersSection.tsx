@@ -230,7 +230,7 @@ function MemberRow({
           ) : (
             // Giữ chỗ cùng cỡ nút "về mặc định": cột vai trò không xê dịch giữa dòng đặt riêng và dòng mặc định.
             <span
-              className="invisible h-9 w-9 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11"
+              className="invisible h-9 w-9 max-sm:hidden [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11"
               aria-hidden
               data-testid="row-action-placeholder"
             />

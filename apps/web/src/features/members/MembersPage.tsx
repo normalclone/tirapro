@@ -280,7 +280,7 @@ function MemberRow({
           {isSelf ? (
             // Giữ chỗ cùng kích thước nút gỡ: dòng của mình không làm các cột trước đó xê dịch.
             <span
-              className="invisible h-9 w-9 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11"
+              className="invisible h-9 w-9 max-sm:hidden [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11"
               aria-hidden
               data-testid="member-action-placeholder"
             />
