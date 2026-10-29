@@ -697,8 +697,23 @@ export class IssuesService {
      * sai dạng thì bỏ qua và sinh mã Tirapro như thường. Người gọi tự kiểm trùng (unique `(workspaceId, key)`).
      */
     fixedKey?: string,
+    /**
+     * Tham số NỘI BỘ (không qua DTO/zod nên API công khai không đặt được): người báo cáo khác người nhập — dùng cho
+     * nhập Excel. Người gọi đã kiểm người đó là thành viên dự án. Đặt ngay lúc tạo để sự kiện `ISSUE_CREATED` mang đúng reporter.
+     */
+    overrides?: { reporterId?: string },
   ): Promise<IssueDto> {
-    return this.createCore(tx, workspaceId, userId, input, deferred, 'import', fixedKey);
+    return this.createCore(
+      tx,
+      workspaceId,
+      userId,
+      input,
+      deferred,
+      'import',
+      fixedKey,
+      undefined,
+      overrides,
+    );
   }
 
   emitCreated(dto: IssueDto, actorId: string, clientId?: string, meta?: AutomationEventMeta): void {
@@ -725,6 +740,7 @@ export class IssuesService {
     origin: 'api' | 'import' = 'api',
     fixedKey?: string,
     intake?: IntakeCreateState,
+    overrides?: { reporterId?: string },
   ): Promise<IssueDto> {
     const db: Prisma.TransactionClient = outerTx ?? this.prisma;
     // Chỉ đường import mới được mang mã ngoài vào, và phải đúng dạng mã Jira.
@@ -828,7 +844,7 @@ export class IssuesService {
           description: input.description ?? null,
           descriptionFormat: input.descriptionFormat,
           acceptanceCriteria: input.acceptanceCriteria?.trim() ? input.acceptanceCriteria : null,
-          reporterId: userId,
+          reporterId: (origin === 'import' ? overrides?.reporterId : undefined) ?? userId,
           assigneeId: assigneeId ?? null,
           parentId: input.parentId ?? null,
           epicId: input.epicId ?? null,

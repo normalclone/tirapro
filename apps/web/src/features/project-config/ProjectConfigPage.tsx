@@ -76,7 +76,8 @@ const CONFIG_NAV: ConfigSectionDef[] = [
     id: 'data',
     label: PROJECT_CONFIG_LABELS.data,
     icon: <Download className="h-4 w-4" />,
-    description: 'Sao lưu dự án ra tệp JSON, hoặc nhập công việc hàng loạt từ tệp CSV / JSON.',
+    description:
+      'Sao lưu dự án ra tệp JSON, hoặc nhập công việc hàng loạt từ biểu mẫu Excel, tệp CSV / JSON.',
   },
 ];
 
@@ -153,7 +154,14 @@ export function ConfigSection() {
         )}
         {section === 'versions' && <VersionsSection projectId={projectId} canAdmin={canAdmin} />}
         {section === 'labels' && <LabelsSection projectId={projectId} canAdmin={canAdmin} />}
-        {section === 'data' && <DataSection projectId={projectId} canImport={canImport} />}
+        {section === 'data' && (
+          <DataSection
+            projectId={projectId}
+            projectKey={key}
+            archived={!!project?.archivedAt}
+            canImport={canImport}
+          />
+        )}
       </div>
     </PageFrame>
   );

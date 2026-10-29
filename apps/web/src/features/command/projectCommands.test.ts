@@ -16,6 +16,7 @@ const base = {
   canSprint: true,
   canAutomation: true,
   canTriage: true,
+  canImport: true,
 };
 
 describe('buildProjectCommands', () => {
@@ -76,6 +77,15 @@ describe('buildProjectCommands', () => {
     expect(to).not.toContain('/connect/automation?project=p1');
     expect(buildProjectCommands(base).map((c) => c.to)).toContain('/connect/automation?project=p1');
   });
+  it('Nhập công việc từ Excel → trang Dữ liệu của cấu hình dự án; ẩn khi thiếu quyền import', () => {
+    const cmd = buildProjectCommands(base).find((c) => c.id === 'import.excel');
+    expect(cmd?.label).toBe('Nhập công việc từ Excel');
+    expect(cmd?.to).toBe('/p/DEMO/config/data');
+    expect(cmd?.keywords).toContain('excel');
+    expect(
+      buildProjectCommands({ ...base, canImport: false }).some((c) => c.id === 'import.excel'),
+    ).toBe(false);
+  });
   it('Wiki không nằm trong nhóm dự án (wiki chưa lọc theo dự án) — có ở nhóm Điều hướng chung', () => {
     expect(buildProjectCommands(base).some((c) => c.to === '/wiki')).toBe(false);
   });
@@ -107,6 +117,6 @@ describe('ProjectCommandGroup — quyền Việc mới vào', () => {
   it('đọc-source: canTriage lấy từ useCan thô (không useProjectCan/useCanIn đã trừ lưu trữ) và truyền vào buildProjectCommands', () => {
     const src = readFileSync(join(__dirname, 'ProjectCommandGroup.tsx'), 'utf8');
     expect(src).toMatch(/useCan\(project\?\.id\)\('issue:triage'\)/);
-    expect(src).toMatch(/canTriage,\s*\}\)/);
+    expect(src).toMatch(/canTriage,\s*canImport,\s*\}\)/);
   });
 });

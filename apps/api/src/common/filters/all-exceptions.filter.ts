@@ -12,6 +12,10 @@ import { AppException } from '../exceptions/app.exception';
 import type { AuthedRequest } from '../types/request';
 
 /** Thông báo chung cho lỗi 500 ở production — chi tiết chỉ nằm trong log server. */
+/** multer ném `File too large` (413) khi vượt `limits.fileSize` — Việt hoá, mã `PAYLOAD_TOO_LARGE`. */
+export const FILE_TOO_LARGE_MESSAGE =
+  'Tệp quá lớn — vượt giới hạn dung lượng cho phép của chức năng này. Hãy giảm dung lượng hoặc chia thành nhiều tệp nhỏ hơn';
+
 export const INTERNAL_ERROR_MESSAGE =
   'Lỗi hệ thống — hãy thử lại, nếu vẫn lỗi hãy báo quản trị kèm mã yêu cầu';
 
@@ -53,6 +57,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
         }
       }
       code = this.codeFromStatus(statusCode, code);
+      if (statusCode === 413 && message === 'File too large') message = FILE_TOO_LARGE_MESSAGE;
     } else if (exception instanceof Error) {
       // Lỗi không lường trước: ở production không lộ message nội bộ (SQL, đường dẫn, stack...) ra client.
       message =
@@ -97,6 +102,8 @@ export class AllExceptionsFilter implements ExceptionFilter {
         return ERROR_CODES.NOT_FOUND;
       case 409:
         return ERROR_CODES.CONFLICT;
+      case 413:
+        return ERROR_CODES.PAYLOAD_TOO_LARGE;
       case 422:
         return ERROR_CODES.BUSINESS_RULE_VIOLATION;
       case 429:

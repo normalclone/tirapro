@@ -1398,6 +1398,7 @@ enum ImportSource {
   JIRA_CLOUD
   JIRA_SERVER
   CSV
+  EXCEL
 }
 
 enum ImportStatus {

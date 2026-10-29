@@ -502,7 +502,7 @@ export interface JiraAnalyzeResult {
 /** Tiến độ / kết quả một lần import (poll `GET /import/jobs/:id`). */
 export interface ImportJobDto {
   id: ID;
-  source: 'JIRA_CLOUD' | 'JIRA_SERVER' | 'CSV';
+  source: 'JIRA_CLOUD' | 'JIRA_SERVER' | 'CSV' | 'EXCEL';
   status: 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
   progress: number;
   totalItems: number | null;

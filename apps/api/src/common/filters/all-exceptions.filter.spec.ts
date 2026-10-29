@@ -1,6 +1,11 @@
 import { HttpException, Logger } from '@nestjs/common';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { AllExceptionsFilter, INTERNAL_ERROR_MESSAGE } from './all-exceptions.filter';
+import { PayloadTooLargeException } from '@nestjs/common';
+import {
+  AllExceptionsFilter,
+  FILE_TOO_LARGE_MESSAGE,
+  INTERNAL_ERROR_MESSAGE,
+} from './all-exceptions.filter';
 
 // Lỗi 500 trong test sẽ in stack ra console — tắt cho gọn.
 Logger.overrideLogger(false);
@@ -45,5 +50,18 @@ describe('AllExceptionsFilter', () => {
     const { status, body } = run(new HttpException('Không tìm thấy', 404));
     expect(status).toBe(404);
     expect(body.error.message).toBe('Không tìm thấy');
+  });
+
+  it('413 từ multer (File too large) → mã PAYLOAD_TOO_LARGE + thông báo tiếng Việt', () => {
+    const { status, body } = run(new PayloadTooLargeException('File too large'));
+    expect(status).toBe(413);
+    expect(body.error.code).toBe('PAYLOAD_TOO_LARGE');
+    expect(body.error.message).toBe(FILE_TOO_LARGE_MESSAGE);
+  });
+
+  it('413 với message khác (vd attachments tự ném) giữ nguyên message, chỉ đổi mã', () => {
+    const { body } = run(new PayloadTooLargeException('Tệp vượt 25MB'));
+    expect(body.error.code).toBe('PAYLOAD_TOO_LARGE');
+    expect(body.error.message).toBe('Tệp vượt 25MB');
   });
 });

@@ -1,7 +1,15 @@
 import { useMemo, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Command } from 'cmdk';
-import { BarChart3, GanttChartSquare, Inbox, Play, Repeat, ShieldAlert } from 'lucide-react';
+import {
+  BarChart3,
+  FileSpreadsheet,
+  GanttChartSquare,
+  Inbox,
+  Play,
+  Repeat,
+  ShieldAlert,
+} from 'lucide-react';
 import { useProjectSprints } from '@/features/backlog/api';
 import { useProject } from '@/features/projects/api';
 import { useCan, useProjectCan } from '@/features/projects/permissions';
@@ -15,10 +23,11 @@ const ICONS: Record<ProjectCommand['icon'], ReactNode> = {
   triage: <Inbox className="h-4 w-4 shrink-0 text-muted" aria-hidden="true" />,
   risks: <ShieldAlert className="h-4 w-4 shrink-0 text-muted" aria-hidden="true" />,
   automation: <Repeat className="h-4 w-4 shrink-0 text-muted" aria-hidden="true" />,
+  import: <FileSpreadsheet className="h-4 w-4 shrink-0 text-muted" aria-hidden="true" />,
 };
 
 /**
- * Nhóm "Dự án hiện tại": tạo/bắt đầu/kết thúc sprint, mở Báo cáo/Lịch trình/Việc mới vào/Wiki/Rủi ro/Tự động hoá.
+ * Nhóm "Dự án hiện tại": tạo/bắt đầu/kết thúc sprint, mở Báo cáo/Lịch trình/Việc mới vào/Wiki/Rủi ro/Tự động hoá, nhập công việc từ Excel.
  * Chỉ dựng khi bảng lệnh mở (Radix không dựng nội dung khi đóng) nên không tải sprint/quyền lúc chưa cần.
  * Lệnh theo quyền + trạng thái sprint do `buildProjectCommands` quyết định.
  */
@@ -36,6 +45,7 @@ export function ProjectCommandGroup({
   const can = useProjectCan(project);
   const canSprint = can('sprint:manage');
   const canAutomation = can('automation:manage');
+  const canImport = can('import:run');
   // Việc mới vào xem được cả ở dự án lưu trữ (chỉ không duyệt được) → quyền thô `useCan`, không phải bản đã trừ lưu trữ.
   const canTriage = useCan(project?.id)('issue:triage');
 
@@ -49,9 +59,10 @@ export function ProjectCommandGroup({
             canSprint,
             canAutomation,
             canTriage,
+            canImport,
           })
         : [],
-    [project, sprints, canSprint, canAutomation, canTriage],
+    [project, sprints, canSprint, canAutomation, canTriage, canImport],
   );
   if (commands.length === 0) return null;
 

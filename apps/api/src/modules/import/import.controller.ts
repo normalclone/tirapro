@@ -2,22 +2,34 @@ import {
   Body,
   Controller,
   Get,
+  HttpCode,
   Param,
   Post,
   Query,
+  Res,
   UploadedFile,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiConsumes, ApiTags } from '@nestjs/swagger';
+import type { Response } from 'express';
+import { Throttle } from '@nestjs/throttler';
 import { z } from 'zod';
-import { jiraImportRunSchema, type JiraImportRunInput } from '@tirapro/shared';
+import {
+  EXCEL_IMPORT_MAX_BYTES,
+  excelImportBodySchema,
+  jiraImportRunSchema,
+  type ExcelImportBody,
+  type JiraImportRunInput,
+} from '@tirapro/shared';
 import { PERMISSIONS } from '@tirapro/types';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { WorkspaceId } from '../../common/decorators/workspace-id.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import type { AuthUser } from '../../common/types/request';
+import { contentDispositionAttachment } from '../../common/filename';
+import { ExcelImportService } from './excel/excel-import.service';
 import { ImportService } from './import.service';
 import { JIRA_MAX_UPLOAD_BYTES, JiraImportService } from './jira/jira-import.service';
 
@@ -39,12 +51,16 @@ const importJsonSchema = z.object({
 });
 export type ImportJsonBody = z.infer<typeof importJsonSchema>;
 
+/** Mỗi lần xem trước/nhập là tác vụ nặng CPU/RAM (giải nén + duyệt cả bảng): 10 lần/phút/IP. */
+const EXCEL_THROTTLE = { default: { limit: 10, ttl: 60_000 } };
+
 @ApiTags('import')
 @Controller('import')
 export class ImportController {
   constructor(
     private readonly importService: ImportService,
     private readonly jira: JiraImportService,
+    private readonly excel: ExcelImportService,
   ) {}
 
   /** Import issue từ CSV vào một project sẵn có. */
@@ -67,6 +83,55 @@ export class ImportController {
     @Body(new ZodValidationPipe(importJsonSchema)) body: ImportJsonBody,
   ) {
     return this.importService.importJson(workspaceId, user.id, body);
+  }
+
+  /** Excel: tải biểu mẫu `.xlsx` của dự án (drop-list lấy từ cấu hình dự án). */
+  @Get('excel/template')
+  @Permissions(PERMISSIONS.IMPORT_RUN)
+  async excelTemplate(
+    @WorkspaceId() workspaceId: string,
+    @Query(new ZodValidationPipe(excelImportBodySchema)) query: ExcelImportBody,
+    @Res() res: Response,
+  ): Promise<void> {
+    const { buffer, filename } = await this.excel.template(workspaceId, query.projectId);
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    res.setHeader('Content-Disposition', contentDispositionAttachment(filename));
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Content-Length', String(buffer.length));
+    res.end(buffer);
+  }
+
+  /** Excel: xem trước lỗi từng dòng/cột — không ghi DB. */
+  @Post('excel/preview')
+  @Throttle(EXCEL_THROTTLE)
+  @HttpCode(200)
+  @Permissions(PERMISSIONS.IMPORT_RUN)
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: EXCEL_IMPORT_MAX_BYTES } }))
+  async excelPreview(
+    @WorkspaceId() workspaceId: string,
+    @Body(new ZodValidationPipe(excelImportBodySchema)) body: ExcelImportBody,
+    @UploadedFile() file: Express.Multer.File | undefined,
+  ) {
+    return this.excel.preview(workspaceId, body.projectId, file);
+  }
+
+  /** Excel: nhập các dòng hợp lệ (validate lại từ đầu), bỏ dòng lỗi. */
+  @Post('excel')
+  @Throttle(EXCEL_THROTTLE)
+  @Permissions(PERMISSIONS.IMPORT_RUN)
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: EXCEL_IMPORT_MAX_BYTES } }))
+  async importExcel(
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
+    @Body(new ZodValidationPipe(excelImportBodySchema)) body: ExcelImportBody,
+    @UploadedFile() file: Express.Multer.File | undefined,
+  ) {
+    return this.excel.commit(workspaceId, user.id, body.projectId, file);
   }
 
   /** Lịch sử các lần import của workspace (mới nhất trước). */

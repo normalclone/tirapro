@@ -87,6 +87,8 @@ export interface PreparedItem {
    * Người đặt phải kiểm trùng trước; trùng lọt qua (nhập đồng thời) sẽ vào `duplicates` của kết quả.
    */
   fixedKey?: string;
+  /** Người báo cáo khác người nhập (Excel) — đặt ngay trong create, không update sau. */
+  reporterId?: string;
   after?: (
     tx: Prisma.TransactionClient,
     issue: IssueDto,
@@ -621,6 +623,7 @@ export class ImportService {
               it.input,
               deferred,
               it.fixedKey,
+              it.reporterId ? { reporterId: it.reporterId } : undefined,
             );
             if (it.after) {
               const r = await it.after(tx, dto, local);
