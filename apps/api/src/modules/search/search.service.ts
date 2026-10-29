@@ -1,21 +1,123 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { parseJql, JqlParseError, type IssueDto } from '@tirapro/shared';
+import {
+  parseJql,
+  andAll,
+  closestMatch,
+  flattenAnd,
+  foldForMatch,
+  JqlParseError,
+  serializeJqlNode,
+  serializeJqlQuery,
+  type IssueDto,
+  type JqlFieldName,
+  type JqlNode,
+  type JqlValue,
+} from '@tirapro/shared';
 import { BusinessRuleException } from '../../common/exceptions/app.exception';
+import { mapLimit } from '../../common/map-limit';
+import {
+  BOUNDED_COUNT_DEADLINE_MS,
+  boundedIssueCount,
+  runBounded,
+} from '../../common/bounded-count';
 import type { PageResult } from '../../common/dto/page-result';
+import { TRIAGE_VISIBLE } from '../../common/triage-visibility';
 import { PrismaService } from '../../infra/prisma/prisma.service';
+import { ProjectAccessService } from '../rbac/project-access.service';
 import { IssuesService } from '../issues/issues.service';
-import { compileJql } from './jql-compiler';
+import { FulltextSearcher } from './fulltext';
+import {
+  collectFulltextTerms,
+  compileJql,
+  containsWhere,
+  jqlDependsOnViewer,
+  primaryFulltextTerm,
+  topLevelProjectKeys,
+} from './jql-compiler';
 
 export interface SearchOptions {
+  /** `jql` (mặc định, dùng `jql`) hoặc `text` (full-text trên `q`, xếp theo độ liên quan). */
+  mode?: 'jql' | 'text';
+  q?: string;
   jql?: string;
   projectId?: string;
   cursor?: string;
   limit: number;
+  /** Không có ORDER BY tường minh thì xếp theo `rank` (thứ tự thả trên board/backlog) thay vì độ liên quan/updatedAt. */
+  orderByRank?: boolean;
+  /** Ẩn việc chưa duyệt (PENDING/SNOOZED/DECLINED) — dùng cho board có `filterJql` để khớp board không lọc. */
+  excludeUntriaged?: boolean;
+  /**
+   * Báo lỗi 422 khi giá trị của type/status/priority/… không có trong workspace (kèm "ý bạn là …") thay vì trả rỗng im lặng.
+   * Chỉ bật cho truy vấn gõ tay (`GET /search`); board và bộ lọc đã lưu giữ hành vi cũ để dữ liệu đổi tên không làm sập chúng.
+   */
+  checkValues?: boolean;
+}
+
+/** Trường JQL được kiểm giá trị → tên tiếng Việt dùng trong câu báo lỗi. */
+const CHECKED_FIELD_LABEL: Partial<Record<JqlFieldName, string>> = {
+  type: 'loại',
+  status: 'trạng thái',
+  priority: 'mức ưu tiên',
+  severity: 'mức nghiêm trọng',
+  resolution: 'kết luận xử lý',
+  sprint: 'sprint',
+  project: 'dự án',
+  component: 'thành phần',
+  fixVersion: 'phiên bản sửa',
+  affectedVersion: 'phiên bản bị ảnh hưởng',
+};
+/** Trường kiểm tồn tại theo tên (không so với danh mục cắt `take`): sprint/thành phần/phiên bản. */
+const EXISTENCE_FIELDS: ReadonlySet<JqlFieldName> = new Set([
+  'sprint',
+  'component',
+  'fixVersion',
+  'affectedVersion',
+]);
+const MAX_LISTED_VALUES = 8;
+
+/** Gợi ý nới bộ lọc (092): tối đa 8 mệnh đề, 2 lần đếm đồng thời mỗi request; trần toàn tiến trình + hạn tổng ở `common/bounded-count`. */
+const RELAX_MAX_CLAUSES = 8;
+const RELAX_CONCURRENCY = 2;
+
+interface RelaxClause {
+  /** Mệnh đề AND ở gốc, viết lại từ AST (hiển thị cho người dùng). */
+  text: string;
+  /** JQL khi bỏ đúng mệnh đề này (giữ mọi mệnh đề khác — kể cả các mệnh đề quá giới hạn đếm — và ORDER BY). */
+  jqlWithout: string;
+  /** Số việc người xem thấy; `null` = đếm không kịp (quá hạn). */
+  count: number | null;
+}
+
+export interface RelaxCountsResult {
+  clauses: RelaxClause[];
+  /** Số mệnh đề vượt `RELAX_MAX_CLAUSES` nên không được đếm. */
+  remaining: number;
+}
+
+/** Thông điệp khi JQL của KR tự đo phụ thuộc người xem (không có nghĩa với lịch sử chung). */
+export const VIEWER_JQL_MESSAGE = 'JQL của KR tự đo không được dùng currentUser/me';
+
+interface JqlValueSuggestion {
+  field: string;
+  value: string;
+  didYouMean: string | null;
+}
+
+export interface JqlValidation {
+  valid: boolean;
+  error?: string;
+  position?: number;
+  suggestions?: JqlValueSuggestion[];
+}
+
+interface InvalidValue extends JqlValueSuggestion {
+  message: string;
 }
 
 /** Một lựa chọn cho bộ dựng truy vấn (value đúng dạng JQL khớp, label hiển thị). */
-export interface FieldOption {
+interface FieldOption {
   value: string;
   label: string;
   color?: string | null;
@@ -26,32 +128,83 @@ export interface FilterFieldsDto {
   types: FieldOption[];
   statuses: FieldOption[];
   priorities: FieldOption[];
+  severities: FieldOption[];
   sprints: FieldOption[];
   labels: FieldOption[];
   resolutions: FieldOption[];
+  components: FieldOption[];
+  versions: FieldOption[];
 }
 
 @Injectable()
 export class SearchService {
+  private readonly fulltext: FulltextSearcher;
+
   constructor(
     private readonly issues: IssuesService,
     private readonly prisma: PrismaService,
-  ) {}
+    private readonly access: ProjectAccessService,
+  ) {
+    this.fulltext = new FulltextSearcher(prisma);
+  }
+
+  /**
+   * Id các issue gần giống `text` trong một dự án, xếp theo độ liên quan (bỏ dấu + tiền tố + trigram) — cho gợi ý
+   * trùng của form Báo lỗi. Hàm bọc duy nhất quanh `FulltextSearcher`: nếu chữ ký tìm kiếm đổi thì chỉ sửa ở đây.
+   * `viewerId` (đường do người dùng điều khiển): dự án riêng tư người đó không thấy → 404 'Dự án' như dự án không tồn tại,
+   * không bao giờ trả id việc của dự án ẩn. `viewerId = null` = ngữ cảnh hệ thống (phải nêu rõ).
+   */
+  async similarIssueIds(
+    workspaceId: string,
+    projectId: string,
+    text: string,
+    viewerId: string | null,
+    limit = 8,
+  ): Promise<string[]> {
+    if (viewerId) await this.assertProjectVisibleTo(viewerId, workspaceId, projectId);
+    const res = await this.fulltext.search(workspaceId, text, { projectId, limit });
+    return res?.ids ?? [];
+  }
+
+  /** 404 'Dự án' (như dự án không tồn tại) nếu `viewerId` không thấy dự án riêng tư này. */
+  async assertProjectVisibleTo(
+    viewerId: string,
+    workspaceId: string,
+    projectId: string,
+  ): Promise<void> {
+    await this.access.assertCanSee(viewerId, workspaceId, projectId, 'Dự án');
+  }
 
   /**
    * Danh mục giá trị cho bộ dựng truy vấn trực quan: issue type, status, priority,
    * sprint, label, resolution — phạm vi workspace. Status gom từ mọi workflow; sprint/label
    * gom từ mọi project (khử trùng theo tên vì JQL khớp theo tên). Degrade: rỗng nếu chưa có.
+   * `viewerId`: chỉ gom từ dự án người đó thấy được (không lộ tên sprint/nhãn/thành phần/phiên bản của dự án riêng tư).
    */
-  async fields(workspaceId: string): Promise<FilterFieldsDto> {
-    const [types, statuses, priorities, sprints, labels, resolutions] = await Promise.all([
+  async fields(workspaceId: string, userId: string): Promise<FilterFieldsDto> {
+    // Chỉ liệt kê sprint/nhãn/thành phần/phiên bản của dự án người hỏi được xem (không lộ dự án riêng tư).
+    const visible = await this.access.visibleWhere(userId, workspaceId);
+    const inVisibleProject = { project: { workspaceId, deletedAt: null, ...visible } };
+    const [
+      types,
+      statuses,
+      priorities,
+      severities,
+      sprints,
+      labels,
+      resolutions,
+      components,
+      versions,
+    ] = await Promise.all([
       this.prisma.issueType.findMany({
         where: { workspaceId },
         orderBy: { hierarchyLevel: 'asc' },
         select: { name: true, color: true },
       }),
       this.prisma.status.findMany({
-        where: { workflow: { workspaceId } },
+        // Quy trình riêng của dự án riêng tư (mỗi dự án có bản sao quy trình) có thể mang tên trạng thái nhạy cảm: chỉ gom từ
+        // quy trình dùng chung (projectId null) và quy trình của dự án người hỏi xem được.
+        where: { workflow: this.workflowScope(workspaceId, visible) },
         orderBy: { order: 'asc' },
         select: { name: true, color: true },
       }),
@@ -60,14 +213,19 @@ export class SearchService {
         orderBy: { rank: 'desc' },
         select: { name: true, color: true },
       }),
+      this.prisma.severity.findMany({
+        where: { workspaceId },
+        orderBy: { rank: 'desc' },
+        select: { name: true, color: true },
+      }),
       this.prisma.sprint.findMany({
-        where: { project: { workspaceId, deletedAt: null } },
+        where: inVisibleProject,
         orderBy: { sequence: 'desc' },
         select: { name: true },
         take: 100,
       }),
       this.prisma.label.findMany({
-        where: { project: { workspaceId, deletedAt: null } },
+        where: inVisibleProject,
         orderBy: { name: 'asc' },
         select: { name: true, color: true },
         take: 200,
@@ -77,43 +235,569 @@ export class SearchService {
         orderBy: { rank: 'asc' },
         select: { name: true },
       }),
+      this.prisma.component.findMany({
+        where: inVisibleProject,
+        orderBy: { name: 'asc' },
+        select: { name: true },
+        take: 200,
+      }),
+      this.prisma.version.findMany({
+        where: inVisibleProject,
+        orderBy: { name: 'asc' },
+        select: { name: true },
+        take: 200,
+      }),
     ]);
 
     return {
       types: dedupeByName(types),
       statuses: dedupeByName(statuses),
       priorities: dedupeByName(priorities),
+      severities: dedupeByName(severities),
       sprints: dedupeByName(sprints),
       labels: dedupeByName(labels),
       resolutions: dedupeByName(resolutions),
+      components: dedupeByName(components),
+      versions: dedupeByName(versions),
     };
   }
 
-  /** Tìm issue bằng JQL (parse → compile → Prisma). Workspace scope ghép trong IssuesService.query. */
-  async search(workspaceId: string, currentUserId: string, opts: SearchOptions): Promise<PageResult<IssueDto>> {
-    let where: Prisma.IssueWhereInput = {};
-    let orderBy: Prisma.IssueOrderByWithRelationInput[] = [];
+  /**
+   * Tìm issue. `mode=text`: full-text trên `q`; mặc định: JQL (parse → compile → Prisma). `text ~ "..."`
+   * trong JQL cũng đi qua full-text. Workspace scope ghép trong IssuesService.query.
+   */
+  async search(
+    workspaceId: string,
+    currentUserId: string,
+    opts: SearchOptions,
+  ): Promise<PageResult<IssueDto>> {
+    if (opts.mode === 'text') return this.searchText(workspaceId, opts, currentUserId);
 
-    if (opts.jql && opts.jql.trim()) {
-      const ast = this.parse(opts.jql);
-      const compiled = compileJql(ast, { currentUserId });
-      where = compiled.where;
-      orderBy = compiled.orderBy;
-    }
+    const built = await this.buildWhere(
+      workspaceId,
+      currentUserId,
+      opts.jql,
+      opts.projectId,
+      opts.checkValues,
+      opts.orderByRank,
+    );
+    let { where, orderBy } = built;
+    const { rankHint } = built;
+    if (opts.orderByRank && !orderBy.length) orderBy = [{ rank: 'asc' }];
     if (opts.projectId) {
-      where = Object.keys(where).length ? { AND: [where, { projectId: opts.projectId }] } : { projectId: opts.projectId };
+      where = Object.keys(where).length
+        ? { AND: [where, { projectId: opts.projectId }] }
+        : { projectId: opts.projectId };
     }
-    return this.issues.query(workspaceId, where, orderBy, opts.cursor, opts.limit);
+    if (opts.excludeUntriaged) {
+      where = Object.keys(where).length ? { AND: [where, TRIAGE_VISIBLE] } : TRIAGE_VISIBLE;
+    }
+    return this.issues.query(workspaceId, where, orderBy, opts.cursor, opts.limit, currentUserId, {
+      rankHint,
+    });
   }
 
-  /** Kiểm tra cú pháp JQL (cho FE highlight lỗi inline). */
-  validate(jql: string): { valid: boolean; error?: string; position?: number } {
+  /**
+   * Dịch JQL → `where` Prisma (+ orderBy, rankHint) — dùng chung cho `search()` và `count()`. Chưa ghép phạm vi
+   * workspace/dự án người xem (nơi gọi ghép: `IssuesService.query` hoặc `count`). JQL rỗng → `where` rỗng.
+   * `currentUserId = null`: ngữ cảnh hệ thống (đếm công khai cho lịch sử KR) — không kiểm giá trị theo quyền ai,
+   * full-text chỉ trong dự án công khai, và `currentUser()`/`me` không có nghĩa.
+   */
+  private async buildWhere(
+    workspaceId: string,
+    currentUserId: string | null,
+    jql: string | undefined,
+    projectId: string | undefined,
+    checkValues?: boolean,
+    orderByRank?: boolean,
+  ): Promise<{
+    where: Prisma.IssueWhereInput;
+    orderBy: Prisma.IssueOrderByWithRelationInput[];
+    rankHint: string[] | undefined;
+  }> {
+    let where: Prisma.IssueWhereInput = {};
+    let orderBy: Prisma.IssueOrderByWithRelationInput[] = [];
+    let rankHint: string[] | undefined;
+
+    if (jql && jql.trim()) {
+      const ast = this.parse(jql);
+      if (checkValues && currentUserId) {
+        const [first] = await this.findInvalidValues(workspaceId, currentUserId, ast.where);
+        if (first) throw new BusinessRuleException(first.message);
+      }
+      const fulltext = await this.fulltextMap(workspaceId, ast.where, projectId, currentUserId);
+      const compiled = compileJql(ast, { currentUserId: currentUserId ?? '', fulltext });
+      where = compiled.where;
+      orderBy = compiled.orderBy;
+      const primary = primaryFulltextTerm(ast.where);
+      const ids = primary ? fulltext.get(primary) : undefined;
+      // Không ORDER BY tường minh → id khớp full-text xếp theo rank lên trước. Chỉ là gợi ý xếp hạng:
+      // tập kết quả do `where` (đã gồm ILIKE summary/description/key) quyết định, không bị cắt top-200.
+      if (ids && !orderBy.length && !orderByRank) rankHint = [...ids];
+    }
+    return { where, orderBy, rankHint };
+  }
+
+  /**
+   * Tra full-text MỘT lần cho mọi `text ~ "…"` của truy vấn → map term → id đã xếp hạng (term không có searchVector
+   * thì vắng mặt, compiler dùng `contains`). Dùng chung cho `buildWhere` và `relaxCounts`.
+   */
+  private async fulltextMap(
+    workspaceId: string,
+    where: JqlNode | null,
+    projectId: string | undefined,
+    viewerId: string | null,
+  ): Promise<Map<string, readonly string[]>> {
+    const fulltext = new Map<string, readonly string[]>();
+    const terms = collectFulltextTerms(where);
+    if (!terms.length) return fulltext;
+    const scopeIds = await this.fulltextProjectScope(workspaceId, where, projectId, viewerId);
+    for (const term of terms) {
+      const res = await this.fulltext.search(
+        workspaceId,
+        term,
+        scopeIds ? { projectIds: scopeIds } : {},
+      );
+      if (res) fulltext.set(term, res.ids); // null = chưa có searchVector → compiler dùng contains
+    }
+    return fulltext;
+  }
+
+  /**
+   * Như `fulltextMap` nhưng CHỈ cho đường gợi ý nới bộ lọc (`GET /search` giữ nguyên): tra trong cùng ngân sách với các lần
+   * đếm — một chỗ của semaphore toàn tiến trình + giao dịch `SET LOCAL statement_timeout` + hạn tổng `deadlineAt`.
+   * Không kịp (chưa lấy được chỗ, quá statement_timeout, giao dịch hết hạn) → `null`; lỗi khác vẫn ném.
+   */
+  private async fulltextMapBounded(
+    workspaceId: string,
+    where: JqlNode | null,
+    projectId: string | undefined,
+    viewerId: string,
+    deadlineAt: number,
+  ): Promise<Map<string, readonly string[]> | null> {
+    const terms = collectFulltextTerms(where);
+    if (!terms.length) return new Map();
+    const scopeIds = await this.fulltextProjectScope(workspaceId, where, projectId, viewerId);
+    const opts = scopeIds ? { projectIds: scopeIds } : {};
+    return runBounded(this.prisma, deadlineAt, async (tx) => {
+      const found = new Map<string, readonly string[]>();
+      for (const term of terms) {
+        const res = await this.fulltext.search(workspaceId, term, opts, tx);
+        if (res) found.set(term, res.ids);
+      }
+      return found;
+    });
+  }
+
+  /**
+   * Đếm việc khớp JQL trong phạm vi người xem thấy (cùng `where` và cùng điều kiện dự án như `search()`): dự án riêng
+   * tư người đó không thấy không bao giờ nằm trong số đếm. JQL lỗi cú pháp/giá trị sai → `BusinessRuleException`.
+   * Dùng cho Key Result tự đo (L25).
+   */
+  async count(workspaceId: string, userId: string, jql: string): Promise<number> {
+    const { where } = await this.buildWhere(workspaceId, userId, jql, undefined, true);
+    const visible = await this.access.visibleWhere(userId, workspaceId);
+    return this.prisma.issue.count({
+      where: {
+        AND: [{ workspaceId, deletedAt: null, project: { deletedAt: null, ...visible } }, where],
+      },
+    });
+  }
+
+  /**
+   * Gợi ý nới bộ lọc (092): với JQL không ra kết quả, đếm số việc khi bỏ TỪNG mệnh đề AND ở gốc.
+   * - Cùng điều kiện xem như `count()`: workspace + `deletedAt: null` + dự án chưa xoá + `visibleWhere` của người xem
+   *   (+ `projectId` nếu có, như `search()`), nên dự án riêng tư người đó không thấy không bao giờ nằm trong số đếm.
+   * - Tối đa `RELAX_MAX_CLAUSES` mệnh đề (phần dư → `remaining`), `RELAX_CONCURRENCY` truy vấn đồng thời mỗi request; trần
+   *   toàn tiến trình + hạn tổng (chưa kịp bắt đầu → null) + statement_timeout nằm ở `runBounded`; full-text
+   *   tra một lần, CŨNG trong ngân sách đó (`fulltextMapBounded`; không kịp → mọi mệnh đề `count: null`). Không đếm JQL gốc: nơi gọi chỉ hỏi sau khi tìm kiếm đã trả 0 việc. Mỗi lần đếm chạy trong giao dịch riêng với `SET LOCAL statement_timeout`: quá hạn → `count: null`
+   *   cho mệnh đề đó (không làm hỏng cả cuộc gọi); lỗi khác vẫn ném.
+   * - Chỉ có ≤ 1 mệnh đề thì không có gì để nới → trả rỗng, không đếm. OR ở gốc / NOT / nhóm lồng là MỘT mệnh đề.
+   * - JQL sai cú pháp hoặc giá trị không có thật → cùng lỗi 422 như `GET /search`.
+   */
+  async relaxCounts(
+    workspaceId: string,
+    userId: string,
+    input: { jql: string; projectId?: string },
+  ): Promise<RelaxCountsResult> {
+    const ast = this.parse(input.jql);
+    const [invalid] = await this.findInvalidValues(workspaceId, userId, ast.where);
+    if (invalid) throw new BusinessRuleException(invalid.message);
+
+    const conjuncts = flattenAnd(ast.where);
+    if (conjuncts.length < 2) return { clauses: [], remaining: 0 };
+    const counted = conjuncts.slice(0, RELAX_MAX_CLAUSES);
+    const withoutNodes = counted.map((_, i) => andAll(conjuncts.filter((_c, j) => j !== i)));
+    const deadlineAt = Date.now() + BOUNDED_COUNT_DEADLINE_MS;
+    const result = (counts: (number | null)[]): RelaxCountsResult => ({
+      clauses: counted.map((node, i) => ({
+        text: serializeJqlNode(node),
+        jqlWithout: serializeJqlQuery({ where: withoutNodes[i]!, orderBy: ast.orderBy }),
+        count: counts[i] ?? null,
+      })),
+      remaining: conjuncts.length - counted.length,
+    });
+
+    // Tra toàn văn cũng nằm trong ngân sách (slot + statement_timeout + hạn tổng): không kịp → mọi mệnh đề "không đếm kịp".
+    const fulltext = await this.fulltextMapBounded(
+      workspaceId,
+      ast.where,
+      input.projectId,
+      userId,
+      deadlineAt,
+    );
+    if (!fulltext) return result([]);
+    const visible = await this.access.visibleWhere(userId, workspaceId);
+    const scope: Prisma.IssueWhereInput = {
+      workspaceId,
+      deletedAt: null,
+      project: { deletedAt: null, ...visible },
+      ...(input.projectId ? { projectId: input.projectId } : {}),
+    };
+    const compile = (node: JqlNode | null): Prisma.IssueWhereInput =>
+      node
+        ? compileJql({ where: node, orderBy: [] }, { currentUserId: userId, fulltext }).where
+        : {};
+
+    const wheres = withoutNodes.map((node) => ({ AND: [scope, compile(node)] }));
+    const results = await mapLimit(wheres, RELAX_CONCURRENCY, (where) =>
+      boundedIssueCount(this.prisma, where, deadlineAt),
+    );
+    return result(results);
+  }
+
+  /** JQL có dùng `currentUser`/`me` không (JQL lỗi cú pháp → false: để `validate`/`count` báo lỗi riêng). */
+  dependsOnViewer(jql: string): boolean {
     try {
-      parseJql(jql);
-      return { valid: true };
+      return jqlDependsOnViewer(parseJql(jql).where);
     } catch (e) {
-      if (e instanceof JqlParseError) return { valid: false, error: e.message, position: e.position };
+      if (e instanceof JqlParseError) return false;
       throw e;
+    }
+  }
+
+  /**
+   * Đếm việc khớp JQL trên dự án CÔNG KHAI (ngữ cảnh hệ thống, không có người xem) — cron chụp lịch sử Key Result (L29)
+   * dùng để số lịch sử không lộ dự án riêng tư. `currentUser()` không có nghĩa ở đây → 422.
+   */
+  async countPublic(workspaceId: string, jql: string): Promise<number> {
+    // Duyệt AST (không regex): currentUser có/không ngoặc và alias `me`; nếu không sẽ đếm 0 giả rồi ghi như số thật.
+    if (this.dependsOnViewer(jql)) throw new BusinessRuleException(VIEWER_JQL_MESSAGE);
+    const { where } = await this.buildWhere(workspaceId, null, jql, undefined, false);
+    return this.prisma.issue.count({
+      where: {
+        AND: [
+          { workspaceId, deletedAt: null, project: { deletedAt: null, isPrivate: false } },
+          where,
+        ],
+      },
+    });
+  }
+
+  /**
+   * Phạm vi project cho truy vấn full-text của JQL: `opts.projectId` ∩ project của điều kiện
+   * `project = X` / `IN (…)` trên chuỗi AND thuần, giao với tập dự án người xem thấy. undefined = cả workspace.
+   * Chỉ để xếp hạng tốt hơn (không phí top-200 vào dự án ẩn): lọc an toàn thật nằm ở scope của `issues.query`.
+   */
+  private async fulltextProjectScope(
+    workspaceId: string,
+    where: JqlNode | null,
+    projectId: string | undefined,
+    viewerId: string | null,
+  ): Promise<string[] | undefined> {
+    let scopeIds: string[] | undefined = projectId ? [projectId] : undefined;
+    const keys = topLevelProjectKeys(where);
+    if (keys) {
+      const found = (
+        await this.prisma.project.findMany({
+          where: { workspaceId, key: { in: keys }, deletedAt: null },
+          select: { id: true },
+        })
+      ).map((p) => p.id);
+      scopeIds = scopeIds ? scopeIds.filter((id) => found.includes(id)) : found;
+    }
+    return this.intersectVisible(workspaceId, scopeIds, viewerId);
+  }
+
+  /** Giao `scopeIds` (undefined = cả workspace) với dự án người xem thấy (null = thấy hết → giữ nguyên). */
+  private async intersectVisible(
+    workspaceId: string,
+    scopeIds: string[] | undefined,
+    viewerId: string | null,
+  ): Promise<string[] | undefined> {
+    // Ngữ cảnh hệ thống: chỉ dự án công khai.
+    const visible = viewerId
+      ? await this.access.visibleProjectIds(viewerId, workspaceId)
+      : (
+          await this.prisma.project.findMany({
+            where: { workspaceId, deletedAt: null, isPrivate: false },
+            select: { id: true },
+          })
+        ).map((p) => p.id);
+    if (visible === null) return scopeIds;
+    return scopeIds ? scopeIds.filter((id) => visible.includes(id)) : visible;
+  }
+
+  private async searchText(
+    workspaceId: string,
+    opts: SearchOptions,
+    viewerId: string,
+  ): Promise<PageResult<IssueDto>> {
+    const q = (opts.q ?? '').trim();
+    if (!q)
+      return this.issues.query(workspaceId, {}, [], opts.cursor, opts.limit, viewerId, {
+        rawIds: [],
+      });
+    const projectIds = await this.intersectVisible(
+      workspaceId,
+      opts.projectId ? [opts.projectId] : undefined,
+      viewerId,
+    );
+    const res = await this.fulltext.search(workspaceId, q, {
+      projectId: opts.projectId,
+      ...(projectIds ? { projectIds } : {}),
+    });
+    if (res)
+      return this.issues.query(workspaceId, {}, [], opts.cursor, opts.limit, viewerId, {
+        rawIds: res.ids,
+      });
+
+    // Nhánh phòng thủ (FulltextSearcher đã có fallback translate(), không còn trả null): contains ĐÃ ESCAPE
+    // (`q="_"` không được khớp mọi dòng) — dùng chung containsWhere với JQL.
+    const match: Prisma.IssueWhereInput = {
+      OR: [
+        containsWhere('summary', q),
+        containsWhere('description', q, true),
+        containsWhere('key', q),
+      ],
+    };
+    const where: Prisma.IssueWhereInput = opts.projectId
+      ? { AND: [match, { projectId: opts.projectId }] }
+      : match;
+    return this.issues.query(workspaceId, where, [], opts.cursor, opts.limit, viewerId);
+  }
+
+  /**
+   * Kiểm tra JQL cho FE báo lỗi inline: cú pháp (kèm vị trí), rồi giá trị không có trong workspace
+   * (kèm "ý bạn là …"). Lỗi giá trị có `valid:false` + `error` (câu đầu tiên) + `suggestions` (mọi giá trị sai).
+   */
+  async validate(workspaceId: string, userId: string, jql: string): Promise<JqlValidation> {
+    let ast;
+    try {
+      ast = parseJql(jql);
+    } catch (e) {
+      if (e instanceof JqlParseError)
+        return { valid: false, error: e.message, position: e.position };
+      throw e;
+    }
+    const bad = await this.findInvalidValues(workspaceId, userId, ast.where);
+    if (!bad.length) return { valid: true };
+    return {
+      valid: false,
+      error: bad[0]!.message,
+      suggestions: bad.map(({ field, value, didYouMean }) => ({ field, value, didYouMean })),
+    };
+  }
+
+  /**
+   * Giá trị chuỗi của `type/status/priority/severity/resolution/sprint/project` (toán tử `=`, `!=`, `IN`, `NOT IN`)
+   * không khớp (không phân biệt hoa thường/dấu) giá trị nào có thật trong workspace. Chỉ tra danh mục của các trường
+   * có mặt trong truy vấn. Không kiểm nhãn (tự do), summary/text, ngày, số, người.
+   */
+  private async findInvalidValues(
+    workspaceId: string,
+    userId: string,
+    where: JqlNode | null,
+  ): Promise<InvalidValue[]> {
+    const wanted: { field: JqlFieldName; value: string }[] = [];
+    const walk = (n: JqlNode): void => {
+      if (n.type === 'logical') {
+        walk(n.left);
+        walk(n.right);
+      } else if (n.type === 'not') {
+        walk(n.node);
+      } else if (
+        CHECKED_FIELD_LABEL[n.field] &&
+        (n.operator === '=' ||
+          n.operator === '!=' ||
+          n.operator === 'IN' ||
+          n.operator === 'NOT IN')
+      ) {
+        const vs: JqlValue[] = n.value.kind === 'list' ? n.value.value : [n.value];
+        for (const v of vs)
+          if (v.kind === 'string') wanted.push({ field: n.field, value: v.value });
+      }
+    };
+    if (where) walk(where);
+    if (!wanted.length) return [];
+    // Mọi danh mục/tồn tại chỉ tính trong dự án người hỏi được xem: khoá dự án/sprint/thành phần riêng tư không lộ qua "ý bạn là".
+    const visible = await this.access.visibleWhere(userId, workspaceId);
+
+    // Khớp đúng như compiler: so tên KHÔNG phân biệt hoa/thường (không bỏ dấu), nên chỉ khác hoa/thường là hợp lệ.
+    const byField = new Map<JqlFieldName, string[]>();
+    for (const w of wanted) byField.set(w.field, [...(byField.get(w.field) ?? []), w.value]);
+    const catalogs = new Map<JqlFieldName, string[]>();
+    const known = new Map<JqlFieldName, Set<string>>();
+    for (const [field, values] of byField) {
+      if (EXISTENCE_FIELDS.has(field)) {
+        // Danh mục bị cắt (take) nên kiểm tồn tại theo tên, không so với danh sách cắt.
+        known.set(field, await this.existingNames(workspaceId, field, values, visible));
+      } else {
+        const names = await this.catalogNames(workspaceId, field, visible);
+        catalogs.set(field, names);
+        known.set(field, new Set(names.map((n) => n.toLowerCase())));
+      }
+    }
+
+    const out: InvalidValue[] = [];
+    const seen = new Set<string>();
+    for (const { field, value } of wanted) {
+      if (known.get(field)!.has(value.toLowerCase())) continue;
+      const dedupeKey = `${field}\u0000${foldForMatch(value)}`;
+      if (seen.has(dedupeKey)) continue;
+      seen.add(dedupeKey);
+      // Chỉ lúc có giá trị sai mới cần danh mục (có thể bị cắt) để gợi ý "ý bạn là" / liệt kê.
+      if (!catalogs.has(field))
+        catalogs.set(field, await this.catalogNames(workspaceId, field, visible));
+      const options = catalogs.get(field)!;
+      const didYouMean = closestMatch(value, options);
+      const label = CHECKED_FIELD_LABEL[field]!;
+      const message = didYouMean
+        ? `Không có ${label} "${value}" — ý bạn là "${didYouMean}"?`
+        : options.length
+          ? `Không có ${label} "${value}". Các giá trị hiện có: ${options.slice(0, MAX_LISTED_VALUES).join(', ')}${options.length > MAX_LISTED_VALUES ? '…' : ''}`
+          : `Không có ${label} "${value}".`;
+      out.push({ field, value, didYouMean, message });
+    }
+    return out;
+  }
+
+  /** Tên (viết thường, không phân biệt hoa/thường) trong số `values` có thật ở dự án người hỏi xem được — truy vấn tồn tại, không cắt. */
+  private async existingNames(
+    workspaceId: string,
+    field: JqlFieldName,
+    values: string[],
+    visible: Prisma.ProjectWhereInput,
+  ): Promise<Set<string>> {
+    const OR = [...new Set(values)].map((v) => ({
+      name: { equals: v, mode: 'insensitive' as const },
+    }));
+    const rows =
+      field === 'sprint'
+        ? await this.prisma.sprint.findMany({
+            where: { project: { workspaceId, deletedAt: null, ...visible }, OR },
+            select: { name: true },
+          })
+        : field === 'component'
+          ? await this.prisma.component.findMany({
+              where: { project: { workspaceId, deletedAt: null, ...visible }, OR },
+              select: { name: true },
+            })
+          : await this.prisma.version.findMany({
+              where: { project: { workspaceId, deletedAt: null, ...visible }, OR },
+              select: { name: true },
+            });
+    return new Set(rows.map((r) => r.name.toLowerCase()));
+  }
+
+  /** Quy trình mà người xem được thấy tên trạng thái: dùng chung (không gắn dự án) hoặc của dự án xem được. */
+  private workflowScope(
+    workspaceId: string,
+    visible: Prisma.ProjectWhereInput,
+  ): Prisma.WorkflowWhereInput {
+    return {
+      workspaceId,
+      OR: [{ projectId: null }, { project: { deletedAt: null, ...visible } }],
+    };
+  }
+
+  /** Tên các giá trị có thật của một trường JQL trong workspace (cùng nguồn với `fields()` nên sprint bị cắt 100 — chỉ dùng để gợi ý/liệt kê, KHÔNG để kiểm tồn tại; dự án: khoá dự án còn sống). */
+  private async catalogNames(
+    workspaceId: string,
+    field: JqlFieldName,
+    visible: Prisma.ProjectWhereInput,
+  ): Promise<string[]> {
+    const inVisible = { project: { workspaceId, deletedAt: null, ...visible } };
+    const names = (rows: { name: string }[]) => [...new Set(rows.map((r) => r.name))];
+    switch (field) {
+      case 'type':
+        return names(
+          await this.prisma.issueType.findMany({
+            where: { workspaceId },
+            orderBy: { hierarchyLevel: 'asc' },
+            select: { name: true },
+          }),
+        );
+      case 'status':
+        return names(
+          await this.prisma.status.findMany({
+            where: { workflow: this.workflowScope(workspaceId, visible) },
+            orderBy: { order: 'asc' },
+            select: { name: true },
+          }),
+        );
+      case 'priority':
+        return names(
+          await this.prisma.priority.findMany({
+            where: { workspaceId },
+            orderBy: { rank: 'desc' },
+            select: { name: true },
+          }),
+        );
+      case 'severity':
+        return names(
+          await this.prisma.severity.findMany({
+            where: { workspaceId },
+            orderBy: { rank: 'desc' },
+            select: { name: true },
+          }),
+        );
+      case 'resolution':
+        return names(
+          await this.prisma.resolution.findMany({
+            where: { workspaceId },
+            orderBy: { rank: 'asc' },
+            select: { name: true },
+          }),
+        );
+      case 'sprint':
+        return names(
+          await this.prisma.sprint.findMany({
+            where: inVisible,
+            orderBy: { sequence: 'desc' },
+            select: { name: true },
+            take: 100,
+          }),
+        );
+      case 'project':
+        return (
+          await this.prisma.project.findMany({
+            where: { workspaceId, deletedAt: null, ...visible },
+            orderBy: { key: 'asc' },
+            select: { key: true },
+          })
+        ).map((p) => p.key);
+      case 'component':
+        return names(
+          await this.prisma.component.findMany({
+            where: inVisible,
+            orderBy: { name: 'asc' },
+            select: { name: true },
+            take: 100,
+          }),
+        );
+      case 'fixVersion':
+      case 'affectedVersion':
+        return names(
+          await this.prisma.version.findMany({
+            where: inVisible,
+            orderBy: { name: 'asc' },
+            select: { name: true },
+            take: 100,
+          }),
+        );
+      default:
+        return [];
     }
   }
 
@@ -133,7 +817,8 @@ export class SearchService {
 function dedupeByName(rows: { name: string; color?: string | null }[]): FieldOption[] {
   const seen = new Map<string, FieldOption>();
   for (const r of rows) {
-    if (!seen.has(r.name)) seen.set(r.name, { value: r.name, label: r.name, color: r.color ?? null });
+    if (!seen.has(r.name))
+      seen.set(r.name, { value: r.name, label: r.name, color: r.color ?? null });
   }
   return [...seen.values()];
 }

@@ -4,6 +4,8 @@ import { DOMAIN_EVENTS } from '@tirapro/types';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { NotFoundAppException } from '../../common/exceptions/app.exception';
+import { assertIssueWritable } from '../../common/project-writable';
+import { NotificationsService } from '../notifications/notifications.service';
 
 /** User tối thiểu trả về cho client trong danh sách watcher. */
 export interface WatcherUser {
@@ -36,19 +38,23 @@ interface CommentAddedPayload {
  * Đồng thời là PRODUCER: lắng nghe các domain event của issue và tạo
  * Notification loại WATCHING_UPDATE cho mọi watcher (trừ chính người thực hiện).
  *
- * Chỉ inject PrismaService — module này lắng nghe sự kiện, không phát.
+ * Tạo thông báo qua `NotificationsService.publish` (gộp 60 s, realtime); module này lắng nghe sự kiện, không phát.
  */
 @Injectable()
 export class WatchersService {
   private readonly logger = new Logger(WatchersService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notifications: NotificationsService,
+  ) {}
 
   // ---------- COMMANDS / QUERIES (luôn scope theo workspace của user) ----------
 
   /** Theo dõi issue trên danh nghĩa của chính user. Idempotent (nuốt P2002). */
   async watch(workspaceId: string, userId: string, issueId: string): Promise<{ watching: true }> {
     await this.requireIssue(workspaceId, issueId);
+    await assertIssueWritable(this.prisma, issueId);
     try {
       await this.prisma.issueWatcher.create({ data: { issueId, userId } });
     } catch (err) {
@@ -59,34 +65,58 @@ export class WatchersService {
   }
 
   /** Bỏ theo dõi issue. Idempotent (xóa không có cũng coi như thành công). */
-  async unwatch(workspaceId: string, userId: string, issueId: string): Promise<{ watching: false }> {
+  async unwatch(
+    workspaceId: string,
+    userId: string,
+    issueId: string,
+  ): Promise<{ watching: false }> {
     await this.requireIssue(workspaceId, issueId);
+    await assertIssueWritable(this.prisma, issueId);
     await this.prisma.issueWatcher.deleteMany({ where: { issueId, userId } });
     return { watching: false };
   }
 
-  /** Danh sách người theo dõi issue + cờ isWatching cho user hiện tại. */
+  /**
+   * Danh sách người theo dõi issue + cờ isWatching cho user hiện tại.
+   * Chỉ trả người CÒN nhận được thông báo — cùng luật với cổng trung tâm của `NotificationsService` (`filterCanSee`):
+   * xem được dự án của issue và tài khoản chưa bị vô hiệu hoá. Dòng `IssueWatcher` không bị xoá khi người đó mất quyền
+   * (người báo ngoài nhóm do intake/triage tự thêm, người rời dự án riêng tư, tài khoản bị khoá), nên không lọc thì
+   * danh sách vừa lộ tên người đã rời vừa hứa thông báo sẽ không bao giờ tới.
+   */
   async list(
     workspaceId: string,
     userId: string,
     issueId: string,
   ): Promise<{ watchers: WatcherUser[]; isWatching: boolean }> {
-    await this.requireIssue(workspaceId, issueId);
+    const issue = await this.requireIssue(workspaceId, issueId);
     const rows = await this.prisma.issueWatcher.findMany({
-      where: { issueId },
+      where: { issueId, user: { status: { not: 'DEACTIVATED' } } },
       select: { user: { select: { id: true, displayName: true, avatarUrl: true } } },
       orderBy: { user: { displayName: 'asc' } },
     });
-    const watchers = rows.map((r) => ({
-      id: r.user.id,
-      displayName: r.user.displayName,
-      avatarUrl: r.user.avatarUrl,
-    }));
+    const visible = new Set(
+      await this.notifications.filterCanSee(
+        rows.map((r) => r.user.id),
+        workspaceId,
+        issue.projectId,
+      ),
+    );
+    const watchers = rows
+      .filter((r) => visible.has(r.user.id))
+      .map((r) => ({
+        id: r.user.id,
+        displayName: r.user.displayName,
+        avatarUrl: r.user.avatarUrl,
+      }));
     return { watchers, isWatching: watchers.some((w) => w.id === userId) };
   }
 
   /** User hiện tại có đang theo dõi issue không. */
-  async isWatching(workspaceId: string, userId: string, issueId: string): Promise<{ watching: boolean }> {
+  async isWatching(
+    workspaceId: string,
+    userId: string,
+    issueId: string,
+  ): Promise<{ watching: boolean }> {
     await this.requireIssue(workspaceId, issueId);
     const found = await this.prisma.issueWatcher.findUnique({
       where: { issueId_userId: { issueId, userId } },
@@ -103,7 +133,9 @@ export class WatchersService {
   @OnEvent(DOMAIN_EVENTS.ISSUE_UPDATED)
   async onIssueUpdated(payload: unknown): Promise<void> {
     try {
-      const { issue, actorId } = payload as IssueEventPayload;
+      const { issue, actorId, bulk } = payload as IssueEventPayload & { bulk?: boolean };
+      // Cập nhật hàng loạt (vd tự gán việc Jira): producer tự báo gộp, không báo từng việc cho người theo dõi.
+      if (bulk) return;
       if (!issue?.id) return;
       await this.notifyWatchers(issue, actorId);
     } catch (err) {
@@ -150,29 +182,39 @@ export class WatchersService {
       where: { issueId: issue.id },
       select: { userId: true },
     });
-    const recipients = watchers
-      .map((w) => w.userId)
-      .filter((userId) => userId !== actorId);
+    const recipients = watchers.map((w) => w.userId).filter((userId) => userId !== actorId);
     if (recipients.length === 0) return;
 
-    const payload: Prisma.InputJsonValue = { key: issue.key, summary: issue.summary };
-    await this.prisma.notification.createMany({
-      data: recipients.map((recipientId) => ({
-        recipientId,
-        workspaceId: issue.workspaceId,
-        type: 'WATCHING_UPDATE' as const,
-        issueId: issue.id,
-        actorId: actorId ?? null,
-        payload,
-      })),
-    });
+    // Qua cùng đường với thông báo trực tiếp: gộp theo công việc trong 60 giây, không trùng khi vừa được báo
+    // trực tiếp, và có đẩy realtime. `force`: theo dõi là hành động chủ động nên bỏ qua cài đặt in-app.
+    // Lỗi của một người không chặn người sau.
+    for (const recipientId of recipients) {
+      try {
+        await this.notifications.publish(
+          {
+            recipientId,
+            workspaceId: issue.workspaceId,
+            type: 'WATCHING_UPDATE',
+            issueId: issue.id,
+            actorId: actorId ?? null,
+            payload: { key: issue.key, summary: issue.summary },
+          },
+          { force: true },
+        );
+      } catch (err) {
+        this.logger.warn(`Báo người theo dõi ${recipientId} thất bại: ${this.errMsg(err)}`);
+      }
+    }
   }
 
   /** Issue phải thuộc workspace của user và chưa xóa mềm. */
-  private async requireIssue(workspaceId: string, issueId: string): Promise<{ id: string }> {
+  private async requireIssue(
+    workspaceId: string,
+    issueId: string,
+  ): Promise<{ id: string; projectId: string }> {
     const issue = await this.prisma.issue.findFirst({
       where: { id: issueId, workspaceId, deletedAt: null },
-      select: { id: true },
+      select: { id: true, projectId: true },
     });
     if (!issue) throw new NotFoundAppException('Công việc');
     return issue;

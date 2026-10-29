@@ -18,6 +18,11 @@ export interface TourStepDef {
 
 export interface TourContent {
   steps: TourStepDef[];
+  /**
+   * Tour tự chạy một lần khi người dùng lần đầu vào màn (mặc định: không — chỉ chạy khi bấm "Hướng dẫn màn này").
+   * Chỉ bật cho màn Tổng quan để không bật popup ở mọi màn mới ghé.
+   */
+  autoStart?: boolean;
 }
 
 /** Một mục trong panel "Hướng dẫn sử dụng" của màn (body là markdown). */

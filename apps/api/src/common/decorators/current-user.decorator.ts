@@ -1,4 +1,5 @@
-import { createParamDecorator, ExecutionContext } from '@nestjs/common';
+import type { ExecutionContext } from '@nestjs/common';
+import { createParamDecorator } from '@nestjs/common';
 import type { AuthUser, AuthedRequest } from '../types/request';
 
 /** Lấy user đã xác thực từ request. `@CurrentUser()` hoặc `@CurrentUser('id')`. */

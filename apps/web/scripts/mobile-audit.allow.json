@@ -1,0 +1,3 @@
+{
+  "/p/:project/gantt|small-targets~button.absolute.top-1/2.flex": "8 phần tử đều là THANH công việc trên biểu đồ (button.absolute.top-1/2.flex, cao 26px = ROW_H-14), không phải nút thanh công cụ: thanh có chiều cao cố định theo hàng 40px; cảm ứng chỉ xem + cuộn (kéo ngày bằng cảm ứng ngoài phạm vi). small-targets vốn chỉ là cảnh báo (WARN_ONLY) nên mục này chỉ ẩn khỏi báo cáo."
+}

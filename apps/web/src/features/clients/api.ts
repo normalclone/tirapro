@@ -1,10 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api } from '@/lib/api';
+import { api, type Ack } from '@/lib/api';
+import { keys } from '@/lib/queryKeys';
+import { LOCALE, fmtNumber } from '@/lib/locale';
 
-/** Khoá cache danh sách khách hàng của không gian làm việc hiện tại. */
-export const clientsKey = ['clients'] as const;
-
-export interface ClientProjectRef {
+interface ClientProjectRef {
   id: string;
   key: string;
   name: string;
@@ -64,7 +63,7 @@ export interface ContractInput {
 /** Danh sách khách hàng kèm dự án, hợp đồng và số đếm. */
 export function useClients() {
   return useQuery({
-    queryKey: clientsKey,
+    queryKey: keys.clients.all,
     queryFn: async () => (await api.get<ClientDto[]>('/clients')).data,
   });
 }
@@ -72,8 +71,8 @@ export function useClients() {
 function useInvalidateClients() {
   const qc = useQueryClient();
   return () => {
-    void qc.invalidateQueries({ queryKey: clientsKey });
-    void qc.invalidateQueries({ queryKey: ['projects'] });
+    void qc.invalidateQueries({ queryKey: keys.clients.all });
+    void qc.invalidateQueries({ queryKey: keys.projects.all });
   };
 }
 
@@ -97,7 +96,7 @@ export function useUpdateClient() {
 export function useDeleteClient() {
   const invalidate = useInvalidateClients();
   return useMutation({
-    mutationFn: (id: string) => api.delete(`/clients/${id}`).then((r) => r.data),
+    mutationFn: (id: string) => api.delete<Ack>(`/clients/${id}`).then((r) => r.data),
     onSuccess: invalidate,
   });
 }
@@ -134,7 +133,7 @@ export function useDeleteContract() {
   const invalidate = useInvalidateClients();
   return useMutation({
     mutationFn: ({ clientId, id }: { clientId: string; id: string }) =>
-      api.delete(`/clients/${clientId}/contracts/${id}`).then((r) => r.data),
+      api.delete<Ack>(`/clients/${clientId}/contracts/${id}`).then((r) => r.data),
     onSuccess: invalidate,
   });
 }
@@ -143,8 +142,12 @@ export function useDeleteContract() {
 export function formatMoney(value: number | null, currency: string): string {
   if (value === null || Number.isNaN(value)) return '—';
   try {
-    return new Intl.NumberFormat('vi-VN', { style: 'currency', currency, maximumFractionDigits: 0 }).format(value);
+    return new Intl.NumberFormat(LOCALE, {
+      style: 'currency',
+      currency,
+      maximumFractionDigits: 0,
+    }).format(value);
   } catch {
-    return `${new Intl.NumberFormat('vi-VN').format(value)} ${currency}`;
+    return `${fmtNumber(value)} ${currency}`;
   }
 }

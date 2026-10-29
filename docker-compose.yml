@@ -1,48 +1,49 @@
 services:
   postgres:
     image: pgvector/pgvector:pg16
-    container_name: projira-postgres
+    container_name: tirapro-postgres
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-projira}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-projira}
       POSTGRES_DB: ${POSTGRES_DB:-projira}
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - '${POSTGRES_PORT:-5432}:5432'
     volumes:
       - projira_pgdata:/var/lib/postgresql/data
       - ./docker/postgres/initdb:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-projira} -d ${POSTGRES_DB:-projira}"]
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-projira} -d ${POSTGRES_DB:-projira}']
       interval: 5s
       timeout: 5s
       retries: 10
 
   redis:
     image: redis:7-alpine
-    container_name: projira-redis
+    container_name: tirapro-redis
     restart: unless-stopped
     ports:
-      - "${REDIS_PORT:-6379}:6379"
+      - '${REDIS_PORT:-6379}:6379'
     volumes:
       - projira_redisdata:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ['CMD', 'redis-cli', 'ping']
       interval: 5s
       timeout: 5s
       retries: 10
 
   adminer:
     image: adminer:4
-    container_name: projira-adminer
+    container_name: tirapro-adminer
     restart: unless-stopped
-    profiles: ["tools"]
+    profiles: ['tools']
     ports:
-      - "${ADMINER_PORT:-8080}:8080"
+      - '${ADMINER_PORT:-8080}:8080'
     depends_on:
       postgres:
         condition: service_healthy
 
+# Giữ nguyên tên volume `projira_*` (cố ý) để không mất dữ liệu DB/Redis dev đang có; chỉ container đã đổi tên.
 volumes:
   projira_pgdata:
   projira_redisdata:

@@ -1,23 +1,67 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { DocsLink } from '@/components/ui/DocsLink';
+import { useSearchParams } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import {
-  ArrowDown, ArrowUp, BookOpen, ChevronDown, ChevronRight, FileText, PanelLeft, Pencil, Plus,
-  Search, Trash2, X,
+  ArrowDown,
+  ArrowUp,
+  BookOpen,
+  ChevronDown,
+  ChevronRight,
+  FileText,
+  History,
+  Lock,
+  PanelLeft,
+  Pencil,
+  Plus,
+  Search,
+  SearchX,
+  Trash2,
+  X,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useCopyToClipboard } from '@/lib/useCopyToClipboard';
+import { setTaskChecked } from '@tirapro/shared';
 import { Button } from '@/components/ui/Button';
+import { useConfirm } from '@/components/ui/useConfirm';
 import { Input } from '@/components/ui/Input';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { EmptyState, Skeleton } from '@/components/ui/primitives';
-import { MarkdownEditor, MarkdownView } from '@/features/issue-edit/DescriptionEditor';
+import { MarkdownView } from '@/features/issue-edit/MarkdownView';
 import { useProjects } from '@/features/projects/api';
-import { pageContainer } from '@/components/layout/page';
-import { apiErrorMessage } from '@/lib/api';
+import { useLazyProjectCan, useProjectsCan } from '@/features/projects/permissions';
+import { PageFrame } from '@/components/layout/PageFrame';
+import { PageHeader } from '@/components/layout/PageHeader';
+import { RailLayout } from '@/components/layout/RailLayout';
+import { apiErrorCode, apiErrorMessage } from '@/lib/api';
+import { currentProjectKey } from '@/lib/currentProject';
 import { cn } from '@/lib/utils';
+import { keys } from '@/lib/queryKeys';
 import { useAuth } from '@/stores/auth';
 import {
-  WIKI_SCOPE_SHARED, useCreateWikiPage, useDeleteWikiPage, useMoveWikiPage, useUpdateWikiPage,
-  useWikiPage, useWikiSearch, useWikiTree, type WikiNode,
+  WIKI_SCOPE_SHARED,
+  useCreateWikiPage,
+  useDeleteWikiPage,
+  useMoveWikiPage,
+  useUpdateWikiPage,
+  useWikiAdmins,
+  useWikiPage,
+  useWikiSearch,
+  useWikiTree,
+  type WikiNode,
+  type WikiPageDetail,
 } from './api';
+import { QueryBoundary } from '@/components/ui/QueryBoundary';
+import { fmtDateTime } from '@/lib/dateFormat';
+import { canWriteAt, noWriteMessage, projectIdsToCheck, writeLoadingAt } from './wikiScope';
+import { WikiHistoryDialog } from './WikiHistoryDialog';
+import { RestoreDraftBanner } from './RestoreDraftBanner';
+import { WikiEditor } from './WikiEditor';
+import { singleFlight } from '@/lib/singleFlight';
+import { buildCreateInput, newDraftKey, pendingNewFor, type PendingNewPage } from './wikiDraft';
+import { useWikiDraft } from './useWikiDraft';
+import { WikiTrashDialog } from './WikiTrashDialog';
+import { APP_NAV_LABELS } from '@/lib/navLabels';
 
 /** Vị trí của một trang trong cây: danh sách anh em + chỉ số, để đổi thứ tự bằng nút lên/xuống. */
 interface Slot {
@@ -26,7 +70,11 @@ interface Slot {
   parentId: string | null;
 }
 
-function indexTree(nodes: WikiNode[], parentId: string | null, out: Map<string, Slot>): Map<string, Slot> {
+function indexTree(
+  nodes: WikiNode[],
+  parentId: string | null,
+  out: Map<string, Slot>,
+): Map<string, Slot> {
   nodes.forEach((n, index) => {
     out.set(n.id, { siblings: nodes, index, parentId });
     if (n.children.length) indexTree(n.children, n.id, out);
@@ -34,27 +82,81 @@ function indexTree(nodes: WikiNode[], parentId: string | null, out: Map<string, 
   return out;
 }
 
-const dateTime = (iso: string) =>
-  new Date(iso).toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+const dateTime = fmtDateTime;
 
 /**
  * Tài liệu nội bộ (wiki): cây trang bên trái, nội dung markdown bên phải.
  * Tạo trang / trang con bằng một cú bấm rồi sửa tại chỗ; đổi thứ tự bằng nút lên/xuống.
  */
 export function WikiPage() {
-  const canManage = useAuth((s) => s.can('wiki:manage'));
-  const { data: projects } = useProjects();
+  const confirm = useConfirm();
+  const wsCanWrite = useAuth((s) => s.can('wiki:manage'));
+  const wsCanDelete = useAuth((s) => s.can('project:admin'));
+  const projectsQuery = useProjects();
+  const projects = projectsQuery.data;
 
-  const [scope, setScope] = useState('');
+  // Phạm vi mặc định = dự án đang làm (để người viết vào là có nút ngay); người dùng chọn lại thì theo lựa chọn.
+  const [scopeChoice, setScopeChoice] = useState<string | null>(null);
+  const defaultScope = useMemo(() => {
+    const key = currentProjectKey(projects);
+    return (key && projects?.find((p) => p.key === key)?.id) || '';
+  }, [projects]);
+  // Chỉ chờ danh sách dự án khi nó còn đang tải (lỗi mạng thì vẫn tải cây ở phạm vi "Tất cả").
+  const scopeReady = scopeChoice !== null || !projectsQuery.isPending;
+  const scope = scopeChoice ?? defaultScope;
+  const scopeProjectId = scope && scope !== WIKI_SCOPE_SHARED ? scope : null;
   const [q, setQ] = useState('');
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  // Trang đang xem nằm trên URL (`?page=<id>`) để chia sẻ/quay lại được; `edit=1` = mở thẳng chế độ sửa.
+  const [sp, setSp] = useSearchParams();
+  const selectedId = sp.get('page');
+  const wantEdit = sp.get('edit') === '1';
+  const setSelectedId = useCallback(
+    (id: string | null) =>
+      setSp(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          if (id) next.set('page', id);
+          else next.delete('page');
+          next.delete('edit');
+          return next;
+        },
+        { replace: true },
+      ),
+    [setSp],
+  );
+  const qc = useQueryClient();
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [treeOpen, setTreeOpen] = useState(false);
 
   const searching = q.trim().length >= 2;
-  const tree = useWikiTree(scope);
+  const tree = useWikiTree(scope, scopeReady);
   const search = useWikiSearch(scope, q);
   const page = useWikiPage(selectedId);
+
+  // Quyền theo TỪNG dự án: chỉ tra dự án của phạm vi đang xem + của trang đang mở (cache dùng chung với các màn khác);
+  // dự án khác trong cây "Tất cả" tra lười khi rê/mở hàng (xem `TreeRow`). Sửa/tạo/đổi chỗ = wiki:manage, xoá = project:admin.
+  // Dự án không còn trong danh sách đang hoạt động (đã lưu trữ) = không ghi được, không chờ.
+  const activeIds = useMemo(() => new Set((projects ?? []).map((p) => p.id)), [projects]);
+  const inactive = useCallback(
+    (pid: string) => projects !== undefined && !activeIds.has(pid),
+    [projects, activeIds],
+  );
+  const checkIds = useMemo(
+    () => projectIdsToCheck(scopeProjectId, page.data?.projectId, inactive),
+    [scopeProjectId, page.data?.projectId, inactive],
+  );
+  const projectCanWrite = useProjectsCan(checkIds, 'wiki:manage');
+  const projectCanDelete = useProjectsCan(checkIds, 'project:admin');
+  const writeCtx = { wsCan: wsCanWrite, projectCan: projectCanWrite, inactive };
+  const deleteCtx = { wsCan: wsCanDelete, projectCan: projectCanDelete, inactive };
+  const canWrite = (pid: string | null) => canWriteAt(pid, writeCtx);
+  const canDelete = (pid: string | null) => canWriteAt(pid, deleteCtx);
+  const pageWriteLoading = (pid: string | null) => writeLoadingAt(pid, writeCtx);
+  const lazyOk = useCallback((pid: string) => !inactive(pid), [inactive]);
+  const scopeWritable = canWrite(scopeProjectId);
+  const scopeLoading = !scopeReady || pageWriteLoading(scopeProjectId);
+  // Thùng rác: cùng quyền với xoá trang (project:admin ở phạm vi đang chọn; "Tất cả"/chung = quyền workspace).
+  const scopeCanDelete = !scopeLoading && canDelete(scopeProjectId);
 
   const create = useCreateWikiPage();
   const update = useUpdateWikiPage();
@@ -62,23 +164,55 @@ export function WikiPage() {
   const remove = useDeleteWikiPage();
 
   const [editing, setEditing] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [trashOpen, setTrashOpen] = useState(false);
+  // Đang sửa mà trang lệch phiên bản (có người lưu trước) hoặc đã bị xoá → khối xử lý ngay trong ô sửa.
+  const [editIssue, setEditIssue] = useState<'conflict' | 'deleted' | null>(null);
   const [draftTitle, setDraftTitle] = useState('');
   const [draftBody, setDraftBody] = useState('');
+  // `version` của trang lúc BẮT ĐẦU sửa (không lấy lại từ cache vì nền có thể tự làm mới giữa chừng).
+  const [baseVersion, setBaseVersion] = useState<number | null>(null);
+  // Nội dung lúc bắt đầu sửa: mốc để tính "có thay đổi chưa lưu".
+  const [baseline, setBaseline] = useState<{ title: string; body: string } | null>(null);
+  // Trang MỚI chưa lưu: chỉ ở phía trình duyệt (cha + phạm vi); `POST /wiki` chạy ở lần Lưu đầu (saveNew).
+  const [pendingNew, setPendingNew] = useState<PendingNewPage | null>(null);
+  const loadedPage = page.data && page.data.id === selectedId ? page.data : undefined;
+  const wikiDraft = useWikiDraft({
+    editing,
+    // Trang mới: trang giả rỗng khoá theo `newDraftKey` ⇒ tự lưu nháp, đề nghị khôi phục và chặn rời trang như trang thật.
+    page: pendingNew ? { id: newDraftKey(pendingNew), title: '', body: '' } : loadedPage,
+    baseline,
+    draftTitle,
+    draftBody,
+    baseVersion,
+  });
+  const { checkOffer } = wikiDraft;
 
-  const slots = useMemo(() => indexTree(tree.data ?? [], null, new Map<string, Slot>()), [tree.data]);
+  const slots = useMemo(
+    () => indexTree(tree.data ?? [], null, new Map<string, Slot>()),
+    [tree.data],
+  );
 
   // Chọn sẵn trang đầu tiên để màn không bao giờ trống khi đã có dữ liệu.
   useEffect(() => {
     if (selectedId || !tree.data?.length) return;
     setSelectedId(tree.data[0]!.id);
-  }, [tree.data, selectedId]);
+  }, [tree.data, selectedId, setSelectedId]);
+
+  // Vào thẳng một trang ở phạm vi khác phạm vi mặc định (vd từ khối "Tài liệu liên quan") → chuyển cây sang phạm vi đó.
+  useEffect(() => {
+    const pg = page.data;
+    if (!pg || pg.id !== selectedId || scopeChoice !== null || !scopeReady) return;
+    const pageScope = pg.projectId ?? WIKI_SCOPE_SHARED;
+    if (scope !== '' && scope !== pageScope) setScopeChoice(pageScope);
+  }, [page.data, selectedId, scopeChoice, scopeReady, scope]);
 
   // Trang đang chọn nằm sâu trong cây → mở sẵn các nhánh cha.
   useEffect(() => {
     if (!page.data?.breadcrumb.length) return;
     setExpanded((prev) => {
       const next = new Set(prev);
-      for (const b of page.data!.breadcrumb) next.add(b.id);
+      for (const b of page.data.breadcrumb) next.add(b.id);
       return next;
     });
   }, [page.data]);
@@ -107,32 +241,135 @@ export function WikiPage() {
     });
   }
 
-  function open(id: string) {
-    setSelectedId(id);
+  function stopEditing() {
     setEditing(false);
+    setEditIssue(null);
+    setPendingNew(null);
+  }
+
+  // Chỉ đặt state nên ổn định giữa các lần render (dùng được trong deps của effect `?edit=1`).
+  const startEditing = useCallback(
+    (pg: { id: string; title: string; body: string; version: number }) => {
+      setDraftTitle(pg.title);
+      setDraftBody(pg.body);
+      setBaseVersion(pg.version);
+      setBaseline({ title: pg.title, body: pg.body });
+      setEditIssue(null);
+      setEditing(true);
+      checkOffer(pg);
+    },
+    [checkOffer],
+  );
+
+  // `?edit=1`: khi trang về và người xem có quyền viết thì vào chế độ sửa MỘT lần rồi xoá `edit` khỏi URL.
+  const loaded = loadedPage;
+  const loadedCanWrite = loaded ? canWrite(loaded.projectId) : false;
+  const loadedWriteLoading = loaded ? pageWriteLoading(loaded.projectId) : true;
+  useEffect(() => {
+    if (!wantEdit || !loaded || editing || loadedWriteLoading) return;
+    if (loadedCanWrite) startEditing(loaded);
+    setSp(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete('edit');
+        return next;
+      },
+      { replace: true },
+    );
+  }, [wantEdit, loaded, editing, loadedCanWrite, loadedWriteLoading, setSp, startEditing]);
+
+  // Đang soạn dở thì hỏi "Bỏ thay đổi chưa lưu?" trước khi chuyển trang (cây, breadcrumb, kết quả tìm).
+  async function openAfterConfirm(id: string) {
+    if (id === selectedId && !pendingNew) {
+      setTreeOpen(false); // bấm lại đúng trang đang xem/đang sửa: không hỏi, không thoát chế độ sửa
+      return;
+    }
+    if (!(await wikiDraft.confirmDiscard())) return;
+    wikiDraft.runInternalNav(() => setSelectedId(id));
+    stopEditing();
+    setTreeOpen(false);
+  }
+  function open(id: string) {
+    void openAfterConfirm(id);
+  }
+
+  /** Huỷ sửa (nút Huỷ / Esc trong ô soạn): có thay đổi thì hỏi, không có thì thoát luôn. */
+  async function cancelEdit() {
+    if (await wikiDraft.confirmDiscard()) stopEditing();
+  }
+
+  function restoreDraft(pg: { version: number }) {
+    const o = wikiDraft.offer;
+    if (!o) return;
+    setDraftTitle(o.title);
+    setDraftBody(o.body);
+    setBaseVersion(o.baseVersion ?? pg.version);
+    wikiDraft.setOffer(null);
+  }
+
+  /** Khôi phục nháp của trang MỚI (sau F5/đóng tab): nháp chưa gắn phiên bản nào của máy chủ. */
+  function restoreNewDraft() {
+    const o = wikiDraft.offer;
+    if (!o) return;
+    setDraftTitle(o.title);
+    setDraftBody(o.body);
+    wikiDraft.setOffer(null);
+  }
+
+  /** Đổi phạm vi: bỏ chọn trang cũ (nó có thể thuộc phạm vi khác) trừ khi đang soạn dở. */
+  function setScope(v: string) {
+    setScopeChoice(v);
+    if (!editing) setSelectedId(null);
+  }
+
+  /**
+   * "Tạo trang mới" (gốc ở phạm vi đang chọn) hoặc trang con (luôn cùng phạm vi với trang cha): CHỈ mở khối soạn trống.
+   * Trang chỉ được tạo trên máy chủ ở lần Lưu đầu (`saveNew`) nên huỷ/đóng tab không để lại trang rỗng.
+   */
+  async function addPage(parent: { id: string; projectId: string | null } | null) {
+    if (!(await wikiDraft.confirmDiscard())) return;
+    const pending = pendingNewFor(parent, scopeProjectId);
+    if (pending.parentId) setExpanded((prev) => new Set(prev).add(pending.parentId!));
+    setPendingNew(pending);
+    setDraftTitle('');
+    setDraftBody('');
+    setBaseVersion(null);
+    setBaseline({ title: '', body: '' });
+    setEditIssue(null);
+    setEditing(true);
+    wikiDraft.checkOffer({ id: newDraftKey(pending), title: '', body: '' });
     setTreeOpen(false);
   }
 
-  async function addPage(parentId: string | null) {
+  /** Lưu LẦN ĐẦU của trang mới: một `POST /wiki`, bỏ nháp cục bộ (nội dung đã nằm trên máy chủ), rồi mở trang thật. */
+  async function saveNew() {
+    if (!pendingNew) return;
+    const title = draftTitle.trim();
+    if (!title) {
+      toast.error('Hãy nhập tiêu đề cho trang trước khi lưu');
+      return;
+    }
     try {
-      const created = await create.mutateAsync({
-        title: parentId ? 'Trang con mới' : 'Trang mới',
-        body: '',
-        parentId,
-        projectId: parentId ? undefined : scope && scope !== WIKI_SCOPE_SHARED ? scope : null,
-      });
-      if (parentId) setExpanded((prev) => new Set(prev).add(parentId));
-      setSelectedId(created.id);
-      setDraftTitle(created.title);
-      setDraftBody(created.body);
-      setEditing(true);
-      setTreeOpen(false);
+      const created = await create.mutateAsync(buildCreateInput(pendingNew, title, draftBody));
+      wikiDraft.discard(); // xoá nháp theo khoá `new:…` (pageIdRef còn trỏ tới nó)
+      wikiDraft.runInternalNav(() => setSelectedId(created.id));
+      stopEditing();
+      toast.success('Đã tạo trang');
     } catch (e) {
+      // Giữ khối soạn để bản đang viết không mất; `apiErrorMessage` đánh dấu đã báo (tránh toast chung chen thêm).
       toast.error(apiErrorMessage(e));
     }
   }
 
-  async function save() {
+  // Cờ đồng bộ: Ctrl/⌘+Enter giữ phím gọi `onSubmit` lặp lại, `isPending` của mutation chỉ cập nhật sau một lượt render
+  // nên không đủ chặn lần gọi thứ hai (sẽ tạo trang thứ hai / lưu chồng).
+  const savingRef = useRef(false);
+  /** Lưu (nút Lưu, Ctrl/⌘+Enter): trang mới → `saveNew`, trang có sẵn → `saveExisting`; chỉ một lần chạy tại một thời điểm. */
+  function save(opts?: { overwrite?: boolean }): Promise<void> {
+    return singleFlight(savingRef, () => (pendingNew ? saveNew() : saveExisting(opts)));
+  }
+
+  async function saveExisting(opts?: { overwrite?: boolean }) {
     if (!page.data) return;
     const title = draftTitle.trim();
     if (!title) {
@@ -140,12 +377,62 @@ export function WikiPage() {
       return;
     }
     try {
-      await update.mutateAsync({ id: page.data.id, title, body: draftBody });
-      setEditing(false);
+      let expectedVersion = baseVersion ?? page.data.version;
+      // Ghi đè có xác nhận: lấy phiên bản mới nhất của máy chủ rồi lưu bản của tôi đè lên.
+      if (opts?.overwrite)
+        expectedVersion = (await page.refetch()).data?.version ?? expectedVersion;
+      await update.mutateAsync({ id: page.data.id, title, body: draftBody, expectedVersion });
+      wikiDraft.discard();
+      stopEditing();
       toast.success('Đã lưu trang');
     } catch (e) {
-      toast.error(apiErrorMessage(e));
+      // Lỗi nào cũng giữ chế độ sửa để bản đang soạn không mất. `apiErrorMessage` luôn được gọi (đánh dấu đã báo)
+      // để toast chung của MutationCache không chen thêm câu chung chung.
+      const generic = apiErrorMessage(e);
+      const code = apiErrorCode(e);
+      if (code === 'VERSION_CONFLICT') setEditIssue('conflict');
+      else if (code === 'NOT_FOUND') setEditIssue('deleted');
+      else toast.error(generic);
     }
+  }
+
+  /** Tick một ô `- [ ]` ngay trên trang đọc: lưu có OCC (`version`); xung đột → tải lại bản mới để người dùng tick lại. */
+  async function toggleTask(
+    pg: Pick<WikiPageDetail, 'id' | 'body' | 'version'>,
+    index: number,
+    checked: boolean,
+    itemText: string,
+  ) {
+    const next = setTaskChecked(pg.body, index, checked, itemText);
+    if (next === null) {
+      toast.error('Nội dung vừa thay đổi — hãy kiểm tra lại rồi tick lại.');
+      return;
+    }
+    qc.setQueryData<WikiPageDetail>(keys.wiki.page(pg.id), (old) =>
+      old ? { ...old, body: next } : old,
+    );
+    try {
+      await update.mutateAsync({ id: pg.id, body: next, expectedVersion: pg.version });
+    } catch (e) {
+      void qc.invalidateQueries({ queryKey: keys.wiki.page(pg.id) });
+      const generic = apiErrorMessage(e);
+      toast.error(
+        apiErrorCode(e) === 'VERSION_CONFLICT'
+          ? 'Trang vừa được người khác sửa — đã tải bản mới, hãy tick lại.'
+          : generic,
+      );
+    }
+  }
+
+  async function overwrite() {
+    const ok = await confirm({
+      title: 'Ghi đè bản mới của người khác bằng bản của bạn?',
+      description:
+        'Thay đổi người kia vừa lưu trên trang này sẽ bị thay bằng nội dung bạn đang soạn. Hãy xem bản mới trước nếu chưa chắc.',
+      confirmLabel: 'Ghi đè',
+      destructive: true,
+    });
+    if (ok) await save({ overwrite: true });
   }
 
   async function shift(id: string, delta: -1 | 1) {
@@ -161,7 +448,15 @@ export function WikiPage() {
   }
 
   async function destroy(id: string, title: string) {
-    if (!window.confirm(`Xoá trang “${title}”? Các trang con không bị xoá theo, chúng sẽ được đưa lên cấp trên.`)) return;
+    if (
+      !(await confirm({
+        title: `Xoá trang “${title}”?`,
+        description:
+          'Trang sẽ vào “Trang đã xoá”, quản trị khôi phục lại được. Các trang con không bị xoá theo, chúng sẽ được đưa lên cấp trên.',
+        destructive: true,
+      }))
+    )
+      return;
     try {
       await remove.mutateAsync(id);
       if (selectedId === id) setSelectedId(null);
@@ -175,7 +470,10 @@ export function WikiPage() {
     <div className="flex h-full flex-col">
       <div className="space-y-2 border-b border-border p-3">
         <div className="relative">
-          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-faint" aria-hidden />
+          <Search
+            className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-faint"
+            aria-hidden
+          />
           <Input
             value={q}
             onChange={(e) => setQ(e.target.value)}
@@ -206,206 +504,407 @@ export function WikiPage() {
 
       <div className="min-h-0 flex-1 overflow-y-auto p-2">
         {searching ? (
-          search.isLoading ? (
-            <TreeSkeleton />
-          ) : !search.data?.length ? (
-            <p className="px-2 py-6 text-center text-sm text-muted">
-              Không có trang nào khớp “{q.trim()}”. Thử từ khoá ngắn hơn, hoặc đổi phạm vi sang “Tất cả tài liệu”.
-            </p>
-          ) : (
-            <ul className="space-y-0.5">
-              {search.data.map((hit) => (
-                <li key={hit.id}>
-                  <button
-                    type="button"
-                    onClick={() => open(hit.id)}
-                    className={cn(
-                      'w-full rounded-md px-2 py-1.5 text-left transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
-                      selectedId === hit.id && 'bg-surface-2',
-                    )}
-                  >
-                    <span className="block truncate text-sm text-ink">{hit.title}</span>
-                    {hit.snippet && <span className="mt-0.5 block truncate text-xs text-faint">{hit.snippet}</span>}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )
-        ) : tree.isLoading ? (
-          <TreeSkeleton />
-        ) : !tree.data?.length ? (
-          <p className="px-2 py-6 text-center text-sm text-muted">
-            Chưa có trang nào ở phạm vi này. {canManage ? 'Bấm “Tạo trang mới” bên dưới để bắt đầu.' : 'Hãy đổi phạm vi hoặc chờ người phụ trách thêm tài liệu.'}
-          </p>
-        ) : (
-          <ul className="space-y-0.5">
-            {tree.data.map((node) => (
-              <TreeRow
-                key={node.id}
-                node={node}
-                depth={0}
-                selectedId={selectedId}
-                expanded={expanded}
-                canManage={canManage}
-                onOpen={open}
-                onToggle={toggle}
-                onAddChild={(id) => void addPage(id)}
-                onShift={(id, d) => void shift(id, d)}
-                slots={slots}
+          <QueryBoundary
+            query={search}
+            skeleton={<TreeSkeleton />}
+            empty={(d) => !d.length}
+            emptyState={
+              <EmptyState
+                size="compact"
+                icon={<SearchX />}
+                title={`Không có trang nào khớp “${q.trim()}”`}
+                description="Thử từ khoá ngắn hơn, hoặc đổi phạm vi sang “Tất cả tài liệu”."
               />
-            ))}
-          </ul>
+            }
+          >
+            {(hits) => (
+              <ul className="space-y-0.5">
+                {hits.map((hit) => (
+                  <li key={hit.id}>
+                    <button
+                      type="button"
+                      onClick={() => open(hit.id)}
+                      className={cn(
+                        'w-full rounded-md px-2 py-1.5 text-left transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
+                        selectedId === hit.id && 'bg-surface-2',
+                      )}
+                    >
+                      <span className="block truncate text-sm text-ink">{hit.title}</span>
+                      {hit.snippet && (
+                        <span className="mt-0.5 block truncate text-xs text-faint">
+                          {hit.snippet}
+                        </span>
+                      )}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </QueryBoundary>
+        ) : (
+          <QueryBoundary
+            query={tree}
+            skeleton={<TreeSkeleton />}
+            empty={(d) => !d.length}
+            emptyState={
+              <EmptyState
+                size="compact"
+                icon={<FileText />}
+                title="Chưa có trang nào ở phạm vi này"
+                description={
+                  scopeWritable
+                    ? 'Bấm “Tạo trang mới” bên dưới để bắt đầu.'
+                    : 'Hãy chọn phạm vi khác — hướng dẫn xin quyền viết ở ngay bên dưới.'
+                }
+              />
+            }
+          >
+            {(nodes) => (
+              <ul className="space-y-0.5">
+                {nodes.map((node) => (
+                  <TreeRow
+                    key={node.id}
+                    node={node}
+                    depth={0}
+                    selectedId={selectedId}
+                    expanded={expanded}
+                    canWrite={canWrite}
+                    lazyOk={lazyOk}
+                    onOpen={open}
+                    onToggle={toggle}
+                    onAddChild={(n) => void addPage(n)}
+                    onShift={(id, d) => void shift(id, d)}
+                    slots={slots}
+                  />
+                ))}
+              </ul>
+            )}
+          </QueryBoundary>
         )}
       </div>
 
-      {canManage && (
+      {scopeWritable ? (
         <div className="border-t border-border p-2">
-          <Button size="sm" variant="secondary" className="w-full" loading={create.isPending} onClick={() => void addPage(null)}>
+          <Button
+            size="sm"
+            variant="secondary"
+            className="w-full"
+            loading={create.isPending}
+            onClick={() => void addPage(null)}
+          >
             <Plus className="h-4 w-4" /> Tạo trang mới
+          </Button>
+        </div>
+      ) : (
+        !scopeLoading && (
+          <div className="border-t border-border p-3">
+            <NoWriteNote scope={scope} />
+          </div>
+        )
+      )}
+      {scopeCanDelete && (
+        <div className="border-t border-border p-2">
+          <Button
+            size="sm"
+            variant="ghost"
+            className="w-full text-muted"
+            title="Khôi phục trang đã xoá"
+            onClick={() => setTrashOpen(true)}
+          >
+            <Trash2 className="h-4 w-4" /> Trang đã xoá
           </Button>
         </div>
       )}
     </div>
   );
 
+  // Breadcrumb ở tiêu đề trang: tổ tiên (bấm để mở) › trang đang xem. Trang gốc (không tổ tiên) thì thôi, tiêu đề trang đã đủ.
+  const openPage = pendingNew || !selectedId ? undefined : page.data;
+  const crumbs =
+    openPage && openPage.breadcrumb.length > 0
+      ? [
+          ...openPage.breadcrumb.map((b) => ({ label: b.title, onClick: () => open(b.id) })),
+          { label: openPage.title },
+        ]
+      : undefined;
+
   return (
-    <div className={pageContainer('xl')}>
-      <header className="mb-6">
-        <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">Wiki — tài liệu nội bộ</h1>
-        <p className="mt-1 text-sm text-muted">
-          Nơi lưu quy trình, hướng dẫn và biên bản họp. Viết bằng Markdown, xếp thành cây trang, dùng chung cho cả tổ chức hoặc riêng từng dự án.
-        </p>
-      </header>
-
-      <div className="mb-3 lg:hidden">
-        <Button size="sm" variant="secondary" onClick={() => setTreeOpen((v) => !v)} aria-expanded={treeOpen}>
-          <PanelLeft className="h-4 w-4" /> {treeOpen ? 'Ẩn danh sách trang' : 'Hiện danh sách trang'}
-        </Button>
-      </div>
-
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-[17rem_minmax(0,1fr)]">
-        <aside
-          className={cn(
-            'rounded-lg border border-border bg-surface lg:sticky lg:top-4 lg:max-h-[calc(100vh-8rem)]',
-            treeOpen ? 'block' : 'hidden lg:block',
-          )}
-        >
-          {treePanel}
-        </aside>
+    <RailLayout
+      ariaLabel="Cây trang Wiki"
+      railClassName="gap-0 p-0 lg:p-0"
+      rail={
+        <>
+          <div className="px-3 py-3 lg:hidden">
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => setTreeOpen((v) => !v)}
+              aria-expanded={treeOpen}
+            >
+              <PanelLeft className="h-4 w-4" />{' '}
+              {treeOpen ? 'Ẩn danh sách trang' : 'Hiện danh sách trang'}
+            </Button>
+          </div>
+          <div
+            className={cn(
+              'min-h-0 flex-1 max-lg:max-h-[60vh] max-lg:border-t max-lg:border-border',
+              !treeOpen && 'max-lg:hidden',
+            )}
+          >
+            {treePanel}
+          </div>
+        </>
+      }
+    >
+      <PageFrame size="lg">
+        <PageHeader
+          title={APP_NAV_LABELS.wiki}
+          description={
+            <>
+              Tài liệu nội bộ viết bằng Markdown, xếp thành cây trang.{' '}
+              <DocsLink anchor="quan-ly-nang-cao" />
+            </>
+          }
+          breadcrumb={crumbs}
+        />
 
         <section className="min-w-0 rounded-lg border border-border bg-surface">
-          {page.isLoading && selectedId ? (
-            <div className="space-y-3 p-6">
-              <Skeleton className="h-6 w-2/5" />
-              <Skeleton className="h-4 w-full" />
-              <Skeleton className="h-4 w-11/12" />
-              <Skeleton className="h-4 w-3/4" />
-            </div>
-          ) : !page.data ? (
+          {pendingNew ? (
+            // Trang mới chưa có trên máy chủ: khối soạn đứng riêng, tách khỏi trang đang xem (QueryBoundary bên dưới).
+            <article className="p-6">
+              <WikiEditor
+                title={draftTitle}
+                onTitle={setDraftTitle}
+                body={draftBody}
+                onBody={setDraftBody}
+                banners={
+                  wikiDraft.offer && (
+                    <RestoreDraftBanner
+                      offer={wikiDraft.offer}
+                      pageVersion={null}
+                      onRestore={restoreNewDraft}
+                      onDismiss={wikiDraft.discard}
+                    />
+                  )
+                }
+                onSave={() => void save()}
+                onCancel={() => void cancelEdit()}
+                saving={create.isPending}
+                saveLabel="Tạo trang"
+              />
+            </article>
+          ) : !selectedId ? (
             <div className="p-6">
               <EmptyState
                 icon={<BookOpen className="h-6 w-6" />}
                 title="Chưa chọn trang nào"
-                description={canManage ? 'Nội dung trang sẽ hiện ở đây. Chọn một trang ở danh sách bên trái, hoặc tạo trang mới để bắt đầu.' : 'Nội dung trang sẽ hiện ở đây. Chọn một trang ở danh sách bên trái để đọc.'}
-                action={canManage ? <Button size="sm" onClick={() => void addPage(null)}><Plus className="h-4 w-4" /> Tạo trang mới</Button> : undefined}
+                description={
+                  scopeWritable
+                    ? 'Nội dung trang sẽ hiện ở đây. Chọn một trang trong danh sách trang, hoặc tạo trang mới để bắt đầu.'
+                    : 'Nội dung trang sẽ hiện ở đây. Chọn một trang trong danh sách trang để đọc.'
+                }
+                action={
+                  scopeWritable ? (
+                    <Button size="sm" onClick={() => void addPage(null)}>
+                      <Plus className="h-4 w-4" /> Tạo trang mới
+                    </Button>
+                  ) : undefined
+                }
+              />
+            </div>
+          ) : page.isError && apiErrorCode(page.error) === 'NOT_FOUND' ? (
+            <div className="p-6">
+              <EmptyState
+                icon={<BookOpen className="h-6 w-6" />}
+                title="Trang không còn"
+                description="Trang này đã bị xoá hoặc không tồn tại. Chọn một trang khác trong danh sách trang."
+                action={
+                  <Button size="sm" variant="secondary" onClick={() => setSelectedId(null)}>
+                    Xem trang khác
+                  </Button>
+                }
               />
             </div>
           ) : (
-            <article className="p-6">
-              {page.data.breadcrumb.length > 0 && (
-                <nav aria-label="Đường dẫn trang" className="mb-2 flex flex-wrap items-center gap-1 text-xs text-faint">
-                  {page.data.breadcrumb.map((b) => (
-                    <span key={b.id} className="flex items-center gap-1">
-                      <button
-                        type="button"
-                        onClick={() => open(b.id)}
-                        className="rounded transition-colors hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
-                      >
-                        {b.title}
-                      </button>
-                      <ChevronRight className="h-3 w-3" aria-hidden />
-                    </span>
-                  ))}
-                  <span className="text-muted">{page.data.title}</span>
-                </nav>
-              )}
-
-              {editing ? (
-                <div className="space-y-3">
-                  <Input
-                    value={draftTitle}
-                    onChange={(e) => setDraftTitle(e.target.value)}
-                    placeholder="Tiêu đề trang"
-                    aria-label="Tiêu đề trang"
-                    autoFocus
-                    className="h-10 text-lg font-semibold"
-                  />
-                  <MarkdownEditor
-                    value={draftBody}
-                    onChange={setDraftBody}
-                    onSubmit={() => void save()}
-                    onCancel={() => setEditing(false)}
-                    rows={18}
-                    placeholder="Viết nội dung ở đây. Hỗ trợ Markdown cơ bản: # tiêu đề, **đậm**, - gạch đầu dòng…"
-                  />
-                  <div className="flex items-center gap-2">
-                    <span className="mr-auto text-xs text-faint" title="Markdown là cách viết chữ đậm, tiêu đề, danh sách bằng ký hiệu — ví dụ **đậm** hoặc # Tiêu đề.">
-                      Hỗ trợ Markdown cơ bản · Ctrl/⌘+Enter để lưu · Esc để huỷ
-                    </span>
-                    <Button size="sm" variant="ghost" onClick={() => setEditing(false)}>Huỷ</Button>
-                    <Button size="sm" loading={update.isPending} onClick={() => void save()}>Lưu trang</Button>
-                  </div>
+            <QueryBoundary
+              query={page}
+              skeleton={
+                <div className="space-y-3 p-6">
+                  <Skeleton className="h-6 w-2/5" />
+                  <Skeleton className="h-4 w-full" />
+                  <Skeleton className="h-4 w-11/12" />
+                  <Skeleton className="h-4 w-3/4" />
                 </div>
-              ) : (
-                <>
-                  <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <h2 className="truncate text-xl font-semibold tracking-tight text-ink-strong">{page.data.title}</h2>
-                      <p className="mt-1 text-xs text-faint">
-                        Sửa lần cuối {dateTime(page.data.updatedAt)}
-                        {page.data.updatedBy ? ` · ${page.data.updatedBy.displayName}` : ''}
-                      </p>
-                    </div>
-                    {canManage && (
-                      <div className="flex shrink-0 flex-wrap items-center gap-2">
-                        <Button size="sm" variant="secondary" onClick={() => { setDraftTitle(page.data!.title); setDraftBody(page.data!.body); setEditing(true); }}>
-                          <Pencil className="h-4 w-4" /> Sửa trang
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          title="Tạo một trang nằm bên dưới trang này trong cây tài liệu."
-                          onClick={() => void addPage(page.data!.id)}
-                        >
-                          <Plus className="h-4 w-4" /> Thêm trang con
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="text-muted hover:text-danger"
-                          title="Xoá trang"
-                          aria-label={`Xoá trang ${page.data.title}`}
-                          onClick={() => void destroy(page.data!.id, page.data!.title)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    )}
-                  </div>
-
-                  {page.data.body.trim() ? (
-                    <MarkdownView text={page.data.body} />
+              }
+            >
+              {(pg) => (
+                <article className="p-6">
+                  {editing ? (
+                    <WikiEditor
+                      title={draftTitle}
+                      onTitle={setDraftTitle}
+                      body={draftBody}
+                      onBody={setDraftBody}
+                      banners={
+                        <>
+                          {wikiDraft.offer && (
+                            <RestoreDraftBanner
+                              offer={wikiDraft.offer}
+                              pageVersion={pg.version}
+                              onRestore={() => restoreDraft(pg)}
+                              onDismiss={wikiDraft.discard}
+                            />
+                          )}
+                          {editIssue && (
+                            <EditIssueBanner
+                              kind={editIssue}
+                              latest={pg}
+                              draftBody={draftBody}
+                              busy={update.isPending}
+                              onOverwrite={() => void overwrite()}
+                              onClose={stopEditing}
+                            />
+                          )}
+                        </>
+                      }
+                      onSave={() => void save()}
+                      onCancel={() => void cancelEdit()}
+                      onHistory={() => setHistoryOpen(true)}
+                      saving={update.isPending}
+                      saveDisabled={editIssue === 'deleted'}
+                      saveLabel="Lưu trang"
+                    />
                   ) : (
-                    <p className="rounded-md border border-dashed border-border px-3 py-6 text-center text-sm text-faint">
-                      Trang này chưa có nội dung.{canManage ? ' Bấm “Sửa trang” để bắt đầu viết.' : ''}
-                    </p>
+                    <>
+                      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <h2 className="truncate text-xl font-semibold tracking-tight text-ink-strong">
+                            {pg.title}
+                          </h2>
+                          <p className="mt-1 text-xs text-faint">
+                            Sửa lần cuối {dateTime(pg.updatedAt)}
+                            {pg.updatedBy ? ` · ${pg.updatedBy.displayName}` : ''}
+                          </p>
+                          {!canWrite(pg.projectId) && !pageWriteLoading(pg.projectId) && (
+                            <ReadOnlyNote scope={pg.projectId ?? WIKI_SCOPE_SHARED} />
+                          )}
+                        </div>
+                        <PageActions
+                          title={pg.title}
+                          canEdit={canWrite(pg.projectId)}
+                          canDelete={canDelete(pg.projectId)}
+                          onHistory={() => setHistoryOpen(true)}
+                          onEdit={() => startEditing(pg)}
+                          onAddChild={() => void addPage(pg)}
+                          onDelete={() => void destroy(pg.id, pg.title)}
+                        />
+                      </div>
+
+                      {pg.body.trim() ? (
+                        <MarkdownView
+                          text={pg.body}
+                          issueRefs={Object.fromEntries(pg.issues.map((i) => [i.key, i]))}
+                          onToggleTask={
+                            canWrite(pg.projectId) && !update.isPending
+                              ? (i, c, t) => void toggleTask(pg, i, c, t)
+                              : undefined
+                          }
+                        />
+                      ) : (
+                        <EmptyState
+                          size="compact"
+                          icon={<FileText />}
+                          title="Trang này chưa có nội dung"
+                          description={
+                            canWrite(pg.projectId) ? 'Bấm “Sửa trang” để bắt đầu viết.' : undefined
+                          }
+                        />
+                      )}
+                    </>
                   )}
-                </>
+                  <WikiHistoryDialog
+                    key={pg.id}
+                    open={historyOpen}
+                    onOpenChange={setHistoryOpen}
+                    page={pg}
+                    canRestore={canWrite(pg.projectId)}
+                    editing={editing}
+                  />
+                </article>
               )}
-            </article>
+            </QueryBoundary>
           )}
         </section>
-      </div>
+
+        <WikiTrashDialog
+          open={trashOpen}
+          onOpenChange={setTrashOpen}
+          scope={scope}
+          scopeLabel={(pid) =>
+            pid ? (projects?.find((p) => p.id === pid)?.name ?? 'Dự án') : 'Dùng chung'
+          }
+          onRestored={open}
+        />
+      </PageFrame>
+    </RailLayout>
+  );
+}
+
+/** Nhóm nút ở đầu trang (chế độ đọc): Lịch sử cho mọi người; Sửa / Thêm trang con / Xoá theo quyền. */
+function PageActions({
+  title,
+  canEdit,
+  canDelete,
+  onHistory,
+  onEdit,
+  onAddChild,
+  onDelete,
+}: {
+  title: string;
+  canEdit: boolean;
+  canDelete: boolean;
+  onHistory: () => void;
+  onEdit: () => void;
+  onAddChild: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <div className="flex max-w-full flex-wrap items-center gap-2">
+      <Button
+        size="sm"
+        variant="secondary"
+        title="Xem các phiên bản cũ của trang này"
+        onClick={onHistory}
+      >
+        <History className="h-4 w-4" /> Lịch sử
+      </Button>
+      {canEdit && (
+        <>
+          <Button size="sm" variant="secondary" onClick={onEdit}>
+            <Pencil className="h-4 w-4" /> Sửa trang
+          </Button>
+          <Button
+            size="sm"
+            variant="secondary"
+            title="Tạo một trang nằm bên dưới trang này trong cây tài liệu."
+            onClick={onAddChild}
+          >
+            <Plus className="h-4 w-4" /> Thêm trang con
+          </Button>
+          {canDelete && (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="text-muted hover:text-danger"
+              title="Xoá trang"
+              aria-label={`Xoá trang ${title}`}
+              onClick={onDelete}
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          )}
+        </>
+      )}
     </div>
   );
 }
@@ -421,16 +920,28 @@ function TreeSkeleton() {
 }
 
 function TreeRow({
-  node, depth, selectedId, expanded, canManage, onOpen, onToggle, onAddChild, onShift, slots,
+  node,
+  depth,
+  selectedId,
+  expanded,
+  canWrite,
+  lazyOk,
+  onOpen,
+  onToggle,
+  onAddChild,
+  onShift,
+  slots,
 }: {
   node: WikiNode;
   depth: number;
   selectedId: string | null;
   expanded: Set<string>;
-  canManage: boolean;
+  canWrite: (projectId: string | null) => boolean;
+  /** Dự án còn hoạt động → được tra quyền lười khi rê/focus hàng (dự án lưu trữ thì không). */
+  lazyOk: (projectId: string) => boolean;
   onOpen: (id: string) => void;
   onToggle: (id: string) => void;
-  onAddChild: (id: string) => void;
+  onAddChild: (node: WikiNode) => void;
   onShift: (id: string, delta: -1 | 1) => void;
   slots: Map<string, Slot>;
 }) {
@@ -439,6 +950,15 @@ function TreeRow({
   const slot = slots.get(node.id);
   const canUp = !!slot && slot.index > 0;
   const canDown = !!slot && slot.index < slot.siblings.length - 1;
+  // Quyền của dự án KHÁC (cây "Tất cả") chỉ tra khi người dùng rê/focus hàng — không bắn N request lúc mở màn.
+  const [armed, setArmed] = useState(false);
+  const baseCan = canWrite(node.projectId);
+  const lazyCan = useLazyProjectCan(
+    node.projectId,
+    'wiki:manage',
+    armed && !baseCan && node.projectId !== null && lazyOk(node.projectId),
+  );
+  const showTools = baseCan || lazyCan;
 
   return (
     <li>
@@ -448,6 +968,8 @@ function TreeRow({
           selectedId === node.id && 'bg-surface-2',
         )}
         style={{ paddingLeft: `${depth * 12}px` }}
+        onPointerEnter={() => setArmed(true)}
+        onFocus={() => setArmed(true)}
       >
         {hasChildren ? (
           <button
@@ -457,7 +979,11 @@ function TreeRow({
             aria-expanded={isOpen}
             className="grid h-6 w-6 shrink-0 place-items-center rounded text-faint transition-colors hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
           >
-            {isOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+            {isOpen ? (
+              <ChevronDown className="h-3.5 w-3.5" />
+            ) : (
+              <ChevronRight className="h-3.5 w-3.5" />
+            )}
           </button>
         ) : (
           <span className="grid h-6 w-6 shrink-0 place-items-center text-faint" aria-hidden>
@@ -477,7 +1003,7 @@ function TreeRow({
           {node.title}
         </button>
 
-        {canManage && (
+        {showTools && (
           <span className="flex shrink-0 items-center opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
             <button
               type="button"
@@ -485,6 +1011,7 @@ function TreeRow({
               onClick={() => onShift(node.id, -1)}
               aria-label={`Đưa ${node.title} lên trên`}
               title="Đổi chỗ với trang liền trên"
+              // Giữ disabled:opacity (không dùng token vô hiệu) — icon-button không nền: token nền vô nghĩa, chỉ cần mờ đi.
               className="grid h-6 w-6 place-items-center rounded text-faint transition-colors hover:text-ink disabled:opacity-30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
             >
               <ArrowUp className="h-3.5 w-3.5" />
@@ -495,13 +1022,14 @@ function TreeRow({
               onClick={() => onShift(node.id, 1)}
               aria-label={`Đưa ${node.title} xuống dưới`}
               title="Đổi chỗ với trang liền dưới"
+              // Giữ disabled:opacity (không dùng token vô hiệu) — icon-button không nền: token nền vô nghĩa, chỉ cần mờ đi.
               className="grid h-6 w-6 place-items-center rounded text-faint transition-colors hover:text-ink disabled:opacity-30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
             >
               <ArrowDown className="h-3.5 w-3.5" />
             </button>
             <button
               type="button"
-              onClick={() => onAddChild(node.id)}
+              onClick={() => onAddChild(node)}
               aria-label={`Thêm trang con cho ${node.title}`}
               title="Thêm một trang nằm bên dưới trang này"
               className="grid h-6 w-6 place-items-center rounded text-faint transition-colors hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
@@ -521,7 +1049,8 @@ function TreeRow({
               depth={depth + 1}
               selectedId={selectedId}
               expanded={expanded}
-              canManage={canManage}
+              canWrite={canWrite}
+              lazyOk={lazyOk}
               onOpen={onOpen}
               onToggle={onToggle}
               onAddChild={onAddChild}
@@ -532,5 +1061,110 @@ function TreeRow({
         </ul>
       )}
     </li>
+  );
+}
+
+/** Câu hướng dẫn xin quyền (khối chân cây khi không có quyền viết ở phạm vi đang chọn). */
+function NoWriteNote({ scope }: { scope: string }) {
+  const admins = useWikiAdmins(scope, scope !== '');
+  const names = (admins.data ?? []).map((a) => a.displayName);
+  const noProject = !scope || scope === WIKI_SCOPE_SHARED;
+  return (
+    <div className="space-y-1 text-xs text-muted">
+      <p className="flex items-center gap-1.5 font-medium text-ink">
+        <Lock className="h-3.5 w-3.5 text-faint" aria-hidden /> Bạn chỉ đọc được ở phạm vi này
+      </p>
+      {noProject && <p>Chọn một dự án ở bộ lọc để viết tài liệu cho dự án đó.</p>}
+      {scope !== '' && !admins.isPending && <p>{noWriteMessage(names)}</p>}
+    </div>
+  );
+}
+
+/** Dòng "Chỉ đọc" ở đầu trang wiki khi người xem không sửa được trang đó. */
+function ReadOnlyNote({ scope }: { scope: string }) {
+  const admins = useWikiAdmins(scope, true);
+  const names = (admins.data ?? []).map((a) => a.displayName);
+  return (
+    <p className="mt-1 flex flex-wrap items-center gap-x-1.5 text-xs text-muted">
+      <Lock className="h-3 w-3 text-faint" aria-hidden />
+      <span className="font-medium text-ink">Chỉ đọc</span>
+      {!admins.isPending && <span>· {noWriteMessage(names)}</span>}
+    </p>
+  );
+}
+
+/**
+ * Khối xử lý ngay trong ô sửa khi lưu thất bại vì có người lưu trước (conflict) hoặc trang đã bị xoá (deleted):
+ * xem bản mới cạnh bản nháp, sao chép nội dung của tôi, hoặc ghi đè có xác nhận (chỉ khi conflict).
+ */
+function EditIssueBanner({
+  kind,
+  latest,
+  draftBody,
+  busy,
+  onOverwrite,
+  onClose,
+}: {
+  kind: 'conflict' | 'deleted';
+  latest: { body: string; updatedAt: string; updatedBy: { displayName: string } | null };
+  draftBody: string;
+  busy: boolean;
+  onOverwrite: () => void;
+  onClose: () => void;
+}) {
+  const [showLatest, setShowLatest] = useState(false);
+
+  const { copy } = useCopyToClipboard();
+  function copyMine() {
+    void copy(draftBody, 'Đã sao chép nội dung của bạn');
+  }
+
+  return (
+    <div
+      role="alert"
+      className="space-y-2 rounded-md border border-warning/40 bg-warning/10 p-3 text-sm"
+    >
+      <p className="font-medium text-ink-strong">
+        {kind === 'conflict'
+          ? 'Trang vừa được người khác sửa.'
+          : 'Trang này đã bị xoá nên không lưu được.'}
+      </p>
+      <p className="text-muted">
+        Bản bạn đang soạn vẫn còn trong ô bên dưới
+        {kind === 'conflict' ? ' — chọn một cách xử lý:' : ' — hãy sao chép lại nếu cần.'}
+      </p>
+      <div className="flex flex-wrap items-center gap-2">
+        {kind === 'conflict' && (
+          <Button size="sm" variant="secondary" onClick={() => setShowLatest((v) => !v)}>
+            {showLatest ? 'Ẩn bản mới' : 'Xem bản mới'}
+          </Button>
+        )}
+        <Button size="sm" variant="secondary" onClick={() => void copyMine()}>
+          Sao chép nội dung của tôi
+        </Button>
+        {kind === 'conflict' ? (
+          <Button size="sm" variant="secondary" disabled={busy} onClick={onOverwrite}>
+            Ghi đè bằng bản của tôi
+          </Button>
+        ) : (
+          <Button size="sm" variant="ghost" onClick={onClose}>
+            Đóng
+          </Button>
+        )}
+      </div>
+      {kind === 'conflict' && showLatest && (
+        <div className="max-h-64 overflow-y-auto rounded-md border border-border bg-surface p-3">
+          <p className="mb-2 text-xs text-faint">
+            Bản mới nhất · {dateTime(latest.updatedAt)}
+            {latest.updatedBy ? ` · ${latest.updatedBy.displayName}` : ''}
+          </p>
+          {latest.body.trim() ? (
+            <MarkdownView text={latest.body} />
+          ) : (
+            <p className="text-sm text-faint">Trang chưa có nội dung.</p>
+          )}
+        </div>
+      )}
+    </div>
   );
 }

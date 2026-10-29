@@ -1,0 +1,49 @@
+/**
+ * Câu JQL của Trợ lý — dựng bằng chuỗi từ ngữ pháp JQL có sẵn (`@tirapro/shared`), KHÔNG endpoint mới. Giá trị người dùng
+ * gõ luôn được đặt trong nháy kép và thoát `\` `"` (test kiểm bằng chính `parseJql`).
+ */
+const quote = (s: string): string => `"${s.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+
+const and = (...parts: (string | false | undefined)[]): string =>
+  parts.filter(Boolean).join(' AND ');
+
+const scope = (projectKey?: string | null): string | undefined =>
+  projectKey ? `project = ${quote(projectKey)}` : undefined;
+
+/**
+ * Việc đang giao cho tôi và chưa xong; tuỳ chọn thu hẹp theo loại Bug (cùng cách `type ~ "bug"` của Tổng quan) và theo hạn
+ * (hôm nay / hết tuần này).
+ */
+export const myIssuesJql = (
+  projectKey?: string | null,
+  o: { bug?: boolean; period?: 'week' | 'today' } = {},
+): string =>
+  `${and(
+    scope(projectKey),
+    'assignee = currentUser()',
+    o.bug && 'type ~ "bug"',
+    o.period && 'due >= startOfDay()',
+    o.period === 'week' && 'due <= endOfWeek()',
+    o.period === 'today' && 'due <= endOfDay()',
+    'statusCategory != DONE',
+  )} ORDER BY ${o.period ? 'due ASC' : 'updated DESC'}`;
+
+/** Việc chưa xong có hạn trước hôm nay. */
+export const overdueJql = (projectKey?: string | null): string =>
+  `${and(scope(projectKey), 'due < startOfDay()', 'statusCategory != DONE')} ORDER BY due ASC`;
+
+/** Việc chưa xong đến hạn từ hôm nay tới hết tuần này / hết hôm nay. */
+export const dueJql = (period: 'week' | 'today', projectKey?: string | null): string =>
+  `${and(
+    scope(projectKey),
+    'due >= startOfDay()',
+    period === 'week' ? 'due <= endOfWeek()' : 'due <= endOfDay()',
+    'statusCategory != DONE',
+  )} ORDER BY due ASC`;
+
+/** Tìm văn bản (tiêu đề, mô tả) — cùng trường `text` với ô tìm kiếm của ứng dụng. */
+export const searchJql = (query: string, projectKey?: string | null): string =>
+  `${and(scope(projectKey), `text ~ ${quote(query.trim())}`)} ORDER BY updated DESC`;
+
+/** Liên kết "Xem tất cả" → trang Bộ lọc (`/filters?jql=`). */
+export const filtersHref = (jql: string): string => `/filters?jql=${encodeURIComponent(jql)}`;

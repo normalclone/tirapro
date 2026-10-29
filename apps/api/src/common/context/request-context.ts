@@ -12,7 +12,3 @@ export const requestContext = new AsyncLocalStorage<RequestStore>();
 export function getStore(): RequestStore | undefined {
   return requestContext.getStore();
 }
-
-export function currentWorkspaceId(): string | null | undefined {
-  return requestContext.getStore()?.workspaceId;
-}

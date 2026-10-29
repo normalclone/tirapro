@@ -1,0 +1,18 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  // Export/type "thừa" chỉ báo cáo (warn) — CLAUDE.md: knip chỉ liệt kê, xoá phải grep -r xác nhận 0 import.
+  // File chưa dùng và dependency thừa là lỗi (exit 1) để không tích thêm rác.
+  "rules": { "exports": "warn", "types": "warn" },
+  "workspaces": {
+    ".": { "ignoreDependencies": ["vitest"] }, // vitest cài ở từng workspace; bản gốc để IDE/npx nhận cùng phiên bản
+    "apps/api": {
+      "entry": ["src/main.ts", "prisma/*.mjs", "scripts/*.mjs"],
+      "ignoreDependencies": ["pino-pretty"], // pino-pretty nạp bằng chuỗi transport.target
+    },
+    "apps/web": {
+      "entry": ["scripts/*.mjs"],
+    },
+    "apps/mcp": {},
+    "packages/*": {},
+  },
+}

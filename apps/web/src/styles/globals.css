@@ -8,6 +8,8 @@
   --surface: oklch(0.985 0.004 250);
   --surface-2: oklch(0.968 0.005 250);
   --surface-3: oklch(0.945 0.006 250);
+  --disabled-bg: oklch(0.93 0.006 250);
+  --disabled-fg: oklch(0.62 0.01 256);
   --border: oklch(0.915 0.006 250);
   --border-strong: oklch(0.86 0.008 250);
   --ink: oklch(0.27 0.013 256);
@@ -21,10 +23,34 @@
   --ring: oklch(0.52 0.17 252 / 0.55);
   --success: oklch(0.58 0.14 150);
   --warning: oklch(0.72 0.15 75);
+  --warning-fill: oklch(0.55 0.11 75);
+  --warning-ink: oklch(0.48 0.12 75);
   --danger: oklch(0.55 0.2 25);
   --status-todo: oklch(0.6 0.018 256);
   --status-progress: oklch(0.55 0.13 245);
   --status-done: oklch(0.58 0.13 150);
+  --series-1: oklch(0.56 0.11 200);
+  --series-2: oklch(0.66 0.14 70);
+  --series-3: oklch(0.58 0.17 18);
+  --series-4: oklch(0.58 0.13 140);
+  --series-5: oklch(0.5 0.1 285);
+  /* Màu nhãn (lib/labelPalette.ts): chữ/chấm + nền chip; chữ ≥ 4.5:1 trên nền chip */
+  --label-1: oklch(0.52 0.16 262);
+  --label-1-bg: oklch(0.95 0.03 262);
+  --label-2: oklch(0.51 0.085 200);
+  --label-2-bg: oklch(0.95 0.03 200);
+  --label-3: oklch(0.51 0.14 150);
+  --label-3-bg: oklch(0.95 0.03 150);
+  --label-4: oklch(0.52 0.105 85);
+  --label-4-bg: oklch(0.95 0.03 85);
+  --label-5: oklch(0.53 0.14 50);
+  --label-5-bg: oklch(0.95 0.03 50);
+  --label-6: oklch(0.54 0.19 25);
+  --label-6-bg: oklch(0.95 0.03 25);
+  --label-7: oklch(0.52 0.16 300);
+  --label-7-bg: oklch(0.95 0.03 300);
+  --label-8: oklch(0.52 0.02 256);
+  --label-8-bg: oklch(0.95 0.01 256);
 }
 
 .dark {
@@ -32,6 +58,8 @@
   --surface: oklch(0.205 0.014 256);
   --surface-2: oklch(0.235 0.015 256);
   --surface-3: oklch(0.265 0.015 256);
+  --disabled-bg: oklch(0.255 0.012 256);
+  --disabled-fg: oklch(0.52 0.012 256);
   --border: oklch(0.3 0.012 256);
   --border-strong: oklch(0.37 0.012 256);
   --ink: oklch(0.92 0.006 256);
@@ -45,10 +73,34 @@
   --ring: oklch(0.66 0.15 252 / 0.6);
   --success: oklch(0.7 0.14 150);
   --warning: oklch(0.8 0.15 75);
+  --warning-fill: oklch(0.8 0.15 75);
+  --warning-ink: oklch(0.85 0.12 80);
   --danger: oklch(0.66 0.19 25);
   --status-todo: oklch(0.68 0.02 256);
   --status-progress: oklch(0.68 0.13 245);
   --status-done: oklch(0.7 0.14 150);
+  --series-1: oklch(0.72 0.11 200);
+  --series-2: oklch(0.8 0.14 75);
+  --series-3: oklch(0.7 0.16 18);
+  --series-4: oklch(0.72 0.13 140);
+  --series-5: oklch(0.72 0.1 285);
+  /* Màu nhãn (lib/labelPalette.ts): chữ/chấm + nền chip; chữ ≥ 4.5:1 trên nền chip */
+  --label-1: oklch(0.72 0.13 262);
+  --label-1-bg: oklch(0.3 0.05 262);
+  --label-2: oklch(0.76 0.1 200);
+  --label-2-bg: oklch(0.3 0.05 200);
+  --label-3: oklch(0.74 0.14 150);
+  --label-3-bg: oklch(0.3 0.05 150);
+  --label-4: oklch(0.82 0.13 85);
+  --label-4-bg: oklch(0.3 0.05 85);
+  --label-5: oklch(0.76 0.14 50);
+  --label-5-bg: oklch(0.3 0.05 50);
+  --label-6: oklch(0.72 0.17 25);
+  --label-6-bg: oklch(0.3 0.05 25);
+  --label-7: oklch(0.74 0.13 300);
+  --label-7-bg: oklch(0.3 0.05 300);
+  --label-8: oklch(0.74 0.02 256);
+  --label-8-bg: oklch(0.3 0.015 256);
 }
 
 @layer base {
@@ -59,6 +111,12 @@
   body,
   #root {
     height: 100%;
+  }
+  /* `viewport-fit=cover`: nội dung tràn dưới tai thỏ/thanh trạng thái khi xoay ngang hoặc chạy PWA — đệm bằng vùng an toàn. */
+  #root {
+    padding-top: env(safe-area-inset-top);
+    padding-right: env(safe-area-inset-right);
+    padding-left: env(safe-area-inset-left);
   }
   body {
     background-color: var(--bg);
@@ -99,6 +157,50 @@
   .tabular {
     font-variant-numeric: tabular-nums;
   }
+  /* Hàng cuộn ngang không hiện thanh cuộn (chip lọc, dải tab trên mobile) — kèm mờ mép báo còn nội dung. */
+  .scrollbar-none {
+    scrollbar-width: none;
+  }
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
+  /* Dải/bảng cuộn ngang trên mobile: mặt nạ mờ mép phải báo còn nội dung. `useScrollFade` ghi `--scroll-fade`
+     (mờ đúng mép còn nội dung, 'none' khi đã hết); chưa có hook thì dùng mặc định mờ mép phải cố định. */
+  .scroll-fade-x {
+    -webkit-mask-image: var(
+      --scroll-fade,
+      linear-gradient(to right, #000 calc(100% - 24px), transparent)
+    );
+    mask-image: var(--scroll-fade, linear-gradient(to right, #000 calc(100% - 24px), transparent));
+    scroll-snap-type: x proximity;
+  }
+  .scroll-fade-x > * {
+    scroll-snap-align: start;
+  }
+  /* iOS Safari tự phóng to trang khi chạm ô nhập có chữ < 16px: chỉ dưới `sm` (DESIGN.md giữ 14px ở desktop).
+     Luật là TỐI THIỂU 16px: ô tiêu đề cỡ lớn (`text-lg` 17px, `text-xl`… — Wiki, Dashboard, chi tiết việc) giữ cỡ của nó,
+     không bị ép xuống 16px.
+     `!important` BẮT BUỘC: quy tắc trong @layer base có độ ưu tiên thấp hơn `.text-base/.text-sm` của utilities
+     (đặt trên <Input>, ô tìm…) nên không có nó thì ô nhập vẫn 14px. Lưới an toàn cho mọi ô nhập, kể cả ô viết tay —
+     `<Input>`/`SearchSelect` còn có `max-sm:text-[16px]` riêng. Bộ đo `mobile:audit` kiểm `input-font-small`. */
+  @media (max-width: 639px) {
+    input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='color']):not(
+        .text-lg
+      ):not(.text-xl):not(.text-2xl):not(.text-3xl),
+    select:not(.text-lg):not(.text-xl):not(.text-2xl):not(.text-3xl),
+    textarea:not(.text-lg):not(.text-xl):not(.text-2xl):not(.text-3xl) {
+      font-size: 16px !important;
+    }
+  }
+}
+
+/* Cảm ứng không có bàn phím vật lý: GỢI Ý phím tắt chỉ gây nhiễu → ẩn. Chỉ phần tử gắn `.kbd-hint` (nút nổi, chân sidebar,
+   chân Bảng lệnh, số phím trên nút chuyển trạng thái). KHÔNG ẩn `<kbd>` trần: bảng Phím tắt và trang Hướng dẫn dùng
+   `<kbd>` làm NỘI DUNG câu ("Gõ g rồi b…") — ẩn đi là mất nghĩa. */
+@media (hover: none) and (pointer: coarse) {
+  .kbd-hint {
+    display: none;
+  }
 }
 
 /* Reduced motion: tắt mọi animation (DESIGN.md) */
@@ -111,4 +213,97 @@
     transition-duration: 0.001ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+/* ===== In / Lưu PDF (L4) ===== */
+[data-print-only] {
+  display: none;
+}
+
+@media print {
+  @page {
+    margin: 12mm;
+  }
+  /* Bản in luôn nền sáng (in/đính kèm email): đặt lại bộ token sáng kể cả khi đang ở theme tối (`.dark`).
+     Phải trùng khối :root ở đầu file — sửa token sáng thì sửa cả hai. */
+  :root,
+  :root.dark {
+    color-scheme: light;
+    --bg: oklch(1 0 0);
+    --surface: oklch(0.985 0.004 250);
+    --surface-2: oklch(0.968 0.005 250);
+    --surface-3: oklch(0.945 0.006 250);
+    --disabled-bg: oklch(0.93 0.006 250);
+    --disabled-fg: oklch(0.62 0.01 256);
+    --border: oklch(0.915 0.006 250);
+    --border-strong: oklch(0.86 0.008 250);
+    --ink: oklch(0.27 0.013 256);
+    --ink-strong: oklch(0.2 0.014 256);
+    --muted: oklch(0.46 0.012 256);
+    --faint: oklch(0.6 0.01 256);
+    --primary: oklch(0.52 0.17 252);
+    --primary-hover: oklch(0.46 0.17 252);
+    --primary-fg: oklch(0.99 0.005 250);
+    --primary-subtle: oklch(0.95 0.03 252);
+    --ring: oklch(0.52 0.17 252 / 0.55);
+    --success: oklch(0.58 0.14 150);
+    --warning: oklch(0.72 0.15 75);
+    --warning-fill: oklch(0.55 0.11 75);
+    --warning-ink: oklch(0.48 0.12 75);
+    --danger: oklch(0.55 0.2 25);
+    --status-todo: oklch(0.6 0.018 256);
+    --status-progress: oklch(0.55 0.13 245);
+    --status-done: oklch(0.58 0.13 150);
+    --series-1: oklch(0.56 0.11 200);
+    --series-2: oklch(0.66 0.14 70);
+    --series-3: oklch(0.58 0.17 18);
+    --series-4: oklch(0.58 0.13 140);
+    --series-5: oklch(0.5 0.1 285);
+    /* Màu nhãn (lib/labelPalette.ts): chữ/chấm + nền chip; chữ ≥ 4.5:1 trên nền chip */
+    --label-1: oklch(0.52 0.16 262);
+    --label-1-bg: oklch(0.95 0.03 262);
+    --label-2: oklch(0.51 0.085 200);
+    --label-2-bg: oklch(0.95 0.03 200);
+    --label-3: oklch(0.51 0.14 150);
+    --label-3-bg: oklch(0.95 0.03 150);
+    --label-4: oklch(0.52 0.105 85);
+    --label-4-bg: oklch(0.95 0.03 85);
+    --label-5: oklch(0.53 0.14 50);
+    --label-5-bg: oklch(0.95 0.03 50);
+    --label-6: oklch(0.54 0.19 25);
+    --label-6-bg: oklch(0.95 0.03 25);
+    --label-7: oklch(0.52 0.16 300);
+    --label-7-bg: oklch(0.95 0.03 300);
+    --label-8: oklch(0.52 0.02 256);
+    --label-8-bg: oklch(0.95 0.01 256);
+  }
+  html,
+  body,
+  #root {
+    height: auto !important;
+    overflow: visible !important;
+    background: #fff !important;
+  }
+  main {
+    overflow: visible !important;
+  }
+  * {
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+  .print-avoid-break {
+    break-inside: avoid;
+  }
+  [data-print-only] {
+    display: block !important;
+  }
+  /* Thông báo nổi (toast) không thuộc bản in. */
+  [data-sonner-toaster] {
+    display: none !important;
+  }
+}
+
+/* Xem nhanh dạng sheet đáy ở nấc nửa che nửa dưới màn hình: thẻ được ‹ › cuộn vào (`scrollIntoView nearest`) phải nằm TRÊN sheet. */
+[data-peek-sheet-half] [data-issue-key] {
+  scroll-margin-bottom: 50dvh;
 }

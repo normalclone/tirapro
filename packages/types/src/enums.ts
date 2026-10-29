@@ -1,7 +1,12 @@
+// FILE SINH TỰ ĐỘNG từ schema.prisma — chạy pnpm gen:enums, KHÔNG sửa tay
 /**
- * Enums dùng chung FE/BE. Giá trị PHẢI khớp 1:1 với Prisma enums trong
+ * Enums dùng chung FE/BE. Giá trị khớp 1:1 với Prisma enums trong
  * apps/api/prisma/schema.prisma. Mỗi enum là const-object + type cùng tên
  * => dùng được cả như value (UserStatus.ACTIVE) lẫn như type (: UserStatus).
+ *
+ * LƯU Ý: IssuePriority / IssueResolution / IssueLinkType KHÔNG phải enum —
+ * chúng là bảng config (Priority/Resolution/LinkType). Xem catalogs.ts cho
+ * danh sách default seed + DTO ở entities.ts.
  */
 
 export const UserStatus = {
@@ -42,6 +47,13 @@ export const DefaultAssigneeMode = {
 } as const;
 export type DefaultAssigneeMode = (typeof DefaultAssigneeMode)[keyof typeof DefaultAssigneeMode];
 
+export const ProjectHealth = {
+  GREEN: 'GREEN',
+  YELLOW: 'YELLOW',
+  RED: 'RED',
+} as const;
+export type ProjectHealth = (typeof ProjectHealth)[keyof typeof ProjectHealth];
+
 export const BoardType = {
   KANBAN: 'KANBAN',
   SCRUM: 'SCRUM',
@@ -78,10 +90,6 @@ export const IssueTypeKey = {
   SUBTASK: 'SUBTASK',
 } as const;
 export type IssueTypeKey = (typeof IssueTypeKey)[keyof typeof IssueTypeKey];
-
-// LƯU Ý: IssuePriority / IssueResolution / IssueLinkType KHÔNG còn là enum —
-// đã chuyển sang bảng config (Priority/Resolution/LinkType). Xem catalogs.ts cho
-// danh sách default seed + DTO ở entities.ts.
 
 export const FixVersionType = {
   FIX: 'FIX',
@@ -127,6 +135,7 @@ export const DashboardScope = {
   PRIVATE: 'PRIVATE',
   PROJECT: 'PROJECT',
   GLOBAL: 'GLOBAL',
+  TEAM: 'TEAM',
 } as const;
 export type DashboardScope = (typeof DashboardScope)[keyof typeof DashboardScope];
 
@@ -141,6 +150,9 @@ export const WidgetType = {
   ISSUE_LIST: 'ISSUE_LIST',
   PIE_BY_FIELD: 'PIE_BY_FIELD',
   AI_INSIGHT: 'AI_INSIGHT',
+  TOP_RISKS: 'TOP_RISKS',
+  SLOW_GOALS: 'SLOW_GOALS',
+  OVERLOAD: 'OVERLOAD',
 } as const;
 export type WidgetType = (typeof WidgetType)[keyof typeof WidgetType];
 
@@ -184,6 +196,10 @@ export const HistoryField = {
   RESOLUTION: 'RESOLUTION',
   SCOPE: 'SCOPE',
   PRIORITY: 'PRIORITY',
+  TIME_SPENT: 'TIME_SPENT',
+  DESCRIPTION: 'DESCRIPTION',
+  COMPONENT: 'COMPONENT',
+  FIX_VERSION: 'FIX_VERSION',
 } as const;
 export type HistoryField = (typeof HistoryField)[keyof typeof HistoryField];
 
@@ -211,7 +227,30 @@ export const EmbeddingEntityType = {
 } as const;
 export type EmbeddingEntityType = (typeof EmbeddingEntityType)[keyof typeof EmbeddingEntityType];
 
-// ---- Integrations ----
+export const TriageState = {
+  PENDING: 'PENDING',
+  ACCEPTED: 'ACCEPTED',
+  DECLINED: 'DECLINED',
+  SNOOZED: 'SNOOZED',
+} as const;
+export type TriageState = (typeof TriageState)[keyof typeof TriageState];
+
+export const RuleTrigger = {
+  ISSUE_CREATED: 'ISSUE_CREATED',
+  ISSUE_TRANSITIONED: 'ISSUE_TRANSITIONED',
+  ISSUE_UPDATED: 'ISSUE_UPDATED',
+  COMMENT_ADDED: 'COMMENT_ADDED',
+  SCHEDULED: 'SCHEDULED',
+} as const;
+export type RuleTrigger = (typeof RuleTrigger)[keyof typeof RuleTrigger];
+
+export const RuleRunStatus = {
+  SUCCESS: 'SUCCESS',
+  SKIPPED: 'SKIPPED',
+  FAILED: 'FAILED',
+} as const;
+export type RuleRunStatus = (typeof RuleRunStatus)[keyof typeof RuleRunStatus];
+
 export const IntegrationType = {
   TELEGRAM: 'TELEGRAM',
   JIRA: 'JIRA',
@@ -250,6 +289,7 @@ export const ImportSource = {
   JIRA_CLOUD: 'JIRA_CLOUD',
   JIRA_SERVER: 'JIRA_SERVER',
   CSV: 'CSV',
+  EXCEL: 'EXCEL',
 } as const;
 export type ImportSource = (typeof ImportSource)[keyof typeof ImportSource];
 
@@ -270,7 +310,6 @@ export const DigestSchedule = {
 } as const;
 export type DigestSchedule = (typeof DigestSchedule)[keyof typeof DigestSchedule];
 
-// ---- Guides / onboarding tours ----
 export const GuideType = {
   TOUR: 'TOUR',
   HELP: 'HELP',
@@ -286,11 +325,76 @@ export const GuideProgressState = {
 } as const;
 export type GuideProgressState = (typeof GuideProgressState)[keyof typeof GuideProgressState];
 
-// Triage inbox (issue từ nguồn ngoài). null = issue bình thường ở backlog.
-export const TriageState = {
-  PENDING: 'PENDING',
-  ACCEPTED: 'ACCEPTED',
-  DECLINED: 'DECLINED',
-  SNOOZED: 'SNOOZED',
+export const DependencyType = {
+  FS: 'FS',
+  SS: 'SS',
+  FF: 'FF',
+  SF: 'SF',
 } as const;
-export type TriageState = (typeof TriageState)[keyof typeof TriageState];
+export type DependencyType = (typeof DependencyType)[keyof typeof DependencyType];
+
+export const RaidKind = {
+  RISK: 'RISK',
+  ASSUMPTION: 'ASSUMPTION',
+  ISSUE: 'ISSUE',
+  DEPENDENCY: 'DEPENDENCY',
+} as const;
+export type RaidKind = (typeof RaidKind)[keyof typeof RaidKind];
+
+export const RaidStatus = {
+  OPEN: 'OPEN',
+  MITIGATING: 'MITIGATING',
+  CLOSED: 'CLOSED',
+  ACCEPTED: 'ACCEPTED',
+} as const;
+export type RaidStatus = (typeof RaidStatus)[keyof typeof RaidStatus];
+
+export const ObjectiveStatus = {
+  DRAFT: 'DRAFT',
+  ACTIVE: 'ACTIVE',
+  CLOSED: 'CLOSED',
+} as const;
+export type ObjectiveStatus = (typeof ObjectiveStatus)[keyof typeof ObjectiveStatus];
+
+export const KeyResultUnit = {
+  NUMBER: 'NUMBER',
+  PERCENT: 'PERCENT',
+  CURRENCY: 'CURRENCY',
+} as const;
+export type KeyResultUnit = (typeof KeyResultUnit)[keyof typeof KeyResultUnit];
+
+export const KeyResultSource = {
+  MANUAL: 'MANUAL',
+  OPEN_BUGS: 'OPEN_BUGS',
+  SPRINT_COMPLETION: 'SPRINT_COMPLETION',
+  ISSUE_COUNT_JQL: 'ISSUE_COUNT_JQL',
+} as const;
+export type KeyResultSource = (typeof KeyResultSource)[keyof typeof KeyResultSource];
+
+export const RecurrenceFreq = {
+  DAILY: 'DAILY',
+  WEEKLY: 'WEEKLY',
+  MONTHLY: 'MONTHLY',
+} as const;
+export type RecurrenceFreq = (typeof RecurrenceFreq)[keyof typeof RecurrenceFreq];
+
+export const TimeOffKind = {
+  LEAVE: 'LEAVE',
+  HOLIDAY: 'HOLIDAY',
+  OTHER: 'OTHER',
+} as const;
+export type TimeOffKind = (typeof TimeOffKind)[keyof typeof TimeOffKind];
+
+export const CheckInSource = {
+  MANUAL: 'MANUAL',
+  AUTO: 'AUTO',
+} as const;
+export type CheckInSource = (typeof CheckInSource)[keyof typeof CheckInSource];
+
+export const MailStatus = {
+  PENDING: 'PENDING',
+  SENDING: 'SENDING',
+  SENT: 'SENT',
+  FAILED: 'FAILED',
+} as const;
+export type MailStatus = (typeof MailStatus)[keyof typeof MailStatus];

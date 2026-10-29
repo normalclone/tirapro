@@ -10,10 +10,8 @@
     "declarationMap": false,
     "sourceMap": true,
     "incremental": false,
-    "strictPropertyInitialization": false,
-    "noImplicitAny": false,
-    "types": ["node", "multer"]
+    "types": ["node", "multer", "vitest/globals"]
   },
   "include": ["src/**/*.ts"],
-  "exclude": ["node_modules", "dist", "test", "**/*.spec.ts"]
+  "exclude": ["node_modules", "dist", "test"]
 }

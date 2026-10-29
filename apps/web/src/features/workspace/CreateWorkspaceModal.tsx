@@ -1,9 +1,11 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useState, type FormEvent, type ComponentProps } from 'react';
 import { useMutation } from '@tanstack/react-query';
-import { Building2, X } from 'lucide-react';
+import { Building2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { api, apiErrorMessage } from '@/lib/api';
 import { Button } from '@/components/ui/Button';
+import { useOpenSession } from '@/lib/useOpenSession';
+import { Dialog } from '@/components/ui/Dialog';
 import { Input } from '@/components/ui/Input';
 import { useSwitchWorkspace } from './api';
 
@@ -21,31 +23,20 @@ function useCreateWorkspace() {
   });
 }
 
-export function CreateWorkspaceModal({
-  open,
-  onClose,
-}: {
-  open: boolean;
-  onClose: () => void;
-}) {
+/**
+ * Luôn mount (có hiệu ứng đóng); `key` theo lần mở → mỗi lần mở là mount mới nên form khởi tạo lại, không có
+ * khung hình nội dung cũ. Lúc đóng `key` giữ nguyên nên nội dung ở lại suốt hiệu ứng.
+ */
+export function CreateWorkspaceModal(props: ComponentProps<typeof CreateWorkspaceModalInner>) {
+  const session = useOpenSession(props.open);
+  return <CreateWorkspaceModalInner key={session} {...props} />;
+}
+
+function CreateWorkspaceModalInner({ open, onClose }: { open: boolean; onClose: () => void }) {
   const create = useCreateWorkspace();
   const switchWs = useSwitchWorkspace();
 
   const [name, setName] = useState('');
-
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') onClose();
-    }
-    if (open) window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [open, onClose]);
-
-  useEffect(() => {
-    if (!open) setName('');
-  }, [open]);
-
-  if (!open) return null;
 
   const trimmedName = name.trim();
   const canSubmit = trimmedName.length > 0;
@@ -55,65 +46,56 @@ export function CreateWorkspaceModal({
   async function submit(e: FormEvent) {
     e.preventDefault();
     if (!canSubmit) return;
+    // Đã hỏi "bỏ thay đổi chưa lưu" ở nút mở hộp này (WorkspaceSwitcher). Nháp chỉ bị bỏ khi đổi sang nơi mới thành công.
     try {
       const created = await create.mutateAsync(trimmedName);
       toast.success(`Đã tạo không gian làm việc ${created.name}`);
       onClose();
       // Chuyển sang nơi vừa lập: cấp token mới + reload (xử lý trong useSwitchWorkspace).
-      switchWs.mutate(created.id, {
-        onError: (err) => toast.error(apiErrorMessage(err)),
-      });
+      switchWs.mutate(created.id, { onError: (err) => toast.error(apiErrorMessage(err)) });
     } catch (err) {
       toast.error(apiErrorMessage(err));
     }
   }
 
   return (
-    <div className="fixed inset-0 z-modal flex items-start justify-center p-4 pt-[8vh]">
-      <button
-        className="absolute inset-0 bg-black/30 animate-in fade-in duration-200"
-        onClick={onClose}
-        aria-label="Đóng"
-      />
-      <div className="relative flex max-h-[84vh] w-full max-w-lg flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-lg animate-in fade-in zoom-in-95 duration-200">
-        <header className="flex items-center gap-2 border-b border-border px-5 py-3">
-          <Building2 className="h-4 w-4 text-primary" />
-          <span className="text-sm font-medium text-ink">Tạo không gian làm việc</span>
-          <Button variant="ghost" size="icon" className="ml-auto" onClick={onClose} aria-label="Đóng">
-            <X className="h-4 w-4" />
+    <Dialog
+      open={open}
+      icon={<Building2 className="h-4 w-4" />}
+      onOpenChange={(o) => {
+        if (!o) onClose();
+      }}
+      title="Tạo không gian làm việc"
+      footer={
+        <>
+          <Button type="button" variant="ghost" onClick={onClose}>
+            Huỷ
           </Button>
-        </header>
-
-        <form onSubmit={(e) => void submit(e)} className="flex min-h-0 flex-1 flex-col">
-          <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4">
-            <div>
-              <label htmlFor="cw-name" className="mb-1.5 block text-sm font-medium text-muted">
-                Tên không gian làm việc
-              </label>
-              <Input
-                id="cw-name"
-                autoFocus
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="VD: Công ty ABC"
-                className="text-sm"
-              />
-              <p className="mt-1.5 text-xs text-faint">
-                Đây là nơi riêng để chứa dự án và thành viên — thường ứng với một công ty hoặc một phòng ban. Tạo xong, bạn sẽ được chuyển sang ngay.
-              </p>
-            </div>
-          </div>
-
-          <footer className="flex items-center justify-end gap-2 border-t border-border px-5 py-3">
-            <Button type="button" variant="ghost" onClick={onClose}>
-              Hủy
-            </Button>
-            <Button type="submit" loading={busy} disabled={!canSubmit}>
-              Tạo không gian làm việc
-            </Button>
-          </footer>
-        </form>
-      </div>
-    </div>
+          <Button type="submit" form="create-workspace-form" loading={busy} disabled={!canSubmit}>
+            Tạo không gian làm việc
+          </Button>
+        </>
+      }
+    >
+      <form id="create-workspace-form" onSubmit={(e) => void submit(e)} className="space-y-4">
+        <div>
+          <label htmlFor="cw-name" className="mb-1.5 block text-sm font-medium text-muted">
+            Tên không gian làm việc
+          </label>
+          <Input
+            id="cw-name"
+            autoFocus
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="VD: Công ty ABC"
+            className="text-sm"
+          />
+          <p className="mt-1.5 text-xs text-faint">
+            Đây là nơi riêng để chứa dự án và thành viên — thường ứng với một công ty hoặc một phòng
+            ban. Tạo xong, bạn sẽ được chuyển sang ngay.
+          </p>
+        </div>
+      </form>
+    </Dialog>
   );
 }

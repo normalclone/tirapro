@@ -1,11 +1,35 @@
-import { Injectable } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
+import { Injectable, Logger } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { createId } from '@paralleldrive/cuid2';
-import { DOMAIN_EVENTS, PERMISSIONS, type IssueDto } from '@tirapro/types';
-import { rankBetween, issueTypePrefix, type CreateIssueInput, type MoveIssueInput, type TransitionIssueInput, type UpdateIssueInput } from '@tirapro/shared';
+import {
+  DOMAIN_EVENTS,
+  PERMISSIONS,
+  type AutomationEventMeta,
+  type BulkUpdateIssuesResult,
+  type IssueDto,
+  type IssueEnvironment,
+  type IssueTransitionResultDto,
+} from '@tirapro/types';
+import {
+  countTasks,
+  issueTypePrefix,
+  normalizeEnvironment,
+  normalizeJiraKey,
+  type BulkUpdateIssuesInput,
+  type CreateIssueInput,
+  type MoveIssueInput,
+  type TransitionIssueInput,
+  type UpdateIssueInput,
+} from '@tirapro/shared';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
+import { toUserRefDto, USER_DTO_SELECT } from '../../common/mappers/user.mapper';
+import { iso } from '../../common/mappers/date';
+import { insensitiveContains } from '../../common/like';
+import { assertIssueOwner } from '../rbac/issue-ownership.service';
 import { RbacService } from '../rbac/rbac.service';
+import { ProjectAccessService } from '../rbac/project-access.service';
+import { CommentsService } from '../comments/comments.service';
 import {
   BusinessRuleException,
   ForbiddenAppException,
@@ -14,6 +38,11 @@ import {
   VersionConflictException,
 } from '../../common/exceptions/app.exception';
 import { cursorPage, PageResult } from '../../common/dto/page-result';
+import { assertNotArchived, assertProjectWritable } from '../../common/project-writable';
+import { TRIAGE_VISIBLE } from '../../common/triage-visibility';
+import { mapIssueSets } from './issue-sets';
+import { RankService } from './rank.service';
+import { WipService } from './wip.service';
 
 const issueInclude = {
   type: true,
@@ -21,12 +50,64 @@ const issueInclude = {
   priority: true,
   severity: true,
   resolution: true,
-  assignee: true,
-  reporter: true,
+  assignee: { select: USER_DTO_SELECT },
+  reporter: { select: USER_DTO_SELECT },
   labels: { include: { label: true } },
+  components: { include: { component: { select: { id: true, name: true } } } },
+  fixVersions: { include: { version: { select: { id: true, name: true } } } },
 } satisfies Prisma.IssueInclude;
 
 type IssueRow = Prisma.IssueGetPayload<{ include: typeof issueInclude }>;
+
+/** Dòng issue kèm `project.archivedAt` — dùng cho mọi thao tác ghi để chặn dự án đã lưu trữ. */
+const issueWriteInclude = {
+  ...issueInclude,
+  project: { select: { archivedAt: true } },
+} satisfies Prisma.IssueInclude;
+type IssueWriteRow = Prisma.IssueGetPayload<{ include: typeof issueWriteInclude }>;
+
+/** Trạng thái duyệt đặt lúc tạo việc từ form Báo lỗi/Đề xuất (IntakeService). */
+export interface IntakeCreateState {
+  triageState: 'PENDING';
+  triageSource: string;
+  occurrenceCount: number;
+  lastOccurredAt: Date;
+}
+
+/** Người báo tự thu hồi (xoá) công việc của mình trong khoảng này kể từ lúc tạo. */
+const RETRACT_WINDOW_MS = 10 * 60_000;
+
+/** Trường issue mà `update()` có thể đổi — dùng để báo `changedFields` cho automation (trigger ISSUE_UPDATED). */
+const TRACKED_FIELDS = [
+  'summary',
+  'description',
+  'acceptanceCriteria',
+  'priorityId',
+  'severityId',
+  'assigneeId',
+  'storyPoints',
+  'sprintId',
+  'resolutionId',
+  'typeId',
+  'dueDate',
+  'startDate',
+  'parentId',
+  'epicId',
+  'originalEstimate',
+  'remainingEstimate',
+] as const;
+
+function changedFieldsOf(before: IssueRow, after: IssueRow): string[] {
+  const same = (a: unknown, b: unknown) =>
+    a instanceof Date && b instanceof Date ? a.getTime() === b.getTime() : a === b;
+  return TRACKED_FIELDS.filter((f) => !same(before[f], after[f]));
+}
+
+/** Lô tối đa 100 issue × ~4 truy vấn tuần tự: mặc định 5s của interactive transaction quá sát, quá hạn là rollback cả lô. */
+const BULK_TX_OPTIONS = { timeout: 30_000, maxWait: 10_000 } as const;
+
+/** `meta` chỉ gắn vào payload khi do automation gây ra — sự kiện của người dùng thật giữ nguyên hình dạng cũ. */
+const withMeta = (meta: AutomationEventMeta | undefined) => (meta ? { meta } : {});
 
 export interface IssueListFilter {
   projectId?: string;
@@ -37,17 +118,72 @@ export interface IssueListFilter {
   search?: string;
 }
 
+/** Số cấp tối đa khi đi ngược tổ tiên để kiểm vòng của cây việc. */
+const MAX_TREE_DEPTH = 100;
+
 @Injectable()
 export class IssuesService {
+  private readonly logger = new Logger(IssuesService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly events: EventEmitter2,
     private readonly rbac: RbacService,
+    // Mặc định dựng từ CÙNG prisma/events/rbac để chỗ dựng service bằng 3 đối số (spec cũ) chạy y như trước; Nest DI tiêm bản thật.
+    private readonly rankService: RankService = new RankService(prisma, events),
+    private readonly wipService: WipService = new WipService(prisma, rbac),
+    // Tuỳ chọn (như rank/wip) để chỗ dựng service bằng 3 đối số vẫn chạy; Nest DI tiêm bản thật. Chỉ dùng để ghi lý do chuyển trạng thái.
+    private readonly comments?: CommentsService,
+    // Mặc định dựng từ prisma/rbac để spec dựng bằng ít đối số vẫn chạy; Nest DI tiêm bản thật (dự án riêng tư — P13).
+    private readonly access: ProjectAccessService = new ProjectAccessService(prisma, rbac),
   ) {}
 
   /**
-   * Story points & Hạn chỉ người TẠO/BÁO CÁO issue hoặc QUẢN TRỊ (project admin /
-   * workspace admin / system admin) được sửa. Ném lỗi nếu vi phạm.
+   * Điều kiện `project` của mọi truy vấn đọc cấp workspace: dự án chưa xoá mềm + (có `viewerId`) dự án người đó được thấy.
+   * `viewerId` BẮT BUỘC: `null` = ngữ cảnh hệ thống (rule-engine, worklogs, cron, board đã qua guard) — không lọc riêng tư
+   * (phải nêu rõ, quên truyền là lỗi biên dịch chứ không lặng lẽ không lọc).
+   * Gộp vào scope gốc (không lọc sau) để cursor/phân trang đúng và không lộ qua đếm.
+   */
+  private async projectScope(
+    workspaceId: string,
+    viewerId: string | null,
+  ): Promise<Prisma.ProjectWhereInput> {
+    const visible = viewerId ? await this.access.visibleWhere(viewerId, workspaceId) : {};
+    return { deletedAt: null, ...visible };
+  }
+
+  /**
+   * Resolution khi một việc VÀO nhóm Done. Ưu tiên: `explicit` (kể cả `null` rõ ràng = "không đặt")
+   * > giữ `current` > Resolution `isDefault` của workspace > null nếu workspace không có.
+   * Chọn mặc định ở BE (không để FE) để kéo-thả board, bulk, phím tắt, API/MCP/automation đều có dữ liệu —
+   * báo cáo QA dựa vào đó.
+   */
+  private async resolutionForDone(
+    db: Prisma.TransactionClient | PrismaService,
+    workspaceId: string,
+    explicit: string | null | undefined,
+    current: string | null,
+  ): Promise<string | null> {
+    if (explicit !== undefined) return explicit;
+    if (current) return current;
+    return this.defaultResolutionId(db, workspaceId);
+  }
+
+  private async defaultResolutionId(
+    db: Prisma.TransactionClient | PrismaService,
+    workspaceId: string,
+  ): Promise<string | null> {
+    const d = await db.resolution.findFirst({
+      where: { workspaceId, isDefault: true },
+      select: { id: true },
+    });
+    return d?.id ?? null;
+  }
+
+  /**
+   * Hạn (dueDate) & Ngày bắt đầu (startDate) — một luật "ai đổi lịch" — chỉ người TẠO/BÁO CÁO issue hoặc QUẢN TRỊ
+   * (project admin / workspace admin / system admin) được sửa. Ném lỗi nếu vi phạm.
+   * Story points KHÔNG qua đây: ai sửa được công việc (`issue:edit`, hoặc `:own` với việc của mình) thì sửa được điểm.
    */
   private async assertCanEditRestrictedFields(
     userId: string,
@@ -57,86 +193,639 @@ export class IssuesService {
     if (issue.reporterId === userId || issue.createdById === userId) return;
     const perms = await this.rbac.getEffectivePermissions(userId, workspaceId, issue.projectId);
     if (perms.has(PERMISSIONS.PROJECT_ADMIN) || perms.has(PERMISSIONS.WORKSPACE_ADMIN)) return;
-    const u = await this.prisma.user.findUnique({ where: { id: userId }, select: { isSystemAdmin: true } });
+    const u = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { isSystemAdmin: true },
+    });
     if (u?.isSystemAdmin) return;
-    throw new ForbiddenAppException('Chỉ người tạo hoặc quản trị mới được sửa Story points/Hạn');
+    throw new ForbiddenAppException('Chỉ người tạo hoặc quản trị mới được sửa Hạn/Ngày bắt đầu');
+  }
+
+  /** Bắt đầu phải trước hoặc bằng hạn — chỉ kiểm khi cả hai có giá trị (xoá một trong hai luôn được). */
+  private assertScheduleOrder(
+    start: Date | string | null | undefined,
+    due: Date | string | null | undefined,
+  ): void {
+    if (!start || !due) return;
+    if (new Date(start).getTime() > new Date(due).getTime()) {
+      throw new BusinessRuleException('Ngày bắt đầu phải trước hoặc bằng hạn — hãy chọn lại ngày');
+    }
+  }
+
+  /** Người chỉ có `issue:edit:own` chỉ sửa được việc mình báo cáo, được giao hoặc đã tạo. */
+  private assertOwnsIssue(
+    userId: string,
+    issue: { reporterId: string | null; assigneeId: string | null; createdById: string | null },
+  ): void {
+    assertIssueOwner(userId, issue);
+  }
+
+  /**
+   * Cùng quy ước với PermissionsGuard: có `issue:transition` hoặc system admin → `ownOnly:false`;
+   * chỉ có `issue:transition:own` → `ownOnly:true` (người gọi phải kiểm sở hữu từng issue); còn lại 403.
+   */
+  private async assertCanTransition(
+    userId: string,
+    workspaceId: string,
+    projectId: string,
+  ): Promise<{ ownOnly: boolean }> {
+    const perms = await this.rbac.getEffectivePermissions(userId, workspaceId, projectId);
+    if (perms.has(PERMISSIONS.ISSUE_TRANSITION)) return { ownOnly: false };
+    const u = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { isSystemAdmin: true },
+    });
+    if (u?.isSystemAdmin) return { ownOnly: false };
+    if (perms.has(`${PERMISSIONS.ISSUE_TRANSITION}:own`)) return { ownOnly: true };
+    throw new ForbiddenAppException(
+      'Bạn không có quyền chuyển trạng thái công việc — hãy bỏ phần đổi trạng thái hoặc nhờ quản trị cấp quyền',
+    );
+  }
+
+  /** Priority mặc định của workspace (undefined nếu chưa cấu hình). */
+  private async defaultPriorityId(
+    db: Prisma.TransactionClient,
+    workspaceId: string,
+  ): Promise<string | undefined> {
+    const def = await db.priority.findFirst({
+      where: { workspaceId, isDefault: true },
+      select: { id: true },
+    });
+    return def?.id;
   }
 
   /** Đảm bảo metadata/quan hệ (nếu truyền) thuộc đúng workspace — chống gán/liên kết chéo tenant. */
   private async assertMetaInWorkspace(
     workspaceId: string,
     m: {
-      typeId?: string | null; priorityId?: string | null; sprintId?: string | null;
-      resolutionId?: string | null; parentId?: string | null; epicId?: string | null;
+      typeId?: string | null;
+      priorityId?: string | null;
+      severityId?: string | null;
+      sprintId?: string | null;
+      /** Import (Jira) tạo sprint CLOSED theo lịch sử rồi gắn issue vào — chỉ đường `createWithin` bật cờ này. */
+      allowClosedSprint?: boolean;
+      resolutionId?: string | null;
+      parentId?: string | null;
+      /** Dự án của issue/lô: có thì `sprintId` phải thuộc CHÍNH dự án này (không chỉ cùng workspace). */
+      projectId?: string;
     },
+    db: Prisma.TransactionClient = this.prisma,
   ): Promise<void> {
-    const jobs: Array<Promise<{ id: string } | null>> = [];
-    if (m.typeId) jobs.push(this.prisma.issueType.findFirst({ where: { id: m.typeId, workspaceId }, select: { id: true } }));
-    if (m.priorityId) jobs.push(this.prisma.priority.findFirst({ where: { id: m.priorityId, workspaceId }, select: { id: true } }));
-    if (m.resolutionId) jobs.push(this.prisma.resolution.findFirst({ where: { id: m.resolutionId, workspaceId }, select: { id: true } }));
-    if (m.sprintId) jobs.push(this.prisma.sprint.findFirst({ where: { id: m.sprintId, project: { workspaceId } }, select: { id: true } }));
-    if (m.parentId) jobs.push(this.prisma.issue.findFirst({ where: { id: m.parentId, workspaceId, deletedAt: null }, select: { id: true } }));
-    if (m.epicId) jobs.push(this.prisma.issue.findFirst({ where: { id: m.epicId, workspaceId, deletedAt: null }, select: { id: true } }));
-    if (jobs.length && (await Promise.all(jobs)).some((r) => r == null)) {
-      throw new NotFoundAppException('Loại công việc, độ ưu tiên, sprint, kết quả xử lý, việc cha hoặc epic bạn chọn không thuộc không gian làm việc này — hãy chọn lại từ danh sách gợi ý');
+    const jobs: Array<Promise<{ id: string; state?: string } | null>> = [];
+    if (m.typeId)
+      jobs.push(
+        db.issueType.findFirst({ where: { id: m.typeId, workspaceId }, select: { id: true } }),
+      );
+    if (m.priorityId)
+      jobs.push(
+        db.priority.findFirst({ where: { id: m.priorityId, workspaceId }, select: { id: true } }),
+      );
+    if (m.severityId)
+      jobs.push(
+        db.severity.findFirst({ where: { id: m.severityId, workspaceId }, select: { id: true } }),
+      );
+    if (m.resolutionId)
+      jobs.push(
+        db.resolution.findFirst({
+          where: { id: m.resolutionId, workspaceId },
+          select: { id: true },
+        }),
+      );
+    if (m.sprintId)
+      jobs.push(
+        db.sprint.findFirst({
+          where: {
+            id: m.sprintId,
+            deletedAt: null,
+            project: { workspaceId, deletedAt: null },
+            ...(m.projectId ? { projectId: m.projectId } : {}),
+          },
+          select: { id: true, state: true },
+        }),
+      );
+    if (m.parentId)
+      jobs.push(
+        db.issue.findFirst({
+          where: { id: m.parentId, workspaceId, deletedAt: null },
+          select: { id: true },
+        }),
+      );
+    if (!jobs.length) return;
+    const found = await Promise.all(jobs);
+    if (found.some((r) => r == null)) {
+      throw new NotFoundAppException(
+        'Loại công việc, mức ưu tiên, sprint (phải cùng dự án), kết quả xử lý, việc cha hoặc epic bạn chọn không thuộc không gian làm việc này — hãy chọn lại từ danh sách gợi ý',
+      );
+    }
+    // Sprint đã hoàn thành không nhận thêm việc (bỏ gán/giữ nguyên thì không đi qua đây — xem `sprintIfChanged`).
+    if (!m.allowClosedSprint && found.some((r) => r?.state === 'CLOSED')) {
+      throw new BusinessRuleException(
+        'Sprint đã hoàn thành — không thêm việc vào được nữa. Hãy chọn sprint khác hoặc để việc ở Việc chờ',
+      );
     }
   }
 
-  async create(workspaceId: string, userId: string, input: CreateIssueInput): Promise<IssueDto> {
-    const project = await this.prisma.project.findFirst({
+  /**
+   * Chỉ kiểm sprint khi thật sự ĐỔI: việc đang nằm trong sprint đã đóng mà client gửi lại đúng `sprintId` cũ
+   * (hoặc không đụng tới) thì không bị chặn; `null` (bỏ gán) cũng không cần kiểm.
+   */
+  private sprintIfChanged(
+    next: string | null | undefined,
+    current: string | null,
+  ): string | null | undefined {
+    return next === undefined || next === current ? undefined : next;
+  }
+
+  /**
+   * Quyền phụ của `move()` ngoài `issue:transition` (đã kiểm ở guard):
+   * - đổi `sprintId` cần `issue:edit` (`issue:edit:own` chỉ với việc của mình, như PATCH) hoặc system admin → else 403;
+   * - mốc rank (`afterId`/`beforeId`) cần `issue:edit` hoặc `backlog:manage` (hoặc system admin). Thiếu: nếu ĐANG đổi
+   *   trạng thái thì BỎ QUA mốc (giữ rank, vẫn chuyển) — trả `false`; không đổi trạng thái thì 403.
+   * Trả `true` khi mốc rank được dùng. Không đụng DB quyền nếu request không có sprint/mốc.
+   */
+  private async assertMoveCapabilities(
+    workspaceId: string,
+    userId: string,
+    current: {
+      projectId: string;
+      reporterId: string | null;
+      assigneeId: string | null;
+      createdById: string | null;
+    },
+    want: { sprintChanged: boolean; wantsRank: boolean; statusChanged: boolean },
+  ): Promise<boolean> {
+    if (!want.sprintChanged && !want.wantsRank) return true;
+    const perms = await this.rbac.getEffectivePermissions(userId, workspaceId, current.projectId);
+    let admin: boolean | undefined;
+    const isAdmin = async () =>
+      (admin ??= !!(
+        await this.prisma.user.findUnique({
+          where: { id: userId },
+          select: { isSystemAdmin: true },
+        })
+      )?.isSystemAdmin);
+    const canEdit = perms.has(PERMISSIONS.ISSUE_EDIT);
+
+    if (want.sprintChanged && !canEdit && !(await isAdmin())) {
+      if (perms.has(`${PERMISSIONS.ISSUE_EDIT}:own`)) this.assertOwnsIssue(userId, current);
+      else
+        throw new ForbiddenAppException(
+          'Bạn không có quyền đổi sprint của công việc — cần quyền sửa công việc hoặc nhờ quản trị cấp quyền',
+        );
+    }
+    if (!want.wantsRank) return true;
+    if (canEdit || perms.has(PERMISSIONS.BACKLOG_MANAGE) || (await isAdmin())) return true;
+    if (want.statusChanged) return false;
+    throw new ForbiddenAppException(
+      'Bạn không có quyền sắp xếp lại thứ tự công việc — cần quyền sửa công việc hoặc quản lý việc chờ',
+    );
+  }
+
+  /** Epic là cấp cao nhất: chính việc là Epic thì không được có `epicId` (không epic lồng epic) — 422. */
+  private assertNotEpicWithEpic(type: { key: string | null; hierarchyLevel: number }): void {
+    if (type.key === 'EPIC' || type.hierarchyLevel >= 1)
+      throw new BusinessRuleException(
+        'Epic là cấp cao nhất — không thể đặt một Epic vào epic khác',
+      );
+  }
+
+  /**
+   * Việc cha trong cây (`parentId`) hợp lệ: Epic là cấp cao nhất nên không có cha; cha phải cùng dự án và không phải
+   * sub-task. Chỉ gọi khi `parentId` đổi/được đặt (dữ liệu cũ không bị chặn oan khi sửa trường khác) — 404/422.
+   */
+  private async assertParentPlacement(
+    db: Prisma.TransactionClient,
+    workspaceId: string,
+    self: { projectId: string; type: { key: string | null; hierarchyLevel: number } },
+    parentId: string,
+  ): Promise<void> {
+    if (self.type.key === 'EPIC' || self.type.hierarchyLevel >= 1)
+      throw new BusinessRuleException(
+        'Epic là cấp cao nhất — không thể đặt Epic vào bên trong một việc khác, chỉ có thể gắn việc vào Epic',
+      );
+    const parent = await db.issue.findFirst({
+      where: { id: parentId, workspaceId, deletedAt: null },
+      select: { projectId: true, type: { select: { isSubtask: true } } },
+    });
+    if (!parent)
+      throw new NotFoundAppException(
+        'Việc cha bạn chọn không thuộc không gian làm việc này — hãy chọn lại từ danh sách gợi ý',
+      );
+    if (parent.projectId !== self.projectId)
+      throw new BusinessRuleException(
+        'Việc cha phải thuộc cùng dự án với công việc — hãy chọn công việc khác làm việc cha',
+      );
+    if (parent.type.isSubtask)
+      throw new BusinessRuleException(
+        'Việc con (sub-task) không thể làm việc cha của việc khác — hãy chọn việc cha là một việc thường',
+      );
+  }
+
+  /**
+   * Chặn vòng của CÂY VIỆC, tính theo đúng cha-trong-cây `parentId ?? epicId` (FE `treeParentId`): đi ngược tổ tiên
+   * từ `startId` (cha/epic mới), không được gặp lại chính `selfId`. Giới hạn độ sâu; vòng sẵn có không liên quan
+   * `selfId` (dữ liệu cũ) thì dừng, không chặn oan — 422.
+   */
+  private async assertNoTreeCycle(
+    db: Prisma.TransactionClient,
+    workspaceId: string,
+    selfId: string,
+    startId: string,
+  ): Promise<void> {
+    const seen = new Set<string>();
+    let cur: string | null = startId;
+    for (let depth = 0; cur && depth < MAX_TREE_DEPTH; depth++) {
+      if (cur === selfId)
+        throw new BusinessRuleException(
+          'Không thể đặt công việc vào bên trong chính nhánh của nó (việc con/cháu hoặc việc thuộc epic này) vì sẽ tạo vòng lặp — hãy chọn một công việc ngoài nhánh này',
+        );
+      if (seen.has(cur)) return;
+      seen.add(cur);
+      const row: { parentId: string | null; epicId: string | null } | null =
+        await db.issue.findFirst({
+          where: { id: cur, workspaceId, deletedAt: null },
+          select: { parentId: true, epicId: true },
+        });
+      cur = row ? (row.parentId ?? row.epicId ?? null) : null;
+    }
+    if (cur)
+      throw new BusinessRuleException(
+        `Cây công việc quá sâu (tối đa ${MAX_TREE_DEPTH} cấp) — hãy chọn vị trí khác`,
+      );
+  }
+
+  /** Việc cha khi TẠO việc (chỉ đường API, `strict`): cùng luật `assertParentPlacement` với loại của việc sắp tạo. */
+  private async assertParentForCreate(
+    db: Prisma.TransactionClient,
+    workspaceId: string,
+    input: { parentId?: string | null; typeId: string },
+    projectId: string,
+    strict: boolean,
+  ): Promise<void> {
+    if (!strict || !input.parentId) return; // import giữ nguyên dữ liệu gốc
+    const type = await db.issueType.findFirst({
+      where: { id: input.typeId, workspaceId },
+      select: { key: true, hierarchyLevel: true },
+    });
+    if (type)
+      await this.assertParentPlacement(db, workspaceId, { projectId, type }, input.parentId);
+  }
+
+  /** Epic khi TẠO việc: epic đích hợp lệ (+ chính việc không phải Epic, chỉ đường API — import giữ nguyên dữ liệu gốc). */
+  private async assertEpicForCreate(
+    db: Prisma.TransactionClient,
+    workspaceId: string,
+    input: { epicId?: string | null; typeId: string },
+    projectId: string,
+    strict: boolean,
+  ): Promise<void> {
+    await this.assertEpicValid(db, workspaceId, input.epicId!, projectId, null, strict);
+    if (!strict) return;
+    const t = await db.issueType.findFirst({
+      where: { id: input.typeId, workspaceId },
+      select: { key: true, hierarchyLevel: true },
+    });
+    if (t) this.assertNotEpicWithEpic(t);
+  }
+
+  /**
+   * Epic của issue: phải tồn tại trong workspace, CÙNG dự án, đúng loại Epic (`key = EPIC` hoặc `hierarchyLevel >= 1`;
+   * bỏ qua kiểm LOẠI khi `checkType = false` — đường import),
+   * không phải chính issue và không tạo vòng (epic đang trỏ ngược về issue này) — vi phạm: 404/422.
+   */
+  private async assertEpicValid(
+    db: Prisma.TransactionClient,
+    workspaceId: string,
+    epicId: string,
+    projectId: string,
+    selfId: string | null,
+    checkType = true,
+  ): Promise<void> {
+    if (selfId && epicId === selfId)
+      throw new BusinessRuleException(
+        'Một công việc không thể là epic của chính nó — hãy chọn một epic khác',
+      );
+    const epic = await db.issue.findFirst({
+      where: { id: epicId, workspaceId, deletedAt: null },
+      select: {
+        projectId: true,
+        epicId: true,
+        type: { select: { key: true, hierarchyLevel: true } },
+      },
+    });
+    if (!epic)
+      throw new NotFoundAppException(
+        'Epic bạn chọn không thuộc không gian làm việc này — hãy chọn lại từ danh sách gợi ý',
+      );
+    if (epic.projectId !== projectId)
+      throw new BusinessRuleException(
+        'Epic phải thuộc cùng dự án với công việc — hãy chọn epic khác',
+      );
+    if (checkType && epic.type.key !== 'EPIC' && epic.type.hierarchyLevel < 1)
+      throw new BusinessRuleException(
+        'Công việc được chọn không phải loại Epic — hãy chọn một Epic trong dự án',
+      );
+    // Vòng: chuỗi epic của epic được chọn quay về chính issue này.
+    let cur = epic.epicId;
+    for (let depth = 0; selfId && cur && depth < 50; depth++) {
+      if (cur === selfId)
+        throw new BusinessRuleException(
+          'Không thể chọn epic này vì sẽ tạo vòng lặp (epic đó đang thuộc về công việc này)',
+        );
+      const next: { epicId: string | null } | null = await db.issue.findFirst({
+        where: { id: cur, workspaceId, deletedAt: null },
+        select: { epicId: true },
+      });
+      cur = next?.epicId ?? null;
+    }
+  }
+
+  /**
+   * Epic cho CẢ LÔ (bulk): kiểm một lần (cùng dự án, đúng loại Epic) rồi kiểm vòng — epic không được nằm trong lô
+   * và chuỗi `epicId` của epic không được chạm một item của lô (tránh N × chuỗi truy vấn).
+   */
+  private async assertEpicForBulk(
+    workspaceId: string,
+    epicId: string,
+    projectId: string,
+    ids: string[],
+  ): Promise<void> {
+    if (ids.includes(epicId))
+      throw new BusinessRuleException(
+        'Một công việc không thể là epic của chính nó — hãy chọn một epic khác',
+      );
+    await this.assertEpicValid(this.prisma, workspaceId, epicId, projectId, null);
+    // Đi ngược tổ tiên theo cha-trong-cây `parentId ?? epicId` (cùng định nghĩa với FE `treeParentId`).
+    const parentOf = async (id: string): Promise<string | null> => {
+      const r: { parentId: string | null; epicId: string | null } | null =
+        await this.prisma.issue.findFirst({
+          where: { id, workspaceId, deletedAt: null },
+          select: { parentId: true, epicId: true },
+        });
+      return r ? (r.parentId ?? r.epicId ?? null) : null;
+    };
+    let cur = await parentOf(epicId);
+    for (let depth = 0; cur && depth < MAX_TREE_DEPTH; depth++) {
+      if (ids.includes(cur))
+        throw new BusinessRuleException(
+          'Không thể chọn epic này vì sẽ tạo vòng lặp (epic đó đang thuộc về một công việc đã chọn)',
+        );
+      cur = await parentOf(cur);
+    }
+  }
+
+  /** Nhãn phải thuộc đúng dự án của lô — chống gắn nhãn chéo dự án/tenant. */
+  private async assertLabelsInProject(projectId: string, labelIds: string[]): Promise<void> {
+    const ids = [...new Set(labelIds)];
+    const valid = await this.prisma.label.findMany({
+      where: { id: { in: ids }, projectId },
+      select: { id: true },
+    });
+    if (valid.length !== ids.length) throw new NotFoundAppException('Nhãn');
+  }
+
+  /**
+   * Có thể gán mới cho user này không: là thành viên workspace, tài khoản chưa bị vô hiệu hoá và (có `projectId`) thấy
+   * được dự án — dự án riêng tư chỉ giao cho thành viên dự án/quản trị, để không "giao việc rồi họ không mở được".
+   */
+  async isAssignableMember(
+    workspaceId: string,
+    userId: string,
+    db: Prisma.TransactionClient = this.prisma,
+    projectId?: string,
+  ): Promise<boolean> {
+    const member = await db.workspaceMembership.findFirst({
+      where: { workspaceId, userId, user: { status: { not: 'DEACTIVATED' } } },
+      select: { userId: true },
+    });
+    if (!member) return false;
+    return !projectId || (await this.access.canSee(userId, workspaceId, projectId));
+  }
+
+  /**
+   * Gán MỚI: người được giao phải là thành viên workspace còn hoạt động — chặn gán user của tenant khác
+   * hay tài khoản đã vô hiệu hoá. `null`/rỗng (bỏ gán) luôn hợp lệ. Chỉ gọi khi assignee thật sự đổi:
+   * việc cũ còn giữ người đã rời workspace thì không được làm hỏng các sửa không liên quan.
+   */
+  private async assertAssigneeInWorkspace(
+    workspaceId: string,
+    assigneeId: string | null | undefined,
+    db: Prisma.TransactionClient = this.prisma,
+    projectId?: string,
+  ): Promise<void> {
+    if (!assigneeId) return;
+    if (!(await this.isAssignableMember(workspaceId, assigneeId, db, projectId)))
+      throw new BusinessRuleException(
+        'Người được giao không thuộc không gian làm việc này hoặc không xem được dự án — hãy chọn một thành viên khác',
+      );
+  }
+
+  /**
+   * Kiểm người được giao lúc tạo. Import chạy trong transaction có thể vừa tạo dự án (chưa commit) nên không kiểm quyền xem
+   * dự án ở đó (chỉ kiểm thành viên workspace như trước).
+   */
+  private assertCreateAssignee(
+    workspaceId: string,
+    assigneeId: string | null | undefined,
+    db: Prisma.TransactionClient,
+    projectId: string,
+    origin: 'api' | 'import',
+  ): Promise<void> {
+    return this.assertAssigneeInWorkspace(
+      workspaceId,
+      assigneeId,
+      db,
+      origin === 'import' ? undefined : projectId,
+    );
+  }
+
+  async create(
+    workspaceId: string,
+    userId: string,
+    input: CreateIssueInput,
+    opts?: AutomationEventMeta,
+    /**
+     * Tham số NỘI BỘ cho IntakeService (không đi qua DTO/zod): trạng thái duyệt đặt NGAY lúc tạo (cùng transaction, trước
+     * `emitCreated`) để `ISSUE_CREATED` mang `triageState: 'PENDING'` — việc chưa duyệt không lọt vào Board của người khác.
+     */
+    intake?: IntakeCreateState,
+  ): Promise<IssueDto> {
+    const dto = await this.createCore(
+      null,
+      workspaceId,
+      userId,
+      input,
+      null,
+      'api',
+      undefined,
+      intake,
+    );
+    this.emitCreated(dto, userId, input.clientId, opts);
+    return dto;
+  }
+
+  /**
+   * Nạp lại việc rồi phát `ISSUE_UPDATED` với `IssueDto` đầy đủ + `changedFields` — cho nơi ghi cột trực tiếp ngoài
+   * `update()` (triage, intake). Ngữ cảnh HỆ THỐNG có chủ đích như `getDtosByIdsForSystem`: nghiệp vụ đã tự kiểm quyền.
+   */
+  async emitUpdatedFor(
+    workspaceId: string,
+    issueId: string,
+    actorId: string,
+    changedFields: string[],
+  ): Promise<IssueDto | null> {
+    const [dto] = await this.getDtosByIdsForSystem(workspaceId, [issueId]);
+    if (!dto) return null;
+    this.events.emit(DOMAIN_EVENTS.ISSUE_UPDATED, { issue: dto, actorId, changedFields });
+    return dto;
+  }
+
+  /**
+   * Tạo issue bên trong transaction của bên gọi (vd import theo lô). KHÔNG emit sự kiện —
+   * bên gọi phải gọi `emitCreated` cho từng issue và chạy các hàm trong `deferred` (sự kiện đánh số lại
+   * rank nếu có) SAU KHI transaction commit.
+   */
+  createWithin(
+    tx: Prisma.TransactionClient,
+    workspaceId: string,
+    userId: string,
+    input: CreateIssueInput,
+    deferred: Array<() => void> = [],
+    /**
+     * Mã Jira gốc (`JRA-1`) dùng làm `Issue.key` (L27). Tham số NỘI BỘ — không đi qua DTO/zod/Controller nên API công
+     * khai không đặt được mã. Chỉ nhận dạng `KEY-123` (đúng một dấu `-`, tách khỏi dải mã Tirapro `PROJ-TYPE-N`);
+     * sai dạng thì bỏ qua và sinh mã Tirapro như thường. Người gọi tự kiểm trùng (unique `(workspaceId, key)`).
+     */
+    fixedKey?: string,
+    /**
+     * Tham số NỘI BỘ (không qua DTO/zod nên API công khai không đặt được): người báo cáo khác người nhập — dùng cho
+     * nhập Excel. Người gọi đã kiểm người đó là thành viên dự án. Đặt ngay lúc tạo để sự kiện `ISSUE_CREATED` mang đúng reporter.
+     */
+    overrides?: { reporterId?: string },
+  ): Promise<IssueDto> {
+    return this.createCore(
+      tx,
+      workspaceId,
+      userId,
+      input,
+      deferred,
+      'import',
+      fixedKey,
+      undefined,
+      overrides,
+    );
+  }
+
+  emitCreated(dto: IssueDto, actorId: string, clientId?: string, meta?: AutomationEventMeta): void {
+    this.events.emit(DOMAIN_EVENTS.ISSUE_CREATED, {
+      issue: dto,
+      actorId,
+      clientId,
+      ...withMeta(meta),
+    });
+  }
+
+  private async createCore(
+    outerTx: Prisma.TransactionClient | null,
+    workspaceId: string,
+    userId: string,
+    input: CreateIssueInput,
+    deferred: Array<() => void> | null = null,
+    /**
+     * `api` (mặc định, `create`): đường người dùng — đòi `issue:transition` khi chọn trạng thái ≠ khởi tạo, chặn sprint
+     * đã hoàn thành, epic phải đúng LOẠI Epic. `import` (`createWithin`): dữ liệu nhập từ nguồn ngoài (Jira) đã được
+     * người có quyền import duyệt — sprint CLOSED theo lịch sử và epic thuộc loại tuỳ chỉnh vẫn nhận (epic vẫn phải
+     * cùng dự án, không tự trỏ).
+     */
+    origin: 'api' | 'import' = 'api',
+    fixedKey?: string,
+    intake?: IntakeCreateState,
+    overrides?: { reporterId?: string },
+  ): Promise<IssueDto> {
+    const db: Prisma.TransactionClient = outerTx ?? this.prisma;
+    // Chỉ đường import mới được mang mã ngoài vào, và phải đúng dạng mã Jira.
+    const importedKey = origin === 'import' ? normalizeJiraKey(fixedKey) : null;
+    const project = await db.project.findFirst({
       where: { id: input.projectId, workspaceId, deletedAt: null },
-      select: { id: true, key: true, defaultWorkflowId: true, leadId: true, defaultAssigneeMode: true },
+      select: {
+        id: true,
+        key: true,
+        defaultWorkflowId: true,
+        leadId: true,
+        defaultAssigneeMode: true,
+        archivedAt: true,
+      },
     });
     if (!project) throw new NotFoundAppException('Dự án');
-    await this.assertMetaInWorkspace(workspaceId, {
-      typeId: input.typeId, priorityId: input.priorityId, sprintId: input.sprintId,
-      parentId: input.parentId, epicId: input.epicId,
-    });
+    assertNotArchived(project.archivedAt);
+    this.assertScheduleOrder(input.startDate, input.dueDate);
+    await this.assertMetaInWorkspace(
+      workspaceId,
+      {
+        typeId: input.typeId,
+        priorityId: input.priorityId,
+        severityId: input.severityId,
+        sprintId: input.sprintId,
+        parentId: input.parentId,
+        projectId: project.id,
+        allowClosedSprint: origin === 'import',
+      },
+      db,
+    );
+    if (input.epicId)
+      await this.assertEpicForCreate(db, workspaceId, input, project.id, origin === 'api');
+    await this.assertParentForCreate(db, workspaceId, input, project.id, origin === 'api');
+    await this.assertCreateAssignee(workspaceId, input.assigneeId, db, project.id, origin);
 
-    // Status: input hoặc trạng thái initial của workflow project
+    // Status: input (phải thuộc workflow của dự án) hoặc trạng thái initial của workflow project
+    const workflowId = project.defaultWorkflowId ?? '';
+    const initial = await db.status.findFirst({
+      where: { workflowId, isInitial: true },
+      select: { id: true },
+    });
     let statusId = input.statusId;
-    if (!statusId) {
-      const initial = await this.prisma.status.findFirst({
-        where: { workflowId: project.defaultWorkflowId ?? '', isInitial: true },
-        select: { id: true },
+    let isDone = false;
+    if (statusId) {
+      const chosen = await db.status.findFirst({
+        where: { id: statusId, workflowId },
+        select: { id: true, category: true },
       });
-      if (!initial) throw new BusinessRuleException('Project chưa cấu hình workflow/trạng thái khởi đầu');
+      if (!chosen)
+        throw new BusinessRuleException(
+          'Trạng thái không thuộc quy trình của dự án này — hãy chọn lại trạng thái từ danh sách',
+        );
+      // Tạo thẳng ở trạng thái khác trạng thái khởi tạo cũng là một lần "chuyển trạng thái" → cần cùng quyền.
+      if (origin === 'api' && chosen.id !== initial?.id)
+        await this.assertCanTransition(userId, workspaceId, project.id);
+      isDone = chosen.category === 'DONE';
+    } else {
+      if (!initial)
+        throw new BusinessRuleException('Dự án chưa cấu hình quy trình/trạng thái khởi đầu');
       statusId = initial.id;
     }
 
+    const doneResolutionId = isDone ? await this.defaultResolutionId(db, workspaceId) : null;
+
     // Priority mặc định của workspace nếu không truyền
-    let priorityId = input.priorityId ?? undefined;
-    if (!priorityId) {
-      const def = await this.prisma.priority.findFirst({ where: { workspaceId, isDefault: true }, select: { id: true } });
-      priorityId = def?.id;
-    }
+    const priorityId = input.priorityId || (await this.defaultPriorityId(db, workspaceId));
 
     const assigneeId =
       input.assigneeId ?? (project.defaultAssigneeMode === 'PROJECT_LEAD' ? project.leadId : null);
 
-    // Rank: cuối danh sách trong project
-    const last = await this.prisma.issue.findFirst({
-      where: { projectId: project.id, deletedAt: null },
-      orderBy: { rank: 'desc' },
-      select: { rank: true },
-    });
-    const rank = rankBetween(last?.rank ?? null, null);
-
-    const issue = await this.prisma.$transaction(async (tx) => {
+    // Sự kiện đánh số lại rank (nếu hết chỗ chèn) chỉ phát SAU commit: tự mở transaction → chạy ngay sau `$transaction`;
+    // nằm trong transaction của bên gọi (import) → đẩy vào `deferred` của họ.
+    const afterCommit: Array<() => void> = [];
+    const body = async (tx: Prisma.TransactionClient) => {
       const updated = await tx.project.update({
         where: { id: project.id },
         data: { issueSequence: { increment: 1 } },
         select: { issueSequence: true },
       });
       const number = updated.issueSequence;
-      // Mã issue = {mã dự án}-{loại}-{identity}: DEMO-BUG-1, DEMO-TASK-3…
-      // identity đếm RIÊNG theo LOẠI trong TỪNG DỰ ÁN (per projectId+typeId).
-      const type = await tx.issueType.findUnique({
-        where: { id: input.typeId },
-        select: { key: true, name: true },
-      });
-      const typeSeq = (await tx.issue.count({ where: { projectId: project.id, typeId: input.typeId } })) + 1;
-      const key = `${project.key}-${issueTypePrefix(type?.key ?? null, type?.name ?? '')}-${typeSeq}`;
+      // Rank "cuối danh sách" đọc SAU khi đã giữ khoá hàng dự án (UPDATE issueSequence ở trên), qua `tx` — xem `rankAtEnd`.
+      const rank = await this.rankAtEnd(tx, project.id, outerTx ? deferred : afterCommit);
+      const key =
+        importedKey ?? (await this.nextTiraproKey(tx, project.id, project.key, input.typeId));
       const created = await tx.issue.create({
         data: {
           workspaceId,
@@ -144,12 +833,18 @@ export class IssuesService {
           number,
           key,
           typeId: input.typeId,
-          statusId: statusId!,
+          statusId,
+          resolvedAt: isDone ? new Date() : null,
+          // Tạo thẳng ở Done: cùng quy ước chuyển sang Done — luôn có Resolution (mặc định workspace) để báo cáo QA tin cậy.
+          ...(doneResolutionId ? { resolutionId: doneResolutionId } : {}),
           priorityId: priorityId ?? null,
+          severityId: input.severityId ?? null,
+          environment: normalizeEnvironment(input.environment) ?? Prisma.DbNull,
           summary: input.summary,
           description: input.description ?? null,
           descriptionFormat: input.descriptionFormat,
-          reporterId: userId,
+          acceptanceCriteria: input.acceptanceCriteria?.trim() ? input.acceptanceCriteria : null,
+          reporterId: (origin === 'import' ? overrides?.reporterId : undefined) ?? userId,
           assigneeId: assigneeId ?? null,
           parentId: input.parentId ?? null,
           epicId: input.epicId ?? null,
@@ -159,14 +854,19 @@ export class IssuesService {
           startDate: input.startDate ? new Date(input.startDate) : null,
           rank,
           createdById: userId,
+          ...(intake ?? {}),
         },
         include: issueInclude,
       });
       if (input.labelIds?.length) {
         // Nhãn phải thuộc đúng dự án (⇒ đúng workspace) — chống gắn nhãn chéo tenant/chéo dự án.
         const ids = [...new Set(input.labelIds)];
-        const valid = await tx.label.findMany({ where: { id: { in: ids }, projectId: project.id }, select: { id: true } });
-        if (valid.length !== ids.length) throw new NotFoundAppException('Nhãn không thuộc dự án này');
+        const valid = await tx.label.findMany({
+          where: { id: { in: ids }, projectId: project.id },
+          select: { id: true },
+        });
+        if (valid.length !== ids.length)
+          throw new NotFoundAppException('Nhãn không thuộc dự án này');
         await tx.issueLabel.createMany({
           data: ids.map((labelId) => ({ issueId: created.id, labelId })),
           skipDuplicates: true,
@@ -175,29 +875,87 @@ export class IssuesService {
       // History: trạng thái khởi tạo
       await tx.issueHistory.create({
         data: {
-          issueId: created.id, projectId: project.id, sprintId: created.sprintId,
-          field: 'STATUS', newValue: created.status.name, newCategory: created.status.category,
-          actorId: userId, occurredAt: new Date(),
+          issueId: created.id,
+          projectId: project.id,
+          sprintId: created.sprintId,
+          field: 'STATUS',
+          newValue: created.status.name,
+          newCategory: created.status.category,
+          actorId: userId,
+          occurredAt: new Date(),
         },
       });
       return created;
-    });
-
-    const dto = this.toDto(issue);
-    this.events.emit(DOMAIN_EVENTS.ISSUE_CREATED, { issue: dto, actorId: userId, clientId: input.clientId });
-    return dto;
+    };
+    // timeout 30s như transaction đánh số lại rank riêng trước đây (dự án lớn hết chỗ chèn thì rebalance chạy trong đây).
+    const issue = outerTx
+      ? await body(outerTx)
+      : await this.prisma.$transaction(body, { timeout: 30_000 });
+    for (const fn of afterCommit) fn();
+    return this.toDto(issue);
   }
 
-  async list(workspaceId: string, filter: IssueListFilter, cursor: string | undefined, limit: number): Promise<PageResult<IssueDto>> {
+  /**
+   * Rank "cuối danh sách" của dự án. PHẢI gọi sau khi đã giữ khoá hàng dự án trong `tx` (bước tăng `issueSequence`): các lần
+   * tạo song song trong cùng dự án xếp hàng ở khoá đó nên mỗi lần thấy rank của lần trước. Đọc trước khoá từng ra 10 việc
+   * cùng rank khi 10 POST đồng thời.
+   */
+  private rankAtEnd(
+    tx: Prisma.TransactionClient,
+    projectId: string,
+    deferred: Array<() => void> | null,
+  ): Promise<string> {
+    return this.rankService.resolveRank(projectId, tx, deferred, null, async () => {
+      const last = await tx.issue.findFirst({
+        where: { projectId, deletedAt: null },
+        orderBy: [{ rank: 'desc' }, { id: 'desc' }],
+        select: { rank: true },
+      });
+      return { prev: last?.rank ?? null, next: null };
+    });
+  }
+
+  /**
+   * Mã Tirapro = {mã dự án}-{loại}-{identity}: DEMO-BUG-1, DEMO-TASK-3…
+   * identity đếm RIÊNG theo LOẠI trong TỪNG DỰ ÁN (per projectId+typeId) và CHỈ trong dải mã Tirapro cùng tiền tố,
+   * nên việc nhập từ Jira (mã `JRA-1`, khác dải) không làm lệch số thứ tự.
+   */
+  private async nextTiraproKey(
+    tx: Prisma.TransactionClient,
+    projectId: string,
+    projectKey: string,
+    typeId: string,
+  ): Promise<string> {
+    const type = await tx.issueType.findUnique({
+      where: { id: typeId },
+      select: { key: true, name: true },
+    });
+    const prefix = `${projectKey}-${issueTypePrefix(type?.key ?? null, type?.name ?? '')}-`;
+    const typeSeq =
+      // allow-deleted: đếm cả issue đã xoá để số thứ tự theo loại không sinh trùng key
+      (await tx.issue.count({ where: { projectId, typeId, key: { startsWith: prefix } } })) + 1;
+    return `${prefix}${typeSeq}`;
+  }
+
+  async list(
+    workspaceId: string,
+    filter: IssueListFilter,
+    cursor: string | undefined,
+    limit: number,
+    viewerId: string | null,
+  ): Promise<PageResult<IssueDto>> {
     const where: Prisma.IssueWhereInput = {
       workspaceId,
       deletedAt: null,
+      project: await this.projectScope(workspaceId, viewerId),
       projectId: filter.projectId,
       statusId: filter.statusId,
       assigneeId: filter.assigneeId,
       typeId: filter.typeId,
       sprintId: filter.sprintId,
-      ...(filter.search ? { summary: { contains: filter.search, mode: 'insensitive' } } : {}),
+      ...(filter.search ? { summary: insensitiveContains(filter.search) } : {}),
+      // Việc chưa duyệt (chờ/tạm hoãn/đã từ chối ở Việc mới vào) không lẫn vào Board/Việc chờ; JQL/tìm kiếm vẫn thấy.
+      ...TRIAGE_VISIBLE,
     };
     const rows = await this.prisma.issue.findMany({
       where,
@@ -206,12 +964,96 @@ export class IssuesService {
       take: limit + 1,
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
     });
-    return cursorPage(rows.map((r) => this.toDto(r)), limit, (i) => i.id);
+    return cursorPage(
+      rows.map((r) => this.toListDto(r)),
+      limit,
+      (i) => i.id,
+    );
   }
 
-  /** Truy vấn theo where đã biên dịch (vd từ JQL/Search). Tự ghép workspace + soft-delete. */
+  /**
+   * Truy vấn theo where đã biên dịch (vd từ JQL/Search). Tự ghép workspace + soft-delete.
+   * `rawIds` (kết quả full-text, đã xếp theo rank): chỉ lấy các id đó và — khi không có `orderBy` —
+   * giữ đúng thứ tự rank (tối đa vài trăm id nên sắp xếp/phân trang trong bộ nhớ).
+   * `rankHint` (id đã xếp hạng, KHÔNG giới hạn tập kết quả): khi không có `orderBy`, các id này
+   * khớp `where` lên trước theo thứ tự rank, phần còn lại khớp `where` theo `updatedAt` giảm dần.
+   */
   async query(
     workspaceId: string,
+    where: Prisma.IssueWhereInput,
+    orderBy: Prisma.IssueOrderByWithRelationInput[],
+    cursor: string | undefined,
+    limit: number,
+    viewerId: string | null,
+    { rawIds, rankHint }: { rawIds?: string[]; rankHint?: string[] } = {},
+  ): Promise<PageResult<IssueDto>> {
+    const scope: Prisma.IssueWhereInput = {
+      AND: [
+        { workspaceId, deletedAt: null, project: await this.projectScope(workspaceId, viewerId) },
+        where,
+      ],
+    };
+    if (rawIds) {
+      if (rawIds.length === 0) return cursorPage<IssueDto>([], limit, (i) => i.id);
+      const idScope: Prisma.IssueWhereInput = { AND: [scope, { id: { in: rawIds } }] };
+      if (!orderBy.length) {
+        const rows = await this.prisma.issue.findMany({ where: idScope, include: issueInclude });
+        const position = new Map(rawIds.map((id, i) => [id, i]));
+        const sorted = rows
+          .sort((a, b) => (position.get(a.id) ?? 0) - (position.get(b.id) ?? 0))
+          .map((r) => this.toListDto(r));
+        // Con trỏ không còn trong danh sách (kết quả tìm đổi giữa hai lần gọi) → trang rỗng, KHÔNG quay về trang đầu
+        // (client nạp tiếp tự động sẽ lặp vô hạn). Con trỏ còn trong rawIds nhưng issue đã biến mất vẫn tiếp tục đúng chỗ.
+        const cursorPos = cursor ? (position.get(cursor) ?? -1) : -1;
+        if (cursor && cursorPos < 0) return cursorPage<IssueDto>([], limit, (i) => i.id);
+        const rest = cursor ? sorted.filter((i) => (position.get(i.id) ?? 0) > cursorPos) : sorted;
+        return cursorPage(rest.slice(0, limit + 1), limit, (i) => i.id);
+      }
+      return this.queryOrdered(idScope, orderBy, cursor, limit);
+    }
+    if (rankHint?.length && !orderBy.length) {
+      return this.queryRankFirst(scope, rankHint, cursor, limit);
+    }
+    return this.queryOrdered(scope, orderBy, cursor, limit);
+  }
+
+  /** Id trong `rank` (đã xếp hạng) lên trước theo đúng thứ tự, sau đó các việc khớp còn lại theo updatedAt giảm dần. */
+  private async queryRankFirst(
+    scope: Prisma.IssueWhereInput,
+    rank: string[],
+    cursor: string | undefined,
+    limit: number,
+  ): Promise<PageResult<IssueDto>> {
+    const pos = new Map(rank.map((id, i) => [id, i]));
+    const cursorRanked = cursor !== undefined && pos.has(cursor);
+    const out: IssueDto[] = [];
+    if (!cursor || cursorRanked) {
+      // allow-deleted: scope do `query()` dựng sẵn (có `workspaceId, deletedAt: null`)
+      const rows = await this.prisma.issue.findMany({
+        where: { AND: [scope, { id: { in: rank } }] },
+        include: issueInclude,
+      });
+      const sorted = rows
+        .sort((a, b) => pos.get(a.id)! - pos.get(b.id)!)
+        .map((r) => this.toListDto(r));
+      const after = cursorRanked ? pos.get(cursor)! : -1;
+      out.push(...sorted.filter((i) => pos.get(i.id)! > after).slice(0, limit + 1));
+    }
+    if (out.length < limit + 1) {
+      // allow-deleted: scope do `query()` dựng sẵn (có `workspaceId, deletedAt: null`)
+      const rest = await this.prisma.issue.findMany({
+        where: { AND: [scope, { id: { notIn: rank } }] },
+        include: issueInclude,
+        orderBy: [{ updatedAt: 'desc' }, { id: 'asc' }],
+        take: limit + 1 - out.length,
+        ...(cursor && !cursorRanked ? { cursor: { id: cursor }, skip: 1 } : {}),
+      });
+      out.push(...rest.map((r) => this.toListDto(r)));
+    }
+    return cursorPage(out, limit, (i) => i.id);
+  }
+
+  private async queryOrdered(
     where: Prisma.IssueWhereInput,
     orderBy: Prisma.IssueOrderByWithRelationInput[],
     cursor: string | undefined,
@@ -220,158 +1062,822 @@ export class IssuesService {
     const finalOrder: Prisma.IssueOrderByWithRelationInput[] = orderBy.length
       ? [...orderBy, { id: 'asc' }]
       : [{ updatedAt: 'desc' }, { id: 'asc' }];
+    // ORDER BY severity DESC: Postgres đặt NULL (chưa đặt mức) lên ĐẦU khi DESC và Prisma không cho `nulls` trên
+    // quan hệ → tách hai pha (có mức rồi chưa đặt mức) để việc chưa đặt mức luôn xuống cuối.
+    const first = finalOrder[0] as { severity?: { rank?: string } };
+    if (first.severity?.rank === 'desc')
+      return this.queryNullsLastBySeverity(where, finalOrder, cursor, limit);
+    // allow-deleted: where do `query()` dựng sẵn (scope có `workspaceId, deletedAt: null`); queryOrdered chỉ nhận scope đó
     const rows = await this.prisma.issue.findMany({
-      where: { AND: [{ workspaceId, deletedAt: null }, where] },
+      where,
       include: issueInclude,
       orderBy: finalOrder,
       take: limit + 1,
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
     });
-    return cursorPage(rows.map((r) => this.toDto(r)), limit, (i) => i.id);
+    return cursorPage(
+      rows.map((r) => this.toListDto(r)),
+      limit,
+      (i) => i.id,
+    );
   }
 
-  async getByKey(workspaceId: string, key: string): Promise<IssueDto> {
-    const issue = await this.prisma.issue.findFirst({ where: { workspaceId, key, deletedAt: null }, include: issueInclude });
+  /** Hai pha cho ORDER BY severity DESC: việc có mức (theo `orderBy`), rồi việc chưa đặt mức (cùng `orderBy`). Con trỏ = id. */
+  private async queryNullsLastBySeverity(
+    where: Prisma.IssueWhereInput,
+    orderBy: Prisma.IssueOrderByWithRelationInput[],
+    cursor: string | undefined,
+    limit: number,
+  ): Promise<PageResult<IssueDto>> {
+    let cursorInUnset = false;
+    if (cursor) {
+      // allow-deleted: where do `query()` dựng sẵn (scope có `workspaceId, deletedAt: null`)
+      const c = await this.prisma.issue.findFirst({
+        where: { AND: [where, { id: cursor }] },
+        select: { severityId: true },
+      });
+      if (!c) return cursorPage<IssueDto>([], limit, (i) => i.id);
+      cursorInUnset = c.severityId === null;
+    }
+    const take = limit + 1;
+    const rows: IssueRow[] = [];
+    if (!cursorInUnset) {
+      // allow-deleted: where do `query()` dựng sẵn (scope có `workspaceId, deletedAt: null`)
+      const withSeverity = await this.prisma.issue.findMany({
+        where: { AND: [where, { severityId: { not: null } }] },
+        include: issueInclude,
+        orderBy,
+        take,
+        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      });
+      rows.push(...withSeverity);
+    }
+    if (rows.length < take) {
+      // allow-deleted: where do `query()` dựng sẵn (scope có `workspaceId, deletedAt: null`)
+      const unset = await this.prisma.issue.findMany({
+        where: { AND: [where, { severityId: null }] },
+        include: issueInclude,
+        orderBy,
+        take: take - rows.length,
+        ...(cursor && cursorInUnset ? { cursor: { id: cursor }, skip: 1 } : {}),
+      });
+      rows.push(...unset);
+    }
+    return cursorPage(
+      rows.map((r) => this.toListDto(r)),
+      limit,
+      (i) => i.id,
+    );
+  }
+
+  /**
+   * DTO của NHIỀU việc theo id trong MỘT truy vấn — ngữ cảnh HỆ THỐNG có chủ đích (không lọc dự án riêng tư): chỉ dùng
+   * để phát sự kiện realtime sau khi nghiệp vụ đã tự kiểm quyền (vd tự gán việc Jira). Không dùng cho đường đọc của người dùng.
+   */
+  async getDtosByIdsForSystem(workspaceId: string, ids: string[]): Promise<IssueDto[]> {
+    if (ids.length === 0) return [];
+    const rows = await this.prisma.issue.findMany({
+      where: { workspaceId, id: { in: ids }, deletedAt: null, project: { deletedAt: null } },
+      include: issueInclude,
+    });
+    return rows.map((r) => this.toDto(r));
+  }
+
+  async getByKey(workspaceId: string, key: string, viewerId: string | null): Promise<IssueDto> {
+    const issue = await this.prisma.issue.findFirst({
+      where: {
+        workspaceId,
+        key,
+        deletedAt: null,
+        project: await this.projectScope(workspaceId, viewerId),
+      },
+      include: issueInclude,
+    });
     if (!issue) throw new NotFoundAppException('Công việc');
     return this.toDto(issue);
   }
 
-  async update(workspaceId: string, userId: string, id: string, input: UpdateIssueInput): Promise<IssueDto> {
+  /**
+   * `opts` do automation truyền vào (tầng/chuỗi quy tắc): gắn vào `meta` của sự kiện để engine chặn vòng lặp,
+   * và bỏ qua kiểm tra "chỉ người tạo/quản trị sửa Hạn" (người dùng hệ thống không phải thành viên —
+   * quy tắc đã do quản trị tạo).
+   */
+  async update(
+    workspaceId: string,
+    userId: string,
+    id: string,
+    input: UpdateIssueInput,
+    opts?: AutomationEventMeta,
+    ownOnly?: boolean,
+  ): Promise<IssueDto> {
     const current = await this.requireIssue(workspaceId, id);
+    if (ownOnly) this.assertOwnsIssue(userId, current);
     this.assertVersion(current.version, input.version);
     await this.assertMetaInWorkspace(workspaceId, {
-      typeId: input.typeId, priorityId: input.priorityId, sprintId: input.sprintId,
-      resolutionId: input.resolutionId, parentId: input.parentId, epicId: input.epicId,
+      typeId: input.typeId,
+      priorityId: input.priorityId,
+      severityId: input.severityId,
+      sprintId: this.sprintIfChanged(input.sprintId, current.sprintId),
+      resolutionId: input.resolutionId,
+      parentId: input.parentId,
+      projectId: current.projectId,
     });
+    if (input.epicId && input.epicId !== current.epicId) {
+      await this.assertEpicValid(this.prisma, workspaceId, input.epicId, current.projectId, id);
+      this.assertNotEpicWithEpic(current.type);
+    }
+    // Cây việc: cha hợp lệ (không Epic có cha, cùng dự án, không sub-task) và không vòng theo `parentId ?? epicId`.
+    const newParent = input.parentId && input.parentId !== current.parentId ? input.parentId : null;
+    const newEpic = input.epicId && input.epicId !== current.epicId ? input.epicId : null;
+    if (newParent && newParent !== id)
+      await this.assertParentPlacement(this.prisma, workspaceId, current, newParent);
+    for (const start of [newParent, newEpic])
+      if (start && start !== id) await this.assertNoTreeCycle(this.prisma, workspaceId, id, start);
+    if (input.assigneeId !== undefined && input.assigneeId !== current.assigneeId)
+      await this.assertAssigneeInWorkspace(
+        workspaceId,
+        input.assigneeId,
+        this.prisma,
+        current.projectId,
+      );
 
-    // Field-level: Story points / Hạn chỉ người tạo hoặc admin sửa được.
-    if (input.storyPoints !== undefined || input.dueDate !== undefined) {
+    // Field-level: Hạn / Ngày bắt đầu chỉ người tạo hoặc admin sửa được (điểm: ai sửa được công việc thì sửa được).
+    if (
+      (input.dueDate !== undefined || input.startDate !== undefined) &&
+      opts?.automationDepth === undefined
+    ) {
       await this.assertCanEditRestrictedFields(userId, workspaceId, current);
     }
-
-    const data: Prisma.IssueUpdateInput = { version: { increment: 1 }, updatedById: userId };
-    if (input.summary !== undefined) data.summary = input.summary;
-    if (input.description !== undefined) data.description = input.description;
-    if (input.priorityId !== undefined) data.priority = input.priorityId ? { connect: { id: input.priorityId } } : { disconnect: true };
-    if (input.assigneeId !== undefined) data.assignee = input.assigneeId ? { connect: { id: input.assigneeId } } : { disconnect: true };
-    if (input.storyPoints !== undefined) data.storyPoints = input.storyPoints;
-    if (input.sprintId !== undefined) data.sprint = input.sprintId ? { connect: { id: input.sprintId } } : { disconnect: true };
-    if (input.resolutionId !== undefined) data.resolution = input.resolutionId ? { connect: { id: input.resolutionId } } : { disconnect: true };
-    if (input.typeId !== undefined && input.typeId) data.type = { connect: { id: input.typeId } };
-    if (input.dueDate !== undefined) data.dueDate = input.dueDate ? new Date(input.dueDate) : null;
-    if (input.startDate !== undefined) data.startDate = input.startDate ? new Date(input.startDate) : null;
-    if (input.parentId !== undefined) {
-      if (input.parentId === id) throw new BusinessRuleException('Một công việc không thể là việc cha của chính nó — hãy chọn một công việc khác làm việc cha');
-      if (input.parentId) {
-        await this.assertNoParentCycle(workspaceId, id, input.parentId);
-        data.parent = { connect: { id: input.parentId } };
-      } else {
-        data.parent = { disconnect: true };
-      }
+    // Thứ tự ngày tính trên giá trị HIỆU LỰC sau khi sửa (trường không gửi giữ giá trị hiện có) — và CHỈ khi request
+    // đổi startDate/dueDate: dữ liệu cũ sai thứ tự (API trước đây không kiểm) không được làm mọi chỉnh sửa khác 422.
+    if (input.startDate !== undefined || input.dueDate !== undefined) {
+      this.assertScheduleOrder(
+        input.startDate !== undefined ? input.startDate : current.startDate,
+        input.dueDate !== undefined ? input.dueDate : current.dueDate,
+      );
     }
 
-    const updated = await this.prisma.issue.update({ where: { id }, data, include: issueInclude });
-    await this.recordChanges(userId, current, updated);
+    const data: Prisma.IssueUncheckedUpdateManyInput = { updatedById: userId };
+    if (input.summary !== undefined) data.summary = input.summary;
+    if (input.description !== undefined) data.description = input.description;
+    if (input.acceptanceCriteria !== undefined)
+      data.acceptanceCriteria = input.acceptanceCriteria?.trim() ? input.acceptanceCriteria : null;
+    if (input.priorityId !== undefined) data.priorityId = input.priorityId ?? null;
+    if (input.severityId !== undefined) data.severityId = input.severityId ?? null;
+    if (input.environment !== undefined)
+      data.environment = normalizeEnvironment(input.environment) ?? Prisma.DbNull;
+    if (input.assigneeId !== undefined) data.assigneeId = input.assigneeId ?? null;
+    if (input.storyPoints !== undefined) data.storyPoints = input.storyPoints;
+    if (input.sprintId !== undefined) data.sprintId = input.sprintId ?? null;
+    if (input.resolutionId !== undefined) data.resolutionId = input.resolutionId ?? null;
+    if (input.typeId !== undefined && input.typeId) data.typeId = input.typeId;
+    if (input.dueDate !== undefined) data.dueDate = input.dueDate ? new Date(input.dueDate) : null;
+    if (input.startDate !== undefined)
+      data.startDate = input.startDate ? new Date(input.startDate) : null;
+    if (input.originalEstimate !== undefined)
+      data.originalEstimate = input.originalEstimate ?? null;
+    if (input.remainingEstimate !== undefined)
+      data.remainingEstimate = input.remainingEstimate ?? null;
+    if (input.epicId !== undefined) data.epicId = input.epicId ?? null;
+    if (input.parentId !== undefined) {
+      if (input.parentId === id)
+        throw new BusinessRuleException(
+          'Một công việc không thể là việc cha của chính nó — hãy chọn một công việc khác làm việc cha',
+        );
+      if (input.parentId) await this.assertNoParentCycle(workspaceId, id, input.parentId);
+      data.parentId = input.parentId ?? null;
+    }
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const row = await this.updateWithVersion(tx, id, workspaceId, input.version, data);
+      await this.recordChanges(tx, userId, current, row);
+      return row;
+    });
     const dto = this.toDto(updated);
-    this.events.emit(DOMAIN_EVENTS.ISSUE_UPDATED, { issue: dto, actorId: userId });
+    this.events.emit(DOMAIN_EVENTS.ISSUE_UPDATED, {
+      issue: dto,
+      actorId: userId,
+      changedFields: changedFieldsOf(current, updated),
+      ...withMeta(opts),
+    });
     return dto;
   }
 
-  async transition(workspaceId: string, userId: string, id: string, input: TransitionIssueInput): Promise<IssueDto> {
+  /**
+   * Sửa hàng loạt MỘT lô issue của cùng dự án trong một transaction. Item bị người khác sửa trước
+   * (version lệch) không làm hỏng cả lô: được thu vào `conflicts` kèm version hiện tại.
+   * Item không thuộc dự án/không gian làm việc, hoặc chuyển trạng thái sai workflow → lỗi cho cả yêu cầu, chưa ghi gì.
+   * Sự kiện chỉ phát sau khi commit.
+   */
+  async bulkUpdate(
+    workspaceId: string,
+    userId: string,
+    input: BulkUpdateIssuesInput,
+    ownOnly?: boolean,
+  ): Promise<BulkUpdateIssuesResult> {
+    const { projectId, items, patch } = input;
+    // Đổi trạng thái chỉ đi qua quyền chuyển trạng thái (giống POST :id/transition), không đi chung quyền sửa.
+    let transitionOwnOnly = false;
+    if (patch.statusId)
+      transitionOwnOnly = (await this.assertCanTransition(userId, workspaceId, projectId)).ownOnly;
+    await assertProjectWritable(this.prisma, projectId);
+    const rows = await this.prisma.issue.findMany({
+      where: { id: { in: items.map((i) => i.id) }, workspaceId, projectId, deletedAt: null },
+      include: issueInclude,
+    });
+    if (rows.length !== items.length) throw new NotFoundAppException('Công việc');
+    const byId = new Map(rows.map((r) => [r.id, r]));
+    if (ownOnly || transitionOwnOnly) for (const r of rows) this.assertOwnsIssue(userId, r); // một việc của người khác → 403 cả lô, chưa ghi gì
+    await this.assertMetaInWorkspace(workspaceId, {
+      priorityId: patch.priorityId,
+      // Chỉ kiểm khi có việc thật sự đổi sprint (lô đã ở đúng sprint đó thì thôi).
+      sprintId: rows.some((r) => r.sprintId !== patch.sprintId) ? patch.sprintId : undefined,
+      projectId,
+    });
+    // Chỉ kiểm khi có hàng thật sự đổi assignee (hàng đã giữ đúng assignee đó thì bỏ qua).
+    if (patch.assigneeId !== undefined && rows.some((r) => r.assigneeId !== patch.assigneeId))
+      await this.assertAssigneeInWorkspace(workspaceId, patch.assigneeId, this.prisma, projectId);
+    // storyPoints không cần kiểm quyền riêng: `ownOnly` ở trên đã 403 cả lô khi có việc của người khác.
+    if (patch.epicId) for (const r of rows) this.assertNotEpicWithEpic(r.type);
+    if (patch.epicId)
+      await this.assertEpicForBulk(
+        workspaceId,
+        patch.epicId,
+        projectId,
+        items.map((i) => i.id),
+      );
+    const labelOps =
+      patch.labels && (patch.labels.add?.length ?? 0) + (patch.labels.remove?.length ?? 0) > 0
+        ? patch.labels
+        : null;
+    if (labelOps)
+      await this.assertLabelsInProject(projectId, [
+        ...(labelOps.add ?? []),
+        ...(labelOps.remove ?? []),
+      ]);
+
+    // Chuyển trạng thái: kiểm tra workflow đúng như transition() trước khi ghi bất cứ thứ gì.
+    let toDone = false;
+    let doneResolutionId: string | null = null;
+    if (patch.statusId) {
+      const workflowId = await this.workflowIdOf(projectId);
+      for (const r of rows) {
+        if (r.statusId !== patch.statusId)
+          await this.assertTransitionAllowed(workflowId, r.statusId, patch.statusId);
+      }
+      toDone = (await this.statusCategory(patch.statusId)) === 'DONE';
+      // Một lần tra mặc định cho cả lô (bulk không nhận resolution tường minh).
+      if (toDone) doneResolutionId = await this.defaultResolutionId(this.prisma, workspaceId);
+    }
+    // Giới hạn WIP của cột đích (nếu web gửi boardId); kiểm lại trong transaction sau khi khoá cột.
+    const wip = patch.statusId
+      ? await this.wipService.resolveWipColumn(input.boardId, projectId, patch.statusId)
+      : null;
+
+    const conflicts: BulkUpdateIssuesResult['conflicts'] = [];
+    const changed: Array<{ before: IssueRow; after: IssueRow }> = [];
+    const result: IssueRow[] = [];
+    const labelIds: string[] = []; // hàng đã/sẽ được ghi nhãn (version còn khớp)
+    await this.prisma.$transaction(async (tx) => {
+      if (wip) {
+        // Chỉ tính việc thật sự SẼ vào cột: version còn khớp và chưa nằm trong cột đích.
+        const incoming = items.filter((i) => {
+          const b = byId.get(i.id)!;
+          return b.version === i.version && !wip.statusIds.includes(b.statusId);
+        }).length;
+        if (incoming > 0)
+          await this.wipService.enforceWip(tx, wip, {
+            userId,
+            workspaceId,
+            projectId,
+            incoming,
+            force: input.force,
+          });
+      }
+      for (const item of items) {
+        const before = byId.get(item.id)!;
+        // Version đã lệch ngay từ lúc đọc: không cần ghi. Nếu khớp lúc đọc mà ghi thất bại thì updateWithVersion báo conflict.
+        if (before.version !== item.version) {
+          conflicts.push({ id: item.id, version: before.version });
+          continue;
+        }
+        const statusChanged = patch.statusId !== undefined && patch.statusId !== before.statusId;
+        const data: Prisma.IssueUncheckedUpdateManyInput = {};
+        if (statusChanged) {
+          data.statusId = patch.statusId;
+          data.resolutionId = toDone ? (before.resolutionId ?? doneResolutionId) : null;
+          data.resolvedAt = toDone ? new Date() : null;
+        }
+        if (patch.assigneeId !== undefined && patch.assigneeId !== before.assigneeId)
+          data.assigneeId = patch.assigneeId;
+        if (patch.priorityId !== undefined && patch.priorityId !== before.priorityId)
+          data.priorityId = patch.priorityId;
+        if (patch.sprintId !== undefined && patch.sprintId !== before.sprintId)
+          data.sprintId = patch.sprintId;
+        if (patch.storyPoints !== undefined && patch.storyPoints !== before.storyPoints)
+          data.storyPoints = patch.storyPoints;
+        if (patch.epicId !== undefined && patch.epicId !== before.epicId)
+          data.epicId = patch.epicId;
+        if (Object.keys(data).length === 0) {
+          if (labelOps) labelIds.push(item.id);
+          result.push(before); // không có gì khác đi — coi như đã đạt, không tăng version
+          continue;
+        }
+        data.updatedById = userId;
+        try {
+          const after = await this.updateWithVersion(tx, item.id, workspaceId, item.version, data);
+          await this.recordChanges(tx, userId, before, after);
+          if (statusChanged) await this.recordStatusChange(tx, userId, before, after);
+          changed.push({ before, after });
+          result.push(after);
+          if (labelOps) labelIds.push(item.id);
+        } catch (e) {
+          if (!(e instanceof VersionConflictException)) throw e;
+          conflicts.push({ id: item.id, version: (e.current as { version: number }).version });
+        }
+      }
+      if (labelOps && labelIds.length) await this.applyBulkLabels(tx, labelIds, labelOps);
+    }, BULK_TX_OPTIONS);
+
+    const fresh = await this.emitBulkEvents(workspaceId, userId, projectId, changed, labelIds);
+    return { updated: result.map((r) => this.toDto(fresh.get(r.id) ?? r)), conflicts };
+  }
+
+  /** Ghi nhãn cho các hàng của lô. Nhãn không phải cột của Issue nên không tăng version (giống POST :id/labels). */
+  private async applyBulkLabels(
+    tx: Prisma.TransactionClient,
+    issueIds: string[],
+    ops: { add?: string[]; remove?: string[] },
+  ): Promise<void> {
+    if (ops.add?.length)
+      await tx.issueLabel.createMany({
+        data: issueIds.flatMap((issueId) => ops.add!.map((labelId) => ({ issueId, labelId }))),
+        skipDuplicates: true,
+      });
+    if (ops.remove?.length)
+      await tx.issueLabel.deleteMany({
+        where: { issueId: { in: issueIds }, labelId: { in: ops.remove } },
+      });
+  }
+
+  /**
+   * Phát sự kiện của lô SAU commit; đọc lại hàng có đổi nhãn để DTO/sự kiện phản ánh đúng nhãn sau khi ghi.
+   * Trả về map id → hàng đã đọc lại (rỗng khi lô không đổi nhãn).
+   */
+  private async emitBulkEvents(
+    workspaceId: string,
+    userId: string,
+    projectId: string,
+    changed: Array<{ before: IssueRow; after: IssueRow }>,
+    labelIds: string[],
+  ): Promise<Map<string, IssueRow>> {
+    // Đọc lại hàng có đổi nhãn để `updated[].labels` và sự kiện phản ánh đúng sau khi ghi.
+    const fresh = new Map<string, IssueRow>();
+    if (labelIds.length) {
+      try {
+        const reread = await this.prisma.issue.findMany({
+          where: { id: { in: labelIds }, workspaceId, deletedAt: null },
+          include: issueInclude,
+        });
+        for (const r of reread) fresh.set(r.id, r);
+      } catch (e) {
+        // Dữ liệu ĐÃ commit: đọc lại lỗi chỉ làm mất nhãn mới trong phản hồi/sự kiện, không được biến thành lỗi của request.
+        this.logger.warn(
+          `Bulk: đọc lại ${labelIds.length} việc sau khi gắn nhãn lỗi — ${(e as Error).message}`,
+        );
+      }
+    }
+    const labelSet = new Set(labelIds);
+    const changedIds = new Set(changed.map((c) => c.after.id));
+    // Cả lô là MỘT "lần sửa hàng loạt": mỗi ISSUE_UPDATED mang `batch` để Telegram bỏ qua từng việc (gửi một tin gộp qua
+    // ISSUES_BULK_UPDATED) và automation gộp thông báo. KHÔNG dùng `bulk: true` — cờ đó là "hệ thống phát hàng loạt" (thông
+    // báo "được giao"/theo dõi/automation bỏ qua hẳn), còn người dùng sửa hàng loạt vẫn phải báo người được giao.
+    // `touched` = mọi việc của lô có thay đổi người dùng thấy (đổi trường theo dõi, nhãn HOẶC chỉ đổi trạng thái): cả
+    // ISSUE_TRANSITIONED lẫn ISSUE_UPDATED của lô mang `batch`, và Telegram nhận một tin gộp cho cả lô.
+    const touched = new Set<string>();
+    for (const { before, after } of changed)
+      if (
+        changedFieldsOf(before, after).length > 0 ||
+        before.statusId !== after.statusId ||
+        labelSet.has(after.id)
+      )
+        touched.add(after.id);
+    for (const id of labelSet) touched.add(id);
+    const batch = { id: randomUUID(), size: touched.size };
+    for (const { before, after } of changed) {
+      const dto = this.toDto(fresh.get(after.id) ?? after);
+      const changedFields = changedFieldsOf(before, after);
+      if (labelSet.has(after.id)) changedFields.push('labels');
+      if (before.statusId !== after.statusId) {
+        this.events.emit(DOMAIN_EVENTS.ISSUE_TRANSITIONED, {
+          issue: dto,
+          actorId: userId,
+          fromStatusId: before.statusId,
+          batch,
+        });
+      }
+      // Đổi thêm assignee/priority/sprint cùng lúc với status: vẫn phải có ISSUE_UPDATED
+      // (thông báo "được giao việc", trigger automation). TRACKED_FIELDS không chứa status.
+      if (changedFields.length > 0) {
+        this.events.emit(DOMAIN_EVENTS.ISSUE_UPDATED, {
+          issue: dto,
+          actorId: userId,
+          changedFields,
+          batch,
+        });
+      }
+    }
+    // Hàng chỉ đổi nhãn (không có cột nào khác đổi): vẫn báo realtime cho người khác.
+    for (const id of labelSet) {
+      const row = fresh.get(id);
+      if (!row || changedIds.has(id)) continue;
+      this.events.emit(DOMAIN_EVENTS.ISSUE_UPDATED, {
+        issue: this.toDto(row),
+        actorId: userId,
+        changedFields: ['labels'],
+        batch,
+      });
+    }
+    if (touched.size > 0)
+      this.events.emit(DOMAIN_EVENTS.ISSUES_BULK_UPDATED, {
+        workspaceId,
+        projectId,
+        actorId: userId,
+        count: touched.size,
+        issueIds: [...touched],
+      });
+    return fresh;
+  }
+
+  async transition(
+    workspaceId: string,
+    userId: string,
+    id: string,
+    input: TransitionIssueInput,
+    opts?: AutomationEventMeta,
+    ownOnly?: boolean,
+  ): Promise<IssueTransitionResultDto> {
     const current = await this.requireIssue(workspaceId, id);
+    if (ownOnly) this.assertOwnsIssue(userId, current);
     this.assertVersion(current.version, input.version);
     await this.assertMetaInWorkspace(workspaceId, { resolutionId: input.resolutionId });
     if (current.statusId === input.toStatusId) return this.toDto(current);
+    // Lý do được lưu thành bình luận → cần `comment:create`. Thiếu quyền thì báo TRƯỚC khi ghi gì
+    // (bỏ qua im lặng sẽ nuốt chữ người dùng đã gõ).
+    const reason = input.comment?.trim();
+    if (reason) await this.assertCanWriteReason(userId, workspaceId, current.projectId);
 
     // Validate transition theo workflow của project
-    const project = await this.prisma.project.findUnique({ where: { id: current.projectId }, select: { defaultWorkflowId: true } });
-    const allowed = await this.prisma.workflowTransition.findFirst({
-      where: {
-        workflowId: project?.defaultWorkflowId ?? '',
-        toStatusId: input.toStatusId,
-        OR: [{ fromStatusId: current.statusId }, { fromStatusId: null }],
-      },
-      select: { id: true },
-    });
-    if (!allowed) throw new InvalidTransitionException();
+    const workflowId = await this.workflowIdOf(current.projectId);
+    await this.assertTransitionAllowed(workflowId, current.statusId, input.toStatusId);
 
-    const toStatus = await this.prisma.status.findUnique({ where: { id: input.toStatusId }, select: { category: true } });
-    const isDone = toStatus?.category === 'DONE';
+    const isDone = (await this.statusCategory(input.toStatusId)) === 'DONE';
+    const resolutionId = isDone
+      ? await this.resolutionForDone(
+          this.prisma,
+          workspaceId,
+          input.resolutionId,
+          current.resolutionId,
+        )
+      : null;
+    const wip = await this.wipService.resolveWipColumn(
+      input.boardId,
+      current.projectId,
+      input.toStatusId,
+      current.statusId,
+    );
 
-    const updated = await this.prisma.issue.update({
-      where: { id },
-      data: {
+    const updated = await this.prisma.$transaction(async (tx) => {
+      if (wip)
+        await this.wipService.enforceWip(tx, wip, {
+          userId,
+          workspaceId,
+          projectId: current.projectId,
+          incoming: 1,
+          force: input.force,
+        });
+      const row = await this.updateWithVersion(tx, id, workspaceId, input.version, {
         statusId: input.toStatusId,
-        version: { increment: 1 },
         updatedById: userId,
-        resolutionId: isDone ? (input.resolutionId ?? undefined) : null,
+        resolutionId,
         resolvedAt: isDone ? new Date() : null,
-      },
-      include: issueInclude,
-    });
-    await this.prisma.issueHistory.create({
-      data: {
-        issueId: id, projectId: updated.projectId, sprintId: updated.sprintId,
-        field: 'STATUS', oldValue: current.status.name, newValue: updated.status.name,
-        oldCategory: current.status.category, newCategory: updated.status.category,
-        actorId: userId, occurredAt: new Date(),
-      },
+      });
+      await this.recordStatusChange(tx, userId, current, row);
+      return row;
     });
     const dto = this.toDto(updated);
-    this.events.emit(DOMAIN_EVENTS.ISSUE_TRANSITIONED, { issue: dto, actorId: userId, fromStatusId: current.statusId });
-    return dto;
+    this.events.emit(DOMAIN_EVENTS.ISSUE_TRANSITIONED, {
+      issue: dto,
+      actorId: userId,
+      fromStatusId: current.statusId,
+      ...withMeta(opts),
+    });
+    if (!reason) return dto;
+    // Sau commit: chuyển trạng thái là thao tác chính, lỗi ghi lý do chỉ log + báo qua cờ `reasonSaved=false`
+    // để FE nói rõ cho người dùng (không nuốt im lặng chữ họ đã gõ).
+    try {
+      if (!this.comments) throw new Error('CommentsService chưa được tiêm');
+      await this.comments.create(workspaceId, userId, id, {
+        body: `*Chuyển ${current.status.name} → ${updated.status.name}*\n\n${reason}`,
+        bodyFormat: 'MARKDOWN',
+      });
+      return { ...dto, reasonSaved: true };
+    } catch (e) {
+      this.logger.warn(`Ghi lý do chuyển trạng thái thất bại: ${String(e)}`);
+      return { ...dto, reasonSaved: false };
+    }
   }
 
-  async move(workspaceId: string, userId: string, id: string, input: MoveIssueInput): Promise<IssueDto> {
-    const current = await this.requireIssue(workspaceId, id);
-    this.assertVersion(current.version, input.version);
-    await this.assertMetaInWorkspace(workspaceId, { sprintId: input.sprintId });
-
-    const prevRank = input.afterId ? (await this.rankOf(input.afterId)) : null;
-    const nextRank = input.beforeId ? (await this.rankOf(input.beforeId)) : null;
-    const rank = rankBetween(prevRank, nextRank);
-
-    const updated = await this.prisma.issue.update({
-      where: { id },
-      data: {
-        rank,
-        statusId: input.statusId ?? current.statusId,
-        sprintId: input.sprintId !== undefined ? input.sprintId : current.sprintId,
-        version: { increment: 1 },
-        updatedById: userId,
-      },
-      include: issueInclude,
+  private async assertCanWriteReason(userId: string, workspaceId: string, projectId: string) {
+    const perms = await this.rbac.getEffectivePermissions(userId, workspaceId, projectId);
+    if (perms.has(PERMISSIONS.COMMENT_CREATE)) return;
+    const u = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { isSystemAdmin: true },
     });
+    if (u?.isSystemAdmin) return;
+    throw new ForbiddenAppException('Bạn không có quyền bình luận để ghi lý do');
+  }
+
+  async move(
+    workspaceId: string,
+    userId: string,
+    id: string,
+    input: MoveIssueInput,
+    ownOnly?: boolean,
+  ): Promise<IssueDto> {
+    const current = await this.requireIssue(workspaceId, id);
+    if (ownOnly) this.assertOwnsIssue(userId, current);
+    this.assertVersion(current.version, input.version);
+    const statusChanged = !!input.statusId && input.statusId !== current.statusId;
+    const sprintChanged = this.sprintIfChanged(input.sprintId, current.sprintId) !== undefined;
+    const wantsRank = !!input.afterId || !!input.beforeId;
+    // `/move` chỉ đòi `issue:transition` nhưng còn nhận sprint + mốc rank: hai việc đó cần quyền riêng (như `/rank`).
+    const useRankHint = await this.assertMoveCapabilities(workspaceId, userId, current, {
+      sprintChanged,
+      wantsRank,
+      statusChanged,
+    });
+    await this.assertMetaInWorkspace(workspaceId, {
+      sprintId: this.sprintIfChanged(input.sprintId, current.sprintId),
+      projectId: current.projectId,
+    });
+
+    // Kéo sang cột khác là đổi trạng thái: đi đúng workflow như transition()/bulkUpdate(). Kiểm TRƯỚC resolveRank
+    // để không rebalance rank rồi mới báo lỗi; kéo cùng cột/xếp lại thứ tự không đụng workflow.
+    let toDone = false;
+    let moveResolutionId: string | null = null;
+    if (statusChanged) {
+      await this.assertTransitionAllowed(
+        await this.workflowIdOf(current.projectId),
+        current.statusId,
+        input.statusId!,
+      );
+      toDone = (await this.statusCategory(input.statusId!)) === 'DONE';
+      // Board kéo sang Done không hỏi: nhận Resolution mặc định (sửa sau ở trang công việc).
+      if (toDone)
+        moveResolutionId = await this.resolutionForDone(
+          this.prisma,
+          workspaceId,
+          undefined,
+          current.resolutionId,
+        );
+    }
+
+    // Không có mốc nào ⇒ giữ rank hiện tại (trước đây rankBetween(null, null) đặt thẻ vào GIỮA dự án).
+    const hasNeighbor = wantsRank && useRankHint;
+
+    // Chỉ kiểm WIP khi thật sự đổi sang trạng thái khác (kéo trong cùng cột/xếp lại thứ tự thì không chiếm thêm chỗ).
+    const wip = statusChanged
+      ? await this.wipService.resolveWipColumn(
+          input.boardId,
+          current.projectId,
+          input.statusId!,
+          current.statusId,
+        )
+      : null;
+
+    // Rank được tính TRONG transaction, SAU khi khoá hàng dự án (cùng khoá với create/rebalance): trước đây đọc mốc ở
+    // ngoài khoá nên kéo xuống cuối đồng thời với create (hoặc hai lần kéo vào cùng khe) ra hai việc cùng rank.
+    // Thứ tự khoá cố định: dự án → cột WIP (enforceWip) → rank (có thể rebalance, khoá mọi dòng issue của dự án) → ghi.
+    // Cột LUÔN trước dòng như transition/bulkUpdate/move không mốc (khoá cột rồi mới tới dòng issue) nên rebalance không
+    // thể bắt chéo khoá với chúng — đảo lại (rank trước WIP) sẽ deadlock khi hai bên đụng nhau.
+    // Sự kiện rebalance (nếu hết chỗ chèn) gom vào `afterCommit`, chỉ phát sau khi commit.
+    const afterCommit: Array<() => void> = [];
+    let rank = current.rank;
+    const updated = await this.prisma.$transaction(
+      async (tx) => {
+        if (hasNeighbor)
+          await tx.project.update({
+            where: { id: current.projectId },
+            data: { updatedAt: new Date() },
+            select: { id: true },
+          });
+        if (wip)
+          await this.wipService.enforceWip(tx, wip, {
+            userId,
+            workspaceId,
+            projectId: current.projectId,
+            incoming: 1,
+            force: input.force,
+          });
+        if (hasNeighbor)
+          rank = await this.rankService.resolveRank(
+            current.projectId,
+            tx,
+            afterCommit,
+            id,
+            async () => ({
+              prev: input.afterId
+                ? await this.rankService.rankOf(workspaceId, current.projectId, input.afterId, tx)
+                : null,
+              next: input.beforeId
+                ? await this.rankService.rankOf(workspaceId, current.projectId, input.beforeId, tx)
+                : null,
+            }),
+          );
+        const row = await this.updateWithVersion(tx, id, workspaceId, input.version, {
+          rank,
+          statusId: input.statusId ?? current.statusId,
+          sprintId: input.sprintId !== undefined ? input.sprintId : current.sprintId,
+          updatedById: userId,
+          // Cùng quy ước bulkUpdate: sang DONE đặt Resolution mặc định (move không nhận resolutionId), rời DONE xoá cả hai.
+          ...(statusChanged
+            ? {
+                resolutionId: toDone ? moveResolutionId : null,
+                resolvedAt: toDone ? new Date() : null,
+              }
+            : {}),
+        });
+        // Kéo sang cột/trạng thái khác cũng là đổi trạng thái: ghi lịch sử để CFD/burndown không hụt.
+        if (row.statusId !== current.statusId)
+          await this.recordStatusChange(tx, userId, current, row);
+        // Đổi sprint qua move cũng phải để lại lịch sử SPRINT (burndown/velocity dựa vào đó), như update()/bulkUpdate().
+        // Ở move chỉ sprint có thể khác nên recordChanges chỉ ghi đúng dòng SPRINT.
+        if (row.sprintId !== current.sprintId) await this.recordChanges(tx, userId, current, row);
+        return row;
+      },
+      // Có mốc ⇒ có thể rebalance cả dự án trong tx (dự án lớn vượt 5s mặc định).
+      hasNeighbor ? { timeout: 30_000 } : undefined,
+    );
+    for (const fire of afterCommit) fire();
     const dto = this.toDto(updated);
     this.events.emit(DOMAIN_EVENTS.ISSUE_MOVED, {
-      issueId: id, projectId: updated.projectId, fromStatusId: current.statusId,
-      toStatusId: updated.statusId, rank, sprintId: updated.sprintId, version: updated.version, actorId: userId,
+      issueId: id,
+      projectId: updated.projectId,
+      fromStatusId: current.statusId,
+      toStatusId: updated.statusId,
+      rank,
+      sprintId: updated.sprintId,
+      version: updated.version,
+      actorId: userId,
     });
+    // ISSUE_MOVED lo rank/board realtime; ISSUE_TRANSITIONED cho automation, SLA, thông báo, watcher, tích hợp.
+    if (statusChanged)
+      this.events.emit(DOMAIN_EVENTS.ISSUE_TRANSITIONED, {
+        issue: dto,
+        actorId: userId,
+        fromStatusId: current.statusId,
+      });
+    // Đổi sprint cũng là cập nhật issue: automation/thông báo/tích hợp phải thấy (như PATCH).
+    if (updated.sprintId !== current.sprintId)
+      this.events.emit(DOMAIN_EVENTS.ISSUE_UPDATED, {
+        issue: dto,
+        actorId: userId,
+        changedFields: ['sprintId'],
+      });
     return dto;
   }
 
   /** Soft-delete (vào Recycle Bin). */
   async softDelete(workspaceId: string, userId: string, id: string): Promise<{ success: true }> {
-    await this.requireIssue(workspaceId, id);
-    await this.prisma.issue.update({ where: { id }, data: { deletedAt: new Date(), updatedById: userId } });
-    this.events.emit(DOMAIN_EVENTS.ISSUE_DELETED, { issueId: id, actorId: userId });
+    const current = await this.requireIssue(workspaceId, id);
+    // updateMany + deletedAt:null để hai lần xoá đồng thời chỉ một lần thắng (và chỉ phát sự kiện một lần).
+    const { count } = await this.prisma.issue.updateMany({
+      where: { id, workspaceId, deletedAt: null },
+      data: { deletedAt: new Date(), updatedById: userId, version: { increment: 1 } },
+    });
+    if (count === 0) throw new NotFoundAppException('Công việc');
+    this.events.emit(DOMAIN_EVENTS.ISSUE_DELETED, {
+      issueId: id,
+      projectId: current.projectId,
+      actorId: userId,
+    });
     return { success: true };
   }
 
+  /**
+   * Người BÁO/TẠO tự xoá việc của mình ngay sau khi tạo (nhầm, trùng) mà không cần `issue:delete`.
+   * Server quyết hết điều kiện: đúng người, trong `RETRACT_WINDOW_MS` kể từ `createdAt`, chưa có việc con,
+   * chưa có bình luận của người KHÁC. Xoá mềm → vào Thùng rác (quản trị dự án khôi phục được).
+   */
+  async retract(workspaceId: string, userId: string, id: string): Promise<{ success: true }> {
+    const current = await this.requireIssue(workspaceId, id); // đã chặn dự án lưu trữ
+    if (current.reporterId !== userId && current.createdById !== userId)
+      throw new ForbiddenAppException(
+        'Chỉ người báo cáo công việc này mới thu hồi được — hãy nhờ quản trị dự án xoá',
+      );
+    if (Date.now() - current.createdAt.getTime() > RETRACT_WINDOW_MS)
+      throw new BusinessRuleException('Đã quá 10 phút kể từ lúc báo — hãy nhờ quản trị dự án xoá');
+    const [children, others] = await Promise.all([
+      // Việc con (parentId) hoặc việc gắn vào Epic này (epicId) đều chặn thu hồi.
+      this.prisma.issue.count({
+        where: { deletedAt: null, OR: [{ parentId: id }, { epicId: id }] },
+      }),
+      // Bình luận không rõ tác giả (authorId NULL: tài khoản đã xoá/bình luận hệ thống) coi như của người khác;
+      // `authorId: { not }` một mình bị SQL bỏ qua NULL.
+      this.prisma.comment.count({
+        where: {
+          issueId: id,
+          deletedAt: null,
+          OR: [{ authorId: null }, { authorId: { not: userId } }],
+        },
+      }),
+    ]);
+    if (children > 0)
+      throw new BusinessRuleException('Công việc đã có việc con — hãy nhờ quản trị dự án xoá');
+    if (others > 0)
+      throw new BusinessRuleException('Đã có người bình luận — hãy nhờ quản trị dự án xoá');
+    return this.softDelete(workspaceId, userId, id);
+  }
+
+  /** Khôi phục việc đã xoá mềm (Thùng rác). Dự án lưu trữ → chặn; hai lần đồng thời chỉ một lần thắng. */
+  async restore(
+    workspaceId: string,
+    userId: string,
+    projectId: string,
+    issueId: string,
+  ): Promise<IssueDto> {
+    const where = { id: issueId, workspaceId, projectId, deletedAt: { not: null } };
+    // allow-deleted: khôi phục cố ý đọc việc đã xoá mềm
+    const current = await this.prisma.issue.findFirst({ where, include: issueWriteInclude });
+    if (!current) throw new NotFoundAppException('Công việc');
+    assertNotArchived(current.project.archivedAt);
+    // Cha/Epic đã xoá mềm (hoặc không còn) → khôi phục thành việc KHÔNG cha/epic thay vì treo vào việc đã xoá.
+    const refs = [current.parentId, current.epicId].filter((x): x is string => !!x);
+    const alive = new Set(
+      refs.length
+        ? (
+            await this.prisma.issue.findMany({
+              where: { id: { in: refs }, workspaceId, deletedAt: null },
+              select: { id: true },
+            })
+          ).map((r) => r.id)
+        : [],
+    );
+    const orphaned: string[] = [];
+    const detach: { parentId?: null; epicId?: null } = {};
+    if (current.parentId && !alive.has(current.parentId)) {
+      detach.parentId = null;
+      orphaned.push('parentId');
+    }
+    if (current.epicId && !alive.has(current.epicId)) {
+      detach.epicId = null;
+      orphaned.push('epicId');
+    }
+    const { count } = await this.prisma.issue.updateMany({
+      where,
+      data: { deletedAt: null, updatedById: userId, version: { increment: 1 }, ...detach },
+    });
+    if (count === 0) throw new NotFoundAppException('Công việc');
+    const row = await this.prisma.issue.findFirstOrThrow({
+      where: { id: issueId, workspaceId, deletedAt: null },
+      include: issueInclude,
+    });
+    const dto = this.toDto(row);
+    this.events.emit(DOMAIN_EVENTS.ISSUE_UPDATED, {
+      issue: dto,
+      actorId: userId,
+      changedFields: ['deletedAt', ...orphaned],
+    });
+    return dto;
+  }
+
   // ---------- helpers ----------
-  private async requireIssue(workspaceId: string, id: string): Promise<IssueRow> {
-    const issue = await this.prisma.issue.findFirst({ where: { id, workspaceId, deletedAt: null }, include: issueInclude });
+  /** Issue dùng cho thao tác GHI: dự án đã lưu trữ thì từ chối ngay. */
+  private async requireIssue(workspaceId: string, id: string): Promise<IssueWriteRow> {
+    const issue = await this.prisma.issue.findFirst({
+      where: { id, workspaceId, deletedAt: null },
+      include: issueWriteInclude,
+    });
     if (!issue) throw new NotFoundAppException('Công việc');
+    assertNotArchived(issue.project.archivedAt);
     return issue;
   }
 
   /** Chặn vòng lặp cây: đi ngược từ parent mới lên gốc, không được gặp lại chính issue con. */
-  private async assertNoParentCycle(workspaceId: string, childId: string, newParentId: string): Promise<void> {
+  private async assertNoParentCycle(
+    workspaceId: string,
+    childId: string,
+    newParentId: string,
+  ): Promise<void> {
     let cur: string | null = newParentId;
     let depth = 0;
     while (cur && depth < 200) {
       if (cur === childId) {
-        throw new BusinessRuleException('Không thể chọn việc con (hoặc việc cháu) làm việc cha vì sẽ tạo vòng lặp — hãy chọn một công việc ngoài nhánh này');
+        throw new BusinessRuleException(
+          'Không thể chọn việc con (hoặc việc cháu) làm việc cha vì sẽ tạo vòng lặp — hãy chọn một công việc ngoài nhánh này',
+        );
       }
       const p: { parentId: string | null } | null = await this.prisma.issue.findFirst({
         where: { id: cur, workspaceId, deletedAt: null },
@@ -382,25 +1888,145 @@ export class IssuesService {
     }
   }
 
+  private async workflowIdOf(projectId: string): Promise<string> {
+    const project = await this.prisma.project.findUnique({
+      where: { id: projectId },
+      select: { defaultWorkflowId: true },
+    });
+    return project?.defaultWorkflowId ?? '';
+  }
+
+  /** Chỉ cho chuyển sang `toStatusId` nếu workflow có transition từ trạng thái hiện tại (hoặc từ "bất kỳ"). */
+  private async assertTransitionAllowed(
+    workflowId: string,
+    fromStatusId: string,
+    toStatusId: string,
+  ): Promise<void> {
+    const allowed = await this.prisma.workflowTransition.findFirst({
+      where: { workflowId, toStatusId, OR: [{ fromStatusId }, { fromStatusId: null }] },
+      select: { id: true },
+    });
+    if (!allowed) throw new InvalidTransitionException();
+  }
+
+  private async statusCategory(statusId: string) {
+    return (
+      await this.prisma.status.findUnique({ where: { id: statusId }, select: { category: true } })
+    )?.category;
+  }
+
+  private async recordStatusChange(
+    tx: Prisma.TransactionClient,
+    userId: string,
+    before: IssueRow,
+    after: IssueRow,
+  ) {
+    await tx.issueHistory.create({
+      data: {
+        issueId: after.id,
+        projectId: after.projectId,
+        sprintId: after.sprintId,
+        field: 'STATUS',
+        oldValue: before.status.name,
+        newValue: after.status.name,
+        oldCategory: before.status.category,
+        newCategory: after.status.category,
+        actorId: userId,
+        occurredAt: new Date(),
+      },
+    });
+  }
+
+  /** Ghi có điều kiện version (OCC atomic). Trả row mới; ném VersionConflict nếu version đã đổi. */
+  private async updateWithVersion(
+    tx: Prisma.TransactionClient,
+    id: string,
+    workspaceId: string,
+    version: number,
+    data: Prisma.IssueUncheckedUpdateManyInput,
+  ): Promise<IssueRow> {
+    const { count } = await tx.issue.updateMany({
+      where: { id, workspaceId, deletedAt: null, version },
+      data: { ...data, version: { increment: 1 } },
+    });
+    if (count === 0) {
+      const cur = await tx.issue.findFirst({
+        where: { id, workspaceId, deletedAt: null },
+        select: { version: true },
+      });
+      if (!cur) throw new NotFoundAppException('Công việc');
+      throw new VersionConflictException(
+        'Người khác vừa sửa công việc này — hãy tải lại để xem bản mới nhất rồi thao tác lại',
+        { version: cur.version },
+      );
+    }
+    // allow-deleted: dòng vừa được updateMany (có deletedAt: null) trong cùng transaction — đọc lại chính nó
+    return tx.issue.findFirstOrThrow({ where: { id }, include: issueInclude });
+  }
+
   private assertVersion(currentVersion: number, inputVersion: number) {
     if (currentVersion !== inputVersion) {
-      throw new VersionConflictException('Người khác vừa sửa công việc này — hãy tải lại để xem bản mới nhất rồi thao tác lại', { version: currentVersion });
+      throw new VersionConflictException(
+        'Người khác vừa sửa công việc này — hãy tải lại để xem bản mới nhất rồi thao tác lại',
+        { version: currentVersion },
+      );
     }
   }
 
-  private async rankOf(id: string): Promise<string | null> {
-    const r = await this.prisma.issue.findUnique({ where: { id }, select: { rank: true } });
-    return r?.rank ?? null;
+  private async recordChanges(
+    tx: Prisma.TransactionClient,
+    userId: string,
+    before: IssueRow,
+    after: IssueRow,
+  ) {
+    const rows: Prisma.IssueHistoryCreateManyInput[] = [];
+    const base = {
+      issueId: after.id,
+      projectId: after.projectId,
+      sprintId: after.sprintId,
+      actorId: userId,
+      occurredAt: new Date(),
+    };
+    if (before.assigneeId !== after.assigneeId)
+      rows.push({
+        ...base,
+        field: 'ASSIGNEE',
+        oldValue: before.assigneeId,
+        newValue: after.assigneeId,
+      });
+    if (before.priorityId !== after.priorityId)
+      rows.push({
+        ...base,
+        field: 'PRIORITY',
+        oldValue: before.priority?.name,
+        newValue: after.priority?.name,
+      });
+    if (before.storyPoints !== after.storyPoints)
+      rows.push({
+        ...base,
+        field: 'STORY_POINTS',
+        oldValue: String(before.storyPoints ?? ''),
+        newValue: String(after.storyPoints ?? ''),
+        pointsDelta: (after.storyPoints ?? 0) - (before.storyPoints ?? 0),
+      });
+    if (before.sprintId !== after.sprintId)
+      rows.push({ ...base, field: 'SPRINT', oldValue: before.sprintId, newValue: after.sprintId });
+    // Lưu nguyên văn cũ/mới (FE tự tính diff). null và '' coi như nhau để khỏi tạo dòng rác.
+    // Chỉ `update()` đổi được mô tả — bulkUpdate/move đi qua đây nhưng before/after luôn cùng mô tả.
+    if ((before.description ?? '') !== (after.description ?? ''))
+      rows.push({
+        ...base,
+        field: 'DESCRIPTION',
+        oldValue: before.description,
+        newValue: after.description,
+      });
+    if (rows.length) await tx.issueHistory.createMany({ data: rows });
   }
 
-  private async recordChanges(userId: string, before: IssueRow, after: IssueRow) {
-    const rows: Prisma.IssueHistoryCreateManyInput[] = [];
-    const base = { issueId: after.id, projectId: after.projectId, sprintId: after.sprintId, actorId: userId, occurredAt: new Date() };
-    if (before.assigneeId !== after.assigneeId) rows.push({ ...base, field: 'ASSIGNEE', oldValue: before.assigneeId, newValue: after.assigneeId });
-    if (before.priorityId !== after.priorityId) rows.push({ ...base, field: 'PRIORITY', oldValue: before.priority?.name, newValue: after.priority?.name });
-    if (before.storyPoints !== after.storyPoints) rows.push({ ...base, field: 'STORY_POINTS', oldValue: String(before.storyPoints ?? ''), newValue: String(after.storyPoints ?? ''), pointsDelta: (after.storyPoints ?? 0) - (before.storyPoints ?? 0) });
-    if (before.sprintId !== after.sprintId) rows.push({ ...base, field: 'SPRINT', oldValue: before.sprintId, newValue: after.sprintId });
-    if (rows.length) await this.prisma.issueHistory.createMany({ data: rows });
+  /** DTO cho danh sách/tìm kiếm/board/Việc chờ: không kèm văn bản tiêu chí (tới 20k ký tự/dòng), chỉ `acceptanceProgress`. */
+  private toListDto(i: IssueRow): IssueDto {
+    const { acceptanceCriteria: _text, ...rest } = this.toDto(i);
+    return rest;
   }
 
   private toDto(i: IssueRow): IssueDto {
@@ -408,17 +2034,45 @@ export class IssuesService {
       id: i.id,
       key: i.key,
       summary: i.summary,
-      type: { id: i.type.id, name: i.type.name, key: i.type.key, iconUrl: i.type.iconUrl, color: i.type.color, hierarchyLevel: i.type.hierarchyLevel, isSubtask: i.type.isSubtask },
-      status: { id: i.status.id, workflowId: i.status.workflowId, name: i.status.name, category: i.status.category, color: i.status.color, order: i.status.order, isInitial: i.status.isInitial },
-      priority: i.priority ? { id: i.priority.id, name: i.priority.name, iconKey: i.priority.iconKey, color: i.priority.color, rank: i.priority.rank, isDefault: i.priority.isDefault } : null,
-      assignee: i.assignee ? this.userDto(i.assignee) : null,
+      type: {
+        id: i.type.id,
+        name: i.type.name,
+        key: i.type.key,
+        iconUrl: i.type.iconUrl,
+        color: i.type.color,
+        hierarchyLevel: i.type.hierarchyLevel,
+        isSubtask: i.type.isSubtask,
+      },
+      status: {
+        id: i.status.id,
+        workflowId: i.status.workflowId,
+        name: i.status.name,
+        category: i.status.category,
+        color: i.status.color,
+        order: i.status.order,
+        isInitial: i.status.isInitial,
+      },
+      priority: i.priority
+        ? {
+            id: i.priority.id,
+            name: i.priority.name,
+            iconKey: i.priority.iconKey,
+            color: i.priority.color,
+            rank: i.priority.rank,
+            isDefault: i.priority.isDefault,
+          }
+        : null,
+      assignee: i.assignee ? toUserRefDto(i.assignee) : null,
       workspaceId: i.workspaceId,
       projectId: i.projectId,
       number: i.number,
       description: i.description,
       descriptionFormat: i.descriptionFormat,
-      reporter: i.reporter ? this.userDto(i.reporter) : null,
+      acceptanceCriteria: i.acceptanceCriteria,
+      acceptanceProgress: countTasks(i.acceptanceCriteria),
+      reporter: i.reporter ? toUserRefDto(i.reporter) : null,
       reporterId: i.reporterId,
+      createdById: i.createdById,
       assigneeId: i.assigneeId,
       parentId: i.parentId,
       epicId: i.epicId,
@@ -427,23 +2081,42 @@ export class IssuesService {
       originalEstimate: i.originalEstimate,
       remainingEstimate: i.remainingEstimate,
       timeSpent: i.timeSpent,
-      dueDate: i.dueDate?.toISOString() ?? null,
-      startDate: i.startDate?.toISOString() ?? null,
-      resolution: i.resolution ? { id: i.resolution.id, name: i.resolution.name, description: i.resolution.description, rank: i.resolution.rank } : null,
-      resolvedAt: i.resolvedAt?.toISOString() ?? null,
-      severity: i.severity ? { id: i.severity.id, name: i.severity.name, description: i.severity.description, color: i.severity.color, rank: i.severity.rank, isDefault: i.severity.isDefault } : null,
+      dueDate: iso(i.dueDate),
+      startDate: iso(i.startDate),
+      resolution: i.resolution
+        ? {
+            id: i.resolution.id,
+            name: i.resolution.name,
+            description: i.resolution.description,
+            rank: i.resolution.rank,
+          }
+        : null,
+      resolvedAt: iso(i.resolvedAt),
+      severity: i.severity
+        ? {
+            id: i.severity.id,
+            name: i.severity.name,
+            description: i.severity.description,
+            color: i.severity.color,
+            rank: i.severity.rank,
+            isDefault: i.severity.isDefault,
+          }
+        : null,
       triageState: i.triageState,
-      triageSnoozeUntil: i.triageSnoozeUntil?.toISOString() ?? null,
+      triageSnoozeUntil: iso(i.triageSnoozeUntil),
       occurrenceCount: i.occurrenceCount,
+      environment: (i.environment as IssueEnvironment | null) ?? null,
       rank: i.rank,
       version: i.version,
-      labels: i.labels.map((l) => ({ id: l.label.id, projectId: l.label.projectId, name: l.label.name, color: l.label.color })),
+      labels: i.labels.map((l) => ({
+        id: l.label.id,
+        projectId: l.label.projectId,
+        name: l.label.name,
+        color: l.label.color,
+      })),
+      ...mapIssueSets(i),
       createdAt: i.createdAt.toISOString(),
       updatedAt: i.updatedAt.toISOString(),
     };
-  }
-
-  private userDto(u: { id: string; email: string; displayName: string; avatarUrl: string | null; timezone: string; locale: string; status: string; isSystemAdmin: boolean; lastSeenAt: Date | null; createdAt: Date }) {
-    return { id: u.id, email: u.email, displayName: u.displayName, avatarUrl: u.avatarUrl, timezone: u.timezone, locale: u.locale, status: u.status as never, isSystemAdmin: u.isSystemAdmin, lastSeenAt: u.lastSeenAt?.toISOString() ?? null, createdAt: u.createdAt.toISOString() };
   }
 }

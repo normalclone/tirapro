@@ -14,6 +14,11 @@ export const updateRoleSchema = z.object({
   description: z.string().max(200).nullable().optional(),
   color: z.string().max(40).nullable().optional(),
   permissionKeys: z.array(z.string()).optional(),
+  /**
+   * Điều kiện tiên quyết lạc quan: `updatedAt` của vai trò mà client đã thấy. Lệch (người khác vừa sửa) → 409
+   * VERSION_CONFLICT. Bỏ trống = không kiểm (client cũ).
+   */
+  expectedUpdatedAt: z.string().datetime().optional(),
 });
 
 export type CreateRoleInput = z.infer<typeof createRoleSchema>;

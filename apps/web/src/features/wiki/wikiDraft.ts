@@ -1,0 +1,114 @@
+import { useAuth } from '@/stores/auth';
+import type { CreateWikiInput } from './api';
+
+/** Bản nháp wiki tự lưu vào localStorage theo trang — hàm thuần/IO bọc try/catch (test được không cần DOM). */
+
+export interface WikiDraft {
+  title: string;
+  body: string;
+  /** Phiên bản trang lúc bắt đầu sửa. */
+  baseVersion: number | null;
+  savedAt: number;
+}
+
+/** Khoá theo TRANG và NGƯỜI DÙNG (hai tài khoản chung trình duyệt không thấy nháp của nhau). */
+export const wikiDraftKey = (
+  pageId: string,
+  userId: string | undefined = useAuth.getState().user?.id,
+) => `tirapro:wiki:draft:${userId ?? 'anon'}:${pageId}`;
+
+type Store = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
+const defaultStore = (): Store | null => {
+  try {
+    return typeof localStorage === 'undefined' ? null : localStorage;
+  } catch {
+    return null;
+  }
+};
+
+/** Có thay đổi so với trang đang lưu không (đang sửa). */
+export function isWikiDirty(
+  draft: { title: string; body: string },
+  page: { title: string; body: string } | undefined,
+): boolean {
+  return !!page && (draft.title !== page.title || draft.body !== page.body);
+}
+
+export function loadWikiDraft(
+  pageId: string,
+  store: Store | null = defaultStore(),
+): WikiDraft | null {
+  try {
+    const raw = store?.getItem(wikiDraftKey(pageId));
+    if (!raw) return null;
+    const d = JSON.parse(raw) as Partial<WikiDraft>;
+    if (typeof d.title !== 'string' || typeof d.body !== 'string') return null;
+    return {
+      title: d.title,
+      body: d.body,
+      baseVersion: typeof d.baseVersion === 'number' ? d.baseVersion : null,
+      savedAt: typeof d.savedAt === 'number' ? d.savedAt : 0,
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function saveWikiDraft(
+  pageId: string,
+  draft: Omit<WikiDraft, 'savedAt'>,
+  now = Date.now(),
+  store: Store | null = defaultStore(),
+): void {
+  try {
+    store?.setItem(wikiDraftKey(pageId), JSON.stringify({ ...draft, savedAt: now }));
+  } catch {
+    /* đầy bộ nhớ / chế độ riêng tư: bỏ qua, không làm hỏng việc soạn */
+  }
+}
+
+export function clearWikiDraft(pageId: string, store: Store | null = defaultStore()): void {
+  try {
+    store?.removeItem(wikiDraftKey(pageId));
+  } catch {
+    /* bỏ qua */
+  }
+}
+
+/** Đề nghị khôi phục khi nháp đã lưu KHÁC nội dung trang hiện tại. */
+export function draftOffer(
+  stored: WikiDraft | null,
+  page: { title: string; body: string },
+): WikiDraft | null {
+  return stored && isWikiDirty(stored, page) ? stored : null;
+}
+
+/**
+ * Trang MỚI chưa lưu (chưa có trên máy chủ): chỉ nhớ phía trình duyệt cha là ai và thuộc phạm vi nào. "Tạo trang mới"
+ * KHÔNG gọi máy chủ; `POST /wiki` chỉ chạy ở lần Lưu đầu → huỷ/đóng tab không để lại trang rỗng trong cây.
+ */
+export interface PendingNewPage {
+  parentId: string | null;
+  projectId: string | null;
+}
+
+/** Khoá nháp tự lưu của trang chưa có id thật (khác mọi id thật: cuid không bắt đầu bằng `new:`). */
+export const newDraftKey = (p: PendingNewPage): string =>
+  `new:${p.parentId ?? 'root'}:${p.projectId ?? 'shared'}`;
+
+export const isNewDraftKey = (id: string): boolean => id.startsWith('new:');
+
+/** Trang gốc theo phạm vi đang chọn; trang con LUÔN cùng phạm vi với trang cha (API từ chối nếu lệch). */
+export function pendingNewFor(
+  parent: { id: string; projectId: string | null } | null,
+  scopeProjectId: string | null,
+): PendingNewPage {
+  return parent
+    ? { parentId: parent.id, projectId: parent.projectId }
+    : { parentId: null, projectId: scopeProjectId };
+}
+
+/** Thân `POST /wiki` ở lần lưu đầu. */
+export function buildCreateInput(p: PendingNewPage, title: string, body: string): CreateWikiInput {
+  return { title: title.trim(), body, parentId: p.parentId, projectId: p.projectId };
+}

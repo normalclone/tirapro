@@ -1,10 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import * as Popover from '@radix-ui/react-popover';
-import { Check, ChevronDown, Copy, Plus, Trash2, Wand2, X } from 'lucide-react';
-import { toast } from 'sonner';
+import { Check, ChevronDown, Copy, ListFilter, Plus, Trash2, Wand2, X } from 'lucide-react';
+import { useCopyToClipboard } from '@/lib/useCopyToClipboard';
 import {
   CURRENT_USER_TOKEN,
-  isCategoricalField,
   isRelativeDateToken,
   jqlFieldType,
   serializeSimpleQuery,
@@ -15,12 +14,17 @@ import {
   type SimpleQuery,
 } from '@tirapro/shared';
 import { Button } from '@/components/ui/Button';
+import { EmptyState } from '@/components/ui/primitives';
 import { Input } from '@/components/ui/Input';
+import { DateInput } from '@/components/ui/DateInput';
 import { SearchSelect } from '@/components/ui/SearchSelect';
+import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { cn } from '@/lib/utils';
 import { useProjects } from '@/features/projects/api';
-import { useWorkspaceUsers } from '@/features/members/api';
+import { useSearchUsers } from '@/features/members/api';
 import { useFilterFields, type FieldOption } from './api';
+import { toDateInput } from '@/lib/dateFormat';
+import { STATUS_CATEGORY_LABEL } from '@/lib/terms';
 
 /* ------------------------------------------------------------------ */
 /* Metadata field (nhãn tiếng Việt + thứ tự hiển thị)                  */
@@ -31,13 +35,18 @@ const FIELD_DEFS: { field: JqlFieldName; label: string }[] = [
   { field: 'type', label: 'Loại' },
   { field: 'status', label: 'Trạng thái' },
   { field: 'statusCategory', label: 'Nhóm trạng thái' },
-  { field: 'priority', label: 'Độ ưu tiên' },
+  { field: 'priority', label: 'Mức ưu tiên' },
+  { field: 'severity', label: 'Mức nghiêm trọng' },
   { field: 'assignee', label: 'Người được giao' },
   { field: 'reporter', label: 'Người báo cáo' },
   { field: 'sprint', label: 'Sprint' },
   { field: 'labels', label: 'Nhãn' },
+  { field: 'component', label: 'Thành phần' },
+  { field: 'fixVersion', label: 'Phiên bản sửa' },
+  { field: 'affectedVersion', label: 'Phiên bản bị ảnh hưởng' },
   { field: 'resolution', label: 'Cách giải quyết' },
   { field: 'text', label: 'Văn bản (toàn văn)' },
+  { field: 'key', label: 'Mã công việc' },
   { field: 'summary', label: 'Tiêu đề' },
   { field: 'created', label: 'Ngày tạo' },
   { field: 'updated', label: 'Ngày cập nhật' },
@@ -45,15 +54,11 @@ const FIELD_DEFS: { field: JqlFieldName; label: string }[] = [
   { field: 'storyPoints', label: 'Story point' },
 ];
 
-const FIELD_LABEL: Record<string, string> = Object.fromEntries(
-  FIELD_DEFS.map((d) => [d.field, d.label]),
-);
-
 /** Nhóm trạng thái: enum cố định, khớp Status.category ở backend. */
 const STATUS_CATEGORY_OPTIONS: FieldOption[] = [
-  { value: 'TODO', label: 'Cần làm' },
-  { value: 'IN_PROGRESS', label: 'Đang làm' },
-  { value: 'DONE', label: 'Hoàn thành' },
+  { value: 'TODO', label: STATUS_CATEGORY_LABEL.TODO },
+  { value: 'IN_PROGRESS', label: STATUS_CATEGORY_LABEL.IN_PROGRESS },
+  { value: 'DONE', label: STATUS_CATEGORY_LABEL.DONE },
 ];
 
 const ME_OPTION: FieldOption = { value: CURRENT_USER_TOKEN, label: 'Tôi' };
@@ -126,10 +131,13 @@ export function QueryBuilder({
   onEditAsJql: () => void;
 }) {
   const { data: projects } = useProjects();
-  const { data: users } = useWorkspaceUsers();
+  // Lọc theo người (assignee/reporter): gồm cả tài khoản đã khoá để tìm được việc cũ của họ.
+  const { data: users } = useSearchUsers({ includeInactive: true, limit: 200 });
   const { data: fields } = useFilterFields();
 
-  const [query, setQuery] = useState<SimpleQuery>(() => tryParseToSimpleQuery(value) ?? EMPTY_QUERY);
+  const [query, setQuery] = useState<SimpleQuery>(
+    () => tryParseToSimpleQuery(value) ?? EMPTY_QUERY,
+  );
   const [complex, setComplex] = useState(
     () => value.trim() !== '' && tryParseToSimpleQuery(value) === null,
   );
@@ -219,9 +227,11 @@ export function QueryBuilder({
       {query.conditions.length > 1 && (
         <div className="flex items-center gap-2 text-sm text-muted">
           <span>Khớp</span>
-          <Segmented
+          <SegmentedControl
+            ariaLabel="Khớp"
+            fullWidth={false}
             value={query.combinator}
-            onChange={(v) => commit({ ...query, combinator: v as 'AND' | 'OR' })}
+            onChange={(v) => commit({ ...query, combinator: v })}
             options={[
               { value: 'AND', label: 'tất cả' },
               { value: 'OR', label: 'bất kỳ' },
@@ -232,9 +242,12 @@ export function QueryBuilder({
       )}
 
       {query.conditions.length === 0 ? (
-        <p className="rounded-lg border border-dashed border-border px-4 py-6 text-center text-sm text-muted">
-          Chưa có điều kiện. Thêm một dòng để lọc, hoặc để trống để xem tất cả công việc.
-        </p>
+        <EmptyState
+          size="compact"
+          icon={<ListFilter />}
+          title="Chưa có điều kiện"
+          description="Thêm một dòng để lọc, hoặc để trống để xem tất cả công việc."
+        />
       ) : (
         <ul className="flex flex-col gap-2">
           {query.conditions.map((c) => (
@@ -267,7 +280,9 @@ export function QueryBuilder({
             onChange={(v) =>
               commit({
                 ...query,
-                sort: v ? { field: v as JqlFieldName, direction: query.sort?.direction ?? 'DESC' } : null,
+                sort: v
+                  ? { field: v as JqlFieldName, direction: query.sort?.direction ?? 'DESC' }
+                  : null,
               })
             }
             options={[
@@ -278,10 +293,15 @@ export function QueryBuilder({
             align="end"
           />
           {query.sort && (
-            <Segmented
+            <SegmentedControl
+              ariaLabel="Hướng sắp xếp"
+              fullWidth={false}
               value={query.sort.direction}
               onChange={(v) =>
-                commit({ ...query, sort: { field: query.sort!.field, direction: v as 'ASC' | 'DESC' } })
+                commit({
+                  ...query,
+                  sort: { field: query.sort!.field, direction: v },
+                })
               }
               options={[
                 { value: 'DESC', label: 'Giảm' },
@@ -323,10 +343,17 @@ function optionsForField(field: JqlFieldName, sources: Sources): FieldOption[] |
       return sources.fields?.statuses ?? [];
     case 'priority':
       return sources.fields?.priorities ?? [];
+    case 'severity':
+      return sources.fields?.severities ?? [];
     case 'sprint':
       return sources.fields?.sprints ?? [];
     case 'labels':
       return sources.fields?.labels ?? [];
+    case 'component':
+      return sources.fields?.components ?? [];
+    case 'fixVersion':
+    case 'affectedVersion':
+      return sources.fields?.versions ?? [];
     case 'resolution':
       return sources.fields?.resolutions ?? [];
     default:
@@ -368,18 +395,13 @@ function ConditionRow({
         className="w-40"
       />
 
-      <SelectField
-        aria-label="Điều kiện"
+      <SearchSelect
+        ariaLabel="Điều kiện"
         value={operator}
-        onChange={(e) => onOperatorChange(e.target.value as BuilderOperator)}
+        onChange={(v) => onOperatorChange(v as BuilderOperator)}
+        options={operatorChoices.map((o) => ({ value: o.value, label: o.label }))}
         className="w-32"
-      >
-        {operatorChoices.map((o) => (
-          <option key={o.value} value={o.value}>
-            {o.label}
-          </option>
-        ))}
-      </SelectField>
+      />
 
       <div className="min-w-[12rem] flex-1">
         <ValueControl
@@ -495,46 +517,42 @@ function isAbsoluteDate(v: string): boolean {
 }
 
 function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
+  return toDateInput(new Date());
 }
 
 function DateValueControl({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const absolute = isAbsoluteDate(value);
   // Token tương đối lạ (gõ tay trong JQL) vẫn hiện được nhờ thêm tạm vào danh sách.
   const presets =
-    value && !absolute && !RELATIVE_DATE_PRESETS.some((p) => p.value === value) && isRelativeDateToken(value)
+    value &&
+    !absolute &&
+    !RELATIVE_DATE_PRESETS.some((p) => p.value === value) &&
+    isRelativeDateToken(value)
       ? [{ value, label: value }, ...RELATIVE_DATE_PRESETS]
       : RELATIVE_DATE_PRESETS;
 
   return (
     <div className="flex items-center gap-2">
-      <SelectField
-        aria-label="Loại ngày"
+      <SearchSelect
+        ariaLabel="Loại ngày"
         value={absolute ? ABS_SENTINEL : value}
-        onChange={(e) => {
-          const v = e.target.value;
-          onChange(v === ABS_SENTINEL ? todayIso() : v);
-        }}
+        onChange={(v) => onChange(v === ABS_SENTINEL ? todayIso() : v)}
+        options={[
+          { value: '', label: '— chọn mốc —' },
+          ...presets.map((p) => ({ value: p.value, label: p.label, group: 'Tương đối' })),
+          { value: ABS_SENTINEL, label: 'Ngày cụ thể…', group: 'Tuyệt đối' },
+        ]}
         className="min-w-0 flex-1"
-      >
-        <option value="">— chọn mốc —</option>
-        <optgroup label="Tương đối">
-          {presets.map((p) => (
-            <option key={p.value} value={p.value}>
-              {p.label}
-            </option>
-          ))}
-        </optgroup>
-        <option value={ABS_SENTINEL}>Ngày cụ thể…</option>
-      </SelectField>
+      />
       {absolute && (
-        <Input
-          type="date"
-          aria-label="Ngày cụ thể"
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          className="w-40 text-sm"
-        />
+        <div className="w-40">
+          <DateInput
+            ariaLabel="Ngày cụ thể"
+            value={value}
+            onChange={onChange}
+            className="text-sm"
+          />
+        </div>
       )}
     </div>
   );
@@ -705,10 +723,10 @@ function MultiSelect({
 /* ------------------------------------------------------------------ */
 
 function JqlPreview({ jql }: { jql: string }) {
+  const { copied, copy: copyText } = useCopyToClipboard();
   function copy() {
     if (!jql) return;
-    void navigator.clipboard?.writeText(jql);
-    toast.success('Đã chép JQL');
+    void copyText(jql, 'Đã chép JQL');
   }
   return (
     <div className="rounded-md border border-border bg-surface-2 px-3 py-2">
@@ -721,77 +739,20 @@ function JqlPreview({ jql }: { jql: string }) {
           type="button"
           onClick={copy}
           disabled={!jql}
+          // Giữ disabled:opacity (không dùng token vô hiệu) — nút chữ ghost không nền: chỉ cần mờ đi.
           className="flex items-center gap-1 text-xs text-muted transition-colors hover:text-ink disabled:opacity-40"
         >
-          <Copy className="h-3.5 w-3.5" aria-hidden />
-          Chép
+          {copied ? (
+            <Check className="h-3.5 w-3.5 text-success" aria-hidden />
+          ) : (
+            <Copy className="h-3.5 w-3.5" aria-hidden />
+          )}
+          {copied ? 'Đã chép' : 'Chép'}
         </button>
       </div>
       <code className="block break-all font-mono text-xs text-ink">
         {jql || 'Tất cả công việc (không có điều kiện lọc)'}
       </code>
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/* Primitives dùng chung trong builder                                 */
-/* ------------------------------------------------------------------ */
-
-function SelectField({
-  className,
-  children,
-  ...props
-}: React.SelectHTMLAttributes<HTMLSelectElement>) {
-  return (
-    <select
-      className={cn(
-        'h-9 rounded-md border border-border bg-bg px-2.5 text-sm text-ink transition-colors',
-        'focus-visible:outline-none focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
-        className,
-      )}
-      {...props}
-    >
-      {children}
-    </select>
-  );
-}
-
-/** Segmented control 2–3 lựa chọn (combinator, hướng sort, tab chế độ). */
-export function Segmented({
-  value,
-  onChange,
-  options,
-  className,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  options: { value: string; label: string }[];
-  className?: string;
-}) {
-  return (
-    <div
-      role="tablist"
-      className={cn('inline-flex rounded-md border border-border bg-surface-2 p-0.5', className)}
-    >
-      {options.map((o) => {
-        const active = o.value === value;
-        return (
-          <button
-            key={o.value}
-            type="button"
-            role="tab"
-            aria-selected={active}
-            onClick={() => onChange(o.value)}
-            className={cn(
-              'rounded-[5px] px-2.5 py-1 text-sm font-medium transition-colors',
-              active ? 'bg-surface text-ink shadow-sm' : 'text-muted hover:text-ink',
-            )}
-          >
-            {o.label}
-          </button>
-        );
-      })}
     </div>
   );
 }

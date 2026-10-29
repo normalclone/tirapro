@@ -34,7 +34,7 @@ const base = String(arg('base', 'http://localhost:5173')).replace(/\/$/, '');
 const viewport = String(arg('viewport', 'desktop'));
 const fullPage = arg('full', false) === true;
 const noLogin = arg('no-login', false) === true;
-const openNav = arg('open-nav', false) === true; // mở drawer sidebar (mobile) trước khi chụp
+const openNav = arg('open-nav', false) === true; // mở sheet "Tôi" (mobile: điều hướng phụ + tài khoản) trước khi chụp
 const waitSel = String(arg('wait', 'body'));
 const slug = route.replace(/[^\w]+/g, '_').replace(/^_|_$/g, '') || 'home';
 const out = resolve(String(arg('out', `.shots/${slug}_${viewport}.png`)));
@@ -81,13 +81,14 @@ try {
   // SPA nav nếu có link trong sidebar (giữ token in-memory); fallback full goto (dựa refresh cookie).
   const link = page.locator(`a[href="${route}"]`).first();
   if ((await link.count()) > 0) {
-    // Hamburger (lg:hidden) hiển thị ⇒ đang ở mobile ⇒ sidebar là drawer ẩn → mở trước.
-    const burger = page.getByRole('button', { name: 'Mở menu' });
-    if (await burger.isVisible().catch(() => false)) {
-      await burger.click();
-      await page.waitForTimeout(300);
+    // Dưới lg sidebar bị ẩn (display:none) — link đầu tiên có thể là mục không hiển thị. Chọn link ĐANG HIỆN
+    // (thanh tab đáy có Tổng quan/Dự án/Thông báo; mục khác nằm trong sheet "Tôi" → rơi về goto).
+    const visibleLink = page.locator(`a[href="${route}"]:visible`).first();
+    if ((await visibleLink.count()) === 0) {
+      await page.goto(`${base}${route}`, { waitUntil: 'networkidle' });
+    } else {
+      await visibleLink.click();
     }
-    await link.click();
     await page.waitForURL((u) => u.pathname === route, { timeout: 10000 }).catch(() => {});
     debug(`spa-nav url=${page.url()}`);
   } else {
@@ -99,10 +100,10 @@ try {
   await page.waitForTimeout(700); // chờ animation/skeleton lắng
 
   if (openNav) {
-    const burger = page.getByRole('button', { name: 'Mở menu' });
-    if (await burger.count()) {
-      await burger.click();
-      await page.waitForTimeout(400); // chờ drawer trượt xong
+    const me = page.getByRole('button', { name: 'Tôi', exact: true });
+    if (await me.isVisible().catch(() => false)) {
+      await me.click();
+      await page.waitForTimeout(400); // chờ sheet trượt lên xong
     }
   }
   debug(`final url=${page.url()}`);

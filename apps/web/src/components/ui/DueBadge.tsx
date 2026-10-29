@@ -1,26 +1,8 @@
-import { differenceInCalendarDays } from 'date-fns';
 import { AlertTriangle, CalendarClock } from 'lucide-react';
 import { cn } from '@/lib/utils';
-
-type DueLike = { dueDate: string | null; status?: { category?: string } | null };
-
-/** Issue quá hạn: có dueDate, chưa Done, và dueDate đã ở quá khứ. */
-export function isOverdue(issue: DueLike): boolean {
-  if (!issue.dueDate || issue.status?.category === 'DONE') return false;
-  return differenceInCalendarDays(new Date(issue.dueDate), new Date()) < 0;
-}
-
-export type DueState = 'overdue' | 'soon' | 'normal';
-
-/** Phân loại hạn: quá hạn / sắp đến hạn (≤2 ngày) / bình thường. null nếu không có hạn. */
-export function dueState(issue: DueLike): DueState | null {
-  if (!issue.dueDate) return null;
-  const done = issue.status?.category === 'DONE';
-  const days = differenceInCalendarDays(new Date(issue.dueDate), new Date());
-  if (!done && days < 0) return 'overdue';
-  if (!done && days <= 2) return 'soon';
-  return 'normal';
-}
+import { calendarDate } from '@/lib/calendarDate';
+import { fmtDayMonth } from '@/lib/dateFormat';
+import { dueDaysFromToday, dueState, type DueLike } from '@/lib/dueDate';
 
 /**
  * Class viền cảnh báo (toàn bộ viền, KHÔNG side-stripe) cho task sắp/đã quá hạn:
@@ -34,9 +16,8 @@ export function dueBorderClass(issue: DueLike): string {
   return '';
 }
 
-function shortDate(iso: string): string {
-  const d = new Date(iso);
-  return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
+function dueLabel(iso: string): string {
+  return fmtDayMonth(calendarDate(iso));
 }
 
 /**
@@ -58,7 +39,7 @@ export function DueBadge({
   if (warnOnly && st === 'normal') return null;
 
   if (st === 'overdue') {
-    const late = Math.abs(differenceInCalendarDays(new Date(issue.dueDate), new Date()));
+    const late = Math.abs(dueDaysFromToday(issue.dueDate));
     return (
       <span
         className={cn(
@@ -66,7 +47,7 @@ export function DueBadge({
           'bg-danger/10 text-danger',
           className,
         )}
-        title={`Quá hạn ${late} ngày (hạn ${shortDate(issue.dueDate)})`}
+        title={`Quá hạn ${late} ngày (hạn ${dueLabel(issue.dueDate)})`}
       >
         <AlertTriangle className="h-3 w-3" aria-hidden />
         Quá hạn{late > 0 ? ` ${late}n` : ''}
@@ -78,10 +59,14 @@ export function DueBadge({
   return (
     <span
       className={cn('inline-flex items-center gap-1 text-xs font-medium', tone, className)}
-      title={st === 'soon' ? `Sắp đến hạn (${shortDate(issue.dueDate)})` : `Hạn ${shortDate(issue.dueDate)}`}
+      title={
+        st === 'soon'
+          ? `Sắp đến hạn (${dueLabel(issue.dueDate)})`
+          : `Hạn ${dueLabel(issue.dueDate)}`
+      }
     >
       <CalendarClock className="h-3 w-3" aria-hidden />
-      {shortDate(issue.dueDate)}
+      {dueLabel(issue.dueDate)}
     </span>
   );
 }

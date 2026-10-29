@@ -1,14 +1,18 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnApplicationShutdown } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import type { Prisma } from '@prisma/client';
 import { PERMISSIONS } from '@tirapro/types';
 import { PrismaService } from '../../infra/prisma/prisma.service';
+import { RedisService } from '../../infra/redis/redis.service';
+import { withCronLock } from '../../common/cron-lock';
+import { assertNotArchived, assertProjectIdWritable } from '../../common/project-writable';
 import {
   BusinessRuleException,
   ForbiddenAppException,
   NotFoundAppException,
 } from '../../common/exceptions/app.exception';
 import { IssuesService } from '../issues/issues.service';
+import { ProjectAccessService } from '../rbac/project-access.service';
 import { RbacService } from '../rbac/rbac.service';
 import {
   issuePayloadSchema,
@@ -95,21 +99,43 @@ export interface RecurringIssueDto {
  * không làm hỏng lượt quét, cũng không bao giờ ném ra ngoài.
  */
 @Injectable()
-export class AutomationService {
+export class AutomationService implements OnApplicationShutdown {
   private readonly logger = new Logger(AutomationService.name);
+  /** Bật khi app tắt: vòng lặp cron dừng sớm thay vì chạy tiếp lúc đang đóng kết nối DB. */
+  private stopping = false;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly issues: IssuesService,
     private readonly rbac: RbacService,
+    private readonly redis: RedisService,
+    private readonly access: ProjectAccessService,
   ) {}
+
+  onApplicationShutdown(): void {
+    this.stopping = true;
+  }
 
   /* ============================== Mẫu issue ============================== */
 
   /** `projectId` bỏ trống = mọi mẫu; `none` = mẫu dùng chung; id dự án = mẫu của dự án + mẫu dùng chung. */
-  async listTemplates(workspaceId: string, projectId?: string): Promise<IssueTemplateDto[]> {
+  /**
+   * Mẫu của dự án riêng tư người xem không thấy bị loại (kể cả khi không truyền `projectId`: trước đây liệt kê mẫu của MỌI
+   * dự án trong workspace, lộ khoá/tên dự án + nội dung mẫu). Mẫu dùng chung (không dự án) luôn hiện. `AND` để không đè `OR`
+   * của `templateScope`.
+   */
+  async listTemplates(
+    workspaceId: string,
+    projectId: string | undefined,
+    viewerId: string,
+  ): Promise<IssueTemplateDto[]> {
+    const visible = await this.access.visibleWhere(viewerId, workspaceId);
     const rows = await this.prisma.issueTemplate.findMany({
-      where: { workspaceId, ...this.templateScope(projectId) },
+      where: {
+        workspaceId,
+        ...this.templateScope(projectId),
+        AND: [{ OR: [{ projectId: null }, { project: visible }] }],
+      },
       orderBy: [{ name: 'asc' }],
       include: { project: PROJECT_BRIEF },
     });
@@ -125,12 +151,17 @@ export class AutomationService {
     return this.toTemplateDto(row);
   }
 
-  async createTemplate(workspaceId: string, dto: CreateTemplateInput, actingUserId: string): Promise<IssueTemplateDto> {
+  async createTemplate(
+    workspaceId: string,
+    dto: CreateTemplateInput,
+    actingUserId: string,
+  ): Promise<IssueTemplateDto> {
     const name = dto.name.trim();
     if (!name) throw new BusinessRuleException('Tên mẫu bắt buộc');
     const projectId = dto.projectId ?? null;
     if (projectId) {
-      await this.requireProject(workspaceId, projectId);
+      const p = await this.requireProject(workspaceId, projectId);
+      assertNotArchived(p.archivedAt);
       await this.assertProjectAdmin(actingUserId, workspaceId, projectId);
     }
 
@@ -140,15 +171,21 @@ export class AutomationService {
         projectId,
         name,
         description: dto.description ?? null,
-        payload: this.cleanPayload(dto.payload) as Prisma.InputJsonValue,
+        payload: this.cleanPayload(dto.payload),
       },
       select: { id: true },
     });
     return this.getTemplate(workspaceId, created.id);
   }
 
-  async updateTemplate(workspaceId: string, id: string, dto: UpdateTemplateInput, actingUserId: string): Promise<IssueTemplateDto> {
+  async updateTemplate(
+    workspaceId: string,
+    id: string,
+    dto: UpdateTemplateInput,
+    actingUserId: string,
+  ): Promise<IssueTemplateDto> {
     const cur = await this.getTemplate(workspaceId, id);
+    await assertProjectIdWritable(this.prisma, cur.projectId);
     if (cur.projectId) await this.assertProjectAdmin(actingUserId, workspaceId, cur.projectId);
     const data: Prisma.IssueTemplateUpdateInput = {};
 
@@ -160,21 +197,27 @@ export class AutomationService {
     if (dto.description !== undefined) data.description = dto.description ?? null;
     if (dto.projectId !== undefined) {
       if (dto.projectId) {
-        await this.requireProject(workspaceId, dto.projectId);
+        const target = await this.requireProject(workspaceId, dto.projectId);
+        assertNotArchived(target.archivedAt);
         await this.assertProjectAdmin(actingUserId, workspaceId, dto.projectId);
         data.project = { connect: { id: dto.projectId } };
       } else {
         data.project = { disconnect: true };
       }
     }
-    if (dto.payload !== undefined) data.payload = this.cleanPayload(dto.payload) as Prisma.InputJsonValue;
+    if (dto.payload !== undefined) data.payload = this.cleanPayload(dto.payload);
 
     await this.prisma.issueTemplate.update({ where: { id }, data });
     return this.getTemplate(workspaceId, id);
   }
 
-  async removeTemplate(workspaceId: string, id: string, actingUserId: string): Promise<{ success: true }> {
+  async removeTemplate(
+    workspaceId: string,
+    id: string,
+    actingUserId: string,
+  ): Promise<{ success: true }> {
     const cur = await this.getTemplate(workspaceId, id);
+    await assertProjectIdWritable(this.prisma, cur.projectId);
     if (cur.projectId) await this.assertProjectAdmin(actingUserId, workspaceId, cur.projectId);
     await this.prisma.issueTemplate.delete({ where: { id } });
     return { success: true };
@@ -182,10 +225,16 @@ export class AutomationService {
 
   /* ============================ Việc lặp lại ============================ */
 
-  async listRecurring(workspaceId: string, projectId?: string): Promise<RecurringIssueDto[]> {
+  /** Việc lặp lại của dự án riêng tư người xem không thấy bị loại (kể cả khi không truyền `projectId`). */
+  async listRecurring(
+    workspaceId: string,
+    projectId: string | undefined,
+    viewerId: string,
+  ): Promise<RecurringIssueDto[]> {
+    const visible = await this.access.visibleWhere(viewerId, workspaceId);
     const rows = await this.prisma.recurringIssue.findMany({
       where: {
-        project: { workspaceId, deletedAt: null },
+        project: { workspaceId, deletedAt: null, ...visible },
         ...(projectId && projectId !== SCOPE_SHARED ? { projectId } : {}),
       },
       orderBy: [{ active: 'desc' }, { nextRunAt: 'asc' }],
@@ -203,15 +252,26 @@ export class AutomationService {
     return this.toRecurringDto(row);
   }
 
-  async createRecurring(workspaceId: string, dto: CreateRecurringInput, actingUserId: string): Promise<RecurringIssueDto> {
+  async createRecurring(
+    workspaceId: string,
+    dto: CreateRecurringInput,
+    actingUserId: string,
+  ): Promise<RecurringIssueDto> {
     const name = dto.name.trim();
     if (!name) throw new BusinessRuleException('Tên việc lặp lại bắt buộc');
-    await this.requireProject(workspaceId, dto.projectId);
+    const project = await this.requireProject(workspaceId, dto.projectId);
+    assertNotArchived(project.archivedAt);
     await this.assertProjectAdmin(actingUserId, workspaceId, dto.projectId);
 
     const payload = this.cleanPayload(dto.payload);
     this.assertRunnable(payload);
-    const cfg = this.configOf({ freq: dto.freq, interval: dto.interval, weekday: dto.weekday ?? null, monthDay: dto.monthDay ?? null, hour: dto.hour });
+    const cfg = this.configOf({
+      freq: dto.freq,
+      interval: dto.interval,
+      weekday: dto.weekday ?? null,
+      monthDay: dto.monthDay ?? null,
+      hour: dto.hour,
+    });
 
     const created = await this.prisma.recurringIssue.create({
       data: {
@@ -222,7 +282,7 @@ export class AutomationService {
         weekday: cfg.freq === 'WEEKLY' ? cfg.weekday : null,
         monthDay: cfg.freq === 'MONTHLY' ? cfg.monthDay : null,
         hour: cfg.hour,
-        payload: payload as Prisma.InputJsonValue,
+        payload,
         active: dto.active ?? true,
         nextRunAt: computeNextRun(cfg),
         createdById: actingUserId,
@@ -232,8 +292,14 @@ export class AutomationService {
     return this.getRecurring(workspaceId, created.id);
   }
 
-  async updateRecurring(workspaceId: string, id: string, dto: UpdateRecurringInput, actingUserId: string): Promise<RecurringIssueDto> {
+  async updateRecurring(
+    workspaceId: string,
+    id: string,
+    dto: UpdateRecurringInput,
+    actingUserId: string,
+  ): Promise<RecurringIssueDto> {
     const cur = await this.getRecurring(workspaceId, id);
+    await assertProjectIdWritable(this.prisma, cur.projectId);
     await this.assertProjectAdmin(actingUserId, workspaceId, cur.projectId);
     const data: Prisma.RecurringIssueUpdateInput = {};
 
@@ -246,13 +312,16 @@ export class AutomationService {
     if (dto.payload !== undefined) {
       const payload = this.cleanPayload(dto.payload);
       this.assertRunnable(payload);
-      data.payload = payload as Prisma.InputJsonValue;
+      data.payload = payload;
     }
 
     // Đổi bất kỳ tham số lịch nào → tính lại mốc chạy kế tiếp.
     const scheduleTouched =
-      dto.freq !== undefined || dto.interval !== undefined || dto.weekday !== undefined ||
-      dto.monthDay !== undefined || dto.hour !== undefined;
+      dto.freq !== undefined ||
+      dto.interval !== undefined ||
+      dto.weekday !== undefined ||
+      dto.monthDay !== undefined ||
+      dto.hour !== undefined;
     if (scheduleTouched) {
       const cfg = this.configOf({
         freq: dto.freq ?? cur.freq,
@@ -273,8 +342,13 @@ export class AutomationService {
     return this.getRecurring(workspaceId, id);
   }
 
-  async removeRecurring(workspaceId: string, id: string, actingUserId: string): Promise<{ success: true }> {
+  async removeRecurring(
+    workspaceId: string,
+    id: string,
+    actingUserId: string,
+  ): Promise<{ success: true }> {
     const cur = await this.getRecurring(workspaceId, id);
+    await assertProjectIdWritable(this.prisma, cur.projectId);
     await this.assertProjectAdmin(actingUserId, workspaceId, cur.projectId);
     await this.prisma.recurringIssue.delete({ where: { id } });
     return { success: true };
@@ -287,14 +361,23 @@ export class AutomationService {
   async runNow(workspaceId: string, id: string, actingUserId: string) {
     const rec = await this.prisma.recurringIssue.findFirst({
       where: { id, project: { workspaceId, deletedAt: null } },
-      include: { project: { select: { id: true, workspaceId: true, leadId: true } } },
+      include: {
+        project: { select: { id: true, workspaceId: true, leadId: true, archivedAt: true } },
+      },
     });
     if (!rec) throw new NotFoundAppException('Việc lặp lại');
+    assertNotArchived(rec.project.archivedAt);
     await this.assertProjectAdmin(actingUserId, workspaceId, rec.projectId);
 
     const payload = this.parsePayload(rec.payload);
     this.assertRunnable(payload);
-    const issue = await this.createIssueFrom(rec.project.workspaceId, rec.projectId, actingUserId, rec.name, payload);
+    const issue = await this.createIssueFrom(
+      rec.project.workspaceId,
+      rec.projectId,
+      actingUserId,
+      rec.name,
+      payload,
+    );
     await this.prisma.recurringIssue.update({ where: { id }, data: { lastRunAt: new Date() } });
     return { success: true, issue };
   }
@@ -308,6 +391,14 @@ export class AutomationService {
    */
   @Cron(EVERY_15_MINUTES)
   async runDueRecurring(): Promise<void> {
+    // Khoá Redis để nhiều node API không sinh trùng issue; TTL < chu kỳ 15 phút phòng node chết giữa chừng.
+    await withCronLock(this.redis, 'automation:recurring', 600, () =>
+      this.scanDueRecurring(),
+    ).catch((err) => this.warn('cron.lock', err));
+  }
+
+  private async scanDueRecurring(): Promise<void> {
+    if (this.stopping) return;
     const now = new Date();
     let due: Array<{
       id: string;
@@ -324,11 +415,21 @@ export class AutomationService {
     }>;
     try {
       due = await this.prisma.recurringIssue.findMany({
-        where: { active: true, nextRunAt: { lte: now } },
+        // Dự án lưu trữ là chỉ đọc: không quét (khỏi tạo issue rồi bắt 422 mỗi vòng). Khôi phục dự án → bản ghi
+        // quá hạn chạy MỘT lần như mọi việc lặp lại bị trễ, không bù từng kỳ.
+        where: { active: true, nextRunAt: { lte: now }, project: { archivedAt: null } },
         take: 200,
         select: {
-          id: true, projectId: true, name: true, freq: true, interval: true, weekday: true,
-          monthDay: true, hour: true, payload: true, createdById: true,
+          id: true,
+          projectId: true,
+          name: true,
+          freq: true,
+          interval: true,
+          weekday: true,
+          monthDay: true,
+          hour: true,
+          payload: true,
+          createdById: true,
           project: { select: { workspaceId: true, leadId: true, deletedAt: true } },
         },
       });
@@ -338,22 +439,42 @@ export class AutomationService {
     }
 
     for (const rec of due) {
+      if (this.stopping) break; // app đang tắt — các bản ghi còn lại để lượt sau
       const cfg = this.configOf({
-        freq: rec.freq as Freq, interval: rec.interval, weekday: rec.weekday,
-        monthDay: rec.monthDay, hour: rec.hour,
+        freq: rec.freq as Freq,
+        interval: rec.interval,
+        weekday: rec.weekday,
+        monthDay: rec.monthDay,
+        hour: rec.hour,
       });
       let ranOk = false;
       try {
         if (rec.project.deletedAt) {
           // Dự án đã xoá → tắt hẳn thay vì quét lại mỗi vòng.
-          await this.prisma.recurringIssue.update({ where: { id: rec.id }, data: { active: false } });
+          await this.prisma.recurringIssue.update({
+            where: { id: rec.id },
+            data: { active: false },
+          });
           continue;
         }
         const payload = this.parsePayload(rec.payload);
         this.assertRunnable(payload);
-        const actorId = await this.resolveActor(rec.createdById, rec.project.workspaceId, rec.project.leadId);
-        if (!actorId) throw new Error('Không xác định được người tạo công việc — hãy thêm ít nhất một thành viên vào không gian làm việc');
-        await this.createIssueFrom(rec.project.workspaceId, rec.projectId, actorId, rec.name, payload);
+        const actorId = await this.resolveActor(
+          rec.createdById,
+          rec.project.workspaceId,
+          rec.project.leadId,
+        );
+        if (!actorId)
+          throw new Error(
+            'Không xác định được người tạo công việc — hãy thêm ít nhất một thành viên vào không gian làm việc',
+          );
+        await this.createIssueFrom(
+          rec.project.workspaceId,
+          rec.projectId,
+          actorId,
+          rec.name,
+          payload,
+        );
         ranOk = true;
       } catch (err) {
         this.warn(`cron.recurring:${rec.id}`, err);
@@ -382,10 +503,17 @@ export class AutomationService {
    * đã có, ta kiểm tra lại quyền theo DỰ ÁN THẬT của bản ghi — chặn việc mượn `?projectId`
    * của dự án khác để leo quyền.
    */
-  private async assertProjectAdmin(userId: string, workspaceId: string, projectId: string): Promise<void> {
+  private async assertProjectAdmin(
+    userId: string,
+    workspaceId: string,
+    projectId: string,
+  ): Promise<void> {
     const perms = await this.rbac.getEffectivePermissions(userId, workspaceId, projectId);
     if (perms.has(PERMISSIONS.PROJECT_ADMIN) || perms.has(PERMISSIONS.WORKSPACE_ADMIN)) return;
-    const u = await this.prisma.user.findUnique({ where: { id: userId }, select: { isSystemAdmin: true } });
+    const u = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { isSystemAdmin: true },
+    });
     if (u?.isSystemAdmin) return;
     throw new ForbiddenAppException('Cần quyền quản trị dự án cho dự án này');
   }
@@ -393,14 +521,18 @@ export class AutomationService {
   private async requireProject(workspaceId: string, projectId: string) {
     const p = await this.prisma.project.findFirst({
       where: { id: projectId, workspaceId, deletedAt: null },
-      select: { id: true },
+      select: { id: true, archivedAt: true },
     });
     if (!p) throw new NotFoundAppException('Dự án');
     return p;
   }
 
   private configOf(input: {
-    freq: Freq; interval?: number | null; weekday?: number | null; monthDay?: number | null; hour?: number | null;
+    freq: Freq;
+    interval?: number | null;
+    weekday?: number | null;
+    monthDay?: number | null;
+    hour?: number | null;
   }): RecurrenceConfig {
     return {
       freq: input.freq,
@@ -431,11 +563,16 @@ export class AutomationService {
   }
 
   private assertRunnable(payload: IssuePayload): void {
-    if (!payload.typeId) throw new BusinessRuleException('Hãy chọn loại công việc mặc định cho việc lặp lại');
+    if (!payload.typeId)
+      throw new BusinessRuleException('Hãy chọn loại công việc mặc định cho việc lặp lại');
   }
 
   /** Người "tạo" issue tự động: người lập lịch → trưởng dự án → thành viên workspace bất kỳ. */
-  private async resolveActor(createdById: string | null, workspaceId: string, leadId: string | null): Promise<string | null> {
+  private async resolveActor(
+    createdById: string | null,
+    workspaceId: string,
+    leadId: string | null,
+  ): Promise<string | null> {
     for (const candidate of [createdById, leadId]) {
       if (!candidate) continue;
       const ok = await this.prisma.workspaceMembership.findFirst({
@@ -460,6 +597,18 @@ export class AutomationService {
     payload: IssuePayload,
   ) {
     const summary = this.applyTokens(payload.summary || fallbackSummary, new Date()).slice(0, 255);
+    // Việc do hệ thống tạo: assignee đã rời workspace/bị vô hiệu hoá HOẶC không còn xem được dự án (riêng tư) → tạo
+    // KHÔNG gán, không để 422 làm hỏng việc tạo (cron việc lặp sẽ thử lại mỗi ngày). `projectId` để kiểm cả quyền xem.
+    let assigneeId = payload.assigneeId ?? null;
+    if (
+      assigneeId &&
+      !(await this.issues.isAssignableMember(workspaceId, assigneeId, undefined, projectId))
+    ) {
+      this.logger.warn(
+        `[automation] tạo việc "${summary}": người được giao ${assigneeId} không còn là thành viên hoạt động của workspace ${workspaceId} hoặc không xem được dự án ${projectId} — tạo không gán`,
+      );
+      assigneeId = null;
+    }
     return this.issues.create(workspaceId, actorId, {
       projectId,
       typeId: payload.typeId!,
@@ -467,7 +616,7 @@ export class AutomationService {
       description: payload.description ? this.applyTokens(payload.description, new Date()) : null,
       descriptionFormat: 'MARKDOWN',
       priorityId: payload.priorityId ?? null,
-      assigneeId: payload.assigneeId ?? null,
+      assigneeId,
       labelIds: payload.labelIds ?? [],
       storyPoints: payload.storyPoints ?? null,
     });

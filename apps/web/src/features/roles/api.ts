@@ -1,10 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import type { PermissionKey, RoleDto, RoleScope } from '@tirapro/types';
-import { api, apiErrorMessage } from '@/lib/api';
-
-/** Khoá cache danh sách vai trò (theo scope để tách cache chung/dự án/tất cả). */
-export const rolesKey = (scope?: RoleScope) => ['roles', scope ?? 'ALL'] as const;
+import { api, apiErrorMessage, type Ack } from '@/lib/api';
+import { keys } from '@/lib/queryKeys';
 
 /** Thân request tạo vai trò tuỳ chỉnh. */
 export interface CreateRoleInput {
@@ -21,12 +19,14 @@ export interface UpdateRoleInput {
   description?: string | null;
   color?: string | null;
   permissionKeys?: PermissionKey[];
+  /** `updatedAt` của vai trò mà client đã thấy; lệch (người khác vừa sửa) → 409 VERSION_CONFLICT. */
+  expectedUpdatedAt?: string;
 }
 
 /** Danh sách vai trò. Bỏ `scope` để lấy tất cả (cấp chung + cấp dự án). */
 export function useRoles(scope?: RoleScope) {
   return useQuery({
-    queryKey: rolesKey(scope),
+    queryKey: keys.roles.byScope(scope),
     queryFn: async () => {
       const qs = scope ? `?scope=${scope}` : '';
       return (await api.get<RoleDto[]>(`/roles${qs}`)).data;
@@ -35,16 +35,17 @@ export function useRoles(scope?: RoleScope) {
 }
 
 /** Làm mới mọi biến thể cache vai trò (ALL/WORKSPACE/PROJECT). */
-function invalidateAllRoles(qc: ReturnType<typeof useQueryClient>) {
-  void qc.invalidateQueries({ queryKey: ['roles'] });
+export function invalidateAllRoles(qc: ReturnType<typeof useQueryClient>) {
+  void qc.invalidateQueries({ queryKey: keys.roles.all });
+  // Đổi quyền của vai trò → quyền hiệu lực của mọi dự án có thể đổi theo.
+  void qc.invalidateQueries({ queryKey: keys.projects.permissionsAll });
 }
 
 /** Tạo vai trò tuỳ chỉnh. */
 export function useCreateRole() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (input: CreateRoleInput) =>
-      api.post<RoleDto>('/roles', input).then((r) => r.data),
+    mutationFn: (input: CreateRoleInput) => api.post<RoleDto>('/roles', input).then((r) => r.data),
     onSuccess: (role) => {
       invalidateAllRoles(qc);
       toast.success(`Đã tạo vai trò "${role.name}"`);
@@ -71,7 +72,7 @@ export function useUpdateRole() {
 export function useDeleteRole() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => api.delete(`/roles/${id}`).then((r) => r.data),
+    mutationFn: (id: string) => api.delete<Ack>(`/roles/${id}`).then((r) => r.data),
     onSuccess: () => {
       invalidateAllRoles(qc);
       toast.success('Đã xoá vai trò');

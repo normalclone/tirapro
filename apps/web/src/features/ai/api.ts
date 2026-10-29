@@ -1,36 +1,75 @@
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useCallback, useEffect, useReducer, useRef } from 'react';
+import { skipToken, useMutation, useQuery } from '@tanstack/react-query';
 import type {
+  AiAssigneeSuggestResult,
   AiCapabilities,
   AiGenerateIssuesResult,
+  AiSprintPlanResult,
   AiSuggestResult,
   AiSummaryResult,
 } from '@tirapro/shared';
 import { api } from '@/lib/api';
+import { keys } from '@/lib/queryKeys';
+import {
+  createCancellable,
+  initialScopedState,
+  scopedReducer,
+  scopedView,
+  type ScopedAction,
+  type ScopedState,
+} from './cancellableRequest';
 
 export interface ProjectMeta {
   projectId: string;
-  issueTypes: { id: string; name: string; key: string | null; color: string | null; iconUrl: string | null; isSubtask: boolean }[];
-  priorities: { id: string; name: string; color: string | null; rank: number; isDefault: boolean }[];
+  issueTypes: {
+    id: string;
+    name: string;
+    key: string | null;
+    color: string | null;
+    iconUrl: string | null;
+    isSubtask: boolean;
+    /** Cấp phân cấp (Epic = 1). Có thể thiếu ở máy chủ cũ → suy từ `key`. */
+    hierarchyLevel?: number;
+  }[];
+  priorities: {
+    id: string;
+    name: string;
+    color: string | null;
+    rank: number;
+    isDefault: boolean;
+  }[];
+  severities: {
+    id: string;
+    name: string;
+    description: string | null;
+    color: string | null;
+    rank: number;
+    isDefault: boolean;
+  }[];
+  resolutions: {
+    id: string;
+    name: string;
+    description: string | null;
+    rank: number;
+    isDefault: boolean;
+  }[];
 }
-
-export const projectMetaKey = (key: string) => ['project-meta', key] as const;
 
 /** Config tạo issue (issue types + priorities) cho quick-add / AI generate. */
 export function useProjectMeta(key: string | undefined) {
   return useQuery({
-    queryKey: projectMetaKey(key ?? ''),
-    queryFn: async () => (await api.get<ProjectMeta>(`/projects/${key}/meta`)).data,
-    enabled: !!key,
+    queryKey: keys.ai.projectMeta(key ?? ''),
+    queryFn: key
+      ? async () => (await api.get<ProjectMeta>(`/projects/${key}/meta`)).data
+      : skipToken,
     staleTime: 5 * 60_000,
   });
 }
 
-export const aiCapabilitiesKey = ['ai', 'capabilities'] as const;
-
 /** Khả năng AI hiện tại (Claude hay heuristic). Ít đổi → staleTime dài. */
 export function useAiCapabilities() {
   return useQuery({
-    queryKey: aiCapabilitiesKey,
+    queryKey: keys.ai.capabilities,
     queryFn: async () => (await api.get<AiCapabilities>('/ai/capabilities')).data,
     staleTime: 5 * 60_000,
   });
@@ -44,12 +83,64 @@ export function useSummarizeIssue() {
   });
 }
 
-/** Gợi ý ưu tiên & story points cho một issue. */
-export function useSuggestIssue() {
-  return useMutation({
-    mutationFn: (issueId: string) =>
-      api.post<AiSuggestResult>(`/ai/issues/${issueId}/suggest`).then((r) => r.data),
-  });
+const suggestReducer = (
+  s: ScopedState<AiSuggestResult>,
+  a: ScopedAction<AiSuggestResult>,
+): ScopedState<AiSuggestResult> => scopedReducer(s, a);
+
+/**
+ * Gợi ý ưu tiên & story points (kèm nguồn) cho một issue — HUỶ ĐƯỢC phía client (không stream): `cancel()` cắt request đang
+ * chờ bằng AbortController, KHÔNG báo lỗi, và phản hồi đến muộn sau khi huỷ bị bỏ qua. Chỉ lỗi thật mới gọi `onFailed`
+ * (nơi gọi hiện toast). Huỷ chỉ ngừng chờ: yêu cầu đã tới máy chủ vẫn có thể tính vào hạn mức AI. Đổi issue/gỡ màn → tự huỷ.
+ */
+export function useSuggestIssue(issueId: string, onFailed?: (error: unknown) => void) {
+  const [scoped, dispatch] = useReducer(suggestReducer, initialScopedState<AiSuggestResult>());
+  const state = scopedView(scoped, issueId); // issue khác → luôn idle (không treo "Đang phân tích…", không hiện kết quả của việc trước)
+  const running = useRef<ReturnType<typeof createCancellable<AiSuggestResult>> | null>(null);
+  const failed = useRef(onFailed);
+  failed.current = onFailed;
+
+  const cancel = useCallback(() => {
+    running.current?.cancel();
+    running.current = null;
+    dispatch({ type: 'cancel', forId: issueId });
+  }, [issueId]);
+
+  const run = useCallback(() => {
+    running.current?.cancel();
+    const call = createCancellable((signal) =>
+      api
+        .post<AiSuggestResult>(`/ai/issues/${issueId}/suggest`, undefined, { signal })
+        .then((r) => r.data),
+    );
+    running.current = call;
+    dispatch({ type: 'start', forId: issueId });
+    void call.start().then((o) => {
+      if (o.kind === 'cancelled') return; // đã huỷ/bị thay: không hiện kết quả, không toast
+      if (running.current === call) running.current = null;
+      if (o.kind === 'done') dispatch({ type: 'done', forId: issueId, value: o.value });
+      else {
+        dispatch({ type: 'failed', forId: issueId, error: o.error });
+        failed.current?.(o.error);
+      }
+    });
+  }, [issueId]);
+
+  // Đổi issue / gỡ màn: huỷ lần đang chạy (không dispatch — màn có thể đã gỡ).
+  useEffect(
+    () => () => {
+      running.current?.cancel();
+      running.current = null;
+    },
+    [issueId],
+  );
+
+  return {
+    run,
+    cancel,
+    pending: state.phase === 'pending',
+    data: state.phase === 'done' ? state.data : undefined,
+  };
 }
 
 /** NL → danh sách issue đề xuất (preview). Hook dùng cho màn khác. */
@@ -57,5 +148,27 @@ export function useGenerateIssues() {
   return useMutation({
     mutationFn: (v: { projectId: string; text: string }) =>
       api.post<AiGenerateIssuesResult>('/ai/generate-issues', v).then((r) => r.data),
+  });
+}
+
+/** Gợi ý người nhận việc cho một issue (projectId để máy chủ kiểm quyền). */
+export function useSuggestAssignee() {
+  return useMutation({
+    meta: { silent: true }, // component tự hiển thị lỗi ngay tại chỗ
+    mutationFn: (v: { projectId: string; issueId: string }) =>
+      api.post<AiAssigneeSuggestResult>('/ai/suggest-assignee', v).then((r) => r.data),
+  });
+}
+
+/** Trợ lý lập sprint: đề xuất việc từ backlog (không tự ghi — áp dụng qua bulk update). */
+export function useSprintPlan() {
+  return useMutation({
+    meta: { silent: true },
+    mutationFn: (v: {
+      projectId: string;
+      sprintId: string;
+      capacityPoints?: number;
+      goal?: string;
+    }) => api.post<AiSprintPlanResult>('/ai/sprint-plan', v).then((r) => r.data),
   });
 }

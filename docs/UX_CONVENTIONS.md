@@ -23,7 +23,7 @@
 - **Cmd/Ctrl+K** command palette: điều hướng + mọi hành động (tạo issue, đổi project, mở report,
   bắt đầu tour, toggle theme...). Tìm kiếm fuzzy.
 - Phím tắt toàn cục: `c` tạo issue, `/` focus search, `g b` go board, `g l` backlog, `g d` dashboard,
-  `j/k` di chuyển, `e` edit, `a` assign, `m` move, `?` mở bảng phím tắt. Hiện hint trong tooltip.
+  `j/k` di chuyển, `e` edit, `a` assign, `m` bình luận, `?` mở bảng phím tắt. Hiện hint trong tooltip.
 - Mọi dialog: `Esc` đóng, `Enter`/`Cmd+Enter` submit, focus-trap, focus về nơi mở.
 
 ## 3. Ít ma sát khi nhập liệu
@@ -60,10 +60,22 @@
 
 ## 9. Nhất quán & dự đoán được
 - Cùng một cách làm ở mọi nơi (cách edit, cách mở menu, cùng phím tắt). Cùng component, cùng spacing.
-- Trạng thái = **icon + nhãn + màu** (không chỉ màu). Nhớ ngữ cảnh (project/board/filter/theme gần nhất).
+- Trạng thái = **icon + nhãn + màu** (không chỉ màu). Nhớ ngữ cảnh (project/board/filter/theme gần nhất). Ưu tiên luôn là `PriorityIcon` (mũi tên theo hạng), không phải chấm màu.
+- **Nên có một hành động chính (primary) mỗi màn/hộp thoại/thanh** — các nút còn lại là secondary/ghost (hướng dẫn, chưa có test ép). Nút vô hiệu dùng token `disabled-bg`/`disabled-fg`, không giảm độ mờ.
+- **Ô chọn:** cấm `<select>` native (test `noNativeSelect`). ≤ 4 lựa chọn ngắn, cố định → `SegmentedControl`; lựa chọn có mô tả/phần phụ (mẫu dự án, cách giải quyết, phạm vi) → `RadioCard`; còn lại → `SearchSelect`. Bật/tắt có hiệu lực ngay → `Switch` + `SaveStatus` (bật một mục thì mở tuỳ chọn con ngay dưới); chọn trong biểu mẫu rồi mới Lưu → `Checkbox` (giữ nguyên).
+- **Hàng tab:** đổi phần nội dung cùng trang → `Tabs` + `TabPanel` (tab thật cho trình đọc màn hình, phím ←/→/Home/End; không tự dựng `role="tab"`, không dùng `SegmentedControl` cho tab); chọn kiểu xem của cùng nội dung → `SegmentedControl`; chuyển route → liên kết `aria-current`.
+- **Tạo bản ghi bằng nút/phím tắt** dùng `singleFlight` (`lib/singleFlight.ts`) để giữ phím Ctrl/⌘+Enter hoặc bấm đúp không tạo hai bản ghi.
+- **Form có nút Lưu cấp trang** dùng `UnsavedBar` ("Có thay đổi chưa lưu · Bỏ thay đổi · Lưu"); rời trang/đổi mục khi đang sửa thì hỏi xác nhận (`useLeaveGuard`).
+- **Biểu mẫu có thể sai nhiều trường:** `FormField` + `ErrorSummary` + `useErrorFlow` — hàm thuần trả mọi lỗi theo thứ tự trên màn, lỗi hiện tại ô + tóm tắt "N trường cần sửa", focus nhảy tới lỗi đầu. Nút Gửi **không** tắt vì thiếu dữ liệu (để lỗi giải thích); toast chỉ cho lỗi API.
+- **Xác nhận không đảo được:** gõ tên (`requireText`) chỉ cho thu hồi API key, xoá quy trình, xoá trường thông tin thêm, xoá vai trò; các xoá cứng khác xác nhận thường kèm một dòng hậu quả (gõ tên một bước chuyển hay một kênh là quá tay).
+- **Nút tạo có biến thể** → `SplitButton` (một primary, không nhớ hành động cuối). **Sửa tiêu đề/tên tại chỗ** → `InlineText`. **Hai ngày bắt đầu–kết thúc** → `DateRangeInput` (đếm gồm cả hai đầu: "2 tuần" = 14 ngày). **Chọn màu** → `ColorPicker` (bảng 8 màu, mục "Màu nhãn" của DESIGN.md).
+- **So với giới hạn** (WIP, sức chứa, ngân sách năng lực) → `LimitMeter`; **so với đích** → `BulletBar`/`StatRow`; không ô số to. Cả hai luôn kèm chữ, không chỉ màu.
+- **Hàng loạt** → `BulkDock` + `useBulkSelection`; **menu thao tác một công việc** → `IssueMenuItems` (không viết menu thứ hai). Mô tả đầy đủ ở DESIGN.md "Primitive biểu mẫu, dữ liệu và cộng tác".
 
 ## 10. Responsive & accessible = dễ cho tất cả
-- Mobile: sidebar→drawer, board vuốt ngang, touch target ≥44px, thao tác chính 1 tay.
+- Mobile (dưới `lg`): **thanh tab đáy** Tổng quan · Dự án · ＋ Tạo · Thông báo · Tôi (không drawer, không hamburger, **không nút nổi** — nút nổi "Tạo" chỉ từ `lg` trở lên); "Tạo"/"Tôi" mở sheet đáy; nút Tìm (Bảng lệnh) ở topbar. Board vuốt ngang, touch target ≥44px, thao tác chính 1 tay.
+- **Không gợi ý phím trên màn cảm ứng:** gợi ý chỉ-để-nhắc (⌘K, ↵, số phím tắt) gắn `.kbd-hint` (ẩn khi `hover:none` + `pointer:coarse`); trang Hướng dẫn và bảng phím tắt giữ nguyên tên phím. Thanh "chưa lưu" và thanh hàng loạt nằm **ngay trên** thanh tab đáy, không đè lên.
+- Mobile 390px: không cuộn ngang trang; ô nhập ≥16px dưới `sm` (iOS không phóng to); dải/bảng cuộn ngang phải có mờ mép báo còn nội dung (`.scroll-fade-x` + `useScrollFade`); phần tử cố định (thanh tab, toast, nút nổi desktop) tránh vùng an toàn iOS (`env(safe-area-inset-bottom)`); vùng chạm của điều khiển nhỏ trên dòng ≥ 36px chiều cao (cảm ứng: mở rộng vùng bấm lên ≥ 44px bằng `TOUCH_HIT`/`pointer:coarse`, không đổi cỡ hiển thị desktop). Kiểm bằng `pnpm --filter @tirapro/web mobile:audit` (và `-- --dialogs` cho hộp thoại); bộ đo cũng báo khi thiếu thanh tab đáy hoặc có phần tử cố định chồng lên.
 - WCAG AA: keyboard đầy đủ, focus rõ, screen-reader label, `prefers-reduced-motion`.
 
 ## 11. Notification — im lặng theo mặc định (từ nghiên cứu)
@@ -125,15 +137,73 @@
 - **Motion tokens** (single source, đã ở DESIGN.md): chỉ animate transform/opacity, duration <150–240ms **bất đối xứng** (enter chậm hơn exit), ease-out; reduced-motion → crossfade/instant.
 - **Saved views + nhớ trạng thái** (Tesler's Law): nhớ filter/sort/board/theme gần nhất per user; sort default đẩy overdue lên đầu.
 
+## 19. Thuật ngữ (một khái niệm = một từ)
+Giao diện chỉ có tiếng Việt, nhưng GIỮ thuật ngữ Agile tiếng Anh. Mọi chuỗi hiển thị (web, API, digest, thông báo) theo bảng này; hằng số dùng chung ở `apps/web/src/lib/terms.ts` (`TERM`, `STATUS_CATEGORY_LABEL`).
+
+| Khái niệm | Chữ dùng | Ghi chú |
+|---|---|---|
+| Issue | **Công việc** / **việc** (khi chật chỗ) | Tuyệt đối không "issue", "vấn đề", "ticket", "task" làm danh từ chung. `Task` chỉ là TÊN LOẠI. |
+| Backlog | **Việc chờ** | Tab, tiêu đề khu, nút "Về Việc chờ". |
+| Board | **Bảng việc** | "Board" chỉ còn trong tên riêng / URL; nhóm phím tắt ghi "Trên bảng việc". |
+| Dashboard | **Bảng tổng quan** | Không "dashboard" trong chữ hiển thị; chỉ còn trong route/khoá cache/mã quyền. |
+| Sprint, Epic | **Sprint**, **Epic** | Giữ nguyên; không "đợt làm việc". |
+| Nhóm trạng thái | **To Do / In Progress / Done** | Không "Cần làm / Đang làm / Hoàn thành". "Hoàn thành" chỉ làm động từ (nút "Hoàn thành sprint"). |
+| Trạng thái (tên) | To Do / In Progress / In Review / Done | Theo cấu hình workflow. |
+| Ưu tiên | Highest / High / Medium / Low / Lowest | Theo cấu hình. |
+| Severity | **Mức nghiêm trọng** | Theo tên cấu hình. |
+| Burndown, Velocity, Cumulative Flow | Giữ nguyên | |
+| Story points | **điểm** | |
+| Project | **Dự án** | |
+| Workspace | **Không gian làm việc** | |
+| Mức chia sẻ cả không gian | **Cả không gian làm việc** | Bộ lọc, bảng tổng quan, hộp chia sẻ. Không "Cả tổ chức" (chữ này chỉ còn là phạm vi nghỉ của Nghỉ phép — khái niệm khác). |
+| Admin cấp không gian làm việc | **Quản trị chung** | Tên tiếng Việt của vai trò Workspace Admin (`roleLabel`); không "quản trị viên không gian". Phân biệt **Quản trị hệ thống** (`/admin`) và **Quản trị dự án**. |
+| Huỷ | **Huỷ** | Nút huỷ luôn viết "Huỷ", không "Hủy". |
+| Mã dự án | **Dự án** | Không "Project ID" ở chữ hiển thị. |
+| Chỉ hướng | — | Không "bên trái"/"cột trái" (trên mobile cột đó nằm trên nội dung). |
+| Cổng quản lý cấp công ty | **Danh mục** | Trước đây "Quản trị". |
+| `/admin` | **Quản trị hệ thống** | |
+| Workflow | **Quy trình** | |
+| Component / Version | **Thành phần** / **Phiên bản** | |
+| RAID | **Rủi ro & vướng mắc** | |
+| Assignee / Reporter | **Người phụ trách** / **Người báo cáo** | |
+| Triage | **Việc mới vào** | Đúng tên tab hiện có. |
+| Loại liên kết | `blocks`, `is blocked by`, `relates to`, `duplicates`, `clones`, `is caused by`, `is tested by` | Giữ tiếng Anh; loại mới theo bảng này. |
+| Ngày / giờ | `dd/MM/yyyy`, `HH:mm` (24h) | Thời gian tương đối tiếng Việt ("khoảng 5 giờ trước"). Chỉ qua `lib/dateFormat.ts`: `fmtDate` 17/10/2026, `fmtDayMonth` 17/10 (trục/chỗ hẹp), `fmtMonthYear` **T10/2026** (không "thg", không `T${…}` tự dựng), `fmtLongDate` "Thứ Bảy, 17/10/2026"; không ISO thô, không `toLocaleString`. |
+| Tên menu / tiêu đề trang | **Một nhãn** | Tên mục menu = tiêu đề trang (h1); nguồn duy nhất `apps/web/src/lib/navLabels.ts` (sidebar, thanh tab, gợi ý trang gần đúng ở 404, sub-nav, trang). Cụm dài hơn đặt ở dòng mô tả. |
+| Người thực hiện không rõ | **Hệ thống** / **Một thành viên** | "Hệ thống" CHỈ khi không có người thực hiện (automation/hệ thống); có người mà không tra được (tài khoản đã xoá) → "Một thành viên"; tên thật điền lúc đọc. Không "Ai đó". |
+| Vai trò | **Tên tiếng Việt** (`roleLabel`) | Không hiện tên enum/khoá vai trò thô. |
+| Giá trị enum / mã hành động | **Nhãn tiếng Việt** | Không lộ `TIME_SPENT`, `FUTURE/ACTIVE/CLOSED`…; hoạt động dự án in nhãn + icon. |
+| Worklog / Saved filter / Custom field | **Nhật ký thời gian** / **Bộ lọc đã lưu** / **Trường thông tin thêm** | Mọi chuỗi hiển thị (nút, toast, aria-label, mô tả quyền, lỗi, hướng dẫn); chỉ `key`/route/mã giữ tiếng Anh. |
+| Trạng thái sprint (người dùng thấy) | **chưa bắt đầu / đang chạy / đã kết thúc** | Không lộ enum `FUTURE / ACTIVE / CLOSED` trong thông báo lỗi. |
+
+**Kiểm bằng máy (chặn tái phạm):** `apps/web/src/lib/terminology.test.ts` (Backlog / "đợt làm việc" / Cần làm–Đang làm / Board / issue / "vấn đề" ngoài RAID / task làm danh từ chung / mô tả quyền và vai trò), `apps/web/src/components/ui/noNativeDate.test.ts` (không `<input type=date|datetime-local|time>` ngoài `DateInput.tsx`), `apps/web/src/lib/terminology2.test.ts` (đợt 1 UI: "Huỷ", "Project ID", "bên trái", "dashboard", nhãn menu = tiêu đề qua `navLabels`, "Ai đó", enum thô, vai trò thô, ngày/tháng tự dựng), `apps/web/src/components/ui/noNativeSelect.test.ts` (không `<select>` native), `apps/web/src/features/sharing/terminology.test.ts` (hộp chia sẻ và Bộ lọc: không "Cả tổ chức", "quản trị viên không gian", "chỉ thành viên dự án thấy"), `apps/api/src/common/terminology.spec.ts` (chuỗi API trả cho người dùng). Ngoại lệ được ghi chú ngay trong test: gloss "Việc chờ (backlog)" / "Bảng việc (Board)" ở trang Hướng dẫn, tên menu thật của Jira ("Export issues", "Xem tất cả issue"), thẻ phân tách prompt `<issue>`, dòng RAID "vấn đề". Nhãn nhóm trạng thái dùng chung `STATUS_CATEGORY_LABEL` (`@tirapro/types`, web re-export ở `lib/terms.ts`).
+
+## 20. Quy tắc chéo rút ra ở đợt 2 · phần C (kiểm trước khi coi một màn/điều khiển là xong)
+
+Mỗi dòng là một lớp lỗi đã gặp ít nhất một lần ở review phần C.
+
+- [ ] **Tên truy cập = chữ nhìn thấy của nhãn.** Gợi ý, mô tả, phím tắt, số đếm đi qua `aria-describedby` / `aria-keyshortcuts`, không nằm trong tên (`aria-labelledby` trỏ span nhãn). Lỗi điển hình: `role="radio"`/`menuitem` lấy tên từ nội dung nên đọc nhãn + mô tả rồi đọc mô tả lần nữa.
+- [ ] **Toast trong callback của hook, không của từng lần gọi.** `mutate(…, { onError })` mất khi lần gọi bị thay thế hoặc component gỡ; đặt ở `onError` của hook (hoặc `mutateAsync` + try/catch), kèm `meta: { silent: true }` khi hook tự toast để toast chung không đôi. Nhiều nhánh ghi vào cùng một id toast (sonner **gộp theo id**) → dùng `toastReplace` (xoá `action`/`description`/`onDismiss`/`onAutoClose`/`duration` còn sót), kẻo toast lỗi giữ nút Hoàn tác cũ.
+- [ ] **Không nuốt phím tắt toàn cục.** Trong ô chọn, nút "…", nội dung menu chỉ chặn phím của chính dòng (`stopRowKeys`: Enter/Space/mũi tên); không `stopPropagation` mọi phím (làm chết Cmd/Ctrl+K, `?`, `g` rồi `b`, `j`/`k`). Vùng đang sửa tại chỗ mang `data-inline-edit` để `isTypingTarget` tắt phím tắt.
+- [ ] **Vùng chạm cảm ứng không đè lên thao tác chính.** Mở rộng vùng bấm lên 44px bằng `pointer: coarse` phải kiểm với thao tác chạm giữa thẻ/dòng (Chrome tự "điều chỉnh chạm" về vùng gần nhất): nút "…" của thẻ Bảng việc nằm góc trên phải khi cảm ứng; kéo-thả cần `COARSE_NO_CALLOUT` để menu nhấn giữ của iOS không chặn.
+- [ ] **Roving tabindex kẹp khi vẽ.** Lưới/nhóm có điểm dừng Tab duy nhất tính lại chỉ số đang hoạt động ngay lúc vẽ (`clampCell`, `isTabStop`); đổi nhóm/lọc/phạm vi làm lưới co lại không được để 0 điểm dừng.
+- [ ] **Con số giữa các màn phải khớp, hoặc giải thích khác biệt ngay trên màn.** Ví dụ: số thành viên = đang hoạt động ở bộ chọn không gian, trang Thành viên và bảng quản trị ("N đang hoạt động · M đã vô hiệu hoá"); đồng hồ ngân sách năng lực ghi rõ "chưa trừ nghỉ phép/ngày lễ"; "Khớp N việc" chỉ trong dự án bạn xem được.
+- [ ] **Chữ "ai xem được" phải khớp toàn bộ hàm hiển thị của máy chủ.** Gồm Quản trị chung xem mọi mục, dự án công khai/riêng tư, người bị vô hiệu hoá, dự án lưu trữ/xoá mềm. Mọi bản sao quy tắc phía web (người sẽ được thông báo, "ai có quyền xem") đối chiếu cổng trung tâm ở máy chủ, không tự suy. Một mức chia sẻ trên giao diện phải ứng với đúng một phạm vi thật (đừng để "Dự án" lưu thành cả không gian).
+- [ ] **Không làm vùng chứa nhận focus.** Không `tabIndex={-1}` lên `<main>`, khung hay `section` để "trả focus": nhiều kiểm tra mất-focus so `document.activeElement` với `body`, và viền focus bị ép hiện. Trả focus về đúng phần tử đã mở (nút, dòng).
+- [ ] **Ghi phản hồi của mutation vào mọi cache đang giữ token OCC.** `version` / `updatedAt` lấy từ cache; nếu `onSuccess` không ghi bản trả về (và còn `cancelQueries`) thì lần lưu kế gửi token cũ và tự 409. Lưu chồng nhau: hoàn tác về giá trị ĐÃ XÁC NHẬN của máy chủ, không phải ảnh lạc quan; 409 ở trường đơn → nạp lại, trường không đổi thì thử lại một lần, trường đã đổi thì báo xung đột.
+- [ ] **Logic dữ liệu mô phỏng trong bộ nhớ phải đối chiếu Postgres thật.** Bộ khớp `where` trong bộ nhớ không thấy được khác biệt của ILIKE, so sánh số thực hay NUL: cần một lần chạy trên Postgres thật (`pnpm --filter @tirapro/api test:parity`, chỉ cơ sở dữ liệu tên kết thúc `_w2c`/`_parity`/`_scratch`); mọi lần đếm chạy nhiều truy vấn song song (gợi ý nới bộ lọc, xem trước quy tắc) đi qua `common/bounded-count.ts` (trần 3 tiến trình, hạn 5 giây).
+
 ## Definition of Done (UX) cho mỗi màn
 - [ ] Có thể hoàn thành task chính **chỉ bằng bàn phím**.
 - [ ] Hành động chính ≤ 2 click / hoặc 1 lệnh Cmd+K.
 - [ ] Optimistic + skeleton, không spinner chặn.
-- [ ] Empty / loading / error / first-run state đầy đủ.
+- [ ] Empty / loading / error / first-run state đầy đủ, dùng `EmptyState` (có icon; `compact` trong ô nhỏ) và `StatusPanel` (không tìm thấy / không có quyền / lỗi) — **không tự vẽ** khối trống hay màn lỗi.
+- [ ] Ô chọn dùng `SegmentedControl` (≤ 4 mục ngắn) hoặc `SearchSelect`; không `<select>` native, không tự dựng dropdown. Ưu tiên hiện bằng `PriorityIcon`. Hàng tab dùng `Tabs`/`TabPanel`.
+- [ ] Khung trang dùng đúng khối chung: `PageFrame` (cỡ theo bảng B-D1), `PageHeader` (đúng một h1; tab trong dự án dùng `variant="tab"`; mô tả một câu, dài hơn thì `DocsLink`), `SubNavLayout`/`RailLayout` cho menu con và master–detail, `SectionCard` cho thẻ (không `max-w-*`, h1, thẻ có viền tự vẽ). Nút tạo chính ở `PageHeader.actions` (ngoại lệ ghi trong DESIGN.md "Khung trang"); nút tạo trong `EmptyState` là secondary. Test `pageFrame.test.ts` chặn tái phạm.
 - [ ] Inline edit + quick-add nơi phù hợp.
 - [ ] Undo cho hành động đảo được; confirm chỉ cho phá hủy.
 - [ ] Tour + help cho màn; có `data-tour` anchors.
-- [ ] Responsive (mobile→desktop) + AA + reduced-motion.
+- [ ] Responsive (mobile→desktop) + AA + reduced-motion; dưới `lg` không phần tử cố định nào đè thanh tab đáy, không gợi ý phím trên cảm ứng.
 - [ ] Concurrent edit: conflict hiện merge banner, không crash (OCC `version`).
 - [ ] Notification của màn tuân quiet-by-default + coalesce.
 - [ ] Nếu màn nhận input ngoài → đi qua Triage, không thẳng backlog.
@@ -143,3 +213,6 @@
 - [ ] Perf budget đạt (p95 < 100ms tương tác; first-paint < 1s/1.000 issue).
 - [ ] Tính năng mới qua "thuế tĩnh lặng" (không làm màn chính ồn hơn).
 - [ ] `/impeccable critique` không còn P0/P1.
+- [ ] Điều khiển/biểu mẫu mới dùng primitive của DESIGN.md "Primitive biểu mẫu, dữ liệu và cộng tác" (không tự dựng bản thứ hai) và qua checklist §20 (tên truy cập, toast, phím tắt toàn cục, vùng chạm cảm ứng, roving tabindex, số liệu khớp, copy "ai xem được", focus, cache OCC).
+- [ ] Chuỗi hiển thị đúng bảng thuật ngữ §19; ngày qua `dateFormat` (dd/MM/yyyy, T10/2026); thời gian tương đối tiếng Việt; tên menu = tiêu đề trang.
+- [ ] Chạy `pnpm --filter @tirapro/web mobile:audit -- --route=<route mới>` (390px; 0 lỗi chặn hoặc có mục trong `scripts/mobile-audit.allow.json` kèm lý do). Màn có hộp thoại/popover mới: thêm kịch bản vào `DIALOG_SCENARIOS` trong `scripts/mobile-audit.mjs` rồi chạy `mobile:audit -- --dialogs`. Cần web + API + DB seed đang chạy (không nằm trong `pnpm test`).

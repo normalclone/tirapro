@@ -1,4 +1,8 @@
 import { z } from 'zod';
+import { normalizeKeyPrefix } from '../common/storage/s3-key-prefix';
+
+/** Giá trị mặc định của khoá mã hoá — chỉ để chạy dev, tuyệt đối không dùng ở production. */
+export const DEFAULT_INTEGRATION_ENCRYPTION_KEY = 'dev_integration_encryption_key_change_me_0001';
 
 /** Bool từ chuỗi env: "true"/"1" => true, còn lại false. */
 const boolEnv = (def: boolean) =>
@@ -7,7 +11,7 @@ const boolEnv = (def: boolean) =>
     .transform((v) => (typeof v === 'boolean' ? v : v === 'true' || v === '1'))
     .default(def);
 
-export const envSchema = z.object({
+const baseEnvSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
 
   DATABASE_URL: z.string().min(1),
@@ -42,11 +46,36 @@ export const envSchema = z.object({
   S3_ACCESS_KEY: z.string().optional().default(''),
   S3_SECRET_KEY: z.string().optional().default(''),
   S3_FORCE_PATH_STYLE: boolEnv(true),
+  // Tiền tố khoá khi dùng chung bucket với app khác (vd `tirapro/`). Chuẩn hoá để kết thúc bằng "/"; sai định dạng thì không khởi động.
+  S3_KEY_PREFIX: z
+    .string()
+    .optional()
+    .default('')
+    .transform((v, ctx) => {
+      try {
+        return normalizeKeyPrefix(v);
+      } catch (e) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: (e as Error).message });
+        return z.NEVER;
+      }
+    }),
+  // Khởi động chặt: lỗi cấu hình S3 dứt khoát (bucket thiếu, 403, khoá sai) ⇒ dừng ngay. Không đặt ⇒ true ở production, false còn lại.
+  STORAGE_STARTUP_STRICT: z
+    .union([z.boolean(), z.string()])
+    .optional()
+    .transform((v) =>
+      v === undefined || v === ''
+        ? undefined
+        : typeof v === 'boolean'
+          ? v
+          : v === 'true' || v === '1',
+    ),
 
   ANTHROPIC_API_KEY: z.string().optional().default(''),
   AI_FEATURES_ENABLED: boolEnv(true),
   AI_MODEL_PRIMARY: z.string().default('claude-opus-4-8'),
-  AI_MODEL_FAST: z.string().default('claude-sonnet-4-6'),
+  // Model rẻ/nhanh cho tác vụ ngắn (tóm tắt, gợi ý). Giá trị này đi qua configuration.ts → ClaudeService, không còn default thứ hai.
+  AI_MODEL_FAST: z.string().default('claude-haiku-4-5'),
   AI_MONTHLY_TOKEN_QUOTA_PER_WORKSPACE: z.coerce.number().int().default(5_000_000),
 
   EMBEDDING_PROVIDER: z.enum(['voyage', 'openai', 'none']).default('none'),
@@ -55,6 +84,20 @@ export const envSchema = z.object({
   VOYAGE_MODEL: z.string().default('voyage-3'),
   OPENAI_API_KEY: z.string().optional().default(''),
   OPENAI_EMBEDDINGS_MODEL: z.string().default('text-embedding-3-small'),
+
+  // ---- Email ----
+  // console = ghi thư ra log (dev, chưa gửi thật); smtp = khung, chưa gửi được (chưa cài nodemailer).
+  MAIL_DRIVER: z.enum(['console', 'smtp']).default('console'),
+  MAIL_FROM: z.string().default('Tirapro <no-reply@tirapro.local>'),
+  // Gốc URL của web — dùng dựng liên kết trong thư (đặt lại mật khẩu). Không có dấu "/" cuối.
+  APP_WEB_URL: z
+    .string()
+    .url('APP_WEB_URL phải là URL hợp lệ, vd http://localhost:5173')
+    .default('http://localhost:5173'),
+  SMTP_HOST: z.string().optional().default(''),
+  SMTP_PORT: z.coerce.number().int().default(587),
+  SMTP_USER: z.string().optional().default(''),
+  SMTP_PASS: z.string().optional().default(''),
 
   THROTTLE_TTL: z.coerce.number().int().default(60),
   THROTTLE_LIMIT: z.coerce.number().int().default(100),
@@ -67,10 +110,65 @@ export const envSchema = z.object({
   INTEGRATION_ENCRYPTION_KEY: z
     .string()
     .min(32, 'INTEGRATION_ENCRYPTION_KEY tối thiểu 32 ký tự')
-    .default('dev_integration_encryption_key_change_me_0001'),
+    .default(DEFAULT_INTEGRATION_ENCRYPTION_KEY),
+  // Khoá CŨ (optional) để vẫn giải mã được token đã mã hoá trước khi đổi khoá — xem docs/DEPLOY.md, mục "Nâng cấp / đổi khoá".
+  INTEGRATION_ENCRYPTION_KEY_PREVIOUS: z
+    .string()
+    .optional()
+    .default('')
+    .refine(
+      (v) => v === '' || v.length >= 32,
+      'INTEGRATION_ENCRYPTION_KEY_PREVIOUS để trống hoặc tối thiểu 32 ký tự',
+    ),
+});
+
+/** STORAGE_DRIVER=s3 ⇒ bắt buộc đủ 4 biến kết nối, endpoint phải là URL http(s). Thông báo KHÔNG in giá trị biến. */
+const envSchema = baseEnvSchema.superRefine((env, ctx) => {
+  if (env.STORAGE_DRIVER !== 's3') return;
+  const required = [
+    [
+      'S3_ENDPOINT',
+      env.S3_ENDPOINT,
+      'vd http://<host>:<cổng API S3> — cổng API, không phải cổng trang quản trị; thử HeadBucket để xác định',
+    ],
+    ['S3_BUCKET', env.S3_BUCKET, 'tên bucket riêng của Tirapro, tạo sẵn thủ công'],
+    ['S3_ACCESS_KEY', env.S3_ACCESS_KEY, 'access key của tài khoản có quyền trên bucket'],
+    ['S3_SECRET_KEY', env.S3_SECRET_KEY, 'secret key tương ứng'],
+  ] as const;
+  for (const [name, value, hint] of required) {
+    if (!value.trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [name],
+        message: `bắt buộc khi STORAGE_DRIVER=s3 (${hint})`,
+      });
+    }
+  }
+  if (env.S3_ENDPOINT.trim() && !/^https?:\/\/[^\s/]+/i.test(env.S3_ENDPOINT.trim())) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['S3_ENDPOINT'],
+      message: 'phải là URL bắt đầu bằng http:// hoặc https://, vd http://<host>:<cổng API S3>',
+    });
+  }
 });
 
 export type Env = z.infer<typeof envSchema>;
+
+/** Lỗi cấu hình chỉ áp dụng ở production (fail-fast khi khởi động). Trả danh sách thông báo. */
+function productionConfigProblems(
+  env: Pick<Env, 'NODE_ENV' | 'INTEGRATION_ENCRYPTION_KEY'>,
+): string[] {
+  if (env.NODE_ENV !== 'production') return [];
+  const problems: string[] = [];
+  const key = env.INTEGRATION_ENCRYPTION_KEY;
+  if (key === DEFAULT_INTEGRATION_ENCRYPTION_KEY || key.length < 32) {
+    problems.push(
+      'INTEGRATION_ENCRYPTION_KEY: ở production phải đặt khoá riêng (tối thiểu 32 ký tự, khác giá trị mặc định) — ví dụ `openssl rand -hex 32`',
+    );
+  }
+  return problems;
+}
 
 export function validateEnv(config: Record<string, unknown>): Env {
   const parsed = envSchema.safeParse(config);
@@ -79,6 +177,12 @@ export function validateEnv(config: Record<string, unknown>): Env {
       .map((i) => ` - ${i.path.join('.') || '(root)'}: ${i.message}`)
       .join('\n');
     throw new Error(`❌ Biến môi trường không hợp lệ:\n${msg}`);
+  }
+  const problems = productionConfigProblems(parsed.data);
+  if (problems.length) {
+    throw new Error(
+      `❌ Cấu hình production không an toàn:\n${problems.map((p) => ` - ${p}`).join('\n')}`,
+    );
   }
   return parsed.data;
 }

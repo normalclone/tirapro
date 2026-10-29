@@ -1,10 +1,24 @@
 import { useMemo, useState } from 'react';
-import { Building2, ChevronDown, ChevronRight, FolderPlus, Mail, Pencil, Phone, Plus, Trash2 } from 'lucide-react';
+import { DocsLink } from '@/components/ui/DocsLink';
+import {
+  Building2,
+  ChevronDown,
+  ChevronRight,
+  FileText,
+  FolderPlus,
+  Mail,
+  Pencil,
+  Phone,
+  Plus,
+  Trash2,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { EmptyState, Skeleton } from '@/components/ui/primitives';
 import { Button } from '@/components/ui/Button';
+import { useConfirm } from '@/components/ui/useConfirm';
 import { Input } from '@/components/ui/Input';
-import { pageContainer } from '@/components/layout/page';
+import { PageFrame } from '@/components/layout/PageFrame';
+import { PageHeader } from '@/components/layout/PageHeader';
 import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/stores/auth';
@@ -12,15 +26,16 @@ import { ClientEditorModal } from './ClientEditorModal';
 import { ClientProjectsModal } from './ClientProjectsModal';
 import { ContractEditorModal } from './ContractEditorModal';
 import {
-  useClients, useDeleteClient, useDeleteContract, formatMoney,
-  type ClientDto, type ContractDto,
+  useClients,
+  useDeleteClient,
+  useDeleteContract,
+  formatMoney,
+  type ClientDto,
+  type ContractDto,
 } from './api';
-
-function fmtDate(iso: string | null): string {
-  if (!iso) return '—';
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? '—' : d.toLocaleDateString('vi-VN');
-}
+import { QueryBoundary } from '@/components/ui/QueryBoundary';
+import { fmtDate } from '@/lib/dateFormat';
+import { MANAGE_LABELS } from '@/lib/navLabels';
 
 function term(contract: ContractDto): string {
   if (!contract.startDate && !contract.endDate) return 'Chưa đặt thời hạn';
@@ -50,19 +65,31 @@ function ContractRow({
     <li className="flex flex-wrap items-center gap-x-3 gap-y-1.5 py-2.5">
       <div className="flex min-w-0 flex-1 items-center gap-2">
         {contract.code && (
-          <span className="shrink-0 rounded bg-surface-2 px-1.5 py-0.5 font-mono text-[11px] text-muted">{contract.code}</span>
+          <span className="shrink-0 rounded bg-surface-2 px-1.5 py-0.5 font-mono text-[11px] text-muted">
+            {contract.code}
+          </span>
         )}
         <span className="truncate text-sm text-ink">{contract.name}</span>
         {contract.project && (
           <span className="shrink-0 truncate text-[11px] text-faint">· {contract.project.key}</span>
         )}
       </div>
-      <span className="tabular shrink-0 text-sm font-medium text-ink-strong" title="Giá trị hợp đồng">
+      <span
+        className="tabular shrink-0 text-sm font-medium text-ink-strong sm:w-32 sm:text-right"
+        title="Giá trị hợp đồng"
+      >
         {formatMoney(contract.value, contract.currency)}
       </span>
       <span
-        className={cn('tabular shrink-0 text-xs', expired ? 'text-danger' : 'text-muted')}
-        title={expired ? 'Đã qua ngày kết thúc — cân nhắc gia hạn hoặc ký phụ lục' : 'Thời hạn hợp đồng: từ ngày đến ngày'}
+        className={cn(
+          'tabular shrink-0 text-xs sm:w-52 sm:text-right',
+          expired ? 'text-danger' : 'text-muted',
+        )}
+        title={
+          expired
+            ? 'Đã qua ngày kết thúc — cân nhắc gia hạn hoặc ký phụ lục'
+            : 'Thời hạn hợp đồng: từ ngày đến ngày'
+        }
       >
         {term(contract)}
         {expired && ' · hết hạn'}
@@ -126,9 +153,15 @@ function ClientCard({
           aria-controls={bodyId}
           className="flex min-w-0 flex-1 items-start gap-2.5 rounded text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
         >
-          {open ? <ChevronDown className="mt-0.5 h-4 w-4 shrink-0 text-faint" aria-hidden /> : <ChevronRight className="mt-0.5 h-4 w-4 shrink-0 text-faint" aria-hidden />}
+          {open ? (
+            <ChevronDown className="mt-0.5 h-4 w-4 shrink-0 text-faint" aria-hidden />
+          ) : (
+            <ChevronRight className="mt-0.5 h-4 w-4 shrink-0 text-faint" aria-hidden />
+          )}
           <span className="min-w-0">
-            <span className="block truncate text-sm font-medium text-ink-strong">{client.name}</span>
+            <span className="block truncate text-sm font-medium text-ink-strong">
+              {client.name}
+            </span>
             <span className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted">
               {client.contactName && <span className="truncate">{client.contactName}</span>}
               {client.email && (
@@ -144,7 +177,10 @@ function ClientCard({
                 </span>
               )}
               {!client.contactName && !client.email && !client.phone && (
-                <span className="text-faint" title="Chưa lưu người liên hệ, email hay số điện thoại nào">
+                <span
+                  className="text-faint"
+                  title="Chưa lưu người liên hệ, email hay số điện thoại nào"
+                >
                   Chưa có thông tin liên hệ
                 </span>
               )}
@@ -153,9 +189,15 @@ function ClientCard({
         </button>
 
         <p className="tabular flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
-          <span title="Số dự án đang gắn với khách hàng này"><span className="font-medium text-ink">{client.projectCount}</span> dự án</span>
-          <span aria-hidden className="text-faint">·</span>
-          <span title="Số hợp đồng đã ký với khách hàng này"><span className="font-medium text-ink">{client.contractCount}</span> hợp đồng</span>
+          <span title="Số dự án đang gắn với khách hàng này">
+            <span className="font-medium text-ink">{client.projectCount}</span> dự án
+          </span>
+          <span aria-hidden className="text-faint">
+            ·
+          </span>
+          <span title="Số hợp đồng đã ký với khách hàng này">
+            <span className="font-medium text-ink">{client.contractCount}</span> hợp đồng
+          </span>
           {client.contractTotals.map((t) => (
             <span
               key={t.currency}
@@ -214,7 +256,10 @@ function ClientCard({
             ) : (
               <ul className="flex flex-wrap gap-1.5">
                 {client.projects.map((p) => (
-                  <li key={p.id} className="flex items-center gap-1.5 rounded border border-border bg-surface-2 px-2 py-1 text-xs text-ink">
+                  <li
+                    key={p.id}
+                    className="flex items-center gap-1.5 rounded border border-border bg-surface-2 px-2 py-1 text-xs text-ink"
+                  >
                     <span className="font-mono text-[11px] text-muted">{p.key}</span>
                     <span className="truncate">{p.name}</span>
                   </li>
@@ -233,11 +278,18 @@ function ClientCard({
               )}
             </div>
             {client.contracts.length === 0 ? (
-              <p className="text-sm text-faint">
-                {canManage
-                  ? 'Chưa có hợp đồng nào. Thêm hợp đồng để theo dõi giá trị và thời hạn đã cam kết.'
-                  : 'Chưa có hợp đồng nào với khách hàng này.'}
-              </p>
+              <EmptyState
+                size="compact"
+                icon={<FileText />}
+                title={
+                  canManage ? 'Chưa có hợp đồng nào' : 'Chưa có hợp đồng nào với khách hàng này'
+                }
+                description={
+                  canManage
+                    ? 'Thêm hợp đồng để theo dõi giá trị và thời hạn đã cam kết.'
+                    : undefined
+                }
+              />
             ) : (
               <ul className="divide-y divide-border">
                 {client.contracts.map((c) => (
@@ -268,7 +320,9 @@ function ClientCard({
 /** Khách hàng & hợp đồng — ai đặt hàng, dự án nào phục vụ họ, cam kết những gì. */
 export function ClientsPage() {
   const canManage = useAuth((s) => s.can('client:manage'));
-  const { data: clients, isLoading } = useClients();
+  const clientsQuery = useClients();
+  const { data: clients } = clientsQuery;
+  const confirm = useConfirm();
   const removeClient = useDeleteClient();
   const removeContract = useDeleteContract();
 
@@ -276,7 +330,10 @@ export function ClientsPage() {
   const [editorOpen, setEditorOpen] = useState(false);
   const [editing, setEditing] = useState<ClientDto | null>(null);
   const [assigning, setAssigning] = useState<ClientDto | null>(null);
-  const [contractCtx, setContractCtx] = useState<{ client: ClientDto; contract: ContractDto | null } | null>(null);
+  const [contractCtx, setContractCtx] = useState<{
+    client: ClientDto;
+    contract: ContractDto | null;
+  } | null>(null);
 
   const filtered = useMemo(() => {
     const query = q.trim().toLowerCase();
@@ -286,45 +343,72 @@ export function ClientsPage() {
     );
   }, [clients, q]);
 
-  function openCreate() { setEditing(null); setEditorOpen(true); }
+  function openCreate() {
+    setEditing(null);
+    setEditorOpen(true);
+  }
 
-  function handleDeleteClient(c: ClientDto) {
-    const warn = c.contractCount > 0 ? ` ${c.contractCount} hợp đồng của khách hàng này sẽ bị xoá theo.` : '';
-    if (!window.confirm(`Xoá khách hàng “${c.name}”?${warn} Các dự án vẫn giữ nguyên, chỉ bỏ liên kết với khách hàng.`)) return;
+  async function handleDeleteClient(c: ClientDto) {
+    const warn =
+      c.contractCount > 0 ? ` ${c.contractCount} hợp đồng của khách hàng này sẽ bị xoá theo.` : '';
+    if (
+      !(await confirm({
+        title: `Xoá khách hàng “${c.name}”?`,
+        description: `${warn} Các dự án vẫn giữ nguyên, chỉ bỏ liên kết với khách hàng.`.trim(),
+        destructive: true,
+      }))
+    )
+      return;
     removeClient.mutate(c.id, {
       onError: (e) => toast.error(apiErrorMessage(e)),
       onSuccess: () => toast.success('Đã xoá khách hàng'),
     });
   }
 
-  function handleDeleteContract(client: ClientDto, contract: ContractDto) {
-    if (!window.confirm(`Xoá hợp đồng “${contract.name}”? Thao tác này không khôi phục được.`)) return;
+  async function handleDeleteContract(client: ClientDto, contract: ContractDto) {
+    if (
+      !(await confirm({
+        title: `Xoá hợp đồng “${contract.name}”?`,
+        description: 'Thao tác này không khôi phục được.',
+        destructive: true,
+      }))
+    )
+      return;
     removeContract.mutate(
       { clientId: client.id, id: contract.id },
-      { onError: (e) => toast.error(apiErrorMessage(e)), onSuccess: () => toast.success('Đã xoá hợp đồng') },
+      {
+        onError: (e) => toast.error(apiErrorMessage(e)),
+        onSuccess: () => toast.success('Đã xoá hợp đồng'),
+      },
     );
   }
 
   const hasClients = (clients ?? []).length > 0;
 
   return (
-    <div className={pageContainer('lg')}>
-      <header className="mb-6 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">Khách hàng &amp; hợp đồng</h1>
-          <p className="mt-1 text-sm text-muted">
-            Lưu thông tin liên hệ của khách hàng, nối họ với dự án đang làm và ghi lại giá trị, thời hạn
-            của từng hợp đồng để không bỏ sót cam kết.
-          </p>
-        </div>
-        {canManage && (
-          <Button size="sm" onClick={openCreate}><Plus className="h-4 w-4" /> Thêm khách hàng</Button>
-        )}
-      </header>
+    <PageFrame size="xl">
+      <PageHeader
+        title={MANAGE_LABELS.clients}
+        description={
+          <>
+            Lưu thông tin khách hàng, nối với dự án và theo dõi hợp đồng.{' '}
+            <DocsLink anchor="quan-ly-nang-cao" />
+          </>
+        }
+        actions={
+          canManage ? (
+            <Button size="sm" onClick={openCreate}>
+              <Plus className="h-4 w-4" /> Thêm khách hàng
+            </Button>
+          ) : undefined
+        }
+      />
 
       {hasClients && (
         <div className="mb-4">
-          <label htmlFor="client-search" className="sr-only">Tìm khách hàng</label>
+          <label htmlFor="client-search" className="sr-only">
+            Tìm khách hàng
+          </label>
           <Input
             id="client-search"
             value={q}
@@ -335,48 +419,76 @@ export function ClientsPage() {
         </div>
       )}
 
-      {isLoading ? (
-        <div className="space-y-3">
-          {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-20 w-full" />)}
-        </div>
-      ) : !hasClients ? (
-        <EmptyState
-          icon={<Building2 className="h-6 w-6" />}
-          title="Chưa có khách hàng nào"
-          description={
-            canManage
-              ? 'Đây là nơi lưu khách hàng cùng hợp đồng của họ. Thêm khách hàng đầu tiên rồi gắn dự án và hợp đồng để theo dõi cam kết.'
-              : 'Đây là nơi lưu khách hàng cùng hợp đồng của họ. Khi có khách hàng được thêm, bạn sẽ thấy ở đây.'
-          }
-          action={canManage ? <Button size="sm" onClick={openCreate}><Plus className="h-4 w-4" /> Thêm khách hàng</Button> : undefined}
-        />
-      ) : filtered.length === 0 ? (
-        <EmptyState
-          icon={<Building2 className="h-6 w-6" />}
-          title="Không tìm thấy khách hàng"
-          description={`Không có khách hàng nào khớp “${q.trim()}”. Thử từ khoá ngắn hơn, hoặc xoá ô tìm kiếm để xem lại tất cả.`}
-          action={<Button size="sm" variant="secondary" onClick={() => setQ('')}>Xoá từ khoá tìm</Button>}
-        />
-      ) : (
-        <div className="space-y-3">
-          {filtered.map((c) => (
-            <ClientCard
-              key={c.id}
-              client={c}
-              canManage={canManage}
-              onEdit={() => { setEditing(c); setEditorOpen(true); }}
-              onAssign={() => setAssigning(c)}
-              onDelete={() => handleDeleteClient(c)}
-              onAddContract={() => setContractCtx({ client: c, contract: null })}
-              onEditContract={(contract) => setContractCtx({ client: c, contract })}
-              onDeleteContract={(contract) => handleDeleteContract(c, contract)}
+      <QueryBoundary
+        query={clientsQuery}
+        skeleton={
+          <div className="space-y-3">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <Skeleton key={i} className="h-20 w-full" />
+            ))}
+          </div>
+        }
+        empty={(d) => d.length === 0}
+        emptyState={
+          <EmptyState
+            icon={<Building2 className="h-6 w-6" />}
+            title="Chưa có khách hàng nào"
+            description={
+              canManage
+                ? 'Đây là nơi lưu khách hàng cùng hợp đồng của họ. Thêm khách hàng đầu tiên rồi gắn dự án và hợp đồng để theo dõi cam kết.'
+                : 'Đây là nơi lưu khách hàng cùng hợp đồng của họ. Khi có khách hàng được thêm, bạn sẽ thấy ở đây.'
+            }
+            action={
+              canManage ? (
+                <Button variant="secondary" size="sm" onClick={openCreate}>
+                  <Plus className="h-4 w-4" /> Thêm khách hàng
+                </Button>
+              ) : undefined
+            }
+          />
+        }
+      >
+        {() =>
+          filtered.length === 0 ? (
+            <EmptyState
+              icon={<Building2 className="h-6 w-6" />}
+              title="Không tìm thấy khách hàng"
+              description={`Không có khách hàng nào khớp “${q.trim()}”. Thử từ khoá ngắn hơn, hoặc xoá ô tìm kiếm để xem lại tất cả.`}
+              action={
+                <Button size="sm" variant="secondary" onClick={() => setQ('')}>
+                  Xoá từ khoá tìm
+                </Button>
+              }
             />
-          ))}
-        </div>
-      )}
+          ) : (
+            <div className="space-y-3">
+              {filtered.map((c) => (
+                <ClientCard
+                  key={c.id}
+                  client={c}
+                  canManage={canManage}
+                  onEdit={() => {
+                    setEditing(c);
+                    setEditorOpen(true);
+                  }}
+                  onAssign={() => setAssigning(c)}
+                  onDelete={() => void handleDeleteClient(c)}
+                  onAddContract={() => setContractCtx({ client: c, contract: null })}
+                  onEditContract={(contract) => setContractCtx({ client: c, contract })}
+                  onDeleteContract={(contract) => void handleDeleteContract(c, contract)}
+                />
+              ))}
+            </div>
+          )
+        }
+      </QueryBoundary>
 
       <ClientEditorModal open={editorOpen} client={editing} onClose={() => setEditorOpen(false)} />
-      <ClientProjectsModal open={!!assigning} client={assigning} onClose={() => setAssigning(null)} />
+      <ClientProjectsModal
+        open={!!assigning}
+        client={assigning}
+        onClose={() => setAssigning(null)}
+      />
       <ContractEditorModal
         open={!!contractCtx}
         clientId={contractCtx?.client.id ?? null}
@@ -384,6 +496,6 @@ export function ClientsPage() {
         contract={contractCtx?.contract}
         onClose={() => setContractCtx(null)}
       />
-    </div>
+    </PageFrame>
   );
 }

@@ -23,7 +23,11 @@ export function IssueTypeBadge({
       )}
       style={{ backgroundColor: `color-mix(in oklch, ${c} 16%, transparent)`, color: c }}
     >
-      <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: c }} aria-hidden />
+      <span
+        className="h-1.5 w-1.5 shrink-0 rounded-full"
+        style={{ backgroundColor: c }}
+        aria-hidden
+      />
       {name}
     </span>
   );

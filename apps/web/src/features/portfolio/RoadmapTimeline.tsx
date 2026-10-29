@@ -3,6 +3,7 @@ import { CalendarRange } from 'lucide-react';
 import { EmptyState } from '@/components/ui/primitives';
 import { cn } from '@/lib/utils';
 import type { RollupGroup } from './api';
+import { fmtDate, fmtMonthYear, monthAxisLabel } from '@/lib/dateFormat';
 
 const DAY = 86_400_000;
 
@@ -31,15 +32,6 @@ function startOfMonth(t: number): number {
 function addMonths(t: number, n: number): number {
   const d = new Date(t);
   return new Date(d.getFullYear(), d.getMonth() + n, 1).getTime();
-}
-
-function monthLabel(t: number): string {
-  const d = new Date(t);
-  return `T${d.getMonth() + 1}/${String(d.getFullYear()).slice(2)}`;
-}
-
-function fmtDate(t: number): string {
-  return new Date(t).toLocaleDateString('vi-VN');
 }
 
 /**
@@ -95,7 +87,8 @@ export function RoadmapTimeline({ groups }: { groups: RollupGroup[] }) {
       months.push({ t, left: ((t - domainStart) / span) * 100, width: ((next - t) / span) * 100 });
     }
     const now = Date.now();
-    const todayLeft = now >= domainStart && now <= domainEnd ? ((now - domainStart) / span) * 100 : null;
+    const todayLeft =
+      now >= domainStart && now <= domainEnd ? ((now - domainStart) / span) * 100 : null;
 
     return { bars, domainStart, span, months, todayLeft };
   }, [groups]);
@@ -118,17 +111,22 @@ export function RoadmapTimeline({ groups }: { groups: RollupGroup[] }) {
       <div className="min-w-[36rem]" style={{ minWidth: `${trackWidth + 208}px` }}>
         {/* Trục tháng */}
         <div className="flex items-end">
-          <div className="w-52 shrink-0 pr-3 text-xs font-medium text-faint" title="Dòng chữ đậm là chương trình, dòng thụt vào là dự án bên trong">
+          <div
+            className="w-52 shrink-0 pr-3 text-xs font-medium text-faint"
+            title="Dòng chữ đậm là chương trình, dòng thụt vào là dự án bên trong"
+          >
             Hạng mục
           </div>
           <div className="relative h-6 flex-1">
-            {months.map((m) => (
+            {months.map((m, i) => (
               <span
                 key={m.t}
-                className="absolute top-0 border-l border-border pl-1 text-[11px] text-faint"
-                style={{ left: `${m.left}%` }}
+                className="absolute top-0 truncate border-l border-border pl-1 text-[11px] text-faint"
+                style={{ left: `${m.left}%`, maxWidth: `${m.width}%` }}
+                title={fmtMonthYear(m.t)}
               >
-                {monthLabel(m.t)}
+                {/* Chỉ ghi năm ở tháng đầu và tháng 1; các tháng còn lại rút gọn `T11`. */}
+                {monthAxisLabel(m.t, i === 0 || new Date(m.t).getMonth() === 0 ? 64 : 34)}
               </span>
             ))}
           </div>
@@ -142,15 +140,31 @@ export function RoadmapTimeline({ groups }: { groups: RollupGroup[] }) {
             return (
               <li key={b.key} className="flex items-center">
                 <div className={cn('w-52 shrink-0 pr-3', b.level === 1 && 'pl-4')}>
-                  <p className={cn('truncate text-sm', b.level === 0 ? 'font-medium text-ink-strong' : 'text-ink')}>{b.label}</p>
+                  <p
+                    className={cn(
+                      'truncate text-sm',
+                      b.level === 0 ? 'font-medium text-ink-strong' : 'text-ink',
+                    )}
+                  >
+                    {b.label}
+                  </p>
                   <p className="truncate text-[11px] text-faint">{b.sub}</p>
                 </div>
                 <div className="relative h-9 flex-1">
                   {months.map((m) => (
-                    <span key={m.t} className="absolute inset-y-0 border-l border-border" style={{ left: `${m.left}%` }} aria-hidden />
+                    <span
+                      key={m.t}
+                      className="absolute inset-y-0 border-l border-border"
+                      style={{ left: `${m.left}%` }}
+                      aria-hidden
+                    />
                   ))}
                   {todayLeft !== null && (
-                    <span className="absolute inset-y-0 w-px bg-danger" style={{ left: `${todayLeft}%` }} aria-hidden />
+                    <span
+                      className="absolute inset-y-0 w-px bg-danger"
+                      style={{ left: `${todayLeft}%` }}
+                      aria-hidden
+                    />
                   )}
                   <div
                     className={cn(
@@ -167,7 +181,11 @@ export function RoadmapTimeline({ groups }: { groups: RollupGroup[] }) {
                     role="img"
                     aria-label={title}
                   >
-                    <span className="block h-full" style={{ width: `${b.pct}%`, backgroundColor: b.color, opacity: 0.55 }} aria-hidden />
+                    <span
+                      className="block h-full"
+                      style={{ width: `${b.pct}%`, backgroundColor: b.color, opacity: 0.55 }}
+                      aria-hidden
+                    />
                   </div>
                 </div>
               </li>

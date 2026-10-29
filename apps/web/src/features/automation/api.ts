@@ -1,7 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import type { RecurrenceFreq } from '@tirapro/types';
 import { api } from '@/lib/api';
+import { keys } from '@/lib/queryKeys';
 
-export type RecurrenceFreq = 'DAILY' | 'WEEKLY' | 'MONTHLY';
+// Enum lấy từ @tirapro/types (sinh từ Prisma); re-export để các màn Tự động hoá import một chỗ.
+export type { RecurrenceFreq };
 
 /** Nội dung mặc định của công việc, lưu trong `payload` của mẫu / lịch lặp. */
 export interface IssuePayload {
@@ -50,9 +53,6 @@ export interface RecurringIssue {
   updatedAt: string;
 }
 
-export const templatesKey = ['automation', 'templates'] as const;
-export const recurringKey = ['automation', 'recurring'] as const;
-
 /**
  * Guard quyền của API đọc `projectId` từ params/body/query. Gửi kèm dự án của bản ghi để
  * quản trị DỰ ÁN (không phải quản trị chung) cũng thao tác được; máy chủ vẫn kiểm tra
@@ -64,7 +64,7 @@ const scopeParams = (projectId?: string | null) => (projectId ? { projectId } : 
 
 export function useIssueTemplates() {
   return useQuery({
-    queryKey: templatesKey,
+    queryKey: keys.automation.templates,
     queryFn: async () => (await api.get<IssueTemplate[]>('/automation/templates')).data,
   });
 }
@@ -81,7 +81,7 @@ export function useCreateTemplate() {
   return useMutation({
     mutationFn: (input: TemplateInput) =>
       api.post<IssueTemplate>('/automation/templates', input).then((r) => r.data),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: templatesKey }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: keys.automation.templates }),
   });
 }
 
@@ -89,8 +89,12 @@ export function useUpdateTemplate() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, ...input }: TemplateInput & { id: string }) =>
-      api.put<IssueTemplate>(`/automation/templates/${id}`, input, { params: scopeParams(input.projectId) }).then((r) => r.data),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: templatesKey }),
+      api
+        .put<IssueTemplate>(`/automation/templates/${id}`, input, {
+          params: scopeParams(input.projectId),
+        })
+        .then((r) => r.data),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: keys.automation.templates }),
   });
 }
 
@@ -98,8 +102,10 @@ export function useDeleteTemplate() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, projectId }: { id: string; projectId?: string | null }) =>
-      api.delete(`/automation/templates/${id}`, { params: scopeParams(projectId) }).then((r) => r.data),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: templatesKey }),
+      api
+        .delete<void>(`/automation/templates/${id}`, { params: scopeParams(projectId) })
+        .then((r) => r.data),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: keys.automation.templates }),
   });
 }
 
@@ -107,7 +113,7 @@ export function useDeleteTemplate() {
 
 export function useRecurringIssues() {
   return useQuery({
-    queryKey: recurringKey,
+    queryKey: keys.automation.recurring,
     queryFn: async () => (await api.get<RecurringIssue[]>('/automation/recurring')).data,
   });
 }
@@ -129,7 +135,7 @@ export function useCreateRecurring() {
   return useMutation({
     mutationFn: (input: RecurringInput) =>
       api.post<RecurringIssue>('/automation/recurring', input).then((r) => r.data),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: recurringKey }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: keys.automation.recurring }),
   });
 }
 
@@ -137,8 +143,12 @@ export function useUpdateRecurring() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, projectId, ...input }: RecurringInput & { id: string }) =>
-      api.put<RecurringIssue>(`/automation/recurring/${id}`, input, { params: scopeParams(projectId) }).then((r) => r.data),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: recurringKey }),
+      api
+        .put<RecurringIssue>(`/automation/recurring/${id}`, input, {
+          params: scopeParams(projectId),
+        })
+        .then((r) => r.data),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: keys.automation.recurring }),
   });
 }
 
@@ -146,8 +156,10 @@ export function useDeleteRecurring() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, projectId }: { id: string; projectId: string }) =>
-      api.delete(`/automation/recurring/${id}`, { params: scopeParams(projectId) }).then((r) => r.data),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: recurringKey }),
+      api
+        .delete<void>(`/automation/recurring/${id}`, { params: scopeParams(projectId) })
+        .then((r) => r.data),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: keys.automation.recurring }),
   });
 }
 
@@ -157,20 +169,29 @@ export function useRunRecurringNow() {
   return useMutation({
     mutationFn: ({ id, projectId }: { id: string; projectId: string }) =>
       api
-        .post<{ success: boolean; issue: { id: string; key: string } }>(
-          `/automation/recurring/${id}/run-now`, undefined, { params: scopeParams(projectId) },
-        )
+        .post<{
+          success: boolean;
+          issue: { id: string; key: string };
+        }>(`/automation/recurring/${id}/run-now`, undefined, { params: scopeParams(projectId) })
         .then((r) => r.data),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: recurringKey });
-      void qc.invalidateQueries({ queryKey: ['issues'] });
+      void qc.invalidateQueries({ queryKey: keys.automation.recurring });
+      void qc.invalidateQueries({ queryKey: keys.issues.all });
     },
   });
 }
 
 /* ------------------------------- Nhãn hiển thị -------------------------- */
 
-export const WEEKDAY_LABELS = ['Chủ nhật', 'Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7'] as const;
+export const WEEKDAY_LABELS = [
+  'Chủ nhật',
+  'Thứ 2',
+  'Thứ 3',
+  'Thứ 4',
+  'Thứ 5',
+  'Thứ 6',
+  'Thứ 7',
+] as const;
 
 export const FREQ_LABELS: Record<RecurrenceFreq, string> = {
   DAILY: 'Hằng ngày',
@@ -179,7 +200,9 @@ export const FREQ_LABELS: Record<RecurrenceFreq, string> = {
 };
 
 /** Mô tả lịch bằng tiếng Việt: "Mỗi tuần vào Thứ 2 lúc 8:00". */
-export function describeRecurrence(r: Pick<RecurringIssue, 'freq' | 'interval' | 'weekday' | 'monthDay' | 'hour'>): string {
+export function describeRecurrence(
+  r: Pick<RecurringIssue, 'freq' | 'interval' | 'weekday' | 'monthDay' | 'hour'>,
+): string {
   const at = `lúc ${r.hour}:00`;
   const n = Math.max(1, r.interval || 1);
   if (r.freq === 'DAILY') return n === 1 ? `Mỗi ngày ${at}` : `Mỗi ${n} ngày ${at}`;

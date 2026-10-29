@@ -1,8 +1,6 @@
 import type { ReactNode } from 'react';
 import { cn } from '@/lib/utils';
-
-/** Định dạng số nguyên kiểu VN (1.234). */
-export const fmtInt = (n: number) => new Intl.NumberFormat('vi-VN').format(n);
+import { fmtDate } from '@/lib/dateFormat';
 
 /** Dung lượng người-đọc-được. */
 export function fmtBytes(n: number): string {
@@ -24,7 +22,7 @@ export function relTime(iso: string | null): string {
   if (h < 24) return `${h} giờ trước`;
   const d = Math.round(h / 24);
   if (d < 30) return `${d} ngày trước`;
-  return new Date(iso).toLocaleDateString('vi-VN');
+  return fmtDate(iso);
 }
 
 type Tone = 'ok' | 'warn' | 'down' | 'muted';
@@ -49,19 +47,6 @@ export function StatusPill({ tone, label, note }: { tone: Tone; label: string; n
       <span className="font-medium text-ink">{label}</span>
       {note && <span className={cn('text-xs', TONE_TEXT[tone])}>{note}</span>}
     </span>
-  );
-}
-
-/** Ô số liệu: nhãn nhỏ + giá trị lớn + dòng phụ tuỳ chọn. */
-export function StatTile({ label, value, sub, accent }: { label: string; value: ReactNode; sub?: ReactNode; accent?: boolean }) {
-  return (
-    <div className="rounded-lg border border-border bg-surface px-4 py-3.5">
-      <div className="text-xs font-medium text-faint">{label}</div>
-      <div className={cn('mt-1 text-2xl font-semibold tabular-nums tracking-tight', accent ? 'text-primary' : 'text-ink-strong')}>
-        {value}
-      </div>
-      {sub && <div className="mt-0.5 text-xs text-muted">{sub}</div>}
-    </div>
   );
 }
 

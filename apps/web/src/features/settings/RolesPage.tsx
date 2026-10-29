@@ -1,18 +1,26 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
-import { Plus, Shield, ShieldCheck, Trash2, X } from 'lucide-react';
+import { useMemo, useState, type FormEvent } from 'react';
+import { DocsLink } from '@/components/ui/DocsLink';
+import { Lock, Plus, Shield, ShieldCheck, Trash2 } from 'lucide-react';
 import {
   PERMISSION_CATALOG,
+  roleLabel,
   type PermissionKey,
   type PermissionScope,
   type RoleDto,
   type RoleScope,
 } from '@tirapro/types';
 import { Button } from '@/components/ui/Button';
+import { ReadOnlyNote } from '@/components/ui/NoAccess';
+import { Dialog } from '@/components/ui/Dialog';
+import { useConfirm } from '@/components/ui/useConfirm';
 import { Input } from '@/components/ui/Input';
 import { RoleBadge } from '@/components/ui/RoleBadge';
 import { EmptyState, Skeleton } from '@/components/ui/primitives';
-import { pageContainer } from '@/components/layout/page';
+import { PageFrame } from '@/components/layout/PageFrame';
+import { PageHeader } from '@/components/layout/PageHeader';
+import { SectionCard } from '@/components/ui/SectionCard';
 import { cn } from '@/lib/utils';
+import { useRetained } from '@/lib/useRetained';
 import { useAuth } from '@/stores/auth';
 import {
   useCreateRole,
@@ -21,18 +29,28 @@ import {
   useUpdateRole,
   type CreateRoleInput,
 } from '@/features/roles/api';
+import { QueryBoundary } from '@/components/ui/QueryBoundary';
+import { RoleMatrixTable } from './RoleMatrixTable';
+import { cloneName } from './rolePermEdit';
+import {
+  ADMIN_GRANT_REASON,
+  permLockedForAdminGrant,
+  roleLockedForAdminGrant,
+} from '@/features/members/adminGrant';
+import { SegmentedControl } from '@/components/ui/SegmentedControl';
+import { ColorPicker } from '@/components/ui/ColorPicker';
+import { LABEL_PALETTE, paletteValue } from '@/lib/labelPalette';
+import { Tabs, TabPanel } from '@/components/ui/Tabs';
+import { SETTINGS_LABELS } from '@/lib/navLabels';
 
-/** Bộ màu OKLCH gợi ý cho vai trò tuỳ chỉnh (đồng bộ tông với system role). */
-const PRESET_COLORS = [
-  'oklch(0.55 0.20 25)',
-  'oklch(0.58 0.16 330)',
-  'oklch(0.55 0.16 300)',
-  'oklch(0.55 0.13 245)',
-  'oklch(0.60 0.13 200)',
-  'oklch(0.58 0.13 150)',
-  'oklch(0.72 0.15 75)',
-  'oklch(0.60 0.018 256)',
+type RolesTab = 'list' | 'matrix';
+const ROLES_TABS: { id: RolesTab; label: string }[] = [
+  { id: 'list', label: 'Danh sách' },
+  { id: 'matrix', label: 'So sánh vai trò' },
 ];
+
+/** Màu mặc định của vai trò mới (Xanh dương — chuỗi OKLCH như các vai trò đã lưu). */
+const DEFAULT_ROLE_COLOR = paletteValue(LABEL_PALETTE[0]!, 'oklch');
 
 const SCOPE_LABEL: Record<RoleScope, string> = {
   WORKSPACE: 'Cấp không gian làm việc',
@@ -48,12 +66,38 @@ function sortRoles(roles: RoleDto[]): RoleDto[] {
 }
 
 export function RolesPage() {
-  const can = useAuth((s) => s.can);
-  const canManage = can('member:manage');
-  const { data: roles, isLoading } = useRoles();
+  const canManage = useAuth((s) => s.can('member:manage'));
+  const rolesQuery = useRoles();
+  const { data: roles } = rolesQuery;
 
+  const [tab, setTab] = useState<RolesTab>('list');
   const [editing, setEditing] = useState<RoleDto | null>(null);
   const [creatingScope, setCreatingScope] = useState<RoleScope | null>(null);
+  // Nhân bản: tạo vai trò mới từ vai trò gốc (bộ quyền, mô tả, màu) — hộp mở sẵn để đặt tên.
+  const [cloning, setCloning] = useState<RoleDto | null>(null);
+  // Vai trò vừa tạo từ nhân bản: ma trận tự thêm cột cho nó.
+  const [revealRoleId, setRevealRoleId] = useState<string | null>(null);
+  // Hộp thoại luôn mount để có hiệu ứng đóng; mỗi lần mở là một `session` mới → form khởi tạo lại.
+  const [session, setSession] = useState(0);
+  const dialogOpen = !!(editing || creatingScope || cloning);
+  const dialogTarget = useRetained(
+    dialogOpen
+      ? { role: editing, scope: creatingScope ?? cloning?.scope ?? 'WORKSPACE', template: cloning }
+      : null,
+  );
+
+  function openEdit(r: RoleDto) {
+    setSession((n) => n + 1);
+    setEditing(r);
+  }
+  function openClone(r: RoleDto) {
+    setSession((n) => n + 1);
+    setCloning(r);
+  }
+  function openCreate(scope: RoleScope) {
+    setSession((n) => n + 1);
+    setCreatingScope(scope);
+  }
 
   const grouped = useMemo(() => {
     const all = roles ?? [];
@@ -64,70 +108,105 @@ export function RolesPage() {
   }, [roles]);
 
   return (
-    <div className={pageContainer('sm')}>
-      <header className="mb-8 flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">Vai trò</h1>
-          <p className="mt-1 text-sm text-muted">
-            Vai trò gom các quyền lại để gán cho thành viên. Vai trò hệ thống là cố định; bạn
-            có thể tạo vai trò tuỳ chỉnh riêng.
-          </p>
-        </div>
-        {canManage && (
-          <Button size="sm" onClick={() => setCreatingScope('WORKSPACE')}>
-            <Plus className="h-4 w-4" />
-            Tạo vai trò
-          </Button>
-        )}
-      </header>
+    <PageFrame size="lg">
+      <PageHeader
+        title={SETTINGS_LABELS.roles}
+        description={
+          <>
+            Vai trò gom các quyền để gán cho thành viên; vai trò hệ thống không đổi được.{' '}
+            <DocsLink anchor="vai-tro" />
+          </>
+        }
+        actions={
+          canManage ? (
+            <Button size="sm" onClick={() => openCreate('WORKSPACE')} data-tour="roles-create">
+              <Plus className="h-4 w-4" />
+              Tạo vai trò
+            </Button>
+          ) : undefined
+        }
+      />
+      {!canManage && <ReadOnlyNote />}
 
-      {isLoading ? (
-        <div className="space-y-3">
-          {Array.from({ length: 5 }).map((_, i) => (
-            <Skeleton key={i} className="h-16 w-full" />
-          ))}
-        </div>
-      ) : !roles || roles.length === 0 ? (
-        <EmptyState
-          icon={<Shield className="h-6 w-6" />}
-          title="Chưa có vai trò"
-          description="Tạo vai trò đầu tiên để phân quyền cho thành viên."
-          action={
-            canManage ? (
-              <Button size="sm" onClick={() => setCreatingScope('WORKSPACE')}>
-                <Plus className="h-4 w-4" />
-                Tạo vai trò
-              </Button>
-            ) : undefined
+      <Tabs
+        idBase="roles"
+        ariaLabel={SETTINGS_LABELS.roles}
+        value={tab}
+        onChange={setTab}
+        items={ROLES_TABS}
+        className="mb-6"
+        data-tour="roles-tabs"
+      />
+
+      <TabPanel idBase="roles" value={tab} data-tour="roles-list">
+        <QueryBoundary
+          query={rolesQuery}
+          skeleton={
+            <div className="space-y-3">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <Skeleton key={i} className="h-16 w-full" />
+              ))}
+            </div>
           }
-        />
-      ) : (
-        <div className="space-y-8">
-          {(['WORKSPACE', 'PROJECT'] as const).map((scope) => (
-            <RoleGroup
-              key={scope}
-              scope={scope}
-              roles={grouped[scope]}
-              canManage={canManage}
-              onOpen={(r) => setEditing(r)}
-              onCreate={() => setCreatingScope(scope)}
+          empty={(d) => d.length === 0}
+          emptyState={
+            <EmptyState
+              icon={<Shield className="h-6 w-6" />}
+              title="Chưa có vai trò"
+              description="Tạo vai trò đầu tiên để phân quyền cho thành viên."
+              action={
+                canManage ? (
+                  <Button variant="secondary" size="sm" onClick={() => openCreate('WORKSPACE')}>
+                    <Plus className="h-4 w-4" />
+                    Tạo vai trò
+                  </Button>
+                ) : undefined
+              }
             />
-          ))}
-        </div>
-      )}
+          }
+        >
+          {(all) =>
+            tab === 'matrix' ? (
+              <RoleMatrixTable
+                roles={all}
+                canEdit={canManage}
+                onClone={openClone}
+                revealRoleId={revealRoleId}
+                onRevealed={() => setRevealRoleId(null)}
+              />
+            ) : (
+              <div className="space-y-8">
+                {(['WORKSPACE', 'PROJECT'] as const).map((scope) => (
+                  <RoleGroup
+                    key={scope}
+                    scope={scope}
+                    roles={grouped[scope]}
+                    canManage={canManage}
+                    onOpen={openEdit}
+                    onCreate={() => openCreate(scope)}
+                  />
+                ))}
+              </div>
+            )
+          }
+        </QueryBoundary>
+      </TabPanel>
 
-      {(editing || creatingScope) && (
-        <RoleDialog
-          role={editing}
-          initialScope={creatingScope ?? 'WORKSPACE'}
-          canManage={canManage}
-          onClose={() => {
-            setEditing(null);
-            setCreatingScope(null);
-          }}
-        />
-      )}
-    </div>
+      <RoleDialog
+        key={session}
+        open={dialogOpen}
+        role={dialogTarget?.role ?? null}
+        initialScope={dialogTarget?.scope ?? 'WORKSPACE'}
+        template={dialogTarget?.template ?? null}
+        canManage={canManage}
+        onCreated={(r) => setRevealRoleId(r.id)}
+        onClose={() => {
+          setEditing(null);
+          setCreatingScope(null);
+          setCloning(null);
+        }}
+      />
+    </PageFrame>
   );
 }
 
@@ -149,19 +228,23 @@ function RoleGroup({
   onCreate: () => void;
 }) {
   return (
-    <section className="rounded-lg border border-border bg-surface">
-      <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-4">
-        <h2 className="text-base font-semibold text-ink-strong">{SCOPE_LABEL[scope]}</h2>
-        {canManage && (
+    <SectionCard
+      title={SCOPE_LABEL[scope]}
+      bare
+      actions={
+        canManage ? (
           <Button variant="ghost" size="sm" onClick={onCreate}>
             <Plus className="h-4 w-4" />
             Tạo vai trò
           </Button>
-        )}
-      </div>
+        ) : undefined
+      }
+    >
       <div className="p-2">
         {roles.length === 0 ? (
-          <p className="px-3 py-4 text-sm text-muted">Chưa có vai trò {SCOPE_LABEL[scope].toLowerCase()}.</p>
+          <p className="px-3 py-4 text-sm text-muted">
+            Chưa có vai trò {SCOPE_LABEL[scope].toLowerCase()}.
+          </p>
         ) : (
           <ul className="space-y-0.5">
             {roles.map((role) => (
@@ -172,7 +255,7 @@ function RoleGroup({
           </ul>
         )}
       </div>
-    </section>
+    </SectionCard>
   );
 }
 
@@ -184,21 +267,31 @@ function RoleRow({ role, onOpen }: { role: RoleDto; onOpen: () => void }) {
       type="button"
       onClick={onOpen}
       className={cn(
-        'flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left transition-colors',
+        'flex w-full flex-wrap items-center gap-x-3 gap-y-1 rounded-md px-3 py-2.5 text-left transition-colors',
         'hover:bg-surface-2 focus-visible:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
       )}
     >
-      <RoleBadge name={role.name} color={role.color} />
-      {role.isSystem && (
-        <span className="inline-flex items-center gap-1 rounded-full bg-surface-2 px-2 py-0.5 text-xs font-medium text-faint">
-          <ShieldCheck className="h-3 w-3" aria-hidden />
-          Hệ thống
+      {/* ≥ sm: cột tên (badge vai trò + "Hệ thống") bề rộng cố định → mô tả bắt đầu thẳng cột giữa các dòng. */}
+      <span className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 sm:w-64 sm:shrink-0 sm:flex-nowrap">
+        <RoleBadge name={role.name} color={role.color} />
+        {role.isSystem && (
+          <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-surface-2 px-2 py-0.5 text-xs font-medium text-faint">
+            <ShieldCheck className="h-3 w-3" aria-hidden />
+            Hệ thống
+          </span>
+        )}
+      </span>
+      {role.description && (
+        <span className="min-w-0 text-sm text-muted max-sm:order-last max-sm:basis-full max-sm:line-clamp-2 sm:flex-1 sm:truncate">
+          {role.description}
         </span>
       )}
-      {role.description && (
-        <span className="min-w-0 flex-1 truncate text-sm text-muted">{role.description}</span>
-      )}
-      <span className={cn('ml-auto shrink-0 text-xs text-faint', role.description && 'ml-3')}>
+      <span
+        className={cn(
+          'ml-auto shrink-0 text-xs text-faint max-sm:ml-0 max-sm:basis-full',
+          role.description && 'sm:ml-3',
+        )}
+      >
         {memberCount} thành viên · {permCount} quyền
       </span>
     </button>
@@ -221,43 +314,48 @@ const PERM_SCOPE_LABEL: Record<PermissionScope, string> = {
 };
 
 function RoleDialog({
+  open,
   role,
   initialScope,
+  template,
   canManage,
+  onCreated,
   onClose,
 }: {
+  open: boolean;
   role: RoleDto | null;
   initialScope: RoleScope;
+  /** Nhân bản: vai trò gốc (chỉ dùng khi tạo mới) — điền sẵn bộ quyền, mô tả, màu và đề xuất tên. */
+  template: RoleDto | null;
   canManage: boolean;
+  onCreated: (role: RoleDto) => void;
   onClose: () => void;
 }) {
   const isCreate = role === null;
-  const readOnly = !canManage || (role?.isSystem ?? false);
+  // P-C14: chỉ quản trị mới cấp/gỡ `workspace:admin` — người chỉ có `member:manage` không sửa được vai trò đang giữ nó.
+  const canGrantAdmin = useAuth((s) => s.can('workspace:admin'));
+  const adminRoleLocked = roleLockedForAdminGrant(canGrantAdmin, role?.permissionKeys ?? []);
+  const readOnly = !canManage || (role?.isSystem ?? false) || adminRoleLocked;
 
   const createRole = useCreateRole();
   const updateRole = useUpdateRole();
   const deleteRole = useDeleteRole();
+  const confirm = useConfirm();
 
-  const [name, setName] = useState(role?.name ?? '');
-  const [scope, setScope] = useState<RoleScope>(role?.scope ?? initialScope);
-  const [description, setDescription] = useState(role?.description ?? '');
-  const [color, setColor] = useState<string>(role?.color ?? PRESET_COLORS[3]);
-  const [perms, setPerms] = useState<Set<PermissionKey>>(
-    () => new Set(role?.permissionKeys ?? []),
+  const source = role ?? template;
+  const [name, setName] = useState(() =>
+    role ? role.name : template ? cloneName(template.name) : '',
   );
-
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') onClose();
-    }
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  const [scope, setScope] = useState<RoleScope>(source?.scope ?? initialScope);
+  const [description, setDescription] = useState(source?.description ?? '');
+  const [color, setColor] = useState<string>(source?.color ?? DEFAULT_ROLE_COLOR);
+  const [perms, setPerms] = useState<Set<PermissionKey>>(
+    () => new Set(source?.permissionKeys ?? []),
+  );
 
   // Checklist hiển thị theo scope của vai trò (chung ↔ dự án). Khi đổi scope
   // lúc tạo mới, loại bỏ các quyền không còn thuộc scope đó.
-  const visibleScopes: PermissionScope[] =
-    scope === 'WORKSPACE' ? ['WORKSPACE'] : ['PROJECT'];
+  const visibleScopes: PermissionScope[] = scope === 'WORKSPACE' ? ['WORKSPACE'] : ['PROJECT'];
 
   function setScopeAndPrune(next: RoleScope) {
     setScope(next);
@@ -266,7 +364,7 @@ function RoleDialog({
   }
 
   function togglePerm(key: PermissionKey) {
-    if (readOnly) return;
+    if (readOnly || permLockedForAdminGrant(canGrantAdmin, [], key)) return;
     setPerms((prev) => {
       const next = new Set(prev);
       if (next.has(key)) next.delete(key);
@@ -277,7 +375,10 @@ function RoleDialog({
 
   const trimmedName = name.trim();
   const permKeys = [...perms];
-  const canSubmit = trimmedName.length > 0 && permKeys.length > 0 && !readOnly;
+  // Nhân bản từ vai trò đang có workspace:admin: ô quyền khoá nhưng vẫn tích sẵn → gửi đi sẽ bị 403, nên chặn ở đây.
+  const needsAdminToSubmit = !canGrantAdmin && perms.has('workspace:admin');
+  const canSubmit =
+    trimmedName.length > 0 && permKeys.length > 0 && !readOnly && !needsAdminToSubmit;
   const busy = createRole.isPending || updateRole.isPending;
 
   function submit(e: FormEvent) {
@@ -291,7 +392,12 @@ function RoleDialog({
         color,
         permissionKeys: permKeys,
       };
-      createRole.mutate(body, { onSuccess: onClose });
+      createRole.mutate(body, {
+        onSuccess: (created) => {
+          onClose();
+          if (template) onCreated(created);
+        },
+      });
     } else {
       updateRole.mutate(
         {
@@ -301,6 +407,8 @@ function RoleDialog({
             description: description.trim() || null,
             color,
             permissionKeys: permKeys,
+            // Người khác vừa sửa vai trò này (kể cả bộ quyền) → 409, không ghi đè lặng lẽ.
+            expectedUpdatedAt: role.updatedAt,
           },
         },
         { onSuccess: onClose },
@@ -308,202 +416,210 @@ function RoleDialog({
     }
   }
 
-  function handleDelete() {
+  async function handleDelete() {
     if (!role || role.isSystem) return;
     const count = role.memberCount ?? 0;
-    const warn =
-      count > 0
-        ? `Vai trò "${role.name}" đang gán cho ${count} thành viên. Xoá vai trò?`
-        : `Xoá vai trò "${role.name}"? Hành động này không thể hoàn tác.`;
-    if (!window.confirm(warn)) return;
+    const label = roleLabel(role.name);
+    const ok = await confirm({
+      title: `Xoá vai trò "${label}"?`,
+      description:
+        count > 0
+          ? `Vai trò đang gán cho ${count} thành viên. Hành động này không thể hoàn tác.`
+          : 'Hành động này không thể hoàn tác.',
+      destructive: true,
+      requireText: label,
+    });
+    if (!ok) return;
     deleteRole.mutate(role.id, { onSuccess: onClose });
   }
 
-  const title = isCreate ? 'Tạo vai trò' : readOnly ? role?.name : `Sửa "${role?.name}"`;
+  const title: string = isCreate
+    ? template
+      ? 'Nhân bản vai trò'
+      : 'Tạo vai trò'
+    : readOnly
+      ? roleLabel(role?.name ?? '')
+      : `Sửa "${roleLabel(role?.name ?? '')}"`;
 
   return (
-    <div className="fixed inset-0 z-modal flex items-start justify-center p-4 pt-[8vh]">
-      <button
-        className="absolute inset-0 bg-black/30 animate-in fade-in duration-200"
-        onClick={onClose}
-        aria-label="Đóng"
-      />
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label={title}
-        className="relative flex max-h-[84vh] w-full max-w-xl flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-lg animate-in fade-in zoom-in-95 duration-200"
-      >
-        <header className="flex items-center gap-2 border-b border-border px-5 py-3">
-          {readOnly ? (
-            <RoleBadge name={role?.name ?? ''} color={role?.color} />
-          ) : (
-            <Shield className="h-4 w-4 text-primary" />
+    <Dialog
+      open={open}
+      onOpenChange={(o) => {
+        if (!o) onClose();
+      }}
+      title={title}
+      icon={readOnly ? undefined : <Shield className="h-4 w-4" />}
+      hideTitle={readOnly}
+      size="lg"
+      footer={
+        <div className="flex w-full items-center gap-2">
+          {!readOnly && !isCreate && role && !role.isSystem && (
+            <Button
+              type="button"
+              variant="ghost"
+              className="text-danger hover:bg-danger/10"
+              onClick={() => void handleDelete()}
+              loading={deleteRole.isPending}
+            >
+              <Trash2 className="h-4 w-4" />
+              Xoá
+            </Button>
           )}
-          <span className="text-sm font-medium text-ink">{!readOnly && title}</span>
-          {readOnly && !isCreate && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-surface-2 px-2 py-0.5 text-xs font-medium text-faint">
-              <ShieldCheck className="h-3 w-3" aria-hidden />
-              Chỉ xem
-            </span>
-          )}
-          <Button variant="ghost" size="icon" className="ml-auto" onClick={onClose} aria-label="Đóng">
-            <X className="h-4 w-4" />
-          </Button>
-        </header>
-
-        <form onSubmit={submit} className="flex min-h-0 flex-1 flex-col">
-          <div className="flex-1 space-y-5 overflow-y-auto px-5 py-4">
+          <div className="ml-auto flex items-center gap-2">
+            <Button type="button" variant="ghost" onClick={onClose}>
+              {readOnly ? 'Đóng' : 'Huỷ'}
+            </Button>
             {!readOnly && (
-              <>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div>
-                    <label htmlFor="role-name" className="mb-1.5 block text-sm font-medium text-muted">
-                      Tên vai trò
-                    </label>
-                    <Input
-                      id="role-name"
-                      autoFocus
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                      placeholder="VD: QA Lead"
-                      className="text-sm"
-                    />
-                  </div>
-                  <div>
-                    <label htmlFor="role-scope" className="mb-1.5 block text-sm font-medium text-muted">
-                      Phạm vi
-                    </label>
-                    <select
-                      id="role-scope"
-                      value={scope}
-                      disabled={!isCreate}
-                      onChange={(e) => setScopeAndPrune(e.target.value as RoleScope)}
+              <Button type="submit" form="role-form" loading={busy} disabled={!canSubmit}>
+                {isCreate ? (template ? 'Nhân bản' : 'Tạo vai trò') : 'Lưu'}
+              </Button>
+            )}
+          </div>
+        </div>
+      }
+    >
+      <form id="role-form" onSubmit={submit} className="space-y-5">
+        {readOnly && (
+          <div className="flex items-center gap-2">
+            <RoleBadge name={role?.name ?? ''} color={role?.color} />
+            {!isCreate && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-surface-2 px-2 py-0.5 text-xs font-medium text-faint">
+                <ShieldCheck className="h-3 w-3" aria-hidden />
+                Chỉ xem
+              </span>
+            )}
+          </div>
+        )}
+        {!readOnly && (
+          <>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <label htmlFor="role-name" className="mb-1.5 block text-sm font-medium text-muted">
+                  Tên vai trò
+                </label>
+                <Input
+                  id="role-name"
+                  autoFocus
+                  // Nhân bản: tên đề xuất được chọn sẵn → gõ là thay luôn.
+                  onFocus={template ? (e) => e.currentTarget.select() : undefined}
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="VD: QA Lead"
+                  className="text-sm"
+                />
+              </div>
+              <div>
+                <span id="role-scope-label" className="mb-1.5 block text-sm font-medium text-muted">
+                  Phạm vi
+                </span>
+                <SegmentedControl<RoleScope>
+                  ariaLabelledby="role-scope-label"
+                  value={scope}
+                  disabled={!isCreate}
+                  onChange={setScopeAndPrune}
+                  fullWidth
+                  options={[
+                    { value: 'WORKSPACE', label: 'Không gian làm việc' },
+                    { value: 'PROJECT', label: 'Dự án' },
+                  ]}
+                />
+              </div>
+            </div>
+
+            <div>
+              <label htmlFor="role-desc" className="mb-1.5 block text-sm font-medium text-muted">
+                Mô tả <span className="font-normal text-faint">(tuỳ chọn)</span>
+              </label>
+              <Input
+                id="role-desc"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Vai trò này dùng để làm gì?"
+                className="text-sm"
+              />
+            </div>
+
+            <div>
+              <span id="role-color-label" className="mb-1.5 block text-sm font-medium text-muted">
+                Màu
+              </span>
+              <div className="flex flex-wrap items-center gap-2">
+                <ColorPicker
+                  value={color}
+                  onChange={setColor}
+                  format="oklch"
+                  ariaLabelledby="role-color-label"
+                />
+                <span className="ml-1">
+                  <RoleBadge name={trimmedName || 'Xem trước'} color={color} />
+                </span>
+              </div>
+            </div>
+          </>
+        )}
+
+        {readOnly && adminRoleLocked && !role?.isSystem && (
+          <p className="flex items-center gap-1.5 text-sm text-muted">
+            <Lock className="h-3.5 w-3.5 shrink-0" aria-hidden />
+            Vai trò này đang giữ quyền quản trị. {ADMIN_GRANT_REASON}.
+          </p>
+        )}
+        {readOnly && role?.description && <p className="text-sm text-muted">{role.description}</p>}
+
+        {/* Checklist quyền */}
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium text-ink-strong">Quyền</span>
+            <span className="text-xs text-faint">{permKeys.length} quyền được chọn</span>
+          </div>
+          {visibleScopes.map((ps) => (
+            <fieldset key={ps} className="space-y-1">
+              <legend className="mb-1 text-xs font-medium text-faint">
+                {PERM_SCOPE_LABEL[ps]}
+              </legend>
+              <div className="space-y-0.5">
+                {PERMS_BY_SCOPE[ps].map((p) => {
+                  const checked = perms.has(p.key);
+                  const adminLocked =
+                    !readOnly && permLockedForAdminGrant(canGrantAdmin, [], p.key);
+                  return (
+                    <label
+                      key={p.key}
                       className={cn(
-                        'h-9 w-full rounded-md border border-border bg-bg px-3 text-sm text-ink',
-                        'transition-colors focus-visible:outline-none focus-visible:border-primary',
-                        'focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:opacity-50',
+                        'flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm transition-colors',
+                        readOnly ? 'cursor-default' : 'cursor-pointer hover:bg-surface-2',
                       )}
                     >
-                      <option value="WORKSPACE">Không gian làm việc</option>
-                      <option value="PROJECT">Dự án</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div>
-                  <label htmlFor="role-desc" className="mb-1.5 block text-sm font-medium text-muted">
-                    Mô tả <span className="font-normal text-faint">(tuỳ chọn)</span>
-                  </label>
-                  <Input
-                    id="role-desc"
-                    value={description}
-                    onChange={(e) => setDescription(e.target.value)}
-                    placeholder="Vai trò này dùng để làm gì?"
-                    className="text-sm"
-                  />
-                </div>
-
-                <div>
-                  <span className="mb-1.5 block text-sm font-medium text-muted">Màu</span>
-                  <div className="flex flex-wrap items-center gap-2">
-                    {PRESET_COLORS.map((c) => {
-                      const active = c === color;
-                      return (
-                        <button
-                          key={c}
-                          type="button"
-                          onClick={() => setColor(c)}
-                          aria-label={`Chọn màu ${c}`}
-                          aria-pressed={active}
-                          className={cn(
-                            'h-7 w-7 rounded-full transition-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
-                            active ? 'ring-2 ring-offset-2 ring-offset-surface' : 'hover:scale-110',
-                          )}
-                          style={{ backgroundColor: c, ['--tw-ring-color' as string]: c }}
-                        />
-                      );
-                    })}
-                    <span className="ml-1">
-                      <RoleBadge name={trimmedName || 'Xem trước'} color={color} />
-                    </span>
-                  </div>
-                </div>
-              </>
-            )}
-
-            {readOnly && role?.description && (
-              <p className="text-sm text-muted">{role.description}</p>
-            )}
-
-            {/* Checklist quyền */}
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium text-ink-strong">Quyền</span>
-                <span className="text-xs text-faint">{permKeys.length} quyền được chọn</span>
-              </div>
-              {visibleScopes.map((ps) => (
-                <fieldset key={ps} className="space-y-1">
-                  <legend className="mb-1 text-xs font-medium text-faint">
-                    {PERM_SCOPE_LABEL[ps]}
-                  </legend>
-                  <div className="space-y-0.5">
-                    {PERMS_BY_SCOPE[ps].map((p) => {
-                      const checked = perms.has(p.key);
-                      return (
-                        <label
-                          key={p.key}
-                          className={cn(
-                            'flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm transition-colors',
-                            readOnly ? 'cursor-default' : 'cursor-pointer hover:bg-surface-2',
-                          )}
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        disabled={readOnly || adminLocked}
+                        aria-describedby={adminLocked ? 'role-admin-lock' : undefined}
+                        onChange={() => togglePerm(p.key)}
+                        // Giữ disabled:opacity (không dùng token vô hiệu) — checkbox native: trình duyệt tự vẽ, nền/chữ không tô lại được.
+                        className="h-4 w-4 shrink-0 rounded border-border-strong text-primary accent-[var(--primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:opacity-60"
+                      />
+                      <span className={cn('min-w-0 flex-1', checked ? 'text-ink' : 'text-muted')}>
+                        {p.description}
+                      </span>
+                      {adminLocked && (
+                        <span
+                          id="role-admin-lock"
+                          className="inline-flex shrink-0 items-center gap-1 text-xs text-faint"
                         >
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            disabled={readOnly}
-                            onChange={() => togglePerm(p.key)}
-                            className="h-4 w-4 shrink-0 rounded border-border-strong text-primary accent-[var(--primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:opacity-60"
-                          />
-                          <span className={cn('min-w-0 flex-1', checked ? 'text-ink' : 'text-muted')}>
-                            {p.description}
-                          </span>
-                          <span className="shrink-0 font-mono text-xs text-faint">{p.key}</span>
-                        </label>
-                      );
-                    })}
-                  </div>
-                </fieldset>
-              ))}
-            </div>
-          </div>
-
-          <footer className="flex items-center gap-2 border-t border-border px-5 py-3">
-            {!readOnly && !isCreate && role && !role.isSystem && (
-              <Button
-                type="button"
-                variant="ghost"
-                className="text-danger hover:bg-danger/10"
-                onClick={handleDelete}
-                loading={deleteRole.isPending}
-              >
-                <Trash2 className="h-4 w-4" />
-                Xoá
-              </Button>
-            )}
-            <div className="ml-auto flex items-center gap-2">
-              <Button type="button" variant="ghost" onClick={onClose}>
-                {readOnly ? 'Đóng' : 'Huỷ'}
-              </Button>
-              {!readOnly && (
-                <Button type="submit" loading={busy} disabled={!canSubmit}>
-                  {isCreate ? 'Tạo vai trò' : 'Lưu'}
-                </Button>
-              )}
-            </div>
-          </footer>
-        </form>
-      </div>
-    </div>
+                          <Lock className="h-3 w-3" aria-hidden />
+                          {ADMIN_GRANT_REASON}
+                        </span>
+                      )}
+                      <span className="shrink-0 font-mono text-xs text-faint">{p.key}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            </fieldset>
+          ))}
+        </div>
+      </form>
+    </Dialog>
   );
 }

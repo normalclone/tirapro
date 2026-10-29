@@ -1,7 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import type { Prisma, TimeOffKind } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
+import { TRIAGE_VISIBLE } from '../../common/triage-visibility';
 import { BusinessRuleException, NotFoundAppException } from '../../common/exceptions/app.exception';
+import { ProjectAccessService } from '../rbac/project-access.service';
 import {
   HOURS_PER_DAY,
   addDays,
@@ -35,19 +37,31 @@ const USER_SELECT = { id: true, email: true, displayName: true, avatarUrl: true 
 const PROJECT_SELECT = { id: true, key: true, name: true } as const;
 
 const ALLOCATION_SELECT = {
-  id: true, projectId: true, userId: true, percent: true, startDate: true, endDate: true,
-  note: true, createdAt: true,
+  id: true,
+  projectId: true,
+  userId: true,
+  percent: true,
+  startDate: true,
+  endDate: true,
+  note: true,
+  createdAt: true,
   project: { select: PROJECT_SELECT },
   user: { select: USER_SELECT },
 } satisfies Prisma.AllocationSelect;
 
 const TIME_OFF_SELECT = {
-  id: true, workspaceId: true, userId: true, kind: true, startDate: true, endDate: true,
-  note: true, createdAt: true,
+  id: true,
+  workspaceId: true,
+  userId: true,
+  kind: true,
+  startDate: true,
+  endDate: true,
+  note: true,
+  createdAt: true,
   user: { select: USER_SELECT },
 } satisfies Prisma.TimeOffSelect;
 
-export interface WorkloadWeekCell {
+interface WorkloadWeekCell {
   weekStart: string;
   capacityHours: number;
   assignedHours: number;
@@ -62,7 +76,7 @@ export interface WorkloadWeekCell {
   overloaded: boolean;
 }
 
-export interface WorkloadRow {
+interface WorkloadRow {
   user: { id: string; email: string; displayName: string; avatarUrl: string | null };
   weeks: WorkloadWeekCell[];
   totals: {
@@ -100,13 +114,22 @@ export interface WorkloadReport {
  */
 @Injectable()
 export class ResourcesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly access: ProjectAccessService,
+  ) {}
+
+  /** Điều kiện hiển thị dự án của người xem (`{}` = thấy hết). `viewerId` bắt buộc ở mọi đường đọc. */
+  private visibleFor(workspaceId: string, viewerId: string): Promise<Prisma.ProjectWhereInput> {
+    return this.access.visibleWhere(viewerId, workspaceId);
+  }
 
   /* ─────────────────────────── Phân bổ ─────────────────────────── */
 
-  async listAllocations(workspaceId: string, q: ListAllocationsQuery) {
+  async listAllocations(workspaceId: string, q: ListAllocationsQuery, viewerId: string) {
+    const visible = await this.visibleFor(workspaceId, viewerId);
     const where: Prisma.AllocationWhereInput = {
-      project: { workspaceId, deletedAt: null },
+      project: { workspaceId, deletedAt: null, ...visible },
       ...(q.projectId ? { projectId: q.projectId } : {}),
       ...(q.userId ? { userId: q.userId } : {}),
     };
@@ -122,9 +145,9 @@ export class ResourcesService {
     return rows.map((r) => this.toAllocationDto(r));
   }
 
-  async createAllocation(workspaceId: string, dto: CreateAllocationInput) {
+  async createAllocation(workspaceId: string, dto: CreateAllocationInput, viewerId: string) {
     const { startDate, endDate } = this.requireRange(dto.startDate, dto.endDate);
-    await this.requireProject(workspaceId, dto.projectId);
+    await this.requireProject(workspaceId, dto.projectId, viewerId);
     await this.requireMember(workspaceId, dto.userId);
 
     const created = await this.prisma.allocation.create({
@@ -141,16 +164,22 @@ export class ResourcesService {
     return this.toAllocationDto(created);
   }
 
-  async updateAllocation(workspaceId: string, id: string, dto: UpdateAllocationInput) {
+  async updateAllocation(
+    workspaceId: string,
+    id: string,
+    dto: UpdateAllocationInput,
+    viewerId: string,
+  ) {
+    const visible = await this.visibleFor(workspaceId, viewerId);
     const current = await this.prisma.allocation.findFirst({
-      where: { id, project: { workspaceId } },
+      where: { id, project: { workspaceId, deletedAt: null, ...visible } },
       select: { id: true, startDate: true, endDate: true },
     });
     if (!current) throw new NotFoundAppException('Phân bổ');
 
     const data: Prisma.AllocationUpdateInput = {};
     if (dto.projectId !== undefined && dto.projectId !== null) {
-      await this.requireProject(workspaceId, dto.projectId);
+      await this.requireProject(workspaceId, dto.projectId, viewerId);
       data.project = { connect: { id: dto.projectId } };
     }
     if (dto.userId !== undefined && dto.userId !== null) {
@@ -168,12 +197,20 @@ export class ResourcesService {
       data.endDate = range.endDate;
     }
 
-    const updated = await this.prisma.allocation.update({ where: { id }, data, select: ALLOCATION_SELECT });
+    const updated = await this.prisma.allocation.update({
+      where: { id },
+      data,
+      select: ALLOCATION_SELECT,
+    });
     return this.toAllocationDto(updated);
   }
 
-  async deleteAllocation(workspaceId: string, id: string) {
-    const found = await this.prisma.allocation.findFirst({ where: { id, project: { workspaceId } }, select: { id: true } });
+  async deleteAllocation(workspaceId: string, id: string, viewerId: string) {
+    const visible = await this.visibleFor(workspaceId, viewerId);
+    const found = await this.prisma.allocation.findFirst({
+      where: { id, project: { workspaceId, deletedAt: null, ...visible } },
+      select: { id: true },
+    });
     if (!found) throw new NotFoundAppException('Phân bổ');
     await this.prisma.allocation.delete({ where: { id } });
     return { success: true };
@@ -185,7 +222,7 @@ export class ResourcesService {
     const where: Prisma.TimeOffWhereInput = {
       workspaceId,
       ...(q.userId ? { userId: q.userId } : {}),
-      ...(q.kind ? { kind: q.kind as TimeOffKind } : {}),
+      ...(q.kind ? { kind: q.kind } : {}),
     };
     if (q.to) where.startDate = { lte: parseDayParam(q.to, new Date()) };
     if (q.from) where.endDate = { gte: parseDayParam(q.from, new Date()) };
@@ -207,7 +244,7 @@ export class ResourcesService {
       data: {
         workspaceId,
         userId: dto.userId ?? null,
-        kind: (dto.kind ?? 'LEAVE') as TimeOffKind,
+        kind: dto.kind ?? 'LEAVE',
         startDate,
         endDate,
         note: dto.note ?? null,
@@ -233,7 +270,7 @@ export class ResourcesService {
         data.user = { disconnect: true };
       }
     }
-    if (dto.kind !== undefined && dto.kind !== null) data.kind = dto.kind as TimeOffKind;
+    if (dto.kind !== undefined && dto.kind !== null) data.kind = dto.kind;
     if (dto.note !== undefined) data.note = dto.note;
 
     if (dto.startDate !== undefined || dto.endDate !== undefined) {
@@ -245,12 +282,19 @@ export class ResourcesService {
       data.endDate = range.endDate;
     }
 
-    const updated = await this.prisma.timeOff.update({ where: { id }, data, select: TIME_OFF_SELECT });
+    const updated = await this.prisma.timeOff.update({
+      where: { id },
+      data,
+      select: TIME_OFF_SELECT,
+    });
     return this.toTimeOffDto(updated);
   }
 
   async deleteTimeOff(workspaceId: string, id: string) {
-    const found = await this.prisma.timeOff.findFirst({ where: { id, workspaceId }, select: { id: true } });
+    const found = await this.prisma.timeOff.findFirst({
+      where: { id, workspaceId },
+      select: { id: true },
+    });
     if (!found) throw new NotFoundAppException('Ngày nghỉ');
     await this.prisma.timeOff.delete({ where: { id } });
     return { success: true };
@@ -258,7 +302,9 @@ export class ResourcesService {
 
   /* ─────────────────────────── Tải theo tuần ─────────────────────────── */
 
-  async workload(workspaceId: string, q: WorkloadQuery): Promise<WorkloadReport> {
+  async workload(workspaceId: string, q: WorkloadQuery, viewerId: string): Promise<WorkloadReport> {
+    // Dự án riêng tư người xem không thấy: phân bổ/việc/giờ log vào đó bị bỏ khỏi tổng (không lộ qua con số); admin thấy đủ.
+    const visible = await this.visibleFor(workspaceId, viewerId);
     const today = new Date();
     const from = parseDayParam(q.from, today);
     const to = parseDayParam(q.to, addDays(startOfWeek(today), 27)); // mặc định 4 tuần
@@ -268,7 +314,8 @@ export class ResourcesService {
       lastWeekStart = addDays(rangeStart, (MAX_WEEKS - 1) * 7);
     }
     const rangeEnd = addDays(lastWeekStart, 6);
-    const weekCount = Math.round((lastWeekStart.getTime() - rangeStart.getTime()) / (7 * 24 * 3600 * 1000)) + 1;
+    const weekCount =
+      Math.round((lastWeekStart.getTime() - rangeStart.getTime()) / (7 * 24 * 3600 * 1000)) + 1;
     const weekStarts = Array.from({ length: weekCount }, (_, i) => addDays(rangeStart, i * 7));
     const weekIndexOf = (d: Date) =>
       Math.floor((startOfWeek(d).getTime() - rangeStart.getTime()) / (7 * 24 * 3600 * 1000));
@@ -279,14 +326,22 @@ export class ResourcesService {
       where: { workspaceId, user: { status: { not: 'DEACTIVATED' } } },
       select: { user: { select: USER_SELECT } },
     });
-    const users = memberships.map((m) => m.user).sort((a, b) => a.displayName.localeCompare(b.displayName, 'vi'));
+    const users = memberships
+      .map((m) => m.user)
+      .sort((a, b) => a.displayName.localeCompare(b.displayName, 'vi'));
     const userIds = users.map((u) => u.id);
 
     if (userIds.length === 0) {
       return {
-        from: isoDay(rangeStart), to: isoDay(rangeEnd), projectId: q.projectId ?? null,
+        from: isoDay(rangeStart),
+        to: isoDay(rangeEnd),
+        projectId: q.projectId ?? null,
         hoursPerDay: HOURS_PER_DAY,
-        weeks: weekStarts.map((w) => ({ start: isoDay(w), end: isoDay(addDays(w, 6)), label: weekLabel(w) })),
+        weeks: weekStarts.map((w) => ({
+          start: isoDay(w),
+          end: isoDay(addDays(w, 6)),
+          label: weekLabel(w),
+        })),
         rows: [],
       };
     }
@@ -295,7 +350,7 @@ export class ResourcesService {
       this.prisma.allocation.findMany({
         where: {
           userId: { in: userIds },
-          project: { workspaceId, deletedAt: null },
+          project: { workspaceId, deletedAt: null, ...visible },
           ...projectFilter,
           startDate: { lte: rangeEnd },
           endDate: { gte: rangeStart },
@@ -315,8 +370,11 @@ export class ResourcesService {
         where: {
           workspaceId,
           deletedAt: null,
+          project: { deletedAt: null, ...visible },
           assigneeId: { in: userIds },
           ...projectFilter,
+          // việc chưa duyệt chưa tính vào tải; `AND` để không đè khoá `OR` theo khoảng ngày bên dưới
+          AND: [TRIAGE_VISIBLE],
           OR: [
             { startDate: { gte: rangeStart, lte: rangeEnd } },
             { dueDate: { gte: rangeStart, lte: rangeEnd } },
@@ -324,13 +382,24 @@ export class ResourcesService {
           ],
         },
         take: MAX_ISSUES,
-        select: { assigneeId: true, startDate: true, dueDate: true, originalEstimate: true, storyPoints: true },
+        select: {
+          assigneeId: true,
+          startDate: true,
+          dueDate: true,
+          originalEstimate: true,
+          storyPoints: true,
+        },
       }),
       this.prisma.workLog.findMany({
         where: {
           authorId: { in: userIds },
           startedAt: { gte: rangeStart, lt: addDays(rangeEnd, 1) },
-          issue: { workspaceId, deletedAt: null, ...projectFilter },
+          issue: {
+            workspaceId,
+            deletedAt: null,
+            project: { deletedAt: null, ...visible },
+            ...projectFilter,
+          },
         },
         select: { authorId: true, timeSpent: true, startedAt: true },
       }),
@@ -386,7 +455,7 @@ export class ResourcesService {
       const first = Math.max(0, weekIndexOf(winStart));
       const last = Math.min(weekCount - 1, weekIndexOf(winEnd));
       for (let idx = first; idx <= last; idx++) {
-        const wStart = weekStarts[idx];
+        const wStart = weekStarts[idx]!;
         const segStart = winStart > wStart ? winStart : wStart;
         const segEnd = winEnd < addDays(wStart, 6) ? winEnd : addDays(wStart, 6);
         if (segEnd < segStart) continue;
@@ -395,7 +464,8 @@ export class ResourcesService {
           : Math.round((segEnd.getTime() - segStart.getTime()) / (24 * 3600 * 1000)) + 1;
         const k = `${i.assigneeId}#${idx}`;
         issueCountByUserWeek.set(k, (issueCountByUserWeek.get(k) ?? 0) + 1);
-        if (days > 0 && perDay > 0) assignedByUserWeek.set(k, (assignedByUserWeek.get(k) ?? 0) + perDay * days);
+        if (days > 0 && perDay > 0)
+          assignedByUserWeek.set(k, (assignedByUserWeek.get(k) ?? 0) + perDay * days);
       }
     }
 
@@ -425,7 +495,10 @@ export class ResourcesService {
           workingDays++;
           const percent = usesDefaultCapacity
             ? 100
-            : allocs.reduce((sum, a) => (a.start <= day && day <= a.end ? sum + a.percent : sum), 0);
+            : allocs.reduce(
+                (sum, a) => (a.start <= day && day <= a.end ? sum + a.percent : sum),
+                0,
+              );
           percentSum += percent;
           capacityHours += (HOURS_PER_DAY * percent) / 100;
         }
@@ -470,7 +543,11 @@ export class ResourcesService {
       to: isoDay(rangeEnd),
       projectId: q.projectId ?? null,
       hoursPerDay: HOURS_PER_DAY,
-      weeks: weekStarts.map((w) => ({ start: isoDay(w), end: isoDay(addDays(w, 6)), label: weekLabel(w) })),
+      weeks: weekStarts.map((w) => ({
+        start: isoDay(w),
+        end: isoDay(addDays(w, 6)),
+        label: weekLabel(w),
+      })),
       rows,
     };
   }
@@ -486,12 +563,17 @@ export class ResourcesService {
   private requireRange(start: Date | string, end: Date | string) {
     const startDate = toUtcDay(start);
     const endDate = toUtcDay(end);
-    if (endDate < startDate) throw new BusinessRuleException('Ngày kết thúc phải sau ngày bắt đầu');
+    if (endDate < startDate)
+      throw new BusinessRuleException('Ngày kết thúc không được trước ngày bắt đầu');
     return { startDate, endDate };
   }
 
-  private async requireProject(workspaceId: string, projectId: string) {
-    const p = await this.prisma.project.findFirst({ where: { id: projectId, workspaceId, deletedAt: null }, select: { id: true } });
+  private async requireProject(workspaceId: string, projectId: string, viewerId: string) {
+    const visible = await this.visibleFor(workspaceId, viewerId);
+    const p = await this.prisma.project.findFirst({
+      where: { id: projectId, workspaceId, deletedAt: null, ...visible },
+      select: { id: true },
+    });
     if (!p) throw new NotFoundAppException('Dự án');
     return p;
   }
@@ -501,13 +583,22 @@ export class ResourcesService {
       where: { workspaceId_userId: { workspaceId, userId } },
       select: { id: true },
     });
-    if (!m) throw new BusinessRuleException('Người dùng không thuộc không gian làm việc này — hãy chọn một thành viên khác');
+    if (!m)
+      throw new BusinessRuleException(
+        'Người dùng không thuộc không gian làm việc này — hãy chọn một thành viên khác',
+      );
     return m;
   }
 
   private toAllocationDto(a: {
-    id: string; projectId: string; userId: string; percent: number; startDate: Date; endDate: Date;
-    note: string | null; createdAt: Date;
+    id: string;
+    projectId: string;
+    userId: string;
+    percent: number;
+    startDate: Date;
+    endDate: Date;
+    note: string | null;
+    createdAt: Date;
     project: { id: string; key: string; name: string };
     user: { id: string; email: string; displayName: string; avatarUrl: string | null };
   }) {
@@ -526,8 +617,14 @@ export class ResourcesService {
   }
 
   private toTimeOffDto(t: {
-    id: string; workspaceId: string; userId: string | null; kind: TimeOffKind; startDate: Date; endDate: Date;
-    note: string | null; createdAt: Date;
+    id: string;
+    workspaceId: string;
+    userId: string | null;
+    kind: TimeOffKind;
+    startDate: Date;
+    endDate: Date;
+    note: string | null;
+    createdAt: Date;
     user: { id: string; email: string; displayName: string; avatarUrl: string | null } | null;
   }) {
     return {

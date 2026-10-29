@@ -1,6 +1,6 @@
 import { Inject, Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import Redis from 'ioredis';
+import Redis, { type RedisOptions } from 'ioredis';
 
 /**
  * Bọc ioredis với DEGRADE GRACEFULLY: nếu Redis không kết nối được, app vẫn boot.
@@ -51,12 +51,15 @@ export class RedisService implements OnModuleDestroy {
     return this.client;
   }
 
-  /** Tạo client mới (cho socket.io adapter pub/sub — cần kết nối riêng). */
-  duplicate(): Redis | null {
-    return this.client ? this.client.duplicate() : null;
+  /**
+   * Tạo client mới (cho socket.io adapter pub/sub — cần kết nối riêng).
+   * `override` ghi đè option của client gốc (vd bật lại offline queue cho client chưa kịp kết nối).
+   */
+  duplicate(override?: Partial<RedisOptions>): Redis | null {
+    return this.client ? this.client.duplicate(override) : null;
   }
 
-  async onModuleDestroy(): Promise<void> {
+  onModuleDestroy(): void {
     if (this.client) {
       this.client.disconnect();
     }

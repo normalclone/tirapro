@@ -1,16 +1,28 @@
-import { useState } from 'react';
-import { formatDistanceToNow } from 'date-fns';
-import { vi } from 'date-fns/locale';
+import { useRef, useState } from 'react';
 import { toast } from 'sonner';
 import type { CommentDto, IssueDto } from '@tirapro/types';
+import { usePastedImageUploader } from '@/features/attachments/api';
 import { useAddComment, useComments } from '@/features/issues/api';
 import { ConfirmDialog } from '@/features/issues/ConfirmDialog';
+import { COMMENT_INPUT_ID } from '@/features/command/events';
+import { useCanIn } from '@/features/projects/permissions';
 import { useAuth } from '@/stores/auth';
 import { Avatar } from '@/components/ui/primitives';
 import { Button } from '@/components/ui/Button';
+import type { PersonOption } from '@/components/ui/PeoplePicker';
 import { apiErrorMessage } from '@/lib/api';
-import { MarkdownEditor, MarkdownView } from './DescriptionEditor';
+import { stripPlaceholders } from './pasteImage';
+import { MarkdownEditor } from './MarkdownEditor';
+import { MarkdownView } from './MarkdownView';
+import { useAssigneeOptions } from './useAssigneeOptions';
+import { useCommentTaskToggle } from './useCommentTaskToggle';
 import { useDeleteComment, useUpdateComment } from './api';
+import { CommentAudienceLine } from './CommentAudienceLine';
+import { CommentReactions } from './CommentReactionStrip';
+import { useCommentAudience } from './useCommentAudience';
+import { TypingIndicator } from '@/features/presence/TypingIndicator';
+import { useTypingEmitter } from '@/features/presence/usePresence';
+import { fmtRelative } from '@/lib/dateFormat';
 
 /**
  * Danh sách + soạn bình luận cho một công việc. Bình luận lưu dạng Markdown → soạn/sửa bằng
@@ -20,11 +32,29 @@ export function CommentsSection({ issue }: { issue: IssueDto }) {
   const currentUser = useAuth((s) => s.user);
   const { data: comments } = useComments(issue.id);
   const addComment = useAddComment(issue.id);
+  const pasteImages = usePastedImageUploader(issue.id, 'comment');
+  const [uploading, setUploading] = useState(false);
+  const people = useAssigneeOptions(issue.projectId);
+  const can = useCanIn(issue.projectId); // dự án lưu trữ / không có quyền → chỉ đọc
+  const canComment = can('comment:create');
+  const canEditOwn = can('comment:edit:own');
   const [draft, setDraft] = useState('');
+  const { notifyTyping, stopTyping } = useTypingEmitter(issue.id);
+  const audience = useCommentAudience(issue, draft, people, canComment);
+  // Đã từng hiện dòng này thì giữ chiều cao dòng: xoá bớt chữ rồi gõ lại không làm nút Gửi nhảy lên xuống.
+  const audienceShown = useRef(false);
+  if (audience.length > 0) audienceShown.current = true;
+
+  function onDraftChange(value: string) {
+    setDraft(value);
+    if (value.trim()) notifyTyping();
+    else stopTyping();
+  }
 
   async function submit() {
-    const body = draft.trim();
-    if (!body) return;
+    const body = stripPlaceholders(draft).trim();
+    if (!body || uploading) return; // ảnh dán còn đang tải: chưa gửi (tránh gửi chữ giữ chỗ)
+    stopTyping();
     try {
       await addComment.mutateAsync(body);
       setDraft('');
@@ -34,7 +64,9 @@ export function CommentsSection({ issue }: { issue: IssueDto }) {
   }
 
   return (
-    <div>
+    // data-comments-loaded: phím tắt/nút "Bình luận" chờ danh sách nạp xong rồi mới cuộn tới ô viết (ô nằm cuối danh sách,
+    // cuộn sớm thì danh sách nạp về làm ô trôi xuống dưới màn hình).
+    <div data-comments-loaded={comments !== undefined}>
       <p className="mb-2 text-sm font-medium text-muted">
         Bình luận {comments?.length ? `(${comments.length})` : ''}
       </p>
@@ -45,34 +77,53 @@ export function CommentsSection({ issue }: { issue: IssueDto }) {
             key={c.id}
             comment={c}
             issueId={issue.id}
-            canEdit={!!currentUser && c.author?.id === currentUser.id}
+            people={people}
+            projectId={issue.projectId}
+            canEdit={canEditOwn && !!currentUser && c.author?.id === currentUser.id}
           />
         ))}
         {comments?.length === 0 && (
-          <p className="text-sm text-faint">Chưa có bình luận nào. Viết vài dòng bên dưới để trao đổi với cả nhóm về việc này.</p>
+          <p className="text-sm text-faint">
+            {canComment
+              ? 'Chưa có bình luận nào. Viết vài dòng bên dưới để trao đổi với cả nhóm về việc này.'
+              : 'Chưa có bình luận nào.'}
+          </p>
         )}
       </div>
 
-      <div className="mt-3 space-y-2">
-        <MarkdownEditor
-          value={draft}
-          onChange={setDraft}
-          onSubmit={() => void submit()}
-          rows={3}
-          placeholder="Viết bình luận… (viết được Markdown · ⌘/Ctrl+Enter để gửi)"
-        />
-        <div className="flex items-center gap-2">
-          <span className="mr-auto text-xs text-faint">⌘/Ctrl+Enter để gửi</span>
-          <Button
-            size="sm"
-            loading={addComment.isPending}
-            disabled={!draft.trim()}
-            onClick={() => void submit()}
-          >
-            Gửi bình luận
-          </Button>
+      {canComment && (
+        <div className="mt-3 space-y-2">
+          <MarkdownEditor
+            value={draft}
+            onChange={onDraftChange}
+            onSubmit={() => void submit()}
+            rows={3}
+            mentionPeople={people}
+            mentionProjectId={issue.projectId}
+            textareaId={COMMENT_INPUT_ID}
+            onPasteImages={pasteImages}
+            onBusyChange={setUploading}
+            placeholder="Viết bình luận… (viết được Markdown · dán ảnh bằng Ctrl+V)"
+          />
+          {audienceShown.current && (
+            <div className="min-h-5">
+              <CommentAudienceLine entries={audience} />
+            </div>
+          )}
+          <TypingIndicator issueId={issue.id} />
+          <div className="flex items-center justify-end gap-2">
+            <span className="kbd-hint mr-auto text-xs text-faint">⌘/Ctrl+Enter để gửi</span>
+            <Button
+              size="sm"
+              loading={addComment.isPending}
+              disabled={!draft.trim() || uploading}
+              onClick={() => void submit()}
+            >
+              Gửi bình luận
+            </Button>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
@@ -80,21 +131,28 @@ export function CommentsSection({ issue }: { issue: IssueDto }) {
 function CommentRow({
   comment,
   issueId,
+  people,
+  projectId,
   canEdit,
 }: {
   comment: CommentDto;
   issueId: string;
+  people: PersonOption[];
+  projectId: string;
   canEdit: boolean;
 }) {
   const update = useUpdateComment(issueId);
+  const pasteImages = usePastedImageUploader(issueId, 'comment');
+  const [uploading, setUploading] = useState(false);
+  const toggleTask = useCommentTaskToggle(issueId);
   const remove = useDeleteComment(issueId);
   const [editing, setEditing] = useState(false);
   const [body, setBody] = useState(comment.body);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   async function save() {
-    const next = body.trim();
-    if (!next) return;
+    const next = stripPlaceholders(body).trim();
+    if (!next || uploading) return; // ảnh dán còn đang tải: chưa lưu
     if (next === comment.body) {
       setEditing(false);
       return;
@@ -124,7 +182,7 @@ function CommentRow({
         <p className="text-sm">
           <span className="font-medium text-ink-strong">{comment.author?.displayName}</span>{' '}
           <span className="text-xs text-faint">
-            {formatDistanceToNow(new Date(comment.createdAt), { addSuffix: true, locale: vi })}
+            {fmtRelative(comment.createdAt)}
             {comment.isEdited ? ' · đã sửa' : ''}
           </span>
         </p>
@@ -135,20 +193,37 @@ function CommentRow({
               value={body}
               onChange={setBody}
               onSubmit={() => void save()}
-              onCancel={() => { setBody(comment.body); setEditing(false); }}
+              onCancel={() => {
+                setBody(comment.body);
+                setEditing(false);
+              }}
               autoFocus
               rows={3}
+              mentionPeople={people}
+              mentionProjectId={projectId}
+              onPasteImages={pasteImages}
+              onBusyChange={setUploading}
             />
-            <div className="flex items-center gap-2">
-              <span className="mr-auto text-xs text-faint">⌘/Ctrl+Enter để lưu · Esc huỷ</span>
+            <div className="flex items-center justify-end gap-2">
+              <span className="kbd-hint mr-auto text-xs text-faint">
+                ⌘/Ctrl+Enter để lưu · Esc huỷ
+              </span>
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => { setBody(comment.body); setEditing(false); }}
+                onClick={() => {
+                  setBody(comment.body);
+                  setEditing(false);
+                }}
               >
                 Huỷ
               </Button>
-              <Button size="sm" loading={update.isPending} onClick={() => void save()}>
+              <Button
+                size="sm"
+                loading={update.isPending}
+                disabled={uploading}
+                onClick={() => void save()}
+              >
                 Lưu
               </Button>
             </div>
@@ -156,32 +231,29 @@ function CommentRow({
         ) : (
           <>
             <div className="mt-0.5">
-              <MarkdownView text={comment.body} />
+              <MarkdownView
+                text={comment.body}
+                onToggleTask={
+                  canEdit
+                    ? (i, checked, text) => void toggleTask(comment.id, i, checked, text)
+                    : undefined
+                }
+              />
             </div>
-            {canEdit && (
-              <div className="mt-1 flex items-center gap-3 text-xs">
-                <button
-                  type="button"
-                  className="text-muted transition-colors hover:text-ink"
-                  title="Sửa lại bình luận này"
-                  onClick={() => {
+            {/* Hàng dưới thân: cảm xúc (chip + "+") rồi Sửa/Xoá của tác giả; `empty:hidden` khi không có gì để hiện. */}
+            <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs empty:hidden">
+              <CommentReactions comment={comment} issueId={issueId} projectId={projectId} />
+              {canEdit && (
+                <CommentOwnerActions
+                  deleting={remove.isPending}
+                  onEdit={() => {
                     setBody(comment.body);
                     setEditing(true);
                   }}
-                >
-                  Sửa
-                </button>
-                <button
-                  type="button"
-                  className="text-muted transition-colors hover:text-danger disabled:opacity-50"
-                  title="Xoá bình luận này"
-                  disabled={remove.isPending}
-                  onClick={() => setConfirmDelete(true)}
-                >
-                  Xoá
-                </button>
-              </div>
-            )}
+                  onDelete={() => setConfirmDelete(true)}
+                />
+              )}
+            </div>
           </>
         )}
       </div>
@@ -196,5 +268,39 @@ function CommentRow({
         onCancel={() => setConfirmDelete(false)}
       />
     </div>
+  );
+}
+
+/** "Sửa" / "Xoá" của tác giả: liên kết chữ không nền, nằm cùng hàng với dải cảm xúc. */
+function CommentOwnerActions({
+  deleting,
+  onEdit,
+  onDelete,
+}: {
+  deleting: boolean;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <>
+      <button
+        type="button"
+        className="text-muted transition-colors hover:text-ink"
+        title="Sửa lại bình luận này"
+        onClick={onEdit}
+      >
+        Sửa
+      </button>
+      <button
+        type="button"
+        // Giữ disabled:opacity (không dùng token vô hiệu) — liên kết chữ không nền: token nền vô nghĩa, chỉ cần mờ đi.
+        className="text-muted transition-colors hover:text-danger disabled:opacity-50"
+        title="Xoá bình luận này"
+        disabled={deleting}
+        onClick={onDelete}
+      >
+        Xoá
+      </button>
+    </>
   );
 }

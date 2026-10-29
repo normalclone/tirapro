@@ -1,16 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../infra/prisma/prisma.service';
+import { toUserRefDto, USER_DTO_SELECT } from '../../common/mappers/user.mapper';
 import { ForbiddenAppException, NotFoundAppException } from '../../common/exceptions/app.exception';
-
-const USER_SELECT = {
-  id: true, email: true, displayName: true, avatarUrl: true, timezone: true,
-  locale: true, status: true, isSystemAdmin: true, lastSeenAt: true, createdAt: true,
-} as const;
-
-type UserRow = {
-  id: string; email: string; displayName: string; avatarUrl: string | null; timezone: string;
-  locale: string; status: string; isSystemAdmin: boolean; lastSeenAt: Date | null; createdAt: Date;
-};
+import { assertIssueWritable } from '../../common/project-writable';
 
 /** Người tham gia + checklist của issue. Luôn kiểm tra issue thuộc workspace người gọi. */
 @Injectable()
@@ -26,14 +18,6 @@ export class IssueExtrasService {
     return issue;
   }
 
-  private toUserDto(u: UserRow) {
-    return {
-      id: u.id, email: u.email, displayName: u.displayName, avatarUrl: u.avatarUrl, timezone: u.timezone,
-      locale: u.locale, status: u.status, isSystemAdmin: u.isSystemAdmin,
-      lastSeenAt: u.lastSeenAt?.toISOString() ?? null, createdAt: u.createdAt.toISOString(),
-    };
-  }
-
   // ───────────── Người tham gia ─────────────
 
   async listParticipants(workspaceId: string, issueId: string) {
@@ -41,14 +25,15 @@ export class IssueExtrasService {
     const rows = await this.prisma.issueParticipant.findMany({
       where: { issueId },
       orderBy: { createdAt: 'asc' },
-      select: { user: { select: USER_SELECT } },
+      select: { user: { select: USER_DTO_SELECT } },
     });
-    return rows.map((r) => this.toUserDto(r.user));
+    return rows.map((r) => toUserRefDto(r.user));
   }
 
   /** Đặt lại toàn bộ danh sách người tham gia (chỉ nhận thành viên workspace). */
   async setParticipants(workspaceId: string, issueId: string, userIds: string[]) {
     await this.requireIssue(workspaceId, issueId);
+    await assertIssueWritable(this.prisma, issueId);
     const unique = [...new Set(userIds)];
     if (unique.length > 0) {
       const members = await this.prisma.workspaceMembership.findMany({
@@ -56,13 +41,19 @@ export class IssueExtrasService {
         select: { userId: true },
       });
       if (members.length !== unique.length) {
-        throw new ForbiddenAppException('Một số người dùng không thuộc không gian làm việc này — hãy chọn lại từ danh sách thành viên');
+        throw new ForbiddenAppException(
+          'Một số người dùng không thuộc không gian làm việc này — hãy chọn lại từ danh sách thành viên',
+        );
       }
     }
     await this.prisma.$transaction([
       this.prisma.issueParticipant.deleteMany({ where: { issueId } }),
       ...(unique.length
-        ? [this.prisma.issueParticipant.createMany({ data: unique.map((userId) => ({ issueId, userId })) })]
+        ? [
+            this.prisma.issueParticipant.createMany({
+              data: unique.map((userId) => ({ issueId, userId })),
+            }),
+          ]
         : []),
     ]);
     return this.listParticipants(workspaceId, issueId);
@@ -80,6 +71,7 @@ export class IssueExtrasService {
 
   async addChecklistItem(workspaceId: string, issueId: string, text: string) {
     await this.requireIssue(workspaceId, issueId);
+    await assertIssueWritable(this.prisma, issueId);
     const last = await this.prisma.checklistItem.findFirst({
       where: { issueId },
       orderBy: { order: 'desc' },
@@ -97,7 +89,11 @@ export class IssueExtrasService {
     patch: { text?: string; done?: boolean; order?: number },
   ) {
     await this.requireIssue(workspaceId, issueId);
-    const item = await this.prisma.checklistItem.findFirst({ where: { id: itemId, issueId }, select: { id: true } });
+    await assertIssueWritable(this.prisma, issueId);
+    const item = await this.prisma.checklistItem.findFirst({
+      where: { id: itemId, issueId },
+      select: { id: true },
+    });
     if (!item) throw new NotFoundAppException('Mục checklist');
     return this.prisma.checklistItem.update({
       where: { id: itemId },
@@ -111,6 +107,7 @@ export class IssueExtrasService {
 
   async removeChecklistItem(workspaceId: string, issueId: string, itemId: string) {
     await this.requireIssue(workspaceId, issueId);
+    await assertIssueWritable(this.prisma, issueId);
     await this.prisma.checklistItem.deleteMany({ where: { id: itemId, issueId } });
     return { success: true };
   }

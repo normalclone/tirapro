@@ -30,13 +30,30 @@ export class ApiHelpController {
       },
       concepts: {
         workspace: 'Mọi dữ liệu thuộc 1 workspace (tenant); API key gắn cứng 1 workspace.',
-        issueKey: 'Định dạng {DỰ_ÁN}-{LOẠI}-{số}, vd DEMO-BUG-1. GET theo key; PATCH/transition theo id.',
+        issueKey:
+          'Định dạng {DỰ_ÁN}-{LOẠI}-{số}, vd DEMO-BUG-1. GET theo key; PATCH/transition theo id.',
         occ: 'Cập nhật issue cần gửi "version" hiện tại (optimistic concurrency).',
       },
       rest: [
-        { group: 'Projects', endpoints: ['GET /projects', 'GET /projects/:key/meta (loại issue, độ ưu tiên…)'] },
-        { group: 'Issues', endpoints: ['GET /issues?projectId&statusId&assigneeId&typeId&sprintId&search&cursor&limit', 'GET /issues/:key', 'POST /issues', 'PATCH /issues/:id', 'POST /issues/:id/transition', 'POST /issues/:id/move'] },
-        { group: 'Comments', endpoints: ['GET /issues/:issueId/comments', 'POST /issues/:issueId/comments'] },
+        {
+          group: 'Projects',
+          endpoints: ['GET /projects', 'GET /projects/:key/meta (loại issue, mức ưu tiên…)'],
+        },
+        {
+          group: 'Issues',
+          endpoints: [
+            'GET /issues?projectId&statusId&assigneeId&typeId&sprintId&search&cursor&limit',
+            'GET /issues/:key',
+            'POST /issues',
+            'PATCH /issues/:id',
+            'POST /issues/:id/transition',
+            'POST /issues/:id/move',
+          ],
+        },
+        {
+          group: 'Comments',
+          endpoints: ['GET /issues/:issueId/comments', 'POST /issues/:issueId/comments'],
+        },
         { group: 'Sprints', endpoints: ['GET /sprints?projectId'] },
         { group: 'Users', endpoints: ['GET /users'] },
       ],
@@ -45,9 +62,16 @@ export class ApiHelpController {
         transport: 'streamable-http',
         auth: 'Authorization: Bearer tira_…',
         tools: [
-          'help', 'get_context',
-          'list_projects', 'list_issues', 'get_issue', 'list_sprints', 'list_members',
-          'create_issue', 'update_issue', 'add_comment',
+          'help',
+          'get_context',
+          'list_projects',
+          'list_issues',
+          'get_issue',
+          'list_sprints',
+          'list_members',
+          'create_issue',
+          'update_issue',
+          'add_comment',
         ],
       },
     };

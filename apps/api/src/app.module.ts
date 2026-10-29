@@ -4,15 +4,23 @@ import { EventEmitterModule } from '@nestjs/event-emitter';
 import { ScheduleModule } from '@nestjs/schedule';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { ThrottlerStorageRedisService } from '@nest-lab/throttler-storage-redis';
+import { LoggerModule } from 'nestjs-pino';
 import { configuration } from './config/configuration';
 import { validateEnv } from './config/env.validation';
-import { RequestIdMiddleware } from './common/middleware/request-id.middleware';
+import { RequestIdMiddleware, resolveRequestId } from './common/middleware/request-id.middleware';
+import { ResilientThrottlerStorage } from './common/throttler/resilient-throttler-storage';
+import type { AuthedRequest } from './common/types/request';
 import { PrismaModule } from './infra/prisma/prisma.module';
+import { StorageModule } from './common/storage/storage.module';
 import { RedisModule } from './infra/redis/redis.module';
+import { RedisService } from './infra/redis/redis.service';
 import { HealthModule } from './modules/health/health.module';
+import { MailModule } from './modules/mail/mail.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
 import { RbacModule } from './modules/rbac/rbac.module';
+import { AuditModule } from './modules/audit/audit.module';
 import { PermissionsGuard } from './modules/rbac/permissions.guard';
 import { WorkspacesModule } from './modules/workspaces/workspaces.module';
 import { UsersModule } from './modules/users/users.module';
@@ -34,7 +42,8 @@ import { MediaModule } from './modules/media/media.module';
 import { ExportModule } from './modules/export/export.module';
 import { IntegrationsModule } from './modules/integrations/integrations.module';
 import { GuidesModule } from './modules/guides/guides.module';
-import { DevModule } from './modules/dev/dev.module';
+import { buildHealthPaths, isHealthPath } from './common/health-paths';
+import { DevLinksModule } from './modules/dev-links/dev-links.module';
 import { TriageModule } from './modules/triage/triage.module';
 import { DigestsModule } from './modules/digests/digests.module';
 import { CustomFieldsModule } from './modules/custom-fields/custom-fields.module';
@@ -52,11 +61,13 @@ import { IssueExtrasModule } from './modules/issue-extras/issue-extras.module';
 import { SlaModule } from './modules/sla/sla.module';
 import { PlanningModule } from './modules/planning/planning.module';
 import { AutomationModule } from './modules/automation/automation.module';
+import { WorklogsModule } from './modules/worklogs/worklogs.module';
 import { WikiModule } from './modules/wiki/wiki.module';
 import { ResourcesModule } from './modules/resources/resources.module';
 import { ClientsModule } from './modules/clients/clients.module';
 import { ProgramsModule } from './modules/programs/programs.module';
 import { RaidModule } from './modules/raid/raid.module';
+import { DashboardsModule } from './modules/dashboards/dashboards.module';
 import { GoalsModule } from './modules/goals/goals.module';
 import { AdminModule } from './modules/admin/admin.module';
 import { SystemSettingsModule } from './modules/system-settings/system-settings.module';
@@ -74,20 +85,59 @@ import { ApiKeyModule } from './modules/api-keys/api-key.module';
     }),
     EventEmitterModule.forRoot({ wildcard: false, delimiter: '.', maxListeners: 20 }),
     ScheduleModule.forRoot(),
-    ThrottlerModule.forRootAsync({
+    // Log JSON có cấu trúc (pino); dev in đẹp bằng pino-pretty. requestId lấy chung với RequestIdMiddleware.
+    LoggerModule.forRootAsync({
       inject: [ConfigService],
-      useFactory: (config: ConfigService) => [
-        {
-          ttl: (config.get<number>('throttle.ttl') ?? 60) * 1000,
-          limit: config.get<number>('throttle.limit') ?? 100,
-        },
-      ],
+      useFactory: (config: ConfigService) => {
+        const isProd = config.get<boolean>('isProd') === true;
+        // Không ghi log mỗi lần LB/k8s gọi probe; đường dẫn theo cùng prefix/version với main.ts.
+        const healthPaths = buildHealthPaths(
+          config.get<string>('api.globalPrefix') ?? 'api',
+          config.get<string>('api.version') ?? 'v1',
+        );
+        return {
+          pinoHttp: {
+            level: process.env.LOG_LEVEL ?? (isProd ? 'info' : 'debug'),
+            genReqId: (req) => resolveRequestId(req),
+            customProps: (req) => {
+              const user = (req as unknown as AuthedRequest).user;
+              return { userId: user?.id, workspaceId: user?.workspaceId };
+            },
+            // Không ghi token/cookie vào log.
+            redact: ['req.headers.authorization', 'req.headers.cookie', 'req.headers["x-api-key"]'],
+            transport: isProd ? undefined : { target: 'pino-pretty' },
+            autoLogging: { ignore: (req) => isHealthPath(req.url, healthPaths) },
+          },
+        };
+      },
+    }),
+    ThrottlerModule.forRootAsync({
+      inject: [ConfigService, RedisService],
+      useFactory: (config: ConfigService, redis: RedisService) => {
+        const client = redis.getClient();
+        return {
+          // Có Redis → đếm chung giữa các node; Redis chết giữa chừng thì rơi về bộ nhớ (xem ResilientThrottlerStorage).
+          storage: new ResilientThrottlerStorage(
+            client ? new ThrottlerStorageRedisService(client) : null,
+            () => redis.isAvailable(),
+          ),
+          throttlers: [
+            {
+              ttl: (config.get<number>('throttle.ttl') ?? 60) * 1000,
+              limit: config.get<number>('throttle.limit') ?? 100,
+            },
+          ],
+        };
+      },
     }),
     PrismaModule,
+    StorageModule,
     RedisModule,
     SystemSettingsModule,
     ApiKeyModule,
     RbacModule,
+    AuditModule,
+    MailModule,
     HealthModule,
     AuthModule,
     WorkspacesModule,
@@ -110,7 +160,7 @@ import { ApiKeyModule } from './modules/api-keys/api-key.module';
     ExportModule,
     IntegrationsModule,
     GuidesModule,
-    DevModule,
+    DevLinksModule,
     TriageModule,
     DigestsModule,
     CustomFieldsModule,
@@ -128,12 +178,14 @@ import { ApiKeyModule } from './modules/api-keys/api-key.module';
     SlaModule,
     PlanningModule,
     AutomationModule,
+    WorklogsModule,
     WikiModule,
     ResourcesModule,
     ClientsModule,
     ProgramsModule,
     RaidModule,
     GoalsModule,
+    DashboardsModule,
     AdminModule,
   ],
   providers: [

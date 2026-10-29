@@ -10,7 +10,7 @@ databases:
   - name: tirapro-db
     databaseName: tirapro
     plan: free # Free Postgres hết hạn sau ~30 ngày — nâng plan cho demo lâu dài
-    postgresMajorVersion: "16"
+    postgresMajorVersion: '16'
 
 services:
   # ---- Redis / Key Value (realtime adapter + cache + presence) ----
@@ -42,7 +42,7 @@ services:
     healthCheckPath: /api/v1/health
     envVars:
       - key: NODE_VERSION
-        value: "22"
+        value: '22'
       - key: NODE_ENV
         value: production
       - key: DATABASE_URL
@@ -55,6 +55,9 @@ services:
         generateValue: true
       - key: JWT_REFRESH_SECRET
         generateValue: true
+      # Khoá mã hoá secret tích hợp — ở production bắt buộc đặt riêng (API fail-fast nếu thiếu/mặc định).
+      - key: INTEGRATION_ENCRYPTION_KEY
+        generateValue: true
       - key: EMBEDDING_PROVIDER
         value: none
       - key: STORAGE_DRIVER
@@ -62,6 +65,8 @@ services:
       # AI thật (tùy chọn): thêm ANTHROPIC_API_KEY ở Dashboard; bỏ trống → heuristic.
       - key: CORS_ORIGIN
         sync: false # điền URL web sau deploy đầu, vd: https://tirapro-web.onrender.com
+      - key: APP_WEB_URL
+        sync: false # URL web, dùng dựng liên kết trong email (đặt lại mật khẩu)
 
   # ---- Web (React/Vite — static) ----
   - type: web
@@ -76,13 +81,13 @@ services:
     staticPublishPath: apps/web/dist
     envVars:
       - key: NODE_VERSION
-        value: "22"
+        value: '22'
       - key: VITE_API_URL
         sync: false # https://tirapro-api.onrender.com/api/v1
       - key: VITE_WS_URL
         sync: false # https://tirapro-api.onrender.com
       - key: VITE_ENABLE_PWA
-        value: "true"
+        value: 'true'
     routes:
       - type: rewrite
         source: /*

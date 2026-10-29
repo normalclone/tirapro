@@ -1,12 +1,14 @@
 import { useState } from 'react';
 import * as Popover from '@radix-ui/react-popover';
-import { Check, ChevronsUpDown, Plus } from 'lucide-react';
+import { ChevronsUpDown, Plus } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/stores/auth';
 import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
+import { useConfirmLeaveApp } from '@/lib/useLeaveGuard';
 import { useMyWorkspaces, useSwitchWorkspace, type MyWorkspace } from './api';
 import { CreateWorkspaceModal } from './CreateWorkspaceModal';
+import { WorkspaceOption, WsBadge } from './WorkspaceOption';
 
 /**
  * Nút chọn không gian làm việc ở THANH NAVBAR (góc trái): mở popover liệt kê các nơi (tên + vai trò),
@@ -20,15 +22,24 @@ export function WorkspaceSwitcher() {
   const { data: workspaces = [] } = useMyWorkspaces();
   const switchWs = useSwitchWorkspace();
 
-  const active: MyWorkspace | undefined = workspaces.find((w) => w.id === activeId) ?? workspaces[0];
+  const active: MyWorkspace | undefined =
+    workspaces.find((w) => w.id === activeId) ?? workspaces[0];
   const label = active?.name ?? 'Tirapro';
 
-  function pick(ws: MyWorkspace) {
+  const confirmLeave = useConfirmLeaveApp();
+
+  async function pick(ws: MyWorkspace) {
     if (ws.id === active?.id) {
       setOpen(false);
       return;
     }
-    switchWs.mutate(ws.id, { onError: (e) => toast.error(apiErrorMessage(e)) });
+    // Hỏi TRƯỚC khi đổi: sau khi mutate thành công token đã bị thay, hỏi lúc tải lại là muộn.
+    setOpen(false);
+    if (!(await confirmLeave())) return;
+    switchWs.mutate(ws.id, {
+      // Lỗi: nháp chưa bị bỏ (chỉ bỏ khi đổi thành công, trong useSwitchWorkspace) nên chỉ cần báo lỗi.
+      onError: (e) => toast.error(apiErrorMessage(e)),
+    });
   }
 
   return (
@@ -46,7 +57,9 @@ export function WorkspaceSwitcher() {
             )}
           >
             <WsBadge name={active?.name ?? 'P'} src={active?.avatarUrl} variant="active" />
-            <span className="hidden min-w-0 truncate text-sm font-semibold tracking-tight text-ink-strong sm:block">{label}</span>
+            <span className="hidden min-w-0 truncate text-sm font-semibold tracking-tight text-ink-strong sm:block">
+              {label}
+            </span>
             <ChevronsUpDown className="h-3.5 w-3.5 shrink-0 text-faint" aria-hidden="true" />
           </button>
         </Popover.Trigger>
@@ -56,40 +69,27 @@ export function WorkspaceSwitcher() {
             sideOffset={6}
             className="z-dropdown w-[min(20rem,calc(100vw-1rem))] overflow-hidden rounded-lg border border-border bg-surface shadow-lg outline-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95"
           >
-            <ul className="max-h-80 overflow-y-auto py-1" role="listbox" aria-label="Danh sách không gian làm việc">
-              {workspaces.map((ws) => {
-                const isActive = ws.id === active?.id;
-                return (
-                  <li key={ws.id}>
-                    <button
-                      type="button"
-                      role="option"
-                      aria-selected={isActive}
-                      disabled={switchWs.isPending}
-                      onClick={() => pick(ws)}
-                      className={cn(
-                        'flex w-full items-center gap-2.5 px-3 py-2 text-left transition-colors',
-                        'hover:bg-surface-2 focus-visible:bg-surface-2 focus-visible:outline-none',
-                        'disabled:pointer-events-none disabled:opacity-50',
-                        isActive && 'bg-primary-subtle/60',
-                      )}
-                    >
-                      <WsBadge name={ws.name} src={ws.avatarUrl} />
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-sm font-medium text-ink-strong">{ws.name}</span>
-                        <span className="block truncate text-[11px] text-muted">{ws.roleName}</span>
-                      </span>
-                      {isActive && <Check className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />}
-                    </button>
-                  </li>
-                );
-              })}
+            <ul
+              className="max-h-80 overflow-y-auto py-1"
+              role="listbox"
+              aria-label="Danh sách không gian làm việc"
+            >
+              {workspaces.map((ws) => (
+                <WorkspaceOption
+                  key={ws.id}
+                  ws={ws}
+                  active={ws.id === active?.id}
+                  disabled={switchWs.isPending}
+                  onPick={(w) => void pick(w)}
+                />
+              ))}
             </ul>
             <button
               type="button"
               onClick={() => {
                 setOpen(false);
-                setCreateOpen(true);
+                // Hỏi TRƯỚC khi mở hộp tạo (tạo xong sẽ tải lại trang) — không hỏi chồng lên hộp đang mở.
+                void confirmLeave().then((ok) => ok && setCreateOpen(true));
               }}
               className="flex w-full items-center gap-2 border-t border-border px-3 py-2 text-sm font-medium text-primary transition-colors hover:bg-surface-2"
             >
@@ -102,23 +102,5 @@ export function WorkspaceSwitcher() {
 
       <CreateWorkspaceModal open={createOpen} onClose={() => setCreateOpen(false)} />
     </>
-  );
-}
-
-/** Ô vuông bo góc: hiện logo của không gian làm việc nếu có, không thì chữ cái đầu. */
-function WsBadge({ name, src, variant }: { name: string; src?: string | null; variant?: 'active' }) {
-  return (
-    <span
-      className={cn(
-        'grid h-6 w-6 shrink-0 place-items-center overflow-hidden rounded-md text-xs font-bold',
-        variant === 'active' ? 'bg-primary text-primary-fg' : 'bg-surface-2 font-semibold text-muted',
-      )}
-    >
-      {src ? (
-        <img src={src} alt={name} className="h-full w-full object-cover" />
-      ) : (
-        name.charAt(0).toUpperCase()
-      )}
-    </span>
   );
 }

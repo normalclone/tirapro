@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { RedisService } from '../../infra/redis/redis.service';
+import { StorageHealthService } from '../../common/storage/storage-health.service';
 import { SystemSettingsService } from '../system-settings/system-settings.service';
 
 const DAY = 86_400_000;
@@ -14,6 +15,7 @@ export class AdminOverviewService {
     private readonly config: ConfigService,
     private readonly redis: RedisService,
     private readonly settings: SystemSettingsService,
+    private readonly storage: StorageHealthService,
   ) {}
 
   /** Trạng thái degrade các phụ thuộc (đúng nguyên tắc degrade-graceful). */
@@ -27,11 +29,16 @@ export class AdminOverviewService {
     }
     const provider = this.config.get<string>('embedding.provider') ?? 'none';
     const embKey =
-      provider === 'voyage' ? this.config.get<string>('embedding.voyageApiKey')
-      : provider === 'openai' ? this.config.get<string>('embedding.openaiApiKey')
-      : '';
-    const aiConfigured = !!this.config.get<boolean>('ai.enabled') && !!this.config.get<string>('ai.anthropicApiKey');
+      provider === 'voyage'
+        ? this.config.get<string>('embedding.voyageApiKey')
+        : provider === 'openai'
+          ? this.config.get<string>('embedding.openaiApiKey')
+          : '';
+    const aiConfigured =
+      !!this.config.get<boolean>('ai.enabled') && !!this.config.get<string>('ai.anthropicApiKey');
     const storageDriver = this.config.get<string>('storage.driver') ?? 'local';
+    // s3: HeadBucket thật (không liệt kê bucket); local: luôn sẵn sàng.
+    const storageOk = storageDriver === 'local' ? true : (await this.storage.cachedCheck()).ok;
     return {
       db,
       redis: this.redis.isAvailable(),
@@ -39,8 +46,10 @@ export class AdminOverviewService {
       aiConfigured,
       embedding: provider !== 'none' && !!embKey,
       embeddingProvider: provider,
-      storage: storageDriver === 'local' ? true : !!this.config.get<string>('storage.s3.bucket'),
+      storage: storageOk,
       storageDriver,
+      storageBucket:
+        storageDriver === 's3' ? this.config.get<string>('storage.s3.bucket') || null : null,
     };
   }
 
@@ -49,9 +58,11 @@ export class AdminOverviewService {
     const c = this.config;
     const provider = c.get<string>('embedding.provider') ?? 'none';
     const embKey =
-      provider === 'voyage' ? c.get<string>('embedding.voyageApiKey')
-      : provider === 'openai' ? c.get<string>('embedding.openaiApiKey')
-      : '';
+      provider === 'voyage'
+        ? c.get<string>('embedding.voyageApiKey')
+        : provider === 'openai'
+          ? c.get<string>('embedding.openaiApiKey')
+          : '';
     return {
       nodeEnv: c.get<string>('nodeEnv') ?? 'development',
       ai: {
@@ -62,14 +73,21 @@ export class AdminOverviewService {
         monthlyQuotaPerWorkspace: c.get<number>('ai.monthlyQuotaPerWorkspace') ?? null,
       },
       embedding: { provider, dim: c.get<number>('embedding.dim') ?? null, hasKey: !!embKey },
-      redis: { configured: !!c.get<string>('redis.url') || !!c.get<string>('redis.host'), available: this.redis.isAvailable() },
+      redis: {
+        configured: !!c.get<string>('redis.url') || !!c.get<string>('redis.host'),
+        available: this.redis.isAvailable(),
+      },
       storage: {
         driver: c.get<string>('storage.driver') ?? 'local',
         maxFileSizeMb: c.get<number>('storage.maxFileSizeMb') ?? null,
         s3Bucket: c.get<string>('storage.s3.bucket') || null,
+        s3KeyPrefix: c.get<string>('storage.s3.keyPrefix') || null,
       },
       integrations: { telegram: !!c.get<boolean>('integrations.telegram.enabled') },
-      throttle: { ttl: c.get<number>('throttle.ttl') ?? null, limit: c.get<number>('throttle.limit') ?? null },
+      throttle: {
+        ttl: c.get<number>('throttle.ttl') ?? null,
+        limit: c.get<number>('throttle.limit') ?? null,
+      },
       flags: this.settings.flags(),
     };
   }
@@ -80,8 +98,19 @@ export class AdminOverviewService {
     const since7d = new Date(Date.now() - 7 * DAY);
 
     const [
-      wsActive, wsArchived, usersTotal, usersActive, sysAdmins,
-      projects, issuesTotal, issuesDone, attachments, aiAgg, aiSuccess, act24h, act7d,
+      wsActive,
+      wsArchived,
+      usersTotal,
+      usersActive,
+      sysAdmins,
+      projects,
+      issuesTotal,
+      issuesDone,
+      attachments,
+      aiAgg,
+      aiSuccess,
+      act24h,
+      act7d,
     ] = await Promise.all([
       this.prisma.workspace.count({ where: { deletedAt: null } }),
       this.prisma.workspace.count({ where: { deletedAt: { not: null } } }),
@@ -105,10 +134,18 @@ export class AdminOverviewService {
     const aiReq = aiAgg._count._all;
     return {
       workspaces: { total: wsActive + wsArchived, active: wsActive, archived: wsArchived },
-      users: { total: usersTotal, active: usersActive, deactivated: usersTotal - usersActive, systemAdmins: sysAdmins },
+      users: {
+        total: usersTotal,
+        active: usersActive,
+        deactivated: usersTotal - usersActive,
+        systemAdmins: sysAdmins,
+      },
       projects,
       issues: { total: issuesTotal, done: issuesDone, open: issuesTotal - issuesDone },
-      attachments: { count: attachments._count._all, totalBytes: Number(attachments._sum.sizeBytes ?? 0) },
+      attachments: {
+        count: attachments._count._all,
+        totalBytes: Number(attachments._sum.sizeBytes ?? 0),
+      },
       ai: {
         requests: aiReq,
         inputTokens: aiAgg._sum.inputTokens ?? 0,

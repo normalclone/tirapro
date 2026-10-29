@@ -1,12 +1,23 @@
 /** Hợp đồng socket.io typed dùng chung gateway (BE) và client (FE). */
-import type { CommentDto, ID, IssueDto, NotificationDto } from '@tirapro/types';
+import type {
+  CommentDto,
+  ID,
+  IssueComponentRefDto,
+  IssueDto,
+  IssueVersionRefDto,
+  NotificationDto,
+} from '@tirapro/types';
 
+/** Room client được phép subscribe — khớp kiểm quyền ở RealtimeGateway.onSubscribe. */
 export type RoomTarget =
+  | { kind: 'user'; id: string }
+  | { kind: 'workspace'; id: string }
   | { kind: 'project'; id: string }
-  | { kind: 'board'; id: string }
-  | { kind: 'backlog'; id: string }
-  | { kind: 'issue'; id: string }
-  | { kind: 'sprint'; id: string };
+  /** Room của một issue (nhận `typing`) — chỉ vào được khi issue thuộc workspace của token. */
+  | { kind: 'issue'; id: string };
+
+/** Kết quả ack của `subscribe`: FORBIDDEN khi không có quyền vào room đó. */
+export type SubscribeAck = { ok: true } | { ok: false; error: 'FORBIDDEN' };
 
 export interface IssueMovedPayload {
   issueId: ID;
@@ -17,6 +28,18 @@ export interface IssueMovedPayload {
   sprintId: ID | null;
   version: number;
   actorId: ID;
+}
+
+/**
+ * Gắn/bỏ thành phần/phiên bản của một việc. Máy chủ KHÔNG đổi `version` của việc khi gắn/bỏ nên không đi qua
+ * `issue:updated` (client bỏ bản không mới hơn): payload mang tập đầy đủ sau thay đổi để client thay thẳng theo id.
+ */
+export interface IssueSetsChangedPayload {
+  issueId: ID;
+  issueKey: string;
+  projectId: ID;
+  components: IssueComponentRefDto[];
+  fixVersions: IssueVersionRefDto[];
 }
 
 export interface PresenceUser {
@@ -43,11 +66,14 @@ export interface AiStreamChunk {
 export interface ServerToClientEvents {
   'issue:created': (p: { issue: IssueDto }) => void;
   'issue:updated': (p: { issue: IssueDto }) => void;
+  'issue:sets_changed': (p: IssueSetsChangedPayload) => void;
   'issue:moved': (p: IssueMovedPayload) => void;
   'issue:deleted': (p: { issueId: ID; projectId: ID }) => void;
+  'project:ranks_rebalanced': (p: { projectId: ID }) => void;
   'comment:added': (p: { comment: CommentDto }) => void;
   'comment:updated': (p: { comment: CommentDto }) => void;
   'comment:deleted': (p: { commentId: ID; issueId: ID }) => void;
+  'comment:reaction': (p: { commentId: ID; issueId: ID }) => void;
   'sprint:updated': (p: { sprintId: ID; projectId: ID }) => void;
   'notification:new': (p: { notification: NotificationDto }) => void;
   'presence:state': (p: { room: string; users: PresenceUser[] }) => void;
@@ -59,7 +85,7 @@ export interface ServerToClientEvents {
 
 /** Sự kiện client -> server. */
 export interface ClientToServerEvents {
-  subscribe: (target: RoomTarget, ack?: (ok: boolean) => void) => void;
+  subscribe: (target: RoomTarget, ack?: (res: SubscribeAck) => void) => void;
   unsubscribe: (target: RoomTarget) => void;
   'presence:view': (p: { room: string | null }) => void;
   'typing:start': (p: { room: string }) => void;

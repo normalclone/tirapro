@@ -1,7 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import type { Prisma, RaidKind, RaidStatus } from '@prisma/client';
+import { PERMISSIONS } from '@tirapro/types';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { ForbiddenAppException, NotFoundAppException } from '../../common/exceptions/app.exception';
+import { assertProjectWritable } from '../../common/project-writable';
+import { RbacService } from '../rbac/rbac.service';
+import { ProjectAccessService } from '../rbac/project-access.service';
 import type { CreateRaidInput, UpdateRaidInput } from './raid.schemas';
 
 const OWNER_SELECT = { id: true, displayName: true, email: true, avatarUrl: true } as const;
@@ -37,6 +41,8 @@ export function raidLevel(score: number): { level: RaidLevel; levelLabel: string
   return { level: 'LOW', levelLabel: 'Thấp' };
 }
 
+type RaidActor = { id: string; isSystemAdmin: boolean };
+
 interface RaidListFilter {
   kind?: string;
   status?: string;
@@ -51,10 +57,31 @@ interface RaidListFilter {
  */
 @Injectable()
 export class RaidService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly rbac: RbacService,
+    private readonly access: ProjectAccessService,
+  ) {}
 
-  async list(workspaceId: string, filter: RaidListFilter) {
-    const where: Prisma.RaidItemWhereInput = { workspaceId };
+  /**
+   * Điều kiện hiển thị mục RAID cho người xem: mục cấp workspace (không gắn dự án) luôn hiện; mục gắn dự án chỉ khi người
+   * xem thấy dự án đó (dự án riêng tư → thành viên/admin). `viewerId` trống hoặc admin → `{}` (không lọc).
+   * Dùng khoá `OR` ở cấp cao nhất — các `where` gọi nó không tự dùng `OR`.
+   */
+  private async scopeFor(
+    workspaceId: string,
+    viewerId: string,
+  ): Promise<Prisma.RaidItemWhereInput> {
+    const visible = await this.access.visibleWhere(viewerId, workspaceId);
+    if (Object.keys(visible).length === 0) return {};
+    return { OR: [{ projectId: null }, { project: visible }] };
+  }
+
+  async list(workspaceId: string, filter: RaidListFilter, viewerId: string) {
+    const where: Prisma.RaidItemWhereInput = {
+      workspaceId,
+      ...(await this.scopeFor(workspaceId, viewerId)),
+    };
     if (filter.kind) where.kind = filter.kind as RaidKind;
     if (filter.status) where.status = filter.status as RaidStatus;
     if (filter.projectId) where.projectId = filter.projectId;
@@ -69,14 +96,18 @@ export class RaidService {
     return rows.map((r) => this.toDto(r)).sort((a, b) => b.score - a.score);
   }
 
-  async get(workspaceId: string, id: string) {
-    const row = await this.prisma.raidItem.findFirst({ where: { id, workspaceId }, select: RAID_SELECT });
+  async get(workspaceId: string, id: string, viewerId: string) {
+    const row = await this.prisma.raidItem.findFirst({
+      where: { id, workspaceId, ...(await this.scopeFor(workspaceId, viewerId)) },
+      select: RAID_SELECT,
+    });
     if (!row) throw new NotFoundAppException('Mục rủi ro');
     return this.toDto(row);
   }
 
   async create(workspaceId: string, dto: CreateRaidInput, actingUserId: string) {
-    const projectId = await this.resolveProject(workspaceId, dto.projectId ?? null);
+    const projectId = await this.resolveProject(workspaceId, dto.projectId ?? null, actingUserId);
+    if (projectId) await assertProjectWritable(this.prisma, projectId);
     const ownerId = await this.resolveOwner(workspaceId, dto.ownerId ?? null);
 
     const created = await this.prisma.raidItem.create({
@@ -85,22 +116,23 @@ export class RaidService {
         projectId,
         ownerId,
         createdById: actingUserId,
-        kind: (dto.kind ?? 'RISK') as RaidKind,
+        kind: dto.kind ?? 'RISK',
         title: dto.title.trim(),
         description: dto.description ?? null,
         probability: dto.probability ?? 3,
         impact: dto.impact ?? 3,
-        status: (dto.status ?? 'OPEN') as RaidStatus,
+        status: dto.status ?? 'OPEN',
         mitigation: dto.mitigation ?? null,
         dueDate: this.parseDate(dto.dueDate ?? null),
       },
       select: { id: true },
     });
-    return this.get(workspaceId, created.id);
+    return this.get(workspaceId, created.id, actingUserId);
   }
 
-  async update(workspaceId: string, id: string, dto: UpdateRaidInput) {
-    await this.requireItem(workspaceId, id);
+  async update(workspaceId: string, id: string, dto: UpdateRaidInput, actor: RaidActor) {
+    const item = await this.requireItem(workspaceId, id, actor.id);
+    if (item.projectId) await assertProjectWritable(this.prisma, item.projectId);
     const data: Prisma.RaidItemUpdateInput = {};
 
     if (dto.title !== undefined && dto.title !== null) {
@@ -108,15 +140,21 @@ export class RaidService {
       if (!title) throw new ForbiddenAppException('Tiêu đề bắt buộc');
       data.title = title;
     }
-    if (dto.kind !== undefined && dto.kind !== null) data.kind = dto.kind as RaidKind;
-    if (dto.status !== undefined && dto.status !== null) data.status = dto.status as RaidStatus;
+    if (dto.kind !== undefined && dto.kind !== null) data.kind = dto.kind;
+    if (dto.status !== undefined && dto.status !== null) data.status = dto.status;
     if (dto.description !== undefined) data.description = dto.description;
     if (dto.mitigation !== undefined) data.mitigation = dto.mitigation;
-    if (dto.probability !== undefined && dto.probability !== null) data.probability = dto.probability;
+    if (dto.probability !== undefined && dto.probability !== null)
+      data.probability = dto.probability;
     if (dto.impact !== undefined && dto.impact !== null) data.impact = dto.impact;
     if (dto.dueDate !== undefined) data.dueDate = this.parseDate(dto.dueDate ?? null);
     if (dto.projectId !== undefined) {
-      const projectId = await this.resolveProject(workspaceId, dto.projectId ?? null);
+      const projectId = await this.resolveProject(workspaceId, dto.projectId ?? null, actor.id);
+      if (projectId !== item.projectId) {
+        // Guard chỉ tính quyền ở dự án HIỆN TẠI của mục → phải kiểm thêm quyền Ở ĐÍCH (null = cấp workspace).
+        await this.assertCanManageRisk(workspaceId, actor, projectId);
+        if (projectId) await assertProjectWritable(this.prisma, projectId);
+      }
       data.project = projectId ? { connect: { id: projectId } } : { disconnect: true };
     }
     if (dto.ownerId !== undefined) {
@@ -125,21 +163,41 @@ export class RaidService {
     }
 
     await this.prisma.raidItem.update({ where: { id }, data });
-    return this.get(workspaceId, id);
+    return this.get(workspaceId, id, actor.id);
   }
 
-  async remove(workspaceId: string, id: string) {
-    await this.requireItem(workspaceId, id);
+  async remove(workspaceId: string, id: string, viewerId: string) {
+    const item = await this.requireItem(workspaceId, id, viewerId);
+    if (item.projectId) await assertProjectWritable(this.prisma, item.projectId);
     await this.prisma.raidItem.delete({ where: { id } });
     return { success: true };
   }
 
   // ───────────────────────── helpers ─────────────────────────
 
-  private async requireItem(workspaceId: string, id: string) {
-    const row = await this.prisma.raidItem.findFirst({ where: { id, workspaceId }, select: { id: true } });
+  private async requireItem(workspaceId: string, id: string, viewerId: string) {
+    const row = await this.prisma.raidItem.findFirst({
+      where: { id, workspaceId, ...(await this.scopeFor(workspaceId, viewerId)) },
+      select: { id: true, projectId: true },
+    });
     if (!row) throw new NotFoundAppException('Mục rủi ro');
     return row;
+  }
+
+  private async assertCanManageRisk(
+    workspaceId: string,
+    actor: RaidActor,
+    projectId: string | null,
+  ): Promise<void> {
+    if (actor.isSystemAdmin) return;
+    const perms = await this.rbac.getEffectivePermissions(actor.id, workspaceId, projectId);
+    if (!perms.has(PERMISSIONS.RISK_MANAGE)) {
+      throw new ForbiddenAppException(
+        projectId
+          ? 'Bạn không có quyền quản lý rủi ro ở dự án đích — hãy nhờ quản trị viên dự án đó cấp quyền hoặc chọn dự án khác'
+          : 'Bạn không có quyền quản lý rủi ro cấp không gian làm việc — hãy giữ mục này trong dự án hiện tại',
+      );
+    }
   }
 
   private parseDate(value: string | null): Date | null {
@@ -149,10 +207,15 @@ export class RaidService {
     return d;
   }
 
-  private async resolveProject(workspaceId: string, projectId: string | null): Promise<string | null> {
+  private async resolveProject(
+    workspaceId: string,
+    projectId: string | null,
+    viewerId: string,
+  ): Promise<string | null> {
     if (!projectId) return null;
+    const visible = await this.access.visibleWhere(viewerId, workspaceId);
     const p = await this.prisma.project.findFirst({
-      where: { id: projectId, workspaceId, deletedAt: null },
+      where: { id: projectId, workspaceId, deletedAt: null, ...visible },
       select: { id: true },
     });
     if (!p) throw new NotFoundAppException('Dự án');
@@ -165,7 +228,10 @@ export class RaidService {
       where: { workspaceId, userId: ownerId },
       select: { userId: true },
     });
-    if (!m) throw new ForbiddenAppException('Chủ sở hữu không thuộc không gian làm việc này — hãy chọn một thành viên khác');
+    if (!m)
+      throw new ForbiddenAppException(
+        'Chủ sở hữu không thuộc không gian làm việc này — hãy chọn một thành viên khác',
+      );
     return m.userId;
   }
 

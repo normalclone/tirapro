@@ -1,7 +1,14 @@
-import { ExecutionContext, ForbiddenException, Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  ExecutionContext,
+  ForbiddenException,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { AuthGuard } from '@nestjs/passport';
+import { OPTIONAL_AUTH_KEY } from '../../../common/decorators/optional-auth.decorator';
 import { IS_PUBLIC_KEY } from '../../../common/decorators/public.decorator';
+import { getStore } from '../../../common/context/request-context';
 import { ApiKeyService } from '../../api-keys/api-key.service';
 import type { AuthedRequest } from '../../../common/types/request';
 
@@ -12,7 +19,8 @@ function extractApiKey(req: AuthedRequest): string | null {
   const x = req.headers['x-api-key'];
   if (typeof x === 'string' && x.startsWith('tira_')) return x;
   const auth = req.headers['authorization'];
-  if (typeof auth === 'string' && auth.startsWith('Bearer tira_')) return auth.slice('Bearer '.length);
+  if (typeof auth === 'string' && auth.startsWith('Bearer tira_'))
+    return auth.slice('Bearer '.length);
   return null;
 }
 
@@ -31,13 +39,27 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
   }
 
   override async canActivate(context: ExecutionContext): Promise<boolean> {
-    const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
-      context.getHandler(),
-      context.getClass(),
-    ]);
-    if (isPublic) return true;
+    const targets = [context.getHandler(), context.getClass()];
+    const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, targets);
+    if (isPublic) {
+      // Route công khai có thể xin "xác thực nếu có": gặp token hợp lệ thì gắn user, sai/thiếu thì vẫn cho qua.
+      const optional = this.reflector.getAllAndOverride<boolean>(OPTIONAL_AUTH_KEY, targets);
+      if (optional) {
+        try {
+          await this.authenticate(context);
+        } catch {
+          /* bỏ qua — vẫn là khách */
+        }
+      }
+      return true;
+    }
+    return this.authenticate(context);
+  }
 
-    const req = context.switchToHttp().getRequest<AuthedRequest & { apiKey?: { id: string; scopes: string[] } }>();
+  private async authenticate(context: ExecutionContext): Promise<boolean> {
+    const req = context
+      .switchToHttp()
+      .getRequest<AuthedRequest & { apiKey?: { id: string; scopes: string[] } }>();
     const raw = extractApiKey(req);
     if (raw) {
       const ctx = await this.apiKeys.validate(raw);
@@ -51,11 +73,26 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
       };
       req.apiKey = { id: ctx.keyId, scopes: ctx.scopes };
       if (!READ_METHODS.has(req.method) && !ctx.scopes.includes('write')) {
+        // Không để lại danh tính của key bị từ chối (route @OptionalAuth nuốt lỗi sẽ coi như đã xác thực).
+        req.user = undefined;
+        req.apiKey = undefined;
         throw new ForbiddenException('API key chỉ có quyền đọc (read-only)');
       }
+      this.bindRequestContext(req);
       return true;
     }
 
-    return (await super.canActivate(context)) as boolean;
+    const ok = (await super.canActivate(context)) as boolean;
+    this.bindRequestContext(req);
+    return ok;
+  }
+
+  /** Ghi userId/workspaceId vào AsyncLocalStorage của request để log/audit đọc được ở mọi tầng. */
+  private bindRequestContext(req: AuthedRequest): void {
+    const store = getStore();
+    if (store && req.user) {
+      store.userId = req.user.id;
+      store.workspaceId = req.user.workspaceId;
+    }
   }
 }

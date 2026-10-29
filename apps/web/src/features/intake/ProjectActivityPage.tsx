@@ -1,13 +1,15 @@
 import { type ReactNode } from 'react';
-import { format, formatDistanceToNow, isToday, isYesterday } from 'date-fns';
-import { vi } from 'date-fns/locale';
+import { isToday, isYesterday } from 'date-fns';
 import {
   ArrowRight,
   ArrowUpDown,
   CircleDot,
+  FileText,
   History,
   Layers,
+  Package,
   Tag,
+  Timer,
   UserCog,
   type LucideIcon,
 } from 'lucide-react';
@@ -15,8 +17,12 @@ import { Link, useParams } from 'react-router-dom';
 import { useProject } from '@/features/projects/api';
 import { Avatar, EmptyState, Skeleton } from '@/components/ui/primitives';
 import { Button } from '@/components/ui/Button';
-import { pageContainer } from '@/components/layout/page';
+import { PageFrame } from '@/components/layout/PageFrame';
+import { PageHeader } from '@/components/layout/PageHeader';
 import { useProjectActivity, type ProjectActivityItem } from './api';
+import { QueryBoundary } from '@/components/ui/QueryBoundary';
+import { fmtDate, fmtDateTime, fmtRelative } from '@/lib/dateFormat';
+import { projectFeedSentence } from '@/features/activity/activityFilters';
 
 /** Màu chấm theo status category (dùng CSS var giống IssueProperties). */
 function categoryColor(cat: string | null): string {
@@ -47,6 +53,13 @@ function fieldIcon(field: string): LucideIcon {
       return Layers;
     case 'TYPE':
       return Tag;
+    case 'DESCRIPTION':
+      return FileText;
+    case 'COMPONENT':
+    case 'FIX_VERSION':
+      return Package;
+    case 'TIME_SPENT':
+      return Timer;
     default:
       return CircleDot;
   }
@@ -56,7 +69,9 @@ function fieldIcon(field: string): LucideIcon {
 function ValueChip({ children, color }: { children: ReactNode; color?: string }) {
   return (
     <span className="inline-flex items-center gap-1 rounded-md bg-surface-2 px-1.5 py-0.5 text-[0.8125rem] font-medium text-ink-strong">
-      {color && <span className="h-1.5 w-1.5 rounded-full" style={{ background: color }} aria-hidden />}
+      {color && (
+        <span className="h-1.5 w-1.5 rounded-full" style={{ background: color }} aria-hidden />
+      )}
       {children}
     </span>
   );
@@ -79,6 +94,9 @@ function delta(oldLabel: ReactNode, newLabel: ReactNode): ReactNode {
  * Actor và issue đích được render riêng ở component cha để giữ câu gọn.
  */
 function actionPhrase(a: ProjectActivityItem): ReactNode {
+  // Mô tả / thành phần / phiên bản: một câu thuần (không chip cũ → mới, không lộ nội dung mô tả).
+  const plain = projectFeedSentence(a);
+  if (plain) return <>{plain}</>;
   const oldV = a.oldLabel ?? a.oldValue;
   const newV = a.newLabel ?? a.newValue;
   switch (a.field) {
@@ -102,15 +120,11 @@ function actionPhrase(a: ProjectActivityItem): ReactNode {
           </>
         );
       }
-      return (
-        <>
-          đã bỏ giao{oldV ? <span className="text-muted"> (trước là {oldV})</span> : null}
-        </>
-      );
+      return <>đã bỏ giao{oldV ? <span className="text-muted"> (trước là {oldV})</span> : null}</>;
     case 'PRIORITY':
       return (
         <>
-          đã đổi <span className="text-muted">độ ưu tiên</span> {delta(oldV, newV)}
+          đã đổi <span className="text-muted">mức ưu tiên</span> {delta(oldV, newV)}
         </>
       );
     case 'STORY_POINTS':
@@ -128,11 +142,7 @@ function actionPhrase(a: ProjectActivityItem): ReactNode {
           </>
         );
       }
-      return (
-        <>
-          đã đưa ra khỏi sprint{oldV ? <span className="text-muted"> {oldV}</span> : null}
-        </>
-      );
+      return <>đã đưa ra khỏi sprint{oldV ? <span className="text-muted"> {oldV}</span> : null}</>;
     case 'TYPE':
       return (
         <>
@@ -142,30 +152,29 @@ function actionPhrase(a: ProjectActivityItem): ReactNode {
     case 'RESOLUTION':
       return (
         <>
-          đã đổi <span className="text-muted">resolution</span> {delta(oldV, newV)}
+          đã đổi <span className="text-muted">kết quả xử lý</span> {delta(oldV, newV)}
         </>
       );
     case 'SCOPE':
       return <>đã thay đổi phạm vi</>;
     default:
-      return (
-        <>
-          đã đổi <span className="text-muted">{a.field}</span> {delta(oldV, newV)}
-        </>
-      );
+      // Loại thay đổi chưa có câu riêng: nhãn chung, không in tên enum/trường thô.
+      return <>đã cập nhật thông tin</>;
   }
 }
 
-/** Nhãn ngày cho header nhóm: Hôm nay / Hôm qua / d thg M yyyy. */
+/** Nhãn ngày cho header nhóm: Hôm nay / Hôm qua / dd/MM/yyyy. */
 function dayLabel(iso: string): string {
   const d = new Date(iso);
   if (isToday(d)) return 'Hôm nay';
   if (isYesterday(d)) return 'Hôm qua';
-  return format(d, 'd MMM yyyy', { locale: vi });
+  return fmtDate(d);
 }
 
 /** Gộp các mục theo ngày (đã sort desc từ server), giữ thứ tự. */
-function groupByDay(items: ProjectActivityItem[]): { key: string; label: string; items: ProjectActivityItem[] }[] {
+function groupByDay(
+  items: ProjectActivityItem[],
+): { key: string; label: string; items: ProjectActivityItem[] }[] {
   const groups: { key: string; label: string; items: ProjectActivityItem[] }[] = [];
   for (const it of items) {
     const key = new Date(it.occurredAt).toDateString();
@@ -179,8 +188,8 @@ function groupByDay(items: ProjectActivityItem[]): { key: string; label: string;
 /** Một sự kiện trên timeline: chấm + avatar + câu mô tả. */
 function TimelineEvent({ a }: { a: ProjectActivityItem }) {
   const Icon = fieldIcon(a.field);
-  const abs = format(new Date(a.occurredAt), "HH:mm 'ngày' d MMMM yyyy", { locale: vi });
-  const rel = formatDistanceToNow(new Date(a.occurredAt), { addSuffix: true, locale: vi });
+  const abs = fmtDateTime(a.occurredAt);
+  const rel = fmtRelative(a.occurredAt);
 
   return (
     <li className="relative flex gap-3 pb-5 last:pb-0">
@@ -198,28 +207,20 @@ function TimelineEvent({ a }: { a: ProjectActivityItem }) {
       <div className="min-w-0 flex-1 pt-0.5">
         <p className="text-sm leading-relaxed text-ink">
           <span className="font-medium text-ink-strong">{a.actor?.displayName ?? 'Hệ thống'}</span>{' '}
-          {actionPhrase(a)}{' '}
-          <span className="text-muted">·</span>{' '}
+          {actionPhrase(a)} <span className="hidden text-muted sm:inline">·</span>{' '}
+          {/* MỘT liên kết (mã + tiêu đề): mobile xuống dòng riêng, hai phần là ô flex nên không đè nhau khi tiêu đề dài. */}
           <Link
             to={`/issue/${a.issueKey}`}
-            className="font-mono text-[0.8125rem] font-medium text-primary underline-offset-2 hover:underline"
+            className="mt-0.5 flex min-w-0 items-baseline gap-1.5 py-1.5 sm:mt-0 sm:inline sm:py-0"
             title={a.issueSummary}
           >
-            {a.issueKey}
-          </Link>{' '}
-          <Link
-            to={`/issue/${a.issueKey}`}
-            className="text-muted hover:text-ink"
-            title={a.issueSummary}
-          >
-            {a.issueSummary}
+            <span className="shrink-0 font-mono text-[0.8125rem] font-medium text-primary underline-offset-2 hover:underline sm:mr-1.5">
+              {a.issueKey}
+            </span>
+            <span className="min-w-0 break-words text-muted hover:text-ink">{a.issueSummary}</span>
           </Link>
         </p>
-        <time
-          className="mt-0.5 block text-xs text-faint"
-          dateTime={a.occurredAt}
-          title={abs}
-        >
+        <time className="mt-0.5 block text-xs text-faint" dateTime={a.occurredAt} title={abs}>
           {rel}
         </time>
       </div>
@@ -230,75 +231,75 @@ function TimelineEvent({ a }: { a: ProjectActivityItem }) {
 export function ProjectActivityPage() {
   const { key = '' } = useParams();
   const { data: project } = useProject(key);
-  const { data, isLoading, hasNextPage, isFetchingNextPage, fetchNextPage } = useProjectActivity(
-    project?.id,
-  );
+  const activityQuery = useProjectActivity(project?.id);
+  const { data, hasNextPage, isFetchingNextPage, fetchNextPage } = activityQuery;
 
   const items = data?.pages.flatMap((p) => p.data) ?? [];
   const groups = groupByDay(items);
 
   return (
-    <div className={pageContainer('sm')}>
-      <header className="mb-6">
-        <h1 className="flex items-center gap-2 text-lg font-semibold text-ink-strong">
-          <History className="h-4 w-4 text-primary" />
-          Hoạt động
-        </h1>
-        <p className="mt-1 text-sm text-muted">Ai đã làm gì, trên công việc nào.</p>
-      </header>
+    <PageFrame size="full">
+      <PageHeader variant="tab" title="Hoạt động" description="Ai đã làm gì, trên công việc nào." />
 
-      {isLoading ? (
-        <ol className="space-y-5" aria-busy>
-          {Array.from({ length: 6 }).map((_, i) => (
-            <li key={i} className="flex gap-3">
-              <Skeleton className="h-7 w-7 shrink-0 rounded-full" />
-              <div className="flex-1 space-y-1.5 pt-0.5">
-                <Skeleton className="h-4 w-4/5" />
-                <Skeleton className="h-3 w-24" />
+      <QueryBoundary
+        query={activityQuery}
+        skeleton={
+          <ol className="space-y-5" aria-busy>
+            {Array.from({ length: 6 }).map((_, i) => (
+              <li key={i} className="flex gap-3">
+                <Skeleton className="h-7 w-7 shrink-0 rounded-full" />
+                <div className="flex-1 space-y-1.5 pt-0.5">
+                  <Skeleton className="h-4 w-4/5" />
+                  <Skeleton className="h-3 w-24" />
+                </div>
+              </li>
+            ))}
+          </ol>
+        }
+        empty={() => items.length === 0}
+        emptyState={
+          <EmptyState
+            icon={<History className="h-8 w-8" />}
+            title="Chưa có hoạt động"
+            description="Đây là dòng thời gian của cả dự án. Khi có người đổi trạng thái, giao việc hay chuyển sprint, các thay đổi trên công việc sẽ hiện ở đây."
+          />
+        }
+      >
+        {() => (
+          <>
+            {groups.map((g) => (
+              <section key={g.key}>
+                <h3 className="sticky top-0 z-[1] -mx-2 mb-3 bg-bg/85 px-2 py-1.5 text-xs font-semibold uppercase tracking-wide text-muted backdrop-blur">
+                  {g.label}
+                </h3>
+                {/* Rail dọc liên tục + các chấm; rail canh giữa cột avatar (14px = nửa của 28px) */}
+                <ol className="relative">
+                  <span
+                    className="pointer-events-none absolute bottom-2 left-[13.5px] top-2 w-px bg-border"
+                    aria-hidden
+                  />
+                  {g.items.map((a) => (
+                    <TimelineEvent key={a.id} a={a} />
+                  ))}
+                </ol>
+              </section>
+            ))}
+
+            {hasNextPage && (
+              <div className="flex justify-center pt-2">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  loading={isFetchingNextPage}
+                  onClick={() => void fetchNextPage()}
+                >
+                  Tải thêm
+                </Button>
               </div>
-            </li>
-          ))}
-        </ol>
-      ) : items.length === 0 ? (
-        <EmptyState
-          icon={<History className="h-8 w-8" />}
-          title="Chưa có hoạt động"
-          description="Đây là dòng thời gian của cả dự án. Khi có người đổi trạng thái, giao việc hay chuyển sprint, các thay đổi trên công việc sẽ hiện ở đây."
-        />
-      ) : (
-        <>
-          {groups.map((g) => (
-            <section key={g.key}>
-              <h2 className="sticky top-0 z-[1] -mx-2 mb-3 bg-bg/85 px-2 py-1.5 text-xs font-semibold uppercase tracking-wide text-muted backdrop-blur">
-                {g.label}
-              </h2>
-              {/* Rail dọc liên tục + các chấm; rail canh giữa cột avatar (14px = nửa của 28px) */}
-              <ol className="relative">
-                <span
-                  className="pointer-events-none absolute bottom-2 left-[13.5px] top-2 w-px bg-border"
-                  aria-hidden
-                />
-                {g.items.map((a) => (
-                  <TimelineEvent key={a.id} a={a} />
-                ))}
-              </ol>
-            </section>
-          ))}
-
-          {hasNextPage && (
-            <div className="flex justify-center pt-2">
-              <Button
-                variant="secondary"
-                size="sm"
-                loading={isFetchingNextPage}
-                onClick={() => void fetchNextPage()}
-              >
-                Tải thêm
-              </Button>
-            </div>
-          )}
-        </>
-      )}
-    </div>
+            )}
+          </>
+        )}
+      </QueryBoundary>
+    </PageFrame>
   );
 }

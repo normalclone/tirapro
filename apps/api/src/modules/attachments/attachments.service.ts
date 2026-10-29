@@ -1,21 +1,23 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createId } from '@paralleldrive/cuid2';
-import { promises as fs, createReadStream } from 'node:fs';
-import { createHash } from 'node:crypto';
 import * as path from 'node:path';
-import type { ReadStream } from 'node:fs';
-import { PrismaService } from '../../infra/prisma/prisma.service';
+import type { Readable } from 'node:stream';
 import {
-  BusinessRuleException,
-  NotFoundAppException,
-} from '../../common/exceptions/app.exception';
+  OBJECT_STORAGE,
+  deleteBestEffort,
+  getOrNull,
+  putOrThrowBusiness,
+  type ObjectStorage,
+} from '../../common/storage/object-storage';
+import { fixLatin1Utf8 } from '../../common/filename';
+import { PrismaService } from '../../infra/prisma/prisma.service';
+import { BusinessRuleException, NotFoundAppException } from '../../common/exceptions/app.exception';
+import { assertIssueWritable } from '../../common/project-writable';
 
-/** Cấu hình lưu trữ (mirror config.storage). */
+/** Cấu hình lưu trữ (mirror config.storage) — ở đây chỉ cần giới hạn kích thước. */
 interface StorageConfig {
-  driver: 'local' | 's3';
-  localDir: string;
-  maxFileSizeMb: number;
+  maxFileSizeMb?: number;
 }
 
 /** DTO trả về cho client — không lộ storageKey. */
@@ -32,25 +34,24 @@ export interface AttachmentDto {
 
 /** Tệp đã sẵn sàng để stream về client. */
 export interface AttachmentDownload {
-  stream: ReadStream;
+  stream: Readable;
   fileName: string;
   mimeType: string;
+  /** Kích thước thật trong kho lưu trữ (nếu biết) → Content-Length. */
+  size?: number;
 }
 
 @Injectable()
 export class AttachmentsService {
-  private readonly storage: StorageConfig;
+  private readonly logger = new Logger(AttachmentsService.name);
+  private readonly maxFileSizeMb: number;
 
   constructor(
     private readonly prisma: PrismaService,
     config: ConfigService,
+    @Inject(OBJECT_STORAGE) private readonly storage: ObjectStorage,
   ) {
-    const s = config.get<StorageConfig>('storage');
-    this.storage = {
-      driver: s?.driver ?? 'local',
-      localDir: s?.localDir ?? './uploads',
-      maxFileSizeMb: s?.maxFileSizeMb ?? 25,
-    };
+    this.maxFileSizeMb = config.get<StorageConfig>('storage')?.maxFileSizeMb ?? 25;
   }
 
   /** Tải tệp đính kèm cho một issue (chỉ trong workspace). */
@@ -61,28 +62,35 @@ export class AttachmentsService {
     file: Express.Multer.File | undefined,
   ): Promise<AttachmentDto> {
     await this.requireIssue(workspaceId, issueId);
+    await assertIssueWritable(this.prisma, issueId);
     if (!file) throw new BusinessRuleException('Thiếu file');
 
-    const maxBytes = this.storage.maxFileSizeMb * 1024 * 1024;
+    const maxBytes = this.maxFileSizeMb * 1024 * 1024;
     if (file.size > maxBytes) {
-      throw new BusinessRuleException(
-        `Tệp vượt quá kích thước tối đa ${this.storage.maxFileSizeMb}MB`,
-      );
+      throw new BusinessRuleException(`Tệp vượt quá kích thước tối đa ${this.maxFileSizeMb}MB`);
     }
 
-    const { storageKey, checksum } = await this.writeFile(workspaceId, file);
+    // multer đọc tên tệp theo latin1 → khôi phục UTF-8 (tiếng Việt) trước khi lưu DB/khoá; chỉ khi giải mã sạch.
+    const fileName = fixLatin1Utf8(file.originalname);
+    const { storageKey, checksum } = await this.writeFile(workspaceId, file, fileName);
 
-    const row = await this.prisma.attachment.create({
-      data: {
-        issueId,
-        uploadedById: userId,
-        fileName: file.originalname,
-        mimeType: file.mimetype,
-        sizeBytes: file.size,
-        storageKey,
-        checksum,
-      },
-    });
+    let row;
+    try {
+      row = await this.prisma.attachment.create({
+        data: {
+          issueId,
+          uploadedById: userId,
+          fileName,
+          mimeType: file.mimetype,
+          sizeBytes: file.size,
+          storageKey,
+          checksum,
+        },
+      });
+    } catch (err) {
+      await deleteBestEffort(this.logger, this.storage, storageKey); // không để object mồ côi
+      throw err;
+    }
     return this.toDto(row);
   }
 
@@ -99,58 +107,44 @@ export class AttachmentsService {
   /** Chuẩn bị stream tải xuống (kiểm tra scope qua issue.workspaceId). */
   async download(workspaceId: string, id: string): Promise<AttachmentDownload> {
     const att = await this.requireScoped(workspaceId, id);
-    const absPath = this.absPath(att.storageKey);
-    try {
-      await fs.access(absPath);
-    } catch {
-      throw new NotFoundAppException('Tệp');
-    }
+    const obj = await getOrNull(this.logger, this.storage, att.storageKey);
+    if (!obj) throw new NotFoundAppException('Tệp');
     return {
-      stream: createReadStream(absPath),
+      stream: obj.stream,
       fileName: att.fileName,
       mimeType: att.mimeType,
+      size: obj.size,
     };
   }
 
-  /** Xóa tệp đính kèm + best-effort xóa file trên đĩa. */
+  /** Xóa tệp đính kèm + best-effort xóa object (lỗi xoá object chỉ được log, không chặn người dùng). */
   async remove(workspaceId: string, id: string): Promise<{ ok: true }> {
     const att = await this.requireScoped(workspaceId, id);
+    if (att.issueId) await assertIssueWritable(this.prisma, att.issueId);
     await this.prisma.attachment.delete({ where: { id: att.id } });
-    try {
-      await fs.unlink(this.absPath(att.storageKey));
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException)?.code !== 'ENOENT') {
-        // Bỏ qua lỗi xóa file (best-effort); chỉ chặn nếu không phải file-not-found.
-        // Không ném lại để tránh dữ liệu mồ côi trong DB sau khi đã xóa row.
-      }
-    }
+    // Không ném lại để tránh dữ liệu mồ côi trong DB sau khi đã xóa row.
+    await deleteBestEffort(this.logger, this.storage, att.storageKey);
     return { ok: true };
   }
 
-  /** Ghi buffer xuống đĩa (driver local). Trả storageKey + checksum sha256. */
+  /** Ghi buffer vào kho lưu trữ. Trả storageKey (`{workspaceId}/{cuid}-{tên}`) + checksum sha256. */
   private async writeFile(
     workspaceId: string,
     file: Express.Multer.File,
+    fileName: string,
   ): Promise<{ storageKey: string; checksum: string }> {
-    if (this.storage.driver === 's3') {
-      throw new BusinessRuleException('S3 chưa hỗ trợ');
-    }
-
-    const base = this.storage.localDir;
-    const safeName = this.sanitizeName(file.originalname);
-    const storageKey = `${workspaceId}/${createId()}-${safeName}`;
-    const absPath = path.join(base, storageKey);
-
-    await fs.mkdir(path.dirname(absPath), { recursive: true });
-    await fs.writeFile(absPath, file.buffer);
-
-    const checksum = createHash('sha256').update(file.buffer).digest('hex');
+    const storageKey = `${workspaceId}/${createId()}-${this.sanitizeName(fileName)}`;
+    const { checksum } = await putOrThrowBusiness(
+      this.logger,
+      this.storage,
+      storageKey,
+      file.buffer,
+      {
+        contentType: file.mimetype,
+        size: file.buffer.length,
+      },
+    );
     return { storageKey, checksum };
-  }
-
-  /** Đường dẫn tuyệt đối tới file trong thư mục lưu trữ. */
-  private absPath(storageKey: string): string {
-    return path.join(this.storage.localDir, storageKey);
   }
 
   /** Bỏ ký tự phân tách đường dẫn, giữ phần đuôi file; chống path traversal. */

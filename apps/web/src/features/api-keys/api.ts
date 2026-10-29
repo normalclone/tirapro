@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { keys } from '@/lib/queryKeys';
 
 export interface ApiKey {
   id: string;
@@ -20,22 +21,24 @@ export interface CreateApiKeyInput {
   expiresInDays?: number;
 }
 
-const KEY = ['api-keys'] as const;
-
 /** Envelope list backend: { success, data, pageInfo, meta }. */
 interface ListEnvelope<T> {
   data: T[];
 }
 
 export function useApiKeys() {
-  return useQuery({ queryKey: KEY, queryFn: async () => (await api.get<ListEnvelope<ApiKey>>('/api-keys')).data.data });
+  return useQuery({
+    queryKey: keys.apiKeys.all,
+    queryFn: async () => (await api.get<ListEnvelope<ApiKey>>('/api-keys')).data.data,
+  });
 }
 
 export function useCreateApiKey() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: CreateApiKeyInput) => (await api.post<CreatedApiKey>('/api-keys', input)).data,
-    onSuccess: () => void qc.invalidateQueries({ queryKey: KEY }),
+    mutationFn: async (input: CreateApiKeyInput) =>
+      (await api.post<CreatedApiKey>('/api-keys', input)).data,
+    onSuccess: () => void qc.invalidateQueries({ queryKey: keys.apiKeys.all }),
   });
 }
 
@@ -43,6 +46,6 @@ export function useRevokeApiKey() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (id: string) => (await api.delete<{ ok: true }>(`/api-keys/${id}`)).data,
-    onSuccess: () => void qc.invalidateQueries({ queryKey: KEY }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: keys.apiKeys.all }),
   });
 }

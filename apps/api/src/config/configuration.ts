@@ -33,6 +33,7 @@ export function configuration() {
       driver: e.STORAGE_DRIVER,
       localDir: e.STORAGE_LOCAL_DIR,
       maxFileSizeMb: e.MAX_FILE_SIZE_MB,
+      startupStrict: e.STORAGE_STARTUP_STRICT ?? e.NODE_ENV === 'production',
       s3: {
         endpoint: e.S3_ENDPOINT,
         region: e.S3_REGION,
@@ -40,6 +41,7 @@ export function configuration() {
         accessKey: e.S3_ACCESS_KEY,
         secretKey: e.S3_SECRET_KEY,
         forcePathStyle: e.S3_FORCE_PATH_STYLE,
+        keyPrefix: e.S3_KEY_PREFIX,
       },
     },
     ai: {
@@ -57,9 +59,16 @@ export function configuration() {
       openaiApiKey: e.OPENAI_API_KEY,
       openaiModel: e.OPENAI_EMBEDDINGS_MODEL,
     },
+    mail: {
+      driver: e.MAIL_DRIVER,
+      from: e.MAIL_FROM,
+      appWebUrl: e.APP_WEB_URL.replace(/\/+$/, ''),
+      smtp: { host: e.SMTP_HOST, port: e.SMTP_PORT, user: e.SMTP_USER, pass: e.SMTP_PASS },
+    },
     throttle: { ttl: e.THROTTLE_TTL, limit: e.THROTTLE_LIMIT },
     integrations: {
       encryptionKey: e.INTEGRATION_ENCRYPTION_KEY,
+      encryptionKeyPrevious: e.INTEGRATION_ENCRYPTION_KEY_PREVIOUS,
       telegram: {
         globalBotToken: e.TELEGRAM_BOT_TOKEN,
         webhookDomain: e.TELEGRAM_WEBHOOK_DOMAIN,
@@ -68,5 +77,3 @@ export function configuration() {
     },
   };
 }
-
-export type AppConfig = ReturnType<typeof configuration>;

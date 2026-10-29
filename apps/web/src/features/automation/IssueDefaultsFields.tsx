@@ -1,15 +1,27 @@
 import { useId, type ReactNode } from 'react';
 import { Input } from '@/components/ui/Input';
 import { SearchSelect } from '@/components/ui/SearchSelect';
-import { MarkdownEditor } from '@/features/issue-edit/DescriptionEditor';
+import { MarkdownEditor } from '@/features/issue-edit/MarkdownEditor';
 import { useProjectMeta } from '@/features/ai/api';
 import type { IssuePayload } from './api';
 
 /** Nhãn + trường nhập + câu gợi ý, dùng chung cho các hộp thoại của trang Tự động hoá. */
-export function Field({ label, hint, htmlFor, children }: { label: string; hint?: string; htmlFor?: string; children: ReactNode }) {
+export function Field({
+  label,
+  hint,
+  htmlFor,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  htmlFor?: string;
+  children: ReactNode;
+}) {
   return (
     <div>
-      <label htmlFor={htmlFor} className="mb-1.5 block text-sm font-medium text-muted">{label}</label>
+      <label htmlFor={htmlFor} className="mb-1.5 block text-sm font-medium text-muted">
+        {label}
+      </label>
       {children}
       {hint && <p className="mt-1 text-xs text-faint">{hint}</p>}
     </div>
@@ -17,8 +29,8 @@ export function Field({ label, hint, htmlFor, children }: { label: string; hint?
 }
 
 /**
- * Nội dung điền sẵn của công việc (loại, độ ưu tiên, tiêu đề, mô tả) — dùng chung cho
- * mẫu công việc và công việc lặp lại. Loại & độ ưu tiên lấy theo cấu hình chung qua
+ * Nội dung điền sẵn của công việc (loại, mức ưu tiên, tiêu đề, mô tả) — dùng chung cho
+ * mẫu công việc và công việc lặp lại. Loại & mức ưu tiên lấy theo cấu hình chung qua
  * `/projects/:key/meta`; cần một mã dự án bất kỳ để nạp.
  */
 export function IssueDefaultsFields({
@@ -38,7 +50,11 @@ export function IssueDefaultsFields({
   const uid = useId();
   const set = (patch: Partial<IssuePayload>) => onChange({ ...value, ...patch });
 
-  const typeOptions = (meta?.issueTypes ?? []).map((t) => ({ value: t.id, label: t.name, color: t.color }));
+  const typeOptions = (meta?.issueTypes ?? []).map((t) => ({
+    value: t.id,
+    label: t.name,
+    color: t.color,
+  }));
   const priorityOptions = [
     { value: '', label: 'Theo mặc định chung' },
     ...(meta?.priorities ?? []).map((p) => ({ value: p.id, label: p.name, color: p.color })),
@@ -59,15 +75,15 @@ export function IssueDefaultsFields({
             disabled={!projectKey}
           />
         </Field>
-        <Field label="Độ ưu tiên" htmlFor={`${uid}-priority`}>
+        <Field label="Mức ưu tiên" htmlFor={`${uid}-priority`}>
           <SearchSelect
             id={`${uid}-priority`}
             value={value.priorityId ?? ''}
             onChange={(v) => set({ priorityId: v || null })}
             options={priorityOptions}
             placeholder="Theo mặc định chung"
-            searchPlaceholder="Tìm độ ưu tiên…"
-            ariaLabel="Độ ưu tiên"
+            searchPlaceholder="Tìm mức ưu tiên…"
+            ariaLabel="Mức ưu tiên"
             disabled={!projectKey}
           />
         </Field>
@@ -83,7 +99,10 @@ export function IssueDefaultsFields({
         />
       </Field>
 
-      <Field label="Mô tả điền sẵn" hint="Ví dụ: các bước cần làm, thông tin phải thu thập. Người tạo việc vẫn sửa được.">
+      <Field
+        label="Mô tả điền sẵn"
+        hint="Ví dụ: các bước cần làm, thông tin phải thu thập. Người tạo việc vẫn sửa được."
+      >
         <MarkdownEditor
           value={value.description ?? ''}
           onChange={(v) => set({ description: v })}

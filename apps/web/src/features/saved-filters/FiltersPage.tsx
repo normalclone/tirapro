@@ -1,46 +1,89 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+  type FormEvent,
+  type ComponentProps,
+} from 'react';
+import { DocsLink } from '@/components/ui/DocsLink';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import type { UseQueryResult } from '@tanstack/react-query';
 import {
   Bookmark,
-  ChevronLeft,
-  ChevronRight,
+  ChevronDown,
   Filter as FilterIcon,
   Play,
   Plus,
-  SearchX,
+  Share2,
   Trash2,
-  X,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import type { IssueDto, UserDto } from '@tirapro/types';
-import { Button } from '@/components/ui/Button';
+import type { IssueDto } from '@tirapro/types';
+import { Button, buttonVariants } from '@/components/ui/Button';
+import { useOpenSession } from '@/lib/useOpenSession';
+import { Dialog } from '@/components/ui/Dialog';
+import { SegmentedControl } from '@/components/ui/SegmentedControl';
+import { useConfirm } from '@/components/ui/useConfirm';
 import { Input } from '@/components/ui/Input';
-import { Avatar, Badge, EmptyState, Skeleton } from '@/components/ui/primitives';
-import { pageContainer } from '@/components/layout/page';
-import { categoryColor } from '@/lib/statusColor';
+import { Badge, EmptyState, Skeleton } from '@/components/ui/primitives';
+import { StatusPanel } from '@/components/ui/StatusPanel';
+import { PageFrame } from '@/components/layout/PageFrame';
+import { PageHeader } from '@/components/layout/PageHeader';
+import { RailLayout } from '@/components/layout/RailLayout';
 import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { useProjects } from '@/features/projects/api';
-import { QueryBuilder, Segmented } from './QueryBuilder';
+import { useAuth } from '@/stores/auth';
+import { JqlEditor } from './JqlEditor';
+import { ResultsTable } from './ResultsTable';
+import { FiltersBulkDock } from './FiltersBulkDock';
+import { useBulkSelection } from '@/features/bulk/useBulkSelection';
+import { PeekShell } from '@/features/issues/peek/PeekShell';
+import { useIssuePeek } from '@/features/issues/peek/useIssuePeek';
+import type { PeekOrder } from '@/features/issues/peek/PeekOrderContext';
+import {
+  appendResults,
+  initialPaging,
+  pageOfIndex,
+  pagingReducer,
+  type ResultSet,
+} from './resultPaging';
+import { QueryBuilder } from './QueryBuilder';
+import { FilterShareDialog } from './FilterShareDialog';
+import { effectiveVisibility, resolveRouteFilter } from './filterShare';
 import {
   useCreateFilter,
   useDeleteFilter,
+  useJqlValidation,
   useRunFilter,
+  fetchFilterPage,
+  fetchJqlPage,
   useRunJql,
   useSavedFilters,
   type FilterVisibility,
   type SavedFilter,
 } from './api';
+import { QueryBoundary } from '@/components/ui/QueryBoundary';
+import {
+  applyOverlay,
+  clearIssueOverlay,
+  useIssueOverlayStore,
+} from '@/features/issues/menu/issueOverlay';
 
 type BuilderMode = 'simple' | 'jql';
 
-const PAGE_SIZE = 25;
-
 const VISIBILITY_LABEL: Record<FilterVisibility, string> = {
   PRIVATE: 'Riêng tư',
-  WORKSPACE: 'Cả tổ chức',
+  WORKSPACE: 'Cả không gian làm việc',
   PROJECT: 'Dự án',
 };
+
+/** Nút thao tác ở cuối hàng bộ lọc: hiện khi rê/focus; trên màn cảm ứng (không có rê) luôn hiện và đủ lớn để chạm. */
+const ROW_ACTION_CLS =
+  'h-7 w-7 shrink-0 text-muted opacity-0 transition-opacity motion-reduce:transition-none focus-visible:opacity-100 group-hover:opacity-100 [@media(pointer:coarse)]:h-9 [@media(pointer:coarse)]:w-9 [@media(pointer:coarse)]:opacity-100';
 
 const PLACEHOLDER = 'project = DEMO AND status = "In Progress" ORDER BY created DESC';
 
@@ -50,14 +93,45 @@ type ActiveSource =
   | { kind: 'filter'; filter: SavedFilter }
   | { kind: 'adhoc'; jql: string };
 
+/** Lưu bộ lọc mới, báo kết quả bằng toast; trả `true` khi thành công (để modal tự đóng). */
+async function saveWithToast(
+  save: (input: { name: string; jql: string; visibility: FilterVisibility }) => Promise<unknown>,
+  name: string,
+  jql: string,
+  visibility: FilterVisibility,
+): Promise<boolean> {
+  try {
+    await save({ name, jql, visibility });
+    toast.success(`Đã lưu bộ lọc "${name}".`);
+    return true;
+  } catch (e) {
+    toast.error(apiErrorMessage(e));
+    return false;
+  }
+}
+
+// eslint-disable-next-line max-lines-per-function -- U17/U18 dựng cả bộ lọc + bảng kết quả trong một trang (173 dòng); tách trang là việc riêng
 export function FiltersPage() {
-  const navigate = useNavigate();
+  const peek = useIssuePeek();
   const { data: projects } = useProjects();
+  const canManageFilters = useAuth((s) => s.can('filter:manage'));
 
   const [active, setActive] = useState<ActiveSource>({ kind: 'none' });
-  const [results, setResults] = useState<IssueDto[] | null>(null);
-  const [page, setPage] = useState(1);
+  const [results, setResults] = useState<ResultSet | null>(null);
+  // Các trang đã nạp THÊM sau trang đầu ("Tải thêm"); đổi nguồn/chạy lại thì bỏ.
+  const [more, setMore] = useState<ResultSet | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
+  const [railOpen, setRailOpen] = useState(false);
+  // JQL đổ sẵn vào hộp "Tạo bộ lọc" (nút "Lưu truy vấn" cạnh "Chạy JQL"); '' = mở hộp trống.
+  const [createInitialJql, setCreateInitialJql] = useState('');
+  const [searchParams] = useSearchParams();
+  const urlJql = searchParams.get('jql')?.trim() ?? '';
+  // `/filters/:id` — liên kết tới một bộ lọc đã lưu (nút "Sao chép liên kết" của hộp chia sẻ): nạp và chạy bộ lọc đó.
+  const { id: routeId } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  // Bộ lọc đang mở hộp "Chia sẻ" (null = đóng).
+  const [shareTarget, setShareTarget] = useState<SavedFilter | null>(null);
 
   // Ô nhập JQL nhanh (ad-hoc) trong khu nội dung.
   const [jqlDraft, setJqlDraft] = useState('');
@@ -67,7 +141,10 @@ export function FiltersPage() {
   const savedFilters = useSavedFilters();
   const createFilter = useCreateFilter();
   const deleteFilter = useDeleteFilter();
+  const confirm = useConfirm();
   const runFilter = useRunFilter();
+  const routeFilter = resolveRouteFilter(savedFilters, routeId);
+  const appliedRouteId = useRef<string | null>(null);
 
   // Bản đồ projectId -> projectKey để điều hướng về bảng của issue.
   const projectKeyById = useMemo(() => {
@@ -77,43 +154,163 @@ export function FiltersPage() {
   }, [projects]);
 
   // Kết quả ad-hoc lấy trực tiếp từ query; kết quả bộ lọc đã lưu giữ trong state.
-  const shownResults = active.kind === 'adhoc' ? (adhoc.data ?? null) : results;
-
-  // Đổi nguồn kết quả → về trang 1.
+  const baseResults = active.kind === 'adhoc' ? (adhoc.data ?? null) : results;
+  const [paging, dispatchPaging] = useReducer(pagingReducer, undefined, () =>
+    initialPaging(active, baseResults),
+  );
+  const page = paging.page;
+  const setPage = useCallback((p: number) => dispatchPaging({ type: 'go', page: p }), []);
+  // Đổi bộ lọc/chạy lại trong lúc đang "Tải thêm": trang về trễ của nguồn cũ bị bỏ (so `loadSeq`).
+  const loadSeq = useRef(0);
   useEffect(() => {
-    setPage(1);
-  }, [active, shownResults]);
+    loadSeq.current += 1;
+    setMore(null);
+    setLoadingMore(false);
+  }, [baseResults]);
+  // Memo: `appendResults` dựng đối tượng mới mỗi lần gọi → không memo thì `shownResults` đổi tham chiếu MỖI lần vẽ.
+  const shownSet = useMemo(
+    () => (baseResults ? (more ? appendResults(baseResults, more) : baseResults) : null),
+    [baseResults, more],
+  );
+  // Thay đổi từ menu công việc (đổi trạng thái/ưu tiên/người, xoá) phủ lên danh sách ĐANG HIỆN mà không refetch: `baseResults`
+  // và `more` giữ nguyên → không về trang 1, không mất các trang "Tải thêm". Đổi nguồn thì bỏ lớp phủ.
+  const overlay = useIssueOverlayStore((s) => s.entries);
+  const shownResults: IssueDto[] | null = useMemo(
+    () => applyOverlay(shownSet?.items ?? null, overlay),
+    [shownSet, overlay],
+  );
+  useEffect(() => {
+    clearIssueOverlay();
+    return clearIssueOverlay;
+  }, [active]);
+
+  // Chọn nhiều (hàng loạt): thứ tự = các dòng đã nạp (Shift+click chọn dải qua cả trang). Dòng biến mất khỏi kết quả (xoá,
+  // chạy lại, đổi nguồn) thì bỏ khỏi lựa chọn.
+  const resultOrder = useMemo(() => (shownResults ?? []).map((i) => i.id), [shownResults]);
+  const sel = useBulkSelection(resultOrder);
+  const pruneSelection = sel.prune;
+  useEffect(() => {
+    pruneSelection(new Set(resultOrder));
+  }, [pruneSelection, resultOrder]);
+  const selectionProps = useMemo(
+    () => ({
+      selected: sel.selected,
+      onToggle: sel.toggle,
+      onRange: sel.range,
+      onTogglePage: sel.setMany,
+    }),
+    [sel.selected, sel.toggle, sel.range, sel.setMany],
+  );
+
+  // Đổi nguồn hoặc kết quả GỐC (chạy lại) → về trang 1. KHÔNG theo `shownResults`: "Tải thêm" nối vào đó và phải giữ trang.
+  useEffect(() => {
+    dispatchPaging({ type: 'sync', active, base: baseResults });
+  }, [active, baseResults]);
+
+  // `?jql=…` trên URL (vd "Xem tất cả" từ trang chủ) → điền vào ô và chạy ngay; chỉ áp lại khi tham số đổi.
+  useEffect(() => {
+    if (!urlJql) return;
+    setJqlDraft(urlJql);
+    setResults(null);
+    setActive({ kind: 'adhoc', jql: urlJql });
+    setAdhocJql(urlJql);
+  }, [urlJql]);
+
+  async function loadMore() {
+    if (!shownSet?.nextCursor || loadingMore) return;
+    setLoadingMore(true);
+    const seq = loadSeq.current;
+    try {
+      const next =
+        active.kind === 'adhoc'
+          ? await fetchJqlPage(active.jql, shownSet.nextCursor)
+          : active.kind === 'filter'
+            ? await fetchFilterPage(active.filter.id, shownSet.nextCursor)
+            : null;
+      if (seq !== loadSeq.current) return; // nguồn đã đổi
+      if (next && baseResults) setMore((m) => (m ? appendResults(m, next) : next));
+    } catch (e) {
+      if (seq === loadSeq.current) toast.error(apiErrorMessage(e));
+    } finally {
+      if (seq === loadSeq.current) setLoadingMore(false);
+    }
+  }
 
   async function loadAndRunSaved(f: SavedFilter) {
+    setJqlDraft(f.jql); // hiện đúng câu JQL của bộ lọc để người dùng học cú pháp / chỉnh rồi "Lưu truy vấn"
     setAdhocJql(''); // dừng truy vấn ad-hoc
     setResults(null);
     setActive({ kind: 'filter', filter: f });
     try {
-      const issues = await runFilter.mutateAsync(f.id);
-      setResults(issues);
+      setResults(await runFilter.mutateAsync(f.id));
     } catch (e) {
       toast.error(apiErrorMessage(e));
       setActive({ kind: 'none' });
     }
   }
 
+  // Đường dẫn có :id → nạp & chạy bộ lọc đó MỘT lần cho mỗi id (đổi id thì nạp lại; bỏ id thì quên để lần sau còn nạp).
+  const loadAndRunSavedRef = useRef(loadAndRunSaved);
+  loadAndRunSavedRef.current = loadAndRunSaved;
+  const routeFound = routeFilter.state === 'found' ? routeFilter.filter : null;
+  useEffect(() => {
+    if (!routeId) {
+      appliedRouteId.current = null;
+      return;
+    }
+    if (!routeFound || appliedRouteId.current === routeFound.id) return;
+    appliedRouteId.current = routeFound.id;
+    void loadAndRunSavedRef.current(routeFound);
+  }, [routeId, routeFound]);
+
+  // Đường dẫn đổi sang id KHÔNG thấy: bỏ kết quả đang hiện (của bộ lọc/JQL khác) — không để kết quả sai nằm dưới URL sai.
+  const routeMissing = routeFilter.state === 'missing';
+  useEffect(() => {
+    if (!routeMissing) return;
+    appliedRouteId.current = null;
+    setActive({ kind: 'none' });
+    setResults(null);
+    setAdhocJql('');
+  }, [routeMissing, routeId]);
+
+  /** Địa chỉ trên thanh trình duyệt luôn khớp nội dung: rời bộ lọc của đường dẫn (chạy JQL khác/xoá) thì bỏ `:id`. */
+  function leaveRouteFilter() {
+    if (routeId) navigate('/filters', { replace: true });
+  }
+
+  function selectSaved(f: SavedFilter) {
+    if (routeId === f.id || (!routeId && active.kind === 'filter' && active.filter.id === f.id)) {
+      void loadAndRunSaved(f); // cùng bộ lọc: chạy lại
+    } else {
+      navigate(`/filters/${f.id}`, { replace: true }); // effect ở trên nạp & chạy
+    }
+  }
+
   function runAdhoc() {
     const jql = jqlDraft.trim();
     if (!jql) return;
+    leaveRouteFilter();
     setResults(null);
     setActive({ kind: 'adhoc', jql });
     setAdhocJql(jql);
   }
 
-  function openIssue(issue: IssueDto) {
-    navigate(`/issue/${issue.key}`);
+  /** Gợi ý "Bỏ <điều kiện> → N việc": nạp JQL đã bỏ bớt vào ô JQL rồi chạy luôn, đưa con trỏ về ô để chỉnh tiếp. */
+  function applyJql(jql: string) {
+    leaveRouteFilter();
+    setJqlDraft(jql);
+    setResults(null);
+    setActive({ kind: 'adhoc', jql });
+    setAdhocJql(jql);
+    requestAnimationFrame(() => document.getElementById('adhoc-jql')?.focus());
   }
 
   async function handleDelete(f: SavedFilter) {
-    if (!window.confirm(`Xoá bộ lọc "${f.name}"?`)) return;
+    if (!(await confirm({ title: `Xoá bộ lọc "${f.name}"?`, destructive: true }))) return;
     try {
       await deleteFilter.mutateAsync(f.id);
       toast.success('Đã xoá bộ lọc.');
+      if (routeId === f.id) leaveRouteFilter();
       if (active.kind === 'filter' && active.filter.id === f.id) {
         setActive({ kind: 'none' });
         setResults(null);
@@ -123,9 +320,33 @@ export function FiltersPage() {
     }
   }
 
+  // Thứ tự THẬT cho panel xem nhanh: mọi dòng đã nạp (không chỉ trang 25 dòng đang hiện) → "n/N+" đúng với phần đã nạp, ‹ › bước
+  // qua cả trang khác (reveal = sang trang chứa dòng đó) và nạp thêm ở cuối khi máy chủ còn kết quả. Hàm đọc state qua ref.
+  const peekKeys = useMemo(() => (shownResults ?? []).map((i) => i.key), [shownResults]);
+  const peekKeysRef = useRef(peekKeys);
+  peekKeysRef.current = peekKeys;
+  const loadMoreRef = useRef(loadMore);
+  loadMoreRef.current = loadMore;
+  const hasMore = shownSet?.hasMore ?? false;
+  const peekOrder = useMemo<PeekOrder>(
+    () => ({
+      keys: peekKeys,
+      hasMore,
+      loadMore: hasMore ? () => void loadMoreRef.current() : undefined,
+      loadingMore,
+      reveal: (key) => {
+        const i = peekKeysRef.current.indexOf(key);
+        if (i >= 0) setPage(pageOfIndex(i));
+      },
+    }),
+    [peekKeys, hasMore, loadingMore, setPage],
+  );
+
   const isRunning = active.kind === 'adhoc' ? adhoc.isFetching : runFilter.isPending;
   const runError = active.kind === 'adhoc' && adhoc.error ? apiErrorMessage(adhoc.error) : null;
   const hasRun = active.kind !== 'none';
+  const sourceJql =
+    active.kind === 'adhoc' ? active.jql : active.kind === 'filter' ? active.filter.jql : undefined;
 
   const activeFilterId = active.kind === 'filter' ? active.filter.id : null;
   const heading =
@@ -136,50 +357,80 @@ export function FiltersPage() {
         : 'Bộ lọc';
 
   return (
-    <div className="flex h-full min-h-0 flex-col lg:flex-row">
-      {/* Rail: danh sách bộ lọc — dọc trên desktop, hàng cuộn ngang trên mobile */}
-      <aside
-        aria-label="Bộ lọc đã lưu"
-        className={cn(
-          'shrink-0 border-border bg-surface',
-          'flex flex-col gap-2 border-b px-3 py-3',
-          'lg:w-72 lg:overflow-y-auto lg:border-b-0 lg:border-r lg:px-3 lg:py-5',
-        )}
-      >
-        <div className="flex items-center justify-between gap-2 px-1 lg:px-2">
-          <h1 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-faint">
-            <Bookmark className="h-3.5 w-3.5" aria-hidden />
-            Bộ lọc đã lưu
-          </h1>
-        </div>
+    <PeekShell order={peekOrder}>
+      <RailLayout
+        ariaLabel="Bộ lọc đã lưu"
+        rail={
+          <>
+            <p className="px-2 pb-1 text-xs font-medium text-muted max-lg:hidden">Bộ lọc đã lưu</p>
+            {/* < lg: rail thu thành một nút (mặc định đóng) để thấy ô JQL ngay; mở ra xổ danh sách tại chỗ. */}
+            <button
+              type="button"
+              onClick={() => setRailOpen((v) => !v)}
+              aria-expanded={railOpen}
+              aria-controls="saved-filters-body"
+              className="flex min-h-9 w-full items-center gap-1.5 rounded-md px-1 text-left text-sm font-medium text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] lg:hidden"
+            >
+              <Bookmark className="h-4 w-4 text-faint" aria-hidden />
+              <span>
+                Bộ lọc đã lưu
+                {savedFilters.data ? ` (${savedFilters.data.length})` : ''}
+              </span>
+              <ChevronDown
+                className={cn(
+                  'ml-auto h-4 w-4 text-faint transition-transform',
+                  railOpen && 'rotate-180',
+                )}
+                aria-hidden
+              />
+            </button>
 
-        <Button size="sm" onClick={() => setCreateOpen(true)} className="w-full">
-          <Plus className="h-4 w-4" aria-hidden />
-          Tạo bộ lọc
-        </Button>
-
-        <SavedFilterList
-          filters={savedFilters.data}
-          loading={savedFilters.isLoading}
-          activeId={activeFilterId}
-          onSelect={loadAndRunSaved}
-          onDelete={handleDelete}
-          deleting={deleteFilter.isPending ? deleteFilter.variables : undefined}
-        />
-      </aside>
-
-      {/* Nội dung: JQL nhanh + kết quả có phân trang */}
-      <div className="flex min-w-0 flex-1 flex-col overflow-auto">
-        <div className={pageContainer('md', 'flex flex-col gap-5')}>
-          <header className="flex flex-col gap-1">
-            <div className="flex items-center gap-2.5">
-              <FilterIcon className="h-5 w-5 text-muted" aria-hidden />
-              <h2 className="truncate text-xl font-semibold text-ink-strong">{heading}</h2>
+            <div
+              id="saved-filters-body"
+              className={cn('flex flex-col gap-2', !railOpen && 'max-lg:hidden')}
+            >
+              <SavedFilterList
+                query={savedFilters}
+                activeId={activeFilterId}
+                onSelect={(f) => {
+                  setRailOpen(false);
+                  selectSaved(f);
+                }}
+                onShare={setShareTarget}
+                onDelete={handleDelete}
+                canManage={canManageFilters}
+                deleting={deleteFilter.isPending ? deleteFilter.variables : undefined}
+              />
             </div>
-            <p className="text-sm text-muted">
-              Chọn một bộ lọc bên trái để xem kết quả, hoặc chạy nhanh một truy vấn JQL bên dưới.
-            </p>
-          </header>
+          </>
+        }
+      >
+        {/* Nội dung: JQL nhanh + kết quả có phân trang */}
+        <PageFrame size="lg" className="flex flex-col gap-5">
+          <PageHeader
+            className="mb-0"
+            title={heading}
+            description={
+              <>
+                Chọn một bộ lọc đã lưu để xem kết quả, hoặc chạy nhanh một truy vấn JQL.{' '}
+                <DocsLink anchor="tim-kiem" />
+              </>
+            }
+            actions={
+              canManageFilters ? (
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    setCreateInitialJql('');
+                    setCreateOpen(true);
+                  }}
+                >
+                  <Plus className="h-4 w-4" aria-hidden />
+                  Tạo bộ lọc
+                </Button>
+              ) : undefined
+            }
+          />
 
           <AdhocBar
             value={jqlDraft}
@@ -187,36 +438,86 @@ export function FiltersPage() {
             onRun={runAdhoc}
             running={active.kind === 'adhoc' && isRunning}
             error={runError}
+            onSave={
+              canManageFilters
+                ? () => {
+                    setCreateInitialJql(jqlDraft.trim());
+                    setCreateOpen(true);
+                  }
+                : undefined
+            }
           />
 
-          <Results
+          {routeFilter.state === 'missing' && active.kind === 'none' ? (
+            <StatusPanel
+              variant="not-found"
+              headingLevel={2}
+              title="Không tìm thấy bộ lọc"
+              description="Bộ lọc này không tồn tại hoặc bạn không có quyền xem."
+              actions={
+                <Link to="/filters" replace className={buttonVariants({ variant: 'primary' })}>
+                  Xem các bộ lọc khác
+                </Link>
+              }
+            />
+          ) : (
+            <ResultsTable
+              issues={shownResults}
+              loading={isRunning}
+              hasRun={hasRun}
+              error={runError}
+              page={page}
+              onPageChange={setPage}
+              projectKeyById={projectKeyById}
+              onOpen={peek.open}
+              peekedKey={peek.peekKey}
+              hasMore={shownSet?.hasMore ?? false}
+              loadingMore={loadingMore}
+              onLoadMore={() => void loadMore()}
+              scopeKey={active.kind === 'filter' ? `filter:${active.filter.id}` : 'adhoc'}
+              selection={selectionProps}
+              jql={sourceJql}
+              onApplyJql={applyJql}
+              exportJql={
+                active.kind === 'adhoc'
+                  ? active.jql
+                  : active.kind === 'filter'
+                    ? active.filter.jql
+                    : undefined
+              }
+            />
+          )}
+        </PageFrame>
+
+        {sel.selected.size > 0 && (
+          <FiltersBulkDock
             issues={shownResults}
-            loading={isRunning}
-            hasRun={hasRun}
-            page={page}
-            onPageChange={setPage}
+            selected={sel.selected}
+            onClear={sel.clear}
+            onRetain={sel.prune}
             projectKeyById={projectKeyById}
-            onOpen={openIssue}
           />
-        </div>
-      </div>
+        )}
 
-      <CreateFilterModal
-        open={createOpen}
-        onClose={() => setCreateOpen(false)}
-        saving={createFilter.isPending}
-        onSave={async (name, jql, visibility) => {
-          try {
-            await createFilter.mutateAsync({ name, jql, visibility });
-            toast.success(`Đã lưu bộ lọc "${name}".`);
-            return true;
-          } catch (e) {
-            toast.error(apiErrorMessage(e));
-            return false;
-          }
-        }}
-      />
-    </div>
+        <FilterShareDialog
+          filter={shareTarget}
+          canManage={canManageFilters}
+          onClose={() => setShareTarget(null)}
+        />
+
+        {canManageFilters && (
+          <CreateFilterModal
+            open={createOpen}
+            onClose={() => setCreateOpen(false)}
+            initialJql={createInitialJql}
+            saving={createFilter.isPending}
+            onSave={(name, jql, visibility) =>
+              saveWithToast(createFilter.mutateAsync, name, jql, visibility)
+            }
+          />
+        )}
+      </RailLayout>
+    </PeekShell>
   );
 }
 
@@ -230,54 +531,49 @@ function AdhocBar({
   onRun,
   running,
   error,
+  onSave,
 }: {
   value: string;
   onChange: (v: string) => void;
   onRun: () => void;
   running: boolean;
   error: string | null;
+  /** Mở hộp "Tạo bộ lọc" với JQL đang gõ; undefined = không có quyền `filter:manage` → ẩn nút. */
+  onSave?: () => void;
 }) {
+  const { validation } = useJqlValidation(value);
+  // Lỗi chạy gần nhất không lặp lại khi ô đã báo lỗi cho cùng câu (cú pháp/giá trị sai).
+  const showRunError = error && !(validation && !validation.valid);
+  const empty = !value.trim();
   return (
     <div className="flex flex-col gap-2 rounded-lg border border-border bg-surface p-3">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-start">
         <div className="min-w-0 flex-1">
-          <label htmlFor="adhoc-jql" className="sr-only">
-            Chạy nhanh truy vấn JQL
-          </label>
-          <textarea
+          <JqlEditor
             id="adhoc-jql"
+            label="Chạy nhanh truy vấn JQL"
             value={value}
-            onChange={(e) => onChange(e.target.value)}
-            onKeyDown={(e) => {
-              // Cmd/Ctrl+Enter để chạy nhanh.
-              if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
-                e.preventDefault();
-                onRun();
-              }
-            }}
+            onChange={onChange}
+            onRun={onRun}
             rows={2}
             placeholder={PLACEHOLDER}
-            spellCheck={false}
-            className={cn(
-              'w-full resize-y rounded-md border border-border bg-bg px-3 py-2 font-mono text-sm text-ink',
-              'placeholder:text-faint transition-colors duration-150',
-              'focus-visible:outline-none focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
-            )}
           />
         </div>
-        <Button
-          size="sm"
-          onClick={onRun}
-          loading={running}
-          disabled={!value.trim()}
-          className="sm:mt-0"
-        >
-          {!running && <Play className="h-4 w-4" aria-hidden />}
-          Chạy JQL
-        </Button>
+        <div className="flex shrink-0 gap-2">
+          <Button size="sm" onClick={onRun} loading={running} disabled={empty}>
+            {!running && <Play className="h-4 w-4" aria-hidden />}
+            Chạy JQL
+          </Button>
+          {onSave && (
+            <Button size="sm" variant="secondary" onClick={onSave} disabled={empty}>
+              <Bookmark className="h-4 w-4" aria-hidden />
+              Lưu truy vấn
+            </Button>
+          )}
+        </div>
       </div>
 
-      {error && (
+      {showRunError && (
         <p
           className="rounded-md border border-danger/40 bg-surface-2 px-3 py-2 font-mono text-sm text-danger"
           role="alert"
@@ -294,87 +590,108 @@ function AdhocBar({
 /* ------------------------------------------------------------------ */
 
 function SavedFilterList({
-  filters,
-  loading,
+  query,
   activeId,
   onSelect,
+  onShare,
   onDelete,
+  canManage,
   deleting,
 }: {
-  filters: SavedFilter[] | undefined;
-  loading: boolean;
+  query: UseQueryResult<SavedFilter[]>;
   activeId: string | null;
   onSelect: (f: SavedFilter) => void;
+  onShare: (f: SavedFilter) => void;
   onDelete: (f: SavedFilter) => void;
+  canManage: boolean;
   deleting: string | undefined;
 }) {
-  if (loading) {
-    return (
-      <div className="flex flex-col gap-1.5">
-        {[0, 1, 2].map((i) => (
-          <Skeleton key={i} className="h-11 w-full" />
-        ))}
-      </div>
-    );
-  }
-
-  if (!filters || filters.length === 0) {
-    return (
-      <p className="rounded-lg border border-dashed border-border px-4 py-6 text-center text-sm text-muted">
-        Chưa có bộ lọc nào. Bấm “Tạo bộ lọc” để lưu một truy vấn.
-      </p>
-    );
-  }
-
   return (
-    <ul className="flex flex-col gap-1">
-      {filters.map((f) => {
-        const isActive = activeId === f.id;
-        return (
-          <li key={f.id}>
-            <div
-              className={cn(
-                'group flex items-center gap-2 rounded-md px-2 py-2 transition-colors',
-                isActive ? 'bg-primary-subtle' : 'hover:bg-surface-2',
-              )}
-            >
-              <button
-                type="button"
-                onClick={() => onSelect(f)}
-                aria-current={isActive ? 'true' : undefined}
-                className="min-w-0 flex-1 rounded-sm text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
-              >
-                <span
+    <QueryBoundary
+      query={query}
+      skeleton={
+        <div className="flex flex-col gap-1.5">
+          {[0, 1, 2].map((i) => (
+            <Skeleton key={i} className="h-11 w-full" />
+          ))}
+        </div>
+      }
+      empty={(d) => d.length === 0}
+      emptyState={
+        <EmptyState
+          icon={<FilterIcon className="h-6 w-6" />}
+          title={canManage ? 'Chưa có bộ lọc nào' : 'Chưa có bộ lọc nào được chia sẻ với bạn'}
+          description={canManage ? 'Bấm “Tạo bộ lọc” để lưu một truy vấn.' : undefined}
+        />
+      }
+    >
+      {(filters) => (
+        <ul className="flex flex-col gap-1">
+          {filters.map((f) => {
+            const isActive = activeId === f.id;
+            return (
+              <li key={f.id}>
+                <div
                   className={cn(
-                    'block truncate text-sm font-medium',
-                    isActive ? 'text-primary' : 'text-ink-strong',
+                    'group flex items-center gap-2 rounded-md px-2 py-2 transition-colors',
+                    isActive ? 'bg-primary-subtle' : 'hover:bg-surface-2',
                   )}
                 >
-                  {f.name}
-                </span>
-                <span className="mt-1 flex items-center gap-2">
-                  <Badge className="bg-surface-2 text-muted">
-                    {VISIBILITY_LABEL[f.visibility]}
-                  </Badge>
-                </span>
-              </button>
-              {f.isOwner && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => onDelete(f)}
-                  loading={deleting === f.id}
-                  aria-label={`Xoá bộ lọc ${f.name}`}
-                  className="h-7 w-7 shrink-0 text-muted opacity-0 transition-opacity hover:text-danger focus-visible:opacity-100 group-hover:opacity-100"
-                >
-                  {deleting !== f.id && <Trash2 className="h-4 w-4" aria-hidden />}
-                </Button>
-              )}
-            </div>
-          </li>
-        );
-      })}
-    </ul>
+                  <button
+                    type="button"
+                    onClick={() => onSelect(f)}
+                    aria-current={isActive ? 'true' : undefined}
+                    className="min-w-0 flex-1 rounded-sm text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+                  >
+                    <span
+                      className={cn(
+                        'block truncate text-sm font-medium',
+                        isActive ? 'text-primary' : 'text-ink-strong',
+                      )}
+                    >
+                      {f.name}
+                    </span>
+                    <span className="mt-1 flex items-center gap-2">
+                      <Badge className="bg-surface-2 text-muted">
+                        {VISIBILITY_LABEL[effectiveVisibility(f)]}
+                      </Badge>
+                    </span>
+                  </button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => onShare(f)}
+                    aria-label={`Chia sẻ bộ lọc ${f.name}`}
+                    className={cn(ROW_ACTION_CLS, 'hover:text-ink')}
+                  >
+                    <Share2 className="h-4 w-4" aria-hidden />
+                  </Button>
+                  {f.isOwner && canManage ? (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => onDelete(f)}
+                      loading={deleting === f.id}
+                      aria-label={`Xoá bộ lọc ${f.name}`}
+                      className={cn(ROW_ACTION_CLS, 'hover:text-danger')}
+                    >
+                      {deleting !== f.id && <Trash2 className="h-4 w-4" aria-hidden />}
+                    </Button>
+                  ) : (
+                    // Giữ chỗ nút xoá: nút "Chia sẻ" không xê dịch giữa bộ lọc của mình và của người khác.
+                    <span
+                      className="invisible h-7 w-7 shrink-0 max-sm:hidden [@media(pointer:coarse)]:h-9 [@media(pointer:coarse)]:w-9"
+                      aria-hidden
+                      data-testid="row-action-placeholder"
+                    />
+                  )}
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </QueryBoundary>
   );
 }
 
@@ -382,40 +699,33 @@ function SavedFilterList({
 /* Modal tạo bộ lọc                                                    */
 /* ------------------------------------------------------------------ */
 
-function CreateFilterModal({
+/**
+ * Luôn mount (có hiệu ứng đóng); `key` theo lần mở → mỗi lần mở là mount mới nên form khởi tạo lại, không có
+ * khung hình nội dung cũ. Lúc đóng `key` giữ nguyên nên nội dung ở lại suốt hiệu ứng.
+ */
+function CreateFilterModal(props: ComponentProps<typeof CreateFilterModalInner>) {
+  const session = useOpenSession(props.open);
+  return <CreateFilterModalInner key={session} {...props} />;
+}
+
+function CreateFilterModalInner({
   open,
   onClose,
   onSave,
   saving,
+  initialJql,
 }: {
   open: boolean;
   onClose: () => void;
   onSave: (name: string, jql: string, visibility: FilterVisibility) => Promise<boolean>;
   saving: boolean;
+  /** Có JQL đổ sẵn → mở thẳng tab JQL (bộ dựng "Đơn giản" không đọc ngược được JQL tuỳ ý). */
+  initialJql: string;
 }) {
-  const [mode, setMode] = useState<BuilderMode>('simple');
-  const [jql, setJql] = useState('');
+  const [mode, setMode] = useState<BuilderMode>(initialJql ? 'jql' : 'simple');
+  const [jql, setJql] = useState(initialJql);
   const [name, setName] = useState('');
   const [visibility, setVisibility] = useState<FilterVisibility>('PRIVATE');
-
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') onClose();
-    }
-    if (open) window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [open, onClose]);
-
-  useEffect(() => {
-    if (!open) {
-      setMode('simple');
-      setJql('');
-      setName('');
-      setVisibility('PRIVATE');
-    }
-  }, [open]);
-
-  if (!open) return null;
 
   const trimmedName = name.trim();
   const trimmedJql = jql.trim();
@@ -429,280 +739,92 @@ function CreateFilterModal({
   }
 
   return (
-    <div className="fixed inset-0 z-modal flex items-start justify-center p-4 pt-[8vh]">
-      <button
-        className="absolute inset-0 bg-black/30 animate-in fade-in duration-200"
-        onClick={onClose}
-        aria-label="Đóng"
-      />
-      <div className="relative flex max-h-[84vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-lg animate-in fade-in zoom-in-95 duration-200">
-        <header className="flex items-center gap-2 border-b border-border px-5 py-3">
-          <FilterIcon className="h-4 w-4 text-primary" aria-hidden />
-          <span className="text-sm font-medium text-ink">Tạo bộ lọc</span>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="ml-auto"
-            onClick={onClose}
-            aria-label="Đóng"
-          >
-            <X className="h-4 w-4" aria-hidden />
+    <Dialog
+      open={open}
+      onOpenChange={(o) => {
+        if (!o) onClose();
+      }}
+      title="Tạo bộ lọc"
+      icon={<FilterIcon className="h-4 w-4" />}
+      size="lg"
+      footer={
+        <>
+          <Button type="button" variant="ghost" onClick={onClose}>
+            Huỷ
           </Button>
-        </header>
-
-        <form onSubmit={(e) => void submit(e)} className="flex min-h-0 flex-1 flex-col">
-          <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4">
-            <div className="flex items-center justify-between gap-2">
-              <Segmented
-                value={mode}
-                onChange={(v) => setMode(v as BuilderMode)}
-                options={[
-                  { value: 'simple', label: 'Đơn giản' },
-                  { value: 'jql', label: 'JQL' },
-                ]}
-              />
-              <span className="text-xs text-faint">
-                {mode === 'simple'
-                  ? 'Cho người mới — sinh JQL tự động'
-                  : 'Cho người thạo cú pháp'}
-              </span>
-            </div>
-
-            {mode === 'simple' ? (
-              <QueryBuilder value={jql} onChange={setJql} onEditAsJql={() => setMode('jql')} />
-            ) : (
-              <div className="flex flex-col gap-2">
-                <label htmlFor="create-jql" className="text-sm font-medium text-muted">
-                  Truy vấn JQL
-                </label>
-                <textarea
-                  id="create-jql"
-                  value={jql}
-                  onChange={(e) => setJql(e.target.value)}
-                  rows={3}
-                  placeholder={PLACEHOLDER}
-                  spellCheck={false}
-                  className={cn(
-                    'w-full resize-y rounded-md border border-border bg-bg px-3 py-2 font-mono text-sm text-ink',
-                    'placeholder:text-faint transition-colors duration-150',
-                    'focus-visible:outline-none focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
-                  )}
-                />
-              </div>
-            )}
-
-            <div className="grid grid-cols-1 gap-3 border-t border-border pt-4 sm:grid-cols-2">
-              <div>
-                <label htmlFor="create-name" className="mb-1.5 block text-sm font-medium text-muted">
-                  Tên bộ lọc
-                </label>
-                <Input
-                  id="create-name"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="VD: Việc của tôi tuần này"
-                  className="text-sm"
-                />
-              </div>
-              <div>
-                <label
-                  htmlFor="create-visibility"
-                  className="mb-1.5 block text-sm font-medium text-muted"
-                >
-                  Phạm vi chia sẻ
-                </label>
-                <select
-                  id="create-visibility"
-                  value={visibility}
-                  onChange={(e) => setVisibility(e.target.value as FilterVisibility)}
-                  className={cn(
-                    'h-9 w-full rounded-md border border-border bg-bg px-3 text-sm text-ink',
-                    'transition-colors focus-visible:outline-none focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
-                  )}
-                >
-                  <option value="PRIVATE">{VISIBILITY_LABEL.PRIVATE}</option>
-                  <option value="WORKSPACE">{VISIBILITY_LABEL.WORKSPACE}</option>
-                  <option value="PROJECT">{VISIBILITY_LABEL.PROJECT}</option>
-                </select>
-              </div>
-            </div>
-          </div>
-
-          <footer className="flex items-center justify-end gap-2 border-t border-border px-5 py-3">
-            <Button type="button" variant="ghost" onClick={onClose}>
-              Hủy
-            </Button>
-            <Button type="submit" loading={saving} disabled={!canSubmit}>
-              Lưu bộ lọc
-            </Button>
-          </footer>
-        </form>
-      </div>
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/* Kết quả + phân trang phía client                                    */
-/* ------------------------------------------------------------------ */
-
-function Results({
-  issues,
-  loading,
-  hasRun,
-  page,
-  onPageChange,
-  projectKeyById,
-  onOpen,
-}: {
-  issues: IssueDto[] | null;
-  loading: boolean;
-  hasRun: boolean;
-  page: number;
-  onPageChange: (p: number) => void;
-  projectKeyById: Map<string, string>;
-  onOpen: (issue: IssueDto) => void;
-}) {
-  if (loading && !issues) {
-    return (
-      <div className="flex flex-col gap-1.5 rounded-lg border border-border bg-surface p-2">
-        {[0, 1, 2, 3, 4].map((i) => (
-          <Skeleton key={i} className="h-11 w-full" />
-        ))}
-      </div>
-    );
-  }
-
-  if (!hasRun) {
-    return (
-      <EmptyState
-        icon={<FilterIcon className="h-8 w-8" aria-hidden />}
-        title="Chọn hoặc chạy một bộ lọc"
-        description="Chọn một bộ lọc đã lưu ở cột trái, hoặc chạy nhanh một truy vấn JQL để xem kết quả."
-      />
-    );
-  }
-
-  if (!issues || issues.length === 0) {
-    return (
-      <EmptyState
-        icon={<SearchX className="h-8 w-8" aria-hidden />}
-        title="Không có công việc nào khớp"
-        description="Bộ lọc hiện tại quá hẹp. Thử bớt điều kiện hoặc nới rộng khoảng giá trị rồi tìm lại."
-      />
-    );
-  }
-
-  const total = issues.length;
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-  const current = Math.min(page, totalPages);
-  const start = (current - 1) * PAGE_SIZE;
-  const pageItems = issues.slice(start, start + PAGE_SIZE);
-
-  return (
-    <div className="flex flex-col rounded-lg border border-border bg-surface">
-      <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
-        <span className="text-sm font-medium text-ink-strong">Kết quả</span>
-        <span className="text-xs text-muted">
-          {total} issue
-          {totalPages > 1 && (
-            <>
-              {' · '}
-              {start + 1}–{Math.min(start + PAGE_SIZE, total)}
-            </>
-          )}
-        </span>
-      </div>
-      <ul className="divide-y divide-border">
-        {pageItems.map((issue) => (
-          <IssueRow
-            key={issue.id}
-            issue={issue}
-            projectKey={projectKeyById.get(issue.projectId)}
-            onOpen={onOpen}
+          <Button type="submit" form="create-filter-form" loading={saving} disabled={!canSubmit}>
+            Lưu bộ lọc
+          </Button>
+        </>
+      }
+    >
+      <form id="create-filter-form" onSubmit={(e) => void submit(e)} className="space-y-4">
+        <div className="flex items-center justify-between gap-2">
+          <SegmentedControl
+            ariaLabel="Chế độ tạo bộ lọc"
+            fullWidth={false}
+            value={mode}
+            onChange={setMode}
+            options={[
+              { value: 'simple', label: 'Đơn giản' },
+              { value: 'jql', label: 'JQL' },
+            ]}
           />
-        ))}
-      </ul>
-
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between gap-2 border-t border-border px-4 py-2.5">
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => onPageChange(current - 1)}
-            disabled={current <= 1}
-          >
-            <ChevronLeft className="h-4 w-4" aria-hidden />
-            Trước
-          </Button>
-          <span className="text-xs text-muted" aria-live="polite">
-            Trang {current}/{totalPages}
+          <span className="text-xs text-faint">
+            {mode === 'simple' ? 'Cho người mới — sinh JQL tự động' : 'Cho người thạo cú pháp'}
           </span>
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => onPageChange(current + 1)}
-            disabled={current >= totalPages}
-          >
-            Sau
-            <ChevronRight className="h-4 w-4" aria-hidden />
-          </Button>
         </div>
-      )}
-    </div>
-  );
-}
 
-function IssueRow({
-  issue,
-  projectKey,
-  onOpen,
-}: {
-  issue: IssueDto;
-  projectKey: string | undefined;
-  onOpen: (issue: IssueDto) => void;
-}) {
-  const dot = categoryColor(issue.status.category);
-  const assignee: UserDto | null | undefined = issue.assignee;
-
-  return (
-    <li>
-      <button
-        type="button"
-        onClick={() => onOpen(issue)}
-        className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:bg-surface-2"
-      >
-        <span
-          className="h-2 w-2 shrink-0 rounded-full"
-          style={{ background: dot }}
-          title={issue.status.name}
-          aria-hidden
-        />
-        <span className="shrink-0 font-mono text-xs font-medium text-muted">{issue.key}</span>
-        <span className="min-w-0 flex-1 truncate text-sm text-ink-strong">{issue.summary}</span>
-        {issue.priority && (
-          <span
-            className="h-2 w-2 shrink-0 rounded-full"
-            style={{ background: issue.priority.color ?? 'var(--status-todo)' }}
-            title={issue.priority.name}
-            aria-hidden
-          />
-        )}
-        {assignee ? (
-          <Avatar name={assignee.displayName} src={assignee.avatarUrl} size={22} />
+        {mode === 'simple' ? (
+          <QueryBuilder value={jql} onChange={setJql} onEditAsJql={() => setMode('jql')} />
         ) : (
-          <span
-            className="h-[22px] w-[22px] shrink-0 rounded-full border border-dashed border-border"
-            title="Chưa có người được giao"
-            aria-hidden
-          />
+          <div className="flex flex-col gap-2">
+            <label htmlFor="create-jql" className="text-sm font-medium text-muted">
+              Truy vấn JQL
+            </label>
+            <JqlEditor
+              id="create-jql"
+              value={jql}
+              onChange={setJql}
+              rows={3}
+              placeholder={PLACEHOLDER}
+            />
+          </div>
         )}
-        {projectKey && (
-          <span className="shrink-0 rounded bg-surface-2 px-1.5 py-0.5 font-mono text-[11px] font-medium text-muted">
-            {projectKey}
-          </span>
-        )}
-      </button>
-    </li>
+
+        <div className="grid grid-cols-1 gap-3 border-t border-border pt-4 sm:grid-cols-2">
+          <div>
+            <label htmlFor="create-name" className="mb-1.5 block text-sm font-medium text-muted">
+              Tên bộ lọc
+            </label>
+            <Input
+              id="create-name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="VD: Việc của tôi tuần này"
+              className="text-sm"
+            />
+          </div>
+          <div>
+            <span
+              id="create-visibility-label"
+              className="mb-1.5 block text-sm font-medium text-muted"
+            >
+              Phạm vi chia sẻ
+            </span>
+            <SegmentedControl<FilterVisibility>
+              ariaLabelledby="create-visibility-label"
+              value={visibility}
+              onChange={setVisibility}
+              fullWidth
+              options={[
+                { value: 'PRIVATE', label: VISIBILITY_LABEL.PRIVATE },
+                { value: 'WORKSPACE', label: VISIBILITY_LABEL.WORKSPACE },
+              ]}
+            />
+          </div>
+        </div>
+      </form>
+    </Dialog>
   );
 }
