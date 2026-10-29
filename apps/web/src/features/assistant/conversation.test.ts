@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Block } from './blocks';
 import {
   conversationReducer,
+  isInternalPath,
   loadConversation,
   MAX_MESSAGES,
   parseStored,
@@ -131,5 +132,45 @@ describe('lưu sessionStorage', () => {
     expect((parseStored(JSON.stringify([m]))[0]!.blocks[0] as { status: string }).status).toBe(
       'pending',
     );
+  });
+});
+
+describe('liên kết trong hội thoại đã lưu', () => {
+  it('chỉ nhận đường dẫn nội bộ', () => {
+    for (const ok of ['/issue/A-1', '/filters?jql=a%20b', '/documentation#x'])
+      expect(isInternalPath(ok)).toBe(true);
+    for (const bad of ['//evil.com', 'https://x', 'javascript:alert(1)', '', '/a\\b', 5, null])
+      expect(isInternalPath(bad)).toBe(false);
+  });
+  it('parseStored bỏ liên kết lạ và khối issues có seeAllTo lạ', () => {
+    const raw = JSON.stringify([
+      {
+        id: 'a',
+        role: 'bot',
+        blocks: [
+          {
+            type: 'links',
+            items: [
+              { title: 't', summary: 's', to: 'https://x', linkLabel: 'l' },
+              {
+                title: 'u',
+                summary: 's',
+                to: '/documentation#a',
+                linkLabel: 'l',
+                extra: { label: 'e', to: '//x' },
+              },
+            ],
+          },
+          { type: 'issues', rows: [], more: false, seeAllTo: 'javascript:1' },
+          { type: 'facts', title: 't', rows: [], to: { label: 'x', to: '//evil' } },
+        ],
+      },
+    ]);
+    const [m] = parseStored(raw);
+    expect(m!.blocks).toHaveLength(2);
+    const links = m!.blocks[0] as Extract<Block, { type: 'links' }>;
+    expect(links.items).toHaveLength(1);
+    expect(links.items[0]!.extra).toBeUndefined();
+    expect((m!.blocks[1] as Extract<Block, { type: 'facts' }>).to).toBeUndefined();
   });
 });

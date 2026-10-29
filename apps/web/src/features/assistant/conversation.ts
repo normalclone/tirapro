@@ -54,6 +54,28 @@ export function conversationReducer(state: Message[], a: ConversationAction): Me
 export const storageKey = (userId: string | undefined): string =>
   `tirapro:assistant:v1:${userId ?? 'anon'}`;
 
+/** Đường dẫn nội bộ an toàn: bắt đầu bằng `/`, không `//` (URL cùng giao thức) và không ký tự điều khiển. */
+export const isInternalPath = (v: unknown): v is string =>
+  typeof v === 'string' && /^\/(?!\/)[^\x00-\x1f\\]*$/.test(v);
+
+/** Lọc liên kết trong khối đã lưu: dữ liệu sessionStorage có thể bị sửa tay — chỉ nhận đường dẫn nội bộ. */
+function sanitizeBlock(b: Block): Block | null {
+  switch (b.type) {
+    case 'links': {
+      const items = (Array.isArray(b.items) ? b.items : [])
+        .filter((i) => i && isInternalPath(i.to))
+        .map((i) => (i.extra && !isInternalPath(i.extra.to) ? { ...i, extra: undefined } : i));
+      return { ...b, items };
+    }
+    case 'issues':
+      return isInternalPath(b.seeAllTo) && Array.isArray(b.rows) ? b : null;
+    case 'facts':
+      return b.to && !isInternalPath(b.to.to) ? { ...b, to: undefined } : b;
+    default:
+      return b;
+  }
+}
+
 const BLOCK_TYPES = new Set(['text', 'links', 'issues', 'facts', 'tour', 'chips', 'draft']);
 
 /**
@@ -73,7 +95,9 @@ export function parseStored(raw: string | null): Message[] {
         .filter((b): b is Block => !!b && typeof b === 'object' && BLOCK_TYPES.has(b.type))
         .map((b) =>
           b.type === 'draft' && b.status === 'creating' ? { ...b, status: 'pending' as const } : b,
-        );
+        )
+        .map(sanitizeBlock)
+        .filter((b): b is Block => b !== null);
       out.push({ id: m.id, role: m.role, blocks });
     }
     return out.slice(-MAX_MESSAGES);

@@ -107,7 +107,8 @@ const CREATE_NOUNS: { phrase: string; hint: TypeHint }[] = [
 ];
 
 /** Câu hỏi cách làm — "làm sao tạo task" là hỏi chứ không phải lệnh tạo. */
-const HOWTO = /(^| )(lam sao|lam the nao|cach|huong dan|o dau|nhu the nao|sao de|tai sao)( |$)/;
+const HOWTO =
+  /(^| )(lam sao|lam the nao|cach|huong dan|o dau|nhu the nao|sao de|tai sao|duoc khong)( |$)/;
 
 /**
  * Câu lệnh tạo việc: [lời lịch sự] + động từ (tạo/thêm/new…) + [đệm] + danh từ (task/việc/bug/story/epic) + phần còn lại.
@@ -228,6 +229,9 @@ export function detectIntent(raw: string): Intent {
     return { kind: 'screen' };
 
   if (!howto) {
+    // Câu ngắn có mã việc ("BUG-12", "BUG-12 quá hạn chưa") → tóm tắt theo mã, ưu tiên hơn các luật danh sách.
+    const shortKey = text.split(/\s+/).length <= 4 ? findIssueKey(text) : null;
+    if (shortKey) return { kind: 'issue-key', key: shortKey };
     if (
       has(
         n,
@@ -248,7 +252,7 @@ export function detectIntent(raw: string): Intent {
     if (
       has(
         n,
-        /(viec|task|issue|cong viec|ticket|bug|loi)( cua)? (toi|minh)( dang lam)?( duoc giao)?($| )/,
+        /(^| )(viec|task|issue|cong viec|ticket)( cua)? (toi|minh)( dang lam| duoc giao| phai lam)?$/,
       ) ||
       has(
         n,

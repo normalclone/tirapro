@@ -10,17 +10,20 @@ const find = <T extends Block['type']>(bs: Block[], t: T) =>
 const allText = (bs: Block[]) => bs.flatMap((b) => (b.type === 'text' ? [b.text] : [])).join('\n');
 
 describe('tạo task: nháp → xác nhận', () => {
-  it('"tạo task …" chỉ dựng thẻ nháp pending, KHÔNG gọi tạo việc', async () => {
-    const create = vi.fn();
+  it('"tạo task …" chỉ dựng thẻ nháp pending và chỉ ĐỌC dữ liệu (không có lời gọi ghi nào)', async () => {
     const deps = makeDeps();
     const out = await run('tạo task Sửa lỗi login !high @an', ENV, deps);
     const d = find(out, 'draft')!;
     expect(d.status).toBe('pending');
     expect(d.draft.summary).toBe('Sửa lỗi login');
     expect(d.draft.projectKey).toBe('DEMO');
-    expect(create).not.toHaveBeenCalled();
-    // respond không nhận hàm tạo nào — cấu trúc kiểu đảm bảo; dò thêm: không có lời gọi nào ngoài đọc dữ liệu.
-    expect(deps.calls).not.toContain('createIssue');
+    // Mọi thứ respond đã gọi đều là hàm đọc (AssistantDeps không có hàm tạo/ghi — kiểu dữ liệu bảo đảm).
+    expect([...new Set(deps.calls)].sort()).toEqual([
+      'canCreate',
+      'getMeta',
+      'getSprints',
+      'getUsers',
+    ]);
     expect(allText(out)).toContain('chưa có gì được tạo');
   });
   it('chỉ confirmDraft mới tạo việc, đúng payload của thẻ', async () => {

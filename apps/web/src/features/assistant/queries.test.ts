@@ -27,10 +27,30 @@ describe('JQL của Trợ lý', () => {
     expect(dueJql('week')).toContain('due <= endOfWeek()');
     expect(dueJql('today')).toContain('due <= endOfDay()');
   });
-  it('từ khoá người dùng được thoát nháy kép và backslash (không chèn được điều kiện JQL)', () => {
-    const q = searchJql('x" OR project = "Y');
-    expect(q).toContain('text ~ "x\\" OR project = \\"Y"');
-    expect(() => parseJql(q)).not.toThrow();
+  it('từ khoá độc hại chỉ thành GIÁ TRỊ của đúng một điều kiện text ~ (AST), không chèn được OR/project', () => {
+    const evil = 'x" OR project = "Y';
+    const ast = parseJql(searchJql(evil, 'DEMO'));
+    expect(ast.where).toEqual({
+      type: 'logical',
+      op: 'AND',
+      left: {
+        type: 'comparison',
+        field: 'project',
+        operator: '=',
+        value: { kind: 'string', value: 'DEMO' },
+      },
+      right: {
+        type: 'comparison',
+        field: 'text',
+        operator: '~',
+        value: { kind: 'string', value: evil },
+      },
+    });
+    expect(searchJql(evil)).toContain('text ~ "x\\" OR project = \\"Y"');
+  });
+  it('backslash cuối không "ăn" nháy đóng', () => {
+    const ast = parseJql(searchJql('abc\\'));
+    expect(ast.where).toMatchObject({ field: 'text', value: { value: 'abc\\' } });
   });
   it('"Xem tất cả" trỏ trang Bộ lọc với JQL mã hoá', () => {
     const jql = overdueJql('A B');

@@ -143,3 +143,19 @@ describe('chi tiết khác', () => {
     expect(kind('tìm hiểu về sprint')).toBe('help');
   });
 });
+
+describe('vòng review 1', () => {
+  it('"lỗi tôi gặp…" không phải "việc của tôi"', () => {
+    expect(kind('lỗi tôi gặp khi đăng nhập')).not.toBe('my-issues');
+    expect(kind('tìm lỗi tôi gặp')).toBe('search');
+    expect(kind('việc của tôi đang làm')).toBe('my-issues');
+    expect(kind('task của tôi')).toBe('my-issues');
+  });
+  it('câu ngắn có mã việc → tóm tắt theo mã dù có "quá hạn"', () => {
+    expect(detectIntent('BUG-12 quá hạn chưa')).toEqual({ kind: 'issue-key', key: 'BUG-12' });
+    expect(kind('việc quá hạn')).toBe('overdue');
+  });
+  it('"… được không" là hỏi cách làm, không dựng nháp', () => {
+    expect(kind('tạo task bằng email được không')).toBe('help');
+  });
+});

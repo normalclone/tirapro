@@ -14,6 +14,7 @@ import { useAuth } from '@/stores/auth';
 import { BOTTOM_BAR_PX, DESKTOP_MIN_QUERY } from '@/lib/bottomBar';
 import { FAB_BOTTOM_CSS, FAB_RIGHT_CSS } from '@/lib/layoutTokens';
 import { useMediaQuery } from '@/lib/useMediaQuery';
+import { keyboardInset, mobileWindowStyle, shouldRefocus } from './layout';
 import { cn } from '@/lib/utils';
 import type { Block, Chip } from './blocks';
 import type { Message } from './conversation';
@@ -297,12 +298,30 @@ function noop() {
 
 /** Id bong bóng — focus trả về đây khi đóng bằng Esc/nút Đóng. */
 const BUBBLE_ID = 'assistant-bubble';
-const focusBackSoon = () =>
-  window.requestAnimationFrame(() => {
-    (document.getElementById(BUBBLE_ID) ?? document.getElementById(HEADER_BUTTON_ID))?.focus();
-  });
-
 const HEADER_BUTTON_ID = 'assistant-open-btn';
+
+/** Theo dõi bàn phím ảo qua `visualViewport` (resize/scroll); gỡ listener khi tắt. */
+function useKeyboardInset(enabled: boolean): { inset: number; offsetTop: number } {
+  const [v, setV] = useState({ inset: 0, offsetTop: 0 });
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!enabled || !vv) return;
+    const update = () =>
+      setV({
+        inset: keyboardInset(window.innerHeight, vv.height, vv.offsetTop),
+        offsetTop: vv.offsetTop,
+      });
+    update();
+    vv.addEventListener('resize', update);
+    vv.addEventListener('scroll', update);
+    return () => {
+      vv.removeEventListener('resize', update);
+      vv.removeEventListener('scroll', update);
+      setV({ inset: 0, offsetTop: 0 });
+    };
+  }, [enabled]);
+  return v;
+}
 
 /** Nút mở trợ lý ở thanh đầu trang (cạnh nút trợ lý AI / hướng dẫn) — chỉ mở/đóng ô chat nổi. */
 export function AssistantButton() {
@@ -341,14 +360,55 @@ function AssistantFloating() {
   const [input, setInput] = useState('');
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const winRef = useRef<HTMLElement>(null);
+  const expandBtnRef = useRef<HTMLButtonElement>(null);
+  // Đóng có chuyển động: giữ cửa sổ thêm một nhịp để chạy animation thoát rồi mới gỡ.
+  const [closing, setClosing] = useState(false);
+  const wantBubbleFocus = useRef(false);
+  const kb = useKeyboardInset(open && !desktop);
+
+  // `closing` bật ĐỒNG BỘ ngay trong lần vẽ mà `open` chuyển true → false (so sánh trong lúc render) để cửa sổ không biến mất
+  // trước khi animation thoát kịp chạy; hẹn giờ gỡ sau 150ms.
+  const [prevOpen, setPrevOpen] = useState(open);
+  if (prevOpen !== open) {
+    setPrevOpen(open);
+    setClosing(!open);
+  }
+  useEffect(() => {
+    if (!closing) return;
+    const t = window.setTimeout(() => setClosing(false), 150);
+    return () => window.clearTimeout(t);
+  }, [closing]);
 
   // Vào khu quản trị (host bị gỡ) thì đóng, để lần sau quay lại không tự bật.
   useEffect(() => () => useAssistantPanel.getState().setOpen(false), []);
 
-  // Mở / bung ra → đưa con trỏ vào ô nhập.
+  // Mở / bung ra → đưa con trỏ vào ô nhập. Mở từ Cmd+K: Radix của bảng lệnh trả focus về trang SAU khi ta focus, nên
+  // thử lại vài nhịp và chỉ kéo focus về khi nó đang ở ngoài cửa sổ.
   useEffect(() => {
-    if (open && !minimized) inputRef.current?.focus();
+    if (!open || minimized) return;
+    inputRef.current?.focus();
+    const timers = [60, 200, 450].map((ms) =>
+      window.setTimeout(() => {
+        if (shouldRefocus(document.activeElement, document.body, winRef.current))
+          inputRef.current?.focus();
+      }, ms),
+    );
+    return () => timers.forEach((t) => window.clearTimeout(t));
   }, [open, minimized]);
+
+  // Thu nhỏ → focus sang nút "Bung" (nút Thu nhỏ vừa bị gỡ).
+  useEffect(() => {
+    if (open && minimized) expandBtnRef.current?.focus();
+  }, [open, minimized]);
+
+  // Đóng xong (bong bóng đã hiện lại) → trả focus về bong bóng.
+  useEffect(() => {
+    if (!open && !closing && wantBubbleFocus.current) {
+      wantBubbleFocus.current = false;
+      (document.getElementById(BUBBLE_ID) ?? document.getElementById(HEADER_BUTTON_ID))?.focus();
+    }
+  }, [open, closing]);
 
   // Tin mới → cuộn xuống cuối.
   useEffect(() => {
@@ -361,8 +421,8 @@ function AssistantFloating() {
     void submit(text, opts);
   };
   const close = () => {
+    wantBubbleFocus.current = true;
     setOpen(false);
-    focusBackSoon();
   };
 
   // Vị trí: desktop → bong bóng nằm BÊN TRÁI nút nổi "+" (menu của nút + mở lên trên, không đè bong bóng), cửa sổ nằm
@@ -371,7 +431,7 @@ function AssistantFloating() {
     ? {}
     : { bottom: `calc(${BOTTOM_BAR_PX}px + env(safe-area-inset-bottom) + 12px)`, right: 16 };
 
-  if (!open)
+  if (!open && !closing)
     return (
       <button
         id={BUBBLE_ID}
@@ -403,14 +463,7 @@ function AssistantFloating() {
 
   const winStyle: CSSProperties = desktop
     ? { bottom: `calc(${FAB_BOTTOM_CSS} + 68px)`, right: FAB_RIGHT_CSS }
-    : minimized
-      ? style
-      : {
-          bottom: `calc(${BOTTOM_BAR_PX}px + env(safe-area-inset-bottom) + 8px)`,
-          top: 8,
-          left: 8,
-          right: 8,
-        };
+    : mobileWindowStyle({ minimized, inset: kb.inset, offsetTop: kb.offsetTop });
 
   return (
     // Không modal: không lớp phủ, không khoá cuộn, không bẫy focus — trang phía sau vẫn dùng được. Esc (khi focus trong
@@ -419,6 +472,7 @@ function AssistantFloating() {
       role="dialog"
       aria-modal="false"
       aria-label="Trợ lý Tirapro"
+      ref={winRef}
       style={winStyle}
       onKeyDown={(e) => {
         if (e.key === 'Escape') {
@@ -428,19 +482,17 @@ function AssistantFloating() {
       }}
       className={cn(
         'fixed z-sticky flex flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-lg',
-        'animate-in fade-in slide-in-from-bottom-2 duration-base ease-out-quart motion-reduce:animate-none',
-        desktop ? 'w-[360px] max-w-[calc(100vw-2rem)]' : 'sm:w-[360px]',
-        minimized
-          ? desktop
-            ? 'h-auto'
-            : 'h-auto w-[min(360px,calc(100vw-2rem))]'
-          : desktop
-            ? 'h-[min(520px,calc(100dvh-8rem))]'
-            : '',
+        'duration-base ease-out-quart motion-reduce:animate-none',
+        open
+          ? 'animate-in fade-in slide-in-from-bottom-2'
+          : 'pointer-events-none animate-out fade-out slide-out-to-bottom-2 fill-mode-forwards',
+        desktop ? 'w-[360px] max-w-[calc(100vw-2rem)]' : 'w-[calc(100vw-16px)] sm:w-[360px]',
+        minimized ? 'h-auto' : desktop ? 'h-[min(520px,calc(100dvh-8rem))]' : '',
       )}
     >
       {minimized ? (
         <button
+          ref={expandBtnRef}
           type="button"
           onClick={() => setMinimized(false)}
           aria-label="Bung Trợ lý Tirapro"

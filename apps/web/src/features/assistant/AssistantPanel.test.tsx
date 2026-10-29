@@ -5,6 +5,7 @@ import type { Block } from './blocks';
 import type { Message } from './conversation';
 import { buildDraft } from './draft';
 import { AssistantPanelView, staticDraft } from './AssistantPanel';
+import { canStartCreate } from './DraftCard';
 import { META, PROJ, SPRINTS, USERS } from './fixtures';
 
 const noop = () => undefined;
@@ -175,5 +176,14 @@ describe('thẻ nháp (render tĩnh)', () => {
     expect(cardOf('cancelled')).toContain('Đã bỏ nháp này');
     expect(cardOf('opened')).toContain('Đã mở trong form đầy đủ');
     expect(cardOf('opened')).not.toContain('Mở form đầy đủ</button>');
+  });
+});
+
+describe('chặn tạo lặp', () => {
+  it('chỉ pending/failed được bắt đầu tạo; creating/created/cancelled/opened thì không', () => {
+    expect(canStartCreate('pending')).toBe(true);
+    expect(canStartCreate('failed')).toBe(true);
+    for (const st of ['creating', 'created', 'cancelled', 'opened'] as const)
+      expect(canStartCreate(st)).toBe(false);
   });
 });

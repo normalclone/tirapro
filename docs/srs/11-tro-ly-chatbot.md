@@ -23,14 +23,15 @@ Mã nguồn: `apps/web/src/features/assistant/` (`intents.ts`, `knowledge.ts`, `
 ## 2. Giao diện: ô chat nổi
 
 - **Bong bóng tròn** (`MessageCircle`) nổi góc dưới phải. Desktop (từ `lg`): nằm **bên trái nút nổi "+"** để menu của nút "+" (mở lên trên) không đè bong bóng. Dưới `lg`: ngay trên thanh tab đáy. Có chấm đỏ cho tới lần mở đầu tiên trong phiên (`sessionStorage` `tirapro:assistant:seen`).
-- **Cửa sổ chat** `role="dialog" aria-modal="false"`: desktop 360px × tối đa 520px, neo trên hàng nút nổi; dưới `lg` gần toàn màn (cách mép 8px, trên thanh tab đáy). **Không modal**: không lớp phủ, không khoá cuộn, không bẫy focus — trang phía sau vẫn thao tác được.
+- **Cửa sổ chat** `role="dialog" aria-modal="false"`: desktop 360px × tối đa 520px, neo trên hàng nút nổi; dưới `lg` neo **phải** (rộng `100vw − 16px`, từ `sm` rộng 360px), cao từ đỉnh tới trên thanh tab đáy. Có bàn phím ảo (`visualViewport`) thì cửa sổ neo **trên bàn phím** để ô nhập luôn thấy (`layout.ts`). **Không modal**: không lớp phủ, không khoá cuộn, không bẫy focus — trang phía sau vẫn thao tác được.
 - Header: biểu tượng trợ lý, "Trợ lý Tirapro", nút **Xoá hội thoại**, **Thu nhỏ** (còn thanh tiêu đề, bấm để bung), **Đóng**.
 - Tin nhắn: người dùng bên phải (màu primary), trợ lý bên trái; chip gợi ý dưới tin trợ lý; thẻ nháp trong luồng chat. Vùng tin có `role="log" aria-live="polite"`.
 - Ô nhập dưới cùng: **Enter gửi, Shift+Enter xuống dòng** (không gửi khi đang gõ dở bằng bộ gõ IME). Gợi ý phím ẩn trên cảm ứng.
 - **Esc** (khi focus trong cửa sổ) đóng và trả focus về bong bóng (hoặc nút trên thanh đầu trang). Mở → focus vào ô nhập.
 - Trạng thái mở/thu nhỏ **toàn cục** (`panelStore`, Zustand) nên giữ nguyên khi chuyển trang. Chuyển sang `/admin` thì đóng.
 - Lối mở khác: nút "Trợ lý Tirapro" trên thanh đầu trang (cạnh nút trợ lý AI/hướng dẫn), lệnh Cmd+K **"Hỏi trợ lý"**, phím **`g` rồi `a`** (khai ở `lib/shortcuts.ts`, id `global.assistant`). Các lối này chỉ mở ô chat.
-- Chuyển động: vào bằng `animate-in fade-in slide-in-from-bottom-2` với token `duration-base`; tắt khi `prefers-reduced-motion` (`motion-reduce:animate-none`).
+- Mở bằng Cmd+K: focus vào ô nhập được kéo lại vài nhịp (60/200/450ms) nếu Radix của bảng lệnh trả focus về trang sau đó. Thu nhỏ → focus sang nút Bung. Đóng → chạy animation thoát (150ms) rồi trả focus về bong bóng.
+- Chuyển động: vào/ra bằng `animate-in fade-in slide-in-from-bottom-2` với token `duration-base`; tắt khi `prefers-reduced-motion` (`motion-reduce:animate-none`).
 - Mọi chữ do người dùng/dữ liệu việc hiển thị dạng **TEXT** (không `dangerouslySetInnerHTML`). Liên kết nội bộ dùng router; riêng liên kết tới trang Hướng dẫn (nằm ngoài khung ứng dụng, công khai) mở **tab mới** (`rel="noopener noreferrer"`) để ô chat không mất.
 
 ## 3. Ý định, câu mẫu, nguồn dữ liệu và phản hồi
@@ -114,4 +115,8 @@ Chỉ dùng API sẵn có qua `queryClient.fetchQuery` trên **cùng khoá cache
 
 - "Việc của tôi" chỉ gồm việc **chưa xong** (khác chip lọc nhanh "Của tôi" của Bảng việc vốn hiện cả việc đã xong).
 - Số việc của sprint đếm từ danh sách việc dự án nạp ở FE (trần `ISSUE_LIST_HARD_CAP` của Bảng việc).
+- Thẻ nháp đang "creating" mà tải lại trang quay về "pending": nếu request đã thành công trước đó, bấm Tạo lần nữa sẽ tạo bản sao (người dùng tự bấm; chấp nhận).
+- Toast "Đã tạo KEY" chỉ hiện khi ô chat đang thu nhỏ/đóng (khi đang mở, thẻ trong luồng đã báo — toast không đè ô nhập).
+- Câu ngắn (≤4 từ) có mã việc luôn tra theo mã (vd "BUG-12 quá hạn chưa").
+- Hội thoại đã lưu được lọc khi đọc: chỉ nhận liên kết nội bộ (bắt đầu bằng `/`, không `//`).
 - Phát hiện `tirapro:tour` chỉ chạy được khi màn có tour; màn không có thì không có nút.

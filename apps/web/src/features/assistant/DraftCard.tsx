@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { Check, TriangleAlert } from 'lucide-react';
 import { toast } from 'sonner';
@@ -6,10 +7,15 @@ import { useCreateIssue } from '@/features/issues/create-api';
 import { fmtDate } from '@/lib/dateFormat';
 import { apiErrorMessage } from '@/lib/api';
 import { useCreateIssueModal } from '@/stores/createIssue';
+import { useAssistantPanel } from './panelStore';
 import type { Block } from './blocks';
 import type { Draft } from './draft';
 import { confirmDraft } from './respond';
 import type { ConversationAction } from './conversation';
+
+/** Chặn bấm Tạo lặp: chỉ khi thẻ chưa đang tạo/đã tạo/đã bỏ. */
+export const canStartCreate = (status: DraftBlock['status']): boolean =>
+  status === 'pending' || status === 'failed';
 
 type DraftBlock = Extract<Block, { type: 'draft' }>;
 
@@ -141,18 +147,24 @@ export function DraftCard({
   const create = useCreateIssue(block.draft.projectId);
   const openCreate = useCreateIssueModal((s) => s.openCreate);
   const { draft } = block;
+  const inFlight = useRef(false);
 
   async function onCreate() {
-    if (block.status === 'creating') return;
+    // Ref chặn bấm đúp trước khi React kịp vẽ lại trạng thái "creating".
+    if (inFlight.current || !canStartCreate(block.status)) return;
+    inFlight.current = true;
     patch({ type: 'patch-draft', messageId, status: 'creating' });
     const r = await confirmDraft(
       draft,
       (input) => create.mutateAsync(input).then((i) => ({ id: i.id, key: i.key })),
       apiErrorMessage,
     );
+    inFlight.current = false;
     if (r.ok) {
       patch({ type: 'patch-draft', messageId, status: 'created', createdKey: r.key });
-      toast.success(`Đã tạo ${r.key}`);
+      // Cửa sổ chat đang mở thì thẻ đã báo "Đã tạo" ngay trong luồng; toast chỉ khi ô chat thu nhỏ/đóng (không đè ô nhập).
+      const ui = useAssistantPanel.getState();
+      if (!ui.open || ui.minimized) toast.success(`Đã tạo ${r.key}`);
     } else {
       patch({ type: 'patch-draft', messageId, status: 'failed', error: r.error });
     }
