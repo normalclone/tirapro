@@ -1,4 +1,5 @@
 import { sprintActionPath } from '@/features/backlog/sprintAction';
+import { configSectionPath } from '@/features/project-config/configSections';
 import { TRIAGE_TITLE } from '@/features/triage/triageLogic';
 import { CONNECT_LABELS, MANAGE_LABELS } from '@/lib/navLabels';
 
@@ -11,7 +12,7 @@ export interface ProjectCommand {
   label: string;
   keywords: string;
   to: string;
-  icon: 'sprint' | 'report' | 'gantt' | 'triage' | 'risks' | 'automation';
+  icon: 'sprint' | 'report' | 'gantt' | 'triage' | 'risks' | 'automation' | 'import';
 }
 
 interface SprintLike {
@@ -31,6 +32,8 @@ export interface ProjectCommandInput {
   canAutomation: boolean;
   /** `issue:triage` (tính bằng `useCan`, không phải bản "đã trừ lưu trữ"): ẩn lệnh Việc mới vào nếu thiếu. */
   canTriage: boolean;
+  /** `import:run` (dự án lưu trữ → false). */
+  canImport: boolean;
 }
 
 /** Số sprint chưa bắt đầu tối đa được liệt kê thành lệnh "Bắt đầu sprint". */
@@ -110,6 +113,14 @@ export function buildProjectCommands(input: ProjectCommandInput): ProjectCommand
     to: `/manage/risks?project=${projectId}`,
     icon: 'risks',
   });
+  if (input.canImport)
+    out.push({
+      id: 'import.excel',
+      label: 'Nhập công việc từ Excel',
+      keywords: 'nhap cong viec tu excel xlsx import bieu mau hang loat',
+      to: configSectionPath(k, 'data'),
+      icon: 'import',
+    });
   if (input.canAutomation)
     out.push({
       id: 'nav.automation',

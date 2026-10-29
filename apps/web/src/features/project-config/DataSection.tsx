@@ -20,6 +20,7 @@ import { QueryBoundary } from '@/components/ui/QueryBoundary';
 import { SectionCard } from '@/components/ui/SectionCard';
 import { importResultMessage } from './importResult';
 import { fmtDateTime } from '@/lib/dateFormat';
+import { ExcelImportBlock } from './ExcelImportBlock';
 
 /** Nhãn + style cho từng trạng thái job import. */
 const IMPORT_STATUS: Record<ImportStatus, { label: string; className: string }> = {
@@ -41,7 +42,15 @@ function importResultToast(result: ImportResult) {
 
 const CSV_HEADER_HINT = 'Summary, Type, Description, Priority, Story Points';
 
-export function DataSection({ projectId, canImport }: { projectId?: string; canImport: boolean }) {
+export function DataSection({
+  projectId,
+  projectKey,
+  canImport,
+}: {
+  projectId?: string;
+  projectKey?: string;
+  canImport: boolean;
+}) {
   const jobsQuery = useImportJobs();
   const { data: jobsData } = jobsQuery;
   const canAdminImport = useAuth((s) => s.can('workspace:admin'));
@@ -147,7 +156,11 @@ export function DataSection({ projectId, canImport }: { projectId?: string; canI
 
             {/* Nhập */}
             <div>
-              <h3 className="text-sm font-medium text-ink-strong">Nhập dữ liệu</h3>
+              <ExcelImportBlock projectId={projectId} projectKey={projectKey} />
+
+              <hr className="my-6 border-border" />
+
+              <h3 className="text-sm font-medium text-ink-strong">Nhập dữ liệu khác</h3>
 
               <div className="mt-3">
                 <label htmlFor="import-csv" className="mb-1 block text-xs font-medium text-muted">

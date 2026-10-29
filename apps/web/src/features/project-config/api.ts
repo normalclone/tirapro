@@ -1,4 +1,5 @@
 import { skipToken, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import type { ExcelImportResult, ExcelPreviewResult } from '@tirapro/shared';
 import { api, type Ack } from '@/lib/api';
 import { downloadFile } from '@/lib/download';
 import { keys } from '@/lib/queryKeys';
@@ -69,7 +70,7 @@ export interface LabelUpdateInput {
 
 /** ---- Import ---- */
 
-type ImportSource = 'CSV' | 'JSON';
+type ImportSource = 'CSV' | 'JSON' | 'EXCEL';
 export type ImportStatus = 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
 
 export interface ImportResult {
@@ -261,6 +262,42 @@ export function useImportJson() {
   return useMutation({
     mutationFn: ({ projectId, data }: { projectId: string; data: unknown }) =>
       api.post<ImportResult>(`/import/json`, { projectId, data }).then((r) => r.data),
+    onSuccess: (_data, { projectId }) => invalidateAfterImport(qc, projectId),
+  });
+}
+
+/** Tải biểu mẫu Excel (drop-list theo cấu hình dự án). */
+export async function downloadExcelTemplate(projectId: string): Promise<string> {
+  const { filename } = await downloadFile('/import/excel/template', {
+    params: { projectId },
+    fallbackName: 'Mau-nhap-cong-viec.xlsx',
+  });
+  return filename;
+}
+
+function excelForm(projectId: string, file: File): FormData {
+  const fd = new FormData();
+  fd.append('projectId', projectId);
+  fd.append('file', file);
+  return fd;
+}
+
+/** Xem trước tệp Excel: không ghi DB. */
+export function useExcelPreview() {
+  return useMutation({
+    mutationFn: ({ projectId, file }: { projectId: string; file: File }) =>
+      api
+        .post<ExcelPreviewResult>('/import/excel/preview', excelForm(projectId, file))
+        .then((r) => r.data),
+  });
+}
+
+/** Nhập các dòng hợp lệ của tệp Excel (máy chủ kiểm tra lại từ đầu). */
+export function useImportExcel() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ projectId, file }: { projectId: string; file: File }) =>
+      api.post<ExcelImportResult>('/import/excel', excelForm(projectId, file)).then((r) => r.data),
     onSuccess: (_data, { projectId }) => invalidateAfterImport(qc, projectId),
   });
 }
