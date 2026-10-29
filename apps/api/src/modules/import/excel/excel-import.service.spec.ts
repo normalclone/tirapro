@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { ImportService } from '../import.service';
 import { EXCEL_SHEET_DATA } from './excel-columns';
 import { ExcelImportService } from './excel-import.service';
-import { parseExcelDate, parseExcelNumber } from './excel-parse';
+import { parseExcelDate, parseExcelNumber, sanitizeZip } from './excel-parse';
 import { buildExcelTemplate } from './excel-template';
 import { catalog } from './excel-template.spec';
 
@@ -454,7 +454,20 @@ interface ZipEntry {
 }
 
 /** Zip tối giản (deflate). `eocdCount`: số entry ghi ở EOCD (mặc định = số thật) — đặt nhỏ hơn để nhét entry thừa. */
-function zipOfEntries(entries: ZipEntry[], eocdCount = entries.length): Buffer {
+function zipOfEntries(
+  entries: ZipEntry[],
+  eocdCount = entries.length,
+  opts: {
+    /** Cộng/trừ vào cdSize ghi ở EOCD. */
+    cdSizeDelta?: number;
+    /** Byte chèn giữa central directory và EOCD. */
+    junkBeforeEocd?: Buffer;
+    /** Số entry (tính từ cuối) đẩy ra SAU cdSize khai ở EOCD — dựng ca "CD độc nằm sau CD lành". */
+    evilTail?: number;
+    /** Độ dài comment khai ở EOCD (mặc định 0, không có comment thật). */
+    commentLenDecl?: number;
+  } = {},
+): Buffer {
   const parts: Buffer[] = [];
   const cds: Buffer[] = [];
   let offset = 0;
@@ -485,13 +498,16 @@ function zipOfEntries(entries: ZipEntry[], eocdCount = entries.length): Buffer {
     offset += lh.length + n.length + comp.length;
   }
   const cdBuf = Buffer.concat(cds);
+  const tailBytes = (opts.evilTail ?? 0) * 2;
+  const healthyLen = cds.slice(0, cds.length - tailBytes).reduce((n, b) => n + b.length, 0);
   const end = Buffer.alloc(22);
   end.writeUInt32LE(0x06054b50, 0);
   end.writeUInt16LE(eocdCount, 8);
   end.writeUInt16LE(eocdCount, 10);
-  end.writeUInt32LE(cdBuf.length, 12);
+  end.writeUInt32LE((opts.evilTail ? healthyLen : cdBuf.length) + (opts.cdSizeDelta ?? 0), 12);
   end.writeUInt32LE(offset, 16);
-  return Buffer.concat([...parts, cdBuf, end]);
+  end.writeUInt16LE(opts.commentLenDecl ?? 0, 20);
+  return Buffer.concat([...parts, cdBuf, opts.junkBeforeEocd ?? Buffer.alloc(0), end]);
 }
 
 const zipOf = (name: string, data: Buffer): Buffer => zipOfEntries([{ name, data }]);
@@ -584,6 +600,93 @@ describe('chặn tệp xlsx độc hại TRƯỚC khi exceljs nạp vào RAM', (
     await expect(s.service.preview('w1', 'p1', upload(zipOfEntries(many, 1)))).rejects.toThrow(
       'Tệp Excel giải nén quá lớn',
     );
+  });
+  const good1: ZipEntry = { name: 'xl/workbook.xml', data: Buffer.from('<a/>') };
+  it.each([
+    ['CD độc nằm SAU CD lành (ca zero-offset của reviewer): cdSize chỉ phủ CD lành', 'tail'],
+    ['byte dư giữa CD và EOCD', 'junk'],
+    ['cdSize ở EOCD sai (+1)', 'size+'],
+    ['cdSize ở EOCD sai (−1)', 'size-'],
+    ['EOCD khai thiếu số entry', 'count'],
+    ['comment EOCD khai dài hơn thật (byte lệch cuối tệp)', 'comment'],
+  ])('cấu trúc bất thường bị chặn TRƯỚC exceljs: %s', async (_t, kind) => {
+    const s = setup();
+    const evil: ZipEntry = {
+      name: 'xl/worksheets/sheet1.xml',
+      data: Buffer.alloc(8 * 1024 * 1024),
+      declaredSize: 1000,
+    };
+    const zip =
+      kind === 'tail'
+        ? zipOfEntries([good1, evil], 2, { evilTail: 1 })
+        : kind === 'junk'
+          ? zipOfEntries([good1], 1, { junkBeforeEocd: Buffer.alloc(7) })
+          : kind === 'size+'
+            ? zipOfEntries([good1], 1, { cdSizeDelta: 1 })
+            : kind === 'size-'
+              ? zipOfEntries([good1], 1, { cdSizeDelta: -1 })
+              : kind === 'count'
+                ? zipOfEntries([good1, { ...good1, name: 'xl/b.xml' }], 1)
+                : zipOfEntries([good1], 1, { commentLenDecl: 5 });
+    const workbookCtor = vi.spyOn(ExcelJS, 'Workbook');
+    try {
+      await expect(s.service.preview('w1', 'p1', upload(zip))).rejects.toThrow(
+        'Tệp Excel giải nén quá lớn',
+      );
+      expect(workbookCtor).not.toHaveBeenCalled();
+    } finally {
+      workbookCtor.mockRestore();
+    }
+  });
+  it('trùng tên entry bị từ chối', async () => {
+    const s = setup();
+    await expect(
+      s.service.preview('w1', 'p1', upload(zipOfEntries([good1, good1]))),
+    ).rejects.toThrow('Tệp Excel giải nén quá lớn');
+  });
+  it('sanitizeZip đóng gói lại: mọi entry method store, dữ liệu nguyên vẹn, exceljs đọc được bản mới', async () => {
+    const original = await xlsxOf([good({ [H.summary]: 'Gói lại' })]);
+    const repacked = sanitizeZip(original);
+    expect(repacked.equals(original)).toBe(false);
+    // duyệt CD của bản mới: method = 0 (store), size nén = size thật
+    const eocd = repacked.length - 22;
+    let off = repacked.readUInt32LE(eocd + 16);
+    let n = 0;
+    while (repacked.readUInt32LE(off) === 0x02014b50) {
+      expect(repacked.readUInt16LE(off + 10)).toBe(0);
+      expect(repacked.readUInt32LE(off + 20)).toBe(repacked.readUInt32LE(off + 24));
+      off += 46 + repacked.readUInt16LE(off + 28);
+      n++;
+    }
+    expect(n).toBe(repacked.readUInt16LE(eocd + 10));
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(repacked as unknown as ArrayBuffer);
+    expect(wb.getWorksheet(EXCEL_SHEET_DATA)!.getCell('A2').text).toBe('Gói lại');
+  });
+  it('exceljs nhận buffer ĐÃ ĐÓNG GÓI LẠI (không phải buffer gốc)', async () => {
+    const s = setup();
+    const seen: Buffer[] = [];
+    const orig = ExcelJS.Workbook;
+    // Bọc constructor để chặn `wb.xlsx.load` và ghi lại buffer nhận được.
+    const ctor = vi.spyOn(ExcelJS, 'Workbook').mockImplementation(function () {
+      const wb = new orig();
+      const x = wb.xlsx;
+      const realLoad = x.load.bind(x);
+      x.load = (b: unknown) => {
+        seen.push(b as Buffer);
+        return realLoad(b as never);
+      };
+      return wb;
+    });
+    try {
+      const buf = await xlsxOf([good()]);
+      await s.service.preview('w1', 'p1', upload(buf));
+      expect(seen).toHaveLength(1);
+      expect(seen[0]!.equals(buf)).toBe(false);
+      expect(seen[0]!.equals(sanitizeZip(buf))).toBe(true);
+    } finally {
+      ctor.mockRestore();
+    }
   });
   it('tệp hợp lệ bình thường vẫn qua', async () => {
     const { res } = await preview([good()]);

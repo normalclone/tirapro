@@ -92,21 +92,29 @@ const ZIP_TOO_BIG =
 const ZIP_ENTRY_NAME = /^(xl\/|docProps\/|_rels\/|customXml\/|\[Content_Types\]\.xml$)/;
 
 /**
- * Kiểm zip TRƯỚC khi exceljs nạp vào RAM. KHÔNG tin kích thước khai báo: JSZip (exceljs dùng) chỉ so `uncompressedSize`
- * khai báo với kích thước thật SAU khi đã giải nén hết vào bộ nhớ, nên zip khai size nhỏ mà bung hàng trăm MB vẫn qua được
- * một kiểm tra chỉ đọc header. Vì vậy ở đây:
- * - duyệt central directory GIỐNG JSZip (lặp tới khi hết chữ ký 0x02014b50, bỏ qua số entry ở EOCD — nếu không, nhét thêm
- *   entry sau số khai ở EOCD sẽ lọt kiểm tra);
- * - mỗi entry nén deflate được giải nén thật nhưng CÓ CHẶN (`maxOutputLength`), cộng tổng kích thước THẬT; entry lưu thẳng
- *   (stored) phải có kích thước nén = kích thước khai;
- * - dữ liệu lấy qua local header của chính entry (cách JSZip định vị), method chỉ 0 hoặc 8.
- * Chi phí: inflate tối đa 50 MB hai lần (một lần kiểm ở đây, một lần exceljs) — chấp nhận được vì có throttle riêng.
+ * Kiểm VÀ ĐÓNG GÓI LẠI zip TRƯỚC khi exceljs nạp vào RAM; trả buffer zip MỚI chỉ gồm các entry đã kiểm.
+ *
+ * Vì sao không chỉ kiểm rồi đưa buffer gốc cho exceljs: JSZip (exceljs dùng) (a) chỉ so `uncompressedSize` khai báo với
+ * kích thước thật SAU khi đã bung hết vào RAM; (b) tự dịch gốc toạ độ (`reader.zero`) khi có byte dư giữa central directory
+ * và EOCD nên có thể đọc CD/local header ở offset KHÁC với bộ kiểm. Hai lớp phòng thủ:
+ * 1. Cấu trúc nghiêm ngặt, không chừa byte mơ hồ: EOCD là chữ ký CUỐI CÙNG và kết thúc đúng cuối tệp, một đĩa,
+ *    `cdOffset + cdSize === vị trí EOCD`, duyệt CD xong dừng đúng tại EOCD, số entry ở EOCD (cả hai trường) khớp số đã duyệt,
+ *    local header nằm trước CD và không chồng nhau, không trùng tên, không mã hoá.
+ * 2. Giải nén thật có chặn (`maxOutputLength = size khai + 1`), cộng tổng kích thước THẬT, rồi dựng zip mới (method store,
+ *    CRC tính lại) — exceljs chỉ thấy đúng dữ liệu đã kiểm, kể cả nếu còn kẽ hở ở lớp 1.
+ * Chi phí: inflate tối đa 50 MB hai lần (kiểm + exceljs đọc bản store gần như không tốn CPU nên thực tế ~1 lần), đồng bộ trên
+ * event loop; chấp nhận vì có throttle riêng và tệp thật chỉ vài trăm KB.
  */
-function assertSafeZip(buf: Buffer): void {
+export function sanitizeZip(buf: Buffer): Buffer {
   const bad = (): never => {
     throw new BusinessRuleException(ZIP_TOO_BIG);
   };
-  // Tìm End Of Central Directory (comment tối đa 65535 byte).
+  const unreadable = (): never => {
+    throw new BusinessRuleException(
+      'Không đọc được tệp Excel — tệp có thể bị hỏng hoặc không phải .xlsx. Hãy tải lại biểu mẫu và điền lại',
+    );
+  };
+  // EOCD = chữ ký CUỐI CÙNG trong 64 KB cuối (đúng cách JSZip chọn), phải kết thúc đúng cuối tệp.
   let eocd = -1;
   for (let i = buf.length - 22; i >= Math.max(0, buf.length - 22 - 65_535); i--) {
     if (buf.readUInt32LE(i) === 0x06054b50) {
@@ -114,16 +122,30 @@ function assertSafeZip(buf: Buffer): void {
       break;
     }
   }
-  if (eocd < 0)
-    throw new BusinessRuleException(
-      'Không đọc được tệp Excel — tệp có thể bị hỏng hoặc không phải .xlsx. Hãy tải lại biểu mẫu và điền lại',
-    );
-  let off = buf.readUInt32LE(eocd + 16);
-  if (off === 0xffffffff || buf.readUInt16LE(eocd + 10) === 0xffff) return bad(); // zip64
-  let entries = 0;
-  let total = 0;
-  while (off + 46 <= buf.length && buf.readUInt32LE(off) === 0x02014b50) {
-    if (++entries > ZIP_MAX_ENTRIES) return bad();
+  if (eocd < 0) return unreadable();
+  if (eocd + 22 + buf.readUInt16LE(eocd + 20) !== buf.length) return bad(); // comment lệch / byte dư sau EOCD
+  const total = buf.readUInt16LE(eocd + 10);
+  const cdSize = buf.readUInt32LE(eocd + 12);
+  const cdOffset = buf.readUInt32LE(eocd + 16);
+  if (buf.readUInt16LE(eocd + 4) !== 0 || buf.readUInt16LE(eocd + 6) !== 0) return bad(); // nhiều đĩa
+  if (buf.readUInt16LE(eocd + 8) !== total || total === 0xffff || total > ZIP_MAX_ENTRIES)
+    return bad();
+  if (cdOffset === 0xffffffff || cdSize === 0xffffffff) return bad(); // zip64
+  if (cdOffset + cdSize !== eocd) return bad(); // byte dư/thiếu giữa CD và EOCD (kẽ hở dịch gốc toạ độ của JSZip)
+
+  interface Checked {
+    name: Buffer;
+    data: Buffer;
+    isDir: boolean;
+  }
+  const checked: Checked[] = [];
+  const spans: Array<[number, number]> = [];
+  const names = new Set<string>();
+  let realTotal = 0;
+  let off = cdOffset;
+  while (off + 46 <= eocd && buf.readUInt32LE(off) === 0x02014b50) {
+    if (checked.length >= ZIP_MAX_ENTRIES) return bad();
+    const flags = buf.readUInt16LE(off + 8);
     const method = buf.readUInt16LE(off + 10);
     const comp = buf.readUInt32LE(off + 20);
     const size = buf.readUInt32LE(off + 24);
@@ -131,42 +153,87 @@ function assertSafeZip(buf: Buffer): void {
     const extraLen = buf.readUInt16LE(off + 30);
     const commentLen = buf.readUInt16LE(off + 32);
     const lhOff = buf.readUInt32LE(off + 42);
-    const name = buf.toString('utf8', off + 46, off + 46 + nameLen);
+    const nameBuf = buf.subarray(off + 46, off + 46 + nameLen);
+    const name = nameBuf.toString('utf8');
     off += 46 + nameLen + extraLen + commentLen;
+    if (off > eocd) return bad();
     if (size === 0xffffffff || comp === 0xffffffff || lhOff === 0xffffffff) return bad();
+    if ((flags & 1) !== 0) return bad(); // mã hoá
     if (name.includes('..') || name.includes('\\') || !ZIP_ENTRY_NAME.test(name)) return bad();
-    if (size > ZIP_MAX_ENTRY_BYTES || total + size > ZIP_MAX_TOTAL_BYTES) return bad();
-    if (name.endsWith('/')) continue; // thư mục
+    if (names.has(name)) return bad();
+    names.add(name);
+    if (size > ZIP_MAX_ENTRY_BYTES || realTotal + size > ZIP_MAX_TOTAL_BYTES) return bad();
+    const isDir = name.endsWith('/');
     if (method !== 0 && method !== 8) return bad();
-    // Dữ liệu nằm sau local header của chính entry.
-    if (lhOff + 30 > buf.length || buf.readUInt32LE(lhOff) !== 0x04034b50) return bad();
+    // Dữ liệu nằm sau local header của chính entry, và trước CD.
+    if (lhOff + 30 > cdOffset || buf.readUInt32LE(lhOff) !== 0x04034b50) return bad();
     const start = lhOff + 30 + buf.readUInt16LE(lhOff + 26) + buf.readUInt16LE(lhOff + 28);
-    if (start + comp > buf.length) return bad();
+    if (start + comp > cdOffset) return bad();
+    spans.push([lhOff, start + comp]);
     const slice = buf.subarray(start, start + comp);
-    let real: number;
+    let data: Buffer;
     if (method === 0) {
-      real = comp;
+      if (comp !== size) return bad();
+      data = slice;
     } else {
       try {
         // Chặn ngay khi vượt số khai báo (+1 để phát hiện khai thiếu), không bao giờ cấp phát quá giới hạn.
-        real = zlib.inflateRawSync(slice, { maxOutputLength: size + 1 }).length;
+        data = zlib.inflateRawSync(slice, { maxOutputLength: size + 1 });
       } catch {
         return bad();
       }
     }
-    if (real !== size) return bad(); // khai man (khai thiếu/khai thừa)
+    if (data.length !== size) return bad(); // khai man (khai thiếu/khai thừa)
     if (size > ZIP_RATIO_FLOOR_BYTES && size / Math.max(comp, 1) > ZIP_MAX_RATIO) return bad();
-    total += real;
+    realTotal += data.length;
+    checked.push({ name: nameBuf, data, isDir });
   }
-  if (entries === 0) return bad();
+  if (off !== eocd || checked.length !== total || total === 0) return bad(); // CD phải kết thúc đúng tại EOCD
+  spans.sort((x, y) => x[0] - y[0]);
+  for (let i = 1; i < spans.length; i++) if (spans[i]![0] < spans[i - 1]![1]) return bad(); // chồng nhau
+
+  // Đóng gói lại: chỉ các entry đã kiểm, method store, CRC tính lại.
+  const parts: Buffer[] = [];
+  const cds: Buffer[] = [];
+  let pos = 0;
+  for (const e of checked) {
+    const crc = zlib.crc32(e.data);
+    const lh = Buffer.alloc(30);
+    lh.writeUInt32LE(0x04034b50, 0);
+    lh.writeUInt16LE(20, 4);
+    lh.writeUInt32LE(crc, 14);
+    lh.writeUInt32LE(e.data.length, 18);
+    lh.writeUInt32LE(e.data.length, 22);
+    lh.writeUInt16LE(e.name.length, 26);
+    const cd = Buffer.alloc(46);
+    cd.writeUInt32LE(0x02014b50, 0);
+    cd.writeUInt16LE(20, 4);
+    cd.writeUInt16LE(20, 6);
+    cd.writeUInt32LE(crc, 16);
+    cd.writeUInt32LE(e.data.length, 20);
+    cd.writeUInt32LE(e.data.length, 24);
+    cd.writeUInt16LE(e.name.length, 28);
+    cd.writeUInt32LE(pos, 42);
+    parts.push(lh, e.name, e.data);
+    cds.push(cd, e.name);
+    pos += lh.length + e.name.length + e.data.length;
+  }
+  const cdBuf = Buffer.concat(cds);
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0);
+  end.writeUInt16LE(checked.length, 8);
+  end.writeUInt16LE(checked.length, 10);
+  end.writeUInt32LE(cdBuf.length, 12);
+  end.writeUInt32LE(pos, 16);
+  return Buffer.concat([...parts, cdBuf, end]);
 }
 
 /** Đọc bảng tính thành các dòng thô theo TÊN cột (không theo vị trí). Dòng trống hoàn toàn bị bỏ. */
 export async function parseExcelBuffer(buffer: Buffer): Promise<ParsedWorkbook> {
-  assertSafeZip(buffer);
+  const safe = sanitizeZip(buffer); // exceljs chỉ nhận bản zip đã kiểm và đóng gói lại
   const wb = new ExcelJS.Workbook();
   try {
-    await wb.xlsx.load(buffer as unknown as ArrayBuffer);
+    await wb.xlsx.load(safe as unknown as ArrayBuffer);
   } catch {
     throw new BusinessRuleException(
       'Không đọc được tệp Excel — tệp có thể bị hỏng hoặc không phải .xlsx. Hãy tải lại biểu mẫu và điền lại',
