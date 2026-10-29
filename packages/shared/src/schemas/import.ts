@@ -66,7 +66,7 @@ export const EXCEL_IMPORT_MAX_BYTES = 5 * 1024 * 1024;
 export const EXCEL_IMPORT_MAX_ROWS = 1000;
 
 export const excelImportBodySchema = z.object({
-  projectId: z.string().min(1, 'Thiếu mã dự án'),
+  projectId: z.string({ required_error: 'Thiếu mã dự án' }).min(1, 'Thiếu mã dự án'),
 });
 export type ExcelImportBody = z.infer<typeof excelImportBodySchema>;
 

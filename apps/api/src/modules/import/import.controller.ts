@@ -86,13 +86,10 @@ export class ImportController {
   @Permissions(PERMISSIONS.IMPORT_RUN)
   async excelTemplate(
     @WorkspaceId() workspaceId: string,
-    @Query('projectId') projectId: string | undefined,
+    @Query(new ZodValidationPipe(excelImportBodySchema)) query: ExcelImportBody,
     @Res() res: Response,
   ): Promise<void> {
-    const { buffer, filename } = await this.excel.template(
-      workspaceId,
-      excelImportBodySchema.parse({ projectId }).projectId,
-    );
+    const { buffer, filename } = await this.excel.template(workspaceId, query.projectId);
     res.setHeader(
       'Content-Type',
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
