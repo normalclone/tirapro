@@ -271,13 +271,16 @@ function RoleRow({ role, onOpen }: { role: RoleDto; onOpen: () => void }) {
         'hover:bg-surface-2 focus-visible:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
       )}
     >
-      <RoleBadge name={role.name} color={role.color} />
-      {role.isSystem && (
-        <span className="inline-flex items-center gap-1 rounded-full bg-surface-2 px-2 py-0.5 text-xs font-medium text-faint">
-          <ShieldCheck className="h-3 w-3" aria-hidden />
-          Hệ thống
-        </span>
-      )}
+      {/* ≥ sm: cột tên (badge vai trò + "Hệ thống") bề rộng cố định → mô tả bắt đầu thẳng cột giữa các dòng. */}
+      <span className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 sm:w-64 sm:shrink-0 sm:flex-nowrap">
+        <RoleBadge name={role.name} color={role.color} />
+        {role.isSystem && (
+          <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-surface-2 px-2 py-0.5 text-xs font-medium text-faint">
+            <ShieldCheck className="h-3 w-3" aria-hidden />
+            Hệ thống
+          </span>
+        )}
+      </span>
       {role.description && (
         <span className="min-w-0 text-sm text-muted max-sm:order-last max-sm:basis-full max-sm:line-clamp-2 sm:flex-1 sm:truncate">
           {role.description}

@@ -165,7 +165,10 @@ export function TeamsPanel() {
                   </div>
                 </div>
 
-                <MemberStack team={t} />
+                {/* ≥ sm: bề rộng cố định (5 avatar + "+N") căn phải → cột avatar thẳng hàng giữa các nhóm. */}
+                <div className="flex sm:w-40 sm:shrink-0 sm:justify-end">
+                  <MemberStack team={t} />
+                </div>
 
                 {canManage && (
                   <div className="flex shrink-0 items-center gap-1">

@@ -305,7 +305,8 @@ export function TriageRow({
           </span>
         )}
 
-        <span className="shrink-0">
+        {/* Luôn chiếm đúng 22px (kể cả chưa giao) để các chip/nút bên trái không xê dịch giữa các dòng. */}
+        <span className="h-[22px] w-[22px] shrink-0">
           {issue.assignee && (
             <Avatar name={issue.assignee.displayName} src={issue.assignee.avatarUrl} size={22} />
           )}

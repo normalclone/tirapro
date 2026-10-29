@@ -171,7 +171,8 @@ function MemberRow({
         <p className="truncate text-sm font-medium text-ink">{m.user.displayName}</p>
         <p className="truncate text-xs text-faint">{m.user.email}</p>
       </div>
-      <div className="flex flex-wrap items-center justify-end gap-1.5">
+      {/* ≥ sm: cột vai trò bề rộng cố định, badge căn phải → thẳng hàng giữa các dòng dù số/độ dài vai trò khác nhau. */}
+      <div className="flex flex-wrap items-center justify-end gap-1.5 sm:w-64 sm:shrink-0">
         {m.roles.length > 0 ? (
           m.roles.map((r) => <RoleBadge key={r.id} name={r.name} color={r.color} />)
         ) : (
@@ -211,7 +212,7 @@ function MemberRow({
               </Button>
             }
           />
-          {m.isOverride && (
+          {m.isOverride ? (
             <Button
               variant="ghost"
               size="icon"
@@ -226,6 +227,13 @@ function MemberRow({
             >
               {isPrivate ? <UserMinus className="h-4 w-4" /> : <History className="h-4 w-4" />}
             </Button>
+          ) : (
+            // Giữ chỗ cùng cỡ nút "về mặc định": cột vai trò không xê dịch giữa dòng đặt riêng và dòng mặc định.
+            <span
+              className="invisible h-9 w-9 max-sm:hidden [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11"
+              aria-hidden
+              data-testid="row-action-placeholder"
+            />
           )}
         </div>
       )}

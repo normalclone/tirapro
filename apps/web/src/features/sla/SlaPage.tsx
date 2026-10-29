@@ -143,7 +143,7 @@ function SlaBoardTable({ rows }: { rows: SlaBoardRow[] }) {
               </Link>
               <span className="min-w-0 flex-1 truncate text-sm text-ink">{r.summary}</span>
               {r.priority && (
-                <span className="hidden shrink-0 items-center text-xs text-muted sm:flex">
+                <span className="hidden w-28 shrink-0 items-center text-xs text-muted sm:flex">
                   <PriorityIcon
                     withLabel
                     name={r.priority.name}
@@ -154,15 +154,25 @@ function SlaBoardTable({ rows }: { rows: SlaBoardRow[] }) {
                 </span>
               )}
               <span
-                className="hidden shrink-0 text-xs text-faint md:inline"
+                className="hidden w-32 shrink-0 truncate text-xs text-faint md:inline"
                 title="Cam kết thời gian xử lý đang áp dụng cho công việc này."
               >
                 {r.policyName}
               </span>
-              {!r.responded && <Badge className="bg-surface-2 text-muted">chưa phản hồi</Badge>}
+              {/* ≥ sm: các cột phải bề rộng cố định (chỗ trống giữ bằng `invisible`) → badge/avatar thẳng hàng giữa các dòng. */}
               <span
                 className={cn(
-                  'shrink-0 rounded px-1.5 py-0.5 text-xs font-medium',
+                  'flex sm:w-28 sm:shrink-0 sm:justify-end',
+                  r.responded && 'max-sm:hidden',
+                )}
+              >
+                <Badge className={cn('bg-surface-2 text-muted', r.responded && 'invisible')}>
+                  chưa phản hồi
+                </Badge>
+              </span>
+              <span
+                className={cn(
+                  'shrink-0 rounded px-1.5 py-0.5 text-center text-xs font-medium sm:w-32',
                   late
                     ? 'bg-danger/10 text-danger'
                     : soonRow
@@ -185,14 +195,14 @@ function SlaBoardTable({ rows }: { rows: SlaBoardRow[] }) {
               </span>
               {r.assignee ? (
                 <span
-                  className="flex shrink-0 items-center gap-1.5"
+                  className="flex shrink-0 items-center justify-end gap-1.5 sm:w-16"
                   title={`Người xử lý: ${r.assignee.displayName}`}
                 >
                   <Avatar name={r.assignee.displayName} src={r.assignee.avatarUrl} size={20} />
                 </span>
               ) : (
                 <span
-                  className="shrink-0 text-[11px] text-faint"
+                  className="shrink-0 text-right text-[11px] text-faint sm:w-16"
                   title="Chưa ai nhận việc này — hãy giao người để đồng hồ có chủ."
                 >
                   Chưa giao
