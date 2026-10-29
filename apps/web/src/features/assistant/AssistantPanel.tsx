@@ -387,6 +387,7 @@ function AssistantFloating() {
   // thử lại vài nhịp và chỉ kéo focus về khi nó đang ở ngoài cửa sổ.
   useEffect(() => {
     if (!open || minimized) return;
+    wantBubbleFocus.current = false; // mở lại khi đang đóng dở: bỏ yêu cầu trả focus về bong bóng
     inputRef.current?.focus();
     const timers = [60, 200, 450].map((ms) =>
       window.setTimeout(() => {

@@ -159,3 +159,21 @@ describe('vòng review 1', () => {
     expect(kind('tạo task bằng email được không')).toBe('help');
   });
 });
+
+describe('"của tôi" kèm loại / khoảng hạn', () => {
+  const table: [string, Intent][] = [
+    ['bug của tôi', { kind: 'my-issues', bug: true }],
+    ['Lỗi của tôi', { kind: 'my-issues', bug: true }],
+    ['bug cua toi hom nay', { kind: 'my-issues', bug: true, period: 'today' }],
+    ['việc của tôi hôm nay', { kind: 'my-issues', period: 'today' }],
+    ['việc của tôi tuần này', { kind: 'my-issues', period: 'week' }],
+    ['viec cua toi trong tuan', { kind: 'my-issues', period: 'week' }],
+    ['việc của tôi', { kind: 'my-issues' }],
+    ['việc tôi được giao', { kind: 'my-issues' }],
+  ];
+  for (const [t, want] of table) it(`"${t}"`, () => expect(detectIntent(t)).toEqual(want));
+  it('"lỗi tôi gặp" và "bug tôi" (không có "của") không phải danh sách của tôi', () => {
+    expect(kind('lỗi tôi gặp khi đăng nhập')).not.toBe('my-issues');
+    expect(kind('bug tôi')).not.toBe('my-issues');
+  });
+});

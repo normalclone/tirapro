@@ -2,10 +2,24 @@ import { parseJql } from '@tirapro/shared';
 import { describe, expect, it } from 'vitest';
 import { dueJql, filtersHref, myIssuesJql, overdueJql, searchJql } from './queries';
 
+describe('JQL việc của tôi theo loại/hạn', () => {
+  it('thêm đúng điều kiện loại Bug và hạn', () => {
+    expect(myIssuesJql(null, { bug: true })).toBe(
+      'assignee = currentUser() AND type ~ "bug" AND statusCategory != DONE ORDER BY updated DESC',
+    );
+    expect(myIssuesJql(null, { period: 'week' })).toBe(
+      'assignee = currentUser() AND due >= startOfDay() AND due <= endOfWeek() AND statusCategory != DONE ORDER BY due ASC',
+    );
+    expect(myIssuesJql('X', { period: 'today' })).toContain('due <= endOfDay()');
+  });
+});
+
 describe('JQL của Trợ lý', () => {
   const all = [
     myIssuesJql(),
     myIssuesJql('DEMO'),
+    myIssuesJql('DEMO', { bug: true, period: 'week' }),
+    myIssuesJql(undefined, { period: 'today' }),
     overdueJql(),
     overdueJql('DEMO'),
     dueJql('week'),

@@ -385,14 +385,18 @@ export async function respond(
     }
     case 'sprint-status':
       return sprintStatus(e, deps);
-    case 'my-issues':
+    case 'my-issues': {
+      const what = `${intent.bug ? 'Bug' : 'Việc'} đang giao cho bạn${
+        intent.period ? (intent.period === 'week' ? ' đến hạn tuần này' : ' đến hạn hôm nay') : ''
+      }`;
       return issueList(
-        'Việc đang giao cho bạn',
-        myIssuesJql(key),
+        what,
+        myIssuesJql(key, { bug: intent.bug, period: intent.period }),
         e,
         deps,
-        `Bạn chưa có việc nào đang mở ${scopeLabel(e)}.`,
+        `Bạn chưa có ${intent.bug ? 'bug' : 'việc'} nào đang mở${intent.period ? (intent.period === 'week' ? ' đến hạn tuần này' : ' đến hạn hôm nay') : ''} ${scopeLabel(e)}.`,
       );
+    }
     case 'overdue':
       return issueList(
         'Việc quá hạn',

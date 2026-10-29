@@ -10,9 +10,23 @@ const and = (...parts: (string | false | undefined)[]): string =>
 const scope = (projectKey?: string | null): string | undefined =>
   projectKey ? `project = ${quote(projectKey)}` : undefined;
 
-/** Việc đang giao cho tôi và chưa xong. */
-export const myIssuesJql = (projectKey?: string | null): string =>
-  `${and(scope(projectKey), 'assignee = currentUser()', 'statusCategory != DONE')} ORDER BY updated DESC`;
+/**
+ * Việc đang giao cho tôi và chưa xong; tuỳ chọn thu hẹp theo loại Bug (cùng cách `type ~ "bug"` của Tổng quan) và theo hạn
+ * (hôm nay / hết tuần này).
+ */
+export const myIssuesJql = (
+  projectKey?: string | null,
+  o: { bug?: boolean; period?: 'week' | 'today' } = {},
+): string =>
+  `${and(
+    scope(projectKey),
+    'assignee = currentUser()',
+    o.bug && 'type ~ "bug"',
+    o.period && 'due >= startOfDay()',
+    o.period === 'week' && 'due <= endOfWeek()',
+    o.period === 'today' && 'due <= endOfDay()',
+    'statusCategory != DONE',
+  )} ORDER BY ${o.period ? 'due ASC' : 'updated DESC'}`;
 
 /** Việc chưa xong có hạn trước hôm nay. */
 export const overdueJql = (projectKey?: string | null): string =>

@@ -32,12 +32,15 @@ export function mobileWindowStyle(o: {
     : { bottom, right: 8, top: 8 + Math.round(o.offsetTop) };
 }
 
-/** Có cần kéo focus về ô nhập không: focus đang ở body/ngoài cửa sổ (vd Radix của Cmd+K vừa trả focus về trang). */
+/**
+ * Có cần kéo focus về ô nhập không: CHỈ khi focus đang ở body/null — đúng triệu chứng Radix của Cmd+K trả focus về trang.
+ * Người dùng đã chủ động focus một phần tử khác (ô của trang, nút…) thì không giật lại.
+ */
 export function shouldRefocus(
   active: Element | null,
   body: Element,
   win: { contains(n: Node): boolean } | null,
 ): boolean {
   if (!win) return false;
-  return !active || active === body || !win.contains(active);
+  return !active || active === body;
 }

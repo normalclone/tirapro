@@ -21,7 +21,8 @@ export type Intent =
   | { kind: 'issue-summary' }
   /** "Sprint hiện tại thế nào" (trong dự án). */
   | { kind: 'sprint-status' }
-  | { kind: 'my-issues' }
+  /** `bug` = chỉ loại Bug; `period` = chỉ việc có hạn hôm nay / hết tuần này. */
+  | { kind: 'my-issues'; bug?: boolean; period?: 'week' | 'today' }
   | { kind: 'overdue' }
   | { kind: 'due'; period: 'week' | 'today' }
   /** Có mã công việc trong câu ("BUG-12", "mở DEMO-TASK-3"). */
@@ -159,6 +160,13 @@ const SPRINT_ACTION = /(tao|them|bat dau|ket thuc|xoa|dong|lap|chuyen) (moi )?sp
 /** Phần "tiêu đề" thực ra là câu hỏi ngắn → không tạo việc. */
 const QUESTION_TAIL = /^(the nao|ra sao|nhu the nao|o dau|duoc khong|la gi|duoc nhi)$/;
 
+/** "việc của tôi [đang làm|được giao] [hôm nay|tuần này]" — danh từ chung; "bug/lỗi của tôi" bắt buộc có "của" (tránh "lỗi tôi gặp…"). */
+const PERIOD_TAIL = '( hom nay| tuan nay| trong tuan)?$';
+const MINE = new RegExp(
+  `(^| )(viec|task|issue|cong viec|ticket)( cua)? (toi|minh)( dang lam| duoc giao| phai lam)?${PERIOD_TAIL}`,
+);
+const MINE_BUG = new RegExp(`(^| )(bug|loi) cua (toi|minh)${PERIOD_TAIL}`);
+
 const HELLO = /^(xin chao|chao|hello|hi|hey|alo|chao ban|chao bot|hello bot|hi bot)$/;
 const CAPS =
   /^(help|tro giup|giup|giup toi|ban lam duoc gi|ban co the lam gi|ban giup duoc gi|tro ly lam duoc gi|co the lam gi|lam duoc gi|ban la ai)$/;
@@ -249,17 +257,24 @@ export function detectIntent(raw: string): Intent {
       if (has(n, /hom nay/)) return { kind: 'due', period: 'today' };
       return { kind: 'due', period: 'week' }; // không nói rõ → tuần này
     }
+    const bug = MINE_BUG.test(n);
     if (
-      has(
-        n,
-        /(^| )(viec|task|issue|cong viec|ticket)( cua)? (toi|minh)( dang lam| duoc giao| phai lam)?$/,
-      ) ||
+      bug ||
+      MINE.test(n) ||
       has(
         n,
         /(toi|minh) (duoc giao|dang lam|phai lam)|giao cho (toi|minh)|assigned to me|my (tasks|issues)/,
       )
     )
-      return { kind: 'my-issues' };
+      return {
+        kind: 'my-issues',
+        ...(bug ? { bug } : {}),
+        ...(/hom nay/.test(n)
+          ? { period: 'today' as const }
+          : /tuan/.test(n)
+            ? { period: 'week' as const }
+            : {}),
+      };
     const search = parseSearch(text);
     if (search) return { kind: 'search', query: search };
     const key = findIssueKey(text);

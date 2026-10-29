@@ -40,13 +40,13 @@ describe('shouldRefocus (focus sau Cmd+K)', () => {
   const inside = { id: 'in' } as unknown as Element;
   const outside = { id: 'out' } as unknown as Element;
   const win = { contains: (n: Node) => (n as unknown) === inside };
-  it('focus ở body/ngoài cửa sổ → kéo về ô nhập', () => {
+  it('focus ở body/null → kéo về ô nhập', () => {
     expect(shouldRefocus(null, body, win)).toBe(true);
     expect(shouldRefocus(body, body, win)).toBe(true);
-    expect(shouldRefocus(outside, body, win)).toBe(true);
   });
-  it('focus đã trong cửa sổ, hoặc cửa sổ chưa có → để yên', () => {
+  it('người dùng đã focus phần tử khác (trong hay ngoài cửa sổ), hoặc cửa sổ chưa có → để yên', () => {
     expect(shouldRefocus(inside, body, win)).toBe(false);
-    expect(shouldRefocus(outside, body, null)).toBe(false);
+    expect(shouldRefocus(outside, body, win)).toBe(false);
+    expect(shouldRefocus(null, body, null)).toBe(false);
   });
 });

@@ -45,7 +45,7 @@ Nhận diện không dấu, không phân biệt hoa/thường (`normalizeVi` c�
 | 2b | Tóm tắt việc | "tóm tắt việc này" (trang `/issue/:key`) | `GET /issues/:key`, `GET /issues/:id/comments`, danh sách việc dự án | Loại, trạng thái, người phụ trách, ưu tiên, hạn (kèm "quá hạn N ngày"), số việc con, số bình luận, link mở |
 | 2c | Sprint | "sprint hiện tại thế nào" (trong dự án) | `GET /sprints?projectId=`, danh sách việc dự án (cache Bảng việc) | Tên sprint ACTIVE, ngày kết thúc (còn/quá N ngày), số việc, đếm theo To Do / In Progress / Done, mục tiêu. Ngoài dự án: hỏi chọn dự án (chip) |
 | 2d | Chip theo màn | mở ô chat | `screens.ts` | Lời chào + 3–4 chip hợp màn (vd Bảng việc: "Sprint hiện tại thế nào", "Việc quá hạn", "Tạo việc", "Phím tắt") |
-| 3a | Việc của tôi | "việc của tôi", "việc tôi được giao" | `GET /search?jql=` | `assignee = currentUser() AND statusCategory != DONE` |
+| 3a | Việc của tôi | "việc của tôi", "việc tôi được giao", "bug của tôi", "việc của tôi hôm nay / tuần này" | `GET /search?jql=` | `assignee = currentUser() AND statusCategory != DONE`; thêm `type ~ "bug"` khi hỏi bug/lỗi (bắt buộc có "của" — "lỗi tôi gặp…" không tính), thêm `due >= startOfDay() AND due <= endOfDay()/endOfWeek()` khi có "hôm nay"/"tuần này" |
 | 3b | Quá hạn | "việc quá hạn" | `GET /search?jql=` | `due < startOfDay() AND statusCategory != DONE` |
 | 3c | Đến hạn | "việc đến hạn tuần này", "…hôm nay" | `GET /search?jql=` | `due >= startOfDay() AND due <= endOfWeek()` (hoặc `endOfDay()`) và chưa Done; không nói khoảng → tuần này |
 | 3d | Tìm | "tìm đăng nhập" | `GET /search?jql=` | `text ~ "<từ khoá>"` (từ khoá thoát `\` và `"`) |
@@ -117,6 +117,7 @@ Chỉ dùng API sẵn có qua `queryClient.fetchQuery` trên **cùng khoá cache
 - Số việc của sprint đếm từ danh sách việc dự án nạp ở FE (trần `ISSUE_LIST_HARD_CAP` của Bảng việc).
 - Thẻ nháp đang "creating" mà tải lại trang quay về "pending": nếu request đã thành công trước đó, bấm Tạo lần nữa sẽ tạo bản sao (người dùng tự bấm; chấp nhận).
 - Toast "Đã tạo KEY" chỉ hiện khi ô chat đang thu nhỏ/đóng (khi đang mở, thẻ trong luồng đã báo — toast không đè ô nhập).
-- Câu ngắn (≤4 từ) có mã việc luôn tra theo mã (vd "BUG-12 quá hạn chưa").
+- Câu ngắn (≤4 từ) có mã việc luôn tra theo mã (vd "BUG-12 quá hạn chưa", "tìm BUG-12" → tóm tắt thay vì tìm văn bản).
+- Retry focus sau Cmd+K chỉ kéo focus về ô nhập khi focus đang ở body/null (không giật khi người dùng đã chủ động focus chỗ khác).
 - Hội thoại đã lưu được lọc khi đọc: chỉ nhận liên kết nội bộ (bắt đầu bằng `/`, không `//`).
 - Phát hiện `tirapro:tour` chỉ chạy được khi màn có tour; màn không có thì không có nút.

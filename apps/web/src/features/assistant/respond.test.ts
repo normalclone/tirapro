@@ -141,6 +141,17 @@ describe('hỏi dữ liệu hệ thống', () => {
     expect(decodeURIComponent(find(out, 'issues')!.seeAllTo)).not.toContain('project');
     expect(find(out, 'issues')!.more).toBe(false);
   });
+  it('"bug của tôi hôm nay": JQL lọc loại Bug + hạn hôm nay, tiêu đề nói rõ', async () => {
+    const seen: string[] = [];
+    const out = await run(
+      'bug của tôi hôm nay',
+      ENV,
+      makeDeps({ searchJql: (j) => Promise.resolve((seen.push(j), { items, hasMore: false })) }),
+    );
+    expect(seen[0]).toContain('type ~ "bug"');
+    expect(seen[0]).toContain('due <= endOfDay()');
+    expect(allText(out)).toContain('Bug đang giao cho bạn đến hạn hôm nay');
+  });
   it('còn trang kế → ghi "hơn N"', async () => {
     const out = await run(
       'việc quá hạn',
