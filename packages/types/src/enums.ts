@@ -289,6 +289,7 @@ export const ImportSource = {
   JIRA_CLOUD: 'JIRA_CLOUD',
   JIRA_SERVER: 'JIRA_SERVER',
   CSV: 'CSV',
+  EXCEL: 'EXCEL',
 } as const;
 export type ImportSource = (typeof ImportSource)[keyof typeof ImportSource];
 

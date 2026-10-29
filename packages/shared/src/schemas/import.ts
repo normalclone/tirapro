@@ -58,3 +58,50 @@ export const jiraImportRunSchema = z
 export type JiraMappingInput = z.infer<typeof jiraMappingSchema>;
 export type JiraImportOptions = z.infer<typeof jiraImportOptionsSchema>;
 export type JiraImportRunInput = z.infer<typeof jiraImportRunSchema>;
+
+/* ---- Nhập từ biểu mẫu Excel ---- */
+
+/** Giới hạn của biểu mẫu Excel (API và web dùng chung). */
+export const EXCEL_IMPORT_MAX_BYTES = 5 * 1024 * 1024;
+export const EXCEL_IMPORT_MAX_ROWS = 1000;
+
+export const excelImportBodySchema = z.object({
+  projectId: z.string().min(1, 'Thiếu mã dự án'),
+});
+export type ExcelImportBody = z.infer<typeof excelImportBodySchema>;
+
+export interface ExcelRowIssue {
+  /** Tên cột trong biểu mẫu (vd "Người phụ trách"). */
+  column: string;
+  message: string;
+}
+
+export interface ExcelPreviewRow {
+  /** Số dòng Excel thật (dòng 1 là tiêu đề nên dữ liệu bắt đầu từ 2). */
+  row: number;
+  /** Tiêu đề công việc (để người dùng nhận ra dòng) — có thể rỗng khi thiếu. */
+  summary: string;
+  errors: ExcelRowIssue[];
+  warnings: ExcelRowIssue[];
+}
+
+export interface ExcelPreviewResult {
+  total: number;
+  valid: number;
+  invalid: number;
+  rows: ExcelPreviewRow[];
+}
+
+export interface ExcelImportRowError {
+  row: number;
+  error: string;
+}
+
+export interface ExcelImportResult {
+  jobId: string;
+  source: 'EXCEL';
+  created: number;
+  failed: number;
+  total: number;
+  errors: ExcelImportRowError[];
+}
