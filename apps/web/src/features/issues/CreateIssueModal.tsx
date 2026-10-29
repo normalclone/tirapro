@@ -11,7 +11,6 @@ import { uploadAttachmentFile } from '@/features/attachments/api';
 import { FileDrop } from '@/features/attachments/FileDrop';
 import { MarkdownEditor } from '@/features/issue-edit/MarkdownEditor';
 import { Button } from '@/components/ui/Button';
-import { SplitButton } from '@/components/ui/SplitButton';
 import { SUBMIT_ALT_SHORTCUT, SUBMIT_SHORTCUT } from '@/lib/submitShortcut';
 import { Dialog } from '@/components/ui/Dialog';
 import { ErrorSummary } from '@/components/ui/ErrorSummary';
@@ -476,8 +475,12 @@ export function CreateIssueModal() {
     close();
   }
 
+  // Nút nào vừa bấm (để spinner hiện đúng nút; Cmd+Enter / Cmd+Shift+Enter cũng đi qua hai hàm dưới).
+  const [via, setVia] = useState<'create' | 'another'>('create');
+
   // Tạo xong → đóng popup + mở issue mới.
   async function submitCreate() {
+    setVia('create');
     const created = await doCreate();
     if (!created) return;
     toast.success(`Đã tạo công việc ${created.key}`);
@@ -487,6 +490,7 @@ export function CreateIssueModal() {
 
   // Tạo xong → GIỮ popup mở, xoá phần riêng của việc vừa tạo để nhập tiếp (giữ dự án/loại/sprint…).
   async function createAnother() {
+    setVia('another');
     const created = await doCreate();
     if (!created) return;
     toast.success(`Đã tạo ${created.key} — mời bạn nhập việc tiếp theo`);
@@ -529,32 +533,28 @@ export function CreateIssueModal() {
           <Button type="button" variant="ghost" onClick={close}>
             Huỷ
           </Button>
-          <SplitButton
+          {/* Hai nút ngang hàng: thấy ngay "Tạo & nhập tiếp" (không giấu trong menu) — spinner hiện ở nút vừa bấm. */}
+          <Button
+            type="button"
+            variant="secondary"
+            title={`Tạo rồi giữ cửa sổ, chỉ xoá tiêu đề và mô tả (${SUBMIT_ALT_SHORTCUT.label})`}
+            aria-keyshortcuts={SUBMIT_ALT_SHORTCUT.keys}
+            loading={(create.isPending || busy) && via === 'another'}
+            disabled={metaLoading || create.isPending || busy}
+            onClick={() => void createAnother()}
+          >
+            Tạo &amp; nhập tiếp
+          </Button>
+          <Button
             type="submit"
             form="create-issue-form"
-            title="Tạo rồi mở công việc vừa tạo"
-            menuLabel="Tuỳ chọn tạo khác"
-            loading={create.isPending || busy}
-            disabled={metaLoading}
-            items={[
-              {
-                id: 'another',
-                label: 'Tạo & nhập tiếp',
-                hint: 'Giữ cửa sổ, chỉ xoá tiêu đề và mô tả',
-                onSelect: () => createAnother(),
-                shortcut: SUBMIT_ALT_SHORTCUT,
-              },
-              {
-                id: 'open',
-                label: 'Tạo & mở',
-                hint: 'Đóng cửa sổ và mở công việc vừa tạo',
-                onSelect: () => submitCreate(),
-                shortcut: SUBMIT_SHORTCUT,
-              },
-            ]}
+            title={`Tạo rồi mở công việc vừa tạo (${SUBMIT_SHORTCUT.label})`}
+            aria-keyshortcuts={SUBMIT_SHORTCUT.keys}
+            loading={(create.isPending || busy) && via === 'create'}
+            disabled={metaLoading || create.isPending || busy}
           >
             Tạo
-          </SplitButton>
+          </Button>
         </>
       }
     >
@@ -671,20 +671,20 @@ export function CreateIssueModal() {
             >
               <span>Gõ nhanh ngay trong tiêu đề:</span>
               <span>
-                <code className="rounded bg-surface-2 px-1 text-ink">!ưu-tiên</code>
+                <code className="rounded bg-primary-subtle px-1 text-primary">!ưu-tiên</code>
               </span>
               <span>
-                <code className="rounded bg-surface-2 px-1 text-ink">@người</code>
+                <code className="rounded bg-primary-subtle px-1 text-primary">@người</code>
               </span>
               <span>
-                <code className="rounded bg-surface-2 px-1 text-ink">#sprint</code>
+                <code className="rounded bg-primary-subtle px-1 text-primary">#sprint</code>
               </span>
               <span>
-                <code className="rounded bg-surface-2 px-1 text-ink">~điểm</code>
+                <code className="rounded bg-primary-subtle px-1 text-primary">~điểm</code>
               </span>
               <span>
-                <code className="rounded bg-surface-2 px-1 text-ink">^hạn</code> (mai · t6 · 3d · 2w
-                · 15/8)
+                <code className="rounded bg-primary-subtle px-1 text-primary">^hạn</code> (mai · t6
+                · 3d · 2w · 15/8)
               </span>
             </p>
           </Field>
