@@ -12,6 +12,7 @@ Bộ tài liệu đặc tả yêu cầu phần mềm (SRS) của Tirapro (Jira c
 |---|---|---|---|---|
 | [00-tong-quan.md](00-tong-quan.md) | Giới thiệu, phạm vi, thuật ngữ, bối cảnh kỹ thuật, nhóm chức năng, actor, ràng buộc chung | 0.1 | 2026-10-29 | Bản nháp |
 | [10-import-hang-loat.md](10-import-hang-loat.md) | Nhập công việc hàng loạt: biểu mẫu Excel (chính), CSV, JSON, lịch sử nhập (Jira: chỉ tóm lược) | 0.1 | 2026-10-29 | Đã đối chiếu code |
+| [11-tro-ly-chatbot.md](11-tro-ly-chatbot.md) | Trợ lý Tirapro (ô chat nổi, chế độ cơ bản không AI ngoài): ý định, kho hướng dẫn, tra việc, tạo việc nháp → xác nhận | 0.1 | 2026-10-29 | Đã đối chiếu code |
 
 Đánh số: `00` tổng quan; `10`, `20`, … là các nhóm chức năng (chừa chỗ chèn thêm tài liệu). Các nhóm chức năng chưa có file được liệt kê ở [00-tong-quan.md §4](00-tong-quan.md#4-nhóm-chức-năng) với ghi chú "chưa đặc tả chi tiết".
 

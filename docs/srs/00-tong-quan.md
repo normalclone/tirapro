@@ -49,7 +49,8 @@ Lấy từ `docs/FEATURES_BY_ACTOR.md`. Cột "Đặc tả" trỏ tới tài li�
 | 11 | **Nhập/xuất dữ liệu hàng loạt** (biểu mẫu Excel, CSV, JSON, xuất CSV/JSON) | [10-import-hang-loat.md](10-import-hang-loat.md) (nhập: chi tiết; xuất: chưa đặc tả) |
 | 12 | Tích hợp (Telegram, digest/báo cáo định kỳ, nhập từ Jira) | Chưa đặc tả chi tiết (Jira: tóm lược ở tài liệu 10) |
 | 13 | Wiki, rủi ro (RAID), nhân lực, Danh mục (portfolio) | Chưa đặc tả chi tiết |
-| 14 | Command palette (Cmd+K), phím tắt, PWA | Chưa đặc tả chi tiết (lệnh "Nhập công việc từ Excel": xem tài liệu 10) |
+| 14 | Command palette (Cmd+K), phím tắt, PWA | Chưa đặc tả chi tiết (lệnh "Nhập công việc từ Excel": xem tài liệu 10; lệnh "Hỏi trợ lý" và phím `g a`: xem tài liệu 11) |
+| 15 | **Trợ lý Tirapro** (ô chat nổi, chế độ cơ bản: hỏi đáp theo màn hình, hướng dẫn, tra việc, soạn nháp tạo việc) | [11-tro-ly-chatbot.md](11-tro-ly-chatbot.md) |
 
 ## 5. Bối cảnh kỹ thuật
 
