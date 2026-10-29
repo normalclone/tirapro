@@ -267,9 +267,12 @@ export function TimeOffPanel({
                   </span>
                 )}
 
-                <Badge className={KIND_META[t.kind].className}>{KIND_META[t.kind].label}</Badge>
+                {/* ≥ sm: cột loại + cột ngày bề rộng cố định → ngày/ghi chú thẳng hàng dù nhãn loại dài ngắn khác nhau. */}
+                <span className="sm:w-28 sm:shrink-0">
+                  <Badge className={KIND_META[t.kind].className}>{KIND_META[t.kind].label}</Badge>
+                </span>
 
-                <span className="whitespace-nowrap text-sm tabular-nums text-muted">
+                <span className="whitespace-nowrap text-sm tabular-nums text-muted sm:w-32 sm:shrink-0">
                   {fmtDayMonth(t.startDate)} – {fmtDayMonth(t.endDate)}
                 </span>
 
