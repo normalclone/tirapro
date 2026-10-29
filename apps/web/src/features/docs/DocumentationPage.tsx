@@ -12,6 +12,7 @@ import { cn } from '@/lib/utils';
 import { SHORTCUT_GROUPS, shortcutsOf, type ShortcutScope } from '@/lib/shortcuts';
 import { SHOW_DEMO_ACCOUNTS } from '@/features/auth/demoLogin';
 import { ScrollX } from '@/components/ui/ScrollX';
+import { DOC_NAV } from './docsIndex';
 
 /* ============================ Khối trợ giúp UI ============================ */
 
@@ -40,8 +41,8 @@ function Mono({ children }: { children: ReactNode }) {
 function H2({ id, children }: { id: string; children: ReactNode }) {
   return <h2 id={id} className="mb-3 scroll-mt-6 border-b border-border pb-2 text-2xl font-semibold tracking-tight text-ink-strong">{children}</h2>;
 }
-function H3({ children }: { children: ReactNode }) {
-  return <h3 className="mb-2 mt-7 text-[15px] font-semibold text-ink-strong">{children}</h3>;
+function H3({ id, children }: { id?: string; children: ReactNode }) {
+  return <h3 id={id} className="mb-2 mt-7 scroll-mt-6 text-[15px] font-semibold text-ink-strong">{children}</h3>;
 }
 function P({ children }: { children: ReactNode }) {
   return <p className="mb-3 text-[15px] leading-relaxed text-muted">{children}</p>;
@@ -207,12 +208,7 @@ function Legend() {
 
 /* ============================ Cấu trúc điều hướng ============================ */
 
-const NAV: { group: string; items: [string, string][] }[] = [
-  { group: 'Bắt đầu', items: [['gioi-thieu', 'Giới thiệu'], ['khai-niem', 'Khái niệm cơ bản'], ['dang-nhap', 'Đăng nhập & tài khoản'], ['vai-tro', 'Hiểu về vai trò']] },
-  { group: 'Ai cũng dùng', items: [['dieu-huong', 'Điều hướng & Cmd+K'], ['lam-viec-issue', 'Thao tác với công việc'], ['thong-bao', 'Thông báo & theo dõi'], ['tim-kiem', 'Tìm kiếm & bộ lọc'], ['ca-nhan', 'Cá nhân hoá']] },
-  { group: 'Theo vai trò', items: [['vt-reporter', 'Người báo cáo'], ['vt-developer', 'Lập trình viên'], ['vt-lead', 'Quản trị dự án'], ['vt-ws-admin', 'Quản trị chung'], ['vt-viewer', 'Người xem'], ['vt-sys-admin', 'Quản trị hệ thống']] },
-  { group: 'Nâng cao', items: [['quan-ly-nang-cao', 'Quản lý nâng cao'], ['ai', 'AI hỗ trợ'], ['bao-cao', 'Báo cáo & phân tích'], ['tich-hop', 'Tích hợp'], ['phim-tat', 'Phím tắt'], ['faq', 'Câu hỏi thường gặp']] },
-];
+const NAV = DOC_NAV;
 const ALL_IDS = NAV.flatMap((g) => g.items.map((i) => i[0]));
 const LABEL = (id: string) => NAV.flatMap((g) => g.items).find((i) => i[0] === id)?.[1];
 
@@ -422,7 +418,7 @@ export function DocumentationPage() {
                 <Feature icon={<Filter className="h-4 w-4" />} title="Lọc nhanh & bộ lọc lưu">Chip lọc nhanh <em>Của tôi · Quá hạn · Chưa gán</em> trên Bảng việc &amp; Việc chờ; lưu bộ lọc cá nhân để dùng lại.</Feature>
                 <Feature icon={<Sparkles className="h-4 w-4" />} title="Tìm kiếm ngữ nghĩa (AI)">Tìm theo ý nghĩa gần đúng thay vì đúng từ khoá; tự giảm về tìm toàn văn khi chưa bật embedding.</Feature>
               </div>
-              <H3>Cú pháp JQL (nâng cao)</H3>
+              <H3 id="cu-phap-jql">Cú pháp JQL (nâng cao)</H3>
               <P>Ô tìm kiếm nâng cao hỗ trợ JQL để lọc chính xác, ví dụ:</P>
               <Cmd code={`assignee = me AND status != "Done" ORDER BY priority DESC`} />
               <P>Ô soạn truy vấn tự gợi ý trường và giá trị khi gõ; <Mono>me</Mono> (hoặc <Mono>currentUser()</Mono>) là chính bạn. Giá trị sai được báo kèm gợi ý “ý bạn là…”. Kết quả hiện dạng bảng — chọn cột hiển thị, bấm <em>Xuất CSV</em>, hoặc <em>Lưu truy vấn</em> ngay cạnh nút Chạy để dùng lại.</P>
@@ -453,7 +449,7 @@ export function DocumentationPage() {
                   'Cấu hình dự án, bảng việc hay quy trình.',
                 ]}
               />
-              <H3>Báo một bug</H3>
+              <H3 id="bao-mot-bug">Báo một bug</H3>
               <Steps items={[
                 <>Mở <Kbd>⌘</Kbd> <Kbd>K</Kbd> → <em>Báo lỗi</em> (hoặc nút <em>Báo lỗi</em> ở đầu Bảng việc / nút nổi).</>,
                 'Nhập tiêu đề ngắn gọn; chế độ Cơ bản chỉ bắt buộc tiêu đề (mô tả ngắn là tuỳ chọn; môi trường và mức nghiêm trọng mặc định tự điền), chế độ Nâng cao có mẫu tái hiện, mức nghiêm trọng, môi trường (trình duyệt / hệ điều hành / bản build / URL) và ảnh dán trực tiếp.',
@@ -496,7 +492,7 @@ export function DocumentationPage() {
                   'Dùng trợ lý AI lập kế hoạch sprint; xem mọi báo cáo dự án.',
                 ]}
               />
-              <H3>Lập &amp; chạy một sprint</H3>
+              <H3 id="lap-chay-sprint">Lập &amp; chạy một sprint</H3>
               <Steps items={[
                 'Vào Việc chờ, kéo các công việc ưu tiên vào sprint mới (hoặc nhờ AI gợi ý phạm vi).',
                 <>Bấm <strong>Bắt đầu sprint</strong>, đặt thời hạn và mục tiêu.</>,
@@ -518,7 +514,7 @@ export function DocumentationPage() {
                   'Kế thừa quyền Quản trị dự án ở mọi dự án.',
                 ]}
               />
-              <H3>Thêm người mới &amp; phân quyền</H3>
+              <H3 id="them-nguoi-phan-quyen">Thêm người mới &amp; phân quyền</H3>
               <Steps items={[
                 <>Vào trang <strong>Thành viên</strong> của không gian làm việc, chọn người có sẵn hoặc tạo tài khoản mới, rồi chọn vai trò chung cho họ.</>,
                 <>Xong! Họ đã tham gia mọi dự án công khai (dự án riêng tư cần thêm họ riêng). Chỉ khi cần vai trò khác mặc định ở một dự án, vào <strong>dự án → Cấu hình → Thành viên</strong> để <em>đặt vai trò riêng</em>.</>,
@@ -605,6 +601,7 @@ export function DocumentationPage() {
               <P>Kết nối Tirapro với công cụ khác. Do quản trị chung bật và cấu hình. Thiếu cấu hình thì tính năng tắt êm, app vẫn chạy.</P>
               <div className="border-t border-border">
                 <Feature icon={<Plug className="h-4 w-4" />} title="Telegram">Hệ thống chỉ <strong>gửi</strong> tin (thông báo, digest) — không nhận lệnh tạo việc. Quản trị chung làm theo trình hướng dẫn 4 bước: nhập token bot → thêm bot vào nhóm → gõ <Mono>/link@tên_bot MÃ</Mono> trong nhóm để liên kết nhóm với không gian làm việc → gửi thử. Trạng thái kết nối hiện thật trên trang.</Feature>
+                <Feature icon={<ListPlus className="h-4 w-4" />} title="Nhập công việc từ Excel">Vào dự án → <strong>Cấu hình → Xuất / Nhập dữ liệu → Nhập từ Excel</strong>: tải biểu mẫu <Mono>.xlsx</Mono> của dự án (có sẵn danh sách chọn loại việc, ưu tiên, người, sprint…), điền, kéo-thả tệp vào để xem trước lỗi từng dòng rồi bấm Nhập. Cần quyền nhập dữ liệu.</Feature>
                 <Feature icon={<ArrowUpRight className="h-4 w-4" />} title="Nhập từ Jira">Nhập từ tệp CSV xuất từ Jira (công việc, bình luận, tệp đính kèm); tự khớp loại, mức ưu tiên và trạng thái, chạy nền có hiển thị tiến độ. Công việc nhập mang <strong>đúng mã gốc</strong> (vd <Mono>JRA-1</Mono>); việc tạo mới sau đó vẫn theo mã Tirapro. Nhập lại bỏ qua việc đã có mã. Người phụ trách chưa là thành viên sẽ tự được gán khi được thêm vào không gian làm việc.</Feature>
                 <Feature icon={<KeyRound className="h-4 w-4" />} title="API key & MCP">Tạo API key ở <strong>Cài đặt → API &amp; kết nối lập trình</strong> cho phần mềm ngoài hoặc trợ lý AI (MCP) truy cập dữ liệu — chọn chỉ-đọc hoặc đọc-ghi, thu hồi bất cứ lúc nào.</Feature>
               </div>
