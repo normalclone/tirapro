@@ -260,19 +260,31 @@ function MemberRow({
         </div>
       </div>
 
-      <MemberRolesCell
-        member={member}
-        members={members}
-        roles={roles}
-        canManage={canManage}
-        isSelf={isSelf}
-      />
+      {/* ≥ sm: ba cột bề rộng cố định (vai trò · trạng thái · hành động) để badge thẳng hàng giữa các dòng. */}
+      <div className="min-w-0 sm:w-56 sm:shrink-0">
+        <MemberRolesCell
+          member={member}
+          members={members}
+          roles={roles}
+          canManage={canManage}
+          isSelf={isSelf}
+        />
+      </div>
 
-      <Badge className={status.className}>{status.label}</Badge>
+      <div className="flex sm:w-36 sm:shrink-0 sm:justify-end">
+        <Badge className={status.className}>{status.label}</Badge>
+      </div>
 
       {canManage && (
-        <div className="flex shrink-0 items-center gap-1 max-sm:ml-auto">
-          {!isSelf && (
+        <div className="flex shrink-0 items-center justify-end max-sm:ml-auto">
+          {isSelf ? (
+            // Giữ chỗ cùng kích thước nút gỡ: dòng của mình không làm các cột trước đó xê dịch.
+            <span
+              className="invisible h-9 w-9 max-sm:hidden [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11"
+              aria-hidden
+              data-testid="member-action-placeholder"
+            />
+          ) : (
             <Button
               variant="ghost"
               size="icon"

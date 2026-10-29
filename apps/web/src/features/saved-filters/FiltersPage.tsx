@@ -666,7 +666,7 @@ function SavedFilterList({
                   >
                     <Share2 className="h-4 w-4" aria-hidden />
                   </Button>
-                  {f.isOwner && canManage && (
+                  {f.isOwner && canManage ? (
                     <Button
                       variant="ghost"
                       size="icon"
@@ -677,6 +677,13 @@ function SavedFilterList({
                     >
                       {deleting !== f.id && <Trash2 className="h-4 w-4" aria-hidden />}
                     </Button>
+                  ) : (
+                    // Giữ chỗ nút xoá: nút "Chia sẻ" không xê dịch giữa bộ lọc của mình và của người khác.
+                    <span
+                      className="invisible h-7 w-7 shrink-0 max-sm:hidden [@media(pointer:coarse)]:h-9 [@media(pointer:coarse)]:w-9"
+                      aria-hidden
+                      data-testid="row-action-placeholder"
+                    />
                   )}
                 </div>
               </li>

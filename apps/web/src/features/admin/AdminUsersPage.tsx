@@ -191,10 +191,17 @@ export function AdminUsersPage() {
                       onChange={() => toggle(u, 'isSystemAdmin')}
                     />
                   </div>
-                  {u.id !== me?.id && !u.isAutomation && (
+                  {/* Cột hành động luôn chiếm chỗ (nút ⋯ cỡ icon): dòng của mình / tài khoản hệ thống không làm công tắc xê dịch. */}
+                  {u.id !== me?.id && !u.isAutomation ? (
                     <span className="max-sm:order-2">
                       <AccountActionsMenu user={u} />
                     </span>
+                  ) : (
+                    <span
+                      className="invisible h-9 w-9 shrink-0 max-sm:hidden [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11"
+                      aria-hidden
+                      data-testid="row-action-placeholder"
+                    />
                   )}
                 </li>
               ))}

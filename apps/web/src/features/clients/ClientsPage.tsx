@@ -75,13 +75,16 @@ function ContractRow({
         )}
       </div>
       <span
-        className="tabular shrink-0 text-sm font-medium text-ink-strong"
+        className="tabular shrink-0 text-sm font-medium text-ink-strong sm:w-32 sm:text-right"
         title="Giá trị hợp đồng"
       >
         {formatMoney(contract.value, contract.currency)}
       </span>
       <span
-        className={cn('tabular shrink-0 text-xs', expired ? 'text-danger' : 'text-muted')}
+        className={cn(
+          'tabular shrink-0 text-xs sm:w-52 sm:text-right',
+          expired ? 'text-danger' : 'text-muted',
+        )}
         title={
           expired
             ? 'Đã qua ngày kết thúc — cân nhắc gia hạn hoặc ký phụ lục'

@@ -74,8 +74,10 @@ export function TrashPage() {
                   key={item.id}
                   className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2.5"
                 >
-                  <IssueTypeBadge name={item.type.name} color={item.type.color} />
-                  <span className="shrink-0 font-mono text-xs text-muted">{item.key}</span>
+                  <span className="sm:w-28 sm:shrink-0">
+                    <IssueTypeBadge name={item.type.name} color={item.type.color} />
+                  </span>
+                  <span className="shrink-0 font-mono text-xs text-muted sm:w-24">{item.key}</span>
                   <span
                     className="min-w-0 flex-1 basis-40 truncate text-sm text-ink-strong"
                     title={item.summary}
