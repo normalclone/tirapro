@@ -13,7 +13,7 @@ import {
 import { keys } from '@/lib/queryKeys';
 import { useAuth } from '@/stores/auth';
 
-function projectPermissionsQuery(projectId?: string | null) {
+export function projectPermissionsQuery(projectId?: string | null) {
   return queryOptions({
     queryKey: keys.projects.permissions(projectId ?? ''),
     queryFn: projectId

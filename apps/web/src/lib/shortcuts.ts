@@ -127,6 +127,13 @@ export const SHORTCUTS: readonly ShortcutDef[] = [
     sequence: true,
   },
   {
+    id: 'global.assistant',
+    keys: ['g', 'a'],
+    label: 'Mở Trợ lý Tirapro',
+    scope: 'global',
+    sequence: true,
+  },
+  {
     id: 'global.esc',
     keys: ['Esc'],
     label: 'Đóng lớp trên cùng (hộp thoại, menu, xem nhanh)',

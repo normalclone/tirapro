@@ -64,7 +64,7 @@ const EXTRA: KnowledgeEntry[] = [
   },
   {
     id: 'viec-cho',
-    title: 'Việc chờ (Backlog)',
+    title: 'Việc chờ (backlog)',
     summary:
       'Danh sách việc chờ: xếp thứ tự ưu tiên, kéo việc vào sprint, tick nhiều việc để gán, đổi sprint, đặt điểm, đổi ưu tiên hàng loạt (có Hoàn tác).',
     anchor: 'lap-chay-sprint',

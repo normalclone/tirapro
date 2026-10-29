@@ -17,7 +17,7 @@ export interface Chip {
   projectKey?: string;
 }
 
-export interface LinkItem {
+interface LinkItem {
   title: string;
   summary: string;
   /** Đường dẫn nội bộ (router) — không bao giờ là URL ngoài. */
@@ -27,7 +27,8 @@ export interface LinkItem {
   extra?: { label: string; to: string };
 }
 
-export type DraftStatus = 'pending' | 'creating' | 'created' | 'cancelled' | 'failed';
+/** `opened` = đã chuyển sang form tạo việc đầy đủ (thẻ không còn là nơi tạo nữa). */
+export type DraftStatus = 'pending' | 'creating' | 'created' | 'cancelled' | 'failed' | 'opened';
 
 /** Khối nội dung của một tin nhắn trợ lý. Tất cả là dữ liệu thuần, serialize được (lưu sessionStorage). */
 export type Block =

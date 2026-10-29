@@ -134,3 +134,12 @@ describe('câu hỏi cách làm không bị hiểu thành lệnh tạo', () => {
     expect(kind('tạo task ở đâu')).toBe('help');
   });
 });
+
+describe('chi tiết khác', () => {
+  it('việc sắp đến hạn (không nói khoảng) → tuần này', () => {
+    expect(detectIntent('việc sắp đến hạn')).toEqual({ kind: 'due', period: 'week' });
+  });
+  it('"tìm hiểu …" không phải lệnh tìm việc', () => {
+    expect(kind('tìm hiểu về sprint')).toBe('help');
+  });
+});

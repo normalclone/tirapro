@@ -182,6 +182,7 @@ function parseSearch(text: string): string | null {
     if (!n) break;
     i += n;
   }
+  if (phraseAt(ws, i, ['tim hieu'])) return null; // "tìm hiểu cách …" là hỏi, không phải tìm việc
   const v = phraseAt(ws, i, ['tim kiem', 'tim', 'search', 'find', 'loc']);
   if (!v) return null;
   i += v;
@@ -242,7 +243,7 @@ export function detectIntent(raw: string): Intent {
     if (has(n, /(qua han|tre han|tre deadline|overdue|het han roi)/)) return { kind: 'overdue' };
     if (has(n, /(den han|sap han|deadline|han chot)/)) {
       if (has(n, /hom nay/)) return { kind: 'due', period: 'today' };
-      if (has(n, /(tuan nay|tuan)/)) return { kind: 'due', period: 'week' };
+      return { kind: 'due', period: 'week' }; // không nói rõ → tuần này
     }
     if (
       has(

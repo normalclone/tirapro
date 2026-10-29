@@ -3,10 +3,10 @@ import type { DraftMeta } from './draft';
 import type { AssistantDeps, AssistantProject, RespondEnv } from './respond';
 
 /** Dữ liệu giả cho test của Trợ lý (không có logic). */
-export const NOW = new Date('2026-10-29T03:00:00Z');
+const NOW = new Date('2026-10-29T03:00:00Z');
 
 export const PROJ: AssistantProject = { id: 'p1', key: 'DEMO', name: 'Demo' };
-export const PROJ2: AssistantProject = { id: 'p2', key: 'ALPHA', name: 'Alpha' };
+const PROJ2: AssistantProject = { id: 'p2', key: 'ALPHA', name: 'Alpha' };
 
 export const META: DraftMeta = {
   issueTypes: [
@@ -63,7 +63,7 @@ export function issue(over: Partial<Record<string, unknown>> = {}): IssueDto {
     projectId: 'p1',
     parentId: null,
     type: { id: 't-task', name: 'Task', key: 'TASK' },
-    status: { id: 'st1', name: 'Đang làm', category: 'IN_PROGRESS' },
+    status: { id: 'st1', name: 'In Progress', category: 'IN_PROGRESS' },
     priority: { id: 'pr-high', name: 'High' },
     assignee: { id: 'u-an', displayName: 'An Nguyễn' },
     dueDate: '2026-10-25T10:00:00Z',

@@ -55,7 +55,7 @@ export const SCREENS: ScreenInfo[] = [
     purpose:
       'Xem công việc của dự án theo cột trạng thái; kéo-thả thẻ để chuyển trạng thái, bấm thẻ để xem nhanh, ô "+ Thêm việc…" cuối cột để thêm nhanh.',
     docAnchor: 'lam-viec-issue',
-    chips: ['Sprint hiện tại thế nào', 'Việc quá hạn', 'Tạo task', 'Phím tắt'],
+    chips: ['Sprint hiện tại thế nào', 'Việc quá hạn', 'Tạo việc', 'Phím tắt'],
   },
   {
     pattern: '/p/:key/backlog',
@@ -63,7 +63,7 @@ export const SCREENS: ScreenInfo[] = [
     purpose:
       'Danh sách việc chờ của dự án: xếp thứ tự ưu tiên, kéo việc vào sprint, tạo/bắt đầu/kết thúc sprint, thao tác hàng loạt.',
     docAnchor: 'lap-chay-sprint',
-    chips: ['Làm sao tạo sprint?', 'Sprint hiện tại thế nào', 'Việc của tôi', 'Tạo task'],
+    chips: ['Làm sao tạo sprint?', 'Sprint hiện tại thế nào', 'Việc của tôi', 'Tạo việc'],
   },
   {
     pattern: '/p/:key/triage',
@@ -123,7 +123,7 @@ export const SCREENS: ScreenInfo[] = [
     purpose:
       'Chi tiết một công việc: mô tả, trường, bình luận, liên kết, việc con, lịch sử. Sửa tại chỗ; phím i gán cho tôi, m bình luận, e sửa tiêu đề.',
     docAnchor: 'lam-viec-issue',
-    chips: ['Tóm tắt việc này', 'Phím tắt', 'Tạo task'],
+    chips: ['Tóm tắt việc này', 'Phím tắt', 'Tạo việc'],
   },
   {
     pattern: '/filters',

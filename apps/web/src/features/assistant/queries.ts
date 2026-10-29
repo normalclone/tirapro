@@ -31,9 +31,5 @@ export const dueJql = (period: 'week' | 'today', projectKey?: string | null): st
 export const searchJql = (query: string, projectKey?: string | null): string =>
   `${and(scope(projectKey), `text ~ ${quote(query.trim())}`)} ORDER BY updated DESC`;
 
-/** Việc của một sprint trong dự án (đếm theo nhóm trạng thái). */
-export const sprintIssuesJql = (projectKey: string, sprintName: string): string =>
-  and(scope(projectKey), `sprint = ${quote(sprintName)}`);
-
 /** Liên kết "Xem tất cả" → trang Bộ lọc (`/filters?jql=`). */
 export const filtersHref = (jql: string): string => `/filters?jql=${encodeURIComponent(jql)}`;

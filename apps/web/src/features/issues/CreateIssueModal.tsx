@@ -217,8 +217,8 @@ export function CreateIssueModal() {
       : (preset.projectKey ?? loadLast().projectKey ?? projects?.[0]?.key ?? '');
     const draft = loadDraft(key);
     setSelKey(key);
-    setTypeId('');
-    setSummary(draft.summary ?? '');
+    setTypeId(preset.typeId ?? '');
+    setSummary(preset.summary ?? draft.summary ?? '');
     setDescription(draft.description ?? '');
     setAcceptance(draft.acceptance ?? '');
     setPriorityId('');
@@ -235,7 +235,7 @@ export function CreateIssueModal() {
     lastFull.current = { clean: '' };
     manualRef.current.clear();
     skipSyncRef.current = true;
-    if (draft.summary || draft.description || draft.acceptance)
+    if (!preset.summary && (draft.summary || draft.description || draft.acceptance))
       toast.info('Đã khôi phục nội dung bạn nhập dở lần trước');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);

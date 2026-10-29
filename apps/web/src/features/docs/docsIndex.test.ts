@@ -20,7 +20,12 @@ describe('docsIndex', () => {
   });
   it('trang Docs lấy thanh bên từ DOC_NAV (không còn bản NAV riêng)', () => {
     expect(page).toContain('const NAV = DOC_NAV;');
-    expect(DOC_NAV.map((g) => g.group)).toEqual(['Bắt đầu', 'Ai cũng dùng', 'Theo vai trò', 'Nâng cao']);
+    expect(DOC_NAV.map((g) => g.group)).toEqual([
+      'Bắt đầu',
+      'Ai cũng dùng',
+      'Theo vai trò',
+      'Nâng cao',
+    ]);
     expect(DOC_NAV.flatMap((g) => g.items)).toHaveLength(DOC_GROUPS.flatMap((g) => g.items).length);
   });
 });

@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { Block } from './blocks';
 import { detectIntent } from './intents';
 import { confirmDraft, respond, MAX_ROWS, suggestionChips } from './respond';
-import { ENV, issue, makeDeps, ok, PROJ, PROJ2 } from './fixtures';
+import { ENV, issue, makeDeps, ok } from './fixtures';
 
 const run = (text: string, env = ENV, deps = makeDeps()) => respond(detectIntent(text), env, deps);
 const find = <T extends Block['type']>(bs: Block[], t: T) =>
@@ -69,7 +69,13 @@ describe('tạo task: nháp → xác nhận', () => {
     expect(find(out, 'draft')).toBeUndefined();
     const chips = find(out, 'chips')!.chips;
     expect(chips.map((c) => c.projectKey)).toEqual(['ALPHA', 'DEMO']);
-    expect(chips[0]!.text).toBe('tạo task Dọn kho');
+    expect(chips[0]!.text).toBe('tạo việc Dọn kho');
+    // Chip gửi lại đúng câu lệnh → vẫn là lệnh tạo việc với cùng tiêu đề.
+    expect(detectIntent(chips[0]!.text)).toEqual({
+      kind: 'create',
+      typeHint: null,
+      text: 'Dọn kho',
+    });
     expect(deps.calls).toEqual([]);
   });
   it('chọn dự án bằng chip (forceProjectKey) → thẻ nháp ở đúng dự án đó', async () => {
@@ -114,7 +120,7 @@ describe('hỏi dữ liệu hệ thống', () => {
     expect(l.rows).toHaveLength(MAX_ROWS);
     expect(l.rows[0]).toMatchObject({
       key: 'DEMO-TASK-1',
-      status: 'Đang làm',
+      status: 'In Progress',
       due: '25/10/2026',
       overdue: true,
     });
@@ -169,7 +175,7 @@ describe('hỏi dữ liệu hệ thống', () => {
     const out = await run('BUG-12');
     const f = find(out, 'facts')!;
     const row = (l: string) => f.rows.find((r) => r.label === l)?.value;
-    expect(row('Trạng thái')).toBe('Đang làm');
+    expect(row('Trạng thái')).toBe('In Progress');
     expect(row('Người phụ trách')).toBe('An Nguyễn');
     expect(row('Ưu tiên')).toBe('High');
     expect(row('Hạn')).toContain('25/10/2026 (quá hạn 4 ngày)');
@@ -195,21 +201,40 @@ describe('hỏi dữ liệu hệ thống', () => {
 });
 
 describe('sprint hiện tại', () => {
-  it('tên sprint, ngày kết thúc (còn N ngày), số việc theo nhóm trạng thái', async () => {
-    const stat = (c: string) => issue({ status: { id: c, name: c, category: c } });
+  it('tên sprint, ngày kết thúc (còn N ngày), số việc theo nhóm trạng thái (từ danh sách việc của dự án)', async () => {
+    const stat = (c: string, sprintId: string | null = 's1') =>
+      issue({ sprintId, status: { id: c, name: c, category: c } });
     const deps = makeDeps({
-      searchJql: ok({
-        items: [stat('TODO'), stat('TODO'), stat('IN_PROGRESS'), stat('DONE')],
-        hasMore: false,
-      }),
+      getProjectIssues: ok([
+        stat('TODO'),
+        stat('TODO'),
+        stat('IN_PROGRESS'),
+        stat('DONE'),
+        stat('TODO', 's2'),
+        stat('DONE', null),
+      ]),
     });
     const f = find(await run('sprint hiện tại thế nào', ENV, deps), 'facts')!;
     expect(f.title).toBe('Sprint đang chạy: Sprint 7');
     const row = (l: string) => f.rows.find((r) => r.label === l)?.value;
     expect(row('Kết thúc')).toBe('02/11/2026 (còn 4 ngày)');
     expect(row('Số việc')).toBe('4');
-    expect(row('Theo trạng thái')).toBe('Cần làm: 2 · Đang làm: 1 · Xong: 1');
+    expect(row('Theo trạng thái')).toBe('To Do: 2 · In Progress: 1 · Done: 1');
     expect(row('Mục tiêu')).toBe('Ra mắt bản beta');
+    expect(deps.calls).not.toContain('searchJql');
+  });
+  it('chọn dự án bằng chip cũng áp cho sprint/danh sách (không hỏi lại)', async () => {
+    const deps = makeDeps();
+    const out = await run(
+      'sprint hiện tại thế nào',
+      { ...ENV, project: null, pathname: '/', forceProjectKey: 'alpha' },
+      deps,
+    );
+    expect(deps.calls).toContain('getSprints');
+    expect(find(out, 'facts')!.title).toContain('Sprint 7');
+    const mine = makeDeps();
+    await run('việc quá hạn', { ...ENV, project: null, forceProjectKey: 'ALPHA' }, mine);
+    expect(mine.calls).toContain('searchJql');
   });
   it('chưa có sprint đang chạy → nói rõ', async () => {
     const out = await run('sprint hiện tại thế nào', ENV, makeDeps({ getSprints: ok([]) }));
@@ -287,8 +312,5 @@ describe('khác', () => {
   });
   it('câu rỗng → không có khối nào', async () => {
     expect(await run('  ')).toEqual([]);
-  });
-  it('dự án thứ hai không lẫn vào danh sách chip khi chỉ có một', () => {
-    expect([PROJ, PROJ2].length).toBe(2);
   });
 });

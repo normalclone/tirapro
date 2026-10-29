@@ -1,13 +1,6 @@
 import { parseJql } from '@tirapro/shared';
 import { describe, expect, it } from 'vitest';
-import {
-  dueJql,
-  filtersHref,
-  myIssuesJql,
-  overdueJql,
-  searchJql,
-  sprintIssuesJql,
-} from './queries';
+import { dueJql, filtersHref, myIssuesJql, overdueJql, searchJql } from './queries';
 
 describe('JQL của Trợ lý', () => {
   const all = [
@@ -19,7 +12,6 @@ describe('JQL của Trợ lý', () => {
     dueJql('today', 'DEMO'),
     searchJql('đăng nhập'),
     searchJql('lỗi "nặng" \\ x', 'DEMO'),
-    sprintIssuesJql('DEMO', 'Sprint "1"'),
   ];
   it('mọi câu parse được bằng parser thật (không lỗi cú pháp)', () => {
     for (const q of all) expect(() => parseJql(q), q).not.toThrow();

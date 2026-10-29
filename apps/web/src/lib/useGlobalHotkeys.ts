@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useProjects } from '@/features/projects/api';
 import { useCreateIssueModal } from '@/stores/createIssue';
+import { isAdminPath, useAssistantPanel } from '@/features/assistant/panelStore';
 import {
   CREATE_DENIED_NOTICE,
   createPresetFromTarget,
@@ -96,6 +97,13 @@ export function useGlobalHotkeys() {
         if (key === 'd') {
           e.preventDefault();
           navigate('/');
+          return;
+        }
+        if (key === 'a') {
+          // Trợ lý chỉ có ngoài khu quản trị hệ thống (cùng điều kiện với nút trên thanh đầu trang).
+          if (isAdminPath(window.location.pathname)) return;
+          e.preventDefault();
+          useAssistantPanel.getState().setOpen(true);
           return;
         }
         // Phím khác sau `g` → bỏ, rơi xuống xử lý thường bên dưới.

@@ -2,18 +2,12 @@ import type { IssueDto, SprintDto } from '@tirapro/types';
 import type { CreateIssueInput } from '@/features/issues/create-api';
 import { fmtDate } from '@/lib/dateFormat';
 import { dueDaysFromToday, isOverdue } from '@/lib/dueDate';
+import { STATUS_CATEGORY_LABEL } from '@/lib/terms';
 import type { Block, Chip, IssueRow } from './blocks';
 import { buildDraft, type Draft, type DraftMeta } from './draft';
 import type { Intent, TypeHint } from './intents';
 import { MIN_SCORE, POPULAR_QUESTIONS, searchKnowledge } from './knowledge';
-import {
-  dueJql,
-  filtersHref,
-  myIssuesJql,
-  overdueJql,
-  searchJql,
-  sprintIssuesJql,
-} from './queries';
+import { dueJql, filtersHref, myIssuesJql, overdueJql, searchJql } from './queries';
 import { screenInfoOf } from './screens';
 
 /**
@@ -64,6 +58,16 @@ const docTo = (anchor: string) => `/documentation#${anchor}`;
 /** Chip gợi ý khi mở panel / sau lời chào: hợp màn hiện tại (3–4 chip). */
 export function suggestionChips(pathname: string): Chip[] {
   return chipsOf(screenInfoOf(pathname).chips.slice(0, 4));
+}
+
+/** Lời chào + chip gợi ý hợp màn hiện tại — câu đầu tiên khi mở panel. */
+export function greetingBlocks(pathname: string): Block[] {
+  return [
+    text(
+      'Xin chào! Mình là Trợ lý Tirapro — hỏi cách dùng, tra việc của bạn, hoặc nhờ soạn nháp việc mới. Mình chạy ngay trong trình duyệt, không gửi nội dung của bạn ra ngoài.',
+    ),
+    chips(suggestionChips(pathname)),
+  ];
 }
 
 const rowOf = (i: IssueDto, now: Date): IssueRow => ({
@@ -131,12 +135,6 @@ async function issueFacts(issue: IssueDto, deps: AssistantDeps, now: Date): Prom
   ];
 }
 
-const CATEGORY_LABEL: Record<string, string> = {
-  TODO: 'Cần làm',
-  IN_PROGRESS: 'Đang làm',
-  DONE: 'Xong',
-};
-
 async function sprintStatus(e: RespondEnv, deps: AssistantDeps): Promise<Block[]> {
   const p = e.project;
   if (!p)
@@ -155,11 +153,12 @@ async function sprintStatus(e: RespondEnv, deps: AssistantDeps): Promise<Block[]
       chips(chipsOf(['Làm sao tạo sprint?'])),
     ];
   }
-  const { items, hasMore } = await deps.searchJql(sprintIssuesJql(p.key, active.name));
+  // Đếm từ danh sách việc của dự án (cùng cache với Bảng việc): đủ mọi việc, không bị cắt như kết quả tìm kiếm.
+  const items = (await deps.getProjectIssues(p.id)).filter((i) => i.sprintId === active.id);
   const count: Record<string, number> = {};
   for (const i of items) count[i.status.category] = (count[i.status.category] ?? 0) + 1;
   const by = (['TODO', 'IN_PROGRESS', 'DONE'] as const)
-    .map((c) => `${CATEGORY_LABEL[c]}: ${count[c] ?? 0}`)
+    .map((c) => `${STATUS_CATEGORY_LABEL[c]}: ${count[c] ?? 0}`)
     .join(' · ');
   const end = active.endDate ? fmtDate(active.endDate) : 'Chưa đặt';
   const left = active.endDate ? dueDaysFromToday(active.endDate, e.now ?? new Date()) : null;
@@ -175,7 +174,7 @@ async function sprintStatus(e: RespondEnv, deps: AssistantDeps): Promise<Block[]
       title: `Sprint đang chạy: ${active.name}`,
       rows: [
         { label: 'Kết thúc', value: `${end}${leftLabel}` },
-        { label: 'Số việc', value: `${hasMore ? 'hơn ' : ''}${items.length}` },
+        { label: 'Số việc', value: String(items.length) },
         { label: 'Theo trạng thái', value: by },
         ...(active.goal ? [{ label: 'Mục tiêu', value: active.goal }] : []),
       ],
@@ -196,9 +195,9 @@ function projectChips(command: string, e: RespondEnv): Chip[] {
     .map((p) => ({ label: `${p.key} · ${p.name}`, text: command, projectKey: p.key }));
 }
 
-const commandText = (hint: TypeHint, rest: string) => `tạo ${hint ?? 'task'} ${rest}`.trim();
+const commandText = (hint: TypeHint, rest: string) => `tạo ${hint ?? 'việc'} ${rest}`.trim();
 
-const CREATE_EXAMPLE = 'tạo task Sửa lỗi đăng nhập !cao @an ^mai #sprint ~3';
+const CREATE_EXAMPLE = 'tạo việc Sửa lỗi đăng nhập !cao @an ^mai #sprint ~3';
 
 async function createFlow(
   intent: Extract<Intent, { kind: 'create' }>,
@@ -273,7 +272,7 @@ function unknownReply(query: string, e: RespondEnv): Block[] {
   const sample = [...screenInfoOf(e.pathname).chips.slice(0, 2), ...POPULAR_QUESTIONS.slice(0, 3)];
   return [
     text(
-      'Mình chưa hiểu câu này. Bạn thử hỏi cách dùng (vd "làm sao tạo sprint"), tra việc ("việc quá hạn"), hoặc nhờ soạn việc ("tạo task …").',
+      'Mình chưa hiểu câu này. Bạn thử hỏi cách dùng (vd "làm sao tạo sprint"), tra việc ("việc quá hạn"), hoặc nhờ soạn việc ("tạo việc …").',
     ),
     chips([
       ...(q && q.length <= 80 ? [{ label: `Tìm “${q}” trong công việc`, text: `tìm ${q}` }] : []),
@@ -316,25 +315,25 @@ function helpReply(query: string, e: RespondEnv): Block[] {
 /** Trả lời một ý định. Ném lỗi mạng/API lên cho nơi gọi hiển thị (kèm thông báo tiếng Việt). */
 export async function respond(
   intent: Intent,
-  e: RespondEnv,
+  env: RespondEnv,
   deps: AssistantDeps,
 ): Promise<Block[]> {
+  // Người dùng vừa chọn dự án bằng chip → dự án đó thay "dự án hiện tại" cho MỌI ý định của lượt này (chỉ lượt này).
+  const forced = env.forceProjectKey
+    ? env.projects.find((p) => p.key.toLowerCase() === env.forceProjectKey!.toLowerCase())
+    : undefined;
+  const e: RespondEnv = forced ? { ...env, project: forced } : env;
   const now = e.now ?? new Date();
   const key = e.project?.key;
   switch (intent.kind) {
     case 'empty':
       return [];
     case 'greeting':
-      return [
-        text(
-          'Xin chào! Mình là Trợ lý Tirapro — hỏi cách dùng, tra việc của bạn, hoặc nhờ soạn nháp việc mới. Mình chạy ngay trong trình duyệt, không gửi nội dung của bạn ra ngoài.',
-        ),
-        chips(suggestionChips(e.pathname)),
-      ];
+      return greetingBlocks(e.pathname);
     case 'capabilities':
       return [
         text(
-          'Mình giúp được 4 việc:\n• Hỏi đáp theo màn hình bạn đang đứng ("màn này dùng để làm gì")\n• Hướng dẫn sử dụng ("làm sao tạo sprint")\n• Tra việc ("việc của tôi", "việc quá hạn", "tìm đăng nhập", "BUG-12")\n• Soạn nháp việc mới ("tạo task Sửa lỗi login !cao @an ^mai") — bạn bấm Tạo mới có việc.',
+          'Mình giúp được 4 việc:\n• Hỏi đáp theo màn hình bạn đang đứng ("màn này dùng để làm gì")\n• Hướng dẫn sử dụng ("làm sao tạo sprint")\n• Tra việc ("việc của tôi", "việc quá hạn", "tìm đăng nhập", "BUG-12")\n• Soạn nháp việc mới ("tạo việc Sửa lỗi login !cao @an ^mai") — bạn bấm Tạo mới có việc.',
         ),
         chips(suggestionChips(e.pathname)),
       ];

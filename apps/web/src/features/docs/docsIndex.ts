@@ -34,21 +34,24 @@ export const DOC_GROUPS: DocGroup[] = [
         label: 'Khái niệm cơ bản',
         summary:
           'Không gian làm việc, dự án, công việc, bảng việc (board), việc chờ (backlog), sprint, quy trình (workflow), epic và việc con.',
-        keywords: 'khai niem thuat ngu workspace project board backlog sprint workflow epic viec con la gi',
+        keywords:
+          'khai niem thuat ngu workspace project board backlog sprint workflow epic viec con la gi',
       },
       {
         id: 'dang-nhap',
         label: 'Đăng nhập & tài khoản',
         summary:
           'Đăng nhập bằng email và mật khẩu được cấp; quên mật khẩu thì dùng liên kết đặt lại. Chuyển không gian làm việc và đăng xuất ở thanh bên và menu người dùng.',
-        keywords: 'dang nhap dang xuat tai khoan mat khau quen mat khau doi mat khau chuyen khong gian lam viec',
+        keywords:
+          'dang nhap dang xuat tai khoan mat khau quen mat khau doi mat khau chuyen khong gian lam viec',
       },
       {
         id: 'vai-tro',
         label: 'Hiểu về vai trò',
         summary:
           'Quyền thực tế là hợp của vai trò ở không gian làm việc và vai trò ở từng dự án. Có ma trận quyền cho Reporter, Developer, Quản trị dự án, Quản trị chung, Người xem.',
-        keywords: 'vai tro phan quyen quyen han ma tran quyen role permission admin viewer reporter developer',
+        keywords:
+          'vai tro phan quyen quyen han ma tran quyen role permission admin viewer reporter developer',
       },
     ],
   },
@@ -60,7 +63,8 @@ export const DOC_GROUPS: DocGroup[] = [
         label: 'Điều hướng & Cmd+K',
         summary:
           'Bảng lệnh ⌘K (Ctrl+K) tìm việc, nhảy tới dự án, chạy hành động; gõ thẳng mã công việc để mở. Thanh bên chuyển dự án; g rồi b tới Bảng việc, g rồi l tới Việc chờ.',
-        keywords: 'dieu huong cmd k command palette bang lenh lenh nhanh thanh ben chuyen du an gan day',
+        keywords:
+          'dieu huong cmd k command palette bang lenh lenh nhanh thanh ben chuyen du an gan day',
       },
       {
         id: 'lam-viec-issue',
@@ -87,7 +91,8 @@ export const DOC_GROUPS: DocGroup[] = [
       {
         id: 'ca-nhan',
         label: 'Cá nhân hoá',
-        summary: 'Đổi giao diện sáng/tối, cập nhật hồ sơ (tên, ảnh, múi giờ), đổi mật khẩu ở trang Tài khoản; trang tổng quan cá nhân.',
+        summary:
+          'Đổi giao diện sáng/tối, cập nhật hồ sơ (tên, ảnh, múi giờ), đổi mật khẩu ở trang Tài khoản; trang tổng quan cá nhân.',
         keywords: 'ca nhan hoa giao dien sang toi theme ho so avatar mui gio tong quan ca nhan',
       },
     ],
@@ -105,7 +110,8 @@ export const DOC_GROUPS: DocGroup[] = [
       {
         id: 'vt-developer',
         label: 'Lập trình viên',
-        summary: 'Developer tạo và sửa mọi việc trong dự án, chuyển trạng thái, gán người, đặt story points, liên kết, tạo việc con, ghi thời gian.',
+        summary:
+          'Developer tạo và sửa mọi việc trong dự án, chuyển trạng thái, gán người, đặt story points, liên kết, tạo việc con, ghi thời gian.',
         keywords: 'lap trinh vien developer dev qa designer lam viec hang ngay log time worklog',
       },
       {
@@ -113,7 +119,8 @@ export const DOC_GROUPS: DocGroup[] = [
         label: 'Quản trị dự án',
         summary:
           'Quản trị dự án cấu hình dự án, bảng việc, quy trình; lập, bắt đầu, kết thúc sprint; xem mọi báo cáo; dùng AI lập kế hoạch sprint.',
-        keywords: 'quan tri du an lead project admin cau hinh quy trinh sprint tao sprint bat dau sprint ket thuc sprint scrum master',
+        keywords:
+          'quan tri du an lead project admin cau hinh quy trinh sprint tao sprint bat dau sprint ket thuc sprint scrum master',
       },
       {
         id: 'vt-ws-admin',
@@ -126,14 +133,17 @@ export const DOC_GROUPS: DocGroup[] = [
       {
         id: 'vt-viewer',
         label: 'Người xem',
-        summary: 'Viewer chỉ xem bảng việc, việc chờ, công việc và báo cáo; không tạo, sửa, bình luận. Muốn thao tác nhiều hơn thì nhờ quản trị nâng vai trò.',
+        summary:
+          'Viewer chỉ xem bảng việc, việc chờ, công việc và báo cáo; không tạo, sửa, bình luận. Muốn thao tác nhiều hơn thì nhờ quản trị nâng vai trò.',
         keywords: 'nguoi xem viewer chi doc khach xem khong sua duoc',
       },
       {
         id: 'vt-sys-admin',
         label: 'Quản trị hệ thống',
-        summary: 'Console /admin riêng cho chủ hệ thống: tổng quan và sức khoẻ dịch vụ, không gian làm việc, tài khoản, cấu hình và feature flags.',
-        keywords: 'quan tri he thong system admin console workspace tai khoan feature flag cau hinh he thong suc khoe',
+        summary:
+          'Console /admin riêng cho chủ hệ thống: tổng quan và sức khoẻ dịch vụ, không gian làm việc, tài khoản, cấu hình và feature flags.',
+        keywords:
+          'quan tri he thong system admin console workspace tai khoan feature flag cau hinh he thong suc khoe',
       },
     ],
   },
@@ -160,7 +170,8 @@ export const DOC_GROUPS: DocGroup[] = [
         label: 'Báo cáo & phân tích',
         summary:
           'Báo cáo sprint, Burndown, Velocity, CFD, tổng kết sprint, QA, bảng tổng quan tuỳ biến, sức khoẻ dự án, digest; xuất CSV và in/lưu PDF.',
-        keywords: 'bao cao phan tich burndown velocity cfd tong ket sprint qa dashboard tong quan suc khoe digest xuat csv in pdf report',
+        keywords:
+          'bao cao phan tich burndown velocity cfd tong ket sprint qa bang tong quan suc khoe digest xuat csv in pdf report',
       },
       {
         id: 'tich-hop',
@@ -182,7 +193,8 @@ export const DOC_GROUPS: DocGroup[] = [
         label: 'Câu hỏi thường gặp',
         summary:
           'Không thấy nút sửa hay kéo-thả (thường do vai trò), không nhận được thông báo, quên mật khẩu, AI báo không khả dụng, chuyển không gian làm việc.',
-        keywords: 'cau hoi thuong gap faq loi khong thay nut khong nhan duoc thong bao quen mat khau',
+        keywords:
+          'cau hoi thuong gap faq loi khong thay nut khong nhan duoc thong bao quen mat khau',
       },
     ],
   },
@@ -198,14 +210,16 @@ export const DOC_TOPICS: DocEntry[] = [
     label: 'Lập & chạy một sprint',
     summary:
       'Vào Việc chờ, kéo các việc ưu tiên vào sprint mới; bấm Bắt đầu sprint, đặt thời hạn và mục tiêu; theo dõi Burndown; kết thúc sprint để chốt số liệu và chuyển việc dở sang sprint sau.',
-    keywords: 'tao sprint lap sprint bat dau sprint chay sprint ket thuc sprint sprint moi viec cho backlog',
+    keywords:
+      'tao sprint lap sprint bat dau sprint chay sprint ket thuc sprint sprint moi viec cho backlog',
   },
   {
     id: 'them-nguoi-phan-quyen',
     label: 'Thêm người mới & phân quyền',
     summary:
       'Vào trang Thành viên, chọn người có sẵn hoặc tạo tài khoản, đặt vai trò chung. Cần vai trò khác ở một dự án thì vào dự án → Cấu hình → Thành viên. Bộ quyền riêng: Cài đặt → Vai trò.',
-    keywords: 'them nguoi them thanh vien phan quyen vai tro cap quyen gan vai tro tao vai tro tuy bien moi nguoi',
+    keywords:
+      'them nguoi them thanh vien phan quyen vai tro cap quyen gan vai tro tao vai tro tuy bien moi nguoi',
   },
   {
     id: 'bao-mot-bug',
