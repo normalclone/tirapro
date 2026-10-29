@@ -3,6 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { Sparkles, ShieldCheck, ArrowLeft, Search } from 'lucide-react';
 import { WorkspaceSwitcher } from '@/features/workspace/WorkspaceSwitcher';
 import { GuideLauncher } from '@/features/guides/GuideLauncher';
+import { AssistantButton, AssistantHost } from '@/features/assistant/AssistantPanel';
 import { useNotificationRealtime } from '@/lib/realtime';
 import { NotificationBell } from '@/features/notifications/NotificationBell';
 import { UserMenu } from '@/components/layout/UserMenu';
@@ -126,6 +127,8 @@ export function AppShell({ children }: { children: ReactNode }) {
                 <span className="sr-only">{aiEnabled ? 'Tắt trợ lý AI' : 'Bật trợ lý AI'}</span>
               </Button>
             )}
+            {/* Trợ lý Tirapro (chat cơ bản, không gọi AI ngoài) — cùng điều kiện hiện với nút trợ lý AI. */}
+            {!admin && <AssistantButton />}
             {/* Hướng dẫn màn + thông báo dùng chung mọi ngữ cảnh (kể cả admin). */}
             <GuideLauncher />
             {/* Dưới `lg` chuông + menu người dùng đã có trên thanh tab đáy (ô Thông báo, Tôi) → ẩn để khỏi lặp.
@@ -159,6 +162,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <div className="contents print:hidden">
           {desktop && <FloatingActions />}
           <CreateDialogsHost />
+          <AssistantHost />
         </div>
       )}
       <ShortcutsDialog open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />

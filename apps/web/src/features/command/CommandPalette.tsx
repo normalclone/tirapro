@@ -9,6 +9,7 @@ import {
   LayoutDashboard,
   LayoutGrid,
   ListTodo,
+  MessageCircle,
   Moon,
   Bug,
   MessageSquarePlus,
@@ -19,6 +20,7 @@ import {
 } from 'lucide-react';
 import { useProjects } from '@/features/projects/api';
 import { routeToScreen, useHasTour } from '@/features/guides/routeToScreen';
+import { isAdminPath, useAssistantPanel } from '@/features/assistant/panelStore';
 import { useCreateIssueModal } from '@/stores/createIssue';
 import { openReportIssue } from '@/stores/reportIssue';
 import { useTheme } from '@/stores/theme';
@@ -219,6 +221,14 @@ export function CommandPalette() {
               icon={<Sparkles className="h-4 w-4 shrink-0 text-muted" aria-hidden="true" />}
               label="Bắt đầu tour màn này"
               onSelect={() => runAction(() => window.dispatchEvent(new Event('tirapro:tour')))}
+            />
+          )}
+          {!isAdminPath(pathname) && (
+            <ActionItem
+              value="hoi tro ly tirapro chatbot chat hoi dap tro giup assistant"
+              icon={<MessageCircle className="h-4 w-4 shrink-0 text-muted" aria-hidden="true" />}
+              label="Hỏi trợ lý"
+              onSelect={() => runAction(() => useAssistantPanel.getState().setOpen(true))}
             />
           )}
           <ActionItem

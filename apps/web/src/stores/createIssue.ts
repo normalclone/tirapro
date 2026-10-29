@@ -10,6 +10,10 @@ interface CreateIssuePreset {
   parentId?: string;
   /** Ưu tiên loại sub-task khi mở. */
   subtask?: boolean;
+  /** Điền sẵn tiêu đề (giữ nguyên token `! @ # ~ ^` — hộp tự áp). Có giá trị này thì KHÔNG khôi phục bản nháp cũ. */
+  summary?: string;
+  /** Chọn sẵn loại việc (id thuộc dự án `projectKey`) — dùng cùng `projectKey`. */
+  typeId?: string;
 }
 
 interface CreateIssueModalState {

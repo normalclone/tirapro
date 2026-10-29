@@ -18,6 +18,10 @@ describe('kho phím tắt khớp nơi xử lý', () => {
     'global.goBoard': { file: 'lib/useGlobalHotkeys.ts', pattern: /key === 'b'/ },
     'global.goBacklog': { file: 'lib/useGlobalHotkeys.ts', pattern: /key === 'l'/ },
     'global.goHome': { file: 'lib/useGlobalHotkeys.ts', pattern: /key === 'd'/ },
+    'global.assistant': {
+      file: 'lib/useGlobalHotkeys.ts',
+      pattern: /useAssistantPanel[\s\S]{0,80}setOpen\(true\)/,
+    },
     'global.palette': {
       file: 'features/command/CommandPalette.tsx',
       pattern: /toLowerCase\(\) === 'k'/,
