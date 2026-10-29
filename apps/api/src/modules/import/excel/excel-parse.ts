@@ -20,7 +20,7 @@ export interface RawExcelRow {
 }
 
 /** Bóc giá trị thật của ô: rich text, hyperlink, kết quả công thức → scalar. */
-export function cellScalar(value: ExcelJS.CellValue | undefined): CellScalar {
+function cellScalar(value: ExcelJS.CellValue | undefined): CellScalar {
   if (value === null || value === undefined) return null;
   if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
   if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean')

@@ -29,12 +29,10 @@ export function ExcelImportBlock({
   projectKey?: string;
 }) {
   const inputId = useId();
-  const inputRef = useRef<HTMLInputElement>(null);
   const preview = useExcelPreview();
   const importer = useImportExcel();
 
   const [downloading, setDownloading] = useState(false);
-  const [dragging, setDragging] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [result, setResult] = useState<ExcelImportResult | null>(null);
   const [onlyErrors, setOnlyErrors] = useState(true);
@@ -77,12 +75,6 @@ export function ExcelImportBlock({
     preview.mutate({ projectId, file: f });
   }
 
-  function onDrop(e: DragEvent<HTMLDivElement>) {
-    e.preventDefault();
-    setDragging(false);
-    pick(e.dataTransfer.files[0]);
-  }
-
   function handleImport() {
     if (!projectId || !file || !data || data.valid === 0) return;
     importer.mutate(
@@ -123,55 +115,15 @@ export function ExcelImportBlock({
       </div>
 
       {!result && (
-        <div
-          onDragOver={(e) => {
-            e.preventDefault();
-            if (!busy) setDragging(true);
-          }}
-          onDragLeave={() => setDragging(false)}
-          onDrop={onDrop}
-          className={cn(
-            'mt-3 flex flex-col items-center gap-2 rounded-lg border border-dashed px-4 py-6 text-center transition-colors duration-150',
-            dragging ? 'border-primary bg-primary-subtle' : 'border-border bg-surface-2/40',
-          )}
-        >
-          <FileSpreadsheet className="h-5 w-5 text-faint" aria-hidden="true" />
-          <p className="text-sm text-ink">
-            {file ? (
-              <span className="break-all font-medium">{file.name}</span>
-            ) : (
-              'Kéo thả tệp .xlsx vào đây'
-            )}
-          </p>
-          <input
-            id={inputId}
-            ref={inputRef}
-            type="file"
-            accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            className="sr-only"
-            disabled={!projectId || busy}
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              e.target.value = ''; // cho chọn lại đúng tệp vừa sửa
-              pick(f);
-            }}
-          />
-          <Button
-            variant={file ? 'outline' : 'secondary'}
-            size="sm"
-            onClick={() => inputRef.current?.click()}
-            loading={preview.isPending}
-            disabled={!projectId || importer.isPending}
-          >
-            <Upload className="h-4 w-4" />
-            {file ? 'Chọn tệp khác' : 'Chọn tệp .xlsx…'}
-          </Button>
-          {preview.isPending && (
-            <p role="status" className="text-xs text-muted">
-              Đang kiểm tra tệp…
-            </p>
-          )}
-        </div>
+        <DropZone
+          inputId={inputId}
+          disabled={!projectId}
+          busy={busy}
+          previewing={preview.isPending}
+          importing={importer.isPending}
+          fileName={file?.name}
+          onPick={pick}
+        />
       )}
 
       {preview.isError && !result && (
@@ -195,6 +147,86 @@ export function ExcelImportBlock({
 
       {result && <ResultPanel result={result} projectKey={projectKey} onReset={reset} />}
     </section>
+  );
+}
+
+/** Vùng chọn tệp: nút (bàn phím) hoặc kéo-thả; chọn xong gọi `onPick`. */
+function DropZone({
+  inputId,
+  disabled,
+  busy,
+  previewing,
+  importing,
+  fileName,
+  onPick,
+}: {
+  inputId: string;
+  disabled: boolean;
+  busy: boolean;
+  previewing: boolean;
+  importing: boolean;
+  fileName?: string;
+  onPick: (f: File | undefined) => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [dragging, setDragging] = useState(false);
+
+  function onDrop(e: DragEvent<HTMLDivElement>) {
+    e.preventDefault();
+    setDragging(false);
+    onPick(e.dataTransfer.files[0]);
+  }
+
+  return (
+    <div
+      onDragOver={(e) => {
+        e.preventDefault();
+        if (!busy) setDragging(true);
+      }}
+      onDragLeave={() => setDragging(false)}
+      onDrop={onDrop}
+      className={cn(
+        'mt-3 flex flex-col items-center gap-2 rounded-lg border border-dashed px-4 py-6 text-center transition-colors duration-150',
+        dragging ? 'border-primary bg-primary-subtle' : 'border-border bg-surface-2/40',
+      )}
+    >
+      <FileSpreadsheet className="h-5 w-5 text-faint" aria-hidden="true" />
+      <p className="text-sm text-ink">
+        {fileName ? (
+          <span className="break-all font-medium">{fileName}</span>
+        ) : (
+          'Kéo thả tệp .xlsx vào đây'
+        )}
+      </p>
+      <input
+        id={inputId}
+        ref={inputRef}
+        type="file"
+        accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        className="sr-only"
+        disabled={disabled || busy}
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          e.target.value = ''; // cho chọn lại đúng tệp vừa sửa
+          onPick(f);
+        }}
+      />
+      <Button
+        variant={fileName ? 'outline' : 'secondary'}
+        size="sm"
+        onClick={() => inputRef.current?.click()}
+        loading={previewing}
+        disabled={disabled || importing}
+      >
+        <Upload className="h-4 w-4" />
+        {fileName ? 'Chọn tệp khác' : 'Chọn tệp .xlsx…'}
+      </Button>
+      {previewing && (
+        <p role="status" className="text-xs text-muted">
+          Đang kiểm tra tệp…
+        </p>
+      )}
+    </div>
   );
 }
 

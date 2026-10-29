@@ -32,7 +32,7 @@ const COL: Record<ExcelColumnKey, string> = Object.fromEntries(
 const norm = (s: string): string => s.normalize('NFC').trim().toLocaleLowerCase('vi');
 
 /** `Tên <email>` hoặc chỉ email → email (chữ thường). */
-export function personEmail(raw: string): string {
+function personEmail(raw: string): string {
   const m = /<([^<>]+)>\s*$/.exec(raw);
   return norm(m ? m[1]! : raw);
 }

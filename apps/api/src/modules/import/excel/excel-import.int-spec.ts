@@ -114,7 +114,7 @@ describe.skipIf(!DB_URL)('ExcelImportService ↔ Postgres thật', () => {
     await prisma.$disconnect();
   }, 60_000);
 
-  it('template: danh sách lấy đúng từ DB (chỉ việc thuộc dự án/tenant, sprint chưa đóng, phiên bản chưa phát hành, thành viên ACTIVE)', async () => {
+  it('template: danh sách lấy đúng từ DB (chỉ việc thuộc dự án/tenant, sprint chưa đóng, phiên bản chưa phát hành, thành viên chưa bị khoá)', async () => {
     const { buffer, filename } = await service.template(WS, PROJECT);
     expect(filename).toBe('Mau-nhap-cong-viec-XL.xlsx');
     const wb = new ExcelJS.Workbook();
@@ -168,7 +168,7 @@ describe.skipIf(!DB_URL)('ExcelImportService ↔ Postgres thật', () => {
     expect(res.rows[2]!.errors[0]!.column).toBe('Phiên bản');
   });
 
-  it('cô lập workspace: dự án của workspace khác → 404, không đọc được danh mục', async () => {
+  it('cô lập không gian làm việc: dự án của không gian khác → 404, không đọc được danh mục', async () => {
     await expect(service.template(OTHER_WS, PROJECT)).rejects.toThrow();
   });
 });

@@ -44,7 +44,7 @@ const REQUIRED_HEADER_FILL: ExcelJS.Fill = {
 };
 
 /** Giá trị hiển thị của từng drop-list (đúng thứ tự dùng để ghi vào sheet ẩn). */
-export function listValues(catalog: ProjectCatalog): Record<ExcelListKey, string[]> {
+function listValues(catalog: ProjectCatalog): Record<ExcelListKey, string[]> {
   const clean = (xs: string[]): string[] => xs.filter((x) => x.trim() !== '' && !x.includes(';'));
   return {
     type: clean(catalog.types.map((t) => t.name)),
