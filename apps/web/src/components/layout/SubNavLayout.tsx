@@ -90,7 +90,7 @@ export function SubNavLayout({
         ))}
       </nav>
 
-      <div className="min-w-0 flex-1 overflow-auto">
+      <div className="relative min-w-0 flex-1 overflow-auto">
         {showList ? (
           <SubNavList
             title={title}

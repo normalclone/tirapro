@@ -20,7 +20,8 @@ describe('RailLayout — master–detail có rail trái', () => {
   it('rail không có heading; h1 nằm ở nội dung; nội dung cuộn riêng', () => {
     expect(out.indexOf('RAIL')).toBeLessThan(out.indexOf('NỘI DUNG'));
     expect(out.match(/<h[1-6]/g)).toHaveLength(1);
-    expect(out).toContain('min-w-0 flex-1 overflow-auto');
+    // `relative`: phần tử absolute ẩn (sr-only input) phải neo trong khung cuộn, không kéo dài cả trang
+    expect(out).toContain('relative min-w-0 flex-1 overflow-auto');
   });
   it('railClassName ghi đè được (Wiki bỏ đệm vì cây trang tự đệm)', () => {
     expect(out).toContain('gap-0');
