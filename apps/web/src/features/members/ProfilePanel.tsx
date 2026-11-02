@@ -14,6 +14,8 @@ import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { settleField } from '@/lib/settleField';
 import { SectionCard } from '@/components/ui/SectionCard';
 
+const LOCKED_HINT = 'Chỉ quản trị hệ thống đổi được họ tên, email và ảnh đại diện.';
+
 const LOCALES: { value: string; label: string }[] = [
   { value: 'vi', label: 'Tiếng Việt' },
   { value: 'en', label: 'English' },
@@ -24,6 +26,7 @@ export function ProfilePanel() {
   const update = useUpdateProfile();
   const uploadAvatar = useUploadUserAvatar();
   const removeAvatar = useRemoveUserAvatar();
+  const canEditIdentity = user?.isSystemAdmin === true;
 
   // Mốc "đã lưu gần nhất": lưu xong cập nhật ngay, không chờ `bootstrap()` làm mới user → dirty về false tức thì.
   const [saved, setSaved] = useState({
@@ -39,7 +42,7 @@ export function ProfilePanel() {
   const zones = useMemo(() => timeZoneChoices(timezone), [timezone]);
 
   const dirty =
-    displayName.trim() !== saved.displayName ||
+    (canEditIdentity && displayName.trim() !== saved.displayName) ||
     timezone.trim() !== saved.timezone ||
     locale !== saved.locale;
 
@@ -62,13 +65,15 @@ export function ProfilePanel() {
   function onSubmit(e: FormEvent) {
     e.preventDefault();
     if (!user || update.isPending) return;
-    const trimmed = displayName.trim();
-    if (!trimmed) {
+    const trimmed = canEditIdentity ? displayName.trim() : saved.displayName;
+    if (canEditIdentity && !trimmed) {
       toast.error('Hãy nhập tên hiển thị — đây là tên đồng nghiệp nhìn thấy');
       return;
     }
     const next = { displayName: trimmed, timezone: timezone.trim(), locale };
-    update.mutate(next, {
+    // Người thường không gửi họ tên (máy chủ khoá) — chỉ múi giờ, ngôn ngữ.
+    const payload = canEditIdentity ? next : { timezone: next.timezone, locale: next.locale };
+    update.mutate(payload, {
       onSuccess: () => {
         setSaved(next);
         // Cùng cách với GeneralSection: chỉ đặt lại ô chưa bị đổi trong lúc lưu.
@@ -93,7 +98,11 @@ export function ProfilePanel() {
           src={user.avatarUrl}
           size={64}
           uploadFn={(f) => uploadAvatar.mutateAsync(f)}
-          onRemove={user.avatarUrl ? () => removeAvatar.mutateAsync() : undefined}
+          onRemove={
+            canEditIdentity && user.avatarUrl ? () => removeAvatar.mutateAsync() : undefined
+          }
+          disabled={!canEditIdentity}
+          hint={canEditIdentity ? undefined : LOCKED_HINT}
         />
 
         <div className="grid gap-4 sm:grid-cols-2">
@@ -111,7 +120,16 @@ export function ProfilePanel() {
               autoComplete="name"
               onChange={(e) => setDisplayName(e.target.value)}
               disabled={update.isPending}
+              readOnly={!canEditIdentity}
+              aria-readonly={!canEditIdentity ? 'true' : undefined}
+              aria-describedby={!canEditIdentity ? 'profile-identity-hint' : undefined}
+              className={!canEditIdentity ? 'bg-disabled-bg text-disabled-fg' : undefined}
             />
+            {!canEditIdentity && (
+              <span id="profile-identity-hint" className="block text-xs text-faint">
+                {LOCKED_HINT}
+              </span>
+            )}
           </label>
 
           <div className="block space-y-1.5">

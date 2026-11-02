@@ -265,3 +265,53 @@ describe('UsersService.listWorkspaceMembers — bộ chọn người phía serve
     expect(priv[0]).toMatchObject({ isSystemAdmin: true, lastSeenAt: '2026-10-16T01:00:00.000Z' });
   });
 });
+
+describe('UsersService.updateProfile — khoá họ tên/ảnh với người thường', () => {
+  function mk() {
+    const update = vi.fn((a: { data: Record<string, unknown> }) =>
+      Promise.resolve({ id: 'u1', ...a.data }),
+    );
+    const findUnique = vi.fn(() =>
+      Promise.resolve({ displayName: 'Cũ', avatarUrl: null as string | null }),
+    );
+    const service = new UsersService(
+      { user: { update, findUnique } } as never,
+      {} as never,
+      {} as never,
+    );
+    // toDto không phải đối tượng kiểm thử ở đây
+    (service as unknown as { toDto: (u: unknown) => unknown }).toDto = (u) => u;
+    return { service, update };
+  }
+  it('người thường đổi họ tên -> 403 PROFILE_LOCKED', async () => {
+    const { service, update } = mk();
+    await expect(service.updateProfile('u1', { displayName: 'Mới' }, false)).rejects.toMatchObject({
+      status: 403,
+      response: { code: 'PROFILE_LOCKED' },
+    });
+    expect(update).not.toHaveBeenCalled();
+  });
+  it('người thường đổi avatarUrl -> 403', async () => {
+    const { service } = mk();
+    await expect(
+      service.updateProfile('u1', { avatarUrl: 'http://x/a.png' }, false),
+    ).rejects.toMatchObject({ status: 403 });
+  });
+  it('người thường gửi họ tên không đổi + múi giờ -> chỉ ghi múi giờ', async () => {
+    const { service, update } = mk();
+    await service.updateProfile('u1', { displayName: 'Cũ', timezone: 'Asia/Tokyo' }, false);
+    const arg = update.mock.calls[0]![0];
+    expect(arg.data).toMatchObject({ timezone: 'Asia/Tokyo' });
+    expect(arg.data.displayName).toBeUndefined();
+  });
+  it('người thường đổi múi giờ/ngôn ngữ -> ok', async () => {
+    const { service, update } = mk();
+    await service.updateProfile('u1', { timezone: 'Asia/Tokyo', locale: 'en' }, false);
+    expect(update).toHaveBeenCalled();
+  });
+  it('quản trị hệ thống đổi họ tên -> ok', async () => {
+    const { service, update } = mk();
+    await service.updateProfile('u1', { displayName: 'Mới' }, true);
+    expect(update.mock.calls[0]![0].data).toEqual({ displayName: 'Mới' });
+  });
+});

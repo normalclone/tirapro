@@ -92,7 +92,7 @@ export const DOC_GROUPS: DocGroup[] = [
         id: 'ca-nhan',
         label: 'Cá nhân hoá',
         summary:
-          'Đổi giao diện sáng/tối, cập nhật hồ sơ (tên, ảnh, múi giờ), đổi mật khẩu ở trang Tài khoản; trang tổng quan cá nhân.',
+          'Đổi giao diện sáng/tối, cập nhật múi giờ, ngôn ngữ, đổi mật khẩu ở trang Tài khoản (họ tên, email, ảnh đại diện do quản trị hệ thống đổi); trang tổng quan cá nhân.',
         keywords: 'ca nhan hoa giao dien sang toi theme ho so avatar mui gio tong quan ca nhan',
       },
     ],

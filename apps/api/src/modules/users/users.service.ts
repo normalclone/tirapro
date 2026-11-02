@@ -1,4 +1,5 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
+import { profileLockedException } from './profile-locked';
 import * as argon2 from 'argon2';
 import type { Request } from 'express';
 import type { UpdateProfileInput } from '@tirapro/shared';
@@ -185,7 +186,25 @@ export class UsersService {
     return memberUserForViewer(this.toDto(m.user), privileged);
   }
 
-  async updateProfile(id: string, data: UpdateProfileInput) {
+  /**
+   * Hồ sơ của chính mình. Họ tên / ảnh đại diện chỉ quản trị hệ thống được đổi (người thường: 403 `PROFILE_LOCKED`
+   * khi giá trị khác hiện tại); múi giờ, ngôn ngữ ai cũng đổi được.
+   */
+  async updateProfile(id: string, data: UpdateProfileInput, isSystemAdmin = false) {
+    if (!isSystemAdmin && (data.displayName !== undefined || data.avatarUrl !== undefined)) {
+      const cur = await this.prisma.user.findUnique({
+        where: { id },
+        select: { displayName: true, avatarUrl: true },
+      });
+      if (!cur) throw new NotFoundAppException('Người dùng');
+      if (
+        (data.displayName !== undefined && data.displayName !== cur.displayName) ||
+        (data.avatarUrl !== undefined && data.avatarUrl !== cur.avatarUrl)
+      ) {
+        throw profileLockedException();
+      }
+      data = { ...data, displayName: undefined, avatarUrl: undefined };
+    }
     const u = await this.prisma.user.update({ where: { id }, data });
     return this.toDto(u);
   }
