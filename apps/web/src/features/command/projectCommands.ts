@@ -42,7 +42,7 @@ const MAX_START_COMMANDS = 5;
 /**
  * Lệnh theo dự án hiện tại. Lệnh sprint chỉ khi có quyền: "Kết thúc sprint" cho sprint ACTIVE; "Bắt đầu sprint" cho
  * sprint FUTURE CHỈ khi chưa có sprint ACTIVE (API từ chối nếu đã có). Lệnh sprint đi qua Việc chờ kèm `?action=` để dùng
- * lại hộp xác nhận/quyền của trang đó. Không có "Báo lỗi": đã nằm ở nhóm Hành động của bảng lệnh.
+ * lại hộp xác nhận/quyền của trang đó. Không có lệnh "Báo lỗi" (form Báo lỗi đã bỏ khỏi giao diện).
  */
 export function buildProjectCommands(input: ProjectCommandInput): ProjectCommand[] {
   const { projectKey: k, projectId, sprints } = input;

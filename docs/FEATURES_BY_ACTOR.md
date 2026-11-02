@@ -32,7 +32,7 @@
 - Trung tâm **thông báo** (in-app realtime + đánh dấu đã đọc), **watch/unwatch** issue.
 - **Command palette (Cmd+K)**: điều hướng nhanh, nhảy tới issue/project, chạy hành động bằng phím tắt.
 - Đổi **theme sáng/tối**, tìm kiếm nhanh, saved filter **cá nhân**, dashboard **cá nhân**.
-- **Phím tắt** có bảng `?` theo nhóm (danh sách `j/k` + Enter, `a`, `e`, `m`, `i`, `w`, `g b` / `g l`…), **Cmd+K** có lệnh sprint/điều hướng/Báo lỗi; **JQL** có gợi ý tự hoàn thành, `me`, lưu truy vấn, kết quả dạng bảng + xuất CSV.
+- **Phím tắt** có bảng `?` theo nhóm (danh sách `j/k` + Enter, `a`, `e`, `m`, `i`, `w`, `g b` / `g l`…), **Cmd+K** có lệnh sprint/điều hướng/tạo công việc; **JQL** có gợi ý tự hoàn thành, `me`, lưu truy vấn, kết quả dạng bảng + xuất CSV.
 - Trang **/notifications** lọc Chưa đọc / Được nhắc / Được giao; thông báo có người + hành động + giá trị, gộp theo công việc.
 - Mọi ô ngày/giờ nhập `dd/MM/yyyy` + `HH:mm`; thuật ngữ thống nhất (công việc, Việc chờ, Bảng việc — `docs/UX_CONVENTIONS.md` §19).
 - Hồ sơ hoạt động của bản thân (issue được giao, đã báo, đang theo dõi).
@@ -87,7 +87,7 @@
 - Xem report, presence realtime (ai đang xem issue).
 
 ### 2.8 Project Reporter (Stakeholder) — trong phạm vi 1 project
-- **Tạo issue** (báo bug/yêu cầu) — có form **Báo lỗi** riêng (Cơ bản / Nâng cao, gợi ý bug trùng, môi trường có cấu trúc), gửi **yêu cầu** vào Việc mới vào (Bug / Yêu cầu tính năng / Câu hỏi); sửa **issue do mình tạo/được giao** (`issue:edit:own`); tự xoá bug mình vừa báo trong 10 phút đầu (vào Thùng rác).
+- **Tạo issue** — báo bug bằng **Tạo công việc** chọn loại **Bug** (form Báo lỗi riêng đã bỏ khỏi giao diện từ 02/11/2026; API intake vẫn còn); sửa **issue do mình tạo/được giao** (`issue:edit:own`); tự xoá bug mình vừa báo trong 10 phút đầu (vào Thùng rác).
 - Trang chủ có khối **Bug tôi báo chưa đóng / Chờ tôi xác nhận**.
 - **Comment** + @mention, đính kèm file, watch issue.
 - Xem board, backlog, issue, **report** (chỉ đọc).
