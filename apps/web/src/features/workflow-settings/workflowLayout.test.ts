@@ -174,3 +174,98 @@ describe('layoutWorkflow – DEV', () => {
     expect(layoutWorkflow(DEV)).toEqual(L);
   });
 });
+
+describe('layoutWorkflow – trường hợp biên', () => {
+  it('0 và 1 trạng thái', () => {
+    const e = layoutWorkflow(mk([], []));
+    expect(e.nodes).toEqual([]);
+    expect(e.edges).toEqual([]);
+    const one = layoutWorkflow(mk([['A', 'TODO']], []));
+    expect(one.nodes).toHaveLength(1);
+    expect(Number.isFinite(one.bounds.width)).toBe(true);
+  });
+
+  it('vòng lặp và nguồn không tồn tại thành huy hiệu, không mất', () => {
+    const wf = mk(
+      [
+        ['A', 'TODO'],
+        ['B', 'DONE'],
+      ],
+      [
+        ['Tự quay', 'A', 'A'],
+        ['Ma', 'ghost', 'B'],
+        ['Đi', 'A', 'B'],
+      ],
+    );
+    const L = layoutWorkflow(wf);
+    expect(L.edges.map((x) => x.name)).toEqual(['Đi']);
+    expect(L.nodes.find((n) => n.id === 'A')!.strayTransitions.map((t) => t.name)).toEqual([
+      'Tự quay',
+    ]);
+    expect(L.nodes.find((n) => n.id === 'B')!.strayTransitions.map((t) => t.name)).toEqual(['Ma']);
+  });
+
+  it('chuyển tiếp trùng cặp và order bằng nhau vẫn không chung đoạn, kết quả ổn định', () => {
+    const wf = mk(
+      [
+        ['A', 'TODO'],
+        ['B', 'TODO'],
+        ['C', 'DONE'],
+      ],
+      [
+        ['x', 'A', 'C'],
+        ['y', 'A', 'C'],
+        ['z', 'C', 'A'],
+        ['w', 'C', 'A'],
+      ],
+    );
+    wf.statuses.forEach((s) => (s.order = 0));
+    const L = layoutWorkflow(wf);
+    expect(L.edges).toHaveLength(4);
+    L.edges.forEach((ea, i) => {
+      for (const eb of L.edges.slice(i + 1))
+        for (const a of segs(ea)) for (const b of segs(eb)) expect(share(a, b)).toBe(false);
+    });
+    expect(layoutWorkflow(wf)).toEqual(L);
+  });
+
+  it('nhóm lạ xếp giữa, không sinh NaN', () => {
+    const wf = mk(
+      [
+        ['A', 'TODO'],
+        ['B', 'XYZ' as StatusCategory],
+        ['C', 'DONE'],
+      ],
+      [['t', 'A', 'C']],
+    );
+    const L = layoutWorkflow(wf);
+    expect(L.nodes.map((n) => n.id)).toEqual(['A', 'B', 'C']);
+    expect(L.edges[0]!.points.every((p) => Number.isFinite(p.x) && Number.isFinite(p.y))).toBe(
+      true,
+    );
+  });
+
+  it('25 trạng thái nối vòng: không chung đoạn, nhãn không chồng nhau', () => {
+    const names = Array.from({ length: 25 }, (_, i) => `S${i}`);
+    const cat = (i: number): StatusCategory => (i < 8 ? 'TODO' : i < 20 ? 'IN_PROGRESS' : 'DONE');
+    const tr: [string, string | null, string][] = [];
+    names.forEach((n, i) => {
+      if (i + 1 < 25) tr.push([`Tiếp ${i}`, n, names[i + 1]!]);
+      if (i % 3 === 0 && i + 4 < 25) tr.push([`Nhảy ${i}`, n, names[i + 4]!]);
+      if (i % 4 === 0 && i > 2) tr.push([`Lùi ${i}`, n, names[i - 3]!]);
+    });
+    const L = layoutWorkflow(
+      mk(
+        names.map((n, i) => [n, cat(i)] as S),
+        tr,
+      ),
+    );
+    expect(L.nodes).toHaveLength(25);
+    L.edges.forEach((ea, i) => {
+      for (const eb of L.edges.slice(i + 1)) {
+        for (const a of segs(ea)) for (const b of segs(eb)) expect(share(a, b)).toBe(false);
+        expect(hit(rectOf(ea), rectOf(eb)), `${ea.name}/${eb.name}`).toBe(false);
+      }
+    });
+  });
+});

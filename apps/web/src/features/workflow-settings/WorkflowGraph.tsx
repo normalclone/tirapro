@@ -18,7 +18,7 @@ import ReactFlow, {
   type NodeProps,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
-import { Plus, RotateCcw, Trash2, X } from 'lucide-react';
+import { AlertTriangle, Plus, RotateCcw, Trash2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -45,7 +45,7 @@ import {
 import { STATUS_CATEGORY_LABEL } from '@/lib/terms';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 
-const CATEGORY_VAR: Record<StatusCategory, string> = {
+const CATEGORY_VAR: Record<string, string> = {
   TODO: 'var(--status-todo)',
   IN_PROGRESS: 'var(--status-progress)',
   DONE: 'var(--status-done)',
@@ -57,6 +57,7 @@ type NodeData = {
   color?: string | null;
   isInitial?: boolean;
   anyTransitions: { id: string; name: string }[];
+  strayTransitions: { id: string; name: string }[];
   onDelete?: (id: string) => void;
   onToggleAny?: (id: string) => void;
   onRemoveAny?: (transitionId: string) => void;
@@ -83,6 +84,7 @@ function buildNodes(
         color: s.color,
         isInitial: s.isInitial,
         anyTransitions: n.anyTransitions,
+        strayTransitions: n.strayTransitions,
         ...handlers,
       },
     };
@@ -125,6 +127,9 @@ function TransitionEdge({ id, data, selected, markerEnd }: EdgeProps<WfEdgeData>
       <EdgeLabelRenderer>
         <button
           type="button"
+          tabIndex={-1}
+          aria-pressed={!!selected}
+          aria-label={`${data.name}${back ? ', quay lại' : ''}`}
           onClick={() => setEdges((es) => es.map((e) => ({ ...e, selected: e.id === id })))}
           title={back ? `${data.name} (quay lại)` : data.name}
           style={{
@@ -151,6 +156,7 @@ function TransitionEdge({ id, data, selected, markerEnd }: EdgeProps<WfEdgeData>
 /** Node trạng thái: chấm màu theo nhóm, tên, badge khởi tạo, huy hiệu "từ mọi trạng thái", nút xoá. */
 function StatusNode({ id, data, selected }: NodeProps<NodeData>) {
   const any = data.anyTransitions;
+  const stray = data.strayTransitions;
   return (
     <div
       style={{ width: NODE_W, height: NODE_H }}
@@ -167,7 +173,7 @@ function StatusNode({ id, data, selected }: NodeProps<NodeData>) {
       <div className="flex items-center gap-2">
         <span
           className="h-2.5 w-2.5 shrink-0 rounded-full"
-          style={{ background: data.color || CATEGORY_VAR[data.category] }}
+          style={{ background: data.color || CATEGORY_VAR[data.category] || 'var(--faint)' }}
           aria-hidden
         />
         <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink-strong">
@@ -180,7 +186,29 @@ function StatusNode({ id, data, selected }: NodeProps<NodeData>) {
         )}
       </div>
       <div className="mt-1 flex items-center justify-between gap-1">
-        <span className="text-[11px] text-faint">{STATUS_CATEGORY_LABEL[data.category]}</span>
+        <span className="text-[11px] text-faint">
+          {STATUS_CATEGORY_LABEL[data.category] ?? 'Chưa phân nhóm'}
+        </span>
+        {stray.length > 0 && (
+          <span
+            title={`Chuyển tiếp không vẽ được (vòng lặp hoặc nguồn không tồn tại): ${stray.map((t) => t.name).join(', ')}`}
+            className="inline-flex items-center gap-1 rounded border border-dashed border-danger px-1 text-[10px] text-danger"
+          >
+            <AlertTriangle className="h-2.5 w-2.5" aria-hidden />
+            {stray.length}
+            {data.onRemoveAny && (
+              <button
+                type="button"
+                aria-label="Xoá chuyển tiếp không hợp lệ"
+                title="Xoá chuyển tiếp không hợp lệ"
+                onClick={() => stray.forEach((t) => data.onRemoveAny?.(t.id))}
+                className="nodrag -mr-0.5 rounded hover:text-danger"
+              >
+                <X className="h-2.5 w-2.5" aria-hidden />
+              </button>
+            )}
+          </span>
+        )}
         {any.length > 0 ? (
           <span
             title={`Chuyển tiếp "${any.map((t) => t.name).join('", "')}": từ mọi trạng thái sang "${data.label}"`}
@@ -206,10 +234,10 @@ function StatusNode({ id, data, selected }: NodeProps<NodeData>) {
               type="button"
               onClick={() => data.onToggleAny?.(id)}
               title="Cho phép chuyển sang trạng thái này từ mọi trạng thái"
-              className="nodrag hidden items-center gap-1 rounded px-1 text-[10px] text-faint hover:text-primary group-hover:inline-flex"
+              aria-label="Cho phép chuyển sang trạng thái này từ mọi trạng thái"
+              className="nodrag inline-flex items-center gap-1 rounded px-1 text-[10px] text-faint opacity-0 hover:text-primary focus-visible:opacity-100 group-focus-within:opacity-100 group-hover:opacity-100"
             >
-              <RotateCcw className="h-2.5 w-2.5" aria-hidden />
-              Từ mọi trạng thái
+              <RotateCcw className="h-3 w-3" aria-hidden />
             </button>
           )
         )}
@@ -220,7 +248,7 @@ function StatusNode({ id, data, selected }: NodeProps<NodeData>) {
           onClick={() => data.onDelete?.(id)}
           title="Xoá trạng thái"
           aria-label="Xoá trạng thái"
-          className="absolute -right-2 -top-2 hidden h-5 w-5 place-items-center rounded-full border border-border bg-surface text-muted shadow-sm hover:text-danger group-hover:grid"
+          className="absolute -right-2 -top-2 grid h-5 w-5 place-items-center rounded-full border border-border bg-surface text-muted opacity-0 shadow-sm hover:text-danger focus-visible:opacity-100 group-focus-within:opacity-100 group-hover:opacity-100"
         >
           <Trash2 className="h-3 w-3" aria-hidden />
         </button>
@@ -238,11 +266,14 @@ const nodeTypes = { wf: StatusNode };
 const edgeTypes = { wf: TransitionEdge };
 
 /** Canh khung theo biên bố cục (gồm cả các cung) khi đổi workflow hoặc dữ liệu. */
-function FitView({ bounds, dep }: { bounds: WorkflowLayout['bounds']; dep: string }) {
+function FitView({ bounds, fitKey }: { bounds: WorkflowLayout['bounds']; fitKey: string }) {
   const { fitBounds } = useReactFlow();
+  const boundsRef = useRef(bounds);
+  boundsRef.current = bounds;
+  // Chỉ canh lại khi đổi quy trình hoặc số trạng thái — không reset zoom/pan của người dùng mỗi lần dữ liệu đổi.
   useEffect(() => {
-    fitBounds(bounds, { padding: 0.06, duration: 0 });
-  }, [dep, bounds, fitBounds]);
+    fitBounds(boundsRef.current, { padding: 0.03, duration: 0 });
+  }, [fitKey, fitBounds]);
   return null;
 }
 
@@ -339,7 +370,10 @@ export function WorkflowGraph({ workflow }: { workflow: Workflow }) {
   // Bố cục tự động và ổn định: dựng lại khi DỮ LIỆU workflow đổi.
   useEffect(() => {
     setNodes(buildNodes(workflow, layout, canManage ? stable : {}));
-    setEdges(buildEdges(layout));
+    setEdges((prev) => {
+      const sel = new Set(prev.filter((e) => e.selected).map((e) => e.id));
+      return buildEdges(layout).map((e) => (sel.has(e.id) ? { ...e, selected: true } : e));
+    });
   }, [workflow, layout, canManage, stable, setNodes, setEdges]);
 
   const onConnect = useCallback(
@@ -386,12 +420,12 @@ export function WorkflowGraph({ workflow }: { workflow: Workflow }) {
         onEdgesDelete={onEdgesDelete}
         nodesConnectable={canManage}
         nodesDraggable={false}
-        minZoom={0.2}
+        minZoom={0.05}
         fitView
         proOptions={{ hideAttribution: true }}
         deleteKeyCode={canManage ? ['Backspace', 'Delete'] : null}
       >
-        <FitView bounds={layout.bounds} dep={workflow.id} />
+        <FitView bounds={layout.bounds} fitKey={`${workflow.id}:${workflow.statuses.length}`} />
         <Background gap={16} color="var(--border)" />
         <Controls showInteractive={false} className="!border-border !bg-surface !shadow-md" />
         {canManage && (

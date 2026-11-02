@@ -18,7 +18,8 @@ const CORNER = 10;
 const LABEL_H = 20;
 const SLOT_MARGIN = 16;
 
-const CAT_RANK: Record<StatusCategory, number> = { TODO: 0, IN_PROGRESS: 1, DONE: 2 };
+const CAT_RANK: Record<string, number> = { TODO: 0, IN_PROGRESS: 1, DONE: 2 };
+const rank = (c: StatusCategory) => CAT_RANK[c] ?? 1;
 
 interface LayoutNode {
   id: string;
@@ -26,6 +27,8 @@ interface LayoutNode {
   y: number;
   /** Chuyển tiếp "từ mọi trạng thái" đi tới node này. */
   anyTransitions: { id: string; name: string }[];
+  /** Chuyển tiếp không vẽ được (vòng lặp về chính nó, hoặc nguồn không tồn tại) — hiện thành huy hiệu để vẫn xoá được. */
+  strayTransitions: { id: string; name: string }[];
 }
 
 type Pt = { x: number; y: number };
@@ -93,10 +96,11 @@ interface Arc {
 
 export function layoutWorkflow(wf: Pick<Workflow, 'statuses' | 'transitions'>): WorkflowLayout {
   const sorted = [...wf.statuses].sort(
-    (a, b) => CAT_RANK[a.category] - CAT_RANK[b.category] || a.order - b.order,
+    (a, b) => rank(a.category) - rank(b.category) || a.order - b.order || a.id.localeCompare(b.id),
   );
   const idx = new Map(sorted.map((s, i) => [s.id, i]));
   const anyBy = new Map<string, { id: string; name: string }[]>();
+  const strayBy = new Map<string, { id: string; name: string }[]>();
   const arcs: Arc[] = [];
 
   for (const t of wf.transitions) {
@@ -109,7 +113,12 @@ export function layoutWorkflow(wf: Pick<Workflow, 'statuses' | 'transitions'>): 
       continue;
     }
     const from = idx.get(t.fromStatusId);
-    if (from === undefined || from === to) continue;
+    if (from === undefined || from === to) {
+      const list = strayBy.get(t.toStatusId) ?? [];
+      list.push({ id: t.id, name: t.name });
+      strayBy.set(t.toStatusId, list);
+      continue;
+    }
     arcs.push({
       id: t.id,
       name: t.name,
@@ -205,6 +214,7 @@ export function layoutWorkflow(wf: Pick<Workflow, 'statuses' | 'transitions'>): 
       x: i * PITCH,
       y: 0,
       anyTransitions: anyBy.get(s.id) ?? [],
+      strayTransitions: strayBy.get(s.id) ?? [],
     })),
     edges,
     bounds: { x: 0, y: top, width, height: bottom - top },
