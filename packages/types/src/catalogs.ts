@@ -143,6 +143,15 @@ export interface WorkflowTemplateSeed {
   isDefault?: boolean;
   statuses: WorkflowStatusSeed[];
   transitions: WorkflowTransitionSeed[];
+  /**
+   * Cột bảng tường minh (tên cột → tên các trạng thái). Bỏ trống = 1 cột / trạng thái, tên cột = tên trạng thái.
+   */
+  boardColumns?: WorkflowBoardColumnSeed[];
+}
+
+export interface WorkflowBoardColumnSeed {
+  name: string;
+  statuses: string[];
 }
 
 const SCRUM_STATUSES: WorkflowStatusSeed[] = [
@@ -222,10 +231,87 @@ export const DEFAULT_WORKFLOW_TEMPLATES: WorkflowTemplateSeed[] = [
       { name: 'Mở lại', from: 'Đã bàn giao', to: 'Đề xuất' },
     ],
   },
+  {
+    name: 'Phát triển phần mềm',
+    description:
+      'Quy trình BA → Dev → Test: Cần làm → Đang phân tích → Sẵn sàng phát triển → Đang làm → Review code → Chờ test → Đang test → Hoàn thành (hoặc Không xử lý)',
+    boardType: 'KANBAN',
+    statuses: [
+      { name: 'Cần làm', category: 'TODO', color: '#64748b', order: 0, isInitial: true },
+      { name: 'Đang phân tích', category: 'TODO', color: '#8b5cf6', order: 1 },
+      { name: 'Sẵn sàng phát triển', category: 'TODO', color: '#0ea5e9', order: 2 },
+      { name: 'Đang làm', category: 'IN_PROGRESS', color: '#2563eb', order: 3 },
+      { name: 'Review code', category: 'IN_PROGRESS', color: '#6366f1', order: 4 },
+      { name: 'Chờ test', category: 'IN_PROGRESS', color: '#f59e0b', order: 5 },
+      { name: 'Đang test', category: 'IN_PROGRESS', color: '#d97706', order: 6 },
+      { name: 'Hoàn thành', category: 'DONE', color: '#16a34a', order: 7 },
+      { name: 'Không xử lý', category: 'DONE', color: '#94a3b8', order: 8 },
+    ],
+    transitions: [
+      { name: 'Phân tích', from: 'Cần làm', to: 'Đang phân tích' },
+      { name: 'Sẵn sàng phát triển', from: 'Đang phân tích', to: 'Sẵn sàng phát triển' },
+      { name: 'Sẵn sàng phát triển', from: 'Cần làm', to: 'Sẵn sàng phát triển' },
+      { name: 'Bắt đầu làm', from: 'Cần làm', to: 'Đang làm' },
+      { name: 'Bắt đầu làm', from: 'Sẵn sàng phát triển', to: 'Đang làm' },
+      { name: 'Cần làm rõ', from: 'Sẵn sàng phát triển', to: 'Đang phân tích' },
+      { name: 'Tạm dừng', from: 'Đang làm', to: 'Cần làm' },
+      { name: 'Gửi review', from: 'Đang làm', to: 'Review code' },
+      { name: 'Trả lại', from: 'Review code', to: 'Đang làm' },
+      { name: 'Chuyển test', from: 'Đang làm', to: 'Chờ test' },
+      { name: 'Chuyển test', from: 'Review code', to: 'Chờ test' },
+      { name: 'Bắt đầu test', from: 'Chờ test', to: 'Đang test' },
+      { name: 'Test đạt', from: 'Đang test', to: 'Hoàn thành' },
+      { name: 'Test không đạt', from: 'Đang test', to: 'Đang làm' },
+      { name: 'Test không đạt', from: 'Chờ test', to: 'Đang làm' },
+      { name: 'Không xử lý', from: null, to: 'Không xử lý' },
+      { name: 'Mở lại', from: 'Hoàn thành', to: 'Cần làm' },
+      { name: 'Mở lại', from: 'Không xử lý', to: 'Cần làm' },
+    ],
+    boardColumns: [
+      { name: 'Cần làm', statuses: ['Cần làm'] },
+      { name: 'BA phân tích', statuses: ['Đang phân tích'] },
+      { name: 'Sẵn sàng', statuses: ['Sẵn sàng phát triển'] },
+      { name: 'Đang làm', statuses: ['Đang làm'] },
+      { name: 'Review code', statuses: ['Review code'] },
+      { name: 'Chờ test', statuses: ['Chờ test'] },
+      { name: 'Đang test', statuses: ['Đang test'] },
+      { name: 'Xong', statuses: ['Hoàn thành', 'Không xử lý'] },
+    ],
+  },
+  {
+    name: 'Việc chung',
+    description:
+      'Việc không phải lập trình (khảo sát, hạ tầng, đào tạo, hồ sơ): Cần làm → Đang làm → Chờ duyệt → Hoàn thành',
+    boardType: 'KANBAN',
+    statuses: [
+      { name: 'Cần làm', category: 'TODO', color: '#64748b', order: 0, isInitial: true },
+      { name: 'Đang làm', category: 'IN_PROGRESS', color: '#2563eb', order: 1 },
+      { name: 'Chờ duyệt', category: 'IN_PROGRESS', color: '#f59e0b', order: 2 },
+      { name: 'Hoàn thành', category: 'DONE', color: '#16a34a', order: 3 },
+      { name: 'Không xử lý', category: 'DONE', color: '#94a3b8', order: 4 },
+    ],
+    transitions: [
+      { name: 'Bắt đầu làm', from: 'Cần làm', to: 'Đang làm' },
+      { name: 'Tạm dừng', from: 'Đang làm', to: 'Cần làm' },
+      { name: 'Gửi duyệt', from: 'Đang làm', to: 'Chờ duyệt' },
+      { name: 'Trả lại', from: 'Chờ duyệt', to: 'Đang làm' },
+      { name: 'Hoàn thành', from: 'Chờ duyệt', to: 'Hoàn thành' },
+      { name: 'Hoàn thành', from: 'Đang làm', to: 'Hoàn thành' },
+      { name: 'Không xử lý', from: null, to: 'Không xử lý' },
+      { name: 'Mở lại', from: 'Hoàn thành', to: 'Cần làm' },
+      { name: 'Mở lại', from: 'Không xử lý', to: 'Cần làm' },
+    ],
+    boardColumns: [
+      { name: 'Cần làm', statuses: ['Cần làm'] },
+      { name: 'Đang làm', statuses: ['Đang làm'] },
+      { name: 'Chờ duyệt', statuses: ['Chờ duyệt'] },
+      { name: 'Xong', statuses: ['Hoàn thành', 'Không xử lý'] },
+    ],
+  },
 ];
 
 /** Khoá mẫu dự án chọn ở hộp "Tạo dự án". */
-export type ProjectTemplateKey = 'scrum' | 'kanban' | 'requirements';
+export type ProjectTemplateKey = 'scrum' | 'kanban' | 'requirements' | 'software' | 'general';
 
 export interface ProjectTemplateDef {
   key: ProjectTemplateKey;
@@ -235,6 +321,8 @@ export interface ProjectTemplateDef {
   projectType: ProjectType;
   /** Tên mẫu trong DEFAULT_WORKFLOW_TEMPLATES. */
   workflowName: string;
+  /** JQL lọc bảng sinh sẵn (vd. ẩn Epic khỏi bảng). Bỏ trống = bảng không lọc. */
+  boardFilterJql?: string;
 }
 
 export const PROJECT_TEMPLATES: ProjectTemplateDef[] = [
@@ -261,6 +349,24 @@ export const PROJECT_TEMPLATES: ProjectTemplateDef[] = [
       'Theo dõi yêu cầu từ đề xuất đến bàn giao: Đề xuất → Đang phân tích → Chờ duyệt → Đã duyệt → Đã bàn giao (hoặc Từ chối)',
     projectType: 'KANBAN',
     workflowName: 'Quản lý yêu cầu',
+  },
+  {
+    key: 'software',
+    name: 'Phát triển phần mềm',
+    description:
+      'Quy trình BA → Dev → Test: Cần làm → Đang phân tích → Sẵn sàng phát triển → Đang làm → Review code → Chờ test → Đang test → Hoàn thành (hoặc Không xử lý)',
+    projectType: 'KANBAN',
+    workflowName: 'Phát triển phần mềm',
+    boardFilterJql: 'type != Epic',
+  },
+  {
+    key: 'general',
+    name: 'Việc chung',
+    description:
+      'Việc không phải lập trình (khảo sát, hạ tầng, đào tạo, hồ sơ): Cần làm → Đang làm → Chờ duyệt → Hoàn thành',
+    projectType: 'KANBAN',
+    workflowName: 'Việc chung',
+    boardFilterJql: 'type != Epic',
   },
 ];
 

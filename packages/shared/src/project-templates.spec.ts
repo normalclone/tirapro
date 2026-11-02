@@ -3,8 +3,14 @@ import { DEFAULT_WORKFLOW_TEMPLATES, PROJECT_TEMPLATES } from '@tirapro/types';
 import { createProjectSchema } from './schemas/common';
 
 describe('PROJECT_TEMPLATES', () => {
-  it('có đúng 3 mẫu, key duy nhất', () => {
-    expect(PROJECT_TEMPLATES.map((t) => t.key)).toEqual(['scrum', 'kanban', 'requirements']);
+  it('có đúng 5 mẫu, key duy nhất', () => {
+    expect(PROJECT_TEMPLATES.map((t) => t.key)).toEqual([
+      'scrum',
+      'kanban',
+      'requirements',
+      'software',
+      'general',
+    ]);
   });
   it.each(PROJECT_TEMPLATES)('$key: quy trình tồn tại, đủ khép kín', (t) => {
     const wf = DEFAULT_WORKFLOW_TEMPLATES.find((w) => w.name === t.workflowName);
@@ -17,6 +23,11 @@ describe('PROJECT_TEMPLATES', () => {
       if (tr.from) expect(names.has(tr.from), `${tr.name} từ ${tr.from}`).toBe(true);
     }
     expect(wf!.boardType).toBe(t.projectType);
+    // Cột tường minh: mỗi trạng thái xuất hiện đúng 1 lần trong đúng 1 cột.
+    if (wf!.boardColumns) {
+      const all = wf!.boardColumns.flatMap((c) => c.statuses);
+      expect([...all].sort()).toEqual([...names].sort());
+    }
   });
   it('mẫu mới đặt cuối: find(KANBAN) vẫn trả "Kanban mặc định"', () => {
     expect(DEFAULT_WORKFLOW_TEMPLATES.find((w) => w.boardType === 'KANBAN')!.name).toBe(

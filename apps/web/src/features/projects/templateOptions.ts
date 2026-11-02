@@ -9,11 +9,14 @@ export interface TemplateOption extends ProjectTemplateDef {
   steps: string[];
 }
 
-/** Ba mẫu dự án kèm các bước quy trình lấy từ cùng hằng số mà API dùng để sinh quy trình/cột. */
+/** Các mẫu dự án kèm các bước quy trình lấy từ cùng hằng số mà API dùng để sinh quy trình/cột. */
 export function templateOptions(): TemplateOption[] {
   return PROJECT_TEMPLATES.map((t) => {
     const wf = DEFAULT_WORKFLOW_TEMPLATES.find((w) => w.name === t.workflowName);
-    const steps = [...(wf?.statuses ?? [])].sort((a, b) => a.order - b.order).map((s) => s.name);
+    // Có cột tường minh thì chip theo cột (đúng với bảng sẽ thấy); không thì theo trạng thái.
+    const steps = wf?.boardColumns
+      ? wf.boardColumns.map((c) => c.name)
+      : [...(wf?.statuses ?? [])].sort((a, b) => a.order - b.order).map((s) => s.name);
     return { ...t, steps };
   });
 }
