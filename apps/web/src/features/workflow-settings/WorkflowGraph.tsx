@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ReactFlow, {
+  BaseEdge,
   Background,
+  EdgeLabelRenderer,
   Controls,
   Handle,
   Panel,
@@ -8,15 +10,15 @@ import ReactFlow, {
   MarkerType,
   useEdgesState,
   useNodesState,
-  useNodesInitialized,
   useReactFlow,
   type Connection,
   type Edge,
+  type EdgeProps,
   type Node,
   type NodeProps,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
-import { Plus, Trash2, X } from 'lucide-react';
+import { Plus, RotateCcw, Trash2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -32,132 +34,128 @@ import {
   type StatusCategory,
   type Workflow,
 } from './api';
+import {
+  layoutWorkflow,
+  NODE_H,
+  NODE_W,
+  type EdgeDir,
+  type LayoutEdge,
+  type WorkflowLayout,
+} from './workflowLayout';
 import { STATUS_CATEGORY_LABEL } from '@/lib/terms';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
-
-const ANY_ID = '__any__';
 
 const CATEGORY_VAR: Record<StatusCategory, string> = {
   TODO: 'var(--status-todo)',
   IN_PROGRESS: 'var(--status-progress)',
   DONE: 'var(--status-done)',
 };
-const CATEGORY_COL: Record<StatusCategory, number> = { TODO: 1, IN_PROGRESS: 2, DONE: 3 };
-const COL_W = 240;
-const ROW_H = 108;
 
 type NodeData = {
   label: string;
-  isAny?: boolean;
-  category?: StatusCategory;
+  category: StatusCategory;
   color?: string | null;
   isInitial?: boolean;
+  anyTransitions: { id: string; name: string }[];
   onDelete?: (id: string) => void;
+  onToggleAny?: (id: string) => void;
+  onRemoveAny?: (transitionId: string) => void;
 };
 
-type PosMap = Record<string, { x: number; y: number }>;
-
-function loadPos(workflowId: string): PosMap {
-  try {
-    return JSON.parse(localStorage.getItem(`tirapro-wf-pos-${workflowId}`) || '{}') as PosMap;
-  } catch {
-    return {};
-  }
-}
-function savePos(workflowId: string, map: PosMap) {
-  try {
-    localStorage.setItem(`tirapro-wf-pos-${workflowId}`, JSON.stringify(map));
-  } catch {
-    /* ignore */
-  }
-}
-
-/** Bố cục tự động: cột theo nhóm trạng thái (Bất kỳ → To Do → In Progress → Done). */
-function autoLayout(wf: Workflow): PosMap {
-  const counts: Record<StatusCategory, number> = { TODO: 0, IN_PROGRESS: 0, DONE: 0 };
-  const pos: PosMap = { [ANY_ID]: { x: 0, y: 24 } };
-  for (const s of [...wf.statuses].sort((a, b) => a.order - b.order)) {
-    pos[s.id] = { x: CATEGORY_COL[s.category] * COL_W, y: 24 + counts[s.category] * ROW_H };
-    counts[s.category] += 1;
-  }
-  return pos;
-}
+type WfEdgeData = { path: string; dir: EdgeDir; label: LayoutEdge['label']; name: string };
 
 function buildNodes(
   wf: Workflow,
-  saved: PosMap,
-  onDelete?: (id: string) => void,
+  layout: WorkflowLayout,
+  handlers: Pick<NodeData, 'onDelete' | 'onToggleAny' | 'onRemoveAny'>,
 ): Node<NodeData>[] {
-  const auto = autoLayout(wf);
-  const at = (id: string) => saved[id] ?? auto[id] ?? { x: 0, y: 0 };
-  const nodes: Node<NodeData>[] = [
-    {
-      id: ANY_ID,
+  const byId = new Map(wf.statuses.map((s) => [s.id, s]));
+  return layout.nodes.map((n) => {
+    const s = byId.get(n.id)!;
+    return {
+      id: n.id,
       type: 'wf',
-      position: at(ANY_ID),
-      data: { label: 'Bất kỳ trạng thái', isAny: true },
-    },
-  ];
-  for (const s of wf.statuses) {
-    nodes.push({
-      id: s.id,
-      type: 'wf',
-      position: at(s.id),
+      position: { x: n.x, y: n.y },
+      draggable: false,
       data: {
         label: s.name,
         category: s.category,
         color: s.color,
         isInitial: s.isInitial,
-        onDelete,
+        anyTransitions: n.anyTransitions,
+        ...handlers,
       },
-    });
-  }
-  return nodes;
+    };
+  });
 }
 
-function buildEdges(wf: Workflow): Edge[] {
-  return wf.transitions.map((t) => ({
-    id: t.id,
-    source: t.fromStatusId ?? ANY_ID,
-    target: t.toStatusId,
-    label: t.name,
-    type: 'smoothstep',
-    markerEnd: {
-      type: MarkerType.ArrowClosed,
-      width: 16,
-      height: 16,
-      color: 'var(--border-strong)',
-    },
-    style: { stroke: 'var(--border-strong)', strokeWidth: 1.5 },
-    labelStyle: { fill: 'var(--muted)', fontSize: 11, fontWeight: 500 },
-    labelBgStyle: { fill: 'var(--surface)', fillOpacity: 0.9 },
-    labelBgPadding: [4, 2] as [number, number],
-  }));
+function buildEdges(layout: WorkflowLayout): Edge<WfEdgeData>[] {
+  return layout.edges.map((e) => {
+    const color = e.dir === 'back' ? 'var(--faint)' : 'var(--border-strong)';
+    return {
+      id: e.id,
+      source: e.source,
+      target: e.target,
+      type: 'wf',
+      markerEnd: { type: MarkerType.ArrowClosed, width: 14, height: 14, color },
+      data: { path: e.path, dir: e.dir, label: e.label, name: e.name },
+    };
+  });
 }
 
-/** Node trạng thái (n8n-style): chấm màu theo nhóm, tên, badge khởi tạo, nút xoá. */
+/** Cung chuyển tiếp: path tính sẵn từ bố cục (không dùng toạ độ handle); nhãn là chip bấm để chọn. */
+function TransitionEdge({ id, data, selected, markerEnd }: EdgeProps<WfEdgeData>) {
+  const { setEdges } = useReactFlow();
+  if (!data) return null;
+  const back = data.dir === 'back';
+  const stroke = selected ? 'var(--primary)' : back ? 'var(--faint)' : 'var(--border-strong)';
+  return (
+    <>
+      <BaseEdge
+        id={id}
+        path={data.path}
+        markerEnd={markerEnd}
+        interactionWidth={16}
+        style={{
+          stroke,
+          strokeWidth: selected ? 2 : 1.5,
+          strokeDasharray: back ? '5 4' : undefined,
+        }}
+      />
+      <EdgeLabelRenderer>
+        <button
+          type="button"
+          onClick={() => setEdges((es) => es.map((e) => ({ ...e, selected: e.id === id })))}
+          title={back ? `${data.name} (quay lại)` : data.name}
+          style={{
+            transform: `translate(-50%, -50%) translate(${data.label.x}px, ${data.label.y}px)`,
+            width: data.label.w,
+            height: data.label.h,
+          }}
+          className={cn(
+            'nodrag nopan pointer-events-auto absolute truncate rounded border bg-surface px-1.5 text-[11px] font-medium leading-none',
+            selected
+              ? 'border-primary text-primary'
+              : back
+                ? 'border-border text-faint'
+                : 'border-border text-muted',
+          )}
+        >
+          {data.name}
+        </button>
+      </EdgeLabelRenderer>
+    </>
+  );
+}
+
+/** Node trạng thái: chấm màu theo nhóm, tên, badge khởi tạo, huy hiệu "từ mọi trạng thái", nút xoá. */
 function StatusNode({ id, data, selected }: NodeProps<NodeData>) {
-  if (data.isAny) {
-    return (
-      <div
-        className={cn(
-          'rounded-lg border border-dashed border-border-strong bg-surface-2 px-3 py-2 text-sm text-muted',
-          selected && 'ring-2 ring-[var(--ring)]',
-        )}
-      >
-        {data.label}
-        <Handle
-          type="source"
-          position={Position.Right}
-          className="!h-2.5 !w-2.5 !border-2 !border-surface !bg-faint"
-        />
-      </div>
-    );
-  }
+  const any = data.anyTransitions;
   return (
     <div
+      style={{ width: NODE_W, height: NODE_H }}
       className={cn(
-        'group relative min-w-[150px] rounded-lg border border-border bg-surface px-3 py-2 shadow-sm',
+        'group relative rounded-lg border border-border bg-surface px-3 py-2 shadow-sm',
         selected && 'border-primary ring-2 ring-[var(--ring)]',
       )}
     >
@@ -169,10 +167,7 @@ function StatusNode({ id, data, selected }: NodeProps<NodeData>) {
       <div className="flex items-center gap-2">
         <span
           className="h-2.5 w-2.5 shrink-0 rounded-full"
-          style={{
-            background:
-              data.color || (data.category ? CATEGORY_VAR[data.category] : 'var(--faint)'),
-          }}
+          style={{ background: data.color || CATEGORY_VAR[data.category] }}
           aria-hidden
         />
         <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink-strong">
@@ -184,11 +179,41 @@ function StatusNode({ id, data, selected }: NodeProps<NodeData>) {
           </span>
         )}
       </div>
-      {data.category && (
-        <span className="mt-0.5 block text-[11px] text-faint">
-          {STATUS_CATEGORY_LABEL[data.category]}
-        </span>
-      )}
+      <div className="mt-1 flex items-center justify-between gap-1">
+        <span className="text-[11px] text-faint">{STATUS_CATEGORY_LABEL[data.category]}</span>
+        {any.length > 0 ? (
+          <span
+            title={`Chuyển tiếp "${any.map((t) => t.name).join('", "')}": từ mọi trạng thái sang "${data.label}"`}
+            className="inline-flex items-center gap-1 rounded border border-dashed border-border-strong px-1 text-[10px] text-muted"
+          >
+            <RotateCcw className="h-2.5 w-2.5" aria-hidden />
+            Từ mọi trạng thái
+            {data.onRemoveAny && (
+              <button
+                type="button"
+                aria-label="Bỏ chuyển tiếp từ mọi trạng thái"
+                title="Bỏ chuyển tiếp từ mọi trạng thái"
+                onClick={() => any.forEach((t) => data.onRemoveAny?.(t.id))}
+                className="nodrag -mr-0.5 rounded hover:text-danger"
+              >
+                <X className="h-2.5 w-2.5" aria-hidden />
+              </button>
+            )}
+          </span>
+        ) : (
+          data.onToggleAny && (
+            <button
+              type="button"
+              onClick={() => data.onToggleAny?.(id)}
+              title="Cho phép chuyển sang trạng thái này từ mọi trạng thái"
+              className="nodrag hidden items-center gap-1 rounded px-1 text-[10px] text-faint hover:text-primary group-hover:inline-flex"
+            >
+              <RotateCcw className="h-2.5 w-2.5" aria-hidden />
+              Từ mọi trạng thái
+            </button>
+          )
+        )}
+      </div>
       {data.onDelete && (
         <button
           type="button"
@@ -210,15 +235,42 @@ function StatusNode({ id, data, selected }: NodeProps<NodeData>) {
 }
 
 const nodeTypes = { wf: StatusNode };
+const edgeTypes = { wf: TransitionEdge };
 
-/** Canh khung (fitView) sau khi node đã đo kích thước — tránh node nằm ngoài viewport lúc mount. */
-function FitView({ dep }: { dep: string }) {
-  const initialized = useNodesInitialized();
-  const { fitView } = useReactFlow();
+/** Canh khung theo biên bố cục (gồm cả các cung) khi đổi workflow hoặc dữ liệu. */
+function FitView({ bounds, dep }: { bounds: WorkflowLayout['bounds']; dep: string }) {
+  const { fitBounds } = useReactFlow();
   useEffect(() => {
-    if (initialized) fitView({ padding: 0.2, duration: 0 });
-  }, [initialized, dep, fitView]);
+    fitBounds(bounds, { padding: 0.06, duration: 0 });
+  }, [dep, bounds, fitBounds]);
   return null;
+}
+
+function Legend() {
+  return (
+    <div className="flex items-center gap-3 rounded-md border border-border bg-surface/90 px-2.5 py-1.5 text-xs text-muted shadow-sm">
+      <span className="inline-flex items-center gap-1.5">
+        <svg width="22" height="6" aria-hidden>
+          <line x1="0" y1="3" x2="22" y2="3" stroke="var(--border-strong)" strokeWidth="2" />
+        </svg>
+        Chuyển tiếp
+      </span>
+      <span className="inline-flex items-center gap-1.5">
+        <svg width="22" height="6" aria-hidden>
+          <line
+            x1="0"
+            y1="3"
+            x2="22"
+            y2="3"
+            stroke="var(--faint)"
+            strokeWidth="2"
+            strokeDasharray="5 4"
+          />
+        </svg>
+        Quay lại
+      </span>
+    </div>
+  );
 }
 
 export function WorkflowGraph({ workflow }: { workflow: Workflow }) {
@@ -227,14 +279,14 @@ export function WorkflowGraph({ workflow }: { workflow: Workflow }) {
   const addStatus = useAddStatus();
   const deleteStatus = useDeleteStatus();
   const confirm = useConfirm();
-  // Chỉ `workspace:admin` được sửa quy trình; người khác xem sơ đồ (kéo node để dễ nhìn vẫn được).
+  // Chỉ `workspace:admin` được sửa quy trình; người khác chỉ xem sơ đồ.
   const canManage = useAuth((s) => s.can('workspace:admin'));
 
-  const posRef = useRef<PosMap>(loadPos(workflow.id));
   const statusById = useMemo(
     () => new Map(workflow.statuses.map((s) => [s.id, s])),
     [workflow.statuses],
   );
+  const layout = useMemo(() => layoutWorkflow(workflow), [workflow]);
 
   const handleDeleteStatus = useCallback(
     async (id: string) => {
@@ -250,39 +302,62 @@ export function WorkflowGraph({ workflow }: { workflow: Workflow }) {
     },
     [statusById, deleteStatus, confirm],
   );
-  // Tham chiếu ổn định cho onDelete để effect dựng node KHÔNG chạy lại mỗi render
-  // (object mutation của react-query đổi ref mỗi render → tránh rebuild liên tục khiến reactflow giữ node ẩn).
-  const deleteRef = useRef(handleDeleteStatus);
-  deleteRef.current = handleDeleteStatus;
-  const stableDelete = useCallback((id: string) => void deleteRef.current(id), []);
+  const handleToggleAny = useCallback(
+    (id: string) => {
+      const s = statusById.get(id);
+      if (!s) return;
+      addTransition.mutate(
+        {
+          workflowId: workflow.id,
+          input: { name: s.name, fromStatusId: null, toStatusId: id },
+        },
+        { onError: (e) => toast.error(apiErrorMessage(e)) },
+      );
+    },
+    [workflow.id, statusById, addTransition],
+  );
+  const handleRemoveAny = useCallback(
+    (transitionId: string) =>
+      deleteTransition.mutate(transitionId, { onError: (e) => toast.error(apiErrorMessage(e)) }),
+    [deleteTransition],
+  );
+  // Tham chiếu ổn định cho handler (object mutation của react-query đổi ref mỗi render → tránh rebuild node liên tục).
+  const ref = useRef({ handleDeleteStatus, handleToggleAny, handleRemoveAny });
+  ref.current = { handleDeleteStatus, handleToggleAny, handleRemoveAny };
+  const stable = useMemo(
+    () => ({
+      onDelete: (id: string) => void ref.current.handleDeleteStatus(id),
+      onToggleAny: (id: string) => ref.current.handleToggleAny(id),
+      onRemoveAny: (id: string) => ref.current.handleRemoveAny(id),
+    }),
+    [],
+  );
 
   const [nodes, setNodes, onNodesChange] = useNodesState<NodeData>([]);
-  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState<WfEdgeData>([]);
 
-  // Chỉ dựng lại node/edge khi DỮ LIỆU workflow đổi (thêm/xoá) — giữ vị trí đã lưu.
+  // Bố cục tự động và ổn định: dựng lại khi DỮ LIỆU workflow đổi.
   useEffect(() => {
-    posRef.current = loadPos(workflow.id);
-    setNodes(buildNodes(workflow, posRef.current, canManage ? stableDelete : undefined));
-    setEdges(buildEdges(workflow));
-  }, [workflow, canManage, stableDelete, setNodes, setEdges]);
+    setNodes(buildNodes(workflow, layout, canManage ? stable : {}));
+    setEdges(buildEdges(layout));
+  }, [workflow, layout, canManage, stable, setNodes, setEdges]);
 
   const onConnect = useCallback(
     (c: Connection) => {
-      if (!c.source || !c.target || c.target === ANY_ID || c.source === c.target) return;
-      const fromId = c.source === ANY_ID ? null : c.source;
+      if (!c.source || !c.target || c.source === c.target) return;
       const exists = workflow.transitions.some(
-        (t) => (t.fromStatusId ?? null) === fromId && t.toStatusId === c.target,
+        (t) => t.fromStatusId === c.source && t.toStatusId === c.target,
       );
       if (exists) {
         toast.info('Chuyển tiếp này đã tồn tại.');
         return;
       }
-      const fromName = c.source === ANY_ID ? 'Bất kỳ' : (statusById.get(c.source)?.name ?? '');
+      const fromName = statusById.get(c.source)?.name ?? '';
       const toName = statusById.get(c.target)?.name ?? '';
       addTransition.mutate(
         {
           workflowId: workflow.id,
-          input: { name: `${fromName} → ${toName}`, fromStatusId: fromId, toStatusId: c.target },
+          input: { name: `${fromName} → ${toName}`, fromStatusId: c.source, toStatusId: c.target },
         },
         { onError: (e) => toast.error(apiErrorMessage(e)) },
       );
@@ -298,35 +373,25 @@ export function WorkflowGraph({ workflow }: { workflow: Workflow }) {
     [deleteTransition],
   );
 
-  const onNodeDragStop = useCallback(
-    (_e: unknown, node: Node) => {
-      posRef.current = {
-        ...posRef.current,
-        [node.id]: { x: Math.round(node.position.x), y: Math.round(node.position.y) },
-      };
-      savePos(workflow.id, posRef.current);
-    },
-    [workflow.id],
-  );
-
   return (
     <div className="h-[560px] w-full overflow-hidden rounded-lg border border-border bg-surface-2">
       <ReactFlow
         nodes={nodes}
         edges={edges}
         nodeTypes={nodeTypes}
+        edgeTypes={edgeTypes}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
         onEdgesDelete={onEdgesDelete}
         nodesConnectable={canManage}
-        onNodeDragStop={onNodeDragStop}
-        defaultEdgeOptions={{ type: 'smoothstep' }}
+        nodesDraggable={false}
+        minZoom={0.2}
         fitView
         proOptions={{ hideAttribution: true }}
         deleteKeyCode={canManage ? ['Backspace', 'Delete'] : null}
       >
-        <FitView dep={workflow.id} />
+        <FitView bounds={layout.bounds} dep={workflow.id} />
         <Background gap={16} color="var(--border)" />
         <Controls showInteractive={false} className="!border-border !bg-surface !shadow-md" />
         {canManage && (
@@ -342,6 +407,9 @@ export function WorkflowGraph({ workflow }: { workflow: Workflow }) {
             />
           </Panel>
         )}
+        <Panel position="top-right">
+          <Legend />
+        </Panel>
         <Panel position="bottom-right">
           <p className="rounded-md border border-border bg-surface/90 px-2.5 py-1.5 text-xs text-muted shadow-sm">
             {canManage
