@@ -66,7 +66,7 @@ export function ProfilePanel() {
     e.preventDefault();
     if (!user || update.isPending) return;
     const trimmed = canEditIdentity ? displayName.trim() : saved.displayName;
-    if (!trimmed) {
+    if (canEditIdentity && !trimmed) {
       toast.error('Hãy nhập tên hiển thị — đây là tên đồng nghiệp nhìn thấy');
       return;
     }
@@ -119,11 +119,16 @@ export function ProfilePanel() {
               placeholder="Nguyễn Văn A"
               autoComplete="name"
               onChange={(e) => setDisplayName(e.target.value)}
-              disabled={update.isPending || !canEditIdentity}
+              disabled={update.isPending}
               readOnly={!canEditIdentity}
+              aria-readonly={!canEditIdentity ? 'true' : undefined}
+              aria-describedby={!canEditIdentity ? 'profile-identity-hint' : undefined}
+              className={!canEditIdentity ? 'bg-disabled-bg text-disabled-fg' : undefined}
             />
             {!canEditIdentity && (
-              <span className="block text-xs text-ink-muted">{LOCKED_HINT}</span>
+              <span id="profile-identity-hint" className="block text-xs text-faint">
+                {LOCKED_HINT}
+              </span>
             )}
           </label>
 
