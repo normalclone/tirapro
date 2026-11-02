@@ -86,6 +86,47 @@ describe('AdminService.update — nhật ký khoá/mở khoá', () => {
     expect(audit.record).not.toHaveBeenCalled();
   });
 
+  it('đổi email: ghi email mới (chữ thường đã chuẩn hoá ở schema) và nhật ký account.email_changed', async () => {
+    const { service, audit, prisma } = setup('ACTIVE');
+    await service.update('u1', { email: 'b@teca.vn' }, 'admin');
+    expect(prisma.user.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: contain({ email: 'b@teca.vn' }) }),
+    );
+    const entry = audit.record.mock.calls[0]![0] as { action: string; summary: string };
+    expect(entry.action).toBe('account.email_changed');
+    expect(entry.summary).toContain('a@x.vn → b@teca.vn');
+  });
+
+  it('đổi email trùng tài khoản khác: từ chối, không ghi gì', async () => {
+    const { service, prisma, audit } = setup('ACTIVE');
+    prisma.user.findUnique.mockImplementation(
+      (args: { where: { id?: string; email?: string } }) =>
+        Promise.resolve(
+          args.where.email
+            ? { id: 'other' }
+            : {
+                id: 'u1',
+                status: 'ACTIVE',
+                displayName: 'An',
+                email: 'a@x.vn',
+                isSystemAdmin: false,
+                canCreateWorkspace: false,
+              },
+        ) as never,
+    );
+    await expect(service.update('u1', { email: 'taken@teca.vn' }, 'admin')).rejects.toThrow(
+      'Email này đã thuộc một tài khoản khác',
+    );
+    expect(prisma.user.update).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it('email giữ nguyên thì không ghi nhật ký đổi email', async () => {
+    const { service, audit } = setup('ACTIVE');
+    await service.update('u1', { email: 'a@x.vn' }, 'admin');
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
   it('đổi isSystemAdmin / canCreateWorkspace ghi account.permissions_changed', async () => {
     const { service, audit } = setup('ACTIVE');
     await service.update('u1', { isSystemAdmin: true, canCreateWorkspace: true }, 'admin');

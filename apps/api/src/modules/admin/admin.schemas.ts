@@ -11,6 +11,8 @@ export const createUserSchema = z.object({
 });
 
 export const updateUserSchema = z.object({
+  /** Đổi email đăng nhập (vd chuyển sang email công ty). Phải chưa thuộc tài khoản khác. */
+  email: z.string().trim().email('Email không hợp lệ').toLowerCase().optional(),
   displayName: z.string().min(1).max(120).optional(),
   isSystemAdmin: z.boolean().optional(),
   canCreateWorkspace: z.boolean().optional(),
