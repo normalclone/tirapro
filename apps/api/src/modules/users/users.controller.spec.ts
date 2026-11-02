@@ -81,3 +81,41 @@ describe('UsersController.list — truyền truy vấn xuống service', () => {
     expect((await run({}, { id: 'u1', permissions: ['workspace:view'] }))[3]).toBe(false);
   });
 });
+
+describe('UsersController — hồ sơ chỉ quản trị hệ thống đổi họ tên/ảnh', () => {
+  const normal = { id: 'u1', workspaceId: 'w1', isSystemAdmin: false } as never;
+  const sa = { id: 'u1', workspaceId: 'w1', isSystemAdmin: true } as never;
+  function mk() {
+    const users = {
+      updateProfile: vi.fn(() => Promise.resolve({})),
+      setAvatar: vi.fn(() => Promise.resolve({})),
+      clearAvatar: vi.fn(() => Promise.resolve({})),
+    };
+    const ctrl = new UsersController(users as never, {} as never, {} as never, {} as never);
+    return { ctrl, users };
+  }
+  it('updateMe truyền cờ quản trị hệ thống xuống service', async () => {
+    const { ctrl, users } = mk();
+    await ctrl.updateMe(normal, { timezone: 'Asia/Tokyo' });
+    await ctrl.updateMe(sa, { displayName: 'X' });
+    expect(users.updateProfile).toHaveBeenNthCalledWith(1, 'u1', { timezone: 'Asia/Tokyo' }, false);
+    expect(users.updateProfile).toHaveBeenNthCalledWith(2, 'u1', { displayName: 'X' }, true);
+  });
+  it('người thường tải/gỡ ảnh -> 403 PROFILE_LOCKED, không gọi service', async () => {
+    const { ctrl, users } = mk();
+    const file = {} as never;
+    await expect(ctrl.uploadAvatar(normal, file, req())).rejects.toMatchObject({ status: 403 });
+    await expect(ctrl.removeAvatar(normal)).rejects.toMatchObject({
+      response: { code: 'PROFILE_LOCKED' },
+    });
+    expect(users.setAvatar).not.toHaveBeenCalled();
+    expect(users.clearAvatar).not.toHaveBeenCalled();
+  });
+  it('quản trị hệ thống tải/gỡ ảnh được', async () => {
+    const { ctrl, users } = mk();
+    await ctrl.uploadAvatar(sa, {} as never, req());
+    await ctrl.removeAvatar(sa);
+    expect(users.setAvatar).toHaveBeenCalled();
+    expect(users.clearAvatar).toHaveBeenCalled();
+  });
+});

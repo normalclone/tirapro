@@ -918,8 +918,8 @@ export function DocumentationPage() {
                   Đổi theme trong menu người dùng hoặc từ ⌘K — áp dụng ngay, nhớ lựa chọn.
                 </Feature>
                 <Feature icon={<UserPlus className="h-4 w-4" />} title="Hồ sơ cá nhân">
-                  Cập nhật tên hiển thị, ảnh đại diện, múi giờ, ngôn ngữ; đổi mật khẩu trong trang
-                  Tài khoản.
+                  Đổi múi giờ, ngôn ngữ và mật khẩu trong trang Tài khoản. Họ tên, email và ảnh
+                  đại diện chỉ quản trị hệ thống đổi được.
                 </Feature>
                 <Feature icon={<LayoutGrid className="h-4 w-4" />} title="Trang tổng quan cá nhân">
                   Việc được giao, việc mình báo, công việc đang theo dõi và các mục vừa mở — tất cả

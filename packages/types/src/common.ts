@@ -69,6 +69,8 @@ export const ERROR_CODES = {
   LAST_WORKSPACE_ADMIN: 'LAST_WORKSPACE_ADMIN',
   /** 403: chỉ người đang giữ `workspace:admin` (hoặc admin hệ thống) mới cấp/gỡ quyền quản trị (P-C14). */
   ADMIN_GRANT_REQUIRES_ADMIN: 'ADMIN_GRANT_REQUIRES_ADMIN',
+  /** 403: chỉ quản trị hệ thống được đổi họ tên, email, ảnh đại diện — người dùng thường chỉ đổi mật khẩu, múi giờ, ngôn ngữ. */
+  PROFILE_LOCKED: 'PROFILE_LOCKED',
   /** 413: tệp tải lên vượt giới hạn dung lượng. */
   PAYLOAD_TOO_LARGE: 'PAYLOAD_TOO_LARGE',
   INTERNAL: 'INTERNAL',

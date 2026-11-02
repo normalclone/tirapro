@@ -29,6 +29,7 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
 import { WorkspaceId } from '../../common/decorators/workspace-id.decorator';
 import { ForbiddenAppException } from '../../common/exceptions/app.exception';
+import { profileLockedException } from './profile-locked';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import type { AuthUser } from '../../common/types/request';
 import { canSeeAdminUserFields } from '../../common/mappers/user.mapper';
@@ -89,7 +90,7 @@ export class UsersController {
     @CurrentUser() user: AuthUser,
     @Body(new ZodValidationPipe(updateProfileSchema)) body: UpdateProfileInput,
   ) {
-    return this.users.updateProfile(user.id, body);
+    return this.users.updateProfile(user.id, body, user.isSystemAdmin === true);
   }
 
   /** Đổi mật khẩu của chính mình (xác minh mật khẩu hiện tại). */
@@ -130,6 +131,7 @@ export class UsersController {
     @UploadedFile() file: Express.Multer.File,
     @Req() req: Request,
   ) {
+    if (user.isSystemAdmin !== true) throw profileLockedException();
     return this.users.setAvatar(user.id, file, req);
   }
 
@@ -138,6 +140,7 @@ export class UsersController {
   @AuthOnly()
   @Delete('me/avatar')
   async removeAvatar(@CurrentUser() user: AuthUser) {
+    if (user.isSystemAdmin !== true) throw profileLockedException();
     return this.users.clearAvatar(user.id);
   }
 

@@ -149,7 +149,8 @@ export const SCREENS: ScreenInfo[] = [
   {
     pattern: '/account',
     name: 'Tài khoản',
-    purpose: 'Hồ sơ cá nhân: tên hiển thị, ảnh, múi giờ, đổi mật khẩu.',
+    purpose:
+      'Hồ sơ cá nhân: múi giờ, ngôn ngữ, đổi mật khẩu (họ tên, email, ảnh đại diện do quản trị hệ thống đổi).',
     docAnchor: 'ca-nhan',
     chips: ['Đổi mật khẩu', 'Phím tắt'],
   },
