@@ -22,8 +22,6 @@ import { PeoplePicker } from '@/components/ui/PeoplePicker';
 import { useAssigneePicker } from '@/features/issue-edit/useAssigneeOptions';
 import { useAssigneeAvailability } from '@/features/resources/useAssigneeAvailability';
 import { useCreateIssueModal } from '@/stores/createIssue';
-import { openReportIssue } from '@/stores/reportIssue';
-import { isBugType } from '@/features/issue-edit/severity';
 import { ARCHIVED_PICK_HINT, CREATE_LAST_KEY } from '@/lib/currentProject';
 import { useCreateIssue } from './create-api';
 import { useProjectIssues } from './api';
@@ -457,24 +455,6 @@ export function CreateIssueModal() {
     }
   }
 
-  // Mang tiêu đề (giữ nguyên cả token đã gõ), mô tả và tệp đính sang form Báo lỗi (có kiểm tra trùng + mức nghiêm trọng)
-  // rồi đóng hộp tạo việc. Mẫu mô tả của hộp này bỏ đi (form Báo lỗi có mẫu riêng). Bản nháp tạo việc GIỮ NGUYÊN tới khi
-  // báo lỗi gửi thành công (`onSent`) — lỡ đóng form Báo lỗi vẫn còn chữ để quay lại.
-  function switchToReport() {
-    const text = description.trim() && !isTemplate(description) ? description : undefined;
-    const key = selKey;
-    saveDraft(key, { summary, description, acceptance }); // chốt nháp ngay (không chờ debounce)
-    openReportIssue({
-      projectKey: key || undefined,
-      kind: 'BUG',
-      summary: summary.trim(),
-      description: text,
-      files,
-      onSent: () => clearDraft(key),
-    });
-    close();
-  }
-
   // Nút nào vừa bấm (để spinner hiện đúng nút; Cmd+Enter / Cmd+Shift+Enter cũng đi qua hai hàm dưới).
   const [via, setVia] = useState<'create' | 'another'>('create');
 
@@ -634,19 +614,6 @@ export function CreateIssueModal() {
               }))}
             />
           </Field>
-
-          {isBugType(selType) && (
-            <p className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-md bg-surface-2 px-3 py-2 text-xs text-muted sm:col-span-2">
-              <span>Báo lỗi có kiểm tra trùng và mức nghiêm trọng —</span>
-              <button
-                type="button"
-                onClick={switchToReport}
-                className="rounded font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
-              >
-                Chuyển sang form Báo lỗi
-              </button>
-            </p>
-          )}
 
           <Field
             label="Tiêu đề"

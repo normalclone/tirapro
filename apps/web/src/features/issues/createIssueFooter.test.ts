@@ -20,10 +20,7 @@ describe('footer Tạo công việc — hai nút ngang hàng', () => {
     expect(footer).toContain('onClick={() => void createAnother()}');
   });
   it('mọi đường đi qua submitCreate/createAnother → doCreate (lỗi, chặn gửi đúp, ngày sai)', () => {
-    const doCreate = s.slice(
-      s.indexOf('async function doCreate'),
-      s.indexOf('function switchToReport'),
-    );
+    const doCreate = s.slice(s.indexOf('async function doCreate'), s.indexOf('// Nút nào vừa bấm'));
     expect(doCreate).toContain('create.isPending || busy || metaLoading');
     expect(doCreate).toContain('flow.fail()');
     expect(doCreate).toContain('blockOnInvalidDate()');

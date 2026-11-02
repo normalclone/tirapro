@@ -1,12 +1,10 @@
 import { useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { Inbox, Bug } from 'lucide-react';
-import { useReportIssueModal } from '@/stores/reportIssue';
+import { Inbox } from 'lucide-react';
 import { toast } from 'sonner';
 import type { TriageItemDto } from '@tirapro/types';
 import { useProject } from '@/features/projects/api';
 import { Badge, DelayedSpinner, EmptyState, Skeleton } from '@/components/ui/primitives';
-import { Button } from '@/components/ui/Button';
 import { QueryError } from '@/components/ui/QueryError';
 import { PageFrame } from '@/components/layout/PageFrame';
 import { PageHeader } from '@/components/layout/PageHeader';
@@ -122,18 +120,6 @@ export function TriagePage() {
                     <Badge className="bg-primary-subtle text-primary tabular">{inboxCount}</Badge>
                   )}
                 </span>
-              }
-              actions={
-                <Button
-                  size="sm"
-                  onClick={() =>
-                    useReportIssueModal.getState().openReport({ projectKey: key, kind: 'BUG' })
-                  }
-                  disabled={!projectId}
-                >
-                  <Bug className="h-4 w-4" />
-                  Gửi yêu cầu
-                </Button>
               }
             />
             {inbox.isError ? (

@@ -103,7 +103,7 @@ describe('buildProjectCommands', () => {
     const cmd = buildProjectCommands(base).find((c) => c.to === '/p/DEMO/triage');
     expect(cmd?.label).toBe(`Mở ${TRIAGE_TITLE}`);
   });
-  it('không lặp lệnh Báo lỗi (đã có ở nhóm Hành động của bảng lệnh)', () => {
+  it('không có lệnh Báo lỗi (form Báo lỗi đã bỏ)', () => {
     expect(buildProjectCommands(base).some((c) => /báo lỗi/i.test(c.label))).toBe(false);
   });
   it('từ khoá không dấu để gõ không cần dấu; id duy nhất', () => {

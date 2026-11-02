@@ -45,10 +45,10 @@ describe('emptyHomeActions', () => {
       primary: true,
     });
   });
-  it('tester: nút chính "Báo lỗi"', () =>
+  it('tester: nút chính "Tạo công việc" (báo bug qua loại Bug)', () =>
     expect(
       emptyHomeActions('tester', { projectKey: 'WM', canCreateProject: false }).actions[0],
-    ).toMatchObject({ label: 'Báo lỗi', kind: 'report-bug' }));
+    ).toMatchObject({ label: 'Tạo công việc', kind: 'create-issue' }));
   it('ba: nút chính "Viết yêu cầu mới" (tạo công việc)', () =>
     expect(
       emptyHomeActions('ba', { projectKey: 'WM', canCreateProject: false }).actions[0],

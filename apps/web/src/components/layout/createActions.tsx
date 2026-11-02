@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { useLocation } from 'react-router-dom';
-import { Bug, Eye, EyeOff, FolderPlus, Plus, Sparkles } from 'lucide-react';
+import { Eye, EyeOff, FolderPlus, Plus, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 import { useProject, useProjects } from '@/features/projects/api';
 import { useIssue } from '@/features/issues/api';
@@ -10,7 +10,6 @@ import { GenerateIssuesDialog } from '@/features/ai/GenerateIssuesDialog';
 import { useAi } from '@/stores/ai';
 import { useCreateDialogs } from '@/stores/createDialogs';
 import { useCreateIssueModal } from '@/stores/createIssue';
-import { useReportIssueModal } from '@/stores/reportIssue';
 import type { QuickActionKey } from '@/stores/quickActions';
 import { apiErrorMessage } from '@/lib/api';
 import { createPresetFromTarget } from '@/lib/currentProject';
@@ -54,13 +53,12 @@ function useCreateContext() {
 
 /**
  * Danh sách tác vụ "Tạo" theo ngữ cảnh — NGUỒN DUY NHẤT cho nút nổi (từ lg) và sheet "Tạo" (dưới lg), nên điều kiện
- * hiện/ẩn luôn giống nhau: Tạo công việc · Tạo bằng AI (trong dự án + AI bật) · Báo lỗi (trong dự án) ·
+ * hiện/ẩn luôn giống nhau: Tạo công việc · Tạo bằng AI (trong dự án + AI bật) ·
  * Theo dõi/Bỏ theo dõi (trên /issue/:key) · Tạo dự án. "Lệnh nhanh" và "Tuỳ biến" là việc riêng của nút nổi.
  */
 export function useCreateActions(): CreateAction[] {
   const { project, issueId } = useCreateContext();
   const openCreate = useCreateIssueModal((s) => s.openCreate);
-  const openReport = useReportIssueModal((s) => s.openReport);
   const openProjectDialog = useCreateDialogs((s) => s.openProject);
   const openAiDialog = useCreateDialogs((s) => s.openAi);
   const aiEnabled = useAi((s) => s.enabled);
@@ -96,15 +94,6 @@ export function useCreateActions(): CreateAction[] {
         icon: <Sparkles className="h-5 w-5 text-primary" />,
         label: 'Tạo bằng AI',
         perform: openAiDialog,
-      },
-    hasProject &&
-      !project?.archivedAt &&
-      createAccess !== 'deny' &&
-      canCreate !== false && {
-        key: 'report',
-        icon: <Bug className="h-5 w-5" />,
-        label: 'Báo lỗi',
-        perform: () => openReport({ projectKey: project.key, kind: 'BUG' }),
       },
     onIssue && {
       key: 'watch',

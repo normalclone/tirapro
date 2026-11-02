@@ -464,7 +464,7 @@ export function IssueDetailPage() {
       {/* Sidebar dự án — luôn hiển thị để giữ ngữ cảnh (giống Jira) */}
       <ProjectRail activeKey={projectKey} view="board" />
 
-      <div className="min-w-0 flex-1 overflow-auto">
+      <div className="relative min-w-0 flex-1 overflow-auto">
         <PageFrame size="lg" className="py-6">
           {/*
            * Đã có công việc: không vẽ tiêu đề ở đây — h1 là chính ô tiêu đề hiển thị bên dưới (title-less: chỉ breadcrumb +

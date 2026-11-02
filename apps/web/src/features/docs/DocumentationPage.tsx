@@ -779,8 +779,8 @@ export function DocumentationPage() {
                 <Feature icon={<Command className="h-4 w-4" />} title="Bảng lệnh — ⌘K (Ctrl+K)">
                   Tìm công việc, nhảy tới dự án/màn hình, chạy hành động, đổi giao diện; có nhóm
                   “Gần đây”. Gõ thẳng mã công việc (vd <Mono>DEMO-12</Mono>) để mở ngay. Có sẵn lệnh
-                  tạo / bắt đầu / kết thúc sprint, mở Báo cáo · Lịch trình · Việc mới vào · Wiki và{' '}
-                  <em>Báo lỗi</em> (bắt đầu gõ tên lệnh là lọc, không cần dấu).
+                  tạo / bắt đầu / kết thúc sprint, mở Báo cáo · Lịch trình · Việc mới vào · Wiki
+                  (bắt đầu gõ tên lệnh là lọc, không cần dấu).
                 </Feature>
                 <Feature
                   icon={<LayoutGrid className="h-4 w-4" />}
@@ -957,11 +957,10 @@ export function DocumentationPage() {
               <Steps
                 items={[
                   <>
-                    Mở <Kbd>⌘</Kbd> <Kbd>K</Kbd> → <em>Báo lỗi</em> (hoặc nút <em>Báo lỗi</em> ở đầu
-                    Bảng việc / nút nổi).
+                    Bấm <em>Tạo công việc</em> (phím <Kbd>C</Kbd>, nút <em>Tạo</em> hoặc nút nổi) và
+                    chọn loại <em>Bug</em>.
                   </>,
-                  'Nhập tiêu đề ngắn gọn; chế độ Cơ bản chỉ bắt buộc tiêu đề (mô tả ngắn là tuỳ chọn; môi trường và mức nghiêm trọng mặc định tự điền), chế độ Nâng cao có mẫu tái hiện, mức nghiêm trọng, môi trường (trình duyệt / hệ điều hành / bản build / URL) và ảnh dán trực tiếp.',
-                  'Nếu có bug tương tự, hệ thống gợi ý: chọn “Thêm ghi chú vào <mã bug cũ>” (bạn thành người theo dõi bug đó) hoặc “Vẫn tạo mới”.',
+                  'Nhập tiêu đề ngắn gọn, mô tả các bước tái hiện, kết quả thực tế và kết quả mong đợi; chọn mức ưu tiên và đính kèm ảnh nếu có.',
                   <>
                     Gửi. Bạn được tự động <strong>theo dõi</strong> công việc đó và sẽ nhận thông
                     báo khi có cập nhật.

@@ -104,7 +104,7 @@ export const DOC_GROUPS: DocGroup[] = [
         id: 'vt-reporter',
         label: 'Người báo cáo',
         summary:
-          'Reporter tạo công việc, báo bug, bình luận, theo dõi; không tự chuyển trạng thái việc của người khác. Báo bug: ⌘K → Báo lỗi, nhập tiêu đề, gửi.',
+          'Reporter tạo công việc, báo bug, bình luận, theo dõi; không tự chuyển trạng thái việc của người khác. Báo bug: Tạo công việc, chọn loại Bug, nhập tiêu đề.',
         keywords: 'nguoi bao cao reporter bao bug bao loi gui yeu cau stakeholder',
       },
       {
@@ -225,7 +225,7 @@ export const DOC_TOPICS: DocEntry[] = [
     id: 'bao-mot-bug',
     label: 'Báo một bug',
     summary:
-      'Mở ⌘K → Báo lỗi (hoặc nút Báo lỗi ở Bảng việc), nhập tiêu đề, gửi. Có bug tương tự thì hệ thống gợi ý thêm ghi chú vào bug đó.',
+      'Bấm Tạo công việc (phím C hoặc nút Tạo), chọn loại Bug, nhập tiêu đề và mô tả cách tái hiện, rồi tạo.',
     keywords: 'bao bug bao loi tao bug report bug loi moi gui loi',
   },
   {

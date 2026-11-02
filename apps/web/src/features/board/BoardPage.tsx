@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Bug, Columns3, Layers, SearchX, UserRound, Users } from 'lucide-react';
+import { Columns3, Layers, SearchX, UserRound, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import type { BoardColumnDto, BoardDto, IssueDto, SwimlaneBy } from '@tirapro/types';
 import { useProject } from '@/features/projects/api';
@@ -54,7 +54,6 @@ import { useRetained } from '@/lib/useRetained';
 import { cn } from '@/lib/utils';
 import { CHIP_ROW_GAP_COARSE, CHIP_TOUCH_HIT, STRIP_ROWS_GAP_COARSE } from '@/lib/touchHit';
 import { useAuth } from '@/stores/auth';
-import { openReportIssue } from '@/stores/reportIssue';
 import { useCanEditIssue, useProjectCan } from '@/features/projects/permissions';
 import { QuickFilterChips } from '@/features/quick-filters/QuickFilterChips';
 import { applyQuickFilters, useQuickFilters } from '@/features/quick-filters/useQuickFilters';
@@ -705,19 +704,6 @@ export function BoardPage() {
                   >
                     <Users className="h-3.5 w-3.5" aria-hidden /> Nhóm theo người
                   </button>
-                  {canCreate && !project?.archivedAt && (
-                    <button
-                      type="button"
-                      onClick={() => openReportIssue({ projectKey: key, kind: 'BUG' })}
-                      title="Báo lỗi hoặc gửi yêu cầu cho dự án này"
-                      className={cn(
-                        'inline-flex h-7 items-center gap-1.5 rounded-full border border-border px-2.5 text-xs font-medium text-muted transition-colors hover:bg-surface-2 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
-                        CHIP_TOUCH_HIT,
-                      )}
-                    >
-                      <Bug className="h-3.5 w-3.5" aria-hidden /> Báo lỗi
-                    </button>
-                  )}
                   {swimlaneBy !== 'none' && swimlaneBy !== 'assignee' && (
                     <span
                       className="inline-flex h-7 items-center gap-1.5 rounded-full border border-transparent bg-primary-subtle px-2.5 text-xs font-medium text-primary"

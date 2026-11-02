@@ -35,7 +35,7 @@ export function RailLayout({
       >
         {rail}
       </aside>
-      <div className="min-w-0 flex-1 overflow-auto">{children}</div>
+      <div className="relative min-w-0 flex-1 overflow-auto">{children}</div>
     </div>
   );
 }
