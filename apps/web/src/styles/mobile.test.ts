@@ -63,7 +63,7 @@ describe('mobile nền chung', () => {
       expect(src(f), f).toMatch(/scroll-fade-x/);
   });
 
-  it('chip lọc/Báo lỗi trên Board và dòng Việc chờ có vùng bấm cảm ứng mở rộng', () => {
+  it('chip lọc trên Board và dòng Việc chờ có vùng bấm cảm ứng mở rộng', () => {
     for (const f of [
       'features/quick-filters/QuickFilterChips.tsx',
       'features/quick-filters/AssigneeFilter.tsx',

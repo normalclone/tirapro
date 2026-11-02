@@ -1,16 +1,9 @@
 import { create } from 'zustand';
 
 /** Các tác vụ nhanh có thể bật/tắt trên nút nổi. */
-export type QuickActionKey = 'issue' | 'ai' | 'report' | 'watch' | 'project' | 'command';
+export type QuickActionKey = 'issue' | 'ai' | 'watch' | 'project' | 'command';
 
-const QUICK_ACTION_KEYS: QuickActionKey[] = [
-  'issue',
-  'ai',
-  'report',
-  'watch',
-  'project',
-  'command',
-];
+const QUICK_ACTION_KEYS: QuickActionKey[] = ['issue', 'ai', 'watch', 'project', 'command'];
 
 const STORAGE = 'tirapro-quick-actions';
 

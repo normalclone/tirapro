@@ -38,7 +38,7 @@ export function personaOf(
 export interface HomeAction {
   id: string;
   label: string;
-  kind: 'link' | 'create-issue' | 'report-bug' | 'create-project';
+  kind: 'link' | 'create-issue' | 'create-project';
   to?: string;
   primary?: boolean;
 }
@@ -64,8 +64,10 @@ export function emptyHomeActions(
     case 'tester':
       return {
         title: 'Chưa có việc nào cần bạn kiểm thử',
-        description: 'Phát hiện lỗi? Báo ngay để nhóm xử lý.',
-        actions: [{ id: 'report-bug', label: 'Báo lỗi', kind: 'report-bug', primary: true }],
+        description: 'Phát hiện lỗi? Tạo công việc loại Bug để nhóm xử lý.',
+        actions: [
+          { id: 'create-issue', label: 'Tạo công việc', kind: 'create-issue', primary: true },
+        ],
       };
     case 'ba':
       return {

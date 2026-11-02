@@ -51,7 +51,6 @@ import { StatRow, type StatItem } from '@/components/ui/StatRow';
 import { lastViewKey, resolveCurrentProjectKey } from '@/lib/currentProject';
 import { emptyHomeActions, personaOf, type HomeAction } from '@/lib/persona';
 import { useCreateIssueModal } from '@/stores/createIssue';
-import { openReportIssue } from '@/stores/reportIssue';
 import { useAuth } from '@/stores/auth';
 import { useCan } from '@/features/projects/permissions';
 import { DelayedSpinner, EmptyState, Skeleton } from '@/components/ui/primitives';
@@ -867,8 +866,6 @@ function PersonalEmptyState({ projects }: { projects: { key: string }[] }) {
   function run(a: HomeAction) {
     if (a.kind === 'link' && a.to) navigate(a.to);
     else if (a.kind === 'create-issue') openCreate({ projectKey: projectKey ?? undefined });
-    else if (a.kind === 'report-bug')
-      openReportIssue({ projectKey: projectKey ?? undefined, kind: 'BUG' });
     else if (a.kind === 'create-project') setCreateProject(true);
   }
 
