@@ -399,6 +399,51 @@ describe('ProjectsService.create — mẫu dự án', () => {
     expect(arg(tx.board.create).type).toBe('SCRUM');
   });
 
+  it('templateKey software => 9 trạng thái, 18 chuyển tiếp, 8 cột (Xong gộp 2), bảng ẩn Epic', async () => {
+    const { tx, svc } = makeTx();
+    await svc.create('w1', 'u1', { key: 'SW', name: 'SW', type: 'SCRUM', templateKey: 'software' });
+    expect(arg(tx.project.create).type).toBe('KANBAN');
+    expect(tx.status.create).toHaveBeenCalledTimes(9);
+    const sts = tx.status.create.mock.calls.map(
+      (c) => (c[0] as { data: Record<string, unknown> }).data,
+    );
+    expect(sts.filter((d) => d.isInitial).map((d) => d.name)).toEqual(['Cần làm']);
+    expect(tx.workflowTransition.create).toHaveBeenCalledTimes(18);
+    const trs = tx.workflowTransition.create.mock.calls.map(
+      (c) => (c[0] as { data: Record<string, unknown> }).data,
+    );
+    expect(trs.filter((d) => d.fromStatusId === null).map((d) => d.name)).toEqual(['Không xử lý']);
+    expect(arg(tx.board.create).filterJql).toBe('type != Epic');
+    expect(tx.boardColumn.create).toHaveBeenCalledTimes(8);
+    const cols = tx.boardColumn.create.mock.calls.map(
+      (c) => (c[0] as { data: Record<string, unknown> }).data.name,
+    );
+    expect(cols[7]).toBe('Xong');
+    expect(tx.boardColumnStatus.create).toHaveBeenCalledTimes(9);
+  });
+
+  it('templateKey general => 5 trạng thái, 9 chuyển tiếp, 4 cột, bảng ẩn Epic', async () => {
+    const { tx, svc } = makeTx();
+    await svc.create('w1', 'u1', { key: 'GN', name: 'GN', type: 'SCRUM', templateKey: 'general' });
+    expect(tx.status.create).toHaveBeenCalledTimes(5);
+    expect(tx.workflowTransition.create).toHaveBeenCalledTimes(9);
+    expect(tx.boardColumn.create).toHaveBeenCalledTimes(4);
+    expect(tx.boardColumnStatus.create).toHaveBeenCalledTimes(5);
+    expect(arg(tx.board.create).filterJql).toBe('type != Epic');
+  });
+
+  it('mẫu cũ: bảng không có filterJql, 1 cột / trạng thái', async () => {
+    const { tx, svc } = makeTx();
+    await svc.create('w1', 'u1', {
+      key: 'KB',
+      name: 'KB',
+      type: 'KANBAN',
+      templateKey: 'requirements',
+    });
+    expect(arg(tx.board.create)).not.toHaveProperty('filterJql');
+    expect(tx.boardColumnStatus.create).toHaveBeenCalledTimes(6);
+  });
+
   it('tên quy trình của dự án có hậu tố mã dự án để không trùng nhau', async () => {
     const { tx, svc } = makeTx();
     await svc.create('w1', 'u1', { key: 'DEMO', name: 'Demo', type: 'SCRUM' });

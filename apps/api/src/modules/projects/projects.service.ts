@@ -148,22 +148,27 @@ export class ProjectsService {
           data: { defaultWorkflowId: workflow.id },
         });
 
-        // Board mặc định: 1 cột / status
+        // Board mặc định: cột tường minh của mẫu (nếu có), không thì 1 cột / status
         const board = await tx.board.create({
           data: {
             projectId: project.id,
             name: `${project.name} Board`,
             type: projectType === 'KANBAN' ? 'KANBAN' : 'SCRUM',
+            ...(def?.boardFilterJql ? { filterJql: def.boardFilterJql } : {}),
           },
         });
+        const columnDefs =
+          tpl.boardColumns ?? tpl.statuses.map((s) => ({ name: s.name, statuses: [s.name] }));
         let cOrder = 0;
-        for (const s of tpl.statuses) {
+        for (const c of columnDefs) {
           const col = await tx.boardColumn.create({
-            data: { boardId: board.id, name: s.name, order: cOrder++ },
+            data: { boardId: board.id, name: c.name, order: cOrder++ },
           });
-          await tx.boardColumnStatus.create({
-            data: { columnId: col.id, statusId: statusByName.get(s.name)! },
-          });
+          for (const sn of c.statuses) {
+            await tx.boardColumnStatus.create({
+              data: { columnId: col.id, statusId: statusByName.get(sn)! },
+            });
+          }
         }
 
         // Người tạo = Project Admin
