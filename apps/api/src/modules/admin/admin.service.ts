@@ -4,7 +4,11 @@ import type { Prisma } from '@prisma/client';
 import * as argon2 from 'argon2';
 import { AUDIT_ACTIONS, DOMAIN_EVENTS, SYSTEM_ROLES } from '@tirapro/types';
 import { PrismaService } from '../../infra/prisma/prisma.service';
-import { BusinessRuleException, NotFoundAppException } from '../../common/exceptions/app.exception';
+import {
+  BusinessRuleException,
+  EmailAlreadyRegisteredException,
+  NotFoundAppException,
+} from '../../common/exceptions/app.exception';
 import { offsetPage } from '../../common/dto/page-result';
 import { generateTempPassword } from '../../common/password';
 import { AuditService } from '../audit/audit.service';
@@ -163,7 +167,19 @@ export class AdminService {
     if (input.status && input.status !== found.status) {
       await this.setStatus(actorId, id, input.status);
     }
+    // Đổi email đăng nhập: chặn tài khoản hệ thống và email đã thuộc người khác (unique trên User.email).
+    const newEmail = input.email && input.email !== found.email ? input.email : undefined;
+    if (newEmail) {
+      if (found.email === SYSTEM_USER_EMAIL)
+        throw new BusinessRuleException('Không đổi được email của tài khoản hệ thống');
+      const taken = await this.prisma.user.findUnique({
+        where: { email: newEmail },
+        select: { id: true },
+      });
+      if (taken) throw new EmailAlreadyRegisteredException('Email này đã thuộc một tài khoản khác');
+    }
     const data = {
+      email: newEmail,
       displayName: input.displayName,
       isSystemAdmin: input.isSystemAdmin,
       canCreateWorkspace: input.canCreateWorkspace,
@@ -196,6 +212,16 @@ export class AdminService {
           ? 'cho phép lập không gian làm việc'
           : 'thu quyền lập không gian làm việc',
       );
+    }
+    if (newEmail) {
+      await this.audit.record({
+        actorId,
+        action: AUDIT_ACTIONS.ACCOUNT_EMAIL_CHANGED,
+        entityType: 'user',
+        entityId: id,
+        summary: `Đổi email đăng nhập của ${found.displayName}: ${found.email} → ${newEmail}`,
+        meta: { from: found.email, to: newEmail },
+      });
     }
     if (permChanges.length) {
       await this.audit.record({
