@@ -33,6 +33,13 @@ function useRemoveFromCaches(call: (v: IssueRef) => Promise<unknown>) {
       qc.setQueryData<IssueDto[]>(keys.issues.byProject(v.projectId), (old) =>
         old ? old.filter((i) => i.id !== v.id) : undefined,
       );
+      // Bảng có bộ lọc JQL đọc cache riêng (`byBoard`) và giữ việc không còn trong cache dự án → phải gỡ ở đó nữa,
+      // nếu không thẻ vừa xoá vẫn nằm trên bảng tới khi tải lại trang (logbug #16).
+      qc.setQueriesData<IssueDto[]>(
+        { queryKey: [...keys.issues.byBoard('')].slice(0, 2) },
+        (old) => (Array.isArray(old) ? old.filter((i) => i.id !== v.id) : old),
+      );
+      void qc.invalidateQueries({ queryKey: keys.issues.byProject(v.projectId) });
       qc.removeQueries({ queryKey: keys.issues.byKey(v.key), exact: true });
       useRecents.getState().remove(v.key);
       // Số issue/điểm của sprint đổi theo; việc vừa xoá xuất hiện trong Thùng rác.

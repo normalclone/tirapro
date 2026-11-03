@@ -11,6 +11,7 @@ import {
   applyCommentChanged,
   applyCommentReaction,
   applyIssueCreated,
+  applyIssueDeleted,
   applyIssueUpdated,
   applyRanksRebalanced,
 } from './realtime';
@@ -141,5 +142,22 @@ describe('việc chưa duyệt không vào danh sách realtime (S-I1)', () => {
     applyIssueUpdated(qc, mk('a', { summary: 'mới', version: 2, triageState: 'ACCEPTED' }));
     expect(list(qc)![0]!.summary).toBe('mới');
     expect(qc.getQueryState(keys.issues.byProject('p1'))?.isInvalidated).toBe(false);
+  });
+});
+
+describe('applyIssueDeleted (logbug #16)', () => {
+  it('gỡ thẻ khỏi cả cache dự án lẫn cache bảng có bộ lọc JQL', () => {
+    const qc = new QueryClient();
+    const a = fixture('a', { key: 'P-1', projectId: 'p1' });
+    const b = fixture('b', { key: 'P-2', projectId: 'p1' });
+    qc.setQueryData(keys.issues.byProject('p1'), [a, b]);
+    qc.setQueryData(keys.issues.byBoard('bd1'), [a, b]);
+    applyIssueDeleted(qc, 'p1', 'a');
+    expect((qc.getQueryData(keys.issues.byProject('p1')) as IssueDto[]).map((i) => i.id)).toEqual([
+      'b',
+    ]);
+    expect((qc.getQueryData(keys.issues.byBoard('bd1')) as IssueDto[]).map((i) => i.id)).toEqual([
+      'b',
+    ]);
   });
 });
