@@ -1245,7 +1245,8 @@ export class IssuesService {
         input.startDate !== undefined ? input.startDate : current.startDate,
         input.dueDate !== undefined ? input.dueDate : current.dueDate,
       );
-      if (input.dueDate !== undefined)
+      // Chỉ kiểm khi hạn THỰC SỰ đổi — client gửi lại hạn cũ của việc cũ không được 422.
+      if (input.dueDate !== undefined && !sameInstant(input.dueDate, current.dueDate))
         this.assertDueNotBeforeCreated(input.dueDate, current.createdAt);
     }
 
@@ -2183,4 +2184,13 @@ export class IssuesService {
       updatedAt: i.updatedAt.toISOString(),
     };
   }
+}
+
+/** Hai mốc ngày (chuỗi ISO / Date / null) có cùng thời điểm không. */
+function sameInstant(
+  a: string | Date | null | undefined,
+  b: string | Date | null | undefined,
+): boolean {
+  if (a == null || b == null) return a == b;
+  return new Date(a).getTime() === new Date(b).getTime();
 }
