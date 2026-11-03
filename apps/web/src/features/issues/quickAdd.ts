@@ -1,3 +1,4 @@
+import { localToCalendarIso } from '@/lib/calendarDate';
 import type { CreateIssueInput } from './create-api';
 import { parseTitleTokens, unmatchedTokens, type TokenCtx } from './titleTokens';
 
@@ -31,7 +32,7 @@ export function buildQuickAddInput(
     ...(tk.assigneeId ? { assigneeId: tk.assigneeId } : {}),
     ...(tk.sprintId ? { sprintId: tk.sprintId } : {}),
     ...(tk.points != null ? { storyPoints: tk.points } : {}),
-    ...(tk.dueLocal ? { dueDate: new Date(tk.dueLocal).toISOString() } : {}),
+    ...(tk.dueLocal ? { dueDate: localToCalendarIso(tk.dueLocal) } : {}),
   };
   return { input, unmatched: unmatchedTokens(text, ctx).map((u) => u.text) };
 }

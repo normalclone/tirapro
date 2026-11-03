@@ -1,10 +1,13 @@
 /**
  * Tirapro — nạp danh mục quyền + vai trò HỆ THỐNG cho DB mới (không nạp dữ liệu demo).
  * DB sạch chưa có vai trò thì đăng ký/tạo workspace lỗi 500 "System role chưa được seed".
- * Chỉ THÊM (quyền, vai trò, quyền còn thiếu của vai trò) — không gỡ gì, chạy lại trên DB thật an toàn.
+ * Mặc định chỉ THÊM (quyền, vai trò, quyền còn thiếu của vai trò) — không gỡ gì, chạy lại trên DB thật an toàn.
+ * `--sync`: GỠ thêm các quyền mà vai trò HỆ THỐNG đang có nhưng danh mục (SYSTEM_ROLE_PERMISSIONS) không còn cấp
+ * (vd `project:create` của Workspace Member). Chỉ đụng vai trò isSystem, không đụng vai trò tuỳ chỉnh.
+ * Kết hợp `--dry-run` để xem trước (nên chạy dry-run trước).
  * Khác `db:seed`: lệnh đó làm mới (xoá) workspace demo, không dùng cho dữ liệu thật.
  *
- *   pnpm --filter @tirapro/api run db:seed:roles [-- --dry-run]
+ *   pnpm --filter @tirapro/api run db:seed:roles [-- --dry-run] [--sync]
  *
  * Cần DATABASE_URL và đã build @tirapro/types (`pnpm --filter @tirapro/types build`).
  */
@@ -18,10 +21,12 @@ import {
 } from '@tirapro/types';
 
 const dryRun = process.argv.includes('--dry-run');
+const sync = process.argv.includes('--sync');
 const prisma = new PrismaClient();
 let addedPerms = 0;
 let addedRoles = 0;
 let addedGrants = 0;
+let removedGrants = 0;
 try {
   const existing = new Set(
     (await prisma.permission.findMany({ select: { key: true } })).map((p) => p.key),
@@ -63,6 +68,19 @@ try {
       role = { id: created.id, permissions: [] };
     }
     const has = new Set(role.permissions.map((p) => p.permission.key));
+    if (sync) {
+      const wanted = new Set(SYSTEM_ROLE_PERMISSIONS[name]);
+      const extra = [...has].filter((k) => !wanted.has(k));
+      if (extra.length) {
+        console.log(`- ${name}: gỡ ${extra.join(', ')}`);
+        removedGrants += extra.length;
+        if (!dryRun) {
+          await prisma.rolePermission.deleteMany({
+            where: { roleId: role.id, permission: { key: { in: extra } } },
+          });
+        }
+      }
+    }
     const missing = SYSTEM_ROLE_PERMISSIONS[name].filter((k) => !has.has(k) && permByKey.has(k));
     addedGrants += missing.length;
     if (missing.length && !dryRun) {
@@ -76,5 +94,5 @@ try {
   await prisma.$disconnect();
 }
 console.log(
-  `${dryRun ? '[dry-run] sẽ thêm' : 'Đã thêm'}: ${addedPerms} quyền, ${addedRoles} vai trò, ${addedGrants} lượt gán quyền.`,
+  `${dryRun ? '[dry-run] sẽ thêm' : 'Đã thêm'}: ${addedPerms} quyền, ${addedRoles} vai trò, ${addedGrants} lượt gán quyền${sync ? `; ${dryRun ? 'sẽ gỡ' : 'đã gỡ'} ${removedGrants} lượt gán quyền thừa` : ''}.`,
 );

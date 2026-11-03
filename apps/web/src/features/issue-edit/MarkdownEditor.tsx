@@ -63,10 +63,10 @@ function MarkdownToolbar({
 }) {
   return (
     <div className="flex flex-wrap items-center gap-0.5 border-b border-border p-1">
-      <ToolBtn title="Bôi đậm chữ đang chọn" onClick={() => wrap('**', 'văn bản')}>
+      <ToolBtn title="Bôi đậm chữ đang chọn (Ctrl/⌘+B)" onClick={() => wrap('**', 'văn bản')}>
         <Bold className="h-4 w-4" />
       </ToolBtn>
-      <ToolBtn title="In nghiêng chữ đang chọn" onClick={() => wrap('*', 'văn bản')}>
+      <ToolBtn title="In nghiêng chữ đang chọn (Ctrl/⌘+I)" onClick={() => wrap('*', 'văn bản')}>
         <Italic className="h-4 w-4" />
       </ToolBtn>
       <ToolBtn title="Định dạng chữ đang chọn thành đoạn mã" onClick={() => wrap('`', 'code')}>
@@ -265,6 +265,20 @@ export function MarkdownEditor({
           onPaste={onPaste}
           onKeyDown={(e) => {
             if (mention.handleKey(e)) return;
+            // Phím tắt định dạng: Ctrl/⌘+B đậm, Ctrl/⌘+I nghiêng (không khi bộ gõ đang soạn).
+            if (
+              (e.metaKey || e.ctrlKey) &&
+              !e.shiftKey &&
+              !e.altKey &&
+              !e.nativeEvent.isComposing
+            ) {
+              const k = e.key.toLowerCase();
+              if (k === 'i' || k === 'b') {
+                e.preventDefault();
+                wrap(k === 'i' ? '*' : '**', 'văn bản');
+                return;
+              }
+            }
             const submit = pickSubmit(e, { onSubmit, onSubmitAlt });
             if (submit) {
               e.preventDefault();

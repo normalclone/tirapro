@@ -7,6 +7,7 @@ import {
   KeyRound,
   LogOut,
   MoreHorizontal,
+  Pencil,
   UserCheck,
   UserX,
 } from 'lucide-react';
@@ -18,6 +19,7 @@ import { useConfirm } from '@/components/ui/useConfirm';
 import { apiErrorMessage } from '@/lib/api';
 import { useCopyToClipboard } from '@/lib/useCopyToClipboard';
 import { AddToWorkspaceDialog } from './AddToWorkspaceDialog';
+import { EditAccountDialog } from './EditAccountDialog';
 import {
   useResetAdminPassword,
   useRevokeAdminSessions,
@@ -27,6 +29,21 @@ import {
 
 const ITEM =
   'flex cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-2 text-sm outline-none transition-colors data-[highlighted]:bg-surface-2';
+
+/** Hộp thoại chỉ dựng từ lần mở đầu tiên (mỗi dòng đều có menu — không tải dữ liệu phụ cho mọi dòng), sau đó luôn mount để có hiệu ứng đóng. */
+function useLazyDialog() {
+  const [open, setOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
+  return {
+    open,
+    mounted,
+    show: () => {
+      setMounted(true);
+      setOpen(true);
+    },
+    hide: () => setOpen(false),
+  };
+}
 
 /** Menu ⋯ của một tài khoản: đặt lại mật khẩu, đăng xuất mọi thiết bị, vô hiệu hoá / kích hoạt lại. */
 export function AccountActionsMenu({ user }: { user: AdminUser }) {
@@ -39,8 +56,8 @@ export function AccountActionsMenu({ user }: { user: AdminUser }) {
     password: '',
   });
   // Hộp thoại chỉ dựng từ lần mở đầu tiên (mỗi dòng đều có menu này — không tải danh sách workspace cho mọi dòng).
-  const [addOpen, setAddOpen] = useState(false);
-  const [addMounted, setAddMounted] = useState(false);
+  const add = useLazyDialog();
+  const edit = useLazyDialog();
   const clearTimer = useRef<ReturnType<typeof setTimeout>>();
   useEffect(() => () => clearTimeout(clearTimer.current), []);
   const resetMutation = reset.reset;
@@ -136,13 +153,12 @@ export function AccountActionsMenu({ user }: { user: AdminUser }) {
             sideOffset={4}
             className="z-dropdown w-64 overflow-hidden rounded-lg border border-border bg-surface p-1 shadow-lg animate-in fade-in zoom-in-95 duration-150"
           >
-            <DropdownMenu.Item
-              className={ITEM}
-              onSelect={() => {
-                setAddMounted(true);
-                setAddOpen(true);
-              }}
-            >
+            {!user.isAutomation && (
+              <DropdownMenu.Item className={ITEM} onSelect={edit.show}>
+                <Pencil className="h-4 w-4 shrink-0 text-muted" /> Sửa thông tin (tên, email)…
+              </DropdownMenu.Item>
+            )}
+            <DropdownMenu.Item className={ITEM} onSelect={add.show}>
               <Building2 className="h-4 w-4 shrink-0 text-muted" /> Thêm vào không gian làm việc…
             </DropdownMenu.Item>
             <DropdownMenu.Item className={ITEM} onSelect={() => void onReset()}>
@@ -168,9 +184,8 @@ export function AccountActionsMenu({ user }: { user: AdminUser }) {
         </DropdownMenu.Portal>
       </DropdownMenu.Root>
 
-      {addMounted && (
-        <AddToWorkspaceDialog user={user} open={addOpen} onClose={() => setAddOpen(false)} />
-      )}
+      {edit.mounted && <EditAccountDialog user={user} open={edit.open} onClose={edit.hide} />}
+      {add.mounted && <AddToWorkspaceDialog user={user} open={add.open} onClose={add.hide} />}
       <TempPasswordDialog
         open={temp.open}
         name={user.displayName}

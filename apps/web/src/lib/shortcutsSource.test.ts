@@ -14,6 +14,7 @@ describe('kho phím tắt khớp nơi xử lý', () => {
   const handlers: Record<string, { file: string; pattern: RegExp }> = {
     'global.create': { file: 'lib/useGlobalHotkeys.ts', pattern: /case 'c':/ },
     'global.search': { file: 'lib/useGlobalHotkeys.ts', pattern: /case '\/':/ },
+    'global.sidebar': { file: 'lib/useGlobalHotkeys.ts', pattern: /case '\[':/ },
     'global.help': { file: 'lib/useGlobalHotkeys.ts', pattern: /case '\?':/ },
     'global.goBoard': { file: 'lib/useGlobalHotkeys.ts', pattern: /key === 'b'/ },
     'global.goBacklog': { file: 'lib/useGlobalHotkeys.ts', pattern: /key === 'l'/ },

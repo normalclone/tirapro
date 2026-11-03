@@ -64,26 +64,34 @@ export class SprintsService {
     });
     if (!project) throw new NotFoundAppException('Dự án');
     assertNotArchived(project.archivedAt);
-    // sequence = lớn nhất + 1; hai request đồng thời có thể tính trùng → unique [projectId, sequence]
-    // chặn bản ghi trùng (P2002) và ta tính lại, tối đa 3 lần.
+    // sequence = lớn nhất + 1. Đọc + ghi nằm trong MỘT giao dịch có khoá dòng project (như `start`) nên các lần tạo
+    // đồng thời (bấm đúp, nhiều người) xếp hàng thay vì tranh nhau cùng một số; unique [projectId, sequence] vẫn là lưới
+    // an toàn cuối (P2002 → tính lại, tối đa SEQUENCE_RETRIES lần).
     for (let attempt = 1; ; attempt++) {
-      // allow-deleted: sequence phải tính cả sprint đã xoá để không trùng số thứ tự
-      const last = await this.prisma.sprint.findFirst({
-        where: { projectId },
-        orderBy: { sequence: 'desc' },
-        select: { sequence: true },
-      });
       try {
-        const sprint = await this.prisma.sprint.create({
-          data: {
-            projectId,
-            boardId: input.boardId ?? null,
-            name: input.name,
-            goal: input.goal ?? null,
-            sequence: (last?.sequence ?? 0) + 1,
-            startDate: input.startDate ? new Date(input.startDate) : null,
-            endDate: input.endDate ? new Date(input.endDate) : null,
-          },
+        const sprint = await this.prisma.$transaction(async (tx) => {
+          await tx.project.update({
+            where: { id: projectId },
+            data: { updatedAt: new Date() },
+            select: { id: true },
+          });
+          // allow-deleted: sequence phải tính cả sprint đã xoá để không trùng số thứ tự
+          const last = await tx.sprint.findFirst({
+            where: { projectId },
+            orderBy: { sequence: 'desc' },
+            select: { sequence: true },
+          });
+          return tx.sprint.create({
+            data: {
+              projectId,
+              boardId: input.boardId ?? null,
+              name: input.name.trim(),
+              goal: input.goal?.trim() || null,
+              sequence: (last?.sequence ?? 0) + 1,
+              startDate: input.startDate ? new Date(input.startDate) : null,
+              endDate: input.endDate ? new Date(input.endDate) : null,
+            },
+          });
         });
         return this.toDto(sprint, 0, 0);
       } catch (e) {

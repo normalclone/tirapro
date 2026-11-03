@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   attachmentMarkdown,
+  hasPendingImages,
   hasPlaceholder,
   imageFilesFromClipboard,
   insertPlaceholder,
@@ -8,6 +9,7 @@ import {
   MAX_PASTE_BYTES,
   pastedImageName,
   replacePlaceholder,
+  resolvePendingImages,
   stripPlaceholders,
 } from './pasteImage';
 
@@ -95,5 +97,15 @@ describe('hasPlaceholder / stripPlaceholders', () => {
   it('dùng lặp được (regex toàn cục không giữ lastIndex)', () => {
     const v = '![Đang tải ảnh-1…]()';
     expect([hasPlaceholder(v), hasPlaceholder(v), hasPlaceholder(v)]).toEqual([true, true, true]);
+  });
+});
+
+describe('ảnh dán chờ gắn khi tạo việc (logbug #6)', () => {
+  it('đổi pending thành attachment, gỡ ảnh tải lỗi', () => {
+    const md = 'Lỗi:\n![a.png](pending:a.png)\nvà ![b.png](pending:b.png)';
+    expect(hasPendingImages(md)).toBe(true);
+    const out = resolvePendingImages(md, { 'a.png': 'attachment:X1' });
+    expect(out).toBe('Lỗi:\n![a.png](attachment:X1)\nvà ');
+    expect(hasPendingImages(out)).toBe(false);
   });
 });

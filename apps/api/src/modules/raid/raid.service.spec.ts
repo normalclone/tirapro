@@ -20,6 +20,7 @@ const raidRow = (over: Record<string, unknown> = {}) => ({
   createdAt: new Date(),
   updatedAt: new Date(),
   owner: null,
+  owners: [],
   project: { id: 'p1', key: 'P', name: 'P' },
   ...over,
 });
@@ -35,6 +36,14 @@ function setup(
         Promise.resolve('title' in args.select ? raidRow() : { id: 'r1', ...current }),
       ),
       update: vi.fn((_args: unknown) => Promise.resolve({})),
+      create: vi.fn((_args: unknown) => Promise.resolve({ id: 'r1' })),
+    },
+    workspaceMembership: {
+      findMany: vi.fn(({ where }: { where: { userId: { in: string[] } } }) =>
+        Promise.resolve(
+          where.userId.in.filter((u) => u !== 'outsider').map((userId) => ({ userId })),
+        ),
+      ),
     },
     project: {
       findFirst: vi.fn(({ where }: { where: { id: string } }) =>
@@ -161,5 +170,50 @@ describe('RaidService — dự án riêng tư (P14)', () => {
       { status: 404 },
     );
     expect(whereOf(prisma.project.findFirst)).toMatchObject({ id: 'hr', ...visible });
+  });
+});
+
+describe('RaidService — nhiều người phụ trách (logbug #27)', () => {
+  it('tạo với ownerIds: lưu bảng nối, người đầu là chính (ownerId), khử trùng', async () => {
+    const { service, prisma } = setup(['risk:manage']);
+    await service.create('w1', { title: 'T', projectId: null, ownerIds: ['a', 'b', 'a'] }, 'u1');
+    const data = (
+      prisma.raidItem.create.mock.calls[0] as unknown as [{ data: Record<string, unknown> }]
+    )[0].data;
+    expect(data.ownerId).toBe('a');
+    expect(data.owners).toEqual({ create: [{ userId: 'a' }, { userId: 'b' }] });
+  });
+
+  it('ownerId cũ vẫn dùng được (một người)', async () => {
+    const { service, prisma } = setup(['risk:manage']);
+    await service.create('w1', { title: 'T', projectId: null, ownerId: 'a' }, 'u1');
+    const data = (
+      prisma.raidItem.create.mock.calls[0] as unknown as [{ data: Record<string, unknown> }]
+    )[0].data;
+    expect(data.owners).toEqual({ create: [{ userId: 'a' }] });
+  });
+
+  it('người ngoài không gian làm việc → 403 nêu cách sửa, không ghi', async () => {
+    const { service, prisma } = setup(['risk:manage']);
+    await expect(
+      service.create('w1', { title: 'T', projectId: null, ownerIds: ['a', 'outsider'] }, 'u1'),
+    ).rejects.toMatchObject({ status: 403 });
+    expect(prisma.raidItem.create).not.toHaveBeenCalled();
+  });
+
+  it('cập nhật ownerIds thay cả danh sách; ownerIds rỗng = bỏ giao', async () => {
+    const { service, prisma } = setup(['risk:manage']);
+    await service.update('w1', 'r1', { ownerIds: ['b', 'c'] }, member);
+    let data = (
+      prisma.raidItem.update.mock.calls[0] as unknown as [{ data: Record<string, unknown> }]
+    )[0].data;
+    expect(data.owner).toEqual({ connect: { id: 'b' } });
+    expect(data.owners).toEqual({ deleteMany: {}, create: [{ userId: 'b' }, { userId: 'c' }] });
+    await service.update('w1', 'r1', { ownerIds: [] }, member);
+    data = (
+      prisma.raidItem.update.mock.calls[1] as unknown as [{ data: Record<string, unknown> }]
+    )[0].data;
+    expect(data.owner).toEqual({ disconnect: true });
+    expect(data.owners).toEqual({ deleteMany: {}, create: [] });
   });
 });

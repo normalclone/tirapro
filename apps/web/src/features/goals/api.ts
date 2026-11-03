@@ -356,14 +356,14 @@ export interface IssueSearchItem {
   summary: string;
 }
 
-/** Tìm issue để gắn vào mục tiêu (tối đa 20 kết quả). */
+/** Tìm issue để gắn vào mục tiêu (tối đa 100 kết quả — đủ cho "Chọn tất cả"). Khớp tiêu đề hoặc mã công việc. */
 export function useIssueSearch(term: string, projectId?: string | null, enabled = true) {
   const q = term.trim();
   return useQuery({
     queryKey: keys.goals.issueSearch(q, projectId ?? ''),
     queryFn: enabled
       ? async () => {
-          const params: Record<string, string> = { limit: '20' };
+          const params: Record<string, string> = { limit: '100' };
           if (q) params.search = q;
           if (projectId) params.projectId = projectId;
           const res = await api.get<ListResponse<IssueSearchItem>>('/issues', { params });

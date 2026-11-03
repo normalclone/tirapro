@@ -11,6 +11,8 @@ import {
 
 /** Số issue tối đa trả về từ một lần tìm full-text (xếp theo rank). */
 const FULLTEXT_LIMIT = 200;
+/** Trần số id của `summaryContains` (tập BỔ SUNG cho `contains`, xem hàm đó). */
+const SUMMARY_LIMIT = 5000;
 /** Độ dài tối đa của chuỗi tìm (tính theo ký tự/code point, không phải đơn vị UTF-16). */
 const MAX_QUERY_LENGTH = 200;
 /** Khoảng tối thiểu giữa hai lần log cảnh báo "đường phòng thủ 42601 chạy lại" (tránh ngập log). */
@@ -177,6 +179,35 @@ export class FulltextSearcher {
         LIMIT ${limit}`;
       return { ids: rows.map((r) => r.id) };
     }
+  }
+
+  /**
+   * Id việc có TIÊU ĐỀ chứa chuỗi (không phân biệt dấu/hoa thường) — cho `summary ~ "…"` của JQL: gõ "dang nhap" vẫn ra
+   * "Đăng nhập". Không xếp hạng, tối đa `SUMMARY_LIMIT` id; thiếu `immutable_unaccent` thì dùng `translate()` (có sẵn).
+   * Chỉ BỔ SUNG cho phép `contains` của compiler (hợp hai tập) nên bị cắt ở trần cũng không làm mất kết quả đã khớp chính xác.
+   */
+  async summaryContains(
+    workspaceId: string,
+    raw: string,
+    opts: SearchOptions = {},
+  ): Promise<{ ids: string[] }> {
+    const built = buildFulltextQuery(raw);
+    if (!built) return { ids: [] };
+    const scope = resolveProjectScope(opts);
+    if (scope && scope.length === 0) return { ids: [] };
+    const projectFilter = scope
+      ? Prisma.sql`AND i."projectId" = ANY(${scope}::text[])`
+      : Prisma.empty;
+    const rows = await this.prisma.$queryRaw<{ id: string }[]>`
+        SELECT i."id" FROM "Issue" i
+        JOIN "Project" p ON p."id" = i."projectId"
+        WHERE i."workspaceId" = ${workspaceId}
+          AND i."deletedAt" IS NULL
+          AND p."deletedAt" IS NULL
+          ${projectFilter}
+          AND lower(translate(i."summary", ${VI_TRANSLATE_FROM}, ${VI_TRANSLATE_TO})) LIKE ${built.likeNorm}
+        LIMIT ${SUMMARY_LIMIT}`;
+    return { ids: rows.map((r) => r.id) };
   }
 
   /**

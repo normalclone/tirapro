@@ -139,6 +139,12 @@ export const SHORTCUTS: readonly ShortcutDef[] = [
     label: 'Đóng lớp trên cùng (hộp thoại, menu, xem nhanh)',
     scope: 'global',
   },
+  {
+    id: 'global.sidebar',
+    keys: ['['],
+    label: 'Thu gọn / mở rộng thanh điều hướng',
+    scope: 'global',
+  },
   { id: 'global.help', keys: ['?'], label: 'Bảng phím tắt này', scope: 'global' },
 ];
 

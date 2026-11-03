@@ -81,17 +81,36 @@ export function LinksPanel({ issueId, canEdit }: { issueId: string; canEdit: boo
           >
             <Link2 className="h-4 w-4 shrink-0 text-muted" />
             <span className="shrink-0 text-xs text-muted">{link.relationName}</span>
-            <Link
-              to={`/issue/${link.otherIssue.key}`}
-              className="shrink-0 rounded font-mono text-xs text-ink-strong hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
-            >
-              {link.otherIssue.key}
-            </Link>
-            <span className="min-w-0 flex-1 truncate text-ink">{link.otherIssue.summary}</span>
-            <StatusPill
-              status={link.otherIssue.status}
-              className={cn(link.otherIssue.status.category === 'DONE' && 'opacity-70')}
-            />
+            {link.otherIssue.deleted ? (
+              <>
+                <span
+                  className="shrink-0 font-mono text-xs text-faint line-through"
+                  title="Công việc này đã bị xoá — chỉ còn liên kết cũ, bạn có thể xoá liên kết"
+                >
+                  {link.otherIssue.key}
+                </span>
+                <span className="min-w-0 flex-1 truncate text-faint line-through">
+                  {link.otherIssue.summary}
+                </span>
+                <span className="shrink-0 rounded bg-surface-2 px-1.5 py-0.5 text-xs font-medium text-muted">
+                  đã xoá
+                </span>
+              </>
+            ) : (
+              <>
+                <Link
+                  to={`/issue/${link.otherIssue.key}`}
+                  className="shrink-0 rounded font-mono text-xs text-ink-strong hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+                >
+                  {link.otherIssue.key}
+                </Link>
+                <span className="min-w-0 flex-1 truncate text-ink">{link.otherIssue.summary}</span>
+                <StatusPill
+                  status={link.otherIssue.status}
+                  className={cn(link.otherIssue.status.category === 'DONE' && 'opacity-70')}
+                />
+              </>
+            )}
             {canEdit && (
               <button
                 type="button"

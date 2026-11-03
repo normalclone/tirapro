@@ -15,6 +15,7 @@ import {
   issueTypePrefix,
   normalizeEnvironment,
   normalizeJiraKey,
+  vnTodayUtc,
   type BulkUpdateIssuesInput,
   type CreateIssueInput,
   type MoveIssueInput,
@@ -209,6 +210,20 @@ export class IssuesService {
     if (!start || !due) return;
     if (new Date(start).getTime() > new Date(due).getTime()) {
       throw new BusinessRuleException('Ngày bắt đầu phải trước hoặc bằng hạn — hãy chọn lại ngày');
+    }
+  }
+
+  /** Hạn không được trước NGÀY TẠO (theo ngày lịch giờ VN; hạn lưu `YYYY-MM-DDT00:00:00Z`). */
+  private assertDueNotBeforeCreated(
+    due: Date | string | null | undefined,
+    created: Date | null,
+  ): void {
+    if (!due) return;
+    const createdDay = vnTodayUtc(created ?? new Date());
+    if (new Date(due).getTime() < createdDay.getTime()) {
+      throw new BusinessRuleException(
+        'Ngày hoàn thành không được trước ngày tạo công việc — hãy chọn ngày từ hôm nay trở đi',
+      );
     }
   }
 
@@ -759,6 +774,8 @@ export class IssuesService {
     if (!project) throw new NotFoundAppException('Dự án');
     assertNotArchived(project.archivedAt);
     this.assertScheduleOrder(input.startDate, input.dueDate);
+    // Import có thể mang dữ liệu lịch sử (hạn đã qua) nên chỉ kiểm khi tạo tay/API.
+    if (origin !== 'import') this.assertDueNotBeforeCreated(input.dueDate, null);
     await this.assertMetaInWorkspace(
       workspaceId,
       {
@@ -953,7 +970,20 @@ export class IssuesService {
       assigneeId: filter.assigneeId,
       typeId: filter.typeId,
       sprintId: filter.sprintId,
-      ...(filter.search ? { summary: insensitiveContains(filter.search) } : {}),
+      // Tìm theo tiêu đề HOẶC mã công việc (DEMO-BUG-3, "bug-3") — chọn việc gắn mục tiêu/liên kết hay gõ mã (logbug #29).
+      ...(filter.search
+        ? {
+            // `AND` (không `OR` trực tiếp): TRIAGE_VISIBLE bên dưới cũng dùng `OR` và sẽ đè lên.
+            AND: [
+              {
+                OR: [
+                  { summary: insensitiveContains(filter.search) },
+                  { key: insensitiveContains(filter.search.trim()) },
+                ],
+              },
+            ],
+          }
+        : {}),
       // Việc chưa duyệt (chờ/tạm hoãn/đã từ chối ở Việc mới vào) không lẫn vào Board/Việc chờ; JQL/tìm kiếm vẫn thấy.
       ...TRIAGE_VISIBLE,
     };
@@ -1215,6 +1245,9 @@ export class IssuesService {
         input.startDate !== undefined ? input.startDate : current.startDate,
         input.dueDate !== undefined ? input.dueDate : current.dueDate,
       );
+      // Chỉ kiểm khi hạn THỰC SỰ đổi — client gửi lại hạn cũ của việc cũ không được 422.
+      if (input.dueDate !== undefined && !sameInstant(input.dueDate, current.dueDate))
+        this.assertDueNotBeforeCreated(input.dueDate, current.createdAt);
     }
 
     const data: Prisma.IssueUncheckedUpdateManyInput = { updatedById: userId };
@@ -1326,6 +1359,8 @@ export class IssuesService {
           await this.assertTransitionAllowed(workflowId, r.statusId, patch.statusId);
       }
       toDone = (await this.statusCategory(patch.statusId)) === 'DONE';
+      if (toDone)
+        await this.assertNotBlockedForDone(rows.filter((r) => r.statusId !== patch.statusId));
       // Một lần tra mặc định cho cả lô (bulk không nhận resolution tường minh).
       if (toDone) doneResolutionId = await this.defaultResolutionId(this.prisma, workspaceId);
     }
@@ -1532,6 +1567,7 @@ export class IssuesService {
     await this.assertTransitionAllowed(workflowId, current.statusId, input.toStatusId);
 
     const isDone = (await this.statusCategory(input.toStatusId)) === 'DONE';
+    if (isDone) await this.assertNotBlockedForDone([current]);
     const resolutionId = isDone
       ? await this.resolutionForDone(
           this.prisma,
@@ -1634,6 +1670,7 @@ export class IssuesService {
         input.statusId!,
       );
       toDone = (await this.statusCategory(input.statusId!)) === 'DONE';
+      if (toDone) await this.assertNotBlockedForDone([current]);
       // Board kéo sang Done không hỏi: nhận Resolution mặc định (sửa sau ở trang công việc).
       if (toDone)
         moveResolutionId = await this.resolutionForDone(
@@ -1909,6 +1946,34 @@ export class IssuesService {
     if (!allowed) throw new InvalidTransitionException();
   }
 
+  /**
+   * "Bị chặn" (logbug #23, phương án 3): vẫn cho chuyển sang In Progress, nhưng KHÔNG cho chuyển vào trạng thái nhóm DONE
+   * khi còn công việc chặn nó (liên kết `Blocks`, issue này là phía ĐÍCH) chưa DONE. Việc chặn đã xoá mềm không tính.
+   */
+  private async assertNotBlockedForDone(issues: Array<{ id: string; key: string }>): Promise<void> {
+    if (issues.length === 0) return;
+    const links = await this.prisma.issueLink.findMany({
+      where: {
+        targetIssueId: { in: issues.map((i) => i.id) },
+        linkType: { name: { equals: 'Blocks', mode: 'insensitive' } },
+        source: { deletedAt: null, status: { category: { not: 'DONE' } } },
+      },
+      select: { targetIssueId: true, source: { select: { key: true } } },
+    });
+    if (links.length === 0) return;
+    const byTarget = new Map<string, string[]>();
+    for (const l of links) {
+      const arr = byTarget.get(l.targetIssueId) ?? [];
+      arr.push(l.source.key);
+      byTarget.set(l.targetIssueId, arr);
+    }
+    const first = issues.find((i) => byTarget.has(i.id))!;
+    const blockers = [...new Set(byTarget.get(first.id))].join(', ');
+    throw new BusinessRuleException(
+      `${first.key} đang bị chặn bởi ${blockers} (chưa hoàn thành) nên chưa thể chuyển sang trạng thái hoàn thành — hãy xử lý xong ${blockers} trước, hoặc xoá liên kết chặn nếu không còn đúng`,
+    );
+  }
+
   private async statusCategory(statusId: string) {
     return (
       await this.prisma.status.findUnique({ where: { id: statusId }, select: { category: true } })
@@ -2119,4 +2184,13 @@ export class IssuesService {
       updatedAt: i.updatedAt.toISOString(),
     };
   }
+}
+
+/** Hai mốc ngày (chuỗi ISO / Date / null) có cùng thời điểm không. */
+function sameInstant(
+  a: string | Date | null | undefined,
+  b: string | Date | null | undefined,
+): boolean {
+  if (a == null || b == null) return a == b;
+  return new Date(a).getTime() === new Date(b).getTime();
 }

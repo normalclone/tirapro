@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { cn } from '@/lib/utils';
 import type { IssueOwnership } from '@/lib/permissions';
+import { useAuth } from '@/stores/auth';
 import { useCanEditIssue } from '@/features/projects/permissions';
 import {
   useChecklist,
@@ -26,6 +27,9 @@ export function ChecklistPanel({
   owner: IssueOwnership;
 }) {
   const canEdit = useCanEditIssue(projectId)(owner);
+  const meId = useAuth((s) => s.user?.id);
+  // Người được giao luôn tick được bước của việc mình (kể cả vai trò không sửa được nội dung việc) — logbug #15.
+  const canTick = canEdit || (!!meId && owner.assigneeId === meId);
   const { data: items } = useChecklist(issueId);
   const add = useAddChecklistItem(issueId);
   const update = useUpdateChecklistItem(issueId);
@@ -84,7 +88,7 @@ export function ChecklistPanel({
             <input
               type="checkbox"
               checked={it.done}
-              disabled={!canEdit || update.isPending}
+              disabled={!canTick || update.isPending}
               onChange={(e) =>
                 update.mutate(
                   { itemId: it.id, done: e.target.checked },

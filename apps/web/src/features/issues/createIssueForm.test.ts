@@ -42,4 +42,24 @@ describe('validateCreateIssue', () => {
       { field: 'summary', message: msg },
     ]);
   });
+
+  it('tiêu đề quá 255 ký tự → thông báo nêu giới hạn và số ký tự đang có (#13)', () => {
+    const long = 'a'.repeat(256);
+    const r = validateCreateIssue({ ...ok, summary: long, cleanSummary: long });
+    expect(r).toHaveLength(1);
+    expect(r[0]!.message).toContain('255');
+    expect(r[0]!.message).toContain('256');
+    const exact = 'a'.repeat(255);
+    expect(validateCreateIssue({ ...ok, summary: exact, cleanSummary: exact })).toEqual([]);
+  });
+  it('điểm ước lượng tối đa 100 (#11)', () => {
+    expect(validateCreateIssue({ ...ok, points: '100' })).toEqual([]);
+    expect(validateCreateIssue({ ...ok, points: '101' })[0]).toMatchObject({
+      field: 'points',
+      message: 'Điểm tối đa 100',
+    });
+  });
+  it('hạn trước ngày tạo → lỗi ở ô hạn (#10)', () => {
+    expect(validateCreateIssue({ ...ok, dueInPast: true })[0]?.field).toBe('due');
+  });
 });

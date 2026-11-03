@@ -20,7 +20,13 @@ import {
   type KeyResultUnit,
   type ObjectiveStatus,
 } from './api';
-import { isConfigHidden, isDraftComplete, toKeyResultInput, type DraftKr } from './krDraft';
+import {
+  isConfigHidden,
+  isDraftComplete,
+  krCurrentError,
+  toKeyResultInput,
+  type DraftKr,
+} from './krDraft';
 import {
   MAX_JQL_LENGTH,
   SOURCE_OPTIONS,
@@ -231,7 +237,8 @@ export function GoalEditorModal({
 
   const busy = create.isPending || update.isPending;
   const validKrs = krs.filter((kr) => kr.name.trim().length > 0);
-  const krsComplete = validKrs.every(isDraftComplete);
+  const krsComplete =
+    validKrs.every(isDraftComplete) && validKrs.every((kr) => !krCurrentError(kr));
   const canSave = name.trim().length > 0 && period.trim().length > 0 && krsComplete && !busy;
 
   function setKr(rowKey: string, patch: Partial<DraftKr>) {
@@ -464,7 +471,13 @@ export function GoalEditorModal({
                         placeholder={isAutoSource(kr.source ?? 'MANUAL') ? 'Tự đo' : undefined}
                         disabled={isAutoSource(kr.source ?? 'MANUAL')}
                         onChange={(e) => setKr(kr.rowKey, { currentValue: Number(e.target.value) })}
+                        aria-invalid={krCurrentError(kr) ? true : undefined}
                       />
+                      {krCurrentError(kr) && (
+                        <span role="alert" className="mt-1 block text-xs text-danger">
+                          {krCurrentError(kr)}
+                        </span>
+                      )}
                     </label>
                     <label
                       className="text-xs text-faint"

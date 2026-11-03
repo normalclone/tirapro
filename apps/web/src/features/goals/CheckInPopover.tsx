@@ -1,6 +1,7 @@
 import { useState, type KeyboardEvent, type ReactElement, type ReactNode } from 'react';
 import * as Popover from '@radix-ui/react-popover';
 import { toast } from 'sonner';
+import { CURRENT_OVER_TARGET_MESSAGE, currentOverTarget } from '@tirapro/shared';
 import { Button } from '@/components/ui/Button';
 import { Dialog } from '@/components/ui/Dialog';
 import { Input } from '@/components/ui/Input';
@@ -72,7 +73,9 @@ function CheckInForm({
   const [raw, setRaw] = useState(String(kr.currentValue));
   const [note, setNote] = useState('');
   const value = Number(raw);
-  const valid = raw.trim() !== '' && Number.isFinite(value);
+  const finite = raw.trim() !== '' && Number.isFinite(value);
+  const overTarget = finite && currentOverTarget(kr.startValue, kr.targetValue, value);
+  const valid = finite && !overTarget;
   const delta = valid ? describeDelta(kr.currentValue, value, kr) : '';
 
   async function submit() {
@@ -120,6 +123,11 @@ function CheckInForm({
           aria-label={`Giá trị mới của ${kr.name}`}
         />
       </label>
+      {overTarget && (
+        <p role="alert" className="text-xs text-danger">
+          {CURRENT_OVER_TARGET_MESSAGE}
+        </p>
+      )}
       {delta && delta !== '0' && (
         <p className="text-xs text-muted">
           Thay đổi {delta} so với {formatKrValue(kr.currentValue, kr.unit, kr.unitLabel)} hiện tại

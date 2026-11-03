@@ -255,7 +255,7 @@ export function MarkdownView({
 }) {
   const blocks = useMemo(() => parseMarkdown(text), [text]);
   return (
-    <div className="text-sm text-ink">
+    <div className="min-w-0 max-w-full text-sm text-ink [overflow-wrap:anywhere]">
       {blocks.map((b, i) => renderBlock(b, i, onToggleTask, issueRefs))}
     </div>
   );

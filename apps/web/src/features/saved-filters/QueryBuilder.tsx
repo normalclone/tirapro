@@ -4,6 +4,7 @@ import { Check, ChevronDown, Copy, ListFilter, Plus, Trash2, Wand2, X } from 'lu
 import { useCopyToClipboard } from '@/lib/useCopyToClipboard';
 import {
   CURRENT_USER_TOKEN,
+  findDuplicateConditions,
   isRelativeDateToken,
   jqlFieldType,
   serializeSimpleQuery,
@@ -202,6 +203,8 @@ export function QueryBuilder({
   );
 
   const previewJql = serializeSimpleQuery(query);
+  // Dòng trùng hoàn toàn với dòng trước nó (JQL chỉ giữ một) — báo ngay tại dòng để người dùng xoá bớt.
+  const duplicates = findDuplicateConditions(query.conditions);
 
   if (complex) {
     return (
@@ -255,6 +258,7 @@ export function QueryBuilder({
               <ConditionRow
                 condition={c}
                 sources={valueSources}
+                duplicateOf={duplicates.get(c.id)}
                 onChange={(patch) => updateCondition(c.id, patch)}
                 onRemove={() => removeCondition(c.id)}
               />
@@ -364,11 +368,14 @@ function optionsForField(field: JqlFieldName, sources: Sources): FieldOption[] |
 function ConditionRow({
   condition,
   sources,
+  duplicateOf,
   onChange,
   onRemove,
 }: {
   condition: SimpleCondition;
   sources: Sources;
+  /** Số thứ tự (từ 1) của điều kiện giống hệt đứng trước → dòng này bị bỏ qua khi lọc. */
+  duplicateOf?: number;
   onChange: (patch: Partial<SimpleCondition>) => void;
   onRemove: () => void;
 }) {
@@ -422,6 +429,12 @@ function ConditionRow({
       >
         <Trash2 className="h-4 w-4" aria-hidden />
       </Button>
+      {duplicateOf !== undefined && (
+        <p role="alert" className="basis-full text-xs text-warning-ink">
+          Điều kiện này trùng với điều kiện số {duplicateOf} nên không được tính hai lần trong truy
+          vấn — hãy xoá dòng này hoặc đổi giá trị.
+        </p>
+      )}
     </div>
   );
 }

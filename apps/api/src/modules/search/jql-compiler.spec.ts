@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { parseJql } from '@tirapro/shared';
 import {
   collectFulltextTerms,
+  collectSummaryTerms,
+  SUMMARY_TERM_PREFIX,
   compileJql,
   containsWhere,
   jqlDependsOnViewer,
@@ -337,5 +339,52 @@ describe('JQL key — mã công việc, cả mã Jira (JRA-1) lẫn mã Tirapro 
   it('ORDER BY key', () => {
     const r = compileJql(ast('project = X ORDER BY key ASC'), { currentUserId: 'U' });
     expect(r.orderBy).toEqual([{ key: 'asc' }]);
+  });
+});
+
+describe('IS [NOT] EMPTY trên trường luôn có giá trị (logbug #19, #20)', () => {
+  const where = (jql: string) =>
+    compileJql(ast(jql), { currentUserId: 'U1' }).where as Record<string, unknown>;
+  const none = { id: { in: [] } };
+
+  it.each(['project', 'type', 'status', 'statusCategory', 'created', 'updated', 'text'])(
+    '%s IS NOT EMPTY → mọi việc (không đẩy null xuống Prisma); IS EMPTY → không việc nào',
+    (f) => {
+      expect(where(`${f} IS NOT EMPTY`)).toEqual({});
+      expect(where(`${f} IS EMPTY`)).toEqual(none);
+    },
+  );
+
+  it('summary/key so với chuỗi rỗng (không phải equals "" cho IS NOT)', () => {
+    expect(where('summary IS EMPTY')).toEqual({ summary: '' });
+    expect(where('summary IS NOT EMPTY')).toEqual({ NOT: { summary: '' } });
+    expect(where('key IS NOT EMPTY')).toEqual({ NOT: { key: '' } });
+  });
+
+  it('trường tuỳ chọn vẫn dùng null như cũ', () => {
+    expect(where('assignee IS EMPTY')).toEqual({ assigneeId: null });
+    expect(where('due IS NOT EMPTY')).toEqual({ NOT: { dueDate: null } });
+  });
+});
+
+describe('summary ~ không phân biệt dấu (logbug #2)', () => {
+  const like = (v: string) => ({ contains: v, mode: 'insensitive' });
+  it('collectSummaryTerms lấy giá trị của summary ~ / !~, bỏ qua trường khác', () => {
+    expect(
+      collectSummaryTerms(
+        ast('summary ~ "dang nhap" AND text ~ "x" AND summary !~ "loi"').where,
+      ).sort(),
+    ).toEqual(['dang nhap', 'loi']);
+  });
+  it('có tập id không dấu → OR(contains chính xác, id in …); !~ là phần bù', () => {
+    const fulltext = new Map([[`${SUMMARY_TERM_PREFIX}dang nhap`, ['I1', 'I2']]]);
+    const ctx = { currentUserId: 'u', fulltext } as never;
+    const match = { OR: [{ summary: like('dang nhap') }, { id: { in: ['I1', 'I2'] } }] };
+    expect(compileJql(ast('summary ~ "dang nhap"'), ctx).where).toEqual(match);
+    expect(compileJql(ast('summary !~ "dang nhap"'), ctx).where).toEqual({ NOT: match });
+  });
+  it('không có tập id → giữ contains như cũ', () => {
+    const ctx = { currentUserId: 'u' } as never;
+    expect(compileJql(ast('summary ~ "abc"'), ctx).where).toEqual({ summary: like('abc') });
   });
 });

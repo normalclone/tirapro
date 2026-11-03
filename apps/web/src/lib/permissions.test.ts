@@ -76,9 +76,9 @@ describe('parsePointsInput', () => {
     ['3', 3],
     ['2,5', 2.5],
     ['0', 0],
-    ['1000', 1000],
+    ['100', 100],
   ])('%j => %j', (raw, v) => expect(parsePointsInput(raw)).toEqual({ ok: true, value: v }));
-  it.each(['abc', '-1', '1001', '1e3x'])('%j => lỗi', (raw) =>
+  it.each(['abc', '-1', '101', '1e3x'])('%j => lỗi', (raw) =>
     expect(parsePointsInput(raw)).toMatchObject({ ok: false }),
   );
 });

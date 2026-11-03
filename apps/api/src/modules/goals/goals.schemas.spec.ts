@@ -115,3 +115,33 @@ describe('OCC của KR (I3)', () => {
     expect(createCheckInSchema.safeParse({ value: 4, expectedValue: NaN }).success).toBe(false);
   });
 });
+
+describe('Hiện tại không vượt Cần đạt (logbug #30)', () => {
+  const MSG = 'Giá trị Hiện tại không được lớn hơn giá trị Cần đạt.';
+  const kr = { name: 'KR', startValue: 0, targetValue: 100 };
+  it('upsert / create: 130 > 100 → từ chối đúng thông báo, gắn vào currentValue', () => {
+    for (const schema of [keyResultUpsertSchema, createKeyResultSchema]) {
+      const r = schema.safeParse({ ...kr, currentValue: 130 });
+      expect(r.success).toBe(false);
+      if (!r.success) {
+        expect(r.error.issues[0]!.message).toBe(MSG);
+        expect(r.error.issues[0]!.path).toEqual(['currentValue']);
+      }
+      expect(schema.safeParse({ ...kr, currentValue: 100 }).success).toBe(true);
+    }
+  });
+  it('KR giảm dần và KR tự đo không bị chặn; update chỉ gửi currentValue (thiếu đích) để service kiểm', () => {
+    expect(
+      keyResultUpsertSchema.safeParse({
+        name: 'x',
+        startValue: 50,
+        targetValue: 10,
+        currentValue: 30,
+      }).success,
+    ).toBe(true);
+    expect(updateKeyResultSchema.safeParse({ currentValue: 500 }).success).toBe(true);
+    expect(
+      updateKeyResultSchema.safeParse({ targetValue: 10, startValue: 0, currentValue: 11 }).success,
+    ).toBe(false);
+  });
+});

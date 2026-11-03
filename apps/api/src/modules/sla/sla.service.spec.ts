@@ -160,3 +160,119 @@ describe('SlaService — dự án riêng tư: bảng SLA và chính sách không
     expect(prisma.slaPolicy.update).not.toHaveBeenCalled();
   });
 });
+
+describe('SlaService — thời gian xử lý hiển thị đúng thực tế (logbug #26)', () => {
+  type Mocked = { mock: { calls: unknown[][] } };
+  const dataOf = (fn: Mocked) =>
+    (fn.mock.calls[0]![0] as { data: { resolveDueAt: Date; policyId?: string } }).data;
+  const whereOf = (fn: Mocked) =>
+    (fn.mock.calls[0]![0] as { where: { issue?: { status?: unknown } } }).where;
+  const hour = 3_600_000;
+  function make(over: { issue?: Record<string, unknown>; sla?: Record<string, unknown> } = {}) {
+    const created = new Date(Date.now() - 10 * hour);
+    const sla = {
+      issueId: 'i1',
+      policyId: 'pol1',
+      responseDueAt: new Date(created.getTime() + hour),
+      resolveDueAt: new Date(created.getTime() + 24 * hour),
+      firstRespondedAt: null,
+      resolvedAt: null,
+      responseBreached: false,
+      resolveBreached: false,
+      policy: { name: 'P', responseMins: 60, resolveMins: 1440 },
+      ...over.sla,
+    };
+    const prisma = {
+      issue: {
+        findFirst: vi.fn(() =>
+          Promise.resolve({
+            id: 'i1',
+            resolvedAt: null,
+            updatedAt: new Date(),
+            status: { category: 'IN_PROGRESS' },
+            ...over.issue,
+          }),
+        ),
+      },
+      issueSla: {
+        findUnique: vi.fn(() => Promise.resolve(sla)),
+        findMany: vi.fn(() => Promise.resolve([])),
+        create: vi.fn((_a: unknown) => Promise.resolve({})),
+        update: vi.fn((_a: unknown) => Promise.resolve({})),
+      },
+      slaPolicy: {
+        findMany: vi.fn(() =>
+          Promise.resolve([
+            {
+              id: 'polNew',
+              projectId: null,
+              priorityId: 'high',
+              responseMins: 30,
+              resolveMins: 120,
+            },
+          ]),
+        ),
+      },
+    };
+    return { service: new SlaService(prisma as never, {} as never), prisma, created };
+  }
+
+  it('việc đã ở trạng thái DONE mà dòng SLA chưa đóng → coi là đã xong, không còn "còn N giờ"', async () => {
+    const { service } = make({ issue: { status: { category: 'DONE' }, resolvedAt: new Date() } });
+    const r = await service.getForIssue('w', 'i1');
+    expect(r?.resolvedAt).not.toBeNull();
+    expect(r?.resolveRemainingMins).toBeNull();
+    expect(r?.resolveBreached).toBe(false);
+  });
+
+  it('board loại việc đã ở nhóm DONE', async () => {
+    const { service, prisma } = make();
+    const access = { visibleWhere: () => Promise.resolve({}) };
+    const svc = new SlaService(prisma as never, access as never);
+    await svc.board('w', 'u');
+    const where = whereOf(prisma.issueSla.findMany);
+    expect(where.issue?.status).toEqual({ category: { not: 'DONE' } });
+    void service;
+  });
+
+  it('hạn tính từ lúc TẠO việc (createdAt), không phải lúc xử lý sự kiện', async () => {
+    const { service, prisma, created } = make();
+    await service.onIssueCreated({
+      issue: {
+        id: 'i1',
+        workspaceId: 'w',
+        projectId: 'p',
+        priority: { id: 'high' },
+        createdAt: created,
+      },
+    });
+    const data = dataOf(prisma.issueSla.create);
+    expect(data.resolveDueAt.getTime()).toBe(created.getTime() + 120 * 60000);
+  });
+
+  it('mở lại việc: bỏ cả cờ trễ cũ', async () => {
+    const { service, prisma } = make({ sla: { resolvedAt: new Date(), resolveBreached: true } });
+    await service.onIssueTransitioned({ issue: { id: 'i1', status: { category: 'IN_PROGRESS' } } });
+    expect(dataOf(prisma.issueSla.update)).toEqual({
+      resolvedAt: null,
+      resolveBreached: false,
+    });
+  });
+
+  it('đổi mức ưu tiên → áp lại cam kết khớp, tính lại hạn từ lúc tạo', async () => {
+    const { service, prisma, created } = make();
+    await service.onIssueUpdated({
+      issue: {
+        id: 'i1',
+        workspaceId: 'w',
+        projectId: 'p',
+        priority: { id: 'high' },
+        createdAt: created,
+      },
+      changedFields: ['priorityId'],
+    });
+    const data = dataOf(prisma.issueSla.update);
+    expect(data.policyId).toBe('polNew');
+    expect(data.resolveDueAt.getTime()).toBe(created.getTime() + 120 * 60000);
+  });
+});

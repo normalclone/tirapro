@@ -111,3 +111,20 @@ describe('MarkdownView — chip công việc (issueRefs)', () => {
     expect(withRefs('`DEMO-STORY-3`', { 'DEMO-STORY-3': ref })).not.toContain('href=');
   });
 });
+
+describe('MarkdownView — in nghiêng (logbug #9)', () => {
+  it.each([
+    '*in nghiêng*',
+    '_in nghiêng_',
+    'chữ *nghiêng có dấu ê* và thường',
+    '**đậm** và *nghiêng*',
+  ])('%s → thẻ em', (md) => {
+    expect(html(md)).toContain('<em>');
+  });
+});
+
+describe('MarkdownView — mô tả dài không làm vỡ layout (logbug #12)', () => {
+  it('khung bao cho phép ngắt chuỗi dài không dấu cách', () => {
+    expect(html('x'.repeat(500))).toContain('[overflow-wrap:anywhere]');
+  });
+});

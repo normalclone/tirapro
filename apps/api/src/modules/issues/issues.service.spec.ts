@@ -86,6 +86,8 @@ function makeService(
   // Mặc định mọi assignee đều là thành viên workspace; ca "người ngoài" ghi đè workspaceMembership qua prismaExtra.
   const base = {
     workspaceMembership: { findFirst: vi.fn(() => Promise.resolve({ userId: 'u2' })) },
+    // Không có liên kết "Blocks" chưa xong (kiểm chặn khi chuyển sang Done, logbug #23).
+    issueLink: { findMany: vi.fn(() => Promise.resolve([])) },
   };
   const prisma = {
     $transaction: (fn: (t: unknown) => unknown) => fn(tx),
@@ -2556,10 +2558,23 @@ describe('IssuesService — dự án đã xoá mềm', () => {
     await service.list('w1', { search: '_' }, undefined, 50, null);
     await service.list('w1', { search: '50%\\' }, undefined, 50, null);
     const wheres = (
-      findMany.mock.calls as unknown as Array<[{ where: Record<string, unknown> }]>
-    ).map((c) => c[0].where.summary);
-    expect(wheres[0]).toEqual({ contains: '\\_', mode: 'insensitive' });
-    expect(wheres[1]).toEqual({ contains: '50\\%\\\\', mode: 'insensitive' });
+      findMany.mock.calls as unknown as Array<[{ where: { AND: Array<{ OR: unknown[] }> } }]>
+    ).map((c) => c[0].where.AND[0]!.OR);
+    expect(wheres[0]).toEqual([
+      { summary: { contains: '\\_', mode: 'insensitive' } },
+      { key: { contains: '\\_', mode: 'insensitive' } },
+    ]);
+    expect(wheres[1]![0]).toEqual({ summary: { contains: '50\\%\\\\', mode: 'insensitive' } });
+  });
+
+  it('list với search khớp cả MÃ công việc (logbug #29) mà không bị TRIAGE_VISIBLE đè', async () => {
+    const findMany = vi.fn(() => Promise.resolve([]));
+    const { service } = makeService({ issue: { findMany } });
+    await service.list('w1', { search: 'bug-3' }, undefined, 50, null);
+    const where = (findMany.mock.calls[0] as unknown as [{ where: Record<string, unknown> }])[0]
+      .where;
+    expect(JSON.stringify(where.AND)).toContain('"key":{"contains":"bug-3"');
+    expect(where.OR).toEqual([{ triageState: null }, { triageState: 'ACCEPTED' }]);
   });
 
   it('query (JQL/search) và query theo rawIds (full-text) đều ghép project.deletedAt:null vào scope', async () => {
@@ -3933,5 +3948,74 @@ describe('IssuesService — người phụ trách phải xem được dự án (
     const { service, canSee } = makeService({});
     await expect(service.isAssignableMember('w1', 'u2')).resolves.toBe(true);
     expect(canSee).not.toHaveBeenCalled();
+  });
+});
+
+describe('IssuesService.assertDueNotBeforeCreated (logbug #10)', () => {
+  const svc = new IssuesService(
+    {} as never,
+    { emit: vi.fn() } as never,
+    {} as never,
+    undefined,
+    undefined,
+    undefined,
+    {} as never,
+  ) as unknown as {
+    assertDueNotBeforeCreated(due: string | null, created: Date | null): void;
+  };
+  it('hạn trước ngày tạo (giờ VN) bị chặn bằng thông báo tiếng Việt', () => {
+    const created = new Date('2026-11-03T10:00:00Z'); // 03/11 17:00 VN
+    expect(() => svc.assertDueNotBeforeCreated('2026-11-02T00:00:00.000Z', created)).toThrow(
+      /không được trước ngày tạo/,
+    );
+  });
+  it('hạn đúng ngày tạo hoặc sau đó, hoặc không có hạn → hợp lệ', () => {
+    const created = new Date('2026-11-03T10:00:00Z');
+    expect(() => svc.assertDueNotBeforeCreated('2026-11-03T00:00:00.000Z', created)).not.toThrow();
+    expect(() => svc.assertDueNotBeforeCreated('2026-12-01T00:00:00.000Z', created)).not.toThrow();
+    expect(() => svc.assertDueNotBeforeCreated(null, created)).not.toThrow();
+  });
+});
+
+describe('IssuesService.assertNotBlockedForDone (logbug #23, phương án 3)', () => {
+  const make = (links: Array<{ targetIssueId: string; source: { key: string } }>) => {
+    const findMany = vi.fn(() => Promise.resolve(links));
+    const svc = new IssuesService(
+      { issueLink: { findMany } } as never,
+      { emit: vi.fn() } as never,
+      {} as never,
+      undefined,
+      undefined,
+      undefined,
+      {} as never,
+    ) as unknown as {
+      assertNotBlockedForDone(i: Array<{ id: string; key: string }>): Promise<void>;
+    };
+    return { svc, findMany };
+  };
+  it('còn việc chặn chưa DONE → báo tên mã người chặn', async () => {
+    const { svc } = make([
+      { targetIssueId: 'i1', source: { key: 'P-9' } },
+      { targetIssueId: 'i1', source: { key: 'P-8' } },
+    ]);
+    await expect(svc.assertNotBlockedForDone([{ id: 'i1', key: 'P-1' }])).rejects.toThrow(
+      /P-1 đang bị chặn bởi P-9, P-8/,
+    );
+  });
+  it('không có liên kết chặn chưa xong → cho qua; chỉ tra liên kết Blocks còn sống & chưa DONE', async () => {
+    const { svc, findMany } = make([]);
+    await expect(svc.assertNotBlockedForDone([{ id: 'i1', key: 'P-1' }])).resolves.toBeUndefined();
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          source: { deletedAt: null, status: { category: { not: 'DONE' } } },
+        }) as unknown,
+      }),
+    );
+  });
+  it('danh sách rỗng không truy vấn', async () => {
+    const { svc, findMany } = make([]);
+    await svc.assertNotBlockedForDone([]);
+    expect(findMany).not.toHaveBeenCalled();
   });
 });

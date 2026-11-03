@@ -107,6 +107,8 @@ const EXEMPT_METHODS: Record<string, string> = {
     'helper nội bộ của luồng import (đã chặn trước khi tạo ImportJob)',
   'sla/sla.service.ts#onIssueCreated': 'phản ứng sự kiện issue (ghi issue đã bị chặn ở nguồn)',
   'sla/sla.service.ts#onCommentAdded': 'phản ứng sự kiện issue (ghi comment đã bị chặn ở nguồn)',
+  'sla/sla.service.ts#onIssueUpdated':
+    'phản ứng sự kiện issue (đổi ưu tiên đã bị chặn ở nguồn khi dự án lưu trữ)',
   'sla/sla.service.ts#onIssueTransitioned':
     'phản ứng sự kiện issue (chuyển trạng thái đã bị chặn ở nguồn)',
   'sprints/sprints.service.ts#snapshot':

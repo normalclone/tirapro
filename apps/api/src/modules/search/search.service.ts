@@ -29,6 +29,8 @@ import { IssuesService } from '../issues/issues.service';
 import { FulltextSearcher } from './fulltext';
 import {
   collectFulltextTerms,
+  collectSummaryTerms,
+  SUMMARY_TERM_PREFIX,
   compileJql,
   containsWhere,
   jqlDependsOnViewer,
@@ -350,6 +352,24 @@ export class SearchService {
   ): Promise<Map<string, readonly string[]>> {
     const fulltext = new Map<string, readonly string[]>();
     const terms = collectFulltextTerms(where);
+    const summaryTerms = collectSummaryTerms(where);
+    if (!terms.length && !summaryTerms.length) return fulltext;
+    // `summary ~ "…"` không dấu (logbug #2): lỗi tra cứu (kể cả tính phạm vi) không làm hỏng truy vấn — rơi về `contains`.
+    if (summaryTerms.length) {
+      try {
+        const sc = await this.fulltextProjectScope(workspaceId, where, projectId, viewerId);
+        for (const term of summaryTerms) {
+          const res = await this.fulltext.summaryContains(
+            workspaceId,
+            term,
+            sc ? { projectIds: sc } : {},
+          );
+          fulltext.set(`${SUMMARY_TERM_PREFIX}${term}`, res.ids);
+        }
+      } catch {
+        /* giữ contains */
+      }
+    }
     if (!terms.length) return fulltext;
     const scopeIds = await this.fulltextProjectScope(workspaceId, where, projectId, viewerId);
     for (const term of terms) {

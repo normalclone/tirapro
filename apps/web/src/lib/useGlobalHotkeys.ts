@@ -15,6 +15,8 @@ import { SHORTCUTS_EVENT } from '@/components/layout/ShortcutsDialog';
 import { activeDrag } from './activeDrag';
 import { moveNavFocus } from './listNav';
 import { getPeekSource } from './peekRegistry';
+import { useAuth } from '@/stores/auth';
+import { useSidebar } from '@/stores/sidebar';
 import { useIssuePeek } from '@/features/issues/peek/useIssuePeek';
 import { PEEK_PARAM } from '@/features/issues/peek/peekParam';
 import { requestAssign } from '@/features/quick-assign/events';
@@ -128,6 +130,11 @@ export function useGlobalHotkeys() {
         case '/':
           e.preventDefault();
           focusSearch();
+          break;
+        case '[':
+          // Thu gọn / mở rộng thanh điều hướng trái (chỉ có từ `lg`).
+          e.preventDefault();
+          useSidebar.getState().toggle(useAuth.getState().user?.id);
           break;
         case 'j':
         case 'J':

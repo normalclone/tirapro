@@ -59,6 +59,31 @@ export function collectFulltextTerms(node: JqlNode | null): string[] {
   return [...out];
 }
 
+/** Khoá trong `ctx.fulltext` cho tập id khớp `summary ~ "..."` KHÔNG phân biệt dấu (tách khỏi khoá của `text ~`). */
+export const SUMMARY_TERM_PREFIX = 'summary:';
+
+/** Các giá trị `summary ~ "…"` / `summary !~ "…"` (không rỗng) — để tra khớp không dấu trước khi compile. */
+export function collectSummaryTerms(node: JqlNode | null): string[] {
+  const out = new Set<string>();
+  const walk = (n: JqlNode): void => {
+    if (n.type === 'logical') {
+      walk(n.left);
+      walk(n.right);
+    } else if (n.type === 'not') {
+      walk(n.node);
+    } else if (
+      n.field === 'summary' &&
+      (n.operator === '~' || n.operator === '!~') &&
+      n.value.kind === 'string' &&
+      n.value.value.trim()
+    ) {
+      out.add(n.value.value);
+    }
+  };
+  if (node) walk(node);
+  return [...out];
+}
+
 /**
  * Giá trị `text ~ "..."` nằm trên chuỗi AND thuần của điều kiện (không qua OR/NOT) — khi đó mọi kết quả
  * đều thuộc tập id full-text nên có thể xếp theo rank. null nếu không có.
@@ -106,14 +131,32 @@ interface FieldCfg {
   column?: string; // cột scalar (summary/createdAt/storyPoints...)
   relNullable?: boolean; // quan hệ cho phép không có (priority/sprint/resolution) — `!~` phải gồm cả issue không có quan hệ
   nullable?: boolean; // cột scalar cho phép NULL (ảnh hưởng cách dựng `contains`, xem containsWhere)
+  /**
+   * Trường LUÔN có giá trị (quan hệ/cột bắt buộc: project, type, status, statusCategory, created, updated, summary, key,
+   * text). `IS EMPTY` không khớp việc nào, `IS NOT EMPTY` khớp mọi việc — KHÔNG đẩy `null` xuống Prisma (cột/quan hệ bắt buộc
+   * không nhận `null` → 500).
+   */
+  required?: boolean;
 }
 
 /** Map field JQL → cách dựng Prisma where (an toàn, whitelist). */
 const FIELD_MAP: Record<JqlFieldName, FieldCfg> = {
-  project: { kind: 'relationName', relation: 'project', field: 'key' },
-  type: { kind: 'relationName', relation: 'type', field: 'name', idColumn: 'typeId' },
-  status: { kind: 'relationName', relation: 'status', field: 'name', idColumn: 'statusId' },
-  statusCategory: { kind: 'enumRel', relation: 'status', field: 'category' },
+  project: { kind: 'relationName', relation: 'project', field: 'key', required: true },
+  type: {
+    kind: 'relationName',
+    relation: 'type',
+    field: 'name',
+    idColumn: 'typeId',
+    required: true,
+  },
+  status: {
+    kind: 'relationName',
+    relation: 'status',
+    field: 'name',
+    idColumn: 'statusId',
+    required: true,
+  },
+  statusCategory: { kind: 'enumRel', relation: 'status', field: 'category', required: true },
   priority: {
     kind: 'relationName',
     relation: 'priority',
@@ -147,11 +190,11 @@ const FIELD_MAP: Record<JqlFieldName, FieldCfg> = {
     kind: 'array',
     arrayRel: { relation: 'fixVersions', ref: 'version', type: 'AFFECTS' },
   },
-  key: { kind: 'text', column: 'key' },
-  summary: { kind: 'text', column: 'summary' },
-  text: { kind: 'fulltext' },
-  created: { kind: 'date', column: 'createdAt' },
-  updated: { kind: 'date', column: 'updatedAt' },
+  key: { kind: 'text', column: 'key', required: true },
+  summary: { kind: 'text', column: 'summary', required: true },
+  text: { kind: 'fulltext', required: true },
+  created: { kind: 'date', column: 'createdAt', required: true },
+  updated: { kind: 'date', column: 'updatedAt', required: true },
   due: { kind: 'date', column: 'dueDate' },
   resolution: {
     kind: 'relationName',
@@ -230,6 +273,20 @@ function textMatchWhere(v: string, ranked?: readonly string[]): Where {
   };
 }
 
+/**
+ * `field IS [NOT] EMPTY` cho trường luôn có giá trị: `IS` → không việc nào; `IS NOT` → mọi việc. Văn bản (summary/key)
+ * so với chuỗi rỗng để vẫn đúng ngữ nghĩa nếu dữ liệu cũ có dòng trống. `text` = summary + description + mã: mỗi việc đều
+ * có tiêu đề và mã nên `text IS EMPTY` luôn rỗng, `text IS NOT EMPTY` là mọi việc.
+ */
+function requiredEmptiness(cfg: FieldCfg, op: 'IS' | 'IS NOT'): Where {
+  const none: Where = { id: { in: [] } };
+  if (cfg.kind === 'text') {
+    const empty: Where = { [cfg.column!]: '' };
+    return op === 'IS' ? empty : { NOT: empty };
+  }
+  return op === 'IS' ? none : {};
+}
+
 function compileComparison(
   field: JqlFieldName,
   op: JqlOperator,
@@ -237,6 +294,7 @@ function compileComparison(
   ctx: JqlCompileContext,
 ): Where {
   const cfg = FIELD_MAP[field];
+  if (cfg.required && (op === 'IS' || op === 'IS NOT')) return requiredEmptiness(cfg, op);
   switch (cfg.kind) {
     case 'relationName':
     case 'enumRel': {
@@ -279,8 +337,16 @@ function compileComparison(
       const raw = scalarString(value, ctx);
       // Mã công việc luôn lưu HOA → so khớp chính xác không phân biệt hoa/thường người gõ.
       const v = field === 'key' && (op === '=' || op === '!=') ? raw.toUpperCase() : raw;
-      if (op === '~') return containsWhere(col, v, cfg.nullable);
-      if (op === '!~') return { NOT: containsWhere(col, v, cfg.nullable) };
+      if (op === '~' || op === '!~') {
+        // `summary ~` khớp cả khi gõ KHÔNG DẤU ("dang nhap" ra "Đăng nhập"): hợp `contains` (chính xác) với tập id đã tra
+        // không dấu (ctx.fulltext, khoá `summary:`). Không có tập đó (chưa tra/không có hàm) → chỉ `contains` như cũ.
+        const extra =
+          field === 'summary' ? ctx.fulltext?.get(`${SUMMARY_TERM_PREFIX}${v}`) : undefined;
+        const match: Where = extra?.length
+          ? { OR: [containsWhere(col, v, cfg.nullable), { id: { in: [...extra] } }] }
+          : containsWhere(col, v, cfg.nullable);
+        return op === '~' ? match : { NOT: match };
+      }
       if (op === '!=') return { [col]: { not: v } };
       return { [col]: v };
     }

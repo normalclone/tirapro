@@ -14,6 +14,7 @@ const item = (extra: Partial<RaidItemDto>): RaidItemDto => ({
   impact: 4,
   status: 'OPEN',
   owner: { id: 'u', displayName: 'Trần Bình', email: 'b@x.vn', avatarUrl: null },
+  owners: [{ id: 'u', displayName: 'Trần Bình', email: 'b@x.vn', avatarUrl: null }],
   mitigation: 'Đào tạo người thay thế',
   dueDate: '2026-11-05T00:00:00.000Z',
   score: 20,
@@ -42,6 +43,7 @@ describe('raidCsv', () => {
       item({
         project: null,
         owner: null,
+        owners: [],
         dueDate: null,
         mitigation: null,
         title: '=HYPERLINK("x")',
@@ -60,5 +62,19 @@ describe('raidCsv', () => {
       .trim()
       .split('\r\n');
     expect(lines[1]).toContain(',05/11/2026,');
+  });
+});
+
+describe('exportCsv — nhiều người phụ trách (logbug #27)', () => {
+  it('nối tên các người phụ trách bằng "; "', () => {
+    const csv = raidCsv([
+      item({
+        owners: [
+          { id: 'a', displayName: 'An', email: 'a@x.vn', avatarUrl: null },
+          { id: 'b', displayName: 'Bình', email: 'b@x.vn', avatarUrl: null },
+        ],
+      }),
+    ]);
+    expect(csv).toContain('An; Bình');
   });
 });

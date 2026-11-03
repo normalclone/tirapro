@@ -26,6 +26,7 @@ const RAID_SELECT = {
   createdAt: true,
   updatedAt: true,
   owner: { select: OWNER_SELECT },
+  owners: { select: { user: { select: OWNER_SELECT } }, orderBy: { createdAt: 'asc' } },
   project: { select: { id: true, key: true, name: true } },
 } satisfies Prisma.RaidItemSelect;
 
@@ -85,7 +86,11 @@ export class RaidService {
     if (filter.kind) where.kind = filter.kind as RaidKind;
     if (filter.status) where.status = filter.status as RaidStatus;
     if (filter.projectId) where.projectId = filter.projectId;
-    if (filter.ownerId) where.ownerId = filter.ownerId;
+    // Người phụ trách nằm trong `owners` (nhiều người) hoặc là người chính cũ — `AND` để không đè `OR` của scope.
+    if (filter.ownerId)
+      where.AND = [
+        { OR: [{ ownerId: filter.ownerId }, { owners: { some: { userId: filter.ownerId } } }] },
+      ];
 
     const rows = await this.prisma.raidItem.findMany({
       where,
@@ -108,13 +113,14 @@ export class RaidService {
   async create(workspaceId: string, dto: CreateRaidInput, actingUserId: string) {
     const projectId = await this.resolveProject(workspaceId, dto.projectId ?? null, actingUserId);
     if (projectId) await assertProjectWritable(this.prisma, projectId);
-    const ownerId = await this.resolveOwner(workspaceId, dto.ownerId ?? null);
+    const ownerIds = await this.resolveOwners(workspaceId, dto);
 
     const created = await this.prisma.raidItem.create({
       data: {
         workspaceId,
         projectId,
-        ownerId,
+        ownerId: ownerIds[0] ?? null,
+        owners: { create: ownerIds.map((userId) => ({ userId })) },
         createdById: actingUserId,
         kind: dto.kind ?? 'RISK',
         title: dto.title.trim(),
@@ -157,9 +163,13 @@ export class RaidService {
       }
       data.project = projectId ? { connect: { id: projectId } } : { disconnect: true };
     }
-    if (dto.ownerId !== undefined) {
-      const ownerId = await this.resolveOwner(workspaceId, dto.ownerId ?? null);
-      data.owner = ownerId ? { connect: { id: ownerId } } : { disconnect: true };
+    if (dto.ownerIds !== undefined || dto.ownerId !== undefined) {
+      const ownerIds = await this.resolveOwners(workspaceId, dto);
+      data.owner = ownerIds[0] ? { connect: { id: ownerIds[0] } } : { disconnect: true };
+      data.owners = {
+        deleteMany: {},
+        create: ownerIds.map((userId) => ({ userId })),
+      };
     }
 
     await this.prisma.raidItem.update({ where: { id }, data });
@@ -222,17 +232,34 @@ export class RaidService {
     return p.id;
   }
 
-  private async resolveOwner(workspaceId: string, ownerId: string | null): Promise<string | null> {
-    if (!ownerId) return null;
-    const m = await this.prisma.workspaceMembership.findFirst({
-      where: { workspaceId, userId: ownerId },
+  /**
+   * Danh sách người phụ trách (người đầu = chính): `ownerIds` nếu có, không thì `ownerId` cũ. Khử trùng lặp, giữ thứ tự;
+   * mọi người phải là thành viên không gian làm việc.
+   */
+  private async resolveOwners(
+    workspaceId: string,
+    dto: { ownerIds?: string[]; ownerId?: string | null },
+  ): Promise<string[]> {
+    const wanted = dto.ownerIds ?? (dto.ownerId ? [dto.ownerId] : []);
+    const ids = [...new Set(wanted)];
+    if (ids.length === 0) return [];
+    const members = await this.prisma.workspaceMembership.findMany({
+      where: { workspaceId, userId: { in: ids } },
       select: { userId: true },
     });
-    if (!m)
+    const ok = new Set(members.map((m) => m.userId));
+    if (ids.some((id) => !ok.has(id)))
       throw new ForbiddenAppException(
-        'Chủ sở hữu không thuộc không gian làm việc này — hãy chọn một thành viên khác',
+        'Có người phụ trách không thuộc không gian làm việc này — hãy chọn lại từ danh sách thành viên',
       );
-    return m.userId;
+    return ids;
+  }
+
+  /** Mọi người phụ trách, người CHÍNH (`ownerId`) đứng đầu; dữ liệu cũ chưa có bảng nối thì rơi về `owner`. */
+  private ownersOf(r: RaidRow) {
+    const list = r.owners.map((o) => o.user);
+    if (list.length === 0) return r.owner ? [r.owner] : [];
+    return [...list].sort((a, b) => Number(b.id === r.ownerId) - Number(a.id === r.ownerId));
   }
 
   private toDto(r: RaidRow) {
@@ -249,7 +276,9 @@ export class RaidService {
       probability: r.probability,
       impact: r.impact,
       status: r.status,
+      // `owner` = người phụ trách chính (tương thích ngược); `owners` = toàn bộ (kể cả người chính).
       owner: r.owner,
+      owners: this.ownersOf(r),
       mitigation: r.mitigation,
       dueDate: r.dueDate ? r.dueDate.toISOString() : null,
       score,

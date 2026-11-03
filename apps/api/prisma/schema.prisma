@@ -268,6 +268,7 @@ model User {
   ownedObjectives      Objective[]           @relation("ObjectiveOwner")
   keyResultCheckIns    KeyResultCheckIn[]    @relation("KeyResultCheckInAuthor")
   ownedRaidItems       RaidItem[]            @relation("RaidOwner")
+  raidOwnerships       RaidOwner[]
   passwordResetTokens  PasswordResetToken[]
 
   @@index([status])
@@ -1977,9 +1978,24 @@ model RaidItem {
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   project   Project?  @relation(fields: [projectId], references: [id], onDelete: Cascade)
   owner     User?     @relation("RaidOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  /// Nhiều người phụ trách. `ownerId` giữ lại làm người phụ trách CHÍNH (= người đầu danh sách) để tương thích ngược.
+  owners    RaidOwner[]
 
   @@index([workspaceId, kind])
   @@index([projectId, status])
+}
+
+/// Người phụ trách của một mục RAID (nhiều–nhiều).
+model RaidOwner {
+  raidItemId String
+  userId     String
+  createdAt  DateTime @default(now())
+
+  raidItem RaidItem @relation(fields: [raidItemId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([raidItemId, userId])
+  @@index([userId])
 }
 
 /// Chính sách SLA theo mức ưu tiên.

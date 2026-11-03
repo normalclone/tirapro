@@ -492,7 +492,14 @@ describe('GoalsService — ghi KR tự đo (L25)', () => {
  * như Postgres thật (khớp mới đổi, count 0 nếu người khác đã đổi).
  */
 function makeKrPrisma(
-  kr: { id: string; source: string; currentValue: number; sourceConfig?: unknown } | null,
+  kr: {
+    id: string;
+    source: string;
+    currentValue: number;
+    sourceConfig?: unknown;
+    startValue?: number;
+    targetValue?: number;
+  } | null,
   objective: Record<string, unknown> = {
     id: 'o1',
     projectId: null,
@@ -564,6 +571,23 @@ describe('GoalsService — check-in Key Result (L26) + OCC (I3)', () => {
       },
     });
     expect(state!.currentValue).toBe(4);
+  });
+
+  it('addCheckIn: Hiện tại vượt Cần đạt (KR tăng dần) → 422 đúng thông báo, không ghi (logbug #30)', async () => {
+    const { service, prisma } = make({
+      id: 'k1',
+      source: 'MANUAL',
+      currentValue: 6,
+      startValue: 0,
+      targetValue: 100,
+    });
+    await expect(service.addCheckIn('w1', 'o1', 'k1', { value: 130 }, 'u1')).rejects.toMatchObject({
+      status: 422,
+      message: 'Giá trị Hiện tại không được lớn hơn giá trị Cần đạt.',
+    });
+    expect(prisma.keyResultCheckIn.create).not.toHaveBeenCalled();
+    await service.addCheckIn('w1', 'o1', 'k1', { value: 100 }, 'u1');
+    expect(prisma.keyResultCheckIn.create).toHaveBeenCalled();
   });
 
   it('addCheckIn: expectedValue lệch số trong DB (người khác vừa check-in) → 409 có thông báo rõ, không ghi', async () => {

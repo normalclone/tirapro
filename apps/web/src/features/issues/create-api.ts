@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import type { IssueDto } from '@tirapro/types';
+import type { IssueDto, IssueEnvironment } from '@tirapro/types';
 import { api } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
 
@@ -18,6 +18,7 @@ export interface CreateIssueInput {
   sprintId?: string | null;
   statusId?: string;
   dueDate?: string | null;
+  environment?: IssueEnvironment | null;
 }
 
 /** Tạo issue thủ công; invalidate board + danh sách issue khi thành công. */

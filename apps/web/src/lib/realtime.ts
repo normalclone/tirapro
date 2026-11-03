@@ -85,9 +85,13 @@ export function applyIssueUpdated(qc: QueryClient, issue: IssueDto) {
 }
 
 /** issue:deleted — lọc khỏi danh sách; chi tiết đang mở sẽ tự nạp lại và báo "không tìm thấy". */
-function applyIssueDeleted(qc: QueryClient, projectId: string, issueId: string) {
+export function applyIssueDeleted(qc: QueryClient, projectId: string, issueId: string) {
   const issueKey = getList(qc, projectId)?.find((i) => i.id === issueId)?.key;
   patchList(qc, projectId, (list) => list.filter((i) => i.id !== issueId));
+  // Bảng có bộ lọc JQL (cache `byBoard`) cũng phải bỏ thẻ này ngay.
+  qc.setQueriesData<IssueDto[]>({ queryKey: [...keys.issues.byBoard('')].slice(0, 2) }, (old) =>
+    Array.isArray(old) ? old.filter((i) => i.id !== issueId) : old,
+  );
   if (issueKey) void qc.invalidateQueries({ queryKey: keys.issues.byKey(issueKey) });
 }
 

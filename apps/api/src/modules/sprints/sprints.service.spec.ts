@@ -46,7 +46,10 @@ describe('SprintsService.create — sequence unique', () => {
       .mockResolvedValueOnce({ sequence: 1 })
       .mockResolvedValueOnce({ sequence: 2 });
     const { service } = make({
-      project: { findFirst: vi.fn(() => Promise.resolve({ id: 'p1' })) },
+      project: {
+        findFirst: vi.fn(() => Promise.resolve({ id: 'p1' })),
+        update: vi.fn(() => Promise.resolve({ id: 'p1' })),
+      },
       sprint: { findFirst, create },
     });
     const dto = await service.create('w1', 'p1', { name: 'S' });
@@ -56,10 +59,25 @@ describe('SprintsService.create — sequence unique', () => {
     expect(dto.sequence).toBe(3);
   });
 
+  it('đọc sequence + tạo nằm trong giao dịch có khoá dòng project (#24: tạo đồng thời xếp hàng)', async () => {
+    const update = vi.fn(() => Promise.resolve({ id: 'p1' }));
+    const create = vi.fn((_args: { data: { name: string } }) => Promise.resolve(sprintRow()));
+    const { service } = make({
+      project: { findFirst: vi.fn(() => Promise.resolve({ id: 'p1' })), update },
+      sprint: { findFirst: vi.fn(() => Promise.resolve({ sequence: 4 })), create },
+    });
+    await service.create('w1', 'p1', { name: '  S  ' });
+    expect(update).toHaveBeenCalledTimes(1);
+    expect(create.mock.calls[0]![0].data.name).toBe('S');
+  });
+
   it('trùng 3 lần liền => báo lỗi nghiệp vụ, không thử vô hạn', async () => {
     const create = vi.fn().mockRejectedValue(dupError());
     const { service } = make({
-      project: { findFirst: vi.fn(() => Promise.resolve({ id: 'p1' })) },
+      project: {
+        findFirst: vi.fn(() => Promise.resolve({ id: 'p1' })),
+        update: vi.fn(() => Promise.resolve({ id: 'p1' })),
+      },
       sprint: { findFirst: vi.fn(() => Promise.resolve({ sequence: 1 })), create },
     });
     await expect(service.create('w1', 'p1', { name: 'S' })).rejects.toMatchObject({ status: 422 });
@@ -69,7 +87,10 @@ describe('SprintsService.create — sequence unique', () => {
   it('lỗi khác P2002 được ném nguyên, không thử lại', async () => {
     const create = vi.fn().mockRejectedValue(new Error('boom'));
     const { service } = make({
-      project: { findFirst: vi.fn(() => Promise.resolve({ id: 'p1' })) },
+      project: {
+        findFirst: vi.fn(() => Promise.resolve({ id: 'p1' })),
+        update: vi.fn(() => Promise.resolve({ id: 'p1' })),
+      },
       sprint: { findFirst: vi.fn(() => Promise.resolve(null)), create },
     });
     await expect(service.create('w1', 'p1', { name: 'S' })).rejects.toThrow('boom');

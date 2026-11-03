@@ -105,9 +105,41 @@ function serializeCondition(c: SimpleCondition): string {
   return `${c.field} ${c.operator} ${serializeValue(c.field, c.values[0]!)}`;
 }
 
+/** Khoá nhận diện điều kiện GIỐNG HỆT: trường + toán tử + tập giá trị (không phân biệt thứ tự/hoa thường với IN/NOT IN). */
+function conditionKey(c: SimpleCondition): string {
+  const multi = c.operator === 'IN' || c.operator === 'NOT IN';
+  const vals = multi
+    ? [...c.values].map((v) => v.trim().toLowerCase()).sort()
+    : c.values.slice(0, 1).map((v) => v.trim().toLowerCase());
+  return `${c.field}|${c.operator}|${vals.join('\u0001')}`;
+}
+
+/**
+ * Điều kiện đầy đủ bị TRÙNG HOÀN TOÀN với một điều kiện đứng trước nó → `id` của dòng trùng ↦ số thứ tự (từ 1) của dòng gốc.
+ * Dòng chưa đủ dữ liệu không được so (người dùng còn đang điền).
+ */
+export function findDuplicateConditions(
+  conditions: readonly SimpleCondition[],
+): Map<string, number> {
+  const seen = new Map<string, number>();
+  const dups = new Map<string, number>();
+  conditions.forEach((c, i) => {
+    if (!isConditionComplete(c)) return;
+    const k = conditionKey(c);
+    const first = seen.get(k);
+    if (first === undefined) seen.set(k, i + 1);
+    else dups.set(c.id, first);
+  });
+  return dups;
+}
+
 /** SimpleQuery → chuỗi JQL hợp lệ ('' nếu không có điều kiện & không sort). */
 export function serializeSimpleQuery(q: SimpleQuery): string {
-  const clauses = q.conditions.filter(isConditionComplete).map(serializeCondition);
+  // Điều kiện trùng hoàn toàn chỉ sinh MỘT mệnh đề (không sinh JQL lặp `project = A AND project = A`).
+  const dups = findDuplicateConditions(q.conditions);
+  const clauses = q.conditions
+    .filter((c) => isConditionComplete(c) && !dups.has(c.id))
+    .map(serializeCondition);
   const where = clauses.join(` ${q.combinator} `);
   const order = q.sort ? `ORDER BY ${q.sort.field} ${q.sort.direction}` : '';
   return [where, order].filter(Boolean).join(' ').trim();
