@@ -68,18 +68,20 @@ export class IssueExtrasController {
     return this.extras.addChecklistItem(workspaceId, issueId, dto.text);
   }
 
+  /**
+   * Sửa bước. Tick/bỏ tick (`done`) mở cho NGƯỜI ĐƯỢC GIAO dù vai trò không có `issue:edit` (logbug #15); đổi chữ/thứ tự và
+   * mọi vai trò còn lại vẫn cần `issue:edit` (hoặc `issue:edit:own` + là chủ việc) — kiểm trong service.
+   */
   @Patch('checklist/:itemId')
-  @Permissions(PERMISSIONS.ISSUE_EDIT)
+  @Permissions(PERMISSIONS.PROJECT_VIEW)
   async updateChecklist(
     @WorkspaceId() workspaceId: string,
     @CurrentUser() user: AuthUser,
     @Param('issueId') issueId: string,
     @Param('itemId') itemId: string,
     @Body(new ZodValidationPipe(updateChecklistSchema)) dto: UpdateChecklistInput,
-    @OwnOnly(PERMISSIONS.ISSUE_EDIT) ownOnly: boolean,
   ) {
-    await this.ownership.assertOwnsIssue(ownOnly, workspaceId, user.id, issueId);
-    return this.extras.updateChecklistItem(workspaceId, issueId, itemId, dto);
+    return this.extras.updateChecklistItem(workspaceId, issueId, itemId, dto, user);
   }
 
   @Delete('checklist/:itemId')

@@ -123,7 +123,7 @@ describe('@OwnOnly coverage', () => {
         }
       }
     }
-    expect(checked).toBeGreaterThanOrEqual(20);
+    expect(checked).toBeGreaterThanOrEqual(19);
     expect(missing, `Route thiếu @OwnOnly:\n${missing.join('\n')}`).toEqual([]);
   });
 
@@ -148,7 +148,7 @@ describe('@OwnOnly coverage', () => {
         }
       }
     }
-    expect(checked).toBeGreaterThanOrEqual(20);
+    expect(checked).toBeGreaterThanOrEqual(19);
     expect(
       unchecked,
       `Handler nhận @OwnOnly nhưng không kiểm sở hữu:\n${unchecked.join('\n')}`,
