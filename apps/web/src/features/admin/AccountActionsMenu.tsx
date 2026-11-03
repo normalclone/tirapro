@@ -7,6 +7,7 @@ import {
   KeyRound,
   LogOut,
   MoreHorizontal,
+  Pencil,
   UserCheck,
   UserX,
 } from 'lucide-react';
@@ -18,6 +19,7 @@ import { useConfirm } from '@/components/ui/useConfirm';
 import { apiErrorMessage } from '@/lib/api';
 import { useCopyToClipboard } from '@/lib/useCopyToClipboard';
 import { AddToWorkspaceDialog } from './AddToWorkspaceDialog';
+import { EditAccountDialog } from './EditAccountDialog';
 import {
   useResetAdminPassword,
   useRevokeAdminSessions,
@@ -41,6 +43,8 @@ export function AccountActionsMenu({ user }: { user: AdminUser }) {
   // Hộp thoại chỉ dựng từ lần mở đầu tiên (mỗi dòng đều có menu này — không tải danh sách workspace cho mọi dòng).
   const [addOpen, setAddOpen] = useState(false);
   const [addMounted, setAddMounted] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editMounted, setEditMounted] = useState(false);
   const clearTimer = useRef<ReturnType<typeof setTimeout>>();
   useEffect(() => () => clearTimeout(clearTimer.current), []);
   const resetMutation = reset.reset;
@@ -136,6 +140,17 @@ export function AccountActionsMenu({ user }: { user: AdminUser }) {
             sideOffset={4}
             className="z-dropdown w-64 overflow-hidden rounded-lg border border-border bg-surface p-1 shadow-lg animate-in fade-in zoom-in-95 duration-150"
           >
+            {!user.isAutomation && (
+              <DropdownMenu.Item
+                className={ITEM}
+                onSelect={() => {
+                  setEditMounted(true);
+                  setEditOpen(true);
+                }}
+              >
+                <Pencil className="h-4 w-4 shrink-0 text-muted" /> Sửa thông tin (tên, email)…
+              </DropdownMenu.Item>
+            )}
             <DropdownMenu.Item
               className={ITEM}
               onSelect={() => {
@@ -168,6 +183,9 @@ export function AccountActionsMenu({ user }: { user: AdminUser }) {
         </DropdownMenu.Portal>
       </DropdownMenu.Root>
 
+      {editMounted && (
+        <EditAccountDialog user={user} open={editOpen} onClose={() => setEditOpen(false)} />
+      )}
       {addMounted && (
         <AddToWorkspaceDialog user={user} open={addOpen} onClose={() => setAddOpen(false)} />
       )}

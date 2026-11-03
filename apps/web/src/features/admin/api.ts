@@ -34,6 +34,7 @@ export interface CreateAdminUserInput {
 
 export type UpdateAdminUserInput = Partial<{
   displayName: string;
+  email: string;
   isSystemAdmin: boolean;
   canCreateWorkspace: boolean;
   status: 'ACTIVE' | 'DEACTIVATED';
