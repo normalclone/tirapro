@@ -59,6 +59,31 @@ export function collectFulltextTerms(node: JqlNode | null): string[] {
   return [...out];
 }
 
+/** Khoá trong `ctx.fulltext` cho tập id khớp `summary ~ "..."` KHÔNG phân biệt dấu (tách khỏi khoá của `text ~`). */
+export const SUMMARY_TERM_PREFIX = 'summary:';
+
+/** Các giá trị `summary ~ "…"` / `summary !~ "…"` (không rỗng) — để tra khớp không dấu trước khi compile. */
+export function collectSummaryTerms(node: JqlNode | null): string[] {
+  const out = new Set<string>();
+  const walk = (n: JqlNode): void => {
+    if (n.type === 'logical') {
+      walk(n.left);
+      walk(n.right);
+    } else if (n.type === 'not') {
+      walk(n.node);
+    } else if (
+      n.field === 'summary' &&
+      (n.operator === '~' || n.operator === '!~') &&
+      n.value.kind === 'string' &&
+      n.value.value.trim()
+    ) {
+      out.add(n.value.value);
+    }
+  };
+  if (node) walk(node);
+  return [...out];
+}
+
 /**
  * Giá trị `text ~ "..."` nằm trên chuỗi AND thuần của điều kiện (không qua OR/NOT) — khi đó mọi kết quả
  * đều thuộc tập id full-text nên có thể xếp theo rank. null nếu không có.
@@ -312,8 +337,16 @@ function compileComparison(
       const raw = scalarString(value, ctx);
       // Mã công việc luôn lưu HOA → so khớp chính xác không phân biệt hoa/thường người gõ.
       const v = field === 'key' && (op === '=' || op === '!=') ? raw.toUpperCase() : raw;
-      if (op === '~') return containsWhere(col, v, cfg.nullable);
-      if (op === '!~') return { NOT: containsWhere(col, v, cfg.nullable) };
+      if (op === '~' || op === '!~') {
+        // `summary ~` khớp cả khi gõ KHÔNG DẤU ("dang nhap" ra "Đăng nhập"): hợp `contains` (chính xác) với tập id đã tra
+        // không dấu (ctx.fulltext, khoá `summary:`). Không có tập đó (chưa tra/không có hàm) → chỉ `contains` như cũ.
+        const extra =
+          field === 'summary' ? ctx.fulltext?.get(`${SUMMARY_TERM_PREFIX}${v}`) : undefined;
+        const match: Where = extra?.length
+          ? { OR: [containsWhere(col, v, cfg.nullable), { id: { in: [...extra] } }] }
+          : containsWhere(col, v, cfg.nullable);
+        return op === '~' ? match : { NOT: match };
+      }
       if (op === '!=') return { [col]: { not: v } };
       return { [col]: v };
     }

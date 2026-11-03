@@ -153,9 +153,24 @@ describe('SearchService.search', () => {
 
   it('JQL không có text ~ -> không đụng full-text (hành vi cũ)', async () => {
     const { service, issues, queryRaw } = makeService([]);
-    await service.search('W1', 'U1', { jql: 'summary ~ "x"', limit: 50 });
+    await service.search('W1', 'U1', { jql: 'labels = x', limit: 50 });
     expect(queryRaw).not.toHaveBeenCalled();
     expect(optsOf(issues.query.mock.calls[0] as unknown[]).rawIds).toBeUndefined();
+  });
+
+  it('summary ~ tra thêm tập id khớp không dấu (logbug #2) và đưa vào where; không đổi rawIds', async () => {
+    const { service, issues, queryRaw } = makeService([{ id: 'I9', rank: 0 }]);
+    await service.search('W1', 'U1', { jql: 'summary ~ "dang nhap"', limit: 50 });
+    expect(queryRaw).toHaveBeenCalledTimes(1);
+    const where = JSON.stringify(issues.query.mock.calls[0]![1]);
+    expect(where).toContain('"id":{"in":["I9"]}');
+    expect(optsOf(issues.query.mock.calls[0] as unknown[]).rawIds).toBeUndefined();
+  });
+
+  it('summary ~ : tra cứu không dấu lỗi → vẫn chạy bằng contains, không ném', async () => {
+    const { service, issues } = makeService(new Error('boom'));
+    await service.search('W1', 'U1', { jql: 'summary ~ "x"', limit: 50 });
+    expect(JSON.stringify(issues.query.mock.calls[0]![1])).not.toContain('"id":{"in"');
   });
 });
 

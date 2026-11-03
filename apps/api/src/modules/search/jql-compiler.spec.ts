@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { parseJql } from '@tirapro/shared';
 import {
   collectFulltextTerms,
+  collectSummaryTerms,
+  SUMMARY_TERM_PREFIX,
   compileJql,
   containsWhere,
   jqlDependsOnViewer,
@@ -362,5 +364,27 @@ describe('IS [NOT] EMPTY trên trường luôn có giá trị (logbug #19, #20)'
   it('trường tuỳ chọn vẫn dùng null như cũ', () => {
     expect(where('assignee IS EMPTY')).toEqual({ assigneeId: null });
     expect(where('due IS NOT EMPTY')).toEqual({ NOT: { dueDate: null } });
+  });
+});
+
+describe('summary ~ không phân biệt dấu (logbug #2)', () => {
+  const like = (v: string) => ({ contains: v, mode: 'insensitive' });
+  it('collectSummaryTerms lấy giá trị của summary ~ / !~, bỏ qua trường khác', () => {
+    expect(
+      collectSummaryTerms(
+        ast('summary ~ "dang nhap" AND text ~ "x" AND summary !~ "loi"').where,
+      ).sort(),
+    ).toEqual(['dang nhap', 'loi']);
+  });
+  it('có tập id không dấu → OR(contains chính xác, id in …); !~ là phần bù', () => {
+    const fulltext = new Map([[`${SUMMARY_TERM_PREFIX}dang nhap`, ['I1', 'I2']]]);
+    const ctx = { currentUserId: 'u', fulltext } as never;
+    const match = { OR: [{ summary: like('dang nhap') }, { id: { in: ['I1', 'I2'] } }] };
+    expect(compileJql(ast('summary ~ "dang nhap"'), ctx).where).toEqual(match);
+    expect(compileJql(ast('summary !~ "dang nhap"'), ctx).where).toEqual({ NOT: match });
+  });
+  it('không có tập id → giữ contains như cũ', () => {
+    const ctx = { currentUserId: 'u' } as never;
+    expect(compileJql(ast('summary ~ "abc"'), ctx).where).toEqual({ summary: like('abc') });
   });
 });
