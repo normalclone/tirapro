@@ -48,5 +48,5 @@ export function parsePointsInput(
   if (s === '') return { ok: true, value: null };
   if (!/^\d+(\.\d+)?$/.test(s)) return { ok: false, error: 'Điểm phải là một con số, ví dụ 3' };
   const n = Number(s);
-  return n > 1000 ? { ok: false, error: 'Điểm tối đa là 1000' } : { ok: true, value: n };
+  return n > 100 ? { ok: false, error: 'Điểm tối đa 100' } : { ok: true, value: n };
 }

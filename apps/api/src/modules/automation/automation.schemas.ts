@@ -8,7 +8,7 @@ export const issuePayloadSchema = z.object({
   description: z.string().max(50_000).optional().nullable(),
   assigneeId: z.string().min(1).optional().nullable(),
   labelIds: z.array(z.string().min(1)).max(50).optional(),
-  storyPoints: z.number().min(0).max(1000).optional().nullable(),
+  storyPoints: z.number().min(0).max(100).optional().nullable(),
 });
 
 export type IssuePayload = z.infer<typeof issuePayloadSchema>;

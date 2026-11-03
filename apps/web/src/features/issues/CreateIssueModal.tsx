@@ -2,6 +2,10 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Plus } from 'lucide-react';
 import { toast } from 'sonner';
+import { normalizeEnvironment, type EnvironmentInput } from '@tirapro/shared';
+import { ENV_KIND_LABEL } from '@/features/issue-edit/environment';
+import { isBugType } from '@/features/issue-edit/severity';
+import { localToCalendarIso } from '@/lib/calendarDate';
 import { apiErrorMessage } from '@/lib/api';
 import { useProjectMeta } from '@/features/ai/api';
 import { useProjects } from '@/features/projects/api';
@@ -107,6 +111,8 @@ const FIELD_META: Record<CreateIssueField, { id: string; label: string }> = {
   project: { id: 'ci-project', label: 'Dự án' },
   type: { id: 'ci-type', label: 'Loại việc' },
   summary: { id: 'ci-summary', label: 'Tiêu đề' },
+  points: { id: 'ci-points', label: 'Điểm ước lượng' },
+  due: { id: 'ci-due', label: 'Hạn hoàn thành' },
 };
 
 /** Nhãn + gợi ý ngắn cho một ô nhập. `title` = giải nghĩa thuật ngữ (hiện khi rê chuột vào nhãn). */
@@ -164,6 +170,8 @@ export function CreateIssueModal() {
   const [sprintId, setSprintId] = useState('');
   const [points, setPoints] = useState('');
   const [due, setDue] = useState('');
+  const [envKind, setEnvKind] = useState('');
+  const [envBuild, setEnvBuild] = useState('');
   const [epicId, setEpicId] = useState('');
   const [parentPick, setParentPick] = useState('');
   const [files, setFiles] = useState<File[]>([]);
@@ -224,6 +232,8 @@ export function CreateIssueModal() {
     setSprintId('');
     setPoints('');
     setDue('');
+    setEnvKind('');
+    setEnvBuild('');
     setEpicId('');
     setParentPick('');
     setFiles([]);
@@ -371,15 +381,20 @@ export function CreateIssueModal() {
   }, [typeId, meta]);
 
   const isStory = meta?.issueTypes.find((t) => t.id === typeId)?.key === 'STORY';
+  const isBug = isBugType(meta?.issueTypes.find((t) => t.id === typeId));
   // Chọn dự án rồi mà danh sách loại việc chưa về: chưa gửi được (không phải lỗi của người dùng) → nút chờ.
   const metaLoading = !!selId && !meta;
   // Lỗi hiện sau lần Tạo lỗi đầu tiên (sửa tới đâu hết lỗi tới đó); mở lại hộp thì xoá.
+  // Hạn không được trước ngày tạo (logbug #10): chặn như lỗi trường. Hạn HÔM NAY (theo ngày VN) vẫn hợp lệ.
+  const dueInPast = due !== '' && dueDaysFromToday(due) < 0;
   const allErrors: FieldError[] = validateCreateIssue({
     projectId: selId,
     metaReady: !!meta,
     typeId,
     summary,
     cleanSummary: parseTitleTokens(summary, tokenCtx).clean,
+    points,
+    dueInPast,
   }).map((i) => ({ ...FIELD_META[i.field], message: i.message }));
   const flow = useErrorFlow(allErrors);
   const { reset: resetErrors } = flow;
@@ -388,9 +403,6 @@ export function CreateIssueModal() {
     if (open) resetErrors();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
-  // Cảnh báo mềm: không chặn gửi (đường Tạo / Tạo & nhập tiếp / Cmd+Enter đều như nhau).
-  // Cùng định nghĩa "quá hạn" với mọi nơi khác: hạn HÔM NAY (theo ngày VN) chưa phải quá khứ.
-  const dueInPast = due !== '' && dueDaysFromToday(due) < 0;
   const title = preset.subtask ? 'Tạo việc con' : 'Tạo công việc';
 
   async function doCreate() {
@@ -426,7 +438,13 @@ export function CreateIssueModal() {
         epicId: hideEpic ? undefined : epicId || undefined,
         storyPoints: v.points ? Number(v.points) : undefined,
         sprintId: v.sprintId || undefined,
-        dueDate: v.due ? new Date(v.due).toISOString() : undefined,
+        dueDate: v.due ? localToCalendarIso(v.due) : undefined,
+        environment: isBug
+          ? normalizeEnvironment({
+              env: (envKind || undefined) as EnvironmentInput['env'],
+              build: envBuild || undefined,
+            })
+          : undefined,
       });
       // Tải các tệp đính kèm song song → không dừng vì 1 tệp lỗi; báo rõ N/M nếu có lỗi.
       if (files.length > 0) {
@@ -479,6 +497,8 @@ export function CreateIssueModal() {
     setFiles([]);
     setPoints('');
     setDue('');
+    setEnvKind('');
+    setEnvBuild('');
     lastTokens.current = { clean: '' };
     lastFull.current = { clean: '' };
     manualRef.current.clear();
@@ -715,10 +735,16 @@ export function CreateIssueModal() {
             label="Điểm ước lượng"
             hint="(tùy chọn)"
             title="Con số ước chừng độ lớn của việc — càng lớn càng tốn công. Dùng để đo sức làm của nhóm mỗi sprint."
+            htmlFor="ci-points"
+            error={errorOf('points')}
           >
             <Input
+              id="ci-points"
               type="number"
               min={0}
+              max={100}
+              aria-invalid={errorOf('points') ? true : undefined}
+              aria-describedby={errorOf('points') ? fieldErrorId('ci-points') : undefined}
               inputMode="numeric"
               value={points}
               onChange={(e) => {
@@ -735,7 +761,9 @@ export function CreateIssueModal() {
             className="sm:col-span-2"
             label="Hạn hoàn thành"
             hint="(tùy chọn)"
-            title="Mốc phải xong. Quá hạn mà chưa xong, việc sẽ hiện viền đỏ trên bảng."
+            title="Mốc phải xong, không được trước ngày tạo. Quá hạn mà chưa xong, việc sẽ hiện viền đỏ trên bảng."
+            htmlFor="ci-due"
+            error={errorOf('due')}
           >
             <DateTimeInput
               value={due}
@@ -743,15 +771,45 @@ export function CreateIssueModal() {
                 markManual('due');
                 setDue(v);
               }}
+              id="ci-due"
               defaultTime="17:00"
               ariaLabel="Hạn hoàn thành"
             />
-            {dueInPast && (
-              <p role="status" className="mt-1 text-xs text-warning-ink">
-                Hạn đã qua — việc sẽ hiện quá hạn ngay khi tạo. Vẫn tạo được.
-              </p>
-            )}
           </Field>
+
+          {isBug && (
+            <div className="grid grid-cols-1 gap-4 sm:col-span-2 sm:grid-cols-2">
+              <Field
+                label="Môi trường phát sinh lỗi"
+                hint="(tùy chọn)"
+                title="Lỗi xảy ra ở đâu: Dev (dev test), Staging (vd MT 47), hay Production."
+              >
+                <SearchSelect
+                  value={envKind}
+                  onChange={setEnvKind}
+                  ariaLabel="Môi trường phát sinh lỗi"
+                  options={[
+                    { value: '', label: '—' },
+                    ...Object.entries(ENV_KIND_LABEL).map(([value, label]) => ({ value, label })),
+                  ]}
+                />
+              </Field>
+              <Field
+                label="Tên môi trường / phiên bản"
+                hint="(tùy chọn)"
+                title="Ghi rõ máy chủ hoặc bản build, ví dụ MT 47, 2.3.1."
+              >
+                <Input
+                  value={envBuild}
+                  maxLength={120}
+                  onChange={(e) => setEnvBuild(e.target.value)}
+                  placeholder="VD: MT 47"
+                  className="text-sm"
+                  aria-label="Tên môi trường hoặc phiên bản"
+                />
+              </Field>
+            </div>
+          )}
 
           {(!hideEpic || !hideParent) && (
             <div className="grid grid-cols-1 gap-4 sm:col-span-2 sm:grid-cols-2">

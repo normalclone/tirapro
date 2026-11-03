@@ -7,7 +7,10 @@ export const richTextFormatEnum = z.enum(['MARKDOWN', 'TIPTAP_JSON']);
 export const createIssueSchema = z.object({
   projectId: z.string().min(1),
   typeId: z.string().min(1),
-  summary: z.string().min(1, 'Tiêu đề bắt buộc').max(255),
+  summary: z
+    .string()
+    .min(1, 'Tiêu đề bắt buộc')
+    .max(255, 'Tiêu đề tối đa 255 ký tự — hãy rút gọn và đưa chi tiết vào phần mô tả'),
   description: z.string().max(50_000).optional().nullable(),
   descriptionFormat: richTextFormatEnum.default('MARKDOWN'),
   acceptanceCriteria: z.string().max(20_000).optional().nullable(),
@@ -18,7 +21,7 @@ export const createIssueSchema = z.object({
   parentId: z.string().optional().nullable(),
   epicId: z.string().optional().nullable(),
   sprintId: z.string().optional().nullable(),
-  storyPoints: z.number().min(0).max(1000).optional().nullable(),
+  storyPoints: z.number().min(0).max(100, 'Điểm tối đa 100').optional().nullable(),
   labelIds: z.array(z.string()).optional(),
   statusId: z.string().optional(),
   dueDate: z.string().datetime().optional().nullable(),
@@ -73,7 +76,7 @@ export const bulkUpdateIssuesSchema = z.object({
       assigneeId: z.string().min(1).nullable().optional(),
       priorityId: z.string().min(1).nullable().optional(),
       sprintId: z.string().min(1).nullable().optional(),
-      storyPoints: z.number().min(0).max(1000).nullable().optional(),
+      storyPoints: z.number().min(0).max(100, 'Điểm tối đa 100').nullable().optional(),
       epicId: z.string().min(1).nullable().optional(),
       // Nhãn của DỰ ÁN; chỉ thêm/gỡ, không thay cả bộ — hoàn tác phía web dùng đối ngẫu add ↔ remove.
       labels: z

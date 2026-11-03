@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Lock } from 'lucide-react';
 import { toast } from 'sonner';
+import { localToCalendarIso } from '@/lib/calendarDate';
 import type { IssueDto } from '@tirapro/types';
 import { useProjectMeta } from '@/features/ai/api';
 import { useProjects } from '@/features/projects/api';
@@ -406,7 +407,7 @@ export function IssueStoryPointsInline({ issue, canEdit }: { issue: IssueDto; ca
       <Input
         type="number"
         min={0}
-        max={1000}
+        max={100}
         step="any"
         inputMode="decimal"
         autoFocus
@@ -884,7 +885,7 @@ export function IssueDueField({
       {
         id: issue.id,
         key: issue.key,
-        patch: { dueDate: raw ? new Date(raw).toISOString() : null },
+        patch: { dueDate: raw ? localToCalendarIso(raw) : null },
         version: issue.version,
       },
       { onError: (e) => toast.error(apiErrorMessage(e)) },

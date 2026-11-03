@@ -403,7 +403,7 @@ export class ExcelImportService {
     const pts = parseExcelNumber(raw.cells.points);
     if (pts === null) err('points', `'${text('points')}' không phải số`);
     else if (pts !== undefined) {
-      if (pts < 0 || pts > 1000) err('points', `Điểm ${pts} ngoài khoảng 0–1000`);
+      if (pts < 0 || pts > 100) err('points', `Điểm ${pts} ngoài khoảng 0–100`);
       else storyPoints = pts;
     }
 

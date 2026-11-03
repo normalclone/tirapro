@@ -15,6 +15,7 @@ import {
   issueTypePrefix,
   normalizeEnvironment,
   normalizeJiraKey,
+  vnTodayUtc,
   type BulkUpdateIssuesInput,
   type CreateIssueInput,
   type MoveIssueInput,
@@ -209,6 +210,20 @@ export class IssuesService {
     if (!start || !due) return;
     if (new Date(start).getTime() > new Date(due).getTime()) {
       throw new BusinessRuleException('Ngày bắt đầu phải trước hoặc bằng hạn — hãy chọn lại ngày');
+    }
+  }
+
+  /** Hạn không được trước NGÀY TẠO (theo ngày lịch giờ VN; hạn lưu `YYYY-MM-DDT00:00:00Z`). */
+  private assertDueNotBeforeCreated(
+    due: Date | string | null | undefined,
+    created: Date | null,
+  ): void {
+    if (!due) return;
+    const createdDay = vnTodayUtc(created ?? new Date());
+    if (new Date(due).getTime() < createdDay.getTime()) {
+      throw new BusinessRuleException(
+        'Ngày hoàn thành không được trước ngày tạo công việc — hãy chọn ngày từ hôm nay trở đi',
+      );
     }
   }
 
@@ -759,6 +774,8 @@ export class IssuesService {
     if (!project) throw new NotFoundAppException('Dự án');
     assertNotArchived(project.archivedAt);
     this.assertScheduleOrder(input.startDate, input.dueDate);
+    // Import có thể mang dữ liệu lịch sử (hạn đã qua) nên chỉ kiểm khi tạo tay/API.
+    if (origin !== 'import') this.assertDueNotBeforeCreated(input.dueDate, null);
     await this.assertMetaInWorkspace(
       workspaceId,
       {
@@ -1215,6 +1232,8 @@ export class IssuesService {
         input.startDate !== undefined ? input.startDate : current.startDate,
         input.dueDate !== undefined ? input.dueDate : current.dueDate,
       );
+      if (input.dueDate !== undefined)
+        this.assertDueNotBeforeCreated(input.dueDate, current.createdAt);
     }
 
     const data: Prisma.IssueUncheckedUpdateManyInput = { updatedById: userId };

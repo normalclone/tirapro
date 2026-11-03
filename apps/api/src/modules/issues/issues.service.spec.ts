@@ -3935,3 +3935,29 @@ describe('IssuesService — người phụ trách phải xem được dự án (
     expect(canSee).not.toHaveBeenCalled();
   });
 });
+
+describe('IssuesService.assertDueNotBeforeCreated (logbug #10)', () => {
+  const svc = new IssuesService(
+    {} as never,
+    { emit: vi.fn() } as never,
+    {} as never,
+    undefined,
+    undefined,
+    undefined,
+    {} as never,
+  ) as unknown as {
+    assertDueNotBeforeCreated(due: string | null, created: Date | null): void;
+  };
+  it('hạn trước ngày tạo (giờ VN) bị chặn bằng thông báo tiếng Việt', () => {
+    const created = new Date('2026-11-03T10:00:00Z'); // 03/11 17:00 VN
+    expect(() => svc.assertDueNotBeforeCreated('2026-11-02T00:00:00.000Z', created)).toThrow(
+      /không được trước ngày tạo/,
+    );
+  });
+  it('hạn đúng ngày tạo hoặc sau đó, hoặc không có hạn → hợp lệ', () => {
+    const created = new Date('2026-11-03T10:00:00Z');
+    expect(() => svc.assertDueNotBeforeCreated('2026-11-03T00:00:00.000Z', created)).not.toThrow();
+    expect(() => svc.assertDueNotBeforeCreated('2026-12-01T00:00:00.000Z', created)).not.toThrow();
+    expect(() => svc.assertDueNotBeforeCreated(null, created)).not.toThrow();
+  });
+});
