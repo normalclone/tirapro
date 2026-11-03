@@ -16,6 +16,7 @@ import {
   ChevronDown,
   Filter as FilterIcon,
   Play,
+  Pencil,
   Plus,
   Share2,
   Trash2,
@@ -25,6 +26,7 @@ import type { IssueDto } from '@tirapro/types';
 import { Button, buttonVariants } from '@/components/ui/Button';
 import { useOpenSession } from '@/lib/useOpenSession';
 import { Dialog } from '@/components/ui/Dialog';
+import { useRetained } from '@/lib/useRetained';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { useConfirm } from '@/components/ui/useConfirm';
 import { Input } from '@/components/ui/Input';
@@ -56,6 +58,7 @@ import { FilterShareDialog } from './FilterShareDialog';
 import { effectiveVisibility, resolveRouteFilter } from './filterShare';
 import {
   useCreateFilter,
+  useUpdateFilter,
   useDeleteFilter,
   useJqlValidation,
   useRunFilter,
@@ -140,6 +143,11 @@ export function FiltersPage() {
   const adhoc = useRunJql(adhocJql, adhocJql.length > 0);
   const savedFilters = useSavedFilters();
   const createFilter = useCreateFilter();
+  const updateFilter = useUpdateFilter();
+  // Bộ lọc đang sửa tên/JQL/phạm vi (null = đóng hộp sửa).
+  const [editTarget, setEditTarget] = useState<SavedFilter | null>(null);
+  // Giữ bộ lọc gần nhất để nội dung hộp sửa không đổi giữa hiệu ứng đóng.
+  const editShown = useRetained(editTarget);
   const deleteFilter = useDeleteFilter();
   const confirm = useConfirm();
   const runFilter = useRunFilter();
@@ -397,6 +405,7 @@ export function FiltersPage() {
                   selectSaved(f);
                 }}
                 onShare={setShareTarget}
+                onEdit={setEditTarget}
                 onDelete={handleDelete}
                 canManage={canManageFilters}
                 deleting={deleteFilter.isPending ? deleteFilter.variables : undefined}
@@ -507,6 +516,37 @@ export function FiltersPage() {
 
         {canManageFilters && (
           <CreateFilterModal
+            open={editTarget !== null}
+            onClose={() => setEditTarget(null)}
+            editing={editShown}
+            initialJql={editShown?.jql ?? ''}
+            saving={updateFilter.isPending}
+            onSave={async (name, jql, visibility) => {
+              const target = editTarget;
+              if (!target) return false;
+              try {
+                const updated = await updateFilter.mutateAsync({
+                  id: target.id,
+                  name,
+                  jql,
+                  // Bộ lọc chia sẻ theo DỰ ÁN giữ nguyên phạm vi (hộp sửa không chọn lại dự án; dùng hộp Chia sẻ).
+                  ...(target.visibility === 'PROJECT' ? {} : { visibility }),
+                });
+                toast.success(`Đã cập nhật bộ lọc "${updated.name}".`);
+                // Đang xem chính bộ lọc này → nạp lại để kết quả khớp truy vấn mới.
+                if (active.kind === 'filter' && active.filter.id === updated.id)
+                  void loadAndRunSaved(updated);
+                return true;
+              } catch (e) {
+                toast.error(apiErrorMessage(e));
+                return false;
+              }
+            }}
+          />
+        )}
+
+        {canManageFilters && (
+          <CreateFilterModal
             open={createOpen}
             onClose={() => setCreateOpen(false)}
             initialJql={createInitialJql}
@@ -594,6 +634,7 @@ function SavedFilterList({
   activeId,
   onSelect,
   onShare,
+  onEdit,
   onDelete,
   canManage,
   deleting,
@@ -602,6 +643,7 @@ function SavedFilterList({
   activeId: string | null;
   onSelect: (f: SavedFilter) => void;
   onShare: (f: SavedFilter) => void;
+  onEdit: (f: SavedFilter) => void;
   onDelete: (f: SavedFilter) => void;
   canManage: boolean;
   deleting: string | undefined;
@@ -667,20 +709,32 @@ function SavedFilterList({
                     <Share2 className="h-4 w-4" aria-hidden />
                   </Button>
                   {f.isOwner && canManage ? (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => onDelete(f)}
-                      loading={deleting === f.id}
-                      aria-label={`Xoá bộ lọc ${f.name}`}
-                      className={cn(ROW_ACTION_CLS, 'hover:text-danger')}
-                    >
-                      {deleting !== f.id && <Trash2 className="h-4 w-4" aria-hidden />}
-                    </Button>
+                    <>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => onEdit(f)}
+                        aria-label={`Sửa bộ lọc ${f.name}`}
+                        title="Sửa tên, truy vấn, phạm vi chia sẻ"
+                        className={cn(ROW_ACTION_CLS, 'hover:text-ink')}
+                      >
+                        <Pencil className="h-4 w-4" aria-hidden />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => onDelete(f)}
+                        loading={deleting === f.id}
+                        aria-label={`Xoá bộ lọc ${f.name}`}
+                        className={cn(ROW_ACTION_CLS, 'hover:text-danger')}
+                      >
+                        {deleting !== f.id && <Trash2 className="h-4 w-4" aria-hidden />}
+                      </Button>
+                    </>
                   ) : (
                     // Giữ chỗ nút xoá: nút "Chia sẻ" không xê dịch giữa bộ lọc của mình và của người khác.
                     <span
-                      className="invisible h-7 w-7 shrink-0 max-sm:hidden [@media(pointer:coarse)]:h-9 [@media(pointer:coarse)]:w-9"
+                      className="invisible h-7 w-14 shrink-0 max-sm:hidden [@media(pointer:coarse)]:h-9 [@media(pointer:coarse)]:w-[4.5rem]"
                       aria-hidden
                       data-testid="row-action-placeholder"
                     />
@@ -714,18 +768,23 @@ function CreateFilterModalInner({
   onSave,
   saving,
   initialJql,
+  editing,
 }: {
   open: boolean;
   onClose: () => void;
   onSave: (name: string, jql: string, visibility: FilterVisibility) => Promise<boolean>;
   saving: boolean;
+  /** Có → hộp SỬA bộ lọc này (tên, truy vấn, phạm vi); không → hộp tạo mới. */
+  editing?: SavedFilter | null;
   /** Có JQL đổ sẵn → mở thẳng tab JQL (bộ dựng "Đơn giản" không đọc ngược được JQL tuỳ ý). */
   initialJql: string;
 }) {
   const [mode, setMode] = useState<BuilderMode>(initialJql ? 'jql' : 'simple');
   const [jql, setJql] = useState(initialJql);
-  const [name, setName] = useState('');
-  const [visibility, setVisibility] = useState<FilterVisibility>('PRIVATE');
+  const [name, setName] = useState(editing?.name ?? '');
+  const [visibility, setVisibility] = useState<FilterVisibility>(
+    editing && editing.visibility !== 'PROJECT' ? editing.visibility : 'PRIVATE',
+  );
 
   const trimmedName = name.trim();
   const trimmedJql = jql.trim();
@@ -744,7 +803,7 @@ function CreateFilterModalInner({
       onOpenChange={(o) => {
         if (!o) onClose();
       }}
-      title="Tạo bộ lọc"
+      title={editing ? 'Sửa bộ lọc' : 'Tạo bộ lọc'}
       icon={<FilterIcon className="h-4 w-4" />}
       size="lg"
       footer={
@@ -753,7 +812,7 @@ function CreateFilterModalInner({
             Huỷ
           </Button>
           <Button type="submit" form="create-filter-form" loading={saving} disabled={!canSubmit}>
-            Lưu bộ lọc
+            {editing ? 'Lưu thay đổi' : 'Lưu bộ lọc'}
           </Button>
         </>
       }
@@ -805,24 +864,26 @@ function CreateFilterModalInner({
               className="text-sm"
             />
           </div>
-          <div>
-            <span
-              id="create-visibility-label"
-              className="mb-1.5 block text-sm font-medium text-muted"
-            >
-              Phạm vi chia sẻ
-            </span>
-            <SegmentedControl<FilterVisibility>
-              ariaLabelledby="create-visibility-label"
-              value={visibility}
-              onChange={setVisibility}
-              fullWidth
-              options={[
-                { value: 'PRIVATE', label: VISIBILITY_LABEL.PRIVATE },
-                { value: 'WORKSPACE', label: VISIBILITY_LABEL.WORKSPACE },
-              ]}
-            />
-          </div>
+          {editing?.visibility !== 'PROJECT' && (
+            <div>
+              <span
+                id="create-visibility-label"
+                className="mb-1.5 block text-sm font-medium text-muted"
+              >
+                Phạm vi chia sẻ
+              </span>
+              <SegmentedControl<FilterVisibility>
+                ariaLabelledby="create-visibility-label"
+                value={visibility}
+                onChange={setVisibility}
+                fullWidth
+                options={[
+                  { value: 'PRIVATE', label: VISIBILITY_LABEL.PRIVATE },
+                  { value: 'WORKSPACE', label: VISIBILITY_LABEL.WORKSPACE },
+                ]}
+              />
+            </div>
+          )}
         </div>
       </form>
     </Dialog>
