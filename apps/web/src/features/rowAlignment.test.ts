@@ -80,7 +80,7 @@ describe('Bộ lọc đã lưu', () => {
   it('nút xoá có placeholder để nút chia sẻ không xê dịch', () => {
     const s = read('saved-filters/FiltersPage.tsx');
     expect(s).toContain('{f.isOwner && canManage ? (');
-    expect(tagWith(s, 'invisible h-7 w-7 shrink-0 max-sm:hidden', 'aria-hidden')).toBe(true);
+    expect(tagWith(s, 'invisible h-7 w-14 shrink-0 max-sm:hidden', 'aria-hidden')).toBe(true);
   });
 });
 

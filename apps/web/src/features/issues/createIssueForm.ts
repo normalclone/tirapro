@@ -1,7 +1,7 @@
 export type CreateIssueField = 'project' | 'type' | 'summary' | 'points' | 'due';
 
-export const SUMMARY_MAX = 255;
-export const POINTS_MAX = 100;
+const SUMMARY_MAX = 255;
+const POINTS_MAX = 100;
 export interface CreateIssueFieldIssue {
   field: CreateIssueField;
   message: string;

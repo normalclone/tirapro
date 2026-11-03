@@ -64,86 +64,13 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="flex h-full print:block print:h-auto">
-      {/* Sidebar: chỉ từ `lg` (dưới `lg` đã có thanh tab đáy — BottomTabBar). */}
-      <aside
-        id="app-sidebar"
-        aria-label="Điều hướng chính"
-        className={cn(
-          'hidden shrink-0 flex-col border-r border-border bg-surface transition-[width] duration-150 print:hidden lg:flex',
-          collapsed ? 'w-14' : 'w-48',
-        )}
-      >
-        <div
-          className={cn('flex h-[52px] items-center gap-2', collapsed ? 'justify-center' : 'px-4')}
-        >
-          <div
-            className={cn(
-              'grid h-6 w-6 place-items-center rounded-md text-xs font-bold',
-              admin ? 'bg-ink-strong text-bg' : 'bg-primary text-primary-fg',
-            )}
-          >
-            {admin ? <ShieldCheck className="h-3.5 w-3.5" /> : 'T'}
-          </div>
-          {!collapsed && (
-            <span className="font-semibold tracking-tight text-ink-strong">
-              {admin ? 'Quản trị' : 'Tirapro'}
-            </span>
-          )}
-        </div>
-        <nav className="flex-1 space-y-0.5 overflow-y-auto px-2 py-2" data-tour="nav-main">
-          {admin && (
-            <>
-              <NavItem
-                to="/"
-                active={false}
-                icon={<ArrowLeft className="h-4 w-4" />}
-                label="Về ứng dụng"
-                collapsed={collapsed}
-              />
-              <div className="my-1.5 border-t border-border" />
-            </>
-          )}
-          {navItems.map((item) => (
-            <NavItem
-              key={item.to}
-              to={item.to}
-              active={item.match(loc.pathname)}
-              icon={<item.Icon className="h-4 w-4" />}
-              label={item.label}
-              collapsed={collapsed}
-            />
-          ))}
-        </nav>
-        <div
-          className={cn(
-            'flex items-center gap-1 border-t border-border p-2 text-xs text-faint',
-            collapsed ? 'flex-col' : 'justify-between',
-          )}
-          data-tour="cmdk-hint"
-        >
-          {!collapsed && (
-            <span>
-              <kbd className="kbd-hint rounded bg-surface-2 px-1.5 py-0.5 font-mono">⌘K</kbd> lệnh
-              nhanh
-            </span>
-          )}
-          <button
-            type="button"
-            onClick={() => toggleSidebar(userId)}
-            aria-label={collapsed ? 'Mở rộng thanh điều hướng' : 'Thu gọn thanh điều hướng'}
-            aria-expanded={!collapsed}
-            aria-controls="app-sidebar"
-            title={collapsed ? 'Mở rộng thanh điều hướng ( [ )' : 'Thu gọn thanh điều hướng ( [ )'}
-            className="grid h-7 w-7 shrink-0 place-items-center rounded-md text-muted transition-colors hover:bg-surface-2 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
-          >
-            {collapsed ? (
-              <PanelLeftOpen className="h-4 w-4" aria-hidden />
-            ) : (
-              <PanelLeftClose className="h-4 w-4" aria-hidden />
-            )}
-          </button>
-        </div>
-      </aside>
+      <Sidebar
+        admin={admin}
+        navItems={navItems}
+        pathname={loc.pathname}
+        collapsed={collapsed}
+        onToggle={() => toggleSidebar(userId)}
+      />
 
       {/* Main */}
       <div className="flex min-w-0 flex-1 flex-col print:block">
@@ -223,6 +150,103 @@ export function AppShell({ children }: { children: ReactNode }) {
       {/* Bộ chặn rời trang duy nhất (useBlocker + beforeunload) cho mọi useLeaveGuard. */}
       <LeaveGuardHost />
     </div>
+  );
+}
+
+/** Sidebar trái: chỉ từ `lg` (dưới `lg` đã có thanh tab đáy — BottomTabBar). Thu gọn → chỉ biểu tượng. */
+function Sidebar({
+  admin,
+  navItems,
+  pathname,
+  collapsed,
+  onToggle,
+}: {
+  admin: boolean;
+  navItems: typeof NAV_ITEMS;
+  pathname: string;
+  collapsed: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <aside
+      id="app-sidebar"
+      aria-label="Điều hướng chính"
+      className={cn(
+        'hidden shrink-0 flex-col border-r border-border bg-surface transition-[width] duration-150 print:hidden lg:flex',
+        collapsed ? 'w-14' : 'w-48',
+      )}
+    >
+      <div
+        className={cn('flex h-[52px] items-center gap-2', collapsed ? 'justify-center' : 'px-4')}
+      >
+        <div
+          className={cn(
+            'grid h-6 w-6 place-items-center rounded-md text-xs font-bold',
+            admin ? 'bg-ink-strong text-bg' : 'bg-primary text-primary-fg',
+          )}
+        >
+          {admin ? <ShieldCheck className="h-3.5 w-3.5" /> : 'T'}
+        </div>
+        {!collapsed && (
+          <span className="font-semibold tracking-tight text-ink-strong">
+            {admin ? 'Quản trị' : 'Tirapro'}
+          </span>
+        )}
+      </div>
+      <nav className="flex-1 space-y-0.5 overflow-y-auto px-2 py-2" data-tour="nav-main">
+        {admin && (
+          <>
+            <NavItem
+              to="/"
+              active={false}
+              icon={<ArrowLeft className="h-4 w-4" />}
+              label="Về ứng dụng"
+              collapsed={collapsed}
+            />
+            <div className="my-1.5 border-t border-border" />
+          </>
+        )}
+        {navItems.map((item) => (
+          <NavItem
+            key={item.to}
+            to={item.to}
+            active={item.match(pathname)}
+            icon={<item.Icon className="h-4 w-4" />}
+            label={item.label}
+            collapsed={collapsed}
+          />
+        ))}
+      </nav>
+      <div
+        className={cn(
+          'flex items-center gap-1 border-t border-border p-2 text-xs text-faint',
+          collapsed ? 'flex-col' : 'justify-between',
+        )}
+        data-tour="cmdk-hint"
+      >
+        {!collapsed && (
+          <span>
+            <kbd className="kbd-hint rounded bg-surface-2 px-1.5 py-0.5 font-mono">⌘K</kbd> lệnh
+            nhanh
+          </span>
+        )}
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-label={collapsed ? 'Mở rộng thanh điều hướng' : 'Thu gọn thanh điều hướng'}
+          aria-expanded={!collapsed}
+          aria-controls="app-sidebar"
+          title={collapsed ? 'Mở rộng thanh điều hướng ( [ )' : 'Thu gọn thanh điều hướng ( [ )'}
+          className="grid h-7 w-7 shrink-0 place-items-center rounded-md text-muted transition-colors hover:bg-surface-2 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+        >
+          {collapsed ? (
+            <PanelLeftOpen className="h-4 w-4" aria-hidden />
+          ) : (
+            <PanelLeftClose className="h-4 w-4" aria-hidden />
+          )}
+        </button>
+      </div>
+    </aside>
   );
 }
 
