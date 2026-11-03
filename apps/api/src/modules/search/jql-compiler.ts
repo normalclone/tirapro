@@ -106,14 +106,32 @@ interface FieldCfg {
   column?: string; // cột scalar (summary/createdAt/storyPoints...)
   relNullable?: boolean; // quan hệ cho phép không có (priority/sprint/resolution) — `!~` phải gồm cả issue không có quan hệ
   nullable?: boolean; // cột scalar cho phép NULL (ảnh hưởng cách dựng `contains`, xem containsWhere)
+  /**
+   * Trường LUÔN có giá trị (quan hệ/cột bắt buộc: project, type, status, statusCategory, created, updated, summary, key,
+   * text). `IS EMPTY` không khớp việc nào, `IS NOT EMPTY` khớp mọi việc — KHÔNG đẩy `null` xuống Prisma (cột/quan hệ bắt buộc
+   * không nhận `null` → 500).
+   */
+  required?: boolean;
 }
 
 /** Map field JQL → cách dựng Prisma where (an toàn, whitelist). */
 const FIELD_MAP: Record<JqlFieldName, FieldCfg> = {
-  project: { kind: 'relationName', relation: 'project', field: 'key' },
-  type: { kind: 'relationName', relation: 'type', field: 'name', idColumn: 'typeId' },
-  status: { kind: 'relationName', relation: 'status', field: 'name', idColumn: 'statusId' },
-  statusCategory: { kind: 'enumRel', relation: 'status', field: 'category' },
+  project: { kind: 'relationName', relation: 'project', field: 'key', required: true },
+  type: {
+    kind: 'relationName',
+    relation: 'type',
+    field: 'name',
+    idColumn: 'typeId',
+    required: true,
+  },
+  status: {
+    kind: 'relationName',
+    relation: 'status',
+    field: 'name',
+    idColumn: 'statusId',
+    required: true,
+  },
+  statusCategory: { kind: 'enumRel', relation: 'status', field: 'category', required: true },
   priority: {
     kind: 'relationName',
     relation: 'priority',
@@ -147,11 +165,11 @@ const FIELD_MAP: Record<JqlFieldName, FieldCfg> = {
     kind: 'array',
     arrayRel: { relation: 'fixVersions', ref: 'version', type: 'AFFECTS' },
   },
-  key: { kind: 'text', column: 'key' },
-  summary: { kind: 'text', column: 'summary' },
-  text: { kind: 'fulltext' },
-  created: { kind: 'date', column: 'createdAt' },
-  updated: { kind: 'date', column: 'updatedAt' },
+  key: { kind: 'text', column: 'key', required: true },
+  summary: { kind: 'text', column: 'summary', required: true },
+  text: { kind: 'fulltext', required: true },
+  created: { kind: 'date', column: 'createdAt', required: true },
+  updated: { kind: 'date', column: 'updatedAt', required: true },
   due: { kind: 'date', column: 'dueDate' },
   resolution: {
     kind: 'relationName',
@@ -230,6 +248,20 @@ function textMatchWhere(v: string, ranked?: readonly string[]): Where {
   };
 }
 
+/**
+ * `field IS [NOT] EMPTY` cho trường luôn có giá trị: `IS` → không việc nào; `IS NOT` → mọi việc. Văn bản (summary/key)
+ * so với chuỗi rỗng để vẫn đúng ngữ nghĩa nếu dữ liệu cũ có dòng trống. `text` = summary + description + mã: mỗi việc đều
+ * có tiêu đề và mã nên `text IS EMPTY` luôn rỗng, `text IS NOT EMPTY` là mọi việc.
+ */
+function requiredEmptiness(cfg: FieldCfg, op: 'IS' | 'IS NOT'): Where {
+  const none: Where = { id: { in: [] } };
+  if (cfg.kind === 'text') {
+    const empty: Where = { [cfg.column!]: '' };
+    return op === 'IS' ? empty : { NOT: empty };
+  }
+  return op === 'IS' ? none : {};
+}
+
 function compileComparison(
   field: JqlFieldName,
   op: JqlOperator,
@@ -237,6 +269,7 @@ function compileComparison(
   ctx: JqlCompileContext,
 ): Where {
   const cfg = FIELD_MAP[field];
+  if (cfg.required && (op === 'IS' || op === 'IS NOT')) return requiredEmptiness(cfg, op);
   switch (cfg.kind) {
     case 'relationName':
     case 'enumRel': {

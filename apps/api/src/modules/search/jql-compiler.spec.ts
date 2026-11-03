@@ -339,3 +339,28 @@ describe('JQL key — mã công việc, cả mã Jira (JRA-1) lẫn mã Tirapro 
     expect(r.orderBy).toEqual([{ key: 'asc' }]);
   });
 });
+
+describe('IS [NOT] EMPTY trên trường luôn có giá trị (logbug #19, #20)', () => {
+  const where = (jql: string) =>
+    compileJql(ast(jql), { currentUserId: 'U1' }).where as Record<string, unknown>;
+  const none = { id: { in: [] } };
+
+  it.each(['project', 'type', 'status', 'statusCategory', 'created', 'updated', 'text'])(
+    '%s IS NOT EMPTY → mọi việc (không đẩy null xuống Prisma); IS EMPTY → không việc nào',
+    (f) => {
+      expect(where(`${f} IS NOT EMPTY`)).toEqual({});
+      expect(where(`${f} IS EMPTY`)).toEqual(none);
+    },
+  );
+
+  it('summary/key so với chuỗi rỗng (không phải equals "" cho IS NOT)', () => {
+    expect(where('summary IS EMPTY')).toEqual({ summary: '' });
+    expect(where('summary IS NOT EMPTY')).toEqual({ NOT: { summary: '' } });
+    expect(where('key IS NOT EMPTY')).toEqual({ NOT: { key: '' } });
+  });
+
+  it('trường tuỳ chọn vẫn dùng null như cũ', () => {
+    expect(where('assignee IS EMPTY')).toEqual({ assigneeId: null });
+    expect(where('due IS NOT EMPTY')).toEqual({ NOT: { dueDate: null } });
+  });
+});
