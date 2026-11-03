@@ -395,7 +395,11 @@ export function GanttPage() {
   }
 
   function barTitle(s: Span): string {
-    const parts = [`${s.issue.key} · ${fmtDayMonth(s.start)} → ${fmtDayMonth(s.end)}`];
+    // Dòng đầu = mã + TÊN công việc (logbug #25: rê chuột vào thanh phải thấy việc nào); ngày ở dòng kế.
+    const parts = [
+      `${s.issue.key} · ${s.issue.summary}`,
+      `${fmtDayMonth(s.start)} → ${fmtDayMonth(s.end)}`,
+    ];
     if (s.inferred) parts.push('Chưa đặt ngày — hệ thống suy ra từ phụ thuộc');
     if (s.overdue) parts.push('Đã quá hạn');
     if (highlightCritical && s.critical) {
