@@ -57,7 +57,12 @@ export class TokenService {
   }
 
   /** Tạo refresh token mới (opaque) trong 1 family; trả raw token để set cookie. */
-  async issueRefresh(userId: string, family: string | null, meta: RefreshMeta): Promise<string> {
+  async issueRefresh(
+    userId: string,
+    family: string | null,
+    meta: RefreshMeta,
+    workspaceId: string | null = null,
+  ): Promise<string> {
     const raw = randomBytes(48).toString('base64url');
     const fam = family ?? createId();
     const ttlMs = this.toSeconds(this.config.get<string>('jwt.refreshExpiresIn') ?? '7d') * 1000;
@@ -66,12 +71,23 @@ export class TokenService {
         userId,
         tokenHash: this.hashToken(raw),
         family: fam,
+        workspaceId,
         expiresAt: new Date(Date.now() + ttlMs),
         userAgent: meta.userAgent?.slice(0, 255),
         ipAddress: meta.ipAddress,
       },
     });
     return `${fam}.${raw}`;
+  }
+
+  /** Ghi workspace đang mở vào refresh token (raw `family.secret`) — dùng khi refresh chọn workspace khác token cũ. */
+  async setRefreshWorkspace(token: string, workspaceId: string | null): Promise<void> {
+    const [, raw] = token.split('.', 2);
+    if (!raw) return;
+    await this.prisma.refreshToken.updateMany({
+      where: { tokenHash: this.hashToken(raw) },
+      data: { workspaceId },
+    });
   }
 
   /**
@@ -87,7 +103,7 @@ export class TokenService {
   async rotateRefresh(
     token: string,
     meta: RefreshMeta,
-  ): Promise<{ userId: string; newToken: string | null }> {
+  ): Promise<{ userId: string; newToken: string | null; workspaceId: string | null }> {
     const [, raw] = token.split('.', 2);
     if (!raw)
       throw new UnauthorizedException({
@@ -121,7 +137,7 @@ export class TokenService {
           },
           select: { id: true },
         });
-        if (successor) return { userId: row.userId, newToken: null };
+        if (successor) return { userId: row.userId, newToken: null, workspaceId: row.workspaceId };
       }
 
       await this.prisma.refreshToken.updateMany({
@@ -135,7 +151,7 @@ export class TokenService {
     }
 
     const row = await this.prisma.refreshToken.findUniqueOrThrow({ where: { tokenHash } });
-    const newToken = await this.issueRefresh(row.userId, row.family, meta);
+    const newToken = await this.issueRefresh(row.userId, row.family, meta, row.workspaceId);
     // Race với thu hồi phiên: nếu admin khoá / đặt lại mật khẩu / revoke COMMIT trong lúc ta xoay token, token mới có thể
     // chèn SAU `updateMany` của họ. Kiểm lại SAU khi cấp: token cũ (đã giành được) sinh trước mốc thu hồi ⇒ không hợp lệ,
     // thu hồi cả family vừa cấp. (Nếu thu hồi commit sau lúc cấp thì `updateMany` của họ đã thu hồi luôn token mới.)
@@ -153,7 +169,7 @@ export class TokenService {
         message: 'Phiên đăng nhập đã bị thu hồi — hãy đăng nhập lại',
       });
     }
-    return { userId: row.userId, newToken };
+    return { userId: row.userId, newToken, workspaceId: row.workspaceId };
   }
 
   /**

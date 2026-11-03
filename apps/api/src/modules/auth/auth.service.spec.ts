@@ -103,6 +103,7 @@ function makeSession(userOverrides: Record<string, unknown> = {}) {
   const tokens = {
     rotateRefresh: vi.fn(() => Promise.resolve({ userId: 'u1', newToken: 'NEW' })),
     signAccess: vi.fn(() => ({ accessToken: 'AT', expiresIn: 900 })),
+    setRefreshWorkspace: vi.fn(() => Promise.resolve()),
   };
   const events = { emit: vi.fn() };
   const service = new AuthService(
@@ -154,6 +155,47 @@ describe('AuthService.refresh — tài khoản bị khoá và hoạt động g�
     const { service, prisma } = makeSession({ lastSeenAt: new Date(Date.now() - 60_000) });
     await service.refresh('fam.raw', {}, null);
     expect(prisma.user.update).not.toHaveBeenCalled();
+  });
+});
+
+describe('AuthService.refresh — giữ workspace vừa chuyển khi tải lại trang', () => {
+  it('không có access token cũ: dùng workspace lưu trong refresh token (không rơi về workspace đầu tiên)', async () => {
+    const { service, prisma, tokens } = makeSession({ lastSeenAt: new Date() });
+    tokens.rotateRefresh.mockResolvedValue({
+      userId: 'u1',
+      newToken: 'NEW',
+      workspaceId: 'w2',
+    } as never);
+    prisma.workspaceMembership.findUnique.mockResolvedValue({ workspaceId: 'w2' } as never);
+    await service.refresh('fam.raw', {}, null);
+    expect(tokens.signAccess).toHaveBeenCalledWith(expect.anything(), 'w2');
+    expect(prisma.workspaceMembership.findFirst).not.toHaveBeenCalled();
+    expect(tokens.setRefreshWorkspace).not.toHaveBeenCalled();
+  });
+
+  it('đã bị gỡ khỏi workspace lưu trong token: rơi về workspace đầu tiên và ghi lại vào token mới', async () => {
+    const { service, tokens } = makeSession({ lastSeenAt: new Date() });
+    tokens.rotateRefresh.mockResolvedValue({
+      userId: 'u1',
+      newToken: 'NEW',
+      workspaceId: 'w2',
+    } as never);
+    await service.refresh('fam.raw', {}, null);
+    expect(tokens.signAccess).toHaveBeenCalledWith(expect.anything(), 'w1');
+    expect(tokens.setRefreshWorkspace).toHaveBeenCalledWith('NEW', 'w1');
+  });
+
+  it('access token cũ (header) thắng workspace trong refresh token', async () => {
+    const { service, prisma, tokens } = makeSession({ lastSeenAt: new Date() });
+    tokens.rotateRefresh.mockResolvedValue({
+      userId: 'u1',
+      newToken: 'NEW',
+      workspaceId: 'w2',
+    } as never);
+    prisma.workspaceMembership.findUnique.mockResolvedValue({ workspaceId: 'w3' } as never);
+    await service.refresh('fam.raw', {}, 'w3');
+    expect(tokens.signAccess).toHaveBeenCalledWith(expect.anything(), 'w3');
+    expect(tokens.setRefreshWorkspace).toHaveBeenCalledWith('NEW', 'w3');
   });
 });
 

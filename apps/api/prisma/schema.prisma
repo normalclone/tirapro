@@ -1355,6 +1355,8 @@ model RefreshToken {
   userId    String
   tokenHash String   @unique
   family    String
+  /// Workspace đang mở của phiên này — refresh (tải lại trang, access token đã mất) giữ đúng workspace vừa chuyển.
+  workspaceId String?
   expiresAt DateTime
   revokedAt DateTime?
   userAgent String?
