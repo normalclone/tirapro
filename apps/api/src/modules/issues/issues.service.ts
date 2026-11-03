@@ -970,7 +970,20 @@ export class IssuesService {
       assigneeId: filter.assigneeId,
       typeId: filter.typeId,
       sprintId: filter.sprintId,
-      ...(filter.search ? { summary: insensitiveContains(filter.search) } : {}),
+      // Tìm theo tiêu đề HOẶC mã công việc (DEMO-BUG-3, "bug-3") — chọn việc gắn mục tiêu/liên kết hay gõ mã (logbug #29).
+      ...(filter.search
+        ? {
+            // `AND` (không `OR` trực tiếp): TRIAGE_VISIBLE bên dưới cũng dùng `OR` và sẽ đè lên.
+            AND: [
+              {
+                OR: [
+                  { summary: insensitiveContains(filter.search) },
+                  { key: insensitiveContains(filter.search.trim()) },
+                ],
+              },
+            ],
+          }
+        : {}),
       // Việc chưa duyệt (chờ/tạm hoãn/đã từ chối ở Việc mới vào) không lẫn vào Board/Việc chờ; JQL/tìm kiếm vẫn thấy.
       ...TRIAGE_VISIBLE,
     };

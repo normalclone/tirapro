@@ -2558,10 +2558,23 @@ describe('IssuesService — dự án đã xoá mềm', () => {
     await service.list('w1', { search: '_' }, undefined, 50, null);
     await service.list('w1', { search: '50%\\' }, undefined, 50, null);
     const wheres = (
-      findMany.mock.calls as unknown as Array<[{ where: Record<string, unknown> }]>
-    ).map((c) => c[0].where.summary);
-    expect(wheres[0]).toEqual({ contains: '\\_', mode: 'insensitive' });
-    expect(wheres[1]).toEqual({ contains: '50\\%\\\\', mode: 'insensitive' });
+      findMany.mock.calls as unknown as Array<[{ where: { AND: Array<{ OR: unknown[] }> } }]>
+    ).map((c) => c[0].where.AND[0]!.OR);
+    expect(wheres[0]).toEqual([
+      { summary: { contains: '\\_', mode: 'insensitive' } },
+      { key: { contains: '\\_', mode: 'insensitive' } },
+    ]);
+    expect(wheres[1]![0]).toEqual({ summary: { contains: '50\\%\\\\', mode: 'insensitive' } });
+  });
+
+  it('list với search khớp cả MÃ công việc (logbug #29) mà không bị TRIAGE_VISIBLE đè', async () => {
+    const findMany = vi.fn(() => Promise.resolve([]));
+    const { service } = makeService({ issue: { findMany } });
+    await service.list('w1', { search: 'bug-3' }, undefined, 50, null);
+    const where = (findMany.mock.calls[0] as unknown as [{ where: Record<string, unknown> }])[0]
+      .where;
+    expect(JSON.stringify(where.AND)).toContain('"key":{"contains":"bug-3"');
+    expect(where.OR).toEqual([{ triageState: null }, { triageState: 'ACCEPTED' }]);
   });
 
   it('query (JQL/search) và query theo rawIds (full-text) đều ghép project.deletedAt:null vào scope', async () => {

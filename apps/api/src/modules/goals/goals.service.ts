@@ -14,7 +14,7 @@ import { ProjectAccessService } from '../rbac/project-access.service';
 import { RbacService } from '../rbac/rbac.service';
 import { expectedProgress, periodRange } from './goal-pace';
 import { krProgress } from './kr-progress';
-import { vnTodayUtc } from '@tirapro/shared';
+import { CURRENT_OVER_TARGET_MESSAGE, currentOverTarget, vnTodayUtc } from '@tirapro/shared';
 import { KrSnapshotCron, vnDay } from './kr-snapshot.cron';
 import { KrMeasureService, type MeasureResult } from './kr-measure.service';
 import {
@@ -438,6 +438,16 @@ export class GoalsService {
     return this.read(workspaceId, objectiveId, visible, viewerId);
   }
 
+  /** Hiện tại không được vượt Cần đạt (KR tăng dần) — một luật cho form sửa, ô cập nhật nhanh và check-in. */
+  private assertCurrentWithinTarget(
+    start: number | null | undefined,
+    target: number | null | undefined,
+    current: number,
+  ): void {
+    if (typeof target === 'number' && currentOverTarget(start, target, current))
+      throw new BusinessRuleException(CURRENT_OVER_TARGET_MESSAGE);
+  }
+
   async updateKeyResult(
     workspaceId: string,
     objectiveId: string,
@@ -449,7 +459,14 @@ export class GoalsService {
     await this.requireObjective(workspaceId, objectiveId, visible);
     const kr = await this.prisma.keyResult.findFirst({
       where: { id: keyResultId, objectiveId },
-      select: { id: true, source: true, sourceConfig: true, currentValue: true },
+      select: {
+        id: true,
+        source: true,
+        sourceConfig: true,
+        currentValue: true,
+        startValue: true,
+        targetValue: true,
+      },
     });
     if (!kr) throw new NotFoundAppException('Kết quả then chốt');
 
@@ -488,6 +505,11 @@ export class GoalsService {
     const changed =
       dto.currentValue !== undefined && source === 'MANUAL' && dto.currentValue !== kr.currentValue;
     if (changed) {
+      this.assertCurrentWithinTarget(
+        dto.startValue ?? kr.startValue,
+        dto.targetValue ?? kr.targetValue,
+        dto.currentValue!,
+      );
       if (dto.expectedCurrentValue !== undefined && dto.expectedCurrentValue !== kr.currentValue)
         throw this.valueConflict(kr.currentValue);
       const value = dto.currentValue!;
@@ -519,11 +541,18 @@ export class GoalsService {
       // Đọc LẠI trong transaction: `previousValue` phải là số thật ngay trước khi ghi, không phải số lúc mở form.
       const kr = await tx.keyResult.findFirst({
         where: { id: keyResultId, objectiveId },
-        select: { id: true, source: true, currentValue: true },
+        select: {
+          id: true,
+          source: true,
+          currentValue: true,
+          startValue: true,
+          targetValue: true,
+        },
       });
       if (!kr) throw new NotFoundAppException('Kết quả then chốt');
       if (kr.source !== 'MANUAL')
         throw new BusinessRuleException('Kết quả này tự đo từ dữ liệu — không nhập tay');
+      this.assertCurrentWithinTarget(kr.startValue, kr.targetValue, dto.value);
       if (dto.expectedValue !== undefined && dto.expectedValue !== kr.currentValue)
         throw this.valueConflict(kr.currentValue);
       await this.recordValueChange(

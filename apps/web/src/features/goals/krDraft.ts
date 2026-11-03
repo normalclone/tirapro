@@ -1,4 +1,5 @@
 import type { KeyResultInput, KeyResultSource } from './api';
+import { CURRENT_OVER_TARGET_MESSAGE, currentOverTarget } from '@tirapro/shared';
 import { defaultConfig, isAutoSource, isSourceConfigComplete } from './krSource';
 
 /** Một dòng KR trong form sửa mục tiêu: dữ liệu nhập + vết của bản đã tải (để chỉ gửi phần người dùng thật sự đổi). */
@@ -55,4 +56,15 @@ export function toKeyResultInput(kr: DraftKr): KeyResultInput {
     }
   }
   return out;
+}
+
+/**
+ * Lỗi của ô "Hiện tại" trên một dòng KR nhập tay (null = hợp lệ): vượt "Cần đạt" thì báo ngay, không cho lưu.
+ * KR tự đo không có số nhập tay nên không kiểm.
+ */
+export function krCurrentError(kr: DraftKr): string | null {
+  if (isAutoSource(kr.source ?? 'MANUAL')) return null;
+  return currentOverTarget(kr.startValue, Number(kr.targetValue ?? 0), Number(kr.currentValue ?? 0))
+    ? CURRENT_OVER_TARGET_MESSAGE
+    : null;
 }

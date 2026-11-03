@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { isConfigHidden, isDraftComplete, toKeyResultInput, type DraftKr } from './krDraft';
+import {
+  isConfigHidden,
+  isDraftComplete,
+  krCurrentError,
+  toKeyResultInput,
+  type DraftKr,
+} from './krDraft';
 
 const base: DraftKr = {
   rowKey: 'k1',
@@ -113,5 +119,24 @@ describe('isConfigHidden', () => {
     expect(isConfigHidden({ source: 'ISSUE_COUNT_JQL', sourceConfig: null })).toBe(true);
     expect(isConfigHidden({ source: 'OPEN_BUGS', sourceConfig: {} })).toBe(false);
     expect(isConfigHidden({ source: 'MANUAL', sourceConfig: null })).toBe(false);
+  });
+});
+
+describe('krCurrentError — Hiện tại không vượt Cần đạt (logbug #30)', () => {
+  const kr = (over: Partial<DraftKr>): DraftKr => ({
+    rowKey: 'r',
+    name: 'KR',
+    startValue: 0,
+    targetValue: 100,
+    currentValue: 130,
+    ...over,
+  });
+  it('báo đúng thông báo khi vượt; hợp lệ khi bằng/nhỏ hơn', () => {
+    expect(krCurrentError(kr({}))).toBe('Giá trị Hiện tại không được lớn hơn giá trị Cần đạt.');
+    expect(krCurrentError(kr({ currentValue: 100 }))).toBeNull();
+  });
+  it('KR tự đo và KR giảm dần không bị báo', () => {
+    expect(krCurrentError(kr({ source: 'OPEN_BUGS' }))).toBeNull();
+    expect(krCurrentError(kr({ startValue: 50, targetValue: 10, currentValue: 30 }))).toBeNull();
   });
 });

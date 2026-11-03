@@ -8,6 +8,7 @@ import { EmptyState, Skeleton } from '@/components/ui/primitives';
 import { apiErrorMessage } from '@/lib/api';
 import { useRetained } from '@/lib/useRetained';
 import { cn } from '@/lib/utils';
+import { pickState, toggleAllPicked } from './attachPick';
 import { useAttachGoalIssues, useIssueSearch, type GoalDto } from './api';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
 
@@ -59,6 +60,15 @@ export function AttachIssuesModal({
   if (!shown) return null;
 
   const attached = new Set(shown.issues.map((i) => i.id));
+  // "Chọn tất cả": mọi kết quả đang hiện CHƯA gắn (việc đã gắn không chọn lại được).
+  const selectable = (resultsQuery.data ?? []).filter((r) => !attached.has(r.id)).map((r) => r.id);
+  const state = pickState(picked, selectable);
+  const allPicked = state === 'all';
+  const somePicked = state === 'some';
+
+  function toggleAll() {
+    setPicked((prev) => toggleAllPicked(prev, selectable));
+  }
 
   function toggle(id: string) {
     setPicked((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
@@ -140,40 +150,62 @@ export function AttachIssuesModal({
           emptyState={NO_MATCH}
         >
           {(results) => (
-            <ul role="listbox" aria-label="Kết quả tìm công việc" aria-multiselectable="true">
-              {results.map((r) => {
-                const already = attached.has(r.id);
-                const selected = picked.includes(r.id);
-                return (
-                  <li key={r.id}>
-                    <button
-                      type="button"
-                      role="option"
-                      aria-selected={selected || already}
-                      disabled={already}
-                      title={already ? 'Công việc này đã nằm trong mục tiêu' : undefined}
-                      onClick={() => toggle(r.id)}
-                      className={cn(
-                        'flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-left transition-colors',
-                        already ? 'cursor-default opacity-60' : 'hover:bg-surface-2',
-                        selected && 'bg-primary-subtle',
-                      )}
-                    >
-                      <Check
+            <>
+              {selectable.length > 0 && (
+                <label className="mx-1 mb-1 flex cursor-pointer items-center gap-2.5 rounded-md border-b border-border px-3 py-2 text-sm text-ink hover:bg-surface-2">
+                  <input
+                    type="checkbox"
+                    checked={allPicked}
+                    ref={(el) => {
+                      if (el) el.indeterminate = somePicked;
+                    }}
+                    onChange={toggleAll}
+                    className="h-4 w-4 shrink-0 accent-[var(--primary)]"
+                    aria-label="Chọn tất cả công việc đang hiện"
+                  />
+                  <span className="font-medium">Chọn tất cả</span>
+                  <span className="text-xs text-faint">
+                    ({selectable.length} công việc chưa gắn)
+                  </span>
+                </label>
+              )}
+              <ul role="listbox" aria-label="Kết quả tìm công việc" aria-multiselectable="true">
+                {results.map((r) => {
+                  const already = attached.has(r.id);
+                  const selected = picked.includes(r.id);
+                  return (
+                    <li key={r.id}>
+                      <button
+                        type="button"
+                        role="option"
+                        aria-selected={selected || already}
+                        disabled={already}
+                        title={already ? 'Công việc này đã nằm trong mục tiêu' : undefined}
+                        onClick={() => toggle(r.id)}
                         className={cn(
-                          'h-4 w-4 shrink-0 text-primary',
-                          selected || already ? 'opacity-100' : 'opacity-0',
+                          'flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-left transition-colors',
+                          already ? 'cursor-default opacity-60' : 'hover:bg-surface-2',
+                          selected && 'bg-primary-subtle',
                         )}
-                        aria-hidden
-                      />
-                      <span className="shrink-0 font-mono text-xs text-muted">{r.key}</span>
-                      <span className="min-w-0 flex-1 truncate text-sm text-ink">{r.summary}</span>
-                      {already && <span className="shrink-0 text-xs text-faint">Đã gắn</span>}
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
+                      >
+                        <Check
+                          className={cn(
+                            'h-4 w-4 shrink-0 text-primary',
+                            selected || already ? 'opacity-100' : 'opacity-0',
+                          )}
+                          aria-hidden
+                        />
+                        <span className="shrink-0 font-mono text-xs text-muted">{r.key}</span>
+                        <span className="min-w-0 flex-1 truncate text-sm text-ink">
+                          {r.summary}
+                        </span>
+                        {already && <span className="shrink-0 text-xs text-faint">Đã gắn</span>}
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </>
           )}
         </QueryBoundary>
       </div>

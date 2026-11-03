@@ -1,3 +1,4 @@
+import { CURRENT_OVER_TARGET_MESSAGE, currentOverTarget } from '@tirapro/shared';
 import { z } from 'zod';
 
 const objectiveStatusEnum = z.enum(['DRAFT', 'ACTIVE', 'CLOSED']);
@@ -57,9 +58,28 @@ const keyResultFields = z.object({
   unitLabel: z.string().trim().max(20, 'Nhãn đơn vị tối đa 20 ký tự').nullable().optional(),
 });
 
-export const keyResultUpsertSchema = keyResultFields.superRefine((kr, ctx) =>
-  checkSourceConfig(kr.source ?? 'MANUAL', kr.sourceConfig, ctx),
-);
+/** KR nhập tay: Hiện tại không được vượt Cần đạt (khi form gửi cả hai số). */
+function checkCurrentVsTarget(
+  kr: { source?: string; startValue?: number; targetValue?: number; currentValue?: number },
+  ctx: z.RefinementCtx,
+): void {
+  if (
+    (kr.source ?? 'MANUAL') === 'MANUAL' &&
+    kr.targetValue !== undefined &&
+    kr.currentValue !== undefined &&
+    currentOverTarget(kr.startValue, kr.targetValue, kr.currentValue)
+  )
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['currentValue'],
+      message: CURRENT_OVER_TARGET_MESSAGE,
+    });
+}
+
+export const keyResultUpsertSchema = keyResultFields.superRefine((kr, ctx) => {
+  checkSourceConfig(kr.source ?? 'MANUAL', kr.sourceConfig, ctx);
+  checkCurrentVsTarget(kr, ctx);
+});
 
 export const createGoalSchema = z.object({
   name: z.string().trim().min(1, 'Tên mục tiêu bắt buộc').max(160),
@@ -75,9 +95,10 @@ export const createGoalSchema = z.object({
 export const updateGoalSchema = createGoalSchema.partial();
 
 /** Tạo KR lồng: POST /goals/:id/key-results */
-export const createKeyResultSchema = keyResultFields
-  .omit({ id: true })
-  .superRefine((kr, ctx) => checkSourceConfig(kr.source ?? 'MANUAL', kr.sourceConfig, ctx));
+export const createKeyResultSchema = keyResultFields.omit({ id: true }).superRefine((kr, ctx) => {
+  checkSourceConfig(kr.source ?? 'MANUAL', kr.sourceConfig, ctx);
+  checkCurrentVsTarget(kr, ctx);
+});
 
 /** Sửa KR lồng: PUT /goals/:id/key-results/:krId (dùng cho cả ô cập nhật giá trị inline). */
 export const updateKeyResultSchema = keyResultFields
@@ -86,6 +107,7 @@ export const updateKeyResultSchema = keyResultFields
   // Có `source` thì kiểm cấu hình ngay; chỉ có `sourceConfig` (không đổi nguồn) thì service kiểm theo nguồn hiện tại.
   .superRefine((kr, ctx) => {
     if (kr.source !== undefined) checkSourceConfig(kr.source, kr.sourceConfig, ctx);
+    checkCurrentVsTarget(kr, ctx);
   });
 
 /** Check-in tay: POST /goals/:id/key-results/:krId/check-ins. Ghi chú trắng → bỏ. */

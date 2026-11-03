@@ -35,3 +35,4 @@ export * from './csv';
 export * from './vn-date';
 export * from './digest';
 export * from './schemas/dashboard';
+export * from './goal-values';
