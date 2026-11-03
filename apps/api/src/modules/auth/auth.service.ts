@@ -108,7 +108,11 @@ export class AuthService {
    * vẫn còn là thành viên của workspace đó; ngược lại rơi về membership đầu tiên.
    */
   async refresh(refreshToken: string, meta: RefreshMeta, preferredWorkspaceId?: string | null) {
-    const { userId, newToken } = await this.tokens.rotateRefresh(refreshToken, meta);
+    const {
+      userId,
+      newToken,
+      workspaceId: tokenWorkspaceId,
+    } = await this.tokens.rotateRefresh(refreshToken, meta);
     const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
     if (user.status === 'DEACTIVATED') {
       // Bảo hiểm: lúc khoá đã thu hồi hết, nhưng token cấp lại muộn hơn (race) cũng không được sống tiếp.
@@ -127,10 +131,13 @@ export class AuthService {
         .update({ where: { id: userId }, data: { lastSeenAt: new Date() } })
         .catch(() => undefined);
     }
+    // Ưu tiên: workspace trong access token cũ (header) → workspace lưu trong refresh token (vừa chuyển rồi tải lại
+    // trang, access token trong bộ nhớ đã mất) → workspace tham gia sớm nhất. Luôn kiểm còn là thành viên.
     let workspaceId: string | null = null;
-    if (preferredWorkspaceId) {
+    for (const candidate of [preferredWorkspaceId, tokenWorkspaceId]) {
+      if (!candidate || workspaceId) continue;
       const kept = await this.prisma.workspaceMembership.findUnique({
-        where: { workspaceId_userId: { workspaceId: preferredWorkspaceId, userId } },
+        where: { workspaceId_userId: { workspaceId: candidate, userId } },
         select: { workspaceId: true },
       });
       workspaceId = kept?.workspaceId ?? null;
@@ -143,6 +150,8 @@ export class AuthService {
       });
       workspaceId = first?.workspaceId ?? null;
     }
+    if (newToken && workspaceId !== tokenWorkspaceId)
+      await this.tokens.setRefreshWorkspace(newToken, workspaceId);
     const access = this.tokens.signAccess(user, workspaceId);
     return { ...access, refreshToken: newToken, user: this.publicUser(user) };
   }
@@ -298,7 +307,7 @@ export class AuthService {
       select: { id: true, email: true },
     });
     const access = this.tokens.signAccess(user, workspaceId);
-    const refreshToken = await this.tokens.issueRefresh(userId, null, meta);
+    const refreshToken = await this.tokens.issueRefresh(userId, null, meta, workspaceId);
     return { ...access, refreshToken };
   }
 
@@ -308,7 +317,7 @@ export class AuthService {
     meta: RefreshMeta,
   ) {
     const access = this.tokens.signAccess(user, workspaceId);
-    const refreshToken = await this.tokens.issueRefresh(user.id, null, meta);
+    const refreshToken = await this.tokens.issueRefresh(user.id, null, meta, workspaceId);
     const full = await this.prisma.user.findUniqueOrThrow({ where: { id: user.id } });
     return { ...access, refreshToken, user: this.publicUser(full) };
   }
