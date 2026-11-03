@@ -27,6 +27,8 @@ export interface LinkedIssueView {
   key: string;
   summary: string;
   status: { name: string; category: string };
+  /** Công việc đầu kia đã bị xoá (mềm): vẫn hiện liên kết nhưng UI hiển thị "đã xoá", không cho mở. */
+  deleted: boolean;
 }
 
 /** Liên kết vừa tạo, kèm loại + tóm tắt issue đích. */
@@ -65,6 +67,7 @@ const linkEndSelect = {
   key: true,
   summary: true,
   projectId: true,
+  deletedAt: true,
   status: { select: { name: true, category: true } },
 } satisfies Prisma.IssueSelect;
 
@@ -152,6 +155,7 @@ export class IssueLinksService {
       input.direction === 'inward'
         ? [input.targetIssueId, issueId]
         : [issueId, input.targetIssueId];
+    await this.assertNoDuplicateOrReciprocal(sourceId, targetId, linkType, input, source, target);
     try {
       const link = await this.prisma.issueLink.create({
         data: { sourceIssueId: sourceId, targetIssueId: targetId, linkTypeId: linkType.id },
@@ -171,15 +175,49 @@ export class IssueLinksService {
     }
   }
 
+  /**
+   * Giữa hai công việc chỉ có MỘT liên kết cho mỗi loại, bất kể chiều: đã có `A blocks B` thì không thêm `B blocks A`
+   * (cũng không thêm lần nữa `A blocks B`) — tránh vòng "chặn lẫn nhau", "nhân bản lẫn nhau".
+   */
+  private async assertNoDuplicateOrReciprocal(
+    sourceId: string,
+    targetId: string,
+    linkType: LinkTypeRow,
+    input: CreateIssueLinkInput,
+    viewing: LinkEndRow,
+    other: LinkEndRow,
+  ): Promise<void> {
+    const existing = await this.prisma.issueLink.findFirst({
+      where: {
+        linkTypeId: linkType.id,
+        OR: [
+          { sourceIssueId: sourceId, targetIssueId: targetId },
+          { sourceIssueId: targetId, targetIssueId: sourceId },
+        ],
+      },
+      select: { sourceIssueId: true },
+    });
+    if (!existing) return;
+    const sameDirection = existing.sourceIssueId === sourceId;
+    const [srcKey, dstKey] =
+      input.direction === 'inward' ? [other.key, viewing.key] : [viewing.key, other.key];
+    throw new BusinessRuleException(
+      sameDirection
+        ? `${srcKey} đã có liên kết "${linkType.outwardName}" tới ${dstKey} — không cần tạo lại`
+        : `${dstKey} đã có liên kết "${linkType.outwardName}" tới ${srcKey} — không thể tạo thêm liên kết "${linkType.outwardName}" theo chiều ngược lại. Hãy xoá liên kết cũ trước nếu muốn đổi chiều`,
+    );
+  }
+
   /** Xóa liên kết — issue nguồn của liên kết phải thuộc workspace. */
   async remove(workspaceId: string, linkId: string, actor: LinkActor): Promise<{ success: true }> {
     const link = await this.prisma.issueLink.findFirst({
-      where: { id: linkId, source: { workspaceId, deletedAt: null } },
+      // Cho cả liên kết có đầu NGUỒN đã xoá mềm: người dùng cần dọn được liên kết "đã xoá" hiện ở công việc còn lại.
+      where: { id: linkId, source: { workspaceId } },
       select: {
         id: true,
         sourceIssueId: true,
         targetIssueId: true,
-        source: { select: { projectId: true } },
+        source: { select: { projectId: true, deletedAt: true } },
         target: {
           select: {
             id: true,
@@ -198,8 +236,9 @@ export class IssueLinksService {
     if (!link.target.deletedAt && link.target.projectId !== link.source.projectId) {
       await this.assertCanEditAcrossProject(workspaceId, actor, link.target);
     }
-    await assertIssueWritable(this.prisma, link.sourceIssueId);
-    await assertIssueWritable(this.prisma, link.targetIssueId);
+    // Đầu đã xoá mềm không còn "ghi được" — chỉ kiểm đầu còn sống.
+    if (!link.source.deletedAt) await assertIssueWritable(this.prisma, link.sourceIssueId);
+    if (!link.target.deletedAt) await assertIssueWritable(this.prisma, link.targetIssueId);
     await this.prisma.issueLink.delete({ where: { id: link.id } });
     return { success: true };
   }
@@ -211,8 +250,9 @@ export class IssueLinksService {
     actor: LinkActor,
   ): Promise<IssueLinkView[]> {
     const self = await this.requireIssue(workspaceId, issueId);
-    // Ẩn link tới issue đã xoá mềm / thuộc dự án đã xoá mềm (IssueLink không có deletedAt → lọc trên quan hệ).
-    const liveEnd = { workspaceId, deletedAt: null, ...LIVE_PROJECT };
+    // Giữ link tới issue đã xoá mềm (hiện "đã xoá", logbug #21); chỉ ẩn khi dự án đầu kia đã xoá mềm
+    // (IssueLink không có deletedAt → lọc trên quan hệ).
+    const liveEnd = { workspaceId, ...LIVE_PROJECT };
     const rows = await this.prisma.issueLink.findMany({
       where: {
         OR: [
@@ -295,6 +335,7 @@ export class IssueLinksService {
       key: issue.key,
       summary: issue.summary,
       status: { name: issue.status.name, category: issue.status.category },
+      deleted: issue.deletedAt !== null,
     };
   }
 

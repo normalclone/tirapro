@@ -20,6 +20,8 @@ interface LinkedIssue {
   key: string;
   summary: string;
   status: Pick<IssueDto['status'], 'name' | 'category'>;
+  /** Công việc đã bị xoá: hiện mờ + gạch ngang, không dẫn tới trang (404). */
+  deleted?: boolean;
 }
 
 export interface IssueLink {

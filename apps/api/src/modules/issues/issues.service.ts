@@ -1345,6 +1345,8 @@ export class IssuesService {
           await this.assertTransitionAllowed(workflowId, r.statusId, patch.statusId);
       }
       toDone = (await this.statusCategory(patch.statusId)) === 'DONE';
+      if (toDone)
+        await this.assertNotBlockedForDone(rows.filter((r) => r.statusId !== patch.statusId));
       // Một lần tra mặc định cho cả lô (bulk không nhận resolution tường minh).
       if (toDone) doneResolutionId = await this.defaultResolutionId(this.prisma, workspaceId);
     }
@@ -1551,6 +1553,7 @@ export class IssuesService {
     await this.assertTransitionAllowed(workflowId, current.statusId, input.toStatusId);
 
     const isDone = (await this.statusCategory(input.toStatusId)) === 'DONE';
+    if (isDone) await this.assertNotBlockedForDone([current]);
     const resolutionId = isDone
       ? await this.resolutionForDone(
           this.prisma,
@@ -1653,6 +1656,7 @@ export class IssuesService {
         input.statusId!,
       );
       toDone = (await this.statusCategory(input.statusId!)) === 'DONE';
+      if (toDone) await this.assertNotBlockedForDone([current]);
       // Board kéo sang Done không hỏi: nhận Resolution mặc định (sửa sau ở trang công việc).
       if (toDone)
         moveResolutionId = await this.resolutionForDone(
@@ -1926,6 +1930,34 @@ export class IssuesService {
       select: { id: true },
     });
     if (!allowed) throw new InvalidTransitionException();
+  }
+
+  /**
+   * "Bị chặn" (logbug #23, phương án 3): vẫn cho chuyển sang In Progress, nhưng KHÔNG cho chuyển vào trạng thái nhóm DONE
+   * khi còn công việc chặn nó (liên kết `Blocks`, issue này là phía ĐÍCH) chưa DONE. Việc chặn đã xoá mềm không tính.
+   */
+  private async assertNotBlockedForDone(issues: Array<{ id: string; key: string }>): Promise<void> {
+    if (issues.length === 0) return;
+    const links = await this.prisma.issueLink.findMany({
+      where: {
+        targetIssueId: { in: issues.map((i) => i.id) },
+        linkType: { name: { equals: 'Blocks', mode: 'insensitive' } },
+        source: { deletedAt: null, status: { category: { not: 'DONE' } } },
+      },
+      select: { targetIssueId: true, source: { select: { key: true } } },
+    });
+    if (links.length === 0) return;
+    const byTarget = new Map<string, string[]>();
+    for (const l of links) {
+      const arr = byTarget.get(l.targetIssueId) ?? [];
+      arr.push(l.source.key);
+      byTarget.set(l.targetIssueId, arr);
+    }
+    const first = issues.find((i) => byTarget.has(i.id))!;
+    const blockers = [...new Set(byTarget.get(first.id))].join(', ');
+    throw new BusinessRuleException(
+      `${first.key} đang bị chặn bởi ${blockers} (chưa hoàn thành) nên chưa thể chuyển sang trạng thái hoàn thành — hãy xử lý xong ${blockers} trước, hoặc xoá liên kết chặn nếu không còn đúng`,
+    );
   }
 
   private async statusCategory(statusId: string) {

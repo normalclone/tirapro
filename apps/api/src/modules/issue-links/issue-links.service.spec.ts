@@ -28,6 +28,9 @@ function setup(perms: string[], issues: Record<string, ReturnType<typeof end>>) 
       ),
     },
     issueLink: {
+      findFirst: vi.fn(
+        (_args: unknown): Promise<{ sourceIssueId: string } | null> => Promise.resolve(null),
+      ),
       create: vi.fn((_args: { data: Record<string, unknown> }) =>
         Promise.resolve({ id: 'l1', sourceIssueId: 'a', targetIssueId: 'b', linkTypeId: 'lt' }),
       ),
@@ -293,5 +296,69 @@ describe('IssueLinksService — dự án riêng tư (P13)', () => {
     rbac.assertProjectVisible = hidden();
     const out = await service.listForIssue('w1', 'a', user);
     expect(out.map((l) => l.id)).toEqual(['l2']);
+  });
+});
+
+describe('IssueLinksService.create — không trùng/ngược chiều cùng loại (logbug #22)', () => {
+  const issues = { a: end('a', 'p1'), b: end('b', 'p1') };
+  it('đã có a→b: tạo lại a→b bị từ chối', async () => {
+    const { service, prisma } = setup([], issues);
+    prisma.issueLink.findFirst.mockResolvedValueOnce({ sourceIssueId: 'a' });
+    await expect(service.create('w1', 'a', input, user)).rejects.toMatchObject({
+      status: 422,
+      message: expect.stringContaining('không cần tạo lại') as unknown,
+    });
+    expect(prisma.issueLink.create).not.toHaveBeenCalled();
+  });
+  it('đã có b→a: tạo a→b (chiều ngược lại) bị từ chối, nêu rõ chiều ngược', async () => {
+    const { service, prisma } = setup([], issues);
+    prisma.issueLink.findFirst.mockResolvedValueOnce({ sourceIssueId: 'b' });
+    await expect(service.create('w1', 'a', input, user)).rejects.toMatchObject({
+      status: 422,
+      message: expect.stringContaining('chiều ngược lại') as unknown,
+    });
+    expect(prisma.issueLink.create).not.toHaveBeenCalled();
+  });
+  it('tìm theo cùng loại, cả hai chiều', async () => {
+    const { service, prisma } = setup([], issues);
+    await service.create('w1', 'a', input, user);
+    expect(prisma.issueLink.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          linkTypeId: 'lt',
+          OR: [
+            { sourceIssueId: 'a', targetIssueId: 'b' },
+            { sourceIssueId: 'b', targetIssueId: 'a' },
+          ],
+        },
+      }),
+    );
+  });
+});
+
+describe('IssueLinksService.listForIssue — việc đầu kia đã xoá (logbug #21)', () => {
+  it('giữ liên kết nhưng đánh dấu deleted, không lọc deletedAt:null ở đầu kia', async () => {
+    const { service, prisma } = setup([], { a: end('a', 'p1') });
+    const row = {
+      id: 'l1',
+      sourceIssueId: 'a',
+      targetIssueId: 'b',
+      linkTypeId: 'lt',
+      linkType: { id: 'lt', name: 'Blocks', outwardName: 'blocks', inwardName: 'is blocked by' },
+      source: end('a', 'p1'),
+      target: end('b', 'p1', { deletedAt: new Date() }),
+    };
+    (prisma.issueLink as unknown as { findMany: unknown }).findMany = vi.fn(() =>
+      Promise.resolve([row]),
+    );
+    const out = await service.listForIssue('w1', 'a', user);
+    expect(out).toHaveLength(1);
+    expect(out[0]!.otherIssue.deleted).toBe(true);
+    const where = (
+      (prisma.issueLink as unknown as { findMany: ReturnType<typeof vi.fn> }).findMany.mock
+        .calls[0] as [{ where: { OR: Array<{ target?: object; source?: object }> } }]
+    )[0].where;
+    expect(where.OR[0]!.target).not.toHaveProperty('deletedAt');
+    expect(where.OR[1]!.source).not.toHaveProperty('deletedAt');
   });
 });

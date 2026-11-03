@@ -86,6 +86,8 @@ function makeService(
   // Mặc định mọi assignee đều là thành viên workspace; ca "người ngoài" ghi đè workspaceMembership qua prismaExtra.
   const base = {
     workspaceMembership: { findFirst: vi.fn(() => Promise.resolve({ userId: 'u2' })) },
+    // Không có liên kết "Blocks" chưa xong (kiểm chặn khi chuyển sang Done, logbug #23).
+    issueLink: { findMany: vi.fn(() => Promise.resolve([])) },
   };
   const prisma = {
     $transaction: (fn: (t: unknown) => unknown) => fn(tx),
@@ -3959,5 +3961,48 @@ describe('IssuesService.assertDueNotBeforeCreated (logbug #10)', () => {
     expect(() => svc.assertDueNotBeforeCreated('2026-11-03T00:00:00.000Z', created)).not.toThrow();
     expect(() => svc.assertDueNotBeforeCreated('2026-12-01T00:00:00.000Z', created)).not.toThrow();
     expect(() => svc.assertDueNotBeforeCreated(null, created)).not.toThrow();
+  });
+});
+
+describe('IssuesService.assertNotBlockedForDone (logbug #23, phương án 3)', () => {
+  const make = (links: Array<{ targetIssueId: string; source: { key: string } }>) => {
+    const findMany = vi.fn(() => Promise.resolve(links));
+    const svc = new IssuesService(
+      { issueLink: { findMany } } as never,
+      { emit: vi.fn() } as never,
+      {} as never,
+      undefined,
+      undefined,
+      undefined,
+      {} as never,
+    ) as unknown as {
+      assertNotBlockedForDone(i: Array<{ id: string; key: string }>): Promise<void>;
+    };
+    return { svc, findMany };
+  };
+  it('còn việc chặn chưa DONE → báo tên mã người chặn', async () => {
+    const { svc } = make([
+      { targetIssueId: 'i1', source: { key: 'P-9' } },
+      { targetIssueId: 'i1', source: { key: 'P-8' } },
+    ]);
+    await expect(svc.assertNotBlockedForDone([{ id: 'i1', key: 'P-1' }])).rejects.toThrow(
+      /P-1 đang bị chặn bởi P-9, P-8/,
+    );
+  });
+  it('không có liên kết chặn chưa xong → cho qua; chỉ tra liên kết Blocks còn sống & chưa DONE', async () => {
+    const { svc, findMany } = make([]);
+    await expect(svc.assertNotBlockedForDone([{ id: 'i1', key: 'P-1' }])).resolves.toBeUndefined();
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          source: { deletedAt: null, status: { category: { not: 'DONE' } } },
+        }) as unknown,
+      }),
+    );
+  });
+  it('danh sách rỗng không truy vấn', async () => {
+    const { svc, findMany } = make([]);
+    await svc.assertNotBlockedForDone([]);
+    expect(findMany).not.toHaveBeenCalled();
   });
 });
