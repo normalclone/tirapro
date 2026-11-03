@@ -217,7 +217,7 @@ export const SYSTEM_ROLE_PERMISSIONS: Record<SystemRoleName, PermissionKey[]> = 
   [SYSTEM_ROLES.WORKSPACE_ADMIN]: PERMISSION_CATALOG.map((p) => p.key),
   [SYSTEM_ROLES.WORKSPACE_MEMBER]: [
     PERMISSIONS.WORKSPACE_VIEW,
-    PERMISSIONS.PROJECT_CREATE,
+    // Không có PROJECT_CREATE: tạo dự án chỉ dành cho Workspace Admin (BA/Test/Dev không được tạo).
     PERMISSIONS.PROJECT_VIEW,
     PERMISSIONS.AI_USE,
     PERMISSIONS.DASHBOARD_MANAGE,
@@ -470,7 +470,7 @@ export const SYSTEM_ROLE_META: Record<SystemRoleName, { description: string; col
     color: 'oklch(0.55 0.20 25)',
   },
   [SYSTEM_ROLES.WORKSPACE_MEMBER]: {
-    description: 'Thành viên: tạo & tham gia dự án',
+    description: 'Thành viên: tham gia dự án (không tạo dự án)',
     color: 'oklch(0.55 0.13 245)',
   },
   [SYSTEM_ROLES.WORKSPACE_VIEWER]: {
