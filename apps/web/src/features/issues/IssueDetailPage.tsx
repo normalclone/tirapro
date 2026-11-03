@@ -554,7 +554,7 @@ export function IssueDetailPage() {
                     canEdit={canEditThis}
                     as="h1"
                     className="order-3 basis-full sm:order-2 sm:basis-0 sm:flex-1"
-                    textClassName="text-xl font-semibold tracking-tight sm:text-2xl"
+                    textClassName="text-xl font-semibold tracking-tight [overflow-wrap:anywhere] sm:text-2xl"
                     inputClassName="h-10 text-xl font-semibold tracking-tight sm:text-2xl"
                     title={withKey('Bấm để sửa tiêu đề', 'issue.edit')}
                     editRequest={summaryEditRequest}

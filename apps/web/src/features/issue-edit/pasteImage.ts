@@ -51,3 +51,19 @@ export const replacePlaceholder = (value: string, id: number, replacement: strin
 /** `![tên](attachment:ID)`; ký tự phá cú pháp (`[ ] ( )`) và xuống dòng bị bỏ khỏi tên. */
 export const attachmentMarkdown = (name: string, ref: string): string =>
   `![${name.replace(/[[\]()\r\n]/g, '')}](${ref})`;
+
+const PENDING_IMG = /!\[([^\]]*)\]\(pending:([^)\s]*)\)/g;
+
+/** Mô tả còn ảnh dán chờ gắn (form tạo: chưa có mã công việc nên ảnh dán tạm là `![tên](pending:tên)`). */
+export const hasPendingImages = (value: string): boolean =>
+  new RegExp(PENDING_IMG.source).test(value);
+
+/**
+ * Sau khi tạo việc và tải ảnh lên: đổi `![tên](pending:tên)` thành `![tên](attachment:ID)`; ảnh nào tải lỗi
+ * (không có trong `refs`, khoá = tên tệp) thì bị gỡ khỏi chữ để không để lại đường dẫn hỏng.
+ */
+export function resolvePendingImages(value: string, refs: Record<string, string>): string {
+  return value.replace(PENDING_IMG, (_m, alt: string, name: string) =>
+    refs[name] ? attachmentMarkdown(alt || name, refs[name]) : '',
+  );
+}

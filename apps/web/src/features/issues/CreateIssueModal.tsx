@@ -5,8 +5,9 @@ import { toast } from 'sonner';
 import { normalizeEnvironment, type EnvironmentInput } from '@tirapro/shared';
 import { ENV_KIND_LABEL } from '@/features/issue-edit/environment';
 import { isBugType } from '@/features/issue-edit/severity';
+import { hasPendingImages, resolvePendingImages } from '@/features/issue-edit/pasteImage';
 import { localToCalendarIso } from '@/lib/calendarDate';
-import { apiErrorMessage } from '@/lib/api';
+import { api, apiErrorMessage } from '@/lib/api';
 import { useProjectMeta } from '@/features/ai/api';
 import { useProjects } from '@/features/projects/api';
 import { useProjectSprints } from '@/features/backlog/api';
@@ -423,13 +424,14 @@ export function CreateIssueModal() {
       manualRef.current,
     );
     const finalSummary = tk.clean.trim();
+    const finalDescription = description.trim();
     setBusy(true);
     try {
       const created = await create.mutateAsync({
         projectId: selId,
         typeId,
         summary: finalSummary,
-        description: description.trim() || null,
+        description: finalDescription || null,
         descriptionFormat: 'MARKDOWN',
         acceptanceCriteria: isStory ? acceptance.trim() || null : null,
         priorityId: v.priorityId || undefined,
@@ -451,6 +453,23 @@ export function CreateIssueModal() {
         const results = await Promise.allSettled(
           files.map((f) => uploadAttachmentFile(created.id, f)),
         );
+        // Ảnh dán vào mô tả: đổi `pending:` thành `attachment:ID` (ảnh lỗi bị gỡ khỏi chữ).
+        if (hasPendingImages(finalDescription)) {
+          const refs: Record<string, string> = {};
+          results.forEach((r, i) => {
+            if (r.status === 'fulfilled') refs[files[i]!.name] = `attachment:${r.value.id}`;
+          });
+          try {
+            await api.patch(`/issues/${created.id}`, {
+              description: resolvePendingImages(finalDescription, refs) || null,
+              version: created.version,
+            });
+          } catch {
+            toast.error('Chưa gắn được ảnh dán vào mô tả', {
+              description: `${created.key} đã được tạo — mở nó ra và dán lại ảnh vào mô tả.`,
+            });
+          }
+        }
         const failed = results.filter((r) => r.status === 'rejected').length;
         if (failed > 0) {
           const failedNames = files
@@ -862,7 +881,12 @@ export function CreateIssueModal() {
               rows={10}
               mentionPeople={assignees.options}
               mentionProjectId={selId || undefined}
-              onPasteImages={(fs) => setFiles((prev) => [...prev, ...fs])}
+              // Chưa có mã công việc để tải ảnh lên: gom tệp và chèn `![tên](pending:tên)` vào mô tả; tạo xong thì
+              // tải lên và đổi thành `attachment:ID` (xem doCreate) → ảnh dán nằm ngay trong mô tả.
+              onPasteImages={(fs) => {
+                setFiles((prev) => [...prev, ...fs]);
+                return Promise.resolve(fs.map((f) => ({ name: f.name, ref: `pending:${f.name}` })));
+              }}
               placeholder="Bối cảnh, các bước, thế nào là xong… (viết được Markdown; chèn ảnh bằng ![](đường-dẫn) hoặc dán ảnh)"
             />
           </Field>
