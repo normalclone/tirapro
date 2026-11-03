@@ -12,7 +12,10 @@ const COLUMNS: CsvColumn<RaidItemDto>[] = [
   { header: 'Điểm', value: (i) => i.score },
   { header: 'Mức', value: (i) => RAID_LEVEL_META[i.level].label },
   { header: 'Trạng thái', value: (i) => RAID_STATUS_META[i.status].label },
-  { header: 'Người phụ trách', value: (i) => i.owner?.displayName },
+  {
+    header: 'Người phụ trách',
+    value: (i) => (i.owners ?? (i.owner ? [i.owner] : [])).map((o) => o.displayName).join('; '),
+  },
   { header: 'Hạn', value: (i) => formatCalendarDmy(i.dueDate) },
   { header: 'Biện pháp', value: (i) => i.mitigation },
 ];

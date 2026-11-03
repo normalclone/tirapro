@@ -25,7 +25,10 @@ export interface RaidItemDto {
   probability: number;
   impact: number;
   status: RaidStatus;
+  /** Người phụ trách chính (= người đầu trong `owners`). */
   owner: RaidOwner | null;
+  /** Một hoặc nhiều người phụ trách. */
+  owners: RaidOwner[];
   mitigation: string | null;
   dueDate: string | null;
   /** probability × impact (1..25). */
@@ -44,7 +47,8 @@ export interface RaidInput {
   impact?: number;
   status?: RaidStatus;
   projectId?: string | null;
-  ownerId?: string | null;
+  /** Danh sách người phụ trách (người đầu = chính); rỗng = chưa giao. */
+  ownerIds?: string[];
   mitigation?: string | null;
   dueDate?: string | null;
 }

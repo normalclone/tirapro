@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/Input';
 import { DateInput } from '@/components/ui/DateInput';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { SearchSelect } from '@/components/ui/SearchSelect';
-import { PeoplePicker } from '@/components/ui/PeoplePicker';
+import { OwnersPicker, type PickedOwner } from './OwnersPicker';
 import { Badge } from '@/components/ui/primitives';
 import { apiErrorMessage } from '@/lib/api';
 import { useRetained } from '@/lib/useRetained';
@@ -113,7 +113,7 @@ export function RaidEditorModal({
   const [impact, setImpact] = useState(3);
   const [status, setStatus] = useState<RaidStatus>('OPEN');
   const [projectId, setProjectId] = useState('');
-  const [ownerId, setOwnerId] = useState('');
+  const [owners, setOwners] = useState<PickedOwner[]>([]);
   const [dueDate, setDueDate] = useState('');
 
   useEffect(() => {
@@ -126,7 +126,13 @@ export function RaidEditorModal({
     setImpact(item?.impact ?? 3);
     setStatus(item?.status ?? 'OPEN');
     setProjectId(item?.projectId ?? '');
-    setOwnerId(item?.owner?.id ?? '');
+    setOwners(
+      (item?.owners ?? (item?.owner ? [item.owner] : [])).map((o) => ({
+        id: o.id,
+        name: o.displayName,
+        avatarUrl: o.avatarUrl,
+      })),
+    );
     setDueDate(item?.dueDate ? item.dueDate.slice(0, 10) : '');
   }, [open, item, defaultKind]);
 
@@ -156,7 +162,7 @@ export function RaidEditorModal({
       impact,
       status,
       projectId: projectId || null,
-      ownerId: ownerId || null,
+      ownerIds: owners.map((o) => o.id),
       dueDate: dueDate || null,
     };
     try {
@@ -286,17 +292,10 @@ export function RaidEditorModal({
           </Field>
           <Field
             label="Người phụ trách"
-            hint="(tùy chọn — người theo dõi và xử lý)"
+            hint="(tùy chọn — chọn một hoặc nhiều người theo dõi và xử lý)"
             htmlFor="raid-owner"
           >
-            <PeoplePicker
-              id="raid-owner"
-              value={ownerId}
-              onChange={setOwnerId}
-              {...people}
-              emptyLabel="Chưa chọn"
-              ariaLabel="Người phụ trách mục này"
-            />
+            <OwnersPicker id="raid-owner" owners={owners} onChange={setOwners} people={people} />
           </Field>
         </div>
 

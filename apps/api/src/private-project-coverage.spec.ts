@@ -576,6 +576,10 @@ const READ_ALLOWLIST: Record<string, [Kind, string]> = {
     'INTERNAL',
     'bộ lắng nghe sự kiện cập nhật đồng hồ SLA của việc (ngữ cảnh hệ thống, không trả dữ liệu)',
   ],
+  'sla/sla.service.ts::SlaService.onIssueUpdated': [
+    'INTERNAL',
+    'bộ lắng nghe sự kiện áp lại cam kết SLA khi đổi ưu tiên (ngữ cảnh hệ thống, không trả dữ liệu)',
+  ],
   'sla/sla.service.ts::SlaService.onIssueTransitioned': [
     'INTERNAL',
     'bộ lắng nghe sự kiện cập nhật đồng hồ SLA của việc (ngữ cảnh hệ thống, không trả dữ liệu)',
@@ -751,11 +755,6 @@ const CONTROLLER_ALLOWLIST: Record<string, [Kind, string]> = {
       'ghi theo id tài nguyên: @Permissions + @ProjectRef(tài nguyên) — guard 404 người ngoài; user được dùng ở phân quyền, service nhận id đã được guard xác thực',
     ],
   'issue-extras/issue-extras.controller.ts::IssueExtrasController.addChecklist -> extras.addChecklistItem':
-    [
-      'ROUTE_GUARDED',
-      'ghi theo id tài nguyên: @Permissions + @ProjectRef(tài nguyên) — guard 404 người ngoài; user được dùng ở phân quyền, service nhận id đã được guard xác thực',
-    ],
-  'issue-extras/issue-extras.controller.ts::IssueExtrasController.updateChecklist -> extras.updateChecklistItem':
     [
       'ROUTE_GUARDED',
       'ghi theo id tài nguyên: @Permissions + @ProjectRef(tài nguyên) — guard 404 người ngoài; user được dùng ở phân quyền, service nhận id đã được guard xác thực',

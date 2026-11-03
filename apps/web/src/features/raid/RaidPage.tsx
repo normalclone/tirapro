@@ -253,11 +253,8 @@ function RaidCard({
             issue={{ dueDate: item.dueDate, status: { category: closed ? 'DONE' : 'TODO' } }}
           />
         )}
-        {item.owner ? (
-          <span className="flex min-w-0 items-center gap-1.5">
-            <Avatar name={item.owner.displayName} src={item.owner.avatarUrl} size={20} />
-            <span className="truncate text-xs text-muted">{item.owner.displayName}</span>
-          </span>
+        {item.owners.length > 0 ? (
+          <OwnersCell owners={item.owners} size={20} textClass="text-xs" />
         ) : (
           <span className="text-xs text-faint">Chưa gán</span>
         )}
@@ -318,14 +315,8 @@ function RaidRow({
         )}
       </td>
       <td className="px-3 py-2.5">
-        {item.owner ? (
-          <span
-            className="flex items-center gap-1.5"
-            title={`Người phụ trách: ${item.owner.displayName}`}
-          >
-            <Avatar name={item.owner.displayName} src={item.owner.avatarUrl} size={22} />
-            <span className="truncate text-sm text-muted">{item.owner.displayName}</span>
-          </span>
+        {item.owners.length > 0 ? (
+          <OwnersCell owners={item.owners} size={22} textClass="text-sm" />
         ) : (
           <span className="text-xs text-faint" title="Chưa ai nhận theo dõi mục này">
             Chưa gán
@@ -662,5 +653,33 @@ export function RaidPage() {
         }}
       />
     </PageFrame>
+  );
+}
+
+/** Người phụ trách của một mục: người chính + "+N" khi có nhiều người; rê chuột xem đủ danh sách. */
+function OwnersCell({
+  owners,
+  size,
+  textClass,
+}: {
+  owners: RaidItemDto['owners'];
+  size: number;
+  textClass: string;
+}) {
+  const [first, ...rest] = owners;
+  if (!first) return null;
+  return (
+    <span
+      className="flex min-w-0 items-center gap-1.5"
+      title={`Người phụ trách: ${owners.map((o) => o.displayName).join(', ')}`}
+    >
+      <Avatar name={first.displayName} src={first.avatarUrl} size={size} />
+      <span className={cn('truncate text-muted', textClass)}>{first.displayName}</span>
+      {rest.length > 0 && (
+        <span className="shrink-0 rounded bg-surface-2 px-1 text-xs text-muted">
+          +{rest.length}
+        </span>
+      )}
+    </span>
   );
 }
