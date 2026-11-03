@@ -125,7 +125,12 @@ export class SlaService {
   async getForIssue(workspaceId: string, issueId: string) {
     const issue = await this.prisma.issue.findFirst({
       where: { id: issueId, workspaceId, deletedAt: null },
-      select: { id: true },
+      select: {
+        id: true,
+        resolvedAt: true,
+        updatedAt: true,
+        status: { select: { category: true } },
+      },
     });
     if (!issue) throw new NotFoundAppException('Công việc');
     const row = await this.prisma.issueSla.findUnique({
@@ -134,21 +139,26 @@ export class SlaService {
     });
     if (!row) return null;
     const now = Date.now();
+    // Việc đã ở trạng thái DONE mà dòng SLA chưa kịp đóng (đóng bằng đường không phát sự kiện, dữ liệu cũ…): coi là đã xong
+    // vào lúc `resolvedAt` của việc — không để đồng hồ "còn N ngày" chạy tiếp trên việc đã xong (logbug #26).
+    const doneAt =
+      row.resolvedAt ??
+      (issue.status.category === 'DONE' ? (issue.resolvedAt ?? issue.updatedAt) : null);
     return {
       policyName: row.policy.name,
       responseDueAt: row.responseDueAt.toISOString(),
       resolveDueAt: row.resolveDueAt.toISOString(),
       firstRespondedAt: row.firstRespondedAt?.toISOString() ?? null,
-      resolvedAt: row.resolvedAt?.toISOString() ?? null,
+      resolvedAt: doneAt?.toISOString() ?? null,
       responseBreached:
         row.responseBreached || (!row.firstRespondedAt && row.responseDueAt.getTime() < now),
-      resolveBreached: row.resolveBreached || (!row.resolvedAt && row.resolveDueAt.getTime() < now),
+      resolveBreached: doneAt
+        ? doneAt.getTime() > row.resolveDueAt.getTime()
+        : row.resolveDueAt.getTime() < now,
       responseRemainingMins: row.firstRespondedAt
         ? null
         : Math.round((row.responseDueAt.getTime() - now) / 60000),
-      resolveRemainingMins: row.resolvedAt
-        ? null
-        : Math.round((row.resolveDueAt.getTime() - now) / 60000),
+      resolveRemainingMins: doneAt ? null : Math.round((row.resolveDueAt.getTime() - now) / 60000),
     };
   }
 
@@ -163,6 +173,8 @@ export class SlaService {
         issue: {
           workspaceId,
           deletedAt: null,
+          // Việc đã ở trạng thái DONE thì không còn "đang chạy đồng hồ", dù dòng SLA chưa được đóng (logbug #26).
+          status: { category: { not: 'DONE' } },
           ...(Object.keys(visible).length ? { project: { deletedAt: null, ...visible } } : {}),
         },
         resolvedAt: null,
@@ -197,7 +209,7 @@ export class SlaService {
       responded: !!r.firstRespondedAt,
       responseBreached:
         r.responseBreached || (!r.firstRespondedAt && r.responseDueAt.getTime() < now),
-      resolveBreached: r.resolveBreached || r.resolveDueAt.getTime() < now,
+      resolveBreached: r.resolveDueAt.getTime() < now,
     }));
   }
 
@@ -228,6 +240,7 @@ export class SlaService {
           workspaceId: string;
           projectId: string;
           priority?: { id: string } | null;
+          createdAt?: string | Date | null;
         };
       };
       if (!issue?.id) return;
@@ -237,13 +250,15 @@ export class SlaService {
         issue.priority?.id ?? null,
       );
       if (!policy) return;
-      const now = Date.now();
+      // Đồng hồ chạy từ lúc công việc ĐƯỢC TẠO (như giao diện nói) — không phải lúc xử lý sự kiện (import/việc tạo trễ).
+      const start = issue.createdAt ? new Date(issue.createdAt).getTime() : Date.now();
+      const base = Number.isNaN(start) ? Date.now() : start;
       await this.prisma.issueSla.create({
         data: {
           issueId: issue.id,
           policyId: policy.id,
-          responseDueAt: new Date(now + policy.responseMins * 60000),
-          resolveDueAt: new Date(now + policy.resolveMins * 60000),
+          responseDueAt: new Date(base + policy.responseMins * 60000),
+          resolveDueAt: new Date(base + policy.resolveMins * 60000),
         },
       });
     } catch (err) {
@@ -296,12 +311,62 @@ export class SlaService {
         // Mở lại ticket → bỏ mốc giải quyết.
         await this.prisma.issueSla.update({
           where: { issueId: issue.id },
-          data: { resolvedAt: null },
+          // Mở lại: bỏ mốc giải quyết VÀ cờ trễ cũ (nếu không việc mở lại còn hạn vẫn bị tô đỏ "quá hạn").
+          data: { resolvedAt: null, resolveBreached: false },
         });
       }
     } catch (err) {
       this.logger.warn(
         `Cập nhật SLA giải quyết thất bại: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+
+  /**
+   * Đổi mức ưu tiên sau khi tạo → áp lại cam kết khớp mức mới (hạn tính lại từ lúc TẠO việc, giữ nguyên mốc phản hồi/giải
+   * quyết đã có). Không đụng việc đã xong.
+   */
+  @OnEvent(DOMAIN_EVENTS.ISSUE_UPDATED)
+  async onIssueUpdated(payload: unknown): Promise<void> {
+    try {
+      const { issue, changedFields } = payload as {
+        issue?: {
+          id: string;
+          workspaceId: string;
+          projectId: string;
+          createdAt?: string | Date | null;
+          priority?: { id: string } | null;
+        };
+        changedFields?: string[];
+      };
+      if (!issue?.id || !changedFields?.includes('priorityId')) return;
+      const sla = await this.prisma.issueSla.findUnique({
+        where: { issueId: issue.id },
+        select: { policyId: true, resolvedAt: true, firstRespondedAt: true },
+      });
+      if (!sla || sla.resolvedAt) return;
+      const policy = await this.pickPolicy(
+        issue.workspaceId,
+        issue.projectId,
+        issue.priority?.id ?? null,
+      );
+      if (!policy || policy.id === sla.policyId) return;
+      const start = issue.createdAt ? new Date(issue.createdAt).getTime() : Date.now();
+      const base = Number.isNaN(start) ? Date.now() : start;
+      const responseDueAt = new Date(base + policy.responseMins * 60000);
+      await this.prisma.issueSla.update({
+        where: { issueId: issue.id },
+        data: {
+          policyId: policy.id,
+          responseDueAt,
+          resolveDueAt: new Date(base + policy.resolveMins * 60000),
+          resolveBreached: false,
+          ...(sla.firstRespondedAt ? {} : { responseBreached: false }),
+        },
+      });
+    } catch (err) {
+      this.logger.warn(
+        `Áp lại SLA khi đổi ưu tiên thất bại: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
   }
