@@ -297,6 +297,7 @@ function makeRecompute(opts: {
   const prisma = {
     pointsFormulaConfig: {
       findUnique: vi.fn(() => Promise.resolve(opts.formula ? { formula: opts.formula } : null)),
+      upsert: vi.fn(() => Promise.resolve({})),
     },
     issueType: { findMany: vi.fn(() => Promise.resolve(types)) },
     priority: {
@@ -415,6 +416,31 @@ describe('PointsService.recomputeAll — tính lại toàn hệ thống', () => 
     const epicWrites = issue.updateMany.mock.calls.filter((c) => typeof c[0].where.id === 'string');
     expect(epicWrites).toHaveLength(1);
     expect(epicWrites[0]![0].data).toMatchObject({ storyPoints: 10, version: { increment: 1 } });
+  });
+
+  it('lần đọc bảng hệ số ĐANG BAY (ra bản cũ) khi SA lưu: recompute dùng bản MỚI và cache không bị bản cũ ghi đè', async () => {
+    const OLD = DEFAULT_POINTS_FORMULA;
+    const NEW = { ...DEFAULT_POINTS_FORMULA, base: { ...DEFAULT_POINTS_FORMULA.base, BUG: 5 } };
+    const { service, prisma, rows } = makeRecompute({ rows: [recRow('a')] });
+    let releaseOld!: () => void;
+    prisma.pointsFormulaConfig.findUnique
+      // lần đọc nền (từ toDto) đã bắt đầu, đọc ra bản CŨ nhưng về trễ
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            releaseOld = () => resolve({ formula: OLD });
+          }),
+      )
+      .mockImplementation(() => Promise.resolve({ formula: NEW }));
+    service.peekFormula(); // khởi động lần đọc nền (cache trống)
+    await service.setFormula(NEW, 'sa1'); // SA lưu bản mới trong lúc lần đọc cũ còn bay
+    await service.recomputeAll();
+    expect(rows[0]!.storyPoints).toBe(5 * 2 * 1.5); // Bug (5) × MEDIUM (2) × High (1.5) = 15, không phải 6
+    releaseOld(); // lần đọc cũ về sau cùng
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(await service.getFormula()).toEqual(NEW);
+    expect(service.peekFormula()).toEqual(NEW);
   });
 
   it('gọi đồng thời không chạy song song: lần sau chạy lại ĐÚNG MỘT lần sau lần đang chạy', async () => {

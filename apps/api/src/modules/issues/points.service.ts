@@ -49,6 +49,8 @@ export class PointsService implements OnModuleInit {
   private readonly logger = new Logger(PointsService.name);
   private cache: { formula: PointsFormula; at: number } | null = null;
   private lastTry = 0;
+  /** Tăng mỗi lần `setFormula`; lần đọc DB bắt đầu ở thế hệ cũ không được ghi cache. */
+  private generation = 0;
   private inflight: Promise<PointsFormula> | null = null;
 
   /** Đang chạy `recomputeAll` (một lần tại một thời điểm; lưu liên tiếp thì chạy lại đúng một lần sau lần đang chạy). */
@@ -77,14 +79,23 @@ export class PointsService implements OnModuleInit {
     const c = this.cache;
     if (c && Date.now() - c.at < FORMULA_TTL_MS) return c.formula;
     // Gộp các lần đọc đồng thời thành một truy vấn.
-    this.inflight ??= this.load().finally(() => {
-      this.inflight = null;
-    });
+    if (!this.inflight) {
+      const p: Promise<PointsFormula> = this.load().finally(() => {
+        // Chỉ gỡ chính lần đọc này (`setFormula` có thể đã thay bằng lần đọc mới hơn).
+        if (this.inflight === p) this.inflight = null;
+      });
+      this.inflight = p;
+    }
     return this.inflight;
   }
 
+  /**
+   * Đọc bảng hệ số từ DB. Lần đọc BẮT ĐẦU trước khi `setFormula` ghi (đọc ra bản cũ) không được ghi đè cache sau đó:
+   * so `generation` lúc vào với lúc xong.
+   */
   private async load(): Promise<PointsFormula> {
     this.lastTry = Date.now();
+    const generation = this.generation;
     const row = await this.prisma.pointsFormulaConfig.findUnique({ where: { id: 'default' } });
     let formula = DEFAULT_POINTS_FORMULA;
     if (row) {
@@ -92,7 +103,7 @@ export class PointsService implements OnModuleInit {
       if (parsed.success) formula = parsed.data;
       else this.logger.error('PointsFormulaConfig.formula không hợp lệ — dùng bảng mặc định');
     }
-    this.cache = { formula, at: Date.now() };
+    if (generation === this.generation) this.cache = { formula, at: Date.now() };
     return formula;
   }
 
@@ -115,6 +126,9 @@ export class PointsService implements OnModuleInit {
       create: { id: 'default', formula: value, updatedById },
       update: { formula: value, updatedById },
     });
+    // Mọi lần đọc đang bay (có thể đọc ra bản cũ) hết hiệu lực: không dùng lại, không ghi đè cache.
+    this.generation++;
+    this.inflight = null;
     this.cache = { formula: value, at: Date.now() };
     return value;
   }
@@ -210,9 +224,8 @@ export class PointsService implements OnModuleInit {
   }
 
   private async recomputeOnce(): Promise<RecomputeResult> {
-    // Bảng hệ số đọc MỚI (bỏ cache): người gọi vừa ghi xong hoặc script/deploy vừa đổi.
-    this.cache = null;
-    const formula = await this.getFormula();
+    // Bảng hệ số đọc MỚI từ DB, KHÔNG qua cache/lần đọc đang bay (có thể là bản cũ trước khi SA lưu).
+    const formula = await this.load();
     const [types, priorities, projects] = await Promise.all([
       this.prisma.issueType.findMany({ select: { id: true, key: true } }),
       this.prisma.priority.findMany({ select: { id: true, name: true } }),
