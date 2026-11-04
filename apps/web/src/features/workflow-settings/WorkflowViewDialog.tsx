@@ -30,7 +30,10 @@ function ReadOnlyGraph({
     [workflow, layout, currentStatusId],
   );
   const edges = useMemo(() => buildEdges(layout), [layout]);
-  const { selectedId, onNodeClick, onPaneClick } = useStatusSelection(currentStatusId, false);
+  const { selectedId, onNodeClick, onPaneClick } = useStatusSelection(
+    currentStatusId,
+    Number.POSITIVE_INFINITY,
+  );
   return (
     <HighlightProvider workflow={workflow} selectedId={selectedId}>
       <ReactFlow

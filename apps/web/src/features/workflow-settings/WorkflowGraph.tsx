@@ -16,6 +16,7 @@ import { Input } from '@/components/ui/Input';
 import { useConfirm } from '@/components/ui/useConfirm';
 import { apiErrorMessage } from '@/lib/api';
 import { useAuth } from '@/stores/auth';
+import { cn } from '@/lib/utils';
 import {
   useAddStatus,
   useAddTransition,
@@ -25,6 +26,7 @@ import {
   type Workflow,
 } from './api';
 import { layoutWorkflow } from './workflowLayout';
+import { useReportDraft } from './unsavedDrafts';
 import {
   AutoFit,
   buildEdges,
@@ -66,7 +68,15 @@ function Legend() {
   );
 }
 
-export function WorkflowGraph({ workflow }: { workflow: Workflow }) {
+interface WorkflowGraphProps {
+  workflow: Workflow;
+  /** Chiều cao/khung của vùng sơ đồ; mặc định cao cố định 560px (trong hộp thoại truyền `flex-1`). */
+  className?: string;
+  /** Sơ đồ nằm TRONG hộp thoại sửa: Esc bỏ chọn trạng thái trước (hộp thoại chủ không tính là lớp phủ khác). */
+  inDialog?: boolean;
+}
+
+export function WorkflowGraph({ workflow, className, inDialog = false }: WorkflowGraphProps) {
   const addTransition = useAddTransition();
   const deleteTransition = useDeleteTransition();
   const addStatus = useAddStatus();
@@ -127,7 +137,7 @@ export function WorkflowGraph({ workflow }: { workflow: Workflow }) {
   );
 
   // Chọn một trạng thái → làm nổi đường đi hiện tại/tương lai (không chặn sửa: node/chấm nối/nút xoá vẫn hoạt động như cũ).
-  const { selectedId, onNodeClick, onPaneClick } = useStatusSelection(null, true);
+  const { selectedId, onNodeClick, onPaneClick } = useStatusSelection(null, inDialog ? 1 : 0);
 
   const [nodes, setNodes, onNodesChange] = useNodesState<NodeData>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<WfEdgeData>([]);
@@ -173,7 +183,12 @@ export function WorkflowGraph({ workflow }: { workflow: Workflow }) {
   );
 
   return (
-    <div className="h-[560px] w-full overflow-hidden rounded-lg border border-border bg-surface-2">
+    <div
+      className={cn(
+        'w-full overflow-hidden rounded-lg border border-border bg-surface-2',
+        className ?? 'h-[560px]',
+      )}
+    >
       <HighlightProvider workflow={workflow} selectedId={selectedId}>
         <ReactFlow
           nodes={nodes}
@@ -236,6 +251,7 @@ function AddStatusForm({
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
   const [category, setCategory] = useState<StatusCategory>('TODO');
+  useReportDraft(open && name.trim() !== '');
 
   function submit() {
     const trimmed = name.trim();

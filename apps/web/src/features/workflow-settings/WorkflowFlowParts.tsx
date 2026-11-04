@@ -28,7 +28,6 @@ import {
 } from 'reactflow';
 import { AlertTriangle, RotateCcw, Trash2, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { isOverlayOpen } from '@/lib/hotkeys';
 import { STATUS_CATEGORY_LABEL } from '@/lib/terms';
 import type { StatusCategory, Workflow } from './api';
 import { fitViewport } from './workflowFit';
@@ -142,9 +141,10 @@ export function HighlightProvider({
 /**
  * Trạng thái chọn của sơ đồ: bấm node = chọn/bỏ chọn, bấm nền = bỏ chọn, Esc = bỏ chọn.
  * `restingId`: chọn sẵn ban đầu (popup: trạng thái hiện tại). Esc chỉ bỏ chọn khi khác mặc định, để popup vẫn đóng được bằng Esc.
- * `ignoreOverlays`: bề mặt nằm trên trang (không phải popup) thì Esc dành cho hộp thoại đang mở.
+ * `hostOverlays`: số lớp phủ (hộp thoại/menu) đang mở mà bề mặt này được phép coi là "của mình". Còn nhiều hơn thế (vd hộp
+ * xác nhận mở chồng lên) thì Esc dành cho lớp phủ đó. Bề mặt nằm trên trang: 0; trong một hộp thoại: 1.
  */
-export function useStatusSelection(restingId: string | null, ignoreOverlays: boolean) {
+export function useStatusSelection(restingId: string | null, hostOverlays: number) {
   const [selectedId, setSelectedId] = useState<string | null>(restingId);
   const selectedRef = useRef(selectedId);
   selectedRef.current = selectedId;
@@ -154,14 +154,14 @@ export function useStatusSelection(restingId: string | null, ignoreOverlays: boo
       if (e.key !== 'Escape' || e.defaultPrevented) return;
       const t = e.target as HTMLElement | null;
       if (t?.closest?.('input, textarea, select, [contenteditable="true"]')) return;
-      if (ignoreOverlays && isOverlayOpen()) return;
+      if (openOverlayCount() > hostOverlays) return;
       if (!escapeClears(selectedRef.current, restingId)) return;
       e.stopPropagation(); // chặn Radix Dialog đóng popup: lần Esc này chỉ bỏ chọn
       setSelectedId(null);
     };
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
-  }, [restingId, ignoreOverlays]);
+  }, [restingId, hostOverlays]);
 
   return {
     selectedId,
@@ -172,6 +172,19 @@ export function useStatusSelection(restingId: string | null, ignoreOverlays: boo
     }, []),
     onPaneClick: useCallback(() => setSelectedId(null), []),
   };
+}
+
+/** Số lớp phủ Radix đang mở (hộp thoại, menu, popover) — cùng bộ chọn với `isOverlayOpen`. */
+function openOverlayCount(): number {
+  return document.querySelectorAll(
+    [
+      '[role="dialog"][data-state="open"]',
+      '[role="alertdialog"][data-state="open"]',
+      '[role="menu"][data-state="open"]',
+      '[role="listbox"][data-state="open"]',
+      '[data-radix-popper-content-wrapper]',
+    ].join(','),
+  ).length;
 }
 
 /* ---------- Cung ---------- */

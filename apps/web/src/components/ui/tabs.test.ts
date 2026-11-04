@@ -87,8 +87,8 @@ describe('không còn tablist tự vẽ', () => {
   ])('%s dùng <Tabs', (f) => {
     expect(src(f)).toMatch(/<Tabs\b/);
   });
-  it('WorkflowSettingsPage: nút chuyển Sơ đồ/Danh sách là lựa chọn loại trừ → SegmentedControl, không tablist', () => {
-    const w = src('features/workflow-settings/WorkflowSettingsPage.tsx');
+  it('WorkflowEditor (hộp thoại sửa quy trình): nút chuyển Sơ đồ/Danh sách là lựa chọn loại trừ → SegmentedControl, không tablist', () => {
+    const w = src('features/workflow-settings/WorkflowEditor.tsx');
     expect(w).toMatch(/<SegmentedControl[\s\S]*Kiểu xem quy trình/);
     expect(w).not.toContain('role="tab');
   });
