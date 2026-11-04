@@ -133,7 +133,7 @@ export function ConfigSection() {
     section === 'members'
       ? project?.isPrivate
         ? 'Dự án riêng tư — chỉ người ở đây và quản trị thấy được.'
-        : 'Mọi thành viên không gian làm việc đều tham gia; đặt vai trò riêng cho từng người khi cần.'
+        : 'Mọi thành viên tổ chức đều tham gia; đặt vai trò riêng cho từng người khi cần.'
       : def.description;
 
   return (

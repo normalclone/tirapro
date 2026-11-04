@@ -85,11 +85,11 @@ describe('Thành viên: mời thành viên bằng hộp thoại, không còn for
     const btn = await screen.findAllByRole('button', { name: /Mời thành viên/ });
     expect(btn.length).toBeGreaterThan(0);
     expect(screen.queryByRole('dialog')).toBeNull();
-    expect(screen.queryByLabelText('Chọn người để thêm vào không gian làm việc')).toBeNull();
+    expect(screen.queryByLabelText('Chọn người để thêm vào tổ chức')).toBeNull();
     await user.click(btn[0]!);
     const dialog = await screen.findByRole('dialog', { name: 'Mời thành viên' });
     expect(
-      within(dialog).getByRole('button', { name: /Chọn người để thêm vào không gian làm việc/ }),
+      within(dialog).getByRole('button', { name: /Chọn người để thêm vào tổ chức/ }),
     ).toBeTruthy();
     expect(within(dialog).getByRole('button', { name: /Tạo tài khoản mới/ })).toBeTruthy();
   });

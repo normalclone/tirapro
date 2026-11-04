@@ -159,7 +159,7 @@ export function AccountActionsMenu({ user }: { user: AdminUser }) {
               </DropdownMenu.Item>
             )}
             <DropdownMenu.Item className={ITEM} onSelect={add.show}>
-              <Building2 className="h-4 w-4 shrink-0 text-muted" /> Thêm vào không gian làm việc…
+              <Building2 className="h-4 w-4 shrink-0 text-muted" /> Thêm vào tổ chức…
             </DropdownMenu.Item>
             <DropdownMenu.Item className={ITEM} onSelect={() => void onReset()}>
               <KeyRound className="h-4 w-4 shrink-0 text-muted" /> Đặt lại mật khẩu

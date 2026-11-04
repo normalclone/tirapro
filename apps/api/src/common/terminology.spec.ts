@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 /**
  * Quét mã nguồn chặn tái phạm thuật ngữ ở chuỗi API trả/gửi cho người dùng (docs/UX_CONVENTIONS.md §19):
  * "công việc" thay "issue", "Việc chờ" thay "Backlog", tên sprint thân thiện thay vì enum ACTIVE/FUTURE/CLOSED,
- * dự án / quy trình / không gian làm việc / nhật ký thời gian thay project / workflow / workspace / worklog.
+ * dự án / quy trình / tổ chức / nhật ký thời gian thay project / workflow / workspace / worklog.
  *
  * Quét MỌI chuỗi tiếng Việt (nháy đơn/kép/backtick, kể cả nhiều dòng) trong `apps/api/src/modules/**` — không phụ thuộc
  * cách viết câu (`throw new …Exception(`, `message:`, nối chuỗi nhiều dòng…) — trừ chuỗi trong lời gọi log cho dev/ops

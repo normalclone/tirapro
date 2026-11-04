@@ -6,7 +6,7 @@ import { clearSessionCaches } from '@/lib/sessionCache';
 import { keys } from '@/lib/queryKeys';
 import { commitLeaveApp } from '@/stores/leaveGuard';
 
-/** Không gian làm việc mà người dùng hiện tại là thành viên (kèm vai trò). */
+/** Tổ chức mà người dùng hiện tại là thành viên (kèm vai trò). */
 export interface MyWorkspace {
   id: string;
   name: string;
@@ -17,7 +17,7 @@ export interface MyWorkspace {
   memberCount?: number;
 }
 
-/** Phản hồi sau khi đổi/gỡ logo: thông tin rút gọn của không gian làm việc. */
+/** Phản hồi sau khi đổi/gỡ logo: thông tin rút gọn của tổ chức. */
 interface WorkspaceAvatarResult {
   id: string;
   name: string;
@@ -31,7 +31,7 @@ interface SwitchWorkspaceResponse {
   user: unknown;
 }
 
-/** Danh sách không gian làm việc của người dùng hiện tại. */
+/** Danh sách tổ chức của người dùng hiện tại. */
 export function useMyWorkspaces() {
   return useQuery({
     queryKey: keys.workspaces.mine,
@@ -40,7 +40,7 @@ export function useMyWorkspaces() {
 }
 
 /**
- * Đổi không gian làm việc đang hoạt động. Server cấp access token mới + xoay refresh cookie.
+ * Đổi tổ chức đang hoạt động. Server cấp access token mới + xoay refresh cookie.
  * onSuccess: bỏ nháp chưa lưu (`commitLeaveApp`, người gọi đã hỏi trước bằng `useConfirmLeaveApp`), nạp token mới, xoá toàn bộ cache (để mọi dữ liệu refetch theo nơi mới),
  * rồi reload về trang chủ — bootstrap() sẽ nạp lại user/quyền theo nơi mới.
  */
@@ -64,7 +64,7 @@ export function useSwitchWorkspace() {
   });
 }
 
-/** Tải logo/ảnh của không gian làm việc (chỉ quản trị chung). */
+/** Tải logo/ảnh của tổ chức (chỉ quản trị chung). */
 export function useUploadWorkspaceAvatar(workspaceId: string) {
   return useMutation({
     mutationFn: async (file: File) => {
@@ -78,7 +78,7 @@ export function useUploadWorkspaceAvatar(workspaceId: string) {
   });
 }
 
-/** Gỡ logo/ảnh của không gian làm việc. */
+/** Gỡ logo/ảnh của tổ chức. */
 export function useRemoveWorkspaceAvatar(workspaceId: string) {
   return useMutation({
     mutationFn: async () =>

@@ -72,10 +72,10 @@ export interface PermissionDef {
 export const PERMISSION_CATALOG: PermissionDef[] = [
   {
     key: PERMISSIONS.WORKSPACE_ADMIN,
-    description: 'Quản trị không gian làm việc',
+    description: 'Quản trị tổ chức',
     scope: 'WORKSPACE',
   },
-  { key: PERMISSIONS.WORKSPACE_VIEW, description: 'Xem không gian làm việc', scope: 'WORKSPACE' },
+  { key: PERMISSIONS.WORKSPACE_VIEW, description: 'Xem tổ chức', scope: 'WORKSPACE' },
   {
     key: PERMISSIONS.MEMBER_MANAGE,
     description: 'Quản lý thành viên & vai trò',
@@ -149,7 +149,7 @@ export const PERMISSION_CATALOG: PermissionDef[] = [
   },
   {
     key: PERMISSIONS.GUIDE_MANAGE,
-    description: 'Tuỳ biến hướng dẫn cho không gian làm việc',
+    description: 'Tuỳ biến hướng dẫn cho tổ chức',
     scope: 'WORKSPACE',
   },
   {
@@ -466,7 +466,7 @@ export const SYSTEM_ROLE_SCOPE: Record<SystemRoleName, 'WORKSPACE' | 'PROJECT'> 
 /** Mô tả ngắn + màu nhãn cho vai trò hệ thống (UI badge/catalog). */
 export const SYSTEM_ROLE_META: Record<SystemRoleName, { description: string; color: string }> = {
   [SYSTEM_ROLES.WORKSPACE_ADMIN]: {
-    description: 'Toàn quyền quản trị không gian làm việc',
+    description: 'Toàn quyền quản trị tổ chức',
     color: 'oklch(0.55 0.20 25)',
   },
   [SYSTEM_ROLES.WORKSPACE_MEMBER]: {
@@ -474,7 +474,7 @@ export const SYSTEM_ROLE_META: Record<SystemRoleName, { description: string; col
     color: 'oklch(0.55 0.13 245)',
   },
   [SYSTEM_ROLES.WORKSPACE_VIEWER]: {
-    description: 'Chỉ xem ở cấp không gian làm việc',
+    description: 'Chỉ xem ở cấp tổ chức',
     color: 'oklch(0.60 0.018 256)',
   },
   [SYSTEM_ROLES.PROJECT_ADMIN]: {

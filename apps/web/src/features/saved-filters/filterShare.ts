@@ -29,7 +29,7 @@ export function resolveRouteFilter(
 }
 
 /**
- * Mức chia sẻ THỰC của bộ lọc: `PROJECT` mà chưa gắn dự án (dữ liệu cũ) được máy chủ cho cả không gian thấy nên hiện là
+ * Mức chia sẻ THỰC của bộ lọc: `PROJECT` mà chưa gắn dự án (dữ liệu cũ) được máy chủ cho cả tổ chức thấy nên hiện là
  * `WORKSPACE` — nhãn trên hàng không nói thu hẹp hơn thực tế.
  */
 export const effectiveVisibility = (

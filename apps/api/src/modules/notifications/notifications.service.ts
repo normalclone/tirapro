@@ -498,7 +498,7 @@ export class NotificationsService {
         excerpt: plainExcerpt(comment?.body, 80),
       };
 
-      // @nhắc tên: chỉ thành viên không gian làm việc, không tự nhắc chính mình.
+      // @nhắc tên: chỉ thành viên tổ chức, không tự nhắc chính mình.
       const mentioned = await this.notifyMentioned({
         issue,
         author,

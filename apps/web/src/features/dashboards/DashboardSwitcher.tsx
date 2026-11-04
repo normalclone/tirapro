@@ -13,7 +13,7 @@ const NEW_VALUE = '__new__';
 
 /**
  * Bộ chọn dashboard ở Tổng quan và ở màn xem: "Tổng quan chung" + các dashboard người xem thấy, NHÓM THEO MỨC CHIA SẺ
- * (Của tôi / Cả không gian / Dự án / Nhóm), mỗi mục kèm huy hiệu mức, cuối cùng là "Tạo dashboard mới…" (người được
+ * (Của tôi / Cả tổ chức / Dự án / Nhóm), mỗi mục kèm huy hiệu mức, cuối cùng là "Tạo dashboard mới…" (người được
  * `dashboard:manage`). Không có gì để chọn hoặc danh sách lỗi → không hiện, để không làm hỏng trang chủ. Không nhớ dashboard xem gần nhất: Tổng quan chung vẫn là
  * trang chủ.
  */

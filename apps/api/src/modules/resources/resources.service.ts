@@ -592,7 +592,7 @@ export class ResourcesService {
     });
     if (!m)
       throw new BusinessRuleException(
-        'Người dùng không thuộc không gian làm việc này — hãy chọn một thành viên khác',
+        'Người dùng không thuộc tổ chức này — hãy chọn một thành viên khác',
       );
     return m;
   }

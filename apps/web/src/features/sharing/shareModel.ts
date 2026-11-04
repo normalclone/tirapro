@@ -31,7 +31,7 @@ export const FILTER_COPY: ShareCopy = {
 
 /**
  * Bộ lọc → giá trị của hộp chia sẻ. `PROJECT` mà chưa gắn dự án (dữ liệu cũ: biểu mẫu tạo từng cho chọn "Dự án" không kèm
- * dự án) thì máy chủ cho cả không gian thấy (`visibilityScope`) → hộp hiện đúng "Cả không gian làm việc", không nói sai.
+ * dự án) thì máy chủ cho cả tổ chức thấy (`visibilityScope`) → hộp hiện đúng "Cả tổ chức", không nói sai.
  */
 export function filterShareValue(f: {
   visibility: FilterVisibility;

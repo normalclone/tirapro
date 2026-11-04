@@ -26,7 +26,7 @@ export function unmatchedAssigneesNotice(
       ? `: ${names.join(', ')}${more > 0 ? ` và ${more} người khác` : ''}`
       : '';
     parts.push(
-      `${skipped} việc đã nhập nhưng chưa có người phụ trách vì người phụ trách trong Jira không khớp thành viên nào${who}. Hãy thêm họ vào không gian làm việc rồi gán lại.`,
+      `${skipped} việc đã nhập nhưng chưa có người phụ trách vì người phụ trách trong Jira không khớp thành viên nào${who}. Hãy thêm họ vào tổ chức rồi gán lại.`,
     );
   }
   if (remembered > 0) {
@@ -36,7 +36,7 @@ export function unmatchedAssigneesNotice(
       ? `${emails.join(', ')}${moreEmails > 0 ? ` và ${moreEmails} email khác` : ''}`
       : 'họ';
     parts.push(
-      `${remembered} việc chưa có người phụ trách — sẽ tự gán khi ${who} được thêm vào không gian làm việc.`,
+      `${remembered} việc chưa có người phụ trách — sẽ tự gán khi ${who} được thêm vào tổ chức.`,
     );
   }
   return parts.length ? parts.join(' ') : null;

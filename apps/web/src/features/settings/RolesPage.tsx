@@ -53,7 +53,7 @@ const ROLES_TABS: { id: RolesTab; label: string }[] = [
 const DEFAULT_ROLE_COLOR = paletteValue(LABEL_PALETTE[0]!, 'oklch');
 
 const SCOPE_LABEL: Record<RoleScope, string> = {
-  WORKSPACE: 'Cấp không gian làm việc',
+  WORKSPACE: 'Cấp tổ chức',
   PROJECT: 'Cấp dự án',
 };
 
@@ -309,7 +309,7 @@ const PERMS_BY_SCOPE: Record<PermissionScope, typeof PERMISSION_CATALOG> = {
 };
 
 const PERM_SCOPE_LABEL: Record<PermissionScope, string> = {
-  WORKSPACE: 'Quyền ở cấp không gian làm việc',
+  WORKSPACE: 'Quyền ở cấp tổ chức',
   PROJECT: 'Quyền cấp dự án',
 };
 
@@ -519,7 +519,7 @@ function RoleDialog({
                   onChange={setScopeAndPrune}
                   fullWidth
                   options={[
-                    { value: 'WORKSPACE', label: 'Không gian làm việc' },
+                    { value: 'WORKSPACE', label: 'Tổ chức' },
                     { value: 'PROJECT', label: 'Dự án' },
                   ]}
                 />

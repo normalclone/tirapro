@@ -4,7 +4,7 @@ import { cn } from '@/lib/utils';
 import type { MyWorkspace } from './api';
 import { workspaceSubline } from './workspaceSubline';
 
-/** Ô vuông bo góc: hiện logo của không gian làm việc nếu có, không thì chữ cái đầu. */
+/** Ô vuông bo góc: hiện logo của tổ chức nếu có, không thì chữ cái đầu. */
 export function WsBadge({
   name,
   src,
@@ -33,8 +33,8 @@ export function WsBadge({
 }
 
 /**
- * Một mục của danh sách không gian làm việc: dòng 1 tên, dòng 2 "12 thành viên · Quản trị chung" (tooltip đầy đủ).
- * Tên truy cập = tên không gian (aria-labelledby); dòng 2 chỉ là mô tả (aria-describedby) — không gộp hết vào tên.
+ * Một mục của danh sách tổ chức: dòng 1 tên, dòng 2 "12 thành viên · Quản trị chung" (tooltip đầy đủ).
+ * Tên truy cập = tên tổ chức (aria-labelledby); dòng 2 chỉ là mô tả (aria-describedby) — không gộp hết vào tên.
  */
 export function WorkspaceOption({
   ws,

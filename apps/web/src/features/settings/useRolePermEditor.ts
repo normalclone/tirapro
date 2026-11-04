@@ -157,7 +157,7 @@ function useRoleSaver(live: { current: Live }, cancelDraft: (roleId: string) => 
       toastReplace(toastId, 'success', `Đã lưu quyền của vai trò "${name}"`, {
         duration: UNDO_TOAST_MS,
         description: loss
-          ? 'Bạn không còn quyền quản lý thành viên của không gian này.'
+          ? 'Bạn không còn quyền quản lý thành viên của tổ chức này.'
           : 'Quyền mới có hiệu lực ngay.',
         onDismiss: endBurst,
         onAutoClose: endBurst,

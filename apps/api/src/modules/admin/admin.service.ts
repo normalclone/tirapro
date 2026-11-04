@@ -207,11 +207,7 @@ export class AdminService {
       input.canCreateWorkspace !== undefined &&
       input.canCreateWorkspace !== found.canCreateWorkspace
     ) {
-      permChanges.push(
-        input.canCreateWorkspace
-          ? 'cho phép lập không gian làm việc'
-          : 'thu quyền lập không gian làm việc',
-      );
+      permChanges.push(input.canCreateWorkspace ? 'cho phép lập tổ chức' : 'thu quyền lập tổ chức');
     }
     if (newEmail) {
       await this.audit.record({
@@ -358,7 +354,7 @@ export class AdminService {
   }
 
   /**
-   * Thêm một tài khoản có sẵn vào không gian làm việc. Bỏ trống vai trò → "Workspace Member". Người đã là thành viên
+   * Thêm một tài khoản có sẵn vào tổ chức. Bỏ trống vai trò → "Workspace Member". Người đã là thành viên
    * bị từ chối (tránh âm thầm ghi đè vai trò đang có — muốn đổi vai trò dùng trang Thành viên).
    */
   async addToWorkspace(actorId: string | undefined, userId: string, input: AddToWorkspaceInput) {
@@ -373,14 +369,14 @@ export class AdminService {
       }),
     ]);
     if (!user) throw new NotFoundAppException('Người dùng');
-    if (!ws) throw new NotFoundAppException('Không gian làm việc');
+    if (!ws) throw new NotFoundAppException('Tổ chức');
     const existing = await this.prisma.workspaceMembership.findUnique({
       where: { workspaceId_userId: { workspaceId: ws.id, userId } },
       select: { id: true },
     });
     if (existing) {
       throw new BusinessRuleException(
-        `${user.displayName} đã thuộc không gian làm việc ${ws.name} — đổi vai trò ở trang Thành viên của nơi đó`,
+        `${user.displayName} đã thuộc tổ chức ${ws.name} — đổi vai trò ở trang Thành viên của nơi đó`,
       );
     }
     let roleIds = input.roleIds ?? [];
@@ -405,7 +401,7 @@ export class AdminService {
       action: AUDIT_ACTIONS.ACCOUNT_WORKSPACE_ADDED,
       entityType: 'user',
       entityId: userId,
-      summary: `Thêm ${user.displayName} (${user.email}) vào không gian làm việc ${ws.name}`,
+      summary: `Thêm ${user.displayName} (${user.email}) vào tổ chức ${ws.name}`,
       meta: { workspaceId: ws.id, roleIds },
     });
     return member;

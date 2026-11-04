@@ -11,7 +11,7 @@ export interface GuardEntry {
 
 interface LeaveGuardState {
   entries: Record<string, GuardEntry>;
-  /** Đã hỏi và người dùng đồng ý bỏ (vd đổi không gian làm việc, sắp tải lại trang) → `beforeunload` không hỏi lần hai. */
+  /** Đã hỏi và người dùng đồng ý bỏ (vd đổi tổ chức, sắp tải lại trang) → `beforeunload` không hỏi lần hai. */
   suspended: boolean;
   set: (id: string, e: GuardEntry) => void;
   remove: (id: string) => void;
@@ -58,7 +58,7 @@ export function discardDirty(entries: Record<string, GuardEntry>): void {
 }
 
 /**
- * Thuần — HỎI trước thao tác sẽ tải lại cả trang (đổi/tạo không gian làm việc). Còn mục dirty → `ask(mô tả)`;
+ * Thuần — HỎI trước thao tác sẽ tải lại cả trang (đổi/tạo tổ chức). Còn mục dirty → `ask(mô tả)`;
  * trả true nếu không có gì dirty hoặc người dùng đồng ý. KHÔNG bỏ nháp: thao tác có thể thất bại, nháp phải còn
  * (bỏ nháp là việc của `commitLeaveApp`, chỉ chạy sau khi thao tác thành công).
  */

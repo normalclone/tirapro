@@ -33,7 +33,7 @@ export class WorkspacesService {
     });
     if (!actor?.isSystemAdmin && !actor?.canCreateWorkspace) {
       throw new ForbiddenAppException(
-        'Bạn không có quyền tạo không gian làm việc — hãy liên hệ quản trị hệ thống để được cấp quyền',
+        'Bạn không có quyền tạo tổ chức — hãy liên hệ quản trị hệ thống để được cấp quyền',
       );
     }
     return this.prisma.$transaction(async (tx) => {
@@ -71,7 +71,7 @@ export class WorkspacesService {
       where: { id: workspaceId, deletedAt: null },
       select: { avatarUrl: true },
     });
-    if (!prev) throw new NotFoundAppException('Không gian làm việc');
+    if (!prev) throw new NotFoundAppException('Tổ chức');
     const avatarUrl = await this.media.saveAvatar(file, 'ws', req);
     const ws = await this.prisma.workspace.update({
       where: { id: workspaceId },
@@ -87,7 +87,7 @@ export class WorkspacesService {
       where: { id: workspaceId, deletedAt: null },
       select: { avatarUrl: true },
     });
-    if (!prev) throw new NotFoundAppException('Không gian làm việc');
+    if (!prev) throw new NotFoundAppException('Tổ chức');
     const ws = await this.prisma.workspace.update({
       where: { id: workspaceId },
       data: { avatarUrl: null },

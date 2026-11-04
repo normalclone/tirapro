@@ -133,7 +133,7 @@ describe('AdminService.update — nhật ký khoá/mở khoá', () => {
     const entry = audit.record.mock.calls[0]![0] as { action: string; summary: string };
     expect(entry.action).toBe('account.permissions_changed');
     expect(entry.summary).toContain('cấp quyền admin hệ thống');
-    expect(entry.summary).toContain('cho phép lập không gian làm việc');
+    expect(entry.summary).toContain('cho phép lập tổ chức');
   });
 
   it('bật/tắt isSystemAdmin phát access.changed {userIds:[id]} (gateway rà socket mọi workspace); đổi tên thì không', async () => {
@@ -364,7 +364,7 @@ describe('AdminService — vòng đời tài khoản', () => {
   });
 });
 
-describe('AdminService.addToWorkspace — gán tài khoản vào không gian làm việc', () => {
+describe('AdminService.addToWorkspace — gán tài khoản vào tổ chức', () => {
   it('không chỉ định vai trò -> dùng vai trò hệ thống Workspace Member, ghi account.workspace_added', async () => {
     const { svc, members, audit, prisma } = make();
     await svc.addToWorkspace('admin1', 'u2', { workspaceId: 'w2' });
@@ -391,7 +391,7 @@ describe('AdminService.addToWorkspace — gán tài khoản vào không gian là
     expect(prisma.role.findFirst).not.toHaveBeenCalled();
   });
 
-  it('không gian làm việc không tồn tại / đã lưu trữ -> NotFoundAppException', async () => {
+  it('tổ chức không tồn tại / đã lưu trữ -> NotFoundAppException', async () => {
     const { svc, prisma, members } = make();
     prisma.workspace.findFirst.mockResolvedValue(null as never);
     await expect(svc.addToWorkspace('admin1', 'u2', { workspaceId: 'zz' })).rejects.toBeInstanceOf(

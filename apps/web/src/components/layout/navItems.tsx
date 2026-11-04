@@ -91,7 +91,7 @@ export const NAV_ITEMS: NavEntry[] = [
   },
 ];
 
-// Menu riêng cho Admin hệ thống — đứng trên mọi không gian làm việc (không gắn với nơi nào cụ thể).
+// Menu riêng cho Admin hệ thống — đứng trên mọi tổ chức (không gắn với nơi nào cụ thể).
 export const ADMIN_NAV: NavEntry[] = [
   {
     to: '/admin',

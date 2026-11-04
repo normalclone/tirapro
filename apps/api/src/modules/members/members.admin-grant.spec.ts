@@ -193,7 +193,7 @@ describe('MembersService — chỉ quản trị mới cấp/gỡ workspace:admin
       expect(prisma.$transaction).not.toHaveBeenCalled();
     });
 
-    it('gỡ một quản trị khỏi không gian làm việc (DELETE /members/:id)', async () => {
+    it('gỡ một quản trị khỏi tổ chức (DELETE /members/:id)', async () => {
       const { svc, prisma } = setup({
         callerIsAdmin: false,
         targetIsAdmin: true,

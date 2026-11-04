@@ -12,7 +12,7 @@ import type { ShareValue } from './shareModel';
 /**
  * "Ai có quyền xem" theo mức đang chọn. Chỉ dùng dữ liệu người xem vốn đã thấy: nhóm (`useTeams`), thành viên dự án RIÊNG
  * TƯ qua `GET /projects/:id/members` (đòi quyền xem dự án — không đọc được thì chỉ ghi chú, không lộ đội hình), số thành
- * viên không gian (`memberCount`). Avatar chỉ trang trí (ẩn khỏi trình đọc màn hình); MỘT câu sr-only nêu tên thay thế.
+ * viên tổ chức (`memberCount`). Avatar chỉ trang trí (ẩn khỏi trình đọc màn hình); MỘT câu sr-only nêu tên thay thế.
  */
 export function AudiencePanel({ value }: { value: ShareValue }) {
   const labelId = useId();

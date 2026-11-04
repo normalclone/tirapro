@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { BusinessRuleException } from '../../common/exceptions/app.exception';
 
-/** Hạn mức token AI theo tháng cho từng không gian làm việc (cộng từ `AiGenerationLog`). */
+/** Hạn mức token AI theo tháng cho từng tổ chức (cộng từ `AiGenerationLog`). */
 @Injectable()
 export class AiQuotaService {
   constructor(
@@ -30,7 +30,7 @@ export class AiQuotaService {
     const used = (agg._sum.inputTokens ?? 0) + (agg._sum.outputTokens ?? 0);
     if (used >= quota) {
       throw new BusinessRuleException(
-        'Không gian làm việc đã dùng hết hạn mức AI tháng này. Hãy liên hệ quản trị viên để nâng hạn mức, hoặc thử lại vào đầu tháng sau.',
+        'Tổ chức đã dùng hết hạn mức AI tháng này. Hãy liên hệ quản trị viên để nâng hạn mức, hoặc thử lại vào đầu tháng sau.',
       );
     }
   }

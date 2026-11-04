@@ -44,7 +44,7 @@ const NEW_DASHBOARD_NAME = 'Bảng tổng quan mới';
 
 const SCOPE_LABEL = {
   PRIVATE: 'Chỉ mình tôi',
-  GLOBAL: 'Cả không gian làm việc',
+  GLOBAL: 'Cả tổ chức',
   PROJECT: 'Thành viên dự án',
   TEAM: 'Thành viên nhóm',
 } as const;

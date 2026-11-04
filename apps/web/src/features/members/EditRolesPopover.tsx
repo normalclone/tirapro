@@ -36,7 +36,7 @@ const TITLE_HINT =
 
 /**
  * Popover sửa vai trò của một thành viên. Mặc định: multi-select ≥1 vai trò rồi Lưu (thành viên dự án).
- * `instant`: lưu ngay từng lần chọn, không có nút Lưu (thành viên không gian làm việc).
+ * `instant`: lưu ngay từng lần chọn, không có nút Lưu (thành viên tổ chức).
  */
 export function EditRolesPopover(props: SaveProps | InstantProps) {
   const [open, setOpen] = useState(false);

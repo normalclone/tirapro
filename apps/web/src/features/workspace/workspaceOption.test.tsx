@@ -49,7 +49,7 @@ describe('WorkspaceOption', () => {
         onPick={() => undefined}
       />,
     );
-  it('tên truy cập = tên không gian (aria-labelledby); dòng 2 chỉ là mô tả (aria-describedby)', () => {
+  it('tên truy cập = tên tổ chức (aria-labelledby); dòng 2 chỉ là mô tả (aria-describedby)', () => {
     const out = html();
     const labelled = /aria-labelledby="([^"]+)"/.exec(out)![1]!;
     const described = /aria-describedby="([^"]+)"/.exec(out)![1]!;
@@ -71,7 +71,7 @@ describe('WorkspaceOption', () => {
     expect(old).toContain('Quản trị chung');
     expect(old).not.toMatch(/undefined|NaN/);
   });
-  it('✓ chỉ ở không gian đang chọn, aria-selected phản ánh', () => {
+  it('✓ chỉ ở tổ chức đang chọn, aria-selected phản ánh', () => {
     expect(html({ active: true })).toMatch(/aria-selected="true"/);
     expect(html({ active: true })).toContain('lucide-check');
     expect(html({ active: false })).not.toContain('lucide-check');
@@ -80,10 +80,9 @@ describe('WorkspaceOption', () => {
 });
 
 describe('nối dây', () => {
-  it('switcher dùng WorkspaceOption; không thêm Cài đặt/Đăng xuất (đã có UserMenu)', () => {
+  it('thanh trên chỉ hiện tên tổ chức: không bộ chọn, không lập tổ chức mới', () => {
     const sw = read('WorkspaceSwitcher.tsx');
-    expect(sw).toMatch(/<WorkspaceOption/);
-    expect(sw).not.toMatch(/Đăng xuất|Cài đặt/);
+    expect(sw).not.toMatch(/Popover|CreateWorkspaceModal|useSwitchWorkspace/);
   });
   it('kiểu MyWorkspace có memberCount tuỳ chọn (API cũ)', () => {
     expect(read('api.ts')).toMatch(/memberCount\?: number/);

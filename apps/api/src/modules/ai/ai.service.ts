@@ -265,7 +265,7 @@ export class AiService {
   /**
    * Tối đa 3 việc GIỐNG (không gồm chính việc này) làm bằng chứng cho gợi ý. Đi qua `SearchService.similarIssueIds` với
    * `viewerId` = người gọi (KHÔNG null = ngữ cảnh hệ thống): dự án riêng tư người đó không thấy → 404 → trả rỗng, gợi ý vẫn chạy.
-   * Chỉ lấy việc còn sống, cùng không gian + dự án, đã qua Triage. Lỗi tìm kiếm nào cũng chỉ làm mất phần nguồn (ghi log).
+   * Chỉ lấy việc còn sống, cùng tổ chức + dự án, đã qua Triage. Lỗi tìm kiếm nào cũng chỉ làm mất phần nguồn (ghi log).
    * `context`: văn bản các việc đó để đưa vào prompt (mã, tiêu đề, ưu tiên, điểm) — người gọi bọc trong `<issue>`.
    */
   private async similarSources(

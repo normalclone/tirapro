@@ -4,7 +4,7 @@ import { fmtDateTime } from '@/lib/dateFormat';
 import { useAuth } from '@/stores/auth';
 
 /**
- * Khối CHỈ hiện khi in (`[data-print-only]` ở globals.css): tên không gian làm việc, tiêu đề báo cáo, phạm vi,
+ * Khối CHỈ hiện khi in (`[data-print-only]` ở globals.css): tên tổ chức, tiêu đề báo cáo, phạm vi,
  * "In lúc dd/MM/yyyy HH:mm bởi <Tên>". Giờ in cập nhật ở `beforeprint` nên Ctrl/Cmd+P cũng đúng giờ bấm in.
  */
 export function PrintHeader({ title, subtitle }: { title: string; subtitle?: string }) {

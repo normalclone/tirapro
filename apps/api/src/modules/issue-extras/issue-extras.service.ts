@@ -75,7 +75,7 @@ export class IssueExtrasService {
       });
       if (members.length !== unique.length) {
         throw new ForbiddenAppException(
-          'Một số người dùng không thuộc không gian làm việc này — hãy chọn lại từ danh sách thành viên',
+          'Một số người dùng không thuộc tổ chức này — hãy chọn lại từ danh sách thành viên',
         );
       }
     }

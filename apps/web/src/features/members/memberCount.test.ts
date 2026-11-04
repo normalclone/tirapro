@@ -32,7 +32,7 @@ describe('memberCountParts — chữ hiện ở đầu danh sách', () => {
   });
 });
 
-describe('MembersPage và bộ chọn không gian', () => {
+describe('MembersPage và bộ chọn tổ chức', () => {
   it('đầu danh sách dùng memberCountParts, không còn "N người"', () => {
     const page = readFileSync(join(__dirname, 'MembersPage.tsx'), 'utf8');
     expect(page).toMatch(/memberCountParts\(members\)/);

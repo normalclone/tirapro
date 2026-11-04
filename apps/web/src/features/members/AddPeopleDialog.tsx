@@ -41,8 +41,8 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 /**
- * Thêm NHIỀU người một lúc vào không gian làm việc hoặc dự án, có bộ lọc.
- * - workspace: danh sách chọn = người có tài khoản CHƯA thuộc không gian làm việc (lọc: tìm kiếm +
+ * Thêm NHIỀU người một lúc vào tổ chức hoặc dự án, có bộ lọc.
+ * - workspace: danh sách chọn = người có tài khoản CHƯA thuộc tổ chức (lọc: tìm kiếm +
  *   trạng thái tài khoản; họ chưa có vai trò/nhóm ở đây nên 2 bộ lọc đó tự ẩn).
  * - project: danh sách chọn = thành viên chung CHƯA ở dự án (lọc: tìm kiếm + nhóm + vai trò).
  * Bộ lọc hiển thị theo DỮ LIỆU: chỉ hiện khi có giá trị để lọc.
@@ -208,7 +208,7 @@ export function AddPeopleDialog({
       onOpenChange={(o) => {
         if (!o) onClose();
       }}
-      title={isProject ? 'Thêm người vào dự án' : 'Thêm người vào không gian làm việc'}
+      title={isProject ? 'Thêm người vào dự án' : 'Thêm người vào tổ chức'}
       size="lg"
       bodyClassName="flex flex-col overflow-hidden p-0"
       footer={
@@ -368,7 +368,7 @@ export function AddPeopleDialog({
         {filtered.length === 0 && (
           <li className="px-3 py-10 text-center text-sm text-muted">
             {isProject
-              ? 'Không còn ai khớp bộ lọc. Xoá bớt bộ lọc, hoặc thêm người vào không gian làm việc trước.'
+              ? 'Không còn ai khớp bộ lọc. Xoá bớt bộ lọc, hoặc thêm người vào tổ chức trước.'
               : 'Không còn ai khớp bộ lọc. Xoá bớt bộ lọc, hoặc thêm người mới ở trang Thành viên.'}
           </li>
         )}

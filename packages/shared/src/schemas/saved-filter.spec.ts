@@ -9,7 +9,7 @@ import {
 const base = { name: 'n', jql: 'project = HR' };
 
 describe('savedFilterCreateSchema — mức "Dự án" bắt buộc có dự án', () => {
-  it('PROJECT không kèm dự án (thiếu / null / rỗng) bị từ chối: nếu không, máy chủ coi là cả không gian thấy', () => {
+  it('PROJECT không kèm dự án (thiếu / null / rỗng) bị từ chối: nếu không, máy chủ coi là cả tổ chức thấy', () => {
     for (const extra of [
       { visibility: 'PROJECT' },
       { visibility: 'PROJECT', sharedProjectId: null },

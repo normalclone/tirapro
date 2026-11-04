@@ -57,7 +57,7 @@ function AddToWorkspaceDialogInner({
       { userId: user.id, workspaceId, roleIds: roleIds.length > 0 ? roleIds : undefined },
       {
         onSuccess: () => {
-          toast.success(`Đã thêm ${user.displayName} vào không gian làm việc`);
+          toast.success(`Đã thêm ${user.displayName} vào tổ chức`);
           onClose();
         },
         onError: (err) => toast.error(apiErrorMessage(err)),
@@ -72,7 +72,7 @@ function AddToWorkspaceDialogInner({
         if (!o) onClose();
       }}
       icon={<Building2 className="h-4 w-4" />}
-      title="Thêm vào không gian làm việc"
+      title="Thêm vào tổ chức"
       description={`${user.displayName} (${user.email})`}
       footer={
         <>
@@ -92,14 +92,14 @@ function AddToWorkspaceDialogInner({
     >
       <form id="add-to-workspace-form" onSubmit={submit} className="space-y-4">
         <div className="space-y-1.5">
-          <span className="text-sm font-medium text-ink">Không gian làm việc</span>
+          <span className="text-sm font-medium text-ink">Tổ chức</span>
           <SearchSelect
             value={workspaceId}
             onChange={setWorkspaceId}
             options={wsOptions}
-            placeholder="Chọn không gian làm việc…"
-            searchPlaceholder="Tìm không gian làm việc…"
-            ariaLabel="Không gian làm việc"
+            placeholder="Chọn tổ chức…"
+            searchPlaceholder="Tìm tổ chức…"
+            ariaLabel="Tổ chức"
             className="w-full"
           />
         </div>
@@ -110,7 +110,7 @@ function AddToWorkspaceDialogInner({
               options={roleOptions}
               value={roleIds}
               onChange={setPicked}
-              ariaLabel="Vai trò trong không gian làm việc"
+              ariaLabel="Vai trò trong tổ chức"
             />
           </div>
         )}

@@ -168,7 +168,7 @@ describe.skipIf(!DB_URL)('ExcelImportService ↔ Postgres thật', () => {
     expect(res.rows[2]!.errors[0]!.column).toBe('Phiên bản');
   });
 
-  it('cô lập không gian làm việc: dự án của không gian khác → 404, không đọc được danh mục', async () => {
+  it('cô lập tổ chức: dự án của tổ chức khác → 404, không đọc được danh mục', async () => {
     await expect(service.template(OTHER_WS, PROJECT)).rejects.toThrow();
   });
 });

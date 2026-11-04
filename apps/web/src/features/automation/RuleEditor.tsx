@@ -1090,7 +1090,7 @@ export function RuleEditor({
               onChange={(projectId) => set({ projectId })}
               disabled={!!rule}
               options={[
-                { value: '', label: 'Toàn bộ không gian làm việc' },
+                { value: '', label: 'Toàn bộ tổ chức' },
                 ...(projects ?? []).map((p) => ({ value: p.id, label: p.name, hint: p.key })),
               ]}
               searchPlaceholder="Tìm dự án…"

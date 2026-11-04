@@ -1,8 +1,8 @@
 import { SYSTEM_USER_EMAIL } from './system-user';
 
 /**
- * Điều kiện đếm thành viên "đang hoạt động" của một không gian làm việc: bỏ tài khoản bị vô hiệu hoá và user hệ
- * thống (automation). Dùng chung cho bộ chọn không gian (`AuthService.listWorkspaces`) và bảng quản trị
+ * Điều kiện đếm thành viên "đang hoạt động" của một tổ chức: bỏ tài khoản bị vô hiệu hoá và user hệ
+ * thống (automation). Dùng chung cho bộ chọn tổ chức (`AuthService.listWorkspaces`) và bảng quản trị
  * (`AdminWorkspacesService`) để hai nơi luôn cùng một con số.
  * Vị từ SYSTEM_USER_EMAIL là lưới an toàn: user hệ thống không bao giờ có membership (`addWorkspace` chặn).
  */

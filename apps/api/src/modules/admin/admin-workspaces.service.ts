@@ -13,7 +13,7 @@ const WS_SELECT = {
   deletedAt: true,
   createdAt: true,
   owner: { select: { id: true, displayName: true, email: true, avatarUrl: true } },
-  // `memberships` = số thành viên ĐANG HOẠT ĐỘNG (cùng quy tắc bộ chọn không gian), không phải mọi dòng membership.
+  // `memberships` = số thành viên ĐANG HOẠT ĐỘNG (cùng quy tắc bộ chọn tổ chức), không phải mọi dòng membership.
   _count: { select: { memberships: ACTIVE_MEMBERSHIP_COUNT, projects: true, issues: true } },
 } as const;
 
@@ -66,13 +66,13 @@ export class AdminWorkspacesService {
       this.prisma.workspace.findUnique({ where: { id }, select: WS_SELECT }),
       this.prisma.activityLog.aggregate({ where: { workspaceId: id }, _max: { createdAt: true } }),
     ]);
-    if (!w) throw new NotFoundAppException('Không gian làm việc');
+    if (!w) throw new NotFoundAppException('Tổ chức');
     return this.toDto(w, act._max.createdAt ?? null);
   }
 
   async patch(id: string, input: PatchWorkspaceInput) {
     const ws = await this.prisma.workspace.findUnique({ where: { id }, select: { id: true } });
-    if (!ws) throw new NotFoundAppException('Không gian làm việc');
+    if (!ws) throw new NotFoundAppException('Tổ chức');
 
     if (input.ownerId) {
       const member = await this.prisma.workspaceMembership.findFirst({
@@ -81,7 +81,7 @@ export class AdminWorkspacesService {
       });
       if (!member)
         throw new BusinessRuleException(
-          'Chủ sở hữu mới phải là thành viên của không gian làm việc này — hãy thêm họ vào danh sách thành viên trước',
+          'Chủ sở hữu mới phải là thành viên của tổ chức này — hãy thêm họ vào danh sách thành viên trước',
         );
     }
 

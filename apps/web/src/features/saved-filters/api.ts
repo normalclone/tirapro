@@ -52,7 +52,7 @@ export interface FilterFields {
   versions: FieldOption[];
 }
 
-/** Danh mục giá trị cho bộ dựng truy vấn trực quan (gom theo không gian làm việc). */
+/** Danh mục giá trị cho bộ dựng truy vấn trực quan (gom theo tổ chức). */
 export function useFilterFields() {
   return useQuery({
     queryKey: keys.filters.fields,

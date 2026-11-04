@@ -35,7 +35,7 @@ export function MembersSection({
   const confirm = useConfirm();
   const canAdmin = useCan(projectId)('project:admin');
 
-  // Thành viên dự án = TOÀN BỘ thành viên của không gian làm việc (dự án dùng chung tập người dùng).
+  // Thành viên dự án = TOÀN BỘ thành viên của tổ chức (dự án dùng chung tập người dùng).
   // `isOverride` cho biết vai trò đang là ĐẶT RIÊNG hay MẶC ĐỊNH theo vai trò chung.
   const membersQuery = useProjectMembers(projectId);
   const { data: members } = membersQuery;
@@ -88,7 +88,7 @@ export function MembersSection({
           <EmptyState
             icon={<Users className="h-6 w-6" />}
             title="Chưa có thành viên nào"
-            description="Thêm người vào không gian làm việc ở trang Thành viên — họ sẽ tự động tham gia mọi dự án."
+            description="Thêm người vào tổ chức ở trang Thành viên — họ sẽ tự động tham gia mọi dự án."
           />
         }
       >

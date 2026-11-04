@@ -344,7 +344,7 @@ export class JiraImportService implements OnApplicationBootstrap {
       });
       if (dup)
         throw new BusinessRuleException(
-          `Mã dự án "${input.newProject.key}" đã tồn tại trong không gian làm việc này — hãy chọn mã khác`,
+          `Mã dự án "${input.newProject.key}" đã tồn tại trong tổ chức này — hãy chọn mã khác`,
         );
     }
 
@@ -1091,7 +1091,7 @@ export class JiraImportService implements OnApplicationBootstrap {
     }
     for (const [name, id] of Object.entries(input.mapping.users)) {
       if (id !== null && id !== '' && !catalog.memberIds.has(id))
-        bad.push(`người dùng "${name}" → ${id} không phải thành viên không gian làm việc`);
+        bad.push(`người dùng "${name}" → ${id} không phải thành viên tổ chức`);
     }
     if (bad.length)
       throw new BusinessRuleException(
@@ -1151,7 +1151,7 @@ export class JiraImportService implements OnApplicationBootstrap {
       const meta = JSON.parse(
         (await streamToBuffer(metaObj.stream)).toString('utf8'),
       ) as AnalyzeMeta;
-      if (meta.workspaceId !== workspaceId) throw new Error('khác không gian làm việc');
+      if (meta.workspaceId !== workspaceId) throw new Error('khác tổ chức');
       if (Date.now() - stat.lastModified.getTime() > ANALYZE_TTL_MS) {
         await this.removeFiles(analyzeId);
         throw new Error('hết hạn');

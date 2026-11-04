@@ -54,7 +54,7 @@ export const CONNECT_LABELS = {
 /** Console quản trị hệ thống (`/admin/*`). */
 export const ADMIN_LABELS = {
   overview: 'Tổng quan',
-  workspaces: 'Không gian làm việc',
+  workspaces: 'Tổ chức',
   accounts: 'Tài khoản',
   config: 'Cấu hình',
   system: 'Hệ thống',
@@ -63,7 +63,7 @@ export const ADMIN_LABELS = {
 
 /** Nhãn NGẮN cho ô trên thanh tab đáy khi nhãn đầy đủ bị cắt trên màn hẹp (nhãn đầy đủ giữ làm `aria-label`). */
 export const TAB_SHORT_LABELS = {
-  adminWorkspaces: 'Không gian',
+  adminWorkspaces: 'Tổ chức',
 } as const;
 
 /** Mục con của Cấu hình dự án (`/p/:key/config`). */

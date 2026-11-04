@@ -5,6 +5,6 @@ const LAST_WORKSPACE_ADMIN = 'LAST_WORKSPACE_ADMIN';
 export function memberErrorText(code: string | undefined, personName?: string): string | undefined {
   if (code === ALREADY_MEMBER) return `${personName?.trim() || 'Người này'} đã là thành viên.`;
   if (code === LAST_WORKSPACE_ADMIN)
-    return 'Không thể hạ hoặc gỡ quản trị viên cuối cùng của không gian làm việc.';
+    return 'Không thể hạ hoặc gỡ quản trị viên cuối cùng của tổ chức.';
   return undefined;
 }

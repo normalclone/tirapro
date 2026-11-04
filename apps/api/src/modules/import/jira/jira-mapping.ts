@@ -256,9 +256,9 @@ export function summarizeRemembered(
 export function formatRemembered(r: RememberedAssignees, dryRun = false): string {
   // Chạy thử (phản hồi chỉ tới quản trị) nêu email; nhật ký job (đọc được qua import:run) thì KHÔNG nêu email.
   if (!dryRun)
-    return `${r.total} việc chưa có người phụ trách — sẽ tự gán khi họ được thêm vào không gian làm việc.`;
+    return `${r.total} việc chưa có người phụ trách — sẽ tự gán khi họ được thêm vào tổ chức.`;
   const who = `${r.emails.join(', ')}${r.more > 0 ? ` và ${r.more} email khác` : ''}`;
-  return `${r.total} việc sẽ tự gán khi ${who} được thêm vào không gian làm việc.`;
+  return `${r.total} việc sẽ tự gán khi ${who} được thêm vào tổ chức.`;
 }
 
 export interface UnmatchedAssignees {
@@ -296,5 +296,5 @@ export function summarizeUnmatchedAssignees(
 export function formatUnmatchedAssignees(u: UnmatchedAssignees): string {
   const names = u.listed.map((x) => `${x.name} (${x.count} việc)`).join(', ');
   const more = u.more > 0 ? ` và ${u.more} người khác` : '';
-  return `${u.skipped} việc được nhập nhưng KHÔNG có người phụ trách vì người phụ trách trong Jira không khớp thành viên nào: ${names}${more}. Hãy ghép họ với thành viên (hoặc thêm họ vào không gian làm việc) rồi gán lại.`;
+  return `${u.skipped} việc được nhập nhưng KHÔNG có người phụ trách vì người phụ trách trong Jira không khớp thành viên nào: ${names}${more}. Hãy ghép họ với thành viên (hoặc thêm họ vào tổ chức) rồi gán lại.`;
 }

@@ -205,7 +205,7 @@ export class RaidService {
       throw new ForbiddenAppException(
         projectId
           ? 'Bạn không có quyền quản lý rủi ro ở dự án đích — hãy nhờ quản trị viên dự án đó cấp quyền hoặc chọn dự án khác'
-          : 'Bạn không có quyền quản lý rủi ro cấp không gian làm việc — hãy giữ mục này trong dự án hiện tại',
+          : 'Bạn không có quyền quản lý rủi ro cấp tổ chức — hãy giữ mục này trong dự án hiện tại',
       );
     }
   }
@@ -234,7 +234,7 @@ export class RaidService {
 
   /**
    * Danh sách người phụ trách (người đầu = chính): `ownerIds` nếu có, không thì `ownerId` cũ. Khử trùng lặp, giữ thứ tự;
-   * mọi người phải là thành viên không gian làm việc.
+   * mọi người phải là thành viên tổ chức.
    */
   private async resolveOwners(
     workspaceId: string,
@@ -250,7 +250,7 @@ export class RaidService {
     const ok = new Set(members.map((m) => m.userId));
     if (ids.some((id) => !ok.has(id)))
       throw new ForbiddenAppException(
-        'Có người phụ trách không thuộc không gian làm việc này — hãy chọn lại từ danh sách thành viên',
+        'Có người phụ trách không thuộc tổ chức này — hãy chọn lại từ danh sách thành viên',
       );
     return ids;
   }

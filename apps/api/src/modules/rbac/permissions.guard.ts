@@ -36,9 +36,7 @@ export class PermissionsGuard implements CanActivate {
     if (!user) throw new ForbiddenAppException('Chưa xác thực');
     if (user.isSystemAdmin) return true;
     if (!user.workspaceId)
-      throw new ForbiddenAppException(
-        'Bạn chưa chọn không gian làm việc — hãy chọn một không gian rồi thử lại',
-      );
+      throw new ForbiddenAppException('Bạn chưa chọn tổ chức — hãy chọn một tổ chức rồi thử lại');
 
     const { projectId, notFoundLabel } = await this.resolveProject(context, req, user.workspaceId);
     // Dự án người gọi không xem được (riêng tư không là thành viên; hoặc vai thiếu `project:view` cấp workspace) nhận 404

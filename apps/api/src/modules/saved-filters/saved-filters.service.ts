@@ -216,7 +216,7 @@ export class SavedFiltersService {
       await this.access.assertCanSee(userId, workspaceId, sharedProjectId, 'Dự án');
   }
 
-  /** Mức PROJECT phải có dự án (xem `effectiveFilterShareError`): 422 thay vì lưu thành "cả không gian thấy". */
+  /** Mức PROJECT phải có dự án (xem `effectiveFilterShareError`): 422 thay vì lưu thành "cả tổ chức thấy". */
   private assertShareValid(
     current: SavedFilterRow | null,
     input: { visibility?: FilterVisibility; sharedProjectId?: string | null },

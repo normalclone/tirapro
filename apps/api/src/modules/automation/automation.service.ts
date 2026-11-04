@@ -466,7 +466,7 @@ export class AutomationService implements OnApplicationShutdown {
         );
         if (!actorId)
           throw new Error(
-            'Không xác định được người tạo công việc — hãy thêm ít nhất một thành viên vào không gian làm việc',
+            'Không xác định được người tạo công việc — hãy thêm ít nhất một thành viên vào tổ chức',
           );
         await this.createIssueFrom(
           rec.project.workspaceId,

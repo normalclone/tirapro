@@ -25,7 +25,7 @@ import { useRolePermEditor } from './useRolePermEditor';
 
 const SCOPES: { value: PermissionScope; label: string }[] = [
   { value: 'PROJECT', label: 'Cấp dự án' },
-  { value: 'WORKSPACE', label: 'Cấp không gian làm việc' },
+  { value: 'WORKSPACE', label: 'Cấp tổ chức' },
 ];
 
 type Picked = Record<PermissionScope, string[] | null>;
@@ -292,7 +292,7 @@ function EditNotes({
           {' '}
           <span id={adminNoteId} className="inline-flex items-center gap-1 text-faint">
             <Lock className="h-3 w-3" aria-hidden />
-            Quyền “Quản trị không gian làm việc” và vai trò đang giữ quyền đó: {ADMIN_GRANT_REASON}.
+            Quyền “Quản trị tổ chức” và vai trò đang giữ quyền đó: {ADMIN_GRANT_REASON}.
           </span>
         </>
       )}

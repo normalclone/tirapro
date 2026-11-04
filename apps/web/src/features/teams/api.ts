@@ -12,7 +12,7 @@ export interface TeamInput {
   memberIds?: string[];
 }
 
-/** Danh sách nhóm của không gian làm việc hiện tại (kèm lead, thành viên, số đếm). */
+/** Danh sách nhóm của tổ chức hiện tại (kèm lead, thành viên, số đếm). */
 export function useTeams() {
   return useQuery({
     queryKey: keys.teams.all,

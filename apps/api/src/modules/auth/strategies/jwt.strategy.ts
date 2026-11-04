@@ -49,7 +49,7 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
       });
       if (!membership) {
         throw new UnauthorizedException(
-          'Bạn không còn là thành viên của không gian làm việc này — hãy đăng nhập lại để chọn không gian khác',
+          'Bạn không còn là thành viên của tổ chức này — hãy đăng nhập lại để chọn tổ chức khác',
         );
       }
     }

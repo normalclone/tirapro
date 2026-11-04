@@ -19,7 +19,7 @@ export const updateUserSchema = z.object({
   status: z.enum(['ACTIVE', 'DEACTIVATED']).optional(),
 });
 
-/** Admin hệ thống thêm một tài khoản vào một không gian làm việc (vai trò mặc định: Workspace Member). */
+/** Admin hệ thống thêm một tài khoản vào một tổ chức (vai trò mặc định: Workspace Member). */
 export const addToWorkspaceSchema = z.object({
   workspaceId: z.string().min(1),
   roleIds: z.array(z.string().min(1)).max(20).optional(),

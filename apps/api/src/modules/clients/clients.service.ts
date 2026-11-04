@@ -310,7 +310,7 @@ export class ClientsService {
     });
     if (found.length !== ids.length)
       throw new BusinessRuleException(
-        'Một số dự án không thuộc không gian làm việc này — hãy bỏ chọn những dự án đó',
+        'Một số dự án không thuộc tổ chức này — hãy bỏ chọn những dự án đó',
       );
     return ids;
   }

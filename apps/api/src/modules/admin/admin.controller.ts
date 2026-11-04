@@ -78,7 +78,7 @@ export class AdminController {
     return this.admin.revokeSessions(user.id, id);
   }
 
-  /** Thêm tài khoản vào một không gian làm việc (vd tài khoản mồ côi chưa thuộc nơi nào). */
+  /** Thêm tài khoản vào một tổ chức (vd tài khoản mồ côi chưa thuộc nơi nào). */
   @Post(':id/workspaces')
   async addToWorkspace(
     @CurrentUser() user: AuthUser,

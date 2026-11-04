@@ -90,9 +90,9 @@ describe('AudiencePanel — ai có quyền', () => {
     expect(h).toContain('Chỉ bạn');
     expect(h).not.toContain('<img');
   });
-  it('GLOBAL: "Mọi thành viên không gian (N)" lấy từ memberCount của không gian đang dùng', () => {
+  it('GLOBAL: "Mọi thành viên tổ chức (N)" lấy từ memberCount của tổ chức đang dùng', () => {
     expect(wrap(<AudiencePanel value={val({ scope: 'GLOBAL' })} />)).toContain(
-      'Mọi thành viên không gian (25)',
+      'Mọi thành viên tổ chức (25)',
     );
   });
   it('TEAM: 5 avatar + "+N" (trang trí, ẩn khỏi trình đọc) + MỘT câu sr-only liệt kê tên', () => {
@@ -105,7 +105,7 @@ describe('AudiencePanel — ai có quyền', () => {
     expect(h.match(/class="sr-only"/g)?.length).toBe(1);
     expect(h).toContain('Gồm Người 1, Người 2, Người 3, Người 4, Người 5 và 3 người khác.');
   });
-  it('PROJECT công khai: mọi thành viên không gian; riêng tư: danh sách thành viên dự án', () => {
+  it('PROJECT công khai: mọi thành viên tổ chức; riêng tư: danh sách thành viên dự án', () => {
     const pub = wrap(<AudiencePanel value={val({ scope: 'PROJECT', projectId: 'pub' })} />);
     expect(pub).toContain('Mọi thành viên có quyền xem dự án');
     expect(pub).not.toContain('(25)');
@@ -126,7 +126,7 @@ describe('AudiencePanel — ai có quyền', () => {
       { id: 'w1', name: 'W', slug: 'w', avatarUrl: null, roleName: 'Admin' },
     ]);
     const h = wrap(<AudiencePanel value={val({ scope: 'GLOBAL' })} />, qc);
-    expect(h).toContain('Mọi thành viên không gian');
+    expect(h).toContain('Mọi thành viên tổ chức');
     expect(h).not.toMatch(/undefined|NaN|\(\)/);
   });
 });
@@ -231,7 +231,7 @@ describe('SharePanel', () => {
       />,
     );
     expect(h).not.toContain('role="radiogroup"');
-    expect(h).toContain('Mọi thành viên không gian (25)');
+    expect(h).toContain('Mọi thành viên tổ chức (25)');
     expect(h).toContain('Sao chép liên kết');
     expect(h).toContain('Chỉ người tạo bộ lọc mới đổi được phạm vi chia sẻ.');
   });

@@ -2,9 +2,9 @@ import { z } from 'zod';
 import { FilterVisibility } from '@tirapro/types';
 
 /**
- * Bộ lọc đã lưu. Mức `PROJECT` PHẢI kèm dự án: máy chủ xử lý `PROJECT` + `sharedProjectId = null` như "cả không gian thấy"
+ * Bộ lọc đã lưu. Mức `PROJECT` PHẢI kèm dự án: máy chủ xử lý `PROJECT` + `sharedProjectId = null` như "cả tổ chức thấy"
  * (`visibilityScope`) — người tạo tưởng chỉ dự án thấy trong khi tên và JQL lộ cho mọi người. Các bộ lọc CŨ đang ở trạng thái
- * đó vẫn đọc được (hiển thị đúng là "Cả không gian"); luật chỉ chặn tạo/sửa mới.
+ * đó vẫn đọc được (hiển thị đúng là "Cả tổ chức"); luật chỉ chặn tạo/sửa mới.
  */
 export const SHARED_PROJECT_REQUIRED_MESSAGE = 'Chia sẻ theo dự án phải chọn một dự án';
 

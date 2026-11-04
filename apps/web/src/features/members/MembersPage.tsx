@@ -135,7 +135,7 @@ export function MembersPage() {
                     <EmptyState
                       icon={<Users className="h-6 w-6" />}
                       title="Chưa có thành viên nào"
-                      description="Đây là danh sách người được vào không gian làm việc này. Bấm “Mời thành viên” để thêm người đầu tiên."
+                      description="Đây là danh sách người được vào tổ chức này. Bấm “Mời thành viên” để thêm người đầu tiên."
                       action={
                         canManage ? (
                           <Button variant="secondary" size="sm" onClick={() => setInviteOpen(true)}>
@@ -242,7 +242,7 @@ function MemberRow({
 
   async function handleRemove() {
     const ok = await confirm({
-      title: `Gỡ ${user.displayName} khỏi không gian làm việc?`,
+      title: `Gỡ ${user.displayName} khỏi tổ chức?`,
       description:
         'Họ sẽ mất quyền vào mọi dự án ở đây. Việc đã giao cho họ vẫn giữ nguyên. Bạn có thể thêm lại sau.',
       confirmLabel: 'Gỡ',
@@ -303,8 +303,8 @@ function MemberRow({
               variant="ghost"
               size="icon"
               className="text-muted hover:text-danger"
-              title={`Gỡ ${user.displayName} khỏi không gian làm việc — họ sẽ mất quyền vào mọi dự án`}
-              aria-label={`Gỡ ${user.displayName} khỏi không gian làm việc`}
+              title={`Gỡ ${user.displayName} khỏi tổ chức — họ sẽ mất quyền vào mọi dự án`}
+              aria-label={`Gỡ ${user.displayName} khỏi tổ chức`}
               loading={remove.isPending}
               onClick={() => void handleRemove()}
             >

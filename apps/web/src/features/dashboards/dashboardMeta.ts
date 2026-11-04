@@ -8,7 +8,7 @@ export function scopeBadge(
     case 'PRIVATE':
       return 'Riêng tư';
     case 'GLOBAL':
-      return 'Cả không gian';
+      return 'Cả tổ chức';
     case 'PROJECT':
       return d.project ? `Dự án ${d.project.key}` : 'Theo dự án';
     case 'TEAM':
@@ -24,7 +24,7 @@ export function scopeDescription(
     case 'PRIVATE':
       return 'Chỉ mình chủ bảng tổng quan xem được';
     case 'GLOBAL':
-      return 'Mọi thành viên không gian làm việc xem được';
+      return 'Mọi thành viên tổ chức xem được';
     case 'PROJECT':
       return `Thành viên dự án ${d.project?.name ?? ''}`.trim();
     case 'TEAM':
@@ -71,7 +71,7 @@ export function groupDashboards(list: CustomDashboardSummaryDto[]): DashboardGro
   }
   const groups: DashboardGroup[] = [
     { id: 'mine', title: 'Của tôi', items: mine },
-    { id: 'global', title: 'Cả không gian', items: global },
+    { id: 'global', title: 'Cả tổ chức', items: global },
     ...[...byProject.values()].sort((a, b) => a.title.localeCompare(b.title, 'vi')),
     ...[...byTeam.values()].sort((a, b) => a.title.localeCompare(b.title, 'vi')),
   ];

@@ -29,7 +29,7 @@ describe('mức chia sẻ của bộ lọc ↔ giá trị của hộp chia sẻ'
       teamId: '',
     });
   });
-  it('PROJECT chưa gắn dự án (dữ liệu cũ) = máy chủ cho cả không gian thấy → hộp hiện đúng "Cả không gian"', () => {
+  it('PROJECT chưa gắn dự án (dữ liệu cũ) = máy chủ cho cả tổ chức thấy → hộp hiện đúng "Cả tổ chức"', () => {
     expect(filterShareValue({ visibility: 'PROJECT', sharedProjectId: null }).scope).toBe('GLOBAL');
   });
   it('ghi: luôn gửi CẢ visibility lẫn sharedProjectId (đổi sang mức khác thì bỏ dự án cũ)', () => {

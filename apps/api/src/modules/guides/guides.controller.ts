@@ -17,7 +17,7 @@ export class GuidesController {
     private readonly onboarding: OnboardingService,
   ) {}
 
-  /** Guide đã publish cho một màn (bỏ `screen` = toàn bộ workspace), kèm tiến độ user. */
+  /** Guide đã publish cho một màn (bỏ `screen` = toàn bộ tổ chức), kèm tiến độ user. */
   // Tiến độ hướng dẫn của chính người dùng — chỉ cần xác thực.
   @AuthOnly()
   @Get()

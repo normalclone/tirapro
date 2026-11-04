@@ -75,7 +75,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       {/* Main */}
       <div className="flex min-w-0 flex-1 flex-col print:block">
         <header className="flex h-[52px] shrink-0 items-center gap-2 border-b border-border px-4 print:hidden">
-          {/* Admin đứng trên mọi nơi → không có bộ chọn/nhãn không gian làm việc ở thanh trên. */}
+          {/* Admin đứng trên mọi nơi → không có bộ chọn/nhãn tổ chức ở thanh trên. */}
           {!admin && <WorkspaceSwitcher />}
           <div className="min-w-0 flex-1 truncate text-sm text-muted" data-tour="topbar-context" />
           <div className="flex items-center gap-2">
@@ -90,7 +90,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             >
               <Search className="h-5 w-5" />
             </Button>
-            {/* Trợ lý AI gắn với không gian làm việc → chỉ hiện ngoài ngữ cảnh admin. */}
+            {/* Trợ lý AI gắn với tổ chức → chỉ hiện ngoài ngữ cảnh admin. */}
             {!admin && (
               <Button
                 variant="ghost"

@@ -48,7 +48,7 @@ describe('useUpdateFilter', () => {
 });
 
 describe('effectiveVisibility — nhãn nói đúng ai thấy', () => {
-  it('PROJECT chưa gắn dự án (bộ lọc cũ) = cả không gian thấy → WORKSPACE; còn lại giữ nguyên', () => {
+  it('PROJECT chưa gắn dự án (bộ lọc cũ) = cả tổ chức thấy → WORKSPACE; còn lại giữ nguyên', () => {
     expect(effectiveVisibility({ visibility: 'PROJECT', sharedProjectId: null })).toBe('WORKSPACE');
     expect(effectiveVisibility({ visibility: 'PROJECT', sharedProjectId: 'p1' })).toBe('PROJECT');
     expect(effectiveVisibility({ visibility: 'PRIVATE', sharedProjectId: null })).toBe('PRIVATE');
@@ -117,7 +117,7 @@ describe('nối dây', () => {
     expect(d).toContain('canChangeFilterShare');
     expect(d).toContain('filterUrl(');
   });
-  it('biểu mẫu "Tạo bộ lọc" không còn mức "Dự án" (không có ô chọn dự án → máy chủ coi là cả không gian thấy); chia sẻ theo dự án qua hộp "Chia sẻ"', () => {
+  it('biểu mẫu "Tạo bộ lọc" không còn mức "Dự án" (không có ô chọn dự án → máy chủ coi là cả tổ chức thấy); chia sẻ theo dự án qua hộp "Chia sẻ"', () => {
     const s = src('FiltersPage.tsx');
     const form = s.slice(s.indexOf('function CreateFilterModalInner'));
     expect(form).not.toMatch(/value: 'PROJECT'/);
