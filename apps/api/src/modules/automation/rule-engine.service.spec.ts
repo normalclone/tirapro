@@ -268,8 +268,24 @@ describe('RuleEngineService — kích hoạt theo sự kiện', () => {
   });
 });
 
-describe('RuleEngineService — hành động', () => {
-  it('setField + assign liền nhau gộp thành MỘT lần update (nguyên tử)', async () => {
+describe('RuleEngineService — hành động bị bỏ qua có cảnh báo (điểm tự tính, Hạn bắt buộc)', () => {
+  it('quy tắc CŨ đặt storyPoints: hành động bị BỎ QUA với cảnh báo trong nhật ký, không ghi điểm, quy tắc không FAILED', async () => {
+    const rule = makeRule({
+      conditions: [],
+      actions: [{ type: 'setField', field: 'storyPoints', value: 5 }],
+    });
+    const { engine, issues, prisma } = setup(rule);
+    await engine.handle('ISSUE_CREATED', { issue: issueDto() as never, actorId: 'u1' });
+    expect(issues.update).not.toHaveBeenCalled();
+    const run = lastRun(prisma);
+    expect(run.status).toBe('SUCCESS');
+    expect(run.log).toHaveLength(1);
+    expect(run.log[0]).toMatchObject({ step: 'setField storyPoints', ok: false });
+    expect(run.log[0]!.message).toMatch(/^Cảnh báo: bỏ qua/);
+    expect(run.log[0]!.message).toContain('Độ khó');
+  });
+
+  it('setField storyPoints cạnh hành động khác: chỉ bỏ qua hành động điểm, hành động còn lại vẫn ghi (không có storyPoints trong update)', async () => {
     const rule = makeRule({
       conditions: [],
       actions: [
@@ -277,11 +293,46 @@ describe('RuleEngineService — hành động', () => {
         { type: 'assign', mode: 'reporter' },
       ],
     });
+    const { engine, issues, prisma } = setup(rule);
+    await engine.handle('ISSUE_CREATED', { issue: issueDto() as never, actorId: 'u1' });
+    expect(issues.update).toHaveBeenCalledTimes(1);
+    const body = (issues.update.mock.calls[0] as unknown[])[3] as Record<string, unknown>;
+    expect(body).toMatchObject({ assigneeId: 'rep1' });
+    expect(body).not.toHaveProperty('storyPoints');
+    const run = lastRun(prisma);
+    expect(run.status).toBe('SUCCESS');
+    expect(run.log.map((l) => l.ok)).toEqual([false, true]);
+  });
+
+  it('setField dueDate null (xoá hạn): BỎ QUA với cảnh báo DUE_DATE_REQUIRED, không update', async () => {
+    const rule = makeRule({
+      conditions: [],
+      actions: [{ type: 'setField', field: 'dueDate', value: null }],
+    });
+    const { engine, issues, prisma } = setup(rule);
+    await engine.handle('ISSUE_UPDATED', { issue: issueDto() as never, actorId: 'u1' });
+    expect(issues.update).not.toHaveBeenCalled();
+    const run = lastRun(prisma);
+    expect(run.status).toBe('SUCCESS');
+    expect(run.log[0]!.ok).toBe(false);
+    expect(run.log[0]!.message).toContain('DUE_DATE_REQUIRED');
+  });
+});
+
+describe('RuleEngineService — hành động', () => {
+  it('setField + assign liền nhau gộp thành MỘT lần update (nguyên tử)', async () => {
+    const rule = makeRule({
+      conditions: [],
+      actions: [
+        { type: 'setField', field: 'difficulty', value: 'HARD' },
+        { type: 'assign', mode: 'reporter' },
+      ],
+    });
     const { engine, issues } = setup(rule);
     await engine.handle('ISSUE_CREATED', { issue: issueDto() as never, actorId: 'u1' });
     expect(issues.update).toHaveBeenCalledTimes(1);
     expect((issues.update.mock.calls[0] as unknown[])[3]).toMatchObject({
-      storyPoints: 5,
+      difficulty: 'HARD',
       assigneeId: 'rep1',
     });
   });

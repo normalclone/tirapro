@@ -1,11 +1,11 @@
-import type { UpdateIssueInput } from '@tirapro/shared';
+import type { Difficulty, UpdateIssueInput } from '@tirapro/shared';
 import { BusinessRuleException } from '../../../common/exceptions/app.exception';
 import type { RuleAction } from '@tirapro/shared';
 import type { ActionContext } from './types';
 import { withFreshIssue } from './util';
 
 type PatchFields = Partial<
-  Pick<UpdateIssueInput, 'priorityId' | 'assigneeId' | 'sprintId' | 'dueDate' | 'storyPoints'>
+  Pick<UpdateIssueInput, 'priorityId' | 'assigneeId' | 'sprintId' | 'dueDate' | 'difficulty'>
 >;
 export type PatchAction = Extract<RuleAction, { type: 'setField' | 'assign' }>;
 
@@ -80,13 +80,16 @@ async function toPatch(
   }
   switch (a.field) {
     case 'storyPoints':
+      // Trường cũ: runPatchBatch đã lọc (bỏ qua + cảnh báo) trước khi tới đây — không bao giờ ghi điểm.
+      throw new BusinessRuleException('Điểm tự tính theo công thức — quy tắc không đặt điểm được');
+    case 'difficulty':
       return {
-        patch: { storyPoints: a.value === null ? null : Number(a.value) },
-        label: 'setField storyPoints',
+        patch: { difficulty: String(a.value) as Difficulty },
+        label: 'setField difficulty',
       };
     case 'dueDate':
       return {
-        patch: { dueDate: a.value === null ? null : new Date(String(a.value)).toISOString() },
+        patch: { dueDate: new Date(String(a.value)).toISOString() },
         label: 'setField dueDate',
       };
     case 'priorityId':
@@ -130,6 +133,29 @@ export interface StepLog {
 }
 
 /**
+ * Hành động setField KHÔNG còn thực hiện được: đặt điểm (điểm tự tính theo công thức; quy tắc cũ vẫn lưu hành động này)
+ * hoặc xoá trống Hạn (Hạn bắt buộc, mã `DUE_DATE_REQUIRED`). Trả cảnh báo cho nhật ký chạy; `null` = thực hiện bình thường.
+ * Hành động bị BỎ QUA chứ không làm cả quy tắc thất bại — các hành động còn lại vẫn chạy.
+ */
+function skipWarning(a: PatchAction): StepLog | null {
+  if (a.type !== 'setField') return null;
+  if (a.field === 'storyPoints')
+    return {
+      step: 'setField storyPoints',
+      ok: false,
+      message:
+        'Cảnh báo: bỏ qua — điểm tự tính theo Loại × Độ khó × Ưu tiên, quy tắc không đặt điểm được nữa (hãy đặt Độ khó)',
+    };
+  if (a.field === 'dueDate' && (a.value === null || a.value === ''))
+    return {
+      step: 'setField dueDate',
+      ok: false,
+      message: 'Cảnh báo DUE_DATE_REQUIRED: bỏ qua — Hạn là bắt buộc, không đặt rỗng được',
+    };
+  return null;
+}
+
+/**
  * Gộp các action setField/assign LIỀN NHAU thành MỘT lần `issues.update` (một transaction, một version, một sự kiện):
  * hoặc đổi hết hoặc không đổi gì. Trường đã đúng giá trị thì bỏ qua — đây cũng là chốt chặn vòng lặp
  * "quy tắc đặt A → sự kiện → quy tắc đặt A" (không còn gì để đổi thì không phát sự kiện).
@@ -140,10 +166,18 @@ export async function runPatchBatch(
 ): Promise<StepLog[]> {
   const patch: PatchFields = {};
   const logs: StepLog[] = [];
+  const runnable: PatchAction[] = [];
   for (const a of actions) {
+    const warn = skipWarning(a);
+    if (warn) logs.push(warn);
+    else runnable.push(a);
+  }
+  if (!runnable.length) return logs;
+  const applied: StepLog[] = [];
+  for (const a of runnable) {
     const r = await toPatch(ctx, a); // lỗi ở bất kỳ action nào → ném, cả lô chưa ghi gì
     Object.assign(patch, r.patch);
-    logs.push({ step: r.label, ok: true, message: '' });
+    applied.push({ step: r.label, ok: true, message: '' });
   }
   const changed = (Object.keys(patch) as Array<keyof PatchFields>).filter(
     (f) => !sameValue(f, patch[f], ctx.issue),
@@ -151,9 +185,10 @@ export async function runPatchBatch(
   const note = changed.length
     ? `đổi ${changed.join(', ')}`
     : 'không có gì cần đổi (đã đúng giá trị)';
-  for (const l of logs)
+  for (const l of applied)
     l.message =
       ctx.dryRun && changed.length ? `Sẽ ${note}` : note[0]!.toUpperCase() + note.slice(1);
+  logs.push(...applied);
   if (!changed.length || ctx.dryRun) return logs;
 
   const updated = await withFreshIssue(ctx, (version) => {

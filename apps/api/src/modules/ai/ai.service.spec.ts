@@ -63,6 +63,99 @@ describe('AiService', () => {
     expect(out.rationale).toBeTruthy();
   });
 
+  describe('suggest/generateIssues — độ khó thay số điểm', () => {
+    const suggestWith = (description: string, summary = 'x') => {
+      const extract = vi
+        .fn<(arg: ExtractArg) => Promise<{ data: null; reason?: string }>>()
+        .mockResolvedValue({ data: null, reason: 'unconfigured' });
+      const prisma = {
+        issue: {
+          findFirst: vi.fn().mockResolvedValue({ ...issue, summary, description }),
+          findMany: vi.fn().mockResolvedValue([]),
+        },
+      };
+      const search = { similarIssueIds: vi.fn().mockResolvedValue([]) };
+      const base = { modelPrimary: 'primary-m', modelFast: 'fast-m', available: () => true };
+      return new AiService(prisma as never, { ...base, extract } as never, search as never).suggest(
+        'ws1',
+        'u1',
+        'i1',
+      );
+    };
+
+    it('heuristic trả `difficulty` theo độ dài (<80 EASY, <200 MEDIUM, <500 HARD, còn lại VERY_HARD), không còn storyPoints', async () => {
+      const cases: Array<[number, string]> = [
+        [10, 'EASY'],
+        [100, 'MEDIUM'],
+        [300, 'HARD'],
+        [900, 'VERY_HARD'],
+      ];
+      for (const [len, want] of cases) {
+        const out = await suggestWith('a'.repeat(len), '');
+        expect(out.source).toBe('heuristic');
+        expect(out.difficulty).toBe(want);
+        expect(out).not.toHaveProperty('storyPoints');
+      }
+    });
+
+    it('biên: độ dài text (tiêu đề + dấu cách + mô tả) = 79 → EASY, 80 → MEDIUM, 199 → MEDIUM, 200 → HARD, 499 → HARD, 500 → VERY_HARD', async () => {
+      // text = `${summary} ${description}` → tiêu đề 1 ký tự + 1 dấu cách + mô tả
+      const at = async (total: number) =>
+        (await suggestWith('d'.repeat(total - 2), 's')).difficulty;
+      expect(await at(79)).toBe('EASY');
+      expect(await at(80)).toBe('MEDIUM');
+      expect(await at(199)).toBe('MEDIUM');
+      expect(await at(200)).toBe('HARD');
+      expect(await at(499)).toBe('HARD');
+      expect(await at(500)).toBe('VERY_HARD');
+    });
+
+    it('Claude: schema gợi ý yêu cầu difficulty (4 mức) chứ không phải storyPoints; mức lạ và storyPoints do mô hình trả bị bỏ', async () => {
+      const extract = vi.fn<(arg: ExtractArg) => Promise<{ data: unknown }>>().mockResolvedValue({
+        data: { priority: 'High', difficulty: 'HARD', storyPoints: 13, rationale: 'ok' },
+      });
+      const out = await make({ extract }).suggest('ws1', 'u1', 'i1');
+      const schema = extract.mock.calls[0]![0].schema as { properties: Record<string, unknown> };
+      expect(Object.keys(schema.properties)).toContain('difficulty');
+      expect(schema.properties).not.toHaveProperty('storyPoints');
+      expect(schema.properties.difficulty).toMatchObject({
+        enum: ['EASY', 'MEDIUM', 'HARD', 'VERY_HARD'],
+      });
+      expect(out).toMatchObject({ source: 'claude', difficulty: 'HARD' });
+      expect(out).not.toHaveProperty('storyPoints');
+      extract.mockResolvedValue({ data: { difficulty: 'IMPOSSIBLE', rationale: 'ok' } });
+      expect(await make({ extract }).suggest('ws1', 'u1', 'i1')).not.toHaveProperty('difficulty');
+    });
+
+    it('generateIssues (Claude): schema dùng difficulty, kết quả được làm sạch (bỏ storyPoints, bỏ độ khó lạ)', async () => {
+      const extract = vi.fn<(arg: ExtractArg) => Promise<{ data: unknown }>>().mockResolvedValue({
+        data: {
+          issues: [
+            { summary: 'A', difficulty: 'EASY', storyPoints: 8 },
+            { summary: 'B', difficulty: 'meh', storyPoints: 3 },
+            { summary: 'C' },
+          ],
+        },
+      });
+      const out = await make({ extract }).generateIssues('ws1', 'u1', {
+        projectId: 'p1',
+        text: 'Làm A, B, C',
+      });
+      const item = (
+        extract.mock.calls[0]![0].schema as {
+          properties: { issues: { items: { properties: object } } };
+        }
+      ).properties.issues.items.properties;
+      expect(item).toHaveProperty('difficulty');
+      expect(item).not.toHaveProperty('storyPoints');
+      expect(out.issues).toEqual([
+        { summary: 'A', difficulty: 'EASY' },
+        { summary: 'B' },
+        { summary: 'C' },
+      ]);
+    });
+  });
+
   it('generateIssues: dùng model primary, bọc <user_request>; không key → heuristic mang reason unconfigured', async () => {
     const extract = vi
       .fn<(arg: ExtractArg) => Promise<{ data: null; reason?: string }>>()

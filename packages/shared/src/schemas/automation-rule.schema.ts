@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { DIFFICULTIES } from '../points';
 
 export const RULE_TRIGGERS = [
   'ISSUE_CREATED',
@@ -83,17 +84,23 @@ export const jqlConditionSchema = z.object({
 });
 export const ruleConditionSchema = z.union([fieldConditionSchema, jqlConditionSchema]);
 
+/** Trường quy tắc ĐƯỢC đặt. Điểm do công thức tự tính nên không còn ở đây — hãy đặt `difficulty`. */
 export const SET_FIELD_NAMES = [
   'priorityId',
   'assigneeId',
   'sprintId',
   'dueDate',
-  'storyPoints',
+  'difficulty',
 ] as const;
+/**
+ * Trường cũ vẫn ĐỌC được để quy tắc đã lưu không hỏng (engine parse lại actions đã lưu), nhưng engine BỎ QUA hành động đó
+ * (ghi cảnh báo vào nhật ký chạy) và API từ chối lưu quy tắc mới/sửa có hành động này.
+ */
+export const LEGACY_SET_FIELD_NAMES = ['storyPoints'] as const;
 
 const setFieldAction = z.object({
   type: z.literal('setField'),
-  field: z.enum(SET_FIELD_NAMES),
+  field: z.enum([...SET_FIELD_NAMES, ...LEGACY_SET_FIELD_NAMES]),
   value: z.union([z.string(), z.number(), z.null()]),
 });
 const assignAction = z.object({
@@ -166,6 +173,9 @@ export const ruleActionSchema = z
       if (a.field === 'storyPoints') {
         if (a.value !== null && (typeof a.value !== 'number' || a.value < 0 || a.value > 1000))
           bad('value', 'Story points phải là số từ 0 đến 1000');
+      } else if (a.field === 'difficulty') {
+        if (typeof a.value !== 'string' || !(DIFFICULTIES as readonly string[]).includes(a.value))
+          bad('value', 'Độ khó phải là Dễ, Trung bình, Khó hoặc Rất khó');
       } else if (a.field === 'dueDate') {
         if (a.value !== null && (typeof a.value !== 'string' || Number.isNaN(Date.parse(a.value))))
           bad('value', 'Hạn phải là ngày hợp lệ');
@@ -195,7 +205,20 @@ const ruleBody = {
   trigger: ruleTriggerSchema,
   triggerConfig: triggerConfigSchema.default({}),
   conditions: z.array(ruleConditionSchema).max(20).default([]),
-  actions: z.array(ruleActionSchema).min(1, 'Hãy thêm ít nhất một hành động').max(20),
+  actions: z
+    .array(ruleActionSchema)
+    .min(1, 'Hãy thêm ít nhất một hành động')
+    .max(20)
+    // Chỉ chặn khi LƯU: quy tắc cũ đặt điểm vẫn đọc được (engine bỏ qua hành động đó, có cảnh báo trong nhật ký).
+    .refine(
+      (actions) =>
+        !actions.some(
+          (a) =>
+            a.type === 'setField' &&
+            (LEGACY_SET_FIELD_NAMES as readonly string[]).includes(a.field),
+        ),
+      'Điểm tự tính theo Loại × Độ khó × Ưu tiên nên quy tắc không đặt điểm được nữa — hãy đặt Độ khó',
+    ),
 };
 
 export const createRuleSchema = z.object({

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { Difficulty } from '../points';
 
 /** NL → danh sách issue đề xuất (preview, KHÔNG tự persist). */
 export const generateIssuesSchema = z.object({
@@ -14,6 +15,9 @@ export interface AiGeneratedIssue {
   type?: string;
   description?: string;
   acceptanceCriteria?: string[];
+  /** Độ khó AI đề xuất; điểm do máy chủ tính từ Loại × Độ khó × Ưu tiên (không còn đề xuất số điểm). */
+  difficulty?: Difficulty;
+  /** @deprecated Không còn trả về (điểm tự tính). Giữ kiểu để web cũ biên dịch; gỡ cùng lúc đổi sang `difficulty` ở web. */
   storyPoints?: number;
   priority?: string;
 }
@@ -55,6 +59,9 @@ export interface AiSuggestResult {
   source: 'claude' | 'heuristic';
   reason?: AiFallbackReason;
   priority?: string;
+  /** Độ khó đề xuất (điểm suy ra từ công thức). */
+  difficulty?: Difficulty;
+  /** @deprecated Không còn trả về (điểm tự tính). Giữ kiểu để web cũ biên dịch; gỡ cùng lúc đổi sang `difficulty` ở web. */
   storyPoints?: number;
   assigneeHint?: string;
   rationale: string;

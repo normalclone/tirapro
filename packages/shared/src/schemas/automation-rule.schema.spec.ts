@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   createRuleSchema,
+  updateRuleSchema,
   ruleActionSchema,
   WEBHOOK_SECRET_MAX_LENGTH,
   WEBHOOK_SECRET_PREFIX,
@@ -47,5 +48,44 @@ describe('automation rule schema', () => {
     expect(wh(WEBHOOK_SECRET_PREFIX + 'a'.repeat(WEBHOOK_SECRET_STORED_MAX_LENGTH)).success).toBe(
       false,
     );
+  });
+});
+
+describe('automation rule schema — điểm tự tính (Độ khó thay Điểm)', () => {
+  const rule = (action: unknown) => ({
+    name: 'r',
+    trigger: 'ISSUE_CREATED' as const,
+    actions: [action],
+  });
+
+  it('setField difficulty: chỉ nhận một trong bốn mức, không nhận null', () => {
+    for (const value of ['EASY', 'MEDIUM', 'HARD', 'VERY_HARD'])
+      expect(
+        ruleActionSchema.safeParse({ type: 'setField', field: 'difficulty', value }).success,
+      ).toBe(true);
+    for (const value of ['Khó', 'hard', 3, null])
+      expect(
+        ruleActionSchema.safeParse({ type: 'setField', field: 'difficulty', value }).success,
+      ).toBe(false);
+  });
+
+  it('quy tắc ĐÃ LƯU đặt storyPoints vẫn parse được (engine đọc lại để bỏ qua + cảnh báo)', () => {
+    expect(
+      ruleActionSchema.safeParse({ type: 'setField', field: 'storyPoints', value: 5 }).success,
+    ).toBe(true);
+  });
+
+  it('LƯU quy tắc mới/sửa có hành động đặt storyPoints => từ chối, chỉ dẫn đặt Độ khó', () => {
+    const legacy = { type: 'setField', field: 'storyPoints', value: 5 };
+    const r = createRuleSchema.safeParse(rule(legacy));
+    expect(r.success).toBe(false);
+    expect(JSON.stringify(r)).toContain('Độ khó');
+    expect(updateRuleSchema.safeParse({ actions: [legacy] }).success).toBe(false);
+    // quy tắc không đặt điểm vẫn lưu được
+    expect(
+      createRuleSchema.safeParse(rule({ type: 'setField', field: 'difficulty', value: 'HARD' }))
+        .success,
+    ).toBe(true);
+    expect(updateRuleSchema.safeParse({ enabled: false }).success).toBe(true);
   });
 });

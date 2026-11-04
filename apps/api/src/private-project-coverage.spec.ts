@@ -710,6 +710,20 @@ describe('dự án riêng tư — R1: service/gateway đọc dữ liệu theo d�
 
 /** Khoá: `file::Controller.route -> prop.method`. Loại lý do dùng cùng `Kind` (kiểm theo route). */
 const CONTROLLER_ALLOWLIST: Record<string, [Kind, string]> = {
+  'admin/admin-console.controller.ts::AdminConsoleController.pointsFormula -> points.getFormula': [
+    'ADMIN_ONLY',
+    'console quản trị hệ thống — tự kiểm assertSysAdmin; bảng hệ số điểm là cấu hình toàn hệ thống, không thuộc dự án',
+  ],
+  'admin/admin-console.controller.ts::AdminConsoleController.putPointsFormula -> points.getFormula':
+    [
+      'ADMIN_ONLY',
+      'console quản trị hệ thống — tự kiểm assertSysAdmin; bảng hệ số điểm là cấu hình toàn hệ thống, không thuộc dự án',
+    ],
+  'admin/admin-console.controller.ts::AdminConsoleController.putPointsFormula -> points.recomputeAll':
+    [
+      'ADMIN_ONLY',
+      'console quản trị hệ thống — tự kiểm assertSysAdmin; tính lại điểm toàn hệ thống ở nền, không trả dữ liệu dự án',
+    ],
   'admin/admin-console.controller.ts::AdminConsoleController.overview -> overviewSvc.overview': [
     'ADMIN_ONLY',
     'console quản trị hệ thống — tự kiểm assertSysAdmin trước khi gọi service',

@@ -6,9 +6,10 @@ import type {
   AiSource,
   AiSummaryResult,
   AiSuggestResult,
+  Difficulty,
   GenerateIssuesInput,
 } from '@tirapro/shared';
-import { mentionsToPlain } from '@tirapro/shared';
+import { DIFFICULTIES, mentionsToPlain } from '@tirapro/shared';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { NotFoundAppException } from '../../common/exceptions/app.exception';
 import { ClaudeService } from './claude.service';
@@ -16,6 +17,18 @@ import { MAX_ITEMS, guessIssueType, splitRequirementsAll } from './heuristic-spl
 import { truncateCodePoints } from '../search/vi-text';
 import { SearchService } from '../search/search.service';
 import { TRIAGE_VISIBLE } from '../../common/triage-visibility';
+
+const isDifficulty = (v: unknown): v is Difficulty =>
+  typeof v === 'string' && (DIFFICULTIES as readonly string[]).includes(v);
+
+/**
+ * Đầu ra của mô hình là dữ liệu không tin cậy: giữ đúng `difficulty` hợp lệ, bỏ `storyPoints` nếu mô hình vẫn trả (điểm do
+ * máy chủ tính từ Loại × Độ khó × Ưu tiên, không nhận số điểm từ AI).
+ */
+function sanitizeGenerated(issue: AiGeneratedIssue): AiGeneratedIssue {
+  const { storyPoints: _dropped, difficulty, ...rest } = issue;
+  return { ...rest, ...(isDifficulty(difficulty) ? { difficulty } : {}) };
+}
 
 /** Số nguồn tối đa hiện cùng một gợi ý; lấy dư từ full-text để còn loại chính việc đó và việc chưa qua Triage. */
 const MAX_SOURCES = 3;
@@ -34,7 +47,11 @@ const GENERATE_ISSUES_SCHEMA: Record<string, unknown> = {
           type: { type: 'string', enum: ['Task', 'Bug', 'Story', 'Epic'] },
           description: { type: 'string' },
           acceptanceCriteria: { type: 'array', items: { type: 'string' } },
-          storyPoints: { type: 'number', description: 'Ước lượng theo Fibonacci: 1,2,3,5,8,13' },
+          difficulty: {
+            type: 'string',
+            enum: [...DIFFICULTIES],
+            description: 'Độ khó: EASY (dễ), MEDIUM, HARD (khó), VERY_HARD (rất khó)',
+          },
           priority: { type: 'string', enum: ['Highest', 'High', 'Medium', 'Low', 'Lowest'] },
         },
         required: ['summary'],
@@ -48,7 +65,7 @@ const SUGGEST_SCHEMA: Record<string, unknown> = {
   type: 'object',
   properties: {
     priority: { type: 'string', enum: ['Highest', 'High', 'Medium', 'Low', 'Lowest'] },
-    storyPoints: { type: 'number' },
+    difficulty: { type: 'string', enum: [...DIFFICULTIES] },
     rationale: { type: 'string', description: 'Giải thích ngắn gọn cho đề xuất (tiếng Việt)' },
   },
   required: ['rationale'],
@@ -106,14 +123,14 @@ export class AiService {
       system:
         'Bạn là trợ lý quản lý dự án Agile. Phân rã yêu cầu thành các công việc rõ ràng, khả thi. ' +
         'Mỗi công việc có tiêu đề ngắn gọn, loại (Task/Bug/Story/Epic), mô tả, tiêu chí chấp nhận, ' +
-        'ước lượng story points (Fibonacci) và mức ưu tiên. Trả lời bằng tiếng Việt, không bịa thông tin.' +
+        'độ khó (EASY/MEDIUM/HARD/VERY_HARD — điểm do hệ thống tự tính, không ước lượng số điểm) và mức ưu tiên. Trả lời bằng tiếng Việt, không bịa thông tin.' +
         DATA_NOT_INSTRUCTIONS,
       prompt: `Dự án: ${project.name} (${project.key}).\n\nYêu cầu của người dùng:\n${wrap('user_request', input.text)}`,
       schema: GENERATE_ISSUES_SCHEMA,
       maxTokens: 3000,
     });
     if (data?.issues?.length) {
-      return { source: 'claude', issues: data.issues.slice(0, 25) };
+      return { source: 'claude', issues: data.issues.slice(0, 25).map(sanitizeGenerated) };
     }
     return {
       source: 'heuristic',
@@ -198,14 +215,14 @@ export class AiService {
 
     const { data: out, reason } = await this.claude.extract<{
       priority?: string;
-      storyPoints?: number;
+      difficulty?: string;
       rationale: string;
     }>({
       ctx: { workspaceId, userId, feature: 'suggest' },
       model: this.claude.modelFast,
       system:
         'Bạn là trợ lý Agile. Dựa trên nội dung công việc, đề xuất mức ưu tiên (Highest..Lowest) và ' +
-        'story points (Fibonacci: 1,2,3,5,8,13). Giải thích ngắn gọn bằng tiếng Việt. ' +
+        'độ khó (EASY, MEDIUM, HARD, VERY_HARD; điểm do hệ thống tự tính từ loại × độ khó × ưu tiên nên không đề xuất số điểm). Giải thích ngắn gọn bằng tiếng Việt. ' +
         'Có thể tham khảo các việc tương tự (nếu có) trong thẻ <issue> thứ hai, nhưng không tự trích dẫn hay nêu mã công việc: ' +
         'danh sách nguồn do hệ thống hiển thị riêng.' +
         DATA_NOT_INSTRUCTIONS,
@@ -219,13 +236,13 @@ export class AiService {
       return {
         source: 'claude',
         priority: out.priority,
-        storyPoints: out.storyPoints,
+        ...(isDifficulty(out.difficulty) ? { difficulty: out.difficulty } : {}),
         rationale: out.rationale,
         sources,
       };
     }
 
-    // Heuristic: ưu tiên theo từ khoá, điểm theo độ dài mô tả
+    // Heuristic: ưu tiên theo từ khoá, độ khó theo độ dài mô tả
     const text = `${issue.summary} ${stripText(issue.description)}`.toLowerCase();
     const priority = /(khẩn|gấp|critical|production|sập|down|blocker)/.test(text)
       ? 'Highest'
@@ -233,12 +250,13 @@ export class AiService {
         ? 'High'
         : 'Medium';
     const len = text.length;
-    const storyPoints = len < 80 ? 2 : len < 200 ? 3 : len < 500 ? 5 : 8;
+    const difficulty: Difficulty =
+      len < 80 ? 'EASY' : len < 200 ? 'MEDIUM' : len < 500 ? 'HARD' : 'VERY_HARD';
     return {
       source: 'heuristic',
       ...(reason ? { reason } : {}),
       priority,
-      storyPoints,
+      difficulty,
       rationale: `Đề xuất theo từ khoá & độ phức tạp ước lượng (heuristic — chưa bật AI).`,
       sources,
     };

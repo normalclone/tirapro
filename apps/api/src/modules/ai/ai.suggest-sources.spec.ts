@@ -43,7 +43,7 @@ function make(opts: {
   const extract =
     opts.extract ??
     vi.fn<(arg: ExtractArg) => Promise<{ data: unknown; reason?: string }>>().mockResolvedValue({
-      data: { priority: 'High', storyPoints: 3, rationale: 'Giống các việc cũ' },
+      data: { priority: 'High', difficulty: 'HARD', rationale: 'Giống các việc cũ' },
     });
   const claude = {
     modelPrimary: 'primary-m',

@@ -211,3 +211,219 @@ describe('PointsService.explain', () => {
     );
   });
 });
+
+type Row = {
+  id: string;
+  typeId: string;
+  difficulty: 'EASY' | 'MEDIUM' | 'HARD' | 'VERY_HARD';
+  priorityId: string | null;
+  storyPoints: number | null;
+  projectId: string;
+  pointsManual?: boolean;
+};
+
+/** DB giả có trạng thái: lọc theo `where` thật mà service gửi (dự án, chỉnh tay, Epic, id/cursor) và ghi lại updateMany. */
+function makeRecompute(opts: {
+  rows: Row[];
+  formula?: unknown;
+  epics?: Record<string, { storyPoints: number; projectId: string }>;
+}) {
+  const rows = opts.rows.map((r) => ({ pointsManual: false, version: 1, ...r }));
+  const epics = opts.epics ?? {};
+  const types = [
+    { id: 't-task', key: 'TASK' },
+    { id: 't-bug', key: 'BUG' },
+    { id: 't-epic', key: 'EPIC' },
+  ];
+  const issue = {
+    findMany: vi.fn(
+      (a: {
+        where: {
+          projectId?: string;
+          pointsManual?: boolean;
+          deletedAt?: null;
+          type?: { key: string };
+        };
+        cursor?: { id: string };
+        take?: number;
+      }) => {
+        if (a.where.type?.key === 'EPIC')
+          return Promise.resolve(
+            Object.entries(epics).map(([id, e]) => ({ id, projectId: e.projectId })),
+          );
+        let list = rows
+          .filter((r) => r.projectId === a.where.projectId && r.pointsManual === false)
+          .filter((r) => r.typeId !== 't-epic')
+          .sort((x, y) => x.id.localeCompare(y.id));
+        if (a.cursor) list = list.filter((r) => r.id > a.cursor!.id);
+        return Promise.resolve(list.slice(0, a.take));
+      },
+    ),
+    updateMany: vi.fn(
+      (a: {
+        where: { id: string | { in: string[] }; pointsManual?: boolean; deletedAt?: null };
+        data: { storyPoints: number; version: { increment: number } };
+      }) => {
+        // ghi Epic (rollup): where.id là chuỗi
+        if (typeof a.where.id === 'string') {
+          epics[a.where.id]!.storyPoints = a.data.storyPoints;
+          return Promise.resolve({ count: 1 });
+        }
+        const ids = a.where.id.in;
+        let count = 0;
+        for (const r of rows)
+          if (ids.includes(r.id) && r.pointsManual === false) {
+            r.storyPoints = a.data.storyPoints;
+            r.version += a.data.version.increment;
+            count++;
+          }
+        return Promise.resolve({ count });
+      },
+    ),
+    findFirst: vi.fn(({ where }: { where: { id: string } }) =>
+      Promise.resolve(epics[where.id] ? { storyPoints: epics[where.id]!.storyPoints } : null),
+    ),
+    aggregate: vi.fn(({ where }: { where: { epicId: string } }) =>
+      Promise.resolve({
+        _sum: {
+          storyPoints:
+            rows
+              .filter((r) => (r as { epicId?: string }).epicId === where.epicId)
+              .reduce((a, r) => a + (r.storyPoints ?? 0), 0) || null,
+        },
+      }),
+    ),
+  };
+  const prisma = {
+    pointsFormulaConfig: {
+      findUnique: vi.fn(() => Promise.resolve(opts.formula ? { formula: opts.formula } : null)),
+    },
+    issueType: { findMany: vi.fn(() => Promise.resolve(types)) },
+    priority: {
+      findMany: vi.fn(() =>
+        Promise.resolve([
+          { id: 'pr-high', name: 'High' },
+          { id: 'pr-med', name: 'Medium' },
+        ]),
+      ),
+    },
+    project: { findMany: vi.fn(() => Promise.resolve([{ id: 'p1' }, { id: 'p2' }])) },
+    issue,
+    $queryRaw: vi.fn(() => Promise.resolve([])),
+    $transaction: vi.fn((fn: (tx: unknown) => unknown) =>
+      fn({ issue, $queryRaw: prisma.$queryRaw }),
+    ),
+  };
+  const events = { emit: vi.fn() };
+  const service = new PointsService(prisma as never, events as never);
+  return { service, rows, epics, issue, events, prisma };
+}
+
+const recRow = (id: string, over: Partial<Row> = {}): Row => ({
+  id,
+  typeId: 't-bug',
+  difficulty: 'MEDIUM',
+  priorityId: 'pr-high',
+  storyPoints: null,
+  projectId: 'p1',
+  ...over,
+});
+
+describe('PointsService.recomputeAll — tính lại toàn hệ thống', () => {
+  it('Bug·Trung bình·High => 6; việc chỉnh tay giữ nguyên; điểm cũ (80) bị tính lại; version chỉ tăng ở việc đổi', async () => {
+    const { service, rows } = makeRecompute({
+      rows: [
+        recRow('a'), // null → 6
+        recRow('b', { storyPoints: 80 }), // điểm nhập tay cũ (chưa đánh dấu chỉnh tay) → 6
+        recRow('c', { storyPoints: 6 }), // đã đúng → không ghi
+        recRow('d', { storyPoints: 80, pointsManual: true }), // chỉnh tay → giữ
+      ],
+    });
+    const r = await service.recomputeAll();
+    expect(r).toEqual({ updated: 2, epics: 0 });
+    const pts = Object.fromEntries(rows.map((x) => [x.id, [x.storyPoints, x.version]]));
+    expect(pts).toEqual({ a: [6, 2], b: [6, 2], c: [6, 1], d: [80, 1] });
+  });
+
+  it('idempotent: lần chạy thứ hai cập nhật 0 việc, không tăng version', async () => {
+    const { service, rows } = makeRecompute({
+      rows: [recRow('a'), recRow('b', { typeId: 't-task' })],
+    });
+    await service.recomputeAll();
+    const versions = rows.map((x) => x.version);
+    expect((await service.recomputeAll()).updated).toBe(0);
+    expect(rows.map((x) => x.version)).toEqual(versions);
+  });
+
+  it('không đụng Epic ở bước việc (where loại Epic + pointsManual=false); dùng bảng hệ số MỚI đọc từ DB', async () => {
+    const custom = { ...DEFAULT_POINTS_FORMULA, base: { ...DEFAULT_POINTS_FORMULA.base, BUG: 5 } };
+    const { service, issue, rows } = makeRecompute({ rows: [recRow('a')], formula: custom });
+    await service.recomputeAll();
+    const rowQuery = issue.findMany.mock.calls.find(
+      (c) => (c[0].where as { projectId?: string }).projectId === 'p1',
+    )![0];
+    expect(rowQuery.where).toMatchObject({
+      pointsManual: false,
+      NOT: { type: { key: 'EPIC' } },
+    });
+    expect(rows[0]!.storyPoints).toBe(5 * 2 * 1.5); // 15
+  });
+
+  it('lô 500 việc theo dự án: 1200 việc => ba lần đọc, tất cả được tính', async () => {
+    const many = Array.from({ length: 1200 }, (_, i) => recRow(`i${String(i).padStart(4, '0')}`));
+    const { service, issue, rows } = makeRecompute({ rows: many });
+    const r = await service.recomputeAll();
+    expect(r.updated).toBe(1200);
+    expect(rows.every((x) => x.storyPoints === 6)).toBe(true);
+    const reads = issue.findMany.mock.calls.filter((c) => (c[0] as { take?: number }).take === 500);
+    expect(
+      reads.filter((c) => (c[0].where as { projectId: string }).projectId === 'p1'),
+    ).toHaveLength(3);
+  });
+
+  it('một câu UPDATE cho mỗi giá trị điểm mới, ràng pointsManual=false (không đè việc vừa chỉnh tay)', async () => {
+    const { service, issue } = makeRecompute({
+      rows: [recRow('a'), recRow('b'), recRow('c', { typeId: 't-task', priorityId: 'pr-med' })],
+    });
+    await service.recomputeAll();
+    const writes = issue.updateMany.mock.calls.map((c) => c[0]);
+    expect(writes).toHaveLength(2); // 6 (a, b) và 4 (c)
+    for (const w of writes) expect(w.where).toMatchObject({ pointsManual: false });
+  });
+
+  it('báo client nạp lại ở MỨC DỰ ÁN (project.ranks_rebalanced) cho dự án có việc đổi; không phát ISSUE_UPDATED từng việc', async () => {
+    const { service, events } = makeRecompute({
+      rows: [recRow('a'), recRow('b', { projectId: 'p2', storyPoints: 6 })],
+    });
+    await service.recomputeAll();
+    expect(events.emit.mock.calls).toEqual([['project.ranks_rebalanced', { projectId: 'p1' }]]);
+  });
+
+  it('Epic: cộng lại tổng việc con sau cùng, tăng version Epic; Epic đúng tổng thì không ghi', async () => {
+    const children = [
+      { ...recRow('a'), epicId: 'e1' },
+      { ...recRow('b', { typeId: 't-task', priorityId: 'pr-med' }), epicId: 'e1' },
+    ] as unknown as Row[];
+    const { service, epics, issue } = makeRecompute({
+      rows: children,
+      epics: { e1: { storyPoints: 99, projectId: 'p1' }, e2: { storyPoints: 0, projectId: 'p1' } },
+    });
+    const r = await service.recomputeAll();
+    expect(epics.e1!.storyPoints).toBe(10); // 6 + 4
+    expect(epics.e2!.storyPoints).toBe(0);
+    expect(r.epics).toBe(1);
+    const epicWrites = issue.updateMany.mock.calls.filter((c) => typeof c[0].where.id === 'string');
+    expect(epicWrites).toHaveLength(1);
+    expect(epicWrites[0]![0].data).toMatchObject({ storyPoints: 10, version: { increment: 1 } });
+  });
+
+  it('gọi đồng thời không chạy song song: lần sau chạy lại ĐÚNG MỘT lần sau lần đang chạy', async () => {
+    const { service, prisma } = makeRecompute({ rows: [recRow('a')] });
+    const [a, b, c] = [service.recomputeAll(), service.recomputeAll(), service.recomputeAll()];
+    expect(b).toBe(a);
+    expect(c).toBe(a);
+    await a;
+    // đọc bảng hệ số: một lần cho lần đầu + một lần cho lần chạy lại
+    expect(prisma.pointsFormulaConfig.findUnique).toHaveBeenCalledTimes(2);
+  });
+});

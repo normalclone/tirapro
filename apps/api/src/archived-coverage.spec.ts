@@ -105,6 +105,8 @@ const EXEMPT_METHODS: Record<string, string> = {
     'chỉ đánh lại rank khi hết chỗ chèn; mọi caller (IssuesService.createCore/move) đã chặn dự án lưu trữ trước khi gọi',
   'issues/points.service.ts#setFormula':
     'bảng hệ số điểm TOÀN HỆ THỐNG (PointsFormulaConfig), không thuộc dự án nào',
+  'issues/points.service.ts#recomputeAll':
+    'tính lại điểm TOÀN HỆ THỐNG theo bảng hệ số (SA lưu, chạy nền; mọi dự án kể cả lưu trữ để điểm luôn khớp công thức), không phải thao tác của người dùng trên một dự án',
   'issues/points.service.ts#rollupEpics':
     'helper chạy TRONG transaction của IssuesService (create/update/bulk/xoá/khôi phục) — các nơi đó đã chặn dự án lưu trữ trước khi gọi',
   'import/import.service.ts#resolveOrCreateLabel':

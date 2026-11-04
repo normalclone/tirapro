@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { pointsFormulaSchema, type PointsFormula } from '@tirapro/shared';
 
 /** Cập nhật 1 workspace từ admin console: đổi gói, lưu trữ/khôi phục, chuyển chủ sở hữu. */
 export const patchWorkspaceSchema = z
@@ -32,3 +33,7 @@ export const auditQuerySchema = z.object({
   kind: z.enum(['admin', 'activity']).default('admin'),
 });
 export type AuditQueryInput = z.infer<typeof auditQuerySchema>;
+
+/** Bảng hệ số tính điểm toàn hệ thống (Loại × Độ khó × Ưu tiên): mỗi hệ số > 0 và ≤ 100. */
+export const putPointsFormulaSchema = pointsFormulaSchema;
+export type PutPointsFormulaInput = PointsFormula;
