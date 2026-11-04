@@ -7,7 +7,8 @@ import { childrenForPanel, epicTaskProgress } from '@/lib/epic';
 import { isEpicIssue } from '@/lib/issueRefs';
 import { subtreeProgress } from '@/lib/issueTree';
 import { TaskProgress } from '@/components/ui/TaskProgress';
-import { categoryColor } from '@/lib/statusColor';
+import { StatusPill } from '@/components/ui/StatusPill';
+import { Avatar } from '@/components/ui/primitives';
 import { useProjectIssues } from '@/features/issues/api';
 
 /**
@@ -67,14 +68,30 @@ export function IssueRelations({ issue }: { issue: IssueDto }) {
                 onClick={() => navigate(`/issue/${c.key}`)}
                 className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left transition-colors hover:bg-surface-2"
               >
-                <span
-                  className="h-2 w-2 shrink-0 rounded-full"
-                  style={{ background: categoryColor(c.status.category) }}
-                  title={c.status.name}
-                  aria-hidden
-                />
                 <span className="shrink-0 font-mono text-xs text-muted">{c.key}</span>
                 <span className="min-w-0 flex-1 truncate text-sm text-ink">{c.summary}</span>
+                <StatusPill status={c.status} alwaysShowName className="shrink-0" />
+                <span className="w-7 shrink-0 text-right tabular text-xs text-muted" title="Điểm">
+                  {c.storyPoints ?? '—'}
+                </span>
+                {c.assignee ? (
+                  <span className="shrink-0" title={`Phụ trách: ${c.assignee.displayName}`}>
+                    <Avatar
+                      name={c.assignee.displayName}
+                      src={c.assignee.avatarUrl}
+                      size={20}
+                      decorative
+                    />
+                  </span>
+                ) : (
+                  <span
+                    className="grid h-5 w-5 shrink-0 place-items-center rounded-full border border-dashed border-border text-[10px] text-faint"
+                    title="Chưa giao"
+                    aria-label="Chưa giao"
+                  >
+                    ?
+                  </span>
+                )}
               </button>
             </li>
           ))}
