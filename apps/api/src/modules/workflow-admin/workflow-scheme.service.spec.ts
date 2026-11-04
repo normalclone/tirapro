@@ -29,6 +29,15 @@ const st = (
   color: null,
 });
 
+const TASK_TYPE = {
+  id: 'tTask',
+  name: 'Task',
+  key: 'TASK',
+  color: null,
+  isSubtask: false,
+  hierarchyLevel: 0,
+};
+
 /**
  * Thế giới giả: quy trình cũ `wfOld` (Cần làm / Đang làm / Hoàn thành) + quy trình tổ chức `wfStd` (To Do / In Progress / Done).
  * Loại Task (`tTask`). Dự án p1 (KY) theo tổ chức, p2 (TI) đã ghi đè cho Task. Việc: p1 có 1 ở "Cần làm", 3 ở "Đang làm";
@@ -138,14 +147,10 @@ function world(
     },
     issueType: {
       findMany: vi.fn((a: { where: { id?: { in: string[] } } }) =>
-        Promise.resolve(
-          [{ id: 'tTask', name: 'Task' }].filter(
-            (t) => !a.where.id || a.where.id.in.includes(t.id),
-          ),
-        ),
+        Promise.resolve([TASK_TYPE].filter((t) => !a.where.id || a.where.id.in.includes(t.id))),
       ),
       findFirst: vi.fn((a: { where: { id: string } }) =>
-        Promise.resolve(a.where.id === 'tTask' ? { id: 'tTask', name: 'Task' } : null),
+        Promise.resolve(a.where.id === 'tTask' ? TASK_TYPE : null),
       ),
     },
     workflow: {
@@ -331,6 +336,17 @@ function world(
       ),
     },
     resolution: { findFirst: vi.fn(() => Promise.resolve({ id: 'r-def' })) },
+    // Tham chiếu theo TÊN trạng thái trong JQL (chỉ báo): bộ lọc đã lưu "Đang làm" sẽ hết khớp, "Done" thì không.
+    savedFilter: {
+      findMany: vi.fn(() =>
+        Promise.resolve([
+          { id: 'f1', name: 'Đang làm của tôi', jql: 'status = "Đang làm"' },
+          { id: 'f2', name: 'Đã xong', jql: 'status = Done' },
+        ]),
+      ),
+    },
+    widget: { findMany: vi.fn(() => Promise.resolve([])) },
+    keyResult: { findMany: vi.fn(() => Promise.resolve([])) },
     board: { findMany: vi.fn((_a: { where: { projectId: string } }) => Promise.resolve([])) },
     boardColumnStatus: { createMany: vi.fn(() => Promise.resolve({ count: 0 })) },
   };
@@ -498,7 +514,13 @@ describe('WorkflowSchemeService.setWorkspaceScheme', () => {
   it('PUT lặp lại cùng cấu hình: không còn gì thay đổi => không chuyển việc, không ghi', async () => {
     const w = world({ scheme: [{ issueTypeId: 'tTask', workflowId: 'wfStd' }] });
     const out = await w.service.setWorkspaceScheme('w1', 'u1', { items }, false);
-    expect(out).toEqual({ dryRun: false, moves: [], totalIssues: 0, affectedRules: [] });
+    expect(out).toEqual({
+      dryRun: false,
+      moves: [],
+      totalIssues: 0,
+      affectedRules: [],
+      nameRefs: [],
+    });
     expect(w.prisma.workspaceWorkflowScheme.upsert).not.toHaveBeenCalled();
     expect(w.prisma.issue.updateMany).not.toHaveBeenCalled();
   });
@@ -563,7 +585,22 @@ describe('WorkflowSchemeService.setWorkspaceScheme', () => {
     const w = world({ scheme: [{ issueTypeId: 'tTask', workflowId: 'wfStd' }] });
     expect(await w.service.getWorkspaceScheme('w1')).toEqual({
       items: [{ issueTypeId: 'tTask', workflowId: 'wfStd' }],
+      issueTypes: [TASK_TYPE],
     });
+  });
+
+  it('dryRun và chạy thật đều trả nameRefs: chỉ bộ lọc dùng tên trạng thái cũ không còn (Đang làm), không báo "Done"', async () => {
+    const dry = await world().service.setWorkspaceScheme('w1', 'u1', { items }, true);
+    expect(dry.nameRefs).toEqual([
+      {
+        kind: 'savedFilter',
+        id: 'f1',
+        label: 'Đang làm của tôi',
+        names: ['Đang làm'],
+      },
+    ]);
+    const real = await world().service.setWorkspaceScheme('w1', 'u1', { items, statusMap }, false);
+    expect(real.nameRefs.map((n) => n.id)).toEqual(['f1']);
   });
 });
 
@@ -696,7 +733,13 @@ describe('WorkflowSchemeService.setProjectOverride / clearProjectOverride', () =
       true,
     );
     const again = await w.service.clearProjectOverride('w1', 'p2', 'u1', 'tTask', {}, false);
-    expect(again).toEqual({ dryRun: false, moves: [], totalIssues: 0, affectedRules: [] });
+    expect(again).toEqual({
+      dryRun: false,
+      moves: [],
+      totalIssues: 0,
+      affectedRules: [],
+      nameRefs: [],
+    });
   });
 
   it('DELETE thiếu statusMap => 422 và ghi đè còn nguyên; dryRun chỉ xem trước', async () => {

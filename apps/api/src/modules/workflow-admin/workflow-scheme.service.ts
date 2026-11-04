@@ -3,6 +3,7 @@ import type { EventEmitter2 } from '@nestjs/event-emitter';
 import { Prisma } from '@prisma/client';
 import type {
   AffectedRuleDto,
+  NameRefDto,
   ProjectWorkflowSchemeDto,
   WorkflowChangeDto,
   WorkspaceWorkflowSchemeDto,
@@ -11,6 +12,7 @@ import type { SetProjectOverrideInput, SetWorkspaceSchemeInput } from '@tirapro/
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { BusinessRuleException, NotFoundAppException } from '../../common/exceptions/app.exception';
 import { assertProjectIdWritable } from '../../common/project-writable';
+import { findNameRefs, liveWorkflowIdsAfter } from './name-refs';
 import { appendMissingBoardStatuses } from './board-columns-sync';
 import type { NotificationsService } from '../notifications/notifications.service';
 import { fromWorkflowsOf, publishRuleChanges, ruleStepForMoves } from './rule-status-refs';
@@ -62,7 +64,23 @@ export class WorkflowSchemeService {
       select: { issueTypeId: true, workflowId: true },
       orderBy: { issueType: { hierarchyLevel: 'desc' } },
     });
-    return { items: rows };
+    return { items: rows, issueTypes: await this.schemeTypes(workspaceId) };
+  }
+
+  /** Loại việc của tổ chức (cấp phân cấp giảm dần: Epic trước, Sub-task cuối) cho bảng cấu hình. */
+  private schemeTypes(workspaceId: string) {
+    return this.prisma.issueType.findMany({
+      where: { workspaceId },
+      orderBy: [{ hierarchyLevel: 'desc' }, { name: 'asc' }],
+      select: {
+        id: true,
+        name: true,
+        key: true,
+        color: true,
+        isSubtask: true,
+        hierarchyLevel: true,
+      },
+    });
   }
 
   async setWorkspaceScheme(
@@ -100,7 +118,8 @@ export class WorkflowSchemeService {
         moves,
         true,
       );
-      return this.result(true, moves, plan.ctx, rules);
+      const refs = await this.nameRefs(this.prisma, workspaceId, moves, plan);
+      return this.result(true, moves, plan.ctx, rules, refs);
     }
     let result: WorkflowChangeDto;
     try {
@@ -126,7 +145,8 @@ export class WorkflowSchemeService {
           moves,
           false,
         );
-        return this.result(false, moves, plan.ctx, rules);
+        const refs = await this.nameRefs(tx, workspaceId, moves, plan);
+        return this.result(false, moves, plan.ctx, rules, refs);
       }, TX_OPTIONS);
     } finally {
       // Kể cả rollback: lần nạp giữa chừng trong transaction có thể đã vào cache của request.
@@ -236,7 +256,7 @@ export class WorkflowSchemeService {
         workspaceWorkflowId,
       });
     }
-    return { projectId, items };
+    return { projectId, items, issueTypes: await this.schemeTypes(workspaceId) };
   }
 
   /**
@@ -297,7 +317,11 @@ export class WorkflowSchemeService {
         moves,
         true,
       );
-      return this.result(true, moves, ctx, rules);
+      const refs = await this.nameRefs(this.prisma, workspaceId, moves, {
+        targets: [target],
+        types: [type.id],
+      });
+      return this.result(true, moves, ctx, rules, refs);
     }
     let result: WorkflowChangeDto;
     try {
@@ -334,7 +358,11 @@ export class WorkflowSchemeService {
           fromWorkflowIds: fromWorkflowsOf(type.id, b.fromWorkflowIds, moves),
         }));
         const rules = await ruleStepForMoves(tx, workspaceId, pairs, pick, moves, false);
-        return this.result(false, moves, ctx, rules);
+        const refs = await this.nameRefs(tx, workspaceId, moves, {
+          targets: [targetId],
+          types: [type.id],
+        });
+        return this.result(false, moves, ctx, rules, refs);
       }, TX_OPTIONS);
     } finally {
       this.resolver.invalidate(projectId);
@@ -408,7 +436,11 @@ export class WorkflowSchemeService {
         moves,
         true,
       );
-      return this.result(true, moves, ctx, rules);
+      const refs = await this.nameRefs(this.prisma, workspaceId, moves, {
+        targets: [shared],
+        types: [issueTypeId],
+      });
+      return this.result(true, moves, ctx, rules, refs);
     }
     let result: WorkflowChangeDto;
     try {
@@ -426,7 +458,11 @@ export class WorkflowSchemeService {
           fromWorkflowIds: fromWorkflowsOf(issueTypeId, b.fromWorkflowIds, moves),
         }));
         const rules = await ruleStepForMoves(tx, workspaceId, pairs, pick, moves, false);
-        return this.result(false, moves, ctx, rules);
+        const refs = await this.nameRefs(tx, workspaceId, moves, {
+          targets: [shared],
+          types: [issueTypeId],
+        });
+        return this.result(false, moves, ctx, rules, refs);
       }, TX_OPTIONS);
     } finally {
       this.resolver.invalidate(projectId);
@@ -477,6 +513,7 @@ export class WorkflowSchemeService {
     moves: PlannedMove[],
     ctx: ChangeContext,
     affectedRules: AffectedRuleDto[] = [],
+    nameRefs: NameRefDto[] = [],
   ): WorkflowChangeDto {
     const rows = toMoveRows(moves, { projects: ctx.projectKeys, types: ctx.typeNames });
     return {
@@ -484,7 +521,27 @@ export class WorkflowSchemeService {
       moves: rows,
       totalIssues: rows.reduce((n, r) => n + r.count, 0),
       affectedRules,
+      nameRefs,
     };
+  }
+
+  /** Bộ lọc/bảng/widget/quy tắc/KR lọc theo TÊN trạng thái sẽ biến mất sau thay đổi này (chỉ báo, xem `findNameRefs`). */
+  private async nameRefs(
+    db: Prisma.TransactionClient,
+    workspaceId: string,
+    moves: PlannedMove[],
+    plan:
+      | { scopes: MoveScope[]; changed: Array<{ issueTypeId: string }> }
+      | { targets: string[]; types: string[] },
+  ): Promise<NameRefDto[]> {
+    const targets = 'scopes' in plan ? plan.scopes.map((s) => s.toWorkflowId) : plan.targets;
+    const types = 'changed' in plan ? plan.changed.map((c) => c.issueTypeId) : plan.types;
+    return findNameRefs(
+      db,
+      workspaceId,
+      moves,
+      await liveWorkflowIdsAfter(db, workspaceId, targets, types),
+    );
   }
 
   private async requireProject(workspaceId: string, projectId: string) {

@@ -114,6 +114,16 @@ describe.skipIf(!DB_URL)('WorkflowSchemeService ↔ Postgres thật', () => {
     await issue('a3', 'p1', 2, { resolvedAt: new Date(), resolutionId: id('res') });
     await issue('a4', 'p1', 1, { deletedAt: new Date() }); // thùng rác cũng phải được chuyển
     await issue('b1', 'p2', 1);
+    // Bộ lọc đã lưu lọc theo TÊN trạng thái cũ ("Đang làm" sẽ không còn ở quy trình Standard) — dry-run phải báo.
+    await prisma.savedFilter.create({
+      data: {
+        id: id('f1'),
+        workspaceId: WS,
+        ownerId: id('u'),
+        name: 'Đang làm của tôi',
+        jql: 'status = "Đang làm"',
+      },
+    });
   }, 60_000);
 
   afterAll(async () => {
@@ -135,6 +145,10 @@ describe.skipIf(!DB_URL)('WorkflowSchemeService ↔ Postgres thật', () => {
     const out = await svc.setWorkspaceScheme(WS, id('u'), { items: items() }, true);
     expect(out.dryRun).toBe(true);
     expect(out.totalIssues).toBe(5);
+    expect(out.nameRefs).toEqual([
+      { kind: 'savedFilter', id: id('f1'), label: 'Đang làm của tôi', names: ['Đang làm'] },
+    ]);
+    expect((await svc.getWorkspaceScheme(WS)).issueTypes.map((t) => t.name)).toEqual(['Task']);
     expect(
       out.moves.find((m) => m.projectKey === 'WA' && m.fromStatusName === 'Đang làm'),
     ).toMatchObject({ count: 2, toStatusName: 'In Progress', suggested: true });
@@ -206,7 +220,13 @@ describe.skipIf(!DB_URL)('WorkflowSchemeService ↔ Postgres thật', () => {
       { items: items(), statusMap: map() },
       false,
     );
-    expect(out).toEqual({ dryRun: false, moves: [], totalIssues: 0, affectedRules: [] });
+    expect(out).toEqual({
+      dryRun: false,
+      moves: [],
+      totalIssues: 0,
+      affectedRules: [],
+      nameRefs: [],
+    });
     expect((await issueState(['a2']))[0]!.version).toBe(2);
   });
 

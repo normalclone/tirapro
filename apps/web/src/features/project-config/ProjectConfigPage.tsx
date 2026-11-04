@@ -5,6 +5,7 @@ import {
   Tag,
   Tags,
   Download,
+  GitBranch,
   Image as ImageIcon,
   Users,
   SlidersHorizontal,
@@ -28,6 +29,7 @@ import { ComponentsSection } from './ComponentsSection';
 import { VersionsSection } from './VersionsSection';
 import { LabelsSection } from './LabelsSection';
 import { DataSection } from './DataSection';
+import { WorkflowSection } from './WorkflowSection';
 import { PROJECT_CONFIG_LABELS } from '@/lib/navLabels';
 import {
   configRedirectTarget,
@@ -71,6 +73,13 @@ const CONFIG_NAV: ConfigSectionDef[] = [
     label: PROJECT_CONFIG_LABELS.labels,
     icon: <Tags className="h-4 w-4" />,
     description: 'Gắn nhãn cho công việc để nhóm và lọc theo cách của riêng bạn.',
+  },
+  {
+    id: 'workflow',
+    label: PROJECT_CONFIG_LABELS.workflow,
+    icon: <GitBranch className="h-4 w-4" />,
+    description:
+      'Mỗi loại việc đi theo một quy trình trạng thái: theo tổ chức, hoặc riêng của dự án này.',
   },
   {
     id: 'data',
@@ -154,6 +163,9 @@ export function ConfigSection() {
         )}
         {section === 'versions' && <VersionsSection projectId={projectId} canAdmin={canAdmin} />}
         {section === 'labels' && <LabelsSection projectId={projectId} canAdmin={canAdmin} />}
+        {section === 'workflow' && (
+          <WorkflowSection projectId={projectId} canAdmin={canAdmin && !project?.archivedAt} />
+        )}
         {section === 'data' && (
           <DataSection
             projectId={projectId}

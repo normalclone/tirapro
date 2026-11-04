@@ -15,6 +15,7 @@ import { PageFrame } from '@/components/layout/PageFrame';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { AddDialog } from '@/components/ui/AddDialog';
 import { WorkflowEditDialog } from './WorkflowEditDialog';
+import { WorkflowSchemeSection } from './WorkflowSchemeSection';
 import {
   useWorkflows,
   useCreateWorkflow,
@@ -120,6 +121,8 @@ export function WorkflowSettingsPage() {
         description="Các trạng thái của một công việc và những bước chuyển được phép giữa chúng."
       />
       {!canManage && <ReadOnlyNote />}
+
+      {canManage && <WorkflowSchemeSection workflows={workflows} />}
 
       <SectionCard
         icon={<GitBranch className="h-4 w-4" />}
@@ -333,6 +336,17 @@ export function UsedByLine({
   );
 }
 
+/** "Dùng cho: …" — loại việc của tổ chức đang dùng quy trình + ghi đè của dự án (từ `usedBy`). */
+export function SchemeUsageLine({ usage }: { usage: WorkflowUsage }) {
+  const parts = [
+    usage.scheme.length > 0 ? `loại việc ${usage.scheme.join(', ')} của tổ chức` : '',
+    usage.overrides.length > 0
+      ? `ghi đè ${usage.overrides.map((o) => `${o.projectKey} · ${o.typeKey}`).join(', ')}`
+      : '',
+  ].filter(Boolean);
+  return <p className="mt-1 text-xs text-muted">Dùng cho: {parts.join(' · ')}</p>;
+}
+
 function WorkflowRow({
   workflow,
   canManage,
@@ -392,6 +406,9 @@ function WorkflowRow({
           </Button>
         )}
       </div>
+      {(usage?.scheme.length ?? 0) > 0 || (usage?.overrides.length ?? 0) > 0 ? (
+        <SchemeUsageLine usage={usage!} />
+      ) : null}
       {inUse && <UsedByLine usedBy={usedBy} hiddenCount={hiddenCount} />}
     </li>
   );

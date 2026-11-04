@@ -17,6 +17,18 @@ export interface WorkflowSchemeItemDto {
 /** Cấu hình quy trình của workspace (GET/PUT). */
 export interface WorkspaceWorkflowSchemeDto {
   items: WorkflowSchemeItemDto[];
+  /** Mọi loại việc của tổ chức (kể cả loại chưa có dòng cấu hình) — để giao diện vẽ đủ hàng. */
+  issueTypes: SchemeIssueTypeDto[];
+}
+
+/** Loại việc rút gọn dùng trong bảng cấu hình quy trình. */
+export interface SchemeIssueTypeDto {
+  id: string;
+  name: string;
+  key: string | null;
+  color: string | null;
+  isSubtask: boolean;
+  hierarchyLevel: number;
 }
 
 /** Ghi đè của một dự án cho một loại việc. */
@@ -35,6 +47,7 @@ export interface ProjectWorkflowSchemeItemDto extends WorkflowSchemeItemDto {
 export interface ProjectWorkflowSchemeDto {
   projectId: string;
   items: ProjectWorkflowSchemeItemDto[];
+  issueTypes: SchemeIssueTypeDto[];
 }
 
 /** Trạng thái đích khi đổi loại việc giữa hai quy trình khác nhau. */
@@ -95,6 +108,15 @@ export interface AffectedRuleDto {
   statusRefs?: Array<{ fromId: string; fromName: string; toIds: string[]; toNames: string[] }>;
 }
 
+/** Đối tượng lọc theo TÊN trạng thái trong JQL sẽ không còn khớp sau thay đổi (chỉ báo, không tự sửa). */
+export interface NameRefDto {
+  kind: 'savedFilter' | 'boardFilter' | 'widget' | 'rule' | 'keyResult';
+  id: string;
+  label: string;
+  /** Tên trạng thái cũ xuất hiện trong JQL và không còn ở quy trình nào đang dùng. */
+  names: string[];
+}
+
 /** Kết quả `PUT /workflow-schemes`, `PUT|DELETE /projects/:id/workflow-overrides`; `dryRun=1` chỉ xem trước, không ghi. */
 export interface WorkflowChangeDto {
   dryRun: boolean;
@@ -102,6 +124,8 @@ export interface WorkflowChangeDto {
   totalIssues: number;
   /** Quy tắc automation tham chiếu trạng thái đổi: dryRun chỉ liệt kê, chạy thật đã sửa/tắt. */
   affectedRules: AffectedRuleDto[];
+  /** Bộ lọc/bảng/widget/quy tắc/KR lọc theo TÊN trạng thái cũ trong JQL sẽ không còn khớp (chỉ báo). */
+  nameRefs: NameRefDto[];
 }
 
 /** `GET /workflows` → `usedBy`: nơi quy trình đang được dùng. */

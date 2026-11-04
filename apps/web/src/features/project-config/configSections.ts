@@ -5,6 +5,7 @@ export const CONFIG_SECTION_IDS = [
   'components',
   'versions',
   'labels',
+  'workflow',
   'data',
 ] as const;
 
