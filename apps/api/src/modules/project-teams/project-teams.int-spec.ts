@@ -390,6 +390,28 @@ describe.skipIf(!DB_URL)('team theo dự án ↔ Postgres thật', () => {
     expect(await roleIds(p, u2)).toEqual([R.p1]);
   });
 
+  it('xoá team là nguồn duy nhất của thành viên cuối dự án riêng tư: giữ thành viên, vai trò chuyển thành gán trực tiếp (không mồ côi)', async () => {
+    const p = await newProject(true);
+    const tid = id(`tdel${++seq}`);
+    await prisma.team.create({ data: { id: tid, organizationId: ORG, name: tid, key: tid } });
+    await prisma.teamMember.create({ data: { teamId: tid, userId: u1 } });
+    await pt.link(ORG, p, tid, [R.p1, R.p2], ADMIN);
+    await teams.remove(ORG, tid, ADMIN);
+    expect(await prisma.projectTeamLink.count({ where: { teamId: tid } })).toBe(0);
+    expect(await state(p, u1)).toEqual({
+      primary: R.p1,
+      roles: [
+        { roleId: R.p1, direct: true, teams: [] },
+        { roleId: R.p2, direct: true, teams: [] },
+      ],
+    });
+    await assertInvariants(p);
+    const log = await prisma.auditLog.findFirst({
+      where: { organizationId: ORG, entityId: tid, action: 'project_team.synced' },
+    });
+    expect((log?.meta as { keptPromotedToDirect?: string[] }).keptPromotedToDirect).toEqual([u1]);
+  });
+
   it('tài khoản vô hiệu hoá / người đã rời tổ chức không nhận vai trò; người đã nhận mà hết đủ điều kiện bị gỡ khi đồng bộ', async () => {
     const p = await newProject();
     await resetTeam(T.a, [u1, u5]);
@@ -475,6 +497,17 @@ describe.skipIf(!DB_URL)('team theo dự án ↔ Postgres thật', () => {
     expect(await prisma.projectTeamLink.count({ where: { projectId: p } })).toBe(0);
     await pt.link(ORG, p, T.a, [risky], ADMIN); // quản trị thì được
     expect(await roleIds(p, u1)).toEqual([risky]);
+    // Chiều GỠ cũng chỉ quản trị tổ chức làm được: đổi sang vai trò thường hoặc gỡ team đều bị chặn, không đổi gì.
+    await expect(pt.link(ORG, p, T.a, [R.p1], u2)).rejects.toMatchObject({
+      code: 'ADMIN_GRANT_REQUIRES_ADMIN',
+    });
+    await expect(pt.unlink(ORG, p, T.a, u2)).rejects.toMatchObject({
+      code: 'ADMIN_GRANT_REQUIRES_ADMIN',
+    });
+    expect(await roleIds(p, u1)).toEqual([risky]);
+    expect(await prisma.projectTeamLink.count({ where: { projectId: p } })).toBe(1);
+    await pt.link(ORG, p, T.a, [R.p1], ADMIN); // quản trị thì đổi/gỡ được
+    expect(await roleIds(p, u1)).toEqual([R.p1]);
   });
 
   it('vai trò sai cấp / team ngoài tổ chức → từ chối; gỡ team chưa gắn → 404', async () => {

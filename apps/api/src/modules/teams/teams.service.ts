@@ -174,7 +174,7 @@ export class TeamsService {
       return e;
     }, TEAM_TX_OPTS);
     await this.projectTeams.publish(organizationId, effects, actorId);
-    await this.projectTeams.auditSync(organizationId, effects, actorId, 'xoá nhóm');
+    await this.projectTeams.auditSync(organizationId, effects, actorId, 'xoá nhóm', true);
     return { success: true };
   }
 

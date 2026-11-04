@@ -104,7 +104,12 @@ export class ProjectTeamsService {
     const project = await this.requireProject(organizationId, projectId);
     const team = await this.requireTeam(organizationId, teamId);
     const ids = await this.validateRoles(organizationId, roleIds);
-    await this.assertMayGrant(organizationId, actorId, ids);
+    // Cả hai chiều (thêm VÀ gỡ vai trò mang quyền quản trị tổ chức) chỉ quản trị tổ chức làm được, như `MembersService`.
+    const current = await this.prisma.projectTeamLink.findUnique({
+      where: { projectId_teamId: { projectId, teamId } },
+      select: { roleIds: true },
+    });
+    await this.assertMayGrant(organizationId, actorId, current?.roleIds ?? [], ids);
 
     const { effect, existed, before } = await this.prisma.$transaction(async (tx) => {
       await lockTeamRoles(tx, teamId);
@@ -149,6 +154,12 @@ export class ProjectTeamsService {
   ): Promise<ProjectTeamLinkDto[]> {
     const project = await this.requireProject(organizationId, projectId);
     const team = await this.requireTeam(organizationId, teamId);
+    const current = await this.prisma.projectTeamLink.findUnique({
+      where: { projectId_teamId: { projectId, teamId } },
+      select: { roleIds: true },
+    });
+    if (!current) throw new NotFoundAppException('Liên kết team với dự án');
+    await this.assertMayGrant(organizationId, actorId, current.roleIds, []);
 
     const effect = await this.prisma.$transaction(async (tx) => {
       await lockTeamRoles(tx, teamId);
@@ -232,7 +243,19 @@ export class ProjectTeamsService {
     const out: LinkSyncEffect[] = [];
     for (const l of links) {
       await lockProjectRoles(tx, l.projectId);
-      out.push(await this.syncLink(tx, organizationId, l.project, team, []));
+      const e = await this.syncLink(tx, organizationId, l.project, team, []);
+      if (e.kept.length > 0) {
+        // Thành viên cuối của dự án riêng tư không được mất (xem `keptLastOfPrivate`) mà các dòng nguồn team sắp bị xoá theo team (FK cascade):
+        // chuyển phần vai trò nhờ team này thành GÁN TRỰC TIẾP để vai trò vẫn có nguồn hợp lệ (không còn dòng mồ côi direct=false).
+        await tx.projectMembershipRole.updateMany({
+          where: {
+            membership: { projectId: l.projectId, userId: { in: e.kept } },
+            teamSources: { some: { teamId } },
+          },
+          data: { direct: true },
+        });
+      }
+      out.push(e);
       await tx.projectTeamLink.delete({ where: { id: l.id } });
     }
     return out;
@@ -275,6 +298,7 @@ export class ProjectTeamsService {
     effects: LinkSyncEffect[],
     actorId?: string,
     why = 'team đổi thành viên',
+    teamDeleted = false,
   ): Promise<void> {
     for (const e of effects) {
       if (e.added.length + e.removed.length + e.changed.length + e.kept.length === 0) continue;
@@ -295,6 +319,8 @@ export class ProjectTeamsService {
           removed: e.removed,
           changed: e.changed,
           kept: e.kept,
+          // Xoá team: thành viên cuối của dự án riêng tư giữ lại vai trò, chuyển từ "nhờ team" sang "gán trực tiếp".
+          keptPromotedToDirect: teamDeleted ? e.kept : [],
         },
       });
     }
@@ -413,11 +439,12 @@ export class ProjectTeamsService {
   private async assertMayGrant(
     organizationId: string,
     actorId: string,
-    roleIds: string[],
+    before: string[],
+    after: string[],
   ): Promise<void> {
     if (await this.rbac.holdsOrganizationAdmin(actorId, organizationId)) return;
-    const admins = await this.rbac.adminRoleIds(roleIds);
-    if (touchedAdminRoleIds([], roleIds, admins).length > 0)
+    const admins = await this.rbac.adminRoleIds([...before, ...after]);
+    if (touchedAdminRoleIds(before, after, admins).length > 0)
       throw new AdminGrantRequiresAdminException();
   }
 
