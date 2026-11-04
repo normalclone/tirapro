@@ -37,3 +37,4 @@ export * from './points';
 export * from './digest';
 export * from './schemas/dashboard';
 export * from './goal-values';
+export * from './workflow-defaults';
