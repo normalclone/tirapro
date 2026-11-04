@@ -406,3 +406,33 @@ User request (2026-11-04): "rà soát lại tất cả các trang, để fit-con
   - Run impeccable detect on `apps/web/src`, and fix any new findings in the files you touched.
   - Visual spot-check at 1600px of these pages: Tổng quan, Dự án, issue detail, Bộ lọc, Cài đặt → Quy trình, Cài đặt → Thông báo, Quản trị hệ thống, Wiki.
 - [ ] **Step 5: Commit.**
+
+
+### Task 13 (run right after Task 5, before Task 6): parent points = sum of sub-tasks; aggregations count leaves only
+
+User decision (2026-11-04, "cách 2"); the spec's appendix "Bổ sung 2026-11-04" is binding and replaces the old epic-sum rule.
+
+**Interfaces — Produces:**
+- `PointsService.rollupParents(tx, parentIds: string[]): Promise<void>`.
+  - It runs on each parent that is not an Epic and has ≥1 live child. It locks the rows in id order, sets `storyPoints` to the sum of the children's points, and bumps `version` only when the value changed.
+  - When a parent has no live children left, it recomputes the parent by formula, unless `pointsManual` is set.
+  - It returns the set of affected epic ids, so the caller can chain `rollupEpics`.
+- `rollupEpics` changes to: sum of `storyPoints` over live issues with `epicId` = the epic **and** `parentId IS NULL`.
+- `common/points-scope.ts` changes `EXCLUDE_EPIC_POINTS`, renamed to `LEAF_POINTS_ONLY` (update every user from Task 3). It excludes Epics **and** issues that have a live child: `children: { none: { deletedAt: null } }`, or the equivalent relation name in the schema.
+  - `countsTowardPoints(issue)` takes `childCount`/`hasChildren`. Add that to IssueDto if needed, as `hasLiveChildren: boolean`.
+- Overriding points by hand on a parent that has live children → 422 `POINTS_ROLLUP_ONLY`.
+- Recompute (`recomputeAll` and `scripts/recompute-points.mjs`) skips parents with live children in the formula pass, then runs a parent rollup pass (leaf parents first), then the epic rollup. It keeps the no-`updatedAt` and race rules from the Task 4 fix round.
+
+**Steps:**
+- [ ] **Step 1: Failing tests.**
+  - A Task with sub-tasks of 2 and 3 points → the Task is 5. Its epic counts the Task (5) once and does not count the sub-tasks again.
+  - Deleting a sub-task → the Task drops to 2, and the epic follows.
+  - Moving a sub-task to another parent → both parents and their epics update.
+  - The last child is deleted → the parent goes back to the formula value.
+  - A PM override on a parent with children → 422 `POINTS_ROLLUP_ONLY`.
+  - Sprint totals with a Task(5) and its two sub-tasks (2+3) in the sprint → 5.
+  - The recompute script on the throwaway DB gives the correct parent and epic totals, and a second run changes 0 rows.
+- [ ] **Step 2: Run** → FAIL.
+- [ ] **Step 3: Implement.** Mirror the epic logic (same transaction, same lock ordering: children → parent → epic).
+- [ ] **Step 4: Gates.** Run full API, shared and web tests, typecheck and lint.
+- [ ] **Step 5: Commit.**

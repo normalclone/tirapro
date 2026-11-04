@@ -141,3 +141,12 @@ Cách sửa:
 - Tên enum/giá trị độ khó, nơi lưu bảng hệ số (bảng mới một dòng hay key-value), cách cache.
 - Cập nhật điểm Epic: đồng bộ trong transaction hay qua event.
 - Bố cục trang cấu hình hệ số và vị trí ô Độ khó, miễn đúng DESIGN.md.
+
+## Bổ sung 2026-11-04: điểm Task có Sub-task (người dùng chọn "cách 2")
+
+Quy ước của người dùng: Epic = Module/Chức năng, Task = công việc của Dev/Tester/BA, Sub-task = việc nhỏ hơn.
+
+- **Việc cha (không phải Epic) đang có ≥1 việc con chưa xoá** (qua `parentId`): điểm = **tổng điểm các việc con**. Điểm này không áp công thức và không ghi đè tay được, giống Epic. Hết việc con thì việc cha quay về tính theo công thức (hoặc giữ giá trị đã ghi đè tay trước đó nếu `pointsManual`).
+- **Tổng điểm Epic** = tổng điểm các việc **cấp trên** thuộc Epic (`epicId` = epic và `parentId` IS NULL). Điểm của Task đã bao gồm điểm Sub-task của nó, nên Sub-task không bị cộng thêm lần nữa. **Thay cho quyết định số 3 ở trên.**
+- **Mọi phép cộng điểm** (sprint, burndown, velocity, báo cáo theo người, KPI, digest, nguồn lực, và tổng phía web) chỉ đếm **việc lá**: bỏ Epic và bỏ việc đang có việc con chưa xoá. Nhờ vậy công được ghi đúng cho người làm Sub-task và không bị cộng trùng.
+- Việc cha được cập nhật khi việc con được tạo, xoá, khôi phục, đổi `parentId`, đổi điểm, hoặc đổi loại / độ khó / ưu tiên. Sau đó Epic của việc cha được cộng lại.
