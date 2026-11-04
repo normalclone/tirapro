@@ -7,8 +7,8 @@ import { useProjectMeta } from '@/features/ai/api';
 import { useProjects } from '@/features/projects/api';
 import { useWorkflows } from '@/features/workflow-settings/api';
 import { apiErrorMessage } from '@/lib/api';
-import { useTransitionDetail } from './api';
-import { computeNextStatuses } from './nextStatuses';
+import { useResumeSuggestion, useTransitionDetail } from './api';
+import { computeNextStatuses, withSuggestedFirst } from './nextStatuses';
 import { transitionToastOptions } from './statusUndo';
 import { TransitionDialog, type DialogTransitionKind } from './TransitionDialog';
 import { defaultResolutionId, transitionKind } from './transitionKind';
@@ -70,9 +70,11 @@ export function useIssueTransitions(issue: IssueDto | undefined) {
 
   // Chỉ các trạng thái ở BƯỚC KẾ TIẾP — chuyển tiếp hợp lệ từ trạng thái hiện tại theo workflow.
   const currentStatusId = issue?.status.id;
+  // Nút theo QUY TRÌNH CỦA CHÍNH VIỆC NÀY (Bug khác Task); rời Pending → trạng thái trước khi tạm dừng đứng đầu và nổi bật.
+  const resumeId = useResumeSuggestion(issue);
   const nextStatuses = useMemo(
-    () => computeNextStatuses(workflows, currentStatusId),
-    [workflows, currentStatusId],
+    () => withSuggestedFirst(computeNextStatuses(workflows, currentStatusId), resumeId),
+    [workflows, currentStatusId, resumeId],
   );
 
   function changeStatus(

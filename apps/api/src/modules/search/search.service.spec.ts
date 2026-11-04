@@ -2,6 +2,17 @@ import { describe, expect, it, vi } from 'vitest';
 import { NotFoundAppException } from '../../common/exceptions/app.exception';
 import { SearchService } from './search.service';
 
+/**
+ * Dữ liệu "quy trình đang dùng" cho `fields()` / kiểm giá trị: chưa có cấu hình theo loại việc nào → rơi về phạm vi cũ
+ * (mọi quy trình người xem thấy). Các mock bên dưới ghi đè khoá nào cần.
+ */
+const noWorkflowUse = () => ({
+  workspaceWorkflowScheme: { findMany: vi.fn().mockResolvedValue([]) },
+  projectWorkflowOverride: { findMany: vi.fn().mockResolvedValue([]) },
+  project: { findMany: vi.fn().mockResolvedValue([]) },
+  issueType: { findMany: vi.fn().mockResolvedValue([]) },
+});
+
 /** Người thấy mọi dự án (admin) — `visibleWhere` = `{}`. */
 const ADMIN_ACCESS = { visibleWhere: vi.fn().mockResolvedValue({}) };
 
@@ -16,6 +27,7 @@ function makeService(rows: Array<{ id: string; rank: number }> | Error) {
   );
   const issues = { query: vi.fn().mockResolvedValue({ data: [], meta: {} }) };
   const prisma = {
+    ...noWorkflowUse(),
     $queryRaw: queryRaw,
     project: { findMany: vi.fn().mockResolvedValue([{ id: 'P1' }]) },
   };
@@ -184,6 +196,7 @@ describe('SearchService.fields — severities', () => {
       ]),
     };
     const prisma = {
+      ...noWorkflowUse(),
       issueType: { findMany: empty },
       status: { findMany: empty },
       priority: { findMany: empty },
@@ -210,6 +223,7 @@ describe('SearchService.fields — components/versions (B17)', () => {
   it('trả components/versions khử trùng theo tên', async () => {
     const empty = vi.fn().mockResolvedValue([]);
     const prisma = {
+      ...noWorkflowUse(),
       issueType: { findMany: empty },
       status: { findMany: empty },
       priority: { findMany: empty },
@@ -266,6 +280,7 @@ describe('SearchService — dự án riêng tư (P13)', () => {
   it('fields(w, viewer): sprint/nhãn/thành phần/phiên bản chỉ lấy từ dự án người xem thấy', async () => {
     const empty = vi.fn().mockResolvedValue([]);
     const prisma = {
+      ...noWorkflowUse(),
       issueType: { findMany: empty },
       status: { findMany: empty },
       priority: { findMany: empty },
@@ -350,6 +365,7 @@ describe('SearchService — kiểm giá trị JQL (U15)', () => {
   function make() {
     const issues = { query: vi.fn().mockResolvedValue({ data: [], meta: {} }) };
     const prisma = {
+      ...noWorkflowUse(),
       status: { findMany: vi.fn().mockResolvedValue([{ name: 'In Progress' }, { name: 'Done' }]) },
       priority: { findMany: vi.fn().mockResolvedValue([{ name: 'High' }, { name: 'Low' }]) },
       project: { findMany: vi.fn().mockResolvedValue([{ key: 'DEMO' }]) },
@@ -448,6 +464,7 @@ describe('SearchService — chỉ liệt kê/gợi ý dự án người hỏi đ
     const hasVisible = (where: { OR?: unknown; project?: { OR?: unknown } }) =>
       !!where.project?.OR || !!where.OR;
     const prisma = {
+      ...noWorkflowUse(),
       project: {
         findMany: vi.fn((a: { where: { OR?: unknown } }) =>
           Promise.resolve(a.where.OR ? [{ key: 'PUB' }] : [{ key: 'PUB' }, { key: 'SECRET' }]),
@@ -633,5 +650,107 @@ describe('SearchService.count (L25)', () => {
       message: expect.stringContaining('JQL không hợp lệ') as unknown,
     });
     expect(count).not.toHaveBeenCalled();
+  });
+});
+
+describe('SearchService.fields — trạng thái theo quy trình đang dùng (mỗi loại việc một quy trình)', () => {
+  const empty = () => vi.fn().mockResolvedValue([]);
+  /** Trả danh mục trạng thái đúng như Prisma lọc theo `workflow.id.in` (mô phỏng bảng Status của 3 quy trình + 1 quy trình cũ). */
+  const STATUS_BY_WORKFLOW: Record<string, Array<{ name: string; color: string | null }>> = {
+    wfStd: [
+      { name: 'To Do', color: null },
+      { name: 'In Review', color: null },
+      { name: 'Done', color: '#0a0' },
+    ],
+    wfBug: [
+      { name: 'New', color: null },
+      { name: 'Ready for Retest', color: null },
+      { name: 'Done', color: '#0b0' },
+    ],
+    wfOld: [{ name: 'QA cũ', color: null }],
+  };
+
+  function make(over: Record<string, unknown>) {
+    const status = {
+      findMany: vi.fn((a: { where: { workflow: { id?: { in: string[] } } } }) => {
+        const ids = a.where.workflow.id?.in ?? Object.keys(STATUS_BY_WORKFLOW);
+        return Promise.resolve(ids.flatMap((id) => STATUS_BY_WORKFLOW[id] ?? []));
+      }),
+    };
+    const prisma = {
+      priority: { findMany: empty() },
+      severity: { findMany: empty() },
+      sprint: { findMany: empty() },
+      label: { findMany: empty() },
+      resolution: { findMany: empty() },
+      component: { findMany: empty() },
+      version: { findMany: empty() },
+      ...noWorkflowUse(),
+      status,
+      ...over,
+    };
+    return {
+      prisma,
+      service: new SearchService({} as never, prisma as never, ACCESS as never),
+    };
+  }
+
+  it('gộp theo TÊN trạng thái của các quy trình trong cấu hình theo loại việc (Done của Task và Bug là một mục); bỏ quy trình cũ không dùng', async () => {
+    const { service, prisma } = make({
+      issueType: { findMany: vi.fn().mockResolvedValue([{ id: 'tTask' }, { id: 'tBug' }]) },
+      workspaceWorkflowScheme: {
+        findMany: vi.fn().mockResolvedValue([
+          { issueTypeId: 'tTask', workflowId: 'wfStd' },
+          { issueTypeId: 'tBug', workflowId: 'wfBug' },
+        ]),
+      },
+      project: {
+        findMany: vi.fn().mockResolvedValue([{ id: 'p1', defaultWorkflowId: 'wfOld' }]),
+      },
+    });
+    const out = await service.fields('w1', 'u1');
+    expect(out.statuses.map((s) => s.value)).toEqual([
+      'To Do',
+      'In Review',
+      'Done',
+      'New',
+      'Ready for Retest',
+    ]);
+    // Truy vấn chỉ dựa vào quy trình đang dùng: quy trình mặc định cũ của dự án KHÔNG nằm trong đó khi mọi loại đã có cấu hình.
+    const where = prisma.status.findMany.mock.calls[0]![0].where.workflow;
+    expect([...(where.id?.in ?? [])].sort()).toEqual(['wfBug', 'wfStd']);
+  });
+
+  it('ghi đè của dự án xem được tính; loại việc chưa có cấu hình thì quy trình mặc định của dự án vẫn tính', async () => {
+    const { service } = make({
+      issueType: {
+        findMany: vi.fn().mockResolvedValue([{ id: 'tTask' }, { id: 'tNew' }]),
+      },
+      workspaceWorkflowScheme: {
+        findMany: vi.fn().mockResolvedValue([{ issueTypeId: 'tTask', workflowId: 'wfStd' }]),
+      },
+      projectWorkflowOverride: {
+        findMany: vi
+          .fn()
+          .mockResolvedValue([{ projectId: 'p1', issueTypeId: 'tTask', workflowId: 'wfBug' }]),
+      },
+      project: { findMany: vi.fn().mockResolvedValue([{ id: 'p1', defaultWorkflowId: 'wfOld' }]) },
+    });
+    const out = await service.fields('w1', 'u1');
+    const names = out.statuses.map((s) => s.value);
+    expect(names).toContain('Ready for Retest'); // ghi đè
+    expect(names).toContain('In Review'); // theo tổ chức
+    expect(names).toContain('QA cũ'); // loại "tNew" chưa có cấu hình → dùng quy trình mặc định của dự án
+  });
+
+  it('ghi đè chỉ lấy từ dự án người hỏi xem được; chưa có cấu hình nào → như trước (mọi quy trình xem được)', async () => {
+    const overrides = vi.fn().mockResolvedValue([]);
+    const { service, prisma } = make({ projectWorkflowOverride: { findMany: overrides } });
+    const out = await service.fields('w1', 'u1');
+    expect(overrides).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { project: { workspaceId: 'w1', deletedAt: null } } }),
+    );
+    expect(prisma.status.findMany.mock.calls[0]![0].where.workflow.id).toBeUndefined();
+    expect(out.statuses.map((s) => s.value)).toContain('QA cũ');
   });
 });

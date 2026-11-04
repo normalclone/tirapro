@@ -118,7 +118,8 @@ export function IssueStatusField({
                 style={{ background: CATEGORY_COLOR[o.category] ?? 'var(--faint)' }}
                 aria-hidden
               />
-              {o.label}
+              <span className="min-w-0 flex-1">{o.label}</span>
+              {o.suggested && <span className="shrink-0 text-xs text-primary">Gợi ý</span>}
             </DropdownMenu.Item>
           ))}
         </DropdownMenu.Content>

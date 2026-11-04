@@ -48,6 +48,9 @@ export const keys = {
     watch: (issueId: string) => ['issues', 'watch', issueId] as const,
     watchers: (issueId: string) => ['issues', 'watchers', issueId] as const,
     links: (issueId: string) => ['issues', 'links', issueId] as const,
+    /** Bước chuyển khả dụng theo quy trình của loại việc (kèm gợi ý quay lại khi đang Pending) — khoá theo trạng thái hiện tại. */
+    transitions: (issueId: string, statusId: string) =>
+      ['issues', 'transitions', issueId, statusId] as const,
     participants: (issueId: string) => ['issues', 'participants', issueId] as const,
     checklist: (issueId: string) => ['issues', 'checklist', issueId] as const,
     customFields: (issueId: string) => ['issues', 'custom-fields', issueId] as const,

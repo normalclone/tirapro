@@ -1,8 +1,15 @@
 import { skipToken, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
-import type { BoardDto, BoardType, IssueDto, ListResponse, SwimlaneBy } from '@tirapro/types';
+import type {
+  BoardDto,
+  BoardType,
+  IssueDto,
+  ListResponse,
+  ProjectWorkflowSchemeDto,
+  SwimlaneBy,
+} from '@tirapro/types';
 import { api } from '@/lib/api';
-import type { Workflow } from '@/features/workflow-settings/api';
+import type { Workflow, WorkflowStatus } from '@/features/workflow-settings/api';
 import { keys } from '@/lib/queryKeys';
 import { invalidateIssue, optimisticPatchIssue, rollbackIssue } from '@/lib/optimistic';
 
@@ -29,14 +36,40 @@ export function useBoardIssues(boardId: string | undefined) {
   });
 }
 
-/** Trạng thái (theo thứ tự) của quy trình dự án — để gán trạng thái vào cột trong cài đặt bảng. */
+/** Trạng thái kèm quy trình chứa nó — cột bảng có thể gom trạng thái của nhiều quy trình (Bug / Task / Epic dùng quy trình khác nhau). */
+export interface ProjectStatus extends WorkflowStatus {
+  workflowId: string;
+  workflowName: string;
+}
+
+/**
+ * Trạng thái của MỌI quy trình đang dùng trong dự án (theo loại việc: ghi đè của dự án → tổ chức → mặc định của dự án),
+ * mỗi quy trình theo thứ tự trạng thái — để gán vào cột trong cài đặt bảng. Dự án chưa có cấu hình theo loại → quy trình
+ * riêng của dự án như trước đây.
+ */
 export function useProjectStatuses(projectId: string | undefined) {
   return useQuery({
     queryKey: keys.projectWorkflow(projectId ?? ''),
     queryFn: projectId
-      ? async () => {
-          const list = (await api.get<Workflow[]>(`/workflows?projectId=${projectId}`)).data;
-          return [...(list[0]?.statuses ?? [])].sort((a, b) => a.order - b.order);
+      ? async (): Promise<ProjectStatus[]> => {
+          const [scheme, all] = await Promise.all([
+            api.get<ProjectWorkflowSchemeDto>(`/projects/${projectId}/workflow-overrides`),
+            api.get<Workflow[]>('/workflows'),
+          ]);
+          // Theo thứ tự loại việc trong cấu hình (cột/danh sách ổn định), không theo thứ tự trả về của `/workflows`.
+          const byId = new Map(all.data.map((w) => [w.id, w]));
+          const usedIds = [...new Set(scheme.data.items.map((i) => i.workflowId))];
+          let list = usedIds.flatMap((id) => byId.get(id) ?? []);
+          if (list.length === 0)
+            list = (await api.get<Workflow[]>(`/workflows?projectId=${projectId}`)).data.slice(
+              0,
+              1,
+            );
+          return list.flatMap((w) =>
+            [...w.statuses]
+              .sort((a, b) => a.order - b.order)
+              .map((s) => ({ ...s, workflowId: w.id, workflowName: w.name })),
+          );
         }
       : skipToken,
   });

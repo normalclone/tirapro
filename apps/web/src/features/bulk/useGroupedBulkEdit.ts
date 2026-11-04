@@ -8,7 +8,6 @@ import { useConfirm } from '@/components/ui/useConfirm';
 import { api, apiErrorMessage } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
 import { useAuth } from '@/stores/auth';
-import { canRevertTransition } from '@/features/issues/nextStatuses';
 import { pointsConfirmOptions, pointsEditWarningBulk } from '@/features/issues/pointsWarning';
 import { recordIssueChange } from '@/features/issues/menu/issueOverlay';
 import { useProjectPermissionContexts } from '@/features/projects/permissions';
@@ -21,9 +20,13 @@ import {
   type BulkIssuePatch,
 } from '@/features/backlog/api';
 import {
+  groupByDestination,
   labelsToUndo,
   planRestoreField,
+  statusUndoPlan,
   type BulkField,
+  type BulkPart,
+  type BulkStatusOption,
   type BulkValue,
   type UndoPlan,
   type VersionedItem,
@@ -37,6 +40,7 @@ import {
   groupPermsFor,
   groupedBulkTitle,
   mapLimit,
+  mergeGroupOutcomes,
   planConflictRefresh,
   planGroupedUndo,
   type BulkActionId,
@@ -166,6 +170,20 @@ async function sendGroup(
   }
 }
 
+/** Gửi các phần (mỗi phần một `patch`) cho MỘT nhóm rồi gộp thành một kết quả của nhóm. */
+async function sendGroupParts(projectId: string, parts: BulkPart[]): Promise<GroupOutcome> {
+  const outs: GroupOutcome[] = [];
+  for (const p of parts)
+    outs.push(
+      await sendGroup(
+        projectId,
+        p.issues.map((i) => ({ id: i.id, version: i.version })),
+        p.patch,
+      ),
+    );
+  return mergeGroupOutcomes(projectId, outs);
+}
+
 /**
  * Hàng loạt cho kết quả Bộ lọc (trải nhiều dự án). Nhóm lựa chọn theo dự án, tính quyền + hành động áp được cho từng nhóm
  * (`availableBulkActions`), gọi bulk API MỘT LẦN mỗi dự án (song song tối đa 2), gom kết quả vào một toast. Việc chưa xong
@@ -242,10 +260,12 @@ export function useGroupedBulkEdit(a: {
 
   async function run(
     id: BulkActionId,
-    patch: BulkIssuePatch,
+    patch: BulkIssuePatch | ((targets: IssueDto[]) => BulkPart[]),
     verb: string,
     undo: UndoBuilder | null,
     only?: (i: IssueDto) => boolean,
+    /** `keep`: việc bị bỏ qua nhưng GIỮ chọn; `note`: dòng giải thích dưới toast. */
+    extra?: { keep?: ReadonlySet<string>; note?: string },
   ) {
     const avail = availability[id];
     const apply = new Set(avail.applyProjectIds);
@@ -257,17 +277,16 @@ export function useGroupedBulkEdit(a: {
     setBusy(true);
     try {
       const outcomes = await mapLimit(targets, GROUP_CONCURRENCY, (g) =>
-        sendGroup(
+        sendGroupParts(
           g.projectId,
-          g.issues.map((i) => ({ id: i.id, version: i.version })),
-          patch,
+          typeof patch === 'function' ? patch(g.issues) : [{ issues: g.issues, patch }],
         ),
       );
       const agg = aggregateGroupResults(outcomes, apiErrorMessage);
       recordAll(agg.updated);
       refresh(targets.map((g) => g.projectId));
       // Xong thì bỏ chọn; việc chưa xong (conflict, nhóm lỗi) GIỮ chọn để thử lại. Việc bị bỏ qua vì thiếu quyền không phải lỗi.
-      retainSelection(agg.retainIds);
+      retainSelection(new Set([...agg.retainIds, ...(extra?.keep ?? [])]));
 
       const plan = undo ? planGroupedUndo(targets, versionsByProject(agg.updated), undo) : null;
       const action = plan
@@ -275,12 +294,12 @@ export function useGroupedBulkEdit(a: {
         : undefined;
       const title = groupedBulkTitle(verb, agg, keyOf, avail.skipCount);
       if (agg.kind === 'all') {
-        toast.success(title, { duration: 6000, action });
+        toast.success(title, { duration: 6000, action, description: extra?.note });
       } else {
         toast.warning(title, {
           duration: plan ? 8000 : undefined,
           action,
-          description: await describeUnfinished(agg, issues ?? []),
+          description: (await describeUnfinished(agg, issues ?? [])) || extra?.note,
         });
       }
     } catch (err) {
@@ -323,14 +342,28 @@ export function useGroupedBulkEdit(a: {
         const items = labelsToUndo(targets, updated, labelId);
         return items.length ? [{ items, patch: { labels: { remove: [labelId] } } }] : null;
       }),
-    setStatus: (statusId: string) =>
-      run(
+    /** Đổi trạng thái theo lựa chọn của `bulkStatusOptions` (mỗi việc đi tới đích của quy trình của nó) — xem `useBulkEdit.setStatus`. */
+    setStatus: (option: BulkStatusOption) => {
+      const skipped = groups
+        .flatMap((g) => g.issues)
+        .filter((i) => option.targets[i.id] === undefined);
+      return run(
         'status',
-        { statusId },
+        (targets) =>
+          groupByDestination(option, targets).map((g) => ({
+            issues: g.issues,
+            patch: { statusId: g.statusId },
+          })),
         'chuyển trạng thái cho',
-        restoreField('statusId', (prev) =>
-          typeof prev === 'string' ? canRevertTransition(workflows, prev, statusId) : false,
-        ),
-      ),
+        (targets, updated) => statusUndoPlan(workflows, option, targets, updated),
+        (i) => option.targets[i.id] !== undefined,
+        skipped.length > 0
+          ? {
+              keep: new Set(skipped.map((i) => i.id)),
+              note: `${skipped.length} việc không có bước chuyển này nên giữ nguyên và vẫn đang được chọn.`,
+            }
+          : undefined,
+      );
+    },
   };
 }

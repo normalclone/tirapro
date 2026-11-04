@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { BoardColumnDto } from '@tirapro/types';
 import type { Workflow } from '@/features/workflow-settings/api';
-import { resolveDropStatuses } from './dropTarget';
+import { defaultWorkflow, statusIdOf } from '@/features/issues/workflowFixtures';
+import { blockedDropMessage, resolveDropStatuses } from './dropTarget';
 
 const st = (id: string, order: number, category: 'TODO' | 'IN_PROGRESS' | 'DONE' = 'TODO') => ({
   id,
@@ -68,5 +69,50 @@ describe('resolveDropStatuses', () => {
   it('workflow chưa tải => rơi về status đầu của cột để máy chủ kiểm', () => {
     const r = resolveDropStatuses(col(['doing', 'review']), 'todo', undefined);
     expect(r).toMatchObject({ kind: 'move', options: [{ id: 'doing' }] });
+  });
+});
+
+describe('cùng bảng, Bug và Task có quy trình khác nhau', () => {
+  const standard = defaultWorkflow('STANDARD');
+  const bug = defaultWorkflow('BUG');
+  const both = [standard, bug];
+  // Cột "Đang làm" gom trạng thái đang làm của CẢ HAI quy trình (như sau khi chuyển đổi: bảng cũ + trạng thái mới).
+  const doingCol = col([
+    statusIdOf('STANDARD', 'In Progress'),
+    statusIdOf('STANDARD', 'In Review'),
+    statusIdOf('BUG', 'In Progress'),
+    statusIdOf('BUG', 'Ready for Retest'),
+  ]);
+
+  it('thẻ Task chỉ thấy đích của quy trình Standard', () => {
+    const r = resolveDropStatuses(doingCol, statusIdOf('STANDARD', 'Ready'), both);
+    expect(r).toMatchObject({
+      kind: 'move',
+      options: [{ id: statusIdOf('STANDARD', 'In Progress') }],
+    });
+  });
+  it('thẻ Bug chỉ thấy đích của quy trình Bug (không lẫn In Review)', () => {
+    const r = resolveDropStatuses(doingCol, statusIdOf('BUG', 'To Do'), both);
+    expect(r).toMatchObject({ kind: 'move', options: [{ id: statusIdOf('BUG', 'In Progress') }] });
+    const fromProgress = resolveDropStatuses(doingCol, statusIdOf('BUG', 'Reopened'), both);
+    expect(fromProgress).toMatchObject({ kind: 'move' });
+    if (fromProgress.kind === 'move')
+      expect(fromProgress.options.every((o) => o.id.startsWith('bug:'))).toBe(true);
+  });
+  it('cột chỉ có trạng thái của quy trình khác → blocked cho thẻ này, vẫn hợp lệ cho thẻ kia', () => {
+    const reworkOnly = col([statusIdOf('STANDARD', 'Rework')]);
+    expect(resolveDropStatuses(reworkOnly, statusIdOf('BUG', 'In Progress'), both)).toEqual({
+      kind: 'blocked',
+    });
+    expect(
+      resolveDropStatuses(reworkOnly, statusIdOf('STANDARD', 'In Review'), both),
+    ).toMatchObject({
+      kind: 'move',
+    });
+  });
+  it('toast khi không có đích nêu loại việc, trạng thái hiện tại và cột', () => {
+    expect(
+      blockedDropMessage({ type: { name: 'Bug' }, status: { name: 'Reopened' } }, 'Xong'),
+    ).toBe('Quy trình của loại Bug không có bước chuyển từ “Reopened” sang cột “Xong”.');
   });
 });

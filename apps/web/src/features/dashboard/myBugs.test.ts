@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Workflow } from '@/features/workflow-settings/api';
+import { defaultWorkflow, statusIdOf } from '@/features/issues/workflowFixtures';
 import { splitMyBugs, verifyStageStatusIds } from './myBugs';
 
 const st = (id: string, order: number, category: 'TODO' | 'IN_PROGRESS' | 'DONE') => ({
@@ -56,5 +57,42 @@ describe('splitMyBugs', () => {
     );
     expect(out.awaiting.map((i) => i.id)).toEqual(['a', 'c']);
     expect(out.open.map((i) => i.id)).toEqual(['b']);
+  });
+});
+
+describe('verifyStageStatusIds — quy trình mặc định theo loại việc', () => {
+  const standard = defaultWorkflow('STANDARD');
+  const bug = defaultWorkflow('BUG');
+  const epic = defaultWorkflow('EPIC');
+
+  it('Bug chờ xác nhận ở Ready for Retest (không phải Reopened hay Pending)', () => {
+    expect([...verifyStageStatusIds([bug])]).toEqual([statusIdOf('BUG', 'Ready for Retest')]);
+  });
+  it('Task (Standard) ở In Review, Epic ở Awaiting Acceptance — mỗi loại một bước, không lẫn nhau', () => {
+    expect([...verifyStageStatusIds([standard, bug, epic])].sort()).toEqual(
+      [
+        statusIdOf('STANDARD', 'In Review'),
+        statusIdOf('BUG', 'Ready for Retest'),
+        statusIdOf('EPIC', 'Awaiting Acceptance'),
+      ].sort(),
+    );
+  });
+  it('bug đang Reopened hoặc Pending vẫn nằm ở "còn mở"; Bug ở Ready for Retest vào "chờ tôi xác nhận"', () => {
+    const ids = verifyStageStatusIds([standard, bug]);
+    const issue = (id: string, key: 'STANDARD' | 'BUG', name: string) => ({
+      id,
+      status: { id: statusIdOf(key, name) },
+    });
+    const out = splitMyBugs(
+      [
+        issue('retest', 'BUG', 'Ready for Retest'),
+        issue('reopened', 'BUG', 'Reopened'),
+        issue('pending', 'BUG', 'Pending'),
+        issue('task-review', 'STANDARD', 'In Review'),
+      ],
+      ids,
+    );
+    expect(out.awaiting.map((i) => i.id)).toEqual(['retest', 'task-review']);
+    expect(out.open.map((i) => i.id)).toEqual(['reopened', 'pending']);
   });
 });

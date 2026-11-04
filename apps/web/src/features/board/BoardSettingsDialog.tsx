@@ -120,15 +120,14 @@ export function BoardSettingsDialog({
   const statusById = useMemo(() => new Map(statuses.map((s) => [s.id, s])), [statuses]);
   const assigned = new Set(columns.flatMap((c) => c.statusIds));
   const unassigned = statuses.filter((s) => !assigned.has(s.id));
+  const { withFlow } = flowLabels(statuses);
 
   // ----- kiểm tra trước khi lưu -----
   const names = columns.map((c) => c.name.trim().toLowerCase());
   const problems: string[] = [];
   if (statusesQ.data) {
     if (unassigned.length)
-      problems.push(
-        `Trạng thái chưa nằm trong cột nào: ${unassigned.map((s) => s.name).join(', ')}`,
-      );
+      problems.push(`Trạng thái chưa nằm trong cột nào: ${unassigned.map(withFlow).join(', ')}`);
   }
   if (columns.some((c) => !c.name.trim())) problems.push('Có cột chưa đặt tên');
   if (new Set(names).size !== names.length) problems.push('Tên cột bị trùng nhau');
@@ -288,6 +287,19 @@ export function BoardSettingsDialog({
 }
 
 type StatusList = NonNullable<ReturnType<typeof useProjectStatuses>['data']>;
+
+/**
+ * Nhiều quy trình (Bug/Task/Epic…): ghi rõ trạng thái thuộc quy trình nào — "In Progress" của Bug và của Task là hai trạng
+ * thái khác nhau. Một quy trình duy nhất thì giữ nguyên tên trần.
+ */
+function flowLabels(statuses: StatusList) {
+  const multiWorkflow = new Set(statuses.map((s) => s.workflowId)).size > 1;
+  return {
+    multiWorkflow,
+    withFlow: (s: { name: string; workflowName: string }) =>
+      multiWorkflow ? `${s.name} (${s.workflowName})` : s.name,
+  };
+}
 interface ColumnOps {
   patchColumn: (key: string, patch: Partial<DraftColumn>) => void;
   moveColumn: (idx: number, dir: -1 | 1) => void;
@@ -313,6 +325,7 @@ function ColumnsTab({
   ops: ColumnOps;
 }) {
   const { patchColumn, moveColumn, removeColumn, addColumn, assignStatus, unassignStatus } = ops;
+  const { multiWorkflow, withFlow } = flowLabels(statuses);
   return (
     <div className="space-y-3">
       {statusesQ.isLoading && <DelayedSpinner />}
@@ -388,7 +401,7 @@ function ColumnsTab({
                       style={{ background: s ? categoryColor(s.category) : 'var(--faint)' }}
                       aria-hidden
                     />
-                    {s?.name ?? 'Trạng thái đã xoá'}
+                    {s ? withFlow(s) : 'Trạng thái đã xoá'}
                     <button
                       type="button"
                       aria-label={`Bỏ trạng thái ${s?.name ?? ''} khỏi cột ${c.name || idx + 1}`}
@@ -420,9 +433,13 @@ function ColumnsTab({
                       value: s.id,
                       label: s.name,
                       color: categoryColor(s.category),
-                      description: owner
-                        ? `Chuyển từ “${owner.name || 'cột chưa đặt tên'}”`
-                        : undefined,
+                      description:
+                        [
+                          multiWorkflow ? s.workflowName : null,
+                          owner ? `Chuyển từ “${owner.name || 'cột chưa đặt tên'}”` : null,
+                        ]
+                          .filter(Boolean)
+                          .join(' · ') || undefined,
                     };
                   })}
                   searchPlaceholder="Tìm trạng thái…"
@@ -443,8 +460,8 @@ function ColumnsTab({
       {statusesQ.data && unassigned.length > 0 && (
         <p className="rounded-md bg-warning/10 px-3 py-2 text-sm text-ink" role="status">
           Chưa nằm trong cột nào:{' '}
-          <span className="font-medium">{unassigned.map((s) => s.name).join(', ')}</span>. Việc ở
-          các trạng thái này sẽ không hiện trên bảng — hãy thêm chúng vào một cột.
+          <span className="font-medium">{unassigned.map(withFlow).join(', ')}</span>. Việc ở các
+          trạng thái này sẽ không hiện trên bảng — hãy thêm chúng vào một cột.
         </p>
       )}
       <p className="text-xs text-faint">

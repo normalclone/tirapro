@@ -5,7 +5,13 @@ import {
   useQueryClient,
   type QueryClient,
 } from '@tanstack/react-query';
-import type { CommentDto, IssueDto, IssueTransitionResultDto, ListResponse } from '@tirapro/types';
+import type {
+  CommentDto,
+  IssueDto,
+  IssueTransitionResultDto,
+  IssueTransitionsDto,
+  ListResponse,
+} from '@tirapro/types';
 import { extractMentionIds } from '@tirapro/shared';
 import { api, apiErrorCode } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
@@ -221,6 +227,28 @@ export function useResetPoints(projectId: string | undefined) {
     onSuccess: (issue) => writeIssue(qc, projectId, issue),
     onError: (_e, v) => invalidateIssue(qc, projectId, v.key),
   });
+}
+
+/**
+ * Gợi ý "quay lại trạng thái trước khi tạm dừng" của máy chủ — chỉ hỏi khi việc đang ở Pending (nơi khác không có gợi ý, đỡ
+ * một lượt gọi). Khoá theo trạng thái hiện tại nên vừa chuyển xong là bỏ gợi ý cũ. Lỗi/chưa tải → không gợi ý (nút vẫn đủ).
+ */
+export function useResumeSuggestion(
+  issue: { id: string; status: { id: string; name: string } } | undefined,
+  enabled = true,
+): string | undefined {
+  const pending = !!issue && issue.status.name === 'Pending';
+  const { data } = useQuery({
+    queryKey: keys.issues.transitions(issue?.id ?? '', issue?.status.id ?? ''),
+    queryFn: () =>
+      api.get<IssueTransitionsDto>(`/issues/${issue?.id}/transitions`).then((r) => r.data),
+    enabled: pending && enabled,
+    staleTime: 30_000,
+  });
+  // Dữ liệu của trạng thái khác (cache cũ) không bao giờ lọt vào: khoá đã gồm statusId, kiểm lại cho chắc.
+  return data && issue && data.currentStatusId === issue.status.id
+    ? data.suggestedResumeStatusId
+    : undefined;
 }
 
 export function useTransitionDetail(projectId: string | undefined) {

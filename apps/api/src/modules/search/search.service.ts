@@ -187,6 +187,7 @@ export class SearchService {
     // Chỉ liệt kê sprint/nhãn/thành phần/phiên bản của dự án người hỏi được xem (không lộ dự án riêng tư).
     const visible = await this.access.visibleWhere(userId, workspaceId);
     const inVisibleProject = { project: { workspaceId, deletedAt: null, ...visible } };
+    const statusWorkflows = await this.statusWorkflowWhere(workspaceId, visible);
     const [
       types,
       statuses,
@@ -205,8 +206,8 @@ export class SearchService {
       }),
       this.prisma.status.findMany({
         // Quy trình riêng của dự án riêng tư (mỗi dự án có bản sao quy trình) có thể mang tên trạng thái nhạy cảm: chỉ gom từ
-        // quy trình dùng chung (projectId null) và quy trình của dự án người hỏi xem được.
-        where: { workflow: this.workflowScope(workspaceId, visible) },
+        // quy trình dùng chung (projectId null) và quy trình của dự án người hỏi xem được — và CHỈ các quy trình đang dùng.
+        where: { workflow: statusWorkflows },
         orderBy: { order: 'asc' },
         select: { name: true, color: true },
       }),
@@ -731,6 +732,47 @@ export class SearchService {
     };
   }
 
+  /**
+   * Quy trình mà tên trạng thái được liệt kê: HỢP của các quy trình ĐANG DÙNG (cấu hình theo loại việc của tổ chức, ghi đè của
+   * dự án xem được, và quy trình mặc định của dự án khi còn loại việc chưa có cấu hình) — JQL `status = "X"` khớp theo TÊN
+   * trên mọi quy trình nên danh sách gộp theo tên, không kèm quy trình cũ không còn việc nào dùng. Chưa có cấu hình nào
+   * (dữ liệu chưa chuyển đổi) → như trước: mọi quy trình người xem thấy được.
+   */
+  private async statusWorkflowWhere(
+    workspaceId: string,
+    visible: Prisma.ProjectWhereInput,
+  ): Promise<Prisma.WorkflowWhereInput> {
+    const scope = this.workflowScope(workspaceId, visible);
+    const inVisible = { workspaceId, deletedAt: null, ...visible };
+    const [scheme, types, overrides, projects] = await Promise.all([
+      this.prisma.workspaceWorkflowScheme.findMany({
+        where: { workspaceId },
+        select: { issueTypeId: true, workflowId: true },
+      }),
+      this.prisma.issueType.findMany({ where: { workspaceId }, select: { id: true } }),
+      this.prisma.projectWorkflowOverride.findMany({
+        where: { project: inVisible },
+        select: { projectId: true, issueTypeId: true, workflowId: true },
+      }),
+      this.prisma.project.findMany({
+        where: inVisible,
+        select: { id: true, defaultWorkflowId: true },
+      }),
+    ]);
+    if (scheme.length === 0 && overrides.length === 0) return scope;
+    const ids = new Set<string>([...scheme, ...overrides].map((r) => r.workflowId));
+    const withScheme = new Set(scheme.map((r) => r.issueTypeId));
+    const typesWithoutScheme = types.map((t) => t.id).filter((id) => !withScheme.has(id));
+    if (typesWithoutScheme.length > 0) {
+      const overridden = new Set(overrides.map((o) => `${o.projectId}:${o.issueTypeId}`));
+      for (const p of projects) {
+        if (p.defaultWorkflowId && typesWithoutScheme.some((t) => !overridden.has(`${p.id}:${t}`)))
+          ids.add(p.defaultWorkflowId);
+      }
+    }
+    return { ...scope, id: { in: [...ids] } };
+  }
+
   /** Tên các giá trị có thật của một trường JQL trong workspace (cùng nguồn với `fields()` nên sprint bị cắt 100 — chỉ dùng để gợi ý/liệt kê, KHÔNG để kiểm tồn tại; dự án: khoá dự án còn sống). */
   private async catalogNames(
     workspaceId: string,
@@ -751,7 +793,7 @@ export class SearchService {
       case 'status':
         return names(
           await this.prisma.status.findMany({
-            where: { workflow: this.workflowScope(workspaceId, visible) },
+            where: { workflow: await this.statusWorkflowWhere(workspaceId, visible) },
             orderBy: { order: 'asc' },
             select: { name: true },
           }),

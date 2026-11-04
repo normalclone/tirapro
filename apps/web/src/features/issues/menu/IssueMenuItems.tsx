@@ -11,7 +11,8 @@ import { useWorkflows } from '@/features/workflow-settings/api';
 import { openIssueInNewTab } from '@/lib/rowOpen';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/stores/auth';
-import { computeNextStatuses } from '../nextStatuses';
+import { useResumeSuggestion } from '../api';
+import { computeNextStatuses, withSuggestedFirst } from '../nextStatuses';
 import { useIssueCopy } from '../useIssueCopy';
 import { runIssueAction } from './issueActions';
 import { issueMenuModel, type MenuItemId, type MenuSurface } from './issueMenuModel';
@@ -90,9 +91,10 @@ function useIssueMenuData(issue: IssueDto, surface: MenuSurface, hasPeek: boolea
   const canEdit = useCanEditIssue(issue.projectId)(issue);
   const me = useAuth((s) => s.user);
   const { data: workflows } = useWorkflows();
+  const resumeId = useResumeSuggestion(issue);
   const nextStatuses = useMemo(
-    () => computeNextStatuses(workflows, issue.status.id),
-    [workflows, issue.status.id],
+    () => withSuggestedFirst(computeNextStatuses(workflows, issue.status.id), resumeId),
+    [workflows, issue.status.id, resumeId],
   );
   const { data: projects } = useProjects(true);
   const projectKey = projects?.find((p) => p.id === issue.projectId)?.key;
@@ -220,6 +222,7 @@ export function IssueMenuItems({
                     onSelect={() => runIssueAction({ kind: 'transition', issue, toStatusId: o.id })}
                   >
                     <span className="min-w-0 flex-1 truncate">{o.label}</span>
+                    {o.suggested && <span className="shrink-0 text-xs text-primary">Gợi ý</span>}
                   </kit.Item>
                 )),
               )}

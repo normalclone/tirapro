@@ -4,6 +4,17 @@ import { parseJql } from '@tirapro/shared';
 import { boundedCountSlotsSemaphore } from '../../common/bounded-count';
 import { SearchService } from './search.service';
 
+/**
+ * Dữ liệu "quy trình đang dùng" cho `fields()` / kiểm giá trị: chưa có cấu hình theo loại việc nào → rơi về phạm vi cũ
+ * (mọi quy trình người xem thấy). Các mock bên dưới ghi đè khoá nào cần.
+ */
+const noWorkflowUse = () => ({
+  workspaceWorkflowScheme: { findMany: vi.fn().mockResolvedValue([]) },
+  projectWorkflowOverride: { findMany: vi.fn().mockResolvedValue([]) },
+  project: { findMany: vi.fn().mockResolvedValue([]) },
+  issueType: { findMany: vi.fn().mockResolvedValue([]) },
+});
+
 /* ----------------------------- bộ đánh giá `where` Prisma tối giản ----------------------------- */
 type Row = Record<string, unknown>;
 const OPS = ['equals', 'in', 'not', 'contains', 'gt', 'gte', 'lt', 'lte'];
@@ -113,6 +124,7 @@ function make(opts: Opts = {}) {
   };
   const names = (...n: string[]) => vi.fn().mockResolvedValue(n.map((name) => ({ name })));
   const prisma = {
+    ...noWorkflowUse(),
     $transaction: vi.fn((fn: (t: typeof tx) => Promise<unknown>, o?: unknown) => {
       order.push(`tx:${JSON.stringify(o)}`);
       return fn(tx);

@@ -5,9 +5,9 @@ import type { Difficulty } from '@tirapro/shared';
 import { isPointsLeaf, parentIdSetOf } from '@/lib/points';
 import { useConfirm } from '@/components/ui/useConfirm';
 import { apiErrorMessage } from '@/lib/api';
-import { canRevertTransition } from '@/features/issues/nextStatuses';
 import { pointsConfirmOptions, pointsEditWarningBulk } from '@/features/issues/pointsWarning';
 import type { Workflow } from '@/features/workflow-settings/api';
+import type { runBulkInChunks } from '@/features/backlog/api';
 import {
   bulkShortfallHint,
   rejectionReason,
@@ -16,11 +16,15 @@ import {
 } from '@/features/backlog/api';
 import {
   bulkResultTitle,
+  groupByDestination,
   labelsToUndo,
   planBulkResult,
   planRestoreField,
   runUndoPlan,
+  statusUndoPlan,
   type BulkField,
+  type BulkPart,
+  type BulkStatusOption,
   type BulkValue,
   type UndoPlan,
   type VersionedItem,
@@ -33,6 +37,40 @@ const restoreField =
   (field: BulkField, canRestore?: (prev: BulkValue) => boolean): UndoBuilder =>
   (targets, updated) =>
     planRestoreField(field, targets, updated, canRestore);
+
+type SendResult = Awaited<ReturnType<typeof runBulkInChunks>>;
+
+/**
+ * Gửi lần lượt từng phần (mỗi phần một `patch`) rồi gộp thành MỘT kết quả. Phần đầu bị từ chối thì ném (chưa ghi gì); phần
+ * sau lỗi → việc của phần đó (và các phần chưa gửi) được tính là chưa gửi, không làm mất kết quả các phần đã xong.
+ */
+async function sendParts(
+  parts: BulkPart[],
+  send: (v: { items: VersionedItem[]; patch: BulkIssuePatch }) => Promise<SendResult>,
+): Promise<SendResult> {
+  const out: SendResult = { updated: [], conflicts: [], unsent: 0 };
+  for (let n = 0; n < parts.length; n++) {
+    const part = parts[n]!;
+    const items = part.issues.map((i) => ({ id: i.id, version: i.version }));
+    try {
+      const r = await send({ items, patch: part.patch });
+      out.updated.push(...r.updated);
+      out.conflicts.push(...r.conflicts);
+      out.unsent += r.unsent;
+      out.error ??= r.error;
+    } catch (err) {
+      if (n === 0) throw err;
+      const rest = parts
+        .slice(n)
+        .flatMap((p) => p.issues.map((i) => ({ id: i.id, version: i.version })));
+      out.conflicts.push(...rest);
+      out.unsent += rest.length;
+      out.error ??= err;
+      break;
+    }
+  }
+  return out;
+}
 
 /**
  * Thao tác hàng loạt (Việc chờ, Bảng việc): áp `patch` cho các việc đang chọn tuần tự theo lô ≤ 100 (`runBulkInChunks` trong
@@ -75,39 +113,45 @@ export function useBulkEdit(a: {
     }
   }
 
+  /**
+   * `patch` là một giá trị chung cho cả lô, hoặc hàm chia lô thành nhiều lần gửi (đổi trạng thái khi lô có nhiều quy trình:
+   * mỗi quy trình một trạng thái đích). `extra.keep`: các việc bị bỏ qua nhưng GIỮ chọn để chọn tiếp bước khác; `extra.note`:
+   * dòng giải thích dưới toast.
+   */
   async function run(
-    patch: BulkIssuePatch,
+    patch: BulkIssuePatch | ((targets: IssueDto[]) => BulkPart[]),
     verb: string,
     undo: UndoBuilder | null,
     only?: (i: IssueDto) => boolean,
+    extra?: { keep?: ReadonlySet<string>; note?: string },
   ) {
     const targets = (issues ?? []).filter((i) => selected.has(i.id) && (!only || only(i)));
     if (targets.length === 0) return;
     setBusy(true);
     try {
-      const result = await bulkUpdate.mutateAsync({
-        items: targets.map((i) => ({ id: i.id, version: i.version })),
-        patch,
-      });
+      const parts: BulkPart[] =
+        typeof patch === 'function' ? patch(targets) : [{ issues: targets, patch }];
+      const result = await sendParts(parts, bulkUpdate.mutateAsync);
       const { updated } = result;
       const outcome = planBulkResult(result, selected);
       // Xong hết → bỏ chọn; một phần → chỉ bỏ chọn phần đã xong, GIỮ phần chưa xong để thử lại.
-      retainSelection(outcome.retain);
+      retainSelection(new Set([...outcome.retain, ...(extra?.keep ?? [])]));
       // Hoàn tác chỉ áp cho phần ĐÃ cập nhật (kế hoạch dựng từ `updated`, kèm version mới của máy chủ).
       const plan = outcome.kind === 'none' ? null : (undo?.(targets, updated) ?? null);
       const action = plan ? { label: 'Hoàn tác', onClick: () => void undoAll(plan) } : undefined;
       const title = bulkResultTitle(verb, outcome);
       if (outcome.kind === 'all') {
-        toast.success(title, { duration: 6000, action });
+        toast.success(title, { duration: 6000, action, description: extra?.note });
       } else {
         toast.warning(title, {
           duration: plan ? 8000 : undefined,
           action,
-          description: bulkShortfallHint(
-            outcome.conflictCount,
-            result.unsent,
-            rejectionReason(result.error),
-          ),
+          description:
+            bulkShortfallHint(
+              outcome.conflictCount,
+              result.unsent,
+              rejectionReason(result.error),
+            ) || extra?.note,
         });
       }
     } catch (err) {
@@ -159,15 +203,30 @@ export function useBulkEdit(a: {
         const items = labelsToUndo(targets, updated, labelId);
         return items.length ? [{ items, patch: { labels: { remove: [labelId] } } }] : null;
       }),
-    /** Đổi trạng thái; Hoàn tác chỉ khi workflow cho phép bước ngược của MỌI nhóm (như `statusUndo`). */
-    setStatus: (statusId: string) =>
-      doField(
-        'statusId',
-        statusId,
+    /**
+     * Đổi trạng thái theo lựa chọn của `bulkStatusOptions`: mỗi việc đi tới trạng thái đích của QUY TRÌNH CỦA NÓ (lô Bug + Task
+     * gửi mỗi quy trình một lần). Việc không có bước này giữ nguyên và vẫn được chọn. Hoàn tác chỉ khi quy trình cho phép bước
+     * ngược của MỌI nhóm (như `statusUndo`).
+     */
+    setStatus: (option: BulkStatusOption) => {
+      const inLot = (issues ?? []).filter((i) => selected.has(i.id));
+      const skipped = inLot.filter((i) => option.targets[i.id] === undefined);
+      return run(
+        (targets) =>
+          groupByDestination(option, targets).map((g) => ({
+            issues: g.issues,
+            patch: { statusId: g.statusId },
+          })),
         'chuyển trạng thái cho',
-        restoreField('statusId', (prev) =>
-          typeof prev === 'string' ? canRevertTransition(workflows, prev, statusId) : false,
-        ),
-      ),
+        (targets, updated) => statusUndoPlan(workflows, option, targets, updated),
+        (i) => option.targets[i.id] !== undefined,
+        skipped.length > 0
+          ? {
+              keep: new Set(skipped.map((i) => i.id)),
+              note: `${skipped.length} việc không có bước chuyển này nên giữ nguyên và vẫn đang được chọn.`,
+            }
+          : undefined,
+      );
+    },
   };
 }

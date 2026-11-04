@@ -29,6 +29,7 @@ import { useBulkSelection } from '@/features/bulk/useBulkSelection';
 import { freshenBoardIssues } from './boardIssues';
 import { noActiveSprintHint, scopeBoardIssues, shortSprintName, swimlaneEmptyKind } from './scope';
 import { NO_LANE, decideDrop, type DropContext, type DropPlan } from './dropPlan';
+import { blockedDropMessage } from './dropTarget';
 import { StatusPickDialog } from './StatusPickDialog';
 import { useSwimlaneOverride } from './swimlane';
 import { CardDisplayPopover } from './CardDisplayPopover';
@@ -494,7 +495,7 @@ export function BoardPage() {
     const { col, res, plan, wantsReassign, assigneeChanged, targetAssignee, rankDenied } = d;
     const only = res.kind === 'move' && res.options.length === 1 ? res.options[0]! : null;
     const labelFor = (o: NextStatus) => (col.statusIds.length > 1 ? o.name : col.name);
-    const blockedMsg = `Quy trình không cho chuyển “${issue.status.name}” sang cột “${col.name}”. Hãy chọn một trạng thái trong danh sách gợi ý.`;
+    const blockedMsg = blockedDropMessage(issue, col.name);
 
     if (plan === 'ignore') {
       // Thả sang hàng người khác nhưng không được đổi người phụ trách việc này → nói rõ thay vì lặng lẽ không làm gì.
