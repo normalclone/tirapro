@@ -314,6 +314,13 @@ Two requests the user added on 2026-11-04.
 - Remove that button and add a "Tạo bản sao" item to the existing "Thêm" menu. Keep the same handler and permission, and put the item first in the menu.
 - Test: the toolbar has no standalone "Tạo bản sao" button; opening "Thêm" shows the item; clicking it opens the same clone flow.
 
+**4. The issue detail page fills the content area (added by the user, 2026-11-04).**
+- The full issue page (`/issue/:key`, `features/issues/IssueDetailPage.tsx`) is currently centred in a narrow max-width column, leaving a wide empty gutter on the left.
+- Make it use the full width of the app's content area, keeping the usual page padding.
+- The main column grows; the right "Epic / Người liên quan / Mốc thời gian" column keeps its current width.
+- Do not change the peek panel.
+- Test: the page root no longer carries the narrow `max-w-*` class (assert on the class); check visually at 1500px.
+
 - [ ] **Step 1: Failing tests.**
   - With the store `enabled=false`, `AssigneeSuggestButton` renders null and the AI card renders null.
   - With `enabled=true`, both render.
