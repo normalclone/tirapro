@@ -181,7 +181,7 @@ export function AdminPointsPage() {
   const header = (
     <PageHeader
       title={ADMIN_LABELS.points}
-      description="Điểm của một việc = điểm gốc theo loại × hệ số độ khó × hệ số ưu tiên, làm tròn thành số nguyên. Epic không có hệ số: điểm Epic là tổng điểm các việc trong Epic."
+      description="Điểm của một việc = điểm gốc theo loại × hệ số độ khó × hệ số ưu tiên, làm tròn thành số nguyên. Việc có việc con thì điểm bằng tổng điểm các việc con; Epic là tổng điểm các việc trong Epic — hai loại này không dùng bảng hệ số."
     />
   );
   if (isError) {

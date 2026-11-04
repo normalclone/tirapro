@@ -125,12 +125,18 @@ export function useCachedProjectIssue<T>(
   });
 }
 
-/** Việc này có việc con trong cache dự án không (điểm việc cha = tổng điểm con → không chỉnh tay). Không tải thêm gì. */
-export function useHasLoadedChildren(projectId: string | undefined, issueId: string): boolean {
+/**
+ * Việc này có việc con trong cache dự án không (điểm việc cha = tổng điểm con → không chỉnh tay). Không tải thêm gì.
+ * `undefined` = danh sách việc của dự án CHƯA nạp (chưa biết) — nơi gọi không được mở chỉnh tay khi còn `undefined`.
+ */
+export function useHasLoadedChildren(
+  projectId: string | undefined,
+  issueId: string,
+): boolean | undefined {
   const { data } = useCachedProjectIssue(projectId, (list) =>
     list.some((i) => i.parentId === issueId),
   );
-  return data === true;
+  return data;
 }
 
 export function useIssue(key: string | null) {

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Lock } from 'lucide-react';
+import { Loader2, Lock } from 'lucide-react';
 import { toast } from 'sonner';
 import { localToCalendarIso } from '@/lib/calendarDate';
 import type { IssueDto } from '@tirapro/types';
@@ -397,11 +397,14 @@ export function IssueStoryPointsInline({ issue }: { issue: IssueDto }) {
   const reset = useResetPoints(issue.projectId);
   const { data: sprints } = useProjectSprints(issue.projectId);
   const canAdmin = useCanIn(issue.projectId)('project:admin');
-  const hasChildren = useHasLoadedChildren(issue.projectId, issue.id);
+  const childrenState = useHasLoadedChildren(issue.projectId, issue.id);
+  const hasChildren = childrenState === true;
   const confirm = useConfirm();
   const [editing, setEditing] = useState(false);
   const rollup = isRollupPoints(issue, hasChildren);
-  const canOverride = canAdmin && !rollup;
+  // Danh sách việc của dự án chưa nạp → chưa biết đây có phải việc cha không: KHÔNG mở chỉnh tay (liên kết sâu lúc nguội).
+  const checking = canAdmin && !rollup && childrenState === undefined;
+  const canOverride = canAdmin && !rollup && !checking;
 
   async function save(raw: string) {
     setEditing(false);
@@ -455,11 +458,15 @@ export function IssueStoryPointsInline({ issue }: { issue: IssueDto }) {
           {text ?? <span className="text-faint">—</span>}
         </button>
       ) : (
-        <span className="text-sm text-muted" title={tip}>
+        <span
+          className="inline-flex items-center gap-1 text-sm text-muted"
+          title={checking ? 'Đang kiểm tra việc con để biết có chỉnh tay được không…' : tip}
+        >
           {text ?? '—'}
+          {checking && <Loader2 className="h-3 w-3 animate-spin" aria-label="Đang kiểm tra" />}
         </span>
       )}
-      {issue.pointsManual && !rollup && (
+      {issue.pointsManual && !rollup && !checking && (
         <>
           <span className="text-xs text-faint">đã chỉnh tay</span>
           {canAdmin && (
