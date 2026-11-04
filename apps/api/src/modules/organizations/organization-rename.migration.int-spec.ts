@@ -10,7 +10,8 @@ import { assertParityDatabase, parityDatabaseName } from '../../common/testing/p
  * `organization_rename` (áp mọi migration cũ hơn), nạp dữ liệu theo TÊN CŨ (tổ chức, thành viên + vai trò phụ, quyền `workspace:*`,
  * vai trò hệ thống `Workspace *`, nhật ký), áp migration rồi kiểm: số dòng mọi bảng KHÔNG đổi, quyền hiệu lực của từng người
  * giống hệt (chỉ khác tên khoá), không còn đối tượng nào tên "workspace", `prisma migrate diff` không đòi gì thêm.
- * Bản chạy trên bản sao prod thật xem `task-1-report.md` (cùng kiểm tra, chạy tay).
+ * Migration chạy bằng vòng lặp theo danh mục nên đúng trên cả PostgreSQL 16 (prod) lẫn 18; ràng buộc NOT NULL có tên (chỉ có từ PG 18)
+ * không bị đụng, và bước "không còn đối tượng workspace" bỏ qua loại ràng buộc đó. Bản chạy trên bản sao prod thật: xem task-1/3-report.md.
  *
  * Chạy: `PARITY_DATABASE_URL=postgresql://…/xxx_scratch?schema=public pnpm --filter @tirapro/api test:parity`.
  * Spec XOÁ SẠCH và dựng lại schema `public` của DB nháp đó — chỉ chạy trên DB nháp (hậu tố `_scratch`/`_parity`/`_w2c`).
@@ -129,8 +130,21 @@ describe.skipIf(!DB_URL)('migration organization_rename ↔ dữ liệu theo tê
           WHERE table_schema='public' AND column_name ILIKE '%workspace%'
         UNION ALL SELECT 'type ' || typname FROM pg_type WHERE typnamespace='public'::regnamespace AND typname ILIKE '%workspace%'
         UNION ALL SELECT 'enum ' || enumlabel FROM pg_enum WHERE enumlabel ILIKE '%workspace%'
-        UNION ALL SELECT 'constraint ' || conname FROM pg_constraint WHERE conname ILIKE '%workspace%'`),
+        UNION ALL SELECT 'constraint ' || conname FROM pg_constraint WHERE conname ILIKE '%workspace%' AND contype <> 'n'`),
     ).toEqual([]);
+  });
+
+  it('đối tượng của migration personal_groups (đứng TRƯỚC migration này) cũng được đổi tên: unique (organizationId, ownerId, name)', () => {
+    expect(
+      rows(
+        `SELECT indexname FROM pg_indexes WHERE schemaname='public' AND tablename='Program' AND indexname LIKE '%ownerId_name_key'`,
+      ),
+    ).toEqual(['Program_organizationId_ownerId_name_key']);
+    expect(
+      rows(
+        `SELECT column_name FROM information_schema.columns WHERE table_name='Program' AND column_name LIKE '%rganization%'`,
+      ),
+    ).toEqual(['organizationId']);
   });
 
   it('prisma migrate diff: schema khớp DB sau migration (không còn đổi tên nào chờ)', () => {

@@ -16,7 +16,7 @@
 - **Dependency Injection** triệt để; không `new` service thủ công.
 - **Contract-first response**: mọi response đi qua **response envelope** thống nhất (xem §11).
 - **Fail loud, recover gracefully**: validation/exception tập trung; AI degrade gracefully khi thiếu API key (không 500).
-- **Multi-tenant theo Workspace/Project**: mọi truy vấn nghiệp vụ phải scope theo `projectId`/`workspaceId` và kiểm RBAC.
+- **Multi-tenant theo Organization/Project**: mọi truy vấn nghiệp vụ phải scope theo `projectId`/`organizationId` và kiểm RBAC.
 
 ### 1.2. Phiên bản & runtime
 - Node.js LTS ≥ 20, NestJS 10, TypeScript 5.x (`strict: true`).
@@ -110,7 +110,7 @@ apps/api/src/
 ├─ modules/                        # FEATURE MODULES (business)
 │  ├─ auth/
 │  ├─ users/
-│  ├─ workspaces/
+│  ├─ organizations/
 │  ├─ projects/
 │  ├─ members/                     # membership + role assignment
 │  ├─ rbac/                        # roles, permissions, CASL ability factory
@@ -160,9 +160,9 @@ issues/
 |---|---|---|---|
 | **AuthModule** | Đăng ký/đăng nhập, JWT access+refresh, refresh token rotation, logout, đổi mật khẩu | Users, Prisma, Jwt, Config | `user.logged_in` |
 | **UsersModule** | CRUD user, profile, avatar, presence flag | Prisma, Storage | — |
-| **WorkspacesModule** | Workspace (tổ chức cấp cao chứa projects), settings | Members, RBAC | — |
+| **OrganizationsModule** | tổ chức (tổ chức cấp cao chứa projects), settings | Members, RBAC | — |
 | **ProjectsModule** | CRUD project, project key, lead, project settings, đa-team | Members, Workflows, RBAC | `project.*` |
-| **MembersModule** | Gán user vào workspace/project + role; quản lý team | RBAC, Users | `member.added/removed` |
+| **MembersModule** | Gán user vào organization/project + role; quản lý team | RBAC, Users | `member.added/removed` |
 | **RbacModule** | Định nghĩa roles, permissions, CASL **AbilityFactory**, kiểm quyền | Prisma | — |
 | **IssuesModule** | CRUD issue (Epic/Story/Task/Bug/Sub-task), hierarchy, link, transition status, assign, story points, custom field values | Workflows, CustomFields, Activity, Notifications, Search index, Realtime, AI | `issue.created/updated/moved/...` |
 | **CustomFieldsModule** | Định nghĩa custom field theo project (text/number/select/date/user...), value storage | Prisma | — |
@@ -314,7 +314,7 @@ export class PrismaModule {}
 - **Optimistic locking** cho issue (tránh ghi đè realtime): cột `version Int @default(1)`, update kèm `where: { id, version }`.
 - **Map Prisma error** sang HTTP qua `PrismaExceptionFilter` (P2002 → 409 Conflict, P2025 → 404, P2003 → 409/400).
 
-> Schema chi tiết do subsystem **DB/Prisma** sở hữu; backend chỉ định contract: cần các model `User, Workspace, Project, Member, Role, Permission, Issue, IssueType, Status, Transition, Workflow, CustomField, CustomFieldValue, Board, BoardColumn, Sprint, Comment, Mention, Attachment, Notification, ActivityLog, RefreshToken`. Backend **đề xuất** ràng buộc ở §6.2 (version, deletedAt, index).
+> Schema chi tiết do subsystem **DB/Prisma** sở hữu; backend chỉ định contract: cần các model `User, Organization, Project, Member, Role, Permission, Issue, IssueType, Status, Transition, Workflow, CustomField, CustomFieldValue, Board, BoardColumn, Sprint, Comment, Mention, Attachment, Notification, ActivityLog, RefreshToken`. Backend **đề xuất** ràng buộc ở §6.2 (version, deletedAt, index).
 
 ---
 
@@ -601,8 +601,8 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
 
 ### 13.1. Mô hình
 - **Permission** dạng `resource:action` (vd `issue:create`, `issue:transition`, `sprint:manage`, `project:admin`).
-- **Role** (System: `OWNER, ADMIN, MEMBER, VIEWER` + custom per-workspace) ánh xạ tập permissions.
-- **Scope**: quyền gắn theo **project** (qua `Member { userId, projectId, roleId }`) hoặc workspace. Guard resolve scope từ `:projectId` param.
+- **Role** (System: `OWNER, ADMIN, MEMBER, VIEWER` + custom per-organization) ánh xạ tập permissions.
+- **Scope**: quyền gắn theo **project** (qua `Member { userId, projectId, roleId }`) hoặc tổ chức. Guard resolve scope từ `:projectId` param.
 
 ### 13.2. Quyết định: **CASL** cho quyền có điều kiện + custom guard cho check nhanh
 - Dùng **CASL `AbilityFactory`** để diễn đạt quyền theo điều kiện (vd: MEMBER chỉ sửa issue mình tạo/được assign; ADMIN sửa mọi issue trong project).
@@ -878,7 +878,7 @@ async function bootstrap() {
 ## 23. Thứ tự triển khai đề xuất (cho team code)
 1. `packages/db` (schema tối thiểu) + `packages/contracts` + `infra/prisma` + `config` + `main.ts` bootstrap + `common/*`.
 2. `AuthModule` + `UsersModule` + `RbacModule` (nền tảng bảo mật).
-3. `WorkspacesModule` + `ProjectsModule` + `MembersModule` + `WorkflowsModule` + `CustomFieldsModule`.
+3. `OrganizationsModule` + `ProjectsModule` + `MembersModule` + `WorkflowsModule` + `CustomFieldsModule`.
 4. `IssuesModule` (core) + `ActivityModule` + `EventEmitter`.
 5. `BoardsModule` + `SprintsModule` + `BacklogModule` + `CommentsModule` + `AttachmentsModule`.
 6. `RealtimeModule` + `NotificationsModule` + `Queue/BullMQ`.

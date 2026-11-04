@@ -21,13 +21,13 @@ Bây giờ tôi viết bản đặc tả thiết kế Data Model & DB Schema đ�
 | **Audit fields** | `createdAt DateTime @default(now())`, `updatedAt DateTime @updatedAt` | Bắt buộc trên mọi bảng business. |
 | **Created/Updated by** | `createdById String?`, `updatedById String?` (FK → `User`, `onDelete: SetNull`) | Audit trail. Nullable vì có thể do system/seed tạo. |
 | **Soft-delete** | `deletedAt DateTime?` (nullable). Bảng có soft-delete đánh dấu rõ trong tài liệu này. | Issue/Project/Comment cần khôi phục được + giữ referential integrity cho ActivityLog. |
-| **Tenant scoping** | Mọi entity business mang `workspaceId` (trực tiếp hoặc gián tiếp qua quan hệ) | Multi-tenant isolation. |
+| **Tenant scoping** | Mọi entity business mang `organizationId` (trực tiếp hoặc gián tiếp qua quan hệ) | Multi-tenant isolation. |
 | **Timestamps** | Luôn lưu UTC (`timestamptz`). Convert ở presentation layer. | |
 | **Enum** | Dùng Prisma `enum` (native PostgreSQL enum). | Type-safe, ràng buộc ở DB. |
 
 ### 1.2. Chiến lược Soft-delete
 
-- **Có soft-delete** (`deletedAt`): `Workspace`, `Project`, `Issue`, `Comment`, `Sprint`, `Board`, `CustomField`, `Dashboard`, `SavedFilter`. Lý do: cần khôi phục, hoặc cần giữ lịch sử để ActivityLog/Reports vẫn join được.
+- **Có soft-delete** (`deletedAt`): `Organization`, `Project`, `Issue`, `Comment`, `Sprint`, `Board`, `CustomField`, `Dashboard`, `SavedFilter`. Lý do: cần khôi phục, hoặc cần giữ lịch sử để ActivityLog/Reports vẫn join được.
 - **Hard-delete** (xóa thật): `Attachment` (kèm xóa file vật lý), `Notification`, `ActivityLog` (chỉ purge theo retention policy), bảng nối thuần (`IssueLabel`, `WorkflowTransition`...).
 - **Quy ước query:** App layer dùng **Prisma Client Extension** (`$extends`) để tự động thêm `where: { deletedAt: null }` cho các model có soft-delete. Tài liệu hóa rõ để tránh "leak" record đã xóa. Restore = set `deletedAt = null`.
 
@@ -52,7 +52,7 @@ export const softDeleteExtension = Prisma.defineExtension({
 
 Đây là yêu cầu nghiệp vụ cốt lõi. Quyết định:
 
-- Mỗi `Project` có `key` (vd `PROJ`, `WEB`) — **unique trong phạm vi `Workspace`**, viết hoa, 2–10 ký tự `[A-Z][A-Z0-9]*`.
+- Mỗi `Project` có `key` (vd `PROJ`, `WEB`) — **unique trong phạm vi `Organization`**, viết hoa, 2–10 ký tự `[A-Z][A-Z0-9]*`.
 - Mỗi `Project` giữ một bộ đếm đơn điệu `issueSequence Int @default(0)`.
 - Mỗi `Issue` có `number Int` (số thứ tự trong project) và `key String` (computed/denormalized = `project.key + '-' + number`, vd `PROJ-123`).
 - **Cấp phát số an toàn dưới concurrency:** dùng transaction với atomic increment, KHÔNG dùng `MAX(number)+1` (race condition). Cách chuẩn:
@@ -71,7 +71,7 @@ async function allocateIssueNumber(tx, projectId: string): Promise<number> {
 ```
 
 - `Issue.key` được lưu denormalized (để JQL search, hiển thị, index nhanh) nhưng **immutable** sau khi tạo. Nếu đổi `Project.key` (hiếm), cần migration job cập nhật toàn bộ `Issue.key` của project đó (thiết kế ở mục [9.3](#93-đổi-project-key)).
-- **Unique constraint:** `@@unique([projectId, number])` và `@@unique([key])` toàn cục (vì key đã chứa project key, unique trong workspace → đảm bảo unique toàn cục nếu project.key unique trong workspace; để an toàn dùng `@@unique([workspaceId, key])`).
+- **Unique constraint:** `@@unique([projectId, number])` và `@@unique([key])` toàn cục (vì key đã chứa project key, unique trong tổ chức → đảm bảo unique toàn cục nếu project.key unique trong tổ chức; để an toàn dùng `@@unique([organizationId, key])`).
 
 ### 1.4. Lưu ý về AI & Anthropic Claude
 
@@ -91,7 +91,7 @@ Claude vẫn được dùng cho: sinh issue từ NL, tóm tắt, gợi ý assign
 ## 2. Sơ đồ quan hệ tổng quát (ERD logic)
 
 ```
-Workspace 1──n Project 1──n Issue ──┬── n Comment
+Organization 1──n Project 1──n Issue ──┬── n Comment
    │             │            │      ├── n Attachment
    │             │            │      ├── n IssueLink (self n-n)
    │             │            │      ├── n CustomFieldValue
@@ -107,7 +107,7 @@ Workspace 1──n Project 1──n Issue ──┬── n Comment
    │             ├── n CustomField 1──n CustomFieldOption
    │             └── n ProjectMembership (n-n User ↔ Role)
    │
-   ├── n WorkspaceMembership (n-n User ↔ Role)
+   ├── n OrganizationMembership (n-n User ↔ Role)
    ├── n Role 1──n RolePermission ──n Permission
    ├── n SavedFilter
    ├── n Dashboard 1──n DashboardWidget
@@ -141,9 +141,9 @@ RefreshToken n──1 User
 - Index: `@@index([email])` (đã có qua unique), `@@index([status])`.
 - **Không** soft-delete user → dùng `status = DEACTIVATED` (giữ FK assignee/reporter lịch sử).
 
-### 3.2. `Workspace` (= Organization)
+### 3.2. `Organization` (= Organization)
 
-Tenant boundary cao nhất. Một user có thể thuộc nhiều workspace.
+Tenant boundary cao nhất. Một user có thể thuộc nhiều tổ chức.
 
 | Trường | Kiểu | Ràng buộc | Ghi chú |
 |---|---|---|---|
@@ -151,7 +151,7 @@ Tenant boundary cao nhất. Một user có thể thuộc nhiều workspace.
 | `name` | String | | |
 | `slug` | String | `@unique` | URL: `/{slug}/...` |
 | `ownerId` | String | FK → User | Người tạo |
-| `plan` | `WorkspacePlan` enum | `@default(FREE)` | FREE/PRO/ENTERPRISE (chỗ mở rộng) |
+| `plan` | `OrganizationPlan` enum | `@default(FREE)` | FREE/PRO/ENTERPRISE (chỗ mở rộng) |
 | `settings` | Json | `@default("{}")` | Cấu hình mềm (vd default workflow) |
 | `deletedAt` | DateTime? | soft-delete | |
 | audit + createdById/updatedById | | | |
@@ -160,15 +160,15 @@ Tenant boundary cao nhất. Một user có thể thuộc nhiều workspace.
 
 ### 3.3. RBAC: `Permission`, `Role`, `RolePermission`, Membership
 
-**Mô hình RBAC 2 cấp:** Role có thể scope ở `WORKSPACE` hoặc `PROJECT`. Permission là enum cố định (seed sẵn).
+**Mô hình RBAC 2 cấp:** Role có thể scope ở `ORGANIZATION` hoặc `PROJECT`. Permission là enum cố định (seed sẵn).
 
 #### `Permission` (seed catalog, hiếm khi đổi)
 | Trường | Kiểu | Ghi chú |
 |---|---|---|
 | `id` | String | PK |
-| `key` | `PermissionKey` enum | `@unique` — vd `ISSUE_CREATE`, `ISSUE_DELETE`, `BOARD_MANAGE`, `SPRINT_MANAGE`, `WORKFLOW_EDIT`, `MEMBER_MANAGE`, `PROJECT_ADMIN`, `WORKSPACE_ADMIN` |
+| `key` | `PermissionKey` enum | `@unique` — vd `ISSUE_CREATE`, `ISSUE_DELETE`, `BOARD_MANAGE`, `SPRINT_MANAGE`, `WORKFLOW_EDIT`, `MEMBER_MANAGE`, `PROJECT_ADMIN`, `ORGANIZATION_ADMIN` |
 | `description` | String | |
-| `scope` | `PermissionScope` enum | WORKSPACE / PROJECT |
+| `scope` | `PermissionScope` enum | ORGANIZATION / PROJECT |
 
 > Có thể thay bằng enum thuần + bảng nối, nhưng giữ bảng `Permission` để API list/expose dễ. `PermissionKey` enum dưới đây là nguồn chân lý.
 
@@ -176,30 +176,30 @@ Tenant boundary cao nhất. Một user có thể thuộc nhiều workspace.
 | Trường | Kiểu | Ràng buộc | Ghi chú |
 |---|---|---|---|
 | `id` | String | PK | |
-| `workspaceId` | String? | FK → Workspace | Null = role hệ thống mặc định (Admin/Member/Viewer) dùng chung |
+| `organizationId` | String? | FK → tổ chức | Null = role hệ thống mặc định (Admin/Member/Viewer) dùng chung |
 | `name` | String | | |
-| `scope` | `RoleScope` enum | WORKSPACE / PROJECT | |
+| `scope` | `RoleScope` enum | ORGANIZATION / PROJECT | |
 | `isSystem` | Boolean | `@default(false)` | Role built-in không xóa được |
 | audit | | | |
 
-- `@@unique([workspaceId, name, scope])`.
+- `@@unique([organizationId, name, scope])`.
 
 #### `RolePermission` (n-n Role ↔ Permission)
 | `roleId` | String | FK, `onDelete: Cascade` |
 | `permissionId` | String | FK, `onDelete: Cascade` |
 - `@@id([roleId, permissionId])`.
 
-#### `WorkspaceMembership` (n-n User ↔ Workspace + Role)
+#### `OrganizationMembership` (n-n User ↔ tổ chức + Role)
 | Trường | Kiểu | Ghi chú |
 |---|---|---|
 | `id` | String | PK |
-| `workspaceId` | String | FK Cascade |
+| `organizationId` | String | FK Cascade |
 | `userId` | String | FK Cascade |
 | `roleId` | String | FK |
 | `invitedById` | String? | Cột dự phòng — không còn ghi (luồng lời mời đã gỡ, bảng `InviteToken` bị xoá) |
 | `joinedAt` | DateTime? | |
 | audit | | |
-- `@@unique([workspaceId, userId])`, `@@index([userId])`.
+- `@@unique([organizationId, userId])`, `@@index([userId])`.
 
 #### `ProjectMembership` (n-n User ↔ Project + Role)
 | Trường | Kiểu | Ghi chú |
@@ -211,7 +211,7 @@ Tenant boundary cao nhất. Một user có thể thuộc nhiều workspace.
 | audit | | |
 - `@@unique([projectId, userId])`, `@@index([userId])`, `@@index([projectId])`.
 
-> **Điểm giao tiếp (Auth/RBAC subsystem):** Quyền hiệu lực của user trên 1 issue = union(workspace role permissions) ∪ (project role permissions). API subsystem viết `PermissionGuard` resolve từ các bảng này; cache ở Redis nếu cần (ngoài phạm vi data model).
+> **Điểm giao tiếp (Auth/RBAC subsystem):** Quyền hiệu lực của user trên 1 issue = union(tổ chức role permissions) ∪ (project role permissions). API subsystem viết `PermissionGuard` resolve từ các bảng này; cache ở Redis nếu cần (ngoài phạm vi data model).
 
 ---
 
@@ -222,7 +222,7 @@ Tenant boundary cao nhất. Một user có thể thuộc nhiều workspace.
 | Trường | Kiểu | Ràng buộc | Ghi chú |
 |---|---|---|---|
 | `id` | String | PK | |
-| `workspaceId` | String | FK Cascade | |
+| `organizationId` | String | FK Cascade | |
 | `key` | String | 2–10 ký tự `[A-Z][A-Z0-9]*` | Tiền tố issue key |
 | `name` | String | | |
 | `description` | String? | | |
@@ -237,12 +237,12 @@ Tenant boundary cao nhất. Một user có thể thuộc nhiều workspace.
 | `deletedAt` | DateTime? | soft-delete | |
 | audit + createdById | | | |
 
-- **Unique:** `@@unique([workspaceId, key])`, `@@unique([workspaceId, name])`.
-- Index: `@@index([workspaceId])`, `@@index([leadId])`, `@@index([deletedAt])`.
+- **Unique:** `@@unique([organizationId, key])`, `@@unique([organizationId, name])`.
+- Index: `@@index([organizationId])`, `@@index([leadId])`, `@@index([deletedAt])`.
 
 ### 4.2. `Label`, `Component`, `Version`
 
-Các taxonomy gắn theo project (Jira: Labels có thể global, ở đây scope theo project cho đơn giản; có thể nâng lên workspace sau).
+Các taxonomy gắn theo project (Jira: Labels có thể global, ở đây scope theo project cho đơn giản; có thể nâng lên tổ chức sau).
 
 #### `Label`
 | `id`, `projectId` (FK Cascade), `name`, `color String?` |
@@ -315,12 +315,12 @@ Cạnh có hướng giữa 2 status. `fromStatusId = null` nghĩa là transition
 ## 6. Issue — entity trung tâm
 
 ### 6.1. `IssueType`
-Scope theo workspace để dùng lại giữa project (Epic/Story/Task/Bug/Sub-task là system types, seed sẵn; cho phép custom).
+Scope theo tổ chức để dùng lại giữa project (Epic/Story/Task/Bug/Sub-task là system types, seed sẵn; cho phép custom).
 
 | Trường | Kiểu | Ghi chú |
 |---|---|---|
 | `id` | String | PK |
-| `workspaceId` | String | FK Cascade |
+| `organizationId` | String | FK Cascade |
 | `name` | String | |
 | `key` | `IssueTypeKey` enum? | EPIC/STORY/TASK/BUG/SUBTASK — null nếu custom |
 | `iconUrl` | String? | |
@@ -328,7 +328,7 @@ Scope theo workspace để dùng lại giữa project (Epic/Story/Task/Bug/Sub-t
 | `hierarchyLevel` | Int | `@default(0)` — Epic=1, Standard=0, Sub-task=-1 |
 | `isSubtask` | Boolean | `@default(false)` |
 | `isSystem` | Boolean | `@default(false)` |
-- `@@unique([workspaceId, name])`, `@@index([workspaceId])`.
+- `@@unique([organizationId, name])`, `@@index([organizationId])`.
 
 > `hierarchyLevel` theo chuẩn Jira: Epic (1) > Story/Task/Bug (0) > Sub-task (-1). Dùng để validate quan hệ parent-child.
 
@@ -337,7 +337,7 @@ Scope theo workspace để dùng lại giữa project (Epic/Story/Task/Bug/Sub-t
 | Trường | Kiểu | Ràng buộc | Ghi chú |
 |---|---|---|---|
 | `id` | String | PK | |
-| `workspaceId` | String | FK Cascade | Denormalized để query/RBAC nhanh |
+| `organizationId` | String | FK Cascade | Denormalized để query/RBAC nhanh |
 | `projectId` | String | FK Cascade | |
 | `number` | Int | | Số trong project (mục 1.3) |
 | `key` | String | | Denormalized `PROJ-123` |
@@ -370,7 +370,7 @@ Scope theo workspace để dùng lại giữa project (Epic/Story/Task/Bug/Sub-t
 #### Unique & Index
 ```prisma
 @@unique([projectId, number])
-@@unique([workspaceId, key])
+@@unique([organizationId, key])
 @@index([projectId, statusId])      // board column query
 @@index([sprintId])                 // sprint board / backlog
 @@index([assigneeId])
@@ -514,7 +514,7 @@ Cột trên board, map tới ≥1 `Status`.
 ```prisma
 model EmbeddingDocument {
   id           String   @id @default(cuid())
-  workspaceId  String
+  organizationId  String
   entityType   EmbeddingEntityType  // ISSUE | COMMENT
   entityId     String
   contentHash  String   // tránh re-embed nội dung không đổi
@@ -523,7 +523,7 @@ model EmbeddingDocument {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
   @@unique([entityType, entityId])
-  @@index([workspaceId])
+  @@index([organizationId])
 }
 ```
 
@@ -570,7 +570,7 @@ Lưu output suggestion (assignee/priority/story points/summary) để: audit, hi
 | Trường | Kiểu | Ghi chú |
 |---|---|---|
 | `id` | String | PK |
-| `workspaceId` | String | FK Cascade |
+| `organizationId` | String | FK Cascade |
 | `issueId` | String? | FK Cascade — null nếu gợi ý lúc tạo (chưa có issue) |
 | `kind` | `AiSuggestionKind` enum | ASSIGNEE / PRIORITY / STORY_POINTS / SUMMARY / SPRINT_PLAN / DESCRIPTION |
 | `inputContext` | Json | dữ liệu đầu vào (prompt context) |
@@ -579,14 +579,14 @@ Lưu output suggestion (assignee/priority/story points/summary) để: audit, hi
 | `status` | `AiSuggestionStatus` enum | PENDING / ACCEPTED / REJECTED / EXPIRED |
 | `requestedById` | String? | FK User |
 | audit | | |
-- `@@index([issueId])`, `@@index([workspaceId, kind])`.
+- `@@index([issueId])`, `@@index([organizationId, kind])`.
 
 ### 8.4. `AiGenerationLog` — quan sát & cost tracking
 
 | Trường | Kiểu | Ghi chú |
 |---|---|---|
 | `id` | String | PK |
-| `workspaceId` | String? | |
+| `organizationId` | String? | |
 | `userId` | String? | |
 | `feature` | String | "generate_issue" / "summarize" / "semantic_search" ... |
 | `model` | String | |
@@ -599,7 +599,7 @@ Lưu output suggestion (assignee/priority/story points/summary) để: audit, hi
 | `errorCode` | String? | |
 | `requestId` | String? | `response._request_id` (debug với Anthropic) |
 | `createdAt` | DateTime | |
-- `@@index([workspaceId, feature, createdAt])`.
+- `@@index([organizationId, feature, createdAt])`.
 
 > **Điểm giao tiếp (AI subsystem):** AI subsystem gọi Claude với `model: "claude-opus-4-8"`, `thinking: {type: "adaptive"}` cho tác vụ phức tạp (sprint planning), `claude-sonnet-4-6` cho tác vụ throughput cao (tóm tắt hàng loạt). Mọi lời gọi ghi `AiGenerationLog`. Khi thiếu API key → AI features trả `null`/disabled, **không** ghi log lỗi vô hạn, UI ẩn nút AI (degrade gracefully — yêu cầu tech stack).
 
@@ -607,14 +607,14 @@ Lưu output suggestion (assignee/priority/story points/summary) để: audit, hi
 
 ## 9. Custom Fields
 
-Mô hình EAV (Entity-Attribute-Value) có kiểm soát, scope theo project hoặc workspace.
+Mô hình EAV (Entity-Attribute-Value) có kiểm soát, scope theo project hoặc tổ chức.
 
 ### 9.1. `CustomField`
 | Trường | Kiểu | Ghi chú |
 |---|---|---|
 | `id` | String | PK |
-| `workspaceId` | String | FK Cascade |
-| `projectId` | String? | FK Cascade — null = áp dụng toàn workspace |
+| `organizationId` | String | FK Cascade |
+| `projectId` | String? | FK Cascade — null = áp dụng toàn tổ chức |
 | `name` | String | |
 | `type` | `CustomFieldType` enum | TEXT / TEXTAREA / NUMBER / DATE / DATETIME / SELECT / MULTI_SELECT / CHECKBOX / USER / URL |
 | `isRequired` | Boolean | `@default(false)` |
@@ -622,7 +622,7 @@ Mô hình EAV (Entity-Attribute-Value) có kiểm soát, scope theo project ho�
 | `config` | Json | `@default("{}")` — vd min/max, regex |
 | `deletedAt` | DateTime? | soft-delete |
 | audit | | |
-- `@@index([workspaceId])`, `@@index([projectId])`.
+- `@@index([organizationId])`, `@@index([projectId])`.
 
 ### 9.2. `CustomFieldOption` (cho SELECT/MULTI_SELECT)
 | `id`, `customFieldId` (FK Cascade), `value String`, `color String?`, `order Int` |
@@ -655,16 +655,16 @@ Khi đổi `Project.key`: chạy job trong transaction cập nhật `Issue.key =
 | Trường | Kiểu | Ghi chú |
 |---|---|---|
 | `id` | String | PK |
-| `workspaceId` | String | FK Cascade |
+| `organizationId` | String | FK Cascade |
 | `ownerId` | String | FK User |
 | `name` | String | |
 | `jql` | String | `@db.Text` — chuỗi JQL-like |
 | `astCache` | Json? | AST đã parse (cache để khỏi parse lại) |
-| `visibility` | `FilterVisibility` enum | PRIVATE / WORKSPACE / PROJECT |
+| `visibility` | `FilterVisibility` enum | PRIVATE / ORGANIZATION / PROJECT |
 | `sharedProjectId` | String? | FK Project SetNull (nếu PROJECT) |
 | `deletedAt` | DateTime? | soft-delete |
 | audit | | |
-- `@@index([workspaceId, ownerId])`.
+- `@@index([organizationId, ownerId])`.
 
 ### 10.2. `FilterSubscription` / favorite (tùy chọn)
 `filterId`, `userId` — `@@id([filterId, userId])`. Cho "star" filter.
@@ -726,7 +726,7 @@ Khi đổi `Project.key`: chạy job trong transaction cập nhật `Issue.key =
 |---|---|---|
 | `id` | String | PK |
 | `recipientId` | String | FK User Cascade |
-| `workspaceId` | String | FK Cascade |
+| `organizationId` | String | FK Cascade |
 | `type` | `NotificationType` enum | ISSUE_ASSIGNED / ISSUE_UPDATED / MENTIONED / COMMENT_ADDED / STATUS_CHANGED / SPRINT_STARTED / SPRINT_COMPLETED ... |
 | `issueId` | String? | FK Issue Cascade |
 | `commentId` | String? | FK Comment Cascade |
@@ -745,7 +745,7 @@ Ghi mọi thay đổi quan trọng. Là nguồn cho "Activity" tab của issue, 
 | Trường | Kiểu | Ghi chú |
 |---|---|---|
 | `id` | String | PK |
-| `workspaceId` | String | FK Cascade |
+| `organizationId` | String | FK Cascade |
 | `projectId` | String? | FK Cascade |
 | `issueId` | String? | FK Cascade |
 | `actorId` | String? | FK User SetNull |
@@ -756,7 +756,7 @@ Ghi mọi thay đổi quan trọng. Là nguồn cho "Activity" tab của issue, 
 | `oldValue` | Json? | |
 | `newValue` | Json? | |
 | `createdAt` | DateTime | |
-- `@@index([issueId, createdAt])`, `@@index([workspaceId, createdAt])`, `@@index([projectId, action, createdAt])`.
+- `@@index([issueId, createdAt])`, `@@index([organizationId, createdAt])`, `@@index([projectId, action, createdAt])`.
 - Append-only; không update. Purge theo retention (ENTERPRISE giữ lâu hơn).
 
 > **Quyết định:** ActivityLog lưu `oldValue`/`newValue` dạng `Json` để generic. Status-change activity (`action = STATUS_CHANGED`) là nguồn chính xác nhất cho **Cumulative Flow Diagram** — Reports tính số issue ở mỗi status theo thời gian từ chuỗi log này (event sourcing nhẹ).
@@ -773,14 +773,14 @@ Ghi mọi thay đổi quan trọng. Là nguồn cho "Activity" tab của issue, 
 | Trường | Kiểu | Ghi chú |
 |---|---|---|
 | `id` | String | PK |
-| `workspaceId` | String | FK Cascade |
+| `organizationId` | String | FK Cascade |
 | `ownerId` | String | FK User |
 | `name` | String | |
 | `layout` | Json | `@default("{}")` — grid layout (react-grid-layout) |
-| `visibility` | `DashboardVisibility` enum | PRIVATE / WORKSPACE |
+| `visibility` | `DashboardVisibility` enum | PRIVATE / ORGANIZATION |
 | `deletedAt` | DateTime? | soft-delete |
 | audit | | |
-- `@@index([workspaceId, ownerId])`.
+- `@@index([organizationId, ownerId])`.
 
 ### 13.2. `DashboardWidget`
 | Trường | Kiểu | Ghi chú |
@@ -822,11 +822,11 @@ Ghi mọi thay đổi quan trọng. Là nguồn cho "Activity" tab của issue, 
 
 ```prisma
 enum UserStatus            { ACTIVE DEACTIVATED INVITED }
-enum WorkspacePlan         { FREE PRO ENTERPRISE }
-enum RoleScope             { WORKSPACE PROJECT }
-enum PermissionScope       { WORKSPACE PROJECT }
+enum OrganizationPlan         { FREE PRO ENTERPRISE }
+enum RoleScope             { ORGANIZATION PROJECT }
+enum PermissionScope       { ORGANIZATION PROJECT }
 enum PermissionKey {
-  WORKSPACE_ADMIN MEMBER_MANAGE
+  ORGANIZATION_ADMIN MEMBER_MANAGE
   PROJECT_ADMIN PROJECT_CREATE PROJECT_DELETE
   ISSUE_CREATE ISSUE_EDIT ISSUE_DELETE ISSUE_ASSIGN ISSUE_TRANSITION
   COMMENT_CREATE COMMENT_DELETE
@@ -847,8 +847,8 @@ enum FixVersionType        { FIX AFFECTS }
 enum VersionStatus         { UNRELEASED RELEASED ARCHIVED }
 enum RichTextFormat        { MARKDOWN TIPTAP_JSON }
 enum CustomFieldType       { TEXT TEXTAREA NUMBER DATE DATETIME SELECT MULTI_SELECT CHECKBOX USER URL }
-enum FilterVisibility      { PRIVATE WORKSPACE PROJECT }
-enum DashboardVisibility   { PRIVATE WORKSPACE }
+enum FilterVisibility      { PRIVATE ORGANIZATION PROJECT }
+enum DashboardVisibility   { PRIVATE ORGANIZATION }
 enum WidgetType            { BURNDOWN VELOCITY CFD PIE_BY_STATUS ASSIGNEE_WORKLOAD FILTER_RESULTS CREATED_VS_RESOLVED CUSTOM }
 enum NotificationType      { ISSUE_ASSIGNED ISSUE_UPDATED MENTIONED COMMENT_ADDED STATUS_CHANGED SPRINT_STARTED SPRINT_COMPLETED WATCHING_UPDATE }
 enum ActivityAction        { ISSUE_CREATED ISSUE_UPDATED ISSUE_DELETED STATUS_CHANGED ASSIGNEE_CHANGED PRIORITY_CHANGED FIELD_CHANGED COMMENT_ADDED COMMENT_DELETED SPRINT_CHANGED SPRINT_STARTED SPRINT_COMPLETED PROJECT_KEY_CHANGED ATTACHMENT_ADDED LINK_ADDED }
@@ -889,7 +889,7 @@ model User {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  workspaceMemberships WorkspaceMembership[]
+  organizationMemberships OrganizationMembership[]
   projectMemberships   ProjectMembership[]
   reportedIssues       Issue[]  @relation("IssueReporter")
   assignedIssues       Issue[]  @relation("IssueAssignee")
@@ -902,7 +902,7 @@ model User {
 
 model Project {
   id                String   @id @default(cuid())
-  workspaceId       String
+  organizationId       String
   key               String
   name              String
   description       String?
@@ -920,7 +920,7 @@ model Project {
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
-  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   lead      User?     @relation("ProjectLead", fields: [leadId], references: [id], onDelete: SetNull)
   issues    Issue[]
   boards    Board[]
@@ -930,16 +930,16 @@ model Project {
   components Component[]
   versions  Version[]
 
-  @@unique([workspaceId, key])
-  @@unique([workspaceId, name])
-  @@index([workspaceId])
+  @@unique([organizationId, key])
+  @@unique([organizationId, name])
+  @@index([organizationId])
   @@index([leadId])
   @@index([deletedAt])
 }
 
 model Issue {
   id                String   @id @default(cuid())
-  workspaceId       String
+  organizationId       String
   projectId         String
   number            Int
   key               String
@@ -971,7 +971,7 @@ model Issue {
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
-  workspace  Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  organization  Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   project    Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
   type       IssueType  @relation(fields: [typeId], references: [id])
   status     Status     @relation(fields: [statusId], references: [id])
@@ -994,7 +994,7 @@ model Issue {
   targetLinks IssueLink[] @relation("IssueLinkTarget")
 
   @@unique([projectId, number])
-  @@unique([workspaceId, key])
+  @@unique([organizationId, key])
   @@index([projectId, statusId])
   @@index([sprintId])
   @@index([assigneeId])
@@ -1014,9 +1014,9 @@ model Issue {
 
 File `apps/api/prisma/seed.ts` phải tạo:
 1. **Permission catalog** (toàn bộ `PermissionKey`).
-2. **System roles**: `Workspace Admin`, `Member`, `Viewer` (workspace scope); `Project Admin`, `Developer`, `Reporter` (project scope) + gán permission.
+2. **System roles**: `Organization Admin`, `Member`, `Viewer` (tổ chức scope); `Project Admin`, `Developer`, `Reporter` (project scope) + gán permission.
 3. **Demo users** (vd `admin@projira.dev`, password hash bcrypt sẵn).
-4. **1 Workspace** demo + membership.
+4. **1 tổ chức** demo + membership.
 5. **2 Project** (1 SCRUM `PROJ`, 1 KANBAN `WEB`) kèm: default Workflow (To Do/In Progress/In Review/Done + transitions), IssueTypes (Epic/Story/Task/Bug/Sub-task), Board + columns map status, Labels/Components.
 6. **Sprints** (1 CLOSED có snapshot để demo velocity, 1 ACTIVE, 1 FUTURE).
 7. **~30–50 Issues** đa dạng type/status/assignee/story points, vài comment + @mention, attachment giả, custom field, issue links, để Board/Backlog/Reports có dữ liệu.
@@ -1060,20 +1060,20 @@ Chỉ liệt kê phần **thêm/đổi** so với nội dung phía trên (đã t
 
 | Model | Trường chính | Ghi chú |
 |---|---|---|
-| `AuditLog` | `workspaceId?`, `actorId?` (không FK), `action` (chuỗi, `AUDIT_ACTIONS`), `entityType`, `entityId?`, `summary`, `meta Json` | Nhật ký kiểm toán quản trị; chỉ mục `(workspaceId,createdAt)`, `(workspaceId,action,createdAt)`, `(actorId,createdAt)` |
+| `AuditLog` | `organizationId?`, `actorId?` (không FK), `action` (chuỗi, `AUDIT_ACTIONS`), `entityType`, `entityId?`, `summary`, `meta Json` | Nhật ký kiểm toán quản trị; chỉ mục `(organizationId,createdAt)`, `(organizationId,action,createdAt)`, `(actorId,createdAt)` |
 | `WikiPageVersion` | `wikiPageId`, `version` (thứ tự bản lịch sử), `title`, `body`, `authorId?`, `note?` | Unique `(wikiPageId,version)`; migration backfill mỗi trang một bản v1 |
 | `WikiPageIssue` | PK `(wikiPageId,issueId)` | Trang wiki nhắc công việc nào (suy ra khi lưu); chỉ mục `issueId`; backfill từ nội dung |
 | `KeyResultCheckIn` | `keyResultId`, `value`, `previousValue?`, `note?` (≤500), `authorId?`, `source` (`CheckInSource`: MANUAL/AUTO), `snapshotDate? @db.Date` | Bất biến; unique `(keyResultId,snapshotDate)` (mỗi KR ≤ 1 bản chụp tự động/ngày UTC) |
-| `ImportPendingAssignee` | `workspaceId`, `projectId`, `issueId` (unique), `email` (chữ thường), `sourceName` | Email người phụ trách Jira chưa có tài khoản; xoá khi đã gán |
+| `ImportPendingAssignee` | `organizationId`, `projectId`, `issueId` (unique), `email` (chữ thường), `sourceName` | Email người phụ trách Jira chưa có tài khoản; xoá khi đã gán |
 
 **Model bị gỡ:** `InviteToken` (xoá luồng lời mời); `User.inviteTokens` → không còn; `EmailOutbox.template` chỉ còn `password-reset | notification`.
 
 **Trường/enum mới trên model sẵn có**
 
 - `User.sessionsRevokedAt DateTime?` — access token cấp trước mốc này bị từ chối.
-- `Project`: `isPrivate Boolean @default(false)` (+ index `(workspaceId,isPrivate)`); `healthOverride ProjectHealth?`, `healthNote` (≤500), `healthUpdatedAt`, `healthUpdatedById` (FK `User`, SetNull). Enum `ProjectHealth` = GREEN/YELLOW/RED.
+- `Project`: `isPrivate Boolean @default(false)` (+ index `(organizationId,isPrivate)`); `healthOverride ProjectHealth?`, `healthNote` (≤500), `healthUpdatedAt`, `healthUpdatedById` (FK `User`, SetNull). Enum `ProjectHealth` = GREEN/YELLOW/RED.
 - `Issue`: `acceptanceCriteria Text?`, `environment Json?` (`{env,browser,os,build,url,viewport}`). Index mới trên bảng nối `IssueComponent(componentId)`, `IssueFixVersion(versionId)`.
-- `WikiPage`: `version Int @default(0)` (OCC nội dung), `deletedAt`, `deletedById` (xoá mềm; index `(workspaceId,deletedAt)`).
+- `WikiPage`: `version Int @default(0)` (OCC nội dung), `deletedAt`, `deletedById` (xoá mềm; index `(organizationId,deletedAt)`).
 - `KeyResult`: `source KeyResultSource @default(MANUAL)` (MANUAL/OPEN_BUGS/SPRINT_COMPLETION/ISSUE_COUNT_JQL), `sourceConfig Json?`, `unitLabel ≤20`.
 - `ReportSubscription` (digest): `weekday Int @default(1)`, `hour Int @default(8)`, `timezone @default("Asia/Ho_Chi_Minh")`, `deliverEmail`, `allowPrivateToChannel`.
 - `Dashboard.teamId` (FK `Team`, cascade; index `(teamId,scope)`); enum `DashboardScope` + `TEAM`; `WidgetType` + `TOP_RISKS`, `SLOW_GOALS`, `OVERLOAD`.
@@ -1081,4 +1081,4 @@ Chỉ liệt kê phần **thêm/đổi** so với nội dung phía trên (đã t
 - `Mention`: unique `(commentId,mentionedUserId)` + chỉ mục duy nhất có điều kiện cho @ ở mô tả (`WHERE commentId IS NULL`, chỉ có trong SQL migration `…299000`, Prisma không biểu diễn).
 - `HistoryField` + `DESCRIPTION`, `COMPONENT`, `FIX_VERSION`.
 
-**Dữ liệu seed qua migration (không phải cột):** loại liên kết `Causes`/`Tests` mỗi workspace; quyền vai trò hệ thống (Scrum Master `issue:create`+`issue:triage`, Product Owner `issue:transition`, `wiki:manage` chuyển scope PROJECT cho 6 vai + vai tuỳ biến có `project:admin`/`workspace:admin`); dòng nối `WorkspaceMembershipRole`/`ProjectMembershipRole` cho membership chưa có.
+**Dữ liệu seed qua migration (không phải cột):** loại liên kết `Causes`/`Tests` mỗi tổ chức; quyền vai trò hệ thống (Scrum Master `issue:create`+`issue:triage`, Product Owner `issue:transition`, `wiki:manage` chuyển scope PROJECT cho 6 vai + vai tuỳ biến có `project:admin`/`organization:admin`); dòng nối `OrganizationMembershipRole`/`ProjectMembershipRole` cho membership chưa có.

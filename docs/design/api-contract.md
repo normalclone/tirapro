@@ -269,7 +269,7 @@ class UpdateMemberRoleDto { roleId: string; }
 | GET | `/projects/{id}/members` | `project:read` | Member của project (team) |
 | POST | `/projects/{id}/members` | `project:manage` | Thêm member vào project |
 | DELETE | `/projects/{id}/members/{userId}` | `project:manage` | Gỡ member |
-| GET | `/projects/{id}/permissions/me` | `project:view` | Quyền **hiệu lực** của chính người gọi ở dự án này (vai trò dự án ghi đè vai trò workspace) → `{ projectId, permissions: PermissionKey[] }` (đã sắp xếp). Web dùng để ẩn/khoá nút (`useCan`); server vẫn kiểm quyền ở mọi route |
+| GET | `/projects/{id}/permissions/me` | `project:view` | Quyền **hiệu lực** của chính người gọi ở dự án này (vai trò dự án ghi đè vai trò tổ chức) → `{ projectId, permissions: PermissionKey[] }` (đã sắp xếp). Web dùng để ẩn/khoá nút (`useCan`); server vẫn kiểm quyền ở mọi route |
 | GET | `/projects/{id}/issue-types` | `project:read` | Issue types khả dụng + custom fields config |
 | GET | `/projects/{id}/components` | `project:read` | Components/labels |
 
@@ -296,7 +296,7 @@ class ProjectDto {
 Dự án có `archivedAt != null` là **chỉ đọc**: mọi thao tác GHI vào dữ liệu của dự án (issue, sprint, board, worklog, comment, link, đính kèm, checklist, việc lặp lại, mẫu/quy tắc automation, dev-link webhook, OKR/SLA/wiki theo dự án, cột mốc/baseline, nhãn, trường tuỳ chỉnh, component/phiên bản, avatar…) trả
 `422 BUSINESS_RULE_VIOLATION` với message `"Dự án đã lưu trữ — hãy khôi phục dự án trước khi thay đổi"` (hằng `PROJECT_ARCHIVED_MESSAGE`, kiểm bằng `assertProjectWritable`/`assertIssueWritable` trong `common/project-writable.ts`).
 Đường không có người dùng để báo lỗi (webhook vào, cron việc lặp lại) **bỏ qua im lặng** issue của dự án lưu trữ (`WRITABLE_PROJECT_FILTER`) thay vì ném lỗi. Đọc (GET) vẫn bình thường.
-Ngoại lệ có chủ đích: (1) snapshot sprint (`sprints#snapshot`, chỉ phục vụ biểu đồ, không đổi dữ liệu người dùng); (2) Resources → Allocation là dữ liệu cấp workspace, vẫn ghi được trên dự án lưu trữ (quyết định sản phẩm); gán nhóm dự án (`PUT /projects/{id}/programs`) cũng ghi được vì nhóm là phân loại cấp tổ chức. Dự án **xoá mềm** (`deletedAt`) thì issue của nó biến khỏi mọi đường đọc (`/issues/:key`, danh sách, tìm kiếm/JQL, guard theo issue id) → `404`.
+Ngoại lệ có chủ đích: (1) snapshot sprint (`sprints#snapshot`, chỉ phục vụ biểu đồ, không đổi dữ liệu người dùng); (2) Resources → Allocation là dữ liệu cấp tổ chức, vẫn ghi được trên dự án lưu trữ (quyết định sản phẩm); gán nhóm dự án (`PUT /projects/{id}/programs`) cũng ghi được vì nhóm là phân loại cấp tổ chức. Dự án **xoá mềm** (`deletedAt`) thì issue của nó biến khỏi mọi đường đọc (`/issues/:key`, danh sách, tìm kiếm/JQL, guard theo issue id) → `404`.
 
 `key` được dùng làm prefix cho issue key (`PROJ-128`). Việc sinh số chạy (`128`) là sequence per-project — giao tiếp với subsystem **Persistence** (atomic counter trong transaction).
 
@@ -420,9 +420,9 @@ Dùng **LexoRank** string. Khi `move`/`rank`, client gửi **hai mốc** `afterI
 
 - **Sprint đã đóng (`CLOSED`) không nhận việc:** gán issue vào sprint CLOSED qua `POST /issues`, `PATCH /issues/{id}`, bulk, `POST /issues/{id}/move`, `POST /issues/{id}/rank` ⇒ `422 BUSINESS_RULE_VIOLATION`. Chỉ kiểm khi **đổi** sprint: bỏ gán (`sprintId: null`), gửi lại sprint hiện tại hay sửa field khác của issue đang ở sprint đã đóng vẫn hợp lệ. Import Jira (lịch sử) vẫn gắn được sprint đã đóng.
 - **`POST /issues` với `statusId`:** trạng thái phải thuộc workflow của dự án ⇒ `422` nếu ngoài workflow; chọn trạng thái **khác trạng thái khởi tạo** cần thêm `issue:transition` ⇒ `403` nếu thiếu. Không truyền `statusId` = trạng thái khởi tạo như cũ. Import Jira chỉ kiểm thuộc workflow, không đòi `issue:transition`.
-- **`epicId` (`POST /issues`, và `PATCH /issues/{id}` khi giá trị đổi; `null` gỡ epic):** epic không tồn tại/ngoài workspace ⇒ `404`; khác dự án ⇒ `422`; không phải loại Epic (`IssueType.key = 'EPIC'` hoặc `hierarchyLevel >= 1`) ⇒ `422`; trỏ vào chính issue ⇒ `422`; tạo chu trình trực tiếp/gián tiếp ⇒ `422`. Đường import Jira bỏ kiểm loại Epic nhưng giữ cùng dự án / không tự trỏ / không chu trình (và tạo loại Epic mới với `hierarchyLevel = 1`).
+- **`epicId` (`POST /issues`, và `PATCH /issues/{id}` khi giá trị đổi; `null` gỡ epic):** epic không tồn tại/ngoài tổ chức ⇒ `404`; khác dự án ⇒ `422`; không phải loại Epic (`IssueType.key = 'EPIC'` hoặc `hierarchyLevel >= 1`) ⇒ `422`; trỏ vào chính issue ⇒ `422`; tạo chu trình trực tiếp/gián tiếp ⇒ `422`. Đường import Jira bỏ kiểm loại Epic nhưng giữ cùng dự án / không tự trỏ / không chu trình (và tạo loại Epic mới với `hierarchyLevel = 1`).
 - **`PATCH /issues/bulk` — `patch.storyPoints` / `patch.epicId` / `patch.labels` (B7):** `storyPoints: number | null` (0..1000), `epicId: string | null` (kiểm một lần cho cả lô: cùng dự án, đúng loại Epic ⇒ `422` nếu sai; epic nằm trong lô hoặc chuỗi `epicId` của nó chạm một item của lô ⇒ `422`), `labels: { add?: string[]; remove?: string[] }` (mỗi mảng ≤ 10, id nhãn của DỰ ÁN; nhãn lạ ⇒ `404`). Nhãn không phải cột của `Issue` nên KHÔNG tăng `version` (giống `POST /issues/:id/labels`), hàng còn khớp version mới được ghi nhãn, `updated[].labels` phản ánh nhãn sau khi ghi, và phát `issue.updated` với `changedFields` chứa `labels`.
-- **Quyền sửa điểm (Story points) — đổi ở B7:** ai sửa được công việc đều sửa được `storyPoints`, ở `PATCH /issues/{id}` lẫn `PATCH /issues/bulk`: quyền `issue:edit`, hoặc `issue:edit:own` với việc của mình (báo cáo/được giao/người tạo; bulk có một việc của người khác ⇒ `403` cả lô, chưa ghi gì). Trước đây chỉ người tạo/báo cáo hoặc quản trị. **Hạn hoàn thành (`dueDate`) giữ luật cũ:** chỉ người tạo/báo cáo, `project:admin`, `workspace:admin` hoặc system admin (`403` nếu không).
+- **Quyền sửa điểm (Story points) — đổi ở B7:** ai sửa được công việc đều sửa được `storyPoints`, ở `PATCH /issues/{id}` lẫn `PATCH /issues/bulk`: quyền `issue:edit`, hoặc `issue:edit:own` với việc của mình (báo cáo/được giao/người tạo; bulk có một việc của người khác ⇒ `403` cả lô, chưa ghi gì). Trước đây chỉ người tạo/báo cáo hoặc quản trị. **Hạn hoàn thành (`dueDate`) giữ luật cũ:** chỉ người tạo/báo cáo, `project:admin`, `organization:admin` hoặc system admin (`403` nếu không).
 - **Kết quả import JSON** (`POST /import/json` và `ImportJob.result`): thêm `skippedAssignees: number` — số issue đã tạo nhưng bị bỏ gán vì assignee không khớp thành viên dự án.
 - **Kết quả import Jira** (`ImportJob.result` của `POST /import/jira/run`): `mapping.users` phân biệt hai trường hợp — **khoá vắng** = tên/email Jira không khớp thành viên nào; **`null`** = người dùng chủ động chọn "Để trống". Kết quả thêm `skippedAssignees: number` (số việc đã tạo được nhưng bỏ gán vì KHÔNG khớp — cùng nghĩa với import JSON), `unmatchedAssignees: { name, count }[]` (nhiều việc nhất trước, tối đa 20 tên, mỗi tên cắt ≤ 80 ký tự), `unmatchedAssigneesMore: number` (số tên không được liệt kê) và `blankedAssignees: number` (số việc bỏ gán theo lựa chọn "Để trống" — trung tính). Chỉ `skippedAssignees > 0` mới làm `warnings` +1 và thêm một dòng `[Cảnh báo]: …` gộp Ở ĐẦU `errorLog`; dry-run trả thêm dòng tương tự trong `warnings`.
 - JQL `statusCategory`: xem bảng §16.3 (toán tử/giá trị sai ⇒ `422`).
@@ -911,7 +911,7 @@ jql string
 ## 18. OpenAPI & type sharing (giao tiếp Frontend)
 
 - Backend dùng `@nestjs/swagger` decorators (`@ApiProperty`, `@ApiResponse`) → sinh `openapi.json` tại `/api/docs-json`, Swagger UI tại `/api/docs`.
-- DTO định nghĩa bằng class + class-validator, đặt trong package workspace dùng chung `@tirapro/contracts` (types + zod schemas) để **Frontend** import trực tiếp (single source of truth), tránh lệch contract.
+- DTO định nghĩa bằng class + class-validator, đặt trong package tổ chức dùng chung `@tirapro/contracts` (types + zod schemas) để **Frontend** import trực tiếp (single source of truth), tránh lệch contract.
 - WS event payload types cũng export từ `@tirapro/contracts` (`WsEvents` discriminated union) cho cả NestJS gateway và React client.
 
 ```ts
@@ -966,11 +966,11 @@ Chỉ liệt kê route **mới** và route **đổi hành vi/quyền** so với 
 | Method | Path | Permission | Mô tả |
 |---|---|---|---|
 | POST | `/auth/logout-all` | đăng nhập (không dùng API key) | Đăng xuất mọi thiết bị: thu hồi mọi phiên web, ngắt socket |
-| POST | `/members/accounts` | `member:manage` | Tạo tài khoản + thêm vào workspace một lần; trả `tempPassword` một lần khi không truyền `password`; trùng email → `422 EMAIL_ALREADY_REGISTERED` |
+| POST | `/members/accounts` | `member:manage` | Tạo tài khoản + thêm vào tổ chức một lần; trả `tempPassword` một lần khi không truyền `password`; trùng email → `422 EMAIL_ALREADY_REGISTERED` |
 | POST | `/admin/users/{id}/reset-password` | admin hệ thống | Đặt mật khẩu tạm (trả một lần) + thu hồi mọi phiên |
 | POST | `/admin/users/{id}/revoke-sessions` | admin hệ thống | Đăng xuất mọi thiết bị của người dùng |
-| POST | `/admin/users/{id}/workspaces` | admin hệ thống | Thêm tài khoản vào một workspace |
-| GET | `/audit` | `workspace:admin` | Nhật ký kiểm toán của workspace (keyset; lọc `action`/`actor`/`from`/`to`) |
+| POST | `/admin/users/{id}/organizations` | admin hệ thống | Thêm tài khoản vào một tổ chức |
+| GET | `/audit` | `organization:admin` | Nhật ký kiểm toán của tổ chức (keyset; lọc `action`/`actor`/`from`/`to`) |
 | POST | `/intake/report` | `issue:create` | Báo lỗi/gửi yêu cầu: gộp vào việc cũ (`mergeIntoIssueId`), tự gộp khi tiêu đề giống hệt, hoặc tạo mới (`forceNew`) |
 | GET | `/intake/duplicates` | `issue:create` + `@ProjectRef(query projectId)` | Gợi ý bug trùng (bỏ dấu/trigram) |
 | POST | `/issues/{id}/retract` | `issue:create` | Người báo thu hồi (xoá mềm) việc của mình trong 10 phút đầu |
@@ -983,29 +983,29 @@ Chỉ liệt kê route **mới** và route **đổi hành vi/quyền** so với 
 | GET | `/reports/sprint-summary` | `report:view` | Tóm tắt sprint (`projectId`, `sprintId`): cam kết/hoàn thành, velocity, việc chuyển tiếp |
 | GET | `/reports/qa` | `report:view` | Báo cáo QA (`projectId`, `from`, `to`): bug mở theo mức, tỷ lệ mở lại, thời gian đóng, theo phiên bản |
 | GET | `/export/issues.csv` | `project:view` | Xuất CSV công việc (`projectId`, `jql` \| `preset=backlog\|bugs`, `sprintId`, `columns`, `delimiter`); tối đa 5.000 dòng (`X-Export-Truncated`) |
-| GET | `/dashboards` | `workspace:view` | Dashboard tuỳ biến nhìn thấy được (riêng tư/workspace/dự án/nhóm) |
-| GET | `/dashboards/{id}` | `workspace:view` | Chi tiết + widget (che cấu hình dự án ẩn) |
+| GET | `/dashboards` | `organization:view` | Dashboard tuỳ biến nhìn thấy được (riêng tư/organization/dự án/nhóm) |
+| GET | `/dashboards/{id}` | `organization:view` | Chi tiết + widget (che cấu hình dự án ẩn) |
 | POST | `/dashboards` | `dashboard:manage` | Tạo dashboard (tối đa 12 widget, 30 dashboard) |
 | PUT | `/dashboards/{id}` | `dashboard:manage` | Thay widget/mức chia sẻ (chỉ chủ; OCC `updatedAt` → `409`) |
 | POST | `/dashboards/{id}/duplicate` | `dashboard:manage` | Nhân bản (che JQL/dự án ẩn) |
 | DELETE | `/dashboards/{id}` | `dashboard:manage` | Xoá (chủ; admin chỉ xoá bản đã chia sẻ) |
-| POST | `/digests/preview` | `integration:manage` | Xem trước digest (khối + định dạng) theo quyền người bấm; cùng quyền với tạo/sửa/chạy digest (phạm vi workspace) |
+| POST | `/digests/preview` | `integration:manage` | Xem trước digest (khối + định dạng) theo quyền người bấm; cùng quyền với tạo/sửa/chạy digest (phạm vi tổ chức) |
 | PUT | `/projects/{id}/programs` | `project:admin` (của CHÍNH dự án `{id}`) | Đặt lại TOÀN BỘ nhóm của dự án (`{programIds}`; nhóm lạ → `422`; dự án riêng tư không thấy → `404`); trả `{projectId, programs}`. Quản lý nhóm (tạo/sửa/xoá) vẫn là `/programs` với `program:manage` |
-| GET | `/sla/policies`, `/sla/board` | `workspace:view` | Cam kết thời gian / bảng đang chạy đồng hồ; `?projectId=` thu hẹp theo một dự án (cam kết luôn thuộc một dự án, không còn cam kết cấp tổ chức) |
+| GET | `/sla/policies`, `/sla/board` | `organization:view` | Cam kết thời gian / bảng đang chạy đồng hồ; `?projectId=` thu hẹp theo một dự án (cam kết luôn thuộc một dự án, không còn cam kết cấp tổ chức) |
 | POST | `/goals`, `/raid`, `/sla/policies` | quyền tổ chức (`goal:manage` / `risk:manage` / `sla:manage`) **hoặc** `project:admin` của dự án trong body | `projectId` bắt buộc (`422 PROJECT_REQUIRED`). Dự án của route lấy từ `body.projectId` |
 | PUT/DELETE | `/goals/{id}…`, `/raid/{id}`, `/sla/policies/{id}` | như trên, tính theo dự án của DÒNG dữ liệu | Dự án lấy từ dòng (`@ProjectRef('objective'\|'raid'\|'slaPolicy','id')`), không tin body; chuyển sang dự án khác kiểm quyền ở dự án đích |
-| GET | `/goals/{id}/progress-history` | `workspace:view` | Đường tiến độ mục tiêu (check-in tay + bản chụp hằng ngày) |
+| GET | `/goals/{id}/progress-history` | `organization:view` | Đường tiến độ mục tiêu (check-in tay + bản chụp hằng ngày) |
 | POST | `/goals/{id}/key-results/{krId}/check-ins` | `goal:manage` | Check-in KR nhập tay (giá trị + ghi chú); KR tự đo → `422` |
-| GET | `/goals/{id}/key-results/{krId}/check-ins` | `workspace:view` | Lịch sử check-in của KR |
-| GET | `/wiki/admins` | `workspace:view` | Quản trị dự án để xin quyền viết wiki (`projectId`) |
+| GET | `/goals/{id}/key-results/{krId}/check-ins` | `organization:view` | Lịch sử check-in của KR |
+| GET | `/wiki/admins` | `organization:view` | Quản trị dự án để xin quyền viết wiki (`projectId`) |
 | GET | `/wiki/by-issue/{issueId}` | `project:view` | Tài liệu liên quan tới một công việc |
 | GET | `/wiki/trash` | `project:admin` | Thùng rác wiki |
 | POST | `/wiki/{id}/undelete` | `project:admin` | Khôi phục trang wiki đã xoá mềm |
-| GET | `/wiki/{id}/versions` | `workspace:view` | Lịch sử phiên bản trang (không kèm nội dung; lọc theo quyền xem dự án) |
-| GET | `/wiki/{id}/versions/{version}` | `workspace:view` | Nội dung một phiên bản |
+| GET | `/wiki/{id}/versions` | `organization:view` | Lịch sử phiên bản trang (không kèm nội dung; lọc theo quyền xem dự án) |
+| GET | `/wiki/{id}/versions/{version}` | `organization:view` | Nội dung một phiên bản |
 | POST | `/wiki/{id}/versions/{version}/restore` | `wiki:manage` | Khôi phục bản cũ (tạo bản mới; `expectedVersion` bắt buộc → `409` nếu vừa bị sửa) |
-| GET | `/guides/onboarding` | `workspace:admin` | Checklist "Bắt đầu" tính từ dữ liệu thật |
-| POST | `/guides/onboarding/dismiss` | `workspace:admin` | Ẩn checklist |
+| GET | `/guides/onboarding` | `organization:admin` | Checklist "Bắt đầu" tính từ dữ liệu thật |
+| POST | `/guides/onboarding/dismiss` | `organization:admin` | Ẩn checklist |
 | GET | `/integrations/telegram/platform` | `integration:manage` | Hệ thống có bot chung (`TELEGRAM_BOT_TOKEN`) hay không |
 | POST | `/integrations/{id}/link-codes` | `integration:manage` | Tạo mã liên kết nhóm Telegram (6 ký tự, 15 phút, gắn đúng kết nối) |
 | POST | `/integrations/{id}/link-codes/{code}/poll` | `integration:manage` | Hỏi bot xem nhóm đã gửi `/link@bot MÃ` chưa (`waiting\|linked\|expired`) |
@@ -1016,7 +1016,7 @@ Chỉ liệt kê route **mới** và route **đổi hành vi/quyền** so với 
 |---|---|---|---|
 | POST | `/auth/invites`, `/auth/invites/accept` | — | **Đã gỡ** (không còn lời mời; thêm người trực tiếp bằng `POST /members`, `POST /members/accounts`) |
 | POST | `/users/me/change-password` | đăng nhập (không dùng API key) | Thu hồi mọi phiên, trả phiên mới + cookie refresh cho thiết bị đang đổi |
-| GET | `/users` | `workspace:view` | Picker người, lọc phía server: `?projectId` (chỉ người xem được dự án; người gọi không xem được dự án → `404`), `?search` (tên/email, không phân biệt hoa thường và dấu; tối đa 100 ký tự), `?limit` (mặc định 50, kẹp 1–200, áp sau lọc quyền), `?includeInactive=true` (giữ tài khoản đã khoá + tài khoản hệ thống automation; mặc định loại cả hai). Trả mảng. `isSystemAdmin`/`lastSeenAt` của từng người chỉ có khi người gọi có `member:manage` hoặc là admin hệ thống (cũng áp cho `GET /users/:id`, `GET /members`, `GET /projects/{id}/members`). Người nhúng trong Issue/Comment/Triage/Watchers (`UserRefDto`) không còn hai trường này |
+| GET | `/users` | `organization:view` | Picker người, lọc phía server: `?projectId` (chỉ người xem được dự án; người gọi không xem được dự án → `404`), `?search` (tên/email, không phân biệt hoa thường và dấu; tối đa 100 ký tự), `?limit` (mặc định 50, kẹp 1–200, áp sau lọc quyền), `?includeInactive=true` (giữ tài khoản đã khoá + tài khoản hệ thống automation; mặc định loại cả hai). Trả mảng. `isSystemAdmin`/`lastSeenAt` của từng người chỉ có khi người gọi có `member:manage` hoặc là admin hệ thống (cũng áp cho `GET /users/:id`, `GET /members`, `GET /projects/{id}/members`). Người nhúng trong Issue/Comment/Triage/Watchers (`UserRefDto`) không còn hai trường này |
 | GET | `/users/all` | `member:manage` | Pool người dùng chung, trả `PoolUserDto` (ít trường, bỏ tài khoản vô hiệu hoá) |
 | GET | `/admin/users` | admin hệ thống | Thêm `?search&status`; sắp theo hoạt động gần nhất |
 | POST | `/issues/{id}/transition` | `issue:transition` | Nhận `comment` (cần `comment:create`); sang Done tự gán Resolution mặc định |
@@ -1029,11 +1029,11 @@ Chỉ liệt kê route **mới** và route **đổi hành vi/quyền** so với 
 | POST | `/sprints/{id}/start` | `sprint:manage` | Body tuỳ chọn `{startDate,endDate,goal}` (kết thúc ≥ bắt đầu) |
 | GET | `/reports/burndown` | `report:view` | Sprint đang chạy: ngày sau hôm nay `remaining: null`, thêm `today` |
 | GET | `/notifications` | đăng nhập | `?filter=all\|unread\|mentioned\|assigned` |
-| POST | `/search/validate` | `workspace:view` | Kiểm cú pháp + giá trị JQL, trả `suggestions` ("ý bạn là") |
+| POST | `/search/validate` | `organization:view` | Kiểm cú pháp + giá trị JQL, trả `suggestions` ("ý bạn là") |
 | PUT | `/wiki/{id}` | `wiki:manage` | `expectedVersion` (OCC → `409 VERSION_CONFLICT`); `wiki:manage` là quyền cấp dự án |
 | DELETE | `/wiki/{id}` | `project:admin` | Xoá mềm (khôi phục qua `/wiki/{id}/undelete`) |
 | GET | `/admin/system/audit` | admin hệ thống | Thêm `?kind=admin\|activity` (nhật ký quản trị / hoạt động công việc) |
 | GET | `/sprints`, `/boards` | `project:view` | Thiếu `projectId` → `422` (trước trả mọi dự án) |
 
-Mã lỗi mới: `422 EMAIL_ALREADY_REGISTERED`; `409 ALREADY_MEMBER` (`POST /members` với người đã là thành viên — đổi vai trò dùng `PUT /members/{userId}/roles`; cả khi đua `P2002`); `409 LAST_WORKSPACE_ADMIN` (hạ/gỡ quản trị workspace cuối cùng, ở `setWorkspaceRoles`/gỡ khỏi workspace). WebSocket: `issue:sets_changed` (gắn/bỏ thành phần/phiên bản, không đổi `version`); payload thông báo `{key,summary,excerpt,where,actors,count}`.
+Mã lỗi mới: `422 EMAIL_ALREADY_REGISTERED`; `409 ALREADY_MEMBER` (`POST /members` với người đã là thành viên — đổi vai trò dùng `PUT /members/{userId}/roles`; cả khi đua `P2002`); `409 LAST_ORGANIZATION_ADMIN` (hạ/gỡ quản trị tổ chức cuối cùng, ở `setOrganizationRoles`/gỡ khỏi tổ chức). WebSocket: `issue:sets_changed` (gắn/bỏ thành phần/phiên bản, không đổi `version`); payload thông báo `{key,summary,excerpt,where,actors,count}`.
 

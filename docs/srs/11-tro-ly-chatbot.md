@@ -53,19 +53,19 @@ Nhận diện không dấu, không phân biệt hoa/thường (`normalizeVi` c�
 | 4 | Tạo việc | "tạo việc Sửa lỗi login !cao @an ^mai #sprint ~3", "thêm bug …", "tạo story/epic …" | `GET /projects/:key/meta`, `GET /users?projectId=`, sprint, `GET /projects/:id/permissions/me` | Thẻ nháp (§5) |
 | 5 | Không hiểu | câu ngoài luật | `POPULAR_QUESTIONS`, chip theo màn | Câu thân thiện + chip câu hỏi phổ biến + nút **Tìm "<câu>" trong công việc** |
 
-Việc trong danh sách (3a–3d): trong dự án (URL `/p/:key` hoặc việc đang xem thuộc dự án) thì thêm `project = "KEY"`, ngoài dự án thì toàn workspace. Hiện **tối đa 5 việc** (mã, tiêu đề, trạng thái, hạn; quá hạn tô đỏ), kèm "Xem tất cả" → `/filters?jql=<JQL>`. Còn trang kế → ghi "hơn N". Lỗi API → "Mình chưa lấy được dữ liệu: <thông báo>".
+Việc trong danh sách (3a–3d): trong dự án (URL `/p/:key` hoặc việc đang xem thuộc dự án) thì thêm `project = "KEY"`, ngoài dự án thì toàn tổ chức. Hiện **tối đa 5 việc** (mã, tiêu đề, trạng thái, hạn; quá hạn tô đỏ), kèm "Xem tất cả" → `/filters?jql=<JQL>`. Còn trang kế → ghi "hơn N". Lỗi API → "Mình chưa lấy được dữ liệu: <thông báo>".
 
 Từ đồng nghĩa (task = việc = công việc = issue; tạo = thêm = lập; quyền = phân quyền = vai trò…) cài ở `knowledge.ts`. Điểm: từ khớp tiêu đề ×3, từ khoá ×2, tóm tắt ×1, nhân độ hiếm của từ; cụm cả câu khớp +3; cần ít nhất một từ khớp tiêu đề/từ khoá và điểm ≥ ngưỡng `MIN_SCORE`.
 
 ## 4. Nguồn dữ liệu và quyền
 
-Chỉ dùng API sẵn có qua `queryClient.fetchQuery` trên **cùng khoá cache** với Bảng việc/hộp tạo việc, token của chính người dùng — nên RBAC và cô lập workspace do API đảm bảo như mọi màn khác. Không thêm endpoint, không thêm bảng, không migration. Danh sách "Xem tất cả" đi qua trang Bộ lọc nên cũng chịu quyền như tìm kiếm thường.
+Chỉ dùng API sẵn có qua `queryClient.fetchQuery` trên **cùng khoá cache** với Bảng việc/hộp tạo việc, token của chính người dùng — nên RBAC và cô lập tổ chức do API đảm bảo như mọi màn khác. Không thêm endpoint, không thêm bảng, không migration. Danh sách "Xem tất cả" đi qua trang Bộ lọc nên cũng chịu quyền như tìm kiếm thường.
 
 ## 5. Luồng tạo việc (nháp → xác nhận)
 
 1. Người dùng gõ lệnh: động từ (tạo/thêm/new/create/add/lập) + danh từ (việc/công việc/task/issue/bug/lỗi/story/epic) + tiêu đề kèm token `! @ # ~ ^`. "báo lỗi …" cũng là tạo Bug. Câu hỏi cách làm ("báo lỗi thế nào", "làm sao tạo task") không phải lệnh.
 2. **Chọn dự án:** dự án hiện tại nếu còn hoạt động; ngoài dự án (hoặc dự án đã lưu trữ) → hỏi bằng chip dự án (gần dùng trước, tối đa 5); bấm chip gửi lại đúng câu lệnh cho dự án đó (chỉ lượt đó).
-3. **Quyền:** `issue:create` (quyền workspace/system admin hoặc quyền dự án). Biết chắc không có → "Bạn không có quyền tạo việc trong dự án KEY…", không dựng thẻ. Chưa biết (đang tải/lỗi) → vẫn soạn nháp, API kiểm lúc tạo.
+3. **Quyền:** `issue:create` (quyền organization/system admin hoặc quyền dự án). Biết chắc không có → "Bạn không có quyền tạo việc trong dự án KEY…", không dựng thẻ. Chưa biết (đang tải/lỗi) → vẫn soạn nháp, API kiểm lúc tạo.
 4. **Tiêu đề rỗng** (chỉ lệnh, hoặc chỉ toàn token) → hỏi lại kèm câu mẫu; không dựng thẻ.
 5. **Thẻ nháp** dựng bằng chính `buildQuickAddInput`/`parseTitleTokens` của hộp tạo việc: dự án, loại, tiêu đề (đã bỏ token), ưu tiên, người phụ trách, sprint, điểm, hạn. Loại: theo gợi ý (Bug/Story/Epic, so khớp `key` rồi tên); dự án không có loại đó → dùng loại mặc định (Task) kèm cảnh báo. Không bao giờ chọn loại sub-task. Epic không gửi `epicId`. Token không khớp ở lại trong tiêu đề và có cảnh báo kèm gợi ý sửa.
 6. **Nút trên thẻ:**

@@ -6,7 +6,10 @@ import { createId } from '@paralleldrive/cuid2';
 import { ERROR_CODES } from '@tirapro/types';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 
-/** Tổ chức trong access token: claim mới `organizationId`, rơi về claim cũ `workspaceId` của token phát trước khi đổi tên. */
+/**
+ * Tổ chức trong access token: claim mới `organizationId`, rơi về claim cũ `workspaceId` của token phát trước khi đổi tên.
+ * GỠ NHÁNH CLAIM CŨ sau 2026-12-05 (xa hơn nhiều so với thời hạn access token 15 phút) — cùng với test "token cũ" và mục allowlist trong guard test.
+ */
 export const claimedOrganizationId = (
   p: Pick<AccessTokenPayload, 'organizationId' | 'workspaceId'>,
 ): string | null => p.organizationId ?? p.workspaceId ?? null;
@@ -16,7 +19,7 @@ export interface AccessTokenPayload {
   email: string;
   organizationId?: string | null;
   /**
-   * Claim CŨ (trước đổi tên tổ chức). Access token đã cấp vẫn mang claim này tới khi hết hạn nên VẪN được chấp nhận
+   * Claim CŨ (trước đổi tên tổ chức; gỡ sau 2026-12-05). Access token đã cấp vẫn mang claim này tới khi hết hạn nên VẪN được chấp nhận
    * (đọc qua `claimedOrganizationId`); token mới luôn phát `organizationId`.
    */
   workspaceId?: string | null;

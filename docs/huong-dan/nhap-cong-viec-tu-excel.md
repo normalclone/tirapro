@@ -4,7 +4,7 @@
 
 Bạn có thể tạo tối đa **1000 công việc** (task, bug, story…) trong một lần bằng cách điền vào biểu mẫu Excel của dự án rồi tải lên. Biểu mẫu có sẵn **danh sách thả xuống** lấy từ cấu hình dự án, nên bạn chỉ cần chọn chứ không phải gõ tay.
 
-**Ai làm được:** người có quyền *Nhập dữ liệu* (`import:run`). Mặc định là quản trị workspace. Nếu không thấy khối "Nhập từ Excel" thì nhờ quản trị cấp quyền.
+**Ai làm được:** người có quyền *Nhập dữ liệu* (`import:run`). Mặc định là quản trị tổ chức. Nếu không thấy khối "Nhập từ Excel" thì nhờ quản trị cấp quyền.
 
 ---
 
@@ -57,7 +57,7 @@ Cột có dấu `*` và nền vàng nhạt là **bắt buộc**. Mỗi dòng là
   Trong một ô Excel, xuống dòng bằng **Alt+Enter** (Mac: **⌥+Enter** hoặc **Ctrl+⌥+Enter**).
 - **Sub-task không nhập được** bằng biểu mẫu, vì sub-task cần có việc cha. Hãy tạo sub-task trực tiếp trong việc cha.
 - **Nhãn mới** chưa có trong dự án sẽ được tự tạo. Ngược lại, **Thành phần** và **Phiên bản** phải đã có sẵn trong dự án.
-- **Người phụ trách và người báo cáo** phải là thành viên đang hoạt động **của dự án**. Thành viên chỉ thuộc workspace mà không thuộc dự án sẽ bị báo lỗi.
+- **Người phụ trách và người báo cáo** phải là thành viên đang hoạt động **của dự án**. Thành viên chỉ thuộc tổ chức mà không thuộc dự án sẽ bị báo lỗi.
 - **Thứ tự và tên cột:** có thể đổi thứ tự cột hoặc thêm cột ghi chú riêng. Cột lạ được bỏ qua. Không đổi tên tiêu đề các cột chuẩn.
 - **Dòng trống** được bỏ qua.
 - **Có thể dán dữ liệu** từ file khác vào biểu mẫu. Dữ liệu dán vào có thể không đi qua danh sách thả xuống, nhưng hệ thống vẫn kiểm lại từng ô ở bước sau.

@@ -3,7 +3,7 @@ I now have everything needed. The Issue model has 14 indexes, PK is `id @default
 ```markdown
 # Kiến trúc Scale Dữ liệu cho Tirapro
 
-> Stack: NestJS 10 + Prisma + PostgreSQL 16 (pgvector + pg_trgm) + Redis 7 + Socket.io (@socket.io/redis-adapter) + BullMQ. Multi-tenant theo `Workspace` (`workspaceId` trên mọi entity). Đã có: cursor + offset pagination, ReportCache + SprintSnapshot, IssueHistory append-only, tsvector FTS + pgvector HNSW, soft-delete (`deletedAt`).
+> Stack: NestJS 10 + Prisma + PostgreSQL 16 (pgvector + pg_trgm) + Redis 7 + Socket.io (@socket.io/redis-adapter) + BullMQ. Multi-tenant theo `Organization` (`organizationId` trên mọi entity). Đã có: cursor + offset pagination, ReportCache + SprintSnapshot, IssueHistory append-only, tsvector FTS + pgvector HNSW, soft-delete (`deletedAt`).
 >
 > **Nguyên tắc xuyên suốt: Ease-of-use là ưu tiên SỐ 1.** Mỗi quyết định scale phải bảo toàn read-your-writes, một source-of-truth (Postgres), onboarding tức thì, và deploy migration một lần. Không đánh đổi sự đơn giản để lấy "scale phòng xa".
 
@@ -16,16 +16,16 @@ I now have everything needed. The Issue model has 14 indexes, PK is `id @default
 1. **Đo trước, tối ưu sau.** Không partition/shard/externalize theo linh cảm. Mỗi bước nâng cấp phải gắn một *ngưỡng tín hiệu* (số dòng, p95 latency, QPS, số socket) đo được bằng telemetry.
 2. **Đòn bẩy rẻ trước, hạ tầng đắt sau.** Thứ tự ưu tiên cố định: *index khớp access pattern → autovacuum/bloat tuning → cache → pre-aggregation → pooling → partition → read replica → sharding*. Không nhảy cóc.
 3. **Một source-of-truth.** Postgres là chân lý; Redis chỉ là read-cache (cache-aside, không write-behind); search ở trong Postgres cho tới khi chạm ngưỡng thật. Điều này giữ read-your-writes — yếu tố trực tiếp của ease-of-use.
-4. **Chuẩn bị rẻ, thực thi đắt để sau.** Một số quyết định *phải chốt sớm vì đổi sau rất đắt* (đặc biệt: PK của bảng append-only, đưa `workspaceId` vào index/unique). Nhưng *việc thực thi* (bật partition, bật RLS) thì hoãn tới ngưỡng.
+4. **Chuẩn bị rẻ, thực thi đắt để sau.** Một số quyết định *phải chốt sớm vì đổi sau rất đắt* (đặc biệt: PK của bảng append-only, đưa `organizationId` vào index/unique). Nhưng *việc thực thi* (bật partition, bật RLS) thì hoãn tới ngưỡng.
 
 ### 1.2 Lộ trình theo giai đoạn
 
 | Giai đoạn | Quy mô | Việc CẦN làm | Việc KHÔNG làm (tránh over-engineer) |
 |---|---|---|---|
-| **MVP** | < ~100k issue/tenant, 1 instance | Index khớp access pattern (P0), partial index soft-delete (P0), tenant-aware index + leading `workspaceId` (P0), cache-aside chuẩn hóa (P0), cursor pagination có tiebreaker (P0), sticky session cho Socket.io (P0) | Partition, RLS, PgBouncer, MV, external search, read replica |
+| **MVP** | < ~100k issue/tenant, 1 instance | Index khớp access pattern (P0), partial index soft-delete (P0), tenant-aware index + leading `organizationId` (P0), cache-aside chuẩn hóa (P0), cursor pagination có tiebreaker (P0), sticky session cho Socket.io (P0) | Partition, RLS, PgBouncer, MV, external search, read replica |
 | **Tăng trưởng** | ~100k → vài triệu issue, nhiều instance NestJS/worker | Autovacuum/fillfactor per-table (P1), PgBouncer transaction-mode (P1), transactional outbox (P1), BullMQ multi-queue + rate-limit (P1), RLS làm lưới phòng thủ (P1), hybrid search RRF (P1), HNSW iterative_scan cho filtered-ANN (P0 nếu đã dùng semantic) | Sharding, schema/DB-per-tenant, TimescaleDB, Elasticsearch |
 | **Scale lớn** | 10M+ dòng ở bảng nóng (IssueHistory/ActivityLog), report nặng | **Bật** range-partition theo thời gian (P2 — PK đã chốt sẵn), retention bằng DROP PARTITION (P2), Materialized View refresh theo lịch (P2), read replica cho report/MV refresh (P2), sharded Socket.io adapter (P2) | Citus/sharding, Silo per-tenant (chỉ khi có tín hiệu cụ thể) |
-| **Trần 1 node** | Vượt khả năng vertical scaling + replica | Cân nhắc Citus (shard theo `workspaceId`) hoặc tách tenant VIP ra Silo | — |
+| **Trần 1 node** | Vượt khả năng vertical scaling + replica | Cân nhắc Citus (shard theo `organizationId`) hoặc tách tenant VIP ra Silo | — |
 
 **Thông điệp chính:** Tirapro hiện ở MVP/đầu Tăng trưởng. Phần lớn giá trị nằm ở các mục **P0 chi phí thấp** (index + cache + pagination + realtime config). Partition/RLS/MV là *chuẩn bị thiết kế bây giờ, kích hoạt sau*.
 
@@ -40,8 +40,8 @@ I now have everything needed. The Issue model has 14 indexes, PK is `id @default
 **Việc cần làm:**
 
 1. **Bỏ index thừa / low-selectivity đứng một mình.** `typeId`, `priorityId`, `severityId` hiếm khi là điều kiện lọc đơn lẻ. Gộp vào composite khớp truy vấn thật hoặc bỏ. Giữ `parentId`/`epicId` chỉ nếu thực sự có query "lấy con theo parent".
-2. **Đổi index sang tenant-aware (leading `workspaceId`).** Hiện `Issue` lead bằng `projectId` nhưng search/JQL/dashboard cross-project/notification lọc theo `workspaceId`. Trong mô hình Pool, mọi query nên bắt đầu bằng tenant_id. Composite phải lead bằng `workspaceId` để pruning hiệu quả. Ví dụ:
-   - `@@index([workspaceId, statusId])`, `@@index([workspaceId, updatedAt])` cho board/list/dashboard cross-project.
+2. **Đổi index sang tenant-aware (leading `organizationId`).** Hiện `Issue` lead bằng `projectId` nhưng search/JQL/dashboard cross-project/notification lọc theo `organizationId`. Trong mô hình Pool, mọi query nên bắt đầu bằng tenant_id. Composite phải lead bằng `organizationId` để pruning hiệu quả. Ví dụ:
+   - `@@index([organizationId, statusId])`, `@@index([organizationId, updatedAt])` cho board/list/dashboard cross-project.
    - Giữ `@@index([projectId, statusId])` cho board theo project.
 3. **Partial index khớp soft-delete + cờ thưa** (Prisma không hỗ trợ `WHERE` → raw SQL migration, theo đúng pattern `01_pgvector_fts.sql` đã có):
    - `CREATE INDEX ... ON "Issue" (...) WHERE "deletedAt" IS NULL` — đa số query luôn kèm điều kiện này; index nhỏ hơn nhiều, cache tốt hơn.
@@ -51,11 +51,11 @@ I now have everything needed. The Issue model has 14 indexes, PK is `id @default
 4. **Covering / INCLUDE cho index-only scan** (raw SQL — Prisma chưa hỗ trợ `INCLUDE` trong `@@index`): cho board/backlog list chỉ cần vài cột:
    ```sql
    CREATE INDEX issue_board_covering
-     ON "Issue" ("workspaceId", "projectId", "statusId")
+     ON "Issue" ("organizationId", "projectId", "statusId")
      INCLUDE ("key", "summary", "assigneeId", "rank")
      WHERE "deletedAt" IS NULL;
    ```
-5. **GIN/HNSW: giữ nguyên kỷ luật.** tsvector GIN + `gin_trgm_ops` + HNSW đã đúng. **Chỉ** thêm GIN trên JSONB (`settings`, `payload`, customField config) khi *chứng minh* có query containment nóng; dùng `jsonb_path_ops` nếu chỉ cần `@>`. `btree_gin` đã cài → cân nhắc GIN tổng hợp `(workspaceId, searchVector)` khi FTS thành điểm nóng theo tenant. **Không** index JSONB "phòng xa" đại trà — GIN đắt khi ghi (pending-list flush gây spike).
+5. **GIN/HNSW: giữ nguyên kỷ luật.** tsvector GIN + `gin_trgm_ops` + HNSW đã đúng. **Chỉ** thêm GIN trên JSONB (`settings`, `payload`, customField config) khi *chứng minh* có query containment nóng; dùng `jsonb_path_ops` nếu chỉ cần `@>`. `btree_gin` đã cài → cân nhắc GIN tổng hợp `(organizationId, searchVector)` khi FTS thành điểm nóng theo tenant. **Không** index JSONB "phòng xa" đại trà — GIN đắt khi ghi (pending-list flush gây spike).
 
 ### 2.2 Autovacuum / Bloat tuning per-table (P1, raw SQL `ALTER TABLE SET`)
 
@@ -70,7 +70,7 @@ Theo dõi `pg_stat_user_tables` (`n_dead_tup`, `n_live_tup`). Tránh chỉnh qu�
 
 ### 2.3 Partitioning — bảng nào, theo gì (P1 chuẩn bị / P2 kích hoạt)
 
-**Quyết định:** range partition theo **thời gian** cho **đúng 2 bảng append-only nóng nhất: `IssueHistory` (theo `occurredAt`) và `ActivityLog` (theo `createdAt`)**, partition theo **tháng**. KHÔNG partition toàn schema. KHÔNG list/hash-partition theo `workspaceId` (SaaS nhiều tenant nhỏ → quá nhiều partition, tăng planning time, phản tác dụng).
+**Quyết định:** range partition theo **thời gian** cho **đúng 2 bảng append-only nóng nhất: `IssueHistory` (theo `occurredAt`) và `ActivityLog` (theo `createdAt`)**, partition theo **tháng**. KHÔNG partition toàn schema. KHÔNG list/hash-partition theo `organizationId` (SaaS nhiều tenant nhỏ → quá nhiều partition, tăng planning time, phản tác dụng).
 
 **Chốt NGAY (rẻ khi bảng còn nhỏ, rất đắt khi đã lớn):** đổi PK chứa cột thời gian.
 - Hiện `IssueHistory`/`ActivityLog` (và cả `Issue`) dùng PK `id @default(cuid())` đơn → **ràng buộc partition: partition key PHẢI nằm trong mọi PK/UNIQUE.** Phải đổi sang `@@id([occurredAt, id])` / `@@id([createdAt, id])`.
@@ -79,7 +79,7 @@ Theo dõi `pg_stat_user_tables` (`n_dead_tup`, `n_live_tup`). Tránh chỉnh qu�
 **Khi BẬT (đạt ~10–20M dòng/bảng hoặc p95 report vượt mục tiêu):**
 - Quản lý qua raw SQL + `prisma migrate dev --create-only`, model Prisma map vào **BẢNG CHA** (không khai báo partition con, nếu không migrate sau sẽ sinh `DROP PARTITION`). Lưu ý shadow DB và trùng tên index.
 - Tự động hóa bằng **BullMQ repeatable job** (không dùng pg_partman — tránh phụ thuộc extension, giữ logic trong TS): tạo partition tháng kế tiếp + `DROP`/`DETACH` partition quá hạn.
-- Giữ index lead `workspaceId` trên từng partition để vừa pruning theo thời gian vừa lọc tenant.
+- Giữ index lead `organizationId` trên từng partition để vừa pruning theo thời gian vừa lọc tenant.
 
 ### 2.4 Pooling — PgBouncer transaction-mode (P1, khi lên nhiều instance)
 
@@ -95,39 +95,39 @@ Tirapro có nhiều nguồn kết nối (NestJS instances + Socket.io redis-adap
 
 ## 3. Multi-tenancy: Isolation + chống Noisy-Neighbor
 
-### 3.1 Giữ mô hình Pool (shared-DB + `workspaceId`) — KHÔNG đổi (P0)
+### 3.1 Giữ mô hình Pool (shared-DB + `organizationId`) — KHÔNG đổi (P0)
 
-Tirapro đã đúng: `workspaceId` trên mọi entity, `@@unique([workspaceId, key])`. Đây là lựa chọn tối ưu cho SaaS nhiều tenant data vừa/nhỏ (AWS/Crunchy/PlanetScale): onboard = chỉ INSERT, deploy migration 1 lần, cross-workspace reporting rẻ. **Không** chuyển schema-per-tenant (Prisma + schema động là điểm đau lớn, pg_catalog phình) hay DB-per-tenant (cạn connection ngay). Không có tín hiệu nào (số tenant, data size, compliance) buộc phải tách.
+Tirapro đã đúng: `organizationId` trên mọi entity, `@@unique([organizationId, key])`. Đây là lựa chọn tối ưu cho SaaS nhiều tenant data vừa/nhỏ (AWS/Crunchy/PlanetScale): onboard = chỉ INSERT, deploy migration 1 lần, cross-organization reporting rẻ. **Không** chuyển schema-per-tenant (Prisma + schema động là điểm đau lớn, pg_catalog phình) hay DB-per-tenant (cạn connection ngay). Không có tín hiệu nào (số tenant, data size, compliance) buộc phải tách.
 
 ### 3.2 Enforce isolation tập trung (P0)
 
-Vấn đề thực tế cần vá: isolation hiện chỉ dựa app-code → dễ rò nếu **quên 1 `where workspaceId`**.
+Vấn đề thực tế cần vá: isolation hiện chỉ dựa app-code → dễ rò nếu **quên 1 `where organizationId`**.
 
-- Dùng **Prisma `$extends`/middleware + AsyncLocalStorage** tự động chèn `where workspaceId` cho mọi đọc/ghi (lấy wsId từ request context), thay vì rải rác ở từng service.
+- Dùng **Prisma `$extends`/middleware + AsyncLocalStorage** tự động chèn `where organizationId` cho mọi đọc/ghi (lấy wsId từ request context), thay vì rải rác ở từng service.
 - **Bắt buộc** áp cho cả **BullMQ worker** và **raw query** (pgvector/tsvector) — đây là nơi dễ quên nhất.
-- Loại bỏ cả class lỗi "quên where workspaceId" + giữ code sạch.
+- Loại bỏ cả class lỗi "quên where organizationId" + giữ code sạch.
 
 ### 3.3 RLS làm lưới phòng thủ thứ 2 (P1)
 
 Defense-in-depth: nếu app guard sót, DB vẫn chặn rò cross-tenant.
 
 - `ENABLE` + **`FORCE ROW LEVEL SECURITY`** cho các bảng nhạy cảm nhất: `Issue`, `Comment`, `Attachment`, `IssueHistory`, `ActivityLog`, `Notification`, `IssueEmbedding`.
-- Policy: `USING ("workspaceId" = current_setting('app.current_workspace'))`.
+- Policy: `USING ("organizationId" = current_setting('app.current_organization'))`.
 - App connect bằng **role KHÔNG phải owner**.
-- Set context qua Prisma `$extends $allOperations`: mở transaction → `set_config('app.current_workspace', wsId, true)` (LOCAL = chỉ sống trong tx) → chạy query. **Chỉ an toàn ở PgBouncer transaction-mode**, không phải statement-mode.
+- Set context qua Prisma `$extends $allOperations`: mở transaction → `set_config('app.current_organization', wsId, true)` (LOCAL = chỉ sống trong tx) → chạy query. **Chỉ an toàn ở PgBouncer transaction-mode**, không phải statement-mode.
 - P1 (không P0) vì phải kiểm thử kỹ tương tác pooler + raw SQL pgvector/tsvector + BullMQ context; cấu hình sai dễ silent-fail. RLS bổ sung chứ không thay app-level filtering.
 
 ### 3.4 Chống noisy-neighbor ở tầng rẻ (P1)
 
 Pool không loại bỏ noisy-neighbor nhưng giảm mạnh bằng:
 - `statement_timeout` (vd 100–300ms cho path tương tác, cao hơn cho job nền) + `idle_in_transaction_session_timeout`.
-- Giới hạn concurrency/connection theo workspace ở app/PgBouncer.
+- Giới hạn concurrency/connection theo organization ở app/PgBouncer.
 - Đẩy report nặng sang **read replica** (tương lai) + tận dụng **ReportCache/SprintSnapshot/Redis** sẵn có.
 - Cô lập job nặng (import/export/embedding) vào **BullMQ queue riêng concurrency thấp**.
 
 ### 3.5 Tín hiệu graduate (đừng tách theo cảm tính) (P2)
 
-Tách 1 tenant ra Silo/DB riêng CHỈ khi: (i) tenant tiêu thụ tài nguyên áp đảo dù đã có timeout/limit; HOẶC (ii) yêu cầu compliance/KMS key riêng; HOẶC (iii) một bảng tiến gần trần (TOAST OID ~4 tỷ). Cân nhắc Citus chỉ khi 1 node hết đường sau khi đã vắt kiệt index + partition + replica + cache. Mô hình mục tiêu thực dụng: **Pool cho đa số + Silo cho vài tenant VIP** (đã có `Workspace.plan` để phân tier). *Lưu ý Citus:* nhiều `@@id`/`@@unique` hiện KHÔNG chứa `workspaceId` (vd `IssueLabel`, `BoardColumnStatus`, `RolePermission`, các unique cấp project) → phải refactor trước khi shard. Hành động rẻ NGAY mở đường: tập thói quen lọc `workspaceId` + đưa `workspaceId` vào index/unique chính.
+Tách 1 tenant ra Silo/DB riêng CHỈ khi: (i) tenant tiêu thụ tài nguyên áp đảo dù đã có timeout/limit; HOẶC (ii) yêu cầu compliance/KMS key riêng; HOẶC (iii) một bảng tiến gần trần (TOAST OID ~4 tỷ). Cân nhắc Citus chỉ khi 1 node hết đường sau khi đã vắt kiệt index + partition + replica + cache. Mô hình mục tiêu thực dụng: **Pool cho đa số + Silo cho vài tenant VIP** (đã có `Organization.plan` để phân tier). *Lưu ý Citus:* nhiều `@@id`/`@@unique` hiện KHÔNG chứa `organizationId` (vd `IssueLabel`, `BoardColumnStatus`, `RolePermission`, các unique cấp project) → phải refactor trước khi shard. Hành động rẻ NGAY mở đường: tập thói quen lọc `organizationId` + đưa `organizationId` vào index/unique chính.
 
 ---
 
@@ -160,7 +160,7 @@ Hợp thức hóa pattern đã có (write vào `Issue`, đọc report từ pre-a
 ### 4.4 Partition + Retention/Archival (P2 — phụ thuộc §2.3)
 
 - Retention chỉ rẻ & an toàn KHI đã partition: xóa cũ = `DROP TABLE partition` (tức thì) thay vì `DELETE` triệu dòng (bloat/lock/VACUUM).
-- Gắn retention theo `Workspace.plan` (FREE/PRO/ENTERPRISE) — **không** xóa nhầm dữ liệu khách trả tiền.
+- Gắn retention theo `Organization.plan` (FREE/PRO/ENTERPRISE) — **không** xóa nhầm dữ liệu khách trả tiền.
 - **Pre-aggregate + SprintSnapshot TRƯỚC khi archival** để report lịch sử vẫn đọc được sau khi raw history bị drop.
 - **Tuyệt đối không** drop history của sprint chưa đóng / đang trong cửa sổ báo cáo.
 - Dữ liệu cần giữ lạnh: `DETACH PARTITION CONCURRENTLY` (tránh giờ cao điểm) → export ra object storage (tái dùng `ExportJob` với `includeHistory`).
@@ -171,18 +171,18 @@ Hợp thức hóa pattern đã có (write vào `Issue`, đọc report từ pre-a
 
 ### 5.1 Giữ Postgres làm hệ search duy nhất (P0)
 
-Ở quy mô Tirapro (vài trăm nghìn–vài triệu issue, multi-tenant lọc trước `workspaceId`, QPS khiêm tốn), Postgres FTS+pgvector phục vụ tốt (p50 ~45ms vs ES ~35ms — chênh không đáng đánh đổi vận hành + mất read-your-writes). **Không** thêm Elasticsearch/Meilisearch/Typesense lúc này.
+Ở quy mô Tirapro (vài trăm nghìn–vài triệu issue, multi-tenant lọc trước `organizationId`, QPS khiêm tốn), Postgres FTS+pgvector phục vụ tốt (p50 ~45ms vs ES ~35ms — chênh không đáng đánh đổi vận hành + mất read-your-writes). **Không** thêm Elasticsearch/Meilisearch/Typesense lúc này.
 
 ### 5.2 Cứng hóa tsvector hiện có (P0)
 
 - Đảm bảo là cột **`GENERATED ALWAYS AS (...) STORED` + GIN index**, KHÔNG `to_tsvector()` on-the-fly mỗi query.
 - `setweight`: A=`summary`/`key`, B=`description`, C=comment.
-- **Mọi search query BẮT BUỘC pre-filter `workspaceId` (+ structured JQL filter) và LIMIT sớm TRƯỚC `ts_rank`.** Đây là cú né hoàn toàn cú sập latency: `ts_rank` không có corpus-global stats (không phải BM25 thật), sort top-N trên 10M dòng không lọc có thể tới ~38s. Pre-filter theo tenant giữ tập rank nhỏ.
+- **Mọi search query BẮT BUỘC pre-filter `organizationId` (+ structured JQL filter) và LIMIT sớm TRƯỚC `ts_rank`.** Đây là cú né hoàn toàn cú sập latency: `ts_rank` không có corpus-global stats (không phải BM25 thật), sort top-N trên 10M dòng không lọc có thể tới ~38s. Pre-filter theo tenant giữ tập rank nhỏ.
 
 ### 5.3 Sửa filtered-ANN cho pgvector multi-tenant (P0 nếu đang dùng semantic)
 
-Cạm bẫy lớn nhất: HNSW lấy top-k TRƯỚC rồi mới áp `WHERE workspaceId` → kết quả đúng tenant bị loại, recall tụt **âm thầm không báo lỗi**.
-- Index cột `workspaceId` (đã có `@@index([workspaceId])` trên `IssueEmbedding` — tốt).
+Cạm bẫy lớn nhất: HNSW lấy top-k TRƯỚC rồi mới áp `WHERE organizationId` → kết quả đúng tenant bị loại, recall tụt **âm thầm không báo lỗi**.
+- Index cột `organizationId` (đã có `@@index([organizationId])` trên `IssueEmbedding` — tốt).
 - Bật `hnsw.iterative_scan` (`relaxed_order` cho recall, `strict_order` khi cần đúng thứ tự khoảng cách), HOẶC partial/partition index theo tenant.
 
 ### 5.4 HNSW tuning (P1)
@@ -207,11 +207,11 @@ Telemetry cảnh báo: p95 search > ~300–500ms kéo dài; số doc cần rank 
 ### 6.1 Caching — cache-aside chuẩn hóa (P0)
 
 - Một **`CacheService`/interceptor NestJS** duy nhất: cache-aside (lazy load) + **delete-on-write** invalidation. Postgres là source-of-truth.
-- **Key LUÔN embed `workspaceId`** (chống rò cross-tenant) + **jittered TTL backstop** mọi key (missed invalidation tự lành).
+- **Key LUÔN embed `organizationId`** (chống rò cross-tenant) + **jittered TTL backstop** mọi key (missed invalidation tự lành).
 - **Không bao giờ `KEYS`/`SCAN`-delete trên request path.**
 - KHÔNG dùng write-behind (mâu thuẫn source-of-truth). Write-through chỉ cho vài key hot read-dominated.
 
-**Versioned keys cho list/aggregate (P0):** một issue edit fan-out tới nhiều board/backlog/JQL/dashboard. Thay vì liệt kê & xóa từng key → **bump version counter** per-board/per-filter (`ws:{id}:board:{boardId}:v{n}`), key cũ age-out qua TTL (O(1) mass invalidation, zero-downtime). Giữ direct-delete cho key detail của chính entity.
+**Versioned keys cho list/aggregate (P0):** một issue edit fan-out tới nhiều board/backlog/JQL/dashboard. Thay vì liệt kê & xóa từng key → **bump version counter** per-board/per-filter (`org:{id}:board:{boardId}:v{n}`), key cũ age-out qua TTL (O(1) mass invalidation, zero-downtime). Giữ direct-delete cho key detail của chính entity.
 
 **Stampede protection + Redis-down fallback (P1):** per-key lock ngắn hoặc recompute-ahead khi gần hết hạn; Redis down → degrade về Prisma trực tiếp thay vì lỗi.
 
@@ -226,7 +226,7 @@ Tirapro đã đúng (cursor pagination). Cần audit:
 
 Tirapro đã đúng (`@socket.io/redis-adapter`). Gap P0:
 - **Sticky sessions BẮT BUỘC** ở LB/ingress (cookie- hoặc IP-hash affinity) — redis-adapter chỉ là messaging layer, KHÔNG bỏ yêu cầu này; thiếu affinity → client reconnect hit node lạ → HTTP 400.
-- **Scope room hẹp:** `workspace:{id}`, `board:{id}`, `issue:{id}` → fan-out narrow.
+- **Scope room hẹp:** `organization:{id}`, `board:{id}`, `issue:{id}` → fan-out narrow.
 - Reconnection/backoff phía client.
 - **Sharded Redis adapter (Redis 7+) là P2 metrics-gated:** swap khi per-instance socket tiến ~10k–30k hoặc Pub/Sub cross-node traffic chiếm ưu thế. Không adopt sớm.
 
@@ -251,16 +251,16 @@ Idempotency key trên consumer + write API; field `version`/`updatedAt` monotoni
 | # | Hạng mục | Đã có? / Cần thêm | Khi nào áp dụng | Ưu tiên |
 |---|---|---|---|---|
 | 1 | Tinh gọn index `Issue` (bỏ single-col low-selectivity `typeId`/`priorityId`/`severityId`...) | Cần sửa (đang 14 index) | Ngay (schema còn hoàn thiện) | **P0** |
-| 2 | Tenant-aware index (leading `workspaceId`) | Cần thêm | Ngay | **P0** |
+| 2 | Tenant-aware index (leading `organizationId`) | Cần thêm | Ngay | **P0** |
 | 3 | Partial index `WHERE deletedAt IS NULL` / `triageState='PENDING'` / `readAt IS NULL` | Cần thêm (raw SQL) | Ngay | **P0** |
 | 4 | Covering/INCLUDE index cho board/backlog list | Cần thêm (raw SQL) | Ngay | **P0** |
 | 5 | Enforce isolation tập trung (`$extends`/ALS, cả worker + raw SQL) | Cần thêm | Ngay | **P0** |
-| 6 | Cache-aside chuẩn hóa + key embed `workspaceId` + TTL jitter | Cần chuẩn hóa | Ngay | **P0** |
+| 6 | Cache-aside chuẩn hóa + key embed `organizationId` + TTL jitter | Cần chuẩn hóa | Ngay | **P0** |
 | 7 | Versioned cache key cho list/aggregate | Cần thêm | Ngay | **P0** |
 | 8 | Audit cursor pagination (index khớp ORDER BY + tiebreaker) | Đã có cursor — cần audit | Ngay | **P0** |
 | 9 | Sticky session + scope room hẹp Socket.io | Đã có adapter — cần config | Ngay | **P0** |
-| 10 | tsvector stored generated + GIN, pre-filter `workspaceId` + LIMIT sớm | Đã có FTS — cần cứng hóa | Ngay | **P0** |
-| 11 | pgvector filtered-ANN: `iterative_scan` + index `workspaceId` | Cần thêm | Ngay (nếu dùng semantic) | **P0** |
+| 10 | tsvector stored generated + GIN, pre-filter `organizationId` + LIMIT sớm | Đã có FTS — cần cứng hóa | Ngay | **P0** |
+| 11 | pgvector filtered-ANN: `iterative_scan` + index `organizationId` | Cần thêm | Ngay (nếu dùng semantic) | **P0** |
 | 12 | Đổi PK `IssueHistory`/`ActivityLog` → `([thời_gian, id])` | Cần sửa (đang `id` đơn) | Ngay (chốt sớm, đổi sau rất đắt) | **P0/P1** |
 | 13 | Autovacuum/fillfactor per-table | Cần thêm (raw SQL) | Khi bảng tới triệu dòng | **P1** |
 | 14 | PgBouncer transaction-mode + DATABASE_URL/DIRECT_URL | Cần thêm | Khi lên nhiều instance | **P1** |
@@ -286,9 +286,9 @@ Idempotency key trên consumer + write API; field `version`/`updatedAt` monotoni
 model Issue {
   // ... fields giữ nguyên ...
   @@unique([projectId, number])
-  @@unique([workspaceId, key])
-  @@index([workspaceId, statusId])      // THÊM: board/list cross-project
-  @@index([workspaceId, updatedAt])     // THÊM: dashboard/activity cross-project
+  @@unique([organizationId, key])
+  @@index([organizationId, statusId])      // THÊM: board/list cross-project
+  @@index([organizationId, updatedAt])     // THÊM: dashboard/activity cross-project
   @@index([projectId, statusId])        // GIỮ: board theo project
   @@index([projectId, deletedAt])       // GIỮ
   @@index([projectId, triageState])     // GIỮ

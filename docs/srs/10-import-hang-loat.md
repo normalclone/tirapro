@@ -15,7 +15,7 @@ Không có bảng mới. Nhập Excel dùng lại `ImportJob` và các bảng c�
 | Trường | Kiểu | Bắt buộc | Ràng buộc | Ý nghĩa |
 |---|---|---|---|---|
 | id | cuid | Có (PK) | | |
-| workspaceId | string | Có | FK → Workspace, cascade | Tenant sở hữu |
+| organizationId | string | Có | FK → tổ chức, cascade | Tenant sở hữu |
 | source | enum `ImportSource` | Có | `JIRA_CLOUD`, `JIRA_SERVER`, `CSV`, **`EXCEL`** | Nguồn nhập. Nhập JSON ghi `CSV` kèm `config.format = "json"` |
 | status | enum `ImportStatus` | Có | `PENDING` (mặc định), `RUNNING`, `COMPLETED`, `FAILED`, `CANCELLED` | |
 | config | Json | Có | mặc định `{}` | Excel: `{ "projectId": "…", "format": "excel" }` |
@@ -27,7 +27,7 @@ Không có bảng mới. Nhập Excel dùng lại `ImportJob` và các bảng c�
 | createdById | string? | Không | | Người nhập |
 | startedAt / completedAt / createdAt / updatedAt | DateTime | | | Mốc thời gian |
 
-Chỉ mục `(workspaceId, status)`. Migration thêm giá trị enum: `20261029100000_import_source_excel` (`ALTER TYPE "ImportSource" ADD VALUE IF NOT EXISTS 'EXCEL'`).
+Chỉ mục `(organizationId, status)`. Migration thêm giá trị enum: `20261029100000_import_source_excel` (`ALTER TYPE "ImportSource" ADD VALUE IF NOT EXISTS 'EXCEL'`).
 
 ### 1.2 Bảng được ghi khi nhập một dòng Excel
 
@@ -59,8 +59,8 @@ Drop-list **không** dùng danh sách inline (giới hạn 255 ký tự, vỡ kh
 |---|---|---|---|---|
 | A | Tiêu đề* | chữ ≤ 255 | — | Bắt buộc |
 | B | Mô tả | chữ (Markdown) | — | ≤ 50.000 ký tự; lưu `descriptionFormat = MARKDOWN` |
-| C | Loại việc* | list | `list`, chặn (`stop`) | Loại việc của workspace **trừ loại việc con (sub-task)** — loại này cần việc cha mà biểu mẫu không có; không phân biệt hoa/thường |
-| D | Ưu tiên | list | `list`, chặn | `Priority` của workspace, xếp theo `rank` giảm dần; bỏ trống = ưu tiên mặc định của workspace |
+| C | Loại việc* | list | `list`, chặn (`stop`) | Loại việc của tổ chức **trừ loại việc con (sub-task)** — loại này cần việc cha mà biểu mẫu không có; không phân biệt hoa/thường |
+| D | Ưu tiên | list | `list`, chặn | `Priority` của tổ chức, xếp theo `rank` giảm dần; bỏ trống = ưu tiên mặc định của tổ chức |
 | E | Trạng thái | list | `list`, chặn | Trạng thái trong workflow mặc định của dự án, theo `order`; bỏ trống = trạng thái khởi tạo |
 | F | Người phụ trách | list | `list`, cảnh báo (`warning`, cho gõ email) | Thành viên dự án đang `ACTIVE`, hiển thị `Tên <email>` |
 | G | Người báo cáo | list | `list`, cảnh báo (`warning`) | Như trên; bỏ trống = người nhập tệp |
@@ -83,7 +83,7 @@ Tiền tố `/api/v1`. Cả ba endpoint cần quyền `import:run` (`PERMISSIONS
 |---|---|---|
 | projectId (query) | bắt buộc, chuỗi không rỗng | 400 `VALIDATION_ERROR` — "Thiếu mã dự án" |
 
-Phản hồi 200: `Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`, `Cache-Control: no-store`, `Content-Disposition: attachment; filename="Mau-nhap-cong-viec-<KEY>.xlsx"; filename*=UTF-8''Mau-nhap-cong-viec-<KEY>.xlsx`, thân là tệp `.xlsx`. Dự án không thuộc workspace của request: 404 "Dự án không tồn tại". Dự án lưu trữ vẫn tải được biểu mẫu (chỉ chặn khi xem trước/nhập).
+Phản hồi 200: `Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`, `Cache-Control: no-store`, `Content-Disposition: attachment; filename="Mau-nhap-cong-viec-<KEY>.xlsx"; filename*=UTF-8''Mau-nhap-cong-viec-<KEY>.xlsx`, thân là tệp `.xlsx`. Dự án không thuộc tổ chức của request: 404 "Dự án không tồn tại". Dự án lưu trữ vẫn tải được biểu mẫu (chỉ chặn khi xem trước/nhập).
 
 ### 3.2 Xem trước — `POST /import/excel/preview`
 
@@ -130,7 +130,7 @@ Cùng input như xem trước. Máy chủ **kiểm tra lại từ đầu** (khô
 | Không có sheet `Công việc` và không có sheet hiện nào khác ngoài `Hướng dẫn`/`DanhSach` | 422 | `Không thấy sheet "Công việc" — hãy dùng biểu mẫu Excel tải từ Tirapro` |
 | Thiếu cột bắt buộc (so theo tên) | 422 | "Thiếu cột bắt buộc: Tiêu đề, Loại việc — hãy kiểm tra dòng tiêu đề (dòng 1) hoặc tải lại biểu mẫu" (liệt kê cột thiếu) |
 | > 1000 dòng dữ liệu không trống | 422 | "Tệp có N dòng dữ liệu, vượt giới hạn 1000 dòng — hãy chia thành nhiều tệp" |
-| Dự án không thuộc workspace / không tồn tại | 404 | "Dự án không tồn tại" |
+| Dự án không thuộc tổ chức / không tồn tại | 404 | "Dự án không tồn tại" |
 | Dự án đã lưu trữ | 422 | "Dự án đã lưu trữ — hãy khôi phục dự án trước khi thay đổi" |
 | Thiếu quyền `import:run` | 403 | |
 
@@ -164,13 +164,13 @@ Cảnh báo (không chặn): cột **Nhãn** — "Nhãn mới 'X' sẽ được 
 ## 4. Luồng nghiệp vụ và quy tắc
 
 ### 4.1 Tải biểu mẫu
-1. Kiểm quyền `import:run`; kiểm dự án thuộc `workspaceId` của request.
-2. Nạp danh mục theo `projectId`: loại việc và ưu tiên (theo workspace), trạng thái (workflow mặc định của dự án), thành viên `ACTIVE` của dự án, sprint chưa đóng, epic, nhãn, thành phần, phiên bản `UNRELEASED`.
+1. Kiểm quyền `import:run`; kiểm dự án thuộc `organizationId` của request.
+2. Nạp danh mục theo `projectId`: loại việc và ưu tiên (theo tổ chức), trạng thái (workflow mặc định của dự án), thành viên `ACTIVE` của dự án, sprint chưa đóng, epic, nhãn, thành phần, phiên bản `UNRELEASED`.
 3. Dựng 3 sheet theo §2 và trả tệp. Danh mục lấy **tại thời điểm tải**: thêm thành viên/sprint/thành phần sau đó thì phải tải lại biểu mẫu (tệp cũ vẫn dùng được; giá trị đã bị xoá sẽ báo lỗi dòng).
 
 ### 4.2 Đọc tệp (dùng chung cho xem trước và nhập)
 1. Kiểm tệp (§3.4): có tệp, đuôi `.xlsx`, mimetype, magic bytes `PK`.
-2. Kiểm dự án tồn tại trong workspace; **dự án lưu trữ thì chặn** (trước khi tạo `ImportJob`).
+2. Kiểm dự án tồn tại trong tổ chức; **dự án lưu trữ thì chặn** (trước khi tạo `ImportJob`).
 3. Mở sheet `Công việc` (nếu không có: sheet hiện đầu tiên không phải `Hướng dẫn`/`DanhSach`).
 4. **Khớp cột theo tên tiêu đề** ở dòng 1: bỏ dấu `*`, gom khoảng trắng, không phân biệt hoa/thường; thứ tự cột tự do; cột lạ bị bỏ qua; tên trùng thì lấy cột đầu tiên.
 5. Lấy giá trị ô: chuỗi/số/ngày; **rich text** nối các đoạn; **hyperlink** lấy chữ hiển thị; **công thức** lấy kết quả; ô lỗi (`#N/A`…) coi như trống.
@@ -179,7 +179,7 @@ Cảnh báo (không chặn): cột **Nhãn** — "Nhãn mới 'X' sẽ được 
 
 ### 4.3 Quy tắc chuẩn hoá
 - **Ngày** là ngày lịch, không phụ thuộc múi giờ máy chủ. Ô có thể là `Date` (đọc theo thành phần **UTC**), số serial Excel, hoặc chuỗi `dd/mm/yyyy` (cũng nhận `d/m/yyyy`, `dd-mm-yyyy`, `dd.mm.yyyy`) hay `yyyy-mm-dd`. Kết quả lưu `YYYY-MM-DDT00:00:00.000Z`. Ngày không tồn tại (31/02) bị báo lỗi.
-- **Người**: chấp nhận `Tên <email>` hoặc chỉ email; so khớp theo email (không phân biệt hoa/thường) với thành viên dự án đang `ACTIVE` — tên trùng nhau không gây nhầm. Thành viên cấp workspace nhưng không thuộc dự án bị báo lỗi.
+- **Người**: chấp nhận `Tên <email>` hoặc chỉ email; so khớp theo email (không phân biệt hoa/thường) với thành viên dự án đang `ACTIVE` — tên trùng nhau không gây nhầm. Thành viên cấp tổ chức nhưng không thuộc dự án bị báo lỗi.
 - **Epic**: nhận `KEY — tiêu đề` hoặc chỉ `KEY`.
 - **Số**: nhận `2,5` và `2.5`.
 
@@ -209,12 +209,12 @@ Khối **"Nhập từ Excel"** nằm trên khối "Nhập dữ liệu khác" (D�
 
 | Thao tác | Quyền | Ghi chú |
 |---|---|---|
-| Tải biểu mẫu, xem trước, nhập Excel | `import:run` | Guard theo quyền workspace như CSV/JSON; dự án không thuộc workspace → 404 |
+| Tải biểu mẫu, xem trước, nhập Excel | `import:run` | Guard theo quyền tổ chức như CSV/JSON; dự án không thuộc tổ chức → 404 |
 | Nhập vào dự án lưu trữ | — | Chặn (xem/nhập) |
-| Xem Lịch sử nhập (`GET /import/jobs`, `/import/jobs/:id`) | `import:run` | Lọc theo `workspaceId` |
-| Nhập từ Jira (§8) | `workspace:admin` | |
+| Xem Lịch sử nhập (`GET /import/jobs`, `/import/jobs/:id`) | `import:run` | Lọc theo `organizationId` |
+| Nhập từ Jira (§8) | `organization:admin` | |
 
-Người được gán/báo cáo bởi biểu mẫu phải là thành viên dự án; công việc tạo ra thuộc `workspaceId` của request.
+Người được gán/báo cáo bởi biểu mẫu phải là thành viên dự án; công việc tạo ra thuộc `organizationId` của request.
 
 ## 6. Tiêu chí chấp nhận (Given / When / Then)
 
@@ -229,7 +229,7 @@ Người được gán/báo cáo bởi biểu mẫu phải là thành viên dự
 - **AC-6.9 Giới hạn tệp.** Given tệp có 1001 dòng dữ liệu; When xem trước; Then 422 "Tệp có 1001 dòng dữ liệu, vượt giới hạn 1000 dòng — hãy chia thành nhiều tệp". Given tệp CSV đổi đuôi `.xlsx`; Then 422 "Chỉ nhận tệp .xlsx — …". Given tệp > 5 MB; Then 413 với mã `PAYLOAD_TOO_LARGE` và thông báo "Tệp quá lớn — …".
 - **AC-6.9b Chặn tệp độc hại.** Given tệp .xlsx ≤ 5 MB có một entry giải nén 60 MB (zip bomb), kể cả khi central directory khai size 1000, hoặc entry tên `xl/../../x`, hoặc entry thừa nằm sau số entry khai ở EOCD, hoặc central directory độc đặt sau CD lành / byte dư giữa CD và EOCD (kẽ hở dịch gốc toạ độ của JSZip); When xem trước; Then 422 "Tệp Excel giải nén quá lớn hoặc có cấu trúc bất thường — …" và exceljs không được khởi tạo/nạp tệp (bộ nhớ không phình). Chi phí: tối đa 50 MB inflate để kiểm (exceljs đọc bản store đã đóng gói lại nên gần như không tốn CPU giải nén thêm), có throttle 10 lần/phút/IP (nhiều người sau cùng một NAT dùng chung hạn mức).
 - **AC-6.9c Sub-task.** Given dự án có loại việc con "Sub-task"; When tải biểu mẫu; Then drop-list Loại việc không chứa "Sub-task"; When dòng gõ tay "Sub-task"; Then lỗi cột Loại việc "'Sub-task' cần việc cha nên không nhập được từ biểu mẫu — hãy chọn loại khác".
-- **AC-6.10 Cô lập và quyền.** Given người dùng workspace B; When gọi template/preview/nhập với `projectId` của workspace A; Then 404 "Dự án không tồn tại". Given người không có `import:run`; Then 403. Given dự án lưu trữ; When xem trước hoặc nhập; Then 422 "Dự án đã lưu trữ — hãy khôi phục dự án trước khi thay đổi".
+- **AC-6.10 Cô lập và quyền.** Given người dùng tổ chức B; When gọi template/preview/nhập với `projectId` của tổ chức A; Then 404 "Dự án không tồn tại". Given người không có `import:run`; Then 403. Given dự án lưu trữ; When xem trước hoặc nhập; Then 422 "Dự án đã lưu trữ — hãy khôi phục dự án trước khi thay đổi".
 - **AC-6.11 Giao diện.** Given tệp có 2 dòng lỗi; When người dùng chọn tệp ở khối "Nhập từ Excel"; Then bảng xem trước hiện ngay "N dòng hợp lệ · 2 dòng lỗi", ô "Chỉ dòng lỗi" bật, nút "Nhập N công việc" kèm "Bỏ qua 2 dòng lỗi"; khi N = 0 nút bị vô hiệu; sau khi nhập hiện toast, liên kết "Xem trong Việc chờ", nút "Chọn tệp khác" và dòng mới (nguồn `EXCEL`) ở Lịch sử nhập.
 - **AC-6.12 Cmd+K.** Given người dùng có `import:run` đang ở một dự án; When mở Cmd+K và chọn "Nhập công việc từ Excel"; Then chuyển tới `/p/<KEY>/config/data`.
 
@@ -239,10 +239,10 @@ Người được gán/báo cáo bởi biểu mẫu phải là thành viên dự
 |---|---|---|---|---|
 | CSV dán tay | `POST /import/csv` | `{ projectId, csv }` (zod: cả hai chuỗi không rỗng) | `import:run` | Cột nhận: `summary`/`title`, `type`/`issue type`, `description`, `priority`, `story points`/`points` (không phân biệt hoa/thường). Dòng không có tiêu đề bị bỏ qua. Loại việc mặc định `Task` (hoặc loại đầu tiên). Kết quả `ImportCsvResult` `{ jobId, source:"CSV", created, failed, total, errors:[{row,error}] }` (`row` đánh số từ 0, khác Excel) |
 | JSON export | `POST /import/json` | `{ projectId, data:{ issues[] } }` | `import:run` | Round-trip với Export; tạo nhãn, bình luận; người phụ trách không khớp email thì bỏ gán và đếm `skippedAssignees`; ghi `source = CSV` + `config.format = "json"` |
-| Lịch sử | `GET /import/jobs?cursor&limit` (mặc định 20, tối đa 100), `GET /import/jobs/:id` | | `import:run` | Mới nhất trước; 404 "Lần nhập dữ liệu không tồn tại" nếu sai workspace |
+| Lịch sử | `GET /import/jobs?cursor&limit` (mặc định 20, tối đa 100), `GET /import/jobs/:id` | | `import:run` | Mới nhất trước; 404 "Lần nhập dữ liệu không tồn tại" nếu sai tổ chức |
 
 ⚠️ Giao diện web khai báo trạng thái job `PROCESSING` trong khi enum DB là `RUNNING` — job đang chạy hiển thị không đúng nhãn "Đang xử lý" (chưa sửa trong phạm vi này).
 
 ## 8. Nhập từ Jira (tóm lược)
 
-Nhập CSV export của Jira qua 3 bước (`POST /import/jira/analyze` ≤ 25 MB → `GET /import/jira/targets` → `POST /import/jira/run`), quyền `workspace:admin`, giữ mã gốc (`JRA-1`), chạy nền có tiến độ, nhớ email người phụ trách chưa là thành viên để tự gán khi họ được thêm. Chưa đặc tả chi tiết trong tài liệu này.
+Nhập CSV export của Jira qua 3 bước (`POST /import/jira/analyze` ≤ 25 MB → `GET /import/jira/targets` → `POST /import/jira/run`), quyền `organization:admin`, giữ mã gốc (`JRA-1`), chạy nền có tiến độ, nhớ email người phụ trách chưa là thành viên để tự gán khi họ được thêm. Chưa đặc tả chi tiết trong tài liệu này.

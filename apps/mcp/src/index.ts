@@ -53,10 +53,10 @@ const asWriteError = (e: unknown) => {
 const norm = (s: string) => s.trim().toLowerCase();
 
 const HELP_TEXT = [
-  'Tirapro MCP — khai thác dữ liệu quản lý dự án của 1 workspace.',
+  'Tirapro MCP — khai thác dữ liệu quản lý dự án của 1 tổ chức.',
   '',
   'Khái niệm:',
-  '- Workspace: khoá API gắn cứng 1 workspace; mọi tool thao tác trong đó.',
+  '- Tổ chức: khoá API gắn cứng 1 tổ chức; mọi tool thao tác trong đó.',
   '- Issue key: {DỰ_ÁN}-{LOẠI}-{số}, vd DEMO-BUG-1. Xem/bình luận theo key.',
   '',
   'Quy trình gợi ý:',
@@ -85,7 +85,7 @@ function buildServer(tira: Tira): McpServer {
 
   server.tool(
     'get_context',
-    'Khám phá ngữ cảnh workspace (dự án, thành viên; kèm loại issue & mức ưu tiên nếu truyền projectKey). Nên gọi TRƯỚC khi tạo/sửa.',
+    'Khám phá ngữ cảnh tổ chức (dự án, thành viên; kèm loại issue & mức ưu tiên nếu truyền projectKey). Nên gọi TRƯỚC khi tạo/sửa.',
     {
       projectKey: z.string().optional().describe('Mã dự án để lấy loại issue/mức ưu tiên, vd DEMO'),
     },
@@ -123,7 +123,7 @@ function buildServer(tira: Tira): McpServer {
   );
 
   // ---- READ ----
-  server.tool('list_projects', 'Liệt kê tất cả dự án trong workspace.', {}, async () => {
+  server.tool('list_projects', 'Liệt kê tất cả dự án trong tổ chức.', {}, async () => {
     try {
       return asText(await tira.get('/projects'));
     } catch (e) {

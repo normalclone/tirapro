@@ -1,12 +1,14 @@
--- Đổi tên khái niệm Workspace -> Organization (tổ chức). CHỈ đổi tên (bảng, cột, kiểu enum, giá trị enum, ràng buộc, chỉ mục) và khoá quyền / tên vai trò hệ thống;
--- không sao chép dữ liệu. Chạy trong một transaction (Prisma bọc sẵn) — số dòng mọi bảng không đổi.
+-- Đổi tên khái niệm Workspace -> Organization (tổ chức). CHỈ đổi tên (bảng, cột, kiểu enum, giá trị enum, ràng buộc, chỉ mục) và khoá
+-- quyền / tên vai trò hệ thống / nhãn nhật ký; không sao chép dữ liệu. Chạy trong một transaction (Prisma bọc sẵn) — số dòng mọi bảng không đổi.
+--
+-- Cột, ràng buộc và chỉ mục được đổi bằng vòng lặp theo danh mục hệ thống (không liệt kê cứng) nên bao gồm cả mọi đối tượng sinh ra bởi các
+-- migration trước (vd `personal_groups`: unique (workspaceId, ownerId, name)) và chạy được trên cả PostgreSQL 16 (prod) lẫn 18: chỉ đụng ràng buộc
+-- khoá chính / khoá ngoại / duy nhất / kiểm tra (`contype` p, f, u, c) — ràng buộc NOT NULL có tên chỉ tồn tại từ PG 18, không đổi tên.
 
--- Kiểu enum
+-- Kiểu enum và giá trị enum
 ALTER TYPE "WorkspacePlan" RENAME TO "OrganizationPlan";
-
--- Giá trị enum
-ALTER TYPE "PermissionScope" RENAME VALUE 'WORKSPACE' TO 'ORGANIZATION';
 ALTER TYPE "RoleScope" RENAME VALUE 'WORKSPACE' TO 'ORGANIZATION';
+ALTER TYPE "PermissionScope" RENAME VALUE 'WORKSPACE' TO 'ORGANIZATION';
 
 -- Bảng
 ALTER TABLE "Workspace" RENAME TO "Organization";
@@ -14,219 +16,53 @@ ALTER TABLE "WorkspaceMembership" RENAME TO "OrganizationMembership";
 ALTER TABLE "WorkspaceMembershipRole" RENAME TO "OrganizationMembershipRole";
 ALTER TABLE "WorkspaceWorkflowScheme" RENAME TO "OrganizationWorkflowScheme";
 
--- Cột
-ALTER TABLE "ActivityLog" RENAME COLUMN "workspaceId" TO "organizationId";
-ALTER TABLE "AiGenerationLog" RENAME COLUMN "workspaceId" TO "organizationId";
-ALTER TABLE "AiSuggestion" RENAME COLUMN "workspaceId" TO "organizationId";
-ALTER TABLE "ApiKey" RENAME COLUMN "workspaceId" TO "organizationId";
-ALTER TABLE "AuditLog" RENAME COLUMN "workspaceId" TO "organizationId";
-ALTER TABLE "AutomationRule" RENAME COLUMN "workspaceId" TO "organizationId";
-ALTER TABLE "ChannelLinkToken" RENAME COLUMN "workspaceId" TO "organizationId";
-ALTER TABLE "CodeRepository" RENAME COLUMN "workspaceId" TO "organizationId";
-ALTER TABLE "CustomField" RENAME COLUMN "workspaceId" TO "organizationId";
-ALTER TABLE "Dashboard" RENAME COLUMN "workspaceId" TO "organizationId";
-ALTER TABLE "ExportJob" RENAME COLUMN "workspaceId" TO "organizationId";
-ALTER TABLE "Guide" RENAME COLUMN "workspaceId" TO "organizationId";
-ALTER TABLE "ImportJob" RENAME COLUMN "workspaceId" TO "organizationId";
-ALTER TABLE "ImportPendingAssignee" RENAME COLUMN "workspaceId" TO "organizationId";
-ALTER TABLE "Integration" RENAME COLUMN "workspaceId" TO "organizationId";
-ALTER TABLE "IntegrationChannel" RENAME COLUMN "workspaceId" TO "organizationId";
-ALTER TABLE "Issue" RENAME COLUMN "workspaceId" TO "organizationId";
-ALTER TABLE "IssueEmbedding" RENAME COLUMN "workspaceId" TO "organizationId";
-ALTER TABLE "IssueTemplate" RENAME COLUMN "workspaceId" TO "organizationId";
-ALTER TABLE "IssueType" RENAME COLUMN "workspaceId" TO "organizationId";
-ALTER TABLE "LinkType" RENAME COLUMN "workspaceId" TO "organizationId";
-ALTER TABLE "Notification" RENAME COLUMN "workspaceId" TO "organizationId";
-ALTER TABLE "Objective" RENAME COLUMN "workspaceId" TO "organizationId";
-ALTER TABLE "Priority" RENAME COLUMN "workspaceId" TO "organizationId";
-ALTER TABLE "Program" RENAME COLUMN "workspaceId" TO "organizationId";
-ALTER TABLE "Project" RENAME COLUMN "workspaceId" TO "organizationId";
-ALTER TABLE "RaidItem" RENAME COLUMN "workspaceId" TO "organizationId";
-ALTER TABLE "RefreshToken" RENAME COLUMN "workspaceId" TO "organizationId";
-ALTER TABLE "ReportSubscription" RENAME COLUMN "workspaceId" TO "organizationId";
-ALTER TABLE "Resolution" RENAME COLUMN "workspaceId" TO "organizationId";
-ALTER TABLE "Role" RENAME COLUMN "workspaceId" TO "organizationId";
-ALTER TABLE "SavedFilter" RENAME COLUMN "workspaceId" TO "organizationId";
-ALTER TABLE "Severity" RENAME COLUMN "workspaceId" TO "organizationId";
-ALTER TABLE "SlaPolicy" RENAME COLUMN "workspaceId" TO "organizationId";
-ALTER TABLE "Team" RENAME COLUMN "workspaceId" TO "organizationId";
-ALTER TABLE "TimeOff" RENAME COLUMN "workspaceId" TO "organizationId";
-ALTER TABLE "User" RENAME COLUMN "canCreateWorkspace" TO "canCreateOrganization";
-ALTER TABLE "WikiPage" RENAME COLUMN "workspaceId" TO "organizationId";
-ALTER TABLE "Workflow" RENAME COLUMN "workspaceId" TO "organizationId";
-ALTER TABLE "OrganizationMembership" RENAME COLUMN "workspaceId" TO "organizationId";
-ALTER TABLE "OrganizationWorkflowScheme" RENAME COLUMN "workspaceId" TO "organizationId";
+DO $$
+DECLARE
+  r record;
+  new_name text;
+BEGIN
+  -- Cột (mọi bảng trong schema public): workspaceId -> organizationId, canCreateWorkspace -> canCreateOrganization
+  FOR r IN
+    SELECT c.table_name AS tbl, c.column_name AS col
+      FROM information_schema.columns c
+      JOIN pg_class k ON k.relname = c.table_name AND k.relnamespace = 'public'::regnamespace AND k.relkind IN ('r', 'p')
+     WHERE c.table_schema = 'public' AND c.column_name ILIKE '%workspace%'
+     ORDER BY 1, 2
+  LOOP
+    new_name := replace(replace(replace(r.col, 'Workspace', 'Organization'), 'workspace', 'organization'), 'WORKSPACE', 'ORGANIZATION');
+    EXECUTE format('ALTER TABLE %I RENAME COLUMN %I TO %I', r.tbl, r.col, new_name);
+  END LOOP;
 
--- Ràng buộc (khoá chính / khoá ngoại)
-ALTER TABLE "ActivityLog" RENAME CONSTRAINT "ActivityLog_workspaceId_fkey" TO "ActivityLog_organizationId_fkey";
-ALTER TABLE "ActivityLog" RENAME CONSTRAINT "ActivityLog_workspaceId_not_null" TO "ActivityLog_organizationId_not_null";
-ALTER TABLE "AiSuggestion" RENAME CONSTRAINT "AiSuggestion_workspaceId_not_null" TO "AiSuggestion_organizationId_not_null";
-ALTER TABLE "ApiKey" RENAME CONSTRAINT "ApiKey_workspaceId_fkey" TO "ApiKey_organizationId_fkey";
-ALTER TABLE "ApiKey" RENAME CONSTRAINT "ApiKey_workspaceId_not_null" TO "ApiKey_organizationId_not_null";
-ALTER TABLE "AuditLog" RENAME CONSTRAINT "AuditLog_workspaceId_fkey" TO "AuditLog_organizationId_fkey";
-ALTER TABLE "AutomationRule" RENAME CONSTRAINT "AutomationRule_workspaceId_fkey" TO "AutomationRule_organizationId_fkey";
-ALTER TABLE "AutomationRule" RENAME CONSTRAINT "AutomationRule_workspaceId_not_null" TO "AutomationRule_organizationId_not_null";
-ALTER TABLE "ChannelLinkToken" RENAME CONSTRAINT "ChannelLinkToken_workspaceId_fkey" TO "ChannelLinkToken_organizationId_fkey";
-ALTER TABLE "ChannelLinkToken" RENAME CONSTRAINT "ChannelLinkToken_workspaceId_not_null" TO "ChannelLinkToken_organizationId_not_null";
-ALTER TABLE "CodeRepository" RENAME CONSTRAINT "CodeRepository_workspaceId_not_null" TO "CodeRepository_organizationId_not_null";
-ALTER TABLE "CustomField" RENAME CONSTRAINT "CustomField_workspaceId_fkey" TO "CustomField_organizationId_fkey";
-ALTER TABLE "CustomField" RENAME CONSTRAINT "CustomField_workspaceId_not_null" TO "CustomField_organizationId_not_null";
-ALTER TABLE "Dashboard" RENAME CONSTRAINT "Dashboard_workspaceId_fkey" TO "Dashboard_organizationId_fkey";
-ALTER TABLE "Dashboard" RENAME CONSTRAINT "Dashboard_workspaceId_not_null" TO "Dashboard_organizationId_not_null";
-ALTER TABLE "ExportJob" RENAME CONSTRAINT "ExportJob_workspaceId_fkey" TO "ExportJob_organizationId_fkey";
-ALTER TABLE "ExportJob" RENAME CONSTRAINT "ExportJob_workspaceId_not_null" TO "ExportJob_organizationId_not_null";
-ALTER TABLE "Guide" RENAME CONSTRAINT "Guide_workspaceId_fkey" TO "Guide_organizationId_fkey";
-ALTER TABLE "ImportJob" RENAME CONSTRAINT "ImportJob_workspaceId_fkey" TO "ImportJob_organizationId_fkey";
-ALTER TABLE "ImportJob" RENAME CONSTRAINT "ImportJob_workspaceId_not_null" TO "ImportJob_organizationId_not_null";
-ALTER TABLE "ImportPendingAssignee" RENAME CONSTRAINT "ImportPendingAssignee_workspaceId_fkey" TO "ImportPendingAssignee_organizationId_fkey";
-ALTER TABLE "ImportPendingAssignee" RENAME CONSTRAINT "ImportPendingAssignee_workspaceId_not_null" TO "ImportPendingAssignee_organizationId_not_null";
-ALTER TABLE "Integration" RENAME CONSTRAINT "Integration_workspaceId_fkey" TO "Integration_organizationId_fkey";
-ALTER TABLE "Integration" RENAME CONSTRAINT "Integration_workspaceId_not_null" TO "Integration_organizationId_not_null";
-ALTER TABLE "IntegrationChannel" RENAME CONSTRAINT "IntegrationChannel_workspaceId_not_null" TO "IntegrationChannel_organizationId_not_null";
-ALTER TABLE "Issue" RENAME CONSTRAINT "Issue_workspaceId_fkey" TO "Issue_organizationId_fkey";
-ALTER TABLE "Issue" RENAME CONSTRAINT "Issue_workspaceId_not_null" TO "Issue_organizationId_not_null";
-ALTER TABLE "IssueEmbedding" RENAME CONSTRAINT "IssueEmbedding_workspaceId_not_null" TO "IssueEmbedding_organizationId_not_null";
-ALTER TABLE "IssueTemplate" RENAME CONSTRAINT "IssueTemplate_workspaceId_fkey" TO "IssueTemplate_organizationId_fkey";
-ALTER TABLE "IssueTemplate" RENAME CONSTRAINT "IssueTemplate_workspaceId_not_null" TO "IssueTemplate_organizationId_not_null";
-ALTER TABLE "IssueType" RENAME CONSTRAINT "IssueType_workspaceId_fkey" TO "IssueType_organizationId_fkey";
-ALTER TABLE "IssueType" RENAME CONSTRAINT "IssueType_workspaceId_not_null" TO "IssueType_organizationId_not_null";
-ALTER TABLE "LinkType" RENAME CONSTRAINT "LinkType_workspaceId_fkey" TO "LinkType_organizationId_fkey";
-ALTER TABLE "LinkType" RENAME CONSTRAINT "LinkType_workspaceId_not_null" TO "LinkType_organizationId_not_null";
-ALTER TABLE "Notification" RENAME CONSTRAINT "Notification_workspaceId_fkey" TO "Notification_organizationId_fkey";
-ALTER TABLE "Notification" RENAME CONSTRAINT "Notification_workspaceId_not_null" TO "Notification_organizationId_not_null";
-ALTER TABLE "Objective" RENAME CONSTRAINT "Objective_workspaceId_fkey" TO "Objective_organizationId_fkey";
-ALTER TABLE "Objective" RENAME CONSTRAINT "Objective_workspaceId_not_null" TO "Objective_organizationId_not_null";
-ALTER TABLE "Priority" RENAME CONSTRAINT "Priority_workspaceId_fkey" TO "Priority_organizationId_fkey";
-ALTER TABLE "Priority" RENAME CONSTRAINT "Priority_workspaceId_not_null" TO "Priority_organizationId_not_null";
-ALTER TABLE "Program" RENAME CONSTRAINT "Program_workspaceId_fkey" TO "Program_organizationId_fkey";
-ALTER TABLE "Program" RENAME CONSTRAINT "Program_workspaceId_not_null" TO "Program_organizationId_not_null";
-ALTER TABLE "Project" RENAME CONSTRAINT "Project_workspaceId_fkey" TO "Project_organizationId_fkey";
-ALTER TABLE "Project" RENAME CONSTRAINT "Project_workspaceId_not_null" TO "Project_organizationId_not_null";
-ALTER TABLE "RaidItem" RENAME CONSTRAINT "RaidItem_workspaceId_fkey" TO "RaidItem_organizationId_fkey";
-ALTER TABLE "RaidItem" RENAME CONSTRAINT "RaidItem_workspaceId_not_null" TO "RaidItem_organizationId_not_null";
-ALTER TABLE "ReportSubscription" RENAME CONSTRAINT "ReportSubscription_workspaceId_fkey" TO "ReportSubscription_organizationId_fkey";
-ALTER TABLE "ReportSubscription" RENAME CONSTRAINT "ReportSubscription_workspaceId_not_null" TO "ReportSubscription_organizationId_not_null";
-ALTER TABLE "Resolution" RENAME CONSTRAINT "Resolution_workspaceId_fkey" TO "Resolution_organizationId_fkey";
-ALTER TABLE "Resolution" RENAME CONSTRAINT "Resolution_workspaceId_not_null" TO "Resolution_organizationId_not_null";
-ALTER TABLE "Role" RENAME CONSTRAINT "Role_workspaceId_fkey" TO "Role_organizationId_fkey";
-ALTER TABLE "SavedFilter" RENAME CONSTRAINT "SavedFilter_workspaceId_fkey" TO "SavedFilter_organizationId_fkey";
-ALTER TABLE "SavedFilter" RENAME CONSTRAINT "SavedFilter_workspaceId_not_null" TO "SavedFilter_organizationId_not_null";
-ALTER TABLE "Severity" RENAME CONSTRAINT "Severity_workspaceId_fkey" TO "Severity_organizationId_fkey";
-ALTER TABLE "Severity" RENAME CONSTRAINT "Severity_workspaceId_not_null" TO "Severity_organizationId_not_null";
-ALTER TABLE "SlaPolicy" RENAME CONSTRAINT "SlaPolicy_workspaceId_fkey" TO "SlaPolicy_organizationId_fkey";
-ALTER TABLE "SlaPolicy" RENAME CONSTRAINT "SlaPolicy_workspaceId_not_null" TO "SlaPolicy_organizationId_not_null";
-ALTER TABLE "Team" RENAME CONSTRAINT "Team_workspaceId_fkey" TO "Team_organizationId_fkey";
-ALTER TABLE "Team" RENAME CONSTRAINT "Team_workspaceId_not_null" TO "Team_organizationId_not_null";
-ALTER TABLE "TimeOff" RENAME CONSTRAINT "TimeOff_workspaceId_fkey" TO "TimeOff_organizationId_fkey";
-ALTER TABLE "TimeOff" RENAME CONSTRAINT "TimeOff_workspaceId_not_null" TO "TimeOff_organizationId_not_null";
-ALTER TABLE "User" RENAME CONSTRAINT "User_canCreateWorkspace_not_null" TO "User_canCreateOrganization_not_null";
-ALTER TABLE "WikiPage" RENAME CONSTRAINT "WikiPage_workspaceId_fkey" TO "WikiPage_organizationId_fkey";
-ALTER TABLE "WikiPage" RENAME CONSTRAINT "WikiPage_workspaceId_not_null" TO "WikiPage_organizationId_not_null";
-ALTER TABLE "Workflow" RENAME CONSTRAINT "Workflow_workspaceId_fkey" TO "Workflow_organizationId_fkey";
-ALTER TABLE "Workflow" RENAME CONSTRAINT "Workflow_workspaceId_not_null" TO "Workflow_organizationId_not_null";
-ALTER TABLE "Organization" RENAME CONSTRAINT "Workspace_createdAt_not_null" TO "Organization_createdAt_not_null";
-ALTER TABLE "Organization" RENAME CONSTRAINT "Workspace_id_not_null" TO "Organization_id_not_null";
-ALTER TABLE "Organization" RENAME CONSTRAINT "Workspace_name_not_null" TO "Organization_name_not_null";
-ALTER TABLE "Organization" RENAME CONSTRAINT "Workspace_ownerId_fkey" TO "Organization_ownerId_fkey";
-ALTER TABLE "Organization" RENAME CONSTRAINT "Workspace_ownerId_not_null" TO "Organization_ownerId_not_null";
-ALTER TABLE "Organization" RENAME CONSTRAINT "Workspace_pkey" TO "Organization_pkey";
-ALTER TABLE "Organization" RENAME CONSTRAINT "Workspace_plan_not_null" TO "Organization_plan_not_null";
-ALTER TABLE "Organization" RENAME CONSTRAINT "Workspace_settings_not_null" TO "Organization_settings_not_null";
-ALTER TABLE "Organization" RENAME CONSTRAINT "Workspace_slug_not_null" TO "Organization_slug_not_null";
-ALTER TABLE "Organization" RENAME CONSTRAINT "Workspace_updatedAt_not_null" TO "Organization_updatedAt_not_null";
-ALTER TABLE "OrganizationMembership" RENAME CONSTRAINT "WorkspaceMembership_createdAt_not_null" TO "OrganizationMembership_createdAt_not_null";
-ALTER TABLE "OrganizationMembership" RENAME CONSTRAINT "WorkspaceMembership_id_not_null" TO "OrganizationMembership_id_not_null";
-ALTER TABLE "OrganizationMembership" RENAME CONSTRAINT "WorkspaceMembership_pkey" TO "OrganizationMembership_pkey";
-ALTER TABLE "OrganizationMembership" RENAME CONSTRAINT "WorkspaceMembership_roleId_fkey" TO "OrganizationMembership_roleId_fkey";
-ALTER TABLE "OrganizationMembership" RENAME CONSTRAINT "WorkspaceMembership_roleId_not_null" TO "OrganizationMembership_roleId_not_null";
-ALTER TABLE "OrganizationMembership" RENAME CONSTRAINT "WorkspaceMembership_updatedAt_not_null" TO "OrganizationMembership_updatedAt_not_null";
-ALTER TABLE "OrganizationMembership" RENAME CONSTRAINT "WorkspaceMembership_userId_fkey" TO "OrganizationMembership_userId_fkey";
-ALTER TABLE "OrganizationMembership" RENAME CONSTRAINT "WorkspaceMembership_userId_not_null" TO "OrganizationMembership_userId_not_null";
-ALTER TABLE "OrganizationMembership" RENAME CONSTRAINT "WorkspaceMembership_workspaceId_fkey" TO "OrganizationMembership_organizationId_fkey";
-ALTER TABLE "OrganizationMembership" RENAME CONSTRAINT "WorkspaceMembership_workspaceId_not_null" TO "OrganizationMembership_organizationId_not_null";
-ALTER TABLE "OrganizationMembershipRole" RENAME CONSTRAINT "WorkspaceMembershipRole_membershipId_fkey" TO "OrganizationMembershipRole_membershipId_fkey";
-ALTER TABLE "OrganizationMembershipRole" RENAME CONSTRAINT "WorkspaceMembershipRole_membershipId_not_null" TO "OrganizationMembershipRole_membershipId_not_null";
-ALTER TABLE "OrganizationMembershipRole" RENAME CONSTRAINT "WorkspaceMembershipRole_pkey" TO "OrganizationMembershipRole_pkey";
-ALTER TABLE "OrganizationMembershipRole" RENAME CONSTRAINT "WorkspaceMembershipRole_roleId_fkey" TO "OrganizationMembershipRole_roleId_fkey";
-ALTER TABLE "OrganizationMembershipRole" RENAME CONSTRAINT "WorkspaceMembershipRole_roleId_not_null" TO "OrganizationMembershipRole_roleId_not_null";
-ALTER TABLE "OrganizationWorkflowScheme" RENAME CONSTRAINT "WorkspaceWorkflowScheme_createdAt_not_null" TO "OrganizationWorkflowScheme_createdAt_not_null";
-ALTER TABLE "OrganizationWorkflowScheme" RENAME CONSTRAINT "WorkspaceWorkflowScheme_id_not_null" TO "OrganizationWorkflowScheme_id_not_null";
-ALTER TABLE "OrganizationWorkflowScheme" RENAME CONSTRAINT "WorkspaceWorkflowScheme_issueTypeId_fkey" TO "OrganizationWorkflowScheme_issueTypeId_fkey";
-ALTER TABLE "OrganizationWorkflowScheme" RENAME CONSTRAINT "WorkspaceWorkflowScheme_issueTypeId_not_null" TO "OrganizationWorkflowScheme_issueTypeId_not_null";
-ALTER TABLE "OrganizationWorkflowScheme" RENAME CONSTRAINT "WorkspaceWorkflowScheme_pkey" TO "OrganizationWorkflowScheme_pkey";
-ALTER TABLE "OrganizationWorkflowScheme" RENAME CONSTRAINT "WorkspaceWorkflowScheme_updatedAt_not_null" TO "OrganizationWorkflowScheme_updatedAt_not_null";
-ALTER TABLE "OrganizationWorkflowScheme" RENAME CONSTRAINT "WorkspaceWorkflowScheme_workflowId_fkey" TO "OrganizationWorkflowScheme_workflowId_fkey";
-ALTER TABLE "OrganizationWorkflowScheme" RENAME CONSTRAINT "WorkspaceWorkflowScheme_workflowId_not_null" TO "OrganizationWorkflowScheme_workflowId_not_null";
-ALTER TABLE "OrganizationWorkflowScheme" RENAME CONSTRAINT "WorkspaceWorkflowScheme_workspaceId_fkey" TO "OrganizationWorkflowScheme_organizationId_fkey";
-ALTER TABLE "OrganizationWorkflowScheme" RENAME CONSTRAINT "WorkspaceWorkflowScheme_workspaceId_not_null" TO "OrganizationWorkflowScheme_organizationId_not_null";
+  -- Ràng buộc khoá chính / khoá ngoại / duy nhất / kiểm tra (đổi tên cả chỉ mục đi kèm ràng buộc)
+  FOR r IN
+    SELECT cl.relname AS tbl, co.conname AS name
+      FROM pg_constraint co
+      JOIN pg_class cl ON cl.oid = co.conrelid
+     WHERE cl.relnamespace = 'public'::regnamespace AND co.conname ILIKE '%workspace%' AND co.contype IN ('p', 'f', 'u', 'c')
+     ORDER BY 1, 2
+  LOOP
+    new_name := replace(replace(replace(r.name, 'Workspace', 'Organization'), 'workspace', 'organization'), 'WORKSPACE', 'ORGANIZATION');
+    -- Tên mới dài hơn 3 ký tự mỗi lần xuất hiện: phải còn trong giới hạn 63 ký tự của PostgreSQL, không thì dừng rõ ràng.
+    IF length(new_name) > 63 THEN RAISE EXCEPTION 'Tên ràng buộc quá dài sau khi đổi: %', new_name; END IF;
+    EXECUTE format('ALTER TABLE %I RENAME CONSTRAINT %I TO %I', r.tbl, r.name, new_name);
+  END LOOP;
 
--- Chỉ mục (không thuộc ràng buộc)
-ALTER INDEX "ActivityLog_workspaceId_createdAt_idx" RENAME TO "ActivityLog_organizationId_createdAt_idx";
-ALTER INDEX "AiGenerationLog_workspaceId_createdAt_idx" RENAME TO "AiGenerationLog_organizationId_createdAt_idx";
-ALTER INDEX "AiGenerationLog_workspaceId_feature_createdAt_idx" RENAME TO "AiGenerationLog_organizationId_feature_createdAt_idx";
-ALTER INDEX "AiSuggestion_workspaceId_kind_idx" RENAME TO "AiSuggestion_organizationId_kind_idx";
-ALTER INDEX "ApiKey_workspaceId_idx" RENAME TO "ApiKey_organizationId_idx";
-ALTER INDEX "AuditLog_workspaceId_action_createdAt_idx" RENAME TO "AuditLog_organizationId_action_createdAt_idx";
-ALTER INDEX "AuditLog_workspaceId_createdAt_idx" RENAME TO "AuditLog_organizationId_createdAt_idx";
-ALTER INDEX "AutomationRule_workspaceId_enabled_trigger_idx" RENAME TO "AutomationRule_organizationId_enabled_trigger_idx";
-ALTER INDEX "ChannelLinkToken_workspaceId_idx" RENAME TO "ChannelLinkToken_organizationId_idx";
-ALTER INDEX "CodeRepository_workspaceId_idx" RENAME TO "CodeRepository_organizationId_idx";
-ALTER INDEX "CustomField_workspaceId_idx" RENAME TO "CustomField_organizationId_idx";
-ALTER INDEX "Dashboard_workspaceId_ownerId_idx" RENAME TO "Dashboard_organizationId_ownerId_idx";
-ALTER INDEX "ExportJob_workspaceId_status_idx" RENAME TO "ExportJob_organizationId_status_idx";
-ALTER INDEX "Guide_workspaceId_key_key" RENAME TO "Guide_organizationId_key_key";
-ALTER INDEX "ImportJob_workspaceId_status_idx" RENAME TO "ImportJob_organizationId_status_idx";
-ALTER INDEX "ImportPendingAssignee_workspaceId_email_idx" RENAME TO "ImportPendingAssignee_organizationId_email_idx";
-ALTER INDEX "IntegrationChannel_workspaceId_idx" RENAME TO "IntegrationChannel_organizationId_idx";
-ALTER INDEX "Integration_workspaceId_type_idx" RENAME TO "Integration_organizationId_type_idx";
-ALTER INDEX "IssueEmbedding_workspaceId_idx" RENAME TO "IssueEmbedding_organizationId_idx";
-ALTER INDEX "IssueTemplate_workspaceId_idx" RENAME TO "IssueTemplate_organizationId_idx";
-ALTER INDEX "IssueType_workspaceId_idx" RENAME TO "IssueType_organizationId_idx";
-ALTER INDEX "IssueType_workspaceId_name_key" RENAME TO "IssueType_organizationId_name_key";
-ALTER INDEX "Issue_workspaceId_assigneeId_idx" RENAME TO "Issue_organizationId_assigneeId_idx";
-ALTER INDEX "Issue_workspaceId_dueDate_idx" RENAME TO "Issue_organizationId_dueDate_idx";
-ALTER INDEX "Issue_workspaceId_key_key" RENAME TO "Issue_organizationId_key_key";
-ALTER INDEX "Issue_workspaceId_statusId_idx" RENAME TO "Issue_organizationId_statusId_idx";
-ALTER INDEX "Issue_workspaceId_updatedAt_idx" RENAME TO "Issue_organizationId_updatedAt_idx";
-ALTER INDEX "LinkType_workspaceId_idx" RENAME TO "LinkType_organizationId_idx";
-ALTER INDEX "LinkType_workspaceId_name_key" RENAME TO "LinkType_organizationId_name_key";
-ALTER INDEX "Objective_workspaceId_period_idx" RENAME TO "Objective_organizationId_period_idx";
-ALTER INDEX "Priority_workspaceId_idx" RENAME TO "Priority_organizationId_idx";
-ALTER INDEX "Priority_workspaceId_name_key" RENAME TO "Priority_organizationId_name_key";
-ALTER INDEX "Program_workspaceId_idx" RENAME TO "Program_organizationId_idx";
-ALTER INDEX "Program_workspaceId_name_key" RENAME TO "Program_organizationId_name_key";
-ALTER INDEX "Project_workspaceId_archivedAt_idx" RENAME TO "Project_organizationId_archivedAt_idx";
-ALTER INDEX "Project_workspaceId_idx" RENAME TO "Project_organizationId_idx";
-ALTER INDEX "Project_workspaceId_isPrivate_idx" RENAME TO "Project_organizationId_isPrivate_idx";
-ALTER INDEX "Project_workspaceId_key_key" RENAME TO "Project_organizationId_key_key";
-ALTER INDEX "Project_workspaceId_name_key" RENAME TO "Project_organizationId_name_key";
-ALTER INDEX "RaidItem_workspaceId_kind_idx" RENAME TO "RaidItem_organizationId_kind_idx";
-ALTER INDEX "ReportSubscription_workspaceId_idx" RENAME TO "ReportSubscription_organizationId_idx";
-ALTER INDEX "Resolution_workspaceId_idx" RENAME TO "Resolution_organizationId_idx";
-ALTER INDEX "Resolution_workspaceId_name_key" RENAME TO "Resolution_organizationId_name_key";
-ALTER INDEX "Role_workspaceId_name_scope_key" RENAME TO "Role_organizationId_name_scope_key";
-ALTER INDEX "SavedFilter_workspaceId_ownerId_idx" RENAME TO "SavedFilter_organizationId_ownerId_idx";
-ALTER INDEX "Severity_workspaceId_idx" RENAME TO "Severity_organizationId_idx";
-ALTER INDEX "Severity_workspaceId_name_key" RENAME TO "Severity_organizationId_name_key";
-ALTER INDEX "SlaPolicy_workspaceId_idx" RENAME TO "SlaPolicy_organizationId_idx";
-ALTER INDEX "Team_workspaceId_idx" RENAME TO "Team_organizationId_idx";
-ALTER INDEX "Team_workspaceId_key_key" RENAME TO "Team_organizationId_key_key";
-ALTER INDEX "Team_workspaceId_name_key" RENAME TO "Team_organizationId_name_key";
-ALTER INDEX "TimeOff_workspaceId_startDate_idx" RENAME TO "TimeOff_organizationId_startDate_idx";
-ALTER INDEX "WikiPage_workspaceId_deletedAt_idx" RENAME TO "WikiPage_organizationId_deletedAt_idx";
-ALTER INDEX "WikiPage_workspaceId_projectId_idx" RENAME TO "WikiPage_organizationId_projectId_idx";
-ALTER INDEX "Workflow_workspaceId_isTemplate_idx" RENAME TO "Workflow_organizationId_isTemplate_idx";
-ALTER INDEX "WorkspaceMembershipRole_roleId_idx" RENAME TO "OrganizationMembershipRole_roleId_idx";
-ALTER INDEX "WorkspaceMembership_userId_idx" RENAME TO "OrganizationMembership_userId_idx";
-ALTER INDEX "WorkspaceMembership_workspaceId_userId_key" RENAME TO "OrganizationMembership_organizationId_userId_key";
-ALTER INDEX "WorkspaceWorkflowScheme_workflowId_idx" RENAME TO "OrganizationWorkflowScheme_workflowId_idx";
-ALTER INDEX "WorkspaceWorkflowScheme_workspaceId_issueTypeId_key" RENAME TO "OrganizationWorkflowScheme_organizationId_issueTypeId_key";
-ALTER INDEX "Workspace_deletedAt_idx" RENAME TO "Organization_deletedAt_idx";
-ALTER INDEX "Workspace_slug_idx" RENAME TO "Organization_slug_idx";
-ALTER INDEX "Workspace_slug_key" RENAME TO "Organization_slug_key";
+  -- Chỉ mục còn lại (unique/index do Prisma tạo, không thuộc ràng buộc)
+  FOR r IN
+    SELECT indexname AS name FROM pg_indexes WHERE schemaname = 'public' AND indexname ILIKE '%workspace%' ORDER BY 1
+  LOOP
+    new_name := replace(replace(replace(r.name, 'Workspace', 'Organization'), 'workspace', 'organization'), 'WORKSPACE', 'ORGANIZATION');
+    IF length(new_name) > 63 THEN RAISE EXCEPTION 'Tên chỉ mục quá dài sau khi đổi: %', new_name; END IF;
+    EXECUTE format('ALTER INDEX %I RENAME TO %I', r.name, new_name);
+  END LOOP;
+END
+$$;
+
+-- Chỉ mục một phần do `db:raw` tạo (tên viết tắt "ws"); chưa có (DB mới chưa chạy db:raw) thì bỏ qua — db:raw sẽ tạo thẳng tên mới.
+ALTER INDEX IF EXISTS issue_ws_status_active RENAME TO issue_org_status_active;
 
 -- Khoá quyền + tên vai trò hệ thống (seed-system-roles upsert theo tên mới, không tạo trùng)
 UPDATE "Permission" SET "key" = 'organization:' || substring("key" from char_length('workspace:') + 1) WHERE "key" LIKE 'workspace:%';
 UPDATE "Role" SET "name" = 'Organization ' || substring("name" from char_length('Workspace ') + 1) WHERE "isSystem" AND "name" LIKE 'Workspace %';
--- Tên hành động trong nhật ký kiểm toán (chỉ nhãn hành động; meta lịch sử giữ nguyên)
+-- Tên hành động trong nhật ký kiểm toán (chỉ nhãn hành động; meta lịch sử giữ nguyên — người đọc `meta` chấp nhận cả hai khoá)
 UPDATE "AuditLog" SET "action" = 'account.organization_added' WHERE "action" = 'account.workspace_added';

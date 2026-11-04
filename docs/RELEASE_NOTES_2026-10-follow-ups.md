@@ -953,3 +953,33 @@ Chưa có báo cáo nào xác nhận các mục này đã chạy; người kiể
 
 - `GET /programs/rollup` và `PUT /programs/:id/projects` còn trên API nhưng web không dùng nữa (trang Danh mục đã bỏ).
 - Nhân lực chỉ còn lối vào qua trang Thành viên (người không quản lý thành viên chỉ vào được từ liên kết ở Tổng quan hoặc gõ đường dẫn).
+
+---
+
+# Đổi tên Workspace thành Organization (2026-11)
+
+## 1. Cần làm khi triển khai
+
+- **Có migration:** `20261106100000_organization_rename` — chỉ đổi tên (bảng, cột, enum, ràng buộc, chỉ mục) + khoá quyền `organization:*`, tên vai trò hệ thống `Organization *`, nhãn nhật ký. Đổi tên bằng vòng lặp theo danh mục nên đúng trên PostgreSQL 16 (prod) và 18; kiểm trên bản sao snapshot prod: số dòng mọi bảng giữ nguyên, quyền hiệu lực của từng người giống hệt.
+- **Cần cửa sổ bảo trì ngắn:** dừng `tirapro-api` TRƯỚC `migrate deploy`, khởi động bản mới (API + web cùng lúc) SAU khi migration và `db:raw` xong, rồi xoá Redis `rbac:*` và `automation:rules:*`. Các bước đủ, kèm truy vấn kiểm và cách quay lại: `docs/DEPLOY.md` mục "Đổi tên Workspace thành Organization (tổ chức)".
+- Biến môi trường `AI_MONTHLY_TOKEN_QUOTA_PER_WORKSPACE` đổi tên thành `AI_MONTHLY_TOKEN_QUOTA_PER_ORGANIZATION` (tên cũ vẫn đọc được, **gỡ sau 2026-12-05**).
+
+## 2. Thay đổi
+
+- Trong code/DB/API không còn khái niệm "workspace": model `Organization`, `OrganizationMembership`, `OrganizationMembershipRole`, `OrganizationWorkflowScheme`; mọi `workspaceId` thành `organizationId`; decorator `@OrganizationId()`; module `organizations`; sự kiện `organization.*` / `organization:*`; mã lỗi `LAST_ORGANIZATION_ADMIN`...
+- Quyền `workspace:admin|view` thành `organization:admin|view`; vai trò hệ thống `Organization Admin/Member/Viewer` (nhãn tiếng Việt "Quản trị chung", "Thành viên", "Người xem" giữ nguyên). `seed-system-roles` và `db:seed` đổi tên bản cũ trước khi upsert nên không tạo vai trò trùng.
+- Token: access token mới mang claim `organizationId`; token đã cấp (claim `workspaceId`) vẫn dùng được tới khi hết hạn (HTTP, refresh và realtime). **Nhánh claim cũ gỡ sau 2026-12-05.**
+- Realtime: room `ws:{id}` thành `org:{id}`. Redis: khoá RBAC `rbac:org:<tổ chức>:...` (tiền tố mới, khoá cũ tự hết hạn).
+- Chỉ mục một phần của `db:raw` `issue_ws_status_active` đổi tên `issue_org_status_active` (migration đổi tên bản cũ, `db:raw` tạo bản mới nếu chưa có).
+- Giao diện: không đổi chữ. Trang `/admin/organizations`; `/admin/workspaces` cũ chuyển hướng.
+
+## 3. API
+
+- `/workspaces` thành `/organizations`; `/auth/workspaces` thành `/auth/organizations`; `/auth/switch-workspace` thành `/auth/switch-organization` (body `organizationId`); `/admin/workspaces` thành `/admin/organizations`; script `migrate-workflow-schemes.mjs --workspace` thành `--organization`. Đường dẫn cũ trả 404 (web và API cùng một bản deploy).
+
+## 4. Còn mở
+
+- Gỡ nhánh claim JWT cũ và biến môi trường cũ sau **2026-12-05** (kèm test "token cũ" và các mục tương ứng trong allowlist của `no-workspace-term.spec.ts`).
+- `AuditLog.meta` lịch sử vẫn mang khoá `workspaceId` (không sửa nhật ký cũ); trang nhật ký chỉ hiển thị tóm tắt nên không bị ảnh hưởng — người đọc `meta` trong tương lai phải chấp nhận cả `workspaceId` và `organizationId`.
+- Tài liệu lịch sử trong `docs/superpowers/**` và các mục release notes cũ giữ nguyên chữ "workspace" (đúng thời điểm viết).
+

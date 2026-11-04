@@ -76,7 +76,7 @@ const baseEnvSchema = z.object({
   AI_MODEL_PRIMARY: z.string().default('claude-opus-4-8'),
   // Model rẻ/nhanh cho tác vụ ngắn (tóm tắt, gợi ý). Giá trị này đi qua configuration.ts → ClaudeService, không còn default thứ hai.
   AI_MODEL_FAST: z.string().default('claude-haiku-4-5'),
-  // Tên cũ `AI_MONTHLY_TOKEN_QUOTA_PER_WORKSPACE` vẫn được nhận (môi trường đã triển khai chưa đổi tên biến) — xem configuration.ts.
+  // Tên cũ `AI_MONTHLY_TOKEN_QUOTA_PER_WORKSPACE` vẫn được nhận (môi trường đã triển khai chưa đổi tên biến) — xem configuration.ts. GỠ sau 2026-12-05 (khi env prod đã đổi tên).
   AI_MONTHLY_TOKEN_QUOTA_PER_ORGANIZATION: z.coerce.number().int().optional(),
   AI_MONTHLY_TOKEN_QUOTA_PER_WORKSPACE: z.coerce.number().int().optional(),
 

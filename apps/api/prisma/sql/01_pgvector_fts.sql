@@ -63,7 +63,7 @@ CREATE INDEX IF NOT EXISTS issue_embedding_hnsw
 
 -- ---------- Partial indexes (Prisma không hỗ trợ WHERE) — nhỏ, cache tốt ----------
 -- Điều kiện sống còn: soft-delete extension PHẢI luôn thêm "deletedAt" IS NULL để planner dùng được.
-CREATE INDEX IF NOT EXISTS issue_ws_status_active
+CREATE INDEX IF NOT EXISTS issue_org_status_active
   ON "Issue" ("organizationId", "statusId") WHERE "deletedAt" IS NULL;
 CREATE INDEX IF NOT EXISTS issue_triage_pending
   ON "Issue" ("organizationId", "projectId") WHERE "triageState" = 'PENDING'::"TriageState";

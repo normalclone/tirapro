@@ -690,7 +690,7 @@ export function useAiEnabled() {
 | Dashboard grid | react-grid-layout |
 | Editor | @tiptap/react, @tiptap/starter-kit, @tiptap/extension-mention |
 | Export | xlsx (Excel), jspdf + html2canvas (PDF) |
-| Shared | @tirapro/types, @tirapro/zod-schemas (workspace) |
+| Shared | @tirapro/types, @tirapro/zod-schemas (tổ chức) |
 
 ---
 

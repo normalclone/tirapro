@@ -81,7 +81,7 @@ apps/api/src/realtime/
     └── realtime.types.ts       # SocketData, payload interfaces (shared với FE qua packages/shared)
 ```
 
-> Các interface payload **phải** đặt ở `packages/shared` (workspace pnpm) để FE & BE dùng chung type, tránh drift. Ví dụ `packages/shared/src/realtime.ts`.
+> Các interface payload **phải** đặt ở `packages/shared` (tổ chức pnpm) để FE & BE dùng chung type, tránh drift. Ví dụ `packages/shared/src/realtime.ts`.
 
 ---
 

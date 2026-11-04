@@ -186,7 +186,7 @@ export class ClaudeService {
     schema: z.ZodType<T>;
     effort?: 'low' | 'medium' | 'high';
     maxTokens?: number;
-    context: { workspaceId: string; userId: string; feature: string };
+    context: { organizationId: string; userId: string; feature: string };
   }): Promise<T> {
     const client = this.anthropic.get();
     if (!client) throw new AiUnavailableError();
@@ -219,7 +219,7 @@ export class ClaudeService {
     userContent: string | Anthropic.ContentBlockParam[];
     effort?: 'low' | 'medium' | 'high';
     maxTokens?: number;
-    context: { workspaceId: string; userId: string; feature: string };
+    context: { organizationId: string; userId: string; feature: string };
   }): AsyncGenerator<{ type: 'delta'; text: string } | { type: 'done'; usage: Anthropic.Usage }> {
     const client = this.anthropic.get();
     if (!client) throw new AiUnavailableError();
@@ -245,7 +245,7 @@ export class ClaudeService {
 }
 ```
 
-> **Prompt caching:** `system` luôn là mảng `TextBlockParam`. Phần ổn định (system prompt định nghĩa schema, hướng dẫn, danh sách user/status/workflow của workspace) đặt `cache_control: { type: 'ephemeral' }` ở block cuối phần tĩnh; phần biến thiên (NL input, issue cụ thể) đặt trong `messages` (sau breakpoint). Xem §7.
+> **Prompt caching:** `system` luôn là mảng `TextBlockParam`. Phần ổn định (system prompt định nghĩa schema, hướng dẫn, danh sách user/status/workflow của tổ chức) đặt `cache_control: { type: 'ephemeral' }` ở block cuối phần tĩnh; phần biến thiên (NL input, issue cụ thể) đặt trong `messages` (sau breakpoint). Xem §7.
 
 ---
 
@@ -633,7 +633,7 @@ FE → POST /ai/search → SemanticSearchService.search(q)
 model IssueEmbedding {
   id          String   @id @default(cuid())
   issueId     String   @unique
-  workspaceId String
+  organizationId String
   projectId   String
   contentHash String   // sha256(title+description) — bỏ qua re-embed nếu trùng
   // vector(1024) cho voyage-3, hoặc 1536 cho openai text-embedding-3-small
@@ -642,7 +642,7 @@ model IssueEmbedding {
   model       String
   updatedAt   DateTime @updatedAt
 
-  @@index([workspaceId])
+  @@index([organizationId])
   @@map("issue_embeddings")
 }
 ```
@@ -756,7 +756,7 @@ Sau khi pgvector trả top-K, gọi `claude.parse` với schema `{ rankedIssueId
 ## 8. An toàn, Rate limit, Quota
 
 ### 8.1. Rate limit
-- `AiRateLimitGuard` dùng `@nestjs/throttler` backed bởi Redis, key theo `userId` + `workspaceId` + `feature`.
+- `AiRateLimitGuard` dùng `@nestjs/throttler` backed bởi Redis, key theo `userId` + `organizationId` + `feature`.
 - Đề xuất: 20 req/phút/user cho generate/suggest/plan; 60 req/phút cho search; 10 req/phút cho summarize (token nặng).
 - Khi Anthropic trả 429 → SDK tự retry (maxRetries=2); nếu vẫn fail → trả `503` kèm `Retry-After` cho FE.
 
@@ -764,7 +764,7 @@ Sau khi pgvector trả top-K, gọi `claude.parse` với schema `{ rankedIssueId
 ```prisma
 model AiUsage {
   id          String   @id @default(cuid())
-  workspaceId String
+  organizationId String
   userId      String
   feature     String   // 'issue_generation' | 'summarization' | ...
   model       String
@@ -773,17 +773,17 @@ model AiUsage {
   cacheReadTokens Int
   estimatedCostUsd Decimal @db.Decimal(10, 6)
   createdAt   DateTime @default(now())
-  @@index([workspaceId, createdAt])
+  @@index([organizationId, createdAt])
 }
 ```
 - `AiUsageService.record()` tính cost theo bảng giá (Opus 4.8: $5/$25 per 1M in/out; Sonnet 4.6: $3/$15). Cache read ≈ 0.1× input.
-- Quota theo workspace/tháng → chặn trước khi gọi nếu vượt.
+- Quota theo organization/tháng → chặn trước khi gọi nếu vượt.
 
 ### 8.3. Không lộ key & input safety
 - Key chỉ ở backend (§0.3).
 - Validate độ dài input (DTO `@MaxLength`) chống abuse token.
 - Xử lý `stop_reason: 'refusal'` → trả lỗi thân thiện, không retry cùng prompt; log `request_id` (qua `response._request_id`) để hỗ trợ.
-- Scope mọi truy vấn dữ liệu theo `workspaceId`/`projectId` của user (RBAC) trước khi đưa vào prompt — chống rò rỉ dữ liệu chéo workspace.
+- Scope mọi truy vấn dữ liệu theo `organizationId`/`projectId` của user (RBAC) trước khi đưa vào prompt — chống rò rỉ dữ liệu chéo tổ chức.
 
 ---
 
@@ -859,7 +859,7 @@ OPENAI_API_KEY=
 OPENAI_EMBEDDINGS_MODEL=text-embedding-3-small
 
 # Quota / rate limit
-AI_MONTHLY_TOKEN_QUOTA_PER_WORKSPACE=5000000
+AI_MONTHLY_TOKEN_QUOTA_PER_ORGANIZATION=5000000
 REDIS_URL=redis://redis:6379
 ```
 

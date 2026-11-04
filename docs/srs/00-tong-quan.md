@@ -10,7 +10,7 @@ Bộ SRS này mô tả hành vi của hệ thống ở mức đủ để BA/Dev/
 
 ## 2. Phạm vi
 
-**Trong phạm vi:** quản lý workspace/dự án/công việc, workflow và board, sprint/backlog, tìm kiếm (JQL), thông báo, báo cáo, nhập/xuất dữ liệu, tích hợp (Telegram, digest, nhập từ Jira), phân quyền RBAC.
+**Trong phạm vi:** quản lý organization/dự án/công việc, workflow và board, sprint/backlog, tìm kiếm (JQL), thông báo, báo cáo, nhập/xuất dữ liệu, tích hợp (Telegram, digest, nhập từ Jira), phân quyền RBAC.
 
 **Ngoài phạm vi (hiện tại):** kết nối Jira Cloud qua REST; xuất `.xlsx`/PDF phía máy chủ (chỉ xuất CSV/JSON); ứng dụng di động riêng.
 
@@ -18,14 +18,14 @@ Bộ SRS này mô tả hành vi của hệ thống ở mức đủ để BA/Dev/
 
 | Thuật ngữ | Nghĩa |
 |---|---|
-| Workspace | Một tenant (tổ chức). Mọi dữ liệu thuộc đúng một workspace; truy vấn luôn lọc theo `workspaceId` của request. |
-| Dự án (Project) | Tập công việc trong workspace, có mã `key` (vd `DEMO`), workflow riêng, thành viên riêng. |
+| Tổ chức | Một tenant (tổ chức). Mọi dữ liệu thuộc đúng một tổ chức; truy vấn luôn lọc theo `organizationId` của request. |
+| Dự án (Project) | Tập công việc trong tổ chức, có mã `key` (vd `DEMO`), workflow riêng, thành viên riêng. |
 | Công việc (Issue) | Đơn vị làm việc; tiêu đề lưu ở trường `summary`. Mã dạng `DEMO-TASK-12`. |
 | Việc chờ (Backlog) | Danh sách công việc chưa vào sprint. |
 | Epic | Công việc cấp cao nhất, gom các công việc khác (`epicId`). |
 | Sprint | Mốc lặp thời gian: sắp tới (`FUTURE`), đang chạy (`ACTIVE`), đã đóng (`CLOSED`). |
 | Thành phần (Component) / Phiên bản (Version) / Nhãn (Label) | Danh mục theo dự án để phân loại công việc / mốc phát hành / gắn thẻ tự do. |
-| RBAC | Quyền theo chuỗi `resource:action` (vd `import:run`), gán qua vai trò; quyền hiệu lực = hợp của vai trò workspace và vai trò dự án. |
+| RBAC | Quyền theo chuỗi `resource:action` (vd `import:run`), gán qua vai trò; quyền hiệu lực = hợp của vai trò tổ chức và vai trò dự án. |
 | OCC | Optimistic concurrency control — trường `version` của issue, mọi cập nhật realtime phải gửi kèm. |
 | ImportJob | Bản ghi một lần nhập dữ liệu (nguồn, trạng thái, tiến độ, kết quả). |
 | Biểu mẫu Excel | Tệp `.xlsx` theo dự án có drop-list lấy từ cấu hình dự án, dùng để nhập công việc hàng loạt (xem [10](10-import-hang-loat.md)). |
@@ -37,8 +37,8 @@ Lấy từ `docs/FEATURES_BY_ACTOR.md`. Cột "Đặc tả" trỏ tới tài li�
 | # | Nhóm chức năng | Đặc tả |
 |---|---|---|
 | 1 | Xác thực và hồ sơ cá nhân (đăng ký, đăng nhập, quên mật khẩu, JWT + refresh, hồ sơ, theme) | Chưa đặc tả chi tiết |
-| 2 | Quản trị hệ thống (workspace, người dùng nền tảng, hạn ngạch AI, health/metrics) | Chưa đặc tả chi tiết |
-| 3 | Workspace, thành viên và phân quyền RBAC (vai trò hệ thống/tuỳ biến, nhật ký quản trị) | Chưa đặc tả chi tiết |
+| 2 | Quản trị hệ thống (tổ chức, người dùng nền tảng, hạn ngạch AI, health/metrics) | Chưa đặc tả chi tiết |
+| 3 | tổ chức, thành viên và phân quyền RBAC (vai trò hệ thống/tuỳ biến, nhật ký quản trị) | Chưa đặc tả chi tiết |
 | 4 | Dự án và cấu hình dự án (thành phần, phiên bản, nhãn, quyền riêng tư, lưu trữ, mẫu dự án) | Chưa đặc tả chi tiết |
 | 5 | Công việc (issue), workflow và trạng thái, trường tuỳ chỉnh | Chưa đặc tả chi tiết |
 | 6 | Board, Việc chờ và sprint | Chưa đặc tả chi tiết |
@@ -72,8 +72,8 @@ Quy ước chốt: ID dạng CUID; phản hồi danh sách bọc `{success,data,
 | Actor | Phạm vi | Ghi chú |
 |---|---|---|
 | System Admin | Toàn nền tảng | Bao trùm mọi quyền |
-| Workspace Admin | Workspace | Toàn quyền nội dung mọi dự án |
-| Workspace Member / Viewer | Workspace | Thành viên chính thức / chỉ xem |
+| Organization Admin | tổ chức | Toàn quyền nội dung mọi dự án |
+| Organization Member / Viewer | tổ chức | Thành viên chính thức / chỉ xem |
 | Project Admin (Lead) | Một dự án | PM / Scrum Master |
 | Project Developer | Một dự án | Dev, QA, Designer |
 | Project Reporter | Một dự án | Stakeholder, người báo lỗi |
@@ -83,7 +83,7 @@ Chi tiết quyền theo actor: `docs/FEATURES_BY_ACTOR.md`.
 
 ## 7. Ràng buộc chung
 
-1. **Cô lập tenant:** mọi truy vấn theo `projectId`/`id` đều phải thuộc `workspaceId` của request; sai workspace trả 404 ("… không tồn tại"), không lộ sự tồn tại.
+1. **Cô lập tenant:** mọi truy vấn theo `projectId`/`id` đều phải thuộc `organizationId` của request; sai tổ chức trả 404 ("… không tồn tại"), không lộ sự tồn tại.
 2. **Dự án lưu trữ là chỉ đọc:** mọi thao tác ghi bị chặn với thông báo "Dự án đã lưu trữ — hãy khôi phục dự án trước khi thay đổi".
 3. **Phân quyền** bằng chuỗi `resource:action`; thiếu quyền trả 403.
 4. **Ngày lịch** (hạn, ngày bắt đầu) lưu nửa đêm UTC `YYYY-MM-DDT00:00:00Z` và hiển thị `dd/mm/yyyy` — không lệch múi giờ.

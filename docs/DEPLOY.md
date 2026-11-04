@@ -20,7 +20,7 @@ Repo đã có sẵn [`render.yaml`](../render.yaml) mô tả 4 thành phần: Po
    Rồi **Manual Deploy** lại cả hai (web phải build lại để nhúng URL API).
 3. Khi API khởi động, `startCommand` tự chạy (đều idempotent): `prisma migrate deploy` → `db:raw` (extension `vector`/`pg_trgm`/`unaccent`, cột tìm kiếm `Issue.searchVector`, chỉ mục trigram — **lần đầu nâng cấp khoá bảng `Issue`, xem [Checklist triển khai](#checklist-triển-khai--nâng-cấp)**) → `db:seed:init` (chỉ nạp demo **khi DB còn rỗng**) → chạy server.
    - Free tier **không có Shell** nên không chạy tay được script một lần (`automation:seal-secrets`, `integrations:rekey`) từ Dashboard — xem cách chạy từ máy của bạn ở mục Checklist bên dưới.
-   - Free tier **không hỗ trợ `preDeployCommand`** nên gộp vào `startCommand`. Seed **không** reset dữ liệu ở các lần cold-start sau (chỉ chạy lần boot đầu, lúc chưa có workspace).
+   - Free tier **không hỗ trợ `preDeployCommand`** nên gộp vào `startCommand`. Seed **không** reset dữ liệu ở các lần cold-start sau (chỉ chạy lần boot đầu, lúc chưa có tổ chức).
    - Muốn **reset demo về trạng thái chuẩn**: xoá dữ liệu rồi restart, hoặc chạy `pnpm --filter @tirapro/api run db:seed` (gói có Shell/paid).
 4. (Tùy chọn) Bật AI thật: thêm biến `ANTHROPIC_API_KEY` cho `tirapro-api`. Bỏ trống → chạy heuristic.
 
@@ -86,7 +86,7 @@ Chi tiết đầy đủ: [`.env.example`](../.env.example).
 
 ## Lưu tệp trên S3/MinIO
 
-Mặc định tệp (đính kèm, ảnh đại diện, tệp phân tích import Jira, cờ hệ thống `system-settings.json`) nằm trên đĩa ở `STORAGE_LOCAL_DIR`. Đặt `STORAGE_DRIVER=s3` để lưu trên S3/MinIO. Tệp vẫn tải về **qua API** (giữ nguyên kiểm quyền; không dùng đường dẫn presigned công khai) và khoá object giống hệt đường dẫn local (`{workspaceId}/{id}-{tên}`, `avatars/…`, `imports/…`, `system-settings.json`).
+Mặc định tệp (đính kèm, ảnh đại diện, tệp phân tích import Jira, cờ hệ thống `system-settings.json`) nằm trên đĩa ở `STORAGE_LOCAL_DIR`. Đặt `STORAGE_DRIVER=s3` để lưu trên S3/MinIO. Tệp vẫn tải về **qua API** (giữ nguyên kiểm quyền; không dùng đường dẫn presigned công khai) và khoá object giống hệt đường dẫn local (`{organizationId}/{id}-{tên}`, `avatars/…`, `imports/…`, `system-settings.json`).
 
 **Thứ tự triển khai khi chuyển một hệ thống đang chạy từ local sang S3**
 
@@ -132,7 +132,7 @@ Thứ tự **duy nhất** cho mọi lần nâng cấp (bản đầu tiên của 
 | 2 | SQL thô (extension, `searchVector`, chỉ mục) | `pnpm --filter @tirapro/api run db:raw` | Luôn. **DB lớn: chạy TAY trong giờ thấp điểm TRƯỚC khi rollout image mới** (xem cảnh báo bên dưới) |
 | 3 | Mã hoá lại token/khoá bí mật khi ĐỔI `INTEGRATION_ENCRYPTION_KEY` | `integrations:rekey` | Chỉ khi đổi khoá (xem mục "đổi khoá mã hoá" bên dưới) |
 | 4 | Mã hoá khoá bí mật webhook automation cũ | `automation:seal-secrets` | Một lần, **sau khi bản mới đã ổn định** (xem cảnh báo rollback) |
-| 1c | Nạp quyền + vai trò hệ thống (DB mới, không demo) | `pnpm --filter @tirapro/api run db:seed:roles [-- --dry-run]` | **Bắt buộc lần đầu với DB sạch** — thiếu thì đăng ký/tạo workspace lỗi 500 "System role chưa được seed". Chỉ THÊM quyền/vai trò/lượt gán còn thiếu, không gỡ gì nên chạy lại an toàn; cũng dùng để bù phần `+thiếu` mà bước 5 báo. Trong container: `node scripts/seed-system-roles.mjs`. **`-- --sync`** (nên chạy `--dry-run --sync` trước) còn GỠ các lượt gán quyền thừa của vai trò hệ thống so với danh mục — bắt buộc một lần sau bản logbug-kta để gỡ `project:create` khỏi Workspace Member trên DB đang chạy |
+| 1c | Nạp quyền + vai trò hệ thống (DB mới, không demo) | `pnpm --filter @tirapro/api run db:seed:roles [-- --dry-run]` | **Bắt buộc lần đầu với DB sạch** — thiếu thì đăng ký/tạo tổ chức lỗi 500 "System role chưa được seed". Chỉ THÊM quyền/vai trò/lượt gán còn thiếu, không gỡ gì nên chạy lại an toàn; cũng dùng để bù phần `+thiếu` mà bước 5 báo. Trong container: `node scripts/seed-system-roles.mjs`. **`-- --sync`** (nên chạy `--dry-run --sync` trước) còn GỠ các lượt gán quyền thừa của vai trò hệ thống so với danh mục — bắt buộc một lần sau bản logbug-kta để gỡ `project:create` khỏi Organization Member trên DB đang chạy |
 | 5 | Kiểm bộ quyền vai trò hệ thống khớp code | `pnpm --filter @tirapro/api run db:check-roles` | Sau `migrate deploy` (tuỳ chọn): in `+thiếu`/`-thừa` theo `SYSTEM_ROLE_PERMISSIONS`, thoát mã 1 nếu lệch. Migration chỉ THÊM quyền, không gỡ. Trong container: `docker run --rm --env-file .env <image> node scripts/check-system-roles.mjs` (giống hai script ở bước 3-4; cần image đã copy script này) |
 | 6 | Chuyển dữ liệu cũ sang quy trình theo loại việc | `pnpm --filter @tirapro/api run workflows:migrate -- --dry-run` rồi chạy thật | **Một lần, chỉ sau `migrate deploy`**, theo runbook riêng ở mục "Quy trình theo loại việc" bên dưới (có dump MỚI trước khi chạy thật) |
 
@@ -160,8 +160,8 @@ Danh sách đầy đủ (tên, khoá, backfill) và hành vi người dùng th�
 
 - **Không migration nào ghi lại bảng `Issue`** và vòng 2 **không đổi** `db:raw`. `Issue` chỉ nhận 2 `ADD COLUMN` nullable (`acceptanceCriteria`, `environment`) — đổi metadata, khoá `ACCESS EXCLUSIVE` rất ngắn (nhưng phải chờ giao dịch dài đang mở). Cột có `DEFAULT` hằng (`Project.isPrivate`, `WikiPage.version`, `KeyResult.source`, `ReportSubscription.weekday/hour/timezone/deliverEmail/allowPrivateToChannel`) cũng chỉ đổi metadata trên PG ≥ 11.
 - **Khoá ghi trong lúc build index** (`CREATE INDEX` thường, chạy trong giao dịch migration): bảng nối `IssueComponent`, `IssueFixVersion` (`issue_component_version_index`) và bảng `Mention` (`mention_unique`: xoá dòng trùng, giữ dòng cũ nhất, rồi 2 unique index). Hai bảng đầu nhỏ hơn `Issue` nhiều; bảng `Mention` lớn thì chạy giờ thấp điểm.
-- **Backfill dữ liệu:** `membership_roles_backfill` (thêm dòng nối vai trò cho membership chưa có), `link_types_causes_tests` (thêm 2 loại liên kết mỗi workspace), `wiki_page_issue` (quét `regexp_matches` mọi nội dung wiki — CPU theo tổng dung lượng wiki), `wiki_page_history` (sao chép nội dung **mọi** trang wiki thành bản v1 → dung lượng wiki tăng gấp đôi một lần), `project_workflow_names` (đổi tên quy trình mặc định thành `"tên (MÃ)"`). Tất cả idempotent.
-- **Cấp quyền (INSERT `RolePermission`, chỉ thêm, không thu hồi):** `system_roles_refresh` (Scrum Master `issue:create`+`issue:triage`, Product Owner `issue:transition`), `wiki_project_permissions` (`wiki:manage` thành quyền cấp dự án cho Project Admin/BA/PO/Scrum Master/Developer/Tester **và** mọi vai tuỳ biến có `project:admin`/`workspace:admin`; vì mọi thành viên workspace là Developer mặc định nên họ sửa được wiki mọi dự án công khai). Cache quyền Redis hết hạn tối đa ~1 phút sau khi áp.
+- **Backfill dữ liệu:** `membership_roles_backfill` (thêm dòng nối vai trò cho membership chưa có), `link_types_causes_tests` (thêm 2 loại liên kết mỗi tổ chức), `wiki_page_issue` (quét `regexp_matches` mọi nội dung wiki — CPU theo tổng dung lượng wiki), `wiki_page_history` (sao chép nội dung **mọi** trang wiki thành bản v1 → dung lượng wiki tăng gấp đôi một lần), `project_workflow_names` (đổi tên quy trình mặc định thành `"tên (MÃ)"`). Tất cả idempotent.
+- **Cấp quyền (INSERT `RolePermission`, chỉ thêm, không thu hồi):** `system_roles_refresh` (Scrum Master `issue:create`+`issue:triage`, Product Owner `issue:transition`), `wiki_project_permissions` (`wiki:manage` thành quyền cấp dự án cho Project Admin/BA/PO/Scrum Master/Developer/Tester **và** mọi vai tuỳ biến có `project:admin`/`organization:admin`; vì mọi thành viên tổ chức là Developer mặc định nên họ sửa được wiki mọi dự án công khai). Cache quyền Redis hết hạn tối đa ~1 phút sau khi áp.
 - **Không hoàn tác:** `remove_invites` xoá bảng `InviteToken` và mọi thư mời trong `EmailOutbox`; `wiki_page_history` backfill; enum `HistoryField` thêm `DESCRIPTION`/`COMPONENT`/`FIX_VERSION`, `DashboardScope.TEAM`, `WidgetType` ×3 (`ADD VALUE` chạy trong giao dịch cần PG ≥ 12). Không nên quay về image cũ sau khi người dùng đã dùng bản mới; sao lưu (bước 0) là đường lùi.
 - Mốc thời gian migration không đơn điệu (vd `…299000` sau `…207000`): `migrate deploy` vẫn áp mọi migration chưa áp, không cần `migrate dev`. DB dev nào đã áp migration L5/L20/OKR bằng tên tạm cũ (`…200000_dashboard_team_scope`, `…202000_digest_schedule_fields`, `…203000/204000/208000_key_result_*`) bị lệch lịch sử — dựng lại DB đó.
 
@@ -169,10 +169,10 @@ Danh sách đầy đủ (tên, khoá, backfill) và hành vi người dùng th�
 
 - **Nền trình duyệt tối thiểu:** Safari/iOS ≥ 15.4, Chrome/Edge/Firefox trong 2 năm gần nhất (màu `oklch()` của DESIGN.md cần Safari 15.4; đợt sửa cuối đang gỡ regex lookbehind khỏi chunk đầu để iOS 15.4–16.3 không trắng trang). Thiết bị cũ hơn không được hỗ trợ.
 
-- **Không chạy `db:seed` để "seed lại quyền" trên dữ liệu thật** — `db:seed` làm mới (xoá) workspace demo. Quyền vai trò hệ thống đã đi qua migration; kiểm bằng bước 5 (`db:check-roles`). Mô tả quyền tiếng Việt trong bảng `Permission` chỉ đổi khi chạy `db:seed`, nhưng web đọc mô tả từ `@tirapro/types` nên không ảnh hưởng. Tour mặc định + checklist "Bắt đầu" tự được API gieo lúc khởi động (khoá advisory, không hạ cấp).
+- **Không chạy `db:seed` để "seed lại quyền" trên dữ liệu thật** — `db:seed` làm mới (xoá) tổ chức demo. Quyền vai trò hệ thống đã đi qua migration; kiểm bằng bước 5 (`db:check-roles`). Mô tả quyền tiếng Việt trong bảng `Permission` chỉ đổi khi chạy `db:seed`, nhưng web đọc mô tả từ `@tirapro/types` nên không ảnh hưởng. Tour mặc định + checklist "Bắt đầu" tự được API gieo lúc khởi động (khoá advisory, không hạ cấp).
 - **Biến môi trường:** API không có biến mới; web có `VITE_FEATURE_REPOS` (tuỳ chọn) và `VITE_SHOW_DEMO_ACCOUNTS` (xem bảng trên).
 - **Telegram:** dùng **một bot riêng cho Tirapro**. Wizard liên kết nhóm đọc tin bằng `getUpdates` (offset âm, `allowed_updates=['message']`): công cụ khác đọc `getUpdates` trên cùng bot có thể mất tin cũ hơn 100 bản mới nhất hoặc gặp 409; Tirapro báo 409 khi bot đang gắn webhook hoặc có tiến trình khác đang đọc. Tạo kết nối không token khi hệ thống không có bot chung (`TELEGRAM_BOT_TOKEN`) bị từ chối.
-- **Pool người dùng chung = giả định một tổ chức:** quản trị workspace thấy và thêm được mọi tài khoản hệ thống. Không triển khai nhiều tổ chức độc lập kèm tự đăng ký mở (nguy cơ chiếm tài khoản/nhìn thấy người dùng giữa workspace) trừ khi tắt đăng ký.
+- **Pool người dùng chung = giả định một tổ chức:** quản trị tổ chức thấy và thêm được mọi tài khoản hệ thống. Không triển khai nhiều tổ chức độc lập kèm tự đăng ký mở (nguy cơ chiếm tài khoản/nhìn thấy người dùng giữa tổ chức) trừ khi tắt đăng ký.
 - **Tác vụ nền:** digest chạy mỗi giờ (`0 * * * *`, khớp thứ/giờ/múi giờ từng báo cáo) + tự gửi khi kết thúc sprint — **báo cáo định kỳ hiện có đổi giờ gửi**: trước chạy 08:00 theo múi giờ tiến trình (UTC trên Docker/Render → 15:00 giờ VN), nay mặc định 08:00 `Asia/Ho_Chi_Minh` nên trên máy chủ UTC thư đến **sớm 7 giờ**; báo trước hoặc chỉnh giờ từng báo cáo; cron chụp giá trị Key Result `01:30 UTC` hằng ngày. Cron khoá bằng Redis; không có Redis thì chạy chế độ một node (không khoá) — đừng chạy nhiều instance API mà thiếu Redis.
 - **Email:** báo cáo định kỳ qua Email và thư đặt lại mật khẩu đi qua `MAIL_DRIVER`; `console` chỉ ghi log, `smtp` hiện mới là khung chưa gửi thật (ném lỗi khi gửi) — Telegram là kênh digest dùng được ngay.
 - **Chạy HTTP thường (không HTTPS)**, vd máy chủ nội bộ `http://<ip>:<port>`: đặt `COOKIE_SECURE=false` cho API. Mặc định production đặt cookie phiên `Secure` + `SameSite=None`; trên trang HTTP trình duyệt bỏ cookie đó nên F5 là bị đăng xuất.
@@ -237,7 +237,7 @@ Hai script là `node scripts/*.mjs` — chỉ cần `DATABASE_URL` + `INTEGRATIO
 
 ## Quy trình theo loại việc
 
-Mỗi loại việc (Task, Bug, Epic, …) có quy trình riêng: cấu hình theo tổ chức (`WorkspaceWorkflowScheme`), dự án có thể ghi đè từng loại (`ProjectWorkflowOverride`). Bản nâng cấp này thêm **1 migration** (`20261105100000_workflow_schemes`: hai bảng trên, khoá ngoại `workflowId` kiểu `RESTRICT`, chỉ mục duy nhất `[tổ chức, loại việc]` / `[dự án, loại việc]`) và **một script chuyển dữ liệu** phải chạy tay. Migration chỉ THÊM bảng; không có script thì mọi thứ chạy như cũ (khi chưa có dòng cấu hình, dự án vẫn dùng `Project.defaultWorkflowId`), nên có thể deploy trước rồi chuyển dữ liệu sau trong cửa sổ bảo trì.
+Mỗi loại việc (Task, Bug, Epic, …) có quy trình riêng: cấu hình theo tổ chức (`OrganizationWorkflowScheme`), dự án có thể ghi đè từng loại (`ProjectWorkflowOverride`). Bản nâng cấp này thêm **1 migration** (`20261105100000_workflow_schemes`: hai bảng trên, khoá ngoại `workflowId` kiểu `RESTRICT`, chỉ mục duy nhất `[tổ chức, loại việc]` / `[dự án, loại việc]`) và **một script chuyển dữ liệu** phải chạy tay. Migration chỉ THÊM bảng; không có script thì mọi thứ chạy như cũ (khi chưa có dòng cấu hình, dự án vẫn dùng `Project.defaultWorkflowId`), nên có thể deploy trước rồi chuyển dữ liệu sau trong cửa sổ bảo trì.
 
 Tổ chức mới tạo từ bản này có sẵn 3 quy trình mặc định (Standard / Bug / Epic) và dòng cấu hình cho mọi loại việc; dự án mới tạo có bảng phủ đủ trạng thái của quy trình từng loại.
 
@@ -255,7 +255,7 @@ Tổ chức mới tạo từ bản này có sẵn 3 quy trình mặc định (St
    pnpm --filter @tirapro/api run workflows:migrate -- --dry-run
    # Hoặc trong image (script nằm ở ./scripts/, dùng dist/):
    docker run --rm --env-file .env <image> node scripts/migrate-workflow-schemes.mjs --dry-run
-   # Một tổ chức: thêm  --workspace <id|slug>
+   # Một tổ chức: thêm  --organization <id|slug>
    ```
 5. **Xem lại kết quả dry-run** với người phụ trách trước khi chạy thật — đủ các mục: (a) quy trình mặc định sẽ tạo, (b) số việc chuyển trạng thái theo dự án / loại việc (kể cả trong thùng rác), (c) "Sẽ xoá cột" (cột chỉ còn trạng thái cũ và không còn việc nào) và cột "ma" còn lại, (d) từng quy tắc automation: sửa id (trước → sau) hay **TẮT** (không ánh xạ được; người tạo quy tắc được báo), (e) tham chiếu theo TÊN trạng thái trong bộ lọc/bảng/widget JQL sẽ hết khớp (`nameRefs`). Việc nào chuyển sai ánh xạ thì dừng, KHÔNG chạy thật.
 6. **Chạy thật** (cửa sổ bảo trì, không ghi song song; mỗi tổ chức một transaction có khoá advisory):
@@ -269,7 +269,7 @@ Tổ chức mới tạo từ bản này có sẵn 3 quy trình mặc định (St
    -- (a) việc đang ở trạng thái của quy trình KHÁC quy trình hiệu lực của loại việc (kể cả thùng rác)
    SELECT count(*) FROM "Issue" i
    JOIN "Status" s ON s.id = i."statusId"
-   JOIN "WorkspaceWorkflowScheme" w ON w."issueTypeId" = i."typeId"
+   JOIN "OrganizationWorkflowScheme" w ON w."issueTypeId" = i."typeId"
    LEFT JOIN "ProjectWorkflowOverride" o ON o."projectId" = i."projectId" AND o."issueTypeId" = i."typeId"
    WHERE s."workflowId" <> COALESCE(o."workflowId", w."workflowId");
    -- (b) bảng không còn cột nào rỗng sau khi xoá cột ma
@@ -293,9 +293,35 @@ Tổ chức mới tạo từ bản này có sẵn 3 quy trình mặc định (St
 - **Endpoint mới / đổi:** `GET|PUT /workflow-schemes` (cấu hình theo tổ chức; PUT nhận `statusMap` / `statusMapByType` và `dryRun`), `GET|PUT /projects/:id/workflow-overrides` + `DELETE /projects/:id/workflow-overrides/:issueTypeId`, `GET /issues/:id/transitions` (các bước đi tiếp theo quy trình của LOẠI việc), `PATCH /issues/:id` nhận thêm `targetStatusId` khi đổi loại việc sang loại có quy trình khác, `PATCH /issues/bulk` nhận `typeId` + `statusMap`.
 - **Đổi quyền:** Quản trị dự án (`project:admin`) sửa được quy trình **do dự án sở hữu** (tạo bản riêng, trạng thái, bước chuyển) — trước đây chỉ Quản trị chung. Quy trình dùng chung của tổ chức, đặt mặc định, tạo/xoá quy trình và cấu hình theo tổ chức vẫn chỉ Quản trị chung.
 
+## Đổi tên Workspace thành Organization (tổ chức)
+
+Bản này đổi tên khái niệm "workspace" thành **Organization** trong DB, API, token, realtime, quyền và cache (hành vi và chữ hiển thị không đổi). Có **1 migration chỉ gồm lệnh đổi tên**: `20261106100000_organization_rename` (bảng `Workspace*` thành `Organization*`, mọi cột `workspaceId` thành `organizationId`, `User.canCreateWorkspace` thành `canCreateOrganization`, enum `WorkspacePlan` thành `OrganizationPlan`, giá trị enum `WORKSPACE` thành `ORGANIZATION`, mọi ràng buộc/chỉ mục có tên chứa "workspace"; cộng đổi khoá quyền `workspace:*` thành `organization:*`, tên vai trò hệ thống `Workspace Admin/Member/Viewer` thành `Organization ...`, nhãn nhật ký `account.workspace_added`). Không sao chép dữ liệu; cột/ràng buộc/chỉ mục được đổi bằng vòng lặp theo danh mục hệ thống nên đúng trên **PostgreSQL 16 (prod) và 18**. Đã kiểm trên bản sao snapshot prod: số dòng mọi bảng giữ nguyên, quyền hiệu lực của từng người giống hệt, `prisma migrate diff` chỉ còn các đối tượng của `db:raw`, `migrate deploy` chạy lần hai không làm gì.
+
+**API cũ ngừng chạy ngay khi migration xong** (bảng/cột đã đổi tên): phải dừng API trước `migrate deploy` và chỉ khởi động lại bằng bản mới, nên có một khoảng bảo trì ngắn.
+
+### Runbook (thứ tự duy nhất)
+
+1. **Sao lưu MỚI** ngay trước khi làm: `pg_dump -Fc "$DATABASE_URL" -f tirapro-$(date +%Y%m%d-%H%M%S)-pre-organization.dump`.
+2. **Chuẩn bị bản mới** (checkout/build image API + web) nhưng CHƯA khởi động.
+3. **Bắt đầu bảo trì: dừng API** (`systemctl stop tirapro-api`; web có thể hiện trang 503 ở nginx). Từ đây tới bước 7 không có API nào chạy.
+4. **`prisma migrate deploy`** (áp `20261106100000_organization_rename`). Phải thấy "All migrations have been successfully applied". Nếu lỗi: giao dịch đã rollback (dữ liệu nguyên vẹn) nhưng Prisma ghi migration là thất bại; sửa nguyên nhân rồi chạy `prisma migrate resolve --rolled-back 20261106100000_organization_rename` trước khi chạy lại; không khởi động bản mới khi chưa xong.
+5. **`db:raw`** (đổi tên chỉ mục `issue_ws_status_active` đã do migration làm; `db:raw` tạo phần còn thiếu theo tên mới), rồi `db:seed:roles` (không thêm gì; nó cũng tự đổi tên khoá quyền/vai trò di sản nếu còn) và `db:check-roles`.
+6. **Xoá cache Redis** (bắt buộc, trước khi API mới nhận request): `rbac:*` và `automation:rules:*` (cache quy tắc còn dòng có `workspaceId` tới 60 giây). Ví dụ: `redis-cli --scan --pattern 'rbac:*' | xargs -r redis-cli unlink; redis-cli --scan --pattern 'automation:rules:*' | xargs -r redis-cli unlink`. (Khoá RBAC mới có tiền tố `rbac:org:` nên khoá cũ không bao giờ bị đọc, nhưng vẫn xoá cho sạch.)
+7. **Khởi động API mới + deploy web CÙNG LÚC** (`systemctl start tirapro-api`, thay bản web). Web và API đổi đường dẫn cùng nhau (`/organizations`, `/auth/organizations`, `/auth/switch-organization`, `/admin/organizations`), nên không được chạy bản web cũ với API mới. Người đang mở trang cần tải lại (đường `/admin/workspaces` cũ tự chuyển sang `/admin/organizations`).
+8. **Kiểm sau**: đăng nhập bằng phiên cũ (token cũ mang claim `workspaceId` vẫn được nhận tới khi hết hạn, 15 phút) và đăng nhập mới (token mới chỉ có `organizationId`); đổi tổ chức; realtime (room `org:{id}`) nhận sự kiện; và truy vấn:
+   ```sql
+   -- mọi dòng phải trống
+   SELECT relname FROM pg_class WHERE relnamespace='public'::regnamespace AND relname ILIKE '%workspace%';
+   SELECT table_name, column_name FROM information_schema.columns WHERE table_schema='public' AND column_name ILIKE '%workspace%';
+   SELECT name FROM "Role" WHERE "isSystem" GROUP BY name HAVING count(*) > 1;
+   ```
+9. **Quay lại** nếu có sai: dừng API, khôi phục dump ở bước 1, deploy lại bản cũ (cả web). Chỉ có lệnh đổi tên nên không có dữ liệu bị mất; tuy nhiên dữ liệu ghi sau bước 7 sẽ mất khi khôi phục.
+
+**Tạm thời sau bản này (gỡ sau 2026-12-05):** API vẫn nhận access token mang claim cũ `workspaceId` và vẫn đọc biến môi trường cũ `AI_MONTHLY_TOKEN_QUOTA_PER_WORKSPACE` (nên đổi tên biến thành `AI_MONTHLY_TOKEN_QUOTA_PER_ORGANIZATION` trong env prod khi tiện).
+
 ## Nâng cấp / đổi khoá mã hoá tích hợp (Telegram BYO token)
 
-Token bot Telegram của từng workspace được mã hoá bằng `INTEGRATION_ENCRYPTION_KEY`. Ở production API không cho dùng
+Token bot Telegram của từng tổ chức được mã hoá bằng `INTEGRATION_ENCRYPTION_KEY`. Ở production API không cho dùng
 khoá mặc định, nên nếu trước đây hệ thống chạy bằng khoá mặc định (hoặc bạn đổi sang khoá mới) thì token cũ sẽ **không giải được**:
 API ghi log lỗi, trả "không có token" (không dùng ciphertext làm token) và tích hợp đó ngừng gửi tin.
 

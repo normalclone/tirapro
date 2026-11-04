@@ -67,7 +67,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
       const payload = this.jwt.verify<{
         sub: string;
         organizationId?: string | null;
-        /** Claim cũ của access token phát trước khi đổi tên (vẫn nhận tới khi hết hạn). */
+        /** Claim cũ của access token phát trước khi đổi tên (vẫn nhận tới khi hết hạn; gỡ sau 2026-12-05). */
         workspaceId?: string | null;
         iat?: number;
         iatMs?: number;

@@ -23,7 +23,7 @@ Jira clone + nâng cấp (AI, realtime, analytics). Monorepo pnpm + Turborepo.
 
 ## Quy ước chốt
 
-- ID = **CUID**. Tenant = `Workspace` (REST `/workspaces`, JWT claim `workspaceId`, room `ws:{id}`).
+- ID = **CUID**. Tenant = `Organization` (REST `/organizations`, JWT claim `organizationId`, room `org:{id}`). Không còn khái niệm "workspace" trong code/DB/API (test `no-workspace-term.spec.ts` chặn tái phạm; ngoại lệ có lý do ở allowlist trong chính test đó). Claim cũ `workspaceId` của access token đã cấp vẫn được nhận đến hết 2026-12-05.
 - Issue title field = `summary`. OCC `version` cho mọi mutation realtime.
 - Auth: JWT access (in-memory FE) + refresh rotation (httpOnly cookie). RBAC = permission string `resource:action`.
 - Response: list bọc envelope `{success,data,pageInfo,meta}`; single trả raw object. Error `{success:false,error:{code,...}}`.

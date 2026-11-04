@@ -11,7 +11,7 @@ I have full context. Note the existing scaffold uses Postgres image `postgres:16
 | Vấn đề | Các spec mâu thuẫn | **Quyết định chốt** |
 |---|---|---|
 | Kiểu ID | data-model: CUID · api-contract: cuid · backend-arch/frontend: "UUID/CUID" | **CUID** (`@default(cuid())`) toàn hệ thống. Frontend sinh cuid client-side cho optimistic create. |
-| Tenant entity | data-model/backend/realtime: `Workspace` · api-contract: `/orgs` · realtime: `orgId` | Entity DB = **`Workspace`**. REST path dùng **`/workspaces`** (KHÔNG `/orgs`). JWT claim = `workspaceId`. Realtime room `ws:{workspaceId}`. |
+| Tenant entity | data-model/backend/realtime: `Organization` · api-contract: `/orgs` · realtime: `orgId` | Entity DB = **`Organization`**. REST path dùng **`/organizations`** (KHÔNG `/orgs`). JWT claim = `organizationId`. Realtime room `org:{organizationId}`. |
 | Vị trí Prisma schema | backend-arch: `packages/db` · devops: `apps/api/prisma` | **`apps/api/prisma`** (đã scaffold sẵn). Prisma Client export lại qua `@tirapro/db` chỉ khi cần dùng ở seed/script; mặc định api import trực tiếp. |
 | Tiêu đề issue | data-model/design: `summary` · api/frontend: `title` | DB field = **`summary`** (chuẩn Jira). DTO/API expose alias `summary`. Frontend dùng `summary`. |
 | OCC version | realtime cần `version Int` · data-model không có | **Thêm `version Int @default(1)`** vào `Issue` và `Comment`. |
@@ -38,11 +38,11 @@ I have full context. Note the existing scaffold uses Postgres image `postgres:16
                 ▼                                        ▼
         ┌─────────────────────────────────────────────────────────────────────┐
         │                      NestJS 10 API  (apps/api, :4000)                  │
-        │  Guards: JwtAuth → WorkspaceScope → Permissions(CASL)                  │
+        │  Guards: JwtAuth → OrganizationScope → Permissions(CASL)                  │
         │  Interceptors: RequestId · Logging(pino) · ResponseEnvelope · Timeout  │
         │  Filters: PrismaException → AllExceptions                              │
         │                                                                        │
-        │  Feature modules: auth users workspaces projects members rbac          │
+        │  Feature modules: auth users organizations projects members rbac          │
         │   issues custom-fields workflows boards sprints backlog comments       │
         │   attachments search reports dashboards notifications activity         │
         │   ai realtime health                                                   │
@@ -89,7 +89,7 @@ tirapro/                              # repo root — pnpm workspaces + Turborep
 │   │   │   ├── config/               # configuration.ts env.validation.ts config.module.ts
 │   │   │   ├── infra/                # prisma redis queue storage mailer
 │   │   │   └── modules/              # 1 folder/feature (controller service repository dto events)
-│   │   │       ├── auth/ users/ workspaces/ projects/ members/ rbac/
+│   │   │       ├── auth/ users/ organizations/ projects/ members/ rbac/
 │   │   │       ├── issues/ custom-fields/ workflows/ boards/ sprints/ backlog/
 │   │   │       ├── comments/ attachments/ search/ reports/ dashboards/
 │   │   │       ├── notifications/ activity/ ai/ realtime/ health/
@@ -150,9 +150,9 @@ generator client {
 
 // ============================ ENUMS =========================================
 enum UserStatus           { ACTIVE DEACTIVATED INVITED }
-enum WorkspacePlan        { FREE PRO ENTERPRISE }
-enum RoleScope            { WORKSPACE PROJECT }
-enum PermissionScope      { WORKSPACE PROJECT }
+enum OrganizationPlan        { FREE PRO ENTERPRISE }
+enum RoleScope            { ORGANIZATION PROJECT }
+enum PermissionScope      { ORGANIZATION PROJECT }
 enum ProjectType          { SCRUM KANBAN }
 enum DefaultAssigneeMode  { UNASSIGNED PROJECT_LEAD }
 enum BoardType            { KANBAN SCRUM }
@@ -167,7 +167,7 @@ enum FixVersionType       { FIX AFFECTS }
 enum VersionStatus        { UNRELEASED RELEASED ARCHIVED }
 enum RichTextFormat       { MARKDOWN TIPTAP_JSON }
 enum CustomFieldType      { TEXT TEXTAREA NUMBER DATE DATETIME SELECT MULTI_SELECT CHECKBOX USER URL }
-enum FilterVisibility     { PRIVATE WORKSPACE PROJECT }
+enum FilterVisibility     { PRIVATE ORGANIZATION PROJECT }
 enum DashboardScope       { PRIVATE PROJECT GLOBAL }
 enum WidgetType           { BURNDOWN VELOCITY CFD SPRINT_REPORT CONTROL_CHART CREATED_VS_RESOLVED STAT_NUMBER ISSUE_LIST PIE_BY_FIELD AI_INSIGHT }
 enum NotificationType     { ISSUE_ASSIGNED ISSUE_UPDATED MENTIONED COMMENT_ADDED STATUS_CHANGED SPRINT_STARTED SPRINT_COMPLETED WATCHING_UPDATE }
@@ -192,9 +192,9 @@ model User {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  workspaceMemberships WorkspaceMembership[]
+  organizationMemberships OrganizationMembership[]
   projectMemberships   ProjectMembership[]
-  ownedWorkspaces      Workspace[]           @relation("WorkspaceOwner")
+  ownedOrganizations      Organization[]           @relation("OrganizationOwner")
   ledProjects          Project[]             @relation("ProjectLead")
   reportedIssues       Issue[]               @relation("IssueReporter")
   assignedIssues       Issue[]               @relation("IssueAssignee")
@@ -209,12 +209,12 @@ model User {
   @@index([status])
 }
 
-model Workspace {
+model Organization {
   id          String   @id @default(cuid())
   name        String
   slug        String   @unique
   ownerId     String
-  plan        WorkspacePlan @default(FREE)
+  plan        OrganizationPlan @default(FREE)
   settings    Json     @default("{}")
   deletedAt   DateTime?
   createdById String?
@@ -222,8 +222,8 @@ model Workspace {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  owner        User                  @relation("WorkspaceOwner", fields: [ownerId], references: [id])
-  memberships  WorkspaceMembership[]
+  owner        User                  @relation("OrganizationOwner", fields: [ownerId], references: [id])
+  memberships  OrganizationMembership[]
   roles        Role[]
   projects     Project[]
   issueTypes   IssueType[]
@@ -248,19 +248,19 @@ model Permission {
 
 model Role {
   id          String   @id @default(cuid())
-  workspaceId String?                        // null = system role dùng chung
+  organizationId String?                        // null = system role dùng chung
   name        String
   scope       RoleScope
   isSystem    Boolean  @default(false)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  workspace            Workspace?            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  organization            Organization?            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   permissions          RolePermission[]
-  workspaceMemberships WorkspaceMembership[]
+  organizationMemberships OrganizationMembership[]
   projectMemberships   ProjectMembership[]
 
-  @@unique([workspaceId, name, scope])
+  @@unique([organizationId, name, scope])
 }
 
 model RolePermission {
@@ -271,9 +271,9 @@ model RolePermission {
   @@id([roleId, permissionId])
 }
 
-model WorkspaceMembership {
+model OrganizationMembership {
   id          String   @id @default(cuid())
-  workspaceId String
+  organizationId String
   userId      String
   roleId      String
   invitedById String?   // (UX vòng 2: luồng lời mời đã gỡ — cột này không còn ghi)
@@ -281,11 +281,11 @@ model WorkspaceMembership {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   role      Role      @relation(fields: [roleId], references: [id])
 
-  @@unique([workspaceId, userId])
+  @@unique([organizationId, userId])
   @@index([userId])
 }
 
@@ -309,7 +309,7 @@ model ProjectMembership {
 // ============================ PROJECT & CONFIG ==============================
 model Project {
   id                  String   @id @default(cuid())
-  workspaceId         String
+  organizationId         String
   key                 String                       // 2-10 [A-Z][A-Z0-9]*
   name                String
   description         String?
@@ -327,7 +327,7 @@ model Project {
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 
-  workspace   Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   lead        User?       @relation("ProjectLead", fields: [leadId], references: [id], onDelete: SetNull)
   memberships ProjectMembership[]
   issues      Issue[]
@@ -342,9 +342,9 @@ model Project {
   dashboards  Dashboard[]
   activities  ActivityLog[]
 
-  @@unique([workspaceId, key])
-  @@unique([workspaceId, name])
-  @@index([workspaceId])
+  @@unique([organizationId, key])
+  @@unique([organizationId, name])
+  @@index([organizationId])
   @@index([leadId])
   @@index([deletedAt])
 }
@@ -438,7 +438,7 @@ model WorkflowTransition {
 // ============================ ISSUE =========================================
 model IssueType {
   id             String  @id @default(cuid())
-  workspaceId    String
+  organizationId    String
   name           String
   key            IssueTypeKey?
   iconUrl        String?
@@ -447,16 +447,16 @@ model IssueType {
   isSubtask      Boolean @default(false)
   isSystem       Boolean @default(false)
 
-  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   issues    Issue[]
 
-  @@unique([workspaceId, name])
-  @@index([workspaceId])
+  @@unique([organizationId, name])
+  @@index([organizationId])
 }
 
 model Issue {
   id                String   @id @default(cuid())
-  workspaceId       String
+  organizationId       String
   projectId         String
   number            Int
   key               String                          // denormalized "PROJ-123"
@@ -488,7 +488,7 @@ model Issue {
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
-  workspace    Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   project      Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
   type         IssueType @relation(fields: [typeId], references: [id])
   status       Status    @relation(fields: [statusId], references: [id])
@@ -518,7 +518,7 @@ model Issue {
   activities        ActivityLog[]
 
   @@unique([projectId, number])
-  @@unique([workspaceId, key])
+  @@unique([organizationId, key])
   @@index([projectId, statusId])
   @@index([sprintId])
   @@index([assigneeId])
@@ -658,7 +658,7 @@ model Sprint {
 // ============================ CUSTOM FIELDS =================================
 model CustomField {
   id          String   @id @default(cuid())
-  workspaceId String
+  organizationId String
   projectId   String?
   name        String
   type        CustomFieldType
@@ -669,12 +669,12 @@ model CustomField {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   project   Project?  @relation(fields: [projectId], references: [id], onDelete: Cascade)
   options   CustomFieldOption[]
   values    CustomFieldValue[]
 
-  @@index([workspaceId])
+  @@index([organizationId])
   @@index([projectId])
 }
 
@@ -761,7 +761,7 @@ model Attachment {
 // ============================ SEARCH / FILTER ===============================
 model SavedFilter {
   id              String   @id @default(cuid())
-  workspaceId     String
+  organizationId     String
   ownerId         String
   name            String
   jql             String   @db.Text
@@ -772,17 +772,17 @@ model SavedFilter {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  workspace     Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   owner         User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   sharedProject Project?  @relation(fields: [sharedProjectId], references: [id], onDelete: SetNull)
-  @@index([workspaceId, ownerId])
+  @@index([organizationId, ownerId])
 }
 
 // ============================ AI / EMBEDDINGS ===============================
 model IssueEmbedding {
   id          String   @id @default(cuid())
   issueId     String   @unique
-  workspaceId String
+  organizationId String
   projectId   String
   contentHash String
   embedding   Unsupported("vector(1024)")     // voyage-3 default; đổi dim ⇒ migration
@@ -790,13 +790,13 @@ model IssueEmbedding {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   issue       Issue    @relation(fields: [issueId], references: [id], onDelete: Cascade)
-  @@index([workspaceId])
+  @@index([organizationId])
   // HNSW vector_cosine_ops index: tạo bằng raw SQL migration
 }
 
 model AiSuggestion {
   id            String   @id @default(cuid())
-  workspaceId   String
+  organizationId   String
   issueId       String?
   kind          AiSuggestionKind
   inputContext  Json
@@ -808,12 +808,12 @@ model AiSuggestion {
   updatedAt     DateTime @updatedAt
   issue         Issue?   @relation(fields: [issueId], references: [id], onDelete: Cascade)
   @@index([issueId])
-  @@index([workspaceId, kind])
+  @@index([organizationId, kind])
 }
 
 model AiGenerationLog {
   id              String   @id @default(cuid())
-  workspaceId     String?
+  organizationId     String?
   userId          String?
   feature         String
   model           String
@@ -827,14 +827,14 @@ model AiGenerationLog {
   errorCode       String?
   requestId       String?
   createdAt       DateTime @default(now())
-  @@index([workspaceId, feature, createdAt])
+  @@index([organizationId, feature, createdAt])
 }
 
 // ============================ NOTIFICATION / ACTIVITY / HISTORY =============
 model Notification {
   id          String   @id @default(cuid())
   recipientId String
-  workspaceId String
+  organizationId String
   type        NotificationType
   issueId     String?
   commentId   String?
@@ -844,7 +844,7 @@ model Notification {
   createdAt   DateTime @default(now())
 
   recipient User      @relation("NotificationRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
-  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   issue     Issue?    @relation(fields: [issueId], references: [id], onDelete: Cascade)
   @@index([recipientId, readAt])
   @@index([recipientId, createdAt])
@@ -852,7 +852,7 @@ model Notification {
 
 model ActivityLog {
   id          String   @id @default(cuid())
-  workspaceId String
+  organizationId String
   projectId   String?
   issueId     String?
   actorId     String?
@@ -864,11 +864,11 @@ model ActivityLog {
   newValue    Json?
   createdAt   DateTime @default(now())
 
-  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   project   Project?  @relation(fields: [projectId], references: [id], onDelete: Cascade)
   issue     Issue?    @relation(fields: [issueId], references: [id], onDelete: Cascade)
   @@index([issueId, createdAt])
-  @@index([workspaceId, createdAt])
+  @@index([organizationId, createdAt])
   @@index([projectId, action, createdAt])
 }
 
@@ -929,7 +929,7 @@ model ReportCache {
 // ============================ DASHBOARD =====================================
 model Dashboard {
   id          String   @id @default(cuid())
-  workspaceId String
+  organizationId String
   ownerId     String
   projectId   String?
   name        String
@@ -941,11 +941,11 @@ model Dashboard {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   owner     User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   project   Project?  @relation(fields: [projectId], references: [id], onDelete: Cascade)
   widgets   Widget[]
-  @@index([workspaceId, ownerId])
+  @@index([organizationId, ownerId])
   @@index([projectId, scope])
 }
 
@@ -1005,7 +1005,7 @@ CREATE INDEX IF NOT EXISTS issue_embedding_hnsw
 ## 4. Quyết định cross-cutting (chốt)
 
 ### 4.1 Auth flow (JWT access + refresh rotation)
-- **Access token** JWT 15m, payload `{ sub, email, workspaceId, jti }`. **Permission KHÔNG nhúng token** (resolve runtime + cache Redis 60s).
+- **Access token** JWT 15m, payload `{ sub, email, organizationId, jti }`. **Permission KHÔNG nhúng token** (resolve runtime + cache Redis 60s).
 - **Refresh token** 7d, **rotation + family**, lưu **hash** trong `RefreshToken`. Reuse detection → revoke cả family → 401.
 - Hash password: **argon2id** (ưu tiên) hoặc bcrypt(12).
 - Truyền refresh qua **httpOnly Secure cookie** (`SameSite=Strict`); access token giữ **in-memory** ở frontend (Zustand, không persist) → chống XSS.
@@ -1013,10 +1013,10 @@ CREATE INDEX IF NOT EXISTS issue_embedding_hnsw
 - Socket auth: access token trong `handshake.auth.token`; refresh qua REST rồi reconnect (không refresh qua socket).
 
 ### 4.2 RBAC model (CASL, 2 cấp scope)
-- Permission = string `resource:action` (vd `issue:create`, `issue:transition`, `sprint:manage`, `board:manage`, `workflow:edit`, `member:manage`, `project:admin`, `workspace:admin`, `report:view`, `dashboard:manage`). Biến thể ownership `:own`.
-- Effective permission = union(workspace role) ∪ (project role), resolve qua `Permission/Role/RolePermission/*Membership`.
+- Permission = string `resource:action` (vd `issue:create`, `issue:transition`, `sprint:manage`, `board:manage`, `workflow:edit`, `member:manage`, `project:admin`, `organization:admin`, `report:view`, `dashboard:manage`). Biến thể ownership `:own`.
+- Effective permission = union(tổ chức role) ∪ (project role), resolve qua `Permission/Role/RolePermission/*Membership`.
 - `@Permissions('issue:create')` (route-level coarse) + CASL `AbilityFactory` (fine-grained ownership). `PermissionsGuard` resolve `projectId` từ path, cache ở Redis, invalidate khi `member.role_changed`.
-- System roles seed: WORKSPACE — `Workspace Admin / Member / Viewer`; PROJECT — `Project Admin / Developer / Reporter`.
+- System roles seed: ORGANIZATION — `Organization Admin / Member / Viewer`; PROJECT — `Project Admin / Developer / Reporter`.
 
 ### 4.3 Response envelope
 ```jsonc
@@ -1059,7 +1059,7 @@ Codes: `VALIDATION_ERROR(400)`, `JQL_PARSE_ERROR(400)`, `UNAUTHENTICATED/TOKEN_E
 | Commit | Conventional Commits, scope = package (`feat(api)`, `fix(web)`) |
 
 ### 4.7 Realtime contract chốt
-- Rooms: `ws:{workspaceId}`, `user:{userId}` (auto on connect); `project:{id}`, `board:{id}`, `backlog:{projectId}`, `issue:{id}`, `sprint:{id}` (subscribe có RBAC check).
+- Rooms: `org:{organizationId}`, `user:{userId}` (auto on connect); `project:{id}`, `board:{id}`, `backlog:{projectId}`, `issue:{id}`, `sprint:{id}` (subscribe có RBAC check).
 - Domain service commit DB → `EventEmitter2.emit('issue.moved', …)` → `RealtimeBridge @OnEvent` → broadcast. Gateway KHÔNG chứa business logic.
 - Mọi mutation mang `version` (OCC); 409 `VERSION_CONFLICT` kèm state hiện tại → client reconcile (last-write-wins cho move; field-merge cho update).
 - Scale-out: `@socket.io/redis-adapter`. Presence/typing ở Redis (TTL), KHÔNG ở Postgres. Reconnect → re-subscribe + invalidate queries.
@@ -1084,7 +1084,7 @@ Codes: `VALIDATION_ERROR(400)`, `JQL_PARSE_ERROR(400)`, `UNAUTHENTICATED/TOKEN_E
 9. **[infra/api]** Seed v1 — permission catalog + system roles + demo users. *Dep: 8*
 
 **PHASE 2 — Project domain**
-10. **[api]** WorkspacesModule + MembersModule (workspace/project membership + role assignment). *Dep: 8*
+10. **[api]** OrganizationsModule + MembersModule (organization/project membership + role assignment). *Dep: 8*
 11. **[api]** ProjectsModule — CRUD, issue key sequence (atomic increment trong $transaction). *Dep: 10*
 12. **[api]** WorkflowsModule — Status/Transition, `assertTransitionAllowed`. *Dep: 11*
 13. **[api]** CustomFieldsModule — field def + typed values. *Dep: 11*
@@ -1138,7 +1138,7 @@ Codes: `VALIDATION_ERROR(400)`, `JQL_PARSE_ERROR(400)`, `UNAUTHENTICATED/TOKEN_E
 | 7 | UsersModule | Xong | |
 | 8 | RbacModule | Xong | Guard theo permission string `resource:action` (không dùng CASL) |
 | 9 | Seed v1 | Xong | |
-| 10 | Workspaces + Members | Xong | |
+| 10 | tổ chức + Members | Xong | |
 | 11 | ProjectsModule | Xong | Sửa/lưu trữ project còn ở Pha E |
 | 12 | WorkflowsModule | Xong | Module `workflow-admin` |
 | 13 | CustomFieldsModule | Xong | |
@@ -1224,7 +1224,7 @@ ANTHROPIC_API_KEY=
 AI_FEATURES_ENABLED=true
 AI_MODEL_PRIMARY=claude-opus-4-8      # reasoning nặng: generate issue, sprint plan, suggest
 AI_MODEL_FAST=claude-sonnet-4-6       # throughput: summarize
-AI_MONTHLY_TOKEN_QUOTA_PER_WORKSPACE=5000000
+AI_MONTHLY_TOKEN_QUOTA_PER_ORGANIZATION=5000000
 
 # ---------- AI: Embeddings (Anthropic KHÔNG có embedding API) ----------
 EMBEDDING_PROVIDER=voyage             # voyage | openai | none(→full-text fallback)

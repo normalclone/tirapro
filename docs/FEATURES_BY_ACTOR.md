@@ -1,7 +1,7 @@
 # Tirapro — Danh sách chức năng theo Actor
 
 > Mô hình quyền 2 cấp scope (kế thừa `docs/MASTER_PLAN.md` §4.2): quyền hiệu lực =
-> **union(vai trò Workspace, vai trò Project)**. Một người có 1 vai trò ở workspace và có thể
+> **union(vai trò tổ chức, vai trò Project)**. Một người có 1 vai trò ở tổ chức và có thể
 > có vai trò khác nhau ở từng project. Mọi tính năng "nâng cấp" (AI, realtime, analytics)
 > **degrade gracefully** — thiếu hạ tầng vẫn dùng được phần lõi.
 
@@ -10,9 +10,9 @@
 | Actor (vai trò hệ thống) | Scope | Persona thực tế |
 |---|---|---|
 | **System Admin** (`isSystemAdmin`) | Toàn nền tảng | Chủ hệ thống self-hosted / ops |
-| **Workspace Admin** | Workspace (tenant) | Trưởng phòng, org admin |
-| **Workspace Member** | Workspace | Nhân viên chính thức |
-| **Workspace Viewer** | Workspace | Khách nội bộ, sếp chỉ xem |
+| **Organization Admin** | tổ chức (tenant) | Trưởng phòng, org admin |
+| **Organization Member** | tổ chức | Nhân viên chính thức |
+| **Organization Viewer** | tổ chức | Khách nội bộ, sếp chỉ xem |
 | **Project Admin (Lead)** | 1 Project | Project Manager / Scrum Master |
 | **Project Developer** | 1 Project | Developer, QA, Designer |
 | **Project Reporter** | 1 Project | Stakeholder, CS, người báo bug |
@@ -28,7 +28,7 @@
 
 ### 2.1 Mọi người dùng đã đăng nhập (cross-cutting — actor nào cũng có)
 - Quản lý hồ sơ cá nhân (tên, avatar, timezone, locale), đổi mật khẩu, đăng xuất (thu hồi refresh token).
-- Chuyển đổi giữa nhiều workspace mình là thành viên.
+- Chuyển đổi giữa nhiều tổ chức mình là thành viên.
 - Trung tâm **thông báo** (in-app realtime + đánh dấu đã đọc), **watch/unwatch** issue.
 - **Command palette (Cmd+K)**: điều hướng nhanh, nhảy tới issue/project, chạy hành động bằng phím tắt.
 - Đổi **theme sáng/tối**, tìm kiếm nhanh, saved filter **cá nhân**, dashboard **cá nhân**.
@@ -38,31 +38,31 @@
 - Hồ sơ hoạt động của bản thân (issue được giao, đã báo, đang theo dõi).
 
 ### 2.2 System Admin
-> Bao trùm mọi quyền dưới đây, xuyên workspace.
-- Quản lý toàn bộ workspace, người dùng nền tảng (khóa/mở, cấp lại mật khẩu).
-- Cấu hình hệ thống, hạn ngạch AI theo workspace, xem log vận hành (`AiGenerationLog`).
+> Bao trùm mọi quyền dưới đây, xuyên tổ chức.
+- Quản lý toàn bộ tổ chức, người dùng nền tảng (khóa/mở, cấp lại mật khẩu).
+- Cấu hình hệ thống, hạn ngạch AI theo tổ chức, xem log vận hành (`AiGenerationLog`).
 - Seed dữ liệu mẫu, bảo trì, xem health/metrics.
 
-### 2.3 Workspace Admin
-- Tạo / sửa / lưu trữ / xóa **project** trong workspace.
-- **Quản lý thành viên workspace**: **thêm trực tiếp** (chọn người có sẵn trong pool người dùng chung hoặc tạo tài khoản mới — **không có lời mời**, người được thêm vào ngay), gỡ, gán vai trò workspace; khoá / mở khoá tài khoản (chặn ngay cả khi access token còn hạn), đặt lại mật khẩu, đăng xuất mọi thiết bị.
+### 2.3 Organization Admin
+- Tạo / sửa / lưu trữ / xóa **project** trong tổ chức.
+- **Quản lý thành viên tổ chức**: **thêm trực tiếp** (chọn người có sẵn trong pool người dùng chung hoặc tạo tài khoản mới — **không có lời mời**, người được thêm vào ngay), gỡ, gán vai trò tổ chức; khoá / mở khoá tài khoản (chặn ngay cả khi access token còn hạn), đặt lại mật khẩu, đăng xuất mọi thiết bị.
 - Đặt **dự án riêng tư** (chỉ thành viên được thêm riêng + admin thấy; người ngoài nhận 404 ở mọi đường đọc: danh sách, tìm kiếm/JQL, Cmd+K, thông báo, dashboard, digest, wiki, OKR); tạo dự án từ **mẫu** (Scrum / Kanban / Quản lý yêu cầu).
 - Xem **Nhật ký quản trị** (vai trò, thành viên, quyền, khoá tài khoản, tích hợp).
 - Tạo & quản lý **vai trò tùy biến** và gán bộ quyền (RBAC).
-- Cấu hình workspace (tên, slug, settings, gói plan).
-- Quản lý **custom field cấp workspace**, **issue types**.
-- Tạo & chia sẻ **dashboard tuỳ biến** (4 mức: riêng tư / cả workspace / theo dự án / theo nhóm; chỉ chủ sửa, admin xoá được bản đã chia sẻ), **saved filter** chia sẻ.
+- Cấu hình tổ chức (tên, slug, settings, gói plan).
+- Quản lý **custom field cấp tổ chức**, **issue types**.
+- Tạo & chia sẻ **dashboard tuỳ biến** (4 mức: riêng tư / cả tổ chức / theo dự án / theo nhóm; chỉ chủ sửa, admin xoá được bản đã chia sẻ), **saved filter** chia sẻ.
 - Cấu hình **Telegram** (trình hướng dẫn 4 bước, liên kết nhóm bằng `/link@bot MÃ`) và **Digest** có cấu trúc (thứ/giờ/múi giờ hoặc khi kết thúc sprint, khối nội dung, người nhận, Email + Telegram); **Nhập từ Jira** giữ mã gốc.
 - Xem thẻ lãnh đạo trên Tổng quan: **Sức khoẻ dự án**, Top rủi ro, OKR chậm, người quá tải.
 - Toàn quyền nội dung của mọi project (kế thừa quyền Project Admin ở tất cả project).
 
-### 2.4 Workspace Member
+### 2.4 Organization Member
 - Xem danh sách project mình tham gia; được thêm vào project.
 - Tạo project mới (**nếu** được cấp quyền `project:create`).
 - Trong project mình tham gia: thao tác theo **vai trò project** tương ứng.
 - Dùng **AI**, tạo saved filter & dashboard cá nhân, semantic search.
 
-### 2.5 Workspace Viewer
+### 2.5 Organization Viewer
 - **Chỉ đọc** trên các project được phép: xem board, backlog, issue, comment, report, dashboard.
 - Không tạo/sửa/xóa bất cứ thứ gì; không dùng hành động ghi của AI (chỉ xem tóm tắt nếu được chia sẻ).
 
@@ -96,31 +96,31 @@
 
 ---
 
-## 3. Ma trận quyền — phạm vi Workspace
+## 3. Ma trận quyền — phạm vi tổ chức
 
 Chú thích: ✅ toàn quyền · 👁 chỉ xem · ➖ không có · ⚙️ tùy cấp quyền `project:create`.
 
 | Hành động | Sys Admin | WS Admin | WS Member | WS Viewer |
 |---|:---:|:---:|:---:|:---:|
-| Xem workspace & project được phép | ✅ | ✅ | ✅ | 👁 |
+| Xem tổ chức & project được phép | ✅ | ✅ | ✅ | 👁 |
 | Tạo project | ✅ | ✅ | ⚙️ | ➖ |
 | Lưu trữ / xóa project | ✅ | ✅ | ➖ | ➖ |
-| Thêm trực tiếp / gỡ thành viên workspace (không lời mời); khoá tài khoản | ✅ | ✅ | ➖ | ➖ |
+| Thêm trực tiếp / gỡ thành viên tổ chức (không lời mời); khoá tài khoản | ✅ | ✅ | ➖ | ➖ |
 | Đặt dự án riêng tư; xem Nhật ký quản trị | ✅ | ✅ | ➖ | ➖ |
 | Tạo vai trò & gán quyền (RBAC) | ✅ | ✅ | ➖ | ➖ |
-| Cấu hình workspace (settings/plan) | ✅ | ✅ | ➖ | ➖ |
-| Custom field / issue type cấp workspace | ✅ | ✅ | ➖ | ➖ |
-| Dashboard chia sẻ (cả workspace / theo dự án / theo nhóm) | ✅ | ✅ | ➖ | 👁 |
+| Cấu hình tổ chức (settings/plan) | ✅ | ✅ | ➖ | ➖ |
+| Custom field / issue type cấp tổ chức | ✅ | ✅ | ➖ | ➖ |
+| Dashboard chia sẻ (cả tổ chức / theo dự án / theo nhóm) | ✅ | ✅ | ➖ | 👁 |
 | Saved filter / dashboard cá nhân | ✅ | ✅ | ✅ | 👁 |
 | Dùng AI (ai:use) | ✅ | ✅ | ✅ | ➖ |
-| Quản trị nền tảng (đa workspace) | ✅ | ➖ | ➖ | ➖ |
+| Quản trị nền tảng (đa tổ chức) | ✅ | ➖ | ➖ | ➖ |
 
 ---
 
 ## 4. Ma trận quyền — phạm vi Project
 
 Chú thích: ✅ mọi issue · 🔵 chỉ của mình/được giao · 👁 chỉ xem · ➖ không.
-Cột Viewer = Workspace Viewer (đối chiếu read-only).
+Cột Viewer = Organization Viewer (đối chiếu read-only).
 
 | Hành động | Proj Admin | Developer | Reporter | Viewer |
 |---|:---:|:---:|:---:|:---:|
@@ -158,7 +158,7 @@ Cột Viewer = Workspace Viewer (đối chiếu read-only).
 | | Semantic search | Mọi người xem được project |
 | **Realtime** | Board/issue cập nhật tức thời, presence, typing | Mọi người đang xem board/issue (theo quyền view) |
 | **Analytics** | Báo cáo Sprint (tab đầu) / Burndown / Velocity / CFD / Tổng kết sprint (sau khi Kết thúc sprint) / QA | Reporter trở lên (xem); Project Admin (cấu hình) |
-| | Dashboard tùy biến + widget (Tổng quan → bộ chọn dashboard) | Người có `dashboard:manage` tạo; chia sẻ riêng tư / cả workspace / theo dự án / theo nhóm; chỉ chủ sửa |
+| | Dashboard tùy biến + widget (Tổng quan → bộ chọn dashboard) | Người có `dashboard:manage` tạo; chia sẻ riêng tư / cả tổ chức / theo dự án / theo nhóm; chỉ chủ sửa |
 | | Xuất CSV (bộ lọc/JQL, Việc chờ, bug, sprint, rủi ro, nhân lực) + In / Lưu PDF (Tổng quan, báo cáo sprint) | Người xem được dữ liệu đó (Excel mở được CSV; không có xuất `.xlsx`/PDF phía máy chủ) |
 | **Lãnh đạo** | Sức khoẻ dự án (tự tính + PM ghi đè), thẻ Top rủi ro / OKR chậm / người quá tải, Digest | WS Admin / Project Admin; người nhận digest |
 | | OKR tự đo (số bug mở, % sprint, số công việc theo JQL) + lịch sử giá trị hằng ngày + check-in | Người có `goal:manage` |
@@ -170,7 +170,7 @@ Cột Viewer = Workspace Viewer (đối chiếu read-only).
 
 | Tính năng | Mô tả | Actor cấu hình | Actor dùng |
 |---|---|---|---|
-| **Migration từ Jira** | Import issues/comments/attachments từ **file CSV xuất từ Jira** (và CSV/JSON export của Tirapro vào dự án có sẵn); map issue type/status/priority → config Tirapro; chạy nền có tiến độ. **Giữ mã gốc** (`JRA-1`; việc tạo mới theo mã Tirapro), nhập lại bỏ qua việc đã có mã, nhớ email Jira để tự gán khi người đó được thêm vào workspace. Không có kết nối Jira Cloud REST. | Workspace Admin (`import:run`) | — |
+| **Migration từ Jira** | Import issues/comments/attachments từ **file CSV xuất từ Jira** (và CSV/JSON export của Tirapro vào dự án có sẵn); map issue type/status/priority → config Tirapro; chạy nền có tiến độ. **Giữ mã gốc** (`JRA-1`; việc tạo mới theo mã Tirapro), nhập lại bỏ qua việc đã có mã, nhớ email Jira để tự gán khi người đó được thêm vào tổ chức. Không có kết nối Jira Cloud REST. | Organization Admin (`import:run`) | — |
 | **Nhập từ biểu mẫu Excel** | Tải biểu mẫu `.xlsx` theo dự án (drop-list lấy từ cấu hình dự án: loại việc, ưu tiên, trạng thái, thành viên, sprint, epic, thành phần, phiên bản; nhãn gợi ý), điền tối đa 1000 dòng, **xem trước lỗi từng dòng/cột** rồi nhập; dòng lỗi bị bỏ qua. Cấu hình dự án → Dữ liệu hoặc Cmd+K "Nhập công việc từ Excel". Đặc tả: `docs/srs/10-import-hang-loat.md`. | Project Admin / WS Admin (`import:run`) | — |
 | **Telegram — thông báo** | Chỉ **gửi** tin: issue assigned / mention / đổi trạng thái / comment vào **nhóm** đã liên kết (thêm bot vào nhóm → `/link@bot MÃ`, mã do WS Admin sinh trong trình hướng dẫn). Dự án riêng tư chỉ lên kênh khi bật rõ. | WS Admin (`integration:manage`) | Thành viên nhóm Telegram |
 | **Báo cáo / digest** | `ReportSubscription`: chọn **khối nội dung** + lịch (thứ / giờ / múi giờ, hoặc tự gửi khi kết thúc sprint) → gửi **Email và/hoặc Telegram** theo người nhận; có xem trước. Không có lệnh bot (`/report`, `/newtask`, `/bug` không tồn tại). | Project Admin / WS Admin (`digest:manage`) | Người nhận |
