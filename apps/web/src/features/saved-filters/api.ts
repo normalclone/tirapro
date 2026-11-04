@@ -1,5 +1,11 @@
-import { skipToken, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { IssueDto, ListResponse, SavedFilterDto } from '@tirapro/types';
+import {
+  keepPreviousData,
+  skipToken,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
+import type { FilterAudienceDto, IssueDto, ListResponse, SavedFilterDto } from '@tirapro/types';
 import { api } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
 import { useDebouncedValue } from '@/lib/useDebouncedValue';
@@ -112,6 +118,36 @@ export function useSavedFilters() {
     queryKey: keys.filters.all,
     queryFn: async () => (await api.get<SavedFilter[]>('/filters')).data,
   });
+}
+
+/**
+ * "Ai xem được" một bản chia sẻ CHƯA lưu (POST /filters/audience): máy chủ tính theo đúng luật xem dự án (dự án công khai
+ * → ai xem được dự án đều thấy; dự án riêng tư → thành viên + quản trị) nên số khớp với người thực sự thấy bộ lọc.
+ * Chờ 300ms sau lần tích cuối; giữ số cũ trong lúc tính lại. `enabled=false` hoặc chưa chọn đích → không gọi.
+ */
+export function useFilterAudience(
+  projectIds: readonly string[],
+  userIds: readonly string[],
+  enabled: boolean,
+) {
+  const body = JSON.stringify({
+    sharedProjectIds: [...projectIds].sort(),
+    sharedUserIds: [...userIds].sort(),
+  });
+  const settled = useDebouncedValue(body, 300);
+  const hasTarget = projectIds.length + userIds.length > 0;
+  const query = useQuery({
+    queryKey: keys.filters.audience(settled),
+    queryFn:
+      enabled && hasTarget
+        ? async () =>
+            (await api.post<FilterAudienceDto>('/filters/audience', JSON.parse(settled))).data
+        : skipToken,
+    placeholderData: keepPreviousData,
+    staleTime: 30_000,
+    retry: false,
+  });
+  return { ...query, pending: enabled && hasTarget && (settled !== body || query.isFetching) };
 }
 
 export interface CreateFilterInput {

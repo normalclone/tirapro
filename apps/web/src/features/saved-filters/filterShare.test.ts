@@ -3,7 +3,6 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { buildFilterPatch, type SavedFilter } from './api';
 import {
-  audienceOf,
   canChangeFilterShare,
   draftChanged,
   draftError,
@@ -168,6 +167,8 @@ describe('rail: hai nhóm "Của tôi" / "Được chia sẻ với tôi"', () =>
         }),
       ),
     ).toBe('Chia sẻ · 1 người');
+    // Mọi đích đã biến mất: chủ thấy đúng thực trạng thay vì "Chia sẻ · 0"
+    expect(shareLabel(filter({ shareLapsed: true }))).toBe('Riêng tư (không còn ai được chia sẻ)');
     expect(shareLabel(filter({ access: 'shared', isOwner: false, visibility: 'SHARED' }))).toBe(
       'Được chia sẻ',
     );
@@ -207,41 +208,5 @@ describe('bản nháp chia sẻ', () => {
     expect(draftChanged(a, { visibility: 'PRIVATE', projectIds: [], userIds: [] })).toBe(true);
     const priv = draftFrom(filter());
     expect(draftChanged({ ...priv, projectIds: ['x'] }, priv)).toBe(false);
-  });
-});
-
-describe('audienceOf — hợp thành viên dự án + người cụ thể, không đếm trùng', () => {
-  const P = (id: string, active = true) => ({ id, name: id, avatarUrl: null, active });
-  it('một người ở nhiều dự án + được chọn riêng chỉ đếm một lần; không tính chủ bộ lọc; bỏ người đã vô hiệu', () => {
-    const r = audienceOf({
-      projectIds: ['p1', 'p2'],
-      userIds: ['b', 'owner'],
-      projectMembers: {
-        p1: [P('owner'), P('a'), P('b')],
-        p2: [P('a'), P('c'), P('off', false)],
-      },
-      people: {
-        b: { id: 'b', name: 'b', avatarUrl: null },
-        owner: { id: 'owner', name: 'owner', avatarUrl: null },
-      },
-      ownerId: 'owner',
-    });
-    expect(r.people.map((p) => p.id).sort()).toEqual(['a', 'b', 'c']);
-    expect(r.loading).toBe(false);
-  });
-  it('dự án chưa tải thành viên → loading (đừng báo số sai); chỉ người cụ thể thì không cần tải', () => {
-    expect(
-      audienceOf({ projectIds: ['p1'], userIds: [], projectMembers: {}, people: {}, ownerId: 'o' })
-        .loading,
-    ).toBe(true);
-    const r = audienceOf({
-      projectIds: [],
-      userIds: ['b'],
-      projectMembers: {},
-      people: { b: { id: 'b', name: 'b', avatarUrl: null } },
-      ownerId: 'o',
-    });
-    expect(r.loading).toBe(false);
-    expect(r.people).toHaveLength(1);
   });
 });

@@ -40,14 +40,19 @@ export function splitByAccess(filters: readonly SavedFilter[]): {
   };
 }
 
+/** Bộ lọc từng chia sẻ nhưng mọi dự án/người được chia sẻ đã biến mất (xoá dự án, người nghỉ) — thực chất đang riêng tư. */
+const LAPSED_LABEL = 'Riêng tư (không còn ai được chia sẻ)';
+
 /**
- * Nhãn chia sẻ trên một hàng: "Riêng tư" hoặc "Chia sẻ · 2 dự án · 1 người". Bộ lọc người khác chia sẻ chỉ mang phần
- * họ được thấy (máy chủ đã rút gọn) nên không đếm hộ phần ẩn.
+ * Nhãn chia sẻ trên một hàng: "Riêng tư" hoặc "Chia sẻ · 2 dự án · 1 người" (chỉ đếm đích CÒN SỐNG — máy chủ đã bỏ dự án đã xoá/người đã nghỉ; không
+ còn đích nào thì "Riêng tư (không còn ai được chia sẻ)"). Bộ lọc người khác chia sẻ chỉ mang phần họ được thấy nên không
+ đếm hộ phần ẩn.
  */
 export function shareLabel(
-  f: Pick<SavedFilter, 'visibility' | 'sharedProjects' | 'sharedUsers' | 'access'>,
+  f: Pick<SavedFilter, 'visibility' | 'sharedProjects' | 'sharedUsers' | 'access' | 'shareLapsed'>,
 ): string {
   if (f.access !== 'owner') return 'Được chia sẻ';
+  if (f.shareLapsed) return LAPSED_LABEL;
   if (f.visibility === 'PRIVATE') return 'Riêng tư';
   const parts = [
     f.sharedProjects.length > 0 ? `${fmtNumber(f.sharedProjects.length)} dự án` : null,
@@ -97,40 +102,4 @@ export function draftPatch(d: ShareDraft): {
   return d.visibility === 'PRIVATE'
     ? { visibility: 'PRIVATE', sharedProjectIds: [], sharedUserIds: [] }
     : { visibility: 'SHARED', sharedProjectIds: d.projectIds, sharedUserIds: d.userIds };
-}
-
-export interface AudiencePerson {
-  id: string;
-  name: string;
-  avatarUrl: string | null;
-}
-
-/**
- * "Ai có quyền xem": HỢP thành viên các dự án được chọn và những người được chọn cụ thể, KHÔNG đếm trùng, không tính chủ
- * bộ lọc (luôn xem được). Người đã vô hiệu hoá không tính. `projectMembers`: thành viên theo dự án (thiếu khoá = chưa tải).
- */
-export function audienceOf(input: {
-  projectIds: readonly string[];
-  userIds: readonly string[];
-  projectMembers: Readonly<
-    Record<string, readonly (AudiencePerson & { active?: boolean })[] | undefined>
-  >;
-  people: Readonly<Record<string, AudiencePerson | undefined>>;
-  ownerId: string;
-}): { people: AudiencePerson[]; loading: boolean } {
-  const seen = new Set<string>([input.ownerId]);
-  const out: AudiencePerson[] = [];
-  const add = (p: (AudiencePerson & { active?: boolean }) | undefined) => {
-    if (!p || p.active === false || seen.has(p.id)) return;
-    seen.add(p.id);
-    out.push({ id: p.id, name: p.name, avatarUrl: p.avatarUrl });
-  };
-  let loading = false;
-  for (const pid of input.projectIds) {
-    const members = input.projectMembers[pid];
-    if (!members) loading = true;
-    else members.forEach(add);
-  }
-  for (const uid of input.userIds) add(input.people[uid]);
-  return { people: out, loading };
 }

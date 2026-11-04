@@ -7,10 +7,10 @@ import type * as ApiModule from '@/lib/api';
 import type { SavedFilter } from './api';
 import { filterChecklist } from './ShareChecklist';
 
-const h = vi.hoisted(() => ({ get: vi.fn(), patch: vi.fn() }));
+const h = vi.hoisted(() => ({ get: vi.fn(), patch: vi.fn(), post: vi.fn() }));
 vi.mock('@/lib/api', async (orig) => {
   const real = await orig<typeof ApiModule>();
-  return { ...real, api: { get: h.get, patch: h.patch } };
+  return { ...real, api: { get: h.get, patch: h.patch, post: h.post } };
 });
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
@@ -34,14 +34,10 @@ const U = {
   off: user('off', 'Đã nghỉ', { status: 'DEACTIVATED' }),
 };
 const projects = [
-  { id: 'p1', key: 'HR', name: 'Nhân sự', isArchived: false },
-  { id: 'p2', key: 'QA', name: 'Kiểm thử', isArchived: false },
-  { id: 'p3', key: 'OLD', name: 'Dự án cũ', isArchived: true },
+  { id: 'p1', key: 'HR', name: 'Nhân sự', isArchived: false, isPrivate: false },
+  { id: 'p2', key: 'QA', name: 'Kiểm thử', isArchived: false, isPrivate: true },
+  { id: 'p3', key: 'OLD', name: 'Dự án cũ', isArchived: true, isPrivate: false },
 ];
-const projectMembers: Record<string, ReturnType<typeof member>[]> = {
-  p1: [member(U.me), member(U.an), member(U.binh)],
-  p2: [member(U.an), member(U.chi), member(U.off)], // An trùng với p1
-};
 
 const OWN: SavedFilter = {
   id: 'f1',
@@ -60,12 +56,24 @@ const OWN: SavedFilter = {
 beforeEach(() => {
   h.get.mockReset();
   h.patch.mockReset();
+  h.post.mockReset();
+  // Máy chủ tính số người xem được; ở đây trả số cố định theo đích để kiểm FE chỉ hiển thị + gửi đúng thân yêu cầu.
+  h.post.mockImplementation((_u: string, body: { sharedProjectIds: string[] }) =>
+    Promise.resolve({
+      data: {
+        count: body.sharedProjectIds.length > 0 ? 3 : 1,
+        people: [
+          { id: 'an', displayName: 'Nguyễn An', avatarUrl: null },
+          { id: 'binh', displayName: 'Trần Bình', avatarUrl: null },
+          { id: 'chi', displayName: 'Lê Chi', avatarUrl: null },
+        ].slice(0, body.sharedProjectIds.length > 0 ? 3 : 1),
+      },
+    }),
+  );
   h.get.mockImplementation((url: string) => {
     if (url === '/projects') return Promise.resolve({ data: projects });
     if (url === '/members')
       return Promise.resolve({ data: [U.me, U.an, U.binh, U.chi, U.off].map(member) });
-    const m = /^\/projects\/(\w+)\/members$/.exec(url);
-    if (m) return Promise.resolve({ data: projectMembers[m[1]!] ?? [] });
     return Promise.reject(new Error(`offline ${url}`));
   });
   h.patch.mockImplementation((_u: string, body: unknown) =>
@@ -110,6 +118,10 @@ describe('hộp "Chia sẻ bộ lọc" — chọn nhiều dự án + nhiều ng�
     expect(text).toContain('Nguyễn An');
     expect(text).not.toContain('Tôi');
     expect(text).not.toContain('Đã nghỉ');
+    // Dự án nói rõ ai thấy: công khai = mọi người xem được dự án; riêng tư = chỉ thành viên
+    expect(proj.textContent).toContain('Công khai — mọi người xem được');
+    expect(proj.textContent).toContain('Riêng tư — chỉ thành viên thấy');
+    expect(h.post).not.toHaveBeenCalled(); // chưa chọn đích → không hỏi máy chủ
     // Chia sẻ mà chưa chọn gì: báo lỗi rõ + Lưu tắt
     expect(within(dialog).getByRole('alert').textContent).toBe(
       'Chọn ít nhất một dự án hoặc một người để chia sẻ',
@@ -117,7 +129,7 @@ describe('hộp "Chia sẻ bộ lọc" — chọn nhiều dự án + nhiều ng�
     expect(within(dialog).getByRole('button', { name: 'Lưu' }).hasAttribute('disabled')).toBe(true);
   });
 
-  it('chọn 2 dự án + 2 người: "Ai có quyền xem" là HỢP không trùng, không tính mình/người đã nghỉ; Lưu gửi đủ ba trường', async () => {
+  it('chọn 2 dự án + 2 người: "Ai có quyền xem" lấy số do MÁY CHỦ tính (gửi đích đã chọn); Lưu gửi đủ ba trường', async () => {
     const { user, onClose } = renderDialog(OWN);
     const dialog = await screen.findByRole('dialog', { name: /Chia sẻ bộ lọc/ });
     await user.click(within(dialog).getByRole('radio', { name: 'Chia sẻ' }));
@@ -129,13 +141,16 @@ describe('hộp "Chia sẻ bộ lọc" — chọn nhiều dự án + nhiều ng�
     await user.click(within(people).getByRole('checkbox', { name: /Nguyễn An/ })); // trùng thành viên 2 dự án
     await user.click(within(people).getByRole('checkbox', { name: /Lê Chi/ })); // trùng thành viên p2
 
-    // Hợp = An, Bình (p1) + An, Chi (p2) + An, Chi (chọn riêng), bỏ chính mình và người đã nghỉ → {An, Bình, Chi} = 3
+    // Số do máy chủ trả (hợp theo luật xem dự án) — FE chỉ gửi đích đã chọn và hiển thị
     await waitFor(() =>
       expect(within(dialog).getByRole('region', { name: 'Ai có quyền xem' }).textContent).toContain(
         '3 người xem được',
       ),
     );
     expect(within(dialog).queryByRole('alert')).toBeNull();
+    const last = h.post.mock.calls.at(-1)!;
+    expect(last[0]).toBe('/filters/audience');
+    expect(last[1]).toEqual({ sharedProjectIds: ['p1', 'p2'], sharedUserIds: ['an', 'chi'] });
 
     await user.click(within(dialog).getByRole('button', { name: 'Lưu' }));
     await waitFor(() => expect(h.patch).toHaveBeenCalledTimes(1));
@@ -189,6 +204,7 @@ describe('hộp "Chia sẻ bộ lọc" — chọn nhiều dự án + nhiều ng�
     expect(within(dialog).queryByRole('button', { name: 'Lưu' })).toBeNull();
     expect(dialog.textContent).toContain('Nguyễn An chia sẻ cho bạn');
     expect(dialog.textContent).toContain('Nhân sự');
+    expect(h.post).not.toHaveBeenCalled(); // không phải chủ → không có số (luật xem tính theo chủ)
     expect(within(dialog).getByRole('button', { name: /Sao chép liên kết/ })).toBeTruthy();
     expect(dialog.textContent?.toLowerCase()).not.toContain('workspace');
     expect(dialog.textContent).not.toContain('không gian làm việc');

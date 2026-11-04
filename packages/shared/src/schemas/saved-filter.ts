@@ -50,6 +50,13 @@ export const savedFilterUpdateSchema = z
   .refine((v) => Object.keys(v).length > 0, { message: 'Cần ít nhất một trường để cập nhật' })
   .refine((v) => !sharedWithoutTarget(v), refineOpts);
 
+/** `POST /filters/audience`: đếm "ai xem được" cho một bản chia sẻ CHƯA lưu (hộp Chia sẻ tính trực tiếp khi đang chọn). */
+export const filterAudienceSchema = z.object({
+  sharedProjectIds: idList(MAX_SHARED_PROJECTS).default([]),
+  sharedUserIds: idList(MAX_SHARED_USERS).default([]),
+});
+export type FilterAudienceInput = z.infer<typeof filterAudienceSchema>;
+
 export type SavedFilterCreateInput = z.infer<typeof savedFilterCreateSchema>;
 export type SavedFilterUpdateInput = z.infer<typeof savedFilterUpdateSchema>;
 

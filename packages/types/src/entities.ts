@@ -499,6 +499,12 @@ export interface SavedFilterProjectDto {
   name: string;
 }
 
+/** Kết quả `POST /filters/audience`: số người xem được (không tính chủ) và vài người đầu tiên. */
+export interface FilterAudienceDto {
+  count: number;
+  people: SavedFilterPersonDto[];
+}
+
 /**
  * Bộ lọc đã lưu (`GET /filters`). `access`: `owner` = của tôi; `shared` = người khác chia sẻ cho tôi (qua dự án hoặc
  * trực tiếp). Chủ thấy đủ danh sách chia sẻ; người khác chỉ thấy dự án HỌ xem được và chính mình trong danh sách người.
@@ -512,6 +518,8 @@ export interface SavedFilterDto {
   ownerId: ID;
   isOwner: boolean;
   access: 'owner' | 'shared';
+  /** Chỉ chủ: bộ lọc từng được chia sẻ nhưng mọi đích đã biến mất (dự án bị xoá, người rời đi) — thực chất đang riêng tư. */
+  shareLapsed?: boolean;
   owner: SavedFilterPersonDto | null;
   sharedProjects: SavedFilterProjectDto[];
   sharedUsers: SavedFilterPersonDto[];

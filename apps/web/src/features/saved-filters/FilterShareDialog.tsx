@@ -1,7 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
-import { useQueries } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import type { MemberDto } from '@tirapro/types';
 import { Button } from '@/components/ui/Button';
 import { Dialog } from '@/components/ui/Dialog';
 import { RadioCard } from '@/components/ui/RadioCard';
@@ -9,31 +7,25 @@ import { Avatar } from '@/components/ui/primitives';
 import { CopyLinkRow } from '@/features/sharing/CopyLinkRow';
 import { useWorkspaceMembers } from '@/features/members/api';
 import { useProjects } from '@/features/projects/api';
-import { api, apiErrorMessage } from '@/lib/api';
+import { apiErrorMessage } from '@/lib/api';
 import { filterUrl } from '@/lib/copyText';
 import { fmtNumber } from '@/lib/locale';
-import { keys } from '@/lib/queryKeys';
 import { useOpenSession } from '@/lib/useOpenSession';
 import { useAuth } from '@/stores/auth';
-import { useUpdateFilter, type FilterVisibility, type SavedFilter } from './api';
+import { useFilterAudience, useUpdateFilter, type FilterVisibility, type SavedFilter } from './api';
 import {
-  audienceOf,
   canChangeFilterShare,
   draftChanged,
   draftError,
   draftFrom,
   draftPatch,
-  type AudiencePerson,
   type ShareDraft,
 } from './filterShare';
 import { ShareChecklist, type ChecklistItem } from './ShareChecklist';
 
-/** Tối đa chừng này avatar trong khối "Ai có quyền xem"; phần còn lại gộp "+N". */
-const AVATAR_LIMIT = 6;
-
 /**
- * "Chia sẻ" của một bộ lọc đã lưu: "Chỉ mình tôi" hoặc "Chia sẻ" với NHIỀU dự án (thành viên dự án thấy) và/hoặc từng
- * người cụ thể cùng lúc. Chủ (`filter:manage`) chọn rồi bấm "Lưu" (PATCH ngay, Cmd/Ctrl+Enter cũng lưu); người khác chỉ xem
+ * "Chia sẻ" của một bộ lọc đã lưu: "Chỉ mình tôi" hoặc "Chia sẻ" với NHIỀU dự án (ai xem được dự án đều thấy — dự án công
+ * khai: mọi người; dự án riêng tư: thành viên) và/hoặc từng người cụ thể cùng lúc. Chủ (`filter:manage`) chọn rồi bấm "Lưu" (PATCH ngay, Cmd/Ctrl+Enter cũng lưu); người khác chỉ xem
  * ai có quyền + sao chép liên kết `/filters/:id`. Kết quả chạy luôn theo quyền của người xem.
  * Luôn mount (có hiệu ứng đóng): `filter = null` là đóng; mỗi lần mở là một lần mount mới nên bản nháp khởi tạo lại.
  */
@@ -74,7 +66,7 @@ const MODE_OPTIONS = [
     value: 'SHARED' as const,
     label: 'Chia sẻ',
     description:
-      'Thành viên của các dự án bạn chọn và những người bạn chọn sẽ thấy bộ lọc; kết quả vẫn theo quyền của người xem.',
+      'Ai xem được các dự án bạn chọn (dự án công khai: mọi người; dự án riêng tư: thành viên) và những người bạn chọn sẽ thấy bộ lọc; kết quả vẫn theo quyền của người xem.',
   },
 ];
 
@@ -184,7 +176,11 @@ function SharedTargets({
     () =>
       (projects ?? [])
         .filter((p) => !p.isArchived || draft.projectIds.includes(p.id))
-        .map((p) => ({ id: p.id, label: p.name, hint: p.key })),
+        .map((p) => ({
+          id: p.id,
+          label: p.name,
+          hint: `${p.key} · ${p.isPrivate ? 'Riêng tư — chỉ thành viên thấy' : 'Công khai — mọi người xem được'}`,
+        })),
     [projects, draft.projectIds],
   );
   const peopleItems: ChecklistItem[] = useMemo(
@@ -205,7 +201,7 @@ function SharedTargets({
   return (
     <div className="mt-4 space-y-4">
       <ShareChecklist
-        label="Dự án — thành viên dự án thấy"
+        label="Dự án — ai xem được dự án đều thấy"
         items={projectItems}
         selected={selectedProjects}
         onToggle={(id) => onChange({ ...draft, projectIds: toggled(draft.projectIds, id) })}
@@ -243,57 +239,31 @@ function ReadOnlyShare({ filter }: { filter: SavedFilter }) {
 }
 
 /**
- * "Ai có quyền xem": số người = HỢP thành viên các dự án đã chọn và người được chọn cụ thể, không đếm trùng, không tính
- * chủ bộ lọc. Thành viên từng dự án lấy từ `GET /projects/:id/members` (cache chung). Chỉ chủ thấy danh sách đầy đủ; người
- * khác chỉ thấy phần được chia sẻ cho họ nên khối này hiện số theo dữ liệu họ có.
+ * "Ai có quyền xem": số người do MÁY CHỦ tính (`POST /filters/audience`) theo đúng luật xem dự án — HỢP người được chọn
+ * và mọi người xem được ít nhất một dự án đã chọn, không đếm trùng, không tính chủ. Người không phải chủ không có số
+ * (họ chỉ thấy phần chia sẻ cho họ).
  */
 function AudienceBlock({ filter, draft }: { filter: SavedFilter; draft: ShareDraft }) {
-  const { data: members } = useWorkspaceMembers(filter.isOwner);
   const shared = draft.visibility === 'SHARED';
-  const projectIds = shared ? draft.projectIds : [];
-  const memberQueries = useQueries({
-    queries: projectIds.map((pid) => ({
-      queryKey: keys.members.project(pid),
-      queryFn: async () => (await api.get<MemberDto[]>(`/projects/${pid}/members`)).data,
-      enabled: filter.isOwner,
-    })),
-  });
-
-  const projectMembers: Record<string, (AudiencePerson & { active: boolean })[] | undefined> = {};
-  projectIds.forEach((pid, i) => {
-    const data = memberQueries[i]?.data;
-    projectMembers[pid] = data?.map((m) => ({
-      id: m.user.id,
-      name: m.user.displayName,
-      avatarUrl: m.user.avatarUrl,
-      active: m.user.status !== 'DEACTIVATED',
-    }));
-  });
-  const people: Record<string, AudiencePerson> = {};
-  for (const m of members ?? [])
-    people[m.user.id] = { id: m.user.id, name: m.user.displayName, avatarUrl: m.user.avatarUrl };
-  if (!filter.isOwner)
-    for (const u of filter.sharedUsers)
-      people[u.id] = { id: u.id, name: u.displayName, avatarUrl: u.avatarUrl };
-
-  const failed = memberQueries.some((q) => q.isError);
-  const aud = audienceOf({
-    projectIds,
-    userIds: shared ? draft.userIds : [],
-    projectMembers,
-    people,
-    ownerId: filter.ownerId,
-  });
-  const shown = aud.people.slice(0, AVATAR_LIMIT);
-  const extra = aud.people.length - shown.length;
-  const headline = !shared
-    ? 'Chỉ bạn'
-    : aud.loading
-      ? 'Đang tính số người xem được…'
-      : `${fmtNumber(aud.people.length)} người xem được (ngoài chủ bộ lọc)`;
+  const audience = useFilterAudience(
+    shared ? draft.projectIds : [],
+    shared ? draft.userIds : [],
+    filter.isOwner && shared,
+  );
+  const data = audience.data;
+  const shown = data?.people ?? [];
+  const extra = data ? data.count - shown.length : 0;
+  const hasTarget = draft.projectIds.length + draft.userIds.length > 0;
+  let headline: string;
+  if (!filter.isOwner) headline = 'Bạn xem được bộ lọc này';
+  else if (!shared) headline = 'Chỉ bạn';
+  else if (!hasTarget) headline = 'Chưa chọn dự án hay người nào';
+  else if (audience.isError) headline = 'Không tính được số người xem được';
+  else if (!data) headline = 'Đang tính số người xem được…';
+  else headline = `${fmtNumber(data.count)} người xem được (ngoài chủ bộ lọc)`;
   const names =
     shown.length > 0
-      ? `Gồm ${shown.map((p) => p.name).join(', ')}${extra > 0 ? ` và ${extra} người khác` : ''}.`
+      ? `Gồm ${shown.map((p) => p.displayName).join(', ')}${extra > 0 ? ` và ${extra} người khác` : ''}.`
       : null;
 
   return (
@@ -306,7 +276,7 @@ function AudienceBlock({ filter, draft }: { filter: SavedFilter; draft: ShareDra
           <span className="flex shrink-0 -space-x-1.5" aria-hidden="true">
             {shown.map((p) => (
               <span key={p.id} className="rounded-full ring-2 ring-surface">
-                <Avatar name={p.name} src={p.avatarUrl} size={24} decorative />
+                <Avatar name={p.displayName} src={p.avatarUrl} size={24} decorative />
               </span>
             ))}
             {extra > 0 && (
@@ -317,13 +287,14 @@ function AudienceBlock({ filter, draft }: { filter: SavedFilter; draft: ShareDra
           </span>
         )}
         <div className="min-w-0">
-          <p className="text-sm text-ink">
+          <p className="text-sm text-ink" aria-busy={audience.pending || undefined}>
             {headline}
             {names && <span className="sr-only">. {names}</span>}
           </p>
-          {shared && failed && (
+          {shared && filter.isOwner && hasTarget && (
             <p className="text-xs text-muted">
-              Không tải được danh sách thành viên của một số dự án.
+              Dự án riêng tư chỉ tính thành viên (và quản trị); dự án công khai tính mọi người xem
+              được dự án đó.
             </p>
           )}
           {shared && !filter.isOwner && (

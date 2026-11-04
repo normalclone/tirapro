@@ -140,61 +140,53 @@ describe.skipIf(!DB_URL)('bộ lọc chia sẻ ↔ Postgres thật', () => {
     await expect(svc.run(WS, U.admin, f.id, { limit: 10 })).rejects.toMatchObject({ status: 404 });
   });
 
-  it('chia sẻ theo dự án: thành viên dự án thấy, người không thuộc dự án thì không (kể cả khi dự án công khai); chạy theo quyền NGƯỜI XEM', async () => {
+  it('chia sẻ theo dự án: AI XEM ĐƯỢC dự án đều thấy (công khai: cả người không là thành viên); dự án riêng tư chỉ thành viên + quản trị; chạy theo quyền NGƯỜI XEM', async () => {
     const f = await mk(U.owner, { visibility: 'SHARED', sharedProjectIds: [P.p1, P.p2] });
     expect(f.visibility).toBe('SHARED');
     expect(f.sharedProjects.map((p) => p.id).sort()).toEqual([P.p1, P.p2].sort());
-    expect(await listIds(U.a)).toContain(f.id);
-    expect(await listIds(U.c)).not.toContain(f.id);
-    expect(await listIds(U.admin)).not.toContain(f.id);
-    const seen = (await svc.list(WS, U.a)).find((x) => x.id === f.id)!;
+    expect(await listIds(U.a)).toContain(f.id); // thành viên p1
+    expect(await listIds(U.c)).toContain(f.id); // KHÔNG là thành viên nhưng xem được p1 công khai
+    expect(await listIds(U.admin)).toContain(f.id); // quản trị xem được mọi dự án
+    const seen = (await svc.list(WS, U.c)).find((x) => x.id === f.id)!;
     expect(seen.access).toBe('shared');
     expect(seen.isOwner).toBe(false);
     expect(seen.owner?.id).toBe(U.owner);
-    // a thấy p1 nhưng KHÔNG thấy tên p2 (riêng tư, a không thuộc) và không thấy ai được chia sẻ trực tiếp
+    // c thấy p1 nhưng KHÔNG thấy tên p2 (riêng tư, c không thuộc) và không thấy ai được chia sẻ trực tiếp
     expect(seen.sharedProjects.map((p) => p.id)).toEqual([P.p1]);
     expect(seen.sharedUsers).toEqual([]);
-    await svc.run(WS, U.a, f.id, { limit: 10 });
-    expect(runSearch).toHaveBeenCalledWith(WS, U.a, expect.objectContaining({ jql: 'type = Bug' }));
+    await svc.run(WS, U.c, f.id, { limit: 10 });
+    expect(runSearch).toHaveBeenCalledWith(WS, U.c, expect.objectContaining({ jql: 'type = Bug' }));
+    // Bộ lọc riêng tư của chủ vẫn không ai thấy, kể cả quản trị
+    const priv = await mk(U.owner, {});
+    expect(await listIds(U.admin)).not.toContain(priv.id);
   });
 
-  it('mất tư cách thành viên dự án → không còn thấy; dự án bị xoá mềm → chia sẻ qua dự án đó vô hiệu', async () => {
-    const f = await mk(U.owner, { visibility: 'SHARED', sharedProjectIds: [P.p1] });
-    expect(await listIds(U.a)).toContain(f.id);
-    const mem = await prisma.projectMembership.findFirstOrThrow({
-      where: { projectId: P.p1, userId: U.a },
-    });
-    await prisma.projectMembership.delete({ where: { id: mem.id } });
+  it('chỉ chia sẻ cho dự án RIÊNG TƯ: người không thuộc dự án không thấy; thêm vào dự án thì thấy, gỡ ra thì mất', async () => {
+    const f = await mk(U.owner, { visibility: 'SHARED', sharedProjectIds: [P.p2] });
     expect(await listIds(U.a)).not.toContain(f.id);
-    await expect(svc.run(WS, U.a, f.id, { limit: 10 })).rejects.toMatchObject({ status: 404 });
-    await prisma.projectMembership.create({
-      data: { id: mem.id, projectId: P.p1, userId: U.a, roleId: id('prole') },
+    expect(await listIds(U.c)).not.toContain(f.id);
+    expect(await listIds(U.admin)).toContain(f.id);
+    const mem = await prisma.projectMembership.create({
+      data: { id: id('m-c-p2'), projectId: P.p2, userId: U.c, roleId: id('prole') },
     });
-    expect(await listIds(U.a)).toContain(f.id);
+    expect(await listIds(U.c)).toContain(f.id);
+    await prisma.projectMembership.delete({ where: { id: mem.id } });
+    expect(await listIds(U.c)).not.toContain(f.id);
+    await expect(svc.run(WS, U.c, f.id, { limit: 10 })).rejects.toMatchObject({ status: 404 });
   });
 
-  it('dự án bị xoá mềm SAU khi chia sẻ → thành viên không còn thấy bộ lọc qua dự án đó, dự án biến khỏi danh sách chia sẻ', async () => {
-    await prisma.project.create({
-      data: {
-        id: P.later,
-        workspaceId: WS,
-        key: `${TAG.slice(2, 7).toUpperCase()}L`,
-        name: 'later',
-      },
-    });
-    for (const [n, u] of [
-      ['m-l-o', U.owner],
-      ['m-l-a', U.a],
-    ] as const)
-      await prisma.projectMembership.create({
-        data: { id: id(n), projectId: P.later, userId: u, roleId: id('prole') },
-      });
-    const g = await mk(U.owner, { visibility: 'SHARED', sharedProjectIds: [P.later] });
-    expect(await listIds(U.a)).toContain(g.id);
-    await prisma.project.update({ where: { id: P.later }, data: { deletedAt: new Date() } });
-    expect(await listIds(U.a)).not.toContain(g.id);
-    const mine = (await svc.list(WS, U.owner)).find((x) => x.id === g.id)!;
-    expect(mine.sharedProjects).toEqual([]);
+  it('dự án công khai bị chuyển sang riêng tư SAU khi chia sẻ → người không là thành viên không còn thấy, thành viên vẫn thấy', async () => {
+    const f = await mk(U.owner, { visibility: 'SHARED', sharedProjectIds: [P.p1] });
+    expect(await listIds(U.c)).toContain(f.id);
+    await prisma.project.update({ where: { id: P.p1 }, data: { isPrivate: true } });
+    try {
+      expect(await listIds(U.c)).not.toContain(f.id);
+      await expect(svc.run(WS, U.c, f.id, { limit: 10 })).rejects.toMatchObject({ status: 404 });
+      expect(await listIds(U.a)).toContain(f.id); // a vẫn là thành viên p1
+    } finally {
+      await prisma.project.update({ where: { id: P.p1 }, data: { isPrivate: false } });
+    }
+    expect(await listIds(U.c)).toContain(f.id);
   });
 
   it('chia sẻ cho dự án đã xoá hoặc ở tổ chức khác hoặc chủ không xem được → 422 FILTER_SHARE_PROJECT_NOT_VISIBLE', async () => {
@@ -272,8 +264,70 @@ describe.skipIf(!DB_URL)('bộ lọc chia sẻ ↔ Postgres thật', () => {
       status: 403,
     });
     await expect(svc.softDelete(WS, U.b, f.id)).rejects.toMatchObject({ status: 403 });
-    // người hoàn toàn ngoài: vẫn 403 (đường mutate không lộ tồn tại khác nhau) — theo hành vi hiện có là 403 nếu tồn tại
-    await expect(svc.update(WS, U.c, f.id, { name: 'x' })).rejects.toMatchObject({ status: 403 });
+    // người KHÔNG thấy bộ lọc: 404 như khi không tồn tại (không lộ rằng bộ lọc có thật)
+    await expect(svc.update(WS, U.c, f.id, { name: 'x' })).rejects.toMatchObject({ status: 404 });
+    await expect(svc.softDelete(WS, U.c, f.id)).rejects.toMatchObject({ status: 404 });
+    await expect(svc.update(WS, U.c, f.id, { name: 'x' })).rejects.not.toMatchObject({
+      status: 403,
+    });
+  });
+
+  it('dự án bị xoá mềm SAU khi chia sẻ → người xem không còn thấy; chia sẻ chỉ còn dự án đó → chủ thấy "shareLapsed" và bộ lọc về riêng tư', async () => {
+    const tmp = id('ptmp');
+    await prisma.project.create({
+      data: {
+        id: tmp,
+        workspaceId: WS,
+        key: `T${TAG.slice(2, 6).toUpperCase()}`,
+        name: 'tmp',
+        isPrivate: false,
+      },
+    });
+    await prisma.projectMembership.create({
+      data: { id: id('m-o-tmp'), projectId: tmp, userId: U.owner, roleId: id('prole') },
+    });
+    const f = await mk(U.owner, { visibility: 'SHARED', sharedProjectIds: [tmp] });
+    expect(await listIds(U.c)).toContain(f.id);
+    await prisma.project.update({ where: { id: tmp }, data: { deletedAt: new Date() } });
+    expect(await listIds(U.c)).not.toContain(f.id);
+    await expect(svc.run(WS, U.c, f.id, { limit: 10 })).rejects.toMatchObject({ status: 404 });
+    const asOwner = (await svc.list(WS, U.owner)).find((x) => x.id === f.id)!;
+    expect(asOwner.visibility).toBe('PRIVATE');
+    expect(asOwner.shareLapsed).toBe(true);
+    expect(asOwner.sharedProjects).toEqual([]);
+  });
+
+  it('audience: HỢP người chọn + người xem được ít nhất một dự án (không trùng, không tính chủ, bỏ người vô hiệu hoá, dự án không xem được bị bỏ qua)', async () => {
+    // p1 công khai → mọi thành viên tổ chức đang hoạt động trừ chủ: a, b, c, admin (off bị loại)
+    const pub = await svc.audience(WS, U.owner, { sharedProjectIds: [P.p1], sharedUserIds: [] });
+    expect(pub.count).toBe(4);
+    expect(pub.people.map((x) => x.id)).not.toContain(U.owner);
+    expect(pub.people.map((x) => x.id)).not.toContain(U.off);
+    // p2 riêng tư: chủ là thành viên; chỉ quản trị (xem mọi dự án) thấy ngoài chủ
+    const priv = await svc.audience(WS, U.owner, { sharedProjectIds: [P.p2], sharedUserIds: [] });
+    expect(priv.people.map((x) => x.id)).toEqual([U.admin]);
+    expect(priv.count).toBe(1);
+    // thêm người trực tiếp: c được cộng, admin không bị đếm hai lần
+    const mix = await svc.audience(WS, U.owner, {
+      sharedProjectIds: [P.p2],
+      sharedUserIds: [U.c, U.admin],
+    });
+    expect(mix.count).toBe(2);
+    // dự án chủ không xem được (p3) / đã xoá / tổ chức khác không góp người
+    const none = await svc.audience(WS, U.owner, {
+      sharedProjectIds: [P.p3, P.pDel, P.other],
+      sharedUserIds: [],
+    });
+    expect(none).toEqual({ count: 0, people: [] });
+    // chỉ người trực tiếp
+    const direct = await svc.audience(WS, U.owner, { sharedProjectIds: [], sharedUserIds: [U.b] });
+    expect(direct.people.map((x) => x.id)).toEqual([U.b]);
+    // người ngoài tổ chức không được đếm
+    const outsider = await svc.audience(WS, U.owner, {
+      sharedProjectIds: [],
+      sharedUserIds: [U.d],
+    });
+    expect(outsider.count).toBe(0);
   });
 
   it('thông báo chỉ gửi người MỚI được thêm: tạo → 1; thêm người → chỉ người đó; lưu lại y nguyên → 0; gỡ rồi thêm lại → báo lại', async () => {

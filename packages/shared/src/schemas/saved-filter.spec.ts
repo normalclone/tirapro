@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   MAX_SHARED_PROJECTS,
   SHARE_TARGET_REQUIRED_MESSAGE,
+  filterAudienceSchema,
   resolveFilterShare,
   savedFilterCreateSchema,
   savedFilterUpdateSchema,
@@ -116,5 +117,19 @@ describe('resolveFilterShare', () => {
       resolveFilterShare(shared, { visibility: 'SHARED', sharedProjectIds: [], sharedUserIds: [] })
         .error,
     ).toBe(SHARE_TARGET_REQUIRED_MESSAGE);
+  });
+});
+
+describe('filterAudienceSchema', () => {
+  it('thiếu danh sách → rỗng; bỏ trùng; quá giới hạn dự án bị từ chối', () => {
+    expect(filterAudienceSchema.parse({})).toEqual({ sharedProjectIds: [], sharedUserIds: [] });
+    expect(
+      filterAudienceSchema.parse({ sharedProjectIds: ['a', 'a'], sharedUserIds: ['u'] }),
+    ).toEqual({
+      sharedProjectIds: ['a'],
+      sharedUserIds: ['u'],
+    });
+    const many = Array.from({ length: MAX_SHARED_PROJECTS + 1 }, (_, i) => `p${i}`);
+    expect(filterAudienceSchema.safeParse({ sharedProjectIds: many }).success).toBe(false);
   });
 });

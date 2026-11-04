@@ -21,14 +21,6 @@ const row = (over: Record<string, unknown> = {}) => ({
 
 function make(visibleIds: string[] | null = ['p1']) {
   const base = row();
-  const tx = {
-    savedFilter: {
-      create: vi.fn(() => Promise.resolve({ id: 'f1' })),
-      update: vi.fn(() => Promise.resolve({})),
-    },
-    savedFilterProjectShare: { deleteMany: vi.fn(), createMany: vi.fn() },
-    savedFilterUserShare: { deleteMany: vi.fn(), createMany: vi.fn() },
-  };
   const prisma = {
     savedFilter: {
       findMany: vi.fn(() => Promise.resolve([base])),
@@ -39,6 +31,7 @@ function make(visibleIds: string[] | null = ['p1']) {
       findMany: vi.fn((a: { where: { id: { in: string[] } } }) =>
         Promise.resolve(a.where.id.in.map((id) => ({ id }))),
       ),
+      findFirst: vi.fn(() => Promise.resolve({ id: 'p1' })),
     },
     workspaceMembership: {
       findMany: vi.fn((a: { where: { userId: { in: string[] } } }) =>
@@ -46,7 +39,21 @@ function make(visibleIds: string[] | null = ['p1']) {
       ),
     },
     user: { findMany: vi.fn(() => Promise.resolve([{ displayName: 'Ai đó' }])) },
-    $transaction: vi.fn((fn: (t: typeof tx) => unknown) => Promise.resolve(fn(tx))),
+    $transaction: vi.fn((fn: (t: unknown) => unknown) => Promise.resolve(fn(tx))),
+  };
+  // Giao dịch đọc cùng nguồn giả với `prisma` (đọc hiện trạng + kiểm đích nằm TRONG giao dịch), thêm khoá hàng + các lệnh ghi.
+  const tx = {
+    $queryRaw: vi.fn(() => Promise.resolve([{ id: 'f1' }])),
+    savedFilter: {
+      findFirst: prisma.savedFilter.findFirst,
+      create: vi.fn(() => Promise.resolve({ id: 'f1' })),
+      update: vi.fn(() => Promise.resolve({})),
+    },
+    project: prisma.project,
+    workspaceMembership: prisma.workspaceMembership,
+    user: prisma.user,
+    savedFilterProjectShare: { deleteMany: vi.fn(), createMany: vi.fn() },
+    savedFilterUserShare: { deleteMany: vi.fn(), createMany: vi.fn() },
   };
   const search = { search: vi.fn(() => Promise.resolve({ data: [], meta: {} })) };
   const access = {
@@ -76,7 +83,8 @@ describe('SavedFiltersService — phạm vi xem', () => {
     expect(where).toContain('"projectShares":{"some":{"project":');
     expect(where).toContain('"deletedAt":null');
     expect(where).toContain(JSON.stringify(VISIBLE));
-    expect(where).toContain('"memberships":{"some":{"userId":"u1"}}');
+    // Chỉ MỘT điều kiện thành viên — nằm trong visibleWhere; không còn luật "chỉ thành viên" riêng cho bộ lọc
+    expect(where.split('"memberships"').length - 1).toBe(1);
     expect(where).not.toContain('WORKSPACE');
   });
 
@@ -168,6 +176,39 @@ describe('SavedFiltersService — chia sẻ', () => {
       status: 403,
     });
     expect(tx.savedFilter.update).not.toHaveBeenCalled();
+  });
+
+  it('update()/softDelete(): người KHÔNG thấy bộ lọc → 404 (không lộ tồn tại); thấy mà không phải chủ → 403', async () => {
+    const { service, prisma, tx } = make();
+    prisma.savedFilter.findFirst.mockResolvedValue(null);
+    await expect(service.update('w1', 'u9', 'f1', { name: 'x' })).rejects.toBeInstanceOf(
+      NotFoundAppException,
+    );
+    await expect(service.softDelete('w1', 'u9', 'f1')).rejects.toBeInstanceOf(NotFoundAppException);
+    expect(tx.savedFilter.update).not.toHaveBeenCalled();
+  });
+
+  it('update(): đọc hiện trạng + khoá hàng + kiểm đích nằm trong giao dịch', async () => {
+    const { service, prisma, tx } = make();
+    prisma.savedFilter.findFirst.mockResolvedValue(
+      row({ visibility: 'SHARED', userShares: [{ user: person('b') }] }),
+    );
+    await service.update('w1', 'u1', 'f1', { sharedUserIds: ['b', 'c'] });
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(tx.savedFilterUserShare.createMany).toHaveBeenCalled();
+  });
+
+  it('shareLapsed: bộ lọc SHARED nhưng không còn đích sống → trả PRIVATE; chỉ chủ thấy cờ', async () => {
+    const lapsedRow = row({ visibility: 'SHARED', ownerId: 'u2', owner: person('u2') });
+    const asOwner = make();
+    asOwner.prisma.savedFilter.findMany.mockResolvedValue([lapsedRow]);
+    const [o] = await asOwner.service.list('w1', 'u2');
+    expect(o).toMatchObject({ visibility: 'PRIVATE', shareLapsed: true });
+    const asOther = make();
+    asOther.prisma.savedFilter.findMany.mockResolvedValue([lapsedRow]);
+    const [v] = await asOther.service.list('w1', 'u1');
+    expect(v!.shareLapsed).toBeUndefined();
   });
 
   it('update(): chỉ đổi tên không chạm bảng chia sẻ; thông báo chỉ cho người MỚI', async () => {

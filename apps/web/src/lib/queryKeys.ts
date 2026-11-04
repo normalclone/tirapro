@@ -102,6 +102,7 @@ export const keys = {
   filters: {
     all: ['filters'] as const,
     fields: ['filter-fields'] as const,
+    audience: (body: string) => ['filter-audience', body] as const,
   },
 
   goals: {

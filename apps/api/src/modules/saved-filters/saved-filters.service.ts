@@ -10,7 +10,8 @@ import {
   type FilterShareState,
   type IssueDto,
 } from '@tirapro/shared';
-import { ERROR_CODES, type SavedFilterDto } from '@tirapro/types';
+import { ERROR_CODES, type FilterAudienceDto, type SavedFilterDto } from '@tirapro/types';
+import { mapLimit } from '../../common/map-limit';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { SearchService } from '../search/search.service';
 import { ProjectAccessService } from '../rbac/project-access.service';
@@ -46,6 +47,11 @@ export interface RunSavedFilterOptions {
   limit: number;
 }
 
+/** Trần số thành viên xét khi đếm "ai xem được" + số người mẫu trả về. */
+const AUDIENCE_MEMBER_CAP = 2000;
+const AUDIENCE_CONCURRENCY = 8;
+const AUDIENCE_SAMPLE = 6;
+
 const PERSON_SELECT = { id: true, displayName: true, avatarUrl: true } as const;
 
 const filterSelect = {
@@ -62,6 +68,7 @@ const filterSelect = {
     orderBy: { project: { name: 'asc' } },
   },
   userShares: {
+    where: { user: { status: { not: 'DEACTIVATED' } } },
     select: { user: { select: PERSON_SELECT } },
     orderBy: { user: { displayName: 'asc' } },
   },
@@ -103,8 +110,8 @@ export class SavedFiltersService {
   ): Promise<SavedFilterDto> {
     this.validateJql(input.jql);
     const share = this.resolveShare(null, input, userId);
-    await this.assertShareTargets(workspaceId, userId, share);
     const id = await this.prisma.$transaction(async (tx) => {
+      await this.assertShareTargets(workspaceId, userId, share, tx);
       const row = await tx.savedFilter.create({
         data: {
           workspaceId,
@@ -122,30 +129,35 @@ export class SavedFiltersService {
     return this.get(workspaceId, userId, id);
   }
 
-  /** Cập nhật — chỉ chủ sở hữu; re-validate JQL nếu đổi. Chỉ chủ đổi được chia sẻ. */
+  /**
+   * Cập nhật — chỉ chủ sở hữu; re-validate JQL nếu đổi. Chỉ chủ đổi được chia sẻ. Đọc trạng thái hiện tại, kiểm đích và ghi
+   * nằm trong MỘT giao dịch có khoá hàng bộ lọc: hai lần lưu đồng thời chạy tuần tự (không ghi đè nhau, không báo đôi).
+   */
   async update(
     workspaceId: string,
     userId: string,
     id: string,
     input: UpdateSavedFilterInput,
   ): Promise<SavedFilterDto> {
-    const current = await this.requireOwned(workspaceId, userId, id);
     if (input.jql !== undefined) this.validateJql(input.jql);
-    const currentShare = this.shareState(current);
-    const share = this.resolveShare(currentShare, input, userId);
     const sharingChanged =
       input.visibility !== undefined ||
       input.sharedProjectIds !== undefined ||
       input.sharedUserIds !== undefined;
-    if (sharingChanged) await this.assertShareTargets(workspaceId, userId, share);
+    const { current, previousUserIds, share } = await this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT "id" FROM "SavedFilter" WHERE "id" = ${id} FOR UPDATE`;
+      const cur = await this.requireOwned(workspaceId, userId, id, tx);
+      const currentShare = this.shareState(cur);
+      const next = this.resolveShare(currentShare, input, userId);
+      if (sharingChanged) await this.assertShareTargets(workspaceId, userId, next, tx);
 
-    const data: Prisma.SavedFilterUncheckedUpdateInput = {};
-    if (input.name !== undefined) data.name = input.name;
-    if (input.jql !== undefined) data.jql = input.jql;
-    if (sharingChanged) data.visibility = share.visibility;
-    await this.prisma.$transaction(async (tx) => {
+      const data: Prisma.SavedFilterUncheckedUpdateInput = {};
+      if (input.name !== undefined) data.name = input.name;
+      if (input.jql !== undefined) data.jql = input.jql;
+      if (sharingChanged) data.visibility = next.visibility;
       if (Object.keys(data).length > 0) await tx.savedFilter.update({ where: { id }, data });
-      if (sharingChanged) await this.writeShares(tx, id, share);
+      if (sharingChanged) await this.writeShares(tx, id, next);
+      return { current: cur, previousUserIds: currentShare.sharedUserIds, share: next };
     });
     if (sharingChanged) {
       await this.notifyNewlyShared(
@@ -154,10 +166,62 @@ export class SavedFiltersService {
         id,
         input.name ?? current.name,
         share,
-        currentShare.sharedUserIds,
+        previousUserIds,
       );
     }
     return this.get(workspaceId, userId, id);
+  }
+
+  /**
+   * "Ai xem được" một bản chia sẻ (chưa cần lưu): HỢP người được chọn trực tiếp và mọi thành viên tổ chức đang hoạt động
+   * xem được ÍT NHẤT MỘT dự án đã chọn — cùng luật `visibleWhere` mà phạm vi xem dùng (dự án công khai: ai xem được dự án
+   * đều thấy; dự án riêng tư: thành viên + quản trị). Không đếm trùng, không tính chủ; dự án chủ không xem được bị bỏ qua
+   * (khi lưu sẽ bị từ chối).
+   */
+  async audience(
+    workspaceId: string,
+    ownerId: string,
+    input: { sharedProjectIds: string[]; sharedUserIds: string[] },
+  ): Promise<FilterAudienceDto> {
+    const ownerVisible = await this.access.visibleWhere(ownerId, workspaceId);
+    const projectIds = input.sharedProjectIds.length
+      ? (
+          await this.prisma.project.findMany({
+            where: {
+              id: { in: input.sharedProjectIds },
+              workspaceId,
+              deletedAt: null,
+              AND: [ownerVisible],
+            },
+            select: { id: true },
+          })
+        ).map((p) => p.id)
+      : [];
+    const members = await this.prisma.workspaceMembership.findMany({
+      where: {
+        workspaceId,
+        userId: { not: ownerId },
+        user: { status: { not: 'DEACTIVATED' } },
+      },
+      select: { user: { select: PERSON_SELECT } },
+      take: AUDIENCE_MEMBER_CAP,
+    });
+    const direct = new Set(input.sharedUserIds);
+    const hits = await mapLimit(members, AUDIENCE_CONCURRENCY, async (m) => {
+      if (direct.has(m.user.id)) return true;
+      if (projectIds.length === 0) return false;
+      const visible = await this.access.visibleWhere(m.user.id, workspaceId);
+      const seen = await this.prisma.project.findFirst({
+        where: { id: { in: projectIds }, workspaceId, deletedAt: null, AND: [visible] },
+        select: { id: true },
+      });
+      return seen !== null;
+    });
+    const people = members
+      .filter((_, i) => hits[i])
+      .map((m) => m.user)
+      .sort((a, b) => a.displayName.localeCompare(b.displayName, 'vi'));
+    return { count: people.length, people: people.slice(0, AUDIENCE_SAMPLE) };
   }
 
   /** Xóa mềm — chỉ chủ sở hữu. */
@@ -183,9 +247,10 @@ export class SavedFiltersService {
   }
 
   /**
-   * Điều kiện OR cho phạm vi xem: (1) của mình; (2) người khác chia sẻ trực tiếp cho mình; (3) chia sẻ cho một dự án mình
-   * là THÀNH VIÊN (và còn xem được, chưa xoá). Không ai khác — kể cả quản trị — tự thấy bộ lọc riêng tư của người khác.
-   * Người mất tư cách thành viên dự án (và không có chia sẻ trực tiếp) thì không còn thấy.
+   * Điều kiện OR cho phạm vi xem: (1) của mình; (2) người khác chia sẻ trực tiếp cho mình; (3) chia sẻ cho một dự án mà
+   * mình XEM ĐƯỢC theo đúng luật hiển thị dự án (`visibleWhere`: dự án công khai thì mọi người xem được; dự án riêng tư chỉ
+   * thành viên và quản trị) và dự án còn sống. Bộ lọc riêng tư của người khác thì không ai tự thấy — kể cả quản trị. Dự án
+   * chuyển riêng tư / bị xoá, hoặc người xem mất quyền xem dự án (và không có chia sẻ trực tiếp) thì không còn thấy.
    */
   private async visibilityScope(
     workspaceId: string,
@@ -199,11 +264,7 @@ export class SavedFiltersService {
         visibility: FilterVisibility.SHARED,
         projectShares: {
           some: {
-            project: {
-              workspaceId,
-              deletedAt: null,
-              AND: [visible, { memberships: { some: { userId } } }],
-            },
+            project: { workspaceId, deletedAt: null, AND: [visible] },
           },
         },
       },
@@ -235,19 +296,25 @@ export class SavedFiltersService {
     return row;
   }
 
-  /** Nạp filter và đảm bảo user là chủ sở hữu (cho mutate) — 404 nếu không tồn tại, 403 nếu không phải chủ. */
+  /**
+   * Nạp filter và đảm bảo user là chủ sở hữu (cho mutate): 404 nếu không tồn tại HOẶC người gọi không xem được (không lộ
+   * sự tồn tại của bộ lọc riêng tư); 403 chỉ khi xem được nhưng không phải chủ. `db`: client của giao dịch đang mở.
+   */
   private async requireOwned(
     workspaceId: string,
     userId: string,
     id: string,
+    db: Pick<Prisma.TransactionClient, 'savedFilter'> = this.prisma,
   ): Promise<SavedFilterRow> {
-    const row = await this.prisma.savedFilter.findFirst({
+    const row = await db.savedFilter.findFirst({
       where: { id, workspaceId, deletedAt: null },
       select: filterSelect,
     });
     if (!row) throw new NotFoundAppException('Bộ lọc');
-    if (row.ownerId !== userId)
+    if (row.ownerId !== userId) {
+      await this.requireVisible(workspaceId, userId, id); // 404 nếu không xem được
       throw new ForbiddenAppException('Chỉ chủ sở hữu mới sửa được bộ lọc này');
+    }
     return row;
   }
 
@@ -285,10 +352,11 @@ export class SavedFiltersService {
     workspaceId: string,
     ownerId: string,
     share: FilterShareState,
+    db: Pick<Prisma.TransactionClient, 'project' | 'workspaceMembership' | 'user'> = this.prisma,
   ): Promise<void> {
     if (share.sharedProjectIds.length > 0) {
       const visible = await this.access.visibleWhere(ownerId, workspaceId);
-      const found = await this.prisma.project.findMany({
+      const found = await db.project.findMany({
         where: {
           id: { in: share.sharedProjectIds },
           workspaceId,
@@ -307,7 +375,7 @@ export class SavedFiltersService {
     }
     const userIds = share.sharedUserIds;
     if (userIds.length > 0) {
-      const members = await this.prisma.workspaceMembership.findMany({
+      const members = await db.workspaceMembership.findMany({
         where: {
           workspaceId,
           userId: { in: userIds },
@@ -318,7 +386,7 @@ export class SavedFiltersService {
       const ok = new Set(members.map((m) => m.userId));
       const bad = userIds.filter((u) => !ok.has(u));
       if (bad.length > 0) {
-        const names = await this.prisma.user.findMany({
+        const names = await db.user.findMany({
           where: { id: { in: bad } },
           select: { displayName: true },
         });
@@ -403,12 +471,17 @@ export class SavedFiltersService {
    */
   private toDto(row: SavedFilterRow, userId: string, visibleIds: string[] | null): SavedFilterDto {
     const isOwner = row.ownerId === userId;
+    // Mọi đích chia sẻ đã biến mất (dự án bị xoá, người rời đi): bộ lọc thực chất riêng tư — báo đúng thay vì "Chia sẻ · 0".
+    const lapsed =
+      row.visibility === FilterVisibility.SHARED &&
+      row.projectShares.length + row.userShares.length === 0;
     const canSeeProject = (id: string) => isOwner || visibleIds === null || visibleIds.includes(id);
     return {
       id: row.id,
       name: row.name,
       jql: row.jql,
-      visibility: row.visibility,
+      visibility: lapsed ? FilterVisibility.PRIVATE : row.visibility,
+      ...(lapsed && isOwner ? { shareLapsed: true } : {}),
       ownerId: row.ownerId,
       isOwner,
       access: isOwner ? 'owner' : 'shared',
