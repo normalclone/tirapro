@@ -14,6 +14,7 @@ import { iso } from '../../common/mappers/date';
 import { BusinessRuleException, NotFoundAppException } from '../../common/exceptions/app.exception';
 import { assertNotArchived } from '../../common/project-writable';
 import { TRIAGE_VISIBLE, isUnreviewed } from '../../common/triage-visibility';
+import { countsTowardPoints, EXCLUDE_EPIC_POINTS } from '../../common/points-scope';
 
 /** Ngày lịch (UTC) của một thời điểm, dạng số để so sánh. */
 const utcDay = (d: Date) => Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
@@ -38,14 +39,26 @@ export class SprintsService {
     });
     if (sprints.length === 0) return [];
     // Đếm issue + tổng điểm bằng một câu GROUP BY (không kéo từng issue về); issue đã xoá mềm không tính.
-    const groups = await this.prisma.issue.groupBy({
-      by: ['sprintId'],
-      where: { sprintId: { in: sprints.map((s) => s.id) }, deletedAt: null, ...TRIAGE_VISIBLE },
-      _count: { _all: true },
-      _sum: { storyPoints: true },
-    });
+    // Điểm cộng riêng và LOẠI Epic (điểm Epic = tổng việc con → cộng sẽ đếm đôi); số đếm vẫn tính cả Epic.
+    const inSprints = {
+      sprintId: { in: sprints.map((s) => s.id) },
+      deletedAt: null,
+      ...TRIAGE_VISIBLE,
+    };
+    const [groups, pointGroups] = await Promise.all([
+      this.prisma.issue.groupBy({ by: ['sprintId'], where: inSprints, _count: { _all: true } }),
+      this.prisma.issue.groupBy({
+        by: ['sprintId'],
+        where: { ...inSprints, ...EXCLUDE_EPIC_POINTS },
+        _sum: { storyPoints: true },
+      }),
+    ]);
+    const pointsBySprint = new Map(pointGroups.map((g) => [g.sprintId, g._sum.storyPoints ?? 0]));
     const statsBySprint = new Map(
-      groups.map((g) => [g.sprintId, { count: g._count._all, points: g._sum.storyPoints ?? 0 }]),
+      groups.map((g) => [
+        g.sprintId,
+        { count: g._count._all, points: pointsBySprint.get(g.sprintId) ?? 0 },
+      ]),
     );
     return sprints.map((s) => {
       const st = statsBySprint.get(s.id);
@@ -429,10 +442,16 @@ export class SprintsService {
   ) {
     const issues = await tx.issue.findMany({
       where: { sprintId, deletedAt: null, ...TRIAGE_VISIBLE },
-      select: { storyPoints: true, status: { select: { category: true } } },
+      select: {
+        storyPoints: true,
+        status: { select: { category: true } },
+        type: { select: { key: true } },
+      },
     });
-    const committedPoints = issues.reduce((a, i) => a + (i.storyPoints ?? 0), 0);
-    const completedPoints = issues
+    // Điểm Epic = tổng việc con → không cộng (đếm đôi); số việc hoàn thành vẫn tính cả Epic.
+    const pointed = issues.filter(countsTowardPoints);
+    const committedPoints = pointed.reduce((a, i) => a + (i.storyPoints ?? 0), 0);
+    const completedPoints = pointed
       .filter((i) => i.status.category === 'DONE')
       .reduce((a, i) => a + (i.storyPoints ?? 0), 0);
     const completedCount = issues.filter((i) => i.status.category === 'DONE').length;

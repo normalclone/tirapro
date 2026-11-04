@@ -13,6 +13,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { isBugType } from '../../common/bug-type';
 import { TRIAGE_VISIBLE, triageVisibleSql } from '../../common/triage-visibility';
+import { countsTowardPoints, EXCLUDE_EPIC_POINTS } from '../../common/points-scope';
 import { NotFoundAppException } from '../../common/exceptions/app.exception';
 import { ProjectAccessService } from '../rbac/project-access.service';
 import { ProjectHealthService } from './project-health.service';
@@ -309,6 +310,8 @@ export class AnalyticsService {
     // Việc chưa duyệt không tính vào báo cáo (cùng quy tắc Tổng quan/Board).
     const baseWhere: Prisma.IssueWhereInput = { projectId, deletedAt: null, AND: [TRIAGE_VISIBLE] };
     const openStatus: Prisma.IssueWhereInput = { status: { category: { not: 'DONE' } } };
+    // Điểm cộng riêng, LOẠI Epic (điểm Epic = tổng việc con → cộng sẽ đếm đôi); số đếm việc ở các groupBy trên vẫn tính cả Epic.
+    const pointsWhere: Prisma.IssueWhereInput = { ...baseWhere, ...EXCLUDE_EPIC_POINTS };
     const sumPoints = { storyPoints: true } as const;
 
     const [
@@ -319,20 +322,16 @@ export class AnalyticsService {
       overdueGroups,
       highPriUnassigned,
       dueSoon,
+      pointsByStatus,
+      pointsByAssignee,
     ] = await Promise.all([
-      this.prisma.issue.groupBy({
-        by: ['statusId'],
-        where: baseWhere,
-        _count: { _all: true },
-        _sum: sumPoints,
-      }),
+      this.prisma.issue.groupBy({ by: ['statusId'], where: baseWhere, _count: { _all: true } }),
       this.prisma.issue.groupBy({ by: ['typeId'], where: baseWhere, _count: { _all: true } }),
       this.prisma.issue.groupBy({ by: ['priorityId'], where: baseWhere, _count: { _all: true } }),
       this.prisma.issue.groupBy({
         by: ['assigneeId', 'statusId'],
         where: baseWhere,
         _count: { _all: true },
-        _sum: sumPoints,
       }),
       this.prisma.issue.groupBy({
         by: ['assigneeId'],
@@ -354,6 +353,8 @@ export class AnalyticsService {
           dueDate: { gte: overdueCutoff(now), lte: new Date(now.getTime() + 3 * DAY) },
         },
       }),
+      this.prisma.issue.groupBy({ by: ['statusId'], where: pointsWhere, _sum: sumPoints }),
+      this.prisma.issue.groupBy({ by: ['assigneeId'], where: pointsWhere, _sum: sumPoints }),
     ]);
 
     const assigneeIds = [
@@ -406,7 +407,6 @@ export class AnalyticsService {
       if (!st) continue;
       const n = g._count._all;
       totals.total += n;
-      totals.points += pointsOf(g);
       if (st.category === 'TODO') totals.todo += n;
       else if (st.category === 'IN_PROGRESS') totals.inProgress += n;
       else totals.done += n;
@@ -419,6 +419,7 @@ export class AnalyticsService {
       row.count += n;
       statusMap.set(st.name, row);
     }
+    for (const g of pointsByStatus) if (statusById.has(g.statusId)) totals.points += pointsOf(g);
     totals.points = round(totals.points);
 
     const typeMap = new Map<string, { name: string; color: string | null; count: number }>();
@@ -475,7 +476,6 @@ export class AnalyticsService {
           points: 0,
         } satisfies AssigneeRow);
       row.total += n;
-      row.points += pointsOf(g);
       if (cat === 'IN_PROGRESS') row.inProgress += n;
       else if (cat === 'DONE') row.done += n;
       if (!g.assigneeId) totals.unassigned += n;
@@ -484,6 +484,10 @@ export class AnalyticsService {
     for (const g of overdueGroups) {
       const row = assigneeMap.get(g.assigneeId ?? UNASSIGNED);
       if (row) row.overdue += g._count._all;
+    }
+    for (const g of pointsByAssignee) {
+      const row = assigneeMap.get(g.assigneeId ?? UNASSIGNED);
+      if (row) row.points += pointsOf(g);
     }
     for (const row of assigneeMap.values()) row.points = round(row.points);
 
@@ -544,7 +548,8 @@ export class AnalyticsService {
       },
       include: {
         issues: {
-          where: { deletedAt: null, ...TRIAGE_VISIBLE },
+          // Chỉ để cộng điểm (cam kết/đã xong): loại Epic — điểm Epic = tổng việc con, cộng sẽ đếm đôi.
+          where: { deletedAt: null, ...TRIAGE_VISIBLE, ...EXCLUDE_EPIC_POINTS },
           select: { id: true, storyPoints: true },
         },
       },
@@ -658,10 +663,15 @@ export class AnalyticsService {
     if (!closeSnap) {
       const issues = await this.prisma.issue.findMany({
         where: { sprintId, deletedAt: null, ...TRIAGE_VISIBLE },
-        select: { storyPoints: true, status: { select: { category: true } } },
+        select: {
+          storyPoints: true,
+          status: { select: { category: true } },
+          type: { select: { key: true } },
+        },
       });
       for (const i of issues) {
-        const p = i.storyPoints ?? 0;
+        // Số việc tính cả Epic; điểm thì loại Epic (điểm Epic = tổng việc con, cộng sẽ đếm đôi).
+        const p = countsTowardPoints(i) ? (i.storyPoints ?? 0) : 0;
         live.points += p;
         live.count += 1;
         if (i.status.category === 'DONE') {

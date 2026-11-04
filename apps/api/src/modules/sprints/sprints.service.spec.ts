@@ -317,15 +317,19 @@ describe('SprintsService.start — ngày và mục tiêu trong cùng giao dịch
 });
 
 describe('SprintsService.listForProject — groupBy thay cho kéo từng issue', () => {
-  it('đếm + cộng điểm bằng một groupBy, sprint trống => 0/0', async () => {
+  it('đếm và cộng điểm bằng hai groupBy (điểm LOẠI Epic), sprint trống => 0/0', async () => {
     const sprintFindMany = vi.fn(() =>
       Promise.resolve([
         sprintRow({ id: 's1', sequence: 2 }),
         sprintRow({ id: 's2', sequence: 1, state: 'FUTURE' }),
       ]),
     );
-    const groupBy = vi.fn(() =>
-      Promise.resolve([{ sprintId: 's1', _count: { _all: 3 }, _sum: { storyPoints: 8.5 } }]),
+    const groupBy = vi.fn((args: { _sum?: unknown }) =>
+      Promise.resolve(
+        args._sum
+          ? [{ sprintId: 's1', _sum: { storyPoints: 8.5 } }]
+          : [{ sprintId: 's1', _count: { _all: 3 } }],
+      ),
     );
     const { service } = make({ sprint: { findMany: sprintFindMany }, issue: { groupBy } });
     const list = await service.listForProject('w1', 'p1');
@@ -333,15 +337,23 @@ describe('SprintsService.listForProject — groupBy thay cho kéo từng issue',
       ['s1', 3, 8.5],
       ['s2', 0, 0],
     ]);
+    // việc chưa duyệt không tính vào sprint (cùng quy tắc với Board/Việc chờ)
+    const inSprints = {
+      sprintId: { in: ['s1', 's2'] },
+      deletedAt: null,
+      OR: [{ triageState: null }, { triageState: 'ACCEPTED' }],
+    };
+    expect(groupBy).toHaveBeenCalledTimes(2);
+    // số đếm: tính cả Epic
     expect(groupBy).toHaveBeenCalledWith({
       by: ['sprintId'],
-      // việc chưa duyệt không tính vào sprint (cùng quy tắc với Board/Việc chờ)
-      where: {
-        sprintId: { in: ['s1', 's2'] },
-        deletedAt: null,
-        OR: [{ triageState: null }, { triageState: 'ACCEPTED' }],
-      },
+      where: inSprints,
       _count: { _all: true },
+    });
+    // điểm: loại Epic (điểm Epic = tổng việc con, cộng sẽ đếm đôi)
+    expect(groupBy).toHaveBeenCalledWith({
+      by: ['sprintId'],
+      where: { ...inSprints, NOT: { type: { key: 'EPIC' } } },
       _sum: { storyPoints: true },
     });
     // không include issues nữa
@@ -351,8 +363,12 @@ describe('SprintsService.listForProject — groupBy thay cho kéo từng issue',
   });
 
   it('điểm null được tính là 0; không có sprint thì không gọi groupBy', async () => {
-    const groupBy = vi.fn(() =>
-      Promise.resolve([{ sprintId: 's1', _count: { _all: 2 }, _sum: { storyPoints: null } }]),
+    const groupBy = vi.fn((args: { _sum?: unknown }) =>
+      Promise.resolve(
+        args._sum
+          ? [{ sprintId: 's1', _sum: { storyPoints: null } }]
+          : [{ sprintId: 's1', _count: { _all: 2 } }],
+      ),
     );
     const findMany = vi
       .fn()
@@ -542,6 +558,26 @@ describe('SprintsService — việc chưa duyệt không tính vào snapshot/pay
     await service.snapshot(t as never, 's1', 'DAILY');
     const arg = t.issue.findMany.mock.calls[0]![0] as unknown as { where: unknown };
     expect(hasTriageVisible(arg.where)).toBe(true);
+  });
+
+  it('snapshot(): điểm cam kết/hoàn thành LOẠI Epic (điểm Epic = tổng việc con), số việc vẫn tính cả Epic', async () => {
+    const t = tx();
+    t.issue.findMany.mockResolvedValue([
+      { storyPoints: 3, status: { category: 'DONE' }, type: { key: 'TASK' } },
+      { storyPoints: 5, status: { category: 'TODO' }, type: { key: 'STORY' } },
+      { storyPoints: 2, status: { category: 'TODO' }, type: { key: null } },
+      // Epic chứa chính các việc trên: 3 + 5 + 2 = 10 — cộng thêm sẽ thành 20
+      { storyPoints: 10, status: { category: 'IN_PROGRESS' }, type: { key: 'EPIC' } },
+    ] as never);
+    const { service } = make(t);
+    await service.snapshot(t as never, 's1', 'DAILY');
+    expect(t.sprintSnapshot.create.mock.calls[0]![0].data).toMatchObject({
+      committedPoints: 10,
+      completedPoints: 3,
+      remainingPoints: 7,
+      committedCount: 4,
+      completedCount: 1,
+    });
   });
 
   it('complete(): việc chưa duyệt vẫn được đưa ra khỏi sprint nhưng KHÔNG liệt vào carriedOver của payload', async () => {

@@ -3,6 +3,7 @@ import { overdueCutoff, type ProjectHealthDto } from '@tirapro/shared';
 import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { TRIAGE_VISIBLE } from '../../common/triage-visibility';
+import { EXCLUDE_EPIC_POINTS } from '../../common/points-scope';
 import { ProjectAccessService } from '../rbac/project-access.service';
 import { computeProjectHealth } from './project-health';
 
@@ -91,12 +92,23 @@ export class ProjectHealthService {
       ? await Promise.all([
           this.prisma.issue.groupBy({
             by: ['sprintId'],
-            where: { sprintId: { in: sprintIds }, deletedAt: null, ...TRIAGE_VISIBLE },
+            where: {
+              sprintId: { in: sprintIds },
+              deletedAt: null,
+              ...TRIAGE_VISIBLE,
+              ...EXCLUDE_EPIC_POINTS, // điểm Epic = tổng việc con: cộng sẽ đếm đôi
+            },
             _sum: { storyPoints: true },
           }),
           this.prisma.issue.groupBy({
             by: ['sprintId'],
-            where: { sprintId: { in: sprintIds }, deletedAt: null, ...TRIAGE_VISIBLE, ...notDone },
+            where: {
+              sprintId: { in: sprintIds },
+              deletedAt: null,
+              ...TRIAGE_VISIBLE,
+              ...EXCLUDE_EPIC_POINTS,
+              ...notDone,
+            },
             _sum: { storyPoints: true },
           }),
         ])

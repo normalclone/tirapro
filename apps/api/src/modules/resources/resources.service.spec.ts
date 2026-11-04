@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ResourcesService } from './resources.service';
 import { hasTriageVisible } from '../../common/triage-visibility.testutil';
 
@@ -143,5 +143,60 @@ describe('ResourcesService.workload — việc chưa duyệt không tính vào t
     expect(hasTriageVisible(where)).toBe(true);
     // khoảng ngày (OR gốc) vẫn còn
     expect(JSON.stringify(where)).toContain('"startDate"');
+  });
+});
+
+describe('ResourcesService.workload — điểm Epic không quy ra giờ (đếm đôi với việc con)', () => {
+  // Cố định "hôm nay" là một ngày làm việc (thứ Tư 04/11/2026) để giờ đã giao không phụ thuộc ngày chạy test.
+  const day = new Date('2026-11-04T05:00:00Z');
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(day);
+  });
+  afterEach(() => vi.useRealTimers());
+
+  /** Tổng giờ đã giao của mọi tuần/người (số việc `issueCount` vẫn tính cả Epic nên không so sánh). */
+  const assigned = async (issues: unknown[]) =>
+    (await run(issues)).rows.flatMap((r) => r.weeks).reduce((a, w) => a + w.assignedHours, 0);
+  const run = (issues: unknown[]) => {
+    const empty = () => vi.fn(() => Promise.resolve([]));
+    const prisma = {
+      workspaceMembership: {
+        findMany: vi.fn(() =>
+          Promise.resolve([{ user: { id: 'u1', displayName: 'An', email: 'a@x.vn' } }]),
+        ),
+      },
+      allocation: { findMany: empty() },
+      timeOff: { findMany: empty() },
+      issue: { findMany: vi.fn(() => Promise.resolve(issues)) },
+      workLog: { findMany: empty() },
+    };
+    return new ResourcesService(prisma as never, ACCESS_ALL as never).workload('w1', {}, 'u0');
+  };
+  const issue = (
+    key: string | null,
+    storyPoints: number,
+    originalEstimate: number | null = null,
+  ) => ({
+    assigneeId: 'u1',
+    startDate: day,
+    dueDate: day,
+    originalEstimate,
+    storyPoints,
+    type: { key },
+  });
+
+  it('Epic (điểm = tổng việc con) thêm vào cùng người/tuần không làm tăng giờ đã giao', async () => {
+    const task = issue('TASK', 5);
+    const alone = await assigned([task]);
+    expect(alone).toBeGreaterThan(0);
+    expect(await assigned([task, issue('EPIC', 5)])).toBe(alone);
+    // đối chứng: thêm một Task cùng điểm thì giờ đã giao phải tăng (bài kiểm tra có răng)
+    expect(await assigned([task, issue('TASK', 5)])).toBeGreaterThan(alone);
+  });
+
+  it('Epic có ước lượng thời gian riêng (originalEstimate) vẫn được tính giờ đó', async () => {
+    expect(await assigned([issue('EPIC', 99)])).toBe(0);
+    expect(await assigned([issue('EPIC', 99, 4 * 3600)])).toBeGreaterThan(0);
   });
 });

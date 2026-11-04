@@ -1,10 +1,22 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { Logger } from '@nestjs/common';
 import { DOMAIN_EVENTS } from '@tirapro/types';
 import { Prisma } from '@prisma/client';
 import { rankBetween, RANK_MAX_LEN } from '@tirapro/shared';
 import { ProjectAccessService } from '../rbac/project-access.service';
 import { IssuesService } from './issues.service';
 import { PointsService } from './points.service';
+
+// Phát cập nhật tổng điểm Epic chỉ ghi cảnh báo khi lỗi (dữ liệu đã commit) — nên một mock thiếu `issue.findMany` sẽ im lặng
+// bỏ qua nhánh phát sự kiện. Chặn điều đó: mọi test phải thật sự chạy được nhánh phát (mock đủ hàng Epic).
+const warnSpy = vi.spyOn(Logger.prototype, 'warn');
+afterEach(() => {
+  const epicEmitFailures = warnSpy.mock.calls.filter((c) =>
+    String(c[0]).includes('Không phát được cập nhật tổng điểm Epic'),
+  );
+  warnSpy.mockClear();
+  expect(epicEmitFailures).toEqual([]);
+});
 
 /** expect.stringContaining có kiểu any — bọc lại để không phát sinh cảnh báo lint. */
 const has = (text: string): unknown => expect.stringContaining(text);
@@ -2079,6 +2091,10 @@ describe('IssuesService — epicId được lưu và hợp lệ (FW11 + review)'
         ),
         findFirstOrThrow: vi.fn(() => Promise.resolve(after)),
         aggregate: vi.fn(() => Promise.resolve({ _sum: { storyPoints: 0 } })),
+        // đọc lại Epic vừa đổi tổng để phát ISSUE_UPDATED (getDtosByIdsForSystem)
+        findMany: vi.fn((a: { where: { id: { in: string[] } } }) =>
+          Promise.resolve(a.where.id.in.map((id) => issueRow({ id }))),
+        ),
       },
       issueHistory: { createMany: vi.fn() },
     };
@@ -2093,6 +2109,15 @@ describe('IssuesService — epicId được lưu và hợp lệ (FW11 + review)'
     expect(events.emit).toHaveBeenCalledWith(
       DOMAIN_EVENTS.ISSUE_UPDATED,
       expect.objectContaining({ changedFields: ['epicId'] }),
+    );
+    // Epic đổi tổng (0 → …) được đọc lại và phát ISSUE_UPDATED do hệ thống suy ra (`bulk: true`)
+    expect(events.emit).toHaveBeenCalledWith(
+      DOMAIN_EVENTS.ISSUE_UPDATED,
+      expect.objectContaining({
+        issue: expect.objectContaining({ id: 'e1' }) as unknown,
+        changedFields: ['storyPoints'],
+        bulk: true,
+      }),
     );
   });
 
@@ -3298,6 +3323,10 @@ describe('IssuesService — ai sửa được công việc thì sửa được �
   });
   it('ghi đè phải là số nguyên 0–100: 2.5 / 101 / null => 422, chưa ghi', async () => {
     const t = tx(issueRow());
+    // điểm hiện tại 4: `null` là thay đổi thật (gửi lại đúng 4 thì không phải ghi đè)
+    t.issue.findFirst.mockResolvedValue(
+      issueRow({ reporterId: 'u1', createdById: 'u1', storyPoints: 4 }),
+    );
     const { service, rbac } = makeService(t);
     rbac.getEffectivePermissions.mockResolvedValue(new Set(['project:admin']));
     for (const storyPoints of [2.5, 101, -1, null])
@@ -3305,6 +3334,24 @@ describe('IssuesService — ai sửa được công việc thì sửa được �
         service.update('w1', 'u1', 'i1', { version: 3, storyPoints }),
       ).rejects.toMatchObject({ status: 422 });
     expect(t.issue.updateMany).not.toHaveBeenCalled();
+  });
+  it('Quản trị dự án/SA gửi lại ĐÚNG điểm hiện có (việc chưa chỉnh tay) => không bật pointsManual, không ghi điểm', async () => {
+    const t = tx(issueRow({ storyPoints: 4, version: 4 }));
+    t.issue.findFirst.mockResolvedValue(
+      issueRow({ reporterId: 'u1', createdById: 'u1', storyPoints: 4, pointsManual: false }),
+    );
+    const { service, rbac } = makeService(t);
+    rbac.getEffectivePermissions.mockResolvedValue(new Set(['issue:edit', 'project:admin']));
+    await service.update('w1', 'u1', 'i1', { version: 3, storyPoints: 4, summary: 'x' });
+    const data = t.issue.updateMany.mock.calls[0]![0].data;
+    expect(data).not.toHaveProperty('storyPoints');
+    expect(data).not.toHaveProperty('pointsManual');
+    // đối chứng: điểm KHÁC hiện tại thì mới là ghi đè
+    await service.update('w1', 'u1', 'i1', { version: 3, storyPoints: 5 });
+    expect(t.issue.updateMany.mock.calls[1]![0].data).toMatchObject({
+      storyPoints: 5,
+      pointsManual: true,
+    });
   });
   it('Epic không ghi đè tay được => 422', async () => {
     const t = tx(issueRow());
@@ -3554,7 +3601,18 @@ describe('IssuesService.bulkUpdate — ca biên nhãn/epic/điểm (B7)', () => 
     expect(t.issue.updateMany).not.toHaveBeenCalled();
   });
   it('storyPoints: null (hay số lẻ) từ Quản trị dự án => 422 (muốn tính lại dùng "Tính lại theo công thức"), chưa ghi', async () => {
-    const t = b7Tx();
+    const t = b7Tx({
+      issue: {
+        ...b7Tx().issue,
+        // điểm hiện tại 4: `null`/2.5 là thay đổi thật (gửi lại đúng 4 thì không phải ghi đè)
+        findMany: vi.fn(() =>
+          Promise.resolve([
+            issueRow({ id: 'a', storyPoints: 4 }),
+            issueRow({ id: 'b', storyPoints: 4 }),
+          ]),
+        ),
+      },
+    });
     const { service, rbac } = makeService(t);
     rbac.getEffectivePermissions.mockResolvedValue(new Set(['project:admin']));
     for (const storyPoints of [null, 2.5])
@@ -4228,8 +4286,24 @@ describe('IssuesService — điểm tự tính: create / createWithin', () => {
     tx.issue.findFirst = vi.fn((a: { where: { id?: string } }) =>
       a.where.id === 'e1' ? Promise.resolve(epicLike({ storyPoints: 0 })) : baseFindFirst(a),
     );
-    await makeService(tx).service.create('w1', 'u1', { ...input, epicId: 'e1' });
+    (tx.issue as Record<string, unknown>).findMany = vi.fn(
+      (a: { where: { id: { in: string[] } } }) =>
+        Promise.resolve(a.where.id.in.map((id) => issueRow({ id }))),
+    );
+    const { service, events } = makeService(tx);
+    await service.create('w1', 'u1', { ...input, epicId: 'e1' });
     const calls = updateMany.mock.calls;
+    // sự kiện của Epic phát SAU commit (không chờ được từ create) — chờ tới khi phát
+    await vi.waitFor(() =>
+      expect(events.emit).toHaveBeenCalledWith(
+        DOMAIN_EVENTS.ISSUE_UPDATED,
+        expect.objectContaining({
+          issue: expect.objectContaining({ id: 'e1' }) as unknown,
+          changedFields: ['storyPoints'],
+          bulk: true,
+        }),
+      ),
+    );
     expect(calls[0]![0]).toEqual({
       where: { id: 'e1', deletedAt: null },
       data: { storyPoints: 3, version: { increment: 1 } },
@@ -4378,9 +4452,16 @@ describe('IssuesService — điểm tự tính: Epic — tổng điểm việc c
       epics: { eA: epicLike({ storyPoints: 7 }) },
       sums: { eA: 10 },
     });
-    alive.issue.findMany.mockResolvedValue([{ id: 'eA' }] as never);
-    await makeService(alive).service.restore('w1', 'u1', 'p1', 'i1');
+    // lần đọc kiểm "cha/epic còn sống" (select id) khác lần đọc lại Epic để phát sự kiện (include)
+    alive.issue.findMany.mockImplementation(((a: { include?: unknown }) =>
+      Promise.resolve(a.include ? [issueRow({ id: 'eA' })] : [{ id: 'eA' }])) as never);
+    const { service, events } = makeService(alive);
+    await service.restore('w1', 'u1', 'p1', 'i1');
     expect(epicWrite(alive, 'eA')?.data).toMatchObject({ storyPoints: 10 });
+    expect(events.emit).toHaveBeenCalledWith(
+      DOMAIN_EVENTS.ISSUE_UPDATED,
+      expect.objectContaining({ changedFields: ['storyPoints'], bulk: true }),
+    );
 
     const gone = pTx(issueRow(deleted), issueRow());
     gone.issue.findMany.mockResolvedValue([]); // Epic không còn → restore gỡ epicId
@@ -4415,6 +4496,40 @@ describe('IssuesService — điểm tự tính: bulkUpdate — Độ khó / Ưu 
       ...extra,
     });
 
+  it('Quản trị dự án gửi lại ĐÚNG điểm hiện có: việc chưa chỉnh tay không bật pointsManual; chỉ việc có điểm khác bị ghi đè', async () => {
+    const rowsAt = (a: number, b: number) =>
+      b7Tx({
+        issue: {
+          ...b7Tx().issue,
+          findMany: vi.fn(() =>
+            Promise.resolve([
+              issueRow({ id: 'a', storyPoints: a }),
+              issueRow({ id: 'b', storyPoints: b }),
+            ]),
+          ),
+        },
+      });
+    // cả lô đã đúng điểm 4 → không có gì để ghi
+    const same = rowsAt(4, 4);
+    const m1 = makeService(same);
+    m1.rbac.getEffectivePermissions.mockResolvedValue(new Set(['project:admin']));
+    await m1.service.bulkUpdate('w1', 'u1', { projectId: 'p1', items, patch: { storyPoints: 4 } });
+    expect(same.issue.updateMany).not.toHaveBeenCalled();
+    // lô lẫn: a đã 4 (bỏ qua), b đang 6 (ghi đè thành 4, bật cờ)
+    const mixed = rowsAt(4, 6);
+    const m2 = makeService(mixed);
+    m2.rbac.getEffectivePermissions.mockResolvedValue(new Set(['project:admin']));
+    await m2.service.bulkUpdate('w1', 'u1', { projectId: 'p1', items, patch: { storyPoints: 4 } });
+    // (lần ghi thứ hai nếu có là cộng lại tổng Epic của mock, không phải ghi việc)
+    const rowWrites = (
+      mixed.issue.updateMany.mock.calls as unknown as Array<[{ where: { id: string } }]>
+    ).filter((c) => ['a', 'b'].includes(c[0].where.id));
+    expect(rowWrites).toHaveLength(1);
+    expect(rowWrites[0]![0]).toMatchObject({
+      where: { id: 'b' },
+      data: { storyPoints: 4, pointsManual: true },
+    });
+  });
   it('patch difficulty: việc không chỉnh tay được tính lại, việc chỉnh tay giữ điểm', async () => {
     const t = bTx();
     await makeService(t).service.bulkUpdate('w1', 'u1', {

@@ -233,12 +233,15 @@ export class IssuesService {
     requested: number | null | undefined,
   ): Promise<number | undefined> {
     if (requested === undefined) return undefined;
+    // Việc đã đúng điểm này và chưa chỉnh tay: gửi lại không phải ghi đè → không đổi gì, không cần quyền.
+    const overridden = rows.filter((r) => isPointsOverride(r, requested));
+    if (overridden.length === 0) return undefined;
     if (!(await this.canOverridePoints(userId, workspaceId, projectId))) {
       if (rows.some((r) => r.storyPoints !== requested))
         throw new PointsOverrideForbiddenException();
       return undefined;
     }
-    if (rows.some((r) => r.type.key === 'EPIC'))
+    if (overridden.some((r) => r.type.key === 'EPIC'))
       throw new BusinessRuleException(
         'Điểm của Epic là tổng điểm các việc con — không chỉnh tay được; hãy bỏ Epic khỏi lô',
       );
@@ -268,7 +271,9 @@ export class IssuesService {
     recompute: Awaited<ReturnType<IssuesService['bulkRecomputeContext']>>,
     data: Prisma.IssueUncheckedUpdateManyInput,
   ): void {
-    if (manualPoints !== undefined) {
+    // Việc đã đúng điểm này và chưa chỉnh tay: không phải ghi đè (không bật cờ), vẫn theo công thức khi đổi độ khó/ưu tiên.
+    const override = manualPoints !== undefined && isPointsOverride(before, manualPoints);
+    if (override) {
       if (manualPoints !== before.storyPoints) data.storyPoints = manualPoints;
       if (!before.pointsManual) data.pointsManual = true;
     }
@@ -277,7 +282,7 @@ export class IssuesService {
     if (difficultyChanged) data.difficulty = patch.difficulty;
     const priorityChanged =
       patch.priorityId !== undefined && patch.priorityId !== before.priorityId;
-    if (!recompute || manualPoints !== undefined || before.pointsManual) return;
+    if (!recompute || override || before.pointsManual) return;
     if (!difficultyChanged && !priorityChanged) return;
     const pts = computePoints(
       recompute.formula,
@@ -1467,10 +1472,10 @@ export class IssuesService {
         this.assertDueNotBeforeCreated(input.dueDate, current.createdAt);
     }
 
-    // Điểm: chỉ Quản trị dự án/SA ghi đè tay (→ pointsManual). Người khác gửi điểm KHÁC hiện tại → 403, chưa ghi gì
-    // (gửi lại đúng điểm hiện có — vd form gửi cả đối tượng — không phải là sửa điểm).
+    // Điểm: chỉ Quản trị dự án/SA ghi đè tay (→ pointsManual). Người khác gửi điểm KHÁC hiện tại → 403, chưa ghi gì.
+    // Gửi lại đúng điểm hiện có (vd form gửi cả đối tượng) KHÔNG phải ghi đè — với ai cũng vậy: không bật cờ, không ghi.
     let manualPoints: number | undefined;
-    if (input.storyPoints !== undefined) {
+    if (input.storyPoints !== undefined && isPointsOverride(current, input.storyPoints)) {
       if (await this.canOverridePoints(userId, workspaceId, current.projectId)) {
         if (current.type.key === 'EPIC')
           throw new BusinessRuleException(
@@ -2544,6 +2549,17 @@ export class IssuesService {
 }
 
 const isString = (x: string | null): x is string => x !== null;
+
+/**
+ * Gửi `storyPoints` có phải GHI ĐÈ tay không: KHÔNG khi đúng bằng điểm hiện có mà việc chưa chỉnh tay (client gửi lại cả
+ * đối tượng) — khi đó không bật `pointsManual`, không ghi. Đã chỉnh tay hoặc điểm khác → là ghi đè.
+ */
+function isPointsOverride(
+  row: { storyPoints: number | null; pointsManual: boolean },
+  requested: number | null,
+): boolean {
+  return requested !== row.storyPoints || row.pointsManual;
+}
 
 /** Hai mốc ngày (chuỗi ISO / Date / null) có cùng thời điểm không. */
 function sameInstant(

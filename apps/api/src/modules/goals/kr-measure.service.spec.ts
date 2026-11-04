@@ -71,6 +71,8 @@ describe('KrMeasureService.measure (L25)', () => {
     const wheres = prisma.issue.aggregate.mock.calls.map((c) => c[0].where);
     expect(wheres[0]).toMatchObject({ sprintId: 's1', deletedAt: null });
     expect(wheres[1]).toMatchObject({ sprintId: 's1', status: { category: 'DONE' } });
+    // điểm Epic = tổng việc con: cả tử số lẫn mẫu số đều loại Epic (không đếm đôi)
+    for (const w of wheres) expect(w).toMatchObject({ NOT: { type: { key: 'EPIC' } } });
   });
 
   it('không có sprint ACTIVE → dùng sprint CLOSED gần nhất', async () => {
