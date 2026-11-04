@@ -240,6 +240,13 @@
 
 **Added by the user (2026-11-04):** in the saved-filter list (left column of `/filters`, item "Lọc bug todo · Cả không gian làm việc"), the share icon button floats right after the text. Pin it to the item's right edge: the text column is `min-w-0 flex-1` and the button is `ml-auto shrink-0`, vertically centred. Test: the share button is the last child and carries `ml-auto`, or the text wrapper carries `flex-1`.
 
+**Added by the user (2026-11-04):** on `/filters`, while a saved filter is selected (the header shows its name, e.g. "Việc của tôi"), the button next to "Chạy JQL" reads "Lưu truy vấn".
+- Rename it to **"Sửa"**, with a pencil icon.
+- It opens the existing edit flow for that saved filter (name, JQL, sharing), prefilled with the current JQL from the editor, and saves via update, not create.
+- With no saved filter selected (an ad-hoc query), keep "Lưu truy vấn" → create.
+- If the user lacks edit rights on the selected filter (a shared filter owned by someone else), show "Lưu thành bộ lọc mới" instead.
+- Test: with a selected owned filter the button text is "Sửa" and submitting calls update with the filter id; with no selection it is "Lưu truy vấn".
+
 - [ ] **Step 1: Failing tests.**
   - A My-work row renders the text `Chờ test` for an issue whose status is Chờ test.
   - The results table's summary cell has the `truncate` class.
