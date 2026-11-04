@@ -37,6 +37,7 @@ export const createIssueSchema = z.object({
   difficulty: difficultyEnum.optional(),
   labelIds: z.array(z.string()).optional(),
   statusId: z.string().optional(),
+  // Tạo: bỏ trống/null => server đặt mặc định (mai theo giờ VN). Sửa: null bị service từ chối 422 DUE_DATE_REQUIRED.
   dueDate: z.string().datetime().optional().nullable(),
   startDate: z.string().datetime().optional().nullable(),
   // cho optimistic create từ client (client sinh cuid)
@@ -93,6 +94,8 @@ export const bulkUpdateIssuesSchema = z.object({
       sprintId: z.string().min(1).nullable().optional(),
       storyPoints: manualPointsSchema.nullable().optional(), // null bị service từ chối 422
       difficulty: difficultyEnum.optional(),
+      // Sửa hàng loạt không đặt Hạn; chỉ nhận null để service trả 422 DUE_DATE_REQUIRED rõ ràng (thay vì lặng lẽ bỏ qua).
+      dueDate: z.null().optional(),
       epicId: z.string().min(1).nullable().optional(),
       // Nhãn của DỰ ÁN; chỉ thêm/gỡ, không thay cả bộ — hoàn tác phía web dùng đối ngẫu add ↔ remove.
       labels: z

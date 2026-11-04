@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Logger } from '@nestjs/common';
 import { DOMAIN_EVENTS } from '@tirapro/types';
 import { Prisma } from '@prisma/client';
@@ -3677,17 +3677,16 @@ describe('IssuesService — Ngày bắt đầu (L14): start <= hạn và cùng l
     expect(tx.issue.updateMany).not.toHaveBeenCalled();
   });
 
-  it('update: bằng nhau hợp lệ; xoá một trong hai luôn được; chỉ có một ngày thì không kiểm', async () => {
+  it('update: bằng nhau hợp lệ; xoá Ngày bắt đầu luôn được; chỉ có một ngày thì không kiểm', async () => {
     const tx = schedTx({ dueDate: new Date(D18) });
     const { service } = makeService(tx);
     await service.update('w1', 'u1', 'i1', { version: 3, startDate: D18 });
     await service.update('w1', 'u1', 'i1', { version: 3, startDate: null });
     const tx2 = schedTx({ startDate: new Date(D20) });
     const svc2 = makeService(tx2).service;
-    await svc2.update('w1', 'u1', 'i1', { version: 3, dueDate: null });
     await svc2.update('w1', 'u1', 'i1', { version: 3, summary: 'không đụng ngày' });
     expect(tx.issue.updateMany).toHaveBeenCalledTimes(2);
-    expect(tx2.issue.updateMany).toHaveBeenCalledTimes(2);
+    expect(tx2.issue.updateMany).toHaveBeenCalledTimes(1);
   });
 
   it('update: dữ liệu CŨ sai thứ tự (start > due) — sửa trường khác vẫn được; chỉ khi đụng ngày mới bị kiểm', async () => {
@@ -4667,5 +4666,109 @@ describe('IssuesService — điểm tự tính: IssueDto', () => {
     const { service } = makeService({ issue: { findFirst: vi.fn(() => Promise.resolve(row)) } });
     const dto = await service.getByKey('w1', 'P-TASK-1', null);
     expect(dto.pointsExplain).toMatch(/^Đã chỉnh tay \(theo công thức: /);
+  });
+});
+
+describe('IssuesService — Hạn mặc định khi tạo và không xoá được (Task 5)', () => {
+  const NOW = new Date('2026-11-04T17:30:00Z'); // 00:30 ngày 05/11 giờ VN => hạn mặc định 06/11
+  const DEFAULT_DUE = '2026-11-06T00:00:00.000Z';
+  const input = {
+    projectId: 'p1',
+    typeId: 't-bug',
+    summary: 's',
+    descriptionFormat: 'MARKDOWN' as const,
+  };
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it('create không gửi hạn => ngày VN + 1 (00:00Z)', async () => {
+    const { tx, created } = createTx(WF_DEFAULT, {});
+    await makeService(tx).service.create('w1', 'u1', input);
+    expect(created.mock.calls[0]![0].data.dueDate).toEqual(new Date(DEFAULT_DUE));
+  });
+  it('create với dueDate null => cũng nhận mặc định; hạn gửi lên được giữ nguyên', async () => {
+    const a = createTx(WF_DEFAULT, {});
+    await makeService(a.tx).service.create('w1', 'u1', { ...input, dueDate: null });
+    expect(a.created.mock.calls[0]![0].data.dueDate).toEqual(new Date(DEFAULT_DUE));
+    const b = createTx(WF_DEFAULT, {});
+    await makeService(b.tx).service.create('w1', 'u1', {
+      ...input,
+      dueDate: '2026-12-01T00:00:00.000Z',
+    });
+    expect(b.created.mock.calls[0]![0].data.dueDate).toEqual(new Date('2026-12-01T00:00:00.000Z'));
+  });
+  it('create: ngày bắt đầu xa hơn mặc định và không gửi hạn => hạn = ngày bắt đầu (không 422)', async () => {
+    const { tx, created } = createTx(WF_DEFAULT, {});
+    await makeService(tx).service.create('w1', 'u1', {
+      ...input,
+      startDate: '2026-11-20T00:00:00.000Z',
+    });
+    expect(created.mock.calls[0]![0].data.dueDate).toEqual(new Date('2026-11-20T00:00:00.000Z'));
+  });
+  it('createWithin (import) không có hạn => cũng nhận mặc định; hạn lịch sử được giữ', async () => {
+    const a = createTx(WF_DEFAULT, {});
+    await makeService(a.tx).service.createWithin(a.tx as never, 'w1', 'u1', input, []);
+    expect(a.created.mock.calls[0]![0].data.dueDate).toEqual(new Date(DEFAULT_DUE));
+    const b = createTx(WF_DEFAULT, {});
+    await makeService(b.tx).service.createWithin(
+      b.tx as never,
+      'w1',
+      'u1',
+      { ...input, dueDate: '2020-01-01T00:00:00.000Z' },
+      [],
+    );
+    expect(b.created.mock.calls[0]![0].data.dueDate).toEqual(new Date('2020-01-01T00:00:00.000Z'));
+  });
+
+  function updTx() {
+    return {
+      issue: {
+        findFirst: vi.fn(() =>
+          Promise.resolve(issueRow({ dueDate: new Date('2026-11-10T00:00:00Z') })),
+        ),
+        findFirstOrThrow: vi.fn(() => Promise.resolve(issueRow({ version: 4 }))),
+        updateMany: vi.fn((_a: { where: Record<string, unknown>; data: Record<string, unknown> }) =>
+          Promise.resolve({ count: 1 }),
+        ),
+      },
+      issueHistory: { createMany: vi.fn(), create: vi.fn() },
+    };
+  }
+  it('update({dueDate:null}) => 422 DUE_DATE_REQUIRED, chưa ghi gì', async () => {
+    const tx = updTx();
+    const { service } = makeService(tx);
+    await expect(
+      service.update('w1', 'u1', 'i1', { version: 3, dueDate: null }),
+    ).rejects.toMatchObject({
+      status: 422,
+      code: 'DUE_DATE_REQUIRED',
+      message: 'Hạn là bắt buộc — chọn một ngày thay vì xoá trống',
+    });
+    expect(tx.issue.updateMany).not.toHaveBeenCalled();
+  });
+  it('update({dueDate: ngày hợp lệ}) vẫn được và ghi đúng ngày', async () => {
+    const tx = updTx();
+    await makeService(tx).service.update('w1', 'u1', 'i1', {
+      version: 3,
+      dueDate: '2026-12-01T00:00:00.000Z',
+    });
+    expect(tx.issue.updateMany.mock.calls[0]![0].data.dueDate).toEqual(
+      new Date('2026-12-01T00:00:00.000Z'),
+    );
+  });
+  it('bulkUpdate với patch.dueDate = null => 422 DUE_DATE_REQUIRED, không đọc/ghi gì', async () => {
+    const tx = updTx();
+    const { service } = makeService(tx);
+    await expect(
+      service.bulkUpdate('w1', 'u1', {
+        projectId: 'p1',
+        items: [{ id: 'i1', version: 3 }],
+        patch: { dueDate: null },
+      }),
+    ).rejects.toMatchObject({ status: 422, code: 'DUE_DATE_REQUIRED' });
+    expect(tx.issue.updateMany).not.toHaveBeenCalled();
   });
 });

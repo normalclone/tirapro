@@ -16,6 +16,7 @@ import {
   normalizeEnvironment,
   normalizeJiraKey,
   computePoints,
+  defaultDueDate,
   vnTodayUtc,
   type BulkUpdateIssuesInput,
   type CreateIssueInput,
@@ -35,6 +36,7 @@ import { ProjectAccessService } from '../rbac/project-access.service';
 import { CommentsService } from '../comments/comments.service';
 import {
   BusinessRuleException,
+  DueDateRequiredException,
   ForbiddenAppException,
   InvalidTransitionException,
   NotFoundAppException,
@@ -399,6 +401,19 @@ export class IssuesService {
     if (new Date(start).getTime() > new Date(due).getTime()) {
       throw new BusinessRuleException('Ngày bắt đầu phải trước hoặc bằng hạn — hãy chọn lại ngày');
     }
+  }
+
+  /**
+   * Hạn mặc định khi tạo không gửi hạn: ngày lịch VN hôm nay + 1. Nếu ngày bắt đầu đặt xa hơn thế thì lấy chính ngày
+   * bắt đầu (người dùng không chọn hạn không được nhận lỗi "bắt đầu sau hạn").
+   */
+  private resolveCreateDueDate(
+    dueDate: string | null | undefined,
+    startDate: string | null | undefined,
+  ): string {
+    if (dueDate) return dueDate;
+    const def = defaultDueDate(new Date());
+    return startDate && new Date(startDate).getTime() > new Date(def).getTime() ? startDate : def;
   }
 
   /** Hạn không được trước NGÀY TẠO (theo ngày lịch giờ VN; hạn lưu `YYYY-MM-DDT00:00:00Z`). */
@@ -961,9 +976,11 @@ export class IssuesService {
     });
     if (!project) throw new NotFoundAppException('Dự án');
     assertNotArchived(project.archivedAt);
-    this.assertScheduleOrder(input.startDate, input.dueDate);
+    // Hạn luôn có giá trị: không gửi (hoặc null) => mặc định mai theo giờ VN, kể cả đường import.
+    const dueDate = this.resolveCreateDueDate(input.dueDate, input.startDate);
+    this.assertScheduleOrder(input.startDate, dueDate);
     // Import có thể mang dữ liệu lịch sử (hạn đã qua) nên chỉ kiểm khi tạo tay/API.
-    if (origin !== 'import') this.assertDueNotBeforeCreated(input.dueDate, null);
+    if (origin !== 'import') this.assertDueNotBeforeCreated(dueDate, null);
     await this.assertMetaInWorkspace(
       workspaceId,
       {
@@ -1040,7 +1057,7 @@ export class IssuesService {
           epicId: input.epicId ?? null,
           sprintId: input.sprintId ?? null,
           ...pts,
-          dueDate: input.dueDate ? new Date(input.dueDate) : null,
+          dueDate: new Date(dueDate),
           startDate: input.startDate ? new Date(input.startDate) : null,
           rank,
           createdById: userId,
@@ -1422,6 +1439,8 @@ export class IssuesService {
     opts?: AutomationEventMeta,
     ownOnly?: boolean,
   ): Promise<IssueDto> {
+    // Hạn là bắt buộc: xoá trống không được (schema vẫn nhận null để tương thích, service từ chối rõ ràng).
+    if (input.dueDate === null) throw new DueDateRequiredException();
     const current = await this.requireIssue(workspaceId, id);
     if (ownOnly) this.assertOwnsIssue(userId, current);
     this.assertVersion(current.version, input.version);
@@ -1501,7 +1520,7 @@ export class IssuesService {
     if (input.sprintId !== undefined) data.sprintId = input.sprintId ?? null;
     if (input.resolutionId !== undefined) data.resolutionId = input.resolutionId ?? null;
     if (input.typeId !== undefined && input.typeId) data.typeId = input.typeId;
-    if (input.dueDate !== undefined) data.dueDate = input.dueDate ? new Date(input.dueDate) : null;
+    if (input.dueDate) data.dueDate = new Date(input.dueDate); // null đã bị chặn ở đầu update()
     if (input.startDate !== undefined)
       data.startDate = input.startDate ? new Date(input.startDate) : null;
     if (input.originalEstimate !== undefined)
@@ -1601,6 +1620,7 @@ export class IssuesService {
     ownOnly?: boolean,
   ): Promise<BulkUpdateIssuesResult> {
     const { projectId, items, patch } = input;
+    if (patch.dueDate === null) throw new DueDateRequiredException();
     // Đổi trạng thái chỉ đi qua quyền chuyển trạng thái (giống POST :id/transition), không đi chung quyền sửa.
     let transitionOwnOnly = false;
     if (patch.statusId)
