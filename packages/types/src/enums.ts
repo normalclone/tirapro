@@ -91,6 +91,14 @@ export const IssueTypeKey = {
 } as const;
 export type IssueTypeKey = (typeof IssueTypeKey)[keyof typeof IssueTypeKey];
 
+export const IssueDifficulty = {
+  EASY: 'EASY',
+  MEDIUM: 'MEDIUM',
+  HARD: 'HARD',
+  VERY_HARD: 'VERY_HARD',
+} as const;
+export type IssueDifficulty = (typeof IssueDifficulty)[keyof typeof IssueDifficulty];
+
 export const FixVersionType = {
   FIX: 'FIX',
   AFFECTS: 'AFFECTS',

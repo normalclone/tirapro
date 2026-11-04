@@ -371,3 +371,31 @@ Two requests the user added on 2026-11-04: "rà soát và thể hiện lại cá
 - [ ] **Step 3: Implement.**
 - [ ] **Step 4: Visual check.** Run the web dev server against a local API, or the controller does it on the VM after deploy. Take a screenshot of both graphs; the labels must be legible and not overlapping.
 - [ ] **Step 5: Gates + impeccable detect on `features/workflow-settings`, then commit.**
+
+### Task 12: Web — every page fills the content area (no centred max-width frame)
+
+User request (2026-11-04): "rà soát lại tất cả các trang, để fit-content chứ không co lại nữa". This subsumes Task 10 part 4: if Task 10 already did the issue page, keep it consistent with this task.
+
+**Finding:** page width has one source, `apps/web/src/components/layout/PageFrame.tsx`:
+- `PAGE_FRAME_WIDTH = { sm: 'max-w-3xl', lg: 'max-w-5xl', xl: 'max-w-7xl', full: '' }`.
+- About 45 call sites use it.
+- Other page roots may set their own `mx-auto max-w-*`, for example `features/docs/DocumentationPage.tsx:364` (`max-w-[1200px]`) and `:433`, as well as settings/admin layouts. Grep for them.
+
+**Requirements:**
+1. Every page frame uses the full width of the content area and keeps the existing padding (`px-4 sm:px-6`, the top and bottom padding, and `lg:pb-28` for the FAB).
+   - Set `sm`, `lg` and `xl` to `''` (keep the size prop so call sites don't churn, and update the doc comment to say widths are now uniform), or remove the prop. Pick one and keep every call site compiling.
+2. Readability guard, so that "full width" doesn't stretch single form controls across 1600px:
+   - In the settings and form pages (formerly `sm`), long single-line inputs, textareas and select rows inside form sections keep a sensible max width (`max-w-xl` on the field row, not on the page). Tables, lists, cards and graphs stretch.
+   - Prose pages (Wiki/Documentation article body) keep a readable measure on the article text column only (about 75ch). Side navs and toolbars stretch.
+3. Audit:
+   - Grep `apps/web/src` for page-root `mx-auto` + `max-w-` outside PageFrame and convert those page roots to full width. Dialogs, popovers, empty states and toasts keep their own max widths.
+   - List every page you changed in the report.
+4. Update the tests that assert `PAGE_FRAME_WIDTH` / `pageFrameClass` (grep `pageFrameClass` and `PAGE_FRAME_WIDTH` in `*.test.ts*`).
+
+- [ ] **Step 1: Failing test.** `pageFrameClass('lg')` and `pageFrameClass('sm')` contain no `max-w-` class.
+- [ ] **Step 2: Run** → FAIL.
+- [ ] **Step 3: Implement + audit.**
+- [ ] **Step 4: Gates.**
+  - Run impeccable detect on `apps/web/src`, and fix any new findings in the files you touched.
+  - Visual spot-check at 1600px of these pages: Tổng quan, Dự án, issue detail, Bộ lọc, Cài đặt → Quy trình, Cài đặt → Thông báo, Quản trị hệ thống, Wiki.
+- [ ] **Step 5: Commit.**

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { vnTodayUtc } from './vn-date';
 
 /**
  * Điểm việc tự tính: Điểm = Điểm gốc theo loại × Hệ số độ khó × Hệ số ưu tiên, làm tròn half-up.
@@ -84,13 +85,7 @@ export function explainPoints(
   return `${labels.join(' · ')} = ${factors.join('×')} = ${pts}`;
 }
 
-const VN_OFFSET_MS = 7 * 3600_000;
-
-/**
- * Hạn mặc định = NGÀY LỊCH Việt Nam của `createdAt` + 1, lưu `YYYY-MM-DDT00:00:00.000Z` (ngày lịch).
- * VN cố định UTC+7, không có giờ mùa hè.
- */
+/** Hạn mặc định = NGÀY LỊCH Việt Nam của `createdAt` + 1, lưu `YYYY-MM-DDT00:00:00.000Z` (ngày lịch). */
 export function defaultDueDate(createdAt: Date): string {
-  const vnDay = Math.floor((createdAt.getTime() + VN_OFFSET_MS) / 86_400_000);
-  return new Date((vnDay + 1) * 86_400_000).toISOString();
+  return new Date(vnTodayUtc(createdAt).getTime() + 86_400_000).toISOString();
 }
