@@ -229,6 +229,14 @@ export const DOC_TOPICS: DocEntry[] = [
     keywords: 'bao bug bao loi tao bug report bug loi moi gui loi',
   },
   {
+    id: 'bang-tong-quan-mau',
+    label: 'Bảng tổng quan từ mẫu & phạm vi dữ liệu',
+    summary:
+      'Tổng quan → bộ chọn → “Tạo bảng tổng quan mới…”: chọn mẫu, rồi dữ liệu lấy từ một dự án, một nhóm dự án của bạn hoặc toàn tổ chức (quản trị viên). Đổi sau bằng nút Dữ liệu khi chỉnh sửa.',
+    keywords:
+      'bang tong quan mau tao bang tu mau pham vi du lieu nhom du an mot du an toan to chuc widget',
+  },
+  {
     id: 'cu-phap-jql',
     label: 'Cú pháp JQL (nâng cao)',
     summary:

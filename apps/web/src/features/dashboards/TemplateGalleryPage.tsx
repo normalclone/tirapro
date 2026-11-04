@@ -21,7 +21,9 @@ import {
   type DataScopeValue,
 } from './scope/dataScopeModel';
 import { TemplatePreview } from './TemplatePreview';
+import { useSaveDashboard } from './api';
 import { useCreateFromTemplate, useDashboardTemplates } from './templatesApi';
+import { BLANK_TEMPLATE_KEY, blankNeedsNoScope, landingUrl } from './galleryFlow';
 
 /**
  * `/dashboards/new` — thư viện mẫu: chọn mẫu (xem trước sơ đồ khối) → chọn phạm vi dữ liệu → đặt tên (tuỳ chọn) → Tạo.
@@ -50,6 +52,7 @@ export function TemplateGalleryPage() {
 function GalleryBody({ templates, canOrg }: { templates: DashboardTemplate[]; canOrg: boolean }) {
   const navigate = useNavigate();
   const create = useCreateFromTemplate();
+  const createBlank = useSaveDashboard();
   const { data: projects } = useProjects();
   const { data: programs } = usePrograms();
   const [key, setKey] = useState(templates[0]?.key ?? '');
@@ -72,29 +75,37 @@ function GalleryBody({ templates, canOrg }: { templates: DashboardTemplate[]; ca
         ? programs?.find((g) => g.id === scope.scopeProgramId)?.name
         : undefined;
   const defaultName = targetName ? `${template.name} · ${targetName}` : template.name;
-  const issue = dataScopeIssue(scope);
+  const scopeIssue = dataScopeIssue(scope);
+  // "Trống" không bắt buộc chọn phạm vi: chưa chọn thì tạo kiểu cũ (toàn tổ chức) để ai có quyền quản lý bảng cũng tạo được.
+  const issue = blankNeedsNoScope(template.key, scopeIssue) ? null : scopeIssue;
+  const blankWithoutScope = template.key === BLANK_TEMPLATE_KEY && scopeIssue !== null;
+  const pending = create.isPending || createBlank.isPending;
 
   const options = useMemo(
     () => templates.map((t) => ({ value: t.key, label: t.name, description: t.description })),
     [templates],
   );
 
+  function done(dto: { id: string; name: string }) {
+    toast.success(`Đã tạo “${dto.name}”`);
+    navigate(landingUrl(template.key, dto.id), { replace: true });
+  }
+
   function submit(e?: FormEvent) {
     e?.preventDefault();
-    if (issue || create.isPending) return;
+    if (issue || pending) return;
+    const typed = name.trim();
+    if (blankWithoutScope) {
+      // Không gửi `dataScope`: máy chủ lưu ORG (hành vi bảng tổng quan cũ), đổi sau ở nút "Dữ liệu".
+      createBlank.mutate(
+        { body: { name: typed || defaultName, scope: 'PRIVATE', widgets: [] } },
+        { onSuccess: done, onError: (err) => toast.error(apiErrorMessage(err)) },
+      );
+      return;
+    }
     create.mutate(
-      {
-        templateKey: template.key,
-        ...toScopeFields(scope),
-        ...(name.trim() ? { name: name.trim() } : {}),
-      },
-      {
-        onSuccess: (dto) => {
-          toast.success(`Đã tạo “${dto.name}”`);
-          navigate(`/dashboards/${dto.id}`, { replace: true });
-        },
-        onError: (err) => toast.error(apiErrorMessage(err)),
-      },
+      { templateKey: template.key, ...toScopeFields(scope), ...(typed ? { name: typed } : {}) },
+      { onSuccess: done, onError: (err) => toast.error(apiErrorMessage(err)) },
     );
   }
 
@@ -135,6 +146,12 @@ function GalleryBody({ templates, canOrg }: { templates: DashboardTemplate[]; ca
               {issue} để tạo bảng.
             </p>
           )}
+          {blankWithoutScope && (
+            <p role="status" className="mt-1.5 text-xs text-muted">
+              Chưa chọn thì bảng trống dùng dữ liệu toàn tổ chức (mọi dự án bạn xem được). Đổi sau ở
+              nút “Dữ liệu”.
+            </p>
+          )}
         </section>
 
         <section aria-labelledby="tpl-name">
@@ -155,10 +172,10 @@ function GalleryBody({ templates, canOrg }: { templates: DashboardTemplate[]; ca
         </section>
 
         <div className="flex items-center gap-2">
-          <Button type="submit" loading={create.isPending} disabled={!!issue}>
+          <Button type="submit" loading={pending} disabled={!!issue}>
             Tạo bảng tổng quan
           </Button>
-          <Button type="button" variant="ghost" onClick={() => navigate(-1)}>
+          <Button type="button" variant="ghost" onClick={() => navigate('/')}>
             Huỷ
           </Button>
         </div>

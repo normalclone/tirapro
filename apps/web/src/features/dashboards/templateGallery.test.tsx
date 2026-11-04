@@ -2,7 +2,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DASHBOARD_TEMPLATES } from '@tirapro/shared';
 import type * as ApiModule from '@/lib/api';
@@ -29,6 +29,7 @@ vi.stubGlobal(
 );
 
 let canOrg = false;
+let projects: unknown[] = [];
 let programs: Array<{ id: string; name: string; projectCount: number }> = [];
 
 beforeEach(() => {
@@ -38,14 +39,12 @@ beforeEach(() => {
   toast.success.mockReset();
   toast.error.mockReset();
   canOrg = false;
+  projects = [{ id: 'p1', key: 'AAA', name: 'Alpha', isArchived: false }];
   programs = [{ id: 'g1', name: 'Đối tác', projectCount: 2 }];
   h.get.mockImplementation((url: string) => {
     if (url === '/dashboard-templates')
       return Promise.resolve({ data: { templates: DASHBOARD_TEMPLATES, canUseOrgScope: canOrg } });
-    if (url === '/projects')
-      return Promise.resolve({
-        data: [{ id: 'p1', key: 'AAA', name: 'Alpha', isArchived: false }],
-      });
+    if (url === '/projects') return Promise.resolve({ data: projects });
     if (url === '/programs') return Promise.resolve({ data: programs });
     return Promise.reject(new Error(`offline ${url}`));
   });
@@ -54,15 +53,21 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
-function renderPage() {
+function Landed() {
+  const { pathname, search } = useLocation();
+  return <p>{`Đã sang ${pathname}${search}`}</p>;
+}
+
+function renderPage(entries = ['/dashboards/new']) {
   render(
     <QueryClientProvider
       client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
     >
-      <MemoryRouter initialEntries={['/dashboards/new']}>
+      <MemoryRouter initialEntries={entries} initialIndex={entries.length - 1}>
         <Routes>
           <Route path="/dashboards/new" element={<TemplateGalleryPage />} />
-          <Route path="/dashboards/:id" element={<p>Đã sang bảng mới</p>} />
+          <Route path="/dashboards/:id" element={<Landed />} />
+          <Route path="*" element={<Landed />} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
@@ -114,7 +119,7 @@ describe('thư viện mẫu dashboard', () => {
       dataScope: 'PROJECT',
       scopeProjectId: 'p1',
     });
-    expect(await screen.findByText('Đã sang bảng mới')).toBeTruthy();
+    expect(await screen.findByText('Đã sang /dashboards/d-new')).toBeTruthy();
   });
 
   it('admin tổ chức chọn "Toàn tổ chức": gửi ORG không kèm id; tên tự đặt được gửi khi có nhập', async () => {
@@ -149,6 +154,51 @@ describe('thư viện mẫu dashboard', () => {
     await user.click(await screen.findByRole('radio', { name: 'Toàn tổ chức' }));
     await user.click(createBtn());
     await waitFor(() => expect(toast.error).toHaveBeenCalled());
-    expect(screen.queryByText('Đã sang bảng mới')).toBeNull();
+    expect(screen.queryByText(/Đã sang \/dashboards\/d-new/)).toBeNull();
+  });
+
+  it('mẫu Trống: tạo xong mở thẳng trình soạn (?edit=1); mẫu khác về màn xem', async () => {
+    const user = renderPage();
+    await user.click(await screen.findByRole('radio', { name: 'Trống' }));
+    await user.click(screen.getByRole('button', { name: 'Dự án' }));
+    await user.click(await screen.findByRole('option', { name: /Alpha/ }));
+    await user.click(createBtn());
+    expect(await screen.findByText('Đã sang /dashboards/d-new?edit=1')).toBeTruthy();
+    expect(h.post).toHaveBeenCalledWith('/dashboards/from-template', {
+      templateKey: 'blank',
+      dataScope: 'PROJECT',
+      scopeProjectId: 'p1',
+    });
+  });
+
+  it('mẫu Trống không bắt buộc chọn phạm vi: người không có dự án/nhóm nào vẫn tạo được (kiểu cũ, không gửi dataScope)', async () => {
+    projects = [];
+    programs = [];
+    const user = renderPage();
+    await user.click(await screen.findByRole('radio', { name: 'Trống' }));
+    expect(screen.getByText(/bảng trống dùng dữ liệu toàn tổ chức/i)).toBeTruthy();
+    await waitFor(() => expect((createBtn() as HTMLButtonElement).disabled).toBe(false));
+    await user.click(createBtn());
+    await waitFor(() => expect(h.post).toHaveBeenCalled());
+    expect(h.post).toHaveBeenCalledWith('/dashboards', {
+      name: 'Trống',
+      scope: 'PRIVATE',
+      widgets: [],
+    });
+    expect(await screen.findByText('Đã sang /dashboards/d-new?edit=1')).toBeTruthy();
+  });
+
+  it('mẫu khác vẫn cần chọn phạm vi (không gửi kiểu cũ)', async () => {
+    projects = [];
+    renderPage();
+    await screen.findByRole('radio', { name: 'Kiểm thử' });
+    expect((createBtn() as HTMLButtonElement).disabled).toBe(true);
+    expect(h.post).not.toHaveBeenCalled();
+  });
+
+  it('Huỷ về danh sách bảng tổng quan (/), không lùi lịch sử', async () => {
+    const user = renderPage(['/', '/trang-truoc', '/dashboards/new']);
+    await user.click(await screen.findByRole('button', { name: 'Huỷ' }));
+    expect(await screen.findByText('Đã sang /')).toBeTruthy();
   });
 });

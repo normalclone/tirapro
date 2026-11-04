@@ -1250,6 +1250,34 @@ export function DocumentationPage() {
                   ],
                 ]}
               />
+              <H3 id="bang-tong-quan-mau">Bảng tổng quan từ mẫu &amp; phạm vi dữ liệu</H3>
+              <P>
+                Ở bộ chọn đầu Tổng quan, “Tạo bảng tổng quan mới…” mở thư viện mẫu:{' '}
+                <em>Tổng quan dự án</em>, <em>Kiểm thử</em>, <em>Lập trình viên</em>,{' '}
+                <em>Quản lý tổ chức</em> và <em>Trống</em>. Chọn mẫu (có hình xem trước), chọn dữ
+                liệu lấy từ đâu, đặt tên rồi tạo — bảng mới đã có đủ ô và chỉ mình bạn xem; mẫu
+                Trống mở thẳng trình soạn để bạn tự thêm ô.
+              </P>
+              <Table
+                head={['Phạm vi dữ liệu', 'Số liệu lấy từ']}
+                rows={[
+                  ['Một dự án', 'Đúng dự án đã chọn (kèm Burndown và Velocity của dự án đó).'],
+                  [
+                    'Một nhóm dự án của tôi',
+                    'Gộp các dự án trong một nhóm của bạn. Người xem bảng chỉ thấy phần thuộc dự án họ được xem; nhóm hết dự án xem được thì ô trống.',
+                  ],
+                  [
+                    'Toàn tổ chức',
+                    'Mọi dự án người xem thấy. Chỉ quản trị viên tổ chức chọn mới; bảng cũ mặc định là phạm vi này.',
+                  ],
+                ]}
+              />
+              <P>
+                Phạm vi dữ liệu khác với “ai được xem” (Chỉ mình tôi · Cả tổ chức · …). Đổi phạm vi
+                sau khi tạo bằng nút <em>Dữ liệu</em> trong màn chỉnh sửa; các ô không tự chọn dự án
+                đi theo, ô đã chọn dự án riêng giữ nguyên. Mỗi ô ghi rõ nó lấy số liệu của đâu.
+                Người xem bảng chia sẻ theo nhóm dự án thấy tên nhóm đó.
+              </P>
               <H3>Dành cho lãnh đạo</H3>
               <div className="border-t border-border">
                 <Feature icon={<TriangleAlert className="h-4 w-4" />} title="Sức khoẻ dự án">

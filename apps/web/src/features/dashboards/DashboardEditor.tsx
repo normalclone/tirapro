@@ -315,13 +315,26 @@ function EditorToolbar({
 }) {
   return (
     <div className="mb-3 flex flex-wrap items-center gap-2">
-      <Button variant="secondary" size="sm" onClick={onShare}>
-        <Users className="h-4 w-4" aria-hidden />
-        Ai xem: {shareLabel}
+      <Button
+        variant="secondary"
+        size="sm"
+        onClick={onShare}
+        className="max-w-full"
+        title={`Ai xem: ${shareLabel}`}
+      >
+        <Users className="h-4 w-4 shrink-0" aria-hidden />
+        <span className="min-w-0 truncate">Ai xem: {shareLabel}</span>
       </Button>
-      <Button variant="secondary" size="sm" onClick={onData}>
-        <Database className="h-4 w-4" aria-hidden />
-        Dữ liệu: {dataLabel}
+      {/* Nhãn dài (tên nhóm + số dự án) phải co lại và cắt bằng dấu … ở màn điện thoại, không tràn khỏi trang. */}
+      <Button
+        variant="secondary"
+        size="sm"
+        onClick={onData}
+        className="max-w-full"
+        title={`Dữ liệu: ${dataLabel}`}
+      >
+        <Database className="h-4 w-4 shrink-0" aria-hidden />
+        <span className="min-w-0 truncate">Dữ liệu: {dataLabel}</span>
       </Button>
       <Button
         variant="secondary"
