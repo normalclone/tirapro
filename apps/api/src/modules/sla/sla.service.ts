@@ -3,7 +3,8 @@ import { OnEvent } from '@nestjs/event-emitter';
 import { DOMAIN_EVENTS } from '@tirapro/types';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { NotFoundAppException } from '../../common/exceptions/app.exception';
-import { assertProjectIdWritable } from '../../common/project-writable';
+import { requireProjectId } from '../../common/project-required';
+import { assertProjectWritable } from '../../common/project-writable';
 import { ProjectAccessService } from '../rbac/project-access.service';
 import type { CreateSlaPolicyInput, UpdateSlaPolicyInput } from './sla.schemas';
 
@@ -24,17 +25,17 @@ export class SlaService {
   // ───────────── Chính sách ─────────────
 
   /**
-   * Chính sách SLA mà `viewerId` được thấy: chính sách chung (không dự án) + của dự án người đó thấy — chính sách
-   * của dự án riêng tư người ngoài không thấy bị loại (tên chính sách/khoá/tên dự án không lộ).
+   * Chính sách SLA mà `viewerId` được thấy — luôn thuộc một dự án (không còn mặc định cấp tổ chức), nên chỉ gồm chính
+   * sách của dự án người đó thấy: chính sách của dự án riêng tư người ngoài không thấy bị loại (tên chính sách/khoá/tên
+   * dự án không lộ). `projectId` thu hẹp theo một dự án (bảng "Thời gian xử lý" của dự án).
    */
-  async list(workspaceId: string, viewerId: string) {
+  async list(workspaceId: string, viewerId: string, projectId?: string) {
     const visible = await this.access.visibleWhere(viewerId, workspaceId);
     const rows = await this.prisma.slaPolicy.findMany({
       where: {
         workspaceId,
-        ...(Object.keys(visible).length
-          ? { OR: [{ projectId: null }, { project: { deletedAt: null, ...visible } }] }
-          : {}),
+        ...(projectId ? { projectId } : {}),
+        project: { deletedAt: null, ...visible },
       },
       orderBy: [{ active: 'desc' }, { name: 'asc' }],
       include: {
@@ -56,13 +57,14 @@ export class SlaService {
   }
 
   async create(workspaceId: string, dto: CreateSlaPolicyInput, viewerId: string) {
-    if (dto.projectId) await this.access.assertCanSee(viewerId, workspaceId, dto.projectId);
-    await assertProjectIdWritable(this.prisma, dto.projectId);
+    const projectId = requireProjectId(dto.projectId, 'chính sách thời gian xử lý');
+    await this.access.assertCanSee(viewerId, workspaceId, projectId);
+    await assertProjectWritable(this.prisma, projectId);
     await this.prisma.slaPolicy.create({
       data: {
         workspaceId,
         name: dto.name.trim(),
-        projectId: dto.projectId ?? null,
+        projectId,
         priorityId: dto.priorityId ?? null,
         responseMins: dto.responseMins,
         resolveMins: dto.resolveMins,
@@ -79,21 +81,27 @@ export class SlaService {
     });
     if (!found) throw new NotFoundAppException('Cam kết thời gian xử lý');
     // Chính sách của dự án riêng tư người gọi không thấy = không tồn tại; không gắn được sang dự án ẩn.
-    if (found.projectId)
-      await this.access.assertCanSee(
-        viewerId,
-        workspaceId,
-        found.projectId,
-        'Cam kết thời gian xử lý',
-      );
-    if (dto.projectId) await this.access.assertCanSee(viewerId, workspaceId, dto.projectId);
-    await assertProjectIdWritable(this.prisma, found.projectId);
-    if (dto.projectId !== undefined) await assertProjectIdWritable(this.prisma, dto.projectId);
+    await this.access.assertCanSee(
+      viewerId,
+      workspaceId,
+      found.projectId,
+      'Cam kết thời gian xử lý',
+    );
+    await assertProjectWritable(this.prisma, found.projectId);
+    // Đổi dự án: bắt buộc có dự án đích (không còn chính sách cấp tổ chức).
+    const nextProjectId =
+      dto.projectId !== undefined
+        ? requireProjectId(dto.projectId, 'chính sách thời gian xử lý')
+        : undefined;
+    if (nextProjectId) {
+      await this.access.assertCanSee(viewerId, workspaceId, nextProjectId);
+      await assertProjectWritable(this.prisma, nextProjectId);
+    }
     await this.prisma.slaPolicy.update({
       where: { id },
       data: {
         ...(dto.name !== undefined && dto.name !== null ? { name: dto.name.trim() } : {}),
-        ...(dto.projectId !== undefined ? { projectId: dto.projectId } : {}),
+        ...(nextProjectId ? { projectId: nextProjectId } : {}),
         ...(dto.priorityId !== undefined ? { priorityId: dto.priorityId } : {}),
         ...(dto.responseMins !== undefined ? { responseMins: dto.responseMins } : {}),
         ...(dto.resolveMins !== undefined ? { resolveMins: dto.resolveMins } : {}),
@@ -108,14 +116,15 @@ export class SlaService {
       where: { id, workspaceId },
       select: { projectId: true },
     });
-    if (found?.projectId)
+    if (found) {
       await this.access.assertCanSee(
         viewerId,
         workspaceId,
         found.projectId,
         'Cam kết thời gian xử lý',
       );
-    if (found) await assertProjectIdWritable(this.prisma, found.projectId);
+      await assertProjectWritable(this.prisma, found.projectId);
+    }
     await this.prisma.slaPolicy.deleteMany({ where: { id, workspaceId } });
     return { success: true };
   }
@@ -166,7 +175,7 @@ export class SlaService {
    * Danh sách issue đang có SLA (theo dõi vi phạm / sắp trễ) — chỉ việc của dự án `viewerId` thấy (khoá, tiêu đề,
    * người phụ trách của dự án riêng tư người ngoài không lộ).
    */
-  async board(workspaceId: string, viewerId: string) {
+  async board(workspaceId: string, viewerId: string, projectId?: string) {
     const visible = await this.access.visibleWhere(viewerId, workspaceId);
     const rows = await this.prisma.issueSla.findMany({
       where: {
@@ -175,6 +184,7 @@ export class SlaService {
           deletedAt: null,
           // Việc đã ở trạng thái DONE thì không còn "đang chạy đồng hồ", dù dòng SLA chưa được đóng (logbug #26).
           status: { category: { not: 'DONE' } },
+          ...(projectId ? { projectId } : {}),
           ...(Object.keys(visible).length ? { project: { deletedAt: null, ...visible } } : {}),
         },
         resolvedAt: null,
@@ -215,19 +225,18 @@ export class SlaService {
 
   // ───────────── Tự động gắn / cập nhật theo sự kiện ─────────────
 
-  /** Chọn chính sách khớp nhất: ưu tiên (dự án + mức ưu tiên) > dự án > mức ưu tiên > chung. */
+  /**
+   * Chọn chính sách khớp nhất CHỈ trong dự án của việc: ưu tiên đúng mức ưu tiên > chính sách dự án áp mọi mức. Không còn
+   * mặc định cấp tổ chức — dự án không có chính sách thì việc không có đồng hồ SLA.
+   */
   private async pickPolicy(workspaceId: string, projectId: string, priorityId: string | null) {
     const candidates = await this.prisma.slaPolicy.findMany({
-      where: {
-        workspaceId,
-        active: true,
-        OR: [{ projectId }, { projectId: null }],
-      },
+      where: { workspaceId, projectId, active: true },
     });
-    const score = (p: (typeof candidates)[number]) =>
-      (p.projectId === projectId ? 2 : 0) + (priorityId && p.priorityId === priorityId ? 1 : 0);
     const matching = candidates.filter((p) => !p.priorityId || p.priorityId === priorityId);
     if (matching.length === 0) return null;
+    const score = (p: (typeof candidates)[number]) =>
+      priorityId && p.priorityId === priorityId ? 1 : 0;
     return matching.sort((a, b) => score(b) - score(a))[0]!;
   }
 

@@ -79,12 +79,14 @@ describe('RaidService.update — đổi dự án', () => {
     });
   });
 
-  it('gỡ khỏi dự án (về cấp workspace) kiểm quyền cấp workspace (projectId=null)', async () => {
-    const { service, rbac } = setup([]);
+  it('gỡ khỏi dự án (projectId: null) => 422 PROJECT_REQUIRED, không hỏi quyền, không ghi', async () => {
+    const { service, rbac, prisma } = setup(['risk:manage']);
     await expect(service.update('w1', 'r1', { projectId: null }, member)).rejects.toMatchObject({
-      status: 403,
+      status: 422,
+      code: 'PROJECT_REQUIRED',
     });
-    expect(rbac.getEffectivePermissions).toHaveBeenCalledWith('u1', 'w1', null);
+    expect(rbac.getEffectivePermissions).not.toHaveBeenCalled();
+    expect(prisma.raidItem.update).not.toHaveBeenCalled();
   });
 
   it('projectId không đổi -> không kiểm quyền thêm', async () => {
@@ -108,21 +110,6 @@ describe('RaidService.update — đổi dự án', () => {
     expect(rbac.getEffectivePermissions).not.toHaveBeenCalled();
     expect(prisma.raidItem.update).not.toHaveBeenCalled();
   });
-
-  it('chuyển từ cấp workspace vào dự án: kiểm risk:manage ở dự án đích', async () => {
-    const denied = setup([], { projectId: null });
-    await expect(
-      denied.service.update('w1', 'r1', { projectId: 'p2' }, member),
-    ).rejects.toMatchObject({
-      status: 403,
-    });
-    expect(denied.rbac.getEffectivePermissions).toHaveBeenCalledWith('u1', 'w1', 'p2');
-    const ok = setup(['risk:manage'], { projectId: null });
-    await ok.service.update('w1', 'r1', { projectId: 'p2' }, member);
-    expect(ok.prisma.raidItem.update.mock.calls[0]![0]).toMatchObject({
-      data: { project: { connect: { id: 'p2' } } },
-    });
-  });
 });
 
 describe('RaidService — dự án riêng tư (P14)', () => {
@@ -143,14 +130,14 @@ describe('RaidService — dự án riêng tư (P14)', () => {
     return { service, prisma, access };
   }
 
-  it('list(w, filter, viewer): mục cấp workspace luôn hiện; mục gắn dự án chỉ khi dự án thấy được', async () => {
+  it('list(w, filter, viewer): chỉ mục của dự án người xem thấy', async () => {
     const { service, prisma, access } = make();
     await service.list('w1', { kind: 'RISK' }, 'u1');
     expect(access.visibleWhere).toHaveBeenCalledWith('u1', 'w1');
     expect(whereOf(prisma.raidItem.findMany)).toMatchObject({
       workspaceId: 'w1',
       kind: 'RISK',
-      OR: [{ projectId: null }, { project: visible }],
+      project: visible,
     });
   });
 
@@ -160,7 +147,7 @@ describe('RaidService — dự án riêng tư (P14)', () => {
     expect(whereOf(prisma.raidItem.findFirst)).toMatchObject({
       id: 'r1',
       workspaceId: 'w1',
-      OR: [{ projectId: null }, { project: visible }],
+      project: visible,
     });
   });
 
@@ -173,10 +160,23 @@ describe('RaidService — dự án riêng tư (P14)', () => {
   });
 });
 
+describe('RaidService — mục rủi ro luôn thuộc một dự án', () => {
+  it('create thiếu projectId (hoặc rỗng/null) => 422 PROJECT_REQUIRED, không ghi', async () => {
+    const { service, prisma } = setup(['risk:manage']);
+    for (const projectId of [undefined, null, '']) {
+      await expect(service.create('w1', { title: 'T', projectId }, 'u1')).rejects.toMatchObject({
+        status: 422,
+        code: 'PROJECT_REQUIRED',
+      });
+    }
+    expect(prisma.raidItem.create).not.toHaveBeenCalled();
+  });
+});
+
 describe('RaidService — nhiều người phụ trách (logbug #27)', () => {
   it('tạo với ownerIds: lưu bảng nối, người đầu là chính (ownerId), khử trùng', async () => {
     const { service, prisma } = setup(['risk:manage']);
-    await service.create('w1', { title: 'T', projectId: null, ownerIds: ['a', 'b', 'a'] }, 'u1');
+    await service.create('w1', { title: 'T', projectId: 'p1', ownerIds: ['a', 'b', 'a'] }, 'u1');
     const data = (
       prisma.raidItem.create.mock.calls[0] as unknown as [{ data: Record<string, unknown> }]
     )[0].data;
@@ -186,7 +186,7 @@ describe('RaidService — nhiều người phụ trách (logbug #27)', () => {
 
   it('ownerId cũ vẫn dùng được (một người)', async () => {
     const { service, prisma } = setup(['risk:manage']);
-    await service.create('w1', { title: 'T', projectId: null, ownerId: 'a' }, 'u1');
+    await service.create('w1', { title: 'T', projectId: 'p1', ownerId: 'a' }, 'u1');
     const data = (
       prisma.raidItem.create.mock.calls[0] as unknown as [{ data: Record<string, unknown> }]
     )[0].data;
@@ -196,7 +196,7 @@ describe('RaidService — nhiều người phụ trách (logbug #27)', () => {
   it('người ngoài tổ chức → 403 nêu cách sửa, không ghi', async () => {
     const { service, prisma } = setup(['risk:manage']);
     await expect(
-      service.create('w1', { title: 'T', projectId: null, ownerIds: ['a', 'outsider'] }, 'u1'),
+      service.create('w1', { title: 'T', projectId: 'p1', ownerIds: ['a', 'outsider'] }, 'u1'),
     ).rejects.toMatchObject({ status: 403 });
     expect(prisma.raidItem.create).not.toHaveBeenCalled();
   });

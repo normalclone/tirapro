@@ -90,8 +90,8 @@ export class KrSnapshotCron implements OnApplicationShutdown {
       where: {
         workspaceId,
         status: 'ACTIVE',
-        // Mục tiêu gắn dự án đã xoá/lưu trữ bị bỏ qua (cấp workspace thì luôn xét).
-        OR: [{ projectId: null }, { project: { deletedAt: null, archivedAt: null } }],
+        // Mục tiêu của dự án đã xoá/lưu trữ bị bỏ qua.
+        project: { deletedAt: null, archivedAt: null },
         keyResults: { some: {} },
       },
       select: {

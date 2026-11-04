@@ -36,7 +36,6 @@ const EXEMPT: Record<string, string> = {
   'auth/auth.service.ts': 'định danh',
   'auth/password-reset.service.ts': 'định danh',
   'auth/token.service.ts': 'định danh',
-  'clients/clients.service.ts': 'cấp workspace',
   'programs/programs.service.ts': 'cấp workspace',
   'resources/resources.service.ts': 'cấp workspace',
   'teams/teams.service.ts': 'cấp workspace',

@@ -170,6 +170,13 @@ export interface MailOutboxItemDto {
   createdAt: ISODate;
 }
 
+/** Nhóm dự án (Program) mà một dự án thuộc về — dự án thuộc được nhiều nhóm. */
+export interface ProjectProgramRefDto {
+  id: ID;
+  name: string;
+  color: string | null;
+}
+
 export interface ProjectDto {
   id: ID;
   workspaceId: ID;
@@ -186,6 +193,8 @@ export interface ProjectDto {
   archivedAt: ISODate | null;
   /** Dự án riêng tư: chỉ thành viên dự án + quản trị workspace thấy (người khác nhận 404). */
   isPrivate: boolean;
+  /** Các nhóm dự án chứa dự án này (theo tên); rỗng = chưa thuộc nhóm nào. */
+  programs: ProjectProgramRefDto[];
   issueCount?: number;
   createdAt: ISODate;
 }

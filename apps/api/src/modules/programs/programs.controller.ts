@@ -5,15 +5,18 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { AuthUser } from '../../common/types/request';
 import { WorkspaceId } from '../../common/decorators/workspace-id.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
+import { ProjectRef } from '../../common/decorators/project-ref.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { ProgramsService } from './programs.service';
 import {
   createProgramSchema,
   updateProgramSchema,
   setProgramProjectsSchema,
+  setProjectProgramsSchema,
   type CreateProgramInput,
   type UpdateProgramInput,
   type SetProgramProjectsInput,
+  type SetProjectProgramsInput,
 } from './programs.schemas';
 
 @ApiTags('programs')
@@ -82,5 +85,28 @@ export class ProgramsController {
   @Permissions(PERMISSIONS.PROGRAM_MANAGE)
   async remove(@WorkspaceId() workspaceId: string, @Param('id') id: string) {
     return this.programs.remove(workspaceId, id);
+  }
+}
+
+/**
+ * Nhóm của MỘT dự án. Khai báo ở module nhóm (dữ liệu là quan hệ Dự án ↔ Nhóm) nhưng nằm dưới `/projects/:id`.
+ * Quyền: `project:admin` của CHÍNH dự án (guard tính theo `:id`; quản trị tổ chức có sẵn quyền này ở mọi dự án) — không
+ * cần `program:manage`, vì đây là việc của người quản trị dự án, không phải của người quản lý danh mục nhóm.
+ */
+@ApiTags('programs')
+@Controller('projects')
+export class ProjectProgramsController {
+  constructor(private readonly programs: ProgramsService) {}
+
+  @Put(':id/programs')
+  @Permissions(PERMISSIONS.PROJECT_ADMIN)
+  @ProjectRef('param', 'id')
+  async setForProject(
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(setProjectProgramsSchema)) dto: SetProjectProgramsInput,
+  ) {
+    return this.programs.setForProject(workspaceId, id, dto.programIds, user.id);
   }
 }

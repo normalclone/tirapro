@@ -83,6 +83,8 @@ export const ERROR_CODES = {
   FILTER_SHARE_USER_NOT_MEMBER: 'FILTER_SHARE_USER_NOT_MEMBER',
   /** 422: chia sẻ bộ lọc cho dự án không tồn tại / chủ bộ lọc không xem được. */
   FILTER_SHARE_PROJECT_NOT_VISIBLE: 'FILTER_SHARE_PROJECT_NOT_VISIBLE',
+  /** 422: mục tiêu / rủi ro / chính sách thời gian xử lý phải thuộc một dự án — thiếu `projectId` (hoặc xoá trống). */
+  PROJECT_REQUIRED: 'PROJECT_REQUIRED',
   /** 413: tệp tải lên vượt giới hạn dung lượng. */
   PAYLOAD_TOO_LARGE: 'PAYLOAD_TOO_LARGE',
   INTERNAL: 'INTERNAL',

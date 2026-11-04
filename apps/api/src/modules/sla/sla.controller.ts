@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Post, Put } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Put, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { PERMISSIONS } from '@tirapro/types';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -20,11 +20,15 @@ import {
 export class SlaController {
   constructor(private readonly sla: SlaService) {}
 
-  /** Chính sách SLA của workspace. */
+  /** Chính sách SLA (luôn thuộc một dự án); `?projectId=` thu hẹp theo một dự án. */
   @Get('policies')
   @Permissions(PERMISSIONS.WORKSPACE_VIEW)
-  async list(@WorkspaceId() workspaceId: string, @CurrentUser() user: AuthUser) {
-    return this.sla.list(workspaceId, user.id);
+  async list(
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
+    @Query('projectId') projectId?: string,
+  ) {
+    return this.sla.list(workspaceId, user.id, projectId || undefined);
   }
 
   @Post('policies')
@@ -58,11 +62,15 @@ export class SlaController {
     return this.sla.remove(workspaceId, id, user.id);
   }
 
-  /** Bảng theo dõi ticket đang chạy SLA (sắp trễ / đã vi phạm). */
+  /** Bảng theo dõi ticket đang chạy SLA (sắp trễ / đã vi phạm); `?projectId=` thu hẹp theo một dự án. */
   @Get('board')
   @Permissions(PERMISSIONS.WORKSPACE_VIEW)
-  async board(@WorkspaceId() workspaceId: string, @CurrentUser() user: AuthUser) {
-    return this.sla.board(workspaceId, user.id);
+  async board(
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
+    @Query('projectId') projectId?: string,
+  ) {
+    return this.sla.board(workspaceId, user.id, projectId || undefined);
   }
 
   /** Trạng thái SLA của 1 issue (hiển thị badge trên trang chi tiết). */

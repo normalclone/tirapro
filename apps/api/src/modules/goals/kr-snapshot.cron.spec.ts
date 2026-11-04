@@ -136,14 +136,14 @@ describe('KrSnapshotCron.snapshotAll (L29)', () => {
     ).toEqual({ keyResultId: { in: ['k1', 'k2'] }, snapshotDate: TODAY });
   });
 
-  it('chỉ mục tiêu ACTIVE của dự án còn sống và chưa lưu trữ (hoặc cấp workspace)', async () => {
+  it('chỉ mục tiêu ACTIVE của dự án còn sống và chưa lưu trữ', async () => {
     const { cron, prisma } = make({ objectives: { w1: [] } });
     await cron.snapshotAll(NOW);
     const where = (prisma.objective.findMany.mock.calls[0]![0] as { where: unknown }).where;
     expect(where).toEqual({
       workspaceId: 'w1',
       status: 'ACTIVE',
-      OR: [{ projectId: null }, { project: { deletedAt: null, archivedAt: null } }],
+      project: { deletedAt: null, archivedAt: null },
       keyResults: { some: {} },
     });
     expect(prisma.workspace.findMany).toHaveBeenCalledWith(

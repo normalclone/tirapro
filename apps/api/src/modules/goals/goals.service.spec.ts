@@ -59,7 +59,7 @@ describe('GoalsService — không đếm/gắn issue của dự án xoá mềm',
 
 const ARCHIVED = { status: 422, message: expect.stringContaining('lưu trữ') as unknown };
 
-/** Dự án `archived` quyết định: mục tiêu gắn dự án đó là chỉ đọc; mục tiêu cả workspace (project null) thì không. */
+/** Dự án `archived` quyết định: mục tiêu của dự án đó là chỉ đọc. */
 function setup(archived: boolean, objectiveProject = true) {
   const archivedAt = archived ? new Date() : null;
   const prisma = {
@@ -142,16 +142,37 @@ describe('GoalsService — dự án lưu trữ là chỉ đọc', () => {
     expect(prisma.objectiveIssue.deleteMany).not.toHaveBeenCalled();
   });
 
-  it('mục tiêu cả workspace (không gắn dự án) vẫn xoá được', async () => {
-    const { service, prisma } = setup(true, false);
+  it('mục tiêu của dự án đang hoạt động xoá được', async () => {
+    const { service, prisma } = setup(false);
     await service.remove('w1', 'o1', 'u0');
     expect(prisma.objective.delete).toHaveBeenCalled();
   });
 });
 
+describe('GoalsService — mục tiêu luôn thuộc một dự án', () => {
+  it('create thiếu projectId (hoặc rỗng/null) => 422 PROJECT_REQUIRED, không ghi', async () => {
+    const { service, prisma } = setup(false);
+    for (const projectId of [undefined, null, '']) {
+      await expect(
+        service.create('w1', { name: 'O', period: '2026-Q4', projectId }, 'u0'),
+      ).rejects.toMatchObject({ status: 422, code: 'PROJECT_REQUIRED' });
+    }
+    expect(prisma.objective.create).not.toHaveBeenCalled();
+  });
+
+  it('update xoá trống dự án (projectId: null) => 422 PROJECT_REQUIRED; không gửi projectId thì giữ nguyên', async () => {
+    const { service, prisma } = setup(false);
+    await expect(service.update('w1', 'o1', { projectId: null }, 'u0')).rejects.toMatchObject({
+      status: 422,
+      code: 'PROJECT_REQUIRED',
+    });
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+});
+
 describe('GoalsService — dự án riêng tư (P14)', () => {
   const visible = { OR: [{ isPrivate: false }, { memberships: { some: { userId: 'u1' } } }] };
-  const scope = { OR: [{ projectId: null }, { project: visible }] };
+  const scope = { project: visible };
   const whereOf = (fn: ReturnType<typeof vi.fn>, i = 0) =>
     (fn.mock.calls[i] as unknown as [{ where: unknown }])[0].where;
 
@@ -179,7 +200,7 @@ describe('GoalsService — dự án riêng tư (P14)', () => {
     };
   }
 
-  it('list(w, f, viewer): mục tiêu cấp workspace luôn hiện, gắn dự án chỉ khi thấy; việc gắn kèm của dự án ẩn bị bỏ', async () => {
+  it('list(w, f, viewer): chỉ mục tiêu của dự án người xem thấy; việc gắn kèm của dự án ẩn bị bỏ', async () => {
     const { service, prisma, access } = make();
     await service.list('w1', { period: '2026-Q4' }, 'u1');
     expect(access.visibleWhere).toHaveBeenCalledWith('u1', 'w1');

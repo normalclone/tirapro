@@ -329,7 +329,6 @@ model Workspace {
   slaPolicies         SlaPolicy[]
   issueTemplates      IssueTemplate[]
   wikiPages           WikiPage[]
-  clients             Client[]
   automationRules     AutomationRule[]
   auditLogs           AuditLog[]
 
@@ -509,8 +508,6 @@ model Project {
   archivedAt          DateTime?
   /// Dự án riêng tư: chỉ thành viên dự án (ProjectMembership) + quản trị workspace/admin hệ thống thấy.
   isPrivate           Boolean  @default(false)
-  programId           String?
-  clientId            String?
   /// Sức khoẻ do quản trị dự án đặt tay (ghi đè giá trị tự tính); null = dùng giá trị tự tính.
   healthOverride      ProjectHealth?
   healthNote          String?  @db.VarChar(500)
@@ -538,8 +535,7 @@ model Project {
   savedFilterShares SavedFilterProjectShare[]
   dashboards   Dashboard[]
   activities   ActivityLog[]
-  program      Program?    @relation(fields: [programId], references: [id], onDelete: SetNull)
-  client       Client?     @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  programLinks ProjectProgram[]
   dependencies IssueDependency[]
   milestones   Milestone[]
   baselines    PlanBaseline[]
@@ -550,7 +546,6 @@ model Project {
   issueTemplates  IssueTemplate[]
   recurringIssues RecurringIssue[]
   wikiPages    WikiPage[]
-  contracts    Contract[]
 
   @@unique([workspaceId, key])
   @@unique([workspaceId, name])
@@ -1905,17 +1900,29 @@ model Program {
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   owner     User?     @relation("ProgramOwner", fields: [ownerId], references: [id], onDelete: SetNull)
-  projects  Project[]
+  projects  ProjectProgram[]
 
   @@unique([workspaceId, name])
   @@index([workspaceId])
 }
 
-/// Mục tiêu (OKR). Cấp workspace hoặc gắn 1 dự án.
+/// Dự án ↔ nhóm dự án (Program): nhiều–nhiều — một dự án thuộc được nhiều nhóm. Xoá dự án/nhóm thì gỡ liên kết.
+model ProjectProgram {
+  projectId String
+  programId String
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  program Program @relation(fields: [programId], references: [id], onDelete: Cascade)
+
+  @@id([projectId, programId])
+  @@index([programId])
+}
+
+/// Mục tiêu (OKR) — luôn thuộc một dự án.
 model Objective {
   id          String          @id @default(cuid())
   workspaceId String
-  projectId   String?
+  projectId   String
   name        String
   description String?
   period      String
@@ -1925,7 +1932,7 @@ model Objective {
   updatedAt   DateTime        @updatedAt
 
   workspace  Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  project    Project?         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project    Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
   owner      User?            @relation("ObjectiveOwner", fields: [ownerId], references: [id], onDelete: SetNull)
   keyResults KeyResult[]
   issues     ObjectiveIssue[]
@@ -1994,11 +2001,11 @@ model ObjectiveIssue {
   @@index([issueId])
 }
 
-/// Sổ RAID: Risk / Assumption / Issue / Dependency.
+/// Sổ RAID: Risk / Assumption / Issue / Dependency — luôn thuộc một dự án.
 model RaidItem {
   id          String     @id @default(cuid())
   workspaceId String
-  projectId   String?
+  projectId   String
   kind        RaidKind   @default(RISK)
   title       String
   description String?
@@ -2013,7 +2020,7 @@ model RaidItem {
   updatedAt   DateTime   @updatedAt
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  project   Project?  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project   Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
   owner     User?     @relation("RaidOwner", fields: [ownerId], references: [id], onDelete: SetNull)
   /// Nhiều người phụ trách. `ownerId` giữ lại làm người phụ trách CHÍNH (= người đầu danh sách) để tương thích ngược.
   owners    RaidOwner[]
@@ -2035,11 +2042,11 @@ model RaidOwner {
   @@index([userId])
 }
 
-/// Chính sách SLA theo mức ưu tiên.
+/// Chính sách SLA theo mức ưu tiên — chỉ cấp dự án (không có mặc định tổ chức).
 model SlaPolicy {
   id           String   @id @default(cuid())
   workspaceId  String
-  projectId    String?
+  projectId    String
   name         String
   priorityId   String?
   responseMins Int
@@ -2049,7 +2056,7 @@ model SlaPolicy {
   updatedAt    DateTime @updatedAt
 
   workspace Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  project   Project?   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project   Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
   priority  Priority?  @relation(fields: [priorityId], references: [id], onDelete: SetNull)
   tickets   IssueSla[]
 
@@ -2187,46 +2194,6 @@ model WikiPageIssue {
 
   @@id([wikiPageId, issueId])
   @@index([issueId])
-}
-
-/// Khách hàng và hợp đồng.
-model Client {
-  id          String   @id @default(cuid())
-  workspaceId String
-  name        String
-  contactName String?
-  email       String?
-  phone       String?
-  note        String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  workspace Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  contracts Contract[]
-  projects  Project[]
-
-  @@unique([workspaceId, name])
-  @@index([workspaceId])
-}
-
-model Contract {
-  id        String    @id @default(cuid())
-  clientId  String
-  projectId String?
-  name      String
-  code      String?
-  value     Float?
-  currency  String    @default("VND")
-  startDate DateTime?
-  endDate   DateTime?
-  note      String?
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-
-  client  Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  project Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
-
-  @@index([clientId])
 }
 
 enum MailStatus {

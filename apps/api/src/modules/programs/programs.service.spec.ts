@@ -67,8 +67,15 @@ describe('ProgramsService.rollup — sức khoẻ dự án', () => {
       project: {
         findMany: vi.fn(() =>
           Promise.resolve([
-            { id: 'p1', key: 'AAA', name: 'Alpha', isArchived: false, programId: null, lead: null },
-            { id: 'p2', key: 'BBB', name: 'Beta', isArchived: true, programId: null, lead: null },
+            {
+              id: 'p1',
+              key: 'AAA',
+              name: 'Alpha',
+              isArchived: false,
+              programLinks: [],
+              lead: null,
+            },
+            { id: 'p2', key: 'BBB', name: 'Beta', isArchived: true, programLinks: [], lead: null },
           ]),
         ),
       },
@@ -137,10 +144,11 @@ describe('ProgramsService — dự án riêng tư (P14)', () => {
         ),
       },
       project: {
-        findMany: vi.fn((a: { select?: { programId?: boolean } }) =>
-          Promise.resolve(a.select?.programId ? [] : (over.found ?? [])),
-        ),
-        updateMany: vi.fn(() => Promise.resolve({ count: 0 })),
+        findMany: vi.fn(() => Promise.resolve(over.found ?? [])),
+      },
+      projectProgram: {
+        deleteMany: vi.fn(() => Promise.resolve({ count: 0 })),
+        createMany: vi.fn(() => Promise.resolve({ count: 0 })),
       },
       status: { findMany: vi.fn(() => Promise.resolve([])) },
       issue: { groupBy: vi.fn(() => Promise.resolve([])) },
@@ -184,7 +192,7 @@ describe('ProgramsService — dự án riêng tư (P14)', () => {
     for (const fn of [prisma.program.findMany, prisma.program.findFirst]) {
       const sel = (fn.mock.calls[0] as unknown as [{ select: { projects: { where: unknown } } }])[0]
         .select;
-      expect(sel.projects.where).toMatchObject({ deletedAt: null, ...visible });
+      expect(sel.projects.where).toMatchObject({ project: { deletedAt: null, ...visible } });
     }
   });
 
@@ -198,16 +206,163 @@ describe('ProgramsService — dự án riêng tư (P14)', () => {
       workspaceId: 'w1',
       ...visible,
     });
-    expect(prisma.project.updateMany).not.toHaveBeenCalled();
+    expect(prisma.projectProgram.deleteMany).not.toHaveBeenCalled();
+    expect(prisma.projectProgram.createMany).not.toHaveBeenCalled();
   });
 
-  it('setProjects: thành viên gán được dự án riêng tư; gỡ chỉ động tới dự án người gọi thấy (không gỡ dự án ẩn)', async () => {
+  it('setProjects: thành viên gán được dự án riêng tư; gỡ chỉ động tới dự án người gọi thấy (không gỡ dự án ẩn, không đụng nhóm khác)', async () => {
     const { service, prisma } = make({ found: [{ id: 'p1' }] });
     await service.setProjects('w1', 'g1', ['p1'], 'u1');
-    const unlink = (prisma.project.updateMany.mock.calls[0] as unknown as [{ where: unknown }])[0]
-      .where;
-    expect(unlink).toMatchObject({ workspaceId: 'w1', programId: 'g1', ...visible });
-    expect(prisma.project.updateMany).toHaveBeenCalledTimes(2);
+    const unlink = (
+      prisma.projectProgram.deleteMany.mock.calls[0] as unknown as [{ where: unknown }]
+    )[0].where;
+    expect(unlink).toMatchObject({
+      programId: 'g1',
+      projectId: { notIn: ['p1'] },
+      project: { workspaceId: 'w1', deletedAt: null, ...visible },
+    });
+    expect(prisma.projectProgram.createMany).toHaveBeenCalledWith({
+      data: [{ projectId: 'p1', programId: 'g1' }],
+      skipDuplicates: true,
+    });
+  });
+
+  it('setProjects([]) gỡ hết dự án thấy được của nhóm và không tạo gì', async () => {
+    const { service, prisma } = make();
+    await service.setProjects('w1', 'g1', [], 'u1');
+    expect(
+      (prisma.projectProgram.deleteMany.mock.calls[0] as unknown as [{ where: object }])[0].where,
+    ).not.toHaveProperty('projectId');
+    expect(prisma.projectProgram.createMany).not.toHaveBeenCalled();
+  });
+});
+
+describe('ProgramsService.rollup — một dự án thuộc nhiều nhóm', () => {
+  function run(links: Record<string, string[]>) {
+    const prisma = {
+      program: {
+        findMany: vi.fn(() =>
+          Promise.resolve(
+            ['g1', 'g2'].map((id) => ({
+              id,
+              name: id,
+              color: null,
+              description: null,
+              startDate: null,
+              targetDate: null,
+              owner: null,
+            })),
+          ),
+        ),
+      },
+      project: {
+        findMany: vi.fn(() =>
+          Promise.resolve(
+            Object.entries(links).map(([id, programIds]) => ({
+              id,
+              key: id.toUpperCase(),
+              name: id,
+              isArchived: false,
+              programLinks: programIds.map((programId) => ({ programId })),
+              lead: null,
+            })),
+          ),
+        ),
+      },
+      status: { findMany: vi.fn(() => Promise.resolve([])) },
+      issue: { groupBy: vi.fn(() => Promise.resolve([])) },
+    };
+    return new ProgramsService(
+      prisma as never,
+      { forProjects: vi.fn(() => Promise.resolve(new Map())) } as never,
+      ACCESS_ALL as never,
+    ).rollup('w1', 'u0');
+  }
+
+  it('hiện dưới từng nhóm; tổng đếm dự án một lần; không nhóm nào → "Chưa thuộc chương trình"', async () => {
+    const r = await run({ a: ['g1', 'g2'], b: ['g1'], c: [] });
+    const keys = (id: string | null) =>
+      r.groups.find((g) => g.id === id)!.projects.map((p) => p.key);
+    expect(keys('g1')).toEqual(['A', 'B']);
+    expect(keys('g2')).toEqual(['A']);
+    expect(keys(null)).toEqual(['C']);
+    expect(r.totals.projectCount).toBe(3);
+  });
+});
+
+describe('ProgramsService.setForProject — nhóm của MỘT dự án', () => {
+  function make(over: { programsFound?: number; projectExists?: boolean } = {}) {
+    const prisma = {
+      project: {
+        findFirst: vi.fn(() => Promise.resolve(over.projectExists === false ? null : { id: 'p1' })),
+      },
+      program: { count: vi.fn(() => Promise.resolve(over.programsFound ?? 2)) },
+      projectProgram: {
+        deleteMany: vi.fn(() => Promise.resolve({ count: 0 })),
+        createMany: vi.fn(() => Promise.resolve({ count: 0 })),
+        findMany: vi.fn(() =>
+          Promise.resolve([{ program: { id: 'g1', name: 'A', color: '#111' } }]),
+        ),
+      },
+      $transaction: vi.fn((ops: unknown[]) => Promise.all(ops)),
+    };
+    const access = {
+      visibleWhere: vi.fn(() => Promise.resolve({})),
+      assertCanSee: vi.fn(() => Promise.resolve()),
+    };
+    const service = new ProgramsService(
+      prisma as never,
+      { forProjects: vi.fn() } as never,
+      access as never,
+    );
+    return { service, prisma, access };
+  }
+
+  it('kiểm người gọi thấy dự án; thay toàn bộ nhóm của đúng dự án đó, khử trùng; trả danh sách nhóm mới', async () => {
+    const { service, prisma, access } = make();
+    const r = await service.setForProject('w1', 'p1', ['g1', 'g2', 'g1'], 'u1');
+    expect(access.assertCanSee).toHaveBeenCalledWith('u1', 'w1', 'p1');
+    expect(prisma.program.count).toHaveBeenCalledWith({
+      where: { id: { in: ['g1', 'g2'] }, workspaceId: 'w1' },
+    });
+    expect(prisma.projectProgram.deleteMany).toHaveBeenCalledWith({
+      where: { projectId: 'p1', programId: { notIn: ['g1', 'g2'] } },
+    });
+    expect(prisma.projectProgram.createMany).toHaveBeenCalledWith({
+      data: [
+        { projectId: 'p1', programId: 'g1' },
+        { projectId: 'p1', programId: 'g2' },
+      ],
+      skipDuplicates: true,
+    });
+    expect(r).toEqual({
+      projectId: 'p1',
+      programs: [{ id: 'g1', name: 'A', color: '#111' }],
+    });
+  });
+
+  it('[] gỡ khỏi mọi nhóm', async () => {
+    const { service, prisma } = make();
+    await service.setForProject('w1', 'p1', [], 'u1');
+    expect(prisma.program.count).not.toHaveBeenCalled();
+    expect(prisma.projectProgram.deleteMany).toHaveBeenCalledWith({ where: { projectId: 'p1' } });
+    expect(prisma.projectProgram.createMany).not.toHaveBeenCalled();
+  });
+
+  it('nhóm không thuộc tổ chức → 422 (không ghi); dự án không tồn tại → 404; không thấy dự án → lỗi của assertCanSee', async () => {
+    const bad = make({ programsFound: 1 });
+    await expect(bad.service.setForProject('w1', 'p1', ['g1', 'x'], 'u1')).rejects.toMatchObject({
+      status: 422,
+    });
+    expect(bad.prisma.projectProgram.deleteMany).not.toHaveBeenCalled();
+    const missing = make({ projectExists: false });
+    await expect(missing.service.setForProject('w1', 'p1', [], 'u1')).rejects.toMatchObject({
+      status: 404,
+    });
+    const hidden = make();
+    hidden.access.assertCanSee.mockRejectedValue(new Error('ẩn'));
+    await expect(hidden.service.setForProject('w1', 'p1', ['g1'], 'u1')).rejects.toThrow('ẩn');
+    expect(hidden.prisma.projectProgram.deleteMany).not.toHaveBeenCalled();
   });
 });
 
@@ -242,7 +397,7 @@ describe('ProgramsService.rollup — ProjectAccessService THẬT trên dữ li�
                 key: r.key,
                 name: r.key,
                 isArchived: false,
-                programId: null,
+                programLinks: [],
                 lead: null,
               })),
           ),

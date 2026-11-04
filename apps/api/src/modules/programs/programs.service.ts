@@ -25,9 +25,9 @@ const programSelect = (visible: Prisma.ProjectWhereInput) =>
     createdAt: true,
     owner: { select: { id: true, displayName: true, avatarUrl: true } },
     projects: {
-      where: { deletedAt: null, ...visible },
-      orderBy: { name: 'asc' as const },
-      select: { id: true, key: true, name: true, isArchived: true },
+      where: { project: { deletedAt: null, ...visible } },
+      orderBy: { project: { name: 'asc' as const } },
+      select: { project: { select: { id: true, key: true, name: true, isArchived: true } } },
     },
   }) satisfies Prisma.ProgramSelect;
 
@@ -87,8 +87,8 @@ const EMPTY_STATS: RollupStats = {
 const UNASSIGNED_NAME = 'Chưa thuộc chương trình';
 
 /**
- * Chương trình (program / portfolio) — gom nhiều dự án để theo dõi tiến độ ở cấp cao.
- * Xoá chương trình = hard delete; Project.programId tự về null (FK SET NULL).
+ * Nhóm dự án (program / portfolio) — gom nhiều dự án để theo dõi tiến độ ở cấp cao. Quan hệ nhiều–nhiều với dự án
+ * (`ProjectProgram`): một dự án thuộc được nhiều nhóm. Xoá nhóm = hard delete; các liên kết của nó biến theo (cascade).
  */
 @Injectable()
 export class ProgramsService {
@@ -169,12 +169,13 @@ export class ProgramsService {
 
   async remove(workspaceId: string, id: string) {
     await this.require(workspaceId, id);
-    await this.prisma.program.delete({ where: { id } }); // Project.programId → null (FK SET NULL)
+    await this.prisma.program.delete({ where: { id } }); // ProjectProgram của nhóm xoá theo (cascade)
     return { success: true };
   }
 
   /**
-   * Đặt lại TOÀN BỘ tập dự án của chương trình (trong phạm vi người gọi thấy): ngoài danh sách → gỡ khỏi chương trình.
+   * Đặt lại TOÀN BỘ tập dự án của nhóm (trong phạm vi người gọi thấy): ngoài danh sách → gỡ khỏi nhóm (không đụng các
+   * nhóm khác của dự án đó).
    * Dự án riêng tư người gọi không thấy không gắn được (cùng lỗi với dự án ngoài workspace — không lộ sự tồn tại) và
    * cũng không bị gỡ nhầm khi người gọi gửi lại danh sách chỉ gồm phần họ thấy.
    */
@@ -193,25 +194,71 @@ export class ProgramsService {
         );
     }
     await this.prisma.$transaction([
-      this.prisma.project.updateMany({
+      // Chỉ gỡ dự án người gọi thấy (và còn sống); dự án ẩn không bị gỡ nhầm.
+      this.prisma.projectProgram.deleteMany({
         where: {
-          workspaceId,
           programId: id,
-          ...visible,
-          ...(ids.length ? { id: { notIn: ids } } : {}),
+          project: { workspaceId, deletedAt: null, ...visible },
+          ...(ids.length ? { projectId: { notIn: ids } } : {}),
         },
-        data: { programId: null },
       }),
       ...(ids.length
         ? [
-            this.prisma.project.updateMany({
-              where: { workspaceId, id: { in: ids } },
-              data: { programId: id },
+            this.prisma.projectProgram.createMany({
+              data: ids.map((projectId) => ({ projectId, programId: id })),
+              skipDuplicates: true,
             }),
           ]
         : []),
     ]);
     return this.get(workspaceId, id, viewerId);
+  }
+
+  /**
+   * Đặt lại TOÀN BỘ các nhóm của MỘT dự án (popover "Nhóm" ở danh sách dự án). Quyền do controller kiểm
+   * (quản trị CHÍNH dự án đó hoặc quản trị tổ chức) nên người quản trị dự án A không đổi được nhóm của dự án B.
+   * Chỉ gán nhóm có thật trong tổ chức; nhóm lạ báo lỗi chung (không lộ nhóm của tổ chức khác). Nhóm là phân loại cấp
+   * tổ chức nên đổi nhóm vẫn được khi dự án đã lưu trữ. Trả danh sách nhóm mới của dự án (theo tên).
+   */
+  async setForProject(
+    workspaceId: string,
+    projectId: string,
+    programIds: string[],
+    viewerId: string,
+  ) {
+    await this.access.assertCanSee(viewerId, workspaceId, projectId);
+    const project = await this.prisma.project.findFirst({
+      where: { id: projectId, workspaceId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!project) throw new NotFoundAppException('Dự án');
+    const ids = [...new Set(programIds)];
+    if (ids.length > 0) {
+      const found = await this.prisma.program.count({ where: { id: { in: ids }, workspaceId } });
+      if (found !== ids.length)
+        throw new BusinessRuleException(
+          'Một số nhóm không thuộc tổ chức này — hãy bỏ chọn những nhóm đó',
+        );
+    }
+    await this.prisma.$transaction([
+      this.prisma.projectProgram.deleteMany({
+        where: { projectId, ...(ids.length ? { programId: { notIn: ids } } : {}) },
+      }),
+      ...(ids.length
+        ? [
+            this.prisma.projectProgram.createMany({
+              data: ids.map((programId) => ({ projectId, programId })),
+              skipDuplicates: true,
+            }),
+          ]
+        : []),
+    ]);
+    const links = await this.prisma.projectProgram.findMany({
+      where: { projectId },
+      orderBy: { program: { name: 'asc' } },
+      select: { program: { select: { id: true, name: true, color: true } } },
+    });
+    return { projectId, programs: links.map((l) => l.program) };
   }
 
   /**
@@ -244,7 +291,7 @@ export class ProgramsService {
           key: true,
           name: true,
           isArchived: true,
-          programId: true,
+          programLinks: { select: { programId: true } },
           lead: { select: { displayName: true } },
         },
       }),
@@ -325,13 +372,9 @@ export class ProgramsService {
         progressPct: pct(s.doneCount, s.issueCount),
       };
     });
-    const byProgram = new Map<string | null, RollupProject[]>();
-    projects.forEach((p, i) => {
-      const key = p.programId ?? null;
-      const arr = byProgram.get(key) ?? [];
-      arr.push(rollupProjects[i]!);
-      byProgram.set(key, arr);
-    });
+    const byProgram = groupByProgram(
+      projects.map((p, i) => ({ item: rollupProjects[i]!, programIds: p.programLinks })),
+    );
 
     const groups: RollupGroup[] = programs.map((prog) => {
       const items = byProgram.get(prog.id) ?? [];
@@ -422,7 +465,7 @@ export class ProgramsService {
     targetDate: Date | null;
     createdAt: Date;
     owner: { id: string; displayName: string; avatarUrl: string | null } | null;
-    projects: { id: string; key: string; name: string; isArchived: boolean }[];
+    projects: { project: { id: string; key: string; name: string; isArchived: boolean } }[];
   }) {
     return {
       id: p.id,
@@ -433,7 +476,7 @@ export class ProgramsService {
       owner: p.owner,
       startDate: p.startDate?.toISOString() ?? null,
       targetDate: p.targetDate?.toISOString() ?? null,
-      projects: p.projects,
+      projects: p.projects.map((l) => l.project),
       projectCount: p.projects.length,
       createdAt: p.createdAt.toISOString(),
     };
@@ -446,6 +489,26 @@ function toDate(v: string | null | undefined): Date | null {
   if (!s) return null;
   const d = new Date(s);
   return Number.isNaN(d.getTime()) ? null : d;
+}
+
+/**
+ * Một dự án có thể thuộc nhiều nhóm → xuất hiện dưới từng nhóm; không nhóm nào → khoá `null` ("Chưa thuộc chương trình").
+ */
+function groupByProgram(
+  rows: { item: RollupProject; programIds: { programId: string }[] }[],
+): Map<string | null, RollupProject[]> {
+  const out = new Map<string | null, RollupProject[]>();
+  const push = (key: string | null, item: RollupProject) => {
+    const arr = out.get(key) ?? [];
+    arr.push(item);
+    out.set(key, arr);
+  };
+  for (const { item, programIds } of rows) {
+    const ids = [...new Set(programIds.map((l) => l.programId))];
+    if (ids.length === 0) push(null, item);
+    else for (const pid of ids) push(pid, item);
+  }
+  return out;
 }
 
 function pct(done: number, total: number): number {

@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import type { Prisma, RaidKind, RaidStatus } from '@prisma/client';
 import { PERMISSIONS } from '@tirapro/types';
+import { requireProjectId } from '../../common/project-required';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { ForbiddenAppException, NotFoundAppException } from '../../common/exceptions/app.exception';
 import { assertProjectWritable } from '../../common/project-writable';
@@ -65,9 +66,8 @@ export class RaidService {
   ) {}
 
   /**
-   * Điều kiện hiển thị mục RAID cho người xem: mục cấp workspace (không gắn dự án) luôn hiện; mục gắn dự án chỉ khi người
-   * xem thấy dự án đó (dự án riêng tư → thành viên/admin). `viewerId` trống hoặc admin → `{}` (không lọc).
-   * Dùng khoá `OR` ở cấp cao nhất — các `where` gọi nó không tự dùng `OR`.
+   * Điều kiện hiển thị mục RAID cho người xem: mục luôn thuộc một dự án nên chỉ hiện khi người xem thấy dự án đó
+   * (dự án riêng tư → thành viên/admin). Admin → `{}` (không lọc).
    */
   private async scopeFor(
     workspaceId: string,
@@ -75,7 +75,7 @@ export class RaidService {
   ): Promise<Prisma.RaidItemWhereInput> {
     const visible = await this.access.visibleWhere(viewerId, workspaceId);
     if (Object.keys(visible).length === 0) return {};
-    return { OR: [{ projectId: null }, { project: visible }] };
+    return { project: visible };
   }
 
   async list(workspaceId: string, filter: RaidListFilter, viewerId: string) {
@@ -111,8 +111,12 @@ export class RaidService {
   }
 
   async create(workspaceId: string, dto: CreateRaidInput, actingUserId: string) {
-    const projectId = await this.resolveProject(workspaceId, dto.projectId ?? null, actingUserId);
-    if (projectId) await assertProjectWritable(this.prisma, projectId);
+    const projectId = await this.resolveProject(
+      workspaceId,
+      requireProjectId(dto.projectId, 'mục rủi ro'),
+      actingUserId,
+    );
+    await assertProjectWritable(this.prisma, projectId);
     const ownerIds = await this.resolveOwners(workspaceId, dto);
 
     const created = await this.prisma.raidItem.create({
@@ -138,7 +142,7 @@ export class RaidService {
 
   async update(workspaceId: string, id: string, dto: UpdateRaidInput, actor: RaidActor) {
     const item = await this.requireItem(workspaceId, id, actor.id);
-    if (item.projectId) await assertProjectWritable(this.prisma, item.projectId);
+    await assertProjectWritable(this.prisma, item.projectId);
     const data: Prisma.RaidItemUpdateInput = {};
 
     if (dto.title !== undefined && dto.title !== null) {
@@ -155,13 +159,17 @@ export class RaidService {
     if (dto.impact !== undefined && dto.impact !== null) data.impact = dto.impact;
     if (dto.dueDate !== undefined) data.dueDate = this.parseDate(dto.dueDate ?? null);
     if (dto.projectId !== undefined) {
-      const projectId = await this.resolveProject(workspaceId, dto.projectId ?? null, actor.id);
+      const projectId = await this.resolveProject(
+        workspaceId,
+        requireProjectId(dto.projectId, 'mục rủi ro'),
+        actor.id,
+      );
       if (projectId !== item.projectId) {
-        // Guard chỉ tính quyền ở dự án HIỆN TẠI của mục → phải kiểm thêm quyền Ở ĐÍCH (null = cấp workspace).
+        // Guard chỉ tính quyền ở dự án HIỆN TẠI của mục → phải kiểm thêm quyền Ở ĐÍCH.
         await this.assertCanManageRisk(workspaceId, actor, projectId);
-        if (projectId) await assertProjectWritable(this.prisma, projectId);
+        await assertProjectWritable(this.prisma, projectId);
       }
-      data.project = projectId ? { connect: { id: projectId } } : { disconnect: true };
+      data.project = { connect: { id: projectId } };
     }
     if (dto.ownerIds !== undefined || dto.ownerId !== undefined) {
       const ownerIds = await this.resolveOwners(workspaceId, dto);
@@ -178,7 +186,7 @@ export class RaidService {
 
   async remove(workspaceId: string, id: string, viewerId: string) {
     const item = await this.requireItem(workspaceId, id, viewerId);
-    if (item.projectId) await assertProjectWritable(this.prisma, item.projectId);
+    await assertProjectWritable(this.prisma, item.projectId);
     await this.prisma.raidItem.delete({ where: { id } });
     return { success: true };
   }
@@ -197,15 +205,13 @@ export class RaidService {
   private async assertCanManageRisk(
     workspaceId: string,
     actor: RaidActor,
-    projectId: string | null,
+    projectId: string,
   ): Promise<void> {
     if (actor.isSystemAdmin) return;
     const perms = await this.rbac.getEffectivePermissions(actor.id, workspaceId, projectId);
     if (!perms.has(PERMISSIONS.RISK_MANAGE)) {
       throw new ForbiddenAppException(
-        projectId
-          ? 'Bạn không có quyền quản lý rủi ro ở dự án đích — hãy nhờ quản trị viên dự án đó cấp quyền hoặc chọn dự án khác'
-          : 'Bạn không có quyền quản lý rủi ro cấp tổ chức — hãy giữ mục này trong dự án hiện tại',
+        'Bạn không có quyền quản lý rủi ro ở dự án đích — hãy nhờ quản trị viên dự án đó cấp quyền hoặc chọn dự án khác',
       );
     }
   }
@@ -219,10 +225,9 @@ export class RaidService {
 
   private async resolveProject(
     workspaceId: string,
-    projectId: string | null,
+    projectId: string,
     viewerId: string,
-  ): Promise<string | null> {
-    if (!projectId) return null;
+  ): Promise<string> {
     const visible = await this.access.visibleWhere(viewerId, workspaceId);
     const p = await this.prisma.project.findFirst({
       where: { id: projectId, workspaceId, deletedAt: null, ...visible },

@@ -55,7 +55,6 @@ export const PERMISSIONS = {
   RISK_MANAGE: 'risk:manage',
   SLA_MANAGE: 'sla:manage',
   WIKI_MANAGE: 'wiki:manage',
-  CLIENT_MANAGE: 'client:manage',
   RESOURCE_MANAGE: 'resource:manage',
   PLAN_MANAGE: 'plan:manage',
   AUTOMATION_MANAGE: 'automation:manage',
@@ -164,11 +163,6 @@ export const PERMISSION_CATALOG: PermissionDef[] = [
     key: PERMISSIONS.WIKI_MANAGE,
     description: 'Tạo/sửa tài liệu nội bộ (wiki) của dự án',
     scope: 'PROJECT',
-  },
-  {
-    key: PERMISSIONS.CLIENT_MANAGE,
-    description: 'Quản lý khách hàng & hợp đồng',
-    scope: 'WORKSPACE',
   },
   {
     key: PERMISSIONS.RESOURCE_MANAGE,

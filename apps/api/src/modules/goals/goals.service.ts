@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Prisma, type KeyResultSource, type ObjectiveStatus } from '@prisma/client';
 import { ZodError } from 'zod';
+import { requireProjectId } from '../../common/project-required';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import {
   BusinessRuleException,
@@ -164,13 +165,11 @@ export class GoalsService {
   }
 
   /**
-   * Điều kiện hiển thị mục tiêu: mục tiêu cấp tổ chức (không gắn dự án) luôn hiện; mục tiêu gắn dự án chỉ khi người xem
-   * thấy dự án đó. `{}` khi không cần lọc (không viewer / admin). Dùng khoá `OR` cấp cao nhất.
+   * Điều kiện hiển thị mục tiêu: mục tiêu luôn thuộc một dự án nên chỉ hiện khi người xem thấy dự án đó. `{}` khi
+   * không cần lọc (admin).
    */
   private scopeOf(visible: Prisma.ProjectWhereInput): Prisma.ObjectiveWhereInput {
-    return Object.keys(visible).length === 0
-      ? {}
-      : { OR: [{ projectId: null }, { project: visible }] };
+    return Object.keys(visible).length === 0 ? {} : { project: visible };
   }
 
   async list(workspaceId: string, filter: GoalListFilter, viewerId: string) {
@@ -263,7 +262,11 @@ export class GoalsService {
 
   async create(workspaceId: string, dto: CreateGoalInput, viewerId: string) {
     const visible = await this.visibleFor(workspaceId, viewerId);
-    const projectId = await this.resolveProject(workspaceId, dto.projectId ?? null, visible);
+    const projectId = await this.resolveProject(
+      workspaceId,
+      requireProjectId(dto.projectId, 'mục tiêu'),
+      visible,
+    );
     const ownerId = await this.resolveOwner(workspaceId, dto.ownerId ?? null);
     const issueIds = dto.issueIds?.length
       ? await this.validateIssues(workspaceId, dto.issueIds, projectId, visible)
@@ -311,8 +314,12 @@ export class GoalsService {
     }
     if (dto.status !== undefined && dto.status !== null) data.status = dto.status;
     if (dto.projectId !== undefined) {
-      const projectId = await this.resolveProject(workspaceId, dto.projectId ?? null, visible);
-      data.project = projectId ? { connect: { id: projectId } } : { disconnect: true };
+      const projectId = await this.resolveProject(
+        workspaceId,
+        requireProjectId(dto.projectId, 'mục tiêu'),
+        visible,
+      );
+      data.project = { connect: { id: projectId } };
     }
     if (dto.ownerId !== undefined) {
       const ownerId = await this.resolveOwner(workspaceId, dto.ownerId ?? null);
@@ -934,10 +941,9 @@ export class GoalsService {
 
   private async resolveProject(
     workspaceId: string,
-    projectId: string | null,
+    projectId: string,
     visible: Prisma.ProjectWhereInput,
-  ): Promise<string | null> {
-    if (!projectId) return null;
+  ): Promise<string> {
     const p = await this.prisma.project.findFirst({
       where: {
         id: projectId,

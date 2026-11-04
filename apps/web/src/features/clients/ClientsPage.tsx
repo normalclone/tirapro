@@ -13,6 +13,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import type { PermissionKey } from '@tirapro/types';
 import { EmptyState, Skeleton } from '@/components/ui/primitives';
 import { Button } from '@/components/ui/Button';
 import { useConfirm } from '@/components/ui/useConfirm';
@@ -319,7 +320,8 @@ function ClientCard({
 
 /** Khách hàng & hợp đồng — ai đặt hàng, dự án nào phục vụ họ, cam kết những gì. */
 export function ClientsPage() {
-  const canManage = useAuth((s) => s.can('client:manage'));
+  // Quyền `client:manage` đã bị gỡ khỏi danh mục cùng API khách hàng; cả màn này bị xoá ở bước web (Task 4).
+  const canManage = useAuth((s) => s.can('client:manage' as PermissionKey));
   const clientsQuery = useClients();
   const { data: clients } = clientsQuery;
   const confirm = useConfirm();

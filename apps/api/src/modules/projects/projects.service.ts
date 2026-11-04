@@ -35,6 +35,16 @@ const ISSUE_COUNT = {
   select: { issues: { where: { deletedAt: null, ...TRIAGE_VISIBLE } } },
 } satisfies Prisma.ProjectCountOutputTypeDefaultArgs;
 
+/** Nhóm dự án của một dự án (theo tên) — đi kèm mọi `ProjectDto`. */
+const PROGRAM_LINKS = {
+  select: { program: { select: { id: true, name: true, color: true } } },
+  orderBy: { program: { name: 'asc' } },
+} satisfies Prisma.Project$programLinksArgs;
+
+type ProjectRow = Prisma.ProjectGetPayload<object> & {
+  programLinks?: { program: { id: string; name: string; color: string | null } }[];
+};
+
 @Injectable()
 export class ProjectsService {
   constructor(
@@ -226,7 +236,7 @@ export class ProjectsService {
         ...visible,
       },
       orderBy: { createdAt: 'desc' },
-      include: { _count: ISSUE_COUNT, lead: true },
+      include: { _count: ISSUE_COUNT, lead: true, programLinks: PROGRAM_LINKS },
     });
     return projects.map((p) => this.toDto(p, p._count.issues, p.lead));
   }
@@ -234,7 +244,7 @@ export class ProjectsService {
   async getByKey(workspaceId: string, key: string): Promise<ProjectDto> {
     const p = await this.prisma.project.findFirst({
       where: { workspaceId, key, deletedAt: null },
-      include: { _count: ISSUE_COUNT, lead: true },
+      include: { _count: ISSUE_COUNT, lead: true, programLinks: PROGRAM_LINKS },
     });
     if (!p) throw new NotFoundAppException('Dự án');
     return this.toDto(p, p._count.issues, p.lead);
@@ -500,7 +510,7 @@ export class ProjectsService {
   private async getById(workspaceId: string, projectId: string): Promise<ProjectDto> {
     const p = await this.prisma.project.findFirst({
       where: { id: projectId, workspaceId, deletedAt: null },
-      include: { _count: ISSUE_COUNT, lead: true },
+      include: { _count: ISSUE_COUNT, lead: true, programLinks: PROGRAM_LINKS },
     });
     if (!p) throw new NotFoundAppException('Dự án');
     return this.toDto(p, p._count.issues, p.lead);
@@ -586,7 +596,7 @@ export class ProjectsService {
   }
 
   private toDto(
-    p: Prisma.ProjectGetPayload<object>,
+    p: ProjectRow,
     issueCount: number,
     lead?: { id: string; email: string; displayName: string; avatarUrl: string | null } | null,
   ): ProjectDto {
@@ -611,6 +621,7 @@ export class ProjectsService {
       isArchived: p.archivedAt !== null,
       archivedAt: iso(p.archivedAt),
       isPrivate: p.isPrivate,
+      programs: (p.programLinks ?? []).map((l) => l.program),
       issueCount,
       createdAt: p.createdAt.toISOString(),
     };

@@ -65,7 +65,6 @@ import { AutomationModule } from './modules/automation/automation.module';
 import { WorklogsModule } from './modules/worklogs/worklogs.module';
 import { WikiModule } from './modules/wiki/wiki.module';
 import { ResourcesModule } from './modules/resources/resources.module';
-import { ClientsModule } from './modules/clients/clients.module';
 import { ProgramsModule } from './modules/programs/programs.module';
 import { RaidModule } from './modules/raid/raid.module';
 import { DashboardsModule } from './modules/dashboards/dashboards.module';
@@ -183,7 +182,6 @@ import { ApiKeyModule } from './modules/api-keys/api-key.module';
     WorklogsModule,
     WikiModule,
     ResourcesModule,
-    ClientsModule,
     ProgramsModule,
     RaidModule,
     GoalsModule,

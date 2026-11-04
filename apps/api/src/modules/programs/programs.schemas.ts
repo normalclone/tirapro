@@ -28,6 +28,12 @@ export const setProgramProjectsSchema = z.object({
   projectIds: z.array(z.string().min(1)).max(500),
 });
 
+/** `PUT /projects/:id/programs`: đặt lại toàn bộ nhóm của một dự án (`[]` = bỏ khỏi mọi nhóm). */
+export const setProjectProgramsSchema = z.object({
+  programIds: z.array(z.string().min(1)).max(100),
+});
+
 export type CreateProgramInput = z.infer<typeof createProgramSchema>;
 export type UpdateProgramInput = z.infer<typeof updateProgramSchema>;
 export type SetProgramProjectsInput = z.infer<typeof setProgramProjectsSchema>;
+export type SetProjectProgramsInput = z.infer<typeof setProjectProgramsSchema>;

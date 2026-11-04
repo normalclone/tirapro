@@ -47,24 +47,67 @@ describe('SlaService — dự án lưu trữ là chỉ đọc', () => {
     expect(prisma.slaPolicy.deleteMany).not.toHaveBeenCalled();
   });
 
-  it('update chuyển chính sách chung sang dự án đã lưu trữ => 422', async () => {
-    const { service, prisma } = setup(true, null);
-    await expect(service.update('w1', 's1', { projectId: 'p1' }, 'u1')).rejects.toMatchObject(
-      ARCHIVED,
-    );
-    expect(prisma.slaPolicy.update).not.toHaveBeenCalled();
+  it('update chuyển chính sách sang dự án đã lưu trữ => 422', async () => {
+    const live = setup(false);
+    live.prisma.project.findUnique.mockImplementation(((a: { where: { id: string } }) =>
+      Promise.resolve({
+        archivedAt: a.where.id === 'pArchived' ? new Date() : null,
+      })) as never);
+    await expect(
+      live.service.update('w1', 's1', { projectId: 'pArchived' }, 'u1'),
+    ).rejects.toMatchObject(ARCHIVED);
+    expect(live.prisma.slaPolicy.update).not.toHaveBeenCalled();
   });
 
-  it('chính sách chung (không gắn dự án) và dự án đang hoạt động vẫn ghi được', async () => {
-    const shared = setup(true, null);
-    await shared.service.create('w1', { name: 'S', responseMins: 5, resolveMins: 60 }, 'u1');
-    await shared.service.remove('w1', 's1', 'u1');
-    expect(shared.prisma.slaPolicy.create).toHaveBeenCalled();
-    expect(shared.prisma.slaPolicy.deleteMany).toHaveBeenCalled();
-
+  it('dự án đang hoạt động vẫn tạo/sửa/xoá được', async () => {
     const live = setup(false);
+    await live.service.create(
+      'w1',
+      { name: 'S', projectId: 'p1', responseMins: 5, resolveMins: 60 },
+      'u1',
+    );
     await live.service.update('w1', 's1', { name: 'Mới' }, 'u1');
+    await live.service.remove('w1', 's1', 'u1');
+    expect(live.prisma.slaPolicy.create).toHaveBeenCalled();
     expect(live.prisma.slaPolicy.update).toHaveBeenCalled();
+    expect(live.prisma.slaPolicy.deleteMany).toHaveBeenCalled();
+  });
+});
+
+describe('SlaService — chính sách chỉ cấp dự án', () => {
+  it('create thiếu projectId (hoặc rỗng/null) => 422 PROJECT_REQUIRED, không ghi', async () => {
+    const { service, prisma } = setup(false);
+    for (const projectId of [undefined, null, '']) {
+      await expect(
+        service.create('w1', { name: 'S', projectId, responseMins: 5, resolveMins: 60 }, 'u1'),
+      ).rejects.toMatchObject({ status: 422, code: 'PROJECT_REQUIRED' });
+    }
+    expect(prisma.slaPolicy.create).not.toHaveBeenCalled();
+  });
+
+  it('update xoá trống dự án (projectId: null) => 422 PROJECT_REQUIRED, không ghi; đổi sang dự án khác thì lưu', async () => {
+    const { service, prisma } = setup(false);
+    await expect(service.update('w1', 's1', { projectId: null }, 'u1')).rejects.toMatchObject({
+      status: 422,
+      code: 'PROJECT_REQUIRED',
+    });
+    expect(prisma.slaPolicy.update).not.toHaveBeenCalled();
+    await service.update('w1', 's1', { projectId: 'p2' }, 'u1');
+    expect((prisma.slaPolicy.update.mock.calls as unknown[][])[0]![0]).toMatchObject({
+      data: { projectId: 'p2' },
+    });
+  });
+
+  it('list: chỉ chính sách của dự án còn sống người xem thấy; ?projectId thu hẹp theo một dự án', async () => {
+    const { service, prisma } = setup(false);
+    await service.list('w1', 'u1');
+    await service.list('w1', 'u1', 'p9');
+    const wheres = (prisma.slaPolicy.findMany.mock.calls as unknown as [{ where: object }][]).map(
+      (c) => c[0].where,
+    );
+    expect(wheres[0]).toEqual({ workspaceId: 'w1', project: { deletedAt: null } });
+    expect(wheres[1]).toMatchObject({ workspaceId: 'w1', projectId: 'p9' });
+    expect(wheres[0]).not.toHaveProperty('OR');
   });
 });
 
@@ -92,6 +135,20 @@ describe('SlaService — dự án riêng tư: bảng SLA và chính sách không
     });
   });
 
+  it('board: ?projectId thu hẹp theo một dự án (bảng "Thời gian xử lý" của dự án), vẫn theo quyền xem', async () => {
+    const { service, prisma, access } = withBoard();
+    access.visibleWhere.mockResolvedValue(visible);
+    await service.board('w1', 'u1', 'p9');
+    const where = (
+      prisma.issueSla.findMany.mock.calls[0] as unknown as [{ where: { issue: object } }]
+    )[0].where.issue;
+    expect(where).toMatchObject({
+      workspaceId: 'w1',
+      projectId: 'p9',
+      project: { deletedAt: null, ...visible },
+    });
+  });
+
   it('board: chọn priority kèm rank (FE suy mũi tên ưu tiên theo hạng, không chỉ màu)', async () => {
     const { service, prisma } = withBoard();
     await service.board('w1', 'u1');
@@ -114,15 +171,12 @@ describe('SlaService — dự án riêng tư: bảng SLA và chính sách không
     expect(where.issue).not.toHaveProperty('project');
   });
 
-  it('list chính sách: OR [chung, dự án thấy được]', async () => {
+  it('list chính sách: chỉ dự án thấy được (không còn chính sách chung)', async () => {
     const { service, prisma, access } = setup(false);
     access.visibleWhere.mockResolvedValue(visible);
     await service.list('w1', 'u1');
     expect((prisma.slaPolicy.findMany.mock.calls as unknown[][])[0]![0]).toMatchObject({
-      where: {
-        workspaceId: 'w1',
-        OR: [{ projectId: null }, { project: { deletedAt: null, ...visible } }],
-      },
+      where: { workspaceId: 'w1', project: { deletedAt: null, ...visible } },
     });
   });
 
@@ -205,7 +259,7 @@ describe('SlaService — thời gian xử lý hiển thị đúng thực tế (l
           Promise.resolve([
             {
               id: 'polNew',
-              projectId: null,
+              projectId: 'p',
               priorityId: 'high',
               responseMins: 30,
               resolveMins: 120,
@@ -256,6 +310,16 @@ describe('SlaService — thời gian xử lý hiển thị đúng thực tế (l
     expect(dataOf(prisma.issueSla.update)).toEqual({
       resolvedAt: null,
       resolveBreached: false,
+    });
+  });
+
+  it('chọn chính sách CHỈ trong dự án của việc (không còn mặc định cấp tổ chức)', async () => {
+    const { service, prisma } = make();
+    await service.onIssueCreated({
+      issue: { id: 'i9', workspaceId: 'w', projectId: 'p', priority: { id: 'high' } },
+    });
+    expect((prisma.slaPolicy.findMany.mock.calls as unknown[][])[0]![0]).toEqual({
+      where: { workspaceId: 'w', projectId: 'p', active: true },
     });
   });
 
