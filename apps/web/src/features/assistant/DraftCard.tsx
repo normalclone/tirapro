@@ -2,6 +2,7 @@ import { useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { Check, TriangleAlert } from 'lucide-react';
 import { toast } from 'sonner';
+import { DIFFICULTY_LABELS } from '@tirapro/shared';
 import { Button } from '@/components/ui/Button';
 import { useCreateIssue } from '@/features/issues/create-api';
 import { fmtDate } from '@/lib/dateFormat';
@@ -27,7 +28,7 @@ const rowsOf = (d: Draft): [string, string][] =>
     ['Ưu tiên', d.priority?.name ?? 'Mặc định của dự án'],
     ['Người phụ trách', d.assignee?.name ?? 'Chưa gán'],
     ['Sprint', d.sprint?.name ?? 'Việc chờ (chưa vào sprint)'],
-    ['Điểm', d.points != null ? String(d.points) : '—'],
+    ['Độ khó', d.difficulty ? DIFFICULTY_LABELS[d.difficulty] : 'Trung bình (mặc định)'],
     ['Hạn', d.due ? fmtDate(d.due) : 'Chưa đặt'],
   ] as [string, string][];
 

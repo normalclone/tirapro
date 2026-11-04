@@ -15,6 +15,7 @@ import {
   IssueSeveritySelect,
   IssueSprintSubtitle,
   IssueStoryPointsInline,
+  IssueDifficultyInline,
   IssueTypeSelect,
 } from '@/features/issue-edit/IssueProperties';
 import { EpicParentField } from '@/features/issue-meta/EpicParentField';
@@ -379,7 +380,11 @@ function PeekContent({ issue }: { issue: IssueDto }) {
         <span className="text-faint" aria-hidden>
           ·
         </span>
-        <IssueStoryPointsInline issue={issue} canEdit={canEditThis} />
+        <IssueDifficultyInline issue={issue} />
+        <span className="text-faint" aria-hidden>
+          ·
+        </span>
+        <IssueStoryPointsInline issue={issue} />
       </div>
 
       <EpicParentField issue={issue} />

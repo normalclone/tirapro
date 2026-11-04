@@ -3,6 +3,8 @@
  * Mục ghi mà người dùng không được phép bị ẨN (không hiện vô hiệu rồi báo 403); ngoại lệ: menu con được phép nhưng
  * không có lựa chọn nào (vd việc ở trạng thái cuối) thì hiện và vô hiệu để người dùng hiểu vì sao không chọn được.
  */
+import { CHILD_SPRINT_TIP } from '@/lib/points';
+
 export type MenuSurface = 'board' | 'backlog' | 'filters' | 'tree';
 
 export type MenuItemId =
@@ -30,7 +32,7 @@ export const MENU_LABELS: Record<MenuItemId | MenuSubId, string> = {
 
 export type MenuEntry =
   | { kind: 'item'; id: MenuItemId; label: string }
-  | { kind: 'sub'; id: MenuSubId; label: string; disabled: boolean }
+  | { kind: 'sub'; id: MenuSubId; label: string; disabled: boolean; hint?: string }
   | { kind: 'separator' };
 
 export interface IssueMenuInput {
@@ -49,14 +51,17 @@ export interface IssueMenuInput {
   statusOptions: number;
   priorityOptions: number;
   sprintOptions: number;
+  /** Việc con: sprint đi theo việc cha → mục "Chuyển sprint" tắt kèm lời giải thích. */
+  sprintLocked?: boolean;
 }
 
 const item = (id: MenuItemId): MenuEntry => ({ kind: 'item', id, label: MENU_LABELS[id] });
-const sub = (id: MenuSubId, options: number): MenuEntry => ({
+const sub = (id: MenuSubId, options: number, hint?: string): MenuEntry => ({
   kind: 'sub',
   id,
   label: MENU_LABELS[id],
-  disabled: options === 0,
+  disabled: options === 0 || !!hint,
+  ...(hint ? { hint } : {}),
 });
 
 export function issueMenuModel(i: IssueMenuInput): MenuEntry[] {
@@ -66,7 +71,9 @@ export function issueMenuModel(i: IssueMenuInput): MenuEntry[] {
     ...(i.canEdit && !i.isMine ? [item('assignMe')] : []),
     ...(i.canTransition ? [sub('status', i.statusOptions)] : []),
     ...(i.canEdit ? [sub('priority', i.priorityOptions)] : []),
-    ...(i.surface === 'backlog' && i.canEdit ? [sub('sprint', i.sprintOptions)] : []),
+    ...(i.surface === 'backlog' && i.canEdit
+      ? [sub('sprint', i.sprintOptions, i.sprintLocked ? CHILD_SPRINT_TIP : undefined)]
+      : []),
   ];
   const danger: MenuEntry[] = i.canDelete ? [item('delete')] : [];
   const out: MenuEntry[] = [];

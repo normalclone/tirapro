@@ -29,6 +29,11 @@ describe('issueMenuModel — mục nào hiện cho ai, ở bề mặt nào', () 
       'priority',
     ]);
   });
+  it('việc con: "Chuyển sprint" bị tắt kèm lời giải thích (sprint đi theo việc cha)', () => {
+    const m = issueMenuModel({ ...base, surface: 'backlog', sprintLocked: true });
+    const e = m.find((x) => x.kind === 'sub' && x.id === 'sprint');
+    expect(e).toMatchObject({ disabled: true, hint: 'Việc con đi theo sprint của việc cha' });
+  });
   it('Việc chờ có thêm "Chuyển sprint"; các bề mặt khác thì không', () => {
     expect(ids(issueMenuModel({ ...base, surface: 'backlog' }))).toContain('sprint');
     for (const surface of ['board', 'filters', 'tree'] as const)

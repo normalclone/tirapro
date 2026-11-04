@@ -1,3 +1,4 @@
+import type { Difficulty } from '@tirapro/shared';
 import { buildQuickAddInput, isEpicType, pickDefaultType } from '@/features/issues/quickAdd';
 import { unmatchedHint, unmatchedTokens, type TokenCtx } from '@/features/issues/titleTokens';
 import type { CreateIssueInput } from '@/features/issues/create-api';
@@ -32,7 +33,8 @@ export interface Draft {
   priority?: { id: string; name: string };
   assignee?: { id: string; name: string };
   sprint?: { id: string; name: string };
-  points?: number;
+  /** Độ khó từ token `~khó`; điểm do máy chủ tính nên thẻ nháp không còn "điểm". */
+  difficulty?: Difficulty;
   /** ISO. */
   due?: string;
   /** Token KHÔNG khớp (vẫn nằm trong tiêu đề) — cảnh báo như hộp tạo việc. */
@@ -106,7 +108,7 @@ export function buildDraft(a: DraftArgs): Draft | null {
     ...(pr ? { priority: { id: pr.id, name: pr.name } } : {}),
     ...(as ? { assignee: { id: as.id, name: as.displayName } } : {}),
     ...(sp ? { sprint: { id: sp.id, name: sp.name } } : {}),
-    ...(input.storyPoints != null ? { points: input.storyPoints } : {}),
+    ...(input.difficulty ? { difficulty: input.difficulty } : {}),
     ...(input.dueDate ? { due: input.dueDate } : {}),
     unmatched,
     unmatchedHint: unmatchedHint(unmatchedKinds),

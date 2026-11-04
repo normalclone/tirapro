@@ -4,6 +4,7 @@ import {
   BookOpen,
   Briefcase,
   Building2,
+  Calculator,
   Filter,
   FolderKanban,
   LayoutDashboard,
@@ -122,6 +123,12 @@ export const ADMIN_NAV: NavEntry[] = [
     label: ADMIN_LABELS.system,
     Icon: Activity,
     match: (p) => p.startsWith('/admin/system'),
+  },
+  {
+    to: '/admin/points',
+    label: ADMIN_LABELS.points,
+    Icon: Calculator,
+    match: (p) => p.startsWith('/admin/points'),
   },
 ];
 

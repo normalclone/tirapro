@@ -6,20 +6,20 @@ const build = (text: string, typeHint: Parameters<typeof buildDraft>[0]['typeHin
   buildDraft({ text, typeHint, project: PROJ, meta: META, users: USERS, sprints: SPRINTS });
 
 describe('thẻ nháp từ token', () => {
-  it('ví dụ brief: tiêu đề + ưu tiên + người + hạn + sprint + điểm', () => {
-    const d = build('Sửa lỗi login !high @an ^mai #sprint7 ~3')!;
+  it('ví dụ brief: tiêu đề + ưu tiên + người + hạn + sprint + độ khó', () => {
+    const d = build('Sửa lỗi login !high @an ^mai #sprint7 ~khó')!;
     expect(d.summary).toBe('Sửa lỗi login');
     expect(d.priority).toEqual({ id: 'pr-high', name: 'High' });
     expect(d.assignee).toEqual({ id: 'u-an', name: 'An Nguyễn' });
     expect(d.sprint?.name).toBe('Sprint 7');
-    expect(d.points).toBe(3);
+    expect(d.difficulty).toBe('HARD');
     expect(d.due).toBeTruthy();
     expect(d.unmatched).toEqual([]);
     expect(d.projectKey).toBe('DEMO');
     expect(d.typeName).toBe('Task');
   });
   it('payload gửi đi khớp thẻ: đúng project, loại, tiêu đề (bỏ token), markdown', () => {
-    const d = build('Viết test !high @binh ~5')!;
+    const d = build('Viết test !high @binh ~dễ')!;
     expect(d.input).toMatchObject({
       projectId: 'p1',
       typeId: 't-task',
@@ -27,8 +27,9 @@ describe('thẻ nháp từ token', () => {
       descriptionFormat: 'MARKDOWN',
       priorityId: 'pr-high',
       assigneeId: 'u-binh',
-      storyPoints: 5,
+      difficulty: 'EASY',
     });
+    expect(d.input).not.toHaveProperty('storyPoints'); // điểm do máy chủ tính
     expect(d.input.dueDate).toBeUndefined();
   });
   it('token không khớp: cảnh báo kèm gợi ý, token vẫn nằm trong tiêu đề', () => {

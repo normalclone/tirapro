@@ -67,7 +67,9 @@ export function FiltersBulkDock({
       priorities={meta?.priorities ?? NO_PRIORITIES}
       labels={labels ?? NO_LABELS}
       statusOptions={statusOptions}
+      canAdmin={av.points.visible}
       onSetPoints={(points) => void bulk.setPoints(points)}
+      onSetDifficulty={(d) => void bulk.setDifficulty(d)}
       onSetPriority={(id) => void bulk.setPriority(id)}
       onAddLabel={av.label.visible ? (id) => void bulk.addLabel(id) : undefined}
       onSetStatus={av.status.visible ? (id) => void bulk.setStatus(id) : undefined}

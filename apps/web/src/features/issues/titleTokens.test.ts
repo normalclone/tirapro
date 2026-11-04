@@ -50,8 +50,8 @@ describe('bí danh ưu tiên tiếng Việt', () => {
     expect(prio('A !highest')).toBe('p5');
   });
   it('bí danh dài thắng bí danh ngắn và phần còn lại của tiêu đề được giữ', () => {
-    const r = parseTitleTokens('Đăng ký tài khoản !rất thấp ~5', ctx);
-    expect(r).toMatchObject({ priorityId: 'p1', points: 5, clean: 'Đăng ký tài khoản' });
+    const r = parseTitleTokens('Đăng ký tài khoản !rất thấp ~khó', ctx);
+    expect(r).toMatchObject({ priorityId: 'p1', difficulty: 'HARD', clean: 'Đăng ký tài khoản' });
   });
   it('bí danh phải đứng trọn từ: "!caoxyz" không khớp bí danh "cao"', () =>
     expect(prio('A !caoxyz')).toBeUndefined());
@@ -82,14 +82,14 @@ describe('unmatchedTokens', () => {
     const u = unmatchedTokens('Việc !xyz ~abc ^zzz @nobody #nope', ctx);
     expect(u.map((t) => [t.kind, t.text])).toEqual([
       ['priority', '!xyz'],
-      ['points', '~abc'],
+      ['difficulty', '~abc'],
       ['due', '^zzz'],
       ['assignee', '@nobody'],
       ['sprint', '#nope'],
     ]);
   });
   it('token khớp / tham chiếu #123 / ký hiệu lẻ không bị báo', () => {
-    expect(unmatchedTokens('Sửa #123 !cao ~5 ^mai @Bình (BA) và ! lẻ', ctx)).toEqual([]);
+    expect(unmatchedTokens('Sửa #123 !cao ~khó ^mai @Bình (BA) và ! lẻ', ctx)).toEqual([]);
   });
   it('skipTail: token đang gõ dở ở cuối không bị báo', () => {
     expect(unmatchedTokens('Việc !xy', ctx, { skipTail: true })).toEqual([]);
@@ -103,16 +103,19 @@ describe('stripPartialTail / changedTokenFields', () => {
     expect(stripPartialTail('Việc A !ca')).toBe('Việc A');
     expect(stripPartialTail('Việc A !cao ')).toBe('Việc A !cao ');
     expect(stripPartialTail('Việc A')).toBe('Việc A');
-    expect(stripPartialTail('~5')).toBe('');
+    expect(stripPartialTail('~kh')).toBe('');
   });
   it('chỉ báo trường có giá trị token mới khác lần trước', () => {
     expect(
-      changedTokenFields({ clean: 'a', points: 3 }, { clean: 'a', points: 3, priorityId: 'p4' }),
+      changedTokenFields(
+        { clean: 'a', difficulty: 'EASY' },
+        { clean: 'a', difficulty: 'EASY', priorityId: 'p4' },
+      ),
     ).toEqual({ priorityId: 'p4' });
-    expect(changedTokenFields({ clean: 'a', points: 3 }, { clean: 'a', points: 8 })).toEqual({
-      points: 8,
-    });
-    expect(changedTokenFields({ clean: 'a', points: 3 }, { clean: 'a' })).toEqual({}); // gỡ token KHÔNG xoá ô đã điền
+    expect(
+      changedTokenFields({ clean: 'a', difficulty: 'EASY' }, { clean: 'a', difficulty: 'HARD' }),
+    ).toEqual({ difficulty: 'HARD' });
+    expect(changedTokenFields({ clean: 'a', difficulty: 'EASY' }, { clean: 'a' })).toEqual({}); // gỡ token KHÔNG xoá ô đã điền
   });
 });
 
@@ -180,7 +183,7 @@ describe('unmatchedHint', () => {
     const u = unmatchedTokens('Việc !xyz ~abc !qq ^zzz', ctx);
     const h = unmatchedHint(u);
     expect(h).toContain('mức ưu tiên');
-    expect(h).toContain('~5');
+    expect(h).toContain('~khó');
     expect(h).toContain('mai');
     expect(h.match(/mức ưu tiên/g)).toHaveLength(1);
   });
@@ -250,15 +253,42 @@ describe('#<số> là tham chiếu, không phải sprint (WC-I2)', () => {
   it('#12 không bị báo là token không nhận ra', () => {
     expect(unmatchedTokens('Fix #12 và #1 fix', sp)).toEqual([]);
   });
-  it('~2.5 và ~2,5 parse trọn, không để ".5" rác', () => {
-    expect(parseTitleTokens('Giá ~2.5 tỷ', sp)).toMatchObject({ points: 2.5, clean: 'Giá tỷ' });
-    expect(parseTitleTokens('Giá ~2,5 tỷ', sp)).toMatchObject({ points: 2.5, clean: 'Giá tỷ' });
-    expect(parseTitleTokens('Việc ~5', sp)).toMatchObject({ points: 5, clean: 'Việc' });
+  it.each([
+    ['~dễ', 'EASY'],
+    ['~de', 'EASY'],
+    ['~tb', 'MEDIUM'],
+    ['~trung bình', 'MEDIUM'],
+    ['~khó', 'HARD'],
+    ['~kho', 'HARD'],
+    ['~rất khó', 'VERY_HARD'],
+    ['~rat kho', 'VERY_HARD'],
+  ])('độ khó %s => %s (token tách khỏi tiêu đề)', (tok, value) => {
+    const r = parseTitleTokens(`Việc ${tok}`, sp);
+    expect(r.difficulty).toBe(value);
+    expect(r.clean).toBe('Việc');
+  });
+  it('~Khó. (dấu chấm liền sau) vẫn nhận là độ khó', () => {
+    expect(parseTitleTokens('Việc ~Khó.', sp).difficulty).toBe('HARD');
+  });
+  it('~khó không nuốt chữ liền sau ("~khong" không phải độ khó) và ~5 không còn là điểm', () => {
+    expect(parseTitleTokens('A ~khong', sp).difficulty).toBeUndefined();
+    expect(parseTitleTokens('A ~5', sp).difficulty).toBeUndefined();
+    expect(unmatchedTokens('A ~5', sp).map((t) => t.kind)).toEqual(['difficulty']);
+  });
+  it('"~rất " đang gõ dở một cụm nhiều từ => chưa báo token sai', () => {
+    expect(unmatchedTokens('A ~rất ', sp)).toEqual([]);
+  });
+  it('gợi ý ~ liệt kê bốn mức độ khó, chèn nhãn đầy đủ parse lại đúng', () => {
+    const all = suggestFor('~', '', sp);
+    expect(all.map((x) => x.label)).toEqual(['Dễ', 'Trung bình', 'Khó', 'Rất khó']);
+    for (const it of all)
+      expect(parseTitleTokens(`A ${it.insert}`, sp).difficulty).toBe(it.id as never);
+    expect(suggestFor('~', 'kh', sp).map((x) => x.label)).toEqual(['Khó', 'Rất khó']);
   });
 });
 
 describe('ô đổi tay thắng token khi Tạo (WC-I1)', () => {
-  const cur = { priorityId: 'p2', assigneeId: 'u2', sprintId: '', points: '', due: '' };
+  const cur = { priorityId: 'p2', assigneeId: 'u2', sprintId: '', difficulty: '', due: '' };
   const none = new Set<never>();
   it('token đã đồng bộ + ô đổi tay → giữ giá trị ô', () => {
     const tk = parseTitleTokens('Sửa !cao @Đức ', ctx);
@@ -273,9 +303,9 @@ describe('ô đổi tay thắng token khi Tạo (WC-I1)', () => {
     expect(resolveCreateValues(cur, synced, tk, none).priorityId).toBe('p4');
     expect(resolveCreateValues(cur, synced, tk, new Set(['priorityId'])).priorityId).toBe('p2');
   });
-  it('điểm và hạn từ token chưa đồng bộ vào ô trống', () => {
-    const tk = parseTitleTokens('A ~3', ctx);
-    expect(resolveCreateValues(cur, { clean: '' }, tk, none).points).toBe('3');
+  it('độ khó từ token chưa đồng bộ vào ô trống', () => {
+    const tk = parseTitleTokens('A ~khó', ctx);
+    expect(resolveCreateValues(cur, { clean: '' }, tk, none).difficulty).toBe('HARD');
   });
 });
 

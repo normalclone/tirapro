@@ -3,6 +3,7 @@ import { Input } from '@/components/ui/Input';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { MarkdownEditor } from '@/features/issue-edit/MarkdownEditor';
 import { useProjectMeta } from '@/features/ai/api';
+import { DIFFICULTIES, DIFFICULTY_LABELS, type Difficulty } from '@tirapro/shared';
 import type { IssuePayload } from './api';
 
 /** Nhãn + trường nhập + câu gợi ý, dùng chung cho các hộp thoại của trang Tự động hoá. */
@@ -48,7 +49,11 @@ export function IssueDefaultsFields({
 }) {
   const { data: meta, isLoading } = useProjectMeta(projectKey);
   const uid = useId();
-  const set = (patch: Partial<IssuePayload>) => onChange({ ...value, ...patch });
+  // Mẫu/lịch lặp cũ còn `storyPoints` trong payload: bỏ đi khi lưu lại (máy chủ cũng bỏ qua) — web không gửi điểm nữa.
+  const set = (patch: Partial<IssuePayload>) => {
+    const { storyPoints: _legacy, ...rest } = value as IssuePayload & { storyPoints?: unknown };
+    onChange({ ...rest, ...patch });
+  };
 
   const typeOptions = (meta?.issueTypes ?? []).map((t) => ({
     value: t.id,
@@ -58,6 +63,11 @@ export function IssueDefaultsFields({
   const priorityOptions = [
     { value: '', label: 'Theo mặc định chung' },
     ...(meta?.priorities ?? []).map((p) => ({ value: p.id, label: p.name, color: p.color })),
+  ];
+
+  const difficultyOptions = [
+    { value: '', label: 'Trung bình (mặc định)' },
+    ...DIFFICULTIES.map((d) => ({ value: d, label: DIFFICULTY_LABELS[d] })),
   ];
 
   return (
@@ -85,6 +95,20 @@ export function IssueDefaultsFields({
             searchPlaceholder="Tìm mức ưu tiên…"
             ariaLabel="Mức ưu tiên"
             disabled={!projectKey}
+          />
+        </Field>
+        <Field
+          label="Độ khó"
+          htmlFor={`${uid}-difficulty`}
+          hint="Điểm của việc được tính tự động từ loại, độ khó và mức ưu tiên."
+        >
+          <SearchSelect
+            id={`${uid}-difficulty`}
+            value={value.difficulty ?? ''}
+            onChange={(v) => set({ difficulty: v ? (v as Difficulty) : null })}
+            options={difficultyOptions}
+            placeholder="Trung bình (mặc định)"
+            ariaLabel="Độ khó"
           />
         </Field>
       </div>

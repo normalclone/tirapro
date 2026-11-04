@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef } from 'react';
 import { Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
+import { DIFFICULTY_LABELS } from '@tirapro/shared';
 import { Button } from '@/components/ui/Button';
 import { apiErrorMessage } from '@/lib/api';
 import { AiFallbackNote } from './AiFallbackNote';
@@ -140,9 +141,12 @@ export function AiIssuePanel({
                 Ưu tiên: {suggestion.priority}
               </span>
             )}
-            {typeof suggestion.storyPoints === 'number' && (
-              <span className="rounded bg-surface-2 px-1.5 py-0.5 text-xs text-ink">
-                {suggestion.storyPoints} điểm
+            {suggestion.difficulty && (
+              <span
+                className="rounded bg-surface-2 px-1.5 py-0.5 text-xs text-ink"
+                title="Độ khó AI đề xuất — điểm sẽ được hệ thống tự tính từ Loại × Độ khó × Ưu tiên"
+              >
+                Độ khó: {DIFFICULTY_LABELS[suggestion.difficulty]}
               </span>
             )}
             {suggestion.assigneeHint && (

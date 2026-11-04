@@ -5,10 +5,10 @@ import { localToCalendarIso } from '@/lib/calendarDate';
 import type { IssueDto } from '@tirapro/types';
 import { useProjectMeta } from '@/features/ai/api';
 import { useProjects } from '@/features/projects/api';
-import { useCanEditIssue } from '@/features/projects/permissions';
+import { useCanEditIssue, useCanIn } from '@/features/projects/permissions';
 import { useProjectSprints, useMoveToSprint } from '@/features/backlog/api';
 import { BACKLOG_LABEL, buildSprintOptions } from './sprintOptions';
-import { useUpdateIssue } from '@/features/issues/api';
+import { useUpdateIssue, useResetPoints, useHasLoadedChildren } from '@/features/issues/api';
 import { pointsConfirmOptions, pointsEditWarning } from '@/features/issues/pointsWarning';
 import { useConfirm } from '@/components/ui/useConfirm';
 import { useAssigneePicker } from '@/features/issue-edit/useAssigneeOptions';
@@ -27,7 +27,8 @@ import { SeverityBadge } from '@/components/ui/SeverityBadge';
 import { isBugType } from './severity';
 import { dueState } from '@/lib/dueDate';
 import { apiErrorMessage } from '@/lib/api';
-import { parsePointsInput } from '@/lib/permissions';
+import { isRollupPoints, parsePointsOverride, pointsTip, CHILD_SPRINT_TIP } from '@/lib/points';
+import { DIFFICULTIES, DIFFICULTY_LABELS } from '@tirapro/shared';
 import { cn } from '@/lib/utils';
 import { fmtDate, fmtDateTime, fmtRelative, toDateInput, toDateTimeInput } from '@/lib/dateFormat';
 import { DateInput, DateTimeInput } from '@/components/ui/DateInput';
@@ -337,10 +338,13 @@ export function IssueSprintSubtitle({ issue }: { issue: IssueDto }) {
     [sprints, issue.sprintId],
   );
 
-  if (!canEdit) {
+  if (!canEdit || issue.parentId) {
     const current = sprintOptions.find((o) => o.value === (issue.sprintId ?? ''));
     return (
-      <span className="truncate text-sm text-muted" title="Sprint chứa việc này">
+      <span
+        className="truncate text-sm text-muted"
+        title={issue.parentId ? CHILD_SPRINT_TIP : 'Sprint chứa việc này'}
+      >
         {current?.label ?? BACKLOG_LABEL}
       </span>
     );
@@ -380,39 +384,49 @@ export function IssueSprintSubtitle({ issue }: { issue: IssueDto }) {
   );
 }
 
-/** Điểm ước lượng dạng label mờ ("N điểm"), bấm mới sửa; khoá nếu không có quyền. */
-export function IssueStoryPointsInline({ issue, canEdit }: { issue: IssueDto; canEdit: boolean }) {
+const POINTS_BTN =
+  '-mx-1 rounded px-1 text-sm text-muted transition-colors hover:bg-surface-2 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] [@media(pointer:coarse)]:min-h-9';
+
+/**
+ * Điểm do máy chủ tính (Loại × Độ khó × Ưu tiên). Ai cũng xem được, rê chuột ra lời giải thích (`pointsExplain`). CHỈ Quản trị
+ * dự án bấm để chỉnh tay (số nguyên 0–100; không có "xoá điểm" → web không gửi `storyPoints: null`); Epic và việc cha có việc
+ * con là điểm TỔNG → chỉ đọc. Đang chỉnh tay: hiện "đã chỉnh tay" + nút "Tính lại theo công thức".
+ */
+export function IssueStoryPointsInline({ issue }: { issue: IssueDto }) {
   const patch = useUpdateIssue(issue.projectId);
+  const reset = useResetPoints(issue.projectId);
   const { data: sprints } = useProjectSprints(issue.projectId);
+  const canAdmin = useCanIn(issue.projectId)('project:admin');
+  const hasChildren = useHasLoadedChildren(issue.projectId, issue.id);
   const confirm = useConfirm();
   const [editing, setEditing] = useState(false);
+  const rollup = isRollupPoints(issue, hasChildren);
+  const canOverride = canAdmin && !rollup;
 
   async function save(raw: string) {
     setEditing(false);
-    const r = parsePointsInput(raw); // MỘT luật cho mọi nơi nhập điểm (dòng Việc chờ, hàng loạt, trang công việc)
+    const r = parsePointsOverride(raw);
     if (!r.ok) return toast.error(r.error);
-    const next = r.value;
-    if (next !== issue.storyPoints) {
-      const w = pointsEditWarning(issue, sprints);
-      if (w && !(await confirm(pointsConfirmOptions(w)))) return;
-      patch.mutate(
-        { id: issue.id, key: issue.key, patch: { storyPoints: next }, version: issue.version },
-        { onError: (e) => toast.error(apiErrorMessage(e)) },
-      );
-    }
+    if (r.value === issue.storyPoints) return;
+    const w = pointsEditWarning(issue, sprints);
+    if (w && !(await confirm(pointsConfirmOptions(w)))) return;
+    patch.mutate(
+      { id: issue.id, key: issue.key, patch: { storyPoints: r.value }, version: issue.version },
+      { onError: (e) => toast.error(apiErrorMessage(e)) },
+    );
   }
 
-  if (editing && canEdit) {
+  if (editing && canOverride) {
     return (
       <Input
         type="number"
         min={0}
         max={100}
-        step="any"
-        inputMode="decimal"
+        step={1}
+        inputMode="numeric"
         autoFocus
         className="h-6 w-16 text-sm"
-        aria-label="Điểm ước lượng"
+        aria-label="Điểm chỉnh tay"
         defaultValue={issue.storyPoints ?? ''}
         disabled={patch.isPending}
         onBlur={(e) => void save(e.target.value)}
@@ -428,23 +442,87 @@ export function IssueStoryPointsInline({ issue, canEdit }: { issue: IssueDto; ca
   }
 
   const text = issue.storyPoints != null ? `${issue.storyPoints} điểm` : null;
-  const tip = 'Điểm ước lượng — con số ước chừng độ lớn của việc, càng lớn càng tốn công.';
+  const tip = pointsTip(issue, hasChildren);
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      {canOverride ? (
+        <button
+          type="button"
+          onClick={() => setEditing(true)}
+          title={`${tip} Bấm để chỉnh tay.`}
+          className={POINTS_BTN}
+        >
+          {text ?? <span className="text-faint">—</span>}
+        </button>
+      ) : (
+        <span className="text-sm text-muted" title={tip}>
+          {text ?? '—'}
+        </span>
+      )}
+      {issue.pointsManual && !rollup && (
+        <>
+          <span className="text-xs text-faint">đã chỉnh tay</span>
+          {canAdmin && (
+            <button
+              type="button"
+              disabled={reset.isPending}
+              onClick={() =>
+                reset.mutate(
+                  { id: issue.id, key: issue.key },
+                  {
+                    onSuccess: () =>
+                      toast.success('Đã tính lại điểm theo công thức', { duration: 1800 }),
+                    onError: (e) => toast.error(apiErrorMessage(e)),
+                  },
+                )
+              }
+              className="rounded px-1 text-xs text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:cursor-not-allowed disabled:text-disabled-fg"
+            >
+              Tính lại theo công thức
+            </button>
+          )}
+        </>
+      )}
+    </span>
+  );
+}
+
+/** Độ khó (Dễ / Trung bình / Khó / Rất khó) — đầu vào của công thức điểm; ai sửa được việc thì đổi được. */
+export function IssueDifficultyInline({
+  issue,
+  className,
+}: {
+  issue: IssueDto;
+  className?: string;
+}) {
+  const patch = useUpdateIssue(issue.projectId);
+  const canEdit = useCanEditIssue(issue.projectId)(issue);
+  const label = DIFFICULTY_LABELS[issue.difficulty];
   if (!canEdit) {
     return (
-      <span className="text-sm text-muted" title={`${tip} Bạn không có quyền sửa công việc này.`}>
-        {text ?? '—'}
+      <span className="text-sm text-muted" title="Độ khó — một phần của công thức tính điểm">
+        {label}
       </span>
     );
   }
   return (
-    <button
-      type="button"
-      onClick={() => setEditing(true)}
-      title={`${tip} Bấm để đặt lại.`}
-      className="-mx-1 rounded px-1 text-sm text-muted transition-colors hover:bg-surface-2 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] [@media(pointer:coarse)]:min-h-9"
-    >
-      {text ?? <span className="text-faint">Đặt điểm ước lượng</span>}
-    </button>
+    <SearchSelect
+      ariaLabel="Độ khó"
+      value={issue.difficulty}
+      disabled={patch.isPending}
+      options={DIFFICULTIES.map((d) => ({ value: d, label: DIFFICULTY_LABELS[d] }))}
+      onChange={(v) => {
+        if (!v || v === issue.difficulty) return;
+        patch.mutate(
+          { id: issue.id, key: issue.key, patch: { difficulty: v }, version: issue.version },
+          { onError: (e) => toast.error(apiErrorMessage(e)) },
+        );
+      }}
+      className={cn(INLINE_TRIGGER, className)}
+      renderTrigger={() => (
+        <span title="Độ khó — đổi sẽ tính lại điểm theo công thức">{label}</span>
+      )}
+    />
   );
 }
 

@@ -25,6 +25,7 @@ const SCALAR_FIELDS = [
   'descriptionFormat',
   'acceptanceCriteria',
   'storyPoints',
+  'difficulty',
   'originalEstimate',
   'remainingEstimate',
   'dueDate',

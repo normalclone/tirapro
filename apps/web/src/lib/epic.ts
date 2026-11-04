@@ -53,11 +53,23 @@ export function epicProgressLabel(p: PointsProgress): string {
   return `${p.doneCount}/${p.totalCount} việc`;
 }
 
+/**
+ * Điểm của một thành viên epic có được cộng vào tổng epic không — ĐÚNG luật máy chủ (`PointsService`): Epic = tổng điểm việc
+ * CẤP TRÊN (không cha, hoặc cha là chính epic / không còn trong tập nạp). Việc có cha thường đã nằm trong điểm của cha
+ * (điểm cha = tổng điểm con) nên cộng nữa là đếm trùng.
+ */
+function countsTowardEpic(i: IssueDto, byId: Map<string, IssueDto>): boolean {
+  if (!i.parentId) return true;
+  const p = byId.get(i.parentId);
+  return !p || isEpicIssue(p);
+}
+
 /** MỘT quy tắc tính tiến độ cho tập thành viên: theo điểm; epic chưa có điểm nào thì theo số việc. */
-function progressOfMembers(m: IssueDto[]): PointsProgress {
+function progressOfMembers(m: IssueDto[], byId: Map<string, IssueDto>): PointsProgress {
   const done = (i: IssueDto) => i.status.category === 'DONE';
-  const totalPoints = m.reduce((s, i) => s + (i.storyPoints ?? 0), 0);
-  const donePoints = m.filter(done).reduce((s, i) => s + (i.storyPoints ?? 0), 0);
+  const pts = (i: IssueDto) => (countsTowardEpic(i, byId) ? (i.storyPoints ?? 0) : 0);
+  const totalPoints = m.reduce((s, i) => s + pts(i), 0);
+  const donePoints = m.filter(done).reduce((s, i) => s + pts(i), 0);
   const doneCount = m.filter(done).length;
   const pct =
     totalPoints > 0
@@ -73,7 +85,8 @@ export function epicProgress(
   epicId: string,
   byId?: Map<string, IssueDto>,
 ): PointsProgress {
-  return progressOfMembers(epicMembers(issues, epicId, byId));
+  const map = byId ?? byIdOf(issues);
+  return progressOfMembers(epicMembers(issues, epicId, map), map);
 }
 
 /**
@@ -85,13 +98,17 @@ export function epicTaskProgress(
   epicId: string,
   byId?: Map<string, IssueDto>,
 ): SubtreeProgress {
-  const m = epicMembers(issues, epicId, byId);
-  const p = progressOfMembers(m);
+  const map = byId ?? byIdOf(issues);
+  const m = epicMembers(issues, epicId, map);
+  const p = progressOfMembers(m, map);
   const byPoints = p.totalPoints > 0;
   const sum = (cat: string) =>
     m
       .filter((i) => i.status.category === cat)
-      .reduce((s, i) => s + (byPoints ? (i.storyPoints ?? 0) : 1), 0);
+      .reduce(
+        (s, i) => s + (byPoints ? (countsTowardEpic(i, map) ? (i.storyPoints ?? 0) : 0) : 1),
+        0,
+      );
   return {
     total: byPoints ? p.totalPoints : p.totalCount,
     done: sum('DONE'),
@@ -132,6 +149,10 @@ export interface PointsRollup {
   count: number;
 }
 
+/**
+ * Cộng điểm con cháu: CHỈ VIỆC LÁ (không có con trong cây, không phải Epic) — điểm của việc có con đã là tổng điểm con
+ * nên cộng cả hai là đếm trùng. `count` vẫn là số việc không phải sub-task (con số người dùng thấy ở dòng).
+ */
 function rollupFrom(kids: Map<string, IssueDto[]>, rootId: string): PointsRollup {
   const seen = new Set([rootId]);
   const stack = [...(kids.get(rootId) ?? [])];
@@ -142,12 +163,13 @@ function rollupFrom(kids: Map<string, IssueDto[]>, rootId: string): PointsRollup
     const i = stack.pop()!;
     if (seen.has(i.id)) continue;
     seen.add(i.id);
-    if (!i.type.isSubtask) {
-      count += 1;
+    const below = kids.get(i.id) ?? [];
+    if (!i.type.isSubtask) count += 1;
+    if (below.length === 0 && i.type.key !== 'EPIC') {
       totalPoints += i.storyPoints ?? 0;
       if (i.status.category === 'DONE') donePoints += i.storyPoints ?? 0;
     }
-    for (const c of kids.get(i.id) ?? []) stack.push(c);
+    for (const c of below) stack.push(c);
   }
   return { donePoints, totalPoints, count };
 }

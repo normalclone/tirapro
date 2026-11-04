@@ -56,6 +56,9 @@ export const mk = (
     parentId: null,
     epicId: null,
     storyPoints: null,
+    difficulty: 'MEDIUM',
+    pointsManual: false,
+    pointsExplain: '',
     projectId: 'p',
     ...rest,
   } as unknown as IssueDto;

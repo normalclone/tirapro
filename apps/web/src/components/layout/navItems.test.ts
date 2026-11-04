@@ -25,9 +25,12 @@ describe('navItems (nguồn chung sidebar / thanh tab đáy / sheet Tôi)', () =
       '/settings',
     ]);
   });
-  it('admin: thanh giữ 4 mục đầu, sheet chứa phần còn lại (Hệ thống)', () => {
+  it('admin: thanh giữ 4 mục đầu, sheet chứa phần còn lại (Hệ thống, Cách tính điểm)', () => {
     expect(ADMIN_NAV.length).toBeGreaterThan(ADMIN_TAB_COUNT);
-    expect(sheetNavItems(ADMIN_NAV, true).map((i) => i.to)).toEqual(['/admin/system']);
+    expect(sheetNavItems(ADMIN_NAV, true).map((i) => i.to)).toEqual([
+      '/admin/system',
+      '/admin/points',
+    ]);
   });
   it('Tổng quan và Dự án khớp đúng route (Dự án active cả /p/*)', () => {
     const [home, projects] = NAV_ITEMS;

@@ -63,6 +63,7 @@ import {
   IssueDatesPanel,
   IssueSprintSubtitle,
   IssueStoryPointsInline,
+  IssueDifficultyInline,
   IssueTypeSelect,
   IssuePrioritySelect,
   IssueSeveritySelect,
@@ -289,7 +290,8 @@ export function IssueDetailPage() {
           ? uncheckAllTasks(issue.acceptanceCriteria)
           : undefined,
         priorityId: issue.priority?.id || undefined,
-        storyPoints: issue.storyPoints ?? undefined,
+        // Bản sao giữ ĐỘ KHÓ; điểm do máy chủ tính lại (không gửi storyPoints, kể cả khi bản gốc được PM chỉnh tay).
+        difficulty: issue.difficulty,
         sprintId: issue.sprintId || undefined,
       });
       toast.success(`Đã tạo bản sao: ${created.key}`);
@@ -585,7 +587,11 @@ export function IssueDetailPage() {
                   <span className="text-faint" aria-hidden>
                     ·
                   </span>
-                  <IssueStoryPointsInline issue={issue} canEdit={canEditThis} />
+                  <IssueDifficultyInline issue={issue} />
+                  <span className="text-faint" aria-hidden>
+                    ·
+                  </span>
+                  <IssueStoryPointsInline issue={issue} />
                   <span className="text-faint" aria-hidden>
                     ·
                   </span>

@@ -1,7 +1,6 @@
-export type CreateIssueField = 'project' | 'type' | 'summary' | 'points' | 'due';
+export type CreateIssueField = 'project' | 'type' | 'summary' | 'due';
 
 const SUMMARY_MAX = 255;
-const POINTS_MAX = 100;
 export interface CreateIssueFieldIssue {
   field: CreateIssueField;
   message: string;
@@ -18,8 +17,6 @@ export function validateCreateIssue(f: {
   typeId: string;
   summary: string;
   cleanSummary: string;
-  /** Chuỗi đang nhập ở ô Điểm ước lượng ('' = bỏ trống). */
-  points?: string;
   /** Hạn đã chọn nằm trước hôm nay (theo ngày VN) → không được tạo (hạn không trước ngày tạo). */
   dueInPast?: boolean;
 }): CreateIssueFieldIssue[] {
@@ -33,12 +30,6 @@ export function validateCreateIssue(f: {
       field: 'summary',
       message: `Tiêu đề tối đa ${SUMMARY_MAX} ký tự (đang ${f.cleanSummary.trim().length}) — hãy rút gọn và đưa chi tiết vào phần mô tả.`,
     });
-  if (f.points?.trim()) {
-    const n = Number(f.points);
-    if (!Number.isFinite(n) || n < 0)
-      issues.push({ field: 'points', message: 'Điểm phải là số từ 0 trở lên' });
-    else if (n > POINTS_MAX) issues.push({ field: 'points', message: `Điểm tối đa ${POINTS_MAX}` });
-  }
   if (f.dueInPast)
     issues.push({
       field: 'due',

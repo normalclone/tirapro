@@ -125,6 +125,14 @@ export function useCachedProjectIssue<T>(
   });
 }
 
+/** Việc này có việc con trong cache dự án không (điểm việc cha = tổng điểm con → không chỉnh tay). Không tải thêm gì. */
+export function useHasLoadedChildren(projectId: string | undefined, issueId: string): boolean {
+  const { data } = useCachedProjectIssue(projectId, (list) =>
+    list.some((i) => i.parentId === issueId),
+  );
+  return data === true;
+}
+
 export function useIssue(key: string | null) {
   return useQuery({
     queryKey: keys.issues.byKey(key ?? ''),
@@ -192,6 +200,20 @@ export function useUpdateIssue(projectId: string | undefined, opts?: { silent?: 
       rollbackIssue(qc, snap);
       invalidateIssue(qc, projectId, v.key);
     },
+  });
+}
+
+/**
+ * "Tính lại theo công thức" (Quản trị dự án): bỏ điểm chỉnh tay, máy chủ tính lại từ Loại × Độ khó × Ưu tiên rồi trả bản
+ * mới (kèm `version`) — ghi thẳng vào cache chi tiết + danh sách. Không có vá lạc quan (kết quả là điểm do máy chủ tính).
+ */
+export function useResetPoints(projectId: string | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { id: string; key: string }) =>
+      api.post<IssueDto>(`/issues/${v.id}/points/reset`).then((r) => r.data),
+    onSuccess: (issue) => writeIssue(qc, projectId, issue),
+    onError: (_e, v) => invalidateIssue(qc, projectId, v.key),
   });
 }
 

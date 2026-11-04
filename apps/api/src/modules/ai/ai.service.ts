@@ -25,7 +25,7 @@ const isDifficulty = (v: unknown): v is Difficulty =>
  * Đầu ra của mô hình là dữ liệu không tin cậy: giữ đúng `difficulty` hợp lệ, bỏ `storyPoints` nếu mô hình vẫn trả (điểm do
  * máy chủ tính từ Loại × Độ khó × Ưu tiên, không nhận số điểm từ AI).
  */
-function sanitizeGenerated(issue: AiGeneratedIssue): AiGeneratedIssue {
+function sanitizeGenerated(issue: AiGeneratedIssue & { storyPoints?: unknown }): AiGeneratedIssue {
   const { storyPoints: _dropped, difficulty, ...rest } = issue;
   return { ...rest, ...(isDifficulty(difficulty) ? { difficulty } : {}) };
 }

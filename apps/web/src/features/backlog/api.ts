@@ -1,5 +1,6 @@
 import { skipToken, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { BulkUpdateIssuesResult, IssueDto, SprintDto } from '@tirapro/types';
+import type { Difficulty } from '@tirapro/shared';
 import axios from 'axios';
 import { api, apiErrorMessage } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
@@ -123,7 +124,9 @@ export interface BulkIssuePatch {
   assigneeId?: string | null;
   priorityId?: string | null;
   sprintId?: string | null;
-  storyPoints?: number | null;
+  /** Chỉnh tay (Quản trị dự án), số nguyên 0–100; web không gửi null. */
+  storyPoints?: number;
+  difficulty?: Difficulty;
   epicId?: string | null;
   labels?: { add?: string[]; remove?: string[] };
 }

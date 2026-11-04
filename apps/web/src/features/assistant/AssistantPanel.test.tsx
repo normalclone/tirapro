@@ -133,7 +133,7 @@ describe('thẻ nháp (render tĩnh)', () => {
       bot([
         {
           type: 'draft',
-          draft: draft('Sửa lỗi login !high @an ^mai ~3 @khongco'),
+          draft: draft('Sửa lỗi login !high @an ^mai ~khó @khongco'),
           status,
           ...extra,
         },
@@ -149,7 +149,8 @@ describe('thẻ nháp (render tĩnh)', () => {
       'High',
       'An Nguyễn',
       'Việc chờ (chưa vào sprint)',
-      '>3<',
+      'Độ khó',
+      'Khó',
     ])
       expect(h).toContain(t);
     expect(h).toContain('Không nhận ra');

@@ -9,8 +9,10 @@ import {
   Tag,
   Zap,
   CircleDot,
+  Gauge,
 } from 'lucide-react';
 import type { IssueDto, SprintDto } from '@tirapro/types';
+import { DIFFICULTIES, DIFFICULTY_LABELS, type Difficulty } from '@tirapro/shared';
 import { Button } from '@/components/ui/Button';
 import { Dialog } from '@/components/ui/Dialog';
 import { useMediaQuery } from '@/lib/useMediaQuery';
@@ -91,7 +93,9 @@ export function BulkDock({
   epics,
   labels,
   statusOptions,
+  canAdmin,
   onSetPoints,
+  onSetDifficulty,
   onSetPriority,
   onAddLabel,
   onSetEpic,
@@ -121,7 +125,10 @@ export function BulkDock({
   labels: ProjectLabel[];
   /** Trạng thái mà MỌI việc đang chọn đều chuyển tới được (`commonNextStatuses`). */
   statusOptions: NextStatus[];
-  onSetPoints: (points: number | null) => void;
+  /** Quản trị dự án (mọi dự án của lô) — chỉ người này thấy nút chỉnh tay "Điểm". */
+  canAdmin: boolean;
+  onSetPoints: (points: number) => void;
+  onSetDifficulty: (difficulty: Difficulty) => void;
   onSetPriority: (priorityId: string | null) => void;
   /** Không truyền = ẩn nhóm "Nhãn" (nhãn thuộc từng dự án). */
   onAddLabel?: (labelId: string) => void;
@@ -146,7 +153,9 @@ export function BulkDock({
     epics,
     labels,
     statusOptions,
+    canAdmin,
     onSetPoints,
+    onSetDifficulty,
     onSetPriority,
     onAddLabel,
     onSetEpic,
@@ -371,7 +380,7 @@ type Layout = 'row' | 'stack';
 /** Dưới `sm` (640px): dock gọn một hàng + sheet "…". */
 const COMPACT_QUERY = '(max-width: 639px)';
 
-/** Điểm / Ưu tiên / Nhãn / Epic / Trạng thái. `only`: chỉ Trạng thái (hàng gọn trên điện thoại) hoặc phần còn lại (sheet). */
+/** Điểm (chỉnh tay, chỉ quản trị) / Độ khó / Ưu tiên / Nhãn / Epic / Trạng thái. `only`: chỉ Trạng thái (hàng gọn trên điện thoại) hoặc phần còn lại (sheet). */
 function BulkEditControls({
   busy,
   canEdit,
@@ -380,7 +389,9 @@ function BulkEditControls({
   epics = NO_EPICS,
   labels,
   statusOptions,
+  canAdmin,
   onSetPoints,
+  onSetDifficulty,
   onSetPriority,
   onAddLabel,
   onSetEpic,
@@ -396,7 +407,9 @@ function BulkEditControls({
   | 'epics'
   | 'labels'
   | 'statusOptions'
+  | 'canAdmin'
   | 'onSetPoints'
+  | 'onSetDifficulty'
   | 'onSetPriority'
   | 'onAddLabel'
   | 'onSetEpic'
@@ -407,10 +420,26 @@ function BulkEditControls({
     <>
       {canEdit && only !== 'status' && (
         <>
-          <PointsPopover
-            onApply={onSetPoints}
+          {canAdmin && (
+            <PointsPopover
+              onApply={onSetPoints}
+              disabled={busy}
+              triggerClassName={layout === 'stack' ? 'h-11 w-full justify-start' : undefined}
+            />
+          )}
+          <SearchSelect
+            value=""
+            onChange={(v) => v && onSetDifficulty(v as Difficulty)}
+            options={DIFFICULTIES.map((d) => ({ value: d, label: DIFFICULTY_LABELS[d] }))}
+            placeholder="Độ khó"
+            searchPlaceholder="Tìm độ khó…"
+            ariaLabel="Đặt độ khó cho các việc đang chọn"
             disabled={busy}
-            triggerClassName={layout === 'stack' ? 'h-11 w-full justify-start' : undefined}
+            align="end"
+            className={cls}
+            renderTrigger={() => (
+              <BarTrigger icon={<Gauge className="h-4 w-4 shrink-0" />} text="Độ khó" />
+            )}
           />
           <SearchSelect
             value=""

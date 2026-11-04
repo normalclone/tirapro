@@ -93,6 +93,13 @@ import {
 import { cn } from '@/lib/utils';
 import { CHIP_ROW_GAP_COARSE, CHIP_TOUCH_HIT, STRIP_ROWS_GAP_COARSE } from '@/lib/touchHit';
 import { IssueRow, IssueRowBody, type RowEdit } from './IssueRow';
+import {
+  CHILD_SPRINT_TIP,
+  leafPointsSum,
+  parentIdSetOf,
+  pointsRoleOf,
+  type PointsRole,
+} from '@/lib/points';
 import { useBulkEdit } from '@/features/bulk/useBulkEdit';
 import { commonNextStatuses } from '@/features/bulk/bulkEdit';
 import { useBulkSelection } from '@/features/bulk/useBulkSelection';
@@ -144,10 +151,6 @@ const SPRINT_CAPACITY_LABELS = {
   over: (n: number) => `hơn velocity TB ${n}`,
 };
 
-function pointsSum(issues: IssueDto[]): number {
-  return issues.reduce((sum, i) => sum + (i.storyPoints ?? 0), 0);
-}
-
 const NO_PRIORITIES: RowEdit['priorities'] = [];
 const NO_LABELS: ProjectLabel[] = [];
 
@@ -191,7 +194,7 @@ export function BacklogPage() {
   // hai dòng liền nhau sẽ làm dòng trước mất toast/Hoàn tác. Promise của từng lần gọi thì luôn chạy xong.
   const mutateIssue = patchIssue.mutateAsync;
   const onEditPoints = useCallback(
-    (issue: IssueDto, value: number | null) =>
+    (issue: IssueDto, value: number) =>
       void mutateIssue({
         id: issue.id,
         key: issue.key,
@@ -359,6 +362,14 @@ export function BacklogPage() {
   const quickAddEpicId = epicFilter && epicFilter !== 'none' ? epicFilter : undefined;
 
   const progressMap = useMemo(() => buildListProgressMap(issues ?? []), [issues]);
+  // Tổng điểm CHỈ đếm việc lá (bỏ Epic và việc cha có việc con — điểm của chúng đã là tổng): suy "có việc con" từ tập đã nạp.
+  const parentIds = useMemo(() => parentIdSetOf(issues ?? []), [issues]);
+  const pointsSum = useCallback((list: IssueDto[]) => leafPointsSum(list, parentIds), [parentIds]);
+  const canAdminProject = can('project:admin'); // chỉnh tay điểm (máy chủ: POINTS_OVERRIDE_FORBIDDEN nếu thiếu)
+  const pointsRoleFor = useCallback(
+    (issue: IssueDto) => pointsRoleOf(issue, parentIds, canAdminProject),
+    [parentIds, canAdminProject],
+  );
 
   // Thứ tự THẬT cho panel xem nhanh: mọi khu đang hiển thị theo thứ tự trên trang (sprint đang chạy/sắp tới → Việc chờ → sprint
   // đã đóng nếu đang mở), gồm cả dòng chưa vẽ do ảo hoá. `reveal` cuộn danh sách ảo hoá tới dòng (xem `VirtualRows`).
@@ -443,6 +454,10 @@ export function BacklogPage() {
       toast.info(
         'Bạn không có quyền đổi sprint của việc này — chỉ đổi được thứ tự trong cùng khu.',
       );
+      return;
+    }
+    if (sprintChanged && issue.parentId) {
+      toast.info(`${CHILD_SPRINT_TIP} — kéo việc cha để đổi sprint cho cả nhánh.`);
       return;
     }
     const currentSprintId = issue.sprintId ?? null;
@@ -982,6 +997,7 @@ export function BacklogPage() {
                         canDrag={canDragIssue}
                         rowEdit={rowEdit}
                         canEditRow={canEditIssue}
+                        pointsRoleFor={pointsRoleFor}
                         selected={selected}
                         onToggleSelect={toggleSelect}
                         onToggleSection={toggleSelectSection}
@@ -1083,6 +1099,7 @@ export function BacklogPage() {
                   canDrag={canDragIssue}
                   rowEdit={rowEdit}
                   canEditRow={canEditIssue}
+                  pointsRoleFor={pointsRoleFor}
                   selected={selected}
                   onToggleSelect={toggleSelect}
                   onToggleSection={toggleSelectSection}
@@ -1154,7 +1171,9 @@ export function BacklogPage() {
                     epics={epicOptions}
                     labels={projectLabels ?? NO_LABELS}
                     statusOptions={statusOptions}
+                    canAdmin={canAdminProject}
                     onSetPoints={(points) => void bulk.setPoints(points)}
+                    onSetDifficulty={(d) => void bulk.setDifficulty(d)}
                     onSetPriority={(id) => void bulk.setPriority(id)}
                     onAddLabel={(id) => void bulk.addLabel(id)}
                     onSetEpic={(id) => void bulk.setEpic(id)}
@@ -1387,6 +1406,7 @@ function Section({
   canDrag,
   rowEdit,
   canEditRow,
+  pointsRoleFor,
   projectKey,
   projectId,
   canCreate,
@@ -1423,6 +1443,7 @@ function Section({
   /** Sửa tại chỗ điểm/ưu tiên trên dòng (không truyền cho sprint đã đóng). */
   rowEdit?: RowEdit;
   canEditRow?: (issue: IssueDto) => boolean;
+  pointsRoleFor?: (issue: IssueDto) => PointsRole;
   projectKey?: string;
   projectId?: string;
   canCreate?: boolean;
@@ -1466,6 +1487,7 @@ function Section({
       peeked={peekedKey === issue.key}
       edit={readOnly ? undefined : rowEdit}
       canEdit={!!canEditRow?.(issue)}
+      pointsRole={pointsRoleFor?.(issue)}
     />
   );
   return (

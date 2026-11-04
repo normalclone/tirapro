@@ -165,6 +165,9 @@ const AdminConfigPage = lazy(() =>
 const AdminSystemPage = lazy(() =>
   import('@/features/admin/AdminSystemPage').then((m) => ({ default: m.AdminSystemPage })),
 );
+const AdminPointsPage = lazy(() =>
+  import('@/features/admin/AdminPointsPage').then((m) => ({ default: m.AdminPointsPage })),
+);
 const PortfolioPage = lazy(() =>
   import('@/features/portfolio/PortfolioPage').then((m) => ({ default: m.PortfolioPage })),
 );
@@ -294,6 +297,7 @@ export const router = createBrowserRouter([
           { path: 'accounts', element: <AdminUsersPage /> },
           { path: 'config', element: <AdminConfigPage /> },
           { path: 'system', element: <AdminSystemPage /> },
+          { path: 'points', element: <AdminPointsPage /> },
         ],
       },
       {

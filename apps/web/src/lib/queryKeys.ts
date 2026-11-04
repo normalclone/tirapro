@@ -158,6 +158,7 @@ export const keys = {
     overview: ['admin-overview'] as const,
     workspaces: ['admin-workspaces'] as const,
     config: ['admin-config'] as const,
+    pointsFormula: ['admin-points-formula'] as const,
     health: ['admin-health'] as const,
     audit: (limit: number, action: string, kind: string) =>
       ['admin-audit', limit, action, kind] as const,

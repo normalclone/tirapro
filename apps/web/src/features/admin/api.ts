@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { MemberDto } from '@tirapro/types';
+import type { PointsFormula } from '@tirapro/shared';
 import { api } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
 
@@ -271,5 +272,23 @@ export function useAdminAudit(limit = 50, action?: string, kind: AuditKind = 'ad
       return (await api.get<ListEnvelope<AuditEntry>>(`/admin/system/audit?${qs.toString()}`)).data
         .data;
     },
+  });
+}
+
+/** Bảng hệ số tính điểm toàn hệ thống (chỉ quản trị hệ thống). */
+export function useAdminPointsFormula() {
+  return useQuery({
+    queryKey: keys.admin.pointsFormula,
+    queryFn: async () => (await api.get<PointsFormula>('/admin/points-formula')).data,
+  });
+}
+
+/** Lưu bảng hệ số: máy chủ trả về ngay rồi tính lại điểm ở nền (không chờ). */
+export function useSavePointsFormula() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (formula: PointsFormula) =>
+      (await api.put<PointsFormula>('/admin/points-formula', formula)).data,
+    onSuccess: (saved) => qc.setQueryData(keys.admin.pointsFormula, saved),
   });
 }

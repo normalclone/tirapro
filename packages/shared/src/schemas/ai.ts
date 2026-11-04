@@ -17,8 +17,6 @@ export interface AiGeneratedIssue {
   acceptanceCriteria?: string[];
   /** Độ khó AI đề xuất; điểm do máy chủ tính từ Loại × Độ khó × Ưu tiên (không còn đề xuất số điểm). */
   difficulty?: Difficulty;
-  /** @deprecated Không còn trả về (điểm tự tính). Giữ kiểu để web cũ biên dịch; gỡ cùng lúc đổi sang `difficulty` ở web. */
-  storyPoints?: number;
   priority?: string;
 }
 
@@ -61,8 +59,6 @@ export interface AiSuggestResult {
   priority?: string;
   /** Độ khó đề xuất (điểm suy ra từ công thức). */
   difficulty?: Difficulty;
-  /** @deprecated Không còn trả về (điểm tự tính). Giữ kiểu để web cũ biên dịch; gỡ cùng lúc đổi sang `difficulty` ở web. */
-  storyPoints?: number;
   assigneeHint?: string;
   rationale: string;
   /** Tối đa 3 việc giống (không gồm chính việc này), đã lọc theo quyền xem; `[]` khi không có/không xem được. Có cả ở chế độ heuristic. */

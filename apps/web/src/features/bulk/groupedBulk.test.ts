@@ -40,8 +40,13 @@ describe('groupByProject', () => {
   });
 });
 
-const all: GroupPerms = { canAssign: true, canEdit: true, canTransition: true };
-const none: GroupPerms = { canAssign: false, canEdit: false, canTransition: false };
+const all: GroupPerms = { canAssign: true, canEdit: true, canTransition: true, canAdmin: true };
+const none: GroupPerms = {
+  canAssign: false,
+  canEdit: false,
+  canTransition: false,
+  canAdmin: false,
+};
 
 describe('availableBulkActions (hành động nào áp được khi chọn trải nhiều dự án)', () => {
   const one = [{ projectId: 'p1', count: 3, perms: all }];
@@ -51,7 +56,15 @@ describe('availableBulkActions (hành động nào áp được khi chọn trả
   ];
   it('một dự án: mọi hành động hiện', () => {
     const a = availableBulkActions(one);
-    for (const id of ['assignMe', 'assign', 'priority', 'points', 'label', 'status'] as const)
+    for (const id of [
+      'assignMe',
+      'assign',
+      'priority',
+      'points',
+      'difficulty',
+      'label',
+      'status',
+    ] as const)
       expect(a[id].visible, id).toBe(true);
     expect(a.status.applyCount).toBe(3);
   });
@@ -81,14 +94,23 @@ describe('availableBulkActions (hành động nào áp được khi chọn trả
       {
         projectId: 'p1',
         count: 2,
-        perms: { canAssign: false, canEdit: true, canTransition: false },
+        perms: { canAssign: false, canEdit: true, canTransition: false, canAdmin: false },
       },
     ]);
     expect(b.priority.visible).toBe(true);
-    expect(b.points.visible).toBe(true);
+    expect(b.difficulty.visible).toBe(true);
+    expect(b.points.visible).toBe(false); // chỉnh tay điểm chỉ dành cho Quản trị dự án
     expect(b.label.visible).toBe(true);
     expect(b.assignMe.visible).toBe(false);
     expect(b.status.visible).toBe(false);
+  });
+  it('Quản trị dự án ở một dự án: Điểm hiện và chỉ áp cho dự án đó', () => {
+    const a = availableBulkActions([
+      { projectId: 'p1', count: 2, perms: all },
+      { projectId: 'p2', count: 3, perms: { ...all, canAdmin: false } },
+    ]);
+    expect(a.points.applyProjectIds).toEqual(['p1']);
+    expect(a.points.skipCount).toBe(3);
   });
   it('lựa chọn rỗng → không gì hiện', () => {
     expect(Object.values(availableBulkActions([])).every((x) => !x.visible)).toBe(true);
@@ -120,7 +142,9 @@ describe('groupPermsFor', () => {
       canAssign: true,
       canEdit: true,
       canTransition: false,
+      canAdmin: false,
     });
+    expect(groupPermsFor({ ...base, ctx: ws(['project:admin']) }).canAdmin).toBe(true);
     // chỉ sửa việc của mình → không đủ cho cả nhóm
     expect(groupPermsFor({ ...base, ctx: ws(['issue:edit:own']) }).canEdit).toBe(false);
     expect(

@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { RecurrenceFreq } from '@tirapro/types';
+import type { Difficulty } from '@tirapro/shared';
 import { api } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
 
@@ -14,7 +15,8 @@ export interface IssuePayload {
   description?: string | null;
   assigneeId?: string | null;
   labelIds?: string[];
-  storyPoints?: number | null;
+  /** Điểm tự tính theo công thức nên mẫu không mang điểm — mang độ khó (trống = mặc định "Trung bình"). */
+  difficulty?: Difficulty | null;
 }
 
 interface ProjectBrief {
