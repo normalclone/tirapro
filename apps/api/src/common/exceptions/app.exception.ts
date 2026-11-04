@@ -45,6 +45,13 @@ export class PointsOverrideForbiddenException extends AppException {
   }
 }
 
+/** 422 mã riêng: Hạn bắt buộc, không được xoá trống — web/automation nhận ra mà không so khớp câu chữ. */
+export class DueDateRequiredException extends AppException {
+  constructor(message = 'Hạn là bắt buộc — chọn một ngày thay vì xoá trống') {
+    super(ERROR_CODES.DUE_DATE_REQUIRED, message, HttpStatus.UNPROCESSABLE_ENTITY);
+  }
+}
+
 export class VersionConflictException extends AppException {
   constructor(
     message = 'Dữ liệu đã thay đổi bởi người khác',

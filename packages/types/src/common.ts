@@ -73,6 +73,8 @@ export const ERROR_CODES = {
   PROFILE_LOCKED: 'PROFILE_LOCKED',
   /** 403: chỉ Quản trị dự án (`project:admin`) hoặc SA được ghi đè điểm tay — người khác đổi Loại/Độ khó/Ưu tiên để điểm tự tính. */
   POINTS_OVERRIDE_FORBIDDEN: 'POINTS_OVERRIDE_FORBIDDEN',
+  /** 422: Hạn là bắt buộc — không xoá trống được (cập nhật/sửa hàng loạt/quy tắc đặt Hạn rỗng). */
+  DUE_DATE_REQUIRED: 'DUE_DATE_REQUIRED',
   /** 413: tệp tải lên vượt giới hạn dung lượng. */
   PAYLOAD_TOO_LARGE: 'PAYLOAD_TOO_LARGE',
   INTERNAL: 'INTERNAL',

@@ -21,6 +21,15 @@ export interface RecomputeResult {
   epics: number;
 }
 
+/** Một việc cần ghi điểm mới (kèm đầu vào đã đọc, để ghi có điều kiện). */
+interface PointsChange {
+  id: string;
+  typeId: string;
+  difficulty: Difficulty;
+  priorityId: string | null;
+  pts: number;
+}
+
 /** Số việc đọc/ghi mỗi lô khi tính lại (theo từng dự án, phân trang theo id). */
 const RECOMPUTE_BATCH = 500;
 /** Số Epic cộng lại mỗi transaction. */
@@ -171,7 +180,12 @@ export class PointsService implements OnModuleInit {
    * ghi thì tăng `version` (OCC đúng). Trả về id các Epic đã đổi để bên gọi phát sự kiện realtime SAU commit.
    * Chạy TRONG transaction của bên gọi; khoá từng Epic theo thứ tự id để không deadlock giữa các lô.
    */
-  async rollupEpics(tx: Prisma.TransactionClient, epicIds: string[]): Promise<string[]> {
+  async rollupEpics(
+    tx: Prisma.TransactionClient,
+    epicIds: string[],
+    /** `keepUpdatedAt`: tính lại hàng loạt của HỆ THỐNG (recomputeAll) không đổi `updatedAt`; sửa việc của người dùng thì có. */
+    opts: { keepUpdatedAt?: boolean } = {},
+  ): Promise<string[]> {
     const changed: string[] = [];
     for (const id of [...new Set(epicIds)].filter(Boolean).sort()) {
       // Khoá dòng Epic (FOR UPDATE, như khoá cột WIP): hai transaction cùng đổi việc con của một Epic xếp hàng, transaction sau
@@ -184,10 +198,13 @@ export class PointsService implements OnModuleInit {
       if (!epic) continue; // Epic đã xoá/không còn: không có gì để cập nhật
       const total = await this.epicTotal(tx, id);
       if (epic.storyPoints === total) continue;
-      await tx.issue.updateMany({
-        where: { id, deletedAt: null },
-        data: { storyPoints: total, version: { increment: 1 } },
-      });
+      if (opts.keepUpdatedAt)
+        await tx.$executeRaw`UPDATE "Issue" SET "storyPoints" = ${total}::float8, "version" = "version" + 1 WHERE "id" = ${id} AND "deletedAt" IS NULL`;
+      else
+        await tx.issue.updateMany({
+          where: { id, deletedAt: null },
+          data: { storyPoints: total, version: { increment: 1 } },
+        });
       changed.push(id);
     }
     return changed;
@@ -249,8 +266,7 @@ export class PointsService implements OnModuleInit {
         });
         if (rows.length === 0) break;
         cursor = rows[rows.length - 1]!.id;
-        // Gom theo điểm mới: một câu UPDATE cho mỗi giá trị (vài giá trị) thay vì mỗi việc một câu.
-        const byValue = new Map<number, string[]>();
+        const changes: PointsChange[] = [];
         for (const r of rows) {
           const pts = computePoints(
             formula,
@@ -259,17 +275,11 @@ export class PointsService implements OnModuleInit {
             r.priorityId ? (priorityName.get(r.priorityId) ?? null) : null,
           );
           if (pts === null || pts === r.storyPoints) continue;
-          byValue.set(pts, [...(byValue.get(pts) ?? []), r.id]);
+          changes.push({ ...r, pts });
         }
-        for (const [pts, ids] of byValue) {
-          // `pointsManual: false` lặp lại ở where: người dùng vừa chỉnh tay giữa chừng thì không bị ghi đè.
-          const { count } = await this.prisma.issue.updateMany({
-            where: { id: { in: ids }, pointsManual: false },
-            data: { storyPoints: pts, version: { increment: 1 } },
-          });
-          updated += count;
-          if (count > 0) touchedProjects.add(projectId);
-        }
+        const count = await this.writeComputedPoints(changes);
+        updated += count;
+        if (count > 0) touchedProjects.add(projectId);
         if (rows.length < RECOMPUTE_BATCH) break;
       }
     }
@@ -278,6 +288,33 @@ export class PointsService implements OnModuleInit {
       for (const projectId of touchedProjects)
         this.events.emit(DOMAIN_EVENTS.PROJECT_RANKS_REBALANCED, { projectId });
     return { updated, epics };
+  }
+
+  /**
+   * Ghi điểm đã tính cho MỘT lô bằng MỘT câu SQL thô — cố ý KHÔNG đổi `updatedAt` (đây là việc hệ thống tính lại, không phải
+   * người dùng sửa; SLA/"cập nhật gần đây" dựa vào `updatedAt`), chỉ tăng `version` (OCC đúng).
+   * WHERE lặp lại ĐẦU VÀO đã dùng để tính (loại, độ khó, ưu tiên) và `pointsManual = false`: nếu giữa lúc đọc và ghi người
+   * dùng đã sửa một trong các trường đó (đường sửa của họ đã tự tính lại điểm) hoặc chỉnh tay, dòng đó không còn khớp và
+   * bị bỏ qua thay vì bị ghi đè bằng giá trị cũ. Trả số dòng thật sự ghi.
+   */
+  private async writeComputedPoints(changes: PointsChange[]): Promise<number> {
+    if (changes.length === 0) return 0;
+    const ids = changes.map((c) => c.id);
+    const typeIds = changes.map((c) => c.typeId);
+    const difficulties = changes.map((c) => c.difficulty);
+    // Ưu tiên rỗng mã hoá '' (mảng tham số không mang NULL chắc chắn qua mọi driver); so với COALESCE(priorityId, '').
+    const priorityIds = changes.map((c) => c.priorityId ?? '');
+    const pts = changes.map((c) => c.pts);
+    return this.prisma.$executeRaw`
+      UPDATE "Issue" AS i
+      SET "storyPoints" = v.pts, "version" = i."version" + 1
+      FROM unnest(${ids}::text[], ${typeIds}::text[], ${difficulties}::text[], ${priorityIds}::text[], ${pts}::float8[])
+        AS v(id, type_id, difficulty, priority_id, pts)
+      WHERE i."id" = v.id
+        AND NOT i."pointsManual"
+        AND i."typeId" = v.type_id
+        AND i."difficulty"::text = v.difficulty
+        AND COALESCE(i."priorityId", '') = v.priority_id`;
   }
 
   /** Cộng lại điểm MỌI Epic chưa xoá (theo lô, mỗi lô một transaction); thêm dự án có Epic đổi vào `touched`. */
@@ -291,7 +328,9 @@ export class PointsService implements OnModuleInit {
     let changed = 0;
     for (let i = 0; i < epicRows.length; i += EPIC_ROLLUP_BATCH) {
       const ids = epicRows.slice(i, i + EPIC_ROLLUP_BATCH).map((e) => e.id);
-      const done = await this.prisma.$transaction((tx) => this.rollupEpics(tx, ids));
+      const done = await this.prisma.$transaction((tx) =>
+        this.rollupEpics(tx, ids, { keepUpdatedAt: true }),
+      );
       changed += done.length;
       for (const id of done) touched.add(projectOf.get(id)!);
     }

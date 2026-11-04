@@ -8,6 +8,9 @@
  *  - không ghi lịch sử hoạt động từng việc;
  *  - Epic = tổng điểm việc con chưa xoá (kể cả sub-task), ghi khi khác và tăng `version`.
  * Không phát sự kiện realtime (script chạy lúc triển khai, chưa có ai mở trang).
+ * Ghi bằng SQL thô và KHÔNG đổi `updatedAt` (SLA / "cập nhật gần đây" dựa vào nó; đây là tính lại của hệ thống, không phải
+ * người dùng sửa). WHERE lặp lại đầu vào đã tính (loại, độ khó, ưu tiên) + `pointsManual = false` nên việc vừa bị người dùng
+ * sửa giữa lúc đọc và ghi bị bỏ qua thay vì bị ghi đè.
  *
  *   pnpm --filter @tirapro/api run points:recompute
  *
@@ -55,7 +58,7 @@ try {
       });
       if (rows.length === 0) break;
       cursor = rows[rows.length - 1].id;
-      const byValue = new Map();
+      const changes = [];
       for (const r of rows) {
         const pts = computePoints(
           formula,
@@ -64,14 +67,25 @@ try {
           r.priorityId ? (priorityName.get(r.priorityId) ?? null) : null,
         );
         if (pts === null || pts === r.storyPoints) continue;
-        byValue.set(pts, [...(byValue.get(pts) ?? []), r.id]);
+        changes.push({ ...r, pts });
       }
-      for (const [pts, ids] of byValue) {
-        const { count } = await prisma.issue.updateMany({
-          where: { id: { in: ids }, pointsManual: false },
-          data: { storyPoints: pts, version: { increment: 1 } },
-        });
-        issues += count;
+      if (changes.length > 0) {
+        // Ưu tiên rỗng mã hoá '' (so với COALESCE(priorityId, '')).
+        issues += await prisma.$executeRaw`
+          UPDATE "Issue" AS i
+          SET "storyPoints" = v.pts, "version" = i."version" + 1
+          FROM unnest(
+            ${changes.map((c) => c.id)}::text[],
+            ${changes.map((c) => c.typeId)}::text[],
+            ${changes.map((c) => c.difficulty)}::text[],
+            ${changes.map((c) => c.priorityId ?? '')}::text[],
+            ${changes.map((c) => c.pts)}::float8[]
+          ) AS v(id, type_id, difficulty, priority_id, pts)
+          WHERE i."id" = v.id
+            AND NOT i."pointsManual"
+            AND i."typeId" = v.type_id
+            AND i."difficulty"::text = v.difficulty
+            AND COALESCE(i."priorityId", '') = v.priority_id`;
       }
       if (rows.length < BATCH) break;
     }
@@ -98,10 +112,8 @@ try {
       });
       const total = sum._sum.storyPoints ?? 0;
       if (epic.storyPoints === total) return false;
-      await tx.issue.updateMany({
-        where: { id, deletedAt: null },
-        data: { storyPoints: total, version: { increment: 1 } },
-      });
+      // SQL thô: không đổi updatedAt của Epic.
+      await tx.$executeRaw`UPDATE "Issue" SET "storyPoints" = ${total}::float8, "version" = "version" + 1 WHERE "id" = ${id} AND "deletedAt" IS NULL`;
       return true;
     });
     if (changed) epics++;

@@ -256,3 +256,48 @@ describe('RulesService.list — dự án riêng tư', () => {
     expect(JSON.stringify(prisma.automationRule.findMany.mock.calls[0]![0])).not.toContain('AND');
   });
 });
+
+describe('RulesService — Hạn là bắt buộc khi lưu quy tắc', () => {
+  const dueRule = (value: unknown) =>
+    ({
+      name: 'n',
+      projectId: null,
+      trigger: 'ISSUE_CREATED',
+      triggerConfig: {},
+      conditions: [],
+      actions: [{ type: 'setField', field: 'dueDate', value }],
+    }) as never;
+  const REQUIRED = { status: 422, code: 'DUE_DATE_REQUIRED' };
+
+  it.each([null, ''])(
+    'create: setField dueDate = %j => 422 DUE_DATE_REQUIRED, không ghi',
+    async (v) => {
+      const { service, prisma } = setup();
+      await expect(service.create('w1', 'u1', dueRule(v))).rejects.toMatchObject(REQUIRED);
+      expect(prisma.automationRule.create).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([null, ''])(
+    'update: actions có dueDate = %j => 422 DUE_DATE_REQUIRED, không ghi',
+    async (v) => {
+      const { service, prisma } = setup();
+      const { actions } = dueRule(v) as { actions: unknown };
+      await expect(service.update('w1', 'r1', { actions } as never)).rejects.toMatchObject(
+        REQUIRED,
+      );
+      expect(prisma.automationRule.updateMany).not.toHaveBeenCalled();
+    },
+  );
+
+  it('dueDate có giá trị vẫn lưu được; update không gửi actions (vd. bật/tắt) không bị kiểm lại', async () => {
+    const { service, prisma } = setup();
+    await service.create('w1', 'u1', dueRule('2026-11-06'));
+    expect(prisma.automationRule.create).toHaveBeenCalled();
+    prisma.automationRule.findFirst.mockResolvedValue(
+      row({ actions: [{ type: 'setField', field: 'dueDate', value: null }] }),
+    );
+    await service.update('w1', 'r1', { enabled: false });
+    expect(prisma.automationRule.updateMany).toHaveBeenCalled();
+  });
+});
