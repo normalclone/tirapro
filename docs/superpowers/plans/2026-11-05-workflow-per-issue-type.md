@@ -34,7 +34,7 @@
 - When leaving Pending, the UI suggests the status the issue had before Pending (taken from status history).
 - Permissions:
   - Workspace scheme and workspace workflows: `workspace:admin` or `isSystemAdmin`.
-  - Project override: the same (Workspace Admin), not Project Admin.
+  - Project override: `project:admin` of that project, or `workspace:admin`, or SA. User decision 2026-11-04: configure at both workspace and project level; the project page is `/p/:key/config/workflow`.
 - Migration:
   - The status mapping comes from the spec table for the "Phát triển phần mềm" workflow. Other workflows map by same name, otherwise by category (TODO → initial, IN_PROGRESS → In Progress, DONE → Done).
   - The script prints the full mapping and per-project counts in `--dry-run`, and must be run with `--dry-run` first on production. The controller shows that output to the user before the real run.
