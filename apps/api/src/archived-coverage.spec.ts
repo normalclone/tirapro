@@ -97,6 +97,8 @@ const EXEMPT_METHODS: Record<string, string> = {
   'automation/rules.service.ts#invalidate': 'xoá cache quy tắc, không ghi dữ liệu làm việc',
   'dashboards/dashboards.service.ts#duplicate':
     'bản sao PRIVATE của người gọi, không gắn dự án (dashboard cấp người dùng)',
+  'dashboards/dashboards.service.ts#createFromTemplate':
+    'tạo dashboard PRIVATE của người gọi (không gắn dự án chia sẻ); phạm vi dữ liệu chỉ ĐỌC số liệu của dự án/nhóm (kể cả dự án đã lưu trữ), không ghi vào dự án',
   'dashboards/dashboards.service.ts#remove':
     'xoá mềm dashboard (cấp tổ chức/người dùng/nhóm); dọn dẹp vẫn được khi dự án đã lưu trữ — tạo/sửa mới chặn bằng assertNotArchived',
   'dev-links/dev-links.service.ts#createRepository': 'kho mã nguồn là hạ tầng tích hợp cấp tổ chức',

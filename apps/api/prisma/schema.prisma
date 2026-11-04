@@ -140,6 +140,13 @@ enum DashboardScope {
   TEAM
 }
 
+/// Phạm vi DỮ LIỆU của dashboard (khác `DashboardScope` = ai được xem): ô không đặt dự án riêng lấy số liệu từ đây.
+enum DashboardDataScope {
+  PROJECT
+  GROUP
+  ORG
+}
+
 enum WidgetType {
   BURNDOWN
   VELOCITY
@@ -538,7 +545,8 @@ model Project {
   versions          Version[]
   customFields      CustomField[]
   savedFilterShares SavedFilterProjectShare[]
-  dashboards        Dashboard[]
+  dashboards        Dashboard[]       @relation("DashboardShareProject")
+  scopedDashboards  Dashboard[]       @relation("DashboardDataProject")
   activities        ActivityLog[]
   programLinks      ProjectProgram[]
   dependencies      IssueDependency[]
@@ -1425,6 +1433,12 @@ model Dashboard {
   name           String
   description    String?
   scope          DashboardScope @default(PRIVATE)
+  /// Phạm vi dữ liệu. Bản ghi cũ = ORG (toàn bộ dự án người xem thấy) nên hành vi không đổi.
+  dataScope      DashboardDataScope @default(ORG)
+  /// dataScope = PROJECT: dự án nguồn số liệu (không liên quan `projectId` ở trên, vốn là nơi chia sẻ).
+  scopeProjectId String?
+  /// dataScope = GROUP: nhóm dự án (Program) nguồn số liệu. Nhóm bị xoá thì về null → ô kế thừa không có dữ liệu.
+  scopeProgramId String?
   isDefault      Boolean        @default(false)
   layout         Json           @default("{}")
   deletedAt      DateTime?
@@ -1433,13 +1447,17 @@ model Dashboard {
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   owner        User         @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-  project      Project?     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project      Project?     @relation("DashboardShareProject", fields: [projectId], references: [id], onDelete: Cascade)
   team         Team?        @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  scopeProject Project?     @relation("DashboardDataProject", fields: [scopeProjectId], references: [id], onDelete: SetNull)
+  scopeProgram Program?     @relation("DashboardDataProgram", fields: [scopeProgramId], references: [id], onDelete: SetNull)
   widgets      Widget[]
 
   @@index([organizationId, ownerId])
   @@index([projectId, scope])
   @@index([teamId, scope])
+  @@index([scopeProjectId])
+  @@index([scopeProgramId])
 }
 
 model Widget {
@@ -1981,6 +1999,7 @@ model Program {
   organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   owner        User             @relation("ProgramOwner", fields: [ownerId], references: [id], onDelete: Cascade)
   projects     ProjectProgram[]
+  scopedDashboards Dashboard[] @relation("DashboardDataProgram")
 
   @@unique([organizationId, ownerId, name])
   @@index([organizationId])

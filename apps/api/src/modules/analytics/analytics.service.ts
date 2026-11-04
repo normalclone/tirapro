@@ -43,14 +43,33 @@ export class AnalyticsService {
     private readonly access: ProjectAccessService,
   ) {}
 
+  /** Thu hẹp danh sách dự án do client gửi về dự án NGƯỜI XEM thấy (không bao giờ tin danh sách của client). */
+  resolveScopeIds(
+    organizationId: string,
+    viewerId: string,
+    requested: readonly string[],
+  ): Promise<string[]> {
+    return this.access.visibleAmong(viewerId, organizationId, requested);
+  }
+
   // ---------- Tổng quan tổ chức (mọi dự án người xem được thấy) ----------
   /**
    * `viewerId`: chỉ tính/hiện dự án người đó được thấy (dự án riêng tư chỉ cho thành viên + admin).
    * Số liệu hai người xem có thể khác nhau. `viewerId` bắt buộc.
    */
-  async organizationOverview(organizationId: string, viewerId: string) {
-    const visible = await this.access.visibleWhere(viewerId, organizationId);
-    const visibleIds = await this.access.visibleProjectIds(viewerId, organizationId, visible);
+  async organizationOverview(
+    organizationId: string,
+    viewerId: string,
+    /** Thu hẹp vào các dự án này (ĐÃ giao với dự án người xem thấy — dùng `resolveScopeIds`); bỏ trống = mọi dự án người xem thấy. */
+    restrictTo?: readonly string[],
+  ) {
+    const viewerVisible = await this.access.visibleWhere(viewerId, organizationId);
+    const visible: Prisma.ProjectWhereInput = restrictTo
+      ? { AND: [viewerVisible, { id: { in: [...restrictTo] } }] }
+      : viewerVisible;
+    const visibleIds = restrictTo
+      ? [...restrictTo]
+      : await this.access.visibleProjectIds(viewerId, organizationId, viewerVisible);
     const now = new Date();
     const DAY = 24 * 3600 * 1000;
     const WEEK = 7 * DAY;
@@ -120,6 +139,7 @@ export class AnalyticsService {
       overdueTop,
       highPriTop,
       dueSoonTop,
+      openByAssignee,
     ] = await Promise.all([
       this.prisma.issue.groupBy({
         by: ['projectId', 'statusId'],
@@ -174,7 +194,30 @@ export class AnalyticsService {
         take: 8,
         select: attentionSelect,
       }),
+      this.prisma.issue.groupBy({
+        by: ['assigneeId'],
+        where: { ...baseWhere, ...openStatus },
+        _count: { _all: true },
+      }),
     ]);
+
+    const assigneeUsers = await this.prisma.user.findMany({
+      where: {
+        id: { in: openByAssignee.map((g) => g.assigneeId).filter((x): x is string => x !== null) },
+      },
+      select: { id: true, displayName: true },
+    });
+    const assigneeName = new Map(assigneeUsers.map((u) => [u.id, u.displayName]));
+    // Việc CHƯA xong theo người phụ trách (nhiều việc nhất lên trước, "Chưa gán" cuối) — nguồn cho ô tròn "theo người".
+    const byAssignee = openByAssignee
+      .map((g) => ({
+        name: g.assigneeId ? (assigneeName.get(g.assigneeId) ?? 'Không rõ') : 'Chưa gán',
+        color: null as string | null,
+        count: g._count._all,
+        unassigned: g.assigneeId === null,
+      }))
+      .sort((a, b) => Number(a.unassigned) - Number(b.unassigned) || b.count - a.count)
+      .map(({ unassigned: _u, ...r }) => r);
 
     const [statuses, types, priorities] = await Promise.all([
       this.prisma.status.findMany({
@@ -273,7 +316,7 @@ export class AnalyticsService {
 
     return {
       // true = số liệu đã bị thu hẹp theo quyền xem của người gọi (FE gắn ghi chú "Chỉ gồm dự án bạn có quyền xem")
-      scoped: Object.keys(visible).length > 0,
+      scoped: Object.keys(viewerVisible).length > 0,
       projectCount: projects.length,
       totals,
       projects: projects.map((p) => ({
@@ -288,6 +331,7 @@ export class AnalyticsService {
       byPriority: [...prioMap.values()]
         .sort((a, b) => b.rank - a.rank)
         .map(({ rank: _rank, ...r }) => r),
+      byAssignee,
       trend: buckets.map((b, j) => ({
         label: weekLabel(j),
         created: b.created,

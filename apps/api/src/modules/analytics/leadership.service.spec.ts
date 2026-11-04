@@ -206,6 +206,28 @@ describe('LeadershipService.get — tuỳ chọn cho digest', () => {
     expect(resources.workload).not.toHaveBeenCalled();
   });
 
+  it('projectIds: thu hẹp rủi ro/OKR vào danh sách dự án, bỏ thẻ nhân lực; danh sách rỗng vẫn là "không dự án nào"', async () => {
+    const { svc, raid, goals, resources } = make();
+    await svc.get('w1', 'u1', NOW, { projectIds: ['p1', 'p2'] });
+    expect(raid.list).toHaveBeenCalledWith(
+      'w1',
+      { kind: 'RISK', status: 'OPEN', projectIds: ['p1', 'p2'] },
+      'u1',
+    );
+    expect(goals.list).toHaveBeenCalledWith(
+      'w1',
+      { status: 'ACTIVE', projectIds: ['p1', 'p2'] },
+      'u1',
+    );
+    expect(resources.workload).not.toHaveBeenCalled();
+    await svc.get('w1', 'u1', NOW, { projectIds: [] });
+    expect(raid.list).toHaveBeenLastCalledWith(
+      'w1',
+      { kind: 'RISK', status: 'OPEN', projectIds: [] },
+      'u1',
+    );
+  });
+
   it('không tuỳ chọn → như cũ (cả ba thẻ, không projectId)', async () => {
     const { svc, raid, resources } = make();
     await svc.get('w1', 'u1', NOW);

@@ -52,6 +52,11 @@ export interface LeadershipOptions {
   cards?: readonly LeadershipCard[];
   /** Thu hẹp rủi ro/OKR vào một dự án; thẻ nhân lực (cấp tổ chức) bị bỏ qua. */
   projectId?: string;
+  /**
+   * Thu hẹp vào nhiều dự án (phạm vi nhóm dự án; nơi gọi đã giao với dự án người xem thấy). Như `projectId`, thẻ nhân lực
+   * bị bỏ qua vì nó đo người trên MỌI dự án, không thu hẹp theo dự án được.
+   */
+  projectIds?: readonly string[];
 }
 
 const person = (o: { id: string; displayName: string } | null) =>
@@ -92,12 +97,16 @@ export class LeadershipService {
     };
     const [topRisks, slowGoals, overloaded] = await Promise.all([
       want('topRisks')
-        ? safe('topRisks', () => this.topRisks(organizationId, viewerId, opts.projectId))
+        ? safe('topRisks', () =>
+            this.topRisks(organizationId, viewerId, opts.projectId, opts.projectIds),
+          )
         : [],
       want('slowGoals')
-        ? safe('slowGoals', () => this.slowGoals(organizationId, viewerId, now, opts.projectId))
+        ? safe('slowGoals', () =>
+            this.slowGoals(organizationId, viewerId, now, opts.projectId, opts.projectIds),
+          )
         : [],
-      want('overloaded') && !opts.projectId
+      want('overloaded') && !opts.projectId && !opts.projectIds
         ? safe('overloaded', () => this.overloaded(organizationId, viewerId, now))
         : [],
     ]);
@@ -108,10 +117,15 @@ export class LeadershipService {
     organizationId: string,
     viewerId: string,
     projectId?: string,
+    projectIds?: readonly string[],
   ): Promise<LeadershipOverview['topRisks']> {
     const items = await this.raid.list(
       organizationId,
-      { kind: 'RISK', status: 'OPEN', ...(projectId ? { projectId } : {}) },
+      {
+        kind: 'RISK',
+        status: 'OPEN',
+        ...(projectId ? { projectId } : projectIds ? { projectIds } : {}),
+      },
       viewerId,
     );
     const due = (d: string | null) => (d ? Date.parse(d) : Number.POSITIVE_INFINITY);
@@ -136,10 +150,11 @@ export class LeadershipService {
     viewerId: string,
     now: Date,
     projectId?: string,
+    projectIds?: readonly string[],
   ): Promise<LeadershipOverview['slowGoals']> {
     const goals = await this.goals.list(
       organizationId,
-      { status: 'ACTIVE', ...(projectId ? { projectId } : {}) },
+      { status: 'ACTIVE', ...(projectId ? { projectId } : projectIds ? { projectIds } : {}) },
       viewerId,
     );
     const out: Array<LeadershipOverview['slowGoals'][number] & { gap: number }> = [];

@@ -89,6 +89,8 @@ type ObjectiveRow = Prisma.ObjectiveGetPayload<{ select: ReturnType<typeof objec
 interface GoalListFilter {
   period?: string;
   projectId?: string;
+  /** Nhiều dự án (đã giao với dự án người xem thấy ở nơi gọi); rỗng = không dự án nào. Bỏ qua khi có `projectId`. */
+  projectIds?: readonly string[];
   status?: string;
   ownerId?: string;
 }
@@ -179,6 +181,7 @@ export class GoalsService {
     const where: Prisma.ObjectiveWhereInput = { organizationId, ...this.scopeOf(visible) };
     if (filter.period) where.period = filter.period;
     if (filter.projectId) where.projectId = filter.projectId;
+    else if (filter.projectIds) where.projectId = { in: [...filter.projectIds] };
     if (filter.status) where.status = filter.status as ObjectiveStatus;
     if (filter.ownerId) where.ownerId = filter.ownerId;
 

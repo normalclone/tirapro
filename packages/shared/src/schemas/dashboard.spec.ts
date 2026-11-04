@@ -154,9 +154,20 @@ describe('widgetInputSchema', () => {
   it('STAT_NUMBER chỉ nhận metric trong danh sách; PIE chỉ nhận field trong danh sách', () => {
     expect(widgetInputSchema.safeParse(widget({ config: { metric: 'zzz' } })).success).toBe(false);
     expect(
-      widgetInputSchema.safeParse(widget({ type: 'PIE_BY_FIELD', config: { field: 'assignee' } }))
+      widgetInputSchema.safeParse(widget({ type: 'PIE_BY_FIELD', config: { field: 'zzz' } }))
         .success,
     ).toBe(false);
+  });
+
+  it('metric reopenRate và field severity/assignee (mẫu Kiểm thử / Tổng quan dự án) hợp lệ', () => {
+    expect(widgetInputSchema.safeParse(widget({ config: { metric: 'reopenRate' } })).success).toBe(
+      true,
+    );
+    for (const field of ['severity', 'assignee']) {
+      expect(
+        widgetInputSchema.safeParse(widget({ type: 'PIE_BY_FIELD', config: { field } })).success,
+      ).toBe(true);
+    }
   });
 
   it('TOP_RISKS/SLOW_GOALS/OVERLOAD không cần cấu hình; khoá lạ bị bỏ khỏi config', () => {

@@ -59,7 +59,12 @@ function make(over: Over = {}) {
     },
     $queryRaw: queryRaw,
   };
-  return { prisma, queryRaw, svc: new QaReportService(prisma as never) };
+  const access = {
+    visibleAmong: vi.fn((_u: string, _o: string, ids: readonly string[]) =>
+      Promise.resolve(ids.filter((i) => i !== 'HIDDEN')),
+    ),
+  };
+  return { prisma, queryRaw, access, svc: new QaReportService(prisma as never, access as never) };
 }
 
 const BUG_TYPE = { OR: [{ key: 'BUG' }, { name: { equals: 'Bug', mode: 'insensitive' } }] };
@@ -227,5 +232,37 @@ describe('QaReportService.report — kết quả', () => {
     expect(r.reopenRate).toBeNull();
     expect(r.closeTime).toEqual({ avgHours: null, medianHours: null, sample: 0 });
     expect(r.byRelease).toEqual({ basis: 'AFFECTS', rows: [] });
+  });
+});
+
+describe('QaReportService.reportForProjects — nhiều dự án (phạm vi nhóm dự án)', () => {
+  it('giao danh sách client gửi với dự án NGƯỜI XEM thấy; dự án ẩn không xuất hiện trong mọi truy vấn', async () => {
+    const { svc, prisma, queryRaw, access } = make();
+    await svc.reportForProjects('W1', 'viewer', ['P1', 'HIDDEN', 'P2'], FROM, TO);
+    expect(access.visibleAmong).toHaveBeenCalledWith('viewer', 'W1', ['P1', 'HIDDEN', 'P2']);
+    const groupBy = prisma.issue.groupBy.mock.calls[0]![0] as { where: { projectId: unknown } };
+    expect(groupBy.where.projectId).toEqual({ in: ['P1', 'P2'] });
+    const created = prisma.issue.count.mock.calls[0]![0] as { where: { projectId: unknown } };
+    expect(created.where.projectId).toEqual({ in: ['P1', 'P2'] });
+    expect(queryRaw.mock.calls.length).toBeGreaterThan(0);
+    for (const [q] of queryRaw.mock.calls) {
+      expect(flat(q)).toContain('"projectId" = ANY(');
+      expect(q.values).toContainEqual(['P1', 'P2']);
+      expect(JSON.stringify(q.values)).not.toContain('HIDDEN');
+    }
+  });
+
+  it('không dự án nào thấy được → truy vấn khoá vào danh sách RỖNG (không phải "mọi dự án")', async () => {
+    const { svc, prisma, queryRaw } = make();
+    await svc.reportForProjects('W1', 'viewer', ['HIDDEN'], FROM, TO);
+    const groupBy = prisma.issue.groupBy.mock.calls[0]![0] as { where: { projectId: unknown } };
+    expect(groupBy.where.projectId).toEqual({ in: [] });
+    for (const [q] of queryRaw.mock.calls) expect(q.values).toContainEqual([]);
+  });
+
+  it('một dự án: giữ dạng so sánh bằng (dùng chỉ mục) như báo cáo một dự án', async () => {
+    const { svc, queryRaw } = make();
+    await svc.reportForProjects('W1', 'viewer', ['P1'], FROM, TO);
+    expect(queryRaw.mock.calls.some(([q]) => flat(q).includes('"projectId" = ?'))).toBe(true);
   });
 });

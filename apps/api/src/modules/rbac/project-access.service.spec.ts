@@ -79,6 +79,24 @@ describe('ProjectAccessService', () => {
     expect(prisma.user.findUnique).toHaveBeenCalledTimes(1);
   });
 
+  it('visibleAmong: giao id client gửi với dự án người xem thấy (visibleWhere + tổ chức + chưa xoá); rỗng → không truy vấn', async () => {
+    const { svc, prisma } = make();
+    expect(await svc.visibleAmong('u1', 'w1', ['p-pub', 'p-pub', 'p-hidden'])).toEqual([
+      'p-pub',
+      'p-mine',
+    ]);
+    const where = (prisma.project.findMany.mock.calls[0]![0] as { where: object }).where;
+    expect(where).toMatchObject({
+      organizationId: 'w1',
+      deletedAt: null,
+      id: { in: ['p-pub', 'p-hidden'] },
+      OR: [{ isPrivate: false }, { memberships: { some: { userId: 'u1' } } }],
+    });
+    prisma.project.findMany.mockClear();
+    expect(await svc.visibleAmong('u1', 'w1', [])).toEqual([]);
+    expect(prisma.project.findMany).not.toHaveBeenCalled();
+  });
+
   it('assertCanSee: dự án riêng tư, không thành viên, không admin → 404 "Dự án"', async () => {
     const { svc } = make({ priv: { memberCount: 0 } });
     await expect(svc.assertCanSee('u1', 'w1', 'p1')).rejects.toBeInstanceOf(NotFoundAppException);
