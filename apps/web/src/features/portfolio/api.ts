@@ -56,7 +56,7 @@ export interface RollupProject extends RollupStats {
 }
 
 export interface RollupGroup extends RollupStats {
-  /** null = nhóm "Chưa thuộc chương trình". */
+  /** null = nhóm "Chưa thuộc nhóm". */
   id: string | null;
   name: string;
   color: string | null;

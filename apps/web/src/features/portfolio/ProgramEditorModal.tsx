@@ -38,10 +38,63 @@ function Field({
   );
 }
 
-/** Màu mặc định của chương trình mới (Xanh dương của bảng màu chung). */
+/** Màu mặc định của nhóm mới (Xanh dương của bảng màu chung). */
 const DEFAULT_PROGRAM_COLOR = LABEL_PALETTE[0]!.hex;
 
-/** Modal tạo/sửa chương trình: tên, màu, người phụ trách, thời hạn và tập dự án. */
+/** Ô chọn người phụ trách nhóm (tìm theo tên, tải danh sách khi hộp mở). */
+function OwnerField({
+  open,
+  value,
+  onChange,
+}: {
+  open: boolean;
+  value: string;
+  onChange: (id: string) => void;
+}) {
+  const owners = useUserSelect({ enabled: open });
+  const options = useMemo(
+    () => [{ value: '', label: 'Chưa chỉ định' }, ...owners.options],
+    [owners.options],
+  );
+  return (
+    <Field label="Người phụ trách" hint="(tùy chọn)">
+      <SearchSelect
+        value={value}
+        onChange={onChange}
+        options={options}
+        onSearchChange={owners.onSearchChange}
+        moreHint={owners.moreHint}
+        resolveOption={owners.resolveOption}
+        placeholder="Chưa chỉ định"
+        searchPlaceholder="Tìm thành viên…"
+        ariaLabel="Người phụ trách nhóm"
+      />
+    </Field>
+  );
+}
+
+interface ProgramForm {
+  name: string;
+  color: string;
+  description: string;
+  ownerId: string;
+  startDate: string;
+  targetDate: string;
+  projectIds: string[];
+}
+
+/** Thân gửi API từ các ô nhập: chuỗi rỗng → null (xoá trống). */
+const programPayload = (f: ProgramForm) => ({
+  name: f.name.trim(),
+  color: f.color,
+  description: f.description.trim() || null,
+  ownerId: f.ownerId || null,
+  startDate: f.startDate || null,
+  targetDate: f.targetDate || null,
+  projectIds: f.projectIds,
+});
+
+/** Modal tạo/sửa nhóm dự án: tên, màu, người phụ trách, thời hạn và tập dự án. */
 export function ProgramEditorModal({
   open,
   program,
@@ -51,7 +104,6 @@ export function ProgramEditorModal({
   program?: ProgramDto | null;
   onClose: () => void;
 }) {
-  const owners = useUserSelect({ enabled: open });
   const { data: projects } = useProjects();
   const create = useCreateProgram();
   const update = useUpdateProgram();
@@ -78,10 +130,6 @@ export function ProgramEditorModal({
     setProjectIds(program?.projects.map((p) => p.id) ?? []);
   }, [open, program]);
 
-  const ownerOptions = useMemo(
-    () => [{ value: '', label: 'Chưa chỉ định' }, ...owners.options],
-    [owners.options],
-  );
   const projectOptions = useMemo(
     () => (projects ?? []).map((p) => ({ id: p.id, name: `${p.key} · ${p.name}` })),
     [projects],
@@ -95,22 +143,22 @@ export function ProgramEditorModal({
   async function save() {
     if (!canSave) return;
     if (blockOnInvalidDate()) return;
-    const payload = {
-      name: name.trim(),
+    const payload = programPayload({
+      name,
       color,
-      description: description.trim() || null,
-      ownerId: ownerId || null,
-      startDate: startDate || null,
-      targetDate: targetDate || null,
+      description,
+      ownerId,
+      startDate,
+      targetDate,
       projectIds,
-    };
+    });
     try {
       if (editing && program) {
         await update.mutateAsync({ id: program.id, ...payload });
-        toast.success('Đã lưu chương trình');
+        toast.success('Đã lưu nhóm');
       } else {
         await create.mutateAsync(payload);
-        toast.success('Đã tạo chương trình');
+        toast.success('Đã tạo nhóm');
       }
       onClose();
     } catch (e) {
@@ -124,7 +172,7 @@ export function ProgramEditorModal({
       onOpenChange={(o) => {
         if (!o) onClose();
       }}
-      title={editing ? 'Sửa chương trình' : 'Tạo chương trình'}
+      title={editing ? 'Sửa nhóm' : 'Tạo nhóm'}
       icon={<span className="h-3 w-3 rounded-full" style={{ background: color }} />}
       size="md"
       footer={
@@ -133,25 +181,25 @@ export function ProgramEditorModal({
             Huỷ
           </Button>
           <Button onClick={() => void save()} loading={busy} disabled={!canSave}>
-            {editing ? 'Lưu thay đổi' : 'Tạo chương trình'}
+            {editing ? 'Lưu thay đổi' : 'Tạo nhóm'}
           </Button>
         </>
       }
     >
       <div className="space-y-4">
-        <Field label="Tên chương trình" htmlFor="program-name">
+        <Field label="Tên nhóm" htmlFor="program-name">
           <Input
             id="program-name"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="VD: Chuyển đổi số 2026"
+            placeholder="VD: Chuyển đổi số"
             autoFocus
             maxLength={120}
           />
         </Field>
 
-        <Field label="Màu nhãn" hint="(để nhận ra chương trình trên dòng thời gian)">
-          <ColorPicker value={color} onChange={setColor} ariaLabel="Màu nhãn chương trình" />
+        <Field label="Màu nhãn" hint="(để nhận ra nhóm trong danh sách)">
+          <ColorPicker value={color} onChange={setColor} ariaLabel="Màu nhãn nhóm" />
         </Field>
 
         <Field label="Mô tả" hint="(tùy chọn)" htmlFor="program-desc">
@@ -159,27 +207,15 @@ export function ProgramEditorModal({
             id="program-desc"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            placeholder="Chương trình này hướng tới điều gì?"
+            placeholder="Nhóm này gom những dự án nào, để làm gì?"
             maxLength={1000}
           />
         </Field>
 
-        <Field label="Người phụ trách" hint="(tùy chọn)">
-          <SearchSelect
-            value={ownerId}
-            onChange={setOwnerId}
-            options={ownerOptions}
-            onSearchChange={owners.onSearchChange}
-            moreHint={owners.moreHint}
-            resolveOption={owners.resolveOption}
-            placeholder="Chưa chỉ định"
-            searchPlaceholder="Tìm thành viên…"
-            ariaLabel="Người phụ trách chương trình"
-          />
-        </Field>
+        <OwnerField open={open} value={ownerId} onChange={setOwnerId} />
 
         <DateRangeInput
-          groupLabel="Thời hạn chương trình"
+          groupLabel="Thời hạn nhóm"
           startId="program-start"
           endId="program-target"
           startLabel="Ngày bắt đầu"
@@ -194,17 +230,14 @@ export function ProgramEditorModal({
           errorMessage="Ngày mục tiêu đang sớm hơn ngày bắt đầu — hãy sửa lại một trong hai ngày."
         />
 
-        <Field
-          label="Dự án thuộc chương trình"
-          hint="(bỏ chọn một dự án = tách dự án đó khỏi chương trình)"
-        >
+        <Field label="Dự án thuộc nhóm" hint="(bỏ chọn một dự án = tách dự án đó khỏi nhóm)">
           <RoleMultiSelect
             options={projectOptions}
             value={projectIds}
             onChange={setProjectIds}
             requireOne={false}
             placeholder="Chọn dự án…"
-            ariaLabel="Chọn dự án thuộc chương trình"
+            ariaLabel="Chọn dự án thuộc nhóm"
           />
         </Field>
       </div>

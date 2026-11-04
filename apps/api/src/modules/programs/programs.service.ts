@@ -56,7 +56,7 @@ interface RollupProject extends RollupStats {
 }
 
 interface RollupGroup extends RollupStats {
-  /** null = nhóm "Chưa thuộc chương trình". */
+  /** null = nhóm "Chưa thuộc nhóm". */
   id: string | null;
   name: string;
   color: string | null;
@@ -84,7 +84,8 @@ const EMPTY_STATS: RollupStats = {
   progressPct: 0,
 };
 
-const UNASSIGNED_NAME = 'Chưa thuộc chương trình';
+/** Tên nút gom dự án không thuộc nhóm nào (id = null). Phía web nhận biết nút bằng `id === null`, không bằng chữ này. */
+const UNASSIGNED_NAME = 'Chưa thuộc nhóm';
 
 /**
  * Nhóm dự án (program / portfolio) — gom nhiều dự án để theo dõi tiến độ ở cấp cao. Quan hệ nhiều–nhiều với dự án
@@ -262,7 +263,7 @@ export class ProgramsService {
   }
 
   /**
-   * Rollup toàn workspace: mỗi chương trình + nhóm "Chưa thuộc chương trình",
+   * Rollup toàn workspace: mỗi chương trình + nhóm "Chưa thuộc nhóm",
    * kèm số liệu issue của từng dự án con (tổng / xong / quá hạn / % tiến độ).
    * Chỉ gồm dự án `viewerId` được thấy (chương trình vẫn hiện; số liệu hai người xem có thể khác nhau).
    */
@@ -492,7 +493,7 @@ function toDate(v: string | null | undefined): Date | null {
 }
 
 /**
- * Một dự án có thể thuộc nhiều nhóm → xuất hiện dưới từng nhóm; không nhóm nào → khoá `null` ("Chưa thuộc chương trình").
+ * Một dự án có thể thuộc nhiều nhóm → xuất hiện dưới từng nhóm; không nhóm nào → khoá `null` ("Chưa thuộc nhóm").
  */
 function groupByProgram(
   rows: { item: RollupProject; programIds: { programId: string }[] }[],

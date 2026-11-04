@@ -28,6 +28,47 @@ function readRailPref(key: string): string | null {
 }
 
 /**
+ * Trạng thái thu/mở của rail: lựa chọn của người dùng (nhớ theo trình duyệt) hoặc tự động theo số dự án; thu tạm khi panel
+ * Epic mở. Tách khỏi `RailInner` để phần vẽ ngắn gọn.
+ */
+function useRailCollapse(
+  userId: string | undefined,
+  projects: readonly { archivedAt: string | null }[] | undefined,
+  withEpicPanel: boolean,
+): { collapsed: boolean; epicOpen: boolean; toggleCollapsed: () => void } {
+  const storageKey = railStorageKey(userId);
+  const autoKey = railAutoKey(userId);
+  // Đọc đồng bộ trước lần vẽ đầu: lựa chọn của người dùng + kết quả tự động lần trước (cache trống vẫn vẽ đúng, không nháy).
+  const [pref, setPref] = useState<string | null>(() => readRailPref(storageKey));
+  const [lastAuto] = useState(() => readRailPref(autoKey) === '1');
+  // Ngưỡng tự thu chỉ đếm dự án đang hoạt động → đổi ô "Hiện đã lưu trữ" không làm rail tự đổi dưới con trỏ.
+  const activeCount = projects ? projects.filter((p) => !p.archivedAt).length : undefined;
+  // `baseCollapsed` = lựa chọn của người dùng/tự động; `collapsed` = cái đang thấy (thu tạm khi panel Epic mở).
+  const baseCollapsed = resolveRailCollapsed(pref, activeCount, lastAuto);
+  const epicOpen = useEpicPanel((s) => s.open) && withEpicPanel;
+  const collapsed = railEffectiveCollapsed(baseCollapsed, epicOpen);
+  useEffect(() => {
+    if (pref !== null || activeCount === undefined) return;
+    try {
+      localStorage.setItem(autoKey, baseCollapsed ? '1' : '0');
+    } catch {
+      /* ignore */
+    }
+  }, [pref, activeCount, baseCollapsed, autoKey]);
+  const toggleCollapsed = () => {
+    const { pref: next, closeEpic } = railToggleOutcome(collapsed, epicOpen);
+    if (closeEpic) useEpicPanel.getState().setOpen(false);
+    setPref(next);
+    try {
+      localStorage.setItem(storageKey, next);
+    } catch {
+      /* ignore */
+    }
+  };
+  return { collapsed, epicOpen, toggleCollapsed };
+}
+
+/**
  * Rail dự án (submenu trái) — danh sách dự án + nút tạo dự án.
  * Dùng chung cho ProjectLayout và trang chi tiết issue để luôn giữ ngữ cảnh dự án.
  * Hai chế độ: mở (224px) / thu thành dải khoá 3 chữ (56px), nhớ theo người dùng; chưa chọn thì
@@ -58,35 +99,7 @@ function RailInner({
   const { data: projects } = useProjects(showArchived);
   const [createProject, setCreateProject] = useState(false);
   const canCreate = useAuth((s) => s.can('project:create'));
-  const storageKey = railStorageKey(userId);
-  const autoKey = railAutoKey(userId);
-  // Đọc đồng bộ trước lần vẽ đầu: lựa chọn của người dùng + kết quả tự động lần trước (cache trống vẫn vẽ đúng, không nháy).
-  const [pref, setPref] = useState<string | null>(() => readRailPref(storageKey));
-  const [lastAuto] = useState(() => readRailPref(autoKey) === '1');
-  // Ngưỡng tự thu chỉ đếm dự án đang hoạt động → đổi ô "Hiện đã lưu trữ" không làm rail tự đổi dưới con trỏ.
-  const activeCount = projects ? projects.filter((p) => !p.archivedAt).length : undefined;
-  // `baseCollapsed` = lựa chọn của người dùng/tự động; `collapsed` = cái đang thấy (thu tạm khi panel Epic mở).
-  const baseCollapsed = resolveRailCollapsed(pref, activeCount, lastAuto);
-  const epicOpen = useEpicPanel((s) => s.open) && withEpicPanel;
-  const collapsed = railEffectiveCollapsed(baseCollapsed, epicOpen);
-  useEffect(() => {
-    if (pref !== null || activeCount === undefined) return;
-    try {
-      localStorage.setItem(autoKey, baseCollapsed ? '1' : '0');
-    } catch {
-      /* ignore */
-    }
-  }, [pref, activeCount, baseCollapsed, autoKey]);
-  const toggleCollapsed = () => {
-    const { pref: next, closeEpic } = railToggleOutcome(collapsed, epicOpen);
-    if (closeEpic) useEpicPanel.getState().setOpen(false);
-    setPref(next);
-    try {
-      localStorage.setItem(storageKey, next);
-    } catch {
-      /* ignore */
-    }
-  };
+  const { collapsed, epicOpen, toggleCollapsed } = useRailCollapse(userId, projects, withEpicPanel);
 
   return (
     <>

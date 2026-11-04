@@ -279,13 +279,14 @@ describe('ProgramsService.rollup — một dự án thuộc nhiều nhóm', () =
     ).rollup('w1', 'u0');
   }
 
-  it('hiện dưới từng nhóm; tổng đếm dự án một lần; không nhóm nào → "Chưa thuộc chương trình"', async () => {
+  it('hiện dưới từng nhóm; tổng đếm dự án một lần; không nhóm nào → nút `id: null` "Chưa thuộc nhóm"', async () => {
     const r = await run({ a: ['g1', 'g2'], b: ['g1'], c: [] });
     const keys = (id: string | null) =>
       r.groups.find((g) => g.id === id)!.projects.map((p) => p.key);
     expect(keys('g1')).toEqual(['A', 'B']);
     expect(keys('g2')).toEqual(['A']);
     expect(keys(null)).toEqual(['C']);
+    expect(r.groups.find((g) => g.id === null)!.name).toBe('Chưa thuộc nhóm');
     expect(r.totals.projectCount).toBe(3);
   });
 });

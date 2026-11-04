@@ -42,7 +42,7 @@ const rollup: PortfolioRollup = {
       project('PAY', 'Cổng thanh toán'),
       project('WAL', 'Ví, nội bộ'),
     ]),
-    group(null, 'Chưa thuộc chương trình', [
+    group(null, 'Chưa thuộc nhóm', [
       project('PSL', 'PSL', { leadName: null, startDate: null, targetDate: null }),
     ]),
   ],
@@ -50,7 +50,7 @@ const rollup: PortfolioRollup = {
 };
 
 describe('portfolioCsv', () => {
-  it('mỗi dự án một dòng, có tên chương trình; nhóm "Chưa thuộc chương trình" ghi rõ', () => {
+  it('mỗi dự án một dòng, có tên chương trình; nhóm "Chưa thuộc nhóm" ghi rõ', () => {
     const csv = portfolioCsv(rollup).replace('﻿', '');
     const lines = csv.trim().split('\r\n');
     expect(lines[0]).toBe(
@@ -58,7 +58,7 @@ describe('portfolioCsv', () => {
     );
     expect(lines).toHaveLength(1 + 3);
     expect(lines[1]).toContain('Nền tảng thanh toán');
-    expect(lines[3]).toContain('Chưa thuộc chương trình');
+    expect(lines[3]).toContain('Chưa thuộc nhóm');
   });
   it('ngày dd/MM/yyyy, thiếu → rỗng; có BOM; tên có dấu phẩy được bọc ngoặc kép', () => {
     const csv = portfolioCsv(rollup);

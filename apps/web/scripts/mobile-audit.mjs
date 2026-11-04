@@ -508,6 +508,7 @@ const DIALOG_SCENARIOS = [
       await pg.getByRole('radio', { name: 'Nâng cao' }).first().click({ timeout: 3000 });
     },
   },
+  { name: 'quan-ly-nhom', route: '/projects', open: (pg) => clickText(pg, 'Quản lý nhóm') },
   { name: 'cmd-k', route: '/', open: (pg) => fire(pg, 'tirapro:command') },
   { name: 'phim-tat', route: '/', open: (pg) => fire(pg, 'tirapro:shortcuts') },
   {
