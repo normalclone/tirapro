@@ -187,10 +187,16 @@ export class WorkflowAdminController {
     return this.workflows.updateStatus(workspaceId, id, dto);
   }
 
+  /** Còn việc ở trạng thái này thì phải kèm `?replacementStatusId=` (409 STATUS_HAS_ISSUES nếu thiếu). */
   @Delete('statuses/:id')
   @Permissions(PERMISSIONS.WORKSPACE_ADMIN)
-  async removeStatus(@WorkspaceId() workspaceId: string, @Param('id') id: string) {
-    return this.workflows.removeStatus(workspaceId, id);
+  async removeStatus(
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Query('replacementStatusId') replacementStatusId?: string,
+  ) {
+    return this.workflows.removeStatus(workspaceId, user.id, id, replacementStatusId || undefined);
   }
 
   // ----- Transitions -----

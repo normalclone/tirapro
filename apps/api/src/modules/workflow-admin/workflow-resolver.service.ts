@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { Injectable } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
 import { getStore, type RequestStore } from '../../common/context/request-context';
@@ -22,6 +23,19 @@ interface LoadedScheme {
  * request kết thúc. Ngoài request (worker/script, không có store) thì KHÔNG cache.
  */
 const cacheByRequest = new WeakMap<RequestStore, Map<string, Promise<LoadedScheme>>>();
+
+type SchemeCache = Map<string, Promise<LoadedScheme>>;
+
+/**
+ * Bộ nhớ đệm theo LẦN CHẠY cho việc nền (import) — không có `RequestStore` nên cache theo request không áp dụng được, mà mỗi
+ * dòng nhập lại hỏi quy trình (~4 truy vấn/dòng). `runWithWorkflowMemo` mở một bộ nhớ riêng cho mọi lời gọi resolver bên trong
+ * (AsyncLocalStorage lan theo chuỗi async), bỏ đi khi hàm kết thúc. Lồng nhau thì dùng chung bộ nhớ ngoài cùng.
+ */
+const memoStorage = new AsyncLocalStorage<SchemeCache>();
+
+export function runWithWorkflowMemo<T>(fn: () => Promise<T>): Promise<T> {
+  return memoStorage.getStore() ? fn() : memoStorage.run(new Map(), fn);
+}
 
 /**
  * Nguồn duy nhất cho câu hỏi "việc loại X của dự án P theo quy trình nào":
@@ -59,24 +73,34 @@ export class WorkflowResolver {
   /** Bỏ cache của một dự án (hoặc cả request) — gọi sau khi đổi scheme/ghi đè trong cùng request. */
   invalidate(projectId?: string): void {
     const store = getStore();
-    const cache = store && cacheByRequest.get(store);
-    if (!cache) return;
-    if (projectId === undefined) cache.clear();
-    else cache.delete(projectId);
+    for (const cache of [store && cacheByRequest.get(store), memoStorage.getStore()]) {
+      if (!cache) continue;
+      if (projectId === undefined) cache.clear();
+      else cache.delete(projectId);
+    }
   }
 
   private pick(l: LoadedScheme, typeId: string): string | null {
     return l.overrides.get(typeId) ?? l.scheme.get(typeId) ?? l.defaultWorkflowId ?? null;
   }
 
-  private load(tx: Db, projectId: string): Promise<LoadedScheme> {
+  /** Bộ nhớ đang áp dụng: theo lần chạy (import) thắng theo request; không có cả hai thì không cache. */
+  private activeCache(): SchemeCache | undefined {
+    const memo = memoStorage.getStore();
+    if (memo) return memo;
     const store = getStore();
-    if (!store) return this.fetch(tx, projectId);
+    if (!store) return undefined;
     let cache = cacheByRequest.get(store);
     if (!cache) {
       cache = new Map();
       cacheByRequest.set(store, cache);
     }
+    return cache;
+  }
+
+  private load(tx: Db, projectId: string): Promise<LoadedScheme> {
+    const cache = this.activeCache();
+    if (!cache) return this.fetch(tx, projectId);
     const hit = cache.get(projectId);
     if (hit) return hit;
     const pending = this.fetch(tx, projectId);

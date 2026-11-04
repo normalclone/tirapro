@@ -6,8 +6,17 @@ const schemeItemSchema = z.object({
   workflowId: z.string().min(1, 'Hãy chọn quy trình'),
 });
 
-/** Đặt cấu hình quy trình của workspace (PUT). Mỗi loại việc xuất hiện tối đa một lần. */
+/** Trạng thái cũ → trạng thái mới (id), cho việc đang ở quy trình bị bỏ. */
+const statusMapSchema = z.record(z.string().min(1), z.string().min(1));
+
+/**
+ * Đặt cấu hình quy trình của workspace (PUT). Mỗi loại việc xuất hiện tối đa một lần.
+ * `statusMap` (phẳng) áp cho mọi loại; `statusMapByType[loại]` ghi đè cho loại đó (cần khi hai loại cùng rời một trạng thái
+ * cũ nhưng sang hai quy trình khác nhau).
+ */
 export const setWorkspaceSchemeSchema = z.object({
+  statusMap: statusMapSchema.optional(),
+  statusMapByType: z.record(z.string().min(1), statusMapSchema).optional(),
   items: z
     .array(schemeItemSchema)
     .min(1, 'Hãy chọn ít nhất một loại việc')
@@ -27,6 +36,8 @@ export type SetWorkspaceSchemeInput = z.infer<typeof setWorkspaceSchemeSchema>;
 export const setProjectOverrideSchema = z.object({
   issueTypeId: z.string().min(1, 'Thiếu loại việc'),
   workflowId: z.string().min(1).nullable(),
-  statusMap: z.record(z.string().min(1), z.string().min(1)).default({}),
+  statusMap: statusMapSchema.default({}),
+  /** true = chép quy trình của tổ chức thành bản riêng của dự án (để sửa) thay vì dùng thẳng. */
+  copy: z.boolean().optional(),
 });
 export type SetProjectOverrideInput = z.infer<typeof setProjectOverrideSchema>;

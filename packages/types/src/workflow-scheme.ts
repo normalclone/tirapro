@@ -62,3 +62,38 @@ export interface IssueTransitionsDto {
   /** Chỉ khi đang ở Pending: trạng thái mở ngay trước khi tạm dừng (theo lịch sử) — giao diện gợi ý quay về đó. */
   suggestedResumeStatusId?: string;
 }
+
+/** Một nhóm việc sẽ (hoặc đã) đổi trạng thái khi đổi quy trình của một loại việc. */
+export interface WorkflowMoveRowDto {
+  projectId: string;
+  projectKey: string;
+  issueTypeId: string;
+  issueTypeName: string;
+  fromStatusId: string;
+  fromStatusName: string;
+  /** null = chưa xác định được trạng thái đích (quy trình đích không có trạng thái nào). */
+  toStatusId: string | null;
+  toStatusName: string | null;
+  count: number;
+  /** true = đích do hệ thống gợi ý (cùng tên / cùng nhóm), người dùng chưa chọn trong `statusMap`. */
+  suggested: boolean;
+}
+
+/** Kết quả `PUT /workflow-schemes`, `PUT|DELETE /projects/:id/workflow-overrides`; `dryRun=1` chỉ xem trước, không ghi. */
+export interface WorkflowChangeDto {
+  dryRun: boolean;
+  moves: WorkflowMoveRowDto[];
+  totalIssues: number;
+}
+
+/** `GET /workflows` → `usedBy`: nơi quy trình đang được dùng. */
+export interface WorkflowUsageDto {
+  /** Loại việc (khoá hệ thống, loại tuỳ chỉnh dùng tên) của tổ chức đang dùng quy trình này. */
+  scheme: string[];
+  /** Ghi đè của dự án (chỉ dự án người xem thấy). */
+  overrides: Array<{ projectKey: string; typeKey: string }>;
+  /** Dự án dùng quy trình này làm quy trình mặc định (`Project.defaultWorkflowId`). */
+  projects: Array<{ id: string; key: string; name: string; deleted: boolean }>;
+  /** Số ghi đè của dự án người xem không thấy (dự án riêng tư) — vẫn chặn xoá quy trình. */
+  hiddenOverrideCount: number;
+}

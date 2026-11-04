@@ -361,7 +361,7 @@ const R_ADMIN_ONLY =
 
 /** Khoá: `file::Class.method`. Loại + lý do; ROUTE_GUARDED/BODY_PROJECT/REQUIRED_PROJECT/ADMIN_ONLY/INTERNAL được kiểm tự động. */
 const READ_ALLOWLIST: Record<string, [Kind, string]> = {
-  // ---- ROUTE_GUARDED (56)
+  // ---- ROUTE_GUARDED (57)
   'activity/activity.service.ts::ActivityService.listForIssue': ['ROUTE_GUARDED', R_ROUTE_GUARDED],
   'activity/activity.service.ts::ActivityService.getOne': ['ROUTE_GUARDED', R_ROUTE_GUARDED],
   'activity/activity.service.ts::ActivityService.listForProject': [
@@ -438,6 +438,10 @@ const READ_ALLOWLIST: Record<string, [Kind, string]> = {
     R_ROUTE_GUARDED,
   ],
   'issues/issues.service.ts::IssuesService.getTransitions': ['ROUTE_GUARDED', R_ROUTE_GUARDED],
+  'workflow-admin/workflow-scheme.service.ts::WorkflowSchemeService.setProjectOverride': [
+    'ROUTE_GUARDED',
+    R_ROUTE_GUARDED,
+  ],
   'issues/issues.service.ts::IssuesService.retract': ['ROUTE_GUARDED', R_ROUTE_GUARDED],
   'issues/issues.service.ts::IssuesService.restore': ['ROUTE_GUARDED', R_ROUTE_GUARDED],
   'issues/issues.service.ts::IssuesService.getDtosByIdsForSystem': [
@@ -544,11 +548,15 @@ const READ_ALLOWLIST: Record<string, [Kind, string]> = {
     'REQUIRED_PROJECT',
     R_REQUIRED_PROJECT,
   ],
-  // ---- ADMIN_ONLY (5)
+  // ---- ADMIN_ONLY (6)
   'admin/admin-overview.service.ts::AdminOverviewService.overview': ['ADMIN_ONLY', R_ADMIN_ONLY],
   'guides/onboarding.service.ts::OnboardingService.get': ['ADMIN_ONLY', R_ADMIN_ONLY],
   'import/jira/jira-import.service.ts::JiraImportService.targets': ['ADMIN_ONLY', R_ADMIN_ONLY],
   'workflow-admin/workflow-admin.service.ts::WorkflowAdminService.removeWorkflow': [
+    'ADMIN_ONLY',
+    R_ADMIN_ONLY,
+  ],
+  'workflow-admin/workflow-scheme.service.ts::WorkflowSchemeService.setWorkspaceScheme': [
     'ADMIN_ONLY',
     R_ADMIN_ONLY,
   ],

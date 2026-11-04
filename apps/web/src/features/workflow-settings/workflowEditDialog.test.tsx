@@ -31,10 +31,21 @@ const wf = {
   isTemplate: false,
   isDefault: true,
   projectId: 'p1',
-  usedBy: [{ id: 'p1', key: 'TIRA', name: 'Tirapro', deleted: false }],
+  usedBy: {
+    scheme: [],
+    overrides: [],
+    projects: [{ id: 'p1', key: 'TIRA', name: 'Tirapro', deleted: false }],
+    hiddenOverrideCount: 0,
+  },
   ...tira,
 } as unknown as Workflow;
-const wf2 = { ...wf, id: 'wf2', name: 'Quy trình phụ', isDefault: false, usedBy: [] } as Workflow;
+const wf2 = {
+  ...wf,
+  id: 'wf2',
+  name: 'Quy trình phụ',
+  isDefault: false,
+  usedBy: { scheme: [], overrides: [], projects: [], hiddenOverrideCount: 0 },
+} as Workflow;
 
 function renderPage(url = '/settings/workflows', admin = true) {
   act(() => {

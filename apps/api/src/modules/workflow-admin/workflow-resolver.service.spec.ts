@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { requestContext } from '../../common/context/request-context';
-import { WorkflowResolver } from './workflow-resolver.service';
+import { WorkflowResolver, runWithWorkflowMemo } from './workflow-resolver.service';
 
 interface Data {
   project?: { workspaceId: string; defaultWorkflowId: string | null } | null;
@@ -223,5 +223,46 @@ describe('WorkflowResolver — lỗi và invalidate', () => {
       expect(() => r.invalidate()).not.toThrow();
       return Promise.resolve();
     });
+  });
+});
+
+describe('runWithWorkflowMemo — bộ nhớ theo lần chạy cho việc nền (không có RequestStore)', () => {
+  it('nhiều lời gọi trong một lần chạy chỉ nạp cấu hình MỘT lần cho mỗi dự án', async () => {
+    const tx = makeTx({ schemes: [{ issueTypeId: 'tBug', workflowId: 'wfBug' }] });
+    const r = new WorkflowResolver();
+    await runWithWorkflowMemo(async () => {
+      for (let i = 0; i < 50; i++) await r.forIssue(asTx(tx), 'p1', i % 2 ? 'tBug' : 'tTask');
+    });
+    expect(tx.project.findUnique).toHaveBeenCalledTimes(1);
+    expect(tx.projectWorkflowOverride.findMany).toHaveBeenCalledTimes(1);
+    expect(tx.workspaceWorkflowScheme.findMany).toHaveBeenCalledTimes(1);
+  });
+
+  it('hết lần chạy thì bỏ bộ nhớ: lần chạy sau nạp lại', async () => {
+    const tx = makeTx({});
+    const r = new WorkflowResolver();
+    await runWithWorkflowMemo(() => r.forIssue(asTx(tx), 'p1', 'tBug'));
+    await runWithWorkflowMemo(() => r.forIssue(asTx(tx), 'p1', 'tBug'));
+    expect(tx.projectWorkflowOverride.findMany).toHaveBeenCalledTimes(2);
+  });
+
+  it('lồng nhau dùng chung bộ nhớ ngoài cùng; mọi instance resolver dùng chung', async () => {
+    const tx = makeTx({});
+    await runWithWorkflowMemo(async () => {
+      await new WorkflowResolver().forIssue(asTx(tx), 'p1', 'tBug');
+      await runWithWorkflowMemo(() => new WorkflowResolver().forIssue(asTx(tx), 'p1', 'tBug'));
+    });
+    expect(tx.projectWorkflowOverride.findMany).toHaveBeenCalledTimes(1);
+  });
+
+  it('invalidate() trong lần chạy bỏ bộ nhớ của lần chạy (thấy thay đổi cấu hình)', async () => {
+    const tx = makeTx({});
+    const r = new WorkflowResolver();
+    await runWithWorkflowMemo(async () => {
+      await r.forIssue(asTx(tx), 'p1', 'tBug');
+      r.invalidate('p1');
+      await r.forIssue(asTx(tx), 'p1', 'tBug');
+    });
+    expect(tx.projectWorkflowOverride.findMany).toHaveBeenCalledTimes(2);
   });
 });

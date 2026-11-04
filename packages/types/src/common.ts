@@ -83,6 +83,10 @@ export const ERROR_CODES = {
   DUE_DATE_REQUIRED: 'DUE_DATE_REQUIRED',
   /** 422: đổi loại việc sang loại dùng quy trình khác mà thiếu `targetStatusId` — `details[0].suggestedStatusId` là gợi ý. */
   STATUS_MAPPING_REQUIRED: 'STATUS_MAPPING_REQUIRED',
+  /** 409: quy trình đang được dùng (cấu hình theo loại việc của tổ chức hoặc ghi đè của dự án) nên không xoá được. */
+  WORKFLOW_IN_USE: 'WORKFLOW_IN_USE',
+  /** 409: trạng thái còn việc đang ở đó — xoá phải kèm `replacementStatusId`. */
+  STATUS_HAS_ISSUES: 'STATUS_HAS_ISSUES',
   /** 413: tệp tải lên vượt giới hạn dung lượng. */
   PAYLOAD_TOO_LARGE: 'PAYLOAD_TOO_LARGE',
   INTERNAL: 'INTERNAL',
