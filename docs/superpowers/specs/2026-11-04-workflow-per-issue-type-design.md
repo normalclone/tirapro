@@ -11,6 +11,7 @@ Hiện mỗi dự án có đúng một quy trình (`Project.defaultWorkflowId`),
 - **Bộ mặc định** là bản nháp ba quy trình, **tên tiếng Anh**, có Pending và Cancelled. Story và Sub-task dùng Standard.
 - **Áp cho tất cả workspace** ngay lần đầu (TECA – KTA, TECA – Opendata và các workspace khác). Dữ liệu cũ được chuyển trạng thái theo bảng ánh xạ.
 - **Workspace Admin** (và SA) được sửa cấu hình quy trình của workspace.
+- **Cấp dự án** (người dùng bổ sung 2026-11-04): ở trang cấu hình dự án `/p/<KEY>/config/workflow` có bảng "Loại việc → Quy trình". Mỗi loại chọn được "Theo workspace" hoặc một quy trình riêng. **Project Admin** của dự án, Workspace Admin và SA được sửa.
 
 ## Ba quy trình mặc định
 
@@ -29,7 +30,7 @@ Trạng thái khởi tạo: To Do / New / Not Started.
    - Có bảng "Loại việc → Quy trình" và danh sách quy trình của workspace.
    - Sửa trạng thái hoặc bước chuyển của một quy trình là áp cho mọi dự án đang dùng nó.
    - Không xoá được trạng thái đang có việc. Muốn xoá phải chọn trạng thái thay thế, rồi hệ thống chuyển các việc đó sang.
-2. **Ngoại lệ theo dự án:** Workspace Admin chọn "dùng quy trình riêng cho loại X". Hệ thống chép quy trình của workspace thành bản riêng của dự án để sửa. Có nút "quay về dùng chung", kèm ánh xạ trạng thái.
+2. **Ngoại lệ theo dự án:** Project Admin (hoặc Workspace Admin) chọn "dùng quy trình riêng cho loại X". Hệ thống chép quy trình của workspace thành bản riêng của dự án để sửa. Có nút "quay về dùng chung", kèm ánh xạ trạng thái.
 3. **Tạo việc:** trạng thái khởi tạo lấy theo quy trình của loại việc.
 4. **Đổi loại việc** (ví dụ Task thành Bug): nếu quy trình đích khác, hệ thống hỏi trạng thái đích. Mặc định chọn trạng thái cùng tên, nếu không có thì trạng thái đầu tiên cùng nhóm.
 5. **Bảng việc:**

@@ -120,7 +120,13 @@
   - At the top, a section "Quy trình theo loại việc" with one row per issue type: type icon + name → a select of workspace workflows. Saving runs a dry-run preview ("Sẽ chuyển 12 Bug ở KYHOP: Chờ test → Ready for Retest …") and asks for confirmation.
   - The workflow list shows "Dùng cho: …" from `usedBy`.
   - Project overrides are listed under the scheme, with a "Quay về dùng chung" action.
-- **Project settings:** Workspace Admin sees "Quy trình riêng cho dự án" (per type), with the same preview and confirm flow.
+- **Project level, a new project config section "Quy trình"** (`/p/:key/config/workflow`):
+  - Today this URL falls back to "Chung" because no such section exists. Add it to `features/project-config/configSections.ts` and `ProjectConfigPage.tsx`.
+  - The section is a table with one row per issue type. Columns: "Đang dùng" (workflow name + a badge "Theo workspace" or "Riêng của dự án"), and a select. The select offers "Theo workspace (<name>)", every workspace workflow, and "Tạo bản riêng từ …", which copies the workflow into the project and opens the workflow dialog to edit it.
+  - Saving runs the same dry-run preview (counts per status move) with confirm.
+  - Each row has a "Xem sơ đồ" link that opens the workflow dialog read-only.
+  - Editable by Project Admin, Workspace Admin and SA. Everyone else sees it read-only.
+  - Tests: route `/p/THCHUNG/config/workflow` renders the section; Project Admin can change it; a Developer sees it read-only; choosing "Theo workspace" sends DELETE override.
 - **Tests:** a select change, then the preview, then confirm sends PUT; non-admins see read-only.
 
 ### Task 7: Web — issue flows per type
