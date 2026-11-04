@@ -610,3 +610,45 @@ export interface AutomationRuleTestResultDto {
   status: RuleRunStatus;
   log: AutomationRunStepDto[];
 }
+
+/** Một việc trong Tổng quan cá nhân (`GET /me/overview`): bản rút gọn đủ để hiện dòng danh sách. */
+export interface MeIssueItemDto {
+  id: ID;
+  key: string;
+  summary: string;
+  projectId: ID;
+  projectKey: string;
+  type: { id: ID; name: string; key: IssueTypeKey | null };
+  status: { id: ID; name: string; category: StatusCategory };
+  priority: { id: ID; name: string; rank: number } | null;
+  /** Điểm cuối cùng của việc (có thể null khi chưa tính). */
+  points: number | null;
+  /** Ngày lịch (`YYYY-MM-DDT00:00:00.000Z`) hoặc null. */
+  dueDate: ISODate | null;
+}
+
+/** Tổng quan cá nhân trong workspace hiện tại: chỉ dự án người xem thấy được. */
+export interface MeOverviewDto {
+  counts: {
+    /** Việc chưa xong giao cho tôi. */
+    open: number;
+    /** Trong số đó, hạn trước hôm nay (ngày lịch VN). */
+    overdue: number;
+    /** Trong số đó, hạn từ hôm nay đến 7 ngày tới (không gồm quá hạn). */
+    dueSoon: number;
+    /** Điểm việc lá tôi làm xong (resolvedAt) trong tuần VN hiện tại (từ Thứ Hai). */
+    donePointsThisWeek: number;
+  };
+  /** Việc chưa xong giao cho tôi: hạn tăng dần (không hạn cuối), rồi ưu tiên giảm dần; tối đa 50. */
+  myIssues: MeIssueItemDto[];
+  bugs: {
+    /** Bug tôi báo, đang chờ test lại. */
+    awaitingRetest: MeIssueItemDto[];
+    /** Bug tôi báo, đã mở lại. */
+    reopened: MeIssueItemDto[];
+    /** Bug chưa xong giao cho tôi. */
+    assignedToMe: MeIssueItemDto[];
+  };
+  /** 8 tuần VN gần nhất (cũ → mới, tuần cuối là tuần này). */
+  weeklyDonePoints: { weekStart: string; byProject: { projectKey: string; points: number }[] }[];
+}
