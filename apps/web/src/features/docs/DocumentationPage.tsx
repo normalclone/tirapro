@@ -361,7 +361,7 @@ export function DocumentationPage() {
 
   return (
     <div className="min-h-screen bg-bg text-ink">
-      <div className="mx-auto flex max-w-[1200px]">
+      <div className="flex">
         {/* ---------------- Sidebar riêng ---------------- */}
         <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col border-r border-border bg-surface lg:flex">
           <div className="flex items-center gap-2.5 border-b border-border px-5 py-4">
@@ -430,7 +430,7 @@ export function DocumentationPage() {
             </Link>
           </div>
 
-          <div className="mx-auto max-w-3xl">
+          <div className="max-w-[75ch]">
             <div className="mb-2 flex items-center gap-2 text-sm font-medium text-primary">
               <BookOpen className="h-4 w-4" /> Hướng dẫn sử dụng
             </div>
@@ -918,8 +918,8 @@ export function DocumentationPage() {
                   Đổi theme trong menu người dùng hoặc từ ⌘K — áp dụng ngay, nhớ lựa chọn.
                 </Feature>
                 <Feature icon={<UserPlus className="h-4 w-4" />} title="Hồ sơ cá nhân">
-                  Đổi múi giờ, ngôn ngữ và mật khẩu trong trang Tài khoản. Họ tên, email và ảnh
-                  đại diện chỉ quản trị hệ thống đổi được.
+                  Đổi múi giờ, ngôn ngữ và mật khẩu trong trang Tài khoản. Họ tên, email và ảnh đại
+                  diện chỉ quản trị hệ thống đổi được.
                 </Feature>
                 <Feature icon={<LayoutGrid className="h-4 w-4" />} title="Trang tổng quan cá nhân">
                   Việc được giao, việc mình báo, công việc đang theo dõi và các mục vừa mở — tất cả

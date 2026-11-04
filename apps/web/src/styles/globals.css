@@ -103,6 +103,32 @@
   --label-8-bg: oklch(0.3 0.015 256);
 }
 
+/*
+ * Trang biểu mẫu (PageFrame size="sm" → .form-measure): ô nhập một dòng, ô văn bản dài và ô chọn (combobox / nút mở danh sách) giữ bề rộng
+ * đọc được thay vì kéo hết vùng nội dung. `:where()` → độ ưu tiên 0: mọi tiện ích max-w-* / w-* đặt trên chính ô vẫn thắng.
+ * Hộp thoại/popover mở qua portal nằm ngoài khung nên không bị ảnh hưởng.
+ */
+@layer base {
+  :where(.form-measure)
+    :where(
+      input:not([type='checkbox'], [type='radio'], [type='range'], [type='file'], [type='color']),
+      textarea,
+      [role='combobox'],
+      button[aria-haspopup='listbox'],
+      button[aria-haspopup='dialog'][class*='w-full']
+    ) {
+    max-width: 36rem; /* = max-w-xl */
+  }
+  /* Ô đã hẹp lại thì không để nhãn `inline` nằm chung dòng với ô: ô một dòng / ô văn bản luôn xuống dòng riêng. */
+  :where(.form-measure)
+    :where(
+      input:not([type='checkbox'], [type='radio'], [type='range'], [type='file'], [type='color']),
+      textarea
+    ) {
+    display: block;
+  }
+}
+
 @layer base {
   * {
     border-color: var(--border);
