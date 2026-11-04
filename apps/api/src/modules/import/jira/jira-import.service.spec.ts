@@ -77,6 +77,35 @@ function jobStore() {
   };
 }
 
+/** Loại việc và mức ưu tiên cố định của tổ chức giả. */
+function catalogModels() {
+  return {
+    issueType: {
+      findMany: vi.fn(() =>
+        Promise.resolve([
+          { id: 't-epic', name: 'Epic', key: 'EPIC', isSubtask: false },
+          { id: 't-story', name: 'Story', key: 'STORY', isSubtask: false },
+          { id: 't-task', name: 'Task', key: 'TASK', isSubtask: false },
+          { id: 't-bug', name: 'Bug', key: 'BUG', isSubtask: false },
+          { id: 't-sub', name: 'Subtask', key: 'SUBTASK', isSubtask: true },
+        ]),
+      ),
+      create: vi.fn(),
+    },
+    priority: {
+      findMany: vi.fn(() =>
+        Promise.resolve([
+          { id: 'pr-hi', name: 'High' },
+          { id: 'pr-med', name: 'Medium' },
+        ]),
+      ),
+      create: vi.fn((a: { data: { name: string } }) =>
+        Promise.resolve({ id: `pr-new-${a.data.name}` }),
+      ),
+    },
+  };
+}
+
 function setup(
   opts: {
     failSummaries?: string[];
@@ -120,29 +149,7 @@ function setup(
     // Resolver quy trình theo loại việc: mặc định không ghi đè, không scheme → rơi về quy trình mặc định của dự án.
     projectWorkflowOverride: { findMany: vi.fn(() => Promise.resolve([])) },
     workspaceWorkflowScheme: { findMany: vi.fn(() => Promise.resolve(opts.scheme ?? [])) },
-    issueType: {
-      findMany: vi.fn(() =>
-        Promise.resolve([
-          { id: 't-epic', name: 'Epic', key: 'EPIC', isSubtask: false },
-          { id: 't-story', name: 'Story', key: 'STORY', isSubtask: false },
-          { id: 't-task', name: 'Task', key: 'TASK', isSubtask: false },
-          { id: 't-bug', name: 'Bug', key: 'BUG', isSubtask: false },
-          { id: 't-sub', name: 'Subtask', key: 'SUBTASK', isSubtask: true },
-        ]),
-      ),
-      create: vi.fn(),
-    },
-    priority: {
-      findMany: vi.fn(() =>
-        Promise.resolve([
-          { id: 'pr-hi', name: 'High' },
-          { id: 'pr-med', name: 'Medium' },
-        ]),
-      ),
-      create: vi.fn((a: { data: { name: string } }) =>
-        Promise.resolve({ id: `pr-new-${a.data.name}` }),
-      ),
-    },
+    ...catalogModels(),
     resolution: { findMany: vi.fn(() => Promise.resolve([{ id: 'res-done', name: 'Done' }])) },
     workspaceMembership: {
       findMany: vi.fn(() => Promise.resolve([{ userId: 'u-an' }, { userId: 'u-binh' }])),

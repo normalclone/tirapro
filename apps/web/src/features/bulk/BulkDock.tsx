@@ -501,38 +501,63 @@ function BulkEditControls({
       )}
 
       {canTransition && onSetStatus && only !== 'rest' && (
-        <span
-          className={cn('inline-flex', layout === 'stack' && 'w-full')}
-          title={
-            statusOptions.length === 0 ? 'Các việc đang chọn không có bước chuyển chung' : undefined
-          }
-        >
-          <SearchSelect
-            value=""
-            onChange={(v) => {
-              const option = statusOptions.find((s) => s.id === v);
-              if (option) onSetStatus(option);
-            }}
-            options={statusOptions.map((s) => ({
-              value: s.id,
-              label: s.name,
-              color: categoryColor(s.category),
-              group: s.group,
-              description: s.hint,
-            }))}
-            placeholder="Trạng thái"
-            searchPlaceholder="Tìm trạng thái…"
-            ariaLabel="Đổi trạng thái các việc đang chọn"
-            disabled={busy || statusOptions.length === 0}
-            align="end"
-            className={cls}
-            renderTrigger={() => (
-              <BarTrigger icon={<CircleDot className="h-4 w-4 shrink-0" />} text="Trạng thái" />
-            )}
-          />
-        </span>
+        <BulkStatusSelect
+          busy={busy}
+          statusOptions={statusOptions}
+          onSetStatus={onSetStatus}
+          cls={cls}
+          layout={layout}
+        />
       )}
     </>
+  );
+}
+
+/** Ô "Trạng thái" của thanh hàng loạt: chỉ liệt kê bước chuyển chung của các việc đang chọn (theo quy trình của từng loại). */
+function BulkStatusSelect({
+  busy,
+  statusOptions,
+  onSetStatus,
+  cls,
+  layout,
+}: {
+  busy: boolean;
+  statusOptions: BulkStatusOption[];
+  onSetStatus: (option: BulkStatusOption) => void;
+  cls: string;
+  layout: Layout;
+}) {
+  return (
+    <span
+      className={cn('inline-flex', layout === 'stack' && 'w-full')}
+      title={
+        statusOptions.length === 0 ? 'Các việc đang chọn không có bước chuyển chung' : undefined
+      }
+    >
+      <SearchSelect
+        value=""
+        onChange={(v) => {
+          const option = statusOptions.find((s) => s.id === v);
+          if (option) onSetStatus(option);
+        }}
+        options={statusOptions.map((s) => ({
+          value: s.id,
+          label: s.name,
+          color: categoryColor(s.category),
+          group: s.group,
+          description: s.hint,
+        }))}
+        placeholder="Trạng thái"
+        searchPlaceholder="Tìm trạng thái…"
+        ariaLabel="Đổi trạng thái các việc đang chọn"
+        disabled={busy || statusOptions.length === 0}
+        align="end"
+        className={cls}
+        renderTrigger={() => (
+          <BarTrigger icon={<CircleDot className="h-4 w-4 shrink-0" />} text="Trạng thái" />
+        )}
+      />
+    </span>
   );
 }
 

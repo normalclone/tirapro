@@ -211,7 +211,9 @@ describe('ImportService.createIssuesInChunks + IssuesService thật — sprint C
     expect(res).toMatchObject({ created: 1, errors: [] });
     expect(tx.issue.create).toHaveBeenCalledTimes(1);
   });
+});
 
+describe('ImportService.createIssuesInChunks + IssuesService thật — nạp cấu hình quy trình theo lần chạy', () => {
   it('M2: nhập nhiều dòng — cấu hình quy trình chỉ được nạp MỘT lần cho cả lần chạy (không ~4 truy vấn/dòng)', async () => {
     const createdRow = {
       id: 'i1',

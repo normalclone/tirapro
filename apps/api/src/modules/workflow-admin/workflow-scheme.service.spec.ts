@@ -38,20 +38,16 @@ const TASK_TYPE = {
   hierarchyLevel: 0,
 };
 
-/**
- * Thế giới giả: quy trình cũ `wfOld` (Cần làm / Đang làm / Hoàn thành) + quy trình tổ chức `wfStd` (To Do / In Progress / Done).
- * Loại Task (`tTask`). Dự án p1 (KY) theo tổ chức, p2 (TI) đã ghi đè cho Task. Việc: p1 có 1 ở "Cần làm", 3 ở "Đang làm";
- * p2 có 2 ở "Đang làm".
- */
-function world(
-  over: {
-    scheme?: Array<{ issueTypeId: string; workflowId: string }>;
-    overrides?: Array<{ projectId: string; issueTypeId: string; workflowId: string }>;
-    archived?: boolean;
-    existingCopy?: boolean;
-    rules?: Array<Record<string, unknown>>;
-  } = {},
-) {
+type WorldOver = {
+  scheme?: Array<{ issueTypeId: string; workflowId: string }>;
+  overrides?: Array<{ projectId: string; issueTypeId: string; workflowId: string }>;
+  archived?: boolean;
+  existingCopy?: boolean;
+  rules?: Array<Record<string, unknown>>;
+};
+
+/** Dữ liệu nền của thế giới giả (quy trình, trạng thái, việc, dự án, cấu hình, quy tắc) — các bảng giả đọc/ghi trên đây. */
+function worldData(over: WorldOver) {
   const statuses: St[] = [
     st('o1', 'wfOld', 'Cần làm', 'TODO', 0, true),
     st('o2', 'wfOld', 'Đang làm', 'IN_PROGRESS', 1),
@@ -132,19 +128,26 @@ function world(
     ...r,
   })) as unknown as Array<Record<string, unknown> & { id: string }>;
   const wfOf = (statusId: string) => statuses.find((s) => s.id === statusId)!.workflowId;
-  let nextId = 0;
+  return {
+    statuses,
+    transitions,
+    workflows,
+    issues,
+    projects,
+    scheme,
+    overrides,
+    rules,
+    wfOf,
+    ids: { next: 0 },
+  };
+}
 
-  const prisma = {
-    $transaction: vi.fn((fn: (t: unknown) => unknown) => fn(prisma)),
-    $executeRaw: vi.fn((..._a: unknown[]) => Promise.resolve(0)),
-    user: { upsert: vi.fn(() => Promise.resolve({ id: 'SYS' })) },
-    automationRule: {
-      findMany: vi.fn(() => Promise.resolve(rules.map((r) => ({ ...r })))),
-      update: vi.fn((a: { where: { id: string }; data: Record<string, unknown> }) => {
-        Object.assign(rules.find((r) => r.id === a.where.id)!, a.data);
-        return Promise.resolve({});
-      }),
-    },
+type WorldData = ReturnType<typeof worldData>;
+
+/** Bảng quy trình / trạng thái / cấu hình tổ chức / ghi đè dự án của prisma giả. */
+function workflowModels(d: WorldData) {
+  const { statuses, transitions, workflows, scheme, overrides, ids } = d;
+  return {
     issueType: {
       findMany: vi.fn((a: { where: { id?: { in: string[] } } }) =>
         Promise.resolve([TASK_TYPE].filter((t) => !a.where.id || a.where.id.in.includes(t.id))),
@@ -184,7 +187,7 @@ function world(
         },
       ),
       create: vi.fn((a: { data: Record<string, unknown> }) => {
-        const row = { id: `cp${++nextId}`, ...a.data };
+        const row = { id: `cp${++ids.next}`, ...a.data };
         workflows.push(row);
         return Promise.resolve({ id: row.id });
       }),
@@ -206,7 +209,7 @@ function world(
         Promise.resolve(statuses.filter((s) => a.where.id.in.includes(s.id)).length),
       ),
       create: vi.fn((a: { data: Omit<St, 'id'> }) => {
-        const row: St = { id: `n${++nextId}`, ...a.data };
+        const row: St = { id: `n${++ids.next}`, ...a.data };
         statuses.push(row);
         return Promise.resolve({ id: row.id });
       }),
@@ -262,6 +265,13 @@ function world(
         return Promise.resolve({ count: 1 });
       }),
     },
+  };
+}
+
+/** Bảng dự án / việc / lịch sử của prisma giả. */
+function issueModels(d: WorldData, archived: boolean | undefined) {
+  const { issues, projects, wfOf } = d;
+  return {
     project: {
       findMany: vi.fn(() => Promise.resolve(projects)),
       findFirst: vi.fn((a: { where: { id: string } }) =>
@@ -269,7 +279,7 @@ function world(
       ),
       findUnique: vi.fn((a: { where: { id: string } }) => {
         const p = projects.find((x) => x.id === a.where.id);
-        return Promise.resolve(p && { ...p, archivedAt: over.archived ? new Date() : null });
+        return Promise.resolve(p && { ...p, archivedAt: archived ? new Date() : null });
       }),
     },
     issue: {
@@ -336,6 +346,30 @@ function world(
       ),
     },
     resolution: { findFirst: vi.fn(() => Promise.resolve({ id: 'r-def' })) },
+  };
+}
+
+/**
+ * Thế giới giả: quy trình cũ `wfOld` (Cần làm / Đang làm / Hoàn thành) + quy trình tổ chức `wfStd` (To Do / In Progress / Done).
+ * Loại Task (`tTask`). Dự án p1 (KY) theo tổ chức, p2 (TI) đã ghi đè cho Task. Việc: p1 có 1 ở "Cần làm", 3 ở "Đang làm";
+ * p2 có 2 ở "Đang làm".
+ */
+function world(over: WorldOver = {}) {
+  const d = worldData(over);
+  const { statuses, workflows, scheme, overrides, issues, rules } = d;
+  const prisma = {
+    $transaction: vi.fn((fn: (t: unknown) => unknown) => fn(prisma)),
+    $executeRaw: vi.fn((..._a: unknown[]) => Promise.resolve(0)),
+    user: { upsert: vi.fn(() => Promise.resolve({ id: 'SYS' })) },
+    automationRule: {
+      findMany: vi.fn(() => Promise.resolve(rules.map((r) => ({ ...r })))),
+      update: vi.fn((a: { where: { id: string }; data: Record<string, unknown> }) => {
+        Object.assign(rules.find((r) => r.id === a.where.id)!, a.data);
+        return Promise.resolve({});
+      }),
+    },
+    ...workflowModels(d),
+    ...issueModels(d, over.archived),
     // Tham chiếu theo TÊN trạng thái trong JQL (chỉ báo): bộ lọc đã lưu "Đang làm" sẽ hết khớp, "Done" thì không.
     savedFilter: {
       findMany: vi.fn(() =>
@@ -532,7 +566,9 @@ describe('WorkflowSchemeService.setWorkspaceScheme', () => {
     expect(w.prisma.workspaceWorkflowScheme.upsert).not.toHaveBeenCalled();
     expect(w.prisma.issue.updateMany).not.toHaveBeenCalled();
   });
+});
 
+describe('WorkflowSchemeService.setWorkspaceScheme — ánh xạ theo loại, kiểm đầu vào, nameRefs', () => {
   it('statusMapByType thắng statusMap phẳng; đích không thuộc quy trình đích của loại đó coi như chưa chọn', async () => {
     const w = world();
     const out = await w.service.setWorkspaceScheme(
@@ -612,13 +648,13 @@ describe('WorkflowSchemeService.setWorkspaceScheme', () => {
   });
 });
 
-describe('WorkflowSchemeService.setProjectOverride / clearProjectOverride', () => {
-  const base = {
-    issueTypeId: 'tTask',
-    workflowId: 'wfStd',
-    statusMap: { o2: 's2' } as Record<string, string>,
-  };
+const base = {
+  issueTypeId: 'tTask',
+  workflowId: 'wfStd',
+  statusMap: { o2: 's2' } as Record<string, string>,
+};
 
+describe('WorkflowSchemeService.setProjectOverride / clearProjectOverride', () => {
   it('copy=true: chép quy trình thành bản riêng (tên <tên> (<MÃ>)), đổi statusMap nguồn sang trạng thái cùng tên của bản chép, chuyển việc', async () => {
     const w = world();
     const out = await w.service.setProjectOverride(
@@ -721,7 +757,9 @@ describe('WorkflowSchemeService.setProjectOverride / clearProjectOverride', () =
       ),
     ).rejects.toMatchObject({ status: 422 });
   });
+});
 
+describe('WorkflowSchemeService.clearProjectOverride / getProjectScheme', () => {
   it('quay về dùng chung (DELETE): chuyển việc sang quy trình tổ chức theo statusMap, xoá ghi đè; lặp lại là no-op', async () => {
     const w = world({
       scheme: [{ issueTypeId: 'tTask', workflowId: 'wfStd' }],

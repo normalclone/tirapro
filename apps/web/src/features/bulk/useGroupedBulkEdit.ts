@@ -184,6 +184,24 @@ async function sendGroupParts(projectId: string, parts: BulkPart[]): Promise<Gro
   return mergeGroupOutcomes(projectId, outs);
 }
 
+type GroupAggregate = ReturnType<typeof aggregateGroupResults>;
+
+/** Hoàn tác theo nhóm chưa xong hết: báo số việc còn lại và lý do (nhóm lỗi, hoặc xung đột/chưa gửi). */
+function warnUndoShortfall(agg: GroupAggregate, keyOf: (projectId: string) => string): void {
+  const stuck = agg.retainIds.size;
+  if (stuck === 0) return;
+  toast.warning(`Chưa hoàn tác được ${stuck} việc`, {
+    description:
+      agg.failedProjects.length > 0
+        ? agg.failedProjects.map((f) => `${keyOf(f.projectId)} — ${f.reason}`).join('; ')
+        : bulkShortfallHint(
+            agg.conflictCount + agg.unsentCount,
+            agg.unsentCount,
+            rejectionReason(agg.firstError),
+          ),
+  });
+}
+
 /**
  * Hàng loạt cho kết quả Bộ lọc (trải nhiều dự án). Nhóm lựa chọn theo dự án, tính quyền + hành động áp được cho từng nhóm
  * (`availableBulkActions`), gọi bulk API MỘT LẦN mỗi dự án (song song tối đa 2), gom kết quả vào một toast. Việc chưa xong
@@ -240,19 +258,7 @@ export function useGroupedBulkEdit(a: {
       recordAll(flat.flatMap((o) => (o.ok ? o.updated : [])));
       refresh(byProject.keys());
       const agg = aggregateGroupResults(flat, apiErrorMessage);
-      const stuck = agg.retainIds.size;
-      if (stuck > 0) {
-        toast.warning(`Chưa hoàn tác được ${stuck} việc`, {
-          description:
-            agg.failedProjects.length > 0
-              ? agg.failedProjects.map((f) => `${keyOf(f.projectId)} — ${f.reason}`).join('; ')
-              : bulkShortfallHint(
-                  agg.conflictCount + agg.unsentCount,
-                  agg.unsentCount,
-                  rejectionReason(agg.firstError),
-                ),
-        });
-      }
+      warnUndoShortfall(agg, keyOf);
     } catch (err) {
       toast.error(apiErrorMessage(err));
     }

@@ -5623,7 +5623,9 @@ describe('IssuesService — quy trình theo loại việc', () => {
       ).rejects.toMatchObject({ status: 409 });
       // Đã hỏi đúng quy trình của loại Bug, không phải quy trình khác.
       expect(tx.workflowTransition.findFirst).toHaveBeenCalledWith(
-        expect.objectContaining({ where: expect.objectContaining({ workflowId: 'wfBug' }) }),
+        expect.objectContaining({
+          where: expect.objectContaining({ workflowId: 'wfBug' }) as unknown,
+        }),
       );
       await service.transition('w1', 'u1', 'i1', { version: 3, toStatusId: 'bug-todo' });
       expect(tx.issue.updateMany).toHaveBeenCalled();
@@ -5655,7 +5657,9 @@ describe('IssuesService — quy trình theo loại việc', () => {
       const { service } = makeService(tx, scheme());
       await service.transition('w1', 'u1', 'i1', { version: 3, toStatusId: 'std-prog' });
       expect(tx.workflowTransition.findFirst).toHaveBeenCalledWith(
-        expect.objectContaining({ where: expect.objectContaining({ workflowId: 'wfStd' }) }),
+        expect.objectContaining({
+          where: expect.objectContaining({ workflowId: 'wfStd' }) as unknown,
+        }),
       );
     });
 
@@ -5680,7 +5684,9 @@ describe('IssuesService — quy trình theo loại việc', () => {
         service.move('w1', 'u1', 'i1', { version: 3, statusId: 'std-prog' }),
       ).rejects.toMatchObject({ status: 409 });
       expect(tx.workflowTransition.findFirst).toHaveBeenCalledWith(
-        expect.objectContaining({ where: expect.objectContaining({ workflowId: 'wfBug' }) }),
+        expect.objectContaining({
+          where: expect.objectContaining({ workflowId: 'wfBug' }) as unknown,
+        }),
       );
     });
 
@@ -6056,7 +6062,7 @@ describe('IssuesService — quy trình theo loại việc', () => {
       expect(dto.suggestedResumeStatusId).toBe('bug-prog');
       expect(t.issueHistory.findFirst).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: expect.objectContaining({ newValue: 'Pending', field: 'STATUS' }),
+          where: expect.objectContaining({ newValue: 'Pending', field: 'STATUS' }) as unknown,
         }),
       );
     });

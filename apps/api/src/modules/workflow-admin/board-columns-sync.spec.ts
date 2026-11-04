@@ -232,60 +232,60 @@ describe('replacementSources', () => {
   });
 });
 
-describe('pruneUnusedBoardStatuses (không để cột "ma" sau khi chuyển đổi)', () => {
-  /** Hai cột: `A` có {old1, new1}, `B` có {old2} (chỉ trạng thái cũ), `C` có {old3, new3}. `busy` = trạng thái còn việc. */
-  /**
-   * `columns`: các cột của dự án SAU khi gỡ liên kết, theo thứ tự (cho phần cột "ma"): bảng, tên và các trạng thái còn trong cột
-   * (`id@quy trình`).
-   */
-  type Col = { id: string; board?: string; name: string; statuses: string[] };
-  function fakeTx(busy: string[], columns: Col[] = []) {
-    const links = [
-      { columnId: 'A', statusId: 'old1' },
-      { columnId: 'B', statusId: 'old2' },
-      { columnId: 'C', statusId: 'old3' },
-    ];
-    const perColumn: Record<string, number> = { A: 2, B: 1, C: 2 };
-    return {
-      boardColumnStatus: {
-        findMany: vi.fn(() => Promise.resolve(links)),
-        groupBy: vi.fn(() =>
-          Promise.resolve(
-            Object.entries(perColumn).map(([columnId, n]) => ({ columnId, _count: { _all: n } })),
-          ),
+/** Hai cột: `A` có {old1, new1}, `B` có {old2} (chỉ trạng thái cũ), `C` có {old3, new3}. `busy` = trạng thái còn việc. */
+/**
+ * `columns`: các cột của dự án SAU khi gỡ liên kết, theo thứ tự (cho phần cột "ma"): bảng, tên và các trạng thái còn trong cột
+ * (`id@quy trình`).
+ */
+type Col = { id: string; board?: string; name: string; statuses: string[] };
+function fakeTx(busy: string[], columns: Col[] = []) {
+  const links = [
+    { columnId: 'A', statusId: 'old1' },
+    { columnId: 'B', statusId: 'old2' },
+    { columnId: 'C', statusId: 'old3' },
+  ];
+  const perColumn: Record<string, number> = { A: 2, B: 1, C: 2 };
+  return {
+    boardColumnStatus: {
+      findMany: vi.fn(() => Promise.resolve(links)),
+      groupBy: vi.fn(() =>
+        Promise.resolve(
+          Object.entries(perColumn).map(([columnId, n]) => ({ columnId, _count: { _all: n } })),
         ),
-        deleteMany: vi.fn(() => Promise.resolve({ count: 1 })),
-      },
-      issue: {
-        groupBy: vi.fn((a: { where: { statusId: { in: string[] } } }) =>
-          Promise.resolve(
-            busy
-              .filter((id) => a.where.statusId.in.includes(id))
-              .map((statusId) => ({ statusId, _count: { _all: 3 } })),
-          ),
+      ),
+      deleteMany: vi.fn(() => Promise.resolve({ count: 1 })),
+    },
+    issue: {
+      groupBy: vi.fn((a: { where: { statusId: { in: string[] } } }) =>
+        Promise.resolve(
+          busy
+            .filter((id) => a.where.statusId.in.includes(id))
+            .map((statusId) => ({ statusId, _count: { _all: 3 } })),
         ),
-      },
-      boardColumn: {
-        findMany: vi.fn(() =>
-          Promise.resolve(
-            columns.map((c) => ({
-              id: c.id,
-              boardId: c.board ?? 'b1',
-              name: c.name,
-              board: { name: c.board ?? 'Bảng chính', project: { key: 'KYHOP' } },
-              statuses: c.statuses.map((x) => {
-                const [statusId, workflowId] = x.split('@');
-                return { statusId, status: { workflowId } };
-              }),
-            })),
-          ),
+      ),
+    },
+    boardColumn: {
+      findMany: vi.fn(() =>
+        Promise.resolve(
+          columns.map((c) => ({
+            id: c.id,
+            boardId: c.board ?? 'b1',
+            name: c.name,
+            board: { name: c.board ?? 'Bảng chính', project: { key: 'KYHOP' } },
+            statuses: c.statuses.map((x) => {
+              const [statusId, workflowId] = x.split('@');
+              return { statusId, status: { workflowId } };
+            }),
+          })),
         ),
-        deleteMany: vi.fn(() => Promise.resolve({ count: 0 })),
-        update: vi.fn(() => Promise.resolve({})),
-      },
-    };
-  }
+      ),
+      deleteMany: vi.fn(() => Promise.resolve({ count: 0 })),
+      update: vi.fn(() => Promise.resolve({})),
+    },
+  };
+}
 
+describe('pruneUnusedBoardStatuses (không để cột "ma" sau khi chuyển đổi)', () => {
   it('gỡ trạng thái cũ không còn việc; giữ trạng thái còn việc và trạng thái cuối cùng của cột', async () => {
     const tx = fakeTx(['old3']);
     const r = await pruneUnusedBoardStatuses(tx as never, 'p1', ['wfNew']);
@@ -321,7 +321,9 @@ describe('pruneUnusedBoardStatuses (không để cột "ma" sau khi chuyển đ�
     });
     expect(tx.boardColumnStatus.findMany).not.toHaveBeenCalled();
   });
+});
 
+describe('pruneUnusedBoardStatuses — xoá cột "ma" và đánh số lại', () => {
   const deletedIds = (tx: ReturnType<typeof fakeTx>) =>
     (
       tx.boardColumn.deleteMany.mock.calls as unknown as Array<

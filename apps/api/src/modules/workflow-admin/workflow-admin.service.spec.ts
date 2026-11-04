@@ -456,7 +456,7 @@ describe('WorkflowAdminService — quy trình theo loại việc: usedBy, WORKFL
     expect(err).toMatchObject({
       status: 409,
       code: 'WORKFLOW_IN_USE',
-      message: expect.stringContaining('BUG'),
+      message: expect.stringContaining('BUG') as unknown,
     });
     expect(prisma.workflow.delete).not.toHaveBeenCalled();
   });
@@ -470,7 +470,7 @@ describe('WorkflowAdminService — quy trình theo loại việc: usedBy, WORKFL
     expect(err).toMatchObject({
       status: 409,
       code: 'WORKFLOW_IN_USE',
-      message: expect.stringContaining('KY'),
+      message: expect.stringContaining('KY') as unknown,
     });
     expect(prisma.workflow.delete).not.toHaveBeenCalled();
   });
@@ -490,173 +490,173 @@ describe('WorkflowAdminService — quy trình theo loại việc: usedBy, WORKFL
       code: 'WORKFLOW_IN_USE',
     });
   });
+});
 
-  describe('removeStatus', () => {
-    type Loose = Record<string, Record<string, ReturnType<typeof vi.fn>>>;
-    type Strict = Loose &
-      Record<'status' | 'issue' | 'issueHistory', Record<string, ReturnType<typeof vi.fn>>>;
-    function withIssues(count: number) {
-      const m = make({ projectId: null });
-      m.prisma.issue.count.mockResolvedValue(count);
-      const p = m.prisma as unknown as Loose;
-      p.issue!.findMany = vi.fn(() =>
-        Promise.resolve([
-          { id: 'i1', projectId: 'p1', sprintId: null, resolutionId: null },
-          { id: 'i2', projectId: 'p1', sprintId: null, resolutionId: null },
-        ]),
-      );
-      p.issue!.updateMany = vi.fn(() => Promise.resolve({ count: 2 }));
-      p.issueHistory = { createMany: vi.fn(() => Promise.resolve({ count: 2 })) };
-      p.resolution = { findFirst: vi.fn(() => Promise.resolve({ id: 'r-def' })) };
-      p.status!.findUniqueOrThrow = vi.fn(() =>
-        Promise.resolve({ id: 's1', name: 'Cũ', category: 'IN_PROGRESS' }),
-      );
-      p.status!.findFirst = vi.fn((a: { where: { id: string; workflowId?: string } }) =>
-        a.where.workflowId
-          ? // tra trạng thái thay thế: chỉ `sNew` thuộc quy trình wf1
-            Promise.resolve(
-              a.where.id === 'sNew' ? { id: 'sNew', name: 'Mới', category: 'IN_PROGRESS' } : null,
-            )
-          : // requireStatus
-            Promise.resolve({ id: 's1', workflowId: 'wf1', workflow: { projectId: null } }),
-      );
-      return { service: m.service, prisma: p as Strict };
-    }
+type Loose = Record<string, Record<string, ReturnType<typeof vi.fn>>>;
+type Strict = Loose &
+  Record<'status' | 'issue' | 'issueHistory', Record<string, ReturnType<typeof vi.fn>>>;
+function withIssues(count: number) {
+  const m = make({ projectId: null });
+  m.prisma.issue.count.mockResolvedValue(count);
+  const p = m.prisma as unknown as Loose;
+  p.issue!.findMany = vi.fn(() =>
+    Promise.resolve([
+      { id: 'i1', projectId: 'p1', sprintId: null, resolutionId: null },
+      { id: 'i2', projectId: 'p1', sprintId: null, resolutionId: null },
+    ]),
+  );
+  p.issue!.updateMany = vi.fn(() => Promise.resolve({ count: 2 }));
+  p.issueHistory = { createMany: vi.fn(() => Promise.resolve({ count: 2 })) };
+  p.resolution = { findFirst: vi.fn(() => Promise.resolve({ id: 'r-def' })) };
+  p.status!.findUniqueOrThrow = vi.fn(() =>
+    Promise.resolve({ id: 's1', name: 'Cũ', category: 'IN_PROGRESS' }),
+  );
+  p.status!.findFirst = vi.fn((a: { where: { id: string; workflowId?: string } }) =>
+    a.where.workflowId
+      ? // tra trạng thái thay thế: chỉ `sNew` thuộc quy trình wf1
+        Promise.resolve(
+          a.where.id === 'sNew' ? { id: 'sNew', name: 'Mới', category: 'IN_PROGRESS' } : null,
+        )
+      : // requireStatus
+        Promise.resolve({ id: 's1', workflowId: 'wf1', workflow: { projectId: null } }),
+  );
+  return { service: m.service, prisma: p as Strict };
+}
 
-    it('còn việc mà không có replacementStatusId => 409 STATUS_HAS_ISSUES, không xoá, không chuyển', async () => {
-      const { service, prisma } = withIssues(2);
-      const err = await service.removeStatus('w1', 'u1', 's1').catch((e: unknown) => e);
-      expect(err).toMatchObject({ status: 409, code: 'STATUS_HAS_ISSUES' });
-      expect(prisma.status.delete).not.toHaveBeenCalled();
-      expect(prisma.issue.updateMany).not.toHaveBeenCalled();
+describe('WorkflowAdminService.removeStatus (STATUS_HAS_ISSUES)', () => {
+  it('còn việc mà không có replacementStatusId => 409 STATUS_HAS_ISSUES, không xoá, không chuyển', async () => {
+    const { service, prisma } = withIssues(2);
+    const err = await service.removeStatus('w1', 'u1', 's1').catch((e: unknown) => e);
+    expect(err).toMatchObject({ status: 409, code: 'STATUS_HAS_ISSUES' });
+    expect(prisma.status.delete).not.toHaveBeenCalled();
+    expect(prisma.issue.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('có replacementStatusId (cùng quy trình): chuyển hết việc (version + lịch sử) rồi xoá, một transaction', async () => {
+    const { service, prisma } = withIssues(2);
+    const out = await service.removeStatus('w1', 'u1', 's1', 'sNew');
+    expect(out).toEqual({ success: true, moved: 2 });
+    expect(prisma.issue.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: { in: ['i1', 'i2'] } },
+        data: expect.objectContaining({ statusId: 'sNew', version: { increment: 1 } }) as unknown,
+      }),
+    );
+    expect(prisma.issueHistory.createMany).toHaveBeenCalledTimes(1);
+    expect(
+      (
+        prisma.issueHistory.createMany!.mock.calls[0] as unknown as [
+          { data: Array<{ actorId: string }> },
+        ]
+      )[0].data.every((h) => h.actorId === 'SYS'),
+    ).toBe(true);
+    expect(prisma.status.delete).toHaveBeenCalledTimes(1);
+    expect(prisma.$transaction).toHaveBeenCalled();
+  });
+
+  it('replacementStatusId không thuộc quy trình / chính nó => 422, không xoá', async () => {
+    const { service, prisma } = withIssues(2);
+    await expect(service.removeStatus('w1', 'u1', 's1', 'sOther')).rejects.toMatchObject({
+      status: 422,
     });
-
-    it('có replacementStatusId (cùng quy trình): chuyển hết việc (version + lịch sử) rồi xoá, một transaction', async () => {
-      const { service, prisma } = withIssues(2);
-      const out = await service.removeStatus('w1', 'u1', 's1', 'sNew');
-      expect(out).toEqual({ success: true, moved: 2 });
-      expect(prisma.issue.updateMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: { id: { in: ['i1', 'i2'] } },
-          data: expect.objectContaining({ statusId: 'sNew', version: { increment: 1 } }),
-        }),
-      );
-      expect(prisma.issueHistory.createMany).toHaveBeenCalledTimes(1);
-      expect(
-        (
-          prisma.issueHistory.createMany!.mock.calls[0] as unknown as [
-            { data: Array<{ actorId: string }> },
-          ]
-        )[0].data.every((h) => h.actorId === 'SYS'),
-      ).toBe(true);
-      expect(prisma.status.delete).toHaveBeenCalledTimes(1);
-      expect(prisma.$transaction).toHaveBeenCalled();
+    const self = withIssues(2);
+    await expect(self.service.removeStatus('w1', 'u1', 's1', 's1')).rejects.toMatchObject({
+      status: 422,
     });
+    expect(prisma.status.delete).not.toHaveBeenCalled();
+    expect(self.prisma.status.delete).not.toHaveBeenCalled();
+  });
 
-    it('replacementStatusId không thuộc quy trình / chính nó => 422, không xoá', async () => {
-      const { service, prisma } = withIssues(2);
-      await expect(service.removeStatus('w1', 'u1', 's1', 'sOther')).rejects.toMatchObject({
-        status: 422,
-      });
-      const self = withIssues(2);
-      await expect(self.service.removeStatus('w1', 'u1', 's1', 's1')).rejects.toMatchObject({
-        status: 422,
-      });
-      expect(prisma.status.delete).not.toHaveBeenCalled();
-      expect(self.prisma.status.delete).not.toHaveBeenCalled();
+  it('(M1/L2) có thay thế: quy tắc nhắc trạng thái bị xoá được sửa sang trạng thái thay thế, trong cùng transaction đã khoá', async () => {
+    const m = make({
+      projectId: null,
+      rules: [{ id: 'r1', name: 'R', triggerConfig: { toStatusId: 's1' } }],
     });
-
-    it('(M1/L2) có thay thế: quy tắc nhắc trạng thái bị xoá được sửa sang trạng thái thay thế, trong cùng transaction đã khoá', async () => {
-      const m = make({
-        projectId: null,
-        rules: [{ id: 'r1', name: 'R', triggerConfig: { toStatusId: 's1' } }],
-      });
-      const order: string[] = [];
-      m.prisma.$executeRaw.mockImplementation(() => {
-        order.push('lock');
-        return Promise.resolve(0);
-      });
-      m.prisma.status.delete.mockImplementation(() => {
-        order.push('delete');
+    const order: string[] = [];
+    m.prisma.$executeRaw.mockImplementation(() => {
+      order.push('lock');
+      return Promise.resolve(0);
+    });
+    m.prisma.status.delete.mockImplementation(() => {
+      order.push('delete');
+      return Promise.resolve({});
+    });
+    m.prisma.automationRule.update.mockImplementation(
+      (a: { where: { id: string }; data: Record<string, unknown> }) => {
+        order.push('rule');
+        Object.assign(m.rules.find((r) => r.id === a.where.id)!, a.data);
         return Promise.resolve({});
-      });
-      m.prisma.automationRule.update.mockImplementation(
-        (a: { where: { id: string }; data: Record<string, unknown> }) => {
-          order.push('rule');
-          Object.assign(m.rules.find((r) => r.id === a.where.id)!, a.data);
-          return Promise.resolve({});
-        },
-      );
-      (m.prisma.issue.count as ReturnType<typeof vi.fn>).mockResolvedValue(0);
-      await m.service.removeStatus('w1', 'u1', 's1', 'sNew');
-      expect(order).toEqual(['lock', 'rule', 'delete']);
-      expect(m.rules[0]!.triggerConfig).toEqual({ toStatusId: 'sNew' });
-      expect(m.published).toEqual([]); // chỉ sửa id, không tắt → không báo
-      expect(m.events.emit).toHaveBeenCalledWith('automation.rules_changed', { workspaceId: 'w1' });
-      expect(m.resolver.invalidate).toHaveBeenCalled();
+      },
+    );
+    (m.prisma.issue.count as ReturnType<typeof vi.fn>).mockResolvedValue(0);
+    await m.service.removeStatus('w1', 'u1', 's1', 'sNew');
+    expect(order).toEqual(['lock', 'rule', 'delete']);
+    expect(m.rules[0]!.triggerConfig).toEqual({ toStatusId: 'sNew' });
+    expect(m.published).toEqual([]); // chỉ sửa id, không tắt → không báo
+    expect(m.events.emit).toHaveBeenCalledWith('automation.rules_changed', { workspaceId: 'w1' });
+    expect(m.resolver.invalidate).toHaveBeenCalled();
+  });
+
+  it('(M1) xoá không có thay thế (không còn việc): quy tắc nhắc nó bị TẮT và người tạo được báo SAU khi xoá; xoá lỗi thì không tắt/báo', async () => {
+    const m = make({
+      projectId: null,
+      rules: [{ id: 'r1', name: 'Khi xong', triggerConfig: { toStatusId: 's1' } }],
+    });
+    await m.service.removeStatus('w1', 'u1', 's1');
+    expect(m.rules[0]!.enabled).toBe(false);
+    expect(m.published).toEqual([
+      expect.objectContaining({
+        recipientId: 'u-rule',
+        force: true,
+        payload: { automationRuleDisabled: 'Khi xong' },
+      }),
+    ]);
+    const bad = make({
+      projectId: null,
+      rules: [{ id: 'r1', name: 'Khi xong', triggerConfig: { toStatusId: 's1' } }],
+    });
+    bad.prisma.status.delete.mockRejectedValue(new Error('boom'));
+    await expect(bad.service.removeStatus('w1', 'u1', 's1')).rejects.toThrow('boom');
+    expect(bad.published).toEqual([]);
+    expect(bad.events.emit).not.toHaveBeenCalled();
+  });
+
+  it('(L3) trạng thái ban đầu của quy trình đang được tổ chức/dự án dùng => 409 INITIAL_STATUS_IN_USE, không xoá; không dùng thì xoá được', async () => {
+    const initial = {
+      id: 's1',
+      workflowId: 'wf1',
+      isInitial: true,
+      workflow: { projectId: null },
+    };
+    const usedByScheme = make({ projectId: null });
+    usedByScheme.prisma.status.findFirst.mockResolvedValue(initial as never);
+    usedByScheme.prisma.workspaceWorkflowScheme.count.mockResolvedValue(1);
+    await expect(usedByScheme.service.removeStatus('w1', 'u1', 's1')).rejects.toMatchObject({
+      status: 409,
+      code: 'INITIAL_STATUS_IN_USE',
+    });
+    expect(usedByScheme.prisma.status.delete).not.toHaveBeenCalled();
+
+    const usedByOverride = make({ projectId: null });
+    usedByOverride.prisma.status.findFirst.mockResolvedValue(initial as never);
+    usedByOverride.prisma.projectWorkflowOverride.count.mockResolvedValue(1);
+    await expect(usedByOverride.service.removeStatus('w1', 'u1', 's1')).rejects.toMatchObject({
+      status: 409,
+      code: 'INITIAL_STATUS_IN_USE',
     });
 
-    it('(M1) xoá không có thay thế (không còn việc): quy tắc nhắc nó bị TẮT và người tạo được báo SAU khi xoá; xoá lỗi thì không tắt/báo', async () => {
-      const m = make({
-        projectId: null,
-        rules: [{ id: 'r1', name: 'Khi xong', triggerConfig: { toStatusId: 's1' } }],
-      });
-      await m.service.removeStatus('w1', 'u1', 's1');
-      expect(m.rules[0]!.enabled).toBe(false);
-      expect(m.published).toEqual([
-        expect.objectContaining({
-          recipientId: 'u-rule',
-          force: true,
-          payload: { automationRuleDisabled: 'Khi xong' },
-        }),
-      ]);
-      const bad = make({
-        projectId: null,
-        rules: [{ id: 'r1', name: 'Khi xong', triggerConfig: { toStatusId: 's1' } }],
-      });
-      bad.prisma.status.delete.mockRejectedValue(new Error('boom'));
-      await expect(bad.service.removeStatus('w1', 'u1', 's1')).rejects.toThrow('boom');
-      expect(bad.published).toEqual([]);
-      expect(bad.events.emit).not.toHaveBeenCalled();
+    const free = make({ projectId: null });
+    free.prisma.status.findFirst.mockResolvedValue(initial as never);
+    expect(await free.service.removeStatus('w1', 'u1', 's1')).toEqual({
+      success: true,
+      moved: 0,
     });
+  });
 
-    it('(L3) trạng thái ban đầu của quy trình đang được tổ chức/dự án dùng => 409 INITIAL_STATUS_IN_USE, không xoá; không dùng thì xoá được', async () => {
-      const initial = {
-        id: 's1',
-        workflowId: 'wf1',
-        isInitial: true,
-        workflow: { projectId: null },
-      };
-      const usedByScheme = make({ projectId: null });
-      usedByScheme.prisma.status.findFirst.mockResolvedValue(initial as never);
-      usedByScheme.prisma.workspaceWorkflowScheme.count.mockResolvedValue(1);
-      await expect(usedByScheme.service.removeStatus('w1', 'u1', 's1')).rejects.toMatchObject({
-        status: 409,
-        code: 'INITIAL_STATUS_IN_USE',
-      });
-      expect(usedByScheme.prisma.status.delete).not.toHaveBeenCalled();
-
-      const usedByOverride = make({ projectId: null });
-      usedByOverride.prisma.status.findFirst.mockResolvedValue(initial as never);
-      usedByOverride.prisma.projectWorkflowOverride.count.mockResolvedValue(1);
-      await expect(usedByOverride.service.removeStatus('w1', 'u1', 's1')).rejects.toMatchObject({
-        status: 409,
-        code: 'INITIAL_STATUS_IN_USE',
-      });
-
-      const free = make({ projectId: null });
-      free.prisma.status.findFirst.mockResolvedValue(initial as never);
-      expect(await free.service.removeStatus('w1', 'u1', 's1')).toEqual({
-        success: true,
-        moved: 0,
-      });
-    });
-
-    it('không còn việc => xoá thẳng, không cần thay thế, không chuyển gì', async () => {
-      const { service, prisma } = withIssues(0);
-      expect(await service.removeStatus('w1', 'u1', 's1')).toEqual({ success: true, moved: 0 });
-      expect(prisma.issue.updateMany).not.toHaveBeenCalled();
-      expect(prisma.status.delete).toHaveBeenCalledTimes(1);
-    });
+  it('không còn việc => xoá thẳng, không cần thay thế, không chuyển gì', async () => {
+    const { service, prisma } = withIssues(0);
+    expect(await service.removeStatus('w1', 'u1', 's1')).toEqual({ success: true, moved: 0 });
+    expect(prisma.issue.updateMany).not.toHaveBeenCalled();
+    expect(prisma.status.delete).toHaveBeenCalledTimes(1);
   });
 });

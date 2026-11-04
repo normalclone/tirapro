@@ -168,28 +168,7 @@ async function migrateWorkspace(
   });
 
   // 3. Quy trình hiệu lực: ghi đè dự án → cấu hình tổ chức.
-  const [scheme, overrides, projects] = await Promise.all([
-    tx.workspaceWorkflowScheme.findMany({
-      where: { workspaceId: ws.id },
-      select: { issueTypeId: true, workflowId: true },
-    }),
-    tx.projectWorkflowOverride.findMany({
-      where: { project: { workspaceId: ws.id } },
-      select: { projectId: true, issueTypeId: true, workflowId: true },
-    }),
-    // allow-deleted: dự án đã xoá mềm/lưu trữ cũng phải khớp (khôi phục sau này không được lệch)
-    tx.project.findMany({
-      where: { workspaceId: ws.id },
-      select: { id: true, key: true, defaultWorkflowId: true },
-      orderBy: { key: 'asc' },
-    }),
-  ]);
-  const schemeOf = new Map(scheme.map((s) => [s.issueTypeId, s.workflowId]));
-  const overrideOf = new Map(
-    overrides.map((o) => [`${o.projectId}:${o.issueTypeId}`, o.workflowId]),
-  );
-  const effective = (projectId: string, typeId: string): string | undefined =>
-    overrideOf.get(`${projectId}:${typeId}`) ?? schemeOf.get(typeId);
+  const { projects, effective } = await loadEffectiveScheme(tx, ws.id);
 
   // Trạng thái của mọi quy trình trong workspace (tên → ánh xạ cũ; danh sách đích theo quy trình).
   const allStatuses: StatusInfo[] = await tx.status.findMany({
@@ -271,24 +250,15 @@ async function migrateWorkspace(
   }
 
   // 6. Cột bảng: thêm trạng thái mới của quy trình hiệu lực cạnh trạng thái cũ (rồi gỡ trạng thái cũ không còn dùng và không còn việc).
-  let boardLinksAdded = 0;
-  let boardLinksRemoved = 0;
-  const ghostColumns: string[] = [];
-  const deletedColumns: string[] = [];
-  for (const p of projects) {
-    const used = [...new Set(types.flatMap((t) => effective(p.id, t.id) ?? []))];
-    boardLinksAdded += (
-      await appendMissingBoardStatuses(tx, p.id, used, {
-        // Cùng bảng ánh xạ cũ → mới với việc chuyển trạng thái, để mỗi trạng thái mới vào đúng cột của trạng thái cũ.
-        pick: (legacy, toWorkflowId) => legacyPick('', legacy.id, toWorkflowId),
-      })
-    ).added;
-    // Trạng thái cũ không còn dùng và không còn việc → gỡ khỏi cột (không để cột "ma" sau chuyển đổi).
-    const pruned = await pruneUnusedBoardStatuses(tx, p.id, used);
-    boardLinksRemoved += pruned.removed;
-    ghostColumns.push(...pruned.ghostColumns);
-    deletedColumns.push(...pruned.deletedColumns);
-  }
+  const boards = await syncProjectBoards(
+    tx,
+    projects.map((p) => ({
+      id: p.id,
+      used: [...new Set(types.flatMap((t) => effective(p.id, t.id) ?? []))],
+    })),
+    legacyPick,
+  );
+  const { boardLinksAdded, boardLinksRemoved, ghostColumns, deletedColumns } = boards;
 
   // 7. Sửa quy tắc automation: cùng hàm với các API đổi quy trình.
   const pairs = scopes.map((s) => ({
@@ -337,6 +307,76 @@ async function migrateWorkspace(
     rules: affectedRules,
     nameRefs,
   };
+}
+
+/** Quy trình hiệu lực của từng (dự án, loại việc): ghi đè dự án → cấu hình tổ chức. Kể cả dự án đã xoá mềm/lưu trữ. */
+async function loadEffectiveScheme(
+  tx: Prisma.TransactionClient,
+  workspaceId: string,
+): Promise<{
+  projects: Array<{ id: string; key: string; defaultWorkflowId: string | null }>;
+  effective: (projectId: string, typeId: string) => string | undefined;
+}> {
+  const [scheme, overrides, projects] = await Promise.all([
+    tx.workspaceWorkflowScheme.findMany({
+      where: { workspaceId },
+      select: { issueTypeId: true, workflowId: true },
+    }),
+    tx.projectWorkflowOverride.findMany({
+      where: { project: { workspaceId } },
+      select: { projectId: true, issueTypeId: true, workflowId: true },
+    }),
+    // allow-deleted: dự án đã xoá mềm/lưu trữ cũng phải khớp (khôi phục sau này không được lệch)
+    tx.project.findMany({
+      where: { workspaceId },
+      select: { id: true, key: true, defaultWorkflowId: true },
+      orderBy: { key: 'asc' },
+    }),
+  ]);
+  const schemeOf = new Map(scheme.map((s) => [s.issueTypeId, s.workflowId]));
+  const overrideOf = new Map(
+    overrides.map((o) => [`${o.projectId}:${o.issueTypeId}`, o.workflowId]),
+  );
+  return {
+    projects,
+    effective: (projectId, typeId) =>
+      overrideOf.get(`${projectId}:${typeId}`) ?? schemeOf.get(typeId),
+  };
+}
+
+interface BoardSyncResult {
+  boardLinksAdded: number;
+  boardLinksRemoved: number;
+  ghostColumns: string[];
+  deletedColumns: string[];
+}
+
+/** Bước 6 của `migrateWorkspace`: mỗi dự án thêm trạng thái mới vào cột của trạng thái cũ nó thay, rồi dọn trạng thái/cột cũ. */
+async function syncProjectBoards(
+  tx: Prisma.TransactionClient,
+  projects: Array<{ id: string; used: string[] }>,
+  legacyPick: (typeId: string, fromId: string, toWorkflowId: string) => string | undefined,
+): Promise<BoardSyncResult> {
+  const out: BoardSyncResult = {
+    boardLinksAdded: 0,
+    boardLinksRemoved: 0,
+    ghostColumns: [],
+    deletedColumns: [],
+  };
+  for (const p of projects) {
+    out.boardLinksAdded += (
+      await appendMissingBoardStatuses(tx, p.id, p.used, {
+        // Cùng bảng ánh xạ cũ → mới với việc chuyển trạng thái, để mỗi trạng thái mới vào đúng cột của trạng thái cũ.
+        pick: (legacy, toWorkflowId) => legacyPick('', legacy.id, toWorkflowId),
+      })
+    ).added;
+    // Trạng thái cũ không còn dùng và không còn việc → gỡ khỏi cột (không để cột "ma" sau chuyển đổi).
+    const pruned = await pruneUnusedBoardStatuses(tx, p.id, p.used);
+    out.boardLinksRemoved += pruned.removed;
+    out.ghostColumns.push(...pruned.ghostColumns);
+    out.deletedColumns.push(...pruned.deletedColumns);
+  }
+  return out;
 }
 
 async function moveRaw(

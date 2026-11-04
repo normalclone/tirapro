@@ -7,7 +7,13 @@ import type * as ApiModule from '@/lib/api';
 import { defaultWorkflow, statusIdOf } from '@/features/issues/workflowFixtures';
 import type { AutomationRule } from './rules-api';
 
-const h = vi.hoisted(() => ({ patch: vi.fn() }));
+type RuleBody = {
+  triggerConfig: Record<string, unknown>;
+  actions: Array<{ alsoStatusIds?: string[] }>;
+};
+const h = vi.hoisted(() => ({
+  patch: vi.fn<(url: string, body: RuleBody) => Promise<unknown>>(),
+}));
 vi.mock('@/lib/api', async (orig) => {
   const real = await orig<typeof ApiModule>();
   const fx = await import('@/features/issues/workflowFixtures');
@@ -114,7 +120,7 @@ describe('Sửa quy tắc đã được hệ thống mở rộng theo quy trình
     expect(h.patch.mock.calls[0]![1].triggerConfig).toEqual({
       toStatusId: statusIdOf('STANDARD', 'In Review'),
     });
-    expect(h.patch.mock.calls[0]![1].actions[0].alsoStatusIds).toEqual([BUG_DONE]);
+    expect(h.patch.mock.calls[0]![1].actions[0]!.alsoStatusIds).toEqual([BUG_DONE]);
   });
 
   it('danh sách trạng thái gom theo quy trình (tiêu đề nhóm Standard / Bug)', async () => {

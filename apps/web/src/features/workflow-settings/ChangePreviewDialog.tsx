@@ -28,6 +28,29 @@ import {
   type MoveGroup,
 } from './schemeModel';
 
+/** Báo kết quả áp dụng: số việc đã chuyển, cột bảng còn sót (cần dọn tay) và cột đã tự xoá. */
+function announceApplied(result: WorkflowChangeDto): void {
+  toast.success(
+    result.totalIssues > 0
+      ? `Đã đổi quy trình · chuyển ${result.totalIssues} việc sang trạng thái mới`
+      : 'Đã đổi quy trình',
+  );
+  // Cột bảng chỉ còn trạng thái cũ (còn việc ở đó): không tự gỡ được → nói rõ để người quản trị dọn ở Cài đặt bảng.
+  if (result.ghostColumns && result.ghostColumns.length > 0)
+    toast.warning(`${result.ghostColumns.length} cột bảng chỉ còn trạng thái của quy trình cũ`, {
+      description: `${result.ghostColumns.join('; ')}. Chuyển các việc còn ở đó rồi dọn trong Cài đặt bảng.`,
+      duration: 12000,
+    });
+  if (result.deletedColumns && result.deletedColumns.length > 0)
+    toast.info(
+      `Đã xoá ${result.deletedColumns.length} cột bảng chỉ còn trạng thái cũ và không còn việc`,
+      {
+        description: result.deletedColumns.join('; '),
+        duration: 10000,
+      },
+    );
+}
+
 /**
  * Hộp thoại XEM TRƯỚC một thay đổi quy trình (của tổ chức hoặc ghi đè của dự án) rồi mới xác nhận:
  *  1. việc sẽ chuyển — gộp theo (loại việc, trạng thái cũ), mỗi nhóm một ô chọn trạng thái mới (đã điền gợi ý);
@@ -86,28 +109,7 @@ export function ChangePreviewDialog({
     try {
       const result = await sendChange({ ...request, body } as ChangeRequest, false);
       refresh();
-      toast.success(
-        result.totalIssues > 0
-          ? `Đã đổi quy trình · chuyển ${result.totalIssues} việc sang trạng thái mới`
-          : 'Đã đổi quy trình',
-      );
-      // Cột bảng chỉ còn trạng thái cũ (còn việc ở đó): không tự gỡ được → nói rõ để người quản trị dọn ở Cài đặt bảng.
-      if (result.ghostColumns && result.ghostColumns.length > 0)
-        toast.warning(
-          `${result.ghostColumns.length} cột bảng chỉ còn trạng thái của quy trình cũ`,
-          {
-            description: `${result.ghostColumns.join('; ')}. Chuyển các việc còn ở đó rồi dọn trong Cài đặt bảng.`,
-            duration: 12000,
-          },
-        );
-      if (result.deletedColumns && result.deletedColumns.length > 0)
-        toast.info(
-          `Đã xoá ${result.deletedColumns.length} cột bảng chỉ còn trạng thái cũ và không còn việc`,
-          {
-            description: result.deletedColumns.join('; '),
-            duration: 10000,
-          },
-        );
+      announceApplied(result);
       onApplied?.(result);
       onClose();
     } catch (e) {

@@ -6,7 +6,12 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type * as ApiModule from '@/lib/api';
 
-const h = vi.hoisted(() => ({ get: vi.fn(), put: vi.fn(), del: vi.fn() }));
+type PutArgs = [url: string, body: unknown, cfg?: { params?: { dryRun?: number } }];
+const h = vi.hoisted(() => ({
+  get: vi.fn(),
+  put: vi.fn<(...a: PutArgs) => Promise<unknown>>(),
+  del: vi.fn(),
+}));
 vi.mock('@/lib/api', async (orig) => {
   const real = await orig<typeof ApiModule>();
   return {
@@ -224,7 +229,9 @@ describe('Cấu hình dự án → Quy trình', () => {
     });
     expect(h.del).not.toHaveBeenCalled();
   });
+});
 
+describe('Cấu hình dự án → Quy trình — xem trước, lỗi và làm mới', () => {
   it('xem trước hiện quy tắc bị ảnh hưởng (trước → sau, quy tắc bị tắt) và bộ lọc theo tên sẽ hết khớp', async () => {
     h.put.mockResolvedValue({
       data: preview({

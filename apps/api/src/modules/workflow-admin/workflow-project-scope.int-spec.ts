@@ -2,7 +2,6 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import { assertParityDatabase } from '../../common/testing/parity-db-guard';
 import type { PrismaService } from '../../infra/prisma/prisma.service';
-import { WorkflowAdminService } from './workflow-admin.service';
 import { WorkflowResolver } from './workflow-resolver.service';
 import { WorkflowSchemeService } from './workflow-scheme.service';
 
@@ -19,178 +18,188 @@ const TAG = `ps${Date.now().toString(36)}`;
 const id = (s: string): string => `${TAG}-${s}`;
 const WS = id('ws');
 
-describe.skipIf(!DB_URL)('đổi quy trình của MỘT dự án ↔ Postgres thật', () => {
-  let prisma: PrismaClient;
-  let svc: WorkflowSchemeService;
+let prisma: PrismaClient;
+let svc: WorkflowSchemeService;
 
-  beforeAll(async () => {
-    prisma = new PrismaClient({ datasources: { db: { url: DB_URL! } } });
-    // Quản trị dự án A chỉ thấy dự án A (dự án B riêng tư).
-    const access = { visibleProjectIds: () => Promise.resolve([id('pa')]) };
-    svc = new WorkflowSchemeService(
-      prisma as unknown as PrismaService,
-      new WorkflowResolver(),
-      access as never,
-    );
-    void WorkflowAdminService;
-    for (const u of ['u', 'o'])
-      await prisma.user.create({ data: { id: id(u), email: `${id(u)}@ps.test`, displayName: u } });
-    await prisma.workspace.create({ data: { id: WS, name: WS, slug: WS, ownerId: id('o') } });
-    await prisma.resolution.create({
-      data: { id: id('res'), workspaceId: WS, name: 'Done', isDefault: true },
+/** Tổ chức, hai quy trình, loại việc, hai dự án (B riêng tư) mỗi dự án một bảng và một việc ở "Đang làm". */
+async function seedBase(): Promise<void> {
+  for (const u of ['u', 'o'])
+    await prisma.user.create({ data: { id: id(u), email: `${id(u)}@ps.test`, displayName: u } });
+  await prisma.workspace.create({ data: { id: WS, name: WS, slug: WS, ownerId: id('o') } });
+  await prisma.resolution.create({
+    data: { id: id('res'), workspaceId: WS, name: 'Done', isDefault: true },
+  });
+  for (const [wf, name, names] of [
+    ['old', 'Cũ', ['Cần làm', 'Đang làm', 'Xong']],
+    ['std', 'Standard', ['To Do', 'In Progress', 'Done']],
+  ] as const) {
+    await prisma.workflow.create({ data: { id: id(wf), workspaceId: WS, name } });
+    await prisma.status.createMany({
+      data: names.map((n, i) => ({
+        id: id(`${wf}-${i}`),
+        workflowId: id(wf),
+        name: n,
+        category: (['TODO', 'IN_PROGRESS', 'DONE'] as const)[i]!,
+        order: i,
+        isInitial: i === 0,
+      })),
     });
-    for (const [wf, name, names] of [
-      ['old', 'Cũ', ['Cần làm', 'Đang làm', 'Xong']],
-      ['std', 'Standard', ['To Do', 'In Progress', 'Done']],
-    ] as const) {
-      await prisma.workflow.create({ data: { id: id(wf), workspaceId: WS, name } });
-      await prisma.status.createMany({
-        data: names.map((n, i) => ({
-          id: id(`${wf}-${i}`),
-          workflowId: id(wf),
-          name: n,
-          category: (['TODO', 'IN_PROGRESS', 'DONE'] as const)[i]!,
-          order: i,
-          isInitial: i === 0,
-        })),
-      });
-    }
-    await prisma.issueType.create({
-      data: { id: id('t'), workspaceId: WS, name: 'Task', key: 'TASK' },
-    });
-    await prisma.workspaceWorkflowScheme.create({
-      data: { workspaceId: WS, issueTypeId: id('t'), workflowId: id('old') },
-    });
-    for (const [p, key, priv] of [
-      ['pa', 'PSA', false],
-      ['pb', 'PSB', true],
-    ] as const) {
-      await prisma.project.create({
-        data: {
-          id: id(p),
-          workspaceId: WS,
-          key,
-          name: key,
-          isPrivate: priv,
-          defaultWorkflowId: id('old'),
-        },
-      });
-      await prisma.board.create({
-        data: {
-          id: id(`b-${p}`),
-          projectId: id(p),
-          name: `Bảng ${key}`,
-          type: 'KANBAN',
-          filterJql: 'status = "Đang làm"',
-        },
-      });
-      await prisma.issue.create({
-        data: {
-          id: id(`i-${p}`),
-          key: `${key}-1`,
-          number: 1,
-          workspaceId: WS,
-          projectId: id(p),
-          typeId: id('t'),
-          statusId: id('old-1'),
-          summary: 'x',
-          rank: '0|a:',
-        },
-      });
-    }
-    // Quy tắc: của A, của B (riêng tư), và áp toàn tổ chức — cùng nhắc trạng thái cũ "Đang làm".
-    for (const [r, projectId] of [
-      ['ra', id('pa')],
-      ['rb', id('pb')],
-      ['rws', null],
-    ] as const)
-      await prisma.automationRule.create({
-        data: {
-          id: id(r),
-          workspaceId: WS,
-          projectId,
-          name: `Quy tắc ${r}`,
-          trigger: 'ISSUE_TRANSITIONED',
-          triggerConfig: { toStatusId: id('old-1') },
-          conditions: [{ jql: 'status = "Đang làm"' }],
-          actions: [],
-          createdById: id('o'),
-        },
-      });
-    // Bộ lọc đã lưu: của mình, riêng tư của người khác, chia sẻ cả tổ chức.
-    await prisma.savedFilter.createMany({
-      data: [
-        {
-          id: id('f-own'),
-          workspaceId: WS,
-          ownerId: id('u'),
-          name: 'Của tôi',
-          jql: 'status = "Đang làm"',
-        },
-        {
-          id: id('f-other'),
-          workspaceId: WS,
-          ownerId: id('o'),
-          name: 'Riêng của người khác',
-          jql: 'status = "Đang làm"',
-        },
-        {
-          id: id('f-shared'),
-          workspaceId: WS,
-          ownerId: id('o'),
-          name: 'Chia sẻ cả tổ chức',
-          jql: 'status = "Đang làm"',
-          visibility: 'SHARED',
-        },
-      ],
-    });
-    // Chia sẻ cho dự án A (người xem là Quản trị dự án A, thấy A): chỉ chia sẻ cho dự án người xem thấy mới hiện trong báo cáo.
-    await prisma.savedFilterProjectShare.create({
-      data: { filterId: id('f-shared'), projectId: id('pa') },
-    });
-    // Bảng tổng quan riêng tư của dự án B.
-    await prisma.dashboard.create({
+  }
+  await prisma.issueType.create({
+    data: { id: id('t'), workspaceId: WS, name: 'Task', key: 'TASK' },
+  });
+  await prisma.workspaceWorkflowScheme.create({
+    data: { workspaceId: WS, issueTypeId: id('t'), workflowId: id('old') },
+  });
+  for (const [p, key, priv] of [
+    ['pa', 'PSA', false],
+    ['pb', 'PSB', true],
+  ] as const) {
+    await prisma.project.create({
       data: {
-        id: id('dash'),
+        id: id(p),
         workspaceId: WS,
-        ownerId: id('o'),
-        projectId: id('pb'),
-        name: 'Tổng quan B',
-        scope: 'PROJECT',
-        widgets: {
-          create: [
-            {
-              id: id('wg'),
-              type: 'ISSUE_LIST',
-              title: 'W',
-              config: { jql: 'status = "Đang làm"' },
-            },
-          ],
-        },
+        key,
+        name: key,
+        isPrivate: priv,
+        defaultWorkflowId: id('old'),
       },
     });
-  }, 60_000);
+    await prisma.board.create({
+      data: {
+        id: id(`b-${p}`),
+        projectId: id(p),
+        name: `Bảng ${key}`,
+        type: 'KANBAN',
+        filterJql: 'status = "Đang làm"',
+      },
+    });
+    await prisma.issue.create({
+      data: {
+        id: id(`i-${p}`),
+        key: `${key}-1`,
+        number: 1,
+        workspaceId: WS,
+        projectId: id(p),
+        typeId: id('t'),
+        statusId: id('old-1'),
+        summary: 'x',
+        rank: '0|a:',
+      },
+    });
+  }
+}
 
-  afterAll(async () => {
-    if (!prisma) return;
-    await prisma.project.deleteMany({ where: { workspaceId: WS } });
-    await prisma.workspace.deleteMany({ where: { id: WS } });
-    await prisma.user.deleteMany({ where: { id: { startsWith: TAG } } });
-    await prisma.$disconnect();
-  }, 60_000);
-
-  const body = () => ({
-    issueTypeId: id('t'),
-    workflowId: id('std'),
-    statusMap: {
-      [id('old-0')]: id('std-0'),
-      [id('old-1')]: id('std-1'),
-      [id('old-2')]: id('std-2'),
+/** Quy tắc, bộ lọc đã lưu, chia sẻ và bảng tổng quan cùng nhắc trạng thái cũ (một số thuộc dự án B riêng tư). */
+async function seedRefs(): Promise<void> {
+  // Quy tắc: của A, của B (riêng tư), và áp toàn tổ chức — cùng nhắc trạng thái cũ "Đang làm".
+  for (const [r, projectId] of [
+    ['ra', id('pa')],
+    ['rb', id('pb')],
+    ['rws', null],
+  ] as const)
+    await prisma.automationRule.create({
+      data: {
+        id: id(r),
+        workspaceId: WS,
+        projectId,
+        name: `Quy tắc ${r}`,
+        trigger: 'ISSUE_TRANSITIONED',
+        triggerConfig: { toStatusId: id('old-1') },
+        conditions: [{ jql: 'status = "Đang làm"' }],
+        actions: [],
+        createdById: id('o'),
+      },
+    });
+  // Bộ lọc đã lưu: của mình, riêng tư của người khác, chia sẻ cả tổ chức.
+  await prisma.savedFilter.createMany({
+    data: [
+      {
+        id: id('f-own'),
+        workspaceId: WS,
+        ownerId: id('u'),
+        name: 'Của tôi',
+        jql: 'status = "Đang làm"',
+      },
+      {
+        id: id('f-other'),
+        workspaceId: WS,
+        ownerId: id('o'),
+        name: 'Riêng của người khác',
+        jql: 'status = "Đang làm"',
+      },
+      {
+        id: id('f-shared'),
+        workspaceId: WS,
+        ownerId: id('o'),
+        name: 'Chia sẻ cả tổ chức',
+        jql: 'status = "Đang làm"',
+        visibility: 'SHARED',
+      },
+    ],
+  });
+  // Chia sẻ cho dự án A (người xem là Quản trị dự án A, thấy A): chỉ chia sẻ cho dự án người xem thấy mới hiện trong báo cáo.
+  await prisma.savedFilterProjectShare.create({
+    data: { filterId: id('f-shared'), projectId: id('pa') },
+  });
+  // Bảng tổng quan riêng tư của dự án B.
+  await prisma.dashboard.create({
+    data: {
+      id: id('dash'),
+      workspaceId: WS,
+      ownerId: id('o'),
+      projectId: id('pb'),
+      name: 'Tổng quan B',
+      scope: 'PROJECT',
+      widgets: {
+        create: [
+          {
+            id: id('wg'),
+            type: 'ISSUE_LIST',
+            title: 'W',
+            config: { jql: 'status = "Đang làm"' },
+          },
+        ],
+      },
     },
   });
-  const ruleTrigger = async (r: string) =>
-    (await prisma.automationRule.findUniqueOrThrow({ where: { id: id(r) } })).triggerConfig;
+}
 
+beforeAll(async () => {
+  if (!DB_URL) return;
+  prisma = new PrismaClient({ datasources: { db: { url: DB_URL } } });
+  // Quản trị dự án A chỉ thấy dự án A (dự án B riêng tư).
+  const access = { visibleProjectIds: () => Promise.resolve([id('pa')]) };
+  svc = new WorkflowSchemeService(
+    prisma as unknown as PrismaService,
+    new WorkflowResolver(),
+    access as never,
+  );
+  await seedBase();
+  await seedRefs();
+}, 60_000);
+
+afterAll(async () => {
+  if (!prisma) return;
+  await prisma.project.deleteMany({ where: { workspaceId: WS } });
+  await prisma.workspace.deleteMany({ where: { id: WS } });
+  await prisma.user.deleteMany({ where: { id: { startsWith: TAG } } });
+  await prisma.$disconnect();
+}, 60_000);
+
+const body = () => ({
+  issueTypeId: id('t'),
+  workflowId: id('std'),
+  statusMap: {
+    [id('old-0')]: id('std-0'),
+    [id('old-1')]: id('std-1'),
+    [id('old-2')]: id('std-2'),
+  },
+});
+const ruleTrigger = async (r: string) =>
+  (await prisma.automationRule.findUniqueOrThrow({ where: { id: id(r) } })).triggerConfig;
+
+describe.skipIf(!DB_URL)('đổi quy trình của MỘT dự án ↔ Postgres thật', () => {
   it('xem trước: chỉ quy tắc của dự án A được sửa; quy tắc toàn tổ chức chỉ "cần xem lại"; quy tắc dự án B không lộ', async () => {
     const out = await svc.setProjectOverride(WS, id('pa'), id('u'), body(), true);
     const byId = Object.fromEntries(out.affectedRules.map((r) => [r.ruleId, r.outcome]));

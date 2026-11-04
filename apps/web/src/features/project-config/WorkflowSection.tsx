@@ -135,56 +135,18 @@ export function WorkflowSection({
         >
           {types.map((t) => {
             const item = scheme.items.find((i) => i.issueTypeId === t.id);
-            const wf = item ? byId.get(item.workflowId) : undefined;
             return (
-              <li
+              <TypeRow
                 key={t.id}
-                data-type-row={t.id}
-                className="flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2.5"
-              >
-                <span className="flex w-40 shrink-0 items-center gap-2 text-sm text-ink">
-                  <IssueTypeIcon type={t} />
-                  <span className="truncate">{t.name}</span>
-                </span>
-                <span className="flex min-w-0 flex-1 items-center gap-2 text-sm">
-                  <span className="truncate font-medium text-ink">
-                    {wf?.name ?? (item ? 'Quy trình đã ẩn' : 'Chưa có quy trình')}
-                  </span>
-                  {item && (
-                    <Badge
-                      className={
-                        item.isOverride
-                          ? 'bg-primary-subtle text-primary'
-                          : 'bg-surface-2 text-muted'
-                      }
-                    >
-                      {item.isOverride ? 'Riêng của dự án' : 'Theo tổ chức'}
-                    </Badge>
-                  )}
-                </span>
-                {canAdmin && (
-                  <SearchSelect
-                    value={item ? (item.isOverride ? item.workflowId : SHARED) : ''}
-                    onChange={(v) => choose(t, item, v)}
-                    options={optionsFor(item, shared, byId)}
-                    placeholder="Chọn quy trình"
-                    ariaLabel={`Quy trình cho loại việc ${t.name}`}
-                    className="w-full sm:w-64"
-                  />
-                )}
-                {wf && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setViewId(wf.id)}
-                    aria-label={`Xem sơ đồ quy trình ${wf.name}`}
-                    data-workflow-row={wf.id}
-                  >
-                    <Network className="h-3.5 w-3.5" />
-                    Xem sơ đồ
-                  </Button>
-                )}
-              </li>
+                type={t}
+                item={item}
+                wf={item ? byId.get(item.workflowId) : undefined}
+                canAdmin={canAdmin}
+                shared={shared}
+                byId={byId}
+                onChoose={(v) => choose(t, item, v)}
+                onView={setViewId}
+              />
             );
           })}
         </ul>
@@ -207,6 +169,72 @@ export function WorkflowSection({
       />
       <WorkflowEditDialog workflow={viewWorkflow} onClose={() => setViewId(null)} />
     </SectionCard>
+  );
+}
+
+/** Một hàng của bảng: loại việc, quy trình đang dùng (+ huy hiệu nguồn), ô đổi (quản trị) và "Xem sơ đồ". */
+function TypeRow({
+  type,
+  item,
+  wf,
+  canAdmin,
+  shared,
+  byId,
+  onChoose,
+  onView,
+}: {
+  type: SchemeIssueTypeDto;
+  item: ProjectWorkflowSchemeItemDto | undefined;
+  wf: Workflow | undefined;
+  canAdmin: boolean;
+  shared: Workflow[];
+  byId: Map<string, Workflow>;
+  onChoose: (v: string) => void;
+  onView: (workflowId: string) => void;
+}) {
+  return (
+    <li data-type-row={type.id} className="flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2.5">
+      <span className="flex w-40 shrink-0 items-center gap-2 text-sm text-ink">
+        <IssueTypeIcon type={type} />
+        <span className="truncate">{type.name}</span>
+      </span>
+      <span className="flex min-w-0 flex-1 items-center gap-2 text-sm">
+        <span className="truncate font-medium text-ink">
+          {wf?.name ?? (item ? 'Quy trình đã ẩn' : 'Chưa có quy trình')}
+        </span>
+        {item && (
+          <Badge
+            className={
+              item.isOverride ? 'bg-primary-subtle text-primary' : 'bg-surface-2 text-muted'
+            }
+          >
+            {item.isOverride ? 'Riêng của dự án' : 'Theo tổ chức'}
+          </Badge>
+        )}
+      </span>
+      {canAdmin && (
+        <SearchSelect
+          value={item ? (item.isOverride ? item.workflowId : SHARED) : ''}
+          onChange={onChoose}
+          options={optionsFor(item, shared, byId)}
+          placeholder="Chọn quy trình"
+          ariaLabel={`Quy trình cho loại việc ${type.name}`}
+          className="w-full sm:w-64"
+        />
+      )}
+      {wf && (
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => onView(wf.id)}
+          aria-label={`Xem sơ đồ quy trình ${wf.name}`}
+          data-workflow-row={wf.id}
+        >
+          <Network className="h-3.5 w-3.5" />
+          Xem sơ đồ
+        </Button>
+      )}
+    </li>
   );
 }
 

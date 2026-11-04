@@ -246,7 +246,9 @@ describe('RuleEngineService — kích hoạt theo sự kiện', () => {
     });
     expect(b.prisma.automationRun.create).toHaveBeenCalledTimes(1);
   });
+});
 
+describe('RuleEngineService — kích hoạt theo chuyển trạng thái, trường và JQL', () => {
   it('ISSUE_TRANSITIONED với nhiều trạng thái đích (toStatusIds, mỗi quy trình một cái) khớp khi trạng thái mới nằm trong danh sách', async () => {
     const rule = makeRule({
       trigger: 'ISSUE_TRANSITIONED',

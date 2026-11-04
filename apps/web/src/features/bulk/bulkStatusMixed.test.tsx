@@ -14,7 +14,10 @@ import {
   statusUndoPlan,
 } from './bulkEdit';
 
-const h = vi.hoisted(() => ({ patch: vi.fn() }));
+type BulkBody = { items: Array<{ id: string; version: number }>; patch: { statusId: string } };
+const h = vi.hoisted(() => ({
+  patch: vi.fn<(url: string, body: BulkBody) => Promise<unknown>>(),
+}));
 vi.mock('@/lib/api', async (orig) => {
   const real = await orig<typeof ApiModule>();
   return { ...real, api: { patch: h.patch, get: vi.fn() } };
@@ -191,20 +194,16 @@ beforeEach(() => {
   vi.mocked(toast.success).mockReset();
   vi.mocked(toast.warning).mockReset();
   // Máy chủ giả: mọi việc trong request cập nhật được, version + 1.
-  h.patch.mockImplementation(
-    (
-      _url: string,
-      body: { items: Array<{ id: string; version: number }>; patch: { statusId: string } },
-    ) =>
-      Promise.resolve({
-        data: {
-          updated: body.items.map((i) => ({
-            ...mixed.find((m) => m.id === i.id)!,
-            version: i.version + 1,
-          })),
-          conflicts: [],
-        },
-      }),
+  h.patch.mockImplementation((_url: string, body: BulkBody) =>
+    Promise.resolve({
+      data: {
+        updated: body.items.map((i) => ({
+          ...mixed.find((m) => m.id === i.id)!,
+          version: i.version + 1,
+        })),
+        conflicts: [],
+      },
+    }),
   );
 });
 afterEach(cleanup);
@@ -216,7 +215,7 @@ describe('useBulkEdit.setStatus trên lô trộn Task + Bug', () => {
     await act(() => result.current.setStatus(done));
     expect(h.patch).toHaveBeenCalledTimes(2);
     const sent = h.patch.mock.calls.map(([, body]) => ({
-      ids: body.items.map((i: { id: string }) => i.id),
+      ids: body.items.map((i) => i.id),
       to: body.patch.statusId,
     }));
     expect(sent).toEqual([
@@ -233,7 +232,7 @@ describe('useBulkEdit.setStatus trên lô trộn Task + Bug', () => {
     const reopened = bulkStatusOptions(workflows, mixed).find((o) => o.name === 'Reopened')!;
     await act(() => result.current.setStatus(reopened));
     await waitFor(() => expect(h.patch).toHaveBeenCalledTimes(1));
-    expect(h.patch.mock.calls[0]![1].items.map((i: { id: string }) => i.id)).toEqual(['b1', 'b2']);
+    expect(h.patch.mock.calls[0]![1].items.map((i) => i.id)).toEqual(['b1', 'b2']);
     expect(h.patch.mock.calls[0]![1].patch).toEqual({ statusId: statusIdOf('BUG', 'Reopened') });
     expect(retain).toHaveBeenCalledWith(new Set(['t1', 't2']));
     const [title, opts] = vi.mocked(toast.success).mock.calls[0]!;

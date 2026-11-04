@@ -9,7 +9,10 @@ import { defaultWorkflow, statusIdOf } from '@/features/issues/workflowFixtures'
 import { mk } from '@/lib/issueFixture';
 import { bulkStatusOptions } from './bulkEdit';
 
-const h = vi.hoisted(() => ({ patch: vi.fn() }));
+type BulkBody = { items: Array<{ id: string; version: number }>; patch: { statusId: string } };
+const h = vi.hoisted(() => ({
+  patch: vi.fn<(url: string, body: BulkBody) => Promise<unknown>>(),
+}));
 vi.mock('@/lib/api', async (orig) => {
   const real = await orig<typeof ApiModule>();
   return { ...real, api: { patch: h.patch, get: vi.fn() } };
@@ -87,15 +90,12 @@ describe('Kết quả bộ lọc: đổi trạng thái lô trộn Task + Bug tro
     const done = bulkStatusOptions(workflows, mixed).find((o) => o.id === 'name:done')!;
     await act(() => result.current.setStatus(done));
     expect(h.patch).toHaveBeenCalledTimes(2);
-    expect(
-      h.patch.mock.calls.map(([, b]) => [
-        b.items.map((i: { id: string }) => i.id),
-        b.patch.statusId,
-      ]),
-    ).toEqual([
-      [['t1'], statusIdOf('STANDARD', 'Done')],
-      [['b1', 'b2'], statusIdOf('BUG', 'Done')],
-    ]);
+    expect(h.patch.mock.calls.map(([, b]) => [b.items.map((i) => i.id), b.patch.statusId])).toEqual(
+      [
+        [['t1'], statusIdOf('STANDARD', 'Done')],
+        [['b1', 'b2'], statusIdOf('BUG', 'Done')],
+      ],
+    );
     expect(toast.success).toHaveBeenCalledTimes(1);
     expect(retain).toHaveBeenCalledWith(new Set());
   });
@@ -105,7 +105,7 @@ describe('Kết quả bộ lọc: đổi trạng thái lô trộn Task + Bug tro
     const reopened = bulkStatusOptions(workflows, mixed).find((o) => o.name === 'Reopened')!;
     await act(() => result.current.setStatus(reopened));
     expect(h.patch).toHaveBeenCalledTimes(1);
-    expect(h.patch.mock.calls[0]![1].items.map((i: { id: string }) => i.id)).toEqual(['b1', 'b2']);
+    expect(h.patch.mock.calls[0]![1].items.map((i) => i.id)).toEqual(['b1', 'b2']);
     expect(retain).toHaveBeenCalledWith(new Set(['t1']));
     const [, opts] = vi.mocked(toast.success).mock.calls[0]!;
     expect((opts as { description?: string }).description).toContain(

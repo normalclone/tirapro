@@ -7,7 +7,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type * as ApiModule from '@/lib/api';
 import type { Workflow } from './api';
 
-const h = vi.hoisted(() => ({ get: vi.fn(), put: vi.fn() }));
+type PutArgs = [url: string, body: unknown, cfg?: { params?: { dryRun?: number } }];
+const h = vi.hoisted(() => ({
+  get: vi.fn(),
+  put: vi.fn<(...a: PutArgs) => Promise<unknown>>(),
+}));
 vi.mock('@/lib/api', async (orig) => {
   const real = await orig<typeof ApiModule>();
   return {

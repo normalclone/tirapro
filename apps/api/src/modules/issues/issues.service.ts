@@ -1681,6 +1681,25 @@ export class IssuesService {
    * và bỏ qua kiểm tra "chỉ người tạo/quản trị sửa Hạn" (người dùng hệ thống không phải thành viên —
    * quy tắc đã do quản trị tạo).
    */
+  /** Epic mới hợp lệ + cha mới đặt đúng chỗ (không Epic có cha, cùng dự án, không sub-task) và không vòng theo `parentId ?? epicId`. */
+  private async assertUpdatePlacement(
+    workspaceId: string,
+    id: string,
+    current: IssueWriteRow,
+    input: UpdateIssueInput,
+  ): Promise<void> {
+    if (input.epicId && input.epicId !== current.epicId) {
+      await this.assertEpicValid(this.prisma, workspaceId, input.epicId, current.projectId, id);
+      this.assertNotEpicWithEpic(current.type);
+    }
+    const newParent = input.parentId && input.parentId !== current.parentId ? input.parentId : null;
+    const newEpic = input.epicId && input.epicId !== current.epicId ? input.epicId : null;
+    if (newParent && newParent !== id)
+      await this.assertParentPlacement(this.prisma, workspaceId, current, newParent);
+    for (const start of [newParent, newEpic])
+      if (start && start !== id) await this.assertNoTreeCycle(this.prisma, workspaceId, id, start);
+  }
+
   async update(
     workspaceId: string,
     userId: string,
@@ -1706,17 +1725,7 @@ export class IssuesService {
     });
     // Đổi sang loại dùng quy trình KHÁC: phải chọn trạng thái đích trong quy trình mới (không để việc trỏ vào trạng thái của quy trình khác).
     const typeMove = await this.planUpdateTypeMove(userId, workspaceId, current, input);
-    if (input.epicId && input.epicId !== current.epicId) {
-      await this.assertEpicValid(this.prisma, workspaceId, input.epicId, current.projectId, id);
-      this.assertNotEpicWithEpic(current.type);
-    }
-    // Cây việc: cha hợp lệ (không Epic có cha, cùng dự án, không sub-task) và không vòng theo `parentId ?? epicId`.
-    const newParent = input.parentId && input.parentId !== current.parentId ? input.parentId : null;
-    const newEpic = input.epicId && input.epicId !== current.epicId ? input.epicId : null;
-    if (newParent && newParent !== id)
-      await this.assertParentPlacement(this.prisma, workspaceId, current, newParent);
-    for (const start of [newParent, newEpic])
-      if (start && start !== id) await this.assertNoTreeCycle(this.prisma, workspaceId, id, start);
+    await this.assertUpdatePlacement(workspaceId, id, current, input);
     if (input.assigneeId !== undefined && input.assigneeId !== current.assigneeId)
       await this.assertAssigneeInWorkspace(
         workspaceId,
@@ -2016,6 +2025,29 @@ export class IssuesService {
    * Item không thuộc dự án/tổ chức, hoặc chuyển trạng thái sai workflow → lỗi cho cả yêu cầu, chưa ghi gì.
    * Sự kiện chỉ phát sau khi commit.
    */
+  /** Đổi trạng thái hàng loạt: từng việc phải đi được theo quy trình của LOẠI của nó; đích DONE thì không bị chặn và lấy giải pháp mặc định một lần. */
+  private async checkBulkStatusMove(
+    workspaceId: string,
+    projectId: string,
+    rows: IssueRow[],
+    statusId: string | undefined,
+  ): Promise<{ toDone: boolean; doneResolutionId: string | null }> {
+    if (!statusId) return { toDone: false, doneResolutionId: null };
+    // Mỗi loại việc có quy trình riêng: kiểm từng việc theo quy trình của loại của nó.
+    const workflowOf = new Map<string, string | null>();
+    for (const r of rows) {
+      if (r.statusId === statusId) continue;
+      if (!workflowOf.has(r.typeId))
+        workflowOf.set(r.typeId, await this.workflowFor(this.prisma, projectId, r.typeId));
+      await this.assertTransitionAllowed(workflowOf.get(r.typeId)!, r.statusId, statusId);
+    }
+    const toDone = (await this.statusCategory(statusId)) === 'DONE';
+    if (!toDone) return { toDone, doneResolutionId: null };
+    await this.assertNotBlockedForDone(rows.filter((r) => r.statusId !== statusId));
+    // Một lần tra mặc định cho cả lô (bulk không nhận resolution tường minh).
+    return { toDone, doneResolutionId: await this.defaultResolutionId(this.prisma, workspaceId) };
+  }
+
   async bulkUpdate(
     workspaceId: string,
     userId: string,
@@ -2084,23 +2116,9 @@ export class IssuesService {
     );
 
     // Chuyển trạng thái: kiểm tra workflow đúng như transition() trước khi ghi bất cứ thứ gì.
-    let toDone = false;
-    let doneResolutionId: string | null = null;
-    if (patch.statusId) {
-      // Mỗi loại việc có quy trình riêng: kiểm từng việc theo quy trình của loại của nó.
-      const workflowOf = new Map<string, string | null>();
-      for (const r of rows) {
-        if (r.statusId === patch.statusId) continue;
-        if (!workflowOf.has(r.typeId))
-          workflowOf.set(r.typeId, await this.workflowFor(this.prisma, projectId, r.typeId));
-        await this.assertTransitionAllowed(workflowOf.get(r.typeId)!, r.statusId, patch.statusId);
-      }
-      toDone = (await this.statusCategory(patch.statusId)) === 'DONE';
-      if (toDone)
-        await this.assertNotBlockedForDone(rows.filter((r) => r.statusId !== patch.statusId));
-      // Một lần tra mặc định cho cả lô (bulk không nhận resolution tường minh).
-      if (toDone) doneResolutionId = await this.defaultResolutionId(this.prisma, workspaceId);
-    }
+    const statusMove = await this.checkBulkStatusMove(workspaceId, projectId, rows, patch.statusId);
+    const toDone = statusMove.toDone;
+    let doneResolutionId = statusMove.doneResolutionId;
     if (!doneResolutionId && [...typeMoves.values()].some((m) => m.category === 'DONE'))
       doneResolutionId = await this.defaultResolutionId(this.prisma, workspaceId);
     // Giới hạn WIP của cột đích (nếu web gửi boardId); kiểm lại trong transaction sau khi khoá cột.
