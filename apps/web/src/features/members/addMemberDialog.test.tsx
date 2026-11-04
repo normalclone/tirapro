@@ -142,6 +142,31 @@ describe('Thành viên: mời thành viên bằng hộp thoại, không còn for
     expect(h.post).not.toHaveBeenCalled();
   });
 
+  it('đóng khi mật khẩu tạm còn hiện: lời hỏi nói rõ mật khẩu sẽ không hiện lại (không phải "nhập dở")', async () => {
+    const user = renderPage();
+    await user.click((await screen.findAllByRole('button', { name: /Mời thành viên/ }))[0]!);
+    const dialog = await screen.findByRole('dialog', { name: 'Mời thành viên' });
+    await user.click(within(dialog).getByRole('button', { name: /Tạo tài khoản mới/ }));
+    await user.type(within(dialog).getByPlaceholderText('ten@congty.com'), 'an@x.vn');
+    await user.type(within(dialog).getByPlaceholderText('Nguyễn Văn A'), 'Nguyễn An');
+    await user.click(within(dialog).getByRole('button', { name: /Tạo tài khoản và thêm/ }));
+    await within(dialog).findByDisplayValue('Tam-Pass-123');
+    await user.click(within(dialog).getByRole('button', { name: 'Đóng' }));
+    const confirm = await screen.findByRole('dialog', { name: /Mật khẩu tạm sẽ không hiện lại/ });
+    expect(within(confirm).getByText(/Bạn đã chép lại chưa\?/)).toBeTruthy();
+    expect(within(confirm).queryByText(/nhập dở/)).toBeNull();
+    await user.click(within(confirm).getByRole('button', { name: 'Huỷ' }));
+    expect(screen.getByRole('dialog', { name: 'Mời thành viên' })).toBeTruthy();
+    await user.click(
+      within(screen.getByRole('dialog', { name: 'Mời thành viên' })).getByRole('button', {
+        name: 'Đóng',
+      }),
+    );
+    const confirm2 = await screen.findByRole('dialog', { name: /Mật khẩu tạm sẽ không hiện lại/ });
+    await user.click(within(confirm2).getByRole('button', { name: /Đã chép, đóng/ }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  });
+
   it('không có quyền member:manage: không có nút', async () => {
     renderPage(false);
     await screen.findByText('Danh sách thành viên');

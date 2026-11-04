@@ -14,6 +14,7 @@ export function AddDialog({
   open,
   onClose,
   dirty = false,
+  dirtyPrompt,
   children,
   ...dialog
 }: {
@@ -21,6 +22,8 @@ export function AddDialog({
   onClose: () => void;
   /** Có nội dung chưa lưu → hỏi trước khi đóng. */
   dirty?: boolean;
+  /** Lời hỏi riêng khi đóng lúc còn `dirty` (mặc định: "Bạn đang nhập dở…"). */
+  dirtyPrompt?: { title: string; description: string; confirmLabel?: string };
   children: ReactNode;
 } & Omit<DialogProps, 'open' | 'onOpenChange' | 'children' | 'onCloseAutoFocus'>) {
   const confirm = useConfirm();
@@ -33,9 +36,10 @@ export function AddDialog({
   async function requestClose() {
     if (dirty) {
       const ok = await confirm({
-        title: 'Bỏ thay đổi chưa lưu?',
-        description: 'Bạn đang nhập dở. Đóng bây giờ sẽ mất phần đã nhập.',
-        confirmLabel: 'Bỏ thay đổi',
+        title: dirtyPrompt?.title ?? 'Bỏ thay đổi chưa lưu?',
+        description:
+          dirtyPrompt?.description ?? 'Bạn đang nhập dở. Đóng bây giờ sẽ mất phần đã nhập.',
+        confirmLabel: dirtyPrompt?.confirmLabel ?? 'Bỏ thay đổi',
         destructive: true,
       });
       if (!ok) return;

@@ -26,7 +26,7 @@ interface FlowProps {
   /** Gửi xong (đã thêm người có sẵn / bấm "Xong" sau khi tạo tài khoản) — hộp thoại dùng để tự đóng. */
   onFinished?: () => void;
   /** Báo có nội dung đang nhập dở (để hộp thoại hỏi trước khi đóng). */
-  onDirtyChange?: (dirty: boolean) => void;
+  onDirtyChange?: (dirty: boolean, reason?: 'tempPassword') => void;
 }
 
 /**
@@ -80,26 +80,40 @@ export function AddMemberPanel() {
   );
 }
 
+/** Đóng khi mật khẩu tạm còn đang hiện: nói rõ nó sẽ không hiện lại (khác lời hỏi "nhập dở" chung). */
+const TEMP_PASSWORD_PROMPT = {
+  title: 'Mật khẩu tạm sẽ không hiện lại',
+  description: 'Mật khẩu tạm sẽ không hiện lại. Bạn đã chép lại chưa?',
+  confirmLabel: 'Đã chép, đóng',
+};
+
 /** Hộp thoại "Mời thành viên" — cùng luồng/trường/quyền với thẻ cũ; nút mở nằm ở đầu trang Thành viên. */
 export function AddMemberDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [dirty, setDirty] = useState(false);
+  const [tempShown, setTempShown] = useState(false);
   return (
     <AddDialog
       open={open}
       onClose={() => {
         setDirty(false);
+        setTempShown(false);
         onClose();
       }}
       dirty={dirty}
+      dirtyPrompt={tempShown ? TEMP_PASSWORD_PROMPT : undefined}
       title="Mời thành viên"
       description="Chọn người có sẵn trong hệ thống hoặc tạo tài khoản mới."
       size="lg"
       bodyClassName="p-0"
     >
       <AddMemberFlow
-        onDirtyChange={setDirty}
+        onDirtyChange={(d, reason) => {
+          setDirty(d);
+          setTempShown(reason === 'tempPassword');
+        }}
         onFinished={() => {
           setDirty(false);
+          setTempShown(false);
           onClose();
         }}
       />
@@ -108,10 +122,14 @@ export function AddMemberDialog({ open, onClose }: { open: boolean; onClose: () 
 }
 
 /** Báo nội dung đang nhập dở lên hộp thoại bao quanh (nếu có). */
-function useReportDirty(dirty: boolean, onDirtyChange?: (dirty: boolean) => void) {
+function useReportDirty(
+  dirty: boolean,
+  onDirtyChange?: FlowProps['onDirtyChange'],
+  reason?: 'tempPassword',
+) {
   useEffect(() => {
-    onDirtyChange?.(dirty);
-  }, [dirty, onDirtyChange]);
+    onDirtyChange?.(dirty, reason);
+  }, [dirty, reason, onDirtyChange]);
 }
 
 /** Dòng báo khi quay về từ "tạo tài khoản" vì email đã có tài khoản. */
@@ -325,7 +343,7 @@ function CreateAccountForm({
     created !== null
       ? !!created.tempPassword
       : email.trim() !== '' || displayName.trim() !== '' || password.trim() !== '';
-  useReportDirty(dirty, onDirtyChange);
+  useReportDirty(dirty, onDirtyChange, created?.tempPassword ? 'tempPassword' : undefined);
   const canSubmit =
     !!email.trim() && !!displayName.trim() && effectiveRoleIds.length > 0 && !passwordError;
 
