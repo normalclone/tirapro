@@ -109,6 +109,8 @@ const EXEMPT_METHODS: Record<string, string> = {
     'tính lại điểm TOÀN HỆ THỐNG theo bảng hệ số (SA lưu, chạy nền; mọi dự án kể cả lưu trữ để điểm luôn khớp công thức), không phải thao tác của người dùng trên một dự án',
   'issues/points.service.ts#rollupEpics':
     'helper chạy TRONG transaction của IssuesService (create/update/bulk/xoá/khôi phục) — các nơi đó đã chặn dự án lưu trữ trước khi gọi',
+  'issues/points.service.ts#rollupParents':
+    'helper chạy TRONG transaction của IssuesService (create/update/bulk/xoá/khôi phục) và của recomputeAll — các nơi đó đã chặn dự án lưu trữ trước khi gọi (recomputeAll cố ý chạy mọi dự án)',
   'import/import.service.ts#resolveOrCreateLabel':
     'helper nội bộ của luồng import (đã chặn trước khi tạo ImportJob)',
   'sla/sla.service.ts#onIssueCreated': 'phản ứng sự kiện issue (ghi issue đã bị chặn ở nguồn)',

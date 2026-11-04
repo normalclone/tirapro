@@ -13,7 +13,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { isBugType } from '../../common/bug-type';
 import { TRIAGE_VISIBLE, triageVisibleSql } from '../../common/triage-visibility';
-import { countsTowardPoints, EXCLUDE_EPIC_POINTS } from '../../common/points-scope';
+import { countsTowardPoints, LEAF_POINTS_ONLY, LIVE_CHILD_COUNT } from '../../common/points-scope';
 import { NotFoundAppException } from '../../common/exceptions/app.exception';
 import { ProjectAccessService } from '../rbac/project-access.service';
 import { ProjectHealthService } from './project-health.service';
@@ -310,8 +310,8 @@ export class AnalyticsService {
     // Việc chưa duyệt không tính vào báo cáo (cùng quy tắc Tổng quan/Board).
     const baseWhere: Prisma.IssueWhereInput = { projectId, deletedAt: null, AND: [TRIAGE_VISIBLE] };
     const openStatus: Prisma.IssueWhereInput = { status: { category: { not: 'DONE' } } };
-    // Điểm cộng riêng, LOẠI Epic (điểm Epic = tổng việc con → cộng sẽ đếm đôi); số đếm việc ở các groupBy trên vẫn tính cả Epic.
-    const pointsWhere: Prisma.IssueWhereInput = { ...baseWhere, ...EXCLUDE_EPIC_POINTS };
+    // Điểm cộng riêng, chỉ VIỆC LÁ (điểm Epic/việc cha = tổng việc con → cộng sẽ đếm đôi); số đếm việc ở các groupBy trên vẫn tính cả hai.
+    const pointsWhere: Prisma.IssueWhereInput = { ...baseWhere, ...LEAF_POINTS_ONLY };
     const sumPoints = { storyPoints: true } as const;
 
     const [
@@ -548,8 +548,8 @@ export class AnalyticsService {
       },
       include: {
         issues: {
-          // Chỉ để cộng điểm (cam kết/đã xong): loại Epic — điểm Epic = tổng việc con, cộng sẽ đếm đôi.
-          where: { deletedAt: null, ...TRIAGE_VISIBLE, ...EXCLUDE_EPIC_POINTS },
+          // Chỉ để cộng điểm (cam kết/đã xong): chỉ việc lá — điểm Epic/việc cha = tổng việc con, cộng sẽ đếm đôi.
+          where: { deletedAt: null, ...TRIAGE_VISIBLE, ...LEAF_POINTS_ONLY },
           select: { id: true, storyPoints: true },
         },
       },
@@ -667,10 +667,11 @@ export class AnalyticsService {
           storyPoints: true,
           status: { select: { category: true } },
           type: { select: { key: true } },
+          ...LIVE_CHILD_COUNT,
         },
       });
       for (const i of issues) {
-        // Số việc tính cả Epic; điểm thì loại Epic (điểm Epic = tổng việc con, cộng sẽ đếm đôi).
+        // Số việc tính cả Epic/việc cha; điểm chỉ cộng việc lá (điểm Epic/việc cha = tổng việc con, cộng sẽ đếm đôi).
         const p = countsTowardPoints(i) ? (i.storyPoints ?? 0) : 0;
         live.points += p;
         live.count += 1;

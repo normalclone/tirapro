@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import type { Prisma, TimeOffKind } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { TRIAGE_VISIBLE } from '../../common/triage-visibility';
-import { countsTowardPoints } from '../../common/points-scope';
+import { countsTowardPoints, LIVE_CHILD_COUNT } from '../../common/points-scope';
 import { BusinessRuleException, NotFoundAppException } from '../../common/exceptions/app.exception';
 import { ProjectAccessService } from '../rbac/project-access.service';
 import {
@@ -390,6 +390,7 @@ export class ResourcesService {
           originalEstimate: true,
           storyPoints: true,
           type: { select: { key: true } },
+          ...LIVE_CHILD_COUNT,
         },
       }),
       this.prisma.workLog.findMany({
@@ -439,7 +440,7 @@ export class ResourcesService {
     const issueCountByUserWeek = new Map<string, number>();
     for (const i of issues) {
       if (!i.assigneeId) continue;
-      // Điểm Epic = tổng việc con (từng việc con đã được tính tải riêng) → không quy ra giờ nữa kẻo đếm đôi.
+      // Điểm Epic/việc cha = tổng việc con (từng việc con đã được tính tải riêng) → không quy ra giờ nữa kẻo đếm đôi.
       const estimate = this.estimateSeconds(
         i.originalEstimate,
         countsTowardPoints(i) ? i.storyPoints : null,

@@ -41,6 +41,7 @@ import {
   InvalidTransitionException,
   NotFoundAppException,
   PointsOverrideForbiddenException,
+  PointsRollupOnlyException,
   VersionConflictException,
 } from '../../common/exceptions/app.exception';
 import { cursorPage, PageResult } from '../../common/dto/page-result';
@@ -185,22 +186,75 @@ export class IssuesService {
   }
 
   /**
-   * Việc mới gắn vào Epic → cộng điểm vào Epic (cùng transaction); sự kiện realtime của Epic đẩy vào `after` (chạy SAU
-   * commit: tự mở transaction → ngay sau `$transaction`; transaction của bên gọi (import) → `deferred` của họ).
+   * Việc mới có việc cha → cộng điểm việc cha; gắn vào Epic (cấp trên) → cộng điểm Epic (cùng transaction, thứ tự cha →
+   * Epic). Sự kiện realtime của các việc đổi tổng đẩy vào `after` (chạy SAU commit: tự mở transaction → ngay sau
+   * `$transaction`; transaction của bên gọi (import) → `deferred` của họ).
    */
   private async rollupOnCreate(
     tx: Prisma.TransactionClient,
     workspaceId: string,
     userId: string,
-    epicId: string | null,
+    created: { epicId: string | null; parentId: string | null },
     after: Array<() => void> | null,
   ): Promise<void> {
-    if (!epicId) return;
-    const changedEpics = await this.points.rollupEpics(tx, [epicId]);
-    if (changedEpics.length)
+    if (!created.epicId && !created.parentId) return;
+    const changed = await this.rollupTree(tx, {
+      parentIds: created.parentId ? [created.parentId] : [],
+      // Việc có cha không vào tổng Epic (điểm của nó nằm trong điểm việc cha).
+      epicIds: created.epicId && !created.parentId ? [created.epicId] : [],
+    });
+    if (changed.length)
       after?.push(() => {
-        void this.emitEpicTotals(workspaceId, userId, changedEpics);
+        void this.emitEpicTotals(workspaceId, userId, changed);
       });
+  }
+
+  /**
+   * Cộng điểm theo cây trong transaction của bên gọi: việc cha trước (kể cả chuỗi cha → ông), rồi Epic (Epic của các
+   * việc cha vừa đổi + `epicIds`). Trả id mọi việc vừa đổi tổng (cha lẫn Epic) để phát sự kiện sau commit.
+   */
+  private async rollupTree(
+    tx: Prisma.TransactionClient,
+    t: { parentIds: string[]; epicIds: string[] },
+  ): Promise<string[]> {
+    const parents: string[] = [];
+    const parentEpics = await this.points.rollupParents(tx, t.parentIds, { changed: parents });
+    const epics = await this.points.rollupEpics(tx, [...t.epicIds, ...parentEpics]);
+    return [...new Set([...parents, ...epics])];
+  }
+
+  /**
+   * Việc trong lô đang có việc con: điểm là tổng việc con → không chỉnh tay, không tính lại theo công thức. Chỉ tra khi
+   * patch đụng tới điểm (storyPoints / Độ khó / Ưu tiên).
+   */
+  private async bulkRollupParents(
+    rows: IssueRow[],
+    patch: BulkUpdateIssuesInput['patch'],
+  ): Promise<Set<string>> {
+    const touchesPoints =
+      patch.storyPoints !== undefined ||
+      patch.difficulty !== undefined ||
+      patch.priorityId !== undefined;
+    return touchesPoints
+      ? this.idsWithLiveChildren(
+          this.prisma,
+          rows.map((r) => r.id),
+        )
+      : new Set<string>();
+  }
+
+  /** Id (trong `ids`) của việc đang có ≥1 việc con chưa xoá — điểm của chúng là tổng việc con. */
+  private async idsWithLiveChildren(
+    db: Prisma.TransactionClient | PrismaService,
+    ids: string[],
+  ): Promise<Set<string>> {
+    if (ids.length === 0) return new Set();
+    const rows = await db.issue.findMany({
+      where: { parentId: { in: ids }, deletedAt: null },
+      select: { parentId: true },
+      distinct: ['parentId'],
+    });
+    return new Set(rows.map((r) => r.parentId).filter((x): x is string => typeof x === 'string'));
   }
 
   /**
@@ -233,6 +287,7 @@ export class IssuesService {
     projectId: string,
     rows: IssueRow[],
     requested: number | null | undefined,
+    rollupParents: Set<string>,
   ): Promise<number | undefined> {
     if (requested === undefined) return undefined;
     // Việc đã đúng điểm này và chưa chỉnh tay: gửi lại không phải ghi đè → không đổi gì, không cần quyền.
@@ -246,6 +301,10 @@ export class IssuesService {
     if (overridden.some((r) => r.type.key === 'EPIC'))
       throw new BusinessRuleException(
         'Điểm của Epic là tổng điểm các việc con — không chỉnh tay được; hãy bỏ Epic khỏi lô',
+      );
+    if (overridden.some((r) => rollupParents.has(r.id)))
+      throw new PointsRollupOnlyException(
+        'Có việc đang có việc con nên điểm là tổng điểm việc con — không chỉnh tay được; hãy bỏ việc đó khỏi lô',
       );
     return this.assertManualPoints(requested);
   }
@@ -272,6 +331,7 @@ export class IssuesService {
     manualPoints: number | undefined,
     recompute: Awaited<ReturnType<IssuesService['bulkRecomputeContext']>>,
     data: Prisma.IssueUncheckedUpdateManyInput,
+    isRollupParent: boolean,
   ): void {
     // Việc đã đúng điểm này và chưa chỉnh tay: không phải ghi đè (không bật cờ), vẫn theo công thức khi đổi độ khó/ưu tiên.
     const override = manualPoints !== undefined && isPointsOverride(before, manualPoints);
@@ -284,7 +344,8 @@ export class IssuesService {
     if (difficultyChanged) data.difficulty = patch.difficulty;
     const priorityChanged =
       patch.priorityId !== undefined && patch.priorityId !== before.priorityId;
-    if (!recompute || override || before.pointsManual) return;
+    // Việc đang có việc con: điểm là tổng việc con (rollupParents), không tính lại theo công thức.
+    if (!recompute || override || before.pointsManual || isRollupParent) return;
     if (!difficultyChanged && !priorityChanged) return;
     const pts = computePoints(
       recompute.formula,
@@ -1092,13 +1153,7 @@ export class IssuesService {
           occurredAt: new Date(),
         },
       });
-      await this.rollupOnCreate(
-        tx,
-        workspaceId,
-        userId,
-        created.epicId,
-        outerTx ? deferred : afterCommit,
-      );
+      await this.rollupOnCreate(tx, workspaceId, userId, created, outerTx ? deferred : afterCommit);
       return created;
     };
     // timeout 30s như transaction đánh số lại rank riêng trước đây (dự án lớn hết chỗ chèn thì rebalance chạy trong đây).
@@ -1542,7 +1597,7 @@ export class IssuesService {
       await this.applyPoints(tx, current, input, data, manualPoints);
       const row = await this.updateWithVersion(tx, id, workspaceId, input.version, data);
       await this.recordChanges(tx, userId, current, row);
-      changedEpics = await this.points.rollupEpics(tx, this.epicsToRollup(current, row));
+      changedEpics = await this.rollupTree(tx, this.rollupTargets([[current, row]]));
       return row;
     });
     const dto = this.toDto(updated);
@@ -1558,8 +1613,8 @@ export class IssuesService {
 
   /**
    * Quyết định điểm khi `update()`: ghi đè tay → `storyPoints` + `pointsManual=true`; đổi Loại/Độ khó/Ưu tiên trên việc
-   * KHÔNG chỉnh tay → tính lại; việc đã chỉnh tay giữ nguyên điểm. Việc thành/đang là Epic: điểm = tổng việc con và
-   * không thể chỉnh tay. Sửa `data` tại chỗ (chạy trong transaction để đọc đúng loại/ưu tiên mới).
+   * KHÔNG chỉnh tay → tính lại; việc đã chỉnh tay giữ nguyên điểm. Việc thành/đang là Epic, hoặc đang có việc con:
+   * điểm = tổng việc con và không thể chỉnh tay (việc con: 422 POINTS_ROLLUP_ONLY). Sửa `data` tại chỗ (chạy trong transaction để đọc đúng loại/ưu tiên mới).
    */
   private async applyPoints(
     tx: Prisma.TransactionClient,
@@ -1588,6 +1643,11 @@ export class IssuesService {
       data.storyPoints = await this.points.epicTotal(tx, current.id);
       return;
     }
+    // Việc đang có việc con chưa xoá: điểm là tổng điểm việc con (rollupParents) — không chỉnh tay, không theo công thức.
+    if ((await this.idsWithLiveChildren(tx, [current.id])).size > 0) {
+      if (manualPoints !== undefined) throw new PointsRollupOnlyException();
+      return;
+    }
     if (manualPoints !== undefined) {
       data.storyPoints = manualPoints;
       data.pointsManual = true;
@@ -1596,15 +1656,36 @@ export class IssuesService {
     }
   }
 
-  /** Epic cần tính lại tổng sau khi một việc đổi: Epic cũ + mới khi đổi `epicId`, hoặc Epic hiện tại khi điểm việc đổi. */
-  private epicsToRollup(
-    before: { epicId: string | null; storyPoints: number | null },
-    after: { epicId: string | null; storyPoints: number | null },
-  ): string[] {
-    const ids: string[] = [];
-    if (before.epicId !== after.epicId) ids.push(...[before.epicId, after.epicId].filter(isString));
-    else if (after.epicId && before.storyPoints !== after.storyPoints) ids.push(after.epicId);
-    return ids;
+  /**
+   * Việc cha và Epic cần cộng lại sau khi việc đổi (cặp trước/sau):
+   *  - việc cha: cha cũ + mới khi đổi `parentId`, hoặc cha hiện tại khi điểm việc đổi;
+   *  - Epic: Epic cũ + mới khi đổi `epicId`, hoặc Epic hiện tại khi điểm đổi / việc chuyển giữa "cấp trên" và "việc con"
+   *    (chỉ việc cấp trên, `parentId` rỗng, được cộng vào Epic). Epic của việc cha tự được nối tiếp ở `rollupTree`.
+   */
+  private rollupTargets(
+    pairs: Array<
+      [
+        { epicId: string | null; parentId: string | null; storyPoints: number | null },
+        { epicId: string | null; parentId: string | null; storyPoints: number | null },
+      ]
+    >,
+  ): { parentIds: string[]; epicIds: string[] } {
+    const parentIds: string[] = [];
+    const epicIds: string[] = [];
+    for (const [before, after] of pairs) {
+      const pointsChanged = before.storyPoints !== after.storyPoints;
+      if (before.parentId !== after.parentId)
+        parentIds.push(...[before.parentId, after.parentId].filter(isString));
+      else if (after.parentId && pointsChanged) parentIds.push(after.parentId);
+      if (before.epicId !== after.epicId)
+        epicIds.push(...[before.epicId, after.epicId].filter(isString));
+      else if (
+        after.epicId &&
+        (pointsChanged || (before.parentId === null) !== (after.parentId === null))
+      )
+        epicIds.push(after.epicId);
+    }
+    return { parentIds, epicIds };
   }
 
   /**
@@ -1642,12 +1723,14 @@ export class IssuesService {
     // Chỉ kiểm khi có hàng thật sự đổi assignee (hàng đã giữ đúng assignee đó thì bỏ qua).
     if (patch.assigneeId !== undefined && rows.some((r) => r.assigneeId !== patch.assigneeId))
       await this.assertAssigneeInWorkspace(workspaceId, patch.assigneeId, this.prisma, projectId);
+    const rollupParents = await this.bulkRollupParents(rows, patch);
     const manualPoints = await this.resolveBulkManualPoints(
       userId,
       workspaceId,
       projectId,
       rows,
       patch.storyPoints,
+      rollupParents,
     );
     if (patch.epicId) for (const r of rows) this.assertNotEpicWithEpic(r.type);
     if (patch.epicId)
@@ -1730,7 +1813,14 @@ export class IssuesService {
           data.priorityId = patch.priorityId;
         if (patch.sprintId !== undefined && patch.sprintId !== before.sprintId)
           data.sprintId = patch.sprintId;
-        this.applyBulkPoints(before, patch, manualPoints, recompute, data);
+        this.applyBulkPoints(
+          before,
+          patch,
+          manualPoints,
+          recompute,
+          data,
+          rollupParents.has(before.id),
+        );
         if (patch.epicId !== undefined && patch.epicId !== before.epicId)
           data.epicId = patch.epicId;
         if (Object.keys(data).length === 0) {
@@ -1752,10 +1842,10 @@ export class IssuesService {
         }
       }
       if (labelOps && labelIds.length) await this.applyBulkLabels(tx, labelIds, labelOps);
-      // Tổng điểm Epic (cũ và mới) sau khi cả lô đã ghi — một lần cho mỗi Epic, cùng transaction.
-      changedEpics = await this.points.rollupEpics(
+      // Tổng điểm việc cha rồi Epic (cũ và mới) sau khi cả lô đã ghi — một lần cho mỗi việc, cùng transaction.
+      changedEpics = await this.rollupTree(
         tx,
-        changed.flatMap((c) => this.epicsToRollup(c.before, c.after)),
+        this.rollupTargets(changed.map((c) => [c.before, c.after])),
       );
     }, BULK_TX_OPTIONS);
 
@@ -2116,7 +2206,7 @@ export class IssuesService {
   async softDelete(workspaceId: string, userId: string, id: string): Promise<{ success: true }> {
     const current = await this.requireIssue(workspaceId, id);
     // updateMany + deletedAt:null để hai lần xoá đồng thời chỉ một lần thắng (và chỉ phát sự kiện một lần).
-    // Trừ điểm khỏi Epic trong cùng transaction.
+    // Trừ điểm khỏi việc cha/Epic trong cùng transaction.
     let changedEpics: string[] = [];
     await this.prisma.$transaction(async (tx) => {
       const { count } = await tx.issue.updateMany({
@@ -2124,7 +2214,11 @@ export class IssuesService {
         data: { deletedAt: new Date(), updatedById: userId, version: { increment: 1 } },
       });
       if (count === 0) throw new NotFoundAppException('Công việc');
-      if (current.epicId) changedEpics = await this.points.rollupEpics(tx, [current.epicId]);
+      // Việc con bị xoá: cộng lại việc cha (có thể quay về công thức nếu hết việc con), rồi Epic của việc cấp trên.
+      changedEpics = await this.rollupTree(tx, {
+        parentIds: current.parentId ? [current.parentId] : [],
+        epicIds: current.epicId && !current.parentId ? [current.epicId] : [],
+      });
     });
     this.events.emit(DOMAIN_EVENTS.ISSUE_DELETED, {
       issueId: id,
@@ -2204,7 +2298,7 @@ export class IssuesService {
       detach.epicId = null;
       orphaned.push('epicId');
     }
-    // Cộng điểm lại vào Epic (nếu còn gắn) trong cùng transaction.
+    // Cộng điểm lại vào việc cha/Epic (nếu còn gắn) trong cùng transaction.
     let changedEpics: string[] = [];
     await this.prisma.$transaction(async (tx) => {
       const { count } = await tx.issue.updateMany({
@@ -2213,9 +2307,14 @@ export class IssuesService {
       });
       if (count === 0) throw new NotFoundAppException('Công việc');
       const epicId = 'epicId' in detach ? null : current.epicId;
-      // Việc khôi phục là Epic: việc con có thể đã đổi trong lúc nó nằm trong Thùng rác (rollup bỏ qua Epic đã xoá).
-      const own = current.type.key === 'EPIC' ? [issueId] : [];
-      changedEpics = await this.points.rollupEpics(tx, [...own, ...(epicId ? [epicId] : [])]);
+      const parentId = 'parentId' in detach ? null : current.parentId;
+      // Việc khôi phục là Epic/việc cha: việc con có thể đã đổi trong lúc nó nằm trong Thùng rác (rollup bỏ qua việc đã xoá).
+      const isEpic = current.type.key === 'EPIC';
+      const ownIsParent = !isEpic && (await this.idsWithLiveChildren(tx, [issueId])).size > 0;
+      changedEpics = await this.rollupTree(tx, {
+        parentIds: [...(ownIsParent ? [issueId] : []), ...(parentId ? [parentId] : [])],
+        epicIds: [...(isEpic ? [issueId] : []), ...(epicId && !parentId ? [epicId] : [])],
+      });
     });
     const row = await this.prisma.issue.findFirstOrThrow({
       where: { id: issueId, workspaceId, deletedAt: null },
@@ -2250,13 +2349,15 @@ export class IssuesService {
         difficulty: current.difficulty,
         priorityId: current.priorityId,
       });
+      // Việc đang có việc con: điểm vẫn là tổng việc con (chỉ bỏ cờ chỉnh tay), không đặt theo công thức.
+      const isParent = (await this.idsWithLiveChildren(tx, [id])).size > 0;
       const row = await this.updateWithVersion(tx, id, workspaceId, current.version, {
         pointsManual: false,
-        ...(computed !== null ? { storyPoints: computed } : {}),
+        ...(computed !== null && !isParent ? { storyPoints: computed } : {}),
         updatedById: userId,
       });
       await this.recordChanges(tx, userId, current, row);
-      changedEpics = await this.points.rollupEpics(tx, this.epicsToRollup(current, row));
+      changedEpics = await this.rollupTree(tx, this.rollupTargets([[current, row]]));
       return row;
     });
     const dto = this.toDto(updated);

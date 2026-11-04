@@ -350,10 +350,14 @@ describe('SprintsService.listForProject — groupBy thay cho kéo từng issue',
       where: inSprints,
       _count: { _all: true },
     });
-    // điểm: loại Epic (điểm Epic = tổng việc con, cộng sẽ đếm đôi)
+    // điểm: chỉ việc lá — loại Epic và việc cha (điểm của chúng = tổng việc con, cộng sẽ đếm đôi)
     expect(groupBy).toHaveBeenCalledWith({
       by: ['sprintId'],
-      where: { ...inSprints, NOT: { type: { key: 'EPIC' } } },
+      where: {
+        ...inSprints,
+        NOT: { type: { key: 'EPIC' } },
+        children: { none: { deletedAt: null } },
+      },
       _sum: { storyPoints: true },
     });
     // không include issues nữa
@@ -560,14 +564,70 @@ describe('SprintsService — việc chưa duyệt không tính vào snapshot/pay
     expect(hasTriageVisible(arg.where)).toBe(true);
   });
 
+  it('snapshot(): Task (5 điểm, đang có 2 sub-task) cùng hai sub-task 2 + 3 trong sprint => cam kết 5, không phải 10', async () => {
+    const t = tx();
+    t.issue.findMany.mockResolvedValue([
+      // Task cha: điểm = tổng việc con → bỏ khỏi phép cộng (có việc con chưa xoá)
+      {
+        storyPoints: 5,
+        status: { category: 'IN_PROGRESS' },
+        type: { key: 'TASK' },
+        _count: { children: 2 },
+      },
+      {
+        storyPoints: 2,
+        status: { category: 'DONE' },
+        type: { key: 'TASK' },
+        _count: { children: 0 },
+      },
+      {
+        storyPoints: 3,
+        status: { category: 'TODO' },
+        type: { key: 'TASK' },
+        _count: { children: 0 },
+      },
+    ] as never);
+    const { service } = make(t);
+    await service.snapshot(t as never, 's1', 'DAILY');
+    expect(t.sprintSnapshot.create.mock.calls[0]![0].data).toMatchObject({
+      committedPoints: 5,
+      completedPoints: 2,
+      remainingPoints: 3,
+      committedCount: 3, // số việc vẫn đếm cả việc cha
+    });
+    // chỉ để tra số con chưa xoá
+    const select = (t.issue.findMany.mock.calls[0]![0] as { select: { _count: unknown } }).select;
+    expect(select._count).toEqual({ select: { children: { where: { deletedAt: null } } } });
+  });
+
   it('snapshot(): điểm cam kết/hoàn thành LOẠI Epic (điểm Epic = tổng việc con), số việc vẫn tính cả Epic', async () => {
     const t = tx();
     t.issue.findMany.mockResolvedValue([
-      { storyPoints: 3, status: { category: 'DONE' }, type: { key: 'TASK' } },
-      { storyPoints: 5, status: { category: 'TODO' }, type: { key: 'STORY' } },
-      { storyPoints: 2, status: { category: 'TODO' }, type: { key: null } },
+      {
+        storyPoints: 3,
+        status: { category: 'DONE' },
+        type: { key: 'TASK' },
+        _count: { children: 0 },
+      },
+      {
+        storyPoints: 5,
+        status: { category: 'TODO' },
+        type: { key: 'STORY' },
+        _count: { children: 0 },
+      },
+      {
+        storyPoints: 2,
+        status: { category: 'TODO' },
+        type: { key: null },
+        _count: { children: 0 },
+      },
       // Epic chứa chính các việc trên: 3 + 5 + 2 = 10 — cộng thêm sẽ thành 20
-      { storyPoints: 10, status: { category: 'IN_PROGRESS' }, type: { key: 'EPIC' } },
+      {
+        storyPoints: 10,
+        status: { category: 'IN_PROGRESS' },
+        type: { key: 'EPIC' },
+        _count: { children: 0 },
+      },
     ] as never);
     const { service } = make(t);
     await service.snapshot(t as never, 's1', 'DAILY');

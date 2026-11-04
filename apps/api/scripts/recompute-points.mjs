@@ -4,9 +4,12 @@
  * như 80 (việc cũ đều `pointsManual = false`). Idempotent: chỉ ghi việc có điểm KHÁC công thức, chạy lại cập nhật 0 việc.
  *
  * Cùng thuật toán với `PointsService.recomputeAll` (API chạy nền khi SA lưu bảng hệ số):
- *  - theo từng dự án, lô 500 việc; bỏ việc chỉnh tay (`pointsManual`) và Epic; việc đổi được tăng `version`;
+ *  - theo từng dự án, lô 500 việc; bỏ việc chỉnh tay (`pointsManual`), Epic và việc CHA (có việc con chưa xoá); việc đổi
+ *    được tăng `version`;
  *  - không ghi lịch sử hoạt động từng việc;
- *  - Epic = tổng điểm việc con chưa xoá (kể cả sub-task), ghi khi khác và tăng `version`.
+ *  - việc cha = tổng điểm việc con chưa xoá (tầng thấp trước, cộng ngược lên chuỗi cha → ông); hết việc con thì theo công
+ *    thức trừ khi chỉnh tay; ghi khi khác và tăng `version`;
+ *  - Epic = tổng điểm việc CẤP TRÊN (`parentId` rỗng) thuộc Epic, chưa xoá; ghi khi khác và tăng `version`.
  * Không phát sự kiện realtime (script chạy lúc triển khai, chưa có ai mở trang).
  * Ghi bằng SQL thô và KHÔNG đổi `updatedAt` (SLA / "cập nhật gần đây" dựa vào nó; đây là tính lại của hệ thống, không phải
  * người dùng sửa). WHERE lặp lại đầu vào đã tính (loại, độ khó, ưu tiên) + `pointsManual = false` nên việc vừa bị người dùng
@@ -50,7 +53,12 @@ try {
     for (;;) {
       // Cả việc đã xoá mềm: khôi phục về không bị lệch điểm (tổng Epic vẫn loại việc đã xoá).
       const rows = await prisma.issue.findMany({
-        where: { projectId, pointsManual: false, NOT: { type: { key: 'EPIC' } } },
+        where: {
+          projectId,
+          pointsManual: false,
+          NOT: { type: { key: 'EPIC' } },
+          children: { none: { deletedAt: null } }, // việc cha lấy tổng việc con ở bước sau
+        },
         select: { id: true, typeId: true, difficulty: true, priorityId: true, storyPoints: true },
         orderBy: { id: 'asc' },
         take: BATCH,
@@ -91,7 +99,77 @@ try {
     }
   }
 
-  // Epic sau cùng: tổng điểm việc con chưa xoá (kể cả sub-task). Khoá dòng Epic như luồng sửa việc.
+  // Việc cha (có việc con chưa xoá): tổng điểm việc con, tầng thấp trước; khoá dòng như luồng sửa việc.
+  const parentRows = await prisma.issue.findMany({
+    where: {
+      deletedAt: null,
+      children: { some: { deletedAt: null } },
+      NOT: { type: { key: 'EPIC' } },
+    },
+    select: { id: true, parentId: true },
+    orderBy: { id: 'asc' },
+  });
+  const parentOf = new Map(parentRows.map((r) => [r.id, r.parentId]));
+  const depthOf = (id) => {
+    let d = 0;
+    for (let cur = parentOf.get(id); cur && parentOf.has(cur) && d < 20; cur = parentOf.get(cur))
+      d++;
+    return d;
+  };
+  const parentOrder = parentRows
+    .map((r) => r.id)
+    .sort((a, b) => depthOf(b) - depthOf(a) || (a < b ? -1 : 1));
+  const changedParents = new Set();
+  const touchParent = async (tx, startIds) => {
+    // Cộng ngược lên chuỗi: cha đổi thì cha của nó ở vòng kế (cùng thuật toán PointsService.rollupParents).
+    let level = [...new Set(startIds)].sort();
+    for (let depth = 0; level.length > 0 && depth < 20; depth++) {
+      const next = new Set();
+      for (const id of level) {
+        await tx.$queryRaw`SELECT "id" FROM "Issue" WHERE "id" = ${id} FOR UPDATE`;
+        const p = await tx.issue.findFirst({
+          where: { id, deletedAt: null },
+          select: {
+            storyPoints: true,
+            pointsManual: true,
+            typeId: true,
+            difficulty: true,
+            priorityId: true,
+            parentId: true,
+          },
+        });
+        if (!p || typeKey.get(p.typeId) === 'EPIC') continue;
+        const kids = await tx.issue.aggregate({
+          where: { parentId: id, deletedAt: null },
+          _sum: { storyPoints: true },
+          _count: { _all: true },
+        });
+        let target;
+        if (kids._count._all > 0) target = kids._sum.storyPoints ?? 0;
+        else if (p.pointsManual) continue;
+        else
+          target = computePoints(
+            formula,
+            typeKey.get(p.typeId) ?? null,
+            p.difficulty,
+            p.priorityId ? (priorityName.get(p.priorityId) ?? null) : null,
+          );
+        if (target === null || p.storyPoints === target) continue;
+        // SQL thô: không đổi updatedAt.
+        await tx.$executeRaw`UPDATE "Issue" SET "storyPoints" = ${target}::float8, "version" = "version" + 1 WHERE "id" = ${id} AND "deletedAt" IS NULL`;
+        changedParents.add(id);
+        if (p.parentId) next.add(p.parentId);
+      }
+      level = [...next].sort();
+    }
+  };
+  for (let i = 0; i < parentOrder.length; i += 100) {
+    const ids = parentOrder.slice(i, i + 100);
+    await prisma.$transaction((tx) => touchParent(tx, ids));
+  }
+  issues += changedParents.size;
+
+  // Epic sau cùng: tổng điểm việc cấp trên (parentId rỗng) chưa xoá. Khoá dòng Epic như luồng sửa việc.
   const epicRows = await prisma.issue.findMany({
     where: { deletedAt: null, type: { key: 'EPIC' } },
     select: { id: true },
@@ -107,7 +185,7 @@ try {
       });
       if (!epic) return false;
       const sum = await tx.issue.aggregate({
-        where: { epicId: id, deletedAt: null },
+        where: { epicId: id, parentId: null, deletedAt: null },
         _sum: { storyPoints: true },
       });
       const total = sum._sum.storyPoints ?? 0;

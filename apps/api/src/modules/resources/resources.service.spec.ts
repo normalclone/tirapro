@@ -177,6 +177,7 @@ describe('ResourcesService.workload — điểm Epic không quy ra giờ (đếm
     key: string | null,
     storyPoints: number,
     originalEstimate: number | null = null,
+    childCount = 0,
   ) => ({
     assigneeId: 'u1',
     startDate: day,
@@ -184,6 +185,7 @@ describe('ResourcesService.workload — điểm Epic không quy ra giờ (đếm
     originalEstimate,
     storyPoints,
     type: { key },
+    _count: { children: childCount },
   });
 
   it('Epic (điểm = tổng việc con) thêm vào cùng người/tuần không làm tăng giờ đã giao', async () => {
@@ -193,6 +195,12 @@ describe('ResourcesService.workload — điểm Epic không quy ra giờ (đếm
     expect(await assigned([task, issue('EPIC', 5)])).toBe(alone);
     // đối chứng: thêm một Task cùng điểm thì giờ đã giao phải tăng (bài kiểm tra có răng)
     expect(await assigned([task, issue('TASK', 5)])).toBeGreaterThan(alone);
+  });
+
+  it('việc cha có việc con (điểm = tổng việc con) không quy ra giờ — chỉ việc lá được tính tải', async () => {
+    const leaf = issue('TASK', 5);
+    const alone = await assigned([leaf]);
+    expect(await assigned([leaf, issue('TASK', 5, null, 2)])).toBe(alone);
   });
 
   it('Epic có ước lượng thời gian riêng (originalEstimate) vẫn được tính giờ đó', async () => {

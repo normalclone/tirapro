@@ -14,7 +14,7 @@ import { iso } from '../../common/mappers/date';
 import { BusinessRuleException, NotFoundAppException } from '../../common/exceptions/app.exception';
 import { assertNotArchived } from '../../common/project-writable';
 import { TRIAGE_VISIBLE, isUnreviewed } from '../../common/triage-visibility';
-import { countsTowardPoints, EXCLUDE_EPIC_POINTS } from '../../common/points-scope';
+import { countsTowardPoints, LEAF_POINTS_ONLY, LIVE_CHILD_COUNT } from '../../common/points-scope';
 
 /** Ngày lịch (UTC) của một thời điểm, dạng số để so sánh. */
 const utcDay = (d: Date) => Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
@@ -39,7 +39,7 @@ export class SprintsService {
     });
     if (sprints.length === 0) return [];
     // Đếm issue + tổng điểm bằng một câu GROUP BY (không kéo từng issue về); issue đã xoá mềm không tính.
-    // Điểm cộng riêng và LOẠI Epic (điểm Epic = tổng việc con → cộng sẽ đếm đôi); số đếm vẫn tính cả Epic.
+    // Điểm cộng riêng và chỉ VIỆC LÁ (điểm Epic/việc cha = tổng việc con → cộng sẽ đếm đôi); số đếm vẫn tính cả hai.
     const inSprints = {
       sprintId: { in: sprints.map((s) => s.id) },
       deletedAt: null,
@@ -49,7 +49,7 @@ export class SprintsService {
       this.prisma.issue.groupBy({ by: ['sprintId'], where: inSprints, _count: { _all: true } }),
       this.prisma.issue.groupBy({
         by: ['sprintId'],
-        where: { ...inSprints, ...EXCLUDE_EPIC_POINTS },
+        where: { ...inSprints, ...LEAF_POINTS_ONLY },
         _sum: { storyPoints: true },
       }),
     ]);
@@ -446,9 +446,10 @@ export class SprintsService {
         storyPoints: true,
         status: { select: { category: true } },
         type: { select: { key: true } },
+        ...LIVE_CHILD_COUNT,
       },
     });
-    // Điểm Epic = tổng việc con → không cộng (đếm đôi); số việc hoàn thành vẫn tính cả Epic.
+    // Điểm Epic/việc cha = tổng việc con → chỉ cộng việc lá (không đếm đôi); số việc hoàn thành vẫn tính cả hai.
     const pointed = issues.filter(countsTowardPoints);
     const committedPoints = pointed.reduce((a, i) => a + (i.storyPoints ?? 0), 0);
     const completedPoints = pointed

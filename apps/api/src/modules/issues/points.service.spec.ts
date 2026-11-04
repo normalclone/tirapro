@@ -156,7 +156,7 @@ describe('PointsService.rollupEpics', () => {
     const t = tx({ e1: 5 }, { e1: 12 });
     const changed = await make().service.rollupEpics(t as never, ['e1']);
     expect(t.issue.aggregate).toHaveBeenCalledWith({
-      where: { epicId: 'e1', deletedAt: null },
+      where: { epicId: 'e1', parentId: null, deletedAt: null }, // chỉ việc cấp trên: việc con đã nằm trong điểm việc cha
       _sum: { storyPoints: true },
     });
     expect(t.issue.updateMany).toHaveBeenCalledWith({
@@ -197,6 +197,193 @@ describe('PointsService.rollupEpics', () => {
   });
 });
 
+/** DB giả có trạng thái cho `rollupParents`: các hàng issue (kèm quan hệ cha/con) + thứ tự khoá/ghi. */
+type PRow = {
+  id: string;
+  storyPoints: number | null;
+  parentId?: string | null;
+  epicId?: string | null;
+  pointsManual?: boolean;
+  typeKey?: string | null;
+  difficulty?: 'EASY' | 'MEDIUM' | 'HARD' | 'VERY_HARD';
+  priorityName?: string | null;
+  deletedAt?: Date | null;
+  version?: number;
+};
+const P_DEFAULTS: Required<Omit<PRow, 'id' | 'storyPoints'>> = {
+  parentId: null,
+  epicId: null,
+  pointsManual: false,
+  typeKey: 'TASK',
+  difficulty: 'MEDIUM',
+  priorityName: null,
+  deletedAt: null,
+  version: 1,
+};
+function parentTx(input: PRow[]) {
+  const rows = new Map(input.map((r) => [r.id, { ...P_DEFAULTS, ...r }]));
+  const order: string[] = [];
+  const tx = {
+    $queryRaw: vi.fn((_s: TemplateStringsArray, id: string) => {
+      order.push(`lock:${id}`);
+      return Promise.resolve([]);
+    }),
+    $executeRaw: vi.fn((_s: TemplateStringsArray, target: number, id: string) => {
+      const r = rows.get(id)!;
+      order.push(`raw:${id}`);
+      Object.assign(r, { storyPoints: target, version: r.version + 1 });
+      return Promise.resolve(1);
+    }),
+    issueType: {
+      findUnique: vi.fn(({ where }: { where: { id: string } }) =>
+        Promise.resolve({ key: rows.get(where.id.replace('type:', ''))?.typeKey ?? null }),
+      ),
+    },
+    priority: {
+      findUnique: vi.fn(({ where }: { where: { id: string } }) =>
+        Promise.resolve({ name: rows.get(where.id.replace('prio:', ''))?.priorityName ?? null }),
+      ),
+    },
+    issue: {
+      findFirst: vi.fn(({ where }: { where: { id: string } }) => {
+        const r = rows.get(where.id);
+        if (!r || r.deletedAt) return Promise.resolve(null);
+        return Promise.resolve({
+          storyPoints: r.storyPoints,
+          pointsManual: r.pointsManual,
+          // pointsFor đọc loại/ưu tiên theo id: mã hoá "type:<id của chính hàng>" để fake tra lại đúng hàng
+          typeId: `type:${r.id}`,
+          difficulty: r.difficulty,
+          priorityId: r.priorityName ? `prio:${r.id}` : null,
+          parentId: r.parentId,
+          epicId: r.epicId,
+          type: { key: r.typeKey },
+        });
+      }),
+      aggregate: vi.fn(({ where }: { where: { parentId: string } }) => {
+        const kids = [...rows.values()].filter(
+          (k) => k.parentId === where.parentId && !k.deletedAt,
+        );
+        return Promise.resolve({
+          _sum: {
+            storyPoints: kids.length ? kids.reduce((a, k) => a + (k.storyPoints ?? 0), 0) : null,
+          },
+          _count: { _all: kids.length },
+        });
+      }),
+      updateMany: vi.fn(
+        ({ where, data }: { where: { id: string }; data: { storyPoints: number } }) => {
+          const r = rows.get(where.id)!;
+          order.push(`write:${where.id}`);
+          Object.assign(r, { storyPoints: data.storyPoints, version: r.version + 1 });
+          return Promise.resolve({ count: 1 });
+        },
+      ),
+    },
+  };
+  return { tx, rows, order };
+}
+
+describe('PointsService.rollupParents — điểm việc cha = tổng điểm việc con', () => {
+  it('Task có hai sub-task 2 và 3 => Task = 5, tăng version; trả Epic của Task để cộng tiếp', async () => {
+    const { tx, rows } = parentTx([
+      { id: 't', storyPoints: 4, epicId: 'e1' },
+      { id: 's1', storyPoints: 2, parentId: 't' },
+      { id: 's2', storyPoints: 3, parentId: 't' },
+    ]);
+    const changed: string[] = [];
+    const epics = await make().service.rollupParents(tx as never, ['t'], { changed });
+    expect(rows.get('t')).toMatchObject({ storyPoints: 5, version: 2 });
+    expect(changed).toEqual(['t']);
+    expect(epics).toEqual(['e1']);
+    expect(tx.issue.updateMany).toHaveBeenCalledWith({
+      where: { id: 't', deletedAt: null },
+      data: { storyPoints: 5, version: { increment: 1 } },
+    });
+  });
+  it('tổng không đổi => không ghi, không tăng version, không trả Epic', async () => {
+    const { tx, rows } = parentTx([
+      { id: 't', storyPoints: 5, epicId: 'e1' },
+      { id: 's1', storyPoints: 5, parentId: 't' },
+    ]);
+    expect(await make().service.rollupParents(tx as never, ['t'])).toEqual([]);
+    expect(rows.get('t')!.version).toBe(1);
+    expect(tx.issue.updateMany).not.toHaveBeenCalled();
+  });
+  it('việc con đã xoá không cộng; việc con chưa có điểm tính 0', async () => {
+    const { tx, rows } = parentTx([
+      { id: 't', storyPoints: 9 },
+      { id: 's1', storyPoints: 2, parentId: 't' },
+      { id: 's2', storyPoints: 7, parentId: 't', deletedAt: new Date() },
+      { id: 's3', storyPoints: null, parentId: 't' },
+    ]);
+    await make().service.rollupParents(tx as never, ['t']);
+    expect(rows.get('t')!.storyPoints).toBe(2);
+  });
+  it('xoá việc con cuối cùng => việc cha quay về điểm theo công thức (Task · Trung bình · không ưu tiên = 2×2×1 = 4)', async () => {
+    const { tx, rows } = parentTx([{ id: 't', storyPoints: 5, typeKey: 'TASK' }]);
+    await make().service.rollupParents(tx as never, ['t']);
+    expect(rows.get('t')).toMatchObject({ storyPoints: 4, version: 2 });
+  });
+  it('hết việc con nhưng đã chỉnh tay => giữ nguyên điểm, không ghi', async () => {
+    const { tx, rows } = parentTx([{ id: 't', storyPoints: 13, pointsManual: true }]);
+    await make().service.rollupParents(tx as never, ['t']);
+    expect(rows.get('t')).toMatchObject({ storyPoints: 13, version: 1 });
+  });
+  it('Epic và việc đã xoá/không tồn tại bị bỏ qua (Epic có quy tắc riêng)', async () => {
+    const { tx, rows } = parentTx([
+      { id: 'e', storyPoints: 0, typeKey: 'EPIC' },
+      { id: 'k', storyPoints: 1, parentId: 'e' },
+      { id: 'd', storyPoints: 3, deletedAt: new Date() },
+    ]);
+    expect(await make().service.rollupParents(tx as never, ['e', 'd', 'gone'])).toEqual([]);
+    expect(rows.get('e')!.storyPoints).toBe(0);
+    expect(tx.issue.aggregate).not.toHaveBeenCalled();
+  });
+  it('khoá dòng theo thứ tự id trước khi cộng; id trùng chỉ tính một lần', async () => {
+    const { tx, order } = parentTx([
+      { id: 'pB', storyPoints: 0 },
+      { id: 'pA', storyPoints: 0 },
+      { id: 'a', storyPoints: 1, parentId: 'pA' },
+      { id: 'b', storyPoints: 2, parentId: 'pB' },
+    ]);
+    await make().service.rollupParents(tx as never, ['pB', 'pA', 'pB']);
+    expect(order).toEqual(['lock:pA', 'write:pA', 'lock:pB', 'write:pB']);
+  });
+  it('chuỗi nhiều tầng: con → cha → ông, cha đổi thì ông được cộng lại ở vòng kế (truyền cả cha lẫn ông cũng đúng)', async () => {
+    const mk = () =>
+      parentTx([
+        { id: 'a', storyPoints: 0, epicId: 'e1' }, // ông
+        { id: 'b', storyPoints: 0, parentId: 'a' }, // cha
+        { id: 'c', storyPoints: 6, parentId: 'b' }, // lá
+      ]);
+    const one = mk();
+    const changed1: string[] = [];
+    await make().service.rollupParents(one.tx as never, ['b'], { changed: changed1 });
+    expect(one.rows.get('b')!.storyPoints).toBe(6);
+    expect(one.rows.get('a')!.storyPoints).toBe(6);
+    expect(changed1).toEqual(['b', 'a']);
+    // truyền ông trước cha: vẫn ra kết quả đúng (ông được cộng lại sau khi cha đổi)
+    const two = mk();
+    await make().service.rollupParents(two.tx as never, ['a', 'b']);
+    expect(two.rows.get('a')!.storyPoints).toBe(6);
+    expect(two.rows.get('b')!.storyPoints).toBe(6);
+  });
+  it('keepUpdatedAt: ghi bằng SQL thô (không đổi updatedAt), vẫn tăng version', async () => {
+    const { tx, rows } = parentTx([
+      { id: 't', storyPoints: 0 },
+      { id: 's', storyPoints: 3, parentId: 't' },
+    ]);
+    await make().service.rollupParents(tx as never, ['t'], { keepUpdatedAt: true });
+    expect(tx.issue.updateMany).not.toHaveBeenCalled();
+    expect(tx.$executeRaw).toHaveBeenCalledTimes(1);
+    const sql = (tx.$executeRaw.mock.calls[0] as unknown as [TemplateStringsArray])[0].join('?');
+    expect(sql).toContain('"version" = "version" + 1');
+    expect(sql).not.toContain('updatedAt');
+    expect(rows.get('t')).toMatchObject({ storyPoints: 3, version: 2 });
+  });
+});
+
 describe('PointsService.explain', () => {
   it('Bug · Khó · High = 2×3×1.5 = 9; điểm chỉnh tay có chú thích', () => {
     const { service } = make(null);
@@ -220,9 +407,55 @@ type Row = {
   storyPoints: number | null;
   projectId: string;
   pointsManual?: boolean;
+  parentId?: string | null;
+  epicId?: string | null;
 };
 
 const T0 = 'T0'; // `updatedAt` ban đầu; Prisma `updateMany` (mô phỏng @updatedAt) đổi thành 'BUMPED'
+
+/** `$executeRaw` dạng tagged template: (strings, ...values). Hai câu: ghi lô việc (unnest) và ghi tổng Epic/việc cha. */
+function makeExecuteRaw(
+  rows: Array<Row & { pointsManual: boolean; version: number }>,
+  epics: Record<string, { storyPoints: number; projectId: string }>,
+  sqls: string[],
+  beforeWrite?: (rows: Array<Row & { pointsManual: boolean; version: number }>) => void,
+) {
+  return vi.fn((strings: TemplateStringsArray, ...values: unknown[]) => {
+    const sql = strings.join('?');
+    sqls.push(sql);
+    if (sql.includes('unnest')) {
+      beforeWrite?.(rows);
+      const [ids, typeIds, diffs, prios, pts] = values as [
+        string[],
+        string[],
+        string[],
+        string[],
+        number[],
+      ];
+      let count = 0;
+      ids.forEach((id, i) => {
+        const r = rows.find((x) => x.id === id);
+        // đúng điều kiện WHERE của câu SQL
+        if (
+          !r ||
+          r.pointsManual ||
+          r.typeId !== typeIds[i] ||
+          r.difficulty !== diffs[i] ||
+          (r.priorityId ?? '') !== prios[i]
+        )
+          return;
+        Object.assign(r, { storyPoints: pts[i], version: r.version + 1 });
+        count++;
+      });
+      return Promise.resolve(count);
+    }
+    // Ghi tổng Epic hoặc điểm việc cha: (strings, total, id)
+    const [total, id] = values as [number, string];
+    const target = (epics[id] ?? rows.find((x) => x.id === id)) as unknown as { version: number };
+    Object.assign(target, { storyPoints: total, version: target.version + 1 });
+    return Promise.resolve(1);
+  });
+}
 
 /**
  * DB giả có trạng thái: lọc theo `where` thật mà service gửi (dự án, chỉnh tay, Epic, id/cursor). Ghi qua `$executeRaw`
@@ -253,6 +486,7 @@ function makeRecompute(opts: {
           pointsManual?: boolean;
           deletedAt?: null;
           type?: { key: string };
+          children?: { some?: unknown; none?: unknown };
         };
         cursor?: { id: string };
         take?: number;
@@ -261,9 +495,19 @@ function makeRecompute(opts: {
           return Promise.resolve(
             Object.entries(epics).map(([id, e]) => ({ id, projectId: e.projectId })),
           );
+        const hasKids = (id: string) => rows.some((k) => k.parentId === id);
+        // bước cộng việc cha: mọi việc (không Epic) đang có việc con chưa xoá
+        if (a.where.children?.some)
+          return Promise.resolve(
+            rows
+              .filter((r) => r.typeId !== 't-epic' && hasKids(r.id))
+              .map((r) => ({ id: r.id, projectId: r.projectId, parentId: r.parentId ?? null })),
+          );
         let list = rows
           .filter((r) => r.projectId === a.where.projectId && r.pointsManual === false)
           .filter((r) => r.typeId !== 't-epic')
+          // bước công thức loại việc cha (children: { none })
+          .filter((r) => !a.where.children?.none || !hasKids(r.id))
           .sort((x, y) => x.id.localeCompare(y.id));
         if (a.cursor) list = list.filter((r) => r.id > a.cursor!.id);
         // bản chụp tại lúc đọc (người dùng sửa sau đó không làm đổi dữ liệu đã đọc)
@@ -297,55 +541,31 @@ function makeRecompute(opts: {
         return Promise.resolve({ count });
       },
     ),
-    findFirst: vi.fn(({ where }: { where: { id: string } }) =>
-      Promise.resolve(epics[where.id] ? { storyPoints: epics[where.id]!.storyPoints } : null),
-    ),
-    aggregate: vi.fn(({ where }: { where: { epicId: string } }) =>
-      Promise.resolve({
-        _sum: {
-          storyPoints:
-            rows
-              .filter((r) => (r as { epicId?: string }).epicId === where.epicId)
-              .reduce((a, r) => a + (r.storyPoints ?? 0), 0) || null,
-        },
-      }),
-    ),
-  };
-  /** `$executeRaw` dạng tagged template: (strings, ...values). Hai câu: ghi lô việc (unnest) và ghi tổng Epic. */
-  const executeRaw = vi.fn((strings: TemplateStringsArray, ...values: unknown[]) => {
-    const sql = strings.join('?');
-    sqls.push(sql);
-    if (sql.includes('unnest')) {
-      opts.beforeWrite?.(rows);
-      const [ids, typeIds, diffs, prios, pts] = values as [
-        string[],
-        string[],
-        string[],
-        string[],
-        number[],
-      ];
-      let count = 0;
-      ids.forEach((id, i) => {
-        const r = rows.find((x) => x.id === id);
-        // đúng điều kiện WHERE của câu SQL
-        if (
-          !r ||
-          r.pointsManual ||
-          r.typeId !== typeIds[i] ||
-          r.difficulty !== diffs[i] ||
-          (r.priorityId ?? '') !== prios[i]
-        )
-          return;
-        Object.assign(r, { storyPoints: pts[i], version: r.version + 1 });
-        count++;
+    findFirst: vi.fn(({ where }: { where: { id: string } }) => {
+      if (epics[where.id]) return Promise.resolve({ storyPoints: epics[where.id]!.storyPoints });
+      const r = rows.find((x) => x.id === where.id);
+      if (!r) return Promise.resolve(null);
+      return Promise.resolve({
+        ...r,
+        parentId: r.parentId ?? null,
+        epicId: r.epicId ?? null,
+        type: { key: types.find((t) => t.id === r.typeId)?.key ?? null },
       });
-      return Promise.resolve(count);
-    }
-    const [total, id] = values as [number, string];
-    const e = epics[id] as unknown as { version: number };
-    Object.assign(e, { storyPoints: total, version: e.version + 1 });
-    return Promise.resolve(1);
-  });
+    }),
+    aggregate: vi.fn(({ where }: { where: { epicId?: string; parentId?: string | null } }) => {
+      // Epic: việc cấp trên (parentId rỗng) có epicId; việc cha: việc có parentId = cha
+      const list = rows.filter((r) =>
+        where.epicId !== undefined
+          ? r.epicId === where.epicId && (r.parentId ?? null) === where.parentId
+          : r.parentId === where.parentId,
+      );
+      return Promise.resolve({
+        _sum: { storyPoints: list.reduce((a, r) => a + (r.storyPoints ?? 0), 0) || null },
+        _count: { _all: list.length },
+      });
+    }),
+  };
+  const executeRaw = makeExecuteRaw(rows, epics, sqls, opts.beforeWrite);
   const prisma = {
     $executeRaw: executeRaw,
     pointsFormulaConfig: {
@@ -365,7 +585,27 @@ function makeRecompute(opts: {
     issue,
     $queryRaw: vi.fn(() => Promise.resolve([])),
     $transaction: vi.fn((fn: (tx: unknown) => unknown) =>
-      fn({ issue, $queryRaw: prisma.$queryRaw, $executeRaw: executeRaw }),
+      fn({
+        issue,
+        $queryRaw: prisma.$queryRaw,
+        $executeRaw: executeRaw,
+        // pointsFor (việc cha hết việc con quay về công thức)
+        issueType: {
+          findUnique: vi.fn(({ where }: { where: { id: string } }) =>
+            Promise.resolve(types.find((t) => t.id === where.id) ?? null),
+          ),
+        },
+        priority: {
+          findUnique: vi.fn(({ where }: { where: { id: string } }) =>
+            Promise.resolve(
+              [
+                { id: 'pr-high', name: 'High' },
+                { id: 'pr-med', name: 'Medium' },
+              ].find((p) => p.id === where.id) ?? null,
+            ),
+          ),
+        },
+      }),
     ),
   };
   const events = { emit: vi.fn() };
@@ -545,5 +785,59 @@ describe('PointsService.recomputeAll — tính lại toàn hệ thống', () => 
     await a;
     // đọc bảng hệ số: một lần cho lần đầu + một lần cho lần chạy lại
     expect(prisma.pointsFormulaConfig.findUnique).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('PointsService.recomputeAll — việc cha có việc con', () => {
+  const family = () => [
+    // Task cha (điểm cũ 99, thuộc Epic e1) và hai việc con (cũng mang epicId e1: không được cộng thêm vào Epic)
+    recRow('pt', { typeId: 't-task', priorityId: 'pr-med', storyPoints: 99, epicId: 'e1' }),
+    recRow('c1', { parentId: 'pt', epicId: 'e1' }), // Bug · TB · High = 6
+    recRow('c2', { parentId: 'pt', epicId: 'e1', typeId: 't-task', priorityId: 'pr-med' }), // 4
+  ];
+  const epics = () => ({ e1: { storyPoints: 0, projectId: 'p1' } });
+
+  it('việc cha = tổng việc con (không theo công thức); Epic đếm việc cha một lần, không đếm lại việc con', async () => {
+    const { service, rows, epics: e } = makeRecompute({ rows: family(), epics: epics() });
+    const r = await service.recomputeAll();
+    expect(rows.map((x) => x.storyPoints)).toEqual([10, 6, 4]);
+    expect(e.e1!.storyPoints).toBe(10); // 10 (cha) — không phải 20
+    expect(r).toEqual({ updated: 3, epics: 1 }); // 2 việc con + 1 việc cha
+  });
+  it('không đổi updatedAt của việc cha, tăng version đúng một lần; việc cha cũng không bị công thức ghi trước', async () => {
+    const { service, rows, sqls, issue } = makeRecompute({ rows: family(), epics: epics() });
+    await service.recomputeAll();
+    expect(rows[0]).toMatchObject({ storyPoints: 10, version: 2, updatedAt: 'T0' });
+    expect(issue.updateMany).not.toHaveBeenCalled();
+    // câu SQL lô công thức không chứa việc cha (chỉ hai việc con)
+    expect(sqls.filter((q) => q.includes('unnest'))).toHaveLength(1);
+  });
+  it('idempotent: lần chạy thứ hai không đổi gì', async () => {
+    const { service, rows } = makeRecompute({ rows: family(), epics: epics() });
+    await service.recomputeAll();
+    const v = rows.map((x) => x.version);
+    expect(await service.recomputeAll()).toEqual({ updated: 0, epics: 0 });
+    expect(rows.map((x) => x.version)).toEqual(v);
+  });
+  it('chuỗi cha → ông: tầng thấp trước nên ông ra tổng đúng ngay lần chạy đầu', async () => {
+    const { service, rows } = makeRecompute({
+      rows: [
+        recRow('a', { typeId: 't-task', priorityId: 'pr-med', storyPoints: 1 }), // ông
+        recRow('b', { typeId: 't-task', priorityId: 'pr-med', storyPoints: 1, parentId: 'a' }), // cha
+        recRow('c', { parentId: 'b' }), // lá: 6
+      ],
+    });
+    await service.recomputeAll();
+    expect(rows.map((x) => x.storyPoints)).toEqual([6, 6, 6]);
+  });
+  it('báo client nạp lại dự án khi chỉ có việc cha đổi', async () => {
+    const { service, events } = makeRecompute({
+      rows: [
+        recRow('pt', { typeId: 't-task', storyPoints: 0 }),
+        recRow('c1', { parentId: 'pt', storyPoints: 6 }), // đã đúng công thức
+      ],
+    });
+    await service.recomputeAll();
+    expect(events.emit.mock.calls).toEqual([['project.ranks_rebalanced', { projectId: 'p1' }]]);
   });
 });

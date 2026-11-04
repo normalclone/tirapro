@@ -24,7 +24,7 @@ import {
 } from '@tirapro/shared';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { TRIAGE_VISIBLE } from '../../common/triage-visibility';
-import { EXCLUDE_EPIC_POINTS } from '../../common/points-scope';
+import { LEAF_POINTS_ONLY } from '../../common/points-scope';
 import { RedisService } from '../../infra/redis/redis.service';
 import { withCronLock } from '../../common/cron-lock';
 import { BusinessRuleException, NotFoundAppException } from '../../common/exceptions/app.exception';
@@ -791,7 +791,7 @@ export class DigestsService implements OnApplicationShutdown {
         sprintId: { in: sprints.map((s) => s.id) },
         deletedAt: null,
         ...TRIAGE_VISIBLE,
-        ...EXCLUDE_EPIC_POINTS, // điểm Epic = tổng việc con: cộng sẽ đếm đôi
+        ...LEAF_POINTS_ONLY, // điểm Epic/việc cha = tổng việc con: chỉ cộng việc lá
         status: { category: { not: StatusCategory.DONE } },
       },
       _sum: { storyPoints: true },

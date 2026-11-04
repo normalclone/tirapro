@@ -1155,11 +1155,31 @@ describe('AnalyticsService.sprintSummary', () => {
       },
       [],
       [
-        { storyPoints: 5, status: { category: 'DONE' }, type: { key: 'TASK' } },
-        { storyPoints: 3, status: { category: 'IN_PROGRESS' }, type: { key: 'BUG' } },
-        { storyPoints: null, status: { category: 'TODO' }, type: { key: null } },
+        {
+          storyPoints: 5,
+          status: { category: 'DONE' },
+          type: { key: 'TASK' },
+          _count: { children: 0 },
+        },
+        {
+          storyPoints: 3,
+          status: { category: 'IN_PROGRESS' },
+          type: { key: 'BUG' },
+          _count: { children: 0 },
+        },
+        {
+          storyPoints: null,
+          status: { category: 'TODO' },
+          type: { key: null },
+          _count: { children: 0 },
+        },
         // Epic trong sprint: điểm Epic = tổng việc con (đã nằm trong các dòng trên) → KHÔNG cộng điểm, nhưng vẫn là một việc.
-        { storyPoints: 11, status: { category: 'IN_PROGRESS' }, type: { key: 'EPIC' } },
+        {
+          storyPoints: 11,
+          status: { category: 'IN_PROGRESS' },
+          type: { key: 'EPIC' },
+          _count: { children: 0 },
+        },
       ],
     );
     const r = await service.sprintSummary('w1', 'p1', 'sp1');
@@ -1252,8 +1272,18 @@ describe('AnalyticsService.sprintSummary — phạm vi và velocity', () => {
       },
       [],
       [
-        { storyPoints: 5, status: { category: 'DONE' }, type: { key: 'TASK' } },
-        { storyPoints: 3, status: { category: 'TODO' }, type: { key: 'TASK' } },
+        {
+          storyPoints: 5,
+          status: { category: 'DONE' },
+          type: { key: 'TASK' },
+          _count: { children: 0 },
+        },
+        {
+          storyPoints: 3,
+          status: { category: 'TODO' },
+          type: { key: 'TASK' },
+          _count: { children: 0 },
+        },
       ],
     );
     const r = await service.sprintSummary('w1', 'p1', 'sp1');

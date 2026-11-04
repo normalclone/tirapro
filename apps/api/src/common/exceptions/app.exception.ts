@@ -45,6 +45,15 @@ export class PointsOverrideForbiddenException extends AppException {
   }
 }
 
+/** 422 mã riêng: việc đang có việc con có điểm = tổng điểm việc con, không chỉnh tay được. */
+export class PointsRollupOnlyException extends AppException {
+  constructor(
+    message = 'Việc này đang có việc con nên điểm là tổng điểm các việc con — không chỉnh tay được. Hãy sửa điểm của từng việc con.',
+  ) {
+    super(ERROR_CODES.POINTS_ROLLUP_ONLY, message, HttpStatus.UNPROCESSABLE_ENTITY);
+  }
+}
+
 /** 422 mã riêng: Hạn bắt buộc, không được xoá trống — web/automation nhận ra mà không so khớp câu chữ. */
 export class DueDateRequiredException extends AppException {
   constructor(message = 'Hạn là bắt buộc — chọn một ngày thay vì xoá trống') {

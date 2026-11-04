@@ -569,6 +569,8 @@ describe('IssuesService.restore — khôi phục việc từ Thùng rác', () =>
       updateMany: vi.fn(() => Promise.resolve({ count })),
       // Tổng điểm Epic sau khi khôi phục (khôi phục vào Epic còn sống phải tính lại tổng).
       aggregate: vi.fn(() => Promise.resolve({ _sum: { storyPoints: 0 } })),
+      // `idsWithLiveChildren` (việc khôi phục có đang là việc cha không)
+      findMany: vi.fn((_a?: unknown) => Promise.resolve([] as unknown[])),
     };
     return { ...makeService({ issue }), issue };
   }
@@ -3273,6 +3275,7 @@ describe('IssuesService — ai sửa được công việc thì sửa được �
         Promise.resolve({ count: 1 }),
       ),
       findFirstOrThrow: vi.fn(() => Promise.resolve(after)),
+      findMany: vi.fn(() => Promise.resolve([])), // idsWithLiveChildren: không có việc con
     },
     issueHistory: { createMany: vi.fn() },
     user: { findUnique: vi.fn(() => Promise.resolve({ isSystemAdmin: false })) }, // nhánh kiểm system admin của luật hạn
@@ -4169,21 +4172,42 @@ function pTx(
     sums?: Record<string, number>;
     typeKeys?: Record<string, string>;
     priorityNames?: Record<string, string>;
+    /** Việc cha (id) → điểm các việc con chưa xoá của nó (cho `rollupParents` / kiểm "có việc con"). */
+    children?: Record<string, number[]>;
+    /** Việc cha cũng có thể là hàng khác `i1` (vd. cha của việc đang sửa). */
+    rows?: Record<string, Record<string, unknown>>;
   } = {},
 ) {
   return {
     issue: {
       findFirst: vi.fn(({ where }: { where: { id: string } }) =>
-        Promise.resolve(where.id === 'i1' ? current : (o.epics?.[where.id] ?? null)),
+        Promise.resolve(
+          where.id === 'i1' ? current : (o.epics?.[where.id] ?? o.rows?.[where.id] ?? null),
+        ),
       ),
       findFirstOrThrow: vi.fn(() => Promise.resolve(after)),
-      findMany: vi.fn(() => Promise.resolve([])),
+      // `idsWithLiveChildren`: where.parentId.in → mỗi cha có việc con được trả một dòng
+      findMany: vi.fn((a?: { where?: { parentId?: { in: string[] } } }) =>
+        Promise.resolve(
+          (a?.where?.parentId?.in ?? [])
+            .filter((id) => (o.children?.[id]?.length ?? 0) > 0)
+            .map((id) => ({ parentId: id })),
+        ),
+      ),
       updateMany: vi.fn((_a: { where: { id: string }; data: Record<string, unknown> }) =>
         Promise.resolve({ count: 1 }),
       ),
-      aggregate: vi.fn(({ where }: { where: { epicId: string } }) =>
-        Promise.resolve({ _sum: { storyPoints: o.sums?.[where.epicId] ?? 0 } }),
-      ),
+      aggregate: vi.fn(({ where }: { where: { epicId?: string; parentId?: string } }) => {
+        // việc cha: cộng điểm các việc con; Epic: tổng đặt sẵn theo epicId
+        if (where.parentId !== undefined && where.epicId === undefined) {
+          const kids = o.children?.[where.parentId] ?? [];
+          return Promise.resolve({
+            _sum: { storyPoints: kids.length ? kids.reduce((a, b) => a + b, 0) : null },
+            _count: { _all: kids.length },
+          });
+        }
+        return Promise.resolve({ _sum: { storyPoints: o.sums?.[where.epicId!] ?? 0 } });
+      }),
     },
     issueHistory: { createMany: vi.fn() },
     issueType: {
@@ -4411,7 +4435,7 @@ describe('IssuesService — điểm tự tính: Epic — tổng điểm việc c
     await makeService(t).service.update('w1', 'u1', 'i1', { version: 3, difficulty: 'HARD' });
     expect(epicWrite(t, 'eA')).toBeUndefined();
     expect(t.issue.aggregate).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { epicId: 'eA', deletedAt: null } }),
+      expect.objectContaining({ where: { epicId: 'eA', parentId: null, deletedAt: null } }),
     );
   });
   it('xoá việc (có epicId) => trừ điểm khỏi Epic trong cùng transaction', async () => {
@@ -4770,5 +4794,245 @@ describe('IssuesService — Hạn mặc định khi tạo và không xoá đư�
       }),
     ).rejects.toMatchObject({ status: 422, code: 'DUE_DATE_REQUIRED' });
     expect(tx.issue.updateMany).not.toHaveBeenCalled();
+  });
+});
+
+describe('IssuesService — điểm việc cha = tổng điểm việc con (Task 13)', () => {
+  /** Hàng việc cha `pt` (thuộc Epic eA) với điểm hiện có; `kids` = điểm các việc con còn sống SAU thao tác. */
+  const parentRow = (storyPoints: number, over: Record<string, unknown> = {}) =>
+    issueRow({ id: 'pt', epicId: 'eA', parentId: null, storyPoints, ...over });
+  const writeOf = (t: ReturnType<typeof pTx>, id: string) =>
+    (
+      t.issue.updateMany.mock.calls as unknown as Array<
+        [{ where: { id: string; deletedAt: unknown }; data: unknown }]
+      >
+    ).find((c) => c[0].where.id === id && c[0].where.deletedAt === null)?.[0];
+
+  it('đổi điểm một sub-task (2 → 3, anh em 2) => Task = 5; Epic đếm Task MỘT lần (5), không cộng thêm sub-task', async () => {
+    const cur = issueRow({ parentId: 'pt', epicId: 'eA', storyPoints: 2 });
+    const after = issueRow({ parentId: 'pt', epicId: 'eA', storyPoints: 3, version: 4 });
+    const t = pTx(cur, after, {
+      rows: { pt: parentRow(4) },
+      children: { pt: [2, 3] },
+      epics: { eA: epicLike({ storyPoints: 4 }) },
+      sums: { eA: 5 }, // Epic: chỉ Task (5), sub-task nằm trong điểm Task
+    });
+    await makeService(t).service.update('w1', 'u1', 'i1', { version: 3, difficulty: 'HARD' });
+    expect(writeOf(t, 'pt')).toEqual({
+      where: { id: 'pt', deletedAt: null },
+      data: { storyPoints: 5, version: { increment: 1 } },
+    });
+    expect(epicWrite(t, 'eA')?.data).toMatchObject({ storyPoints: 5 });
+    // Epic cộng theo việc cấp trên
+    expect(t.issue.aggregate).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { epicId: 'eA', parentId: null, deletedAt: null } }),
+    );
+  });
+
+  it('xoá một sub-task (3 điểm) => Task giảm còn 2 và Epic theo sau', async () => {
+    const t = pTx(issueRow({ parentId: 'pt', epicId: 'eA', storyPoints: 3 }), issueRow(), {
+      rows: { pt: parentRow(5) },
+      children: { pt: [2] },
+      epics: { eA: epicLike({ storyPoints: 5 }) },
+      sums: { eA: 2 },
+    });
+    await makeService(t).service.softDelete('w1', 'u1', 'i1');
+    expect(writeOf(t, 'pt')?.data).toMatchObject({ storyPoints: 2 });
+    expect(epicWrite(t, 'eA')?.data).toMatchObject({ storyPoints: 2 });
+  });
+
+  it('xoá việc con cuối cùng => Task quay về điểm theo công thức (Task · Trung bình · không ưu tiên = 4)', async () => {
+    const t = pTx(issueRow({ parentId: 'pt', epicId: null, storyPoints: 3 }), issueRow(), {
+      rows: { pt: parentRow(3, { epicId: null }) },
+      children: { pt: [] },
+    });
+    await makeService(t).service.softDelete('w1', 'u1', 'i1');
+    expect(writeOf(t, 'pt')?.data).toMatchObject({ storyPoints: 4 });
+  });
+
+  it('chuyển sub-task sang việc cha khác => cả hai việc cha được cộng lại, kèm Epic của chúng', async () => {
+    const cur = issueRow({ parentId: 'p1x', epicId: null, storyPoints: 3 });
+    const after = issueRow({ parentId: 'p2x', epicId: null, storyPoints: 3, version: 4 });
+    const t = pTx(cur, after, {
+      rows: {
+        p1x: parentRow(5, { id: 'p1x', epicId: 'eA' }),
+        p2x: parentRow(2, { id: 'p2x', epicId: 'eB' }),
+      },
+      children: { p1x: [2], p2x: [2, 3] },
+      epics: { eA: epicLike({ storyPoints: 5 }), eB: epicLike({ storyPoints: 2 }) },
+      sums: { eA: 2, eB: 5 },
+    });
+    await makeService(t).service.update('w1', 'u1', 'i1', { version: 3, parentId: 'p2x' });
+    expect(writeOf(t, 'p1x')?.data).toMatchObject({ storyPoints: 2 });
+    expect(writeOf(t, 'p2x')?.data).toMatchObject({ storyPoints: 5 });
+    expect(epicWrite(t, 'eA')?.data).toMatchObject({ storyPoints: 2 });
+    expect(epicWrite(t, 'eB')?.data).toMatchObject({ storyPoints: 5 });
+  });
+
+  it('việc cấp trên chuyển thành việc con (parentId null → pt) => Epic cũ cộng lại vì việc rời tổng Epic', async () => {
+    const cur = issueRow({ parentId: null, epicId: 'eA', storyPoints: 3 });
+    const after = issueRow({ parentId: 'pt', epicId: 'eA', storyPoints: 3, version: 4 });
+    const t = pTx(cur, after, {
+      rows: { pt: parentRow(2) },
+      children: { pt: [2, 3] },
+      epics: { eA: epicLike({ storyPoints: 5 }) },
+      sums: { eA: 5 }, // Epic: nay chỉ Task (5), không còn việc vừa chuyển thành con
+    });
+    await makeService(t).service.update('w1', 'u1', 'i1', { version: 3, parentId: 'pt' });
+    expect(writeOf(t, 'pt')?.data).toMatchObject({ storyPoints: 5 });
+    expect(t.issue.aggregate).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { epicId: 'eA', parentId: null, deletedAt: null } }),
+    );
+  });
+
+  it('khôi phục một sub-task => cộng lại việc cha', async () => {
+    const t = pTx(
+      issueRow({ deletedAt: new Date(), parentId: 'pt', epicId: null, storyPoints: 3 }),
+      issueRow(),
+      { rows: { pt: parentRow(2, { epicId: null }) }, children: { pt: [2, 3] } },
+    );
+    // lần đọc kiểm "cha còn sống" (select id) khác lần đọc lại việc cha để phát sự kiện (include)
+    t.issue.findMany.mockImplementation(((a: { include?: unknown; where?: { id?: unknown } }) =>
+      Promise.resolve(
+        a.include ? [issueRow({ id: 'pt' })] : a.where?.id ? [{ id: 'pt' }] : [],
+      )) as never);
+    await makeService(t).service.restore('w1', 'u1', 'p1', 'i1');
+    expect(writeOf(t, 'pt')?.data).toMatchObject({ storyPoints: 5 });
+  });
+});
+
+describe('IssuesService — chỉnh tay / công thức trên việc đang có việc con (Task 13)', () => {
+  const asPm = (t: ReturnType<typeof pTx>) => {
+    const s = makeService(t);
+    s.rbac.getEffectivePermissions.mockResolvedValue(new Set(['issue:edit', 'project:admin']));
+    return s;
+  };
+  it('PM ghi đè tay điểm của việc cha có việc con => 422 POINTS_ROLLUP_ONLY, chưa ghi gì', async () => {
+    const t = pTx(issueRow({ storyPoints: 5 }), issueRow({ storyPoints: 8 }), {
+      children: { i1: [2, 3] },
+    });
+    await expect(
+      asPm(t).service.update('w1', 'u1', 'i1', { version: 3, storyPoints: 8 }),
+    ).rejects.toMatchObject({ status: 422, code: 'POINTS_ROLLUP_ONLY' });
+    expect(t.issue.updateMany).not.toHaveBeenCalled();
+  });
+  it('PM gửi lại ĐÚNG tổng hiện có không phải ghi đè => không lỗi', async () => {
+    const t = pTx(issueRow({ storyPoints: 5 }), issueRow({ storyPoints: 5, version: 4 }), {
+      children: { i1: [2, 3] },
+    });
+    await asPm(t).service.update('w1', 'u1', 'i1', { version: 3, storyPoints: 5 });
+    expect(t.issue.updateMany.mock.calls[0]![0].data).not.toHaveProperty('pointsManual');
+  });
+  it('đổi Độ khó của việc cha có việc con => KHÔNG tính lại theo công thức (điểm giữ là tổng việc con)', async () => {
+    const t = pTx(issueRow({ storyPoints: 5 }), issueRow({ storyPoints: 5, version: 4 }), {
+      children: { i1: [2, 3] },
+    });
+    await makeService(t).service.update('w1', 'u1', 'i1', { version: 3, difficulty: 'HARD' });
+    const data = t.issue.updateMany.mock.calls[0]![0].data;
+    expect(data).toMatchObject({ difficulty: 'HARD' });
+    expect(data).not.toHaveProperty('storyPoints');
+  });
+  it('việc lá (không có việc con) vẫn ghi đè tay bình thường', async () => {
+    const t = pTx(issueRow({ storyPoints: 5 }), issueRow({ storyPoints: 8, version: 4 }), {
+      children: {},
+    });
+    await asPm(t).service.update('w1', 'u1', 'i1', { version: 3, storyPoints: 8 });
+    expect(t.issue.updateMany.mock.calls[0]![0].data).toMatchObject({
+      storyPoints: 8,
+      pointsManual: true,
+    });
+  });
+  it('"Tính lại theo công thức" trên việc cha có việc con => chỉ bỏ cờ chỉnh tay, giữ điểm là tổng việc con', async () => {
+    const t = pTx(
+      issueRow({ storyPoints: 5, pointsManual: true }),
+      issueRow({ storyPoints: 5, version: 4 }),
+      {
+        children: { i1: [2, 3] },
+      },
+    );
+    await asPm(t).service.resetPoints('w1', 'u1', 'i1');
+    const data = t.issue.updateMany.mock.calls[0]![0].data;
+    expect(data).toMatchObject({ pointsManual: false });
+    expect(data).not.toHaveProperty('storyPoints');
+  });
+});
+
+describe('IssuesService.bulkUpdate — việc cha có việc con (Task 13)', () => {
+  // Lô một việc `a` đang có việc con (2 + 3); `idsWithLiveChildren` (where.parentId) trả `a` là việc cha.
+  const one = [{ id: 'a', version: 3 }];
+  function bTx() {
+    const t = b7Tx();
+    t.issue.findMany.mockImplementation(((a: { where: { parentId?: unknown } }) =>
+      Promise.resolve(
+        a.where.parentId ? [{ parentId: 'a' }] : [issueRow({ id: 'a', storyPoints: 5 })],
+      )) as never);
+    return t;
+  }
+  it('PM ghi đè tay điểm lô có việc cha có việc con => 422 POINTS_ROLLUP_ONLY cả lô', async () => {
+    const t = bTx();
+    const { service, rbac } = makeService(t);
+    rbac.getEffectivePermissions.mockResolvedValue(new Set(['issue:edit', 'project:admin']));
+    await expect(
+      service.bulkUpdate('w1', 'u1', { projectId: 'p1', items: one, patch: { storyPoints: 9 } }),
+    ).rejects.toMatchObject({ status: 422, code: 'POINTS_ROLLUP_ONLY' });
+    expect(t.issue.updateMany).not.toHaveBeenCalled();
+  });
+  it('đổi Độ khó cả lô: việc cha có việc con không bị tính lại điểm theo công thức', async () => {
+    const t = bTx();
+    await makeService(t).service.bulkUpdate('w1', 'u1', {
+      projectId: 'p1',
+      items: one,
+      patch: { difficulty: 'HARD' },
+    });
+    const data = t.issue.updateMany.mock.calls[0]![0].data;
+    expect(data).toMatchObject({ difficulty: 'HARD' });
+    expect(data).not.toHaveProperty('storyPoints');
+  });
+});
+
+describe('IssuesService.create — việc con mới cộng điểm vào việc cha rồi Epic (Task 13)', () => {
+  it('tạo sub-task (3 điểm) dưới Task có sẵn sub-task 2 điểm => Task = 5, Epic = 5 (đếm Task một lần), cùng transaction', async () => {
+    const { tx, created } = createTx(WF_DEFAULT, {
+      pt: issueRow({ id: 'pt', epicId: 'eA', parentId: null, storyPoints: 2 }),
+      eA: epicLike({ storyPoints: 2 }),
+    });
+    created.mockResolvedValue(
+      issueRow({ id: 'new', parentId: 'pt', epicId: 'eA', storyPoints: 3 }),
+    );
+    const issue = tx.issue as Record<string, unknown>;
+    issue.updateMany = vi.fn((_a: { where: { id: string }; data: unknown }) =>
+      Promise.resolve({ count: 1 }),
+    );
+    issue.aggregate = vi.fn(({ where }: { where: { parentId?: string; epicId?: string } }) =>
+      Promise.resolve(
+        where.parentId
+          ? { _sum: { storyPoints: 5 }, _count: { _all: 2 } } // 2 + 3
+          : { _sum: { storyPoints: 5 } }, // Epic: chỉ Task (5)
+      ),
+    );
+    issue.findMany = vi.fn(() => Promise.resolve([]));
+    (tx as Record<string, unknown>).priority = {
+      findFirst: vi.fn(() => Promise.resolve(null)),
+    };
+    const { service } = makeService(tx);
+    await service.createWithin(
+      tx as never,
+      'w1',
+      'u1',
+      {
+        projectId: 'p1',
+        typeId: 't1',
+        summary: 's',
+        descriptionFormat: 'MARKDOWN',
+        parentId: 'pt',
+        epicId: 'eA',
+      },
+      [],
+    );
+    const calls = (issue.updateMany as ReturnType<typeof vi.fn>).mock.calls as unknown as Array<
+      [{ where: { id: string }; data: { storyPoints: number } }]
+    >;
+    expect(calls.find((c) => c[0].where.id === 'pt')?.[0].data.storyPoints).toBe(5);
+    expect(calls.find((c) => c[0].where.id === 'eA')?.[0].data.storyPoints).toBe(5);
   });
 });

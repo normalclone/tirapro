@@ -15,7 +15,7 @@ import { PrismaService } from '../../infra/prisma/prisma.service';
 /** Bảng hệ số đọc lại từ DB sau chừng này ms (nhiều instance API: bản SA vừa lưu ở máy khác sẽ tới trong ≤ TTL). */
 const FORMULA_TTL_MS = 30_000;
 
-/** Số việc đã đổi điểm và số Epic đã đổi tổng sau một lần `recomputeAll`. */
+/** Số việc đã đổi điểm (công thức + việc cha cộng lại) và số Epic đã đổi tổng sau một lần `recomputeAll`. */
 export interface RecomputeResult {
   updated: number;
   epics: number;
@@ -32,8 +32,10 @@ interface PointsChange {
 
 /** Số việc đọc/ghi mỗi lô khi tính lại (theo từng dự án, phân trang theo id). */
 const RECOMPUTE_BATCH = 500;
-/** Số Epic cộng lại mỗi transaction. */
+/** Số Epic / việc cha cộng lại mỗi transaction. */
 const EPIC_ROLLUP_BATCH = 100;
+/** Độ sâu tối đa khi cộng ngược lên chuỗi việc cha (cây không có vòng; chặn để chắc chắn dừng). */
+const MAX_PARENT_DEPTH = 20;
 
 /** Đầu vào công thức của một việc. */
 export interface PointsInput {
@@ -51,7 +53,10 @@ export interface PointsExplainRow {
 
 /**
  * Điểm việc = Điểm gốc theo Loại × Hệ số Độ khó × Hệ số Ưu tiên (công thức ở `@tirapro/shared`, bảng hệ số toàn hệ thống
- * ở `PointsFormulaConfig`, chỉ SA sửa). Epic: điểm = tổng điểm việc con (`rollupEpics`), không áp công thức.
+ * ở `PointsFormulaConfig`, chỉ SA sửa). Hai trường hợp KHÔNG áp công thức:
+ *  - việc cha (không phải Epic) đang có ≥1 việc con chưa xoá: điểm = tổng điểm việc con (`rollupParents`);
+ *  - Epic: điểm = tổng điểm các việc CẤP TRÊN thuộc Epic (`parentId` rỗng; điểm việc cha đã gồm việc con của nó) (`rollupEpics`).
+ * Thứ tự khoá/cộng luôn là việc con → việc cha → Epic.
  */
 @Injectable()
 export class PointsService implements OnModuleInit {
@@ -166,17 +171,20 @@ export class PointsService implements OnModuleInit {
     return manual ? `Đã chỉnh tay (theo công thức: ${text})` : text;
   }
 
-  /** Tổng `storyPoints` của việc chưa xoá có `epicId` = epic (kể cả sub-task; mỗi việc cộng một lần). */
+  /**
+   * Tổng `storyPoints` của việc chưa xoá thuộc Epic ở CẤP TRÊN (`parentId` rỗng). Việc con (sub-task) đã nằm trong điểm
+   * của việc cha nên không cộng lần nữa.
+   */
   async epicTotal(tx: Prisma.TransactionClient, epicId: string): Promise<number> {
     const sum = await tx.issue.aggregate({
-      where: { epicId, deletedAt: null },
+      where: { epicId, parentId: null, deletedAt: null },
       _sum: { storyPoints: true },
     });
     return sum._sum.storyPoints ?? 0;
   }
 
   /**
-   * Đặt điểm mỗi Epic = tổng `storyPoints` của việc chưa xoá có `epicId` đó (kể cả sub-task); chỉ ghi khi tổng đổi, và khi
+   * Đặt điểm mỗi Epic = tổng `storyPoints` của việc chưa xoá cấp trên (`parentId` rỗng) có `epicId` đó; chỉ ghi khi tổng đổi, và khi
    * ghi thì tăng `version` (OCC đúng). Trả về id các Epic đã đổi để bên gọi phát sự kiện realtime SAU commit.
    * Chạy TRONG transaction của bên gọi; khoá từng Epic theo thứ tự id để không deadlock giữa các lô.
    */
@@ -209,11 +217,75 @@ export class PointsService implements OnModuleInit {
     }
     return changed;
   }
+
+  /**
+   * Cộng điểm các việc CHA: việc cha (không phải Epic) đang có ≥1 việc con chưa xoá → `storyPoints` = tổng điểm việc con
+   * (không áp công thức, không chỉnh tay); hết việc con → tính lại theo công thức trừ khi `pointsManual`. Chỉ ghi khi giá trị
+   * đổi, và khi ghi thì tăng `version` (OCC đúng). Khoá dòng theo thứ tự id (FOR UPDATE) như `rollupEpics`; chạy TRONG
+   * transaction của bên gọi.
+   * Cha đổi điểm thì cha của nó (nếu có) được cộng lại ở vòng kế (chuỗi việc cha nhiều tầng), nên gọi với cả cha lẫn ông
+   * cũng đúng. Trả về id các Epic có việc cha vừa đổi — bên gọi nối tiếp bằng `rollupEpics`. `opts.changed` (tuỳ chọn) nhận
+   * id các việc cha đã đổi, để phát sự kiện realtime sau commit.
+   */
+  async rollupParents(
+    tx: Prisma.TransactionClient,
+    parentIds: string[],
+    opts: { keepUpdatedAt?: boolean; changed?: string[] } = {},
+  ): Promise<string[]> {
+    const epics = new Set<string>();
+    let level = [...new Set(parentIds)].filter(Boolean).sort();
+    for (let depth = 0; level.length > 0 && depth < MAX_PARENT_DEPTH; depth++) {
+      const next = new Set<string>();
+      for (const id of level) {
+        await tx.$queryRaw`SELECT "id" FROM "Issue" WHERE "id" = ${id} FOR UPDATE`;
+        const parent = await tx.issue.findFirst({
+          where: { id, deletedAt: null },
+          select: {
+            storyPoints: true,
+            pointsManual: true,
+            typeId: true,
+            difficulty: true,
+            priorityId: true,
+            parentId: true,
+            epicId: true,
+            type: { select: { key: true } },
+          },
+        });
+        if (!parent || parent.type.key === 'EPIC') continue; // Epic có quy tắc riêng (`rollupEpics`)
+        const children = await tx.issue.aggregate({
+          where: { parentId: id, deletedAt: null },
+          _sum: { storyPoints: true },
+          _count: { _all: true },
+        });
+        let target: number | null;
+        if (children._count._all > 0) target = children._sum.storyPoints ?? 0;
+        else if (parent.pointsManual)
+          continue; // hết việc con: giữ điểm đã chỉnh tay
+        else target = await this.pointsFor(tx, parent);
+        if (target === null || parent.storyPoints === target) continue;
+        if (opts.keepUpdatedAt)
+          await tx.$executeRaw`UPDATE "Issue" SET "storyPoints" = ${target}::float8, "version" = "version" + 1 WHERE "id" = ${id} AND "deletedAt" IS NULL`;
+        else
+          await tx.issue.updateMany({
+            where: { id, deletedAt: null },
+            data: { storyPoints: target, version: { increment: 1 } },
+          });
+        opts.changed?.push(id);
+        if (parent.epicId) epics.add(parent.epicId);
+        if (parent.parentId) next.add(parent.parentId);
+      }
+      level = [...next].sort();
+    }
+    return [...epics];
+  }
+
   /**
    * Tính lại điểm TOÀN HỆ THỐNG theo bảng hệ số hiện hành (SA vừa lưu, hoặc sau migration) — chạy nền, không chặn request.
-   * - Theo từng dự án, lô 500 việc (phân trang theo id); chỉ động vào việc KHÔNG chỉnh tay, KHÔNG phải Epic và có điểm
-   *   khác công thức; mỗi việc đổi được tăng `version` (OCC đúng). Không ghi lịch sử hoạt động từng việc.
-   * - Sau cùng cộng lại điểm MỌI Epic từ việc con (cùng `rollupEpics` như luồng sửa việc).
+   * - Theo từng dự án, lô 500 việc (phân trang theo id); chỉ động vào việc KHÔNG chỉnh tay, KHÔNG phải Epic, KHÔNG có việc
+   *   con chưa xoá (việc cha lấy tổng việc con) và có điểm khác công thức; mỗi việc đổi được tăng `version` (OCC đúng).
+   *   Không ghi lịch sử hoạt động từng việc.
+   * - Rồi cộng lại điểm MỌI việc cha (tầng thấp trước) từ việc con, rồi MỌI Epic từ việc cấp trên (cùng `rollupParents`/
+   *   `rollupEpics` như luồng sửa việc). Cả hai bước không đổi `updatedAt`.
    * - Báo client mở dự án nạp lại bằng `PROJECT_RANKS_REBALANCED` (cùng nghĩa: version/giá trị của cả dự án đã đổi). Không
    *   phát `ISSUE_UPDATED` từng việc: sẽ kích hoạt thông báo/tự động hoá/Telegram cho thay đổi do hệ thống.
    * Gọi đồng thời: lần gọi sau không chạy song song mà đặt cờ chạy lại MỘT lần khi lần đang chạy xong (bảng hệ số có thể
@@ -258,7 +330,13 @@ export class PointsService implements OnModuleInit {
       for (;;) {
         // allow-deleted: việc đã xoá mềm cũng phải đúng điểm để khôi phục về không lệch (tổng Epic vẫn loại việc đã xoá)
         const rows = await this.prisma.issue.findMany({
-          where: { projectId, pointsManual: false, NOT: { type: { key: 'EPIC' } } },
+          // Việc cha (có việc con chưa xoá) lấy tổng điểm việc con ở bước cộng việc cha bên dưới, không theo công thức.
+          where: {
+            projectId,
+            pointsManual: false,
+            NOT: { type: { key: 'EPIC' } },
+            children: { none: { deletedAt: null } },
+          },
           select: { id: true, typeId: true, difficulty: true, priorityId: true, storyPoints: true },
           orderBy: { id: 'asc' },
           take: RECOMPUTE_BATCH,
@@ -283,6 +361,7 @@ export class PointsService implements OnModuleInit {
         if (rows.length < RECOMPUTE_BATCH) break;
       }
     }
+    updated += await this.rollupAllParents(touchedProjects);
     const epics = await this.rollupAllEpics(touchedProjects);
     if (this.events)
       for (const projectId of touchedProjects)
@@ -315,6 +394,54 @@ export class PointsService implements OnModuleInit {
         AND i."typeId" = v.type_id
         AND i."difficulty"::text = v.difficulty
         AND COALESCE(i."priorityId", '') = v.priority_id`;
+  }
+
+  /**
+   * Cộng lại điểm MỌI việc cha chưa xoá (có việc con chưa xoá, không phải Epic), tầng thấp trước (cha của việc lá trước, rồi
+   * ông…). `rollupParents` còn cộng ngược lên chuỗi nên kết quả đúng kể cả khi một lô chứa cả cha lẫn ông. Trả số việc cha
+   * đã đổi; thêm dự án của chúng vào `touched`.
+   */
+  private async rollupAllParents(touched: Set<string>): Promise<number> {
+    const rows = await this.prisma.issue.findMany({
+      where: {
+        deletedAt: null,
+        children: { some: { deletedAt: null } },
+        NOT: { type: { key: 'EPIC' } },
+      },
+      select: { id: true, projectId: true, parentId: true },
+      orderBy: { id: 'asc' },
+    });
+    if (rows.length === 0) return 0;
+    const projectOf = new Map(rows.map((r) => [r.id, r.projectId]));
+    const parentOf = new Map(rows.map((r) => [r.id, r.parentId]));
+    // Độ sâu trong tập việc cha: cha không có cha nào khác trong tập = 0; tầng thấp (sâu hơn) xử lý trước.
+    const depthOf = (id: string): number => {
+      let d = 0;
+      for (
+        let cur = parentOf.get(id);
+        cur && parentOf.has(cur) && d < MAX_PARENT_DEPTH;
+        cur = parentOf.get(cur)
+      )
+        d++;
+      return d;
+    };
+    const ordered = rows
+      .map((r) => r.id)
+      .sort((a, b) => depthOf(b) - depthOf(a) || (a < b ? -1 : 1));
+    const changed = new Set<string>(); // một việc cha có thể đổi ở lô sau do chuỗi cộng ngược: đếm một lần
+    for (let i = 0; i < ordered.length; i += EPIC_ROLLUP_BATCH) {
+      const ids = ordered.slice(i, i + EPIC_ROLLUP_BATCH);
+      const done: string[] = [];
+      await this.prisma.$transaction((tx) =>
+        this.rollupParents(tx, ids, { keepUpdatedAt: true, changed: done }),
+      );
+      for (const id of done) {
+        changed.add(id);
+        const pid = projectOf.get(id);
+        if (pid) touched.add(pid);
+      }
+    }
+    return changed.size;
   }
 
   /** Cộng lại điểm MỌI Epic chưa xoá (theo lô, mỗi lô một transaction); thêm dự án có Epic đổi vào `touched`. */
