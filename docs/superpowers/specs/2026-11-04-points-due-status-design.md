@@ -77,6 +77,41 @@ Danh sách "Việc của tôi" trên trang Tổng quan (`apps/web/src/features/d
 
 ---
 
+---
+
+## 4. Trang chi tiết việc: ẩn khối trống, thay bằng nút "+ Thêm mục"
+
+Người dùng duyệt 2026-11-04.
+- Các khối sau **ẩn khi không có dữ liệu**:
+  - Tiêu chí chấp nhận
+  - Các bước cần làm
+  - Thành phần
+  - Sửa ở phiên bản
+  - Bị ảnh hưởng ở phiên bản
+  - Liên kết
+  - Tài liệu liên quan
+  - Thông tin môi trường
+- **Tệp đính kèm vẫn hiện như cũ**, và Mô tả cũng giữ nguyên.
+- Thay các khối ẩn bằng **một nút "+ Thêm mục"** (không gọi là "Thêm thành phần" vì trùng tên trường Thành phần/Component).
+  - Bấm vào sẽ ra danh sách các khối đang ẩn; chọn khối nào thì khối đó hiện ra (ở đúng vị trí cũ của nó) và đặt con trỏ vào ô nhập.
+  - Hết khối ẩn thì nút biến mất.
+- Một khối đã có dữ liệu thì luôn hiện. Khối được mở bằng nút mà người dùng bỏ trống rồi tải lại trang thì ẩn lại (trạng thái "đang mở" chỉ sống trong phiên xem trang).
+- Người không có quyền sửa việc thì không thấy nút; họ chỉ thấy các khối có dữ liệu.
+- Áp cho cả trang việc đầy đủ và khung xem nhanh bên phải.
+
+## 5. Bảng kết quả bộ lọc: luôn thấy Trạng thái, Người được giao
+
+Bảng kết quả JQL/bộ lọc (`apps/web/src/features/saved-filters/`) đã có sẵn cột mặc định (Trạng thái, Ưu tiên, Người được giao, Điểm, Hạn). Lỗi nằm ở chỗ: khi mở khung xem việc bên phải, cột Tiêu đề chiếm hết bề ngang và đẩy các cột kia ra ngoài vùng cuộn ngang.
+
+Cách sửa:
+- Cột Tiêu đề có độ rộng tối đa và cắt chữ bằng `…`, có tooltip hiện tiêu đề đầy đủ.
+- Các cột còn lại giữ độ rộng tối thiểu vừa nội dung, để Mã, Tiêu đề, Trạng thái và Người được giao cùng nhìn thấy được ở khổ 1500px khi khung xem nhanh đang mở.
+- Trạng thái hiện dạng nhãn màu theo nhóm trạng thái (dùng chung thành phần với mục 3).
+
+## Không làm
+- Khoá bug do Tester tạo: người dùng chọn **không khoá** (giữ quyền như hiện tại).
+- Workflow riêng theo loại việc: chưa làm. Người dùng tự thêm trạng thái ở Cài đặt → Quy trình (mỗi dự án có bản riêng).
+
 ## Quyết định của người viết (sau vòng kiểm tra của builder — người dùng xem lại khi duyệt)
 1. **SA = `User.isSystemAdmin`.** Trang "Cách tính điểm" chỉ hiện và chỉ ghi được với `isSystemAdmin`.
 2. **Mọi đường ghi điểm khác đi qua công thức:**
