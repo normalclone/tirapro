@@ -74,6 +74,7 @@ export const ERROR_CODES = {
   /** 403: chỉ Quản trị dự án (`project:admin`) hoặc SA được ghi đè điểm tay — người khác đổi Loại/Độ khó/Ưu tiên để điểm tự tính. */
   POINTS_OVERRIDE_FORBIDDEN: 'POINTS_OVERRIDE_FORBIDDEN',
   POINTS_ROLLUP_ONLY: 'POINTS_ROLLUP_ONLY',
+  CHILD_SPRINT_FOLLOWS_PARENT: 'CHILD_SPRINT_FOLLOWS_PARENT',
   /** 422: Hạn là bắt buộc — không xoá trống được (cập nhật/sửa hàng loạt/quy tắc đặt Hạn rỗng). */
   DUE_DATE_REQUIRED: 'DUE_DATE_REQUIRED',
   /** 413: tệp tải lên vượt giới hạn dung lượng. */

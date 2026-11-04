@@ -156,7 +156,12 @@ describe('PointsService.rollupEpics', () => {
     const t = tx({ e1: 5 }, { e1: 12 });
     const changed = await make().service.rollupEpics(t as never, ['e1']);
     expect(t.issue.aggregate).toHaveBeenCalledWith({
-      where: { epicId: 'e1', parentId: null, deletedAt: null }, // chỉ việc cấp trên: việc con đã nằm trong điểm việc cha
+      // chỉ việc cấp trên (không cha hoặc cha đã xoá mềm): việc con của cha còn sống đã nằm trong điểm việc cha
+      where: {
+        epicId: 'e1',
+        deletedAt: null,
+        OR: [{ parentId: null }, { parent: { deletedAt: { not: null } } }],
+      },
       _sum: { storyPoints: true },
     });
     expect(t.issue.updateMany).toHaveBeenCalledWith({
@@ -260,6 +265,14 @@ function parentTx(input: PRow[]) {
           type: { key: r.typeKey },
         });
       }),
+      // `loadAncestors`: nạp parentId của các id (kể cả đã xoá)
+      findMany: vi.fn(({ where }: { where: { id: { in: string[] } } }) =>
+        Promise.resolve(
+          where.id.in
+            .filter((id) => rows.has(id))
+            .map((id) => ({ id, parentId: rows.get(id)!.parentId })),
+        ),
+      ),
       aggregate: vi.fn(({ where }: { where: { parentId: string } }) => {
         const kids = [...rows.values()].filter(
           (k) => k.parentId === where.parentId && !k.deletedAt,
@@ -298,7 +311,7 @@ describe('PointsService.rollupParents — điểm việc cha = tổng điểm vi
     expect(epics).toEqual(['e1']);
     expect(tx.issue.updateMany).toHaveBeenCalledWith({
       where: { id: 't', deletedAt: null },
-      data: { storyPoints: 5, version: { increment: 1 } },
+      data: { storyPoints: 5, pointsManual: false, version: { increment: 1 } },
     });
   });
   it('tổng không đổi => không ghi, không tăng version, không trả Epic', async () => {
@@ -340,6 +353,9 @@ describe('PointsService.rollupParents — điểm việc cha = tổng điểm vi
     expect(rows.get('e')!.storyPoints).toBe(0);
     expect(tx.issue.aggregate).not.toHaveBeenCalled();
   });
+});
+
+describe('PointsService.rollupParents — chuỗi tầng, thứ tự khoá và cờ chỉnh tay', () => {
   it('khoá dòng theo thứ tự id trước khi cộng; id trùng chỉ tính một lần', async () => {
     const { tx, order } = parentTx([
       { id: 'pB', storyPoints: 0 },
@@ -368,6 +384,61 @@ describe('PointsService.rollupParents — điểm việc cha = tổng điểm vi
     await make().service.rollupParents(two.tx as never, ['a', 'b']);
     expect(two.rows.get('a')!.storyPoints).toBe(6);
     expect(two.rows.get('b')!.storyPoints).toBe(6);
+  });
+  it('việc cha chỉnh tay nhận việc con đầu tiên => thành cha thuần: ghi tổng và bỏ cờ pointsManual', async () => {
+    const { tx, rows } = parentTx([
+      { id: 't', storyPoints: 13, pointsManual: true },
+      { id: 's', storyPoints: 3, parentId: 't' },
+    ]);
+    await make().service.rollupParents(tx as never, ['t']);
+    expect(tx.issue.updateMany).toHaveBeenCalledWith({
+      where: { id: 't', deletedAt: null },
+      data: { storyPoints: 3, pointsManual: false, version: { increment: 1 } },
+    });
+    expect(rows.get('t')).toMatchObject({ storyPoints: 3, version: 2 });
+  });
+  it('cha chỉnh tay có tổng khớp sẵn vẫn bị bỏ cờ (chỉ cờ đổi); cha thuần không bị ghi lại', async () => {
+    const manual = parentTx([
+      { id: 't', storyPoints: 3, pointsManual: true },
+      { id: 's', storyPoints: 3, parentId: 't' },
+    ]);
+    await make().service.rollupParents(manual.tx as never, ['t']);
+    expect(manual.tx.issue.updateMany).toHaveBeenCalledTimes(1);
+    const pure = parentTx([
+      { id: 't', storyPoints: 3 },
+      { id: 's', storyPoints: 3, parentId: 't' },
+    ]);
+    await make().service.rollupParents(pure.tx as never, ['t']);
+    expect(pure.tx.issue.updateMany).not.toHaveBeenCalled();
+  });
+  it('keepUpdatedAt: SQL thô cũng bỏ cờ pointsManual', async () => {
+    const { tx } = parentTx([
+      { id: 't', storyPoints: 13, pointsManual: true },
+      { id: 's', storyPoints: 3, parentId: 't' },
+    ]);
+    await make().service.rollupParents(tx as never, ['t'], { keepUpdatedAt: true });
+    const sql = (tx.$executeRaw.mock.calls[0] as unknown as [TemplateStringsArray])[0].join('?');
+    expect(sql).toContain('"pointsManual" = false');
+  });
+  it('THỨ TỰ KHOÁ con → cha → ông dù id của ông nhỏ hơn: truyền cả cha lẫn ông vẫn khoá cha trước', async () => {
+    const { tx, order } = parentTx([
+      { id: 'a', storyPoints: 0 }, // ông
+      { id: 'b', storyPoints: 0, parentId: 'a' }, // cha
+      { id: 'k', storyPoints: 4, parentId: 'b' },
+    ]);
+    await make().service.rollupParents(tx as never, ['a', 'b']);
+    expect(order.filter((o) => o.startsWith('lock:'))).toEqual(['lock:b', 'lock:a']);
+  });
+  it('tổ tiên KHÔNG nằm trong danh sách vẫn khoá sau mọi việc dưới nó (cha trung gian trước ông khi ông cũng được truyền)', async () => {
+    // z (sâu nhất) → y (trung gian, không truyền) → x (ông, được truyền); id x < y < z
+    const { tx, order } = parentTx([
+      { id: 'x', storyPoints: 0 },
+      { id: 'y', storyPoints: 0, parentId: 'x' },
+      { id: 'z', storyPoints: 0, parentId: 'y' },
+      { id: 'leaf', storyPoints: 5, parentId: 'z' },
+    ]);
+    await make().service.rollupParents(tx as never, ['x', 'z']);
+    expect(order.filter((o) => o.startsWith('lock:'))).toEqual(['lock:z', 'lock:y', 'lock:x']);
   });
   it('keepUpdatedAt: ghi bằng SQL thô (không đổi updatedAt), vẫn tăng version', async () => {
     const { tx, rows } = parentTx([
@@ -453,6 +524,7 @@ function makeExecuteRaw(
     const [total, id] = values as [number, string];
     const target = (epics[id] ?? rows.find((x) => x.id === id)) as unknown as { version: number };
     Object.assign(target, { storyPoints: total, version: target.version + 1 });
+    if (sql.includes('"pointsManual" = false')) Object.assign(target, { pointsManual: false });
     return Promise.resolve(1);
   });
 }
@@ -494,6 +566,14 @@ function makeRecompute(opts: {
         if (a.where.type?.key === 'EPIC')
           return Promise.resolve(
             Object.entries(epics).map(([id, e]) => ({ id, projectId: e.projectId })),
+          );
+        // `loadAncestors` của rollupParents (nhiều id): parentId của các id được hỏi
+        const ids = (a.where as { id?: { in: string[] } }).id?.in;
+        if (ids)
+          return Promise.resolve(
+            rows
+              .filter((r) => ids.includes(r.id))
+              .map((r) => ({ id: r.id, parentId: r.parentId ?? null })),
           );
         const hasKids = (id: string) => rows.some((k) => k.parentId === id);
         // bước cộng việc cha: mọi việc (không Epic) đang có việc con chưa xoá
@@ -553,10 +633,10 @@ function makeRecompute(opts: {
       });
     }),
     aggregate: vi.fn(({ where }: { where: { epicId?: string; parentId?: string | null } }) => {
-      // Epic: việc cấp trên (parentId rỗng) có epicId; việc cha: việc có parentId = cha
+      // Epic: việc cấp trên (không cha; cha đã xoá không có trong dữ liệu giả) có epicId; việc cha: việc có parentId = cha
       const list = rows.filter((r) =>
         where.epicId !== undefined
-          ? r.epicId === where.epicId && (r.parentId ?? null) === where.parentId
+          ? r.epicId === where.epicId && (r.parentId ?? null) === null
           : r.parentId === where.parentId,
       );
       return Promise.resolve({
@@ -829,6 +909,34 @@ describe('PointsService.recomputeAll — việc cha có việc con', () => {
     });
     await service.recomputeAll();
     expect(rows.map((x) => x.storyPoints)).toEqual([6, 6, 6]);
+  });
+  it('cha chỉnh tay có việc con: nhận tổng việc con và bị bỏ cờ chỉnh tay (script/recomputeAll)', async () => {
+    const { service, rows } = makeRecompute({
+      rows: [
+        recRow('pm', { typeId: 't-task', storyPoints: 13, pointsManual: true }),
+        recRow('c', { parentId: 'pm' }), // Bug · TB · High = 6
+      ],
+    });
+    await service.recomputeAll();
+    expect(rows[0]).toMatchObject({ storyPoints: 6, pointsManual: false });
+  });
+  it('cộng việc cha theo lô CÙNG độ sâu, sâu nhất trước: khoá cha thấp (b1, b2) rồi ông (a)', async () => {
+    const { service, prisma } = makeRecompute({
+      rows: [
+        recRow('a', { typeId: 't-task', storyPoints: 0 }), // ông (độ sâu 0)
+        recRow('b1', { typeId: 't-task', storyPoints: 0, parentId: 'a' }), // cha (độ sâu 1)
+        recRow('b2', { typeId: 't-task', storyPoints: 0, parentId: 'a' }),
+        recRow('k1', { parentId: 'b1', storyPoints: 6 }),
+        recRow('k2', { parentId: 'b2', storyPoints: 6 }),
+      ],
+    });
+    await service.recomputeAll();
+    const locks = (
+      prisma.$queryRaw.mock.calls as unknown as Array<[TemplateStringsArray, string]>
+    ).map((c) => c[1]);
+    // lô độ sâu 1 trước ([b1, b2] rồi ông a nối theo), sau đó lô độ sâu 0 ([a])
+    expect(locks.slice(0, 3)).toEqual(['b1', 'b2', 'a']);
+    expect(prisma.$transaction).toHaveBeenCalledTimes(2);
   });
   it('báo client nạp lại dự án khi chỉ có việc cha đổi', async () => {
     const { service, events } = makeRecompute({

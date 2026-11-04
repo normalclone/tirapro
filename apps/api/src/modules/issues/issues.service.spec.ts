@@ -116,6 +116,9 @@ function makeService(
     priority: { findUnique: vi.fn(() => Promise.resolve({ name: 'Medium' })) },
     ...tx,
   };
+  // Việc con còn sống / Epic của việc con (liveDescendants, childEpicIds...): mặc định không có; spec riêng ghi đè findMany.
+  const issueTable = tx.issue as Record<string, unknown> | undefined;
+  if (issueTable && !issueTable.findMany) issueTable.findMany = vi.fn(() => Promise.resolve([]));
   const prisma = {
     $transaction: (fn: (t: unknown) => unknown) => fn(txFull),
     ...base,
@@ -299,6 +302,7 @@ describe('IssuesService — OCC atomic', () => {
           return issueRow();
         }),
         findFirstOrThrow: vi.fn(() => Promise.resolve(issueRow({ version: 4, summary: 'mới' }))),
+        findMany: vi.fn(() => Promise.resolve([])), // việc con còn sống (xoá/đổi sprint): không có
         updateMany: vi.fn(
           (_args: { where: Record<string, unknown>; data: Record<string, unknown> }) =>
             Promise.resolve({ count }),
@@ -493,6 +497,7 @@ describe('IssuesService.retract — người báo xoá việc của mình trong 
     const issue = {
       findFirst: vi.fn(() => Promise.resolve(issueRow(row))),
       count: vi.fn(() => Promise.resolve(children)),
+      findMany: vi.fn(() => Promise.resolve([])), // childEpicIds khi xoá
       updateMany: vi.fn(() => Promise.resolve({ count: 1 })),
     };
     const comment = { count: vi.fn(() => Promise.resolve(othersComments)) };
@@ -4163,6 +4168,13 @@ const epicLike = (over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
+/** Điều kiện tổng Epic: việc cấp trên = không cha, hoặc cha đã xoá mềm (việc con mồ côi). */
+const epicTopLevelWhere = (epicId: string) => ({
+  epicId,
+  deletedAt: null,
+  OR: [{ parentId: null }, { parent: { deletedAt: { not: null } } }],
+});
+
 /** Tx cho update/reset/xoá/khôi phục: `sums` = tổng điểm việc con theo epicId; `epics` = hàng epic (đọc `storyPoints`). */
 function pTx(
   current: Record<string, unknown>,
@@ -4435,7 +4447,7 @@ describe('IssuesService — điểm tự tính: Epic — tổng điểm việc c
     await makeService(t).service.update('w1', 'u1', 'i1', { version: 3, difficulty: 'HARD' });
     expect(epicWrite(t, 'eA')).toBeUndefined();
     expect(t.issue.aggregate).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { epicId: 'eA', parentId: null, deletedAt: null } }),
+      expect.objectContaining({ where: epicTopLevelWhere('eA') }),
     );
   });
   it('xoá việc (có epicId) => trừ điểm khỏi Epic trong cùng transaction', async () => {
@@ -4820,12 +4832,12 @@ describe('IssuesService — điểm việc cha = tổng điểm việc con (Task
     await makeService(t).service.update('w1', 'u1', 'i1', { version: 3, difficulty: 'HARD' });
     expect(writeOf(t, 'pt')).toEqual({
       where: { id: 'pt', deletedAt: null },
-      data: { storyPoints: 5, version: { increment: 1 } },
+      data: { storyPoints: 5, pointsManual: false, version: { increment: 1 } },
     });
     expect(epicWrite(t, 'eA')?.data).toMatchObject({ storyPoints: 5 });
     // Epic cộng theo việc cấp trên
     expect(t.issue.aggregate).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { epicId: 'eA', parentId: null, deletedAt: null } }),
+      expect.objectContaining({ where: epicTopLevelWhere('eA') }),
     );
   });
 
@@ -4881,7 +4893,7 @@ describe('IssuesService — điểm việc cha = tổng điểm việc con (Task
     await makeService(t).service.update('w1', 'u1', 'i1', { version: 3, parentId: 'pt' });
     expect(writeOf(t, 'pt')?.data).toMatchObject({ storyPoints: 5 });
     expect(t.issue.aggregate).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { epicId: 'eA', parentId: null, deletedAt: null } }),
+      expect.objectContaining({ where: epicTopLevelWhere('eA') }),
     );
   });
 
@@ -5034,5 +5046,284 @@ describe('IssuesService.create — việc con mới cộng điểm vào việc c
     >;
     expect(calls.find((c) => c[0].where.id === 'pt')?.[0].data.storyPoints).toBe(5);
     expect(calls.find((c) => c[0].where.id === 'eA')?.[0].data.storyPoints).toBe(5);
+  });
+});
+
+type D = { id: string; parentId: string; sprintId: string | null };
+const sprintOk = () => ({
+  sprint: { findFirst: vi.fn(() => Promise.resolve({ id: 'x', state: 'FUTURE' })) },
+});
+/** Tx cho update/move/bulk: `rows` = hàng theo id (cha...), `desc` = việc con/cháu còn sống (đọc theo parentId). */
+function sTx(
+  current: Record<string, unknown>,
+  after: Record<string, unknown>,
+  o: { rows?: Record<string, Record<string, unknown>>; desc?: D[] } = {},
+) {
+  const order: string[] = [];
+  const t = {
+    $queryRaw: vi.fn(() => {
+      order.push('lock');
+      return Promise.resolve([]);
+    }),
+    issue: {
+      findFirst: vi.fn(({ where }: { where: { id: string } }) =>
+        Promise.resolve(where.id === 'i1' ? current : (o.rows?.[where.id] ?? null)),
+      ),
+      findFirstOrThrow: vi.fn(() => Promise.resolve(after)),
+      findMany: vi.fn((a: { where: { parentId?: { in: string[] } } }) =>
+        Promise.resolve(
+          a.where.parentId
+            ? (o.desc ?? []).filter((d) => a.where.parentId!.in.includes(d.parentId))
+            : [],
+        ),
+      ),
+      updateMany: vi.fn((_a: { where: Record<string, unknown>; data: Record<string, unknown> }) => {
+        order.push('write');
+        return Promise.resolve({ count: 1 });
+      }),
+      aggregate: vi.fn(() => Promise.resolve({ _sum: { storyPoints: 0 }, _count: { _all: 0 } })),
+    },
+    issueHistory: { createMany: vi.fn(), create: vi.fn() },
+    project: {
+      findUnique: vi.fn(() => Promise.resolve({ archivedAt: null, defaultWorkflowId: 'wf' })),
+    },
+    ...sprintOk(),
+  };
+  return { t, order };
+}
+const descRows: D[] = [
+  { id: 'c1', parentId: 'i1', sprintId: 'spA' },
+  { id: 'c2', parentId: 'i1', sprintId: 'spA' },
+  { id: 'g1', parentId: 'c1', sprintId: 'spA' },
+];
+const cascadeCall = (t: ReturnType<typeof sTx>['t']) =>
+  (
+    t.issue.updateMany.mock.calls as unknown as Array<
+      [{ where: { id?: { in: string[] } }; data: Record<string, unknown> }]
+    >
+  ).find((c) => typeof c[0].where.id === 'object' && c[0].where.id !== null)?.[0];
+
+describe('IssuesService.update — việc con theo sprint của việc cha', () => {
+  it('đặt sprint KHÁC sprint của cha cho việc con => 422 CHILD_SPRINT_FOLLOWS_PARENT, chưa ghi gì', async () => {
+    const { t } = sTx(issueRow({ parentId: 'pt', sprintId: 'spA' }), issueRow(), {
+      rows: { pt: { sprintId: 'spA' } },
+    });
+    await expect(
+      makeService(t).service.update('w1', 'u1', 'i1', { version: 3, sprintId: 'spB' }),
+    ).rejects.toMatchObject({ status: 422, code: 'CHILD_SPRINT_FOLLOWS_PARENT' });
+    expect(t.issue.updateMany).not.toHaveBeenCalled();
+  });
+  it('đặt sprint BẰNG sprint của cha (hoặc cha không còn sống) => cho qua', async () => {
+    const ok = sTx(
+      issueRow({ parentId: 'pt', sprintId: 'spA' }),
+      issueRow({ parentId: 'pt', sprintId: 'spA', version: 4 }),
+      { rows: { pt: { sprintId: 'spA' } } },
+    );
+    await makeService(ok.t).service.update('w1', 'u1', 'i1', { version: 3, sprintId: 'spA' });
+    expect(ok.t.issue.updateMany).toHaveBeenCalled();
+    const orphan = sTx(
+      issueRow({ parentId: 'gone', sprintId: 'spA' }),
+      issueRow({ parentId: 'gone', sprintId: null, version: 4 }),
+    );
+    await makeService(orphan.t).service.update('w1', 'u1', 'i1', { version: 3, sprintId: null });
+    expect(orphan.t.issue.updateMany).toHaveBeenCalled();
+  });
+  it('đổi cha sang cha khác => sprint của việc đồng bộ theo cha mới', async () => {
+    const { t } = sTx(
+      issueRow({ parentId: 'p1x', sprintId: 'spA' }),
+      issueRow({ parentId: 'p2x', sprintId: 'spB', version: 4 }),
+      {
+        rows: {
+          p2x: {
+            ...issueRow({ id: 'p2x', sprintId: 'spB', storyPoints: 0 }),
+            type: { key: 'TASK', isSubtask: false },
+          },
+          p1x: issueRow({ id: 'p1x', sprintId: 'spA', storyPoints: 0 }),
+        },
+      },
+    );
+    await makeService(t).service.update('w1', 'u1', 'i1', { version: 3, parentId: 'p2x' });
+    const own = t.issue.updateMany.mock.calls.find((c) => c[0].where.id === 'i1')![0];
+    expect(own.data).toMatchObject({ parentId: 'p2x', sprintId: 'spB' });
+  });
+  it('đổi sprint của việc cha => khoá nhánh việc con TRƯỚC khi ghi cha, rồi việc con/cháu đi theo (version +1, lịch sử SPRINT)', async () => {
+    const { t, order } = sTx(
+      issueRow({ sprintId: 'spA' }),
+      issueRow({ sprintId: 'spB', version: 4 }),
+      { desc: descRows },
+    );
+    const { service, events } = makeService(t);
+    await service.update('w1', 'u1', 'i1', { version: 3, sprintId: 'spB' });
+    expect(order.indexOf('lock')).toBeLessThan(order.indexOf('write')); // con → cha
+    const c = cascadeCall(t)!;
+    expect(c.where.id!.in.sort()).toEqual(['c1', 'c2', 'g1']);
+    expect(c.data).toMatchObject({ sprintId: 'spB', version: { increment: 1 } });
+    const hist = (
+      t.issueHistory.createMany.mock.calls as unknown as Array<
+        [{ data: Array<{ issueId: string; field: string }> }]
+      >
+    ).flatMap((x) => x[0].data);
+    expect(
+      hist
+        .filter((h) => h.field === 'SPRINT' && h.issueId !== 'i1')
+        .map((h) => h.issueId)
+        .sort(),
+    ).toEqual(['c1', 'c2', 'g1']);
+    // phát cho client dạng bulk
+    await vi.waitFor(() => expect(events.emit).toHaveBeenCalled());
+  });
+  it('chỉ việc con đang ở sprint khác mới bị ghi; không đổi sprint của cha => không đụng việc con', async () => {
+    const part = sTx(issueRow({ sprintId: 'spA' }), issueRow({ sprintId: 'spB', version: 4 }), {
+      desc: [
+        { id: 'c1', parentId: 'i1', sprintId: 'spB' }, // đã đúng
+        { id: 'c2', parentId: 'i1', sprintId: 'spA' },
+      ],
+    });
+    await makeService(part.t).service.update('w1', 'u1', 'i1', { version: 3, sprintId: 'spB' });
+    expect(cascadeCall(part.t)!.where.id!.in).toEqual(['c2']);
+    const same = sTx(issueRow({ sprintId: 'spA' }), issueRow({ version: 4 }), { desc: descRows });
+    await makeService(same.t).service.update('w1', 'u1', 'i1', { version: 3, summary: 'x' });
+    expect(cascadeCall(same.t)).toBeUndefined();
+    expect(same.t.$queryRaw).not.toHaveBeenCalledWith(expect.anything());
+  });
+});
+
+describe('IssuesService.move — việc con theo sprint của việc cha', () => {
+  it('kéo việc con sang sprint khác => 422; kéo việc cha => việc con đi theo', async () => {
+    const child = sTx(issueRow({ parentId: 'pt', sprintId: 'spA' }), issueRow(), {
+      rows: { pt: { sprintId: 'spA' } },
+    });
+    await expect(
+      makeService(child.t).service.move('w1', 'u1', 'i1', { version: 3, sprintId: 'spB' }),
+    ).rejects.toMatchObject({ status: 422, code: 'CHILD_SPRINT_FOLLOWS_PARENT' });
+    const parent = sTx(issueRow({ sprintId: 'spA' }), issueRow({ sprintId: 'spB', version: 4 }), {
+      desc: descRows,
+    });
+    await makeService(parent.t).service.move('w1', 'u1', 'i1', { version: 3, sprintId: 'spB' });
+    expect(cascadeCall(parent.t)!.where.id!.in.sort()).toEqual(['c1', 'c2', 'g1']);
+    expect(parent.order.indexOf('lock')).toBeLessThan(parent.order.indexOf('write'));
+  });
+});
+
+describe('IssuesService.bulkUpdate — việc con theo sprint của việc cha', () => {
+  const rowsOf = (over: Array<Record<string, unknown>>) => over.map((o) => issueRow(o));
+  function bT(
+    rows: ReturnType<typeof rowsOf>,
+    desc: D[],
+    parents: Record<string, string | null> = {},
+  ) {
+    const { t, order } = sTx(issueRow(), issueRow({ version: 4 }), { desc });
+    t.issue.findMany.mockImplementation(((a: {
+      where: { id?: { in: string[] }; parentId?: { in: string[] } };
+    }) => {
+      if (a.where.parentId)
+        return Promise.resolve(desc.filter((d) => a.where.parentId!.in.includes(d.parentId)));
+      const ids = a.where.id?.in ?? [];
+      // lô chính (include) và tra cha (select id, sprintId)
+      return Promise.resolve([
+        ...rows.filter((r) => ids.includes(r.id)),
+        ...ids.filter((i) => i in parents).map((i) => ({ id: i, sprintId: parents[i] })),
+      ]);
+    }) as never);
+    t.issue.findFirstOrThrow.mockImplementation((({ where }: { where: { id: string } }) =>
+      Promise.resolve(issueRow({ id: where.id, sprintId: 'spB', version: 4 }))) as never);
+    return { t, order };
+  }
+  it('việc con ngoài lô có sprint đích khác sprint của cha => 422 cả lô, chưa ghi', async () => {
+    const { t } = bT(rowsOf([{ id: 'a', parentId: 'pt', sprintId: 'spA', version: 3 }]), [], {
+      pt: 'spA',
+    });
+    await expect(
+      makeService(t).service.bulkUpdate('w1', 'u1', {
+        projectId: 'p1',
+        items: [{ id: 'a', version: 3 }],
+        patch: { sprintId: 'spB' },
+      }),
+    ).rejects.toMatchObject({ status: 422, code: 'CHILD_SPRINT_FOLLOWS_PARENT' });
+    expect(t.issue.updateMany).not.toHaveBeenCalled();
+  });
+  it('cả cha lẫn con trong lô: chỉ cha ghi trực tiếp, con (và cháu ngoài lô) đi theo bằng cascade', async () => {
+    const { t, order } = bT(
+      rowsOf([
+        { id: 'a', parentId: null, sprintId: 'spA', version: 3 },
+        { id: 'b', parentId: 'a', sprintId: 'spA', version: 3 },
+      ]),
+      [
+        { id: 'b', parentId: 'a', sprintId: 'spA' },
+        { id: 'g', parentId: 'b', sprintId: 'spA' },
+      ],
+    );
+    await makeService(t).service.bulkUpdate('w1', 'u1', {
+      projectId: 'p1',
+      items: [
+        { id: 'a', version: 3 },
+        { id: 'b', version: 3 },
+      ],
+      patch: { sprintId: 'spB' },
+    });
+    const direct = (
+      t.issue.updateMany.mock.calls as unknown as Array<[{ where: { id?: unknown } }]>
+    ).filter((c) => typeof c[0].where.id === 'string');
+    expect(direct.map((c) => c[0].where.id)).toEqual(['a']);
+    expect(cascadeCall(t)!.where.id!.in.sort()).toEqual(['b', 'g']);
+    expect(order.indexOf('lock')).toBeLessThan(order.indexOf('write'));
+  });
+});
+
+describe('IssuesService.create — việc con vào sprint của việc cha', () => {
+  it('có parentId => sprintId = sprint của cha, sprintId gửi kèm bị bỏ qua (không kiểm sprint đó)', async () => {
+    const { tx, created } = createTx(WF_DEFAULT, {
+      pt: issueRow({ id: 'pt', sprintId: 'spP', epicId: null, parentId: null, storyPoints: 2 }),
+    });
+    created.mockResolvedValue(issueRow({ id: 'new', parentId: 'pt', sprintId: 'spP' }));
+    const issue = tx.issue as Record<string, unknown>;
+    issue.updateMany = vi.fn(() => Promise.resolve({ count: 1 }));
+    issue.aggregate = vi.fn(() =>
+      Promise.resolve({ _sum: { storyPoints: 2 }, _count: { _all: 1 } }),
+    );
+    issue.findMany = vi.fn(() => Promise.resolve([]));
+    const { service } = makeService(tx);
+    await service.createWithin(
+      tx as never,
+      'w1',
+      'u1',
+      {
+        projectId: 'p1',
+        typeId: 't1',
+        summary: 's',
+        descriptionFormat: 'MARKDOWN',
+        parentId: 'pt',
+        sprintId: 'spOther',
+      },
+      [],
+    );
+    expect(created.mock.calls[0]![0].data.sprintId).toBe('spP');
+  });
+});
+
+describe('IssuesService — việc con mồ côi tính thẳng vào Epic (cha đã xoá mềm)', () => {
+  it('xoá việc cha => Epic của các việc con còn sống được cộng lại (chúng không còn nằm trong điểm cha)', async () => {
+    const t = pTx(issueRow({ epicId: null, storyPoints: 5 }), issueRow(), {
+      epics: { eB: epicLike({ storyPoints: 0 }) },
+      sums: { eB: 5 },
+    });
+    // childEpicIds: việc con còn sống của i1 thuộc Epic eB
+    t.issue.findMany.mockImplementation(((a: { where: { parentId?: unknown } }) =>
+      Promise.resolve(typeof a.where.parentId === 'string' ? [{ epicId: 'eB' }] : [])) as never);
+    await makeService(t).service.softDelete('w1', 'u1', 'i1');
+    expect(epicWrite(t, 'eB')?.data).toMatchObject({ storyPoints: 5 });
+    expect(t.issue.aggregate).toHaveBeenCalledWith(
+      expect.objectContaining({ where: epicTopLevelWhere('eB') }),
+    );
+  });
+  it('khôi phục việc cha => Epic của các việc con còn sống cũng được cộng lại (thôi tính thẳng)', async () => {
+    const t = pTx(issueRow({ deletedAt: new Date(), epicId: null, storyPoints: 5 }), issueRow(), {
+      epics: { eB: epicLike({ storyPoints: 5 }) },
+      sums: { eB: 0 },
+    });
+    t.issue.findMany.mockImplementation(((a: { where: { parentId?: unknown } }) =>
+      Promise.resolve(typeof a.where.parentId === 'string' ? [{ epicId: 'eB' }] : [])) as never);
+    await makeService(t).service.restore('w1', 'u1', 'p1', 'i1');
+    expect(epicWrite(t, 'eB')?.data).toMatchObject({ storyPoints: 0 });
   });
 });

@@ -10,6 +10,7 @@ import type {
 } from '@tirapro/shared';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
+import { liveDescendants, lockIssues } from '../../common/issue-tree';
 import { iso } from '../../common/mappers/date';
 import { BusinessRuleException, NotFoundAppException } from '../../common/exceptions/app.exception';
 import { assertNotArchived } from '../../common/project-writable';
@@ -207,10 +208,20 @@ export class SprintsService {
       // Thứ tự: (1) đóng sprint ở trên, (2) tính việc chưa Done, (3) tạo/khoá sprint đích, (4) snapshot CLOSE kèm
       // payload (việc chuyển tiếp + nơi chuyển), (5) mới chuyển issue ra. Snapshot vẫn chụp TOÀN BỘ sprint (cả việc sắp
       // bị đẩy ra) vì issue chưa di chuyển — velocity cần "cam kết" thật của sprint.
-      const pushed = await tx.issue.findMany({
+      const notDone = await tx.issue.findMany({
         where: { sprintId, deletedAt: null, status: { category: { not: 'DONE' } } },
-        select: { id: true, key: true, summary: true, storyPoints: true, triageState: true },
+        select: {
+          id: true,
+          key: true,
+          summary: true,
+          storyPoints: true,
+          triageState: true,
+          parentId: true,
+        },
       });
+      // Việc con theo sprint của cha: việc chưa Done có cha ở CÙNG sprint không tự chuyển — đi theo cha (cha chưa Done kéo
+      // cả nhánh, kể cả việc con đã Done) hoặc ở lại cùng cha đã Done.
+      const { pushed, roots } = await this.splitByParent(tx, sprintId, notDone);
 
       let targetSprintId: string | null = null;
       let movedTo: SprintClosePayload['movedTo'] = { kind: 'backlog' };
@@ -263,17 +274,37 @@ export class SprintsService {
         payload as unknown as Prisma.InputJsonValue,
       );
 
-      // Đưa issue chưa Done sang đích và ghi lịch sử cho từng issue.
-      if (pushed.length) {
+      // Đưa issue chưa Done sang đích và ghi lịch sử cho từng issue; việc con/cháu (mọi trạng thái) đi theo việc cha.
+      if (roots.length) {
+        const followers = (
+          await liveDescendants(
+            tx,
+            roots.map((i) => i.id),
+          )
+        ).filter((d) => d.sprintId === sprintId);
+        await lockIssues(
+          tx,
+          followers.map((d) => d.id),
+        ); // khoá việc con trước việc cha (cùng thứ tự với cộng điểm cha)
         await this.moveIssuesOut(tx, {
           sprintId,
           projectId: sprint.projectId,
-          ids: pushed.map((i) => i.id),
+          ids: roots.map((i) => i.id),
           targetSprintId,
           actorId,
           onlyNotDone: true,
         });
+        if (followers.length)
+          await this.moveIssuesOut(tx, {
+            sprintId,
+            projectId: sprint.projectId,
+            ids: followers.map((d) => d.id),
+            targetSprintId,
+            actorId,
+            onlyNotDone: false,
+          });
       }
+
       return tx.sprint.findUniqueOrThrow({ where: { id: sprintId } });
     });
     this.events.emit(DOMAIN_EVENTS.SPRINT_COMPLETED, { sprintId, projectId: sprint.projectId });
@@ -357,6 +388,32 @@ export class SprintsService {
     });
     this.events.emit(DOMAIN_EVENTS.SPRINT_UPDATED, { sprintId, projectId: sprint.projectId });
     return { success: true };
+  }
+
+  /**
+   * Tách việc chưa Done của sprint: `pushed` = sẽ rời sprint (liệt vào "chuyển tiếp"); `roots` = việc phải chuyển TRỰC TIẾP
+   * (không có cha ở sprint này). Việc chưa Done có cha ở sprint này: cha chưa Done → đi theo cha (thuộc `pushed`, không phải
+   * `roots`); cha đã Done → ở lại cùng cha (không thuộc `pushed`).
+   */
+  private async splitByParent<T extends { id: string; parentId: string | null }>(
+    tx: Prisma.TransactionClient,
+    sprintId: string,
+    notDone: T[],
+  ): Promise<{ pushed: T[]; roots: T[] }> {
+    const parentIds = [...new Set(notDone.map((i) => i.parentId).filter((x): x is string => !!x))];
+    if (parentIds.length === 0) return { pushed: notDone, roots: notDone };
+    const inSprint = new Set(
+      (
+        await tx.issue.findMany({
+          where: { id: { in: parentIds }, sprintId, deletedAt: null },
+          select: { id: true },
+        })
+      ).map((p) => p.id),
+    );
+    const notDoneIds = new Set(notDone.map((i) => i.id));
+    const parentHere = (i: T) => !!i.parentId && inSprint.has(i.parentId);
+    const pushed = notDone.filter((i) => !parentHere(i) || notDoneIds.has(i.parentId!));
+    return { pushed, roots: notDone.filter((i) => !parentHere(i)) };
   }
 
   /** Tạo sprint FUTURE kế tiếp (cùng board) bên trong transaction của `complete`. */

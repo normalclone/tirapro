@@ -54,6 +54,15 @@ export class PointsRollupOnlyException extends AppException {
   }
 }
 
+/** 422 mã riêng: việc con luôn theo sprint của việc cha — không đặt sprint riêng cho việc con. */
+export class ChildSprintFollowsParentException extends AppException {
+  constructor(
+    message = 'Việc con luôn nằm cùng sprint với việc cha — hãy đổi sprint của việc cha (việc con sẽ đi theo).',
+  ) {
+    super(ERROR_CODES.CHILD_SPRINT_FOLLOWS_PARENT, message, HttpStatus.UNPROCESSABLE_ENTITY);
+  }
+}
+
 /** 422 mã riêng: Hạn bắt buộc, không được xoá trống — web/automation nhận ra mà không so khớp câu chữ. */
 export class DueDateRequiredException extends AppException {
   constructor(message = 'Hạn là bắt buộc — chọn một ngày thay vì xoá trống') {

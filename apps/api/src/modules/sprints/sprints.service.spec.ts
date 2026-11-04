@@ -822,3 +822,67 @@ describe('SprintsService.listForProject — thiếu projectId (rò rỉ dự án
     expect(findMany).not.toHaveBeenCalled();
   });
 });
+
+describe('SprintsService.complete — việc con theo sprint của việc cha', () => {
+  type W = {
+    status?: unknown;
+    id?: { in: string[] };
+    parentId?: { in: string[] };
+  };
+  const row = (id: string, parentId: string | null) => ({
+    id,
+    key: id,
+    summary: id,
+    storyPoints: 1,
+    triageState: null,
+    parentId,
+  });
+  function familyTx() {
+    const t = tx();
+    t.issue.findMany.mockImplementation(((a: { where: W }) => {
+      // việc chưa Done của sprint: cha p (chưa Done), con c1 của p (chưa Done), con c2 của cha dp ĐÃ Done
+      if (a.where.status) return Promise.resolve([row('p', null), row('c1', 'p'), row('c2', 'dp')]);
+      // cha nằm trong sprint này
+      if (a.where.id) return Promise.resolve([{ id: 'p' }, { id: 'dp' }]);
+      // việc con/cháu còn sống của p: c1 và một con đã Done (cd); cháu g của c1
+      if (a.where.parentId) {
+        const frontier = a.where.parentId.in;
+        return Promise.resolve(
+          [
+            { id: 'c1', parentId: 'p', sprintId: 's1' },
+            { id: 'cd', parentId: 'p', sprintId: 's1' },
+            { id: 'g', parentId: 'c1', sprintId: 's1' },
+          ].filter((d) => frontier.includes(d.parentId)),
+        );
+      }
+      return Promise.resolve([]);
+    }) as never);
+    return Object.assign(t, { $queryRaw: vi.fn(() => Promise.resolve([])) }); // khoá việc con (FOR UPDATE)
+  }
+  const moved = (t: ReturnType<typeof tx>) =>
+    (t.issue.updateMany.mock.calls as unknown as Array<[{ where: { id: { in: string[] } } }]>).map(
+      (c) => c[0].where.id.in.slice().sort(),
+    );
+
+  it('việc cha chưa Done kéo CẢ nhánh việc con/cháu (kể cả đã Done); việc con của cha đã Done ở lại', async () => {
+    const t = familyTx();
+    await make(t).service.complete('w1', 's1', 'u1');
+    // lần 1: gốc chưa Done (lọc not DONE); lần 2: việc con/cháu mọi trạng thái đi theo
+    expect(moved(t)).toEqual([['p'], ['c1', 'cd', 'g']]);
+    const hist = (
+      t.issueHistory.createMany.mock.calls as unknown as Array<
+        [{ data: Array<{ issueId: string }> }]
+      >
+    )
+      .flatMap((c) => c[0].data.map((d) => d.issueId))
+      .sort();
+    expect(hist).toEqual(['c1', 'cd', 'g', 'p']); // c2 ở lại: không chuyển, không lịch sử
+  });
+
+  it('carriedOver gồm việc chưa Done được chuyển (cha và con đi theo), không gồm việc con ở lại cùng cha đã Done', async () => {
+    const t = familyTx();
+    await make(t).service.complete('w1', 's1', 'u1');
+    const ids = (closePayload(t).carriedOver as Array<{ id: string }>).map((i) => i.id).sort();
+    expect(ids).toEqual(['c1', 'p']);
+  });
+});

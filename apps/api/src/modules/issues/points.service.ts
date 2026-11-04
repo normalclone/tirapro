@@ -30,6 +30,13 @@ interface PointsChange {
   pts: number;
 }
 
+/** Kết quả cộng lại một việc cha: có đổi không, cha và Epic của nó (để đi tiếp lên cây). */
+interface ParentRollup {
+  changed: boolean;
+  parentId: string | null;
+  epicId: string | null;
+}
+
 /** Số việc đọc/ghi mỗi lô khi tính lại (theo từng dự án, phân trang theo id). */
 const RECOMPUTE_BATCH = 500;
 /** Số Epic / việc cha cộng lại mỗi transaction. */
@@ -172,19 +179,24 @@ export class PointsService implements OnModuleInit {
   }
 
   /**
-   * Tổng `storyPoints` của việc chưa xoá thuộc Epic ở CẤP TRÊN (`parentId` rỗng). Việc con (sub-task) đã nằm trong điểm
-   * của việc cha nên không cộng lần nữa.
+   * Tổng `storyPoints` của việc chưa xoá thuộc Epic ở CẤP TRÊN: không có cha hoặc cha đã xoá mềm. Việc con (sub-task) của
+   * cha còn sống đã nằm trong điểm của cha nên không cộng lần nữa.
    */
   async epicTotal(tx: Prisma.TransactionClient, epicId: string): Promise<number> {
     const sum = await tx.issue.aggregate({
-      where: { epicId, parentId: null, deletedAt: null },
+      where: {
+        epicId,
+        deletedAt: null,
+        // Việc cấp trên của Epic: không có cha, hoặc cha đã xoá mềm (việc con mồ côi không còn nằm trong điểm cha nào).
+        OR: [{ parentId: null }, { parent: { deletedAt: { not: null } } }],
+      },
       _sum: { storyPoints: true },
     });
     return sum._sum.storyPoints ?? 0;
   }
 
   /**
-   * Đặt điểm mỗi Epic = tổng `storyPoints` của việc chưa xoá cấp trên (`parentId` rỗng) có `epicId` đó; chỉ ghi khi tổng đổi, và khi
+   * Đặt điểm mỗi Epic = tổng `storyPoints` của việc chưa xoá cấp trên (không cha / cha đã xoá) có `epicId` đó; chỉ ghi khi tổng đổi, và khi
    * ghi thì tăng `version` (OCC đúng). Trả về id các Epic đã đổi để bên gọi phát sự kiện realtime SAU commit.
    * Chạy TRONG transaction của bên gọi; khoá từng Epic theo thứ tự id để không deadlock giữa các lô.
    */
@@ -220,11 +232,13 @@ export class PointsService implements OnModuleInit {
 
   /**
    * Cộng điểm các việc CHA: việc cha (không phải Epic) đang có ≥1 việc con chưa xoá → `storyPoints` = tổng điểm việc con
-   * (không áp công thức, không chỉnh tay); hết việc con → tính lại theo công thức trừ khi `pointsManual`. Chỉ ghi khi giá trị
-   * đổi, và khi ghi thì tăng `version` (OCC đúng). Khoá dòng theo thứ tự id (FOR UPDATE) như `rollupEpics`; chạy TRONG
-   * transaction của bên gọi.
-   * Cha đổi điểm thì cha của nó (nếu có) được cộng lại ở vòng kế (chuỗi việc cha nhiều tầng), nên gọi với cả cha lẫn ông
-   * cũng đúng. Trả về id các Epic có việc cha vừa đổi — bên gọi nối tiếp bằng `rollupEpics`. `opts.changed` (tuỳ chọn) nhận
+   * và bỏ cờ `pointsManual` (thành cha thuần: không áp công thức, không chỉnh tay); hết việc con → tính lại theo công thức
+   * trừ khi `pointsManual`. Chỉ ghi khi giá trị (hoặc cờ) đổi, và khi ghi thì tăng `version` (OCC đúng). Khoá dòng
+   * (FOR UPDATE) như `rollupEpics`; chạy TRONG transaction của bên gọi.
+   * THỨ TỰ KHOÁ luôn là việc con → cha → ông → Epic (cho mọi bên gọi, kể cả khi truyền cả cha lẫn ông): một id đứng một
+   * mình thì đi lên chuỗi theo từng cha vừa đổi; nhiều id thì nạp trước chuỗi tổ tiên rồi xử lý từ tầng sâu nhất lên
+   * (cùng tầng theo id), tổ tiên chỉ bị xử lý khi có việc dưới nó vừa đổi.
+   * Trả về id các Epic có việc cha vừa đổi — bên gọi nối tiếp bằng `rollupEpics`. `opts.changed` (tuỳ chọn) nhận
    * id các việc cha đã đổi, để phát sự kiện realtime sau commit.
    */
   async rollupParents(
@@ -232,51 +246,106 @@ export class PointsService implements OnModuleInit {
     parentIds: string[],
     opts: { keepUpdatedAt?: boolean; changed?: string[] } = {},
   ): Promise<string[]> {
+    const ids = [...new Set(parentIds)].filter(Boolean);
     const epics = new Set<string>();
-    let level = [...new Set(parentIds)].filter(Boolean).sort();
-    for (let depth = 0; level.length > 0 && depth < MAX_PARENT_DEPTH; depth++) {
-      const next = new Set<string>();
-      for (const id of level) {
-        await tx.$queryRaw`SELECT "id" FROM "Issue" WHERE "id" = ${id} FOR UPDATE`;
-        const parent = await tx.issue.findFirst({
-          where: { id, deletedAt: null },
-          select: {
-            storyPoints: true,
-            pointsManual: true,
-            typeId: true,
-            difficulty: true,
-            priorityId: true,
-            parentId: true,
-            epicId: true,
-            type: { select: { key: true } },
-          },
-        });
-        if (!parent || parent.type.key === 'EPIC') continue; // Epic có quy tắc riêng (`rollupEpics`)
-        const children = await tx.issue.aggregate({
-          where: { parentId: id, deletedAt: null },
-          _sum: { storyPoints: true },
-          _count: { _all: true },
-        });
-        let target: number | null;
-        if (children._count._all > 0) target = children._sum.storyPoints ?? 0;
-        else if (parent.pointsManual)
-          continue; // hết việc con: giữ điểm đã chỉnh tay
-        else target = await this.pointsFor(tx, parent);
-        if (target === null || parent.storyPoints === target) continue;
-        if (opts.keepUpdatedAt)
-          await tx.$executeRaw`UPDATE "Issue" SET "storyPoints" = ${target}::float8, "version" = "version" + 1 WHERE "id" = ${id} AND "deletedAt" IS NULL`;
-        else
-          await tx.issue.updateMany({
-            where: { id, deletedAt: null },
-            data: { storyPoints: target, version: { increment: 1 } },
-          });
-        opts.changed?.push(id);
-        if (parent.epicId) epics.add(parent.epicId);
-        if (parent.parentId) next.add(parent.parentId);
-      }
-      level = [...next].sort();
+    const note = (id: string, r: ParentRollup | null): string | null => {
+      if (!r?.changed) return null;
+      opts.changed?.push(id);
+      if (r.epicId) epics.add(r.epicId);
+      return r.parentId;
+    };
+    if (ids.length === 1) {
+      // Một id: đi lên theo chuỗi cha — tự nhiên đúng thứ tự con → cha → ông.
+      let cur: string | null = ids[0]!;
+      for (let depth = 0; cur && depth < MAX_PARENT_DEPTH; depth++)
+        cur = note(cur, await this.rollupOneParent(tx, cur, opts));
+      return [...epics];
+    }
+    if (ids.length === 0) return [];
+    const parentOf = await this.loadAncestors(tx, ids);
+    const depthOf = (id: string): number => {
+      let d = 0;
+      for (let c = parentOf.get(id); c && d < MAX_PARENT_DEPTH; c = parentOf.get(c)) d++;
+      return d;
+    };
+    const order = [...parentOf.keys()].sort((x, y) => depthOf(y) - depthOf(x) || (x < y ? -1 : 1));
+    const dirty = new Set(ids);
+    for (const id of order) {
+      if (!dirty.has(id)) continue;
+      const up = note(id, await this.rollupOneParent(tx, id, opts));
+      if (up) dirty.add(up);
     }
     return [...epics];
+  }
+
+  /** Nạp `parentId` của các id và mọi tổ tiên của chúng (kể cả tổ tiên đã xoá mềm: chỉ để xếp thứ tự khoá). */
+  private async loadAncestors(
+    tx: Prisma.TransactionClient,
+    ids: string[],
+  ): Promise<Map<string, string | null>> {
+    const parentOf = new Map<string, string | null>();
+    let frontier = ids;
+    for (let i = 0; i < MAX_PARENT_DEPTH && frontier.length > 0; i++) {
+      // allow-deleted: chỉ dựng cây tổ tiên để xếp thứ tự khoá, không đọc dữ liệu nghiệp vụ
+      const rows = await tx.issue.findMany({
+        where: { id: { in: frontier } },
+        select: { id: true, parentId: true },
+      });
+      const next = new Set<string>();
+      for (const r of rows) {
+        parentOf.set(r.id, r.parentId);
+        if (r.parentId && !parentOf.has(r.parentId)) next.add(r.parentId);
+      }
+      for (const id of frontier) if (!parentOf.has(id)) parentOf.set(id, null); // id không còn tồn tại
+      frontier = [...next];
+    }
+    return parentOf;
+  }
+
+  /** Khoá và cộng lại MỘT việc cha; `null` khi bỏ qua (không có/đã xoá/Epic/hết việc con mà chỉnh tay). */
+  private async rollupOneParent(
+    tx: Prisma.TransactionClient,
+    id: string,
+    opts: { keepUpdatedAt?: boolean },
+  ): Promise<ParentRollup | null> {
+    await tx.$queryRaw`SELECT "id" FROM "Issue" WHERE "id" = ${id} FOR UPDATE`;
+    const parent = await tx.issue.findFirst({
+      where: { id, deletedAt: null },
+      select: {
+        storyPoints: true,
+        pointsManual: true,
+        typeId: true,
+        difficulty: true,
+        priorityId: true,
+        parentId: true,
+        epicId: true,
+        type: { select: { key: true } },
+      },
+    });
+    if (!parent || parent.type.key === 'EPIC') return null; // Epic có quy tắc riêng (`rollupEpics`)
+    const children = await tx.issue.aggregate({
+      where: { parentId: id, deletedAt: null },
+      _sum: { storyPoints: true },
+      _count: { _all: true },
+    });
+    const hasChildren = children._count._all > 0;
+    let target: number | null;
+    if (hasChildren) target = children._sum.storyPoints ?? 0;
+    else if (parent.pointsManual)
+      return null; // hết việc con: giữ điểm đã chỉnh tay
+    else target = await this.pointsFor(tx, parent);
+    // Có việc con => cha thuần: cờ chỉnh tay bị bỏ (kể cả khi tổng khớp sẵn).
+    const clearManual = hasChildren && parent.pointsManual;
+    const result = { changed: false, parentId: parent.parentId, epicId: parent.epicId };
+    if (target === null || (parent.storyPoints === target && !clearManual)) return result;
+    if (opts.keepUpdatedAt)
+      await tx.$executeRaw`UPDATE "Issue" SET "storyPoints" = ${target}::float8, "pointsManual" = false, "version" = "version" + 1 WHERE "id" = ${id} AND "deletedAt" IS NULL`;
+    else
+      await tx.issue.updateMany({
+        where: { id, deletedAt: null },
+        data: { storyPoints: target, pointsManual: false, version: { increment: 1 } },
+      });
+    return { ...result, changed: true };
   }
 
   /**
@@ -414,7 +483,8 @@ export class PointsService implements OnModuleInit {
     if (rows.length === 0) return 0;
     const projectOf = new Map(rows.map((r) => [r.id, r.projectId]));
     const parentOf = new Map(rows.map((r) => [r.id, r.parentId]));
-    // Độ sâu trong tập việc cha: cha không có cha nào khác trong tập = 0; tầng thấp (sâu hơn) xử lý trước.
+    // Độ sâu trong tập việc cha: cha không có cha nào khác trong tập = 0. Mỗi lô chỉ chứa việc CÙNG độ sâu, sâu nhất trước
+    // (con → cha → ông), để thứ tự khoá không đảo dù `rollupParents` sắp lại id trong lô.
     const depthOf = (id: string): number => {
       let d = 0;
       for (
@@ -425,12 +495,17 @@ export class PointsService implements OnModuleInit {
         d++;
       return d;
     };
-    const ordered = rows
-      .map((r) => r.id)
-      .sort((a, b) => depthOf(b) - depthOf(a) || (a < b ? -1 : 1));
+    const byDepth = new Map<number, string[]>();
+    for (const r of rows) {
+      const d = depthOf(r.id);
+      byDepth.set(d, [...(byDepth.get(d) ?? []), r.id]);
+    }
+    const batches: string[][] = [];
+    for (const d of [...byDepth.keys()].sort((x, y) => y - x))
+      for (let i = 0; i < byDepth.get(d)!.length; i += EPIC_ROLLUP_BATCH)
+        batches.push(byDepth.get(d)!.slice(i, i + EPIC_ROLLUP_BATCH));
     const changed = new Set<string>(); // một việc cha có thể đổi ở lô sau do chuỗi cộng ngược: đếm một lần
-    for (let i = 0; i < ordered.length; i += EPIC_ROLLUP_BATCH) {
-      const ids = ordered.slice(i, i + EPIC_ROLLUP_BATCH);
+    for (const ids of batches) {
       const done: string[] = [];
       await this.prisma.$transaction((tx) =>
         this.rollupParents(tx, ids, { keepUpdatedAt: true, changed: done }),

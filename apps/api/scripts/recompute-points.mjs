@@ -9,7 +9,9 @@
  *  - không ghi lịch sử hoạt động từng việc;
  *  - việc cha = tổng điểm việc con chưa xoá (tầng thấp trước, cộng ngược lên chuỗi cha → ông); hết việc con thì theo công
  *    thức trừ khi chỉnh tay; ghi khi khác và tăng `version`;
- *  - Epic = tổng điểm việc CẤP TRÊN (`parentId` rỗng) thuộc Epic, chưa xoá; ghi khi khác và tăng `version`.
+ *  - việc cha có việc con: bỏ cờ `pointsManual` (cha thuần);
+ *  - Epic = tổng điểm việc CẤP TRÊN (không cha, hoặc cha đã xoá mềm) thuộc Epic, chưa xoá; ghi khi khác và tăng `version`;
+ *  - sửa dữ liệu cũ: sprint của việc con = sprint của việc cha còn sống (tăng `version`, không đổi `updatedAt`).
  * Không phát sự kiện realtime (script chạy lúc triển khai, chưa có ai mở trang).
  * Ghi bằng SQL thô và KHÔNG đổi `updatedAt` (SLA / "cập nhật gần đây" dựa vào nó; đây là tính lại của hệ thống, không phải
  * người dùng sửa). WHERE lặp lại đầu vào đã tính (loại, độ khó, ưu tiên) + `pointsManual = false` nên việc vừa bị người dùng
@@ -18,7 +20,7 @@
  *   pnpm --filter @tirapro/api run points:recompute
  *
  * Cần DATABASE_URL và đã build @tirapro/types + @tirapro/shared. In đúng MỘT dòng kết quả:
- *   recomputed N issues, M epics
+ *   recomputed N issues, M epics, S child sprints synced
  */
 import { PrismaClient } from '@prisma/client';
 import { DEFAULT_POINTS_FORMULA, computePoints, pointsFormulaSchema } from '@tirapro/shared';
@@ -46,6 +48,22 @@ try {
   ]);
   const typeKey = new Map(types.map((t) => [t.id, t.key]));
   const priorityName = new Map(priorities.map((p) => [p.id, p.name]));
+
+  // Việc con theo sprint của việc cha (sửa dữ liệu cũ, idempotent): đặt sprint của việc con = sprint của cha còn sống khi khác;
+  // lặp theo tầng (cha → con → cháu). Tăng `version` (OCC) nhưng KHÔNG đổi `updatedAt`.
+  let sprintSynced = 0;
+  for (let round = 0; round < 20; round++) {
+    const n = await prisma.$executeRaw`
+      UPDATE "Issue" AS c
+      SET "sprintId" = p."sprintId", "version" = c."version" + 1
+      FROM "Issue" AS p
+      WHERE c."parentId" = p."id"
+        AND c."deletedAt" IS NULL
+        AND p."deletedAt" IS NULL
+        AND c."sprintId" IS DISTINCT FROM p."sprintId"`;
+    if (n === 0) break;
+    sprintSynced += n;
+  }
 
   let issues = 0;
   for (const { id: projectId } of projects) {
@@ -116,9 +134,16 @@ try {
       d++;
     return d;
   };
-  const parentOrder = parentRows
-    .map((r) => r.id)
-    .sort((a, b) => depthOf(b) - depthOf(a) || (a < b ? -1 : 1));
+  // Mỗi lô chỉ chứa việc CÙNG độ sâu, sâu nhất trước (con → cha → ông) để thứ tự khoá không đảo.
+  const byDepth = new Map();
+  for (const r of parentRows) {
+    const d = depthOf(r.id);
+    byDepth.set(d, [...(byDepth.get(d) ?? []), r.id]);
+  }
+  const parentBatches = [];
+  for (const d of [...byDepth.keys()].sort((a, b) => b - a))
+    for (let i = 0; i < byDepth.get(d).length; i += 100)
+      parentBatches.push(byDepth.get(d).slice(i, i + 100));
   const changedParents = new Set();
   const touchParent = async (tx, startIds) => {
     // Cộng ngược lên chuỗi: cha đổi thì cha của nó ở vòng kế (cùng thuật toán PointsService.rollupParents).
@@ -145,7 +170,8 @@ try {
           _count: { _all: true },
         });
         let target;
-        if (kids._count._all > 0) target = kids._sum.storyPoints ?? 0;
+        const hasKids = kids._count._all > 0;
+        if (hasKids) target = kids._sum.storyPoints ?? 0;
         else if (p.pointsManual) continue;
         else
           target = computePoints(
@@ -154,22 +180,21 @@ try {
             p.difficulty,
             p.priorityId ? (priorityName.get(p.priorityId) ?? null) : null,
           );
-        if (target === null || p.storyPoints === target) continue;
+        // Có việc con => cha thuần: bỏ cờ chỉnh tay (kể cả khi tổng khớp sẵn).
+        const clearManual = hasKids && p.pointsManual;
+        if (target === null || (p.storyPoints === target && !clearManual)) continue;
         // SQL thô: không đổi updatedAt.
-        await tx.$executeRaw`UPDATE "Issue" SET "storyPoints" = ${target}::float8, "version" = "version" + 1 WHERE "id" = ${id} AND "deletedAt" IS NULL`;
+        await tx.$executeRaw`UPDATE "Issue" SET "storyPoints" = ${target}::float8, "pointsManual" = false, "version" = "version" + 1 WHERE "id" = ${id} AND "deletedAt" IS NULL`;
         changedParents.add(id);
         if (p.parentId) next.add(p.parentId);
       }
       level = [...next].sort();
     }
   };
-  for (let i = 0; i < parentOrder.length; i += 100) {
-    const ids = parentOrder.slice(i, i + 100);
-    await prisma.$transaction((tx) => touchParent(tx, ids));
-  }
+  for (const ids of parentBatches) await prisma.$transaction((tx) => touchParent(tx, ids));
   issues += changedParents.size;
 
-  // Epic sau cùng: tổng điểm việc cấp trên (parentId rỗng) chưa xoá. Khoá dòng Epic như luồng sửa việc.
+  // Epic sau cùng: tổng điểm việc cấp trên (không cha, hoặc cha đã xoá mềm) chưa xoá. Khoá dòng Epic như luồng sửa việc.
   const epicRows = await prisma.issue.findMany({
     where: { deletedAt: null, type: { key: 'EPIC' } },
     select: { id: true },
@@ -185,7 +210,11 @@ try {
       });
       if (!epic) return false;
       const sum = await tx.issue.aggregate({
-        where: { epicId: id, parentId: null, deletedAt: null },
+        where: {
+          epicId: id,
+          deletedAt: null,
+          OR: [{ parentId: null }, { parent: { deletedAt: { not: null } } }],
+        },
         _sum: { storyPoints: true },
       });
       const total = sum._sum.storyPoints ?? 0;
@@ -197,7 +226,7 @@ try {
     if (changed) epics++;
   }
 
-  console.log(`recomputed ${issues} issues, ${epics} epics`);
+  console.log(`recomputed ${issues} issues, ${epics} epics, ${sprintSynced} child sprints synced`);
 } catch (e) {
   console.error(e instanceof Error ? e.message : e);
   process.exitCode = 1;

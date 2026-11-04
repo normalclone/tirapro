@@ -451,10 +451,6 @@ const READ_ALLOWLIST: Record<string, [Kind, string]> = {
     'INTERNAL',
     'cập nhật tổng điểm Epic sau khi IssuesService ghi việc (đã kiểm quyền/dự án); không route nào gọi',
   ],
-  'issues/points.service.ts::PointsService.rollupParents': [
-    'INTERNAL',
-    'cập nhật điểm việc cha sau khi IssuesService ghi việc con (đã kiểm quyền/dự án) và khi recomputeAll chạy hệ thống; không route nào gọi',
-  ],
   'issues/trash.service.ts::TrashService.list': ['ROUTE_GUARDED', R_ROUTE_GUARDED],
   'labels/labels.service.ts::LabelsService.list': ['ROUTE_GUARDED', R_ROUTE_GUARDED],
   'labels/labels.service.ts::LabelsService.attach': ['ROUTE_GUARDED', R_ROUTE_GUARDED],

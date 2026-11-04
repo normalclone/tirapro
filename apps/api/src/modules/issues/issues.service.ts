@@ -27,6 +27,7 @@ import {
 } from '@tirapro/shared';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
+import { liveDescendants, lockIssues, type TreeDescendant } from '../../common/issue-tree';
 import { toUserRefDto, USER_DTO_SELECT } from '../../common/mappers/user.mapper';
 import { iso } from '../../common/mappers/date';
 import { insensitiveContains } from '../../common/like';
@@ -36,6 +37,7 @@ import { ProjectAccessService } from '../rbac/project-access.service';
 import { CommentsService } from '../comments/comments.service';
 import {
   BusinessRuleException,
+  ChildSprintFollowsParentException,
   DueDateRequiredException,
   ForbiddenAppException,
   InvalidTransitionException,
@@ -223,6 +225,85 @@ export class IssuesService {
     return [...new Set([...parents, ...epics])];
   }
 
+  /** Sprint của việc cha còn sống (`null` khi không có cha hoặc cha đã xoá — khi đó việc con không bị ràng buộc sprint). */
+  private async parentSprintOf(
+    db: Prisma.TransactionClient | PrismaService,
+    workspaceId: string,
+    parentId: string | null | undefined,
+  ): Promise<{ sprintId: string | null } | null> {
+    if (!parentId) return null;
+    return db.issue.findFirst({
+      where: { id: parentId, workspaceId, deletedAt: null },
+      select: { sprintId: true },
+    });
+  }
+
+  /**
+   * Việc con LUÔN theo sprint của việc cha (như Jira; tổng điểm sprint chỉ đếm việc lá nên cần điều này). `update()`:
+   * đặt sprint trực tiếp cho việc có cha sống → 422 CHILD_SPRINT_FOLLOWS_PARENT trừ khi bằng sprint của cha; đổi `parentId`
+   * sang cha mới → sprint của việc đồng bộ theo cha mới. Trả sprint phải ghi (`undefined` = không áp đặt).
+   */
+  private async syncSprintWithParent(
+    workspaceId: string,
+    current: { parentId: string | null },
+    input: { parentId?: string | null; sprintId?: string | null },
+  ): Promise<string | null | undefined> {
+    const parentId = input.parentId !== undefined ? input.parentId : current.parentId;
+    const parent = await this.parentSprintOf(this.prisma, workspaceId, parentId);
+    if (!parent) return undefined;
+    if (input.sprintId !== undefined && (input.sprintId ?? null) !== parent.sprintId)
+      throw new ChildSprintFollowsParentException();
+    const parentChanged =
+      input.parentId !== undefined && (input.parentId ?? null) !== current.parentId;
+    return parentChanged ? parent.sprintId : undefined;
+  }
+
+  /** Khoá cả nhánh việc con (FOR UPDATE theo id) TRƯỚC khi ghi việc cha — thứ tự khoá con → cha. Trả các việc con. */
+  private async lockSubtree(
+    tx: Prisma.TransactionClient,
+    rootIds: string[],
+  ): Promise<TreeDescendant[]> {
+    const subtree = await liveDescendants(tx, rootIds);
+    await lockIssues(
+      tx,
+      subtree.map((d) => d.id),
+    );
+    return subtree;
+  }
+
+  /**
+   * Cho việc con/cháu đi theo sprint mới của việc cha trong CÙNG transaction: ghi `sprintId`, tăng `version`, ghi lịch sử
+   * SPRINT cho từng việc. Chỉ động vào việc đang ở sprint khác. Trả id các việc đã đổi (để phát sự kiện bulk sau commit).
+   */
+  private async cascadeSprint(
+    tx: Prisma.TransactionClient,
+    userId: string,
+    projectId: string,
+    subtree: TreeDescendant[],
+    sprintId: string | null,
+  ): Promise<string[]> {
+    const moving = subtree.filter((d) => d.sprintId !== sprintId);
+    if (moving.length === 0) return [];
+    await tx.issue.updateMany({
+      where: { id: { in: moving.map((d) => d.id) }, deletedAt: null },
+      data: { sprintId, updatedById: userId, version: { increment: 1 } },
+    });
+    const occurredAt = new Date();
+    await tx.issueHistory.createMany({
+      data: moving.map((d) => ({
+        issueId: d.id,
+        projectId,
+        sprintId,
+        field: 'SPRINT' as const,
+        oldValue: d.sprintId,
+        newValue: sprintId,
+        actorId: userId,
+        occurredAt,
+      })),
+    });
+    return moving.map((d) => d.id);
+  }
+
   /**
    * Việc trong lô đang có việc con: điểm là tổng việc con → không chỉnh tay, không tính lại theo công thức. Chỉ tra khi
    * patch đụng tới điểm (storyPoints / Độ khó / Ưu tiên).
@@ -241,6 +322,56 @@ export class IssuesService {
           rows.map((r) => r.id),
         )
       : new Set<string>();
+  }
+
+  /**
+   * Khôi phục: việc con theo sprint của cha còn sống (cha có thể đã đổi sprint lúc việc con nằm trong Thùng rác); việc cha
+   * được khôi phục kéo các việc con còn sống đi theo sprint của nó. Trả id các việc con đã đổi sprint.
+   */
+  private async syncSprintOnRestore(
+    tx: Prisma.TransactionClient,
+    workspaceId: string,
+    userId: string,
+    current: { id: string; projectId: string; sprintId: string | null },
+    parentId: string | null,
+  ): Promise<string[]> {
+    let sprintId = current.sprintId;
+    const parent = await this.parentSprintOf(tx, workspaceId, parentId);
+    if (parent && parent.sprintId !== current.sprintId) {
+      sprintId = parent.sprintId;
+      await tx.issue.updateMany({ where: { id: current.id }, data: { sprintId } });
+      await tx.issueHistory.createMany({
+        data: [
+          {
+            issueId: current.id,
+            projectId: current.projectId,
+            sprintId,
+            field: 'SPRINT' as const,
+            oldValue: current.sprintId,
+            newValue: sprintId,
+            actorId: userId,
+            occurredAt: new Date(),
+          },
+        ],
+      });
+    }
+    return this.cascadeSprint(
+      tx,
+      userId,
+      current.projectId,
+      await liveDescendants(tx, [current.id]),
+      sprintId,
+    );
+  }
+
+  /** Epic của các việc con CÒN SỐNG của `parentId` (khi cha bị xoá/khôi phục, chúng đổi trạng thái "mồ côi" ↔ nằm trong cha). */
+  private async childEpicIds(tx: Prisma.TransactionClient, parentId: string): Promise<string[]> {
+    const rows = await tx.issue.findMany({
+      where: { parentId, deletedAt: null, epicId: { not: null } },
+      select: { epicId: true },
+      distinct: ['epicId'],
+    });
+    return rows.map((r) => r.epicId).filter((x): x is string => typeof x === 'string');
   }
 
   /** Id (trong `ids`) của việc đang có ≥1 việc con chưa xoá — điểm của chúng là tổng việc con. */
@@ -375,6 +506,7 @@ export class IssuesService {
     workspaceId: string,
     actorId: string,
     epicIds: string[],
+    changedFields: string[] = ['storyPoints'],
   ): Promise<void> {
     if (epicIds.length === 0) return;
     try {
@@ -382,7 +514,7 @@ export class IssuesService {
         this.events.emit(DOMAIN_EVENTS.ISSUE_UPDATED, {
           issue,
           actorId,
-          changedFields: ['storyPoints'],
+          changedFields,
           bulk: true,
         });
     } catch (e) {
@@ -1040,6 +1172,9 @@ export class IssuesService {
     // Hạn luôn có giá trị: không gửi (hoặc null) => mặc định mai theo giờ VN, kể cả đường import.
     const dueDate = this.resolveCreateDueDate(input.dueDate, input.startDate);
     this.assertScheduleOrder(input.startDate, dueDate);
+    // Việc con luôn vào sprint của việc cha (sprintId gửi kèm bị bỏ qua).
+    const parentRef = await this.parentSprintOf(db, workspaceId, input.parentId);
+    const sprintId = parentRef ? parentRef.sprintId : input.sprintId;
     // Import có thể mang dữ liệu lịch sử (hạn đã qua) nên chỉ kiểm khi tạo tay/API.
     if (origin !== 'import') this.assertDueNotBeforeCreated(dueDate, null);
     await this.assertMetaInWorkspace(
@@ -1048,7 +1183,7 @@ export class IssuesService {
         typeId: input.typeId,
         priorityId: input.priorityId,
         severityId: input.severityId,
-        sprintId: input.sprintId,
+        sprintId: parentRef ? undefined : input.sprintId,
         parentId: input.parentId,
         projectId: project.id,
         allowClosedSprint: origin === 'import',
@@ -1116,7 +1251,7 @@ export class IssuesService {
           assigneeId: assigneeId ?? null,
           parentId: input.parentId ?? null,
           epicId: input.epicId ?? null,
-          sprintId: input.sprintId ?? null,
+          sprintId: sprintId ?? null,
           ...pts,
           dueDate: new Date(dueDate),
           startDate: input.startDate ? new Date(input.startDate) : null,
@@ -1591,12 +1726,33 @@ export class IssuesService {
       if (input.parentId) await this.assertNoParentCycle(workspaceId, id, input.parentId);
       data.parentId = input.parentId ?? null;
     }
+    // Việc con theo sprint của cha: chặn đặt sprint riêng; đổi cha thì đồng bộ sprint theo cha mới.
+    const synced = await this.syncSprintWithParent(workspaceId, current, input);
+    if (synced !== undefined) data.sprintId = synced;
+    const newSprint =
+      synced !== undefined
+        ? synced
+        : input.sprintId !== undefined
+          ? (input.sprintId ?? null)
+          : undefined;
+    const sprintChanged = newSprint !== undefined && newSprint !== current.sprintId;
 
     let changedEpics: string[] = [];
+    let cascaded: string[] = [];
     const updated = await this.prisma.$transaction(async (tx) => {
+      // Khoá nhánh việc con TRƯỚC khi ghi việc cha (thứ tự con → cha, như cộng điểm).
+      const subtree = sprintChanged ? await this.lockSubtree(tx, [id]) : [];
       await this.applyPoints(tx, current, input, data, manualPoints);
       const row = await this.updateWithVersion(tx, id, workspaceId, input.version, data);
       await this.recordChanges(tx, userId, current, row);
+      if (sprintChanged)
+        cascaded = await this.cascadeSprint(
+          tx,
+          userId,
+          current.projectId,
+          subtree,
+          newSprint ?? null,
+        );
       changedEpics = await this.rollupTree(tx, this.rollupTargets([[current, row]]));
       return row;
     });
@@ -1608,6 +1764,7 @@ export class IssuesService {
       ...withMeta(opts),
     });
     await this.emitEpicTotals(workspaceId, userId, changedEpics);
+    await this.emitEpicTotals(workspaceId, userId, cascaded, ['sprintId']);
     return dto;
   }
 
@@ -1659,8 +1816,8 @@ export class IssuesService {
   /**
    * Việc cha và Epic cần cộng lại sau khi việc đổi (cặp trước/sau):
    *  - việc cha: cha cũ + mới khi đổi `parentId`, hoặc cha hiện tại khi điểm việc đổi;
-   *  - Epic: Epic cũ + mới khi đổi `epicId`, hoặc Epic hiện tại khi điểm đổi / việc chuyển giữa "cấp trên" và "việc con"
-   *    (chỉ việc cấp trên, `parentId` rỗng, được cộng vào Epic). Epic của việc cha tự được nối tiếp ở `rollupTree`.
+   *  - Epic: Epic cũ + mới khi đổi `epicId`, hoặc Epic hiện tại khi điểm đổi / đổi `parentId` (việc chuyển giữa "cấp trên"
+   *    và "việc con"; việc con mồ côi của cha đã xoá cũng được tính vào Epic). Epic của việc cha được nối tiếp ở `rollupTree`.
    */
   private rollupTargets(
     pairs: Array<
@@ -1679,10 +1836,7 @@ export class IssuesService {
       else if (after.parentId && pointsChanged) parentIds.push(after.parentId);
       if (before.epicId !== after.epicId)
         epicIds.push(...[before.epicId, after.epicId].filter(isString));
-      else if (
-        after.epicId &&
-        (pointsChanged || (before.parentId === null) !== (after.parentId === null))
-      )
+      else if (after.epicId && (pointsChanged || before.parentId !== after.parentId))
         epicIds.push(after.epicId);
     }
     return { parentIds, epicIds };
@@ -1771,13 +1925,17 @@ export class IssuesService {
       : null;
 
     const recompute = await this.bulkRecomputeContext(patch);
+    const sprintPlan = await this.planBulkSprint(workspaceId, rows, patch.sprintId);
 
     const conflicts: BulkUpdateIssuesResult['conflicts'] = [];
     let changedEpics: string[] = [];
+    let cascaded: string[] = [];
     const changed: Array<{ before: IssueRow; after: IssueRow }> = [];
     const result: IssueRow[] = [];
     const labelIds: string[] = []; // hàng đã/sẽ được ghi nhãn (version còn khớp)
     await this.prisma.$transaction(async (tx) => {
+      // Khoá nhánh việc con của các việc sẽ đổi sprint TRƯỚC khi ghi cha (thứ tự con → cha).
+      const subtree = await this.lockSubtree(tx, sprintPlan.roots);
       if (wip) {
         // Chỉ tính việc thật sự SẼ vào cột: version còn khớp và chưa nằm trong cột đích.
         const incoming = items.filter((i) => {
@@ -1800,29 +1958,14 @@ export class IssuesService {
           conflicts.push({ id: item.id, version: before.version });
           continue;
         }
-        const statusChanged = patch.statusId !== undefined && patch.statusId !== before.statusId;
-        const data: Prisma.IssueUncheckedUpdateManyInput = {};
-        if (statusChanged) {
-          data.statusId = patch.statusId;
-          data.resolutionId = toDone ? (before.resolutionId ?? doneResolutionId) : null;
-          data.resolvedAt = toDone ? new Date() : null;
-        }
-        if (patch.assigneeId !== undefined && patch.assigneeId !== before.assigneeId)
-          data.assigneeId = patch.assigneeId;
-        if (patch.priorityId !== undefined && patch.priorityId !== before.priorityId)
-          data.priorityId = patch.priorityId;
-        if (patch.sprintId !== undefined && patch.sprintId !== before.sprintId)
-          data.sprintId = patch.sprintId;
-        this.applyBulkPoints(
-          before,
-          patch,
+        const { data, statusChanged } = this.buildBulkItemData(before, patch, {
+          toDone,
+          doneResolutionId,
           manualPoints,
           recompute,
-          data,
-          rollupParents.has(before.id),
-        );
-        if (patch.epicId !== undefined && patch.epicId !== before.epicId)
-          data.epicId = patch.epicId;
+          rollupParents,
+          sprintFollowers: sprintPlan.followers,
+        });
         if (Object.keys(data).length === 0) {
           if (labelOps) labelIds.push(item.id);
           result.push(before); // không có gì khác đi — coi như đã đạt, không tăng version
@@ -1842,6 +1985,14 @@ export class IssuesService {
         }
       }
       if (labelOps && labelIds.length) await this.applyBulkLabels(tx, labelIds, labelOps);
+      cascaded = await this.cascadeBulkSprint(
+        tx,
+        userId,
+        projectId,
+        subtree,
+        changed,
+        patch.sprintId,
+      );
       // Tổng điểm việc cha rồi Epic (cũ và mới) sau khi cả lô đã ghi — một lần cho mỗi việc, cùng transaction.
       changedEpics = await this.rollupTree(
         tx,
@@ -1851,7 +2002,114 @@ export class IssuesService {
 
     const fresh = await this.emitBulkEvents(workspaceId, userId, projectId, changed, labelIds);
     await this.emitEpicTotals(workspaceId, userId, changedEpics);
+    await this.emitEpicTotals(workspaceId, userId, cascaded, ['sprintId']);
     return { updated: result.map((r) => this.toDto(fresh.get(r.id) ?? r)), conflicts };
+  }
+
+  /** Dữ liệu ghi cho MỘT việc của lô (chỉ trường thật sự đổi). `sprintFollowers`: việc có cha cũng trong lô — sprint đi theo cha. */
+  private buildBulkItemData(
+    before: IssueRow,
+    patch: BulkUpdateIssuesInput['patch'],
+    ctx: {
+      toDone: boolean;
+      doneResolutionId: string | null;
+      manualPoints: number | undefined;
+      recompute: Awaited<ReturnType<IssuesService['bulkRecomputeContext']>>;
+      rollupParents: Set<string>;
+      sprintFollowers: Set<string>;
+    },
+  ): { data: Prisma.IssueUncheckedUpdateManyInput; statusChanged: boolean } {
+    const statusChanged = patch.statusId !== undefined && patch.statusId !== before.statusId;
+    const data: Prisma.IssueUncheckedUpdateManyInput = {};
+    if (statusChanged) {
+      data.statusId = patch.statusId;
+      data.resolutionId = ctx.toDone ? (before.resolutionId ?? ctx.doneResolutionId) : null;
+      data.resolvedAt = ctx.toDone ? new Date() : null;
+    }
+    if (patch.assigneeId !== undefined && patch.assigneeId !== before.assigneeId)
+      data.assigneeId = patch.assigneeId;
+    if (patch.priorityId !== undefined && patch.priorityId !== before.priorityId)
+      data.priorityId = patch.priorityId;
+    if (
+      patch.sprintId !== undefined &&
+      patch.sprintId !== before.sprintId &&
+      !ctx.sprintFollowers.has(before.id)
+    )
+      data.sprintId = patch.sprintId;
+    this.applyBulkPoints(
+      before,
+      patch,
+      ctx.manualPoints,
+      ctx.recompute,
+      data,
+      ctx.rollupParents.has(before.id),
+    );
+    if (patch.epicId !== undefined && patch.epicId !== before.epicId) data.epicId = patch.epicId;
+    return { data, statusChanged };
+  }
+
+  /**
+   * Kế hoạch sprint của lô (việc con theo sprint của cha): việc có cha SỐNG nằm NGOÀI lô mà sprint đích khác sprint của cha
+   * → 422 cả lô (chưa ghi). `followers`: việc có cha cũng trong lô (không ghi sprint riêng, đi theo cha). `roots`: việc
+   * sẽ đổi sprint (kể cả việc con hợp lệ) — gốc của các nhánh phải khoá + cascade.
+   */
+  private async planBulkSprint(
+    workspaceId: string,
+    rows: IssueRow[],
+    sprintId: string | null | undefined,
+  ): Promise<{ followers: Set<string>; roots: string[] }> {
+    const none = { followers: new Set<string>(), roots: [] as string[] };
+    if (sprintId === undefined) return none;
+    const inBatch = new Set(rows.map((r) => r.id));
+    const changing = rows.filter((r) => r.sprintId !== sprintId);
+    const changingIds = new Set(changing.map((r) => r.id));
+    // Cha cũng đang đổi sprint trong lô: việc con đi theo cha (cascade); cha đã ở sprint đích: con là gốc bình thường.
+    const followers = new Set(
+      changing.filter((r) => r.parentId && changingIds.has(r.parentId)).map((r) => r.id),
+    );
+    const outside = changing.filter((r) => r.parentId && !inBatch.has(r.parentId));
+    if (outside.length > 0) {
+      const parents = await this.prisma.issue.findMany({
+        where: {
+          id: { in: [...new Set(outside.map((r) => r.parentId!))] },
+          workspaceId,
+          deletedAt: null,
+        },
+        select: { id: true, sprintId: true },
+      });
+      const parentSprint = new Map(parents.map((p) => [p.id, p.sprintId]));
+      for (const r of outside) {
+        if (parentSprint.has(r.parentId!) && parentSprint.get(r.parentId!) !== sprintId)
+          throw new ChildSprintFollowsParentException();
+      }
+    }
+    return { followers, roots: changing.filter((r) => !followers.has(r.id)).map((r) => r.id) };
+  }
+
+  /** Sau khi lô đã ghi: cho việc con/cháu của các việc VỪA đổi sprint đi theo (bỏ nhánh của việc bị xung đột phiên bản). */
+  private async cascadeBulkSprint(
+    tx: Prisma.TransactionClient,
+    userId: string,
+    projectId: string,
+    subtree: TreeDescendant[],
+    changed: Array<{ before: IssueRow; after: IssueRow }>,
+    sprintId: string | null | undefined,
+  ): Promise<string[]> {
+    if (sprintId === undefined || subtree.length === 0) return [];
+    const moved = new Set(
+      changed.filter((c) => c.before.sprintId !== c.after.sprintId).map((c) => c.after.id),
+    );
+    const parentOf = new Map(subtree.map((d) => [d.id, d.parentId]));
+    const under = subtree.filter((d) => {
+      for (
+        let cur: string | undefined = d.parentId, i = 0;
+        cur && i < 20;
+        cur = parentOf.get(cur), i++
+      )
+        if (moved.has(cur)) return true;
+      return false;
+    });
+    return this.cascadeSprint(tx, userId, projectId, under, sprintId);
   }
 
   /** Ghi nhãn cho các hàng của lô. Nhãn không phải cột của Issue nên không tăng version (giống POST :id/labels). */
@@ -2074,6 +2332,9 @@ export class IssuesService {
       sprintId: this.sprintIfChanged(input.sprintId, current.sprintId),
       projectId: current.projectId,
     });
+    // Việc con theo sprint của cha: không kéo riêng sang sprint khác (kéo việc cha, việc con đi theo).
+    if (sprintChanged)
+      await this.syncSprintWithParent(workspaceId, current, { sprintId: input.sprintId });
 
     // Kéo sang cột khác là đổi trạng thái: đi đúng workflow như transition()/bulkUpdate(). Kiểm TRƯỚC resolveRank
     // để không rebalance rank rồi mới báo lỗi; kéo cùng cột/xếp lại thứ tự không đụng workflow.
@@ -2118,6 +2379,7 @@ export class IssuesService {
     // Sự kiện rebalance (nếu hết chỗ chèn) gom vào `afterCommit`, chỉ phát sau khi commit.
     const afterCommit: Array<() => void> = [];
     let rank = current.rank;
+    let cascaded: string[] = [];
     const updated = await this.prisma.$transaction(
       async (tx) => {
         if (hasNeighbor)
@@ -2149,6 +2411,8 @@ export class IssuesService {
                 : null,
             }),
           );
+        // Đổi sprint của việc cha: khoá nhánh việc con rồi cho chúng đi theo (sau khi ghi cha).
+        const subtree = sprintChanged ? await this.lockSubtree(tx, [id]) : [];
         const row = await this.updateWithVersion(tx, id, workspaceId, input.version, {
           rank,
           statusId: input.statusId ?? current.statusId,
@@ -2167,7 +2431,10 @@ export class IssuesService {
           await this.recordStatusChange(tx, userId, current, row);
         // Đổi sprint qua move cũng phải để lại lịch sử SPRINT (burndown/velocity dựa vào đó), như update()/bulkUpdate().
         // Ở move chỉ sprint có thể khác nên recordChanges chỉ ghi đúng dòng SPRINT.
-        if (row.sprintId !== current.sprintId) await this.recordChanges(tx, userId, current, row);
+        if (row.sprintId !== current.sprintId) {
+          await this.recordChanges(tx, userId, current, row);
+          cascaded = await this.cascadeSprint(tx, userId, current.projectId, subtree, row.sprintId);
+        }
         return row;
       },
       // Có mốc ⇒ có thể rebalance cả dự án trong tx (dự án lớn vượt 5s mặc định).
@@ -2199,6 +2466,7 @@ export class IssuesService {
         actorId: userId,
         changedFields: ['sprintId'],
       });
+    await this.emitEpicTotals(workspaceId, userId, cascaded, ['sprintId']);
     return dto;
   }
 
@@ -2214,10 +2482,14 @@ export class IssuesService {
         data: { deletedAt: new Date(), updatedById: userId, version: { increment: 1 } },
       });
       if (count === 0) throw new NotFoundAppException('Công việc');
-      // Việc con bị xoá: cộng lại việc cha (có thể quay về công thức nếu hết việc con), rồi Epic của việc cấp trên.
+      // Việc con bị xoá: cộng lại việc cha (có thể quay về công thức nếu hết việc con), rồi Epic. Việc con còn sống của việc
+      // vừa xoá thành mồ côi → nay tính thẳng vào Epic của chúng.
       changedEpics = await this.rollupTree(tx, {
         parentIds: current.parentId ? [current.parentId] : [],
-        epicIds: current.epicId && !current.parentId ? [current.epicId] : [],
+        epicIds: [
+          ...(current.epicId ? [current.epicId] : []),
+          ...(await this.childEpicIds(tx, id)),
+        ],
       });
     });
     this.events.emit(DOMAIN_EVENTS.ISSUE_DELETED, {
@@ -2300,6 +2572,7 @@ export class IssuesService {
     }
     // Cộng điểm lại vào việc cha/Epic (nếu còn gắn) trong cùng transaction.
     let changedEpics: string[] = [];
+    let cascaded: string[] = [];
     await this.prisma.$transaction(async (tx) => {
       const { count } = await tx.issue.updateMany({
         where,
@@ -2308,12 +2581,18 @@ export class IssuesService {
       if (count === 0) throw new NotFoundAppException('Công việc');
       const epicId = 'epicId' in detach ? null : current.epicId;
       const parentId = 'parentId' in detach ? null : current.parentId;
+      cascaded = await this.syncSprintOnRestore(tx, workspaceId, userId, current, parentId);
       // Việc khôi phục là Epic/việc cha: việc con có thể đã đổi trong lúc nó nằm trong Thùng rác (rollup bỏ qua việc đã xoá).
       const isEpic = current.type.key === 'EPIC';
       const ownIsParent = !isEpic && (await this.idsWithLiveChildren(tx, [issueId])).size > 0;
+      // Việc con còn sống của việc vừa khôi phục không còn mồ côi → thôi tính thẳng vào Epic của chúng.
       changedEpics = await this.rollupTree(tx, {
         parentIds: [...(ownIsParent ? [issueId] : []), ...(parentId ? [parentId] : [])],
-        epicIds: [...(isEpic ? [issueId] : []), ...(epicId && !parentId ? [epicId] : [])],
+        epicIds: [
+          ...(isEpic ? [issueId] : []),
+          ...(epicId ? [epicId] : []),
+          ...(await this.childEpicIds(tx, issueId)),
+        ],
       });
     });
     const row = await this.prisma.issue.findFirstOrThrow({
@@ -2327,6 +2606,7 @@ export class IssuesService {
       changedFields: ['deletedAt', ...orphaned],
     });
     await this.emitEpicTotals(workspaceId, userId, changedEpics);
+    await this.emitEpicTotals(workspaceId, userId, cascaded, ['sprintId']);
     return dto;
   }
 
