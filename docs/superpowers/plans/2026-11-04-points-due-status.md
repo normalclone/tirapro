@@ -309,6 +309,11 @@ Two requests the user added on 2026-11-04.
 **Files:**
 - Modify: `features/ai/AssigneeSuggestButton.tsx`, `features/ai/AiIssuePanel.tsx` (or their call sites), `features/issue-edit/IssueProperties.tsx`.
 
+**3. Move "Tạo bản sao" into the "⋯ Thêm" menu (added by the user, 2026-11-04).**
+- Today the issue page toolbar (`Bình luận · Tạo việc con · Tạo bản sao · ⋯ Thêm`, in `features/issues/IssueDetailPage.tsx`) shows a standalone "Tạo bản sao" button.
+- Remove that button and add a "Tạo bản sao" item to the existing "Thêm" menu. Keep the same handler and permission, and put the item first in the menu.
+- Test: the toolbar has no standalone "Tạo bản sao" button; opening "Thêm" shows the item; clicking it opens the same clone flow.
+
 - [ ] **Step 1: Failing tests.**
   - With the store `enabled=false`, `AssigneeSuggestButton` renders null and the AI card renders null.
   - With `enabled=true`, both render.
