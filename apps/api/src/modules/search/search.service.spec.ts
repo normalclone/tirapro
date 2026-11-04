@@ -635,3 +635,30 @@ describe('SearchService.count (L25)', () => {
     expect(count).not.toHaveBeenCalled();
   });
 });
+
+describe('SearchService.search — scope cá nhân (Task me/search)', () => {
+  it('scope=personal: trường workspace biên dịch thành điều kiện theo tên workspace', async () => {
+    const { service, issues } = makeService([]);
+    await service.search('W1', 'U1', {
+      jql: 'workspace = "TECA – KTA"',
+      limit: 10,
+      scope: 'personal',
+    });
+    const call = issues.query.mock.calls[0] as unknown[];
+    expect(call[1]).toEqual({ workspace: { name: { equals: 'TECA – KTA', mode: 'insensitive' } } });
+  });
+
+  it('mặc định (workspace): dùng trường workspace → 422 FIELD_NOT_ALLOWED_IN_SCOPE, không chạm DB', async () => {
+    const { service, issues } = makeService([]);
+    await expect(
+      service.search('W1', 'U1', { jql: 'workspace = "A"', limit: 10 }),
+    ).rejects.toMatchObject({ status: 422, code: 'FIELD_NOT_ALLOWED_IN_SCOPE' });
+    expect(issues.query).not.toHaveBeenCalled();
+  });
+
+  it('ignoreRankHint: text ~ không ORDER BY không truyền rankHint (thứ tự theo updatedAt để gộp xuyên workspace)', async () => {
+    const { service, issues } = makeService([{ id: 'I2', rank: 1 }]);
+    await service.search('W1', 'U1', { jql: 'text ~ "foo"', limit: 50, ignoreRankHint: true });
+    expect(optsOf(issues.query.mock.calls[0] as unknown[]).rankHint).toBeUndefined();
+  });
+});

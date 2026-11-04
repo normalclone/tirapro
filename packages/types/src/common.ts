@@ -79,6 +79,8 @@ export const ERROR_CODES = {
   PARENT_CANNOT_BE_EPIC: 'PARENT_CANNOT_BE_EPIC',
   /** 422: Hạn là bắt buộc — không xoá trống được (cập nhật/sửa hàng loạt/quy tắc đặt Hạn rỗng). */
   DUE_DATE_REQUIRED: 'DUE_DATE_REQUIRED',
+  /** 422: trường JQL chỉ dùng được ở phạm vi cá nhân (vd `workspace`) bị dùng ở phạm vi workspace. */
+  FIELD_NOT_ALLOWED_IN_SCOPE: 'FIELD_NOT_ALLOWED_IN_SCOPE',
   /** 413: tệp tải lên vượt giới hạn dung lượng. */
   PAYLOAD_TOO_LARGE: 'PAYLOAD_TOO_LARGE',
   INTERNAL: 'INTERNAL',

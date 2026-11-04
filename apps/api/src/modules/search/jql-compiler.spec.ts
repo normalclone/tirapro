@@ -388,3 +388,43 @@ describe('summary ~ không phân biệt dấu (logbug #2)', () => {
     expect(compileJql(ast('summary ~ "abc"'), ctx).where).toEqual({ summary: like('abc') });
   });
 });
+
+describe('JQL trường `workspace` (chỉ phạm vi cá nhân)', () => {
+  it('phạm vi cá nhân: = / != / IN / NOT IN theo TÊN workspace, không phân biệt hoa/thường', () => {
+    const personal = (jql: string) =>
+      compileJql(ast(jql), { currentUserId: 'U1', scope: 'personal' }).where;
+    expect(personal('workspace = "TECA – KTA"')).toEqual({
+      workspace: { name: { equals: 'TECA – KTA', mode: 'insensitive' } },
+    });
+    expect(personal('workspace != "A"')).toEqual({
+      workspace: { name: { not: 'A', mode: 'insensitive' } },
+    });
+    expect(personal('workspace IN ("A", "B")')).toEqual({
+      workspace: { name: { in: ['A', 'B'], mode: 'insensitive' } },
+    });
+    expect(personal('workspace NOT IN ("A")')).toEqual({
+      workspace: { name: { notIn: ['A'], mode: 'insensitive' } },
+    });
+  });
+
+  it('phạm vi workspace (mặc định): 422 FIELD_NOT_ALLOWED_IN_SCOPE, cả ở where, trong NOT/OR và ORDER BY', () => {
+    for (const jql of [
+      'workspace = "A"',
+      'project = X AND (status = Done OR workspace = "A")',
+      'NOT (workspace = "A")',
+      'project = X ORDER BY workspace ASC',
+    ]) {
+      expect(() => compileJql(ast(jql), { currentUserId: 'U1' }), jql).toThrowError(
+        expect.objectContaining({ code: 'FIELD_NOT_ALLOWED_IN_SCOPE' }) as Error,
+      );
+      expect(() => compileJql(ast(jql), { currentUserId: 'U1', scope: 'workspace' })).toThrow();
+    }
+  });
+
+  it('JQL không dùng workspace biên dịch như cũ ở cả hai phạm vi', () => {
+    const a = ast('project = X ORDER BY created DESC');
+    expect(compileJql(a, { currentUserId: 'U1', scope: 'personal' })).toEqual(
+      compileJql(a, { currentUserId: 'U1' }),
+    );
+  });
+});

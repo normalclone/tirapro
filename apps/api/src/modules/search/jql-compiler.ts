@@ -1,5 +1,8 @@
 import type { Prisma } from '@prisma/client';
-import { BusinessRuleException } from '../../common/exceptions/app.exception';
+import {
+  BusinessRuleException,
+  FieldNotAllowedInScopeException,
+} from '../../common/exceptions/app.exception';
 import { escapeLike, insensitiveContains } from '../../common/like';
 import type {
   JqlFieldName,
@@ -17,6 +20,29 @@ export interface JqlCompileContext {
    * Không có entry (vd cột searchVector chưa tồn tại) → rơi về `contains` trên summary/description.
    */
   fulltext?: ReadonlyMap<string, readonly string[]>;
+  /**
+   * Phạm vi truy vấn: `workspace` (mặc định — một workspace) hoặc `personal` (`GET /me/search`, xuyên workspace của người dùng).
+   * Trường chỉ có nghĩa ở phạm vi cá nhân (`workspace`) bị dùng ở phạm vi workspace → 422 `FIELD_NOT_ALLOWED_IN_SCOPE`.
+   */
+  scope?: 'workspace' | 'personal';
+}
+
+/** Trường JQL chỉ dùng được ở phạm vi cá nhân. */
+const PERSONAL_ONLY_FIELDS: ReadonlySet<JqlFieldName> = new Set<JqlFieldName>(['workspace']);
+
+/** Mọi trường JQL ở mệnh đề lọc lẫn ORDER BY của truy vấn. */
+function usedFields(ast: JqlQueryAst): Set<JqlFieldName> {
+  const out = new Set<JqlFieldName>();
+  const walk = (n: JqlNode): void => {
+    if (n.type === 'logical') {
+      walk(n.left);
+      walk(n.right);
+    } else if (n.type === 'not') walk(n.node);
+    else out.add(n.field);
+  };
+  if (ast.where) walk(ast.where);
+  for (const o of ast.orderBy) out.add(o.field);
+  return out;
 }
 
 /**
@@ -142,6 +168,7 @@ interface FieldCfg {
 /** Map field JQL → cách dựng Prisma where (an toàn, whitelist). */
 const FIELD_MAP: Record<JqlFieldName, FieldCfg> = {
   project: { kind: 'relationName', relation: 'project', field: 'key', required: true },
+  workspace: { kind: 'relationName', relation: 'workspace', field: 'name', required: true },
   type: {
     kind: 'relationName',
     relation: 'type',
@@ -212,6 +239,11 @@ export function compileJql(
   ast: JqlQueryAst,
   ctx: JqlCompileContext,
 ): { where: Where; orderBy: Prisma.IssueOrderByWithRelationInput[] } {
+  if ((ctx.scope ?? 'workspace') === 'workspace') {
+    for (const f of usedFields(ast)) {
+      if (PERSONAL_ONLY_FIELDS.has(f)) throw new FieldNotAllowedInScopeException(f);
+    }
+  }
   return {
     where: ast.where ? compileNode(ast.where, ctx) : {},
     orderBy: ast.orderBy.map((o) => compileOrder(o)),

@@ -32,6 +32,7 @@ import { CommentsModule } from './modules/comments/comments.module';
 import { RealtimeModule } from './modules/realtime/realtime.module';
 import { AiModule } from './modules/ai/ai.module';
 import { SearchModule } from './modules/search/search.module';
+import { MeModule } from './modules/me/me.module';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { LabelsModule } from './modules/labels/labels.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
@@ -150,6 +151,7 @@ import { ApiKeyModule } from './modules/api-keys/api-key.module';
     RealtimeModule,
     AiModule,
     SearchModule,
+    MeModule,
     AnalyticsModule,
     LabelsModule,
     NotificationsModule,

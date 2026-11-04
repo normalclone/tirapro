@@ -55,6 +55,10 @@ export interface SearchOptions {
    * Chỉ bật cho truy vấn gõ tay (`GET /search`); board và bộ lọc đã lưu giữ hành vi cũ để dữ liệu đổi tên không làm sập chúng.
    */
   checkValues?: boolean;
+  /** `personal` = truy vấn xuyên workspace của `GET /me/search` (cho phép trường `workspace`). Mặc định `workspace`. */
+  scope?: 'workspace' | 'personal';
+  /** Bỏ gợi ý xếp hạng full-text khi không có ORDER BY (xếp theo updatedAt giảm dần) — để gộp nhiều workspace theo một thứ tự so sánh được. */
+  ignoreRankHint?: boolean;
 }
 
 /** Trường JQL được kiểm giá trị → tên tiếng Việt dùng trong câu báo lỗi. */
@@ -282,9 +286,10 @@ export class SearchService {
       opts.projectId,
       opts.checkValues,
       opts.orderByRank,
+      opts.scope,
     );
     let { where, orderBy } = built;
-    const { rankHint } = built;
+    const rankHint = opts.ignoreRankHint ? undefined : built.rankHint;
     if (opts.orderByRank && !orderBy.length) orderBy = [{ rank: 'asc' }];
     if (opts.projectId) {
       where = Object.keys(where).length
@@ -312,6 +317,7 @@ export class SearchService {
     projectId: string | undefined,
     checkValues?: boolean,
     orderByRank?: boolean,
+    scope?: 'workspace' | 'personal',
   ): Promise<{
     where: Prisma.IssueWhereInput;
     orderBy: Prisma.IssueOrderByWithRelationInput[];
@@ -328,7 +334,7 @@ export class SearchService {
         if (first) throw new BusinessRuleException(first.message);
       }
       const fulltext = await this.fulltextMap(workspaceId, ast.where, projectId, currentUserId);
-      const compiled = compileJql(ast, { currentUserId: currentUserId ?? '', fulltext });
+      const compiled = compileJql(ast, { currentUserId: currentUserId ?? '', fulltext, scope });
       where = compiled.where;
       orderBy = compiled.orderBy;
       const primary = primaryFulltextTerm(ast.where);

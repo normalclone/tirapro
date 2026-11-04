@@ -40,6 +40,7 @@ export interface JqlSuggestResult {
 /** Mô tả tiếng Việt của từng trường — `Record` đầy đủ để compile báo thiếu khi ai đó thêm trường JQL mới. */
 export const JQL_FIELD_HINTS: Record<JqlFieldName, string> = {
   project: 'Dự án',
+  workspace: 'Workspace (chỉ ở phạm vi "Mọi workspace của tôi")',
   type: 'Loại công việc',
   status: 'Trạng thái',
   statusCategory: 'Nhóm trạng thái (TODO / IN_PROGRESS / DONE)',
