@@ -126,8 +126,8 @@ describe.skipIf(!DB_URL)('/me/overview ↔ Postgres thật', () => {
     await mk('i1', { status: 'open', due: '2026-11-03', prio: 'low' });
     await mk('i2', { status: 'doing', due: '2026-11-03', prio: 'high' });
     await mk('i3', { status: 'open', due: '2026-11-04' });
-    await mk('i4', { status: 'open', due: '2026-11-11' });
-    await mk('i5', { status: 'open', due: '2026-11-12' });
+    await mk('i4', { status: 'open', due: '2026-11-10' }); // hôm nay + 6: còn trong cửa sổ 7 ngày
+    await mk('i5', { status: 'open', due: '2026-11-11' }); // hôm nay + 7: ngoài cửa sổ
     await mk('i6', { status: 'open', prio: 'high' });
     await mk('i7', { status: 'open', project: PROJ.sec, due: '2026-11-01' }); // riêng tư, không là thành viên
     await mk('i8', { status: 'open', project: PROJ.secMine, prio: 'low' });
@@ -201,9 +201,20 @@ describe.skipIf(!DB_URL)('/me/overview ↔ Postgres thật', () => {
 
   const summaries = (items: { summary: string }[]) => items.map((i) => i.summary);
 
-  it('số đếm: chưa xong / quá hạn / sắp đến hạn (7 ngày, gồm hôm nay, không gồm quá hạn) / điểm xong tuần này', async () => {
+  it('số đếm: chưa xong / quá hạn / sắp đến hạn (hôm nay … +6, không gồm quá hạn) / điểm xong tuần này', async () => {
     const o = await service.overview(WS, ME, NOW);
     expect(o.counts).toEqual({ open: 8, overdue: 2, dueSoon: 2, donePointsThisWeek: 7 });
+  });
+
+  it('quá hạn / sắp đến hạn đổi theo NỬA ĐÊM giờ VN (16:59Z = 23:59 VN chưa sang ngày, 17:30Z đã sang 05/11)', async () => {
+    const before = await service.overview(WS, ME, new Date('2026-11-04T16:59:00.000Z'));
+    // Hôm nay 04/11: quá hạn = i1,i2 (03/11); sắp đến hạn = i3 (hôm nay), i4 (+6); i5 (+7) chưa vào.
+    expect(before.counts).toMatchObject({ open: 8, overdue: 2, dueSoon: 2 });
+    const after = await service.overview(WS, ME, new Date('2026-11-04T17:30:00.000Z'));
+    // Hôm nay 05/11: i3 (04/11) đã quá hạn; cửa sổ 05–11/11: i4 (10/11), i5 (11/11).
+    expect(after.counts).toMatchObject({ open: 8, overdue: 3, dueSoon: 2 });
+    // Vẫn cùng tuần VN (Thứ Hai 02/11) nên điểm tuần này không đổi.
+    expect(after.counts.donePointsThisWeek).toBe(7);
   });
 
   it('myIssues: hạn tăng dần, rồi ưu tiên giảm dần, không hạn cuối; không có việc xong/chưa duyệt/đã xoá/dự án riêng tư', async () => {

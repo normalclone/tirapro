@@ -20,6 +20,7 @@ const BUG_LIST_LIMIT = 50;
 const MAX_OPEN_SCAN = 2000;
 /** Trần số việc đã xong nạp để cộng điểm 8 tuần. */
 const MAX_DONE_SCAN = 5000;
+/** "Sắp đến hạn" = 7 ngày kể cả hôm nay: hôm nay … hôm nay + 6 (ngày lịch VN). */
 const DUE_SOON_DAYS = 7;
 
 const ITEM_SELECT = {
@@ -101,7 +102,7 @@ export class MeOverviewService {
           where: { ...openMine, dueDate: { lt: overdueCutoff(now) } },
         }),
         this.prisma.issue.count({
-          where: { ...openMine, dueDate: { gte: today, lte: addDays(today, DUE_SOON_DAYS) } },
+          where: { ...openMine, dueDate: { gte: today, lte: addDays(today, DUE_SOON_DAYS - 1) } },
         }),
         this.prisma.issue.findMany({
           where: openMine,

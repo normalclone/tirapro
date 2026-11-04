@@ -6,6 +6,9 @@ const HOUR_MS = 3_600_000;
 const VN_OFFSET_MS = 7 * HOUR_MS;
 export const OVERVIEW_WEEKS = 8;
 
+/** Nguyên TỪ test/testing/retest (đã bỏ dấu, thường hoá) — "Latest review"/"Contest" không khớp. */
+const TEST_WORD = /(?:^|[^a-z0-9])(?:re)?test(?:ing)?(?![a-z0-9])/;
+
 export interface StatusLite {
   id: string;
   name: string;
@@ -14,7 +17,7 @@ export interface StatusLite {
 
 /**
  * Phân loại trạng thái cho khối "Bug liên quan đến tôi" (trước khi có Bug Workflow):
- * - chờ test lại: tên `Ready for Retest`, HOẶC nhóm IN_PROGRESS có tên chứa "test";
+ * - chờ test lại: tên `Ready for Retest`, HOẶC nhóm IN_PROGRESS có tên chứa nguyên từ test/testing/retest;
  * - mở lại: tên `Reopened` / "Mở lại".
  * So tên không phân biệt hoa/thường/dấu (`foldForMatch`).
  */
@@ -26,7 +29,7 @@ export function classifyStatuses(statuses: readonly StatusLite[]): {
   const reopened: string[] = [];
   for (const s of statuses) {
     const n = foldForMatch(s.name);
-    if (n === 'ready for retest' || (s.category === 'IN_PROGRESS' && n.includes('test')))
+    if (n === 'ready for retest' || (s.category === 'IN_PROGRESS' && TEST_WORD.test(n)))
       awaitingRetest.push(s.id);
     if (n === 'reopened' || n === 'mo lai') reopened.push(s.id);
   }

@@ -21,11 +21,16 @@ describe('classifyStatuses', () => {
     st('6', 'Mở lại', 'IN_PROGRESS'),
     st('7', 'MỞ LẠI', 'TODO'),
     st('8', 'In Progress', 'IN_PROGRESS'),
-    st('9', 'Contest', 'IN_PROGRESS'), // chứa "test" thật sự → heuristic khớp (chấp nhận, như đặc tả "tên chứa test")
+    st('9', 'Latest review', 'IN_PROGRESS'), // "test" chỉ là đoạn trong từ khác → không khớp
+    st('10', 'Contest', 'IN_PROGRESS'),
+    st('11', 'In QA Testing', 'IN_PROGRESS'),
+    st('12', 'Re-test', 'IN_PROGRESS'),
+    st('13', 'Retest', 'IN_PROGRESS'),
+    st('14', 'Chờ TEST (QA)', 'IN_PROGRESS'),
   ]);
 
-  it('awaitingRetest: tên Ready for Retest HOẶC IN_PROGRESS có "test" (không phân biệt hoa/thường/dấu)', () => {
-    expect([...out.awaitingRetest].sort()).toEqual(['1', '2', '3', '9']);
+  it('awaitingRetest: tên Ready for Retest HOẶC IN_PROGRESS có nguyên từ test/testing/retest (không phân biệt hoa/thường/dấu)', () => {
+    expect([...out.awaitingRetest].sort()).toEqual(['1', '11', '12', '13', '14', '2', '3']);
   });
   it('reopened: Reopened / Mở lại, không phân biệt hoa/thường/dấu', () => {
     expect([...out.reopened].sort()).toEqual(['5', '6', '7']);

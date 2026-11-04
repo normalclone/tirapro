@@ -634,7 +634,7 @@ export interface MeOverviewDto {
     open: number;
     /** Trong số đó, hạn trước hôm nay (ngày lịch VN). */
     overdue: number;
-    /** Trong số đó, hạn từ hôm nay đến 7 ngày tới (không gồm quá hạn). */
+    /** Trong số đó, hạn trong 7 ngày kể cả hôm nay (hôm nay … hôm nay + 6, giờ VN; không gồm quá hạn). */
     dueSoon: number;
     /** Điểm việc lá tôi làm xong (resolvedAt) trong tuần VN hiện tại (từ Thứ Hai). */
     donePointsThisWeek: number;
