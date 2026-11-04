@@ -8,7 +8,6 @@ import {
   ListChecks,
   GitBranch,
   KeyRound,
-  AlarmClock,
   FileUp,
   ScrollText,
 } from 'lucide-react';
@@ -86,11 +85,6 @@ const SETTINGS_GROUPS: {
   {
     group: 'Nâng cao',
     items: [
-      {
-        to: '/settings/response-time',
-        label: SETTINGS_LABELS.responseTime,
-        icon: <AlarmClock className="h-4 w-4" />,
-      },
       {
         to: '/settings/import',
         label: SETTINGS_LABELS.import,

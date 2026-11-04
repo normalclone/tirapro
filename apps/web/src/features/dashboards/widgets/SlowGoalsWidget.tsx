@@ -9,7 +9,6 @@ export function SlowGoalsWidget({ title }: WidgetProps) {
     <LeadershipWidgetFrame
       title={title}
       card="slowGoals"
-      to={{ href: '/manage/goals', label: 'Xem tất cả →' }}
       empty={LEADERSHIP_EMPTY.goals}
       render={(d) =>
         d.slowGoals.map((g) => (

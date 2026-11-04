@@ -1,4 +1,6 @@
 import { useMemo, useState } from 'react';
+import { useParams } from 'react-router-dom';
+import type { ProjectDto } from '@tirapro/types';
 import { DocsLink } from '@/components/ui/DocsLink';
 import { Tabs, TabPanel } from '@/components/ui/Tabs';
 import { Pencil, Plus, ShieldAlert, Trash2 } from 'lucide-react';
@@ -17,8 +19,8 @@ import { MANAGE_LABELS } from '@/lib/navLabels';
 import { apiErrorMessage } from '@/lib/api';
 import { downloadText } from '@/lib/download';
 import { cn } from '@/lib/utils';
-import { useAuth } from '@/stores/auth';
-import { useProjects } from '@/features/projects/api';
+import { useProject } from '@/features/projects/api';
+import { useCanManageInProject } from '@/features/projects/permissions';
 import { RaidEditorModal } from './RaidEditorModal';
 import { raidCsv } from './exportCsv';
 import {
@@ -39,7 +41,6 @@ import {
   raidLevelOf,
 } from './constants';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
-import { useScopeParam } from '@/lib/scopeParam';
 import { ScrollX } from '@/components/ui/ScrollX';
 
 const STATUS_FILTER_OPTIONS = [
@@ -377,31 +378,37 @@ function RaidRow({
   );
 }
 
-/** RỦI RO & VƯỚNG MẮC (RAID) — tab theo loại, bảng danh sách và ma trận nhiệt 5×5. */
+/**
+ * Tab "Rủi ro & vướng mắc" của một dự án (`/p/:key/risks`): tải dự án theo URL rồi dựng sổ rủi ro CỦA dự án đó.
+ * Dự án đã được `ProjectLayout` kiểm tra (không thấy/không tồn tại → 404 ở đó), nên ở đây chỉ chờ dữ liệu.
+ */
 export function RaidPage() {
-  const canManage = useAuth((s) => s.can('risk:manage'));
+  const { key = '' } = useParams();
+  const { data: project } = useProject(key);
+  if (!project)
+    return (
+      <div className="h-full overflow-y-auto">
+        <PageFrame size="full">
+          <Skeleton className="h-16 w-full" />
+        </PageFrame>
+      </div>
+    );
+  return <ProjectRaid project={project} />;
+}
+
+/** RỦI RO & VƯỚNG MẮC (RAID) của một dự án — tab theo loại, bảng danh sách và ma trận nhiệt 5×5. */
+function ProjectRaid({ project }: { project: ProjectDto }) {
+  // Tạo/sửa: quyền `risk:manage` cấp tổ chức HOẶC quản trị chính dự án này (API kiểm đúng như vậy).
+  const canManage = useCanManageInProject(project, 'risk:manage');
 
   const [kind, setKind] = useState<RaidKind>('RISK');
   const [status, setStatus] = useState<RaidStatus | ''>('');
-  // null = chưa chọn → mặc định theo `?project=` (lối vào từ tab dự án); chọn/xoá bộ lọc thì lựa chọn đó thắng.
-  const [projectPick, setProjectId] = useState<string | null>(null);
   const [cell, setCell] = useState<Cell | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
   const [editing, setEditing] = useState<RaidItemDto | null>(null);
 
-  const { data: projects } = useProjects();
-  const scopeParam = useScopeParam(projects);
-  const projectId = projectPick ?? scopeParam ?? '';
-  const raidQuery = useRaidItems({ kind, status, projectId });
+  const raidQuery = useRaidItems({ kind, status, projectId: project.id });
   const { data: items } = raidQuery;
-
-  const projectOptions = useMemo(
-    () => [
-      { value: '', label: 'Mọi dự án' },
-      ...(projects ?? []).map((p) => ({ value: p.id, label: p.name, hint: p.key })),
-    ],
-    [projects],
-  );
 
   const rows = useMemo(() => {
     const list = items ?? [];
@@ -422,237 +429,231 @@ export function RaidPage() {
   }
 
   return (
-    <PageFrame size="xl">
-      <PageHeader
-        title={MANAGE_LABELS.risks}
-        description={
-          <>
-            Ghi lại rủi ro, giả định, vấn đề và việc chờ bên khác có thể cản tiến độ.{' '}
-            <DocsLink anchor="quan-ly-nang-cao" />
-          </>
-        }
-        actions={
-          <>
-            <ExportMenu
-              disabled={rows.length === 0}
-              items={[
-                {
-                  id: 'csv',
-                  label: 'Tải CSV',
-                  hint: 'Đúng danh sách đang xem (theo bộ lọc)',
-                  run: () =>
-                    downloadText(
-                      `tirapro-rui-ro-${format(new Date(), 'yyyyMMdd')}.csv`,
-                      raidCsv(rows),
-                    ),
-                },
-              ]}
+    <div className="h-full overflow-y-auto">
+      <PageFrame size="full">
+        <PageHeader
+          variant="tab"
+          title={MANAGE_LABELS.risks}
+          description={
+            <>
+              Ghi lại rủi ro, giả định, vấn đề và việc chờ bên khác có thể cản tiến độ.{' '}
+              <DocsLink anchor="quan-ly-nang-cao" />
+            </>
+          }
+          actions={
+            <>
+              <ExportMenu
+                disabled={rows.length === 0}
+                items={[
+                  {
+                    id: 'csv',
+                    label: 'Tải CSV',
+                    hint: 'Đúng danh sách đang xem (theo bộ lọc)',
+                    run: () =>
+                      downloadText(
+                        `tirapro-rui-ro-${format(new Date(), 'yyyyMMdd')}.csv`,
+                        raidCsv(rows),
+                      ),
+                  },
+                ]}
+              />
+              {canManage && (
+                <Button size="sm" onClick={openCreate}>
+                  <Plus className="h-4 w-4" /> Thêm {kindMeta?.label.toLowerCase() ?? 'mục'}
+                </Button>
+              )}
+            </>
+          }
+        />
+
+        <Tabs
+          idBase="raid"
+          ariaLabel="Loại rủi ro và vướng mắc"
+          value={kind}
+          onChange={(k) => {
+            setKind(k);
+            setCell(null);
+          }}
+          items={RAID_KINDS.map((k) => ({ id: k.value, label: k.label, title: k.description }))}
+          className="mb-5 overflow-x-auto"
+        />
+
+        <TabPanel idBase="raid" value={kind}>
+          {kindMeta && <p className="mb-4 text-sm text-muted">{kindMeta.description}</p>}
+
+          <div className="mb-5 flex flex-wrap items-center gap-2">
+            <SearchSelect
+              value={status}
+              onChange={(v) => setStatus(v as RaidStatus | '')}
+              options={STATUS_FILTER_OPTIONS}
+              ariaLabel="Lọc theo trạng thái"
+              className="w-44"
             />
-            {canManage && (
-              <Button size="sm" onClick={openCreate}>
-                <Plus className="h-4 w-4" /> Thêm {kindMeta?.label.toLowerCase() ?? 'mục'}
+            {(status || cell) && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setStatus('');
+                  setCell(null);
+                }}
+              >
+                Xoá bộ lọc
               </Button>
             )}
-          </>
-        }
-      />
+          </div>
 
-      <Tabs
-        idBase="raid"
-        ariaLabel="Loại rủi ro và vướng mắc"
-        value={kind}
-        onChange={(k) => {
-          setKind(k);
-          setCell(null);
-        }}
-        items={RAID_KINDS.map((k) => ({ id: k.value, label: k.label, title: k.description }))}
-        className="mb-5 overflow-x-auto"
-      />
-
-      <TabPanel idBase="raid" value={kind}>
-        {kindMeta && <p className="mb-4 text-sm text-muted">{kindMeta.description}</p>}
-
-        <div className="mb-5 flex flex-wrap items-center gap-2">
-          <SearchSelect
-            value={projectId}
-            onChange={setProjectId}
-            options={projectOptions}
-            ariaLabel="Lọc theo dự án"
-            placeholder="Mọi dự án"
-            searchPlaceholder="Tìm dự án…"
-            className="w-52"
-          />
-          <SearchSelect
-            value={status}
-            onChange={(v) => setStatus(v as RaidStatus | '')}
-            options={STATUS_FILTER_OPTIONS}
-            ariaLabel="Lọc theo trạng thái"
-            className="w-44"
-          />
-          {(status || projectId || cell) && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                setStatus('');
-                setProjectId('');
-                setCell(null);
-              }}
-            >
-              Xoá bộ lọc
-            </Button>
-          )}
-        </div>
-
-        <QueryBoundary
-          query={raidQuery}
-          skeleton={
-            <div className="space-y-4">
-              <Skeleton className="h-64 w-full" />
-              <Skeleton className="h-48 w-full" />
-            </div>
-          }
-        >
-          {() =>
-            (items ?? []).length === 0 ? (
-              // Chưa có mục nào (trước khi lọc ô): không vẽ ma trận 25 ô trống, chỉ nói rõ và mời thêm.
-              <EmptyState
-                icon={<ShieldAlert className="h-6 w-6" />}
-                title={
-                  status || projectId
-                    ? `Không có ${kindMeta?.label.toLowerCase() ?? 'mục'} nào khớp bộ lọc`
-                    : `Chưa có ${kindMeta?.label.toLowerCase() ?? 'mục'} nào`
-                }
-                description={
-                  status || projectId
-                    ? 'Bấm “Xoá bộ lọc” ở trên để xem toàn bộ.'
-                    : canManage
-                      ? 'Ghi lại điều bạn đang lo, chấm xác suất xảy ra và mức ảnh hưởng — ma trận rủi ro sẽ hiện ở đây ngay khi có mục đầu tiên.'
-                      : 'Khi nhóm ghi nhận mục mới, ma trận rủi ro sẽ hiện ở đây.'
-                }
-                action={
-                  canManage && !status && !projectId ? (
-                    <Button variant="secondary" size="sm" onClick={openCreate}>
-                      <Plus className="h-4 w-4" /> Thêm {kindMeta?.label.toLowerCase() ?? 'mục'}
-                    </Button>
-                  ) : undefined
-                }
-              />
-            ) : (
-              <div className="space-y-5">
-                <HeatMatrix items={items ?? []} selected={cell} onSelect={setCell} />
-
-                <SectionCard
-                  title="Danh sách chi tiết"
-                  bare
-                  actions={
-                    <span className="text-sm text-muted">
-                      {cell
-                        ? `${rows.length} mục ở ô xác suất ${cell.p} × ảnh hưởng ${cell.i}`
-                        : `${rows.length} mục`}
-                    </span>
-                  }
-                >
-                  {rows.length === 0 ? (
-                    <div className="p-5">
-                      <EmptyState
-                        icon={<ShieldAlert className="h-6 w-6" />}
-                        title={
-                          cell
-                            ? 'Không có mục nào trong ô này'
-                            : `Chưa có ${kindMeta?.label.toLowerCase() ?? 'mục'} nào`
-                        }
-                        description={
-                          cell
-                            ? 'Bấm lại vào ô đang chọn trong ma trận để xem toàn bộ danh sách.'
-                            : canManage
-                              ? 'Ghi lại điều bạn đang lo, chấm xác suất xảy ra và mức ảnh hưởng — cả nhóm sẽ thấy ngay trên ma trận và biết việc nào cần lo trước.'
-                              : 'Khi nhóm ghi nhận mục mới, bạn sẽ thấy ở đây.'
-                        }
-                        action={
-                          canManage && !cell ? (
-                            <Button variant="secondary" size="sm" onClick={openCreate}>
-                              <Plus className="h-4 w-4" /> Thêm{' '}
-                              {kindMeta?.label.toLowerCase() ?? 'mục'}
-                            </Button>
-                          ) : undefined
-                        }
-                      />
-                    </div>
-                  ) : (
-                    <>
-                      {/* < sm: danh sách thẻ (bảng 46rem không vừa 390px); ≥ sm: bảng như cũ. */}
-                      <ul className="sm:hidden">
-                        {rows.map((item) => (
-                          <RaidCard
-                            key={item.id}
-                            item={item}
-                            canManage={canManage}
-                            onEdit={openEdit}
-                          />
-                        ))}
-                      </ul>
-                      <ScrollX className="max-sm:hidden">
-                        <table className="w-full min-w-[46rem] text-left">
-                          <thead>
-                            <tr className="text-xs font-medium text-faint">
-                              <th scope="col" className="px-3 py-2">
-                                Nội dung
-                              </th>
-                              <th
-                                scope="col"
-                                className="px-3 py-2"
-                                title="Người chịu trách nhiệm theo dõi và xử lý"
-                              >
-                                Người phụ trách
-                              </th>
-                              <th scope="col" className="px-3 py-2" title={RAID_LEVEL_LEGEND}>
-                                Xác suất × ảnh hưởng
-                              </th>
-                              <th scope="col" className="px-3 py-2">
-                                Trạng thái
-                              </th>
-                              <th scope="col" className="px-3 py-2" title="Ngày cần xử lý xong">
-                                Hạn xử lý
-                              </th>
-                              {canManage && (
-                                <th scope="col" className="px-3 py-2 text-right">
-                                  Thao tác
-                                </th>
-                              )}
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {rows.map((item) => (
-                              <RaidRow
-                                key={item.id}
-                                item={item}
-                                canManage={canManage}
-                                onEdit={openEdit}
-                              />
-                            ))}
-                          </tbody>
-                        </table>
-                      </ScrollX>
-                    </>
-                  )}
-                </SectionCard>
+          <QueryBoundary
+            query={raidQuery}
+            skeleton={
+              <div className="space-y-4">
+                <Skeleton className="h-64 w-full" />
+                <Skeleton className="h-48 w-full" />
               </div>
-            )
-          }
-        </QueryBoundary>
-      </TabPanel>
+            }
+          >
+            {() =>
+              (items ?? []).length === 0 ? (
+                // Chưa có mục nào (trước khi lọc ô): không vẽ ma trận 25 ô trống, chỉ nói rõ và mời thêm.
+                <EmptyState
+                  icon={<ShieldAlert className="h-6 w-6" />}
+                  title={
+                    status
+                      ? `Không có ${kindMeta?.label.toLowerCase() ?? 'mục'} nào khớp bộ lọc`
+                      : `Chưa có ${kindMeta?.label.toLowerCase() ?? 'mục'} nào`
+                  }
+                  description={
+                    status
+                      ? 'Bấm “Xoá bộ lọc” ở trên để xem toàn bộ.'
+                      : canManage
+                        ? 'Ghi lại điều bạn đang lo, chấm xác suất xảy ra và mức ảnh hưởng — ma trận rủi ro sẽ hiện ở đây ngay khi có mục đầu tiên.'
+                        : 'Khi nhóm ghi nhận mục mới, ma trận rủi ro sẽ hiện ở đây.'
+                  }
+                  action={
+                    canManage && !status ? (
+                      <Button variant="secondary" size="sm" onClick={openCreate}>
+                        <Plus className="h-4 w-4" /> Thêm {kindMeta?.label.toLowerCase() ?? 'mục'}
+                      </Button>
+                    ) : undefined
+                  }
+                />
+              ) : (
+                <div className="space-y-5">
+                  <HeatMatrix items={items ?? []} selected={cell} onSelect={setCell} />
 
-      <RaidEditorModal
-        open={editorOpen}
-        item={editing}
-        defaultKind={kind}
-        onClose={() => {
-          setEditorOpen(false);
-          setEditing(null);
-        }}
-      />
-    </PageFrame>
+                  <SectionCard
+                    title="Danh sách chi tiết"
+                    bare
+                    actions={
+                      <span className="text-sm text-muted">
+                        {cell
+                          ? `${rows.length} mục ở ô xác suất ${cell.p} × ảnh hưởng ${cell.i}`
+                          : `${rows.length} mục`}
+                      </span>
+                    }
+                  >
+                    {rows.length === 0 ? (
+                      <div className="p-5">
+                        <EmptyState
+                          icon={<ShieldAlert className="h-6 w-6" />}
+                          title={
+                            cell
+                              ? 'Không có mục nào trong ô này'
+                              : `Chưa có ${kindMeta?.label.toLowerCase() ?? 'mục'} nào`
+                          }
+                          description={
+                            cell
+                              ? 'Bấm lại vào ô đang chọn trong ma trận để xem toàn bộ danh sách.'
+                              : canManage
+                                ? 'Ghi lại điều bạn đang lo, chấm xác suất xảy ra và mức ảnh hưởng — cả nhóm sẽ thấy ngay trên ma trận và biết việc nào cần lo trước.'
+                                : 'Khi nhóm ghi nhận mục mới, bạn sẽ thấy ở đây.'
+                          }
+                          action={
+                            canManage && !cell ? (
+                              <Button variant="secondary" size="sm" onClick={openCreate}>
+                                <Plus className="h-4 w-4" /> Thêm{' '}
+                                {kindMeta?.label.toLowerCase() ?? 'mục'}
+                              </Button>
+                            ) : undefined
+                          }
+                        />
+                      </div>
+                    ) : (
+                      <>
+                        {/* < sm: danh sách thẻ (bảng 46rem không vừa 390px); ≥ sm: bảng như cũ. */}
+                        <ul className="sm:hidden">
+                          {rows.map((item) => (
+                            <RaidCard
+                              key={item.id}
+                              item={item}
+                              canManage={canManage}
+                              onEdit={openEdit}
+                            />
+                          ))}
+                        </ul>
+                        <ScrollX className="max-sm:hidden">
+                          <table className="w-full min-w-[46rem] text-left">
+                            <thead>
+                              <tr className="text-xs font-medium text-faint">
+                                <th scope="col" className="px-3 py-2">
+                                  Nội dung
+                                </th>
+                                <th
+                                  scope="col"
+                                  className="px-3 py-2"
+                                  title="Người chịu trách nhiệm theo dõi và xử lý"
+                                >
+                                  Người phụ trách
+                                </th>
+                                <th scope="col" className="px-3 py-2" title={RAID_LEVEL_LEGEND}>
+                                  Xác suất × ảnh hưởng
+                                </th>
+                                <th scope="col" className="px-3 py-2">
+                                  Trạng thái
+                                </th>
+                                <th scope="col" className="px-3 py-2" title="Ngày cần xử lý xong">
+                                  Hạn xử lý
+                                </th>
+                                {canManage && (
+                                  <th scope="col" className="px-3 py-2 text-right">
+                                    Thao tác
+                                  </th>
+                                )}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {rows.map((item) => (
+                                <RaidRow
+                                  key={item.id}
+                                  item={item}
+                                  canManage={canManage}
+                                  onEdit={openEdit}
+                                />
+                              ))}
+                            </tbody>
+                          </table>
+                        </ScrollX>
+                      </>
+                    )}
+                  </SectionCard>
+                </div>
+              )
+            }
+          </QueryBoundary>
+        </TabPanel>
+
+        <RaidEditorModal
+          open={editorOpen}
+          item={editing}
+          project={project}
+          defaultKind={kind}
+          onClose={() => {
+            setEditorOpen(false);
+            setEditing(null);
+          }}
+        />
+      </PageFrame>
+    </div>
   );
 }
 

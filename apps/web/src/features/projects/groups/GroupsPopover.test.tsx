@@ -272,7 +272,10 @@ describe('ô "Nhóm"', () => {
     perms = ['project:admin'];
     user = renderCell(project([A]));
     await user.click(screen.getByRole('button', { name: /^1 nhóm/ }));
-    expect(await screen.findByText('Không tải được quyền của bạn ở dự án này.')).toBeTruthy();
+    // `projectPermissionsQuery` thử lại 1 lần sau ~1s mới báo lỗi → chờ lâu hơn 1s mặc định của findBy.
+    expect(
+      await screen.findByText('Không tải được quyền của bạn ở dự án này.', {}, { timeout: 4000 }),
+    ).toBeTruthy();
     expect(screen.queryByText('Chỉ quản trị dự án mới đổi được nhóm.')).toBeNull();
     permsMode = 'ok';
     await user.click(screen.getByRole('button', { name: 'Thử lại' }));

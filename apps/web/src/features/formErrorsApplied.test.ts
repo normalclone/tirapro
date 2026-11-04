@@ -16,7 +16,8 @@ describe('244 · áp dụng báo lỗi theo trường (Báo cáo định kỳ, S
     });
     it('các ô có nhãn gắn id (FormField)', () => {
       expect(s()).toContain('<FormField');
-      for (const id of ['sla-name', 'sla-project', 'sla-response', 'sla-resolve'])
+      // Không còn ô chọn dự án (`sla-project`): cam kết luôn thuộc dự án đang mở.
+      for (const id of ['sla-name', 'sla-response', 'sla-resolve'])
         expect(s(), id).toContain(`"${id}"`);
     });
     it('Cmd/Ctrl+Enter vẫn gửi qua cùng đường submit', () => {

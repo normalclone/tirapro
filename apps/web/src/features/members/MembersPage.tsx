@@ -1,4 +1,5 @@
 import { useDeferredValue, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Search, Trash2, UserPlus, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import type { MemberDto, RoleDto, UserStatus } from '@tirapro/types';
@@ -22,7 +23,8 @@ import { memberCountParts } from './memberCount';
 import { useRemoveMember, useWorkspaceMembers } from './api';
 import { Tabs, TabPanel } from '@/components/ui/Tabs';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
-import { APP_NAV_LABELS } from '@/lib/navLabels';
+import { APP_NAV_LABELS, MANAGE_LABELS } from '@/lib/navLabels';
+import { ResourcesPanel } from '@/features/resources/ResourcesPage';
 
 /** Nhãn + màu badge tiếng Việt cho từng trạng thái tài khoản. */
 const STATUS_META: Record<UserStatus, { label: string; className: string }> = {
@@ -31,13 +33,29 @@ const STATUS_META: Record<UserStatus, { label: string; className: string }> = {
   DEACTIVATED: { label: 'Đã vô hiệu hoá', className: 'bg-surface-2 text-muted' },
 };
 
-type Tab = 'members' | 'teams';
+type Tab = 'members' | 'teams' | 'resources';
+
+/** `?tab=` hợp lệ → tab; còn lại → Thành viên (liên kết cũ `/manage/resources` chuyển về `?tab=resources`). */
+function tabOf(param: string | null): Tab {
+  return param === 'teams' || param === 'resources' ? param : 'members';
+}
 
 export function MembersPage() {
   const currentUserId = useAuth((s) => s.user?.id);
   // Chọn ra BOOLEAN (không chọn hàm `can`): trang theo dõi đúng quyền khi `refreshMe` đổi quyền sau tự đổi vai trò.
   const canManage = useAuth((s) => s.can('member:manage'));
-  const [tab, setTab] = useState<Tab>('members');
+  const [params, setParams] = useSearchParams();
+  const tab = tabOf(params.get('tab'));
+  const setTab = (next: Tab) =>
+    setParams(
+      (prev) => {
+        const p = new URLSearchParams(prev);
+        if (next === 'members') p.delete('tab');
+        else p.set('tab', next);
+        return p;
+      },
+      { replace: true },
+    );
   const [bulkOpen, setBulkOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [memberSearch, setMemberSearch] = useState('');
@@ -50,13 +68,15 @@ export function MembersPage() {
   const tabs: { id: Tab; label: string }[] = [
     { id: 'members', label: 'Thành viên' },
     { id: 'teams', label: 'Nhóm' },
+    { id: 'resources', label: MANAGE_LABELS.resources },
   ];
 
   return (
-    <PageFrame size="sm">
+    // Nhân lực là bảng rộng (người × tuần) nên dùng khung rộng; hai tab kia là danh sách/biểu mẫu.
+    <PageFrame size={tab === 'resources' ? 'xl' : 'sm'}>
       <PageHeader
         title={APP_NAV_LABELS.members}
-        description="Ai có tên ở đây đều tham gia mọi dự án; nhóm giúp sắp xếp và giao vai trò hàng loạt."
+        description="Ai có tên ở đây đều tham gia mọi dự án; nhóm giúp sắp xếp và giao vai trò hàng loạt, Nhân lực cho biết ai đang gánh bao nhiêu việc."
         actions={
           canManage && tab === 'members' ? (
             <Button size="sm" onClick={() => setInviteOpen(true)} data-tour="members-add">
@@ -68,7 +88,7 @@ export function MembersPage() {
 
       <Tabs
         idBase="members"
-        ariaLabel="Thành viên & nhóm"
+        ariaLabel="Thành viên, nhóm và nhân lực"
         value={tab}
         onChange={setTab}
         items={tabs}
@@ -79,6 +99,8 @@ export function MembersPage() {
       <TabPanel idBase="members" value={tab}>
         {tab === 'teams' ? (
           <TeamsPanel />
+        ) : tab === 'resources' ? (
+          <ResourcesPanel />
         ) : (
           <div className="space-y-8">
             <SectionCard

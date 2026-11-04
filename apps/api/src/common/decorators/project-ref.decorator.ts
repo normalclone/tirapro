@@ -14,6 +14,8 @@ export type ProjectResourceKind =
   | 'attachment'
   | 'issueLink'
   | 'raid'
+  | 'objective'
+  | 'slaPolicy'
   | 'automationTemplate'
   | 'recurringIssue'
   | 'worklog'

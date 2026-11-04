@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useParams } from 'react-router-dom';
 import { DocsLink } from '@/components/ui/DocsLink';
 import { LineChart, Link2, Pencil, Plus, Target, Trash2, X } from 'lucide-react';
 import { toast } from 'sonner';
@@ -11,8 +12,9 @@ import { SearchSelect } from '@/components/ui/SearchSelect';
 import { PageFrame } from '@/components/layout/PageFrame';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { apiErrorMessage } from '@/lib/api';
-import { useAuth } from '@/stores/auth';
-import { useProjects } from '@/features/projects/api';
+import type { ProjectDto } from '@tirapro/types';
+import { useProject, useProjects } from '@/features/projects/api';
+import { useCanManageInProject } from '@/features/projects/permissions';
 import { GoalEditorModal } from './GoalEditorModal';
 import { paceTarget } from './goalPace';
 import { AttachIssuesModal } from './AttachIssuesModal';
@@ -422,21 +424,38 @@ function GoalsSkeleton() {
   );
 }
 
-/** MỤC TIÊU & KẾT QUẢ THEN CHỐT (OKR) — nhóm theo kỳ, mỗi mục tiêu là một khối có tiến độ riêng. */
+/**
+ * Tab "Mục tiêu" của một dự án (`/p/:key/goals`): tải dự án theo URL rồi dựng danh sách mục tiêu CỦA dự án đó.
+ * Dự án đã được `ProjectLayout` kiểm tra (không thấy/không tồn tại → 404 ở đó), nên ở đây chỉ chờ dữ liệu.
+ */
 export function GoalsPage() {
-  const canManage = useAuth((s) => s.can('goal:manage'));
+  const { key = '' } = useParams();
+  const { data: project } = useProject(key);
+  if (!project)
+    return (
+      <div className="h-full overflow-y-auto">
+        <PageFrame size="full">
+          <Skeleton className="h-16 w-full" />
+        </PageFrame>
+      </div>
+    );
+  return <ProjectGoals project={project} />;
+}
+
+/** MỤC TIÊU & KẾT QUẢ THEN CHỐT (OKR) của một dự án — nhóm theo kỳ, mỗi mục tiêu là một khối có tiến độ riêng. */
+function ProjectGoals({ project }: { project: ProjectDto }) {
+  // Tạo/sửa: quyền `goal:manage` cấp tổ chức HOẶC quản trị chính dự án này (API kiểm đúng như vậy).
+  const canManage = useCanManageInProject(project, 'goal:manage');
 
   const [period, setPeriod] = useState('');
-  const [projectId, setProjectId] = useState('');
   const [status, setStatus] = useState<ObjectiveStatus | ''>('');
   const [editorOpen, setEditorOpen] = useState(false);
   const [editing, setEditing] = useState<GoalDto | null>(null);
   const [attaching, setAttaching] = useState<GoalDto | null>(null);
 
-  const goalsQuery = useGoals({ period, projectId, status });
+  const goalsQuery = useGoals({ period, projectId: project.id, status });
   const { data: goals } = goalsQuery;
   const { data: periods } = useGoalPeriods();
-  const { data: projects } = useProjects();
 
   const periodOptions = useMemo(
     () => [
@@ -444,13 +463,6 @@ export function GoalsPage() {
       ...(periods ?? []).map((p) => ({ value: p, label: p })),
     ],
     [periods],
-  );
-  const projectOptions = useMemo(
-    () => [
-      { value: '', label: 'Mọi dự án' },
-      ...(projects ?? []).map((p) => ({ value: p.id, label: p.name, hint: p.key })),
-    ],
-    [projects],
   );
 
   /** Nhóm mục tiêu theo kỳ, kỳ mới nhất lên đầu. */
@@ -480,132 +492,126 @@ export function GoalsPage() {
     : null;
 
   return (
-    <PageFrame size="xl">
-      <PageHeader
-        title={MANAGE_LABELS.goals}
-        description={
-          <>
-            Đặt mục tiêu theo quý, mỗi mục tiêu kèm kết quả then chốt đo được bằng số.{' '}
-            <DocsLink anchor="quan-ly-nang-cao" />
-          </>
-        }
-        actions={
-          canManage ? (
-            <Button size="sm" onClick={openCreate}>
-              <Plus className="h-4 w-4" /> Tạo mục tiêu
-            </Button>
-          ) : undefined
-        }
-      />
+    <div className="h-full overflow-y-auto">
+      <PageFrame size="full">
+        <PageHeader
+          variant="tab"
+          title={MANAGE_LABELS.goals}
+          description={
+            <>
+              Đặt mục tiêu theo quý, mỗi mục tiêu kèm kết quả then chốt đo được bằng số.{' '}
+              <DocsLink anchor="quan-ly-nang-cao" />
+            </>
+          }
+          actions={
+            canManage ? (
+              <Button size="sm" onClick={openCreate}>
+                <Plus className="h-4 w-4" /> Tạo mục tiêu
+              </Button>
+            ) : undefined
+          }
+        />
 
-      <div className="mb-5 flex flex-wrap items-center gap-2">
-        <SearchSelect
-          value={period}
-          onChange={setPeriod}
-          options={periodOptions}
-          ariaLabel="Lọc theo kỳ, ví dụ 2026-Q3 là quý 3 năm 2026"
-          placeholder="Tất cả các kỳ"
-          searchPlaceholder="Tìm kỳ…"
-          className="w-40"
-        />
-        <SearchSelect
-          value={projectId}
-          onChange={setProjectId}
-          options={projectOptions}
-          ariaLabel="Lọc theo dự án"
-          placeholder="Mọi dự án"
-          searchPlaceholder="Tìm dự án…"
-          className="w-52"
-        />
-        <SearchSelect
-          value={status}
-          onChange={(v) => setStatus(v as ObjectiveStatus | '')}
-          options={STATUS_FILTER_OPTIONS}
-          ariaLabel="Lọc theo trạng thái"
-          className="w-40"
-        />
-        {(period || projectId || status) && (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => {
-              setPeriod('');
-              setProjectId('');
-              setStatus('');
-            }}
-          >
-            Xoá bộ lọc
-          </Button>
-        )}
-      </div>
-
-      <QueryBoundary
-        query={goalsQuery}
-        skeleton={<GoalsSkeleton />}
-        empty={() => groups.length === 0}
-        emptyState={
-          <EmptyState
-            icon={<Target className="h-6 w-6" />}
-            title="Chưa có mục tiêu nào"
-            description={
-              canManage
-                ? 'Mục tiêu cho biết kỳ này cả nhóm hướng tới điều gì. Tạo mục tiêu đầu tiên, thêm vài kết quả then chốt đo được bằng số rồi gắn công việc để theo dõi.'
-                : 'Mục tiêu cho biết kỳ này cả nhóm hướng tới điều gì. Khi nhóm của bạn đặt mục tiêu, chúng sẽ hiện ở đây.'
-            }
-            action={
-              canManage ? (
-                <Button variant="secondary" size="sm" onClick={openCreate}>
-                  <Plus className="h-4 w-4" /> Tạo mục tiêu
-                </Button>
-              ) : undefined
-            }
+        <div className="mb-5 flex flex-wrap items-center gap-2">
+          <SearchSelect
+            value={period}
+            onChange={setPeriod}
+            options={periodOptions}
+            ariaLabel="Lọc theo kỳ, ví dụ 2026-Q3 là quý 3 năm 2026"
+            placeholder="Tất cả các kỳ"
+            searchPlaceholder="Tìm kỳ…"
+            className="w-40"
           />
-        }
-      >
-        {() => (
-          <div className="space-y-8">
-            {groups.map(([groupPeriod, items]) => (
-              <section key={groupPeriod}>
-                <div className="mb-3 flex items-baseline gap-2">
-                  <h2
-                    className="text-base font-semibold text-ink-strong"
-                    title={periodHint(groupPeriod)}
-                  >
-                    {groupPeriod}
-                  </h2>
-                  <span className="text-sm text-faint">{items.length} mục tiêu</span>
-                </div>
-                <div className="space-y-4">
-                  {items.map((goal) => (
-                    <GoalCard
-                      key={goal.id}
-                      goal={goal}
-                      canManage={canManage}
-                      onEdit={openEdit}
-                      onAttach={setAttaching}
-                    />
-                  ))}
-                </div>
-              </section>
-            ))}
-          </div>
-        )}
-      </QueryBoundary>
+          <SearchSelect
+            value={status}
+            onChange={(v) => setStatus(v as ObjectiveStatus | '')}
+            options={STATUS_FILTER_OPTIONS}
+            ariaLabel="Lọc theo trạng thái"
+            className="w-40"
+          />
+          {(period || status) && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setPeriod('');
+                setStatus('');
+              }}
+            >
+              Xoá bộ lọc
+            </Button>
+          )}
+        </div>
 
-      <GoalEditorModal
-        open={editorOpen}
-        goal={editing}
-        defaultPeriod={period || undefined}
-        onClose={() => {
-          setEditorOpen(false);
-          setEditing(null);
-        }}
-      />
-      <AttachIssuesModal
-        open={!!attachTarget}
-        goal={attachTarget}
-        onClose={() => setAttaching(null)}
-      />
-    </PageFrame>
+        <QueryBoundary
+          query={goalsQuery}
+          skeleton={<GoalsSkeleton />}
+          empty={() => groups.length === 0}
+          emptyState={
+            <EmptyState
+              icon={<Target className="h-6 w-6" />}
+              title="Chưa có mục tiêu nào"
+              description={
+                canManage
+                  ? 'Mục tiêu cho biết kỳ này cả nhóm hướng tới điều gì. Tạo mục tiêu đầu tiên, thêm vài kết quả then chốt đo được bằng số rồi gắn công việc để theo dõi.'
+                  : 'Mục tiêu cho biết kỳ này cả nhóm hướng tới điều gì. Khi nhóm của bạn đặt mục tiêu, chúng sẽ hiện ở đây.'
+              }
+              action={
+                canManage ? (
+                  <Button variant="secondary" size="sm" onClick={openCreate}>
+                    <Plus className="h-4 w-4" /> Tạo mục tiêu
+                  </Button>
+                ) : undefined
+              }
+            />
+          }
+        >
+          {() => (
+            <div className="space-y-8">
+              {groups.map(([groupPeriod, items]) => (
+                <section key={groupPeriod}>
+                  <div className="mb-3 flex items-baseline gap-2">
+                    <h2
+                      className="text-base font-semibold text-ink-strong"
+                      title={periodHint(groupPeriod)}
+                    >
+                      {groupPeriod}
+                    </h2>
+                    <span className="text-sm text-faint">{items.length} mục tiêu</span>
+                  </div>
+                  <div className="space-y-4">
+                    {items.map((goal) => (
+                      <GoalCard
+                        key={goal.id}
+                        goal={goal}
+                        canManage={canManage}
+                        onEdit={openEdit}
+                        onAttach={setAttaching}
+                      />
+                    ))}
+                  </div>
+                </section>
+              ))}
+            </div>
+          )}
+        </QueryBoundary>
+
+        <GoalEditorModal
+          open={editorOpen}
+          goal={editing}
+          project={project}
+          defaultPeriod={period || undefined}
+          onClose={() => {
+            setEditorOpen(false);
+            setEditing(null);
+          }}
+        />
+        <AttachIssuesModal
+          open={!!attachTarget}
+          goal={attachTarget}
+          onClose={() => setAttaching(null)}
+        />
+      </PageFrame>
+    </div>
   );
 }

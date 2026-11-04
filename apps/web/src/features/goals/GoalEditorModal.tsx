@@ -165,11 +165,14 @@ function suggestPeriods(): string[] {
 export function GoalEditorModal({
   open,
   goal: goalProp,
+  project,
   defaultPeriod,
   onClose,
 }: {
   open: boolean;
   goal?: GoalDto | null;
+  /** Dự án sở hữu mục tiêu (tab Mục tiêu của dự án): tạo mới luôn gắn dự án này, sửa không đổi dự án. */
+  project: { id: string; key: string; name: string };
   defaultPeriod?: string;
   onClose: () => void;
 }) {
@@ -186,7 +189,6 @@ export function GoalEditorModal({
   const [description, setDescription] = useState('');
   const [period, setPeriod] = useState('');
   const [status, setStatus] = useState<ObjectiveStatus>('ACTIVE');
-  const [projectId, setProjectId] = useState('');
   const [ownerId, setOwnerId] = useState('');
   const [krs, setKrs] = useState<DraftKr[]>([]);
 
@@ -196,7 +198,6 @@ export function GoalEditorModal({
     setDescription(goal?.description ?? '');
     setPeriod(goal?.period ?? defaultPeriod ?? suggestPeriods()[0] ?? '');
     setStatus(goal?.status ?? 'ACTIVE');
-    setProjectId(goal?.projectId ?? '');
     setOwnerId(goal?.owner?.id ?? '');
     setKrs(
       goal?.keyResults.map((kr) => ({
@@ -218,10 +219,7 @@ export function GoalEditorModal({
   }, [open, goal, defaultPeriod]);
 
   const projectOptions = useMemo(
-    () => [
-      { value: '', label: 'Toàn tổ chức' },
-      ...(projects ?? []).map((p) => ({ value: p.id, label: p.name, hint: p.key })),
-    ],
+    () => (projects ?? []).map((p) => ({ value: p.id, label: p.name, hint: p.key })),
     [projects],
   );
 
@@ -252,7 +250,7 @@ export function GoalEditorModal({
       description: description.trim() || null,
       period: period.trim(),
       status,
-      projectId: projectId || null,
+      projectId: project.id,
       ownerId: ownerId || null,
       keyResults: validKrs.map(toKeyResultInput),
     };
@@ -338,20 +336,11 @@ export function GoalEditorModal({
               ariaLabel="Trạng thái mục tiêu"
             />
           </Field>
-          <Field
-            label="Dự án"
-            hint="(để trống = mục tiêu chung của cả tổ chức)"
-            htmlFor="goal-project"
-          >
-            <SearchSelect
-              id="goal-project"
-              value={projectId}
-              onChange={setProjectId}
-              options={projectOptions}
-              ariaLabel="Dự án"
-              placeholder="Toàn tổ chức"
-              searchPlaceholder="Tìm dự án…"
-            />
+          <Field label="Dự án" hint="(mục tiêu thuộc dự án đang mở)">
+            <p className="flex h-9 items-center gap-2 text-sm text-ink">
+              <span className="truncate">{project.name}</span>
+              <span className="shrink-0 font-mono text-xs text-faint">{project.key}</span>
+            </p>
           </Field>
           <Field
             label="Người phụ trách"

@@ -134,6 +134,7 @@ export interface LeadershipOverview {
     period: string;
     progress: number;
     expectedProgress: number;
+    project: { key: string; name: string } | null;
     owner: { id: string; displayName: string } | null;
   }>;
   overloaded: Array<{

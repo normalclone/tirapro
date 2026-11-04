@@ -1,4 +1,4 @@
-import { AlarmClock, Briefcase, CalendarClock, Handshake, ShieldAlert, Target } from 'lucide-react';
+import { Briefcase, Handshake } from 'lucide-react';
 import { APP_NAV_LABELS, MANAGE_LABELS } from '@/lib/navLabels';
 import { SubNavLayout } from '@/components/layout/SubNavLayout';
 import type { SubNavItem } from '@/components/layout/subNavModel';
@@ -12,18 +12,6 @@ const MANAGE_NAV: SubNavItem[] = [
     to: '/manage/portfolio',
     label: MANAGE_LABELS.portfolio,
     icon: <Briefcase className="h-4 w-4" />,
-  },
-  { to: '/manage/goals', label: MANAGE_LABELS.goals, icon: <Target className="h-4 w-4" /> },
-  { to: '/manage/risks', label: MANAGE_LABELS.risks, icon: <ShieldAlert className="h-4 w-4" /> },
-  {
-    to: '/manage/resources',
-    label: MANAGE_LABELS.resources,
-    icon: <CalendarClock className="h-4 w-4" />,
-  },
-  {
-    to: '/manage/response-time',
-    label: MANAGE_LABELS.responseTime,
-    icon: <AlarmClock className="h-4 w-4" />,
   },
   { to: '/manage/clients', label: MANAGE_LABELS.clients, icon: <Handshake className="h-4 w-4" /> },
 ];

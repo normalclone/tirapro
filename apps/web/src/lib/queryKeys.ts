@@ -273,8 +273,10 @@ export const keys = {
   },
 
   sla: {
-    policies: ['sla-policies'] as const,
-    board: ['sla-board'] as const,
+    /** Cam kết thời gian của MỘT dự án (luôn thuộc một dự án). */
+    policies: (projectId: string) => ['sla-policies', projectId] as const,
+    policiesAll: ['sla-policies'] as const,
+    board: (projectId: string) => ['sla-board', projectId] as const,
   },
 
   automation: {

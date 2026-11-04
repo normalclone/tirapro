@@ -186,15 +186,6 @@ const GoalsPage = lazy(() =>
 const RaidPage = lazy(() =>
   import('@/features/raid/RaidPage').then((m) => ({ default: m.RaidPage })),
 );
-const ResourcesPage = lazy(() =>
-  import('@/features/resources/ResourcesPage').then((m) => ({ default: m.ResourcesPage })),
-);
-const SlaBoardPage = lazy(() =>
-  import('@/features/sla/SlaPage').then((m) => ({ default: m.SlaBoardPage })),
-);
-const SlaPoliciesPage = lazy(() =>
-  import('@/features/sla/SlaPage').then((m) => ({ default: m.SlaPoliciesPage })),
-);
 const ManageLayout = lazy(() =>
   import('@/features/manage/ManageLayout').then((m) => ({ default: m.ManageLayout })),
 );
@@ -336,7 +327,8 @@ export const router = createBrowserRouter([
             element: <RequireAccess rule={NAV_RULES.settingsApi} who="quản trị viên" />,
             children: [{ path: 'api', element: <ApiKeysPage /> }],
           },
-          { path: 'response-time', element: <SlaPoliciesPage /> },
+          // Cam kết thời gian đã chuyển vào Cấu hình của từng dự án.
+          { path: 'response-time', element: <Navigate to="/projects" replace /> },
         ],
       },
       // Quản trị — gom các màn theo dõi cấp công ty vào một mục.
@@ -346,10 +338,11 @@ export const router = createBrowserRouter([
         children: [
           { index: true, element: <Navigate to="/manage/portfolio" replace /> },
           { path: 'portfolio', element: <PortfolioPage /> },
-          { path: 'goals', element: <GoalsPage /> },
-          { path: 'risks', element: <RaidPage /> },
-          { path: 'resources', element: <ResourcesPage /> },
-          { path: 'response-time', element: <SlaBoardPage /> },
+          // Đã chuyển: Mục tiêu / Rủi ro / Thời gian xử lý nằm trong từng dự án, Nhân lực nằm trong Thành viên.
+          { path: 'goals', element: <Navigate to="/projects" replace /> },
+          { path: 'risks', element: <Navigate to="/projects" replace /> },
+          { path: 'resources', element: <Navigate to="/members?tab=resources" replace /> },
+          { path: 'response-time', element: <Navigate to="/projects" replace /> },
           { path: 'clients', element: <ClientsPage /> },
         ],
       },
@@ -381,10 +374,10 @@ export const router = createBrowserRouter([
       { path: 'wiki', element: <WikiPage /> },
       // Giữ liên kết cũ hoạt động sau khi gộp menu.
       { path: 'portfolio', element: <Navigate to="/manage/portfolio" replace /> },
-      { path: 'goals', element: <Navigate to="/manage/goals" replace /> },
-      { path: 'raid', element: <Navigate to="/manage/risks" replace /> },
-      { path: 'resources', element: <Navigate to="/manage/resources" replace /> },
-      { path: 'sla', element: <Navigate to="/manage/response-time" replace /> },
+      { path: 'goals', element: <Navigate to="/projects" replace /> },
+      { path: 'raid', element: <Navigate to="/projects" replace /> },
+      { path: 'resources', element: <Navigate to="/members?tab=resources" replace /> },
+      { path: 'sla', element: <Navigate to="/projects" replace /> },
       { path: 'clients', element: <Navigate to="/manage/clients" replace /> },
       { path: 'integrations', element: <Navigate to="/connect/integrations" replace /> },
       { path: 'automation', element: <Navigate to="/connect/automation" replace /> },
@@ -404,6 +397,8 @@ export const router = createBrowserRouter([
           { path: 'reports', element: <ReportsPage /> },
           { path: 'gantt', element: <GanttPage /> },
           { path: 'tree', element: <TreePage /> },
+          { path: 'goals', element: <GoalsPage /> },
+          { path: 'risks', element: <RaidPage /> },
           {
             path: 'config',
             element: <ProjectConfigPage />,

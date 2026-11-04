@@ -122,6 +122,21 @@ export function useProjectCan(
   );
 }
 
+/** Quyền cấp tổ chức dùng để quản lý mục của một dự án (mục tiêu, rủi ro, cam kết thời gian). */
+export type ProjectItemOrgPerm = 'goal:manage' | 'risk:manage' | 'sla:manage';
+
+/**
+ * Tạo/sửa mục tiêu, rủi ro, cam kết thời gian của MỘT dự án: có quyền cấp tổ chức `orgPerm` HOẶC là quản trị (`project:admin`)
+ * của CHÍNH dự án đó — khớp `@PermissionsAnyOf` + `assertCanManageInProject` ở API. Dự án lưu trữ → luôn false (chỉ đọc).
+ */
+export function useCanManageInProject(
+  project: { id: string; archivedAt: string | null } | null | undefined,
+  orgPerm: ProjectItemOrgPerm,
+): boolean {
+  const can = useProjectCan(project);
+  return can(orgPerm) || can('project:admin');
+}
+
 /**
  * Như `useProjectCan` nhưng chỉ có `projectId` (trang issue, panel…): tự tra dự án đã lưu trữ chưa (`useProjectArchived`).
  * Dùng cho MỌI chỗ kiểm quyền GHI theo dự án của một issue; `useCan` thô chỉ dành cho việc quản trị dự án (vd khôi phục dự án lưu trữ).

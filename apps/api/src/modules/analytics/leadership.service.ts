@@ -27,6 +27,7 @@ export interface LeadershipOverview {
     period: string;
     progress: number;
     expectedProgress: number;
+    project: { key: string; name: string } | null;
     owner: { id: string; displayName: string } | null;
   }>;
   /** ≤5 người quá tải ở tuần này hoặc tuần sau; tỉ số tải cao nhất trước. */
@@ -152,6 +153,7 @@ export class LeadershipService {
         period: g.period,
         progress: g.progress,
         expectedProgress: expected,
+        project: g.project ? { key: g.project.key, name: g.project.name } : null,
         owner: person(g.owner),
         gap: expected - g.progress,
       });

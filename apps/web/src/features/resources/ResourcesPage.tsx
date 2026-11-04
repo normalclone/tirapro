@@ -1,13 +1,10 @@
 import { useMemo, useState } from 'react';
-import { DocsLink } from '@/components/ui/DocsLink';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import { Users } from 'lucide-react';
 import { Avatar, EmptyState, Skeleton } from '@/components/ui/primitives';
 import { DateInput } from '@/components/ui/DateInput';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { QueryError } from '@/components/ui/QueryError';
-import { PageFrame } from '@/components/layout/PageFrame';
-import { PageHeader } from '@/components/layout/PageHeader';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/stores/auth';
 import { useProjects } from '@/features/projects/api';
@@ -29,7 +26,6 @@ import {
 import { fmtDayMonth } from '@/lib/dateFormat';
 import { ScrollX } from '@/components/ui/ScrollX';
 import { Tabs, TabPanel } from '@/components/ui/Tabs';
-import { MANAGE_LABELS } from '@/lib/navLabels';
 
 type Tab = 'load' | 'allocations' | 'time-off';
 
@@ -115,38 +111,11 @@ function WorkloadExport({
   );
 }
 
-function ResourcesHeader({
-  exportReport,
-  showExport,
-  from,
-  to,
-}: {
-  exportReport: WorkloadReport | undefined;
-  showExport: boolean;
-  from: string;
-  to: string;
-}) {
-  return (
-    <PageHeader
-      title={MANAGE_LABELS.resources}
-      description={
-        <>
-          Xem mỗi người được giao bao nhiêu giờ so với số giờ họ làm được.{' '}
-          <DocsLink anchor="quan-ly-nang-cao" />
-        </>
-      }
-      actions={
-        showExport ? <WorkloadExport report={exportReport} from={from} to={to} /> : undefined
-      }
-    />
-  );
-}
-
 /**
- * Nhân lực & khối lượng việc — bảng nhiệt NGƯỜI × TUẦN, phân bổ theo dự án,
- * nghỉ phép & ngày lễ chung.
+ * Nhân lực & khối lượng việc — bảng nhiệt NGƯỜI × TUẦN, phân bổ theo dự án, nghỉ phép & ngày lễ chung.
+ * Là NỘI DUNG của tab "Nhân lực" trong trang Thành viên (trang đó lo khung + tiêu đề); nút Tải CSV nằm cuối hàng bộ lọc.
  */
-export function ResourcesPage() {
+export function ResourcesPanel() {
   const canManage = useAuth((s) => s.can('resource:manage'));
   const [tab, setTab] = useState<Tab>('load');
   const [startWeek, setStartWeek] = useState(() => isoDay(mondayOf(new Date())));
@@ -182,14 +151,7 @@ export function ResourcesPage() {
   ];
 
   return (
-    <PageFrame size="xl">
-      <ResourcesHeader
-        exportReport={tab === 'load' ? workload.data : undefined}
-        showExport={tab === 'load'}
-        from={from}
-        to={to}
-      />
-
+    <>
       <div className="mb-5 flex flex-wrap items-end gap-3">
         <label className="flex flex-col gap-1.5">
           <span
@@ -247,6 +209,11 @@ export function ResourcesPage() {
             )}
           </p>
         )}
+        {tab === 'load' && (
+          <div className="ml-auto">
+            <WorkloadExport report={workload.data} from={from} to={to} />
+          </div>
+        )}
       </div>
 
       <Tabs
@@ -294,7 +261,7 @@ export function ResourcesPage() {
 
         {tab === 'time-off' && <TimeOffPanel canManage={canManage} from={from} to={to} />}
       </TabPanel>
-    </PageFrame>
+    </>
   );
 }
 

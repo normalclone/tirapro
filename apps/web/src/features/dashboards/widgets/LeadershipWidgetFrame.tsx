@@ -15,7 +15,7 @@ export function LeadershipWidgetFrame({
 }: {
   title: string;
   card: LeadershipCard;
-  to: { href: string; label: string };
+  to?: { href: string; label: string };
   empty: string;
   render: (data: NonNullable<ReturnType<typeof useLeadership>['data']>) => ReactNode[];
 }) {

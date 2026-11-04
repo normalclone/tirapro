@@ -1,7 +1,10 @@
 import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import type { PermissionKey } from '@tirapro/types';
-import { PERMISSIONS_KEY } from '../../common/decorators/permissions.decorator';
+import {
+  PERMISSIONS_ANY_KEY,
+  PERMISSIONS_KEY,
+} from '../../common/decorators/permissions.decorator';
 import {
   PROJECT_REF_KEY,
   type ProjectRefMeta,
@@ -24,11 +27,12 @@ export class PermissionsGuard implements CanActivate {
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    const required = this.reflector.getAllAndOverride<PermissionKey[]>(PERMISSIONS_KEY, [
-      context.getHandler(),
-      context.getClass(),
-    ]);
-    if (!required || required.length === 0) return true; // chỉ cần đã xác thực
+    const targets = [context.getHandler(), context.getClass()];
+    const required = this.reflector.getAllAndOverride<PermissionKey[]>(PERMISSIONS_KEY, targets);
+    const anyOf =
+      this.reflector.getAllAndOverride<PermissionKey[] | undefined>(PERMISSIONS_ANY_KEY, targets) ??
+      [];
+    if ((!required || required.length === 0) && anyOf.length === 0) return true; // chỉ cần đã xác thực
 
     const req = context.switchToHttp().getRequest<AuthedRequest>();
     req.ownOnly = new Set(); // luôn đặt lại, không để lại giá trị từ lần chạy trước
@@ -54,10 +58,13 @@ export class PermissionsGuard implements CanActivate {
     const effective = await this.rbac.getEffectivePermissions(user.id, user.workspaceId, projectId);
     user.permissions = [...effective] as PermissionKey[];
 
-    const ok = required.every((p) => effective.has(p) || effective.has(`${p}:own`));
+    const has = (p: PermissionKey) => effective.has(p) || effective.has(`${p}:own`);
+    const all = required ?? [];
+    // `anyOf`: chỉ cần MỘT quyền (vd quyền cấp tổ chức HOẶC quản trị chính dự án ở route này).
+    const ok = all.every(has) && (anyOf.length === 0 || anyOf.some(has));
     if (!ok) throw new ForbiddenAppException('Bạn không có quyền thực hiện hành động này');
     // Quyền chỉ thoả bằng `:own` → đánh dấu để service kiểm quyền sở hữu tài nguyên (guard không biết chủ sở hữu).
-    req.ownOnly = new Set(required.filter((p) => !effective.has(p)));
+    req.ownOnly = new Set(all.filter((p) => !effective.has(p)));
     return true;
   }
 

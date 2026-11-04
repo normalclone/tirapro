@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/Button';
 import { Dialog } from '@/components/ui/Dialog';
@@ -11,7 +11,6 @@ import { Badge } from '@/components/ui/primitives';
 import { apiErrorMessage } from '@/lib/api';
 import { useRetained } from '@/lib/useRetained';
 import { cn } from '@/lib/utils';
-import { useProjects } from '@/features/projects/api';
 import { useAssigneePicker } from '@/features/issue-edit/useAssigneeOptions';
 import {
   useCreateRaidItem,
@@ -88,15 +87,17 @@ function ScalePicker({
 export function RaidEditorModal({
   open,
   item: itemProp,
+  project,
   defaultKind,
   onClose,
 }: {
   open: boolean;
   item?: RaidItemDto | null;
+  /** Dự án sở hữu mục (tab Rủi ro của dự án): tạo mới luôn gắn dự án này, sửa không đổi dự án. */
+  project: { id: string; key: string; name: string };
   defaultKind?: RaidKind;
   onClose: () => void;
 }) {
-  const { data: projects } = useProjects();
   // Chọn người: tìm phía máy chủ (không giới hạn 50 người), loại tài khoản khoá; chủ cũ đã khoá vẫn hiện tên.
   const people = useAssigneePicker();
   const create = useCreateRaidItem();
@@ -112,7 +113,6 @@ export function RaidEditorModal({
   const [probability, setProbability] = useState(3);
   const [impact, setImpact] = useState(3);
   const [status, setStatus] = useState<RaidStatus>('OPEN');
-  const [projectId, setProjectId] = useState('');
   const [owners, setOwners] = useState<PickedOwner[]>([]);
   const [dueDate, setDueDate] = useState('');
 
@@ -125,7 +125,6 @@ export function RaidEditorModal({
     setProbability(item?.probability ?? 3);
     setImpact(item?.impact ?? 3);
     setStatus(item?.status ?? 'OPEN');
-    setProjectId(item?.projectId ?? '');
     setOwners(
       (item?.owners ?? (item?.owner ? [item.owner] : [])).map((o) => ({
         id: o.id,
@@ -135,14 +134,6 @@ export function RaidEditorModal({
     );
     setDueDate(item?.dueDate ? item.dueDate.slice(0, 10) : '');
   }, [open, item, defaultKind]);
-
-  const projectOptions = useMemo(
-    () => [
-      { value: '', label: 'Toàn tổ chức' },
-      ...(projects ?? []).map((p) => ({ value: p.id, label: p.name, hint: p.key })),
-    ],
-    [projects],
-  );
 
   const busy = create.isPending || update.isPending;
   const canSave = title.trim().length > 0 && !busy;
@@ -161,7 +152,7 @@ export function RaidEditorModal({
       probability,
       impact,
       status,
-      projectId: projectId || null,
+      projectId: project.id,
       ownerIds: owners.map((o) => o.id),
       dueDate: dueDate || null,
     };
@@ -279,16 +270,11 @@ export function RaidEditorModal({
           <Field label="Hạn xử lý" hint="(tùy chọn — ngày cần xong)" htmlFor="raid-due">
             <DateInput id="raid-due" value={dueDate} onChange={setDueDate} />
           </Field>
-          <Field label="Dự án" hint="(để trống = ảnh hưởng cả tổ chức)" htmlFor="raid-project">
-            <SearchSelect
-              id="raid-project"
-              value={projectId}
-              onChange={setProjectId}
-              options={projectOptions}
-              ariaLabel="Dự án"
-              placeholder="Toàn tổ chức"
-              searchPlaceholder="Tìm dự án…"
-            />
+          <Field label="Dự án" hint="(mục thuộc dự án đang mở)">
+            <p className="flex h-9 items-center gap-2 text-sm text-ink">
+              <span className="truncate">{project.name}</span>
+              <span className="shrink-0 font-mono text-xs text-faint">{project.key}</span>
+            </p>
           </Field>
           <Field
             label="Người phụ trách"

@@ -9,7 +9,7 @@ export function OverloadWidget({ title }: WidgetProps) {
     <LeadershipWidgetFrame
       title={title}
       card="overloaded"
-      to={{ href: '/manage/resources', label: 'Xem tất cả →' }}
+      to={{ href: '/members?tab=resources', label: 'Xem tất cả →' }}
       empty={LEADERSHIP_EMPTY.overloaded}
       render={(d) =>
         d.overloaded.map((o) => (

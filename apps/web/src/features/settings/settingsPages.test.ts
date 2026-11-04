@@ -15,7 +15,6 @@ const PAGES: [route: string, file: string, size: 'sm' | 'lg'][] = [
   ['priorities', 'features/settings/SettingsPrioritiesPage.tsx', 'sm'],
   ['severities', 'features/settings/SettingsSeveritiesPage.tsx', 'sm'],
   ['fields', 'features/settings/SettingsFieldsPage.tsx', 'sm'],
-  ['response-time', 'features/sla/SlaPage.tsx', 'sm'],
   ['import', 'features/import/ImportPage.tsx', 'sm'],
   ['api', 'features/api-keys/ApiKeysPage.tsx', 'sm'],
 ];
@@ -43,12 +42,11 @@ describe('trang Cài đặt dùng PageFrame + PageHeader (T4)', () => {
       /<PageHeader[\s\S]*?actions=\{[\s\S]*?data-tour="roles-create"[\s\S]*?\/>\s*\{!canManage/,
     );
   });
-  it('"Thêm cam kết" nằm trong PageHeader.actions; hộp thoại do trang điều khiển', () => {
+  it('Cam kết thời gian nằm trong Cấu hình dự án: "Thêm cam kết" ở actions của thẻ danh sách, hộp thoại do mục điều khiển', () => {
     const s = src('features/sla/SlaPage.tsx');
-    expect(s).toMatch(/<PageHeader[\s\S]*?actions=\{[\s\S]*?Thêm cam kết/);
-    expect(s).toMatch(
-      /<SlaPolicies canManage=\{canManage\} open=\{open\} onOpenChange=\{setOpen\}/,
-    );
+    expect(s).toMatch(/<SectionCard[\s\S]*?actions=\{[\s\S]*?Thêm cam kết/);
+    expect(s).toMatch(/<SlaPolicies project=\{project\} canManage=\{canManage\} open=\{open\}/);
+    expect(s).not.toMatch(/<PageFrame|<PageHeader/);
   });
   it('nút tạo trong EmptyState là secondary (B-D6)', () => {
     for (const f of [

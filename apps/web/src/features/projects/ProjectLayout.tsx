@@ -19,6 +19,7 @@ import {
   Settings,
   ShieldAlert,
   Sparkles,
+  Target,
   Trash2,
 } from 'lucide-react';
 import type { PermissionKey } from '@tirapro/types';
@@ -71,13 +72,10 @@ const MORE: {
     needs: 'issue:triage',
   },
   { id: 'activity', label: 'Hoạt động', icon: Activity, to: (p) => `/p/${p.key}/activity` },
-  // Rủi ro và Tự động hoá dùng trang sẵn có, lọc sẵn theo dự án này qua `?project=<id>`.
-  {
-    id: 'risks',
-    label: MANAGE_LABELS.risks,
-    icon: ShieldAlert,
-    to: (p) => `/manage/risks?project=${p.id}`,
-  },
+  // Mục tiêu và Rủi ro là tab của chính dự án (dự án cố định, tạo mới gắn dự án này).
+  { id: 'goals', label: MANAGE_LABELS.goals, icon: Target, to: (p) => `/p/${p.key}/goals` },
+  { id: 'risks', label: MANAGE_LABELS.risks, icon: ShieldAlert, to: (p) => `/p/${p.key}/risks` },
+  // Tự động hoá dùng trang ngoài dự án, lọc sẵn theo dự án này qua `?project=<id>`.
   {
     id: 'automation',
     label: CONNECT_LABELS.automation,
@@ -132,6 +130,8 @@ export function ProjectLayout() {
     'triage',
     'trash',
     'activity',
+    'goals',
+    'risks',
     'config',
   ]);
   const view = KNOWN_VIEWS.has(seg) ? seg : 'board';

@@ -64,14 +64,15 @@ describe('buildProjectCommands', () => {
     expect(cmds.some((c) => /sprint/i.test(c.label))).toBe(false);
     expect(cmds.map((c) => c.to)).toContain('/p/DEMO/reports');
   });
-  it('điều hướng đủ Báo cáo / Lịch trình / Việc mới vào / Rủi ro; Tự động hoá theo quyền', () => {
+  it('điều hướng đủ Báo cáo / Lịch trình / Việc mới vào / Mục tiêu / Rủi ro (tab của dự án); Tự động hoá theo quyền', () => {
     const to = buildProjectCommands({ ...base, canAutomation: false }).map((c) => c.to);
     expect(to).toEqual(
       expect.arrayContaining([
         '/p/DEMO/reports',
         '/p/DEMO/gantt',
         '/p/DEMO/triage',
-        '/manage/risks?project=p1',
+        '/p/DEMO/goals',
+        '/p/DEMO/risks',
       ]),
     );
     expect(to).not.toContain('/connect/automation?project=p1');

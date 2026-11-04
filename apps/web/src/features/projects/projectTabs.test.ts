@@ -17,7 +17,8 @@ describe('tabLabelVisible', () => {
 
 describe('activeMoreSeg — màn thuộc menu "Thêm"', () => {
   it('trả segment nếu thuộc menu Thêm', () => {
-    for (const s of ['triage', 'activity', 'trash', 'config']) expect(activeMoreSeg(s)).toBe(s);
+    for (const s of ['triage', 'activity', 'goals', 'risks', 'trash', 'config'])
+      expect(activeMoreSeg(s)).toBe(s);
   });
   it('view chính hoặc segment lạ → null', () => {
     for (const s of ['board', 'backlog', 'gantt', 'tree', 'reports', 'create', '']) {
@@ -30,6 +31,7 @@ describe('visibleMoreItems — mục menu "Thêm" theo quyền', () => {
   const items = [
     { id: 'triage', needs: 'issue:triage' },
     { id: 'activity' },
+    { id: 'goals' },
     { id: 'risks' },
     { id: 'automation', needs: 'automation:manage' },
   ] as const;
@@ -40,9 +42,28 @@ describe('visibleMoreItems — mục menu "Thêm" theo quyền', () => {
     expect(ids((p) => p !== 'issue:triage', true)).not.toContain('triage');
     expect(ids(() => true, true)).toContain('triage');
   });
-  it('mục không `needs` luôn hiện; chưa có dự án thì ẩn Rủi ro/Tự động hoá', () => {
-    expect(ids(() => false, true)).toEqual(['activity', 'risks']);
+  it('mục không `needs` luôn hiện; chưa có dự án thì ẩn Mục tiêu/Rủi ro/Tự động hoá', () => {
+    expect(ids(() => false, true)).toEqual(['activity', 'goals', 'risks']);
     expect(ids(() => true, false)).toEqual(['triage', 'activity']);
+  });
+});
+
+describe('Mục tiêu và Rủi ro là tab của dự án (menu "Thêm")', () => {
+  const layout = readFileSync(join(__dirname, 'ProjectLayout.tsx'), 'utf8');
+  it('MORE trỏ tới /p/KEY/goals và /p/KEY/risks, không còn /manage/risks', () => {
+    expect(layout).toMatch(/id: 'goals',[^}]*to: \(p\) => `\/p\/\$\{p\.key\}\/goals`/);
+    expect(layout).toMatch(/id: 'risks',[^}]*to: \(p\) => `\/p\/\$\{p\.key\}\/risks`/);
+    expect(layout).not.toMatch(/\/manage\//);
+  });
+  it('goals/risks là view biết của dự án (rail + lastView) và có trong gợi ý 404', () => {
+    expect(layout).toMatch(/KNOWN_VIEWS = new Set\([\s\S]*?'goals',[\s\S]*?'risks',/);
+    const segs = PROJECT_VIEW_ENTRIES.map((e) => e.seg);
+    expect(segs).toEqual(expect.arrayContaining(['goals', 'risks']));
+  });
+  it('router: /p/:key có route goals và risks', () => {
+    const r = readFileSync(join(__dirname, '..', '..', 'app', 'router.tsx'), 'utf8');
+    expect(r).toMatch(/path: 'goals', element: <GoalsPage \/>/);
+    expect(r).toMatch(/path: 'risks', element: <RaidPage \/>/);
   });
 });
 

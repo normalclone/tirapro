@@ -9,7 +9,6 @@ export function TopRisksWidget({ title }: WidgetProps) {
     <LeadershipWidgetFrame
       title={title}
       card="topRisks"
-      to={{ href: '/manage/risks', label: 'Xem tất cả →' }}
       empty={LEADERSHIP_EMPTY.risks}
       render={(d) =>
         d.topRisks.map((r) => (

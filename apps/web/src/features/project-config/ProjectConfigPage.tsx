@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { Navigate, useLocation, useParams } from 'react-router-dom';
 import {
+  AlarmClock,
   Boxes,
   Tag,
   Tags,
@@ -28,6 +29,7 @@ import { ComponentsSection } from './ComponentsSection';
 import { VersionsSection } from './VersionsSection';
 import { LabelsSection } from './LabelsSection';
 import { DataSection } from './DataSection';
+import { ProjectSlaSection } from '@/features/sla/SlaPage';
 import { PROJECT_CONFIG_LABELS } from '@/lib/navLabels';
 import {
   configRedirectTarget,
@@ -71,6 +73,13 @@ const CONFIG_NAV: ConfigSectionDef[] = [
     label: PROJECT_CONFIG_LABELS.labels,
     icon: <Tags className="h-4 w-4" />,
     description: 'Gắn nhãn cho công việc để nhóm và lọc theo cách của riêng bạn.',
+  },
+  {
+    id: 'response-time',
+    label: PROJECT_CONFIG_LABELS.responseTime,
+    icon: <AlarmClock className="h-4 w-4" />,
+    description:
+      'Đặt thời hạn phản hồi và xử lý xong cho công việc của dự án; công việc sắp trễ được tô màu để bạn kịp xử lý.',
   },
   {
     id: 'data',
@@ -154,6 +163,7 @@ export function ConfigSection() {
         )}
         {section === 'versions' && <VersionsSection projectId={projectId} canAdmin={canAdmin} />}
         {section === 'labels' && <LabelsSection projectId={projectId} canAdmin={canAdmin} />}
+        {section === 'response-time' && project && <ProjectSlaSection project={project} />}
         {section === 'data' && (
           <DataSection
             projectId={projectId}

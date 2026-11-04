@@ -12,7 +12,7 @@ export interface ProjectCommand {
   label: string;
   keywords: string;
   to: string;
-  icon: 'sprint' | 'report' | 'gantt' | 'triage' | 'risks' | 'automation' | 'import';
+  icon: 'sprint' | 'report' | 'gantt' | 'triage' | 'goals' | 'risks' | 'automation' | 'import';
 }
 
 interface SprintLike {
@@ -106,13 +106,22 @@ export function buildProjectCommands(input: ProjectCommandInput): ProjectCommand
       to: `/p/${k}/triage`,
       icon: 'triage',
     });
-  out.push({
-    id: 'nav.risks',
-    label: `Mở ${MANAGE_LABELS.risks}`,
-    keywords: 'rui ro vuong mac risks raid',
-    to: `/manage/risks?project=${projectId}`,
-    icon: 'risks',
-  });
+  out.push(
+    {
+      id: 'nav.goals',
+      label: `Mở ${MANAGE_LABELS.goals}`,
+      keywords: 'muc tieu okr goals ket qua then chot',
+      to: `/p/${k}/goals`,
+      icon: 'goals',
+    },
+    {
+      id: 'nav.risks',
+      label: `Mở ${MANAGE_LABELS.risks}`,
+      keywords: 'rui ro vuong mac risks raid',
+      to: `/p/${k}/risks`,
+      icon: 'risks',
+    },
+  );
   if (input.canImport)
     out.push({
       id: 'import.excel',

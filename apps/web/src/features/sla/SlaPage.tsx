@@ -1,13 +1,10 @@
 import { useEffect, useState } from 'react';
-import { DocsLink } from '@/components/ui/DocsLink';
 import { Link } from 'react-router-dom';
 import { AlarmClock, Plus, Trash2, TriangleAlert } from 'lucide-react';
 import { toast } from 'sonner';
 import { apiErrorMessage } from '@/lib/api';
 import type { FieldError } from '@/lib/formErrors';
 import { useErrorFlow } from '@/lib/useErrorFlow';
-import { PageFrame } from '@/components/layout/PageFrame';
-import { PageHeader } from '@/components/layout/PageHeader';
 import { SectionCard } from '@/components/ui/SectionCard';
 import { Avatar, Badge, EmptyState, Skeleton } from '@/components/ui/primitives';
 import { Button } from '@/components/ui/Button';
@@ -16,9 +13,8 @@ import { ErrorSummary } from '@/components/ui/ErrorSummary';
 import { FormField } from '@/components/ui/FormField';
 import { useConfirm } from '@/components/ui/useConfirm';
 import { Input } from '@/components/ui/Input';
-import { SearchSelect } from '@/components/ui/SearchSelect';
-import { useAuth } from '@/stores/auth';
-import { useProjects } from '@/features/projects/api';
+import type { ProjectDto } from '@tirapro/types';
+import { useCanManageInProject } from '@/features/projects/permissions';
 import { cn } from '@/lib/utils';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
 import { fmtDateTime } from '@/lib/dateFormat';
@@ -36,51 +32,25 @@ import {
 } from './api';
 import { PriorityIcon } from '@/components/ui/PriorityIcon';
 import { usePriorityRanks } from '@/features/issue-meta/usePriorityRanks';
-import { MANAGE_LABELS, SETTINGS_LABELS } from '@/lib/navLabels';
 import { validateSlaForm } from './slaForm';
 
-/** Bảng theo dõi công việc sắp trễ / đã trễ hạn cam kết (dùng trong mục Danh mục). */
-export function SlaBoardPage() {
-  return (
-    <PageFrame size="xl">
-      <PageHeader
-        title={MANAGE_LABELS.responseTime}
-        description="Công việc đang chạy đồng hồ theo cam kết; sắp tới hạn tô vàng, quá hạn tô đỏ."
-      />
-      <SlaBoard />
-    </PageFrame>
-  );
-}
-
-/** Cấu hình cam kết thời gian xử lý (dùng trong Cài đặt). */
-export function SlaPoliciesPage() {
-  const canManage = useAuth((s) => s.can('sla:manage'));
+/**
+ * Mục "Thời gian xử lý" trong Cấu hình dự án (`/p/:key/config/response-time`): cam kết của CHÍNH dự án này và bảng công việc
+ * đang chạy đồng hồ. Tạo/sửa: quyền `sla:manage` cấp tổ chức HOẶC quản trị dự án này (API kiểm đúng như vậy).
+ */
+export function ProjectSlaSection({ project }: { project: ProjectDto }) {
+  const canManage = useCanManageInProject(project, 'sla:manage');
   const [open, setOpen] = useState(false);
   return (
-    <PageFrame size="sm">
-      <PageHeader
-        title={SETTINGS_LABELS.responseTime}
-        description={
-          <>
-            Đặt thời hạn phản hồi và xử lý xong cho từng nhóm công việc.{' '}
-            <DocsLink anchor="quan-ly-nang-cao" />
-          </>
-        }
-        actions={
-          canManage ? (
-            <Button size="sm" onClick={() => setOpen(true)}>
-              <Plus className="h-4 w-4" /> Thêm cam kết
-            </Button>
-          ) : undefined
-        }
-      />
-      <SlaPolicies canManage={canManage} open={open} onOpenChange={setOpen} />
-    </PageFrame>
+    <>
+      <SlaPolicies project={project} canManage={canManage} open={open} onOpenChange={setOpen} />
+      <SlaBoard projectId={project.id} />
+    </>
   );
 }
 
-function SlaBoard() {
-  const boardQuery = useSlaBoard();
+function SlaBoard({ projectId }: { projectId: string }) {
+  const boardQuery = useSlaBoard(projectId);
   return (
     <QueryBoundary
       query={boardQuery}
@@ -96,7 +66,7 @@ function SlaBoard() {
         <EmptyState
           icon={<AlarmClock className="h-6 w-6" />}
           title="Chưa có công việc nào đang tính giờ"
-          description="Đồng hồ chỉ chạy với công việc khớp một cam kết đang bật. Hãy đặt cam kết thời gian xử lý trong Cài đặt để bắt đầu theo dõi."
+          description="Đồng hồ chỉ chạy với công việc khớp một cam kết đang bật. Hãy đặt cam kết thời gian xử lý cho dự án này để bắt đầu theo dõi."
         />
       }
     >
@@ -112,6 +82,7 @@ function SlaBoardTable({ rows }: { rows: SlaBoardRow[] }) {
 
   return (
     <SectionCard
+      headingLevel={3}
       title="Đang chạy đồng hồ"
       description="Đồng hồ chạy từ lúc công việc được tạo cho tới khi xử lý xong."
       bare
@@ -217,23 +188,23 @@ function SlaBoardTable({ rows }: { rows: SlaBoardRow[] }) {
 }
 
 function SlaPolicies({
+  project,
   canManage,
   open,
   onOpenChange,
 }: {
+  project: ProjectDto;
   canManage: boolean;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
-  const policiesQuery = useSlaPolicies();
+  const policiesQuery = useSlaPolicies(project.id);
   const { data } = policiesQuery;
-  const { data: projects } = useProjects();
   const create = useCreateSlaPolicy();
   const update = useUpdateSlaPolicy();
   const remove = useDeleteSlaPolicy();
   const confirm = useConfirm();
   const [name, setName] = useState('');
-  const [projectId, setProjectId] = useState('');
   const [responseH, setResponseH] = useState('4');
   const [resolveH, setResolveH] = useState('24');
 
@@ -259,7 +230,7 @@ function SlaPolicies({
     create.mutate(
       {
         name: n,
-        projectId: projectId || null,
+        projectId: project.id,
         responseMins: Math.max(1, Math.round(Number(responseH) * 60)),
         resolveMins: Math.max(1, Math.round(Number(resolveH) * 60)),
       },
@@ -268,7 +239,6 @@ function SlaPolicies({
           toast.success('Đã tạo cam kết');
           onOpenChange(false);
           setName('');
-          setProjectId('');
         },
         onError: (e) => toast.error(apiErrorMessage(e)),
       },
@@ -277,8 +247,16 @@ function SlaPolicies({
 
   return (
     <SectionCard
+      headingLevel={3}
       title="Danh sách cam kết"
-      description="Mỗi cam kết áp cho một dự án cụ thể, hoặc cho mọi dự án nếu bạn không chọn dự án nào."
+      description="Mỗi cam kết áp cho công việc của dự án này; có thể giới hạn theo mức ưu tiên."
+      actions={
+        canManage ? (
+          <Button size="sm" variant="secondary" onClick={() => onOpenChange(true)}>
+            <Plus className="h-4 w-4" /> Thêm cam kết
+          </Button>
+        ) : undefined
+      }
     >
       <QueryBoundary
         query={policiesQuery}
@@ -297,7 +275,7 @@ function SlaPolicies({
             description={
               canManage
                 ? 'Cam kết là thời hạn bạn tự đặt cho việc phản hồi và xử lý xong. Tạo cam kết đầu tiên để hệ thống bắt đầu bấm giờ.'
-                : 'Cam kết là thời hạn cho việc phản hồi và xử lý xong. Quản trị viên chưa đặt cam kết nào.'
+                : 'Cam kết là thời hạn cho việc phản hồi và xử lý xong. Dự án này chưa có cam kết nào.'
             }
           />
         }
@@ -314,8 +292,7 @@ function SlaPolicies({
                     {p.name}
                   </span>
                   <span className="block truncate text-xs text-muted">
-                    {p.project ? `Dự án ${p.project.key}` : 'Mọi dự án'}
-                    {p.priority ? ` · ${p.priority.name}` : ''}
+                    {p.priority ? `Mức ưu tiên ${p.priority.name}` : 'Mọi mức ưu tiên'}
                   </span>
                 </span>
                 <span
@@ -411,21 +388,6 @@ function SlaPolicies({
                 placeholder="Ví dụ: Hỗ trợ tiêu chuẩn"
                 title="Tên hiện trên bảng theo dõi để bạn biết công việc đang chạy theo cam kết nào."
                 autoFocus
-              />
-            )}
-          </FormField>
-          <FormField id="sla-project" label="Dự án" hint="Để trống = áp cho mọi dự án.">
-            {(a11y) => (
-              <SearchSelect
-                {...a11y}
-                value={projectId}
-                onChange={setProjectId}
-                options={[
-                  { value: '', label: 'Mọi dự án' },
-                  ...(projects ?? []).map((p) => ({ value: p.id, label: p.name, hint: p.key })),
-                ]}
-                placeholder="Mọi dự án"
-                searchPlaceholder="Tìm dự án…"
               />
             )}
           </FormField>

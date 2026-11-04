@@ -114,11 +114,11 @@ describe('một nguồn nhãn (lib/navLabels.ts)', () => {
       SETTINGS_LABELS.severities,
     ],
     ['features/settings/SettingsFieldsPage.tsx', 'SETTINGS_LABELS.fields', SETTINGS_LABELS.fields],
-    ['features/sla/SlaPage.tsx', 'SETTINGS_LABELS.responseTime', SETTINGS_LABELS.responseTime],
     ['features/import/ImportPage.tsx', 'SETTINGS_LABELS.import', SETTINGS_LABELS.import],
     ['features/api-keys/ApiKeysPage.tsx', 'SETTINGS_LABELS.api', SETTINGS_LABELS.api],
     ['features/goals/GoalsPage.tsx', 'MANAGE_LABELS.goals', MANAGE_LABELS.goals],
-    ['features/resources/ResourcesPage.tsx', 'MANAGE_LABELS.resources', MANAGE_LABELS.resources],
+    ['features/members/MembersPage.tsx', 'MANAGE_LABELS.resources', MANAGE_LABELS.resources],
+    ['features/raid/RaidPage.tsx', 'MANAGE_LABELS.risks', MANAGE_LABELS.risks],
     ['features/clients/ClientsPage.tsx', 'MANAGE_LABELS.clients', MANAGE_LABELS.clients],
     ['features/members/MembersPage.tsx', 'APP_NAV_LABELS.members', APP_NAV_LABELS.members],
     ['features/wiki/WikiPage.tsx', 'APP_NAV_LABELS.wiki', APP_NAV_LABELS.wiki],
@@ -161,6 +161,11 @@ describe('một nguồn nhãn (lib/navLabels.ts)', () => {
       'features/project-config/ProjectConfigPage.tsx',
       'PROJECT_CONFIG_LABELS.general',
       PROJECT_CONFIG_LABELS.general,
+    ],
+    [
+      'features/project-config/ProjectConfigPage.tsx',
+      'PROJECT_CONFIG_LABELS.responseTime',
+      PROJECT_CONFIG_LABELS.responseTime,
     ],
   ];
   it.each(pageTitles)('%s dùng %s làm tiêu đề trang', (file, ref, label) => {

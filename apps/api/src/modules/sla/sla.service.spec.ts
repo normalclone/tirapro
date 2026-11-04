@@ -22,7 +22,18 @@ function setup(archived: boolean, policyProjectId: string | null = 'p1') {
     ),
     assertCanSee: vi.fn((..._a: unknown[]) => Promise.resolve()),
   };
-  return { service: new SlaService(prisma as never, access as never), prisma, access };
+  const rbac = {
+    projectVisibilityMode: vi.fn(
+      (..._a: unknown[]): Promise<'all' | 'standard'> => Promise.resolve('all'),
+    ),
+    getEffectivePermissions: vi.fn((..._a: unknown[]) => Promise.resolve(new Set<string>())),
+  };
+  return {
+    service: new SlaService(prisma as never, access as never, rbac as never),
+    prisma,
+    access,
+    rbac,
+  };
 }
 
 describe('SlaService — dự án lưu trữ là chỉ đọc', () => {
@@ -71,6 +82,43 @@ describe('SlaService — dự án lưu trữ là chỉ đọc', () => {
     expect(live.prisma.slaPolicy.create).toHaveBeenCalled();
     expect(live.prisma.slaPolicy.update).toHaveBeenCalled();
     expect(live.prisma.slaPolicy.deleteMany).toHaveBeenCalled();
+  });
+});
+
+describe('SlaService.update — chuyển chính sách sang dự án khác kiểm quyền Ở ĐÍCH', () => {
+  function asMember(perms: string[]) {
+    const base = setup(false);
+    base.rbac.projectVisibilityMode.mockResolvedValue('standard');
+    base.rbac.getEffectivePermissions.mockResolvedValue(new Set(perms));
+    return base;
+  }
+
+  it('không có sla:manage / project:admin ở dự án đích → 403, không ghi', async () => {
+    const { service, prisma, rbac } = asMember(['project:view']);
+    await expect(service.update('w1', 's1', { projectId: 'p2' }, 'u1')).rejects.toMatchObject({
+      status: 403,
+    });
+    expect(rbac.getEffectivePermissions).toHaveBeenCalledWith('u1', 'w1', 'p2');
+    expect(prisma.slaPolicy.update).not.toHaveBeenCalled();
+  });
+
+  it('quản trị dự án đích (project:admin) HOẶC sla:manage cấp tổ chức → chuyển được', async () => {
+    for (const perm of ['project:admin', 'sla:manage']) {
+      const { service, prisma } = asMember([perm]);
+      await service.update('w1', 's1', { projectId: 'p2' }, 'u1');
+      expect((prisma.slaPolicy.update.mock.calls as unknown[][])[0]![0]).toMatchObject({
+        data: { projectId: 'p2' },
+      });
+    }
+  });
+
+  it('không đổi dự án → không kiểm thêm; quản trị chung/hệ thống (mode all) luôn được', async () => {
+    const same = asMember([]);
+    await same.service.update('w1', 's1', { name: 'Mới', projectId: 'p1' }, 'u1');
+    expect(same.rbac.getEffectivePermissions).not.toHaveBeenCalled();
+    const admin = setup(false);
+    await admin.service.update('w1', 's1', { projectId: 'p2' }, 'u1');
+    expect(admin.prisma.slaPolicy.update).toHaveBeenCalled();
   });
 });
 
@@ -268,7 +316,7 @@ describe('SlaService — thời gian xử lý hiển thị đúng thực tế (l
         ),
       },
     };
-    return { service: new SlaService(prisma as never, {} as never), prisma, created };
+    return { service: new SlaService(prisma as never, {} as never, {} as never), prisma, created };
   }
 
   it('việc đã ở trạng thái DONE mà dòng SLA chưa đóng → coi là đã xong, không còn "còn N giờ"', async () => {
@@ -282,7 +330,7 @@ describe('SlaService — thời gian xử lý hiển thị đúng thực tế (l
   it('board loại việc đã ở nhóm DONE', async () => {
     const { service, prisma } = make();
     const access = { visibleWhere: () => Promise.resolve({}) };
-    const svc = new SlaService(prisma as never, access as never);
+    const svc = new SlaService(prisma as never, access as never, {} as never);
     await svc.board('w', 'u');
     const where = whereOf(prisma.issueSla.findMany);
     expect(where.issue?.status).toEqual({ category: { not: 'DONE' } });

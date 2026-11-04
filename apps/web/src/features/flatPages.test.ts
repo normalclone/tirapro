@@ -21,7 +21,12 @@ describe('trang workspace phẳng dùng PageFrame + PageHeader (T8)', () => {
     '%s: PageFrame đúng cỡ, PageHeader, không h1 tay/pageContainer/max-w',
     (_n, file, size) => {
       const s = src(file);
-      expect(s).toMatch(new RegExp(`<PageFrame size="${size}"`));
+      // Thành viên đổi khung theo tab (Nhân lực là bảng rộng): `size={tab === 'resources' ? 'xl' : 'sm'}`.
+      expect(s).toMatch(
+        file.endsWith('MembersPage.tsx')
+          ? /<PageFrame size=\{tab === 'resources' \? 'xl' : 'sm'\}/
+          : new RegExp(`<PageFrame size="${size}"`),
+      );
       expect(s).toMatch(/<PageHeader\b/);
       expect(s).not.toMatch(/<h1\b|pageContainer/);
       expect(s).not.toMatch(/\bmax-w-(3xl|4xl|5xl|7xl)\b/);

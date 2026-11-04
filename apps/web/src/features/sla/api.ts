@@ -41,17 +41,23 @@ export interface SlaBoardRow {
   resolveBreached: boolean;
 }
 
-export function useSlaPolicies() {
+/** Cam kết thời gian của một dự án (`?projectId=`); chưa biết dự án → không gọi. */
+export function useSlaPolicies(projectId?: string) {
   return useQuery({
-    queryKey: keys.sla.policies,
-    queryFn: async () => (await api.get<SlaPolicyDto[]>('/sla/policies')).data,
+    queryKey: keys.sla.policies(projectId ?? ''),
+    queryFn: projectId
+      ? async () => (await api.get<SlaPolicyDto[]>('/sla/policies', { params: { projectId } })).data
+      : skipToken,
   });
 }
 
-export function useSlaBoard() {
+/** Công việc đang chạy đồng hồ của một dự án. */
+export function useSlaBoard(projectId?: string) {
   return useQuery({
-    queryKey: keys.sla.board,
-    queryFn: async () => (await api.get<SlaBoardRow[]>('/sla/board')).data,
+    queryKey: keys.sla.board(projectId ?? ''),
+    queryFn: projectId
+      ? async () => (await api.get<SlaBoardRow[]>('/sla/board', { params: { projectId } })).data
+      : skipToken,
   });
 }
 
@@ -66,7 +72,7 @@ export function useIssueSla(issueId?: string) {
 
 export interface SlaPolicyInput {
   name: string;
-  projectId?: string | null;
+  projectId: string;
   priorityId?: string | null;
   responseMins: number;
   resolveMins: number;
@@ -78,7 +84,7 @@ export function useCreateSlaPolicy() {
   return useMutation({
     mutationFn: (input: SlaPolicyInput) =>
       api.post<SlaPolicyDto[]>('/sla/policies', input).then((r) => r.data),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: keys.sla.policies }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: keys.sla.policiesAll }),
   });
 }
 
@@ -87,7 +93,7 @@ export function useUpdateSlaPolicy() {
   return useMutation({
     mutationFn: ({ id, ...input }: Partial<SlaPolicyInput> & { id: string }) =>
       api.put<SlaPolicyDto[]>(`/sla/policies/${id}`, input).then((r) => r.data),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: keys.sla.policies }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: keys.sla.policiesAll }),
   });
 }
 
@@ -95,7 +101,7 @@ export function useDeleteSlaPolicy() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => api.delete<Ack>(`/sla/policies/${id}`).then((r) => r.data),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: keys.sla.policies }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: keys.sla.policiesAll }),
   });
 }
 

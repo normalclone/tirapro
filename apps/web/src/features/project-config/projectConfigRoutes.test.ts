@@ -18,7 +18,18 @@ const code = (p: string) =>
 describe('Cấu hình dự án là route con', () => {
   it('đường dẫn mục', () => {
     expect(configSectionPath('ABC', 'labels')).toBe('/p/ABC/config/labels');
-    expect(CONFIG_SECTION_IDS).toHaveLength(6);
+    expect(CONFIG_SECTION_IDS).toHaveLength(7);
+  });
+  it('Thời gian xử lý là mục cấu hình của dự án (cam kết + bảng theo dõi theo dự án)', () => {
+    expect(isConfigSection('response-time')).toBe(true);
+    expect(configSectionPath('ABC', 'response-time')).toBe('/p/ABC/config/response-time');
+    expect(configRedirectTarget('ABC', '?section=response-time')).toBe(
+      '/p/ABC/config/response-time',
+    );
+    const s = code('features/project-config/ProjectConfigPage.tsx');
+    expect(s).toMatch(
+      /section === 'response-time' && project && <ProjectSlaSection project=\{project\}/,
+    );
   });
   it('isConfigSection nhận đúng id, từ chối giá trị lạ/rỗng', () => {
     expect(isConfigSection('data')).toBe(true);

@@ -21,7 +21,7 @@ import { TOUCH_HIT } from '@/lib/touchHit';
 
 /**
  * Ba thẻ cho lãnh đạo trên Tổng quan: 5 rủi ro mở điểm cao nhất · OKR chậm so với thời gian · người quá tải.
- * Một request; mỗi thẻ rỗng/ lỗi độc lập (máy chủ trả mảng rỗng cho nguồn lỗi). Bấm "Xem tất cả" tới trang đầy đủ.
+ * Một request; mỗi thẻ rỗng/ lỗi độc lập (máy chủ trả mảng rỗng cho nguồn lỗi). Bấm một dòng để tới tab Rủi ro / Mục tiêu của dự án, hoặc tab Nhân lực của Thành viên.
  */
 export function LeadershipCards() {
   const { data, isLoading, isError, refetch, isFetching } = useLeadership(true);
@@ -66,7 +66,6 @@ export function LeadershipCards() {
         icon={<Flame className="h-4 w-4 text-danger" aria-hidden />}
         title="Top rủi ro"
         hint={LEADERSHIP_HINT.risks}
-        to="/manage/risks"
         empty={LEADERSHIP_EMPTY.risks}
         unavailable={isUnavailable(data, 'topRisks')}
         onRetry={() => void refetch()}
@@ -84,7 +83,6 @@ export function LeadershipCards() {
         icon={<Target className="h-4 w-4 text-warning" aria-hidden />}
         title="OKR chậm"
         hint={LEADERSHIP_HINT.goals}
-        to="/manage/goals"
         empty={LEADERSHIP_EMPTY.goals}
         unavailable={isUnavailable(data, 'slowGoals')}
         onRetry={() => void refetch()}
@@ -102,7 +100,7 @@ export function LeadershipCards() {
         icon={<Users className="h-4 w-4 text-primary" aria-hidden />}
         title="Người quá tải"
         hint={LEADERSHIP_HINT.overloaded}
-        to="/manage/resources"
+        to="/members?tab=resources"
         empty={LEADERSHIP_EMPTY.overloaded}
         unavailable={isUnavailable(data, 'overloaded')}
         onRetry={() => void refetch()}
@@ -129,7 +127,7 @@ type Overloaded = LeadershipOverview['overloaded'][number];
 /** Một dòng rủi ro — dùng chung cho thẻ ở Tổng quan và ô "Top rủi ro" của dashboard tuỳ biến. */
 export function RiskRow({ risk: r }: { risk: Risk }) {
   return (
-    <Link to="/manage/risks" className={rowClass}>
+    <Link to={r.project ? `/p/${r.project.key}/risks` : '/projects'} className={rowClass}>
       <span
         className={cn(
           'tabular w-8 shrink-0 rounded px-1 py-0.5 text-center text-xs font-semibold',
@@ -153,7 +151,10 @@ export function RiskRow({ risk: r }: { risk: Risk }) {
 /** Một dòng OKR chậm. */
 export function GoalRow({ goal: g }: { goal: Goal }) {
   return (
-    <Link to="/manage/goals" className={cn(rowClass, 'flex-col items-stretch gap-1.5')}>
+    <Link
+      to={g.project ? `/p/${g.project.key}/goals` : '/projects'}
+      className={cn(rowClass, 'flex-col items-stretch gap-1.5')}
+    >
       <span className="flex items-baseline justify-between gap-2">
         <span className="min-w-0 truncate text-sm text-ink">{g.name}</span>
         {g.owner && <span className="shrink-0 text-xs text-muted">{g.owner.displayName}</span>}
@@ -176,7 +177,7 @@ export function GoalRow({ goal: g }: { goal: Goal }) {
 /** Một dòng người quá tải. */
 export function OverloadRow({ item: o }: { item: Overloaded }) {
   return (
-    <Link to="/manage/resources" className={rowClass}>
+    <Link to="/members?tab=resources" className={rowClass}>
       <Avatar name={o.user.displayName} src={o.user.avatarUrl} size={28} />
       <span className="min-w-0 flex-1">
         <span className="block truncate text-sm text-ink">{o.user.displayName}</span>
@@ -204,7 +205,8 @@ function LeadershipCard({
   icon: ReactNode;
   title: string;
   hint: string;
-  to: string;
+  /** Không có = thẻ không có trang tổng hợp (Rủi ro/OKR nằm trong từng dự án; bấm từng dòng để tới dự án). */
+  to?: string;
   empty: string;
   /** Nguồn dữ liệu của thẻ lỗi: KHÔNG hiện câu "không có gì" (sẽ giả như mọi thứ ổn). */
   unavailable: boolean;
@@ -244,13 +246,15 @@ function LeadershipCard({
             </Popover.Portal>
           </Popover.Root>
         </h3>
-        <Link
-          to={to}
-          className={cn('shrink-0 text-xs text-primary hover:underline print:hidden', TOUCH_HIT)}
-          aria-label={`Xem tất cả: ${title}`}
-        >
-          Xem tất cả →
-        </Link>
+        {to && (
+          <Link
+            to={to}
+            className={cn('shrink-0 text-xs text-primary hover:underline print:hidden', TOUCH_HIT)}
+            aria-label={`Xem tất cả: ${title}`}
+          >
+            Xem tất cả →
+          </Link>
+        )}
       </div>
       {unavailable ? (
         <div

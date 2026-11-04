@@ -3,7 +3,7 @@ import { ApiTags } from '@nestjs/swagger';
 import { PERMISSIONS } from '@tirapro/types';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { WorkspaceId } from '../../common/decorators/workspace-id.decorator';
-import { Permissions } from '../../common/decorators/permissions.decorator';
+import { Permissions, PermissionsAnyOf } from '../../common/decorators/permissions.decorator';
 import { ProjectRef } from '../../common/decorators/project-ref.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import type { AuthUser } from '../../common/types/request';
@@ -47,7 +47,7 @@ export class RaidController {
   }
 
   @Post()
-  @Permissions(PERMISSIONS.RISK_MANAGE)
+  @PermissionsAnyOf(PERMISSIONS.RISK_MANAGE, PERMISSIONS.PROJECT_ADMIN)
   async create(
     @WorkspaceId() workspaceId: string,
     @CurrentUser() user: AuthUser,
@@ -58,7 +58,7 @@ export class RaidController {
 
   @ProjectRef('raid', 'id')
   @Put(':id')
-  @Permissions(PERMISSIONS.RISK_MANAGE)
+  @PermissionsAnyOf(PERMISSIONS.RISK_MANAGE, PERMISSIONS.PROJECT_ADMIN)
   async update(
     @WorkspaceId() workspaceId: string,
     @CurrentUser() user: AuthUser,
@@ -70,7 +70,7 @@ export class RaidController {
 
   @ProjectRef('raid', 'id')
   @Delete(':id')
-  @Permissions(PERMISSIONS.RISK_MANAGE)
+  @PermissionsAnyOf(PERMISSIONS.RISK_MANAGE, PERMISSIONS.PROJECT_ADMIN)
   async remove(
     @WorkspaceId() workspaceId: string,
     @CurrentUser() user: AuthUser,

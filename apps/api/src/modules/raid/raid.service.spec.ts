@@ -52,7 +52,10 @@ function setup(
       findUnique: vi.fn(() => Promise.resolve({ archivedAt: null })),
     },
   };
-  const rbac = { getEffectivePermissions: vi.fn(() => Promise.resolve(new Set(perms))) };
+  const rbac = {
+    getEffectivePermissions: vi.fn(() => Promise.resolve(new Set(perms))),
+    projectVisibilityMode: vi.fn(() => Promise.resolve('standard')),
+  };
   return {
     service: new RaidService(prisma as never, rbac as never, ACCESS_ALL as never),
     prisma,
@@ -69,6 +72,14 @@ describe('RaidService.update — đổi dự án', () => {
     });
     expect(rbac.getEffectivePermissions).toHaveBeenCalledWith('u1', 'w1', 'p2');
     expect(prisma.raidItem.update).not.toHaveBeenCalled();
+  });
+
+  it('quản trị CHÍNH dự án đích (project:admin) không có risk:manage -> chuyển được', async () => {
+    const { service, prisma } = setup(['project:admin']);
+    await service.update('w1', 'r1', { projectId: 'p2' }, member);
+    expect(prisma.raidItem.update.mock.calls[0]![0]).toMatchObject({
+      data: { project: { connect: { id: 'p2' } } },
+    });
   });
 
   it('có risk:manage ở đích -> connect dự án đích', async () => {

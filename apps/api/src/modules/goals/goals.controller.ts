@@ -4,7 +4,7 @@ import { PERMISSIONS } from '@tirapro/types';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { AuthUser } from '../../common/types/request';
 import { WorkspaceId } from '../../common/decorators/workspace-id.decorator';
-import { Permissions } from '../../common/decorators/permissions.decorator';
+import { Permissions, PermissionsAnyOf } from '../../common/decorators/permissions.decorator';
 import { ProjectRef } from '../../common/decorators/project-ref.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { GoalsService } from './goals.service';
@@ -23,7 +23,10 @@ import {
   type GoalIssuesInput,
 } from './goals.schemas';
 
-/** MỤC TIÊU / OKR — đọc: workspace:view, ghi: goal:manage. */
+/**
+ * MỤC TIÊU / OKR (luôn thuộc một dự án) — đọc: workspace:view; ghi: `goal:manage` HOẶC quản trị chính dự án của mục tiêu
+ * (`project:admin`, tính theo dự án của hàng ở `:id` / `body.projectId` khi tạo — không tin body cho hàng đã có).
+ */
 @ApiTags('goals')
 @Controller('goals')
 export class GoalsController {
@@ -78,8 +81,9 @@ export class GoalsController {
     );
   }
 
+  /** Tạo: `goal:manage` HOẶC quản trị CHÍNH dự án trong `body.projectId` (guard tính quyền ở dự án đó). */
   @Post()
-  @Permissions(PERMISSIONS.GOAL_MANAGE)
+  @PermissionsAnyOf(PERMISSIONS.GOAL_MANAGE, PERMISSIONS.PROJECT_ADMIN)
   async create(
     @WorkspaceId() workspaceId: string,
     @CurrentUser() user: AuthUser,
@@ -89,7 +93,8 @@ export class GoalsController {
   }
 
   @Put(':id')
-  @Permissions(PERMISSIONS.GOAL_MANAGE)
+  @ProjectRef('objective', 'id')
+  @PermissionsAnyOf(PERMISSIONS.GOAL_MANAGE, PERMISSIONS.PROJECT_ADMIN)
   async update(
     @WorkspaceId() workspaceId: string,
     @CurrentUser() user: AuthUser,
@@ -100,7 +105,8 @@ export class GoalsController {
   }
 
   @Delete(':id')
-  @Permissions(PERMISSIONS.GOAL_MANAGE)
+  @ProjectRef('objective', 'id')
+  @PermissionsAnyOf(PERMISSIONS.GOAL_MANAGE, PERMISSIONS.PROJECT_ADMIN)
   async remove(
     @WorkspaceId() workspaceId: string,
     @CurrentUser() user: AuthUser,
@@ -112,7 +118,8 @@ export class GoalsController {
   // ── Key Result lồng trong mục tiêu ──
 
   @Post(':id/key-results')
-  @Permissions(PERMISSIONS.GOAL_MANAGE)
+  @ProjectRef('objective', 'id')
+  @PermissionsAnyOf(PERMISSIONS.GOAL_MANAGE, PERMISSIONS.PROJECT_ADMIN)
   async addKeyResult(
     @WorkspaceId() workspaceId: string,
     @CurrentUser() user: AuthUser,
@@ -123,7 +130,8 @@ export class GoalsController {
   }
 
   @Put(':id/key-results/:krId')
-  @Permissions(PERMISSIONS.GOAL_MANAGE)
+  @ProjectRef('objective', 'id')
+  @PermissionsAnyOf(PERMISSIONS.GOAL_MANAGE, PERMISSIONS.PROJECT_ADMIN)
   async updateKeyResult(
     @WorkspaceId() workspaceId: string,
     @CurrentUser() user: AuthUser,
@@ -135,7 +143,8 @@ export class GoalsController {
   }
 
   @Delete(':id/key-results/:krId')
-  @Permissions(PERMISSIONS.GOAL_MANAGE)
+  @ProjectRef('objective', 'id')
+  @PermissionsAnyOf(PERMISSIONS.GOAL_MANAGE, PERMISSIONS.PROJECT_ADMIN)
   async removeKeyResult(
     @WorkspaceId() workspaceId: string,
     @CurrentUser() user: AuthUser,
@@ -147,7 +156,8 @@ export class GoalsController {
 
   /** Check-in tay (có ghi chú) cho KR nhập tay — ghi lịch sử + cập nhật giá trị hiện tại. */
   @Post(':id/key-results/:krId/check-ins')
-  @Permissions(PERMISSIONS.GOAL_MANAGE)
+  @ProjectRef('objective', 'id')
+  @PermissionsAnyOf(PERMISSIONS.GOAL_MANAGE, PERMISSIONS.PROJECT_ADMIN)
   async addCheckIn(
     @WorkspaceId() workspaceId: string,
     @CurrentUser() user: AuthUser,
@@ -181,7 +191,8 @@ export class GoalsController {
   // ── Gắn / gỡ issue (epic) vào mục tiêu ──
 
   @Post(':id/issues')
-  @Permissions(PERMISSIONS.GOAL_MANAGE)
+  @ProjectRef('objective', 'id')
+  @PermissionsAnyOf(PERMISSIONS.GOAL_MANAGE, PERMISSIONS.PROJECT_ADMIN)
   async addIssues(
     @WorkspaceId() workspaceId: string,
     @CurrentUser() user: AuthUser,
@@ -192,7 +203,8 @@ export class GoalsController {
   }
 
   @Delete(':id/issues')
-  @Permissions(PERMISSIONS.GOAL_MANAGE)
+  @ProjectRef('objective', 'id')
+  @PermissionsAnyOf(PERMISSIONS.GOAL_MANAGE, PERMISSIONS.PROJECT_ADMIN)
   async removeIssues(
     @WorkspaceId() workspaceId: string,
     @CurrentUser() user: AuthUser,

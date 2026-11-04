@@ -31,7 +31,6 @@ export const SETTINGS_LABELS = {
   priorities: 'Mức ưu tiên',
   severities: 'Mức nghiêm trọng',
   fields: 'Trường thông tin thêm',
-  responseTime: 'Cam kết thời gian',
   import: 'Nhập dữ liệu',
   api: 'API & kết nối lập trình',
 } as const;
@@ -42,7 +41,6 @@ export const MANAGE_LABELS = {
   goals: 'Mục tiêu',
   risks: 'Rủi ro & vướng mắc',
   resources: 'Nhân lực',
-  responseTime: 'Thời gian xử lý',
   clients: 'Khách hàng',
 } as const;
 
@@ -74,5 +72,6 @@ export const PROJECT_CONFIG_LABELS = {
   components: 'Thành phần',
   versions: 'Phiên bản',
   labels: 'Nhãn',
+  responseTime: 'Thời gian xử lý',
   data: 'Xuất / Nhập dữ liệu',
 } as const;

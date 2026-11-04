@@ -33,6 +33,8 @@ function setup(redis: 'ok' | 'down' = 'ok') {
     label: { findFirst: vi.fn() },
     component: { findFirst: vi.fn() },
     raidItem: { findFirst: vi.fn() },
+    objective: { findFirst: vi.fn() },
+    slaPolicy: { findFirst: vi.fn() },
     issueTemplate: { findFirst: vi.fn() },
     recurringIssue: { findFirst: vi.fn() },
     customField: { findFirst: vi.fn() },
@@ -92,6 +94,8 @@ describe('RbacService cache invalidation', () => {
   });
 });
 
+// Bảng tra project theo từng loại tài nguyên: mỗi loại một ca nên khối dài hơn ngưỡng hàm của lint.
+/* eslint-disable max-lines-per-function */
 describe('RbacService.resolveProjectId', () => {
   it('issue: findFirst theo workspaceId, trả projectId', async () => {
     const { svc, prisma } = setup();
@@ -219,6 +223,24 @@ describe('RbacService.resolveProjectId', () => {
       await expect(svc.resolveProjectId('W1', kind, 'X2')).resolves.toEqual({ projectId: null });
       prisma[model].findFirst.mockResolvedValueOnce(null);
       await expect(svc.resolveProjectId('W1', kind, 'X3')).resolves.toBeNull();
+    },
+  );
+
+  it.each([
+    ['objective', 'objective'],
+    ['slaPolicy', 'slaPolicy'],
+  ] as const)(
+    '%s: luôn thuộc một dự án — projectId lấy từ HÀNG (lọc theo workspace), không có hàng → null',
+    async (kind, model) => {
+      const { svc, prisma } = setup();
+      prisma[model].findFirst.mockResolvedValueOnce({ projectId: 'P7' });
+      await expect(svc.resolveProjectId('W1', kind, 'X1')).resolves.toEqual({ projectId: 'P7' });
+      expect(prisma[model].findFirst).toHaveBeenCalledWith({
+        where: { id: 'X1', workspaceId: 'W1' },
+        select: { projectId: true },
+      });
+      prisma[model].findFirst.mockResolvedValueOnce(null);
+      await expect(svc.resolveProjectId('W1', kind, 'X2')).resolves.toBeNull();
     },
   );
 

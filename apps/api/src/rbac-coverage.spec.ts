@@ -4,7 +4,7 @@ import { join, relative } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { AUTH_ONLY_KEY } from './common/decorators/auth-only.decorator';
 import { OPTIONAL_AUTH_KEY } from './common/decorators/optional-auth.decorator';
-import { PERMISSIONS_KEY } from './common/decorators/permissions.decorator';
+import { PERMISSIONS_ANY_KEY, PERMISSIONS_KEY } from './common/decorators/permissions.decorator';
 import { IS_PUBLIC_KEY } from './common/decorators/public.decorator';
 import { PROJECT_REF_KEY } from './common/decorators/project-ref.decorator';
 import { PERMISSIONS } from '@tirapro/types';
@@ -17,7 +17,13 @@ vi.setConfig({ testTimeout: 30_000 });
 
 const METHOD_METADATA = 'method'; // key RequestMapping của @nestjs/common (Get/Post/…)
 const PATH_METADATA = 'path';
-const ACCESS_KEYS = [PERMISSIONS_KEY, IS_PUBLIC_KEY, AUTH_ONLY_KEY, OPTIONAL_AUTH_KEY];
+const ACCESS_KEYS = [
+  PERMISSIONS_KEY,
+  PERMISSIONS_ANY_KEY,
+  IS_PUBLIC_KEY,
+  AUTH_ONLY_KEY,
+  OPTIONAL_AUTH_KEY,
+];
 
 function findControllerFiles(dir: string): string[] {
   const out: string[] = [];
@@ -52,8 +58,13 @@ describe('RBAC coverage', () => {
             Reflect.getMetadata(PERMISSIONS_KEY, ctrl)) as unknown[] | undefined;
           // `@Permissions()` rỗng = guard cho qua mọi người → coi như thiếu khai báo.
           const emptyPerms = perms !== undefined && perms.length === 0;
+          // Cùng luật cho `@PermissionsAnyOf()` rỗng (mô tả tại decorator): guard cho qua mọi người.
+          const anyOf = (Reflect.getMetadata(PERMISSIONS_ANY_KEY, handler) ??
+            Reflect.getMetadata(PERMISSIONS_ANY_KEY, ctrl)) as unknown[] | undefined;
+          const emptyAny = anyOf !== undefined && anyOf.length === 0;
           const declared =
             !emptyPerms &&
+            !emptyAny &&
             ACCESS_KEYS.some(
               (key) =>
                 Reflect.getMetadata(key, handler) !== undefined ||

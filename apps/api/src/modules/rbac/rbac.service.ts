@@ -61,6 +61,19 @@ const RESOURCE_RESOLVERS: Record<
   },
   // Tài nguyên cấp workspace, dự án là tuỳ chọn (null = áp quyền workspace).
   raid: { model: 'raidItem', where: inWorkspace, select: projectIdOnly, project: ownProjectId },
+  // Mục tiêu và chính sách thời gian xử lý luôn thuộc một dự án (projectId bắt buộc ở DB).
+  objective: {
+    model: 'objective',
+    where: inWorkspace,
+    select: projectIdOnly,
+    project: ownProjectId,
+  },
+  slaPolicy: {
+    model: 'slaPolicy',
+    where: inWorkspace,
+    select: projectIdOnly,
+    project: ownProjectId,
+  },
   automationTemplate: {
     model: 'issueTemplate',
     where: inWorkspace,

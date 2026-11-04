@@ -1,11 +1,13 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
-import { DOMAIN_EVENTS } from '@tirapro/types';
+import { DOMAIN_EVENTS, PERMISSIONS } from '@tirapro/types';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { NotFoundAppException } from '../../common/exceptions/app.exception';
+import { assertCanManageInProject } from '../../common/project-manage';
 import { requireProjectId } from '../../common/project-required';
 import { assertProjectWritable } from '../../common/project-writable';
 import { ProjectAccessService } from '../rbac/project-access.service';
+import { RbacService } from '../rbac/rbac.service';
 import type { CreateSlaPolicyInput, UpdateSlaPolicyInput } from './sla.schemas';
 
 /**
@@ -20,6 +22,7 @@ export class SlaService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly access: ProjectAccessService,
+    private readonly rbac: RbacService,
   ) {}
 
   // ───────────── Chính sách ─────────────
@@ -96,6 +99,16 @@ export class SlaService {
     if (nextProjectId) {
       await this.access.assertCanSee(viewerId, workspaceId, nextProjectId);
       await assertProjectWritable(this.prisma, nextProjectId);
+      // Guard chỉ tính quyền ở dự án HIỆN TẠI của chính sách → chuyển sang dự án khác phải kiểm quyền Ở ĐÍCH.
+      if (nextProjectId !== found.projectId)
+        await assertCanManageInProject(
+          this.rbac,
+          viewerId,
+          workspaceId,
+          nextProjectId,
+          PERMISSIONS.SLA_MANAGE,
+          'chính sách thời gian xử lý',
+        );
     }
     await this.prisma.slaPolicy.update({
       where: { id },

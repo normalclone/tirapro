@@ -4,7 +4,7 @@ import { PERMISSIONS } from '@tirapro/types';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { AuthUser } from '../../common/types/request';
 import { WorkspaceId } from '../../common/decorators/workspace-id.decorator';
-import { Permissions } from '../../common/decorators/permissions.decorator';
+import { Permissions, PermissionsAnyOf } from '../../common/decorators/permissions.decorator';
 import { ProjectRef } from '../../common/decorators/project-ref.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { SlaService } from './sla.service';
@@ -32,7 +32,7 @@ export class SlaController {
   }
 
   @Post('policies')
-  @Permissions(PERMISSIONS.SLA_MANAGE)
+  @PermissionsAnyOf(PERMISSIONS.SLA_MANAGE, PERMISSIONS.PROJECT_ADMIN)
   async create(
     @WorkspaceId() workspaceId: string,
     @CurrentUser() user: AuthUser,
@@ -42,7 +42,8 @@ export class SlaController {
   }
 
   @Put('policies/:id')
-  @Permissions(PERMISSIONS.SLA_MANAGE)
+  @ProjectRef('slaPolicy', 'id')
+  @PermissionsAnyOf(PERMISSIONS.SLA_MANAGE, PERMISSIONS.PROJECT_ADMIN)
   async update(
     @WorkspaceId() workspaceId: string,
     @CurrentUser() user: AuthUser,
@@ -53,7 +54,8 @@ export class SlaController {
   }
 
   @Delete('policies/:id')
-  @Permissions(PERMISSIONS.SLA_MANAGE)
+  @ProjectRef('slaPolicy', 'id')
+  @PermissionsAnyOf(PERMISSIONS.SLA_MANAGE, PERMISSIONS.PROJECT_ADMIN)
   async remove(
     @WorkspaceId() workspaceId: string,
     @CurrentUser() user: AuthUser,

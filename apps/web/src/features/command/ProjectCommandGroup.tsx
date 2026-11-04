@@ -9,6 +9,7 @@ import {
   Play,
   Repeat,
   ShieldAlert,
+  Target,
 } from 'lucide-react';
 import { useProjectSprints } from '@/features/backlog/api';
 import { useProject } from '@/features/projects/api';
@@ -21,6 +22,7 @@ const ICONS: Record<ProjectCommand['icon'], ReactNode> = {
   report: <BarChart3 className="h-4 w-4 shrink-0 text-muted" aria-hidden="true" />,
   gantt: <GanttChartSquare className="h-4 w-4 shrink-0 text-muted" aria-hidden="true" />,
   triage: <Inbox className="h-4 w-4 shrink-0 text-muted" aria-hidden="true" />,
+  goals: <Target className="h-4 w-4 shrink-0 text-muted" aria-hidden="true" />,
   risks: <ShieldAlert className="h-4 w-4 shrink-0 text-muted" aria-hidden="true" />,
   automation: <Repeat className="h-4 w-4 shrink-0 text-muted" aria-hidden="true" />,
   import: <FileSpreadsheet className="h-4 w-4 shrink-0 text-muted" aria-hidden="true" />,

@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import type { Prisma, RaidKind, RaidStatus } from '@prisma/client';
 import { PERMISSIONS } from '@tirapro/types';
+import { assertCanManageInProject } from '../../common/project-manage';
 import { requireProjectId } from '../../common/project-required';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { ForbiddenAppException, NotFoundAppException } from '../../common/exceptions/app.exception';
@@ -208,12 +209,15 @@ export class RaidService {
     projectId: string,
   ): Promise<void> {
     if (actor.isSystemAdmin) return;
-    const perms = await this.rbac.getEffectivePermissions(actor.id, workspaceId, projectId);
-    if (!perms.has(PERMISSIONS.RISK_MANAGE)) {
-      throw new ForbiddenAppException(
-        'Bạn không có quyền quản lý rủi ro ở dự án đích — hãy nhờ quản trị viên dự án đó cấp quyền hoặc chọn dự án khác',
-      );
-    }
+    // `risk:manage` ở dự án đích HOẶC quản trị chính dự án đó.
+    await assertCanManageInProject(
+      this.rbac,
+      actor.id,
+      workspaceId,
+      projectId,
+      PERMISSIONS.RISK_MANAGE,
+      'rủi ro',
+    );
   }
 
   private parseDate(value: string | null): Date | null {

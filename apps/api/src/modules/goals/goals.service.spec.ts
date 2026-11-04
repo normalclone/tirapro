@@ -1,5 +1,5 @@
 import { Prisma } from '@prisma/client';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { GoalsService } from './goals.service';
 
 /** ProjectAccessService giả: người xem thấy mọi dự án (admin) / không có viewer. */
@@ -9,6 +9,7 @@ const NO_MEASURE = { measure: vi.fn(() => Promise.resolve(new Map())) };
 /** RbacService giả: người xem có mọi quyền (GOAL_MANAGE…). */
 const RBAC = {
   getEffectivePermissions: vi.fn(() => Promise.resolve(new Set(['goal:manage', 'workspace:view']))),
+  projectVisibilityMode: vi.fn(() => Promise.resolve('standard')),
 };
 /** KrSnapshotCron giả: không chụp gì. */
 const NO_SNAPSHOT = { snapshotKeyResult: vi.fn(() => Promise.resolve()) };
@@ -1170,7 +1171,7 @@ describe('GoalsService — che cấu hình nguồn của KR theo quyền ngườ
   const row = (krs: unknown[]) => ({
     id: 'o1',
     workspaceId: 'w1',
-    projectId: null,
+    projectId: 'p1',
     name: 'O',
     description: null,
     period: '2026-Q4',
@@ -1217,7 +1218,10 @@ describe('GoalsService — che cấu hình nguồn của KR theo quyền ngườ
       visibleProjectIds: vi.fn(() => Promise.resolve(opts.visibleIds)),
     };
     const measure = { measure: vi.fn(() => Promise.resolve(opts.measured ?? new Map())) };
-    const rbac = { getEffectivePermissions: vi.fn(() => Promise.resolve(new Set(opts.perms))) };
+    const rbac = {
+      getEffectivePermissions: vi.fn(() => Promise.resolve(new Set(opts.perms))),
+      projectVisibilityMode: vi.fn(() => Promise.resolve('standard')),
+    };
     const service = new GoalsService(
       prisma as never,
       access as never,
@@ -1254,6 +1258,12 @@ describe('GoalsService — che cấu hình nguồn của KR theo quyền ngườ
     const c = configs(await service.get('w1', 'o1', 'u1'));
     expect(c.jql).toEqual({ jql: 'project = HR AND text ~ "lương"' });
     expect(c.hidden).toBeNull();
+  });
+
+  it('quản trị CHÍNH dự án của mục tiêu (project:admin, không có goal:manage cấp tổ chức): thấy JQL thô', async () => {
+    const { service } = make({ visibleIds: ['p1'], perms: ['workspace:view', 'project:admin'] });
+    const c = configs(await service.get('w1', 'o1', 'u1'));
+    expect(c.jql).toEqual({ jql: 'project = HR AND text ~ "lương"' });
   });
 
   it('thấy mọi dự án (visibleProjectIds = null) + GOAL_MANAGE → trả đủ', async () => {
@@ -1354,5 +1364,51 @@ describe('GoalsService.toDto — expectedProgress (chỉ đọc, tính từ kỳ
     const dto = toDto('FY26');
     expect(dto.expectedProgress).toBeNull();
     expect(dto.keyResults[0]?.expectedProgress).toBeNull();
+  });
+});
+
+describe('GoalsService.update — chuyển mục tiêu sang dự án khác kiểm quyền Ở ĐÍCH', () => {
+  /** Mục tiêu đang ở p0; dự án đích tìm được theo id yêu cầu. */
+  function make(perms: string[]) {
+    const base = setup(false);
+    base.prisma.objective.findFirst.mockResolvedValue({
+      id: 'o1',
+      projectId: 'p0',
+      project: { archivedAt: null },
+    });
+    base.prisma.project.findFirst.mockImplementation(((a: { where: { id: string } }) =>
+      Promise.resolve({ id: a.where.id, archivedAt: null })) as never);
+    RBAC.projectVisibilityMode.mockResolvedValue('standard');
+    RBAC.getEffectivePermissions.mockResolvedValue(new Set(perms));
+    return base;
+  }
+  afterEach(() => {
+    RBAC.projectVisibilityMode.mockResolvedValue('standard');
+    RBAC.getEffectivePermissions.mockResolvedValue(new Set(['goal:manage', 'workspace:view']));
+    RBAC.getEffectivePermissions.mockClear();
+  });
+
+  it('không có goal:manage / project:admin ở dự án đích → 403, không ghi', async () => {
+    const { service, prisma } = make(['workspace:view']);
+    await expect(service.update('w1', 'o1', { projectId: 'p2' }, 'u1')).rejects.toMatchObject({
+      status: 403,
+    });
+    expect(RBAC.getEffectivePermissions).toHaveBeenCalledWith('u1', 'w1', 'p2');
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('quản trị dự án đích (project:admin) hoặc goal:manage → được ghi', async () => {
+    for (const perm of ['project:admin', 'goal:manage']) {
+      const { service, prisma } = make([perm]);
+      // Đọc lại sau khi ghi không nằm trong phạm vi mock này — chỉ cần việc ghi đã diễn ra.
+      await service.update('w1', 'o1', { projectId: 'p2' }, 'u1').catch(() => undefined);
+      expect(prisma.$transaction, perm).toHaveBeenCalled();
+    }
+  });
+
+  it('không đổi dự án → không kiểm thêm quyền', async () => {
+    const { service } = make([]);
+    await service.update('w1', 'o1', { projectId: 'p0' }, 'u1').catch(() => undefined);
+    expect(RBAC.getEffectivePermissions).not.toHaveBeenCalled();
   });
 });

@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Prisma, type KeyResultSource, type ObjectiveStatus } from '@prisma/client';
 import { ZodError } from 'zod';
+import { assertCanManageInProject, canManageInProject } from '../../common/project-manage';
 import { requireProjectId } from '../../common/project-required';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import {
@@ -95,10 +96,11 @@ interface GoalListFilter {
 /** Kết quả đo + hàm quyết định có trả `sourceConfig` của KR cho người xem này không. */
 interface DtoContext {
   measured: Map<string, MeasureResult>;
-  canShowConfig: (kr: {
-    source: KeyResultSource;
-    sourceConfig: Prisma.JsonValue | null;
-  }) => boolean;
+  /** `projectId` = dự án của mục tiêu chứa KR (JQL thô chỉ cho người quản lý mục tiêu ở dự án đó). */
+  canShowConfig: (
+    kr: { source: KeyResultSource; sourceConfig: Prisma.JsonValue | null },
+    projectId: string,
+  ) => boolean;
 }
 
 type TxOp = (tx: Prisma.TransactionClient) => Promise<unknown>;
@@ -243,17 +245,26 @@ export class GoalsService {
     const visibleIds = needsProjects
       ? await this.access.visibleProjectIds(viewerId, workspaceId, visible)
       : null;
-    const canManage = needsManage
-      ? (await this.rbac.getEffectivePermissions(viewerId, workspaceId)).has(
-          PERMISSIONS.GOAL_MANAGE,
-        )
-      : false;
-    const canShowConfig = (kr: {
-      source: KeyResultSource;
-      sourceConfig: Prisma.JsonValue | null;
-    }) => {
+    // JQL thô chỉ cho người QUẢN LÝ mục tiêu ở đúng dự án đó: `goal:manage` HOẶC quản trị chính dự án.
+    const manageable = new Set<string>();
+    if (needsManage) {
+      const jqlProjects = new Set(
+        rows
+          .filter((r) => r.keyResults.some((k) => k.source === 'ISSUE_COUNT_JQL'))
+          .map((r) => r.projectId),
+      );
+      await Promise.all(
+        [...jqlProjects].map(async (pid) => {
+          if (
+            await canManageInProject(this.rbac, viewerId, workspaceId, pid, PERMISSIONS.GOAL_MANAGE)
+          )
+            manageable.add(pid);
+        }),
+      );
+    }
+    const canShowConfig: DtoContext['canShowConfig'] = (kr, objectiveProjectId) => {
       if (kr.source === 'MANUAL') return true;
-      if (kr.source === 'ISSUE_COUNT_JQL') return canManage;
+      if (kr.source === 'ISSUE_COUNT_JQL') return manageable.has(objectiveProjectId);
       const projectId = (kr.sourceConfig as { projectId?: string } | null)?.projectId;
       return !projectId || visibleIds === null || visibleIds.includes(projectId);
     };
@@ -319,6 +330,16 @@ export class GoalsService {
         requireProjectId(dto.projectId, 'mục tiêu'),
         visible,
       );
+      // Guard chỉ tính quyền ở dự án HIỆN TẠI của mục tiêu → chuyển sang dự án khác phải kiểm quyền Ở ĐÍCH.
+      if (projectId !== current.projectId)
+        await assertCanManageInProject(
+          this.rbac,
+          viewerId,
+          workspaceId,
+          projectId,
+          PERMISSIONS.GOAL_MANAGE,
+          'mục tiêu',
+        );
       data.project = { connect: { id: projectId } };
     }
     if (dto.ownerId !== undefined) {
@@ -1017,7 +1038,7 @@ export class GoalsService {
         currentValue,
         source: kr.source,
         // Người xem không đủ quyền: chỉ `source` (+ nhãn tóm tắt ở FE), không lộ projectId/JQL.
-        sourceConfig: ctx.canShowConfig(kr) ? kr.sourceConfig : null,
+        sourceConfig: ctx.canShowConfig(kr, o.projectId) ? kr.sourceConfig : null,
         measuredAt: m?.measuredAt ?? null,
         measureError: m?.error ?? null,
         unitLabel: kr.unitLabel,
