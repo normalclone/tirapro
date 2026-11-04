@@ -75,6 +75,26 @@ async function ensurePrimary(tx: Tx, m: MembershipRef, preferred?: string): Prom
   return true;
 }
 
+/**
+ * Số thành viên dự án CÒN HOẠT ĐỘNG (còn trong tổ chức, không bị vô hiệu hoá), có thể bỏ một người. Quy tắc "thành viên cuối của dự án
+ * riêng tư" dùng đúng hàm này ở mọi nơi (đồng bộ team, gỡ team, xoá vai trò riêng) để các lối không lệch nhau.
+ */
+export async function countActiveProjectMembers(
+  tx: Tx,
+  a: { projectId: string; organizationId: string; exceptUserId?: string },
+): Promise<number> {
+  return tx.projectMembership.count({
+    where: {
+      projectId: a.projectId,
+      ...(a.exceptUserId ? { userId: { not: a.exceptUserId } } : {}),
+      user: {
+        status: { not: 'DEACTIVATED' },
+        organizationMemberships: { some: { organizationId: a.organizationId } },
+      },
+    },
+  });
+}
+
 export interface ReconcileResult {
   /** Có thay đổi vai trò/nguồn nào không. */
   changed: boolean;
@@ -101,6 +121,7 @@ const NOOP: ReconcileResult = {
 export async function reconcileTeamRoles(
   tx: Tx,
   a: {
+    organizationId: string;
     projectId: string;
     userId: string;
     teamId: string;
@@ -137,8 +158,12 @@ export async function reconcileTeamRoles(
   if (toRemove.length > 0 && toAdd.length === 0 && a.privateProject) {
     const left = await countRolesAfterRemoval(tx, m.id, toRemove, a.teamId);
     if (left === 0) {
-      const members = await tx.projectMembership.count({ where: { projectId: a.projectId } });
-      if (members <= 1) return { ...NOOP, keptLastOfPrivate: true };
+      const others = await countActiveProjectMembers(tx, {
+        projectId: a.projectId,
+        organizationId: a.organizationId,
+        exceptUserId: a.userId,
+      });
+      if (others === 0) return { ...NOOP, keptLastOfPrivate: true };
     }
   }
 

@@ -983,3 +983,22 @@ Chưa có báo cáo nào xác nhận các mục này đã chạy; người kiể
 - `AuditLog.meta` lịch sử vẫn mang khoá `workspaceId` (không sửa nhật ký cũ); trang nhật ký chỉ hiển thị tóm tắt nên không bị ảnh hưởng — người đọc `meta` trong tương lai phải chấp nhận cả `workspaceId` và `organizationId`.
 - Tài liệu lịch sử trong `docs/superpowers/**` và các mục release notes cũ giữ nguyên chữ "workspace" (đúng thời điểm viết).
 
+---
+
+# Team theo dự án (2026-11)
+
+## 1. Cần làm khi triển khai
+
+- **Có migration:** `20261106200000_project_teams` — chỉ cộng thêm: cột `ProjectMembershipRole.direct` (mặc định `true`, mọi vai trò dự án hiện có là "gán trực tiếp"), bảng `ProjectMembershipRoleTeam` (nguồn nhờ team) và `ProjectTeamLink`. Kiểm trên bản sao snapshot prod ở PostgreSQL 16 và 18: số dòng giữ nguyên, `migrate deploy` lần hai không làm gì. Không cần dừng dịch vụ.
+
+## 2. Thay đổi
+
+- Gắn team của tổ chức vào dự án kèm vai trò (`PUT /projects/:projectId/teams/:teamId`, gỡ bằng `DELETE`, xem bằng `GET`). Thêm/bớt người trong team tự đồng bộ mọi dự án đang gắn; xoá team = gỡ khỏi mọi dự án. Gỡ chỉ bỏ phần vai trò nhờ team: vai trò gán trực tiếp và nhờ team khác được giữ; hết vai trò thì rời dự án (dự án riêng tư luôn giữ lại thành viên cuối).
+- "Xoá vai trò riêng" và đặt vai trò thủ công trong dự án chỉ đụng phần gán trực tiếp; danh sách thành viên dự án trả nguồn từng vai trò (`direct`, `teams`).
+- Dự án công khai: gắn team **không làm giảm quyền** — người chỉ có vai trò nhờ team vẫn giữ vai trò mặc định theo tổ chức (ví dụ Thành viên vẫn là Developer) cộng thêm vai trò của team.
+- **Quyền:** gắn/gỡ cần `project:admin` của dự án (hoặc quản trị tổ chức). Sửa thành viên / xoá team đang gắn với vai trò mang `organization:admin` cần `organization:admin` (`team:manage` một mình không đủ — tránh tự nâng quyền qua team); team không gắn vai trò quản trị: quyền `team:manage` như cũ.
+
+## 3. Còn mở
+
+- Tài khoản bị vô hiệu hoá / rời tổ chức chỉ được dọn ở lần đồng bộ kế tiếp (không có quyền nào khi không còn trong tổ chức nên vô hại).
+- `ProjectTeamLink.roleIds` không có khoá ngoại: xoá một vai trò vẫn được, id treo bị bỏ qua.

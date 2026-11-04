@@ -104,13 +104,8 @@ export class ProjectTeamsService {
     const project = await this.requireProject(organizationId, projectId);
     const team = await this.requireTeam(organizationId, teamId);
     const ids = await this.validateRoles(organizationId, roleIds);
-    // Cả hai chiều (thêm VÀ gỡ vai trò mang quyền quản trị tổ chức) chỉ quản trị tổ chức làm được, như `MembersService`.
-    const current = await this.prisma.projectTeamLink.findUnique({
-      where: { projectId_teamId: { projectId, teamId } },
-      select: { roleIds: true },
-    });
-    await this.assertMayGrant(organizationId, actorId, current?.roleIds ?? [], ids);
-
+    // Vai trò quản trị: người gọi muốn thêm/gỡ vai trò mang `organization:admin` phải là quản trị tổ chức (kiểm trong transaction, sau
+    // khoá, trên vai trò hiện có của liên kết — không đọc trước ngoài khoá để tránh bị đổi xen giữa).
     const { effect, existed, before } = await this.prisma.$transaction(async (tx) => {
       await lockTeamRoles(tx, teamId);
       await lockProjectRoles(tx, projectId);
@@ -118,6 +113,7 @@ export class ProjectTeamsService {
         where: { projectId_teamId: { projectId, teamId } },
         select: { roleIds: true },
       });
+      await this.assertMayGrant(organizationId, actorId, prev?.roleIds ?? [], ids);
       await tx.projectTeamLink.upsert({
         where: { projectId_teamId: { projectId, teamId } },
         create: { projectId, teamId, roleIds: ids, createdById: actorId },
@@ -154,21 +150,16 @@ export class ProjectTeamsService {
   ): Promise<ProjectTeamLinkDto[]> {
     const project = await this.requireProject(organizationId, projectId);
     const team = await this.requireTeam(organizationId, teamId);
-    const current = await this.prisma.projectTeamLink.findUnique({
-      where: { projectId_teamId: { projectId, teamId } },
-      select: { roleIds: true },
-    });
-    if (!current) throw new NotFoundAppException('Liên kết team với dự án');
-    await this.assertMayGrant(organizationId, actorId, current.roleIds, []);
 
     const effect = await this.prisma.$transaction(async (tx) => {
       await lockTeamRoles(tx, teamId);
       await lockProjectRoles(tx, projectId);
       const prev = await tx.projectTeamLink.findUnique({
         where: { projectId_teamId: { projectId, teamId } },
-        select: { id: true },
+        select: { id: true, roleIds: true },
       });
       if (!prev) throw new NotFoundAppException('Liên kết team với dự án');
+      await this.assertMayGrant(organizationId, actorId, prev.roleIds, []);
       const e = await this.syncLink(tx, organizationId, project, team, []);
       if (e.kept.length > 0)
         throw new BusinessRuleException(
@@ -227,6 +218,7 @@ export class ProjectTeamsService {
     organizationId: string,
     teamId: string,
   ): Promise<LinkSyncEffect[]> {
+    await lockTeamRoles(tx, teamId); // khoá TRƯỚC khi đọc liên kết: một lần gắn đang chạy xong rồi mới thấy được
     const links = await tx.projectTeamLink.findMany({
       where: { teamId },
       orderBy: { projectId: 'asc' },
@@ -326,6 +318,28 @@ export class ProjectTeamsService {
     }
   }
 
+  /**
+   * Sửa thành viên / xoá một team đang gắn vào dự án với vai trò mang `organization:admin` = cấp/gỡ quyền quản trị cho cả team, nên
+   * (như P-C14 ở `MembersService`) chỉ quản trị tổ chức làm được; `team:manage` một mình không đủ. Team không gắn vai trò quản trị
+   * nào: giữ quyền như cũ. Gọi TRƯỚC khi sửa (ngoài transaction là đủ: chỉ chặn sớm, thay đổi vẫn xếp hàng qua khoá).
+   */
+  async assertMayEditTeamMembers(
+    organizationId: string,
+    teamId: string,
+    actorId: string | undefined,
+  ): Promise<void> {
+    if (!actorId) return;
+    const links = await this.prisma.projectTeamLink.findMany({
+      where: { teamId },
+      select: { roleIds: true },
+    });
+    const roleIds = [...new Set(links.flatMap((l) => l.roleIds))];
+    if (roleIds.length === 0) return;
+    if (await this.rbac.holdsOrganizationAdmin(actorId, organizationId)) return;
+    if ((await this.rbac.adminRoleIds(roleIds)).size > 0)
+      throw new AdminGrantRequiresAdminException();
+  }
+
   // ───────────────────────── nội bộ ─────────────────────────
 
   /**
@@ -385,6 +399,7 @@ export class ProjectTeamsService {
     };
     for (const userId of [...everyone].sort()) {
       const r = await reconcileTeamRoles(tx, {
+        organizationId,
         projectId: project.id,
         userId,
         teamId: team.id,

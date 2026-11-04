@@ -10,6 +10,10 @@ vi.mock('../project-teams/project-role-sources', () => ({
   setDirectRoles: vi.fn(() => Promise.resolve()),
   clearDirectRoles: vi.fn(() => Promise.resolve(true)),
   teamNamesOf: vi.fn(() => Promise.resolve([])),
+  // Bản giả đếm qua `tx.projectMembership.count` của mock từng ca (bộ lọc thật được kiểm ở int-spec).
+  countActiveProjectMembers: vi.fn((tx: { projectMembership: { count: () => Promise<number> } }) =>
+    tx.projectMembership.count(),
+  ),
 }));
 
 /** `$transaction` giả: chạy callback với chính prisma giả (tx), còn dạng mảng trả `[]`. */

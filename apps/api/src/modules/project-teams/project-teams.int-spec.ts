@@ -2,6 +2,7 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import { assertParityDatabase } from '../../common/testing/parity-db-guard';
+import { SYSTEM_ROLES } from '@tirapro/types';
 import type { PrismaService } from '../../infra/prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { MembersService } from '../members/members.service';
@@ -28,9 +29,11 @@ describe.skipIf(!DB_URL)('team theo dự án ↔ Postgres thật', () => {
   const [u1, u2, u3, u4, u5] = U as [string, string, string, string, string];
   const R = { p1: id('rp1'), p2: id('rp2'), p3: id('rp3'), adminRole: id('radm') };
   const T = { a: id('ta'), b: id('tb') };
+  const UM = id('um'); // Thành viên tổ chức thường (mặc định Developer ở dự án công khai)
   let prisma: PrismaClient;
   let pt: ProjectTeamsService;
   let teams: TeamsService;
+  let rbacSvc: RbacService;
   let members: MembersService;
   const emit = vi.fn();
   let seq = 0;
@@ -156,8 +159,49 @@ describe.skipIf(!DB_URL)('team theo dự án ↔ Postgres thật', () => {
       data: { id: T.b, organizationId: ORG, name: `B-${TAG}`, key: `b-${TAG}` },
     });
 
+    // Quyền hiệu lực: Thành viên tổ chức (mặc định Developer) và một vai trò team hẹp (Reporter) — id cố định theo TAG.
+    await prisma.permission.upsert({
+      where: { key: 'project:view' },
+      update: {},
+      create: { key: 'project:view', description: 'project:view', scope: 'PROJECT' },
+    });
+    const orgMember = await prisma.role.create({
+      data: {
+        id: id('orgmember'),
+        organizationId: ORG,
+        name: SYSTEM_ROLES.ORGANIZATION_MEMBER,
+        scope: 'ORGANIZATION',
+      },
+    });
+    await prisma.role.create({
+      data: {
+        id: id('dev'),
+        organizationId: ORG,
+        name: SYSTEM_ROLES.DEVELOPER,
+        scope: 'PROJECT',
+        permissions: { create: await perm(['issue:edit']) },
+      },
+    });
+    await prisma.role.create({
+      data: {
+        id: id('reporter'),
+        organizationId: ORG,
+        name: id('Reporter'),
+        scope: 'PROJECT',
+        permissions: { create: await perm(['project:view']) },
+      },
+    });
+    await prisma.user.create({ data: { id: UM, email: `${UM}@pt.test`, displayName: UM } });
+    const mm = await prisma.organizationMembership.create({
+      data: { organizationId: ORG, userId: UM, roleId: orgMember.id },
+    });
+    await prisma.organizationMembershipRole.create({
+      data: { membershipId: mm.id, roleId: orgMember.id },
+    });
+
     const db = prisma as unknown as PrismaService;
     const rbac = new RbacService(db, { getClient: () => null, isAvailable: () => false } as never);
+    rbacSvc = rbac;
     const audit = new AuditService(db);
     pt = new ProjectTeamsService(db, rbac, { emit } as never, audit);
     members = new MembersService(db, rbac, {} as never, { emit } as never, audit);
@@ -173,6 +217,9 @@ describe.skipIf(!DB_URL)('team theo dự án ↔ Postgres thật', () => {
     await prisma.organizationMembership.deleteMany({ where: { organizationId: ORG } });
     await prisma.role.deleteMany({ where: { id: like } });
     await prisma.organization.deleteMany({ where: { id: like } });
+    await prisma.organizationMembershipRole.deleteMany({
+      where: { membership: { organizationId: ORG } },
+    });
     await prisma.user.deleteMany({ where: { id: like } });
     await prisma.$disconnect();
   }, 60_000);
@@ -410,6 +457,122 @@ describe.skipIf(!DB_URL)('team theo dự án ↔ Postgres thật', () => {
       where: { organizationId: ORG, entityId: tid, action: 'project_team.synced' },
     });
     expect((log?.meta as { keptPromotedToDirect?: string[] }).keptPromotedToDirect).toEqual([u1]);
+  });
+
+  it('gắn team KHÔNG BAO GIỜ làm giảm quyền ở dự án công khai: vai trò mặc định theo tổ chức vẫn được cộng; dự án riêng tư chỉ có vai trò team', async () => {
+    const reporter = id('reporter');
+    const perms = async (p: string) =>
+      [...(await rbacSvc.getEffectivePermissions(UM, ORG, p))].sort();
+    await resetTeam(T.a, [UM]);
+
+    const pub = await newProject();
+    const baseline = await perms(pub);
+    expect(baseline).toContain('issue:edit'); // mặc định Developer
+    await pt.link(ORG, pub, T.a, [reporter], ADMIN);
+    expect((await state(pub, UM))!.roles).toEqual([
+      { roleId: reporter, direct: false, teams: [T.a] },
+    ]);
+    expect(await perms(pub)).toEqual(expect.arrayContaining([...baseline, 'project:view'])); // giữ nguyên mọi quyền mặc định + thêm Reporter
+    // Danh sách thành viên cũng hiện đúng thứ người đó có
+    const list = (await members.listProject(ORG, pub)) as Array<{
+      user: { id: string };
+      roles: Array<{ id: string; name: string }>;
+    }>;
+    expect(list.find((r) => r.user.id === UM)!.roles.map((r) => r.name)).toEqual(
+      expect.arrayContaining([id('Reporter'), SYSTEM_ROLES.DEVELOPER]),
+    );
+
+    // Gán trực tiếp = ghi đè tường minh: quay về nghĩa "thay thế" (chỉ vai trò đã chọn)
+    await members.setProjectRoles(ORG, pub, UM, [reporter], ADMIN);
+    expect(await perms(pub)).not.toContain('issue:edit');
+    await members.clearProjectOverride(ORG, pub, UM, ADMIN); // còn nhờ team → lại cộng mặc định
+    expect(await perms(pub)).toContain('issue:edit');
+
+    // Gỡ team: về hẳn mặc định
+    await pt.unlink(ORG, pub, T.a, ADMIN);
+    expect(await state(pub, UM)).toBeNull();
+    expect(await perms(pub)).toEqual(baseline);
+
+    // Dự án riêng tư: không bao giờ cộng mặc định — chỉ vai trò team
+    const priv = await newProject(true);
+    await members.addProject(ORG, priv, u1, [R.p1], ADMIN); // còn người khác để gỡ team được
+    await pt.link(ORG, priv, T.a, [reporter], ADMIN);
+    expect(await perms(priv)).toEqual(['project:view']);
+    await pt.unlink(ORG, priv, T.a, ADMIN);
+    expect(await perms(priv)).toEqual([]);
+  });
+
+  it('thành viên cuối dự án riêng tư: chỉ tính người còn hoạt động trong tổ chức (đồng bộ và xoá vai trò riêng cùng một quy tắc)', async () => {
+    const p = await newProject(true);
+    await resetTeam(T.a, [u1]);
+    await members.addProject(ORG, p, u2, [R.p1], ADMIN);
+    await pt.link(ORG, p, T.a, [R.p2], ADMIN); // u1 nhờ team, u2 trực tiếp
+    await prisma.user.update({ where: { id: u2 }, data: { status: 'DEACTIVATED' } }); // u2 không còn tính là thành viên
+    const fx = await prisma.$transaction(async (tx) => {
+      await tx.teamMember.deleteMany({ where: { teamId: T.a } });
+      return pt.syncTeam(tx, ORG, T.a);
+    });
+    expect(fx.find((e) => e.projectId === p)!.kept).toEqual([u1]);
+    expect(await roleIds(p, u1)).toEqual([R.p2]);
+    await prisma.user.update({ where: { id: u2 }, data: { status: 'ACTIVE' } });
+    await prisma.$transaction((tx) => pt.syncTeam(tx, ORG, T.a)); // u2 hoạt động lại → u1 gỡ được
+    expect(await state(p, u1)).toBeNull();
+  });
+
+  it('sửa thành viên / xoá team đang gắn vai trò quản trị: team:manage một mình không đủ, quản trị tổ chức thì được', async () => {
+    const p = await newProject();
+    const risky = id('rrisky2');
+    await prisma.role.create({
+      data: {
+        id: risky,
+        organizationId: ORG,
+        name: risky,
+        scope: 'PROJECT',
+        permissions: {
+          create: (
+            await prisma.permission.findMany({
+              where: { key: 'organization:admin' },
+              select: { id: true },
+            })
+          ).map((x) => ({ permissionId: x.id })),
+        },
+      },
+    });
+    await resetTeam(T.a, [u1]);
+    await pt.link(ORG, p, T.a, [risky], ADMIN);
+    const denied = { code: 'ADMIN_GRANT_REQUIRES_ADMIN' };
+    await expect(teams.setMembers(ORG, T.a, [u1, u3], u2)).rejects.toMatchObject(denied);
+    await expect(teams.update(ORG, T.a, { memberIds: [u1, u3] }, u2)).rejects.toMatchObject(denied);
+    await expect(teams.update(ORG, T.a, { leadId: u3 }, u2)).rejects.toMatchObject(denied);
+    await expect(teams.remove(ORG, T.a, u2)).rejects.toMatchObject(denied);
+    expect(await state(p, u3)).toBeNull();
+    // đổi tên/mô tả (không đụng thành viên) vẫn được
+    await expect(teams.update(ORG, T.a, { description: 'x' }, u2)).resolves.toBeTruthy();
+    await teams.setMembers(ORG, T.a, [u1, u3], ADMIN); // quản trị thì được
+    expect(await roleIds(p, u3)).toEqual([risky]);
+    await pt.unlink(ORG, p, T.a, ADMIN);
+    // team không gắn vai trò quản trị: team:manage như cũ
+    await expect(teams.setMembers(ORG, T.a, [u1], u2)).resolves.toBeTruthy();
+  });
+
+  it('đồng thời: xoá team ↔ gắn team không để lại vai trò mồ côi', async () => {
+    for (let round = 0; round < 3; round++) {
+      const p = await newProject();
+      const tid = id(`tcc${++seq}`);
+      await prisma.team.create({ data: { id: tid, organizationId: ORG, name: tid, key: tid } });
+      await prisma.teamMember.createMany({
+        data: [u1, u2].map((userId) => ({ teamId: tid, userId })),
+      });
+      const settled = await Promise.allSettled([
+        pt.link(ORG, p, tid, [R.p1], ADMIN),
+        teams.remove(ORG, tid, ADMIN),
+      ]);
+      expect(settled.some((r) => r.status === 'fulfilled')).toBe(true);
+      expect(await prisma.team.count({ where: { id: tid } })).toBe(0);
+      expect(await prisma.projectTeamLink.count({ where: { projectId: p } })).toBe(0);
+      expect(await snapshot(p)).toEqual(Object.fromEntries(U.map((u) => [u, null])));
+      await assertInvariants(p);
+    }
   });
 
   it('tài khoản vô hiệu hoá / người đã rời tổ chức không nhận vai trò; người đã nhận mà hết đủ điều kiện bị gỡ khi đồng bộ', async () => {

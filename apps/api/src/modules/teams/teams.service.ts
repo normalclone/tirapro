@@ -110,6 +110,8 @@ export class TeamsService {
     if (dto.memberIds !== undefined)
       replaceMembers = await this.validateOrganizationMembers(organizationId, dto.memberIds);
 
+    if (replaceMembers !== undefined || dto.leadId)
+      await this.projectTeams.assertMayEditTeamMembers(organizationId, teamId, actingUserId);
     let leadToAdd: string | null = null;
     if (dto.leadId !== undefined) {
       const leadId = dto.leadId || null;
@@ -148,6 +150,7 @@ export class TeamsService {
 
   async setMembers(organizationId: string, teamId: string, memberIds: string[], actorId?: string) {
     await this.requireTeam(organizationId, teamId);
+    await this.projectTeams.assertMayEditTeamMembers(organizationId, teamId, actorId);
     const ids = await this.validateOrganizationMembers(organizationId, memberIds);
     const cur = await this.prisma.team.findUnique({
       where: { id: teamId },
@@ -167,6 +170,7 @@ export class TeamsService {
 
   async remove(organizationId: string, teamId: string, actorId?: string) {
     await this.requireTeam(organizationId, teamId);
+    await this.projectTeams.assertMayEditTeamMembers(organizationId, teamId, actorId);
     // Gỡ nhóm khỏi mọi dự án TRƯỚC khi xoá (cùng transaction): chỉ gỡ phần vai trò nhờ nhóm này, vai trò gán trực tiếp / nhờ nhóm khác giữ.
     const effects = await this.prisma.$transaction(async (tx) => {
       const e = await this.projectTeams.unlinkTeamEverywhere(tx, organizationId, teamId);

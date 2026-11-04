@@ -36,6 +36,7 @@ import { AuditService } from '../audit/audit.service';
 import { SYSTEM_USER_EMAIL } from '../../common/system-user';
 import {
   clearDirectRoles,
+  countActiveProjectMembers,
   lockProjectRoles,
   setDirectRoles,
   teamNamesOf,
@@ -625,18 +626,26 @@ export class MembersService {
 
     const out = visibleRows.map((m) => {
       const ov = overrideByUser.get(m.user.id);
-      if (ov) {
-        return {
-          ...this.toMemberDto({ id: ov.id, user: m.user, roles: ov.roles }, ov.role),
-          isOverride: true,
-        };
-      }
       // Vai trò mặc định theo vai trò tổ chức của người này.
       const defaults: { id: string; name: string; color: string | null }[] = [];
       for (const r of m.roles.length ? m.roles : [{ role: m.role }]) {
         const target = DEFAULT_PROJECT_ROLE_BY_WS_ROLE[r.role.name];
         const found = target ? projRoleByName.get(target) : undefined;
         if (found && !defaults.some((d) => d.id === found.id)) defaults.push(found);
+      }
+      if (ov) {
+        const dto = this.toMemberDto({ id: ov.id, user: m.user, roles: ov.roles }, ov.role);
+        // Chỉ do team gắn vào (không vai trò gán trực tiếp) ở dự án công khai: quyền hiệu lực cộng cả vai trò mặc định theo tổ chức
+        // (giống `RbacService.compute`) nên danh sách cũng hiện chúng — để thấy đúng thứ người đó thật sự có.
+        const teamOnly = ov.roles.length > 0 && ov.roles.every((r) => r.direct === false);
+        if (teamOnly && !project.isPrivate) {
+          const have = new Set(dto.roles.map((r) => r.id));
+          dto.roles = [
+            ...dto.roles,
+            ...defaults.filter((d) => !have.has(d.id)).map((d) => ({ ...d })), // như dòng mặc định thường: không kèm direct/teams
+          ];
+        }
+        return { ...dto, isOverride: true };
       }
       return {
         membershipId: m.id,
@@ -675,9 +684,7 @@ export class MembersService {
         return { had: false, removed: false, teams: [] as Array<{ id: string; name: string }> };
       const removed = await clearDirectRoles(tx, m);
       if (removed && project.isPrivate) {
-        const left = await tx.projectMembership.count({
-          where: { projectId, user: { organizationMemberships: { some: { organizationId } } } },
-        });
+        const left = await countActiveProjectMembers(tx, { projectId, organizationId });
         if (left === 0) throw new BusinessRuleException('Dự án phải còn ít nhất một thành viên');
       }
       return { had: true, removed, teams: removed ? [] : await teamNamesOf(tx, m.id) };

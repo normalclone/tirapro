@@ -258,11 +258,26 @@ export class RbacService {
         // Giới hạn theo organization: membership dự án của tổ chức khác không được tính.
         // Cố ý KHÔNG lọc project.deletedAt: đây chỉ tính quyền hiệu lực; dự án xoá mềm đã bị guard (`viaProject`/`@ProjectRef`) trả 404 trước khi tới đây.
         where: { projectId_userId: { projectId, userId }, project: { organizationId } },
-        select: { roleId: true, roles: { select: { roleId: true } } },
+        select: { roleId: true, roles: { select: { roleId: true, direct: true } } },
       });
       if (projMembership) {
         // Có GHI ĐÈ vai trò riêng ở dự án này → dùng đúng vai trò đó.
         roleIds.push(projMembership.roleId, ...projMembership.roles.map((r) => r.roleId));
+        // Tư cách thành viên CHỈ do team gắn vào dự án (có vai trò nhưng không vai trò nào gán trực tiếp) là phần CỘNG THÊM, không phải
+        // ghi đè: dự án công khai vẫn cộng vai trò mặc định suy từ vai trò tổ chức, để gắn team không bao giờ làm giảm quyền của ai.
+        // Ghi đè tường minh (có vai trò gán trực tiếp, hoặc thành viên cũ chưa có dòng nối) giữ nguyên nghĩa "thay thế"; dự án riêng
+        // tư không bao giờ cộng mặc định (thành viên của nó chỉ là các dòng ProjectMembership).
+        if (
+          projMembership.roles.length > 0 &&
+          projMembership.roles.every((r) => r.direct === false)
+        ) {
+          const proj = await this.prisma.project.findFirst({
+            where: { id: projectId, organizationId, deletedAt: null },
+            select: { isPrivate: true },
+          });
+          if (proj && !proj.isPrivate)
+            roleIds.push(...(await this.defaultProjectRoleIds(organizationId, wsRoleNames)));
+        }
       } else {
         const proj = await this.prisma.project.findFirst({
           where: { id: projectId, organizationId, deletedAt: null },
