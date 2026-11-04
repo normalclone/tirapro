@@ -34,69 +34,29 @@
 
 ---
 
-### Task 1: API — `/me/search` (cross-workspace JQL) + `workspace` field
-- **Files:**
-  - Create `apps/api/src/modules/me/me.module.ts`, `me.controller.ts` (`@Controller('me')`), `me-search.service.ts` (+ spec).
-  - Modify the JQL grammar and compiler for the `workspace` field (`packages/shared` JQL + `apps/api/src/modules/search/jql-compiler.ts`). Pass `scope: 'workspace' | 'personal'` into compile.
-- **Produces:**
-  - `GET /me/search?jql=&cursor=&limit=`, which returns `PageResult<IssueDto & { workspace: {id,name} }>`.
-  - `MeSearchService.myWorkspaces(userId): Promise<{id,name}[]>`.
-- **Tests:**
-  - A single workspace gives identical ids to the workspace search.
-  - A private-project leak test.
-  - `workspace = "X"` narrows results.
-  - An unknown value in one workspace → 0 rows there; an unknown value everywhere → 422.
-  - Pagination over 3 pages with no dupes or gaps.
-  - Archived workspaces are excluded.
+> **Cập nhật 2026-11-05:** người dùng bỏ khái niệm workspace (sẽ đổi thành Công ty ở đợt riêng). Phần xuyên workspace (Task 1 cũ) đã revert ở 57d1d34f; bộ lọc cá nhân không làm (bộ lọc PRIVATE hiện có đã là "cá nhân"). Đợt này chỉ còn **trang Tổng quan cá nhân `/me`** trong phạm vi công ty (workspace) hiện tại. Các ràng buộc "xuyên workspace" ở trên không còn áp dụng; các ràng buộc RBAC vẫn áp dụng.
 
 ### Task 2: API — `/me/overview`
-- **Produces:** `GET /me/overview` returning:
+- **Files:** create `apps/api/src/modules/me/{me.module.ts, me.controller.ts, me-overview.service.ts}` (+ spec); đăng ký module.
+- **Produces:** `GET /me/overview` (theo workspaceId trong JWT, như mọi API khác) trả về:
   ```
   {
     counts: {open, overdue, dueSoon, donePointsThisWeek},
-    myIssues: Item[] (open, assignee = me, sorted dueDate asc nulls last, then priority rank desc; max 50),
+    myIssues: Item[] (chưa xong, assignee = tôi, sắp theo dueDate tăng dần nulls last, rồi priority giảm dần; tối đa 50),
     bugs: { awaitingRetest: Item[], reopened: Item[], assignedToMe: Item[] },
-    weeklyDonePoints: { weekStart: string, byProject: {projectKey, workspaceName, points}[] }[] (8 weeks, leaf-only via LEAF_POINTS_ONLY)
+    weeklyDonePoints: { weekStart: string, byProject: {projectKey, points}[] }[] (8 tuần, chỉ tính việc lá theo quy tắc điểm hiện có)
   }
   ```
-- **Status matching:** awaitingRetest uses status name `Ready for Retest`, OR an IN_PROGRESS-category status whose name contains "test" (case/diacritic-insensitive). Reopened uses name `Reopened` / "Mở lại". Both count bugs **reported by me** (`reporterId` or `creatorId` = me).
-- **Tests:** counts across 2 workspaces; leaf-only points; retest heuristics; RBAC.
+  Item = IssueDto rút gọn + `projectKey`, `status {id,name,category}`, `points`, `dueDate`.
+- **Khớp trạng thái:** awaitingRetest = tên `Ready for Retest`, HOẶC trạng thái nhóm IN_PROGRESS có tên chứa "test" (không phân biệt hoa/thường/dấu). Reopened = tên `Reopened` / "Mở lại". Cả hai chỉ đếm bug **do tôi báo** (`reporterId` = tôi).
+- **Tuần** theo giờ VN (Asia/Ho_Chi_Minh), bắt đầu thứ Hai. overdue/dueSoon theo ngày VN (dueSoon = trong 7 ngày tới, không gồm quá hạn).
+- **RBAC:** chỉ dự án tôi xem được (dùng lại bộ lọc khả kiến dự án của search/issues — không tự viết lại luật).
+- **Tests:** counts; sắp xếp myIssues; chỉ tính việc lá; heuristic retest/reopened; dự án riêng tư không là thành viên thì không lộ; ranh giới tuần VN.
 
-### Task 3: API — personal saved filters
-- **Files:** `schema.prisma` + migration: `SavedFilter.scope FilterScope @default(WORKSPACE)`, `workspaceId String?`; `saved-filters.service.ts/controller.ts`; and `me.controller.ts` with `GET/POST/PATCH/DELETE /me/filters` and `GET /me/filters/:id/run`.
-- **Behaviour:**
-  - A PERSONAL filter is owner-only: visibility is forced to PRIVATE, there is no project sharing, and it is never returned by workspace `/filters`.
-  - Existing rows stay WORKSPACE.
-  - Running a filter delegates to `/me/search`.
-- **Tests:** owner isolation; workspace list excludes personal filters; run works; migration keeps existing rows.
-
-### Task 4: Web — `/me` personal overview page
-- **Files:** create `apps/web/src/features/me/{api.ts, MeOverviewPage.tsx, openForeignIssue.ts}` (+ tests); add the route `/me` in `app/router.tsx`; add the sidebar item "Của tôi" (icon `UserRound`, above "Tổng quan").
-- **UI:**
-  - Stat tiles.
-  - The "Việc của tôi" list, with workspace/project chip, `StatusPill alwaysShowName`, points, due date (date-only `formatCalendarDmy`) and quick filter chips per workspace.
-  - The "Bug liên quan đến tôi" tabs.
-  - A weekly stacked bar chart, using the repo's existing chart lib and pattern (grep `features/reports` for the chart component in use).
-  - Empty states.
-  - Follows DESIGN.md.
-- **`openForeignIssue(issue)`:** if `issue.workspace.id !== current`, call the existing switch-workspace action, then navigate to `/issue/:key`; otherwise navigate directly.
-- **Tests:** renders items from 2 workspaces with chips; clicking a foreign item calls switch then navigate; the workspace chip filter works.
-
-### Task 5: Web — Filters page: scope toggle + "Cá nhân" filters
-- **Files:**
-  - `features/saved-filters/FiltersPage.tsx`, `api.ts`.
-  - `ResultsTable.tsx`: add `workspace` and `project` columns, shown by default in personal scope.
-  - `resultColumns.ts`.
-  - The save dialog: a radio "Cá nhân (mọi workspace)" / "Workspace này".
-- **UI:**
-  - The left rail has two groups, "Của workspace này" and "Cá nhân".
-  - The JQL bar has a segmented toggle "Workspace này / Mọi workspace của tôi" (remember the last choice per user in localStorage, wrapped in try/catch).
-  - The bulk dock is disabled with the note "Chọn việc cùng một workspace để sửa hàng loạt" when the selection spans more than one workspace.
-  - Clicking a row uses `openForeignIssue`.
-- **Tests:** the toggle calls `/me/search`; saving as personal posts to `/me/filters`; mixed-workspace selection disables bulk; a single-workspace selection keeps bulk working.
+### Task 4: Web — trang `/me`
+- **Files:** create `apps/web/src/features/me/{api.ts, MeOverviewPage.tsx}` (+ test); route `/me` trong `app/router.tsx`; mục thanh bên "Của tôi" (icon `UserRound`, ngay trên "Tổng quan").
+- **UI:** ô số; danh sách "Việc của tôi" (chip dự án, `StatusPill alwaysShowName`, điểm, hạn dạng ngày `formatCalendarDmy`, chip lọc nhanh theo dự án); tab "Bug liên quan đến tôi"; biểu đồ cột chồng điểm theo tuần (dùng thư viện/chart component sẵn có — grep `features/reports`); empty state; bám DESIGN.md + UX_CONVENTIONS. Bấm việc → mở `/issue/:key`.
+- **Tests:** render dữ liệu nhiều dự án kèm chip; lọc theo chip dự án; bấm việc điều hướng đúng; empty state.
 
 ### Task 6: Final review + merge + deploy
-- Run the whole-branch review.
-- Rebase onto `fix/review-findings` if `feat/workflow-per-type` merged first; resolve conflicts in saved-filters/JQL.
-- Deploy with `deploy.sh` (it takes a backup).
-- Verify by logging in as a user in 2 workspaces (phucnv: KTA + Opendata) and checking that `/me` shows TIRA + KYHOP items together. Send a screenshot to Telegram.
+- Review toàn nhánh; deploy bằng `deploy.sh` (có backup); kiểm bằng tài khoản phucnv, chụp `/me` gửi Telegram.
