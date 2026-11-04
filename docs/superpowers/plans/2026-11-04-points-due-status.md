@@ -330,3 +330,42 @@ Two requests the user added on 2026-11-04.
 - [ ] **Step 3: Implement.**
 - [ ] **Step 4: Run** → PASS.
 - [ ] **Step 5: Commit.**
+
+### Task 11: Web — workflow graphs without overlaps + click to highlight paths
+
+Two requests the user added on 2026-11-04: "rà soát và thể hiện lại các cây workflow sao cho không bị chạm/đan xen", and "click vào trạng thái nào thì highlight đường đi hiện tại và tương lai của nó".
+
+**Findings (controller, screenshots on the VM):**
+- **(a) The read-only dialog `features/workflow-settings/WorkflowViewDialog.tsx`, opened from the issue page.**
+  - It uses its own `autoLayout`: three category columns, with reactflow smoothstep edges.
+  - Edges run in shared vertical channels and the labels overlap ("Tạm dừng", "Mở lại", "Sẵn sàng…/Cần làm rõ" are garbled).
+- **(b) The settings graph `WorkflowGraph.tsx` (`/settings/workflows`, Sơ đồ tab).**
+  - It already uses the non-overlapping lane layout in `workflowLayout.ts`.
+  - But on first render it is tiny and off-centre: fitView appears to run before the container has its size, or while it is hidden.
+
+**Requirements:**
+1. **`WorkflowViewDialog` uses the `workflowLayout.ts` layout and edge renderer** (one implementation, read-only mode), instead of its own `autoLayout` and smoothstep.
+   - Keep the "Hiện tại" badge on the issue's current status, the "Khởi tạo" badge, and the "Bất kỳ trạng thái" transitions, shown as the existing badge on the target node, as `workflowLayout` already does.
+   - No two edges may share a segment, and no label may overlap another label, a node, or an edge's vertical leg. Extend the existing `workflowLayout.test.ts` assertions to the real TIRA/ATP workflow fixture (9 statuses: Cần làm, Đang phân tích, Sẵn sàng phát triển, Đang làm, Review code, Chờ test, Đang test, Hoàn thành, Không xử lý), with its transitions (copy them from the DB dump the controller provides in `.superpowers/sdd/2026-11-04-points-due-status/tira-workflow.json`).
+2. **Fix the initial fit of the settings graph and the dialog.**
+   - Call fitView after nodes are initialized **and** the container has a non-zero size (ResizeObserver, or `useNodesInitialized` plus a size check). Re-fit when switching to the Sơ đồ tab and on container resize.
+   - The graph should fill the panel width with padding 0.1, with a minimum zoom such that labels stay readable (≥0.5). If the graph is wider than that allows, it is pannable instead of shrunk.
+3. **Click to highlight**, in both the dialog and the settings graph:
+   - Clicking a status selects it.
+   - The **current paths**, i.e. its direct outgoing transitions and their target nodes, are highlighted strongly (primary colour, thicker stroke, labels at full opacity).
+   - The **future paths**, i.e. every transition reachable after those (BFS over outgoing edges, excluding edges back into already-visited nodes so the loop doesn't take over), are highlighted lighter (primary at reduced opacity).
+   - Incoming edges into the selected node are shown in a neutral emphasis so you can see how you got there.
+   - Everything else is dimmed to about 25% opacity.
+   - Clicking the same node, the background, or pressing Esc clears the selection.
+   - In the issue dialog, the selection starts on the issue's current status.
+   - In the settings graph, a click on a node must still work with the existing edit affordances: selection must not block editing.
+   - Pure helper `reachability(wf, statusId): { direct: Set<transitionId>; future: Set<transitionId>; incoming: Set<transitionId>; nodes: Set<statusId> }` in `workflowLayout.ts` (or a new `workflowPaths.ts`), unit-tested.
+
+- [ ] **Step 1: Failing tests.**
+  - `reachability` on the TIRA fixture from "Đang làm": `direct` = its outgoing transition ids; `future` contains the "Test đạt" transition (Đang test → Hoàn thành), and contains no transition already in `direct`.
+  - Layout of the TIRA fixture: no overlapping label rectangles, and no two edges sharing a horizontal or vertical segment.
+  - The dialog renders through the shared layout: no smoothstep edge type.
+- [ ] **Step 2: Run** → FAIL.
+- [ ] **Step 3: Implement.**
+- [ ] **Step 4: Visual check.** Run the web dev server against a local API, or the controller does it on the VM after deploy. Take a screenshot of both graphs; the labels must be legible and not overlapping.
+- [ ] **Step 5: Gates + impeccable detect on `features/workflow-settings`, then commit.**
