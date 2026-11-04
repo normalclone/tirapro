@@ -100,17 +100,6 @@ export class BusinessRuleException extends AppException {
   }
 }
 
-/** 422 mã riêng: trường JQL chỉ có nghĩa ở phạm vi cá nhân (vd `workspace`) bị dùng ở phạm vi một workspace. */
-export class FieldNotAllowedInScopeException extends AppException {
-  constructor(field: string) {
-    super(
-      ERROR_CODES.FIELD_NOT_ALLOWED_IN_SCOPE,
-      `Trường "${field}" chỉ dùng được khi tìm ở phạm vi "Mọi workspace của tôi"`,
-      HttpStatus.UNPROCESSABLE_ENTITY,
-    );
-  }
-}
-
 /** 409 với mã nghiệp vụ riêng (ALREADY_MEMBER, LAST_WORKSPACE_ADMIN…) để client nhận ra mà không so khớp câu chữ. */
 export class ConflictAppException extends AppException {
   constructor(code: ErrorCode | (string & {}), message: string) {

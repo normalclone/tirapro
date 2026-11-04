@@ -374,15 +374,6 @@ export interface IssueDto extends IssueSummaryDto {
   updatedAt: ISODate;
 }
 
-/** Workspace chứa một việc — kèm trong kết quả xuyên workspace của `GET /me/search`. */
-export interface WorkspaceRefDto {
-  id: ID;
-  name: string;
-}
-
-/** Việc trong kết quả xuyên workspace (`GET /me/search`): thêm workspace chứa nó và mã dự án (IssueDto không mang mã dự án). */
-export type PersonalIssueDto = IssueDto & { workspace: WorkspaceRefDto; projectKey: string };
-
 /** Kết quả sửa hàng loạt: issue đã sửa (kèm version mới để hoàn tác) và các item bị người khác sửa trước (kèm version hiện tại). */
 export interface BulkUpdateIssuesResult {
   updated: IssueDto[];

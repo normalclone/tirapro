@@ -26,8 +26,6 @@ export type JqlOperator = (typeof JQL_OPERATORS)[number];
 /** Field whitelist: map tên JQL -> metadata để parser sinh Prisma where an toàn. */
 export const JQL_FIELDS = {
   project: { type: 'ref', column: 'project.key' },
-  /** Chỉ hợp lệ ở phạm vi cá nhân (`GET /me/search`): theo TÊN workspace; ở phạm vi workspace → 422 FIELD_NOT_ALLOWED_IN_SCOPE. */
-  workspace: { type: 'ref', column: 'workspace.name' },
   type: { type: 'enumRef', column: 'type.name' },
   status: { type: 'enumRef', column: 'status.name' },
   statusCategory: { type: 'enum', column: 'status.category' },
