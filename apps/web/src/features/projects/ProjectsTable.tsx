@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import { Archive } from 'lucide-react';
-import type { ProjectDto, ProjectProgramRefDto } from '@tirapro/types';
+import type { ProjectDto } from '@tirapro/types';
 import { Avatar, Badge } from '@/components/ui/primitives';
 import { TERM } from '@/lib/terms';
 import { cn } from '@/lib/utils';
@@ -41,12 +41,10 @@ export function ProjectsHeaderRow() {
 /** Một dự án — dùng chung cho chế độ "Danh sách" và dưới từng nhóm của "Theo nhóm". */
 export function ProjectRow({
   project: p,
-  programs,
   recentKey,
   lastView,
 }: {
   project: ProjectDto;
-  programs: readonly ProjectProgramRefDto[];
   recentKey?: string;
   lastView: LastView | null;
 }) {
@@ -85,7 +83,7 @@ export function ProjectRow({
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 sm:contents">
         <span className="text-sm text-muted">{TYPE_LABEL[p.type] ?? p.type}</span>
         <span className="flex items-center">
-          <GroupsCell project={p} programs={programs} />
+          <GroupsCell project={p} />
         </span>
         <span className="flex min-w-0 items-center gap-2 text-sm text-muted">
           {p.lead ? (
@@ -116,12 +114,10 @@ export function ProjectRow({
 /** Chế độ "Danh sách": một bảng phẳng. */
 export function ProjectList({
   projects,
-  programs,
   recentKey,
   lastView,
 }: {
   projects: readonly ProjectDto[];
-  programs: readonly ProjectProgramRefDto[];
   recentKey?: string;
   lastView: LastView | null;
 }) {
@@ -130,13 +126,7 @@ export function ProjectList({
       <ProjectsHeaderRow />
       <ul className="divide-y divide-border">
         {projects.map((p) => (
-          <ProjectRow
-            key={p.id}
-            project={p}
-            programs={programs}
-            recentKey={recentKey}
-            lastView={lastView}
-          />
+          <ProjectRow key={p.id} project={p} recentKey={recentKey} lastView={lastView} />
         ))}
       </ul>
     </div>

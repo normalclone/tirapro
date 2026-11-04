@@ -1,6 +1,5 @@
 import { useId, useState } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
-import type { ProjectProgramRefDto } from '@tirapro/types';
 import { cn } from '@/lib/utils';
 import { ProjectRow, ProjectsHeaderRow, type LastView } from '../ProjectsTable';
 import { GroupDot } from './GroupsPopover';
@@ -13,13 +12,11 @@ import { groupKey, type GroupNode } from './groupModel';
  */
 export function GroupTree({
   groups,
-  programs,
   recentKey,
   lastView,
   forceOpen,
 }: {
   groups: readonly GroupNode[];
-  programs: readonly ProjectProgramRefDto[];
   recentKey?: string;
   lastView: LastView | null;
   forceOpen: boolean;
@@ -37,10 +34,10 @@ export function GroupTree({
         <GroupSection
           key={groupKey(g)}
           group={g}
-          programs={programs}
           recentKey={recentKey}
           lastView={lastView}
           open={forceOpen || !collapsed.has(groupKey(g))}
+          locked={forceOpen}
           onToggle={() => toggle(groupKey(g))}
         />
       ))}
@@ -50,17 +47,18 @@ export function GroupTree({
 
 function GroupSection({
   group,
-  programs,
   recentKey,
   lastView,
   open,
+  locked,
   onToggle,
 }: {
   group: GroupNode;
-  programs: readonly ProjectProgramRefDto[];
   recentKey?: string;
   lastView: LastView | null;
   open: boolean;
+  /** Đang tìm kiếm: mọi nhóm bị mở cố định nên nút thu/mở tắt (không giả vờ bấm được). */
+  locked: boolean;
   onToggle: () => void;
 }) {
   const listId = useId();
@@ -73,10 +71,12 @@ function GroupSection({
       <button
         type="button"
         onClick={onToggle}
+        disabled={locked}
         aria-expanded={open}
         aria-controls={listId}
         className={cn(
           'flex w-full items-center gap-2.5 px-4 py-2.5 text-left transition-colors hover:bg-surface-2',
+          'disabled:cursor-default disabled:hover:bg-transparent',
           'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--ring)]',
           '[@media(pointer:coarse)]:min-h-11',
         )}
@@ -107,13 +107,7 @@ function GroupSection({
             <ProjectsHeaderRow />
             <ul className="divide-y divide-border border-t border-border sm:border-t-0">
               {group.projects.map((p) => (
-                <ProjectRow
-                  key={p.id}
-                  project={p}
-                  programs={programs}
-                  recentKey={recentKey}
-                  lastView={lastView}
-                />
+                <ProjectRow key={p.id} project={p} recentKey={recentKey} lastView={lastView} />
               ))}
             </ul>
           </>

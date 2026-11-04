@@ -169,18 +169,12 @@ export function ProjectsPage() {
           ) : view === 'groups' ? (
             <GroupTree
               groups={tree}
-              programs={programRefs}
               recentKey={recent?.key}
               lastView={last}
               forceOpen={searching}
             />
           ) : (
-            <ProjectList
-              projects={shown}
-              programs={programRefs}
-              recentKey={recent?.key}
-              lastView={last}
-            />
+            <ProjectList projects={shown} recentKey={recent?.key} lastView={last} />
           )
         }
       </QueryBoundary>

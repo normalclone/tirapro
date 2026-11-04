@@ -149,6 +149,10 @@ describe('trang Dự án — chế độ "Danh sách / Theo nhóm"', () => {
     expect(within(infra).getByText('1 dự án')).toBeTruthy();
     // tìm kiếm mở nhóm đang thu gọn (nội dung không còn bị `hidden`)
     expect(within(infra).getByText('Dự án BBB').closest('[hidden]')).toBeNull();
+    // đang tìm kiếm: nút thu/mở tắt (không giả vờ bấm được)
+    expect(within(infra).getByRole<HTMLButtonElement>('button', { name: /Hạ tầng/ }).disabled).toBe(
+      true,
+    );
     expect(screen.queryByRole('region', { name: 'Nhóm Khách hàng' })).toBeNull();
     expect(screen.queryByRole('region', { name: 'Nhóm Nhóm rỗng' })).toBeNull();
     expect(screen.queryByRole('region', { name: 'Chưa thuộc nhóm' })).toBeNull();

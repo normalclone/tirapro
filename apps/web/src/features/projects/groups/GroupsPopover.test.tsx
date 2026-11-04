@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+/* eslint-disable max-lines-per-function -- spec: một describe lớn dùng chung dữ liệu dựng sẵn */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -27,6 +28,10 @@ const project = (programs: ProjectProgramRefDto[], over: Partial<ProjectDto> = {
 
 /** Quyền theo dự án: `perms[projectId]` trả cho GET /projects/:id/permissions/me. */
 let perms: string[] = [];
+/** GET /programs: trả mảng, hoặc `'error'` / `'pending'` để thử trạng thái lỗi / đang tải. */
+let catalog: 'error' | 'pending' | unknown[] = [];
+/** GET /permissions/me: `'error'` / `'pending'` để thử các trạng thái đó. */
+let permsMode: 'ok' | 'error' | 'pending' = 'ok';
 
 beforeEach(() => {
   h.get.mockReset();
@@ -35,9 +40,20 @@ beforeEach(() => {
   toast.success.mockReset();
   toast.error.mockReset();
   perms = [];
+  permsMode = 'ok';
+  catalog = ALL.map((g) => ({ ...g, projects: [], projectCount: 0, owner: null }));
   h.get.mockImplementation((url: string) => {
     const m = /^\/projects\/(\w+)\/permissions\/me$/.exec(url);
-    if (m) return Promise.resolve({ data: { projectId: m[1], permissions: perms } });
+    if (m) {
+      if (permsMode === 'error') return Promise.reject(new Error('offline'));
+      if (permsMode === 'pending') return new Promise(() => undefined);
+      return Promise.resolve({ data: { projectId: m[1], permissions: perms } });
+    }
+    if (url === '/programs') {
+      if (catalog === 'error') return Promise.reject(new Error('offline'));
+      if (catalog === 'pending') return new Promise(() => undefined);
+      return Promise.resolve({ data: catalog });
+    }
     return Promise.reject(new Error(`offline ${url}`));
   });
   h.put.mockImplementation((_u: string, body: { programIds: string[] }) =>
@@ -57,7 +73,7 @@ function renderCell(p: ProjectDto) {
     <QueryClientProvider
       client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
     >
-      <GroupsCell project={p} programs={ALL} />
+      <GroupsCell project={p} />
     </QueryClientProvider>,
   );
   return userEvent.setup();
@@ -136,7 +152,7 @@ describe('ô "Nhóm"', () => {
     ]);
   });
 
-  it('không có program:manage → không có ô "Tạo nhóm"; có program:manage → tạo tại chỗ, tự tích nhóm mới rồi Lưu gửi cả nhóm mới', async () => {
+  it('không có program:manage → không có ô tạo nhóm; có program:manage → nhóm mới chỉ được TẠO khi bấm Lưu (rồi gửi cùng tập nhóm)', async () => {
     perms = ['project:admin'];
     const user = renderCell(project([]));
     await user.click(screen.getByRole('button', { name: /^—/ }));
@@ -153,14 +169,83 @@ describe('ô "Nhóm"', () => {
       await within(box).findByRole('textbox', { name: 'Tên nhóm mới' }),
       'Dự án mới{Enter}',
     );
-    await waitFor(() => expect(h.post).toHaveBeenCalledWith('/programs', { name: 'Dự án mới' }));
-    const created = await within(box).findByRole<HTMLInputElement>('checkbox', {
-      name: /Dự án mới/,
-    });
-    expect(created.checked).toBe(true);
+    // Chưa tạo gì trên máy chủ: chỉ là nhóm nháp đã tích sẵn
+    const draft = await within(box).findByRole<HTMLInputElement>('checkbox', { name: /Dự án mới/ });
+    expect(draft.checked).toBe(true);
+    expect(within(box).getByText('Nhóm mới chỉ được tạo khi bạn bấm Lưu.')).toBeTruthy();
+    expect(h.post).not.toHaveBeenCalled();
     await user2.click(within(box).getByRole('button', { name: 'Lưu' }));
     await waitFor(() => expect(h.put).toHaveBeenCalled());
+    expect(h.post).toHaveBeenCalledTimes(1);
+    expect(h.post).toHaveBeenCalledWith('/programs', { name: 'Dự án mới' });
     expect((h.put.mock.calls[0]![1] as { programIds: string[] }).programIds).toEqual(['gnew']);
+  });
+
+  it('Huỷ sau khi gõ nhóm mới → không tạo nhóm nào; bỏ tích nhóm nháp → nhóm nháp biến mất', async () => {
+    perms = ['project:admin'];
+    useAuth.setState({ permissions: ['program:manage'] });
+    const user = renderCell(project([]));
+    await user.click(screen.getByRole('button', { name: /^—/ }));
+    const box = await screen.findByRole('group', { name: /Nhóm của Nhân sự/ });
+    await user.type(
+      await within(box).findByRole('textbox', { name: 'Tên nhóm mới' }),
+      'Tạm{Enter}',
+    );
+    await user.click(await within(box).findByRole('checkbox', { name: /Tạm/ })); // bỏ tích → bỏ nháp
+    expect(within(box).queryByRole('checkbox', { name: /Tạm/ })).toBeNull();
+    await user.type(within(box).getByRole('textbox', { name: 'Tên nhóm mới' }), 'Khác{Enter}');
+    await user.click(within(box).getByRole('button', { name: 'Huỷ' }));
+    await waitFor(() => expect(screen.queryByRole('group', { name: /Nhóm của/ })).toBeNull());
+    expect(h.post).not.toHaveBeenCalled();
+    expect(h.put).not.toHaveBeenCalled();
+  });
+
+  it('tên nhóm mới trùng nhóm có sẵn → chỉ tích nhóm đó, không tạo trùng', async () => {
+    perms = ['project:admin'];
+    useAuth.setState({ permissions: ['program:manage'] });
+    const user = renderCell(project([]));
+    await user.click(screen.getByRole('button', { name: /^—/ }));
+    const box = await screen.findByRole('group', { name: /Nhóm của Nhân sự/ });
+    await user.type(
+      await within(box).findByRole('textbox', { name: 'Tên nhóm mới' }),
+      'hạ tầng{Enter}',
+    );
+    expect(within(box).getByRole<HTMLInputElement>('checkbox', { name: /Hạ tầng/ }).checked).toBe(
+      true,
+    );
+    await user.click(within(box).getByRole('button', { name: 'Lưu' }));
+    await waitFor(() => expect(h.put).toHaveBeenCalled());
+    expect(h.post).not.toHaveBeenCalled();
+    expect((h.put.mock.calls[0]![1] as { programIds: string[] }).programIds).toEqual(['ga']);
+  });
+
+  it('tạo nhóm nháp lỗi giữa chừng → toast, KHÔNG gửi PUT; nhóm đã tạo không bị tạo lại ở lần thử sau', async () => {
+    perms = ['project:admin'];
+    useAuth.setState({ permissions: ['program:manage'] });
+    h.post
+      .mockResolvedValueOnce({ data: { id: 'g1', name: 'Một', color: null } })
+      .mockRejectedValueOnce(new Error('boom'))
+      .mockResolvedValueOnce({ data: { id: 'g2', name: 'Hai', color: null } });
+    const user = renderCell(project([]));
+    await user.click(screen.getByRole('button', { name: /^—/ }));
+    const box = await screen.findByRole('group', { name: /Nhóm của Nhân sự/ });
+    const input = await within(box).findByRole('textbox', { name: 'Tên nhóm mới' });
+    await user.type(input, 'Một{Enter}');
+    await user.type(input, 'Hai{Enter}');
+    await user.click(within(box).getByRole('button', { name: 'Lưu' }));
+    await waitFor(() => expect(toast.error).toHaveBeenCalled());
+    expect(h.put).not.toHaveBeenCalled();
+    await user.click(within(box).getByRole('button', { name: 'Lưu' }));
+    await waitFor(() => expect(h.put).toHaveBeenCalled());
+    expect(h.post.mock.calls.map((c) => (c[1] as { name: string }).name)).toEqual([
+      'Một',
+      'Hai',
+      'Hai',
+    ]);
+    expect((h.put.mock.calls[0]![1] as { programIds: string[] }).programIds.sort()).toEqual([
+      'g1',
+      'g2',
+    ]);
   });
 
   it('lỗi từ máy chủ: toast lỗi, popover vẫn mở để thử lại', async () => {
@@ -173,6 +258,45 @@ describe('ô "Nhóm"', () => {
     await user.click(within(box).getByRole('button', { name: 'Lưu' }));
     await waitFor(() => expect(toast.error).toHaveBeenCalled());
     expect(screen.getByRole('group', { name: /Nhóm của Nhân sự/ })).toBeTruthy();
+  });
+
+  it('đang tải quyền → "Đang kiểm tra quyền…"; lỗi tải quyền → báo lỗi + Thử lại (không giả làm "chỉ quản trị mới đổi được")', async () => {
+    permsMode = 'pending';
+    let user = renderCell(project([A]));
+    await user.click(screen.getByRole('button', { name: /^1 nhóm/ }));
+    expect(await screen.findByText('Đang kiểm tra quyền…')).toBeTruthy();
+    expect(screen.queryByText('Chỉ quản trị dự án mới đổi được nhóm.')).toBeNull();
+    cleanup();
+
+    permsMode = 'error';
+    perms = ['project:admin'];
+    user = renderCell(project([A]));
+    await user.click(screen.getByRole('button', { name: /^1 nhóm/ }));
+    expect(await screen.findByText('Không tải được quyền của bạn ở dự án này.')).toBeTruthy();
+    expect(screen.queryByText('Chỉ quản trị dự án mới đổi được nhóm.')).toBeNull();
+    permsMode = 'ok';
+    await user.click(screen.getByRole('button', { name: 'Thử lại' }));
+    expect(await screen.findByRole('button', { name: 'Lưu' })).toBeTruthy(); // thử lại ra trình sửa
+  });
+
+  it('danh mục nhóm đang tải / lỗi: báo rõ, không nói "Chưa có nhóm nào"; Thử lại tải lại', async () => {
+    perms = ['project:admin'];
+    catalog = 'pending';
+    let user = renderCell(project([]));
+    await user.click(screen.getByRole('button', { name: /^—/ }));
+    expect(await screen.findByText('Đang tải danh sách nhóm…')).toBeTruthy();
+    expect(screen.queryByText('Chưa có nhóm nào.')).toBeNull();
+    cleanup();
+
+    catalog = 'error';
+    user = renderCell(project([]));
+    await user.click(screen.getByRole('button', { name: /^—/ }));
+    expect(await screen.findByText('Không tải được danh sách nhóm.')).toBeTruthy();
+    expect(screen.queryByText('Chưa có nhóm nào.')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Lưu' })).toBeNull();
+    catalog = ALL.map((g) => ({ ...g, projects: [], projectCount: 0, owner: null }));
+    await user.click(screen.getByRole('button', { name: 'Thử lại' }));
+    expect(await screen.findByRole('checkbox', { name: /Hạ tầng/ })).toBeTruthy();
   });
 
   it('quyền chỉ tra khi mở popover (trang nhiều dự án không bắn yêu cầu quyền cho từng hàng)', async () => {
