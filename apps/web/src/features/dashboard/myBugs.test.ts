@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Workflow } from '@/features/workflow-settings/api';
+import { defaultWorkflow, statusIdOf } from '@/features/issues/workflowFixtures';
 import { splitMyBugs, verifyStageStatusIds } from './myBugs';
 
 const st = (id: string, order: number, category: 'TODO' | 'IN_PROGRESS' | 'DONE') => ({
@@ -56,5 +57,62 @@ describe('splitMyBugs', () => {
     );
     expect(out.awaiting.map((i) => i.id)).toEqual(['a', 'c']);
     expect(out.open.map((i) => i.id)).toEqual(['b']);
+  });
+});
+
+describe('verifyStageStatusIds — quy trình mặc định theo loại việc', () => {
+  const standard = defaultWorkflow('STANDARD');
+  const bug = defaultWorkflow('BUG');
+  const epic = defaultWorkflow('EPIC');
+
+  it('Bug chờ xác nhận ở Ready for Retest (không phải Reopened hay Pending)', () => {
+    expect([...verifyStageStatusIds([bug])]).toEqual([statusIdOf('BUG', 'Ready for Retest')]);
+  });
+  it('Task (Standard) ở In Review, Epic ở Awaiting Acceptance — mỗi loại một bước, không lẫn nhau', () => {
+    expect([...verifyStageStatusIds([standard, bug, epic])].sort()).toEqual(
+      [
+        statusIdOf('STANDARD', 'In Review'),
+        statusIdOf('BUG', 'Ready for Retest'),
+        statusIdOf('EPIC', 'Awaiting Acceptance'),
+      ].sort(),
+    );
+  });
+  it('bug đang Reopened hoặc Pending vẫn nằm ở "còn mở"; Bug ở Ready for Retest vào "chờ tôi xác nhận"', () => {
+    const ids = verifyStageStatusIds([standard, bug]);
+    const issue = (id: string, key: 'STANDARD' | 'BUG', name: string) => ({
+      id,
+      status: { id: statusIdOf(key, name) },
+    });
+    const out = splitMyBugs(
+      [
+        issue('retest', 'BUG', 'Ready for Retest'),
+        issue('reopened', 'BUG', 'Reopened'),
+        issue('pending', 'BUG', 'Pending'),
+        issue('task-review', 'STANDARD', 'In Review'),
+      ],
+      ids,
+    );
+    expect(out.awaiting.map((i) => i.id)).toEqual(['retest', 'task-review']);
+    expect(out.open.map((i) => i.id)).toEqual(['reopened', 'pending']);
+  });
+});
+
+describe('verifyStageStatusIds — bước dẫn tới "Không xử lý"/Cancelled không phải bước chờ xác nhận', () => {
+  it('quy trình tuỳ chỉnh: Review → Done và Triage → "Không xử lý" (cùng nhóm xong): chỉ Review là bước chờ', () => {
+    const w: Workflow = {
+      ...wf([
+        st('todo', 0, 'TODO'),
+        st('doing', 1, 'IN_PROGRESS'),
+        st('review', 2, 'IN_PROGRESS'),
+        st('triage', 3, 'IN_PROGRESS'),
+        st('done', 4, 'DONE'),
+        { ...st('wontfix', 5, 'DONE'), name: 'Không xử lý' },
+      ]),
+      transitions: [
+        { id: 't1', name: 'Xong', fromStatusId: 'review', toStatusId: 'done', order: 0 },
+        { id: 't2', name: 'Bỏ qua', fromStatusId: 'triage', toStatusId: 'wontfix', order: 1 },
+      ],
+    };
+    expect([...verifyStageStatusIds([w])]).toEqual(['review']);
   });
 });

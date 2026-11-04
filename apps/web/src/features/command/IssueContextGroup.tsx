@@ -5,8 +5,7 @@ import { apiErrorMessage } from '@/lib/api';
 import { useCanEditIssue, useCanIn } from '@/features/projects/permissions';
 import { useAuth } from '@/stores/auth';
 import { useIssue, useUpdateIssue } from '@/features/issues/api';
-import { computeNextStatuses } from '@/features/issues/nextStatuses';
-import { useWorkflows } from '@/features/workflow-settings/api';
+import { useIssueNextStatuses } from '@/features/issues/useIssueNextStatuses';
 import { useToggleWatch, useWatchState } from '@/features/issue-widgets/api';
 import { ASSIGNED_TO_ME_TOAST } from '@/features/issue-edit/assignToMe';
 import { ActionItem } from './ActionItem';
@@ -37,7 +36,6 @@ export function IssueContextGroup({
 }) {
   const me = useAuth((s) => s.user);
   const { data: issue } = useIssue(issueKey);
-  const { data: workflows } = useWorkflows();
   const updateIssue = useUpdateIssue(issue?.projectId);
   const { data: watch } = useWatchState(issue?.id ?? '');
   const toggleWatch = useToggleWatch(issue?.id ?? '');
@@ -47,8 +45,8 @@ export function IssueContextGroup({
   const canTransition = can('issue:transition');
   const canComment = can('comment:create');
 
+  const { nextStatuses } = useIssueNextStatuses(issue);
   if (!issue) return null;
-  const nextStatuses = computeNextStatuses(workflows, issue.status.id);
 
   // Bảng lệnh đóng ngay sau khi chọn nên component này bị gỡ (observer của mutation mất) → callback của `mutate`
   // sẽ không chạy. Dùng mutateAsync + try/catch: promise vẫn chạy tiếp sau khi unmount nên toast vẫn hiện.
@@ -109,7 +107,9 @@ export function IssueContextGroup({
             key={s.id}
             value={`doi trang thai chuyen ${s.label} ${s.name} ${issue.key}`}
             icon={<ArrowRightLeft className={ICON} aria-hidden="true" />}
-            label={s.label !== s.name ? `${s.label} → ${s.name}` : `Đổi trạng thái → ${s.name}`}
+            label={`${s.label !== s.name ? `${s.label} → ${s.name}` : `Đổi trạng thái → ${s.name}`}${
+              s.suggested ? ' (gợi ý: trước khi tạm dừng)' : ''
+            }`}
             onSelect={() => runAction(() => requestTransition(s.id))}
           />
         ))}

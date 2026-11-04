@@ -18,7 +18,8 @@ const code = (p: string) =>
 describe('Cấu hình dự án là route con', () => {
   it('đường dẫn mục', () => {
     expect(configSectionPath('ABC', 'labels')).toBe('/p/ABC/config/labels');
-    expect(CONFIG_SECTION_IDS).toHaveLength(7);
+    expect(CONFIG_SECTION_IDS).toHaveLength(8);
+    expect(isConfigSection('workflow')).toBe(true); // /p/:key/config/workflow là mục thật, không rơi về Chung
   });
   it('Thời gian xử lý là mục cấu hình của dự án (cam kết + bảng theo dõi theo dự án)', () => {
     expect(isConfigSection('response-time')).toBe(true);
@@ -57,7 +58,7 @@ describe('Cấu hình dự án là route con', () => {
     expect(s).not.toMatch(/<h1|useConfirmDiscard|pageContainer|uppercase/);
   });
   it('mục đơn thẻ không tự vẽ tiêu đề thẻ; General/Avatar/Privacy dùng h3', () => {
-    for (const f of ['Components', 'Versions', 'Labels', 'Data', 'Members']) {
+    for (const f of ['Components', 'Versions', 'Labels', 'Data', 'Members', 'Workflow']) {
       expect(code(`features/project-config/${f}Section.tsx`), f).not.toMatch(
         /<SectionCard[^>]*\btitle=/,
       );

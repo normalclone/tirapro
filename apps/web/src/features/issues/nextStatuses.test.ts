@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import type { Workflow } from '@/features/workflow-settings/api';
-import { canRevertTransition, computeNextStatuses, transitionLabel } from './nextStatuses';
+import { defaultWorkflow, statusIdOf } from './workflowFixtures';
+import {
+  canRevertTransition,
+  computeNextStatuses,
+  resolveIssueFlow,
+  transitionLabel,
+  withSuggestedFirst,
+  workflowOfStatus,
+  type NextStatus,
+} from './nextStatuses';
 
 const st = (id: string, order: number, category: 'TODO' | 'IN_PROGRESS' | 'DONE' = 'TODO') => ({
   id,
@@ -97,5 +106,70 @@ describe('computeNextStatuses — label', () => {
     expect(out.map((s) => s.label)).toEqual(['Trả lại', 'Hoàn thành']);
     expect(out.map((s) => s.transitionName)).toEqual(['Trả lại', 'Hoàn thành']);
     expect(out.map((s) => s.name)).toEqual(['DOING', 'DONE']);
+  });
+});
+
+describe('withSuggestedFirst', () => {
+  const mkNext = (id: string): NextStatus => ({
+    id,
+    name: id,
+    category: 'IN_PROGRESS',
+    order: 0,
+    transitionName: null,
+    label: id,
+  });
+  it('đưa gợi ý lên đầu và đánh dấu; thứ tự còn lại giữ nguyên', () => {
+    const out = withSuggestedFirst([mkNext('a'), mkNext('b'), mkNext('c')], 'c');
+    expect(out.map((s) => s.id)).toEqual(['c', 'a', 'b']);
+    expect(out[0]!.suggested).toBe(true);
+    expect(out[1]!.suggested).toBeUndefined();
+  });
+  it('không có gợi ý hoặc gợi ý ngoài danh sách → giữ nguyên chính danh sách', () => {
+    const list = [mkNext('a'), mkNext('b')];
+    expect(withSuggestedFirst(list, undefined)).toBe(list);
+    expect(withSuggestedFirst(list, 'zzz')).toBe(list);
+  });
+});
+
+describe('workflowOfStatus — quy trình theo loại việc', () => {
+  const standard = defaultWorkflow('STANDARD');
+  const bug = defaultWorkflow('BUG');
+  it('Task (Standard) và Bug cùng dự án mở ra hai quy trình khác nhau', () => {
+    expect(workflowOfStatus([standard, bug], statusIdOf('STANDARD', 'In Review'))?.name).toBe(
+      'Standard Workflow',
+    );
+    expect(workflowOfStatus([standard, bug], statusIdOf('BUG', 'Ready for Retest'))?.name).toBe(
+      'Bug Workflow',
+    );
+  });
+  it('chưa tải / trạng thái lạ → null', () => {
+    expect(workflowOfStatus(undefined, 'x')).toBeNull();
+    expect(workflowOfStatus([standard], 'zzz')).toBeNull();
+    expect(workflowOfStatus([standard], undefined)).toBeNull();
+  });
+});
+
+describe('resolveIssueFlow — bước kế theo quy trình của loại việc', () => {
+  const standard = defaultWorkflow('STANDARD');
+  const bug = defaultWorkflow('BUG');
+  it('nhất quán: như computeNextStatuses', () => {
+    const f = resolveIssueFlow([standard, bug], bug.id, statusIdOf('BUG', 'Ready for Retest'));
+    expect(f.mismatch).toBe(false);
+    expect(f.next.map((s) => s.name)).toEqual(
+      computeNextStatuses([standard, bug], statusIdOf('BUG', 'Ready for Retest')).map(
+        (s) => s.name,
+      ),
+    );
+  });
+  it('lệch: trạng thái của Standard nhưng loại dùng Bug Workflow → các trạng thái của Bug Workflow theo thứ tự', () => {
+    const f = resolveIssueFlow([standard, bug], bug.id, statusIdOf('STANDARD', 'In Review'));
+    expect(f.mismatch).toBe(true);
+    expect(f.next.map((s) => s.name)).toEqual(bug.statuses.map((s) => s.name));
+    expect(f.typeWorkflow?.name).toBe('Bug Workflow');
+  });
+  it('chưa biết quy trình của loại → suy từ trạng thái như trước, không báo lệch', () => {
+    const f = resolveIssueFlow([standard, bug], undefined, statusIdOf('STANDARD', 'In Review'));
+    expect(f.mismatch).toBe(false);
+    expect(f.next.length).toBeGreaterThan(0);
   });
 });

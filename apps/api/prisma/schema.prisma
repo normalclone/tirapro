@@ -309,6 +309,7 @@ model Workspace {
   notifications Notification[]
   activities    ActivityLog[]
   workflows           Workflow[]
+  workflowSchemes     WorkspaceWorkflowScheme[]
   priorities          Priority[]
   resolutions         Resolution[]
   severities          Severity[]
@@ -528,6 +529,7 @@ model Project {
   boards       Board[]
   sprints      Sprint[]
   workflows    Workflow[]
+  workflowOverrides ProjectWorkflowOverride[]
   labels       Label[]
   components   Component[]
   versions     Version[]
@@ -671,9 +673,46 @@ model Workflow {
   project     Project?  @relation(fields: [projectId], references: [id], onDelete: Cascade)
   statuses    Status[]
   transitions WorkflowTransition[]
+  workspaceSchemes WorkspaceWorkflowScheme[]
+  projectOverrides ProjectWorkflowOverride[]
 
   @@index([workspaceId, isTemplate])
   @@index([projectId])
+}
+
+// Quy trình theo loại việc: workspace ánh xạ loại việc → quy trình (Workflow.projectId = null);
+// dự án có thể ghi đè riêng từng loại. Resolver: ghi đè → workspace → Project.defaultWorkflowId.
+// Workflow: onDelete Restrict — không xoá được quy trình còn được gán (WORKFLOW_IN_USE).
+model WorkspaceWorkflowScheme {
+  id          String   @id @default(cuid())
+  workspaceId String
+  issueTypeId String
+  workflowId  String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  issueType IssueType @relation(fields: [issueTypeId], references: [id], onDelete: Cascade)
+  workflow  Workflow  @relation(fields: [workflowId], references: [id], onDelete: Restrict)
+
+  @@unique([workspaceId, issueTypeId])
+  @@index([workflowId])
+}
+
+model ProjectWorkflowOverride {
+  id          String   @id @default(cuid())
+  projectId   String
+  issueTypeId String
+  workflowId  String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  project   Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  issueType IssueType @relation(fields: [issueTypeId], references: [id], onDelete: Cascade)
+  workflow  Workflow  @relation(fields: [workflowId], references: [id], onDelete: Restrict)
+
+  @@unique([projectId, issueTypeId])
+  @@index([workflowId])
 }
 
 model Status {
@@ -726,6 +765,8 @@ model IssueType {
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   issues    Issue[]
+  workflowSchemes   WorkspaceWorkflowScheme[]
+  workflowOverrides ProjectWorkflowOverride[]
 
   @@unique([workspaceId, name])
   @@index([workspaceId])

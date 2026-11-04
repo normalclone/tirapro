@@ -56,6 +56,11 @@ export const updateIssueSchema = createIssueSchema
     // Ước lượng thời gian (giây). Ước lượng còn lại do worklog tự trừ; sửa tay khi cần.
     originalEstimate: z.number().int().min(0).max(100_000_000).optional().nullable(),
     remainingEstimate: z.number().int().min(0).max(100_000_000).optional().nullable(),
+    /**
+     * Đổi `typeId` sang loại dùng quy trình KHÁC: trạng thái đích trong quy trình mới (bắt buộc, thiếu → 422
+     * STATUS_MAPPING_REQUIRED kèm gợi ý). Bỏ qua khi loại mới dùng cùng quy trình.
+     */
+    targetStatusId: z.string().min(1).optional(),
   });
 
 export const transitionIssueSchema = z.object({
@@ -78,6 +83,11 @@ export const bulkUpdateIssuesSchema = z.object({
   projectId: z.string().min(1),
   boardId: z.string().min(1).optional(),
   force: z.boolean().optional(),
+  /**
+   * Đổi loại hàng loạt: trạng thái cũ → trạng thái đích, cho việc nào đang ở quy trình khác quy trình của loại mới.
+   * Việc có trạng thái không nằm trong bảng → 422 STATUS_MAPPING_REQUIRED (kèm gợi ý), chưa ghi gì.
+   */
+  statusMap: z.record(z.string().min(1), z.string().min(1)).optional(),
   items: z
     .array(z.object({ id: z.string().min(1), version: z.number().int().nonnegative() }))
     .min(1, 'Hãy chọn ít nhất một công việc')
@@ -89,6 +99,8 @@ export const bulkUpdateIssuesSchema = z.object({
   patch: z
     .object({
       statusId: z.string().min(1).optional(),
+      /** Đổi loại (không áp cho Epic — cả từ lẫn sang). */
+      typeId: z.string().min(1).optional(),
       assigneeId: z.string().min(1).nullable().optional(),
       priorityId: z.string().min(1).nullable().optional(),
       sprintId: z.string().min(1).nullable().optional(),

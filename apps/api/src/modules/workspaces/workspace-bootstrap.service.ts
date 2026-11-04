@@ -8,6 +8,7 @@ import {
   DEFAULT_WORKFLOW_TEMPLATES,
 } from '@tirapro/types';
 import type { Prisma, PrismaClient } from '@prisma/client';
+import { ensureDefaultScheme } from '../workflow-admin/default-scheme';
 
 type Tx = Prisma.TransactionClient | PrismaClient;
 
@@ -32,6 +33,9 @@ export class WorkspaceBootstrapService {
         },
       });
     }
+    // Quy trình theo loại việc: tổ chức mới có sẵn 3 quy trình mặc định + dòng cấu hình cho từng loại việc vừa tạo,
+    // để dự án đầu tiên tạo việc ngay được (không thì loại việc nào cũng "không có quy trình").
+    await ensureDefaultScheme(tx, workspaceId);
     for (const p of DEFAULT_PRIORITIES) {
       await tx.priority.create({
         data: {

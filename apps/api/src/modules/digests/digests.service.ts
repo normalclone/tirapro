@@ -925,6 +925,8 @@ export class DigestsService implements OnApplicationShutdown {
         where: {
           field: HistoryField.STATUS,
           newCategory: StatusCategory.DONE,
+          // Chỉ chuyển VÀO nhóm DONE: dòng DONE → DONE (chuyển hàng loạt khi đổi quy trình) không phải việc vừa xong.
+          OR: [{ oldCategory: null }, { oldCategory: { not: StatusCategory.DONE } }],
           occurredAt: { gte: since },
           issue: ctx.issueScope,
         },

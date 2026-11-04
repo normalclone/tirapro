@@ -72,6 +72,7 @@ export const PROJECT_CONFIG_LABELS = {
   components: 'Thành phần',
   versions: 'Phiên bản',
   labels: 'Nhãn',
+  workflow: 'Quy trình',
   responseTime: 'Thời gian xử lý',
   data: 'Xuất / Nhập dữ liệu',
 } as const;

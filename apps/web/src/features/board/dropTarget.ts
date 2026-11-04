@@ -44,3 +44,11 @@ export function resolveDropStatuses(
   const options = col.statusIds.map((id) => allowed.get(id)).filter((s): s is NextStatus => !!s);
   return options.length ? { kind: 'move', options } : { kind: 'blocked' };
 }
+
+/** Toast khi thả vào cột mà quy trình của CHÍNH loại việc này không có bước chuyển tới (Bug và Task cùng bảng có quy trình khác nhau). */
+export function blockedDropMessage(
+  issue: { type: { name: string }; status: { name: string } },
+  columnName: string,
+): string {
+  return `Quy trình của loại ${issue.type.name} không có bước chuyển từ “${issue.status.name}” sang cột “${columnName}”.`;
+}

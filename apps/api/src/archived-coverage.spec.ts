@@ -17,6 +17,8 @@ const EXEMPT: Record<string, string> = {
   'analytics/analytics.service.ts': 'chỉ đọc',
   'export/export.service.ts': 'chỉ đọc',
   'search/search.service.ts': 'chỉ đọc',
+  'workflow-admin/workflow-resolver.service.ts':
+    'chỉ đọc DB; `.delete(` là xoá mục cache trong bộ nhớ',
   'rbac/issue-ownership.service.ts': 'kiểm quyền',
   'rbac/rbac.service.ts': 'kiểm quyền',
   'realtime/presence.service.ts': 'trạng thái tạm thời',
@@ -69,6 +71,8 @@ const EXEMPT_METHODS: Record<string, string> = {
   'projects/projects.service.ts#archive': 'vòng đời dự án',
   'projects/projects.service.ts#unarchive': 'vòng đời dự án — chính là lối khôi phục',
   'projects/projects.service.ts#remove': 'vòng đời dự án (xoá mềm)',
+  'automation/rules.service.ts#onRulesChanged':
+    'chỉ bỏ cache quy tắc trong bộ nhớ khi script/API đổi quy trình sửa quy tắc; không ghi dữ liệu dự án',
   'automation/automation.service.ts#runDueRecurring':
     'cron; scanDueRecurring lọc `project: { archivedAt: null }` ở where',
   'automation/rule-engine.service.ts#onModuleInit':
@@ -112,6 +116,8 @@ const EXEMPT_METHODS: Record<string, string> = {
     'helper chạy TRONG transaction của IssuesService (create/update/bulk/xoá/khôi phục) và của recomputeAll — các nơi đó đã chặn dự án lưu trữ trước khi gọi (recomputeAll cố ý chạy mọi dự án)',
   'import/import.service.ts#resolveOrCreateLabel':
     'helper nội bộ của luồng import (đã chặn trước khi tạo ImportJob)',
+  'workflow-admin/workflow-scheme.service.ts#setWorkspaceScheme':
+    'cấu hình quy trình cấp tổ chức (workspace:admin): cố ý chuyển cả việc của dự án lưu trữ sang quy trình mới để dữ liệu nhất quán khi khôi phục; ghi đè riêng từng dự án thì có guard',
   'sla/sla.service.ts#onIssueCreated': 'phản ứng sự kiện issue (ghi issue đã bị chặn ở nguồn)',
   'sla/sla.service.ts#onCommentAdded': 'phản ứng sự kiện issue (ghi comment đã bị chặn ở nguồn)',
   'sla/sla.service.ts#onIssueUpdated':

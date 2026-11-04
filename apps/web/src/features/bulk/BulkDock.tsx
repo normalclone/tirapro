@@ -22,7 +22,7 @@ import { useAssigneePicker } from '@/features/issue-edit/useAssigneeOptions';
 import { isOverlayOpen, isTypingTarget, shouldClearSelectionOnEscape } from '@/lib/hotkeys';
 import { activeDrag } from '@/lib/activeDrag';
 import { categoryColor } from '@/lib/statusColor';
-import type { NextStatus } from '@/features/issues/nextStatuses';
+import type { BulkStatusOption } from './bulkEdit';
 import type { ProjectLabel } from '@/features/issue-meta/api';
 import { PointsPopover } from '@/features/backlog/PointsPopover';
 import type { PriorityChoice } from '@/features/backlog/InlineEdits';
@@ -123,8 +123,8 @@ export function BulkDock({
   /** Epic chọn được (đã loại các việc đang chọn); chỉ dùng khi có `onSetEpic`. */
   epics?: IssueDto[];
   labels: ProjectLabel[];
-  /** Trạng thái mà MỌI việc đang chọn đều chuyển tới được (`commonNextStatuses`). */
-  statusOptions: NextStatus[];
+  /** Lựa chọn trạng thái của lô (`bulkStatusOptions`): một quy trình = bước chung; nhiều quy trình = nhóm theo quy trình + "cùng tên". */
+  statusOptions: BulkStatusOption[];
   /** Quản trị dự án (mọi dự án của lô) — chỉ người này thấy nút chỉnh tay "Điểm". */
   canAdmin: boolean;
   onSetPoints: (points: number) => void;
@@ -135,7 +135,7 @@ export function BulkDock({
   /** Không truyền = ẩn nhóm "Epic". */
   onSetEpic?: (epicId: string | null) => void;
   /** Không truyền = ẩn "Trạng thái" (quy trình theo dự án). */
-  onSetStatus?: (statusId: string) => void;
+  onSetStatus?: (option: BulkStatusOption) => void;
   /**
    * `sticky` = dính đáy vùng cuộn của trang (Việc chờ). `docked` = con flex `shrink-0` ở cuối cột nội dung (Bảng việc: vùng
    * cuộn là từng cột nên không dính được), nằm trên thanh tab đáy.
@@ -501,33 +501,63 @@ function BulkEditControls({
       )}
 
       {canTransition && onSetStatus && only !== 'rest' && (
-        <span
-          className={cn('inline-flex', layout === 'stack' && 'w-full')}
-          title={
-            statusOptions.length === 0 ? 'Các việc đang chọn không có bước chuyển chung' : undefined
-          }
-        >
-          <SearchSelect
-            value=""
-            onChange={(v) => v && onSetStatus(v)}
-            options={statusOptions.map((s) => ({
-              value: s.id,
-              label: s.name,
-              color: categoryColor(s.category),
-            }))}
-            placeholder="Trạng thái"
-            searchPlaceholder="Tìm trạng thái…"
-            ariaLabel="Đổi trạng thái các việc đang chọn"
-            disabled={busy || statusOptions.length === 0}
-            align="end"
-            className={cls}
-            renderTrigger={() => (
-              <BarTrigger icon={<CircleDot className="h-4 w-4 shrink-0" />} text="Trạng thái" />
-            )}
-          />
-        </span>
+        <BulkStatusSelect
+          busy={busy}
+          statusOptions={statusOptions}
+          onSetStatus={onSetStatus}
+          cls={cls}
+          layout={layout}
+        />
       )}
     </>
+  );
+}
+
+/** Ô "Trạng thái" của thanh hàng loạt: chỉ liệt kê bước chuyển chung của các việc đang chọn (theo quy trình của từng loại). */
+function BulkStatusSelect({
+  busy,
+  statusOptions,
+  onSetStatus,
+  cls,
+  layout,
+}: {
+  busy: boolean;
+  statusOptions: BulkStatusOption[];
+  onSetStatus: (option: BulkStatusOption) => void;
+  cls: string;
+  layout: Layout;
+}) {
+  return (
+    <span
+      className={cn('inline-flex', layout === 'stack' && 'w-full')}
+      title={
+        statusOptions.length === 0 ? 'Các việc đang chọn không có bước chuyển chung' : undefined
+      }
+    >
+      <SearchSelect
+        value=""
+        onChange={(v) => {
+          const option = statusOptions.find((s) => s.id === v);
+          if (option) onSetStatus(option);
+        }}
+        options={statusOptions.map((s) => ({
+          value: s.id,
+          label: s.name,
+          color: categoryColor(s.category),
+          group: s.group,
+          description: s.hint,
+        }))}
+        placeholder="Trạng thái"
+        searchPlaceholder="Tìm trạng thái…"
+        ariaLabel="Đổi trạng thái các việc đang chọn"
+        disabled={busy || statusOptions.length === 0}
+        align="end"
+        className={cls}
+        renderTrigger={() => (
+          <BarTrigger icon={<CircleDot className="h-4 w-4 shrink-0" />} text="Trạng thái" />
+        )}
+      />
+    </span>
   );
 }
 

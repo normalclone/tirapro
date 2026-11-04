@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type * as ApiModule from '@/lib/api';
 import { CommandPalette } from './CommandPalette';
 
 vi.stubGlobal(
@@ -16,7 +17,7 @@ vi.stubGlobal(
 Element.prototype.scrollIntoView = vi.fn();
 
 vi.mock('@/lib/api', async (orig) => {
-  const real = await orig<typeof import('@/lib/api')>();
+  const real = await orig<typeof ApiModule>();
   return { ...real, api: { get: vi.fn().mockRejectedValue(new Error('offline')) } };
 });
 

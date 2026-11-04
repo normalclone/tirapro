@@ -862,6 +862,7 @@ export class AnalyticsService {
         SELECT to_char(date_trunc('day', "occurredAt"), 'YYYY-MM-DD') AS day, count(*) AS n
         FROM "IssueHistory"
         WHERE "projectId" = ${projectId} AND "field" = 'STATUS' AND "newCategory" = 'DONE'
+          AND ("oldCategory" IS NULL OR "oldCategory" <> 'DONE')
           AND EXISTS (SELECT 1 FROM "Issue" WHERE "Issue"."id" = "IssueHistory"."issueId" AND ${triageVisibleSql()})
           AND "occurredAt" >= ${utc(lo)} AND "occurredAt" <= ${utc(hi)}
         GROUP BY 1`,

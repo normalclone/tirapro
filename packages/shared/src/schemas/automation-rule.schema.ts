@@ -108,7 +108,15 @@ const assignAction = z.object({
   mode: z.enum(['reporter', 'lead', 'user', 'roundRobin']),
   userId: z.string().min(1).optional(),
 });
-const transitionAction = z.object({ type: z.literal('transition'), toStatusId: z.string().min(1) });
+const transitionAction = z.object({
+  type: z.literal('transition'),
+  toStatusId: z.string().min(1),
+  /**
+   * Trạng thái thay thế theo quy trình của từng loại việc: việc thuộc quy trình khác thì chuyển sang cái (trong `toStatusId` +
+   * `alsoStatusIds`) nằm cùng quy trình với nó. Do hệ thống ghi khi đổi quy trình; giao diện chỉ cần giữ nguyên.
+   */
+  alsoStatusIds: z.array(z.string().min(1)).max(50).optional(),
+});
 const addLabelAction = z.object({ type: z.literal('addLabel'), labelId: z.string().min(1) });
 const removeLabelAction = z.object({ type: z.literal('removeLabel'), labelId: z.string().min(1) });
 const addCommentAction = z.object({
@@ -197,6 +205,8 @@ export const triggerConfigSchema = z.object({
   cron: z.string().trim().max(100).optional(),
   /** ISSUE_TRANSITIONED: chỉ khi chuyển ĐẾN trạng thái này (bỏ trống = mọi lần chuyển). */
   toStatusId: z.string().min(1).optional(),
+  /** ISSUE_TRANSITIONED: chuyển ĐẾN bất kỳ trạng thái nào trong danh sách (khi một trạng thái cũ sang nhiều quy trình). */
+  toStatusIds: z.array(z.string().min(1)).max(50).optional(),
 });
 
 const ruleBody = {

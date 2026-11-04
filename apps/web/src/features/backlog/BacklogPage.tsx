@@ -102,7 +102,7 @@ import {
   type PointsRole,
 } from '@/lib/points';
 import { useBulkEdit } from '@/features/bulk/useBulkEdit';
-import { commonNextStatuses } from '@/features/bulk/bulkEdit';
+import { bulkStatusOptions } from '@/features/bulk/bulkEdit';
 import { useBulkSelection } from '@/features/bulk/useBulkSelection';
 import {
   backlogDragRoute,
@@ -619,7 +619,7 @@ export function BacklogPage() {
   );
   const canEditAll = selectedIssues.every(canEditIssue); // điểm cùng điều kiện với ưu tiên/nhãn/epic (B7)
   const statusOptions = useMemo(
-    () => commonNextStatuses(workflows, selectedIssues),
+    () => bulkStatusOptions(workflows, selectedIssues),
     [workflows, selectedIssues],
   );
   // Epic chọn được: loại chính các việc đang chọn (máy chủ 422 nếu epic nằm trong lô).
@@ -1181,7 +1181,7 @@ export function BacklogPage() {
                     onSetPriority={(id) => void bulk.setPriority(id)}
                     onAddLabel={(id) => void bulk.addLabel(id)}
                     onSetEpic={(id) => void bulk.setEpic(id)}
-                    onSetStatus={(id) => void bulk.setStatus(id)}
+                    onSetStatus={(option) => void bulk.setStatus(option)}
                   />
                 )}
               </div>

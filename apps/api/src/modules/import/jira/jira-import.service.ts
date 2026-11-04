@@ -6,10 +6,11 @@ import {
   JIRA_CREATE,
   jiraAnalyzeIdSchema,
   normalizeJiraKey,
+  suggestTargetStatus,
+  type CreateIssueInput,
   type JiraImportOptions,
   type JiraImportRunInput,
 } from '@tirapro/shared';
-import type { CreateIssueInput } from '@tirapro/shared';
 import type { JiraAnalyzeResult, JiraDryRunResult, JiraImportTargets } from '@tirapro/types';
 import { PrismaService } from '../../../infra/prisma/prisma.service';
 import {
@@ -26,6 +27,7 @@ import {
   type ObjectStorage,
 } from '../../../common/storage/object-storage';
 import { ProjectsService } from '../../projects/projects.service';
+import { WorkflowResolver } from '../../workflow-admin/workflow-resolver.service';
 import { claimImportJob, findImportJobByAnalyzeId } from './jira-claim';
 import { ImportService, type PreparedItem } from '../import.service';
 import {
@@ -152,6 +154,8 @@ export class JiraImportService implements OnApplicationBootstrap {
     private readonly importService: ImportService,
     private readonly projects: ProjectsService,
     @Inject(OBJECT_STORAGE) private readonly storage: ObjectStorage,
+    // Quy trình theo loại việc; không phụ thuộc gì nên spec dựng bằng 4 đối số vẫn chạy.
+    private readonly workflows: WorkflowResolver = new WorkflowResolver(),
   ) {}
 
   // ---------------------------------------------------------------- khôi phục job kẹt
@@ -285,13 +289,7 @@ export class JiraImportService implements OnApplicationBootstrap {
         where: { id: projectId },
         select: { defaultWorkflowId: true },
       });
-      if (full?.defaultWorkflowId) {
-        statuses = await this.prisma.status.findMany({
-          where: { workflowId: full.defaultWorkflowId },
-          orderBy: { order: 'asc' },
-          select: { id: true, name: true },
-        });
-      }
+      statuses = await this.projectStatusPool(projectId, full?.defaultWorkflowId ?? null);
     }
     return {
       projects,
@@ -349,11 +347,8 @@ export class JiraImportService implements OnApplicationBootstrap {
     }
 
     const catalog = await this.loadCatalog(workspaceId);
-    const statuses = existingProject?.defaultWorkflowId
-      ? await this.prisma.status.findMany({
-          where: { workflowId: existingProject.defaultWorkflowId },
-          select: { id: true, name: true, category: true },
-        })
+    const statuses = existingProject
+      ? await this.projectStatusPool(existingProject.id, existingProject.defaultWorkflowId)
       : [];
     this.assertTargets(input, catalog, statuses, Boolean(existingProject));
 
@@ -490,6 +485,9 @@ export class JiraImportService implements OnApplicationBootstrap {
         input.mapping.statuses,
       );
 
+      // Mỗi loại việc có quy trình riêng: đổi trạng thái đã chọn sang trạng thái tương ứng trong quy trình của loại đó.
+      const statusFor = await this.translateStatuses(projectId, typeIds, statusIds, categories);
+
       // 3. Sprint.
       const plan = this.plan(parsed, input, ctx.catalog);
       const sprintIds = opts.importSprints
@@ -597,8 +595,8 @@ export class JiraImportService implements OnApplicationBootstrap {
               parentId,
               epicId,
               typeId: typeIds.get(row.issueType)!,
-              statusId: statusIds.get(row.status)!,
-              category: categories.get(row.status) ?? 'IN_PROGRESS',
+              statusId: statusFor(typeIds.get(row.issueType)!, row.status).statusId,
+              category: statusFor(typeIds.get(row.issueType)!, row.status).category,
               priorityId: row.priority ? priorityIds.get(row.priority) : undefined,
               sprintId: opts.importSprints
                 ? sprintIds.get(row.sprints[row.sprints.length - 1] ?? '')
@@ -918,11 +916,15 @@ export class JiraImportService implements OnApplicationBootstrap {
       throw new BusinessRuleException(
         'Dự án chưa cấu hình quy trình — hãy tạo quy trình cho dự án trước khi nhập',
       );
+    const chosenIds = Object.values(mapping).filter((t) => t !== JIRA_CREATE);
+    // Trạng thái đã chọn có thể thuộc quy trình theo loại việc (không phải quy trình mặc định của dự án) — vẫn cần nhóm của nó.
     const existing = await this.prisma.status.findMany({
-      where: { workflowId },
-      select: { id: true, name: true, category: true },
+      where: { OR: [{ workflowId }, ...(chosenIds.length ? [{ id: { in: chosenIds } }] : [])] },
+      select: { id: true, name: true, category: true, workflowId: true },
     });
-    const byName = new Map(existing.map((s) => [s.name.toLowerCase(), s]));
+    const byName = new Map(
+      existing.filter((s) => s.workflowId === workflowId).map((s) => [s.name.toLowerCase(), s]),
+    );
     const byId = new Map(existing.map((s) => [s.id, s]));
     const statusIds = new Map<string, string>();
     const categories = new Map<string, Category>();
@@ -948,7 +950,7 @@ export class JiraImportService implements OnApplicationBootstrap {
           data: { workflowId, name: jiraName, category, order: nextOrder++, isInitial: false },
           select: { id: true },
         });
-        status = { id: created.id, name: jiraName, category };
+        status = { id: created.id, name: jiraName, category, workflowId };
         byName.set(jiraName.toLowerCase(), status);
         await this.prisma.workflowTransition.create({
           data: { workflowId, name: `→ ${jiraName}`, fromStatusId: null, toStatusId: created.id },
@@ -959,6 +961,97 @@ export class JiraImportService implements OnApplicationBootstrap {
       categories.set(jiraName, status.category);
     }
     return { statusIds, categories };
+  }
+
+  /**
+   * Trạng thái chọn được cho dự án: của MỌI quy trình đang dùng theo loại việc; chưa có quy trình theo loại thì là quy trình
+   * mặc định của dự án (như trước đây).
+   */
+  private async projectStatusPool(
+    projectId: string,
+    defaultWorkflowId: string | null,
+  ): Promise<Array<{ id: string; name: string; category: Category }>> {
+    const inUse = [...new Set((await this.workflows.forProject(this.prisma, projectId)).values())];
+    const workflowIds = inUse.length ? inUse : defaultWorkflowId ? [defaultWorkflowId] : [];
+    if (workflowIds.length === 0) return [];
+    return this.prisma.status.findMany({
+      where: { workflowId: { in: workflowIds } },
+      orderBy: [{ workflowId: 'asc' }, { order: 'asc' }],
+      select: { id: true, name: true, category: true },
+    });
+  }
+
+  /**
+   * Trạng thái Jira → trạng thái ĐÚNG quy trình của từng loại việc: giữ nguyên nếu đã thuộc quy trình của loại, nếu không
+   * thì cùng tên, rồi trạng thái đầu tiên cùng nhóm (`suggestTargetStatus`). Loại chưa có quy trình giữ trạng thái đã chọn.
+   * Trả hàm tra `(typeId, tên trạng thái Jira) → { statusId, category }`.
+   */
+  private async translateStatuses(
+    projectId: string,
+    typeIds: Map<string, string>,
+    statusIds: Map<string, string>,
+    categories: Map<string, Category>,
+  ): Promise<(typeId: string, jiraStatus: string) => { statusId: string; category: Category }> {
+    const typeWorkflow = await this.workflows.forProject(this.prisma, projectId);
+    const baseIds = [...new Set(statusIds.values())];
+    const base = new Map(
+      (baseIds.length
+        ? await this.prisma.status.findMany({
+            where: { id: { in: baseIds } },
+            select: { id: true, name: true, category: true, workflowId: true },
+          })
+        : []
+      ).map((s) => [s.id, s]),
+    );
+    const workflowIds = [
+      ...new Set(
+        [...typeIds.values()].map((t) => typeWorkflow.get(t)).filter((w): w is string => !!w),
+      ),
+    ];
+    const byWorkflow = new Map<
+      string,
+      Array<{ id: string; name: string; category: Category; order: number; isInitial: boolean }>
+    >();
+    if (workflowIds.length) {
+      const rows = await this.prisma.status.findMany({
+        where: { workflowId: { in: workflowIds } },
+        select: {
+          id: true,
+          name: true,
+          category: true,
+          order: true,
+          isInitial: true,
+          workflowId: true,
+        },
+      });
+      for (const r of rows) {
+        const list = byWorkflow.get(r.workflowId) ?? [];
+        list.push(r);
+        byWorkflow.set(r.workflowId, list);
+      }
+    }
+    const out = new Map<string, { statusId: string; category: Category }>();
+    for (const typeId of new Set(typeIds.values())) {
+      const wf = typeWorkflow.get(typeId);
+      for (const [jiraName, baseId] of statusIds) {
+        const from = base.get(baseId);
+        const fallback = { statusId: baseId, category: categories.get(jiraName) ?? 'IN_PROGRESS' };
+        if (!wf || !from || from.workflowId === wf) {
+          out.set(`${typeId}|${jiraName}`, fallback);
+          continue;
+        }
+        const chosen = suggestTargetStatus(from, byWorkflow.get(wf) ?? []);
+        out.set(
+          `${typeId}|${jiraName}`,
+          chosen ? { statusId: chosen.id, category: chosen.category } : fallback,
+        );
+      }
+    }
+    return (typeId, jiraStatus) =>
+      out.get(`${typeId}|${jiraStatus}`) ?? {
+        statusId: statusIds.get(jiraStatus)!,
+        category: categories.get(jiraStatus) ?? 'IN_PROGRESS',
+      };
   }
 
   /** Thêm cột (cùng tên trạng thái) vào từng board của project để trạng thái mới hiện trên board. */

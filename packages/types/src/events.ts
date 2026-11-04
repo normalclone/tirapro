@@ -42,6 +42,8 @@ export const DOMAIN_EVENTS = {
   // payload { workspaceId?, userIds?: string[] } (userIds vắng = cả workspace; có userIds mà không có workspaceId = mọi workspace của họ) — quyền xem của người dùng có thể đã đổi (vai trò
   // workspace/dự án, bộ quyền vai trò, quản trị hệ thống…, SAU commit): gateway kiểm lại `canSee` cho socket đang ở room project/issue
   ACCESS_CHANGED: 'access.changed',
+  // payload { workspaceId } — quy tắc automation vừa được hệ thống sửa/tắt hàng loạt (đổi quy trình, xoá trạng thái, SAU commit): bỏ cache quy tắc
+  AUTOMATION_RULES_CHANGED: 'automation.rules_changed',
   NOTIFICATION_CREATED: 'notification.created',
   MENTION_CREATED: 'mention.created',
   WORKLOG_CREATED: 'worklog.created',

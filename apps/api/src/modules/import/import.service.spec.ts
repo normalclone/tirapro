@@ -160,7 +160,11 @@ describe('ImportService.createIssuesInChunks + IssuesService thật — sprint C
           }),
         ),
         update: vi.fn(() => Promise.resolve({ issueSequence: 1 })),
+        // Resolver quy trình theo loại việc.
+        findUnique: vi.fn(() => Promise.resolve({ workspaceId: 'w1', defaultWorkflowId: 'wf' })),
       },
+      projectWorkflowOverride: { findMany: vi.fn(() => Promise.resolve([])) },
+      workspaceWorkflowScheme: { findMany: vi.fn(() => Promise.resolve([])) },
       issueType: {
         findFirst: vi.fn(() => Promise.resolve({ id: 't1' })),
         findUnique: vi.fn(() => Promise.resolve({ key: 'TASK', name: 'Task' })),
@@ -206,6 +210,108 @@ describe('ImportService.createIssuesInChunks + IssuesService thật — sprint C
     );
     expect(res).toMatchObject({ created: 1, errors: [] });
     expect(tx.issue.create).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('ImportService.createIssuesInChunks + IssuesService thật — nạp cấu hình quy trình theo lần chạy', () => {
+  it('M2: nhập nhiều dòng — cấu hình quy trình chỉ được nạp MỘT lần cho cả lần chạy (không ~4 truy vấn/dòng)', async () => {
+    const createdRow = {
+      id: 'i1',
+      key: 'P-TASK-1',
+      summary: 's',
+      workspaceId: 'w1',
+      projectId: 'p1',
+      type: {
+        id: 't1',
+        name: 'Task',
+        key: 'TASK',
+        iconUrl: null,
+        color: null,
+        hierarchyLevel: 0,
+        isSubtask: false,
+      },
+      status: {
+        id: 's1',
+        workflowId: 'wf',
+        name: 'Todo',
+        category: 'TODO',
+        color: null,
+        order: 0,
+        isInitial: true,
+      },
+      statusId: 's1',
+      sprintId: 'sp-closed',
+      labels: [],
+      components: [],
+      fixVersions: [],
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    const tx = {
+      project: {
+        findFirst: vi.fn(() =>
+          Promise.resolve({
+            id: 'p1',
+            key: 'P',
+            defaultWorkflowId: 'wf',
+            leadId: null,
+            defaultAssigneeMode: 'NONE',
+            archivedAt: null,
+          }),
+        ),
+        update: vi.fn(() => Promise.resolve({ issueSequence: 1 })),
+        // Resolver quy trình theo loại việc.
+        findUnique: vi.fn(() => Promise.resolve({ workspaceId: 'w1', defaultWorkflowId: 'wf' })),
+      },
+      projectWorkflowOverride: { findMany: vi.fn(() => Promise.resolve([])) },
+      workspaceWorkflowScheme: { findMany: vi.fn(() => Promise.resolve([])) },
+      issueType: {
+        findFirst: vi.fn(() => Promise.resolve({ id: 't1' })),
+        findUnique: vi.fn(() => Promise.resolve({ key: 'TASK', name: 'Task' })),
+      },
+      sprint: {
+        findFirst: vi.fn(() => Promise.resolve({ id: 'sp-closed', state: 'CLOSED' })),
+      },
+      status: { findFirst: vi.fn(() => Promise.resolve({ id: 's1', category: 'TODO' })) },
+      priority: { findFirst: vi.fn(() => Promise.resolve(null)) },
+      // mã kế tiếp = MAX số trong dải mã (nextTiraproKey)
+      $queryRaw: vi.fn(() => Promise.resolve([{ max: 0 }])),
+      issue: {
+        findFirst: vi.fn(() => Promise.resolve(null)),
+        count: vi.fn(() => Promise.resolve(0)),
+        create: vi.fn(() => Promise.resolve(createdRow)),
+      },
+      issueHistory: { create: vi.fn() },
+    };
+    const prisma = {
+      $transaction: (fn: (t: unknown) => unknown) => fn(tx),
+      ...tx,
+      // Bảng hệ số điểm: không có dòng → công thức mặc định.
+      pointsFormulaConfig: { findUnique: vi.fn(() => Promise.resolve(null)) },
+    };
+    const issues = new IssuesService(prisma as never, { emit: vi.fn() } as never, {} as never);
+    const service = new ImportService(prisma as never, issues);
+    const res = await service.createIssuesInChunks(
+      'w1',
+      'u1',
+      [0, 1, 2, 3].map((row) => ({
+        row,
+        input: {
+          projectId: 'p1',
+          typeId: 't1',
+          summary: `s${row}`,
+          descriptionFormat: 'MARKDOWN' as const,
+          sprintId: 'sp-closed',
+        },
+      })),
+      new Map(),
+    );
+    expect(res).toMatchObject({ created: 4, errors: [] });
+    expect(tx.issue.create).toHaveBeenCalledTimes(4);
+    // Không có RequestStore (việc nền) nhưng vẫn chỉ nạp cấu hình quy trình một lần.
+    expect(tx.project.findUnique).toHaveBeenCalledTimes(1);
+    expect(tx.projectWorkflowOverride.findMany).toHaveBeenCalledTimes(1);
+    expect(tx.workspaceWorkflowScheme.findMany).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -255,7 +361,11 @@ describe('ImportService.createIssuesInChunks + IssuesService thật — epic c�
           }),
         ),
         update: vi.fn(() => Promise.resolve({ issueSequence: 1 })),
+        // Resolver quy trình theo loại việc.
+        findUnique: vi.fn(() => Promise.resolve({ workspaceId: 'w1', defaultWorkflowId: 'wf' })),
       },
+      projectWorkflowOverride: { findMany: vi.fn(() => Promise.resolve([])) },
+      workspaceWorkflowScheme: { findMany: vi.fn(() => Promise.resolve([])) },
       issueType: {
         findFirst: vi.fn(() => Promise.resolve({ id: 't1' })),
         findUnique: vi.fn(() => Promise.resolve({ key: 'TASK', name: 'Task' })),

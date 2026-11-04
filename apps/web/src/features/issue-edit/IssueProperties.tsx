@@ -29,6 +29,8 @@ import { SeverityBadge } from '@/components/ui/SeverityBadge';
 import { isBugType } from './severity';
 import { dueState } from '@/lib/dueDate';
 import { apiErrorMessage } from '@/lib/api';
+import { statusMappingNeeded } from './typeChange';
+import { TypeChangeStatusDialog } from './TypeChangeStatusDialog';
 import { isRollupPoints, parsePointsOverride, pointsTip, CHILD_SPRINT_TIP } from '@/lib/points';
 import { DIFFICULTIES, DIFFICULTY_LABELS, formatCalendarDmy } from '@tirapro/shared';
 import { cn } from '@/lib/utils';
@@ -109,8 +111,23 @@ export function IssueTypeSelect({ issue }: { issue: IssueDto }) {
   const { data: projects } = useProjects();
   const projectKey = projects?.find((p) => p.id === issue.projectId)?.key;
   const { data: meta } = useProjectMeta(projectKey);
-  const patch = useUpdateIssue(issue.projectId);
+  // Lỗi tự xử lý bên dưới (422 → hộp chọn trạng thái; còn lại → toast) nên không để thông báo chung hiện thêm một lần nữa.
+  const patch = useUpdateIssue(issue.projectId, { silent: true });
   const canEdit = useCanEditIssue(issue.projectId)(issue);
+  // Loại mới dùng quy trình khác → máy chủ báo cần trạng thái đích; hộp giữ loại đang đổi + gợi ý cho tới khi xong/huỷ.
+  // `ask` giữ nội dung kể cả khi hộp đang đóng (để hiệu ứng đóng chạy), `askOpen` điều khiển mở.
+  const [ask, setAsk] = useState<{
+    seq: number;
+    typeId: string;
+    typeName: string;
+    suggestedStatusId: string | undefined;
+  } | null>(null);
+  const [askOpen, setAskOpen] = useState(false);
+  // Sang việc khác (panel xem nhanh đổi dòng) → bỏ hộp đang mở, kẻo xác nhận nhầm cho việc mới.
+  useEffect(() => {
+    setAskOpen(false);
+    setAsk(null);
+  }, [issue.id]);
   if (!canEdit) {
     return (
       <span title={`Loại việc: ${issue.type.name}`}>
@@ -118,30 +135,78 @@ export function IssueTypeSelect({ issue }: { issue: IssueDto }) {
       </span>
     );
   }
+  const typeName = (id: string) => meta?.issueTypes.find((t) => t.id === id)?.name ?? '';
   return (
-    <SearchSelect
-      ariaLabel="Loại việc"
-      value={issue.type.id}
-      disabled={patch.isPending}
-      options={(meta?.issueTypes ?? []).map((t) => ({
-        value: t.id,
-        label: t.name,
-        color: t.color,
-      }))}
-      onChange={(v) => {
-        if (v === issue.type.id) return;
-        patch.mutate(
-          { id: issue.id, key: issue.key, patch: { typeId: v }, version: issue.version },
-          { onError: (e) => toast.error(apiErrorMessage(e)) },
-        );
-      }}
-      className={INLINE_TRIGGER}
-      renderTrigger={() => (
-        <span title={`Loại việc: ${issue.type.name}. Bấm để đổi.`}>
-          <IssueTypeBadge name={issue.type.name} color={issue.type.color} />
-        </span>
+    <>
+      <SearchSelect
+        ariaLabel="Loại việc"
+        value={issue.type.id}
+        disabled={patch.isPending}
+        options={(meta?.issueTypes ?? []).map((t) => ({
+          value: t.id,
+          label: t.name,
+          color: t.color,
+        }))}
+        onChange={(v) => {
+          if (v === issue.type.id) return;
+          patch.mutate(
+            { id: issue.id, key: issue.key, patch: { typeId: v }, version: issue.version },
+            {
+              onError: (e) => {
+                const need = statusMappingNeeded(e);
+                if (need) {
+                  setAsk({
+                    seq: Date.now(),
+                    typeId: v,
+                    typeName: typeName(v),
+                    suggestedStatusId: need.suggestedStatusId,
+                  });
+                  setAskOpen(true);
+                } else toast.error(apiErrorMessage(e));
+              },
+            },
+          );
+        }}
+        className={INLINE_TRIGGER}
+        renderTrigger={() => (
+          <span title={`Loại việc: ${issue.type.name}. Bấm để đổi.`}>
+            <IssueTypeBadge name={issue.type.name} color={issue.type.color} />
+          </span>
+        )}
+      />
+      {ask && (
+        <TypeChangeStatusDialog
+          key={ask.seq}
+          open={askOpen}
+          issueKey={issue.key}
+          projectId={issue.projectId}
+          fromStatusName={issue.status.name}
+          newTypeId={ask.typeId}
+          newTypeName={ask.typeName}
+          suggestedStatusId={ask.suggestedStatusId}
+          loading={patch.isPending}
+          onCancel={() => setAskOpen(false)}
+          onConfirm={(targetStatusId) =>
+            patch.mutate(
+              {
+                id: issue.id,
+                key: issue.key,
+                patch: { typeId: ask.typeId, targetStatusId },
+                version: issue.version,
+              },
+              {
+                onSuccess: (res) => {
+                  setAskOpen(false);
+                  toast.success(`Đã đổi loại và chuyển sang “${res.data.status.name}”`);
+                },
+                // Lỗi (409, quy trình vừa đổi…): giữ hộp mở để chọn lại, không mất lựa chọn.
+                onError: (e) => toast.error(apiErrorMessage(e)),
+              },
+            )
+          }
+        />
       )}
-    />
+    </>
   );
 }
 

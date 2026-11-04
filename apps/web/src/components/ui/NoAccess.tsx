@@ -34,10 +34,15 @@ export function NoAccess({
 }
 
 /** Một dòng mờ báo người dùng chỉ có quyền xem (ẩn các nút ghi). */
-export function ReadOnlyNote() {
+export function ReadOnlyNote({
+  message = 'Bạn chỉ có quyền xem — nhờ quản trị chung để thay đổi.',
+}: {
+  /** Lý do khác "thiếu quyền" (vd dự án đã lưu trữ). */
+  message?: string;
+}) {
   return (
     <p className="mb-4 text-sm text-faint" role="note">
-      Bạn chỉ có quyền xem — nhờ quản trị chung để thay đổi.
+      {message}
     </p>
   );
 }

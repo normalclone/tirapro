@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import type { IssueDto } from '@tirapro/types';
 import { BulkDock } from '@/features/bulk/BulkDock';
-import { commonNextStatuses } from '@/features/bulk/bulkEdit';
+import { bulkStatusOptions } from '@/features/bulk/bulkEdit';
 import { useGroupedBulkEdit } from '@/features/bulk/useGroupedBulkEdit';
 import type { PriorityChoice } from '@/features/backlog/InlineEdits';
 import { useProjectMeta } from '@/features/ai/api';
@@ -45,7 +45,7 @@ export function FiltersBulkDock({
   const { data: meta } = useProjectMeta(projectKeyById.get(groups[0]?.projectId ?? ''));
   const { data: labels } = useProjectLabels(av.label.visible ? single?.projectId : undefined);
   const statusOptions = useMemo(
-    () => (single ? commonNextStatuses(workflows, single.issues) : []),
+    () => (single ? bulkStatusOptions(workflows, single.issues) : []),
     [workflows, single],
   );
 
@@ -72,7 +72,7 @@ export function FiltersBulkDock({
       onSetDifficulty={(d) => void bulk.setDifficulty(d)}
       onSetPriority={(id) => void bulk.setPriority(id)}
       onAddLabel={av.label.visible ? (id) => void bulk.addLabel(id) : undefined}
-      onSetStatus={av.status.visible ? (id) => void bulk.setStatus(id) : undefined}
+      onSetStatus={av.status.visible ? (option) => void bulk.setStatus(option) : undefined}
     />
   );
 }

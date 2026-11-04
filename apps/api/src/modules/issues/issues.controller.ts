@@ -116,6 +116,14 @@ export class IssuesController {
     return this.issues.resetPoints(workspaceId, user.id, id);
   }
 
+  /** Bước chuyển khả dụng theo quy trình của loại việc này (+ gợi ý quay về khi đang Pending). */
+  @Permissions(PERMISSIONS.PROJECT_VIEW)
+  @ProjectRef('issue', 'id')
+  @Get(':id/transitions')
+  async transitions(@WorkspaceId() workspaceId: string, @Param('id') id: string) {
+    return this.issues.getTransitions(workspaceId, id);
+  }
+
   @Permissions(PERMISSIONS.ISSUE_TRANSITION)
   @ProjectRef('issue', 'id')
   @Post(':id/transition')

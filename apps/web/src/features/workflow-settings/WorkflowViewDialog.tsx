@@ -4,6 +4,7 @@ import 'reactflow/dist/style.css';
 import { Dialog } from '@/components/ui/Dialog';
 import { DelayedSpinner } from '@/components/ui/primitives';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
+import { workflowOfStatus } from '@/features/issues/nextStatuses';
 import { useWorkflows, type Workflow } from './api';
 import { layoutWorkflow } from './workflowLayout';
 import {
@@ -81,8 +82,9 @@ export function WorkflowViewDialog({
   const workflowsQuery = useWorkflows();
   const { data: workflows } = workflowsQuery;
 
+  // Quy trình CỦA CHÍNH việc này (theo loại việc): Bug và Task cùng dự án mở ra hai sơ đồ khác nhau.
   const workflow = useMemo(
-    () => (workflows ?? []).find((wf) => wf.statuses.some((s) => s.id === currentStatusId)) ?? null,
+    () => workflowOfStatus(workflows, currentStatusId),
     [workflows, currentStatusId],
   );
 

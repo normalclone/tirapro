@@ -94,6 +94,16 @@ export class InvalidTransitionException extends AppException {
   }
 }
 
+/**
+ * 422 STATUS_MAPPING_REQUIRED: đổi loại việc sang loại dùng quy trình khác mà không nói trạng thái đích.
+ * Mỗi `details[]` mang `suggestedStatusId` (cùng tên trạng thái, không có thì trạng thái đầu tiên cùng nhóm).
+ */
+export class StatusMappingRequiredException extends AppException {
+  constructor(message: string, details: ErrorDetail[]) {
+    super(ERROR_CODES.STATUS_MAPPING_REQUIRED, message, HttpStatus.UNPROCESSABLE_ENTITY, details);
+  }
+}
+
 export class BusinessRuleException extends AppException {
   constructor(message: string, details?: ErrorDetail[]) {
     super(ERROR_CODES.BUSINESS_RULE_VIOLATION, message, HttpStatus.UNPROCESSABLE_ENTITY, details);
@@ -127,5 +137,25 @@ export class RankNeighborsStaleException extends AppException {
 export class WipLimitReachedException extends AppException {
   constructor(message: string) {
     super(ERROR_CODES.WIP_LIMIT_REACHED, message, HttpStatus.UNPROCESSABLE_ENTITY);
+  }
+}
+
+/**
+ * 422 mã riêng: lưu cột bảng mà BỎ một trạng thái còn việc ở đó (trong dự án của bảng, kể cả thùng rác). Việc sẽ biến mất khỏi
+ * bảng; `details[].field` là id trạng thái để web chỉ đúng chỗ.
+ */
+export class BoardStatusHasIssuesException extends AppException {
+  constructor(rows: Array<{ statusId: string; name: string; count: number }>) {
+    const list = rows.map((r) => `“${r.name}” (${r.count} việc)`).join(', ');
+    super(
+      ERROR_CODES.BOARD_STATUS_HAS_ISSUES,
+      `Không bỏ được khỏi bảng vì dự án còn việc ở trạng thái ${list} — hãy chuyển các việc đó sang trạng thái khác trước.`,
+      HttpStatus.UNPROCESSABLE_ENTITY,
+      rows.map((r) => ({
+        field: r.statusId,
+        code: ERROR_CODES.BOARD_STATUS_HAS_ISSUES,
+        message: `${r.name}: ${r.count} việc`,
+      })),
+    );
   }
 }

@@ -29,6 +29,8 @@ export interface ErrorDetail {
   field?: string;
   code: string;
   message: string;
+  /** `STATUS_MAPPING_REQUIRED`: trạng thái đích gợi ý trong quy trình mới (cùng tên, không có thì đầu tiên cùng nhóm). */
+  suggestedStatusId?: string;
 }
 
 export interface ApiErrorBody {
@@ -79,6 +81,16 @@ export const ERROR_CODES = {
   PARENT_CANNOT_BE_EPIC: 'PARENT_CANNOT_BE_EPIC',
   /** 422: Hạn là bắt buộc — không xoá trống được (cập nhật/sửa hàng loạt/quy tắc đặt Hạn rỗng). */
   DUE_DATE_REQUIRED: 'DUE_DATE_REQUIRED',
+  /** 422: đổi loại việc sang loại dùng quy trình khác mà thiếu `targetStatusId` — `details[0].suggestedStatusId` là gợi ý. */
+  STATUS_MAPPING_REQUIRED: 'STATUS_MAPPING_REQUIRED',
+  /** 409: quy trình đang được dùng (cấu hình theo loại việc của tổ chức hoặc ghi đè của dự án) nên không xoá được. */
+  WORKFLOW_IN_USE: 'WORKFLOW_IN_USE',
+  /** 409: trạng thái còn việc đang ở đó — xoá phải kèm `replacementStatusId`. */
+  STATUS_HAS_ISSUES: 'STATUS_HAS_ISSUES',
+  /** 422: bỏ khỏi bảng một trạng thái mà dự án còn việc ở đó (kể cả thùng rác) — việc sẽ biến mất khỏi bảng. `details[].field` = id trạng thái. */
+  BOARD_STATUS_HAS_ISSUES: 'BOARD_STATUS_HAS_ISSUES',
+  /** 409: trạng thái khởi tạo của một quy trình đang được dùng theo loại việc/ghi đè dự án — không xoá được (việc mới sẽ không có chỗ bắt đầu). */
+  INITIAL_STATUS_IN_USE: 'INITIAL_STATUS_IN_USE',
   /** 422: chia sẻ bộ lọc cho người không thuộc tổ chức (hoặc đã vô hiệu hoá). */
   FILTER_SHARE_USER_NOT_MEMBER: 'FILTER_SHARE_USER_NOT_MEMBER',
   /** 422: chia sẻ bộ lọc cho dự án không tồn tại / chủ bộ lọc không xem được. */

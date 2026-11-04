@@ -158,6 +158,29 @@ export type GroupOutcome =
     }
   | { projectId: string; ok: false; ids: string[]; error: unknown };
 
+/**
+ * Gộp kết quả nhiều lần gửi của CÙNG một nhóm (đổi trạng thái lô nhiều quy trình: mỗi đích một lần). Lần nào cũng lỗi hẳn →
+ * cả nhóm lỗi hẳn; còn lại: việc của lần lỗi hẳn tính là CHƯA GỬI (version vẫn đúng, giữ chọn để thử lại) kèm lỗi đầu tiên.
+ */
+export function mergeGroupOutcomes(projectId: string, outs: GroupOutcome[]): GroupOutcome {
+  if (outs.length === 1) return outs[0]!;
+  const oks = outs.filter((o): o is Extract<GroupOutcome, { ok: true }> => o.ok);
+  const failed = outs.filter((o): o is Extract<GroupOutcome, { ok: false }> => !o.ok);
+  if (oks.length === 0) {
+    const ids = failed.flatMap((o) => o.ids);
+    return { projectId, ok: false, ids, error: failed[0]?.error };
+  }
+  const unsentIds = [...oks.flatMap((o) => o.unsentIds), ...failed.flatMap((o) => o.ids)];
+  return {
+    projectId,
+    ok: true,
+    updated: oks.flatMap((o) => o.updated),
+    conflictIds: oks.flatMap((o) => o.conflictIds),
+    unsentIds,
+    error: failed[0]?.error ?? oks.find((o) => o.error !== undefined)?.error,
+  };
+}
+
 export interface GroupedAggregate {
   /** `all` = xong hết · `partial` = một phần · `none` = không việc nào xong. */
   kind: 'all' | 'partial' | 'none';

@@ -240,8 +240,8 @@ export class RuleEngineService implements OnModuleInit, OnApplicationShutdown {
     p: EventPayload,
   ): boolean {
     const cfg = this.triggerConfigOf(rule);
-    if (trigger === 'ISSUE_TRANSITIONED' && cfg.toStatusId)
-      return issue.status.id === cfg.toStatusId;
+    if (trigger === 'ISSUE_TRANSITIONED' && (cfg.toStatusId || cfg.toStatusIds?.length))
+      return issue.status.id === cfg.toStatusId || !!cfg.toStatusIds?.includes(issue.status.id);
     if (trigger === 'ISSUE_UPDATED' && cfg.fields?.length) {
       return !!p.changedFields?.some((f) => cfg.fields!.includes(f));
     }

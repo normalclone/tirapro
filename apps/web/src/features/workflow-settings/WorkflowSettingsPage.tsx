@@ -15,7 +15,14 @@ import { PageFrame } from '@/components/layout/PageFrame';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { AddDialog } from '@/components/ui/AddDialog';
 import { WorkflowEditDialog } from './WorkflowEditDialog';
-import { useWorkflows, useCreateWorkflow, useDeleteWorkflow, type Workflow } from './api';
+import { WorkflowSchemeSection } from './WorkflowSchemeSection';
+import {
+  useWorkflows,
+  useCreateWorkflow,
+  useDeleteWorkflow,
+  type Workflow,
+  type WorkflowUsage,
+} from './api';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
 import { SETTINGS_LABELS } from '@/lib/navLabels';
 import { useProjects } from '@/features/projects/api';
@@ -114,6 +121,8 @@ export function WorkflowSettingsPage() {
         description="Các trạng thái của một công việc và những bước chuyển được phép giữa chúng."
       />
       {!canManage && <ReadOnlyNote />}
+
+      {canManage && <WorkflowSchemeSection workflows={workflows} />}
 
       <SectionCard
         icon={<GitBranch className="h-4 w-4" />}
@@ -289,7 +298,7 @@ export function UsedByLine({
   usedBy,
   hiddenCount = 0,
 }: {
-  usedBy: NonNullable<Workflow['usedBy']>;
+  usedBy: WorkflowUsage['projects'];
   /** Số dự án người xem KHÔNG xem được (riêng tư; hoặc công khai khi chỉ thấy dự án mình là thành viên) — chỉ hiện số, không lộ khoá/tên. */
   hiddenCount?: number;
 }) {
@@ -327,6 +336,17 @@ export function UsedByLine({
   );
 }
 
+/** "Dùng cho: …" — loại việc của tổ chức đang dùng quy trình + ghi đè của dự án (từ `usedBy`). */
+export function SchemeUsageLine({ usage }: { usage: WorkflowUsage }) {
+  const parts = [
+    usage.scheme.length > 0 ? `loại việc ${usage.scheme.join(', ')} của tổ chức` : '',
+    usage.overrides.length > 0
+      ? `ghi đè ${usage.overrides.map((o) => `${o.projectKey} · ${o.typeKey}`).join(', ')}`
+      : '',
+  ].filter(Boolean);
+  return <p className="mt-1 text-xs text-muted">Dùng cho: {parts.join(' · ')}</p>;
+}
+
 function WorkflowRow({
   workflow,
   canManage,
@@ -340,9 +360,16 @@ function WorkflowRow({
   onDelete: () => void;
   deleting: boolean;
 }) {
-  const usedBy = workflow.usedBy ?? [];
+  const usedBy = workflow.usedBy?.projects ?? [];
   const hiddenCount = workflow.hiddenCount ?? 0;
-  const inUse = usedBy.length > 0 || hiddenCount > 0;
+  // Còn được gán cho loại việc của tổ chức hoặc là ghi đè của dự án cũng là "đang dùng" (server trả 409 WORKFLOW_IN_USE khi xoá).
+  const usage = workflow.usedBy;
+  const inUse =
+    usedBy.length > 0 ||
+    hiddenCount > 0 ||
+    (usage?.scheme.length ?? 0) > 0 ||
+    (usage?.overrides.length ?? 0) > 0 ||
+    (usage?.hiddenOverrideCount ?? 0) > 0;
   return (
     <li className="rounded-md border border-border bg-surface px-3 py-2.5 transition-colors hover:bg-surface-2">
       <div className="flex items-center gap-3">
@@ -379,6 +406,9 @@ function WorkflowRow({
           </Button>
         )}
       </div>
+      {(usage?.scheme.length ?? 0) > 0 || (usage?.overrides.length ?? 0) > 0 ? (
+        <SchemeUsageLine usage={usage!} />
+      ) : null}
       {inUse && <UsedByLine usedBy={usedBy} hiddenCount={hiddenCount} />}
     </li>
   );

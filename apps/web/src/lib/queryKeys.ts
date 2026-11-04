@@ -48,6 +48,9 @@ export const keys = {
     watch: (issueId: string) => ['issues', 'watch', issueId] as const,
     watchers: (issueId: string) => ['issues', 'watchers', issueId] as const,
     links: (issueId: string) => ['issues', 'links', issueId] as const,
+    /** Bước chuyển khả dụng theo quy trình của loại việc (kèm gợi ý quay lại khi đang Pending) — khoá theo trạng thái hiện tại. */
+    transitions: (issueId: string, statusId: string) =>
+      ['issues', 'transitions', issueId, statusId] as const,
     participants: (issueId: string) => ['issues', 'participants', issueId] as const,
     checklist: (issueId: string) => ['issues', 'checklist', issueId] as const,
     customFields: (issueId: string) => ['issues', 'custom-fields', issueId] as const,
@@ -96,6 +99,12 @@ export const keys = {
   workflows: ['workflows'] as const,
   /** Quy trình (kèm trạng thái) của MỘT dự án — cùng tiền tố `workflows`. */
   projectWorkflow: (projectId: string) => ['workflows', 'project', projectId] as const,
+  /** Cấu hình quy trình theo loại việc của tổ chức / của một dự án — cùng tiền tố `workflows` (đổi quy trình làm mới cả hai). */
+  workflowScheme: ['workflows', 'scheme'] as const,
+  projectWorkflowScheme: (projectId: string) =>
+    ['workflows', 'scheme', 'project', projectId] as const,
+  /** Xem trước một thay đổi quy trình (PUT dryRun) — KHÁC tiền tố để không bị làm mới giữa chừng khi đang xem. */
+  workflowChangePreview: (req: unknown) => ['workflow-change-preview', req] as const,
   teams: { all: ['teams'] as const },
   apiKeys: { all: ['api-keys'] as const },
 

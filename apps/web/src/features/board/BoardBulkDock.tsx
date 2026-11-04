@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import type { IssueDto, ProjectDto } from '@tirapro/types';
 import { BulkDock } from '@/features/bulk/BulkDock';
-import { commonNextStatuses } from '@/features/bulk/bulkEdit';
+import { bulkStatusOptions } from '@/features/bulk/bulkEdit';
 import { useBulkEdit } from '@/features/bulk/useBulkEdit';
 import type { PriorityChoice } from '@/features/backlog/InlineEdits';
 import { useProjectSprints } from '@/features/backlog/api';
@@ -63,7 +63,7 @@ export function BoardBulkDock({
   );
   const canEditAll = selectedIssues.every(canEditIssue);
   const statusOptions = useMemo(
-    () => commonNextStatuses(workflows, selectedIssues),
+    () => bulkStatusOptions(workflows, selectedIssues),
     [workflows, selectedIssues],
   );
 
@@ -90,7 +90,7 @@ export function BoardBulkDock({
       onSetDifficulty={(d) => void bulk.setDifficulty(d)}
       onSetPriority={(id) => void bulk.setPriority(id)}
       onAddLabel={(id) => void bulk.addLabel(id)}
-      onSetStatus={(id) => void bulk.setStatus(id)}
+      onSetStatus={(option) => void bulk.setStatus(option)}
     />
   );
 }

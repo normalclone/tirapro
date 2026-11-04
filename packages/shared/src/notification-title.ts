@@ -24,6 +24,8 @@ export interface NotificationPayload {
   bulk?: 'jira-import';
   /** JQL mở danh sách các việc của thông báo gộp (bấm thông báo → bộ lọc). */
   listJql?: string;
+  /** ISSUE_UPDATED không gắn công việc: tên quy tắc automation bị tắt vì trạng thái nó dùng không còn. */
+  automationRuleDisabled?: string;
   /** FILTER_SHARED: bộ lọc được chia sẻ (bấm → mở bộ lọc đó). */
   filterId?: string;
   filterName?: string;
@@ -83,6 +85,8 @@ export function buildNotificationTitle(type: NotificationType, p: NotificationPa
       if (p.bulk === 'jira-import') return `Bạn được giao ${p.count ?? 1} việc từ nhập Jira`;
       return `${who(p)} giao ${key} cho bạn`;
     case 'ISSUE_UPDATED':
+      if (p.automationRuleDisabled)
+        return `Quy tắc “${p.automationRuleDisabled}” đã tắt vì trạng thái không còn — hãy mở quy tắc để chọn lại`;
       return `${who(p)} cập nhật ${key}${times(p)}`;
     case 'WATCHING_UPDATE':
       return `${who(p)} cập nhật ${key}${times(p)} (bạn đang theo dõi)`;

@@ -3,11 +3,12 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { describe, expect, it, vi } from 'vitest';
+import type * as ApiModule from '@/lib/api';
 import { useRetractIssue } from '@/features/issue-edit/api';
 import { keys } from '@/lib/queryKeys';
 
 vi.mock('@/lib/api', async (orig) => {
-  const real = await orig<typeof import('@/lib/api')>();
+  const real = await orig<typeof ApiModule>();
   return { ...real, api: { post: vi.fn().mockResolvedValue({ data: {} }) } };
 });
 

@@ -17,10 +17,10 @@ vi.stubGlobal(
   },
 );
 
-const get = vi.fn();
+const get = vi.fn<(url: string, cfg?: unknown) => Promise<unknown>>();
 vi.mock('@/lib/api', async (orig) => {
   const real = await orig<typeof ApiModule>();
-  return { ...real, api: { get: (...a: unknown[]) => get(...a) } };
+  return { ...real, api: { get: (...a: Parameters<typeof get>) => get(...a) } };
 });
 
 afterEach(() => {

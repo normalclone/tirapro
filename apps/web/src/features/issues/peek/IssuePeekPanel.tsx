@@ -38,6 +38,7 @@ import { useIssueCopy } from '../useIssueCopy';
 import { issueViewState } from '../issueViewState';
 import { ActivityTabs } from '../ActivityTabs';
 import { LazyPanel } from '../LazyPanel';
+import { RepairStatusPicker } from '../RepairStatusPicker';
 import { useIssueTransitions } from '../useIssueTransitions';
 import { IssueSummaryEdit } from '../IssueSummaryEdit';
 import { PeekNavControls } from './PeekNavControls';
@@ -324,7 +325,8 @@ const PEEK_SECTIONS: readonly OptionalSectionId[] = [
 function PeekContent({ issue }: { issue: IssueDto }) {
   const can = useCanIn(issue.projectId);
   const canEditThis = useCanEditIssue(issue.projectId)(issue);
-  const { nextStatuses, requestTransition, dialog, isPending } = useIssueTransitions(issue);
+  const { nextStatuses, mismatch, workflowName, requestTransition, dialog, isPending } =
+    useIssueTransitions(issue);
   const [tab, setTab] = useState<'comments' | 'history'>('comments');
   const canTransition = can('issue:transition');
 
@@ -360,7 +362,18 @@ function PeekContent({ issue }: { issue: IssueDto }) {
           />
           {issue.status.name}
         </span>
-        {canTransition && nextStatuses.length > 0 && (
+        {canTransition && mismatch && (
+          <>
+            <ChevronRight className="h-4 w-4 shrink-0 text-faint" aria-hidden />
+            <RepairStatusPicker
+              statuses={nextStatuses}
+              workflowName={workflowName}
+              disabled={isPending}
+              onPick={requestTransition}
+            />
+          </>
+        )}
+        {canTransition && !mismatch && nextStatuses.length > 0 && (
           <>
             <ChevronRight className="h-4 w-4 shrink-0 text-faint" aria-hidden />
             {nextStatuses.map((o) => (
@@ -369,8 +382,14 @@ function PeekContent({ issue }: { issue: IssueDto }) {
                 type="button"
                 disabled={isPending}
                 onClick={() => requestTransition(o.id)}
-                title={o.label !== o.name ? `${o.label} → “${o.name}”` : `Chuyển sang “${o.name}”`}
-                className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 py-1 text-sm font-medium text-ink transition-colors hover:border-primary hover:bg-primary-subtle hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:cursor-not-allowed disabled:border-transparent disabled:bg-disabled-bg disabled:text-disabled-fg"
+                title={`${
+                  o.label !== o.name ? `${o.label} → “${o.name}”` : `Chuyển sang “${o.name}”`
+                }${o.suggested ? ' — trạng thái trước khi tạm dừng' : ''}`}
+                className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-sm font-medium transition-colors hover:border-primary hover:bg-primary-subtle hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:cursor-not-allowed disabled:border-transparent disabled:bg-disabled-bg disabled:text-disabled-fg ${
+                  o.suggested
+                    ? 'border-primary bg-primary-subtle text-primary'
+                    : 'border-border bg-surface text-ink'
+                }`}
               >
                 <span
                   className="h-2 w-2 shrink-0 rounded-full"

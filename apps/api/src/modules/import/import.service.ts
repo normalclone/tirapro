@@ -7,6 +7,7 @@ import { PrismaService } from '../../infra/prisma/prisma.service';
 import { NotFoundAppException } from '../../common/exceptions/app.exception';
 import { IssuesService } from '../issues/issues.service';
 import { assertNotArchived } from '../../common/project-writable';
+import { runWithWorkflowMemo } from '../workflow-admin/workflow-resolver.service';
 
 /** Một dòng CSV đã parse: key = header (giữ nguyên), value = chuỗi. */
 type CsvRow = Record<string, string>;
@@ -111,6 +112,15 @@ function isKeyConflict(err: unknown): boolean {
   const target = e.meta?.target;
   if (Array.isArray(target)) return target.includes('key');
   return typeof target === 'string' && /key/i.test(target);
+}
+
+interface ChunkedCreateResult {
+  created: number;
+  labels: number;
+  comments: number;
+  errors: RowError[];
+  /** Dòng đụng unique mã công việc (`fixedKey` trùng do nhập đồng thời) — coi là trùng, KHÔNG phải lỗi (L27). */
+  duplicates: RowError[];
 }
 
 @Injectable()
@@ -585,14 +595,21 @@ export class ImportService {
     items: PreparedItem[],
     labelCache: Map<string, string>,
     hooks: ChunkHooks = {},
-  ): Promise<{
-    created: number;
-    labels: number;
-    comments: number;
-    errors: RowError[];
-    /** Dòng đụng unique mã công việc (`fixedKey` trùng do nhập đồng thời) — coi là trùng, KHÔNG phải lỗi (L27). */
-    duplicates: RowError[];
-  }> {
+  ): Promise<ChunkedCreateResult> {
+    // Việc nền không có RequestStore nên cache quy trình theo request không áp dụng: mở bộ nhớ theo lần chạy để mỗi dòng
+    // KHÔNG hỏi lại cấu hình quy trình (~4 truy vấn/dòng).
+    return runWithWorkflowMemo(() =>
+      this.createChunks(workspaceId, userId, items, labelCache, hooks),
+    );
+  }
+
+  private async createChunks(
+    workspaceId: string,
+    userId: string,
+    items: PreparedItem[],
+    labelCache: Map<string, string>,
+    hooks: ChunkHooks,
+  ): Promise<ChunkedCreateResult> {
     const result = {
       created: 0,
       labels: 0,

@@ -74,6 +74,8 @@ interface ActionDraft {
   mode: 'reporter' | 'lead' | 'user' | 'roundRobin';
   userId: string;
   toStatusId: string;
+  /** Trạng thái thay thế theo quy trình khác (hệ thống ghi khi đổi quy trình): giữ nguyên khi lưu, bỏ khi người dùng đổi đích. */
+  alsoStatusIds: string[];
   labelId: string;
   body: string;
   userIds: string[];
@@ -90,6 +92,13 @@ interface Draft {
   projectId: string; // '' = cả workspace
   trigger: RuleTrigger;
   toStatusId: string;
+  /** ISSUE_TRANSITIONED: các đích khác cũng kích hoạt (cùng ý nghĩa ở quy trình khác) — giữ nguyên khi lưu, bỏ khi người dùng đổi đích. */
+  toStatusIds: string[];
+  /**
+   * Quy tắc do hệ thống ghi chỉ có `toStatusIds` (không có `toStatusId`): ô chọn hiện phần tử đầu, phần còn lại ở `toStatusIds`,
+   * và khi lưu GIỮ đúng hình dạng đó (không thành "mọi lần chuyển", không đổi hình dạng). Đổi đích ở ô chọn thì tắt cờ.
+   */
+  toStatusIdsOnly: boolean;
   fields: string[];
   cron: string;
   conditions: CondDraft[];
@@ -155,6 +164,7 @@ const newAction = (type: ActionType = 'assign'): ActionDraft => ({
   mode: 'lead',
   userId: '',
   toStatusId: '',
+  alsoStatusIds: [],
   labelId: '',
   body: '',
   userIds: [],
@@ -175,6 +185,22 @@ const newCondition = (): CondDraft => ({
   values: [],
 });
 
+/** `{toStatusIds:[a,b,c]}` (hình dạng sau khi đổi quy trình) → ô chọn hiện `a`, `b`,`c` là đích cùng ý nghĩa ở quy trình khác. */
+function fromTriggerStatuses(cfg: {
+  toStatusId?: string;
+  toStatusIds?: string[];
+}): Pick<Draft, 'toStatusId' | 'toStatusIds' | 'toStatusIdsOnly'> {
+  if (cfg.toStatusId)
+    return {
+      toStatusId: cfg.toStatusId,
+      toStatusIds: cfg.toStatusIds ?? [],
+      toStatusIdsOnly: false,
+    };
+  const [first, ...rest] = cfg.toStatusIds ?? [];
+  if (first) return { toStatusId: first, toStatusIds: rest, toStatusIdsOnly: true };
+  return { toStatusId: '', toStatusIds: [], toStatusIdsOnly: false };
+}
+
 function fromRule(rule: AutomationRule | null, defaultProjectId: string): Draft {
   if (!rule) {
     return {
@@ -182,6 +208,8 @@ function fromRule(rule: AutomationRule | null, defaultProjectId: string): Draft 
       projectId: defaultProjectId,
       trigger: 'ISSUE_CREATED',
       toStatusId: '',
+      toStatusIds: [],
+      toStatusIdsOnly: false,
       fields: [],
       cron: '',
       conditions: [],
@@ -192,7 +220,7 @@ function fromRule(rule: AutomationRule | null, defaultProjectId: string): Draft 
     name: rule.name,
     projectId: rule.projectId ?? '',
     trigger: rule.trigger,
-    toStatusId: rule.triggerConfig.toStatusId ?? '',
+    ...fromTriggerStatuses(rule.triggerConfig),
     fields: rule.triggerConfig.fields ?? [],
     cron: rule.triggerConfig.cron ?? '',
     conditions: rule.conditions.map((c): CondDraft => {
@@ -215,7 +243,7 @@ function fromRule(rule: AutomationRule | null, defaultProjectId: string): Draft 
         case 'assign':
           return { ...d, mode: a.mode, userId: a.userId ?? '' };
         case 'transition':
-          return { ...d, toStatusId: a.toStatusId };
+          return { ...d, toStatusId: a.toStatusId, alsoStatusIds: a.alsoStatusIds ?? [] };
         case 'addLabel':
         case 'removeLabel':
           return { ...d, labelId: a.labelId };
@@ -257,7 +285,11 @@ function toAction(a: ActionDraft): unknown {
     case 'assign':
       return { type: 'assign', mode: a.mode, ...(a.mode === 'user' ? { userId: a.userId } : {}) };
     case 'transition':
-      return { type: 'transition', toStatusId: a.toStatusId };
+      return {
+        type: 'transition',
+        toStatusId: a.toStatusId,
+        ...(a.alsoStatusIds.length ? { alsoStatusIds: a.alsoStatusIds } : {}),
+      };
     case 'addLabel':
     case 'removeLabel':
       return { type: a.type, labelId: a.labelId };
@@ -276,7 +308,12 @@ function toPayload(d: Draft): unknown {
   const triggerConfig =
     d.trigger === 'ISSUE_TRANSITIONED'
       ? d.toStatusId
-        ? { toStatusId: d.toStatusId }
+        ? d.toStatusIdsOnly
+          ? { toStatusIds: [d.toStatusId, ...d.toStatusIds] }
+          : {
+              toStatusId: d.toStatusId,
+              ...(d.toStatusIds.length ? { toStatusIds: d.toStatusIds } : {}),
+            }
         : {}
       : d.trigger === 'ISSUE_UPDATED'
         ? d.fields.length
@@ -324,6 +361,8 @@ interface Options {
   types: SearchSelectOption[];
   subtaskTypes: SearchSelectOption[];
   statuses: SearchSelectOption[];
+  /** Như `statuses` nhưng gom theo quy trình (tiêu đề nhóm) — cho ô chọn MỘT trạng thái; nhiều quy trình mới có tiêu đề. */
+  statusesGrouped: SearchSelectOption[];
   users: SearchSelectOption[];
   /** Tìm người phía máy chủ cho mọi ô chọn người (props rải thẳng vào SearchSelect/MultiPick). */
   userPick: UserPick;
@@ -359,6 +398,14 @@ function useOptions(projectId: string): Options {
           label: s.name,
           color: s.color,
           hint: multi ? w.name : undefined,
+        })),
+      ),
+      statusesGrouped: real.flatMap((w) =>
+        w.statuses.map((s) => ({
+          value: s.id,
+          label: s.name,
+          color: s.color,
+          group: multi ? w.name : undefined,
         })),
       ),
       users: people.options,
@@ -487,6 +534,34 @@ function StepHeader({ n, title, hint }: { n: number; title: string; hint: string
         <p className="text-xs text-muted">{hint}</p>
       </div>
     </div>
+  );
+}
+
+/**
+ * Quy tắc được hệ thống mở rộng sang các trạng thái cùng ý nghĩa ở quy trình khác (Bug / Epic…) khi đổi quy trình: nói rõ có
+ * những trạng thái nào để người dùng không tưởng quy tắc chỉ có một đích. Các trạng thái này được giữ nguyên khi lưu; đổi
+ * trạng thái đích ở ô bên trên thì bỏ chúng.
+ */
+function OtherFlowStatuses({
+  ids,
+  options,
+  verb,
+}: {
+  ids: string[];
+  options: SearchSelectOption[];
+  verb: string;
+}) {
+  // Danh sách trạng thái chưa tải → chưa tra được tên (đừng hiện "đã xoá" rồi nhảy sang tên thật).
+  if (ids.length === 0 || options.length === 0) return null;
+  const names = ids.map((id) => {
+    const o = options.find((x) => x.value === id);
+    return o ? (o.hint ? `${o.label} (${o.hint})` : o.label) : 'trạng thái đã xoá';
+  });
+  return (
+    <p className="mt-1.5 text-xs text-muted" role="note">
+      Quy tắc cũng {verb} {names.join(', ')} — trạng thái cùng ý nghĩa ở quy trình khác. Chọn trạng
+      thái khác ở trên sẽ bỏ phần này.
+    </p>
   );
 }
 
@@ -822,14 +897,17 @@ function ActionCard({
             <SearchSelect
               {...p}
               value={a.toStatusId}
-              onChange={(toStatusId) => set({ toStatusId })}
-              options={opts.statuses}
+              onChange={(toStatusId) => set({ toStatusId, alsoStatusIds: [] })}
+              options={opts.statusesGrouped}
               placeholder="Chuyển sang trạng thái…"
               searchPlaceholder="Tìm trạng thái…"
               ariaLabel="Trạng thái đích"
             />
           )}
         </Err>
+      )}
+      {a.type === 'transition' && (
+        <OtherFlowStatuses ids={a.alsoStatusIds} options={opts.statuses} verb="chuyển sang" />
       )}
 
       {(a.type === 'addLabel' || a.type === 'removeLabel') && (
@@ -1120,10 +1198,17 @@ export function RuleEditor({
               >
                 <SearchSelect
                   value={draft.toStatusId}
-                  onChange={(toStatusId) => set({ toStatusId })}
-                  options={[{ value: '', label: 'Bất kỳ trạng thái nào' }, ...opts.statuses]}
+                  onChange={(toStatusId) =>
+                    set({ toStatusId, toStatusIds: [], toStatusIdsOnly: false })
+                  }
+                  options={[{ value: '', label: 'Bất kỳ trạng thái nào' }, ...opts.statusesGrouped]}
                   searchPlaceholder="Tìm trạng thái…"
                   ariaLabel="Trạng thái đích"
+                />
+                <OtherFlowStatuses
+                  ids={draft.toStatusIds}
+                  options={opts.statuses}
+                  verb="kích hoạt khi chuyển đến"
                 />
               </Field>
             )}
