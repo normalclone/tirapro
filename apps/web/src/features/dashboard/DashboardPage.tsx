@@ -28,7 +28,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import type { IssueDto, StatusCategory } from '@tirapro/types';
+import type { IssueDto } from '@tirapro/types';
 import { useProjects } from '../projects/api';
 import {
   useMyIssues,
@@ -67,13 +67,8 @@ import { cn } from '@/lib/utils';
 import { CHART_MARGIN, yAxisWidth } from '@/lib/chartAxis';
 import { STATUS_CATEGORY_LABEL } from '@/lib/terms';
 import { PriorityIcon } from '@/components/ui/PriorityIcon';
+import { StatusPill } from '@/components/ui/StatusPill';
 import { usePriorityRanks } from '@/features/issue-meta/usePriorityRanks';
-
-const CATEGORY_COLOR: Record<StatusCategory, string> = {
-  TODO: 'var(--status-todo)',
-  IN_PROGRESS: 'var(--status-progress)',
-  DONE: 'var(--status-done)',
-};
 
 /** Ngưỡng rank được coi là "ưu tiên cao" (Highest=5, High=4). */
 const HIGH_PRIORITY_RANK = 4;
@@ -911,7 +906,7 @@ function IssueListSkeleton() {
   );
 }
 
-function MyIssueRow({
+export function MyIssueRow({
   issue,
   projectKey,
   showDue,
@@ -921,7 +916,6 @@ function MyIssueRow({
   /** Hiện nhãn hạn chót (cho mục "Sắp/đã trễ hạn"). */
   showDue?: boolean;
 }) {
-  const dot = CATEGORY_COLOR[issue.status.category];
   const to = `/issue/${issue.key}`;
   const ranks = usePriorityRanks();
 
@@ -931,14 +925,9 @@ function MyIssueRow({
         to={to}
         className="flex items-center gap-3 px-4 py-2.5 transition-colors hover:bg-surface-2"
       >
-        <span
-          className="h-2 w-2 shrink-0 rounded-full"
-          style={{ background: dot }}
-          title={issue.status.name}
-          aria-hidden
-        />
         <span className="shrink-0 font-mono text-xs font-medium text-muted">{issue.key}</span>
         <span className="min-w-0 flex-1 truncate text-sm text-ink-strong">{issue.summary}</span>
+        <StatusPill status={issue.status} alwaysShowName />
         {showDue && <DueBadge issue={issue} warnOnly className="shrink-0" />}
         {issue.priority && (
           <PriorityIcon
