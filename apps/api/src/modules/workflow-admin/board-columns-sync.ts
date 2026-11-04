@@ -1,5 +1,6 @@
 import type { Prisma } from '@prisma/client';
 import type { StatusCategory } from '@tirapro/types';
+import { suggestTargetStatus } from '@tirapro/shared';
 
 interface ColumnInfo {
   id: string;
@@ -24,21 +25,72 @@ export function pickColumnForCategory(
   return (columns[1] ?? columns[0])!.id;
 }
 
+/** Một trạng thái cũ (đang nằm trong cột nhưng không thuộc quy trình đang dùng) mà ta cần biết đích thay thế của nó. */
+export interface LegacyStatusRef {
+  id: string;
+  name: string;
+  category: StatusCategory;
+}
+
+interface FlowStatus {
+  id: string;
+  name: string;
+  category: StatusCategory;
+  order: number;
+  isInitial: boolean;
+  workflowId: string;
+}
+
 /**
- * Sau khi đổi quy trình của một dự án (cấu hình tổ chức / ghi đè): thêm vào MỖI bảng của dự án các trạng thái của quy
- * trình đang dùng mà chưa nằm trong cột nào — để bảng vẫn lưu được (`setColumns` bắt buộc phủ mọi trạng thái) và không
- * thẻ nào biến mất. Không bao giờ gỡ trạng thái cũ khỏi cột. Chạy trong transaction của bên gọi; idempotent.
+ * Trạng thái MỚI → các trạng thái CŨ (đang nằm trong cột) mà nó thay thế: với mỗi quy trình đang dùng và mỗi trạng thái cũ, đích
+ * là `pick(cũ, quy trình)` (bảng ánh xạ của script migrate) hoặc gợi ý chung (cùng tên → cùng nhóm → khởi tạo). Dùng để đặt
+ * trạng thái mới vào ĐÚNG CỘT của trạng thái cũ tương ứng ("Chờ test" → Ready for Retest, "Review code" → In Review) thay vì dồn
+ * hết về ba cột To Do / In Progress / Done.
+ */
+export function replacementSources(
+  legacy: readonly LegacyStatusRef[],
+  inUse: readonly FlowStatus[],
+  pick?: (legacy: LegacyStatusRef, toWorkflowId: string) => string | undefined,
+): Map<string, Set<string>> {
+  const byFlow = new Map<string, FlowStatus[]>();
+  for (const s of inUse) byFlow.set(s.workflowId, [...(byFlow.get(s.workflowId) ?? []), s]);
+  const out = new Map<string, Set<string>>();
+  for (const [workflowId, statuses] of byFlow)
+    for (const l of legacy) {
+      const targetId = pick?.(l, workflowId) ?? suggestTargetStatus(l, statuses)?.id;
+      if (!targetId) continue;
+      const set = out.get(targetId) ?? new Set<string>();
+      set.add(l.id);
+      out.set(targetId, set);
+    }
+  return out;
+}
+
+/**
+ * Sau khi đổi quy trình của một dự án (cấu hình tổ chức / ghi đè) hoặc khi tạo dự án: thêm vào MỖI bảng của dự án các trạng
+ * thái của quy trình đang dùng mà chưa nằm trong cột nào — để bảng vẫn lưu được (`setColumns` bắt buộc phủ mọi trạng thái) và
+ * không thẻ nào biến mất. Mỗi trạng thái mới vào CỘT đang giữ trạng thái cũ mà nó thay thế (`replacementSources`; cột đầu theo
+ * thứ tự cột nếu có nhiều), chỉ khi không có cột nguồn mới rơi về cột cùng nhóm. Không bao giờ gỡ trạng thái cũ khỏi cột (việc đó
+ * của `pruneUnusedBoardStatuses`). Chạy trong transaction của bên gọi; idempotent.
  */
 export async function appendMissingBoardStatuses(
   tx: Prisma.TransactionClient,
   projectId: string,
   workflowIds: string[],
+  opts?: { pick?: (legacy: LegacyStatusRef, toWorkflowId: string) => string | undefined },
 ): Promise<{ added: number }> {
   if (workflowIds.length === 0) return { added: 0 };
-  const required = await tx.status.findMany({
+  const required: FlowStatus[] = await tx.status.findMany({
     where: { workflowId: { in: workflowIds } },
     orderBy: [{ workflowId: 'asc' }, { order: 'asc' }],
-    select: { id: true, category: true },
+    select: {
+      id: true,
+      name: true,
+      category: true,
+      order: true,
+      isInitial: true,
+      workflowId: true,
+    },
   });
   if (required.length === 0) return { added: 0 };
   const boards = await tx.board.findMany({
@@ -58,9 +110,15 @@ export async function appendMissingBoardStatuses(
         in: boards.flatMap((b) => b.columns.flatMap((c) => c.statuses.map((s) => s.statusId))),
       },
     },
-    select: { id: true, category: true },
+    select: { id: true, name: true, category: true, workflowId: true },
   });
   const categoryOf = new Map([...known, ...required].map((s) => [s.id, s.category]));
+  const inUse = new Set(workflowIds);
+  const sources = replacementSources(
+    known.filter((k) => !inUse.has(k.workflowId)),
+    required,
+    opts?.pick,
+  );
 
   let added = 0;
   for (const board of boards) {
@@ -75,7 +133,12 @@ export async function appendMissingBoardStatuses(
     const links: Prisma.BoardColumnStatusCreateManyInput[] = [];
     for (const s of required) {
       if (present.has(s.id)) continue;
-      const columnId = pickColumnForCategory(columns, s.category);
+      const from = sources.get(s.id);
+      // Cột nguồn: cột đầu tiên (theo thứ tự cột) đang giữ một trạng thái cũ mà trạng thái này thay thế.
+      const source = from
+        ? board.columns.find((c) => c.statuses.some((x) => from.has(x.statusId)))?.id
+        : undefined;
+      const columnId = source ?? pickColumnForCategory(columns, s.category);
       if (columnId) links.push({ columnId, statusId: s.id });
     }
     if (links.length > 0) {

@@ -157,7 +157,7 @@ export function disabledRuleNotices(
 }
 
 /** Sự kiện bỏ cache quy tắc (engine đọc bản mới) — chỉ khi thật sự có quy tắc bị sửa/tắt. */
-export const RULES_CHANGED_EVENT = DOMAIN_EVENTS.AUTOMATION_RULES_CHANGED;
+const RULES_CHANGED_EVENT = DOMAIN_EVENTS.AUTOMATION_RULES_CHANGED;
 
 interface StatusLite {
   id: string;

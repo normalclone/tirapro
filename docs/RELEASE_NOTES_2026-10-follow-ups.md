@@ -894,3 +894,33 @@ Chưa có báo cáo nào xác nhận các mục này đã chạy; người kiể
 - Chưa chạy trên MinIO công ty (172.20.20.100) và VM 172.20.20.128 — đã kiểm với MinIO cục bộ (`pnpm test:parity` + e2e API thật); cần một lượt kiểm trên hạ tầng thật khi triển khai (cổng API, quyền của access key, `If-None-Match` ở bản MinIO của công ty).
 - Không có vòng đời/dọn object mồ côi (xoá object lỗi chỉ log); bucket versioning/lifecycle do người vận hành cấu hình.
 
+---
+
+# Quy trình theo loại việc (2026-11)
+
+## 1. Cần làm khi triển khai
+
+- **Có migration:** `20261105100000_workflow_schemes` (bảng `WorkspaceWorkflowScheme`, `ProjectWorkflowOverride`; chỉ THÊM). `prisma migrate deploy` áp tự động theo thứ tự tên thư mục, nằm giữa hai migration của bộ lọc đã lưu.
+- **Phải chạy tay một script chuyển dữ liệu**: `workflows:migrate` (`node scripts/migrate-workflow-schemes.mjs`, nằm trong image). Thứ tự: deploy → `migrate deploy` → **dump MỚI** → `--dry-run` → xem lại → chạy thật → kiểm → (sai thì khôi phục dump mới). Chi tiết, lệnh và truy vấn kiểm: `docs/DEPLOY.md` mục "Quy trình theo loại việc".
+- Chưa chạy script thì hệ thống chạy như cũ (dự án dùng `defaultWorkflowId`); script không bắt buộc ngay khi deploy nhưng cần trước khi quản trị viên dùng màn "Quy trình theo loại việc".
+
+## 2. Thay đổi
+
+- Mỗi loại việc có quy trình riêng: cấu hình theo tổ chức, dự án ghi đè từng loại. Ba quy trình mặc định (Standard / Bug / Epic); tổ chức mới có sẵn chúng + cấu hình cho mọi loại việc; dự án mới có bảng phủ đủ trạng thái của mọi loại.
+- Đổi quy trình / đổi loại việc có xem trước: việc đang ở trạng thái cũ phải ánh xạ sang trạng thái mới (gợi ý cùng tên → cùng nhóm); chưa ánh xạ thì 422 `STATUS_MAPPING_REQUIRED`. Việc chuyển ghi lịch sử, tăng `version`, giữ `updatedAt`.
+- Bảng: trạng thái mới vào đúng cột (làn) đang giữ trạng thái cũ mà nó thay; trạng thái cũ không còn dùng/không còn việc bị gỡ khỏi cột; cột chỉ còn trạng thái cũ và không có việc nào bị xoá (dry-run liệt kê "Sẽ xoá cột"). Không bao giờ để bảng không còn cột, không xoá cột còn việc.
+- Quy tắc automation: id trạng thái được sửa theo cùng ánh xạ; không ánh xạ được thì tắt quy tắc và báo người tạo. Tham chiếu theo TÊN trong JQL của bộ lọc/bảng/widget được liệt kê trước khi đổi (chỉ phần người xem được thấy).
+- Quản trị dự án sửa được quy trình do dự án sở hữu; quy trình dùng chung chỉ Quản trị chung.
+- Giao diện: bước đi tiếp theo quy trình của loại việc (chi tiết, xem nhanh, menu dòng, Cmd+K), chọn "Chuyển về quy trình đúng" cho việc lệch quy trình, "Bỏ khỏi bảng" hiện số việc đang ở trạng thái đó.
+
+## 3. API
+
+- Mã lỗi: `STATUS_MAPPING_REQUIRED` 422, `WORKFLOW_IN_USE` 409, `STATUS_HAS_ISSUES` 409, `INITIAL_STATUS_IN_USE` 409, `BOARD_STATUS_HAS_ISSUES` 422.
+- Endpoint: `GET|PUT /workflow-schemes`, `GET|PUT /projects/:id/workflow-overrides`, `DELETE /projects/:id/workflow-overrides/:issueTypeId`, `GET /issues/:id/transitions`, `PATCH /issues/:id` + `targetStatusId`, `PATCH /issues/bulk` + `typeId` + `statusMap`.
+- Image Docker chứa thêm `scripts/migrate-workflow-schemes.mjs`.
+
+## 4. Còn mở
+
+- Bản xem trước của `PUT` (runtime) chưa mô phỏng bước bảng (xoá cột); chỉ `--dry-run` của script liệt kê "Sẽ xoá cột".
+- Chưa chạy trên VM 172.20.20.128 — đã chạy dry-run + chạy thật trên bản khôi phục snapshot prod (xem báo cáo `task-8-prep-report.md` ngoài repo).
+

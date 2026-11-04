@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
@@ -80,9 +80,9 @@ describe('WorkspaceOption', () => {
 });
 
 describe('nối dây', () => {
-  it('thanh trên chỉ hiện tên tổ chức: không bộ chọn, không lập tổ chức mới', () => {
-    const sw = read('WorkspaceSwitcher.tsx');
-    expect(sw).not.toMatch(/Popover|CreateWorkspaceModal|useSwitchWorkspace/);
+  it('không còn bộ chọn tổ chức / hộp lập tổ chức mới trong mã (thanh trên chỉ hiện tên)', () => {
+    expect(existsSync(join(__dirname, 'WorkspaceSwitcher.tsx'))).toBe(false);
+    expect(existsSync(join(__dirname, 'CreateWorkspaceModal.tsx'))).toBe(false);
   });
   it('kiểu MyWorkspace có memberCount tuỳ chọn (API cũ)', () => {
     expect(read('api.ts')).toMatch(/memberCount\?: number/);

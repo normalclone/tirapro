@@ -58,10 +58,11 @@ export class WorkflowSchemeService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly resolver: WorkflowResolver,
-    // Tuỳ chọn để spec dựng bằng 2 đối số vẫn chạy; Nest DI tiêm bản thật (bỏ cache quy tắc + báo người tạo quy tắc bị tắt).
+    // Bắt buộc: thiếu thì báo "ai đang tham chiếu tên trạng thái" sẽ lộ bộ lọc của dự án riêng tư người xem không thấy.
+    private readonly access: ProjectAccessService,
+    // Tuỳ chọn để spec dựng không cần; Nest DI tiêm bản thật (bỏ cache quy tắc + báo người tạo quy tắc bị tắt).
     @Optional() private readonly notifications?: NotificationsService,
     @Optional() private readonly events?: EventEmitter2,
-    @Optional() private readonly access?: ProjectAccessService,
   ) {}
 
   // ----------------------------------------------------------------------------------------- tổ chức
@@ -146,9 +147,11 @@ export class WorkflowSchemeService {
             update: { workflowId: i.workflowId },
           });
         await this.applyMoves(tx, workspaceId, actorId, moves);
-        const boards = await this.syncBoards(tx, [
-          ...new Set(plan.scopes.flatMap((s) => s.projectIds)),
-        ]);
+        const boards = await this.syncBoards(
+          tx,
+          [...new Set(plan.scopes.flatMap((s) => s.projectIds))],
+          moves,
+        );
         const rules = await ruleStepForMoves(
           tx,
           workspaceId,
@@ -367,7 +370,7 @@ export class WorkflowSchemeService {
           update: { workflowId: targetId },
         });
         await this.applyMoves(tx, workspaceId, actorId, moves);
-        const boards = await this.syncBoards(tx, [projectId]);
+        const boards = await this.syncBoards(tx, [projectId], moves);
         const pairs = before.map((b) => ({
           ...b,
           toWorkflowId: targetId,
@@ -475,7 +478,7 @@ export class WorkflowSchemeService {
         assertAllMapped(moves, ctx.typeNames);
         await tx.projectWorkflowOverride.deleteMany({ where: { projectId, issueTypeId } });
         await this.applyMoves(tx, workspaceId, actorId, moves);
-        const boards = await this.syncBoards(tx, [projectId]);
+        const boards = await this.syncBoards(tx, [projectId], moves);
         const pairs = before.map((b) => ({
           ...b,
           fromWorkflowIds: fromWorkflowsOf(issueTypeId, b.fromWorkflowIds, moves),
@@ -528,13 +531,21 @@ export class WorkflowSchemeService {
   private async syncBoards(
     tx: Prisma.TransactionClient,
     projectIds: string[],
+    moves: PlannedMove[] = [],
   ): Promise<BoardCleanup> {
     const out: BoardCleanup = { ghosts: [], deleted: [] };
     for (const projectId of projectIds) {
       // Bỏ cache để đọc đúng cấu hình vừa ghi trong transaction này.
       this.resolver.invalidate(projectId);
       const inUse = [...new Set((await this.resolver.forProject(tx, projectId)).values())];
-      await appendMissingBoardStatuses(tx, projectId, inUse);
+      // Cột giữ trạng thái cũ nào thì trạng thái mới thay nó vào cột đó: đích lấy từ chính kế hoạch chuyển việc của dự án.
+      const target = new Map<string, string>();
+      for (const m of moves)
+        if (m.projectId === projectId && m.to && !target.has(m.from.id))
+          target.set(m.from.id, m.to.id);
+      await appendMissingBoardStatuses(tx, projectId, inUse, {
+        pick: (legacy) => target.get(legacy.id),
+      });
       const pruned = await pruneUnusedBoardStatuses(tx, projectId, inUse);
       out.ghosts.push(...pruned.ghostColumns);
       out.deleted.push(...pruned.deletedColumns);
@@ -580,9 +591,7 @@ export class WorkflowSchemeService {
     const targets = 'scopes' in plan ? plan.scopes.map((s) => s.toWorkflowId) : plan.targets;
     const types = 'changed' in plan ? plan.changed.map((c) => c.issueTypeId) : plan.types;
     if (moves.length === 0) return [];
-    const visibleProjectIds = this.access
-      ? await this.access.visibleProjectIds(who.viewerId, workspaceId)
-      : null;
+    const visibleProjectIds = await this.access.visibleProjectIds(who.viewerId, workspaceId);
     return findNameRefs(
       db,
       workspaceId,

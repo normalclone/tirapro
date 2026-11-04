@@ -5,7 +5,7 @@ import type { MyWorkspace } from './api';
 import { workspaceSubline } from './workspaceSubline';
 
 /** Ô vuông bo góc: hiện logo của tổ chức nếu có, không thì chữ cái đầu. */
-export function WsBadge({
+function WsBadge({
   name,
   src,
   variant,

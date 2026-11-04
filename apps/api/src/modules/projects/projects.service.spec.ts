@@ -2,6 +2,13 @@ import { describe, expect, it, vi } from 'vitest';
 import { hasTriageVisible } from '../../common/triage-visibility.testutil';
 import { ProjectsService } from './projects.service';
 
+/** Bảng mà WorkflowResolver đọc khi tạo dự án (không có loại việc → không gì để đồng bộ vào bảng). */
+const resolverTables = () => ({
+  projectWorkflowOverride: { findMany: vi.fn(() => Promise.resolve([])) },
+  workspaceWorkflowScheme: { findMany: vi.fn(() => Promise.resolve([])) },
+  issueType: { findMany: vi.fn(() => Promise.resolve([])) },
+});
+
 const ACTIVE_USER = { status: 'ACTIVE', email: 'u@x.vn' };
 const ACCESS = {
   visibleWhere: vi.fn(() => Promise.resolve({})),
@@ -298,6 +305,9 @@ describe('ProjectsService.create — vai trò chủ dự án', () => {
       project: {
         create: vi.fn(() => Promise.resolve(row({ id: 'p1', name: 'D' }))),
         update: ok(),
+        findUnique: vi.fn(() =>
+          Promise.resolve({ workspaceId: 'w1', defaultWorkflowId: 'wf-clone' }),
+        ),
       },
       workflow: { create: ok() },
       status: { create: ok() },
@@ -306,6 +316,7 @@ describe('ProjectsService.create — vai trò chủ dự án', () => {
       boardColumn: { create: ok() },
       boardColumnStatus: { create: ok() },
       projectMembership: { create: ok() },
+      ...resolverTables(),
     };
     const prisma = {
       project: { findFirst: vi.fn(() => Promise.resolve(null)) },
@@ -339,6 +350,9 @@ describe('ProjectsService.create — mẫu dự án', () => {
       project: {
         create: vi.fn((_a?: unknown) => Promise.resolve(row({ id: 'p1', name: 'D' }))),
         update: ok(),
+        findUnique: vi.fn(() =>
+          Promise.resolve({ workspaceId: 'w1', defaultWorkflowId: 'wf-clone' }),
+        ),
       },
       workflow: { create: ok() },
       status: { create: ok() },
@@ -347,6 +361,7 @@ describe('ProjectsService.create — mẫu dự án', () => {
       boardColumn: { create: ok() },
       boardColumnStatus: { create: ok() },
       projectMembership: { create: ok() },
+      ...resolverTables(),
     };
     const prisma = {
       project: { findFirst: vi.fn(() => Promise.resolve(null)) },
@@ -474,6 +489,9 @@ describe('ProjectsService — dự án riêng tư', () => {
       project: {
         create: vi.fn((_a?: unknown) => Promise.resolve(row({ id: 'p1', isPrivate: true }))),
         update: ok(),
+        findUnique: vi.fn(() =>
+          Promise.resolve({ workspaceId: 'w1', defaultWorkflowId: 'wf-clone' }),
+        ),
       },
       workflow: { create: ok() },
       status: { create: ok() },
@@ -482,6 +500,7 @@ describe('ProjectsService — dự án riêng tư', () => {
       boardColumn: { create: ok() },
       boardColumnStatus: { create: ok() },
       projectMembership: { create: ok() },
+      ...resolverTables(),
     };
     const prisma = {
       project: { findFirst: vi.fn(() => Promise.resolve(null)) },
@@ -705,7 +724,15 @@ describe('ProjectsService.create — điều kiện cho dự án riêng tư / ng
     // tx giả: mọi model.method đều trả một dòng dự án (đủ cho luồng tạo thành công)
     const tx = new Proxy(
       {},
-      { get: () => new Proxy({}, { get: () => vi.fn(() => Promise.resolve(row())) }) },
+      {
+        get: () =>
+          new Proxy(
+            {},
+            {
+              get: (_t, method) => vi.fn(() => Promise.resolve(method === 'findMany' ? [] : row())),
+            },
+          ),
+      },
     );
     const prisma = {
       project: { findFirst: vi.fn(() => Promise.resolve(null)) },
@@ -802,6 +829,9 @@ describe('ProjectsService.create — cache quy trình của resolver (đặt def
       project: {
         create: vi.fn((_a?: unknown) => Promise.resolve(row({ id: 'p1', name: 'D' }))),
         update: ok(),
+        findUnique: vi.fn(() =>
+          Promise.resolve({ workspaceId: 'w1', defaultWorkflowId: 'wf-clone' }),
+        ),
       },
       workflow: { create: ok() },
       status: { create: ok() },
@@ -810,6 +840,7 @@ describe('ProjectsService.create — cache quy trình của resolver (đặt def
       boardColumn: { create: ok() },
       boardColumnStatus: { create: ok() },
       projectMembership: { create: ok() },
+      ...resolverTables(),
     };
     const prisma = {
       project: { findFirst: vi.fn(() => Promise.resolve(null)) },
@@ -818,7 +849,7 @@ describe('ProjectsService.create — cache quy trình của resolver (đặt def
         txBody ? txBody(fn) : Promise.resolve(fn(tx)),
       ),
     };
-    const resolver = { invalidate: vi.fn() };
+    const resolver = { invalidate: vi.fn(), forProject: vi.fn(() => Promise.resolve(new Map())) };
     const svc = new ProjectsService(
       prisma as never,
       {} as never,

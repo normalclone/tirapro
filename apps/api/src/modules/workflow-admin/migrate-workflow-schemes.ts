@@ -1,16 +1,7 @@
 import { Prisma, type PrismaClient } from '@prisma/client';
-import type {
-  AffectedRuleDto,
-  NameRefDto,
-  StatusCategory,
-  WorkflowDefaultKey,
-} from '@tirapro/types';
-import {
-  DEFAULT_SCHEME,
-  DEFAULT_WORKFLOWS,
-  LEGACY_STATUS_MAP,
-  expandWorkflowTransitions,
-} from '@tirapro/shared';
+import type { AffectedRuleDto, NameRefDto, StatusCategory } from '@tirapro/types';
+import { LEGACY_STATUS_MAP } from '@tirapro/shared';
+import { ensureDefaultScheme } from './default-scheme';
 import { appendMissingBoardStatuses, pruneUnusedBoardStatuses } from './board-columns-sync';
 import {
   buildStatusRefMap,
@@ -28,13 +19,6 @@ import {
   type MoveScope,
   type PlannedMove,
 } from './workflow-move';
-
-/**
- * Ba quy trình mặc định của từng workspace. Nhận diện bằng dấu ổn định `sourceTemplateId = tirapro-default:<KEY>` (đổi tên
- * không sinh bản trùng); quy trình chung chưa có dấu mà trùng tên chính xác được nhận và đóng dấu. Quy trình khác không bị đụng.
- */
-const DEFAULT_MARKER_PREFIX = 'tirapro-default:';
-const DEFAULT_KEYS = Object.keys(DEFAULT_WORKFLOWS) as WorkflowDefaultKey[];
 
 export interface MigrateOptions {
   dryRun: boolean;
@@ -174,81 +158,14 @@ async function migrateWorkspace(
 ): Promise<MigrateWorkspaceResult> {
   await lockWorkspaceWorkflows(tx, ws.id);
 
-  // 1. Ba quy trình mặc định (theo tên chính xác, chung của tổ chức).
-  const createdWorkflows: string[] = [];
-  const defaultIdByKey = new Map<WorkflowDefaultKey, string>();
-  for (const key of DEFAULT_KEYS) {
-    const def = DEFAULT_WORKFLOWS[key];
-    const marker = `${DEFAULT_MARKER_PREFIX}${key}`;
-    const shared = { workspaceId: ws.id, projectId: null, isTemplate: false } as const;
-    const found =
-      (await tx.workflow.findFirst({
-        where: { ...shared, sourceTemplateId: marker },
-        select: { id: true },
-      })) ??
-      (await tx.workflow.findFirst({
-        where: { ...shared, name: def.name, sourceTemplateId: null },
-        select: { id: true },
-      }));
-    if (found) {
-      await tx.workflow.updateMany({
-        where: { id: found.id, sourceTemplateId: null },
-        data: { sourceTemplateId: marker },
-      });
-      defaultIdByKey.set(key, found.id);
-      continue;
-    }
-    const wf = await tx.workflow.create({
-      data: {
-        workspaceId: ws.id,
-        name: def.name,
-        isTemplate: false,
-        sourceTemplateId: marker,
-        statuses: {
-          create: def.statuses.map((s, i) => ({
-            name: s.name,
-            category: s.category,
-            order: i,
-            isInitial: s.isInitial,
-          })),
-        },
-      },
-      select: { id: true, statuses: { select: { id: true, name: true } } },
-    });
-    const idByName = new Map(wf.statuses.map((s) => [s.name, s.id]));
-    // Chỉ qua expandWorkflowTransitions: không bao giờ ghi '*OPEN' thô.
-    const transitions = expandWorkflowTransitions(def).map((t, i) => ({
-      workflowId: wf.id,
-      name: t.name,
-      fromStatusId: t.from === null ? null : (idByName.get(t.from) ?? null),
-      toStatusId: idByName.get(t.to)!,
-      order: i,
-    }));
-    await tx.workflowTransition.createMany({ data: transitions });
-    defaultIdByKey.set(key, wf.id);
-    createdWorkflows.push(def.name);
-  }
-
-  // 2. Dòng cấu hình cho mọi loại việc — dòng đã có luôn thắng.
+  const { createdWorkflows, defaultIdByKey, createdSchemeRows } = await ensureDefaultScheme(
+    tx,
+    ws.id,
+  );
   const types = await tx.issueType.findMany({
     where: { workspaceId: ws.id },
     select: { id: true, key: true, name: true },
   });
-  const existingScheme = await tx.workspaceWorkflowScheme.findMany({
-    where: { workspaceId: ws.id },
-    select: { issueTypeId: true },
-  });
-  const have = new Set(existingScheme.map((r) => r.issueTypeId));
-  const missing = types.filter((t) => !have.has(t.id));
-  if (missing.length > 0)
-    await tx.workspaceWorkflowScheme.createMany({
-      data: missing.map((t) => ({
-        workspaceId: ws.id,
-        issueTypeId: t.id,
-        workflowId: defaultIdByKey.get(DEFAULT_SCHEME[t.key ?? 'CUSTOM'])!,
-      })),
-      skipDuplicates: true,
-    });
 
   // 3. Quy trình hiệu lực: ghi đè dự án → cấu hình tổ chức.
   const [scheme, overrides, projects] = await Promise.all([
@@ -360,7 +277,12 @@ async function migrateWorkspace(
   const deletedColumns: string[] = [];
   for (const p of projects) {
     const used = [...new Set(types.flatMap((t) => effective(p.id, t.id) ?? []))];
-    boardLinksAdded += (await appendMissingBoardStatuses(tx, p.id, used)).added;
+    boardLinksAdded += (
+      await appendMissingBoardStatuses(tx, p.id, used, {
+        // Cùng bảng ánh xạ cũ → mới với việc chuyển trạng thái, để mỗi trạng thái mới vào đúng cột của trạng thái cũ.
+        pick: (legacy, toWorkflowId) => legacyPick('', legacy.id, toWorkflowId),
+      })
+    ).added;
     // Trạng thái cũ không còn dùng và không còn việc → gỡ khỏi cột (không để cột "ma" sau chuyển đổi).
     const pruned = await pruneUnusedBoardStatuses(tx, p.id, used);
     boardLinksRemoved += pruned.removed;
@@ -405,7 +327,7 @@ async function migrateWorkspace(
     workspaceId: ws.id,
     workspaceName: ws.name,
     createdWorkflows,
-    createdSchemeRows: missing.length,
+    createdSchemeRows,
     moves: rows,
     movedIssues,
     boardLinksAdded,

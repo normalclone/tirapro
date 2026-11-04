@@ -27,6 +27,10 @@ import { AuditService, type AuditEntry } from '../audit/audit.service';
 import { SYSTEM_USER_EMAIL } from '../../common/system-user';
 import { ProjectAccessService } from '../rbac/project-access.service';
 import { WorkflowResolver } from '../workflow-admin/workflow-resolver.service';
+import {
+  appendMissingBoardStatuses,
+  pruneUnusedBoardStatuses,
+} from '../workflow-admin/board-columns-sync';
 
 /**
  * `issueCount` của thẻ dự án: chưa xoá mềm và KHÔNG tính việc chưa duyệt (cùng số với Board/Tổng quan/Việc chờ). Prisma
@@ -173,6 +177,13 @@ export class ProjectsService {
             });
           }
         }
+
+        // Cấu hình quy trình theo loại việc của tổ chức quyết định trạng thái nào được tạo việc: bảng phải có cột cho MỌI trạng
+        // thái đó (mọi loại việc), không thì việc mới tạo không hiện trên bảng. Cột mẫu giữ làm làn, trạng thái mới vào làn gần nhất.
+        this.workflows.invalidate(project.id);
+        const inUse = [...new Set((await this.workflows.forProject(tx, project.id)).values())];
+        await appendMissingBoardStatuses(tx, project.id, inUse);
+        await pruneUnusedBoardStatuses(tx, project.id, inUse);
 
         // Người tạo = Project Admin
         if (adminRole) {

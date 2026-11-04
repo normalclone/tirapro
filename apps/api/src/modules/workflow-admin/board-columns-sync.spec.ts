@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   appendMissingBoardStatuses,
+  replacementSources,
   pickColumnForCategory,
   pruneUnusedBoardStatuses,
 } from './board-columns-sync';
@@ -30,14 +31,39 @@ describe('pickColumnForCategory', () => {
 });
 
 describe('appendMissingBoardStatuses (M1: bảng vẫn lưu được, không thẻ nào biến mất)', () => {
-  /** Quy trình mới `wfNew`: 3 trạng thái cùng nhóm với 3 cột mặc định, 1 trạng thái đã có sẵn trên bảng. */
+  type St = {
+    id: string;
+    name: string;
+    category: 'TODO' | 'IN_PROGRESS' | 'DONE';
+    order: number;
+    isInitial: boolean;
+    workflowId: string;
+  };
+  const st = (
+    id: string,
+    name: string,
+    category: St['category'],
+    workflowId: string,
+    order = 0,
+    isInitial = false,
+  ): St => ({ id, name, category, order, isInitial, workflowId });
+  /** Quy trình mới `wfNew`: 4 trạng thái; quy trình cũ `wfOld`: 3 trạng thái cùng nhóm với 3 cột mặc định. */
   const NEW_STATUSES = [
-    { id: 'n-todo', category: 'TODO' },
-    { id: 'n-prog', category: 'IN_PROGRESS' },
-    { id: 'n-review', category: 'IN_PROGRESS' },
-    { id: 'n-done', category: 'DONE' },
+    st('n-todo', 'To Do', 'TODO', 'wfNew', 0, true),
+    st('n-prog', 'In Progress', 'IN_PROGRESS', 'wfNew', 1),
+    st('n-review', 'In Review', 'IN_PROGRESS', 'wfNew', 2),
+    st('n-done', 'Done', 'DONE', 'wfNew', 3),
   ];
-  function fakeTx(boardColumns: Array<{ id: string; statuses: string[] }>, extra: string[] = []) {
+  const OLD = [
+    st('o-todo', 'Cần làm', 'TODO', 'wfOld', 0, true),
+    st('o-prog', 'Đang làm', 'IN_PROGRESS', 'wfOld', 1),
+    st('o-done', 'Hoàn thành', 'DONE', 'wfOld', 2),
+  ];
+  function fakeTx(
+    boardColumns: Array<{ id: string; statuses: string[] }>,
+    extraOld: St[] = [],
+    extraNew: St[] = [],
+  ) {
     const board = {
       id: 'b1',
       columns: boardColumns.map((c) => ({
@@ -45,19 +71,11 @@ describe('appendMissingBoardStatuses (M1: bảng vẫn lưu được, không th�
         statuses: c.statuses.map((statusId) => ({ statusId })),
       })),
     };
-    const old = [
-      { id: 'o-todo', category: 'TODO' },
-      { id: 'o-prog', category: 'IN_PROGRESS' },
-      { id: 'o-done', category: 'DONE' },
-    ];
+    const old = [...OLD, ...extraOld];
     return {
       status: {
         findMany: vi.fn((a: { where: { workflowId?: unknown; id?: unknown } }) =>
-          Promise.resolve(
-            a.where.workflowId
-              ? [...NEW_STATUSES, ...extra.map((id) => ({ id, category: 'TODO' }))]
-              : old,
-          ),
+          Promise.resolve(a.where.workflowId ? [...NEW_STATUSES, ...extraNew] : old),
         ),
       },
       board: { findMany: vi.fn(() => Promise.resolve([board])) },
@@ -74,7 +92,7 @@ describe('appendMissingBoardStatuses (M1: bảng vẫn lưu được, không th�
     { id: 'c-done', statuses: ['o-done'] },
   ];
 
-  it('thêm trạng thái còn thiếu vào cột To Do / In Progress / Done theo NHÓM, không gỡ trạng thái cũ', async () => {
+  it('mỗi trạng thái mới vào cột của trạng thái cũ thay thế nó (cùng tên → cùng nhóm), không gỡ trạng thái cũ', async () => {
     const tx = fakeTx(cols());
     const r = await appendMissingBoardStatuses(tx as never, 'p1', ['wfNew']);
     expect(r.added).toBe(4);
@@ -88,6 +106,60 @@ describe('appendMissingBoardStatuses (M1: bảng vẫn lưu được, không th�
       ]),
     );
     expect(links).toHaveLength(4);
+  });
+
+  it('giữ làn: "Review code" → In Review, "Chờ test" → Ready for Retest theo bảng ánh xạ (pick); cột cũ chưa có đích thì theo nhóm', async () => {
+    const review = st('o-review', 'Review code', 'IN_PROGRESS', 'wfOld', 3);
+    const wait = st('o-wait', 'Chờ test', 'IN_PROGRESS', 'wfOld', 4);
+    const retest = st('n-retest', 'Ready for Retest', 'IN_PROGRESS', 'wfNew', 4);
+    const reopened = st('n-reopened', 'Reopened', 'IN_PROGRESS', 'wfNew', 5);
+    const tx = fakeTx(
+      [
+        { id: 'c-todo', statuses: ['o-todo'] },
+        { id: 'c-prog', statuses: ['o-prog'] },
+        { id: 'c-review', statuses: ['o-review'] },
+        { id: 'c-wait', statuses: ['o-wait'] },
+        { id: 'c-done', statuses: ['o-done'] },
+      ],
+      [review, wait],
+      [retest, reopened],
+    );
+    const table: Record<string, string> = {
+      'Review code': 'n-review',
+      'Chờ test': 'n-retest',
+    };
+    await appendMissingBoardStatuses(tx as never, 'p1', ['wfNew'], {
+      pick: (legacy) => table[legacy.name],
+    });
+    const links = tx.boardColumnStatus.createMany.mock.calls[0]![0].data;
+    expect(links).toEqual(
+      expect.arrayContaining([
+        { columnId: 'c-review', statusId: 'n-review' },
+        { columnId: 'c-wait', statusId: 'n-retest' },
+        // Không trạng thái cũ nào thay thế "Reopened" → cột đầu cùng nhóm (In Progress).
+        { columnId: 'c-prog', statusId: 'n-reopened' },
+      ]),
+    );
+  });
+
+  it('nhiều cột nguồn cho một trạng thái mới → cột đứng trước', async () => {
+    const wait = st('o-wait', 'Chờ test', 'IN_PROGRESS', 'wfOld', 4);
+    const testing = st('o-testing', 'Đang test', 'IN_PROGRESS', 'wfOld', 5);
+    const tx = fakeTx(
+      [
+        { id: 'c-todo', statuses: ['o-todo'] },
+        { id: 'c-wait', statuses: ['o-wait'] },
+        { id: 'c-testing', statuses: ['o-testing'] },
+        { id: 'c-done', statuses: ['o-done'] },
+      ],
+      [wait, testing],
+    );
+    await appendMissingBoardStatuses(tx as never, 'p1', ['wfNew'], {
+      pick: (legacy) => (legacy.name.endsWith('test') ? 'n-review' : undefined),
+    });
+    const links = tx.boardColumnStatus.createMany.mock.calls[0]![0].data;
+    expect(links).toContainEqual({ columnId: 'c-wait', statusId: 'n-review' });
+    expect(links).not.toContainEqual({ columnId: 'c-testing', statusId: 'n-review' });
   });
 
   it('trạng thái đã nằm trong một cột bất kỳ thì bỏ qua; idempotent khi đã đủ', async () => {
@@ -107,6 +179,56 @@ describe('appendMissingBoardStatuses (M1: bảng vẫn lưu được, không th�
     expect(tx.status.findMany).not.toHaveBeenCalled();
     const empty = fakeTx([]);
     expect((await appendMissingBoardStatuses(empty as never, 'p1', ['wfNew'])).added).toBe(0);
+  });
+});
+
+describe('replacementSources', () => {
+  const flow = [
+    {
+      id: 'a',
+      name: 'To Do',
+      category: 'TODO' as const,
+      order: 0,
+      isInitial: true,
+      workflowId: 'W1',
+    },
+    {
+      id: 'b',
+      name: 'Done',
+      category: 'DONE' as const,
+      order: 1,
+      isInitial: false,
+      workflowId: 'W1',
+    },
+    {
+      id: 'c',
+      name: 'New',
+      category: 'TODO' as const,
+      order: 0,
+      isInitial: true,
+      workflowId: 'W2',
+    },
+    {
+      id: 'd',
+      name: 'Done',
+      category: 'DONE' as const,
+      order: 1,
+      isInitial: false,
+      workflowId: 'W2',
+    },
+  ];
+  it('mỗi quy trình đang dùng nhận một đích cho mỗi trạng thái cũ (cùng tên → cùng nhóm); pick thắng gợi ý', () => {
+    const legacy = [
+      { id: 'L1', name: 'Cần làm', category: 'TODO' as const },
+      { id: 'L2', name: 'Done', category: 'DONE' as const },
+    ];
+    const m = replacementSources(legacy, flow, (l, wf) =>
+      l.id === 'L1' && wf === 'W2' ? 'c' : undefined,
+    );
+    expect([...(m.get('a') ?? [])]).toEqual(['L1']);
+    expect([...(m.get('c') ?? [])]).toEqual(['L1']);
+    expect([...(m.get('b') ?? [])]).toEqual(['L2']);
+    expect([...(m.get('d') ?? [])]).toEqual(['L2']);
   });
 });
 

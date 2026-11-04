@@ -33,7 +33,9 @@ describe.skipIf(!DB_URL)('WorkflowSchemeService ↔ Postgres thật', () => {
   beforeAll(async () => {
     prisma = new PrismaClient({ datasources: { db: { url: DB_URL! } } });
     const resolver = new WorkflowResolver();
-    svc = new WorkflowSchemeService(prisma as unknown as PrismaService, resolver);
+    svc = new WorkflowSchemeService(prisma as unknown as PrismaService, resolver, {
+      visibleProjectIds: () => Promise.resolve(null),
+    } as never);
     admin = new WorkflowAdminService(
       prisma as unknown as PrismaService,
       {

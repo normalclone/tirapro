@@ -514,6 +514,7 @@ describe.skipIf(!DB_URL)('migrateWorkflowSchemes ↔ Postgres thật', () => {
       svc = new WorkflowSchemeService(
         prisma as unknown as PrismaService,
         resolver,
+        { visibleProjectIds: () => Promise.resolve(null) } as never,
         notifications as never,
         events as never,
       );

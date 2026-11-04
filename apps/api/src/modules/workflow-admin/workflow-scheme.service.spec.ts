@@ -366,9 +366,11 @@ function world(
     }),
   };
   const events = { emit: vi.fn() };
+  const access = { visibleProjectIds: vi.fn(() => Promise.resolve(null)) };
   const service = new WorkflowSchemeService(
     prisma as never,
     resolver,
+    access as never,
     notifications as never,
     events as never,
   );

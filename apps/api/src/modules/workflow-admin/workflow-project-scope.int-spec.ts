@@ -30,8 +30,6 @@ describe.skipIf(!DB_URL)('đổi quy trình của MỘT dự án ↔ Postgres th
     svc = new WorkflowSchemeService(
       prisma as unknown as PrismaService,
       new WorkflowResolver(),
-      undefined,
-      undefined,
       access as never,
     );
     void WorkflowAdminService;

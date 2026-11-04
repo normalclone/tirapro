@@ -134,6 +134,7 @@ Thứ tự **duy nhất** cho mọi lần nâng cấp (bản đầu tiên của 
 | 4 | Mã hoá khoá bí mật webhook automation cũ | `automation:seal-secrets` | Một lần, **sau khi bản mới đã ổn định** (xem cảnh báo rollback) |
 | 1c | Nạp quyền + vai trò hệ thống (DB mới, không demo) | `pnpm --filter @tirapro/api run db:seed:roles [-- --dry-run]` | **Bắt buộc lần đầu với DB sạch** — thiếu thì đăng ký/tạo workspace lỗi 500 "System role chưa được seed". Chỉ THÊM quyền/vai trò/lượt gán còn thiếu, không gỡ gì nên chạy lại an toàn; cũng dùng để bù phần `+thiếu` mà bước 5 báo. Trong container: `node scripts/seed-system-roles.mjs`. **`-- --sync`** (nên chạy `--dry-run --sync` trước) còn GỠ các lượt gán quyền thừa của vai trò hệ thống so với danh mục — bắt buộc một lần sau bản logbug-kta để gỡ `project:create` khỏi Workspace Member trên DB đang chạy |
 | 5 | Kiểm bộ quyền vai trò hệ thống khớp code | `pnpm --filter @tirapro/api run db:check-roles` | Sau `migrate deploy` (tuỳ chọn): in `+thiếu`/`-thừa` theo `SYSTEM_ROLE_PERMISSIONS`, thoát mã 1 nếu lệch. Migration chỉ THÊM quyền, không gỡ. Trong container: `docker run --rm --env-file .env <image> node scripts/check-system-roles.mjs` (giống hai script ở bước 3-4; cần image đã copy script này) |
+| 6 | Chuyển dữ liệu cũ sang quy trình theo loại việc | `pnpm --filter @tirapro/api run workflows:migrate -- --dry-run` rồi chạy thật | **Một lần, chỉ sau `migrate deploy`**, theo runbook riêng ở mục "Quy trình theo loại việc" bên dưới (có dump MỚI trước khi chạy thật) |
 
 Render/Docker (`render.yaml` `startCommand`, `Dockerfile` `CMD`) tự chạy bước 1 + 2 mỗi lần khởi động; bước 3-4 luôn là thao tác tay.
 
@@ -233,6 +234,64 @@ Hai script là `node scripts/*.mjs` — chỉ cần `DATABASE_URL` + `INTEGRATIO
 - Exit code: `0` xong, `1` thiếu khoá/sai khoá/chưa xác nhận khoá, `2` có quy tắc bị bỏ qua (xung đột đúng lúc có người sửa / khoá > 200 ký tự) → chạy lại.
 
 ---
+
+## Quy trình theo loại việc
+
+Mỗi loại việc (Task, Bug, Epic, …) có quy trình riêng: cấu hình theo tổ chức (`WorkspaceWorkflowScheme`), dự án có thể ghi đè từng loại (`ProjectWorkflowOverride`). Bản nâng cấp này thêm **1 migration** (`20261105100000_workflow_schemes`: hai bảng trên, khoá ngoại `workflowId` kiểu `RESTRICT`, chỉ mục duy nhất `[tổ chức, loại việc]` / `[dự án, loại việc]`) và **một script chuyển dữ liệu** phải chạy tay. Migration chỉ THÊM bảng; không có script thì mọi thứ chạy như cũ (khi chưa có dòng cấu hình, dự án vẫn dùng `Project.defaultWorkflowId`), nên có thể deploy trước rồi chuyển dữ liệu sau trong cửa sổ bảo trì.
+
+Tổ chức mới tạo từ bản này có sẵn 3 quy trình mặc định (Standard / Bug / Epic) và dòng cấu hình cho mọi loại việc; dự án mới tạo có bảng phủ đủ trạng thái của quy trình từng loại.
+
+### Runbook (thứ tự duy nhất)
+
+1. **Deploy** image/bản mới (API + web). Render/Docker tự chạy `prisma migrate deploy` + `db:raw` khi khởi động (bước 1-2 của checklist); chạy tay nếu deploy kiểu khác. `migrate deploy` áp `20261105100000_workflow_schemes` (nằm giữa `20261105100000_saved_filter_shares` và `20261105100100_notification_filter_shared` theo thứ tự tên thư mục — Prisma tự sắp đúng).
+2. **Xác nhận migration đã áp:** `prisma migrate status` báo "up to date".
+3. **Tạo dump MỚI ngay trước khi chạy thật** (không dùng dump cũ từ trước deploy: dump này là điểm quay lại, phải chứa cả bảng mới và dữ liệu đến phút hiện tại):
+   ```bash
+   pg_dump -Fc "$DATABASE_URL" -f tirapro-$(date +%Y%m%d-%H%M%S)-pre-workflows.dump
+   ```
+4. **Chạy thử, không ghi gì** (chạy đúng thuật toán thật rồi rollback nên số liệu khớp chạy thật):
+   ```bash
+   # Từ mã nguồn (cần `pnpm --filter @tirapro/api build` trước):
+   pnpm --filter @tirapro/api run workflows:migrate -- --dry-run
+   # Hoặc trong image (script nằm ở ./scripts/, dùng dist/):
+   docker run --rm --env-file .env <image> node scripts/migrate-workflow-schemes.mjs --dry-run
+   # Một tổ chức: thêm  --workspace <id|slug>
+   ```
+5. **Xem lại kết quả dry-run** với người phụ trách trước khi chạy thật — đủ các mục: (a) quy trình mặc định sẽ tạo, (b) số việc chuyển trạng thái theo dự án / loại việc (kể cả trong thùng rác), (c) "Sẽ xoá cột" (cột chỉ còn trạng thái cũ và không còn việc nào) và cột "ma" còn lại, (d) từng quy tắc automation: sửa id (trước → sau) hay **TẮT** (không ánh xạ được; người tạo quy tắc được báo), (e) tham chiếu theo TÊN trạng thái trong bộ lọc/bảng/widget JQL sẽ hết khớp (`nameRefs`). Việc nào chuyển sai ánh xạ thì dừng, KHÔNG chạy thật.
+6. **Chạy thật** (cửa sổ bảo trì, không ghi song song; mỗi tổ chức một transaction có khoá advisory):
+   ```bash
+   pnpm --filter @tirapro/api run workflows:migrate
+   # hoặc: docker run --rm --env-file .env <image> node scripts/migrate-workflow-schemes.mjs
+   ```
+   Idempotent: chạy lại không đổi gì (dòng cấu hình quản trị viên đã chỉnh luôn thắng; việc đã đúng quy trình không bị đụng).
+7. **Kiểm sau chạy** — cả ba phải ra 0:
+   ```sql
+   -- (a) việc đang ở trạng thái của quy trình KHÁC quy trình hiệu lực của loại việc (kể cả thùng rác)
+   SELECT count(*) FROM "Issue" i
+   JOIN "Status" s ON s.id = i."statusId"
+   JOIN "WorkspaceWorkflowScheme" w ON w."issueTypeId" = i."typeId"
+   LEFT JOIN "ProjectWorkflowOverride" o ON o."projectId" = i."projectId" AND o."issueTypeId" = i."typeId"
+   WHERE s."workflowId" <> COALESCE(o."workflowId", w."workflowId");
+   -- (b) bảng không còn cột nào rỗng sau khi xoá cột ma
+   SELECT count(*) FROM "Board" b WHERE b."deletedAt" IS NULL
+     AND NOT EXISTS (SELECT 1 FROM "BoardColumn" c WHERE c."boardId" = b.id);
+   -- (c) việc (chưa xoá) nằm ở trạng thái không có trên cột nào của bảng dự án => thẻ biến mất
+   SELECT count(*) FROM "Issue" i
+   WHERE i."deletedAt" IS NULL
+     AND EXISTS (SELECT 1 FROM "Board" b WHERE b."projectId" = i."projectId" AND b."deletedAt" IS NULL)
+     AND NOT EXISTS (SELECT 1 FROM "Board" b
+       JOIN "BoardColumn" c ON c."boardId" = b.id
+       JOIN "BoardColumnStatus" cs ON cs."columnId" = c.id
+       WHERE b."projectId" = i."projectId" AND b."deletedAt" IS NULL AND cs."statusId" = i."statusId");
+   ```
+   Rồi chạy `--dry-run` lần nữa: phải báo 0 thay đổi. Mở một bảng, một việc Bug/Epic và trang Cài đặt → Quy trình để xem bằng mắt.
+8. **Quay lại (rollback)** nếu có sai: dừng API, khôi phục dump MỚI của bước 3 (`pg_restore --clean --if-exists -d "$DATABASE_URL" <file>.dump`), khởi động lại. Dump này đã chứa bảng mới nên API bản mới chạy tiếp được (chưa có dữ liệu chuyển → hành vi cũ); muốn về hẳn bản cũ thì khôi phục dump rồi deploy lại image cũ (bản cũ bỏ qua hai bảng mới). Dữ liệu ghi giữa lúc dump và lúc khôi phục sẽ mất — vì vậy bước 6 chạy trong cửa sổ bảo trì.
+
+### Mã lỗi, endpoint, quyền
+
+- **Mã lỗi mới:** `STATUS_MAPPING_REQUIRED` (422 — đổi quy trình/loại việc làm có việc ở trạng thái chưa ánh xạ; kèm `suggestedStatusId`), `WORKFLOW_IN_USE` (409 — xoá quy trình đang được loại việc/dự án dùng), `STATUS_HAS_ISSUES` (409 — xoá trạng thái còn việc), `INITIAL_STATUS_IN_USE` (409 — xoá trạng thái ban đầu của quy trình đang dùng), `BOARD_STATUS_HAS_ISSUES` (422 — "Bỏ khỏi bảng" một trạng thái còn việc trong dự án).
+- **Endpoint mới / đổi:** `GET|PUT /workflow-schemes` (cấu hình theo tổ chức; PUT nhận `statusMap` / `statusMapByType` và `dryRun`), `GET|PUT /projects/:id/workflow-overrides` + `DELETE /projects/:id/workflow-overrides/:issueTypeId`, `GET /issues/:id/transitions` (các bước đi tiếp theo quy trình của LOẠI việc), `PATCH /issues/:id` nhận thêm `targetStatusId` khi đổi loại việc sang loại có quy trình khác, `PATCH /issues/bulk` nhận `typeId` + `statusMap`.
+- **Đổi quyền:** Quản trị dự án (`project:admin`) sửa được quy trình **do dự án sở hữu** (tạo bản riêng, trạng thái, bước chuyển) — trước đây chỉ Quản trị chung. Quy trình dùng chung của tổ chức, đặt mặc định, tạo/xoá quy trình và cấu hình theo tổ chức vẫn chỉ Quản trị chung.
 
 ## Nâng cấp / đổi khoá mã hoá tích hợp (Telegram BYO token)
 
