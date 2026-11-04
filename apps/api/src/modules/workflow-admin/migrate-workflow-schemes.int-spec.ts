@@ -114,6 +114,15 @@ describe.skipIf(!DB_URL)('migrateWorkflowSchemes ↔ Postgres thật', () => {
           data: sts.map((s) => ({ columnId: c.id, statusId: id(`old-${slug}-${s}`) })),
         });
       }
+      if (slug === 'a') {
+        // Cột "ma": chỉ chứa một trạng thái CŨ (sau khi chuyển đổi không còn việc nào ở đó) → phải bị xoá, các cột khác đánh số lại.
+        const ghost = await prisma.boardColumn.create({
+          data: { id: id('c-ghost'), boardId: board.id, name: 'Cột ma', order: 3 },
+        });
+        await prisma.boardColumnStatus.create({
+          data: { columnId: ghost.id, statusId: id('old-a-3') },
+        });
+      }
     }
     let n = 0;
     const issue = (
@@ -300,6 +309,10 @@ describe.skipIf(!DB_URL)('migrateWorkflowSchemes ↔ Postgres thật', () => {
     });
     expect(find('EPIC', 'Đang làm')).toMatchObject({ toWorkflowName: 'Epic Workflow' });
     expect(a.rules.map((r) => r.ruleId).sort()).toEqual([id('rule'), id('rule-std')].sort());
+    // Cột ma (chỉ trạng thái của quy trình lạ, không việc) được liệt kê "sẽ xoá" nhưng CHƯA xoá; bảng không thay đổi.
+    expect(a.deletedColumns).toEqual(['ATP / B / Cột ma']);
+    expect(a.ghostColumns).toEqual([]);
+    expect(await prisma.boardColumn.count({ where: { id: id('c-ghost') } })).toBe(1);
     // Dry-run báo trước → sau của từng quy tắc: quy tắc không giới hạn loại nhận cả 3 quy trình, quy tắc loại Task chỉ Standard.
     const wide = a.rules.find((r) => r.ruleId === id('rule'))!;
     expect(wide.statusRefs![0]).toMatchObject({ fromName: 'Đang làm' });
@@ -410,6 +423,10 @@ describe.skipIf(!DB_URL)('migrateWorkflowSchemes ↔ Postgres thật', () => {
     );
     expect(cols.flatMap((c) => c.statuses).filter((s) => oldIds.has(s.statusId))).toEqual([]);
     expect(out.totals.boardLinksRemoved).toBeGreaterThan(0);
+    // Cột ma bị xoá; các cột còn lại được đánh số lại 0..n-1 theo thứ tự cũ; bảng vẫn còn cột.
+    expect(only(out, WS_A).deletedColumns).toEqual(['ATP / B / Cột ma']);
+    expect(await prisma.boardColumn.count({ where: { id: id('c-ghost') } })).toBe(0);
+    expect(cols.map((c) => c.order)).toEqual([0, 1, 2]);
     // Quy tắc: id cũ thành id mới của cả ba quy trình (một id cũ → nhiều đích).
     const rule = await prisma.automationRule.findUniqueOrThrow({ where: { id: id('rule') } });
     const trig = rule.triggerConfig as { toStatusId?: string; toStatusIds?: string[] };
@@ -450,6 +467,7 @@ describe.skipIf(!DB_URL)('migrateWorkflowSchemes ↔ Postgres thật', () => {
       movedIssues: 0,
       boardLinksAdded: 0,
       boardLinksRemoved: 0,
+      columnsDeleted: 0,
       rulesRewritten: 0,
       rulesDisabled: 0,
     });

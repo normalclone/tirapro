@@ -100,6 +100,14 @@ export function ChangePreviewDialog({
             duration: 12000,
           },
         );
+      if (result.deletedColumns && result.deletedColumns.length > 0)
+        toast.info(
+          `Đã xoá ${result.deletedColumns.length} cột bảng chỉ còn trạng thái cũ và không còn việc`,
+          {
+            description: result.deletedColumns.join('; '),
+            duration: 10000,
+          },
+        );
       onApplied?.(result);
       onClose();
     } catch (e) {

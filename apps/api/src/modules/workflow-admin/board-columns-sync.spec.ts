@@ -112,8 +112,11 @@ describe('appendMissingBoardStatuses (M1: bảng vẫn lưu được, không th�
 
 describe('pruneUnusedBoardStatuses (không để cột "ma" sau khi chuyển đổi)', () => {
   /** Hai cột: `A` có {old1, new1}, `B` có {old2} (chỉ trạng thái cũ), `C` có {old3, new3}. `busy` = trạng thái còn việc. */
-  /** `columns`: các cột còn lại SAU khi gỡ, kèm quy trình của từng trạng thái còn trong cột (cho phần cột "ma"). */
-  type Col = { name: string; flows: string[] };
+  /**
+   * `columns`: các cột của dự án SAU khi gỡ liên kết, theo thứ tự (cho phần cột "ma"): bảng, tên và các trạng thái còn trong cột
+   * (`id@quy trình`).
+   */
+  type Col = { id: string; board?: string; name: string; statuses: string[] };
   function fakeTx(busy: string[], columns: Col[] = []) {
     const links = [
       { columnId: 'A', statusId: 'old1' },
@@ -132,20 +135,31 @@ describe('pruneUnusedBoardStatuses (không để cột "ma" sau khi chuyển đ�
         deleteMany: vi.fn(() => Promise.resolve({ count: 1 })),
       },
       issue: {
-        groupBy: vi.fn(() =>
-          Promise.resolve(busy.map((statusId) => ({ statusId, _count: { _all: 3 } }))),
+        groupBy: vi.fn((a: { where: { statusId: { in: string[] } } }) =>
+          Promise.resolve(
+            busy
+              .filter((id) => a.where.statusId.in.includes(id))
+              .map((statusId) => ({ statusId, _count: { _all: 3 } })),
+          ),
         ),
       },
       boardColumn: {
         findMany: vi.fn(() =>
           Promise.resolve(
             columns.map((c) => ({
+              id: c.id,
+              boardId: c.board ?? 'b1',
               name: c.name,
-              board: { name: 'Bảng chính', project: { key: 'KYHOP' } },
-              statuses: c.flows.map((workflowId) => ({ status: { workflowId } })),
+              board: { name: c.board ?? 'Bảng chính', project: { key: 'KYHOP' } },
+              statuses: c.statuses.map((x) => {
+                const [statusId, workflowId] = x.split('@');
+                return { statusId, status: { workflowId } };
+              }),
             })),
           ),
         ),
+        deleteMany: vi.fn(() => Promise.resolve({ count: 0 })),
+        update: vi.fn(() => Promise.resolve({})),
       },
     };
   }
@@ -180,26 +194,99 @@ describe('pruneUnusedBoardStatuses (không để cột "ma" sau khi chuyển đ�
     const tx = fakeTx([]);
     expect(await pruneUnusedBoardStatuses(tx as never, 'p1', [])).toEqual({
       removed: 0,
+      deletedColumns: [],
       ghostColumns: [],
     });
     expect(tx.boardColumnStatus.findMany).not.toHaveBeenCalled();
   });
 
-  it('báo cột "ma": cột chỉ còn trạng thái của quy trình cũ (còn việc / trạng thái cuối) — liệt kê MÃ / Bảng / Cột', async () => {
+  const deletedIds = (tx: ReturnType<typeof fakeTx>) =>
+    (
+      tx.boardColumn.deleteMany.mock.calls as unknown as Array<
+        [{ where: { id: { in: string[] } } }]
+      >
+    ).flatMap((c) => c[0].where.id.in);
+  const orders = (tx: ReturnType<typeof fakeTx>) =>
+    Object.fromEntries(
+      (
+        tx.boardColumn.update.mock.calls as unknown as Array<
+          [{ where: { id: string }; data: { order: number } }]
+        >
+      ).map((c) => [c[0].where.id, c[0].data.order]),
+    );
+
+  it('xoá cột chỉ còn trạng thái cũ và không còn việc; đánh số lại vị trí các cột còn lại', async () => {
     const tx = fakeTx(
-      ['old3'],
+      [],
       [
-        { name: 'Cần làm', flows: ['wfNew'] },
-        { name: 'Đang làm (cũ)', flows: ['wfOld'] },
-        { name: 'Xong', flows: ['wfOld', 'wfNew'] },
-        { name: 'Trống', flows: [] },
+        { id: 'c0', name: 'Cần làm', statuses: ['n1@wfNew'] },
+        { id: 'c1', name: 'Review code', statuses: ['o1@wfOld'] },
+        { id: 'c2', name: 'Đang làm', statuses: ['n2@wfNew', 'o2@wfOld'] },
+        { id: 'c3', name: 'Chờ test', statuses: ['o3@wfOld', 'o4@wfOld'] },
+        { id: 'c4', name: 'Xong', statuses: ['n3@wfNew'] },
       ],
     );
     const r = await pruneUnusedBoardStatuses(tx as never, 'p1', ['wfNew']);
-    expect(r.ghostColumns).toEqual(['KYHOP / Bảng chính / Đang làm (cũ)']);
+    expect(deletedIds(tx).sort()).toEqual(['c1', 'c3']);
+    expect(r.deletedColumns).toEqual([
+      'KYHOP / Bảng chính / Review code',
+      'KYHOP / Bảng chính / Chờ test',
+    ]);
+    expect(r.ghostColumns).toEqual([]);
+    // c0, c2, c4 còn lại → vị trí 0, 1, 2 theo thứ tự cũ.
+    expect(orders(tx)).toEqual({ c0: 0, c2: 1, c4: 2 });
   });
-  it('không có cột ma → danh sách rỗng', async () => {
-    const tx = fakeTx([], [{ name: 'A', flows: ['wfNew'] }]);
-    expect((await pruneUnusedBoardStatuses(tx as never, 'p1', ['wfNew'])).ghostColumns).toEqual([]);
+
+  it('KHÔNG xoá cột còn việc ở trạng thái cũ (kể cả thùng rác) hay cột có trạng thái đang dùng; báo là cột "ma"', async () => {
+    const tx = fakeTx(
+      ['o1'],
+      [
+        { id: 'c0', name: 'Cần làm', statuses: ['n1@wfNew'] },
+        { id: 'c1', name: 'Còn việc', statuses: ['o1@wfOld'] },
+        { id: 'c2', name: 'Lẫn', statuses: ['n2@wfNew', 'o2@wfOld'] },
+      ],
+    );
+    const r = await pruneUnusedBoardStatuses(tx as never, 'p1', ['wfNew']);
+    expect(tx.boardColumn.deleteMany).not.toHaveBeenCalled();
+    expect(tx.boardColumn.update).not.toHaveBeenCalled();
+    expect(r.deletedColumns).toEqual([]);
+    expect(r.ghostColumns).toEqual(['KYHOP / Bảng chính / Còn việc']);
+  });
+
+  it('bảng không bao giờ hết cột: mọi cột đều là ma và trống việc → giữ lại cột đầu và báo', async () => {
+    const tx = fakeTx(
+      [],
+      [
+        { id: 'c0', name: 'Một', statuses: ['o1@wfOld'] },
+        { id: 'c1', name: 'Hai', statuses: ['o2@wfOld'] },
+        { id: 'c2', name: 'Ba', statuses: ['o3@wfOld'] },
+      ],
+    );
+    const r = await pruneUnusedBoardStatuses(tx as never, 'p1', ['wfNew']);
+    expect(deletedIds(tx).sort()).toEqual(['c1', 'c2']);
+    expect(r.ghostColumns).toEqual(['KYHOP / Bảng chính / Một']);
+    expect(orders(tx)).toEqual({ c0: 0 });
+  });
+
+  it('mỗi bảng tính riêng: bảng B hết cột ma vẫn giữ một cột, bảng A xoá cột ma', async () => {
+    const tx = fakeTx(
+      [],
+      [
+        { id: 'a0', board: 'A', name: 'x', statuses: ['n1@wfNew'] },
+        { id: 'a1', board: 'A', name: 'y', statuses: ['o1@wfOld'] },
+        { id: 'b0', board: 'B', name: 'x', statuses: ['o2@wfOld'] },
+        { id: 'b1', board: 'B', name: 'y', statuses: ['o3@wfOld'] },
+      ],
+    );
+    await pruneUnusedBoardStatuses(tx as never, 'p1', ['wfNew']);
+    expect(deletedIds(tx).sort()).toEqual(['a1', 'b1']);
+  });
+
+  it('idempotent: chạy lại khi không còn cột ma thì không xoá/đánh số gì nữa', async () => {
+    const tx = fakeTx([], [{ id: 'c0', name: 'Cần làm', statuses: ['n1@wfNew'] }]);
+    const r = await pruneUnusedBoardStatuses(tx as never, 'p1', ['wfNew']);
+    expect(r).toMatchObject({ deletedColumns: [], ghostColumns: [] });
+    expect(tx.boardColumn.deleteMany).not.toHaveBeenCalled();
+    expect(tx.issue.groupBy).toHaveBeenCalledTimes(1); // chỉ lần đếm khi gỡ liên kết cũ; không có cột ma → không đếm thêm
   });
 });

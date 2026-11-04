@@ -74,6 +74,8 @@ export interface MigrateWorkspaceResult {
   boardLinksRemoved: number;
   /** Cột bảng "ma" còn lại (chỉ còn trạng thái cũ): "MÃ / Bảng / Cột" — cần người dọn tay. */
   ghostColumns: string[];
+  /** Cột bảng chỉ còn trạng thái cũ và không còn việc: dry-run = "Sẽ xoá cột", chạy thật = đã xoá. */
+  deletedColumns: string[];
   rules: AffectedRuleDto[];
   /** Đối tượng tham chiếu trạng thái theo TÊN trong JQL sẽ không còn khớp sau migrate (chỉ báo, không sửa). */
   nameRefs: NameRefDto[];
@@ -89,6 +91,7 @@ export interface MigrateResult {
     movedIssues: number;
     boardLinksAdded: number;
     boardLinksRemoved: number;
+    columnsDeleted: number;
     rulesRewritten: number;
     rulesDisabled: number;
   };
@@ -151,6 +154,7 @@ export async function migrateWorkflowSchemes(
       movedIssues: sum((r) => r.movedIssues),
       boardLinksAdded: sum((r) => r.boardLinksAdded),
       boardLinksRemoved: sum((r) => r.boardLinksRemoved),
+      columnsDeleted: sum((r) => r.deletedColumns.length),
       rulesRewritten: sum((r) => r.rules.filter((x) => x.outcome === 'rewritten').length),
       rulesDisabled: sum((r) => r.rules.filter((x) => x.outcome === 'disabled').length),
     },
@@ -353,6 +357,7 @@ async function migrateWorkspace(
   let boardLinksAdded = 0;
   let boardLinksRemoved = 0;
   const ghostColumns: string[] = [];
+  const deletedColumns: string[] = [];
   for (const p of projects) {
     const used = [...new Set(types.flatMap((t) => effective(p.id, t.id) ?? []))];
     boardLinksAdded += (await appendMissingBoardStatuses(tx, p.id, used)).added;
@@ -360,6 +365,7 @@ async function migrateWorkspace(
     const pruned = await pruneUnusedBoardStatuses(tx, p.id, used);
     boardLinksRemoved += pruned.removed;
     ghostColumns.push(...pruned.ghostColumns);
+    deletedColumns.push(...pruned.deletedColumns);
   }
 
   // 7. Sửa quy tắc automation: cùng hàm với các API đổi quy trình.
@@ -405,6 +411,7 @@ async function migrateWorkspace(
     boardLinksAdded,
     boardLinksRemoved,
     ghostColumns,
+    deletedColumns,
     rules: affectedRules,
     nameRefs,
   };

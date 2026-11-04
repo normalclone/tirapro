@@ -97,34 +97,74 @@ export async function pruneUnusedBoardStatuses(
   tx: Prisma.TransactionClient,
   projectId: string,
   workflowIds: string[],
-): Promise<{ removed: number; ghostColumns: string[] }> {
-  if (workflowIds.length === 0) return { removed: 0, ghostColumns: [] };
+): Promise<{ removed: number; deletedColumns: string[]; ghostColumns: string[] }> {
+  if (workflowIds.length === 0) return { removed: 0, deletedColumns: [], ghostColumns: [] };
   const removed = await removeUnusedLinks(tx, projectId, workflowIds);
-  return { removed, ghostColumns: await findGhostColumns(tx, projectId, workflowIds) };
+  return { removed, ...(await deleteGhostColumns(tx, projectId, workflowIds)) };
 }
 
 /**
- * Cột "ma": cột còn trạng thái nhưng TOÀN BỘ đều ngoài quy trình đang dùng (chỉ còn trạng thái cũ, thường vì còn việc nằm đó
- * hoặc là trạng thái cuối của cột nên không gỡ được). Trả "MÃ / Bảng / Cột" để báo người quản trị.
+ * Cột "ma": cột có trạng thái nhưng TOÀN BỘ đều ngoài quy trình đang dùng của dự án. Cột như vậy mà không còn việc nào
+ * (kể cả thùng rác) ở các trạng thái đó thì không bao giờ hiện thẻ nữa → XOÁ, rồi đánh số lại vị trí các cột còn lại. Không
+ * bao giờ xoá cột có trạng thái đang dùng hoặc còn việc; không để bảng hết cột (xoá hết thì giữ lại cột đầu và báo). Trả
+ * `deletedColumns` (đã xoá) và `ghostColumns` (còn lại, cần người dọn) dạng "MÃ / Bảng / Cột".
  */
-async function findGhostColumns(
+async function deleteGhostColumns(
   tx: Prisma.TransactionClient,
   projectId: string,
   workflowIds: string[],
-): Promise<string[]> {
+): Promise<{ deletedColumns: string[]; ghostColumns: string[] }> {
   const columns = await tx.boardColumn.findMany({
     where: { board: { projectId, deletedAt: null } },
     orderBy: [{ boardId: 'asc' }, { order: 'asc' }],
     select: {
+      id: true,
+      boardId: true,
       name: true,
       board: { select: { name: true, project: { select: { key: true } } } },
-      statuses: { select: { status: { select: { workflowId: true } } } },
+      statuses: { select: { statusId: true, status: { select: { workflowId: true } } } },
     },
   });
   const live = new Set(workflowIds);
-  return columns
-    .filter((c) => c.statuses.length > 0 && c.statuses.every((s) => !live.has(s.status.workflowId)))
-    .map((c) => `${c.board.project.key} / ${c.board.name} / ${c.name}`);
+  const label = (c: (typeof columns)[number]) =>
+    `${c.board.project.key} / ${c.board.name} / ${c.name}`;
+  const ghosts = columns.filter(
+    (c) => c.statuses.length > 0 && c.statuses.every((s) => !live.has(s.status.workflowId)),
+  );
+  if (ghosts.length === 0) return { deletedColumns: [], ghostColumns: [] };
+  const ghostStatusIds = [...new Set(ghosts.flatMap((c) => c.statuses.map((s) => s.statusId)))];
+  // allow-deleted: việc ở thùng rác vẫn giữ trạng thái đó (khôi phục cần chỗ trên bảng) nên PHẢI được đếm
+  const counts = await tx.issue.groupBy({
+    by: ['statusId'],
+    where: { projectId, statusId: { in: ghostStatusIds } },
+    _count: { _all: true },
+  });
+  const busy = new Set(counts.map((r) => r.statusId));
+  const empty = ghosts.filter((c) => c.statuses.every((s) => !busy.has(s.statusId)));
+  // Mỗi bảng phải còn ít nhất một cột: nếu mọi cột của bảng đều bị xoá thì giữ lại cột đầu.
+  const total = new Map<string, number>();
+  for (const c of columns) total.set(c.boardId, (total.get(c.boardId) ?? 0) + 1);
+  const perBoard = new Map<string, typeof empty>();
+  for (const c of empty) perBoard.set(c.boardId, [...(perBoard.get(c.boardId) ?? []), c]);
+  const toDelete: typeof empty = [];
+  for (const [boardId, list] of perBoard)
+    toDelete.push(...(list.length === total.get(boardId) ? list.slice(1) : list));
+  if (toDelete.length > 0) {
+    const ids = toDelete.map((c) => c.id);
+    await tx.boardColumn.deleteMany({ where: { id: { in: ids } } }); // BoardColumnStatus xoá theo (cascade)
+    // Đánh số lại vị trí cột của các bảng đã bị xoá bớt cột: 0..n-1 theo thứ tự cũ.
+    const gone = new Set(ids);
+    for (const boardId of new Set(toDelete.map((c) => c.boardId))) {
+      const left = columns.filter((c) => c.boardId === boardId && !gone.has(c.id));
+      for (const [order, c] of left.entries())
+        await tx.boardColumn.update({ where: { id: c.id }, data: { order } });
+    }
+  }
+  const deleted = new Set(toDelete.map((c) => c.id));
+  return {
+    deletedColumns: toDelete.map(label),
+    ghostColumns: ghosts.filter((c) => !deleted.has(c.id)).map(label),
+  };
 }
 
 async function removeUnusedLinks(

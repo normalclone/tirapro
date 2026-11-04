@@ -203,7 +203,12 @@ describe('Quy trình của tổ chức (bảng loại việc → quy trình)', (
       Promise.resolve({
         data: {
           ...change({ dryRun: !!cfg?.params?.dryRun }),
-          ...(cfg?.params?.dryRun ? {} : { ghostColumns: ['GSDA / Bảng chính / Đang làm (cũ)'] }),
+          ...(cfg?.params?.dryRun
+            ? {}
+            : {
+                ghostColumns: ['GSDA / Bảng chính / Đang làm (cũ)'],
+                deletedColumns: ['GSDA / Bảng chính / Review code'],
+              }),
         },
       }),
     );
@@ -216,6 +221,10 @@ describe('Quy trình của tổ chức (bảng loại việc → quy trình)', (
       await within(dialog).findByRole('button', { name: /Áp dụng và chuyển 5 việc/ }),
     );
     await waitFor(() => expect(toast.warning).toHaveBeenCalledTimes(1));
+    expect(toast.info).toHaveBeenCalledWith(
+      'Đã xoá 1 cột bảng chỉ còn trạng thái cũ và không còn việc',
+      expect.objectContaining({ description: 'GSDA / Bảng chính / Review code' }),
+    );
     expect(vi.mocked(toast.warning).mock.calls[0]![0]).toBe(
       '1 cột bảng chỉ còn trạng thái của quy trình cũ',
     );

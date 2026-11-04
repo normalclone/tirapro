@@ -33,6 +33,12 @@ import { ProjectAccessService } from '../rbac/project-access.service';
 /** Đổi quy trình có thể chuyển hàng nghìn việc: nới timeout mặc định 5s của interactive transaction. */
 const TX_OPTIONS = { timeout: 120_000, maxWait: 10_000 } as const;
 
+/** Kết quả dọn cột bảng sau khi đổi quy trình: cột đã xoá và cột "ma" còn lại (dạng "MÃ / Bảng / Cột"). */
+interface BoardCleanup {
+  ghosts: string[];
+  deleted: string[];
+}
+
 const WORKFLOW_NOT_SELECTABLE =
   'Chỉ chọn được quy trình chung của tổ chức (không phải mẫu, không phải quy trình riêng của dự án khác)';
 
@@ -140,7 +146,7 @@ export class WorkflowSchemeService {
             update: { workflowId: i.workflowId },
           });
         await this.applyMoves(tx, workspaceId, actorId, moves);
-        const ghosts = await this.syncBoards(tx, [
+        const boards = await this.syncBoards(tx, [
           ...new Set(plan.scopes.flatMap((s) => s.projectIds)),
         ]);
         const rules = await ruleStepForMoves(
@@ -152,7 +158,7 @@ export class WorkflowSchemeService {
           false,
         );
         const refs = await this.nameRefs(tx, workspaceId, moves, plan, { viewerId: actorId });
-        return this.result(false, moves, plan.ctx, rules, refs, ghosts);
+        return this.result(false, moves, plan.ctx, rules, refs, boards);
       }, TX_OPTIONS);
     } finally {
       // Kể cả rollback: lần nạp giữa chừng trong transaction có thể đã vào cache của request.
@@ -361,7 +367,7 @@ export class WorkflowSchemeService {
           update: { workflowId: targetId },
         });
         await this.applyMoves(tx, workspaceId, actorId, moves);
-        const ghosts = await this.syncBoards(tx, [projectId]);
+        const boards = await this.syncBoards(tx, [projectId]);
         const pairs = before.map((b) => ({
           ...b,
           toWorkflowId: targetId,
@@ -375,7 +381,7 @@ export class WorkflowSchemeService {
           { targets: [targetId], types: [type.id] },
           { viewerId: actorId, projectId },
         );
-        return this.result(false, moves, ctx, rules, refs, ghosts);
+        return this.result(false, moves, ctx, rules, refs, boards);
       }, TX_OPTIONS);
     } finally {
       this.resolver.invalidate(projectId);
@@ -469,7 +475,7 @@ export class WorkflowSchemeService {
         assertAllMapped(moves, ctx.typeNames);
         await tx.projectWorkflowOverride.deleteMany({ where: { projectId, issueTypeId } });
         await this.applyMoves(tx, workspaceId, actorId, moves);
-        const ghosts = await this.syncBoards(tx, [projectId]);
+        const boards = await this.syncBoards(tx, [projectId]);
         const pairs = before.map((b) => ({
           ...b,
           fromWorkflowIds: fromWorkflowsOf(issueTypeId, b.fromWorkflowIds, moves),
@@ -482,7 +488,7 @@ export class WorkflowSchemeService {
           { targets: [shared], types: [issueTypeId] },
           { viewerId: actorId, projectId },
         );
-        return this.result(false, moves, ctx, rules, refs, ghosts);
+        return this.result(false, moves, ctx, rules, refs, boards);
       }, TX_OPTIONS);
     } finally {
       this.resolver.invalidate(projectId);
@@ -519,16 +525,21 @@ export class WorkflowSchemeService {
   }
 
   /** Thêm trạng thái của quy trình đang dùng còn thiếu vào cột các bảng, rồi gỡ trạng thái cũ không còn dùng và không còn việc (xem `pruneUnusedBoardStatuses`). */
-  private async syncBoards(tx: Prisma.TransactionClient, projectIds: string[]): Promise<string[]> {
-    const ghosts: string[] = [];
+  private async syncBoards(
+    tx: Prisma.TransactionClient,
+    projectIds: string[],
+  ): Promise<BoardCleanup> {
+    const out: BoardCleanup = { ghosts: [], deleted: [] };
     for (const projectId of projectIds) {
       // Bỏ cache để đọc đúng cấu hình vừa ghi trong transaction này.
       this.resolver.invalidate(projectId);
       const inUse = [...new Set((await this.resolver.forProject(tx, projectId)).values())];
       await appendMissingBoardStatuses(tx, projectId, inUse);
-      ghosts.push(...(await pruneUnusedBoardStatuses(tx, projectId, inUse)).ghostColumns);
+      const pruned = await pruneUnusedBoardStatuses(tx, projectId, inUse);
+      out.ghosts.push(...pruned.ghostColumns);
+      out.deleted.push(...pruned.deletedColumns);
     }
-    return ghosts;
+    return out;
   }
 
   private result(
@@ -537,7 +548,7 @@ export class WorkflowSchemeService {
     ctx: ChangeContext,
     affectedRules: AffectedRuleDto[] = [],
     nameRefs: NameRefDto[] = [],
-    ghostColumns: string[] = [],
+    boards: BoardCleanup = { ghosts: [], deleted: [] },
   ): WorkflowChangeDto {
     const rows = toMoveRows(moves, { projects: ctx.projectKeys, types: ctx.typeNames });
     return {
@@ -547,7 +558,8 @@ export class WorkflowSchemeService {
       affectedRules,
       nameRefs,
       // Chỉ chạy thật mới có (xem trước không đụng cột bảng).
-      ...(ghostColumns.length > 0 ? { ghostColumns } : {}),
+      ...(boards.ghosts.length > 0 ? { ghostColumns: boards.ghosts } : {}),
+      ...(boards.deleted.length > 0 ? { deletedColumns: boards.deleted } : {}),
     };
   }
 

@@ -135,6 +135,8 @@ export interface WorkflowChangeDto {
    * không tự gỡ được). Dạng "MÃ / Bảng / Cột"; người quản trị nên chuyển việc rồi dọn ở Cài đặt bảng.
    */
   ghostColumns?: string[];
+  /** Chỉ khi áp dụng thật: cột bảng đã tự xoá vì chỉ còn trạng thái cũ và không còn việc nào (không bao giờ hiện thẻ nữa). */
+  deletedColumns?: string[];
 }
 
 /** `GET /workflows` → `usedBy`: nơi quy trình đang được dùng. */
