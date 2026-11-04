@@ -7,13 +7,15 @@ import { keys } from '@/lib/queryKeys';
 import { AudiencePanel } from './AudiencePanel';
 import { CopyLinkRow } from './CopyLinkRow';
 import { SharePanel } from './SharePanel';
-import {
-  DASHBOARD_COPY,
-  DASHBOARD_SHARE_KINDS,
-  FILTER_COPY,
-  FILTER_SHARE_KINDS,
-} from './shareModel';
-import type { ShareValue } from './shareModel';
+import { DASHBOARD_COPY, DASHBOARD_SHARE_KINDS } from './shareModel';
+import type { ShareCopy, ShareKind, ShareValue } from './shareModel';
+
+// SharePanel là khối dùng chung theo `kinds`/`copy`: ca 3 mức, không có nhóm (bộ lọc đã lưu giờ có hộp riêng).
+const FILTER_SHARE_KINDS: readonly ShareKind[] = ['PRIVATE', 'GLOBAL', 'PROJECT'];
+const FILTER_COPY: ShareCopy = {
+  noun: 'bộ lọc',
+  dataNote: 'kết quả vẫn theo quyền của người xem',
+};
 
 // renderToStaticMarkup đọc "trạng thái khởi tạo" của zustand → thay kho bằng bản chỉ-đọc-state như permissions.test.ts.
 vi.mock('@/stores/auth', () => {

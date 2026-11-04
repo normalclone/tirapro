@@ -1,22 +1,15 @@
 import { skipToken, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { IssueDto, ListResponse } from '@tirapro/types';
+import type { IssueDto, ListResponse, SavedFilterDto } from '@tirapro/types';
 import { api } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
 import { useDebouncedValue } from '@/lib/useDebouncedValue';
 import { RESULT_FETCH_LIMIT, toResultSet, type ResultSet } from './resultPaging';
 
-export type FilterVisibility = 'PRIVATE' | 'WORKSPACE' | 'PROJECT';
+/** `SHARED` = có ít nhất một dự án hoặc một người được chia sẻ. */
+export type FilterVisibility = 'PRIVATE' | 'SHARED';
 
-export interface SavedFilter {
-  id: string;
-  name: string;
-  jql: string;
-  visibility: FilterVisibility;
-  sharedProjectId: string | null;
-  ownerId: string;
-  isOwner: boolean;
-  createdAt: string;
-}
+/** Bộ lọc đã lưu (`GET /filters`): `access = 'shared'` là bộ lọc người khác chia sẻ cho tôi. */
+export type SavedFilter = SavedFilterDto;
 
 /** Một giá trị JQL không có trong workspace, kèm giá trị gần đúng nhất (nếu có). */
 interface JqlValueSuggestion {
@@ -125,6 +118,8 @@ export interface CreateFilterInput {
   name: string;
   jql: string;
   visibility?: FilterVisibility;
+  sharedProjectIds?: string[];
+  sharedUserIds?: string[];
 }
 
 export function useCreateFilter() {
@@ -143,8 +138,9 @@ export interface UpdateFilterInput {
   name?: string;
   jql?: string;
   visibility?: FilterVisibility;
-  /** `null` = bỏ dự án đã gắn (mức khác "Dự án"). */
-  sharedProjectId?: string | null;
+  /** Gửi cả hai danh sách khi đổi chia sẻ (`[]` = bỏ hết); không gửi = giữ nguyên. */
+  sharedProjectIds?: string[];
+  sharedUserIds?: string[];
 }
 
 /** Thân PATCH /filters/:id: bỏ `id` và mọi trường không đổi (máy chủ coi `undefined` là không sửa; `null` là xoá dự án). */
@@ -153,7 +149,7 @@ export function buildFilterPatch(input: UpdateFilterInput): Omit<UpdateFilterInp
   return Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== undefined));
 }
 
-/** Sửa bộ lọc đã lưu — hiện dùng để đổi phạm vi chia sẻ (`visibility`/`sharedProjectId`) sau khi tạo. Chỉ chủ (403 nếu khác). */
+/** Sửa bộ lọc đã lưu — đổi tên/truy vấn hoặc đổi chia sẻ (`visibility` + hai danh sách đích) sau khi tạo. Chỉ chủ (403 nếu khác). */
 export function useUpdateFilter() {
   const qc = useQueryClient();
   return useMutation({

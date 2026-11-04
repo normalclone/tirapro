@@ -1,6 +1,7 @@
+import { fmtNumber } from '@/lib/locale';
 import type { FilterVisibility, SavedFilter } from './api';
 
-/** Chỉ CHỦ bộ lọc (có `filter:manage`) đổi được phạm vi chia sẻ — khớp `requireOwned` + `@Permissions(FILTER_MANAGE)` ở máy chủ. */
+/** Chỉ CHỦ bộ lọc (có `filter:manage`) đổi được chia sẻ — khớp `requireOwned` + `@Permissions(FILTER_MANAGE)` ở máy chủ. */
 export const canChangeFilterShare = (
   f: Pick<SavedFilter, 'isOwner'>,
   canManage: boolean,
@@ -15,7 +16,7 @@ export type RouteFilterState =
 
 /**
  * `/filters/:id` → bộ lọc cần nạp. Danh sách `GET /filters` CHỈ chứa bộ lọc người xem thấy (của mình, hoặc chia sẻ cho
- * họ — máy chủ đã lọc theo quyền xem dự án), nên không có trong đó = "không thấy", KHÔNG phân biệt không tồn tại / đã xoá /
+ * họ — máy chủ đã lọc theo quyền), nên không có trong đó = "không thấy", KHÔNG phân biệt không tồn tại / đã xoá /
  * không có quyền (không lộ sự tồn tại của bộ lọc riêng tư).
  */
 export function resolveRouteFilter(
@@ -28,11 +29,108 @@ export function resolveRouteFilter(
   return filter ? { state: 'found', filter } : { state: 'missing' };
 }
 
+/** Rail trang Bộ lọc: nhóm "Của tôi" và "Được chia sẻ với tôi" (giữ thứ tự máy chủ trả). */
+export function splitByAccess(filters: readonly SavedFilter[]): {
+  mine: SavedFilter[];
+  shared: SavedFilter[];
+} {
+  return {
+    mine: filters.filter((f) => f.access === 'owner'),
+    shared: filters.filter((f) => f.access !== 'owner'),
+  };
+}
+
 /**
- * Mức chia sẻ THỰC của bộ lọc: `PROJECT` mà chưa gắn dự án (dữ liệu cũ) được máy chủ cho cả không gian thấy nên hiện là
- * `WORKSPACE` — nhãn trên hàng không nói thu hẹp hơn thực tế.
+ * Nhãn chia sẻ trên một hàng: "Riêng tư" hoặc "Chia sẻ · 2 dự án · 1 người". Bộ lọc người khác chia sẻ chỉ mang phần
+ * họ được thấy (máy chủ đã rút gọn) nên không đếm hộ phần ẩn.
  */
-export const effectiveVisibility = (
-  f: Pick<SavedFilter, 'visibility' | 'sharedProjectId'>,
-): FilterVisibility =>
-  f.visibility === 'PROJECT' && !f.sharedProjectId ? 'WORKSPACE' : f.visibility;
+export function shareLabel(
+  f: Pick<SavedFilter, 'visibility' | 'sharedProjects' | 'sharedUsers' | 'access'>,
+): string {
+  if (f.access !== 'owner') return 'Được chia sẻ';
+  if (f.visibility === 'PRIVATE') return 'Riêng tư';
+  const parts = [
+    f.sharedProjects.length > 0 ? `${fmtNumber(f.sharedProjects.length)} dự án` : null,
+    f.sharedUsers.length > 0 ? `${fmtNumber(f.sharedUsers.length)} người` : null,
+  ].filter((p): p is string => p !== null);
+  return parts.length > 0 ? `Chia sẻ · ${parts.join(' · ')}` : 'Chia sẻ';
+}
+
+/** Bản nháp trong hộp Chia sẻ. */
+export interface ShareDraft {
+  visibility: FilterVisibility;
+  projectIds: string[];
+  userIds: string[];
+}
+
+export const SHARE_NEEDS_TARGET = 'Chọn ít nhất một dự án hoặc một người để chia sẻ';
+
+export const draftFrom = (
+  f: Pick<SavedFilter, 'visibility' | 'sharedProjects' | 'sharedUsers'>,
+): ShareDraft => ({
+  visibility: f.visibility,
+  projectIds: f.sharedProjects.map((p) => p.id),
+  userIds: f.sharedUsers.map((u) => u.id),
+});
+
+/** Lỗi nhập: "Chia sẻ" mà chưa chọn dự án/người nào. */
+export const draftError = (d: ShareDraft): string | null =>
+  d.visibility === 'SHARED' && d.projectIds.length + d.userIds.length === 0
+    ? SHARE_NEEDS_TARGET
+    : null;
+
+const sameSet = (a: readonly string[], b: readonly string[]): boolean =>
+  a.length === b.length && a.every((x) => b.includes(x));
+
+/** Bản nháp khác bản đã lưu? ("Chỉ mình tôi" bỏ qua danh sách vì máy chủ xoá hết đích.) */
+export const draftChanged = (a: ShareDraft, b: ShareDraft): boolean =>
+  a.visibility !== b.visibility ||
+  (a.visibility === 'SHARED' &&
+    (!sameSet(a.projectIds, b.projectIds) || !sameSet(a.userIds, b.userIds)));
+
+/** Phần PATCH `/filters/:id`: luôn gửi đủ ba trường để không còn đích cũ khi đổi. */
+export function draftPatch(d: ShareDraft): {
+  visibility: FilterVisibility;
+  sharedProjectIds: string[];
+  sharedUserIds: string[];
+} {
+  return d.visibility === 'PRIVATE'
+    ? { visibility: 'PRIVATE', sharedProjectIds: [], sharedUserIds: [] }
+    : { visibility: 'SHARED', sharedProjectIds: d.projectIds, sharedUserIds: d.userIds };
+}
+
+export interface AudiencePerson {
+  id: string;
+  name: string;
+  avatarUrl: string | null;
+}
+
+/**
+ * "Ai có quyền xem": HỢP thành viên các dự án được chọn và những người được chọn cụ thể, KHÔNG đếm trùng, không tính chủ
+ * bộ lọc (luôn xem được). Người đã vô hiệu hoá không tính. `projectMembers`: thành viên theo dự án (thiếu khoá = chưa tải).
+ */
+export function audienceOf(input: {
+  projectIds: readonly string[];
+  userIds: readonly string[];
+  projectMembers: Readonly<
+    Record<string, readonly (AudiencePerson & { active?: boolean })[] | undefined>
+  >;
+  people: Readonly<Record<string, AudiencePerson | undefined>>;
+  ownerId: string;
+}): { people: AudiencePerson[]; loading: boolean } {
+  const seen = new Set<string>([input.ownerId]);
+  const out: AudiencePerson[] = [];
+  const add = (p: (AudiencePerson & { active?: boolean }) | undefined) => {
+    if (!p || p.active === false || seen.has(p.id)) return;
+    seen.add(p.id);
+    out.push({ id: p.id, name: p.name, avatarUrl: p.avatarUrl });
+  };
+  let loading = false;
+  for (const pid of input.projectIds) {
+    const members = input.projectMembers[pid];
+    if (!members) loading = true;
+    else members.forEach(add);
+  }
+  for (const uid of input.userIds) add(input.people[uid]);
+  return { people: out, loading };
+}

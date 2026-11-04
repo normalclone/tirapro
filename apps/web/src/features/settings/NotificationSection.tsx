@@ -33,6 +33,11 @@ const NOTIFICATION_TYPES: { key: string; label: string; hint: string }[] = [
     label: 'Theo dõi cập nhật',
     hint: 'Cập nhật trên công việc bạn đang theo dõi',
   },
+  {
+    key: 'FILTER_SHARED',
+    label: 'Được chia sẻ bộ lọc',
+    hint: 'Khi ai đó chia sẻ một bộ lọc đã lưu cho riêng bạn',
+  },
 ];
 
 /** Các loại thông báo có thể gửi qua email (khoá trùng `NotificationEmailPrefs`). */

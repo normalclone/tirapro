@@ -2,6 +2,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useId,
   useReducer,
   useRef,
   useState,
@@ -55,7 +56,7 @@ import {
 } from './resultPaging';
 import { QueryBuilder } from './QueryBuilder';
 import { FilterShareDialog } from './FilterShareDialog';
-import { effectiveVisibility, resolveRouteFilter } from './filterShare';
+import { resolveRouteFilter, shareLabel, splitByAccess } from './filterShare';
 import {
   useCreateFilter,
   useUpdateFilter,
@@ -66,7 +67,6 @@ import {
   fetchJqlPage,
   useRunJql,
   useSavedFilters,
-  type FilterVisibility,
   type SavedFilter,
 } from './api';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
@@ -77,12 +77,6 @@ import {
 } from '@/features/issues/menu/issueOverlay';
 
 type BuilderMode = 'simple' | 'jql';
-
-const VISIBILITY_LABEL: Record<FilterVisibility, string> = {
-  PRIVATE: 'Riêng tư',
-  WORKSPACE: 'Cả không gian làm việc',
-  PROJECT: 'Dự án',
-};
 
 /** Nút thao tác ở cuối hàng bộ lọc: hiện khi rê/focus; trên màn cảm ứng (không có rê) luôn hiện và đủ lớn để chạm. */
 const ROW_ACTION_CLS =
@@ -98,14 +92,15 @@ type ActiveSource =
 
 /** Lưu bộ lọc mới, báo kết quả bằng toast; trả `true` khi thành công (để modal tự đóng). */
 async function saveWithToast(
-  save: (input: { name: string; jql: string; visibility: FilterVisibility }) => Promise<unknown>,
+  save: (input: { name: string; jql: string }) => Promise<unknown>,
   name: string,
   jql: string,
-  visibility: FilterVisibility,
 ): Promise<boolean> {
   try {
-    await save({ name, jql, visibility });
-    toast.success(`Đã lưu bộ lọc "${name}".`);
+    await save({ name, jql });
+    toast.success(
+      `Đã lưu bộ lọc "${name}". Bấm biểu tượng Chia sẻ trên hàng bộ lọc để cho người khác xem.`,
+    );
     return true;
   } catch (e) {
     toast.error(apiErrorMessage(e));
@@ -532,17 +527,12 @@ export function FiltersPage() {
             editing={editShown}
             initialJql={editInitialJql}
             saving={updateFilter.isPending}
-            onSave={async (name, jql, visibility) => {
+            onSave={async (name, jql) => {
               const target = editTarget;
               if (!target) return false;
               try {
-                const updated = await updateFilter.mutateAsync({
-                  id: target.id,
-                  name,
-                  jql,
-                  // Bộ lọc chia sẻ theo DỰ ÁN giữ nguyên phạm vi (hộp sửa không chọn lại dự án; dùng hộp Chia sẻ).
-                  ...(target.visibility === 'PROJECT' ? {} : { visibility }),
-                });
+                // Hộp sửa chỉ đổi tên + truy vấn; chia sẻ đổi ở hộp "Chia sẻ" (giữ nguyên ở đây).
+                const updated = await updateFilter.mutateAsync({ id: target.id, name, jql });
                 toast.success(`Đã cập nhật bộ lọc "${updated.name}".`);
                 // Đang xem chính bộ lọc này → nạp lại để kết quả khớp truy vấn mới.
                 if (active.kind === 'filter' && active.filter.id === updated.id)
@@ -562,9 +552,7 @@ export function FiltersPage() {
             onClose={() => setCreateOpen(false)}
             initialJql={createInitialJql}
             saving={createFilter.isPending}
-            onSave={(name, jql, visibility) =>
-              saveWithToast(createFilter.mutateAsync, name, jql, visibility)
-            }
+            onSave={(name, jql) => saveWithToast(createFilter.mutateAsync, name, jql)}
           />
         )}
       </RailLayout>
@@ -703,85 +691,134 @@ function SavedFilterList({
         />
       }
     >
-      {(filters) => (
-        <ul className="flex flex-col gap-1">
-          {filters.map((f) => {
-            const isActive = activeId === f.id;
-            return (
-              <li key={f.id}>
-                <div
-                  className={cn(
-                    'group flex items-center gap-2 rounded-md px-2 py-2 transition-colors',
-                    isActive ? 'bg-primary-subtle' : 'hover:bg-surface-2',
-                  )}
-                >
-                  <button
-                    type="button"
-                    onClick={() => onSelect(f)}
-                    aria-current={isActive ? 'true' : undefined}
-                    className="min-w-0 flex-1 rounded-sm text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
-                  >
-                    <span
-                      className={cn(
-                        'block truncate text-sm font-medium',
-                        isActive ? 'text-primary' : 'text-ink-strong',
-                      )}
-                    >
-                      {f.name}
-                    </span>
-                    <span className="mt-1 flex items-center gap-2">
-                      <Badge className="bg-surface-2 text-muted">
-                        {VISIBILITY_LABEL[effectiveVisibility(f)]}
-                      </Badge>
-                    </span>
-                  </button>
-                  {f.isOwner && canManage ? (
-                    <>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => onEdit(f)}
-                        aria-label={`Sửa bộ lọc ${f.name}`}
-                        title="Sửa tên, truy vấn, phạm vi chia sẻ"
-                        className={cn(ROW_ACTION_CLS, 'hover:text-ink')}
-                      >
-                        <Pencil className="h-4 w-4" aria-hidden />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => onDelete(f)}
-                        loading={deleting === f.id}
-                        aria-label={`Xoá bộ lọc ${f.name}`}
-                        className={cn(ROW_ACTION_CLS, 'hover:text-danger')}
-                      >
-                        {deleting !== f.id && <Trash2 className="h-4 w-4" aria-hidden />}
-                      </Button>
-                    </>
-                  ) : (
-                    // Giữ chỗ nút sửa/xoá: nút "Chia sẻ" (luôn là phần tử cuối, sát mép phải) không xê dịch giữa bộ lọc của mình và của người khác.
-                    <span
-                      className="invisible h-7 w-14 shrink-0 max-sm:hidden [@media(pointer:coarse)]:h-9 [@media(pointer:coarse)]:w-[4.5rem]"
-                      aria-hidden
-                      data-testid="row-action-placeholder"
-                    />
-                  )}
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => onShare(f)}
-                    aria-label={`Chia sẻ bộ lọc ${f.name}`}
-                    className={cn(ROW_ACTION_CLS, 'ml-auto hover:text-ink')}
-                  >
-                    <Share2 className="h-4 w-4" aria-hidden />
-                  </Button>
-                </div>
-              </li>
-            );
-          })}
-        </ul>
-      )}
+      {(filters) => {
+        const { mine, shared } = splitByAccess(filters);
+        const rowProps = { activeId, onSelect, onShare, onEdit, onDelete, canManage, deleting };
+        return (
+          <div className="flex flex-col gap-4">
+            {mine.length > 0 && <FilterGroup title="Của tôi" filters={mine} {...rowProps} />}
+            {shared.length > 0 && (
+              <FilterGroup title="Được chia sẻ với tôi" filters={shared} {...rowProps} />
+            )}
+          </div>
+        );
+      }}
     </QueryBoundary>
+  );
+}
+
+/** Một nhóm trong rail ("Của tôi" / "Được chia sẻ với tôi"): tiêu đề + danh sách hàng. */
+function FilterGroup({
+  title,
+  filters,
+  activeId,
+  onSelect,
+  onShare,
+  onEdit,
+  onDelete,
+  canManage,
+  deleting,
+}: {
+  title: string;
+  filters: SavedFilter[];
+  activeId: string | null;
+  onSelect: (f: SavedFilter) => void;
+  onShare: (f: SavedFilter) => void;
+  onEdit: (f: SavedFilter) => void;
+  onDelete: (f: SavedFilter) => void;
+  canManage: boolean;
+  deleting: string | undefined;
+}) {
+  const headId = useId();
+  return (
+    <section aria-labelledby={headId}>
+      <h3
+        id={headId}
+        className="mb-1 flex items-baseline gap-2 px-2 text-xs font-medium text-muted"
+      >
+        {title}
+        <span className="tabular">{filters.length}</span>
+      </h3>
+      <ul className="flex flex-col gap-1">
+        {filters.map((f) => {
+          const isActive = activeId === f.id;
+          return (
+            <li key={f.id}>
+              <div
+                className={cn(
+                  'group flex items-center gap-2 rounded-md px-2 py-2 transition-colors',
+                  isActive ? 'bg-primary-subtle' : 'hover:bg-surface-2',
+                )}
+              >
+                <button
+                  type="button"
+                  onClick={() => onSelect(f)}
+                  aria-current={isActive ? 'true' : undefined}
+                  className="min-w-0 flex-1 rounded-sm text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+                >
+                  <span
+                    className={cn(
+                      'block truncate text-sm font-medium',
+                      isActive ? 'text-primary' : 'text-ink-strong',
+                    )}
+                  >
+                    {f.name}
+                  </span>
+                  <span className="mt-1 flex items-center gap-2">
+                    <Badge className="bg-surface-2 text-muted">{shareLabel(f)}</Badge>
+                    {f.access !== 'owner' && f.owner && (
+                      <span className="min-w-0 truncate text-xs text-muted">
+                        Chủ: {f.owner.displayName}
+                      </span>
+                    )}
+                  </span>
+                </button>
+                {f.isOwner && canManage ? (
+                  <>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => onEdit(f)}
+                      aria-label={`Sửa bộ lọc ${f.name}`}
+                      title="Sửa tên, truy vấn, phạm vi chia sẻ"
+                      className={cn(ROW_ACTION_CLS, 'hover:text-ink')}
+                    >
+                      <Pencil className="h-4 w-4" aria-hidden />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => onDelete(f)}
+                      loading={deleting === f.id}
+                      aria-label={`Xoá bộ lọc ${f.name}`}
+                      className={cn(ROW_ACTION_CLS, 'hover:text-danger')}
+                    >
+                      {deleting !== f.id && <Trash2 className="h-4 w-4" aria-hidden />}
+                    </Button>
+                  </>
+                ) : (
+                  // Giữ chỗ nút sửa/xoá: nút "Chia sẻ" (luôn là phần tử cuối, sát mép phải) không xê dịch giữa bộ lọc của mình và của người khác.
+                  <span
+                    className="invisible h-7 w-14 shrink-0 max-sm:hidden [@media(pointer:coarse)]:h-9 [@media(pointer:coarse)]:w-[4.5rem]"
+                    aria-hidden
+                    data-testid="row-action-placeholder"
+                  />
+                )}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => onShare(f)}
+                  aria-label={`Chia sẻ bộ lọc ${f.name}`}
+                  className={cn(ROW_ACTION_CLS, 'ml-auto hover:text-ink')}
+                >
+                  <Share2 className="h-4 w-4" aria-hidden />
+                </Button>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
   );
 }
 
@@ -808,7 +845,7 @@ function CreateFilterModalInner({
 }: {
   open: boolean;
   onClose: () => void;
-  onSave: (name: string, jql: string, visibility: FilterVisibility) => Promise<boolean>;
+  onSave: (name: string, jql: string) => Promise<boolean>;
   saving: boolean;
   /** Có → hộp SỬA bộ lọc này (tên, truy vấn, phạm vi); không → hộp tạo mới. */
   editing?: SavedFilter | null;
@@ -818,9 +855,6 @@ function CreateFilterModalInner({
   const [mode, setMode] = useState<BuilderMode>(initialJql ? 'jql' : 'simple');
   const [jql, setJql] = useState(initialJql);
   const [name, setName] = useState(editing?.name ?? '');
-  const [visibility, setVisibility] = useState<FilterVisibility>(
-    editing && editing.visibility !== 'PROJECT' ? editing.visibility : 'PRIVATE',
-  );
 
   const trimmedName = name.trim();
   const trimmedJql = jql.trim();
@@ -829,7 +863,7 @@ function CreateFilterModalInner({
   async function submit(e: FormEvent) {
     e.preventDefault();
     if (!canSubmit) return;
-    const ok = await onSave(trimmedName, trimmedJql, visibility);
+    const ok = await onSave(trimmedName, trimmedJql);
     if (ok) onClose();
   }
 
@@ -900,25 +934,11 @@ function CreateFilterModalInner({
               className="text-sm"
             />
           </div>
-          {editing?.visibility !== 'PROJECT' && (
-            <div>
-              <span
-                id="create-visibility-label"
-                className="mb-1.5 block text-sm font-medium text-muted"
-              >
-                Phạm vi chia sẻ
-              </span>
-              <SegmentedControl<FilterVisibility>
-                ariaLabelledby="create-visibility-label"
-                value={visibility}
-                onChange={setVisibility}
-                fullWidth
-                options={[
-                  { value: 'PRIVATE', label: VISIBILITY_LABEL.PRIVATE },
-                  { value: 'WORKSPACE', label: VISIBILITY_LABEL.WORKSPACE },
-                ]}
-              />
-            </div>
+          {!editing && (
+            <p className="self-end pb-2 text-xs text-muted">
+              Bộ lọc mới chỉ mình bạn xem được. Muốn cho người khác xem, bấm biểu tượng Chia sẻ sau
+              khi lưu.
+            </p>
           )}
         </div>
       </form>

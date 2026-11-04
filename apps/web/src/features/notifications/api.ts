@@ -28,7 +28,8 @@ export type NotificationType =
   | 'STATUS_CHANGED'
   | 'SPRINT_STARTED'
   | 'SPRINT_COMPLETED'
-  | 'WATCHING_UPDATE';
+  | 'WATCHING_UPDATE'
+  | 'FILTER_SHARED';
 
 /** Một dòng thông báo (DTO từ `GET /notifications`). */
 export interface NotificationItem {
