@@ -4,7 +4,7 @@ export const ASSIGNED_TO_ME_TOAST = 'Đã gán cho bạn';
 
 /** Người dùng hiện tại → tham chiếu người (như `issue.assignee`) cho vá lạc quan. */
 function toUserRef(me: UserDto): UserRefDto {
-  const { isSystemAdmin: _a, lastSeenAt: _b, canCreateWorkspace: _c, ...ref } = me;
+  const { isSystemAdmin: _a, lastSeenAt: _b, canCreateOrganization: _c, ...ref } = me;
   return ref;
 }
 

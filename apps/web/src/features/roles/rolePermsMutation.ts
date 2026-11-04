@@ -40,7 +40,7 @@ const statesOf = (qc: QueryClient): States => {
   if (!m) allStates.set(qc, (m = new Map<string, Entry>()));
   return m;
 };
-/** Đổi phiên (đăng xuất / đổi workspace): bỏ theo dõi cũ; lần lưu đang chạy giữ bản đồ CŨ trong context nên không ghi nhầm. */
+/** Đổi phiên (đăng xuất / đổi tổ chức): bỏ theo dõi cũ; lần lưu đang chạy giữ bản đồ CŨ trong context nên không ghi nhầm. */
 registerSessionCleaner(() => allStates.delete(queryClient));
 const liveStates = (qc: QueryClient, ctx: Ctx | undefined) =>
   ctx?.states && allStates.get(qc) === ctx.states ? ctx.states : undefined;

@@ -1,19 +1,23 @@
 import { PERMISSIONS } from '@tirapro/types';
 import { AvatarUploader } from '@/components/ui/AvatarUploader';
 import { useAuth } from '@/stores/auth';
-import { useMyWorkspaces, useUploadWorkspaceAvatar, useRemoveWorkspaceAvatar } from './api';
+import {
+  useMyOrganizations,
+  useUploadOrganizationAvatar,
+  useRemoveOrganizationAvatar,
+} from './api';
 import { ReadOnlyNote } from '@/components/ui/NoAccess';
 import { SectionCard } from '@/components/ui/SectionCard';
 
 /** Logo/ảnh của tổ chức đang hoạt động. Chỉ quản trị chung mới đổi được. */
-export function WorkspaceBrandingPanel() {
-  const activeId = useAuth((s) => s.workspaceId);
-  const canAdmin = useAuth((s) => s.can(PERMISSIONS.WORKSPACE_ADMIN));
-  const { data: workspaces = [] } = useMyWorkspaces();
-  const active = workspaces.find((w) => w.id === activeId) ?? workspaces[0];
+export function OrganizationBrandingPanel() {
+  const activeId = useAuth((s) => s.organizationId);
+  const canAdmin = useAuth((s) => s.can(PERMISSIONS.ORGANIZATION_ADMIN));
+  const { data: organizations = [] } = useMyOrganizations();
+  const active = organizations.find((w) => w.id === activeId) ?? organizations[0];
 
-  const upload = useUploadWorkspaceAvatar(active?.id ?? '');
-  const remove = useRemoveWorkspaceAvatar(active?.id ?? '');
+  const upload = useUploadOrganizationAvatar(active?.id ?? '');
+  const remove = useRemoveOrganizationAvatar(active?.id ?? '');
 
   if (!active) return null;
 

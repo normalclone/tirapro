@@ -1,7 +1,7 @@
 export type PriorityGlyph = 'highest' | 'high' | 'medium' | 'low' | 'lowest';
 
 /**
- * Vị trí của `rank` trong danh sách hạng của workspace (cao = quan trọng) → 1 trong 5 glyph.
+ * Vị trí của `rank` trong danh sách hạng của tổ chức (cao = quan trọng) → 1 trong 5 glyph.
  * Suy từ hạng chứ không từ màu: admin sửa được màu/tên/số mức, mũi tên vẫn đúng thứ bậc.
  */
 export function priorityGlyph(rank: number, ranks: readonly number[]): PriorityGlyph {

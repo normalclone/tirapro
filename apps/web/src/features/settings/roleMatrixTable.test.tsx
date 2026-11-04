@@ -48,7 +48,7 @@ const MEMBERS = [
 
 function render(opts: { canEdit: boolean; members?: MemberDto[]; roles?: RoleDto[] }) {
   const qc = new QueryClient();
-  if (opts.members) qc.setQueryData(keys.members.workspace, opts.members);
+  if (opts.members) qc.setQueryData(keys.members.organization, opts.members);
   return renderToStaticMarkup(
     <QueryClientProvider client={qc}>
       <RoleMatrixTable
@@ -63,7 +63,7 @@ function render(opts: { canEdit: boolean; members?: MemberDto[]; roles?: RoleDto
 beforeEach(() => {
   useAuth.setState({
     user: { id: 'me', isSystemAdmin: false } as never,
-    workspaceId: 'w1',
+    organizationId: 'w1',
     permissions: [],
     can: () => true, // mặc định người sửa là quản trị (P-C14: luật khoá chỉ áp khi KHÔNG phải quản trị)
   });
@@ -230,12 +230,12 @@ describe('quy ước nguồn', () => {
 describe('RoleMatrixTable — người chỉ có member:manage (không phải quản trị), P-C14', () => {
   const ADMIN_ROLES = [
     ...ROLES,
-    role('c2', 'Điều hành', false, ['issue:create', 'workspace:admin']),
+    role('c2', 'Điều hành', false, ['issue:create', 'organization:admin']),
   ];
   const asNonAdmin = () =>
-    useAuth.setState({ can: (p: string) => p !== 'workspace:admin' } as never);
+    useAuth.setState({ can: (p: string) => p !== 'organization:admin' } as never);
 
-  it('khoá MỌI ô của vai trò đang giữ workspace:admin, có ghi chú lý do và mô tả trỏ vào ghi chú', () => {
+  it('khoá MỌI ô của vai trò đang giữ organization:admin, có ghi chú lý do và mô tả trỏ vào ghi chú', () => {
     asNonAdmin();
     const h = render({ canEdit: true, members: MEMBERS, roles: ADMIN_ROLES });
     expect(h).toContain('Chỉ quản trị mới cấp/gỡ quyền này');

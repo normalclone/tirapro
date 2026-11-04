@@ -19,7 +19,7 @@ const DEV_ROLES: ReadonlySet<string> = new Set([
 
 /**
  * Suy vai từ vai trò (ưu tiên tester > ba > dev). Không có vai trò dự án nhận diện được (chỉ vai trò mặc định của
- * workspace) → suy theo quyền: có `issue:triage` mà không có `issue:assign` ⇒ tester; có `sprint:manage` ⇒ ba; còn lại dev.
+ * tổ chức) → suy theo quyền: có `issue:triage` mà không có `issue:assign` ⇒ tester; có `sprint:manage` ⇒ ba; còn lại dev.
  */
 export function personaOf(
   memberships: { roles: { name: string }[] }[],

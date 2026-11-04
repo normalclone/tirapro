@@ -16,7 +16,7 @@ export function SignupPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
-  const [workspaceName, setWorkspaceName] = useState('');
+  const [organizationName, setOrganizationName] = useState('');
   const [loading, setLoading] = useState(false);
 
   if (status === 'authed') return <Navigate to="/" replace />;
@@ -29,7 +29,7 @@ export function SignupPage() {
         email: email.trim(),
         password,
         displayName: displayName.trim(),
-        workspaceName: workspaceName.trim() || undefined,
+        organizationName: organizationName.trim() || undefined,
       });
       navigate('/', { replace: true });
     } catch (err) {
@@ -109,16 +109,16 @@ export function SignupPage() {
               </p>
             </div>
             <div className="space-y-1.5">
-              <label htmlFor="workspaceName" className="text-sm font-medium text-ink">
+              <label htmlFor="organizationName" className="text-sm font-medium text-ink">
                 Tên tổ chức
               </label>
               <Input
-                id="workspaceName"
+                id="organizationName"
                 type="text"
                 autoComplete="organization"
                 placeholder="Công ty của tôi"
-                value={workspaceName}
-                onChange={(e) => setWorkspaceName(e.target.value)}
+                value={organizationName}
+                onChange={(e) => setOrganizationName(e.target.value)}
               />
             </div>
             <Button type="submit" loading={loading} className="w-full">

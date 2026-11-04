@@ -43,12 +43,12 @@ const dateTime = fmtDateTime;
 
 /**
  * Quy tắc tự động hoá "Khi… Nếu… Thì…": danh sách, bật/tắt, lần chạy cuối, sửa/xoá, chạy thử và xem lịch sử chạy.
- * Cần quyền `automation:manage` (quy tắc cả workspace cần quyền cấp workspace).
+ * Cần quyền `automation:manage` (quy tắc cả tổ chức cần quyền cấp tổ chức).
  */
 export function RulesPage() {
-  const canManageWorkspace = useAuth((s) => s.can('automation:manage'));
+  const canManageOrganization = useAuth((s) => s.can('automation:manage'));
   const { data: projects } = useProjects();
-  // Quản trị cấp workspace thấy tất cả (không tra quyền từng dự án); người chỉ quản trị một dự án bắt đầu từ dự án đầu tiên
+  // Quản trị cấp tổ chức thấy tất cả (không tra quyền từng dự án); người chỉ quản trị một dự án bắt đầu từ dự án đầu tiên
   // CÓ quyền — tra quyền theo từng đợt nhỏ thay vì bắn request cho mọi dự án.
   const [scopePick, setScopeChoice] = useState<string | null>(null);
   // Chưa chọn → mặc định theo `?project=` (lối vào từ tab dự án).
@@ -59,7 +59,7 @@ export function RulesPage() {
     projectIdsToCheck({
       projects,
       choice: scopeChoice,
-      canWorkspace: canManageWorkspace,
+      canOrganization: canManageOrganization,
       limit: checkLimit,
     }),
     'automation:manage',
@@ -67,7 +67,7 @@ export function RulesPage() {
   const nextLimit = nextCheckLimit({
     projects,
     choice: scopeChoice,
-    canWorkspace: canManageWorkspace,
+    canOrganization: canManageOrganization,
     limit: checkLimit,
     projectCan,
   });
@@ -78,7 +78,7 @@ export function RulesPage() {
   }, [nextLimit, checkLimit]);
   const { scope, canManage } = resolveRulesScope({
     choice: scopeChoice,
-    canWorkspace: canManageWorkspace,
+    canOrganization: canManageOrganization,
     projects,
     projectCan,
   });
@@ -95,7 +95,7 @@ export function RulesPage() {
 
   const projectName = useMemo(() => new Map((projects ?? []).map((p) => [p.id, p])), [projects]);
   const scopeOptions = [
-    ...(canManageWorkspace ? [{ value: ALL_RULES, label: 'Tất cả quy tắc' }] : []),
+    ...(canManageOrganization ? [{ value: ALL_RULES, label: 'Tất cả quy tắc' }] : []),
     ...(projects ?? []).map((p) =>
       // Đã biết không có quyền → vô hiệu + nói rõ (chưa tra thì để chọn được, trang sẽ giải thích nếu thiếu quyền).
       projectCan(p.id) === false

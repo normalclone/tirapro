@@ -17,10 +17,10 @@ export interface AdminUser {
   avatarUrl: string | null;
   status: string;
   isSystemAdmin: boolean;
-  canCreateWorkspace: boolean;
+  canCreateOrganization: boolean;
   /** Tài khoản nội bộ của tự động hoá — không có thao tác khoá / đặt lại mật khẩu. */
   isAutomation?: boolean;
-  workspaceCount: number;
+  organizationCount: number;
   lastSeenAt: string | null;
   createdAt: string;
 }
@@ -30,14 +30,14 @@ export interface CreateAdminUserInput {
   displayName: string;
   password?: string;
   isSystemAdmin?: boolean;
-  canCreateWorkspace?: boolean;
+  canCreateOrganization?: boolean;
 }
 
 export type UpdateAdminUserInput = Partial<{
   displayName: string;
   email: string;
   isSystemAdmin: boolean;
-  canCreateWorkspace: boolean;
+  canCreateOrganization: boolean;
   status: 'ACTIVE' | 'DEACTIVATED';
 }>;
 
@@ -87,19 +87,19 @@ export function useRevokeAdminSessions() {
 }
 
 /** Thêm tài khoản vào một tổ chức (bỏ trống vai trò → "Thành viên"). */
-export function useAddAdminUserToWorkspace() {
+export function useAddAdminUserToOrganization() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (v: { userId: string; workspaceId: string; roleIds?: string[] }) =>
+    mutationFn: async (v: { userId: string; organizationId: string; roleIds?: string[] }) =>
       (
-        await api.post<MemberDto>(`/admin/users/${v.userId}/workspaces`, {
-          workspaceId: v.workspaceId,
+        await api.post<MemberDto>(`/admin/users/${v.userId}/organizations`, {
+          organizationId: v.organizationId,
           roleIds: v.roleIds,
         })
       ).data,
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: keys.admin.users });
-      void qc.invalidateQueries({ queryKey: keys.admin.workspaces });
+      void qc.invalidateQueries({ queryKey: keys.admin.organizations });
     },
   });
 }
@@ -107,7 +107,7 @@ export function useAddAdminUserToWorkspace() {
 /* ============================ ADMIN CONSOLE ============================ */
 
 export interface AdminOverview {
-  workspaces: { total: number; active: number; archived: number };
+  organizations: { total: number; active: number; archived: number };
   users: { total: number; active: number; deactivated: number; systemAdmins: number };
   projects: number;
   issues: { total: number; done: number; open: number };
@@ -135,7 +135,7 @@ export interface AdminOverview {
   generatedAt: string;
 }
 
-export interface AdminWorkspace {
+export interface AdminOrganization {
   id: string;
   name: string;
   slug: string;
@@ -163,7 +163,7 @@ export interface AdminConfig {
     hasKey: boolean;
     modelPrimary: string | null;
     modelFast: string | null;
-    monthlyQuotaPerWorkspace: number | null;
+    monthlyQuotaPerOrganization: number | null;
   };
   embedding: { provider: string; dim: number | null; hasKey: boolean };
   redis: { configured: boolean; available: boolean };
@@ -203,7 +203,7 @@ export interface AuditEntry {
   field?: string | null;
   summary?: string;
   createdAt: string;
-  workspace: { id: string; name: string } | null;
+  organization: { id: string; name: string } | null;
   actor: { id: string; displayName: string; avatarUrl: string | null } | null;
 }
 
@@ -214,26 +214,26 @@ export function useAdminOverview() {
   });
 }
 
-export function useAdminWorkspaces() {
+export function useAdminOrganizations() {
   return useQuery({
-    queryKey: keys.admin.workspaces,
+    queryKey: keys.admin.organizations,
     queryFn: async () =>
-      (await api.get<ListEnvelope<AdminWorkspace>>('/admin/workspaces')).data.data,
+      (await api.get<ListEnvelope<AdminOrganization>>('/admin/organizations')).data.data,
   });
 }
 
-export interface PatchWorkspacePayload {
+export interface PatchOrganizationPayload {
   plan?: 'FREE' | 'PRO' | 'ENTERPRISE';
   archived?: boolean;
   ownerId?: string;
 }
-export function usePatchWorkspace() {
+export function usePatchOrganization() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (v: { id: string; patch: PatchWorkspacePayload }) =>
-      (await api.patch<AdminWorkspace>(`/admin/workspaces/${v.id}`, v.patch)).data,
+    mutationFn: async (v: { id: string; patch: PatchOrganizationPayload }) =>
+      (await api.patch<AdminOrganization>(`/admin/organizations/${v.id}`, v.patch)).data,
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: keys.admin.workspaces });
+      void qc.invalidateQueries({ queryKey: keys.admin.organizations });
       void qc.invalidateQueries({ queryKey: keys.admin.overview });
     },
   });

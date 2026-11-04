@@ -104,7 +104,7 @@ export function planPermUndo(
 
 /* ------------------------------ chốt quyền thiết yếu ------------------------------ */
 
-const ADMIN: PermissionKey = 'workspace:admin';
+const ADMIN: PermissionKey = 'organization:admin';
 const MANAGE: PermissionKey = 'member:manage';
 
 const LAST_ADMIN_BLOCK_REASON =
@@ -120,7 +120,7 @@ export interface GuardCtx {
   selfId: string | null;
   selfIsSystemAdmin: boolean;
   /**
-   * Người sửa đang giữ `workspace:admin` (đã gồm admin hệ thống)? `false` → không được cấp/gỡ quyền quản trị (P-C14).
+   * Người sửa đang giữ `organization:admin` (đã gồm admin hệ thống)? `false` → không được cấp/gỡ quyền quản trị (P-C14).
    * Bỏ trống = không áp luật (máy chủ vẫn là nơi quyết định cuối cùng).
    */
   callerIsAdmin?: boolean;
@@ -159,17 +159,17 @@ export function selfLoss(
 
 /**
  * Chốt cho MỘT lần đổi bộ quyền của vai trò tuỳ chỉnh (`before` → `after`, đều là bộ HIỆU LỤC trên màn hình):
- * - Phản chiếu máy chủ (`MembersService.assertNotLastWorkspaceAdmin`, nay cũng ở `RolesService.update`): gỡ `workspace:admin`
+ * - Phản chiếu máy chủ (`MembersService.assertNotLastOrganizationAdmin`, nay cũng ở `RolesService.update`): gỡ `organization:admin`
  *   khiến không còn thành viên HOẠT ĐỘNG nào giữ quyền đó → chặn. Máy chủ vẫn là nơi quyết định cuối cùng (409).
- * - TỰ mất `workspace:admin`/`member:manage` của chính mình → hỏi xác nhận (máy chủ cho phép; chỉ là khó lấy lại).
- * Máy chủ KHÔNG chặn gỡ `member:manage` cuối cùng (Workspace Admin luôn có), nên chốt này cũng không.
+ * - TỰ mất `organization:admin`/`member:manage` của chính mình → hỏi xác nhận (máy chủ cho phép; chỉ là khó lấy lại).
+ * Máy chủ KHÔNG chặn gỡ `member:manage` cuối cùng (Organization Admin luôn có), nên chốt này cũng không.
  */
 export function guardRoleEdit(
   ctx: GuardCtx,
   before: readonly string[],
   after: readonly string[],
 ): GuardResult {
-  // P-C14 (máy chủ: 403 ADMIN_GRANT_REQUIRES_ADMIN): bật/tắt workspace:admin, hoặc sửa bất kỳ quyền nào của vai trò đang giữ
+  // P-C14 (máy chủ: 403 ADMIN_GRANT_REQUIRES_ADMIN): bật/tắt organization:admin, hoặc sửa bất kỳ quyền nào của vai trò đang giữ
   // nó, cần là quản trị. Đứng trước chốt thành viên vì không cần danh sách thành viên để biết.
   if (ctx.callerIsAdmin === false && (before.includes(ADMIN) || after.includes(ADMIN)))
     return { kind: 'blocked', reason: ADMIN_GRANT_REASON };
@@ -193,7 +193,7 @@ export function cloneName(sourceName: string): string {
   return `${roleLabel(sourceName).slice(0, 60 - CLONE_SUFFIX.length)}${CLONE_SUFFIX}`;
 }
 
-/** Lần đổi này BẬT `workspace:admin` cho vai trò (trước chưa có, sau có)? */
+/** Lần đổi này BẬT `organization:admin` cho vai trò (trước chưa có, sau có)? */
 export const grantsAdmin = (before: readonly string[], after: readonly string[]): boolean =>
   !before.includes(ADMIN) && after.includes(ADMIN);
 

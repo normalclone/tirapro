@@ -4,7 +4,7 @@ const cleaners = new Set<() => void>();
 
 /**
  * Cache ngoài react-query cũng thuộc về PHIÊN (vd blob URL ảnh đính kèm): đăng ký ở đây để bị xoá cùng lúc với
- * `queryClient` khi đăng xuất / đổi workspace — không rò dữ liệu sang tài khoản đăng nhập sau trên cùng tab.
+ * `queryClient` khi đăng xuất / đổi tổ chức — không rò dữ liệu sang tài khoản đăng nhập sau trên cùng tab.
  */
 export function registerSessionCleaner(fn: () => void): void {
   cleaners.add(fn);

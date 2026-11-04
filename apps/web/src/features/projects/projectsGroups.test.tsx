@@ -25,7 +25,7 @@ const EMPTY: ProjectProgramRefDto = { id: 'ge', name: 'Nhóm rỗng', color: nul
 const proj = (key: string, programs: ProjectProgramRefDto[], archived = false): ProjectDto => {
   const p: Partial<ProjectDto> = {
     id: `id-${key}`,
-    workspaceId: 'w',
+    organizationId: 'w',
     key,
     name: `Dự án ${key}`,
     description: null,

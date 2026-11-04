@@ -96,7 +96,7 @@ describe('thuật ngữ (UX_CONVENTIONS §19) — bộ B', () => {
   });
   it('mô tả quyền và vai trò hệ thống dùng tiếng Việt thống nhất', () => {
     const bad =
-      /\b(project|workspace|issue|backlog|board|workflow|worklog|saved filter|custom field|migration)\b/i;
+      /\b(project|organization|issue|backlog|board|workflow|worklog|saved filter|custom field|migration)\b/i;
     expect(PERMISSION_CATALOG.filter((p) => bad.test(p.description)).map((p) => p.key)).toEqual([]);
     expect(
       Object.entries(SYSTEM_ROLE_META)

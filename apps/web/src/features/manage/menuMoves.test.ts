@@ -54,7 +54,7 @@ describe('bỏ "Danh mục": Mục tiêu, Rủi ro, Thời gian xử lý, Nhân 
     expect(msg('manage/portfolio')).toMatch(/Theo nhóm/);
     // Không dùng từ cấm trong chữ mới.
     for (const r of LEGACY_ROUTES)
-      expect(r.message ?? '', r.from).not.toMatch(/workspace|không gian/i);
+      expect(r.message ?? '', r.from).not.toMatch(/organization|không gian/i);
   });
 
   it('router không còn dựng các trang cũ', () => {

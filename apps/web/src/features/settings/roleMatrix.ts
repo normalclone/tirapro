@@ -21,7 +21,7 @@ const PERMISSION_GROUP_LABEL: Record<string, string> = {
   automation: 'Sprint & bảng',
   member: 'Thành viên',
   team: 'Thành viên',
-  workspace: 'Thành viên',
+  organization: 'Thành viên',
   report: 'Báo cáo',
   dashboard: 'Báo cáo',
   filter: 'Báo cáo',

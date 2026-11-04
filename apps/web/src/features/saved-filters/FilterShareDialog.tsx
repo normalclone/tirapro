@@ -5,7 +5,7 @@ import { Dialog } from '@/components/ui/Dialog';
 import { RadioCard } from '@/components/ui/RadioCard';
 import { Avatar } from '@/components/ui/primitives';
 import { CopyLinkRow } from '@/features/sharing/CopyLinkRow';
-import { useWorkspaceMembers } from '@/features/members/api';
+import { useOrganizationMembers } from '@/features/members/api';
 import { useProjects } from '@/features/projects/api';
 import { apiErrorMessage } from '@/lib/api';
 import { filterUrl } from '@/lib/copyText';
@@ -170,7 +170,7 @@ function SharedTargets({
 }) {
   const me = useAuth((s) => s.user?.id);
   const { data: projects } = useProjects(true);
-  const { data: members } = useWorkspaceMembers();
+  const { data: members } = useOrganizationMembers();
 
   const projectItems: ChecklistItem[] = useMemo(
     () =>

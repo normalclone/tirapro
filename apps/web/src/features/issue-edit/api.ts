@@ -49,7 +49,7 @@ function useRemoveFromCaches(call: (v: IssueRef) => Promise<unknown>) {
       void qc.invalidateQueries({ queryKey: keys.dashboard.myBugs });
       void qc.invalidateQueries({ queryKey: keys.dashboard.myIssues });
       void qc.invalidateQueries({ queryKey: keys.meOverview });
-      void qc.invalidateQueries({ queryKey: keys.dashboard.workspaceOverview });
+      void qc.invalidateQueries({ queryKey: keys.dashboard.organizationOverview });
       void qc.invalidateQueries({ queryKey: keys.triage.all });
     },
   });

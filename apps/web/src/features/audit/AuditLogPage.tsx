@@ -11,7 +11,7 @@ import { QueryBoundary } from '@/components/ui/QueryBoundary';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { fmtDateTime } from '@/lib/dateFormat';
 import { useAuth } from '@/stores/auth';
-import { useWorkspaceMembers } from '@/features/members/api';
+import { useOrganizationMembers } from '@/features/members/api';
 import { relTime } from '@/features/admin/_ui';
 import { useAuditLog } from './api';
 import { groupedAuditActionOptions, toAuditQuery, type AuditFilterInput } from './auditFilters';
@@ -32,7 +32,7 @@ function AuditFilterBar({
   onClear: () => void;
   hasFilter: boolean;
 }) {
-  const { data: members } = useWorkspaceMembers();
+  const { data: members } = useOrganizationMembers();
   const actorOptions = useMemo(
     () => [
       { value: '', label: 'Tất cả người thực hiện' },
@@ -95,9 +95,9 @@ function AuditFilterBar({
   );
 }
 
-/** Cài đặt → Nhật ký quản trị: ai đã làm gì với vai trò, thành viên, tích hợp, tài khoản. Chỉ quản trị workspace. */
+/** Cài đặt → Nhật ký quản trị: ai đã làm gì với vai trò, thành viên, tích hợp, tài khoản. Chỉ quản trị organization. */
 export function AuditLogPage() {
-  const allowed = useAuth((s) => s.can('workspace:admin'));
+  const allowed = useAuth((s) => s.can('organization:admin'));
   const [filters, setFilters] = useState<AuditFilterInput>(EMPTY_FILTERS);
   const query = useMemo(() => toAuditQuery(filters), [filters]);
   const log = useAuditLog(query, allowed);

@@ -36,7 +36,7 @@ const KIND_OPTIONS = (Object.keys(KIND_META) as TimeOffKind[]).map((k) => ({
 
 interface FormState {
   id: string | null;
-  scope: 'workspace' | 'person';
+  scope: 'organization' | 'person';
   userId: string;
   kind: TimeOffKind;
   startDate: string;
@@ -82,7 +82,7 @@ export function TimeOffPanel({
   function startEdit(t: TimeOffDto) {
     setForm({
       id: t.id,
-      scope: t.userId ? 'person' : 'workspace',
+      scope: t.userId ? 'person' : 'organization',
       userId: t.userId ?? '',
       kind: t.kind,
       startDate: t.startDate,
@@ -100,7 +100,7 @@ export function TimeOffPanel({
       return toast.error('Hãy chọn cả ngày bắt đầu và ngày kết thúc');
 
     const payload = {
-      userId: form.scope === 'workspace' ? null : form.userId,
+      userId: form.scope === 'organization' ? null : form.userId,
       kind: form.kind,
       startDate: form.startDate,
       endDate: form.endDate,
@@ -157,12 +157,12 @@ export function TimeOffPanel({
                   setForm({
                     ...form,
                     scope: v as FormState['scope'],
-                    kind: v === 'workspace' ? 'HOLIDAY' : form.kind,
+                    kind: v === 'organization' ? 'HOLIDAY' : form.kind,
                   })
                 }
                 options={[
                   { value: 'person', label: 'Một thành viên nghỉ' },
-                  { value: 'workspace', label: 'Cả tổ chức nghỉ — ngày lễ chung' },
+                  { value: 'organization', label: 'Cả tổ chức nghỉ — ngày lễ chung' },
                 ]}
                 ariaLabel="Phạm vi áp dụng"
               />

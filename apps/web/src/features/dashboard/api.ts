@@ -19,7 +19,7 @@ export function useMyIssues() {
   });
 }
 
-/** Bug do tôi báo còn mở (loại chứa "bug" — chịu được workspace đổi tên loại), mới cập nhật trước. */
+/** Bug do tôi báo còn mở (loại chứa "bug" — chịu được tổ chức đổi tên loại), mới cập nhật trước. */
 const MY_BUGS_JQL =
   'reporter = currentUser() AND type ~ "bug" AND statusCategory != DONE ORDER BY updated DESC';
 
@@ -90,7 +90,7 @@ export interface OverviewAttention {
   level: 'danger' | 'warning';
 }
 
-export interface WorkspaceOverview {
+export interface OrganizationOverview {
   projectCount: number;
   totals: OverviewTotals;
   projects: OverviewProject[];
@@ -106,11 +106,11 @@ export interface WorkspaceOverview {
  * Tổng quan toàn tổ chức (mọi dự án) cho admin — `GET /reports/overview`.
  * Chỉ gọi khi người dùng là admin (`enabled`) để tránh 403 với người dùng thường.
  */
-export function useWorkspaceOverview(enabled: boolean) {
+export function useOrganizationOverview(enabled: boolean) {
   return useQuery({
-    queryKey: keys.dashboard.workspaceOverview,
+    queryKey: keys.dashboard.organizationOverview,
     queryFn: enabled
-      ? async () => (await api.get<WorkspaceOverview>('/reports/overview')).data
+      ? async () => (await api.get<OrganizationOverview>('/reports/overview')).data
       : skipToken,
     staleTime: 30_000,
   });

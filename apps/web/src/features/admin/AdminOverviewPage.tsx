@@ -97,10 +97,10 @@ export function AdminOverviewPage() {
               items={[
                 {
                   label: 'Tổ chức',
-                  value: fmtNumber(data.workspaces.active),
+                  value: fmtNumber(data.organizations.active),
                   sub:
-                    data.workspaces.archived > 0
-                      ? `${fmtNumber(data.workspaces.archived)} đã lưu trữ`
+                    data.organizations.archived > 0
+                      ? `${fmtNumber(data.organizations.archived)} đã lưu trữ`
                       : 'chưa có nơi nào lưu trữ',
                 },
                 {

@@ -206,7 +206,7 @@ describe('hộp "Chia sẻ bộ lọc" — chọn nhiều dự án + nhiều ng�
     expect(dialog.textContent).toContain('Nhân sự');
     expect(h.post).not.toHaveBeenCalled(); // không phải chủ → không có số (luật xem tính theo chủ)
     expect(within(dialog).getByRole('button', { name: /Sao chép liên kết/ })).toBeTruthy();
-    expect(dialog.textContent?.toLowerCase()).not.toContain('workspace');
+    expect(dialog.textContent?.toLowerCase()).not.toContain('organization');
     expect(dialog.textContent).not.toContain('không gian làm việc');
   });
 });

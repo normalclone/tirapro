@@ -131,7 +131,7 @@ describe('hỏi dữ liệu hệ thống', () => {
     expect(decodeURIComponent(l.seeAllTo)).toContain('project = "DEMO" AND due < startOfDay()');
     expect(allText(out)).toContain('trong dự án DEMO: 8 việc');
   });
-  it('ngoài dự án: toàn workspace, JQL không có project', async () => {
+  it('ngoài dự án: toàn organization, JQL không có project', async () => {
     const out = await run(
       'việc của tôi',
       { ...ENV, project: null, pathname: '/' },

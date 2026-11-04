@@ -30,7 +30,7 @@ describe('JQL của Trợ lý', () => {
   it('mọi câu parse được bằng parser thật (không lỗi cú pháp)', () => {
     for (const q of all) expect(() => parseJql(q), q).not.toThrow();
   });
-  it('trong dự án thì giới hạn project, ngoài dự án thì toàn workspace', () => {
+  it('trong dự án thì giới hạn project, ngoài dự án thì toàn organization', () => {
     expect(myIssuesJql('DEMO')).toContain('project = "DEMO"');
     expect(myIssuesJql()).not.toContain('project');
   });

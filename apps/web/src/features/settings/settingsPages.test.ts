@@ -62,7 +62,7 @@ describe('trang Cài đặt dùng PageFrame + PageHeader (T4)', () => {
       'features/settings/SeveritySection.tsx',
       'features/settings-admin/PrioritiesSection.tsx',
       'features/settings-admin/CustomFieldsAdminSection.tsx',
-      'features/workspace/WorkspaceBrandingPanel.tsx',
+      'features/organization/OrganizationBrandingPanel.tsx',
     ])
       expect(src(f), f).not.toMatch(/SETTINGS_LABELS/);
   });

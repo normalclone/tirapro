@@ -78,7 +78,7 @@ export interface JiraImportSummary extends Pick<ImportResult, 'skippedAssignees'
   unmatchedAssigneesMore?: number;
   /** Số việc để trống người phụ trách theo lựa chọn "Để trống" của người dùng (trung tính, không cảnh báo). */
   blankedAssignees?: number;
-  /** Việc đã nhớ email người phụ trách (chưa là thành viên) — tự gán khi họ được thêm vào workspace (L28). */
+  /** Việc đã nhớ email người phụ trách (chưa là thành viên) — tự gán khi họ được thêm vào tổ chức (L28). */
   rememberedAssignees?: number;
   projectKey?: string;
   created?: number;
@@ -89,7 +89,7 @@ export interface JiraImportSummary extends Pick<ImportResult, 'skippedAssignees'
   sprints?: number;
   labels?: number;
   comments?: number;
-  /** Việc bị bỏ qua vì mã Jira đã có trong workspace / lặp trong tệp (L27). */
+  /** Việc bị bỏ qua vì mã Jira đã có trong tổ chức / lặp trong tệp (L27). */
   duplicateKeys?: number;
   /** Việc có mã Jira sai dạng — vẫn tạo bằng mã Tirapro tự sinh (L27). */
   invalidKeys?: number;

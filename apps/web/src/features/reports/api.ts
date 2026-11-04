@@ -76,7 +76,7 @@ export function useSetProjectHealth(projectId: string) {
       api.patch<ProjectHealthDto>(`/projects/${projectId}/health`, v),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: keys.reports.project(projectId) });
-      void qc.invalidateQueries({ queryKey: keys.dashboard.workspaceOverview });
+      void qc.invalidateQueries({ queryKey: keys.dashboard.organizationOverview });
     },
   });
 }

@@ -13,8 +13,8 @@ import { LEGACY_ROUTES } from '@/lib/legacyRoutes';
 import { MovedRedirect } from '@/components/layout/MovedRedirect';
 // Vào ngay từ đầu (unauth first paint + shell) → giữ eager, không tách chunk.
 import { LoginPage } from '@/features/auth/LoginPage';
-import { NoWorkspaceScreen } from '@/features/auth/NoWorkspaceScreen';
-import { needsWorkspaceScreen } from '@/features/auth/workspaceGate';
+import { NoOrganizationScreen } from '@/features/auth/NoOrganizationScreen';
+import { needsOrganizationScreen } from '@/features/auth/organizationGate';
 import { SignupPage } from '@/features/auth/SignupPage';
 import { ForgotPasswordPage } from '@/features/auth/ForgotPasswordPage';
 import { ResetPasswordPage } from '@/features/auth/ResetPasswordPage';
@@ -161,8 +161,10 @@ const AdminLayout = lazy(() =>
 const AdminOverviewPage = lazy(() =>
   import('@/features/admin/AdminOverviewPage').then((m) => ({ default: m.AdminOverviewPage })),
 );
-const AdminWorkspacesPage = lazy(() =>
-  import('@/features/admin/AdminWorkspacesPage').then((m) => ({ default: m.AdminWorkspacesPage })),
+const AdminOrganizationsPage = lazy(() =>
+  import('@/features/admin/AdminOrganizationsPage').then((m) => ({
+    default: m.AdminOrganizationsPage,
+  })),
 );
 const AdminUsersPage = lazy(() =>
   import('@/features/admin/AdminUsersPage').then((m) => ({ default: m.AdminUsersPage })),
@@ -219,7 +221,7 @@ function PageLoading() {
 function RequireAuth() {
   const status = useAuth((s) => s.status);
   const user = useAuth((s) => s.user);
-  const workspaceId = useAuth((s) => s.workspaceId);
+  const organizationId = useAuth((s) => s.organizationId);
   const { pathname } = useLocation();
   if (status === 'loading') {
     return (
@@ -229,12 +231,15 @@ function RequireAuth() {
     );
   }
   if (status === 'guest') return <Navigate to="/login" replace />;
-  // Chưa thuộc tổ chức nào: màn riêng thay cho khung ứng dụng (xem workspaceGate).
+  // Chưa thuộc tổ chức nào: màn riêng thay cho khung ứng dụng (xem organizationGate).
   if (
     user &&
-    needsWorkspaceScreen({ workspaceId, isSystemAdmin: user.isSystemAdmin === true }, pathname)
+    needsOrganizationScreen(
+      { organizationId, isSystemAdmin: user.isSystemAdmin === true },
+      pathname,
+    )
   ) {
-    return <NoWorkspaceScreen />;
+    return <NoOrganizationScreen />;
   }
   return (
     <AppShell>
@@ -285,7 +290,9 @@ export const router = createBrowserRouter([
         element: <AdminLayout />,
         children: [
           { index: true, element: <AdminOverviewPage /> },
-          { path: 'workspaces', element: <AdminWorkspacesPage /> },
+          { path: 'organizations', element: <AdminOrganizationsPage /> },
+          // Đường dẫn cũ (trước khi đổi tên Workspace -> Organization): dấu trang/liên kết đã lưu vẫn vào được.
+          { path: 'workspaces', element: <Navigate to="/admin/organizations" replace /> },
           { path: 'accounts', element: <AdminUsersPage /> },
           { path: 'config', element: <AdminConfigPage /> },
           { path: 'system', element: <AdminSystemPage /> },

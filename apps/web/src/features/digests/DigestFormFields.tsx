@@ -117,7 +117,7 @@ export function ScheduleFields({ form, set }: { form: DigestFormState; set: SetD
   );
 }
 
-/** Nơi gửi: Telegram (chọn kênh đã liên kết) và Email (chọn người nhận trong workspace) — độc lập nhau. */
+/** Nơi gửi: Telegram (chọn kênh đã liên kết) và Email (chọn người nhận trong tổ chức) — độc lập nhau. */
 export function ChannelFields({
   form,
   set,
@@ -318,7 +318,7 @@ function RecipientsPicker({
         )}
       </ul>
       <p className="border-t border-border px-3 py-1.5 text-xs text-faint">
-        Đã chọn {value.length} người · chỉ chọn được thành viên của workspace
+        Đã chọn {value.length} người · chỉ chọn được thành viên của organization
       </p>
     </div>
   );

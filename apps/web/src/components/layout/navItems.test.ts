@@ -63,10 +63,10 @@ describe('navItems (nguồn chung sidebar / thanh tab đáy / sheet Tôi)', () =
   });
   it('thanh tab admin: nhãn dài "Tổ chức" có nhãn ngắn, các ô khác không cần', () => {
     const tabs = ADMIN_NAV.slice(0, ADMIN_TAB_COUNT);
-    const ws = tabs.find((i) => i.to === '/admin/workspaces')!;
+    const ws = tabs.find((i) => i.to === '/admin/organizations')!;
     expect(ws.label).toBe('Tổ chức');
     expect(ws.tabLabel).toBe('Tổ chức');
     for (const i of tabs) expect(i.tabLabel ?? i.label).not.toBe('');
-    expect(tabs.filter((i) => i.tabLabel).map((i) => i.to)).toEqual(['/admin/workspaces']);
+    expect(tabs.filter((i) => i.tabLabel).map((i) => i.to)).toEqual(['/admin/organizations']);
   });
 });

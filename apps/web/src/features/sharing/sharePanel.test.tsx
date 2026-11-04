@@ -51,7 +51,7 @@ const project = (id: string, over: Record<string, unknown> = {}) => ({
 
 function seed() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  qc.setQueryData(keys.workspaces.mine, [
+  qc.setQueryData(keys.organizations.mine, [
     { id: 'w1', name: 'W', slug: 'w', avatarUrl: null, roleName: 'Admin', memberCount: 25 },
   ]);
   qc.setQueryData(keys.projects.withArchived, [
@@ -79,9 +79,9 @@ const val = (over: Partial<ShareValue> = {}): ShareValue => ({
 
 beforeEach(() => {
   useAuth.setState({
-    workspaceId: 'w1',
+    organizationId: 'w1',
     user: user(1) as never,
-    can: (perm: string) => perm === 'workspace:admin',
+    can: (perm: string) => perm === 'organization:admin',
   });
 });
 
@@ -124,7 +124,7 @@ describe('AudiencePanel — ai có quyền', () => {
   });
   it('API cũ chưa có memberCount → không in "(undefined)"', () => {
     const qc = seed();
-    qc.setQueryData(keys.workspaces.mine, [
+    qc.setQueryData(keys.organizations.mine, [
       { id: 'w1', name: 'W', slug: 'w', avatarUrl: null, roleName: 'Admin' },
     ]);
     const h = wrap(<AudiencePanel value={val({ scope: 'GLOBAL' })} />, qc);

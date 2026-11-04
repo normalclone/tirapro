@@ -32,7 +32,7 @@ const statesOf = (qc: QueryClient): RoleSaveStates => {
   if (!m) allStates.set(qc, (m = new Map<string, RoleSaveEntry>()));
   return m;
 };
-/** Đổi phiên (đăng xuất / đổi workspace): bỏ theo dõi cũ; lần lưu đang chạy giữ bản đồ CŨ trong context nên không ghi nhầm. */
+/** Đổi phiên (đăng xuất / đổi tổ chức): bỏ theo dõi cũ; lần lưu đang chạy giữ bản đồ CŨ trong context nên không ghi nhầm. */
 registerSessionCleaner(() => allStates.delete(queryClient));
 
 const liveStates = (qc: QueryClient, ctx: Ctx | undefined) =>
@@ -57,13 +57,13 @@ export function memberRolesMutationOptions(
     meta: { silent: true },
     mutationFn: ({ roleIds }) => send(roleIds),
     onMutate: async ({ refs }) => {
-      await qc.cancelQueries({ queryKey: keys.members.workspace });
-      const cur = qc.getQueryData<MemberDto[]>(keys.members.workspace);
+      await qc.cancelQueries({ queryKey: keys.members.organization });
+      const cur = qc.getQueryData<MemberDto[]>(keys.members.organization);
       const mine = cur?.find((m) => m.user.id === userId);
       if (!cur || !mine) return { states: null };
       const states = statesOf(qc);
       beginSave(states, userId, mine.roles);
-      qc.setQueryData(keys.members.workspace, applyRolesToMembers(cur, userId, refs));
+      qc.setQueryData(keys.members.organization, applyRolesToMembers(cur, userId, refs));
       return { states };
     },
     onSuccess: (member, _vars, ctx) => {
@@ -74,7 +74,7 @@ export function memberRolesMutationOptions(
       const states = liveStates(qc, ctx);
       const revert = states ? failSave(states, userId) : null;
       if (!revert) return; // còn lần sau cho người này, hoặc phiên đã đổi / không áp gì lạc quan
-      qc.setQueryData<MemberDto[]>(keys.members.workspace, (cur) =>
+      qc.setQueryData<MemberDto[]>(keys.members.organization, (cur) =>
         applyRolesToMembers(cur, userId, revert),
       );
     },
@@ -82,8 +82,8 @@ export function memberRolesMutationOptions(
       const states = liveStates(qc, ctx);
       if (states) endSave(states, userId);
       if (qc.isMutating({ mutationKey: key }) <= 1) {
-        void qc.invalidateQueries({ queryKey: keys.members.workspace });
-        void qc.invalidateQueries({ queryKey: keys.users.workspace });
+        void qc.invalidateQueries({ queryKey: keys.members.organization });
+        void qc.invalidateQueries({ queryKey: keys.users.organization });
         void qc.invalidateQueries({ queryKey: keys.projects.permissionsAll });
       }
     },

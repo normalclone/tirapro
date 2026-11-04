@@ -33,8 +33,18 @@ const SCHEME = {
   projectId: 'p1',
   issueTypes: [],
   items: [
-    { issueTypeId: 'ty-task', workflowId: std.id, isOverride: false, workspaceWorkflowId: std.id },
-    { issueTypeId: 'ty-bug', workflowId: bug.id, isOverride: false, workspaceWorkflowId: bug.id },
+    {
+      issueTypeId: 'ty-task',
+      workflowId: std.id,
+      isOverride: false,
+      organizationWorkflowId: std.id,
+    },
+    {
+      issueTypeId: 'ty-bug',
+      workflowId: bug.id,
+      isOverride: false,
+      organizationWorkflowId: bug.id,
+    },
   ],
 };
 

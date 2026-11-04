@@ -20,7 +20,7 @@ let refreshing: Promise<string | null> | null = null;
 
 async function doRefresh(): Promise<string | null> {
   try {
-    // Gửi kèm access token cũ (có thể đã hết hạn) để server giữ nguyên workspace đang làm việc.
+    // Gửi kèm access token cũ (có thể đã hết hạn) để server giữ nguyên tổ chức đang làm việc.
     const old = getAccessToken();
     const res = await axios.post<{ accessToken?: string | null }>(
       `${BASE_URL}/auth/refresh`,
@@ -79,7 +79,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   RANK_NEIGHBORS_STALE:
     'Thứ tự công việc vừa thay đổi do người khác — danh sách đã được nạp lại, hãy kéo thả lại.',
   ALREADY_MEMBER: 'Người này đã là thành viên.',
-  LAST_WORKSPACE_ADMIN: 'Không thể hạ hoặc gỡ quản trị viên cuối cùng của tổ chức.',
+  LAST_ORGANIZATION_ADMIN: 'Không thể hạ hoặc gỡ quản trị viên cuối cùng của tổ chức.',
   ADMIN_GRANT_REQUIRES_ADMIN: 'Chỉ quản trị tổ chức mới cấp hoặc gỡ quyền quản trị.',
   RATE_LIMITED: 'Bạn thao tác hơi nhanh. Chờ vài giây rồi thử lại.',
   POINTS_OVERRIDE_FORBIDDEN:

@@ -56,7 +56,7 @@ const m = (over: Partial<PreviewMatchResult> = {}): PreviewMatchResult => ({
 const base = { hasConditions: true, pending: false, isError: false, scoped: true };
 
 describe('previewView', () => {
-  it('có số: "Khớp N việc hiện có"; quy tắc cấp workspace thêm "(trong các dự án bạn xem được)"', () => {
+  it('có số: "Khớp N việc hiện có"; quy tắc cấp organization thêm "(trong các dự án bạn xem được)"', () => {
     expect(previewView({ ...base, data: m() })).toEqual({
       text: 'Khớp 12 việc hiện có',
       warning: null,
@@ -143,7 +143,7 @@ describe('RulePreviewLine', () => {
     expect(html).not.toMatch(/role=|aria-live/);
     expect(src('RulePreviewLine.tsx')).not.toMatch(/aria-live|role=/);
   });
-  it('workspace → ghi rõ phạm vi theo quyền xem', () => {
+  it('organization → ghi rõ phạm vi theo quyền xem', () => {
     expect(render(m(), '')).toContain('(trong các dự án bạn xem được)');
   });
   it('cảnh báo currentUser() hiện thành một dòng riêng', () => {

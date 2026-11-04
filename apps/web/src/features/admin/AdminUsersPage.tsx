@@ -79,7 +79,7 @@ export function AdminUsersPage() {
     [users, search, status],
   );
 
-  function toggle(u: AdminUser, field: 'canCreateWorkspace' | 'isSystemAdmin') {
+  function toggle(u: AdminUser, field: 'canCreateOrganization' | 'isSystemAdmin') {
     update.mutate(
       { id: u.id, patch: { [field]: !u[field] } },
       { onError: (e) => toast.error(apiErrorMessage(e)) },
@@ -168,7 +168,7 @@ export function AdminUsersPage() {
                       )}
                     </p>
                     <p className="truncate text-xs text-faint">
-                      {u.email} · {u.workspaceCount} tổ chức
+                      {u.email} · {u.organizationCount} tổ chức
                     </p>
                     <p className="truncate text-xs text-faint">
                       {u.lastSeenAt
@@ -180,9 +180,9 @@ export function AdminUsersPage() {
                   <div className="flex shrink-0 items-center gap-4 max-sm:order-3 max-sm:w-full max-sm:flex-col max-sm:items-stretch max-sm:gap-0">
                     <Toggle
                       label="Được lập tổ chức"
-                      on={u.canCreateWorkspace}
+                      on={u.canCreateOrganization}
                       disabled={update.isPending}
-                      onChange={() => toggle(u, 'canCreateWorkspace')}
+                      onChange={() => toggle(u, 'canCreateOrganization')}
                     />
                     <Toggle
                       label="Admin HT"
@@ -271,7 +271,7 @@ function CreateUserModal({ open, onClose }: { open: boolean; onClose: () => void
   const [email, setEmail] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [password, setPassword] = useState('');
-  const [canCreateWorkspace, setCanCreate] = useState(false);
+  const [canCreateOrganization, setCanCreate] = useState(false);
   const [isSystemAdmin, setIsAdmin] = useState(false);
   const [tempPassword, setTempPassword] = useState<string | null>(null);
   const { copied, copy } = useCopyToClipboard();
@@ -286,7 +286,7 @@ function CreateUserModal({ open, onClose }: { open: boolean; onClose: () => void
         email: email.trim(),
         displayName: displayName.trim(),
         password: password.trim() || undefined,
-        canCreateWorkspace,
+        canCreateOrganization,
         isSystemAdmin,
       },
       {
@@ -373,7 +373,7 @@ function CreateUserModal({ open, onClose }: { open: boolean; onClose: () => void
             <label className="flex items-center gap-2 text-sm text-ink">
               <input
                 type="checkbox"
-                checked={canCreateWorkspace}
+                checked={canCreateOrganization}
                 onChange={(e) => setCanCreate(e.target.checked)}
                 className="h-4 w-4 rounded border-border"
               />

@@ -1,5 +1,5 @@
 import { useAuth } from '@/stores/auth';
-import { useWorkspaceOverview } from '@/features/dashboard/api';
+import { useOrganizationOverview } from '@/features/dashboard/api';
 import { useCreatedResolved, useProjectReport } from '@/features/reports/api';
 import { StatRow } from '@/components/ui/StatRow';
 import {
@@ -18,13 +18,13 @@ import type { WidgetProps } from './types';
 const METRICS = Object.keys(STAT_METRIC_META) as StatMetric[];
 const isMetric = (v: unknown): v is StatMetric => METRICS.includes(v as StatMetric);
 
-/** Một chỉ số (số cỡ vừa, kiểu `StatRow`; không còn số khổng lồ). Có `projectId` → số của dự án đó; không có → toàn workspace (cần quyền xem báo cáo). */
+/** Một chỉ số (số cỡ vừa, kiểu `StatRow`; không còn số khổng lồ). Có `projectId` → số của dự án đó; không có → toàn tổ chức (cần quyền xem báo cáo). */
 export function StatNumberWidget({ title, config }: WidgetProps) {
   const metric: StatMetric = isMetric(config.metric) ? config.metric : 'open';
   const projectId = cfgString(config, 'projectId');
   const canReport = useAuth((s) => s.can('report:view'));
 
-  const overview = useWorkspaceOverview(!projectId && canReport);
+  const overview = useOrganizationOverview(!projectId && canReport);
   const report = useProjectReport(projectId);
   const resolved = useCreatedResolved(projectId && metric === 'done14' ? projectId : undefined);
 

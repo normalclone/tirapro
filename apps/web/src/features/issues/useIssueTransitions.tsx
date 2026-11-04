@@ -119,7 +119,7 @@ export function useIssueTransitions(issue: IssueDto | undefined) {
     );
   }
 
-  /** Vào Done mà workspace chưa có Cách giải quyết nào → chạy thẳng (máy chủ không có gì để gán). */
+  /** Vào Done mà tổ chức chưa có Cách giải quyết nào → chạy thẳng (máy chủ không có gì để gán). */
   function requestTransition(toStatusId: string) {
     if (!issue || toStatusId === issue.status.id) return;
     const to = nextStatuses.find((s) => s.id === toStatusId);

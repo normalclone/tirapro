@@ -23,9 +23,9 @@ export const keys = {
     /** Cùng tiền tố `all` nên invalidate `all` làm mới cả hai. */
     withArchived: ['projects', 'with-archived'] as const,
     activity: (projectId: string) => ['project-activity', projectId] as const,
-    /** Quyền hiệu lực của người đang đăng nhập ở một dự án (workspace ∪ dự án). */
+    /** Quyền hiệu lực của người đang đăng nhập ở một dự án (tổ chức ∪ dự án). */
     permissions: (projectId: string) => ['project-permissions', projectId] as const,
-    /** Tiền tố của mọi `permissions(...)` — dùng khi đổi vai trò workspace (ảnh hưởng mọi dự án). */
+    /** Tiền tố của mọi `permissions(...)` — dùng khi đổi vai trò tổ chức (ảnh hưởng mọi dự án). */
     permissionsAll: ['project-permissions'] as const,
   },
 
@@ -131,7 +131,7 @@ export const keys = {
     list: (filter: RaidFilter) => ['raid', filter] as const,
   },
 
-  workspaces: { mine: ['my-workspaces'] as const },
+  organizations: { mine: ['my-organizations'] as const },
 
   resources: {
     workloadRoot: ['workload'] as const,
@@ -143,16 +143,16 @@ export const keys = {
   },
 
   users: {
-    workspace: ['workspace-users'] as const,
-    /** Tìm người phía máy chủ (theo dự án/từ khoá) — chung tiền tố `workspace-users` để invalidate cùng nhau. */
+    organization: ['organization-users'] as const,
+    /** Tìm người phía máy chủ (theo dự án/từ khoá) — chung tiền tố `organization-users` để invalidate cùng nhau. */
     search: (projectId: string, search: string, limit: number, includeInactive: boolean) =>
-      ['workspace-users', 'search', projectId, search, limit, includeInactive] as const,
+      ['organization-users', 'search', projectId, search, limit, includeInactive] as const,
     allRoot: ['all-users'] as const,
     all: (search?: string) => ['all-users', search ?? ''] as const,
   },
 
   members: {
-    workspace: ['workspace-members'] as const,
+    organization: ['organization-members'] as const,
     projectRoot: ['project-members'] as const,
     project: (projectId: string) => ['project-members', projectId] as const,
   },
@@ -165,7 +165,7 @@ export const keys = {
   admin: {
     users: ['admin-users'] as const,
     overview: ['admin-overview'] as const,
-    workspaces: ['admin-workspaces'] as const,
+    organizations: ['admin-organizations'] as const,
     config: ['admin-config'] as const,
     pointsFormula: ['admin-points-formula'] as const,
     health: ['admin-health'] as const,
@@ -173,7 +173,7 @@ export const keys = {
       ['admin-audit', limit, action, kind] as const,
   },
 
-  /** Nhật ký quản trị của workspace (Cài đặt → Nhật ký quản trị). */
+  /** Nhật ký quản trị của tổ chức (Cài đặt → Nhật ký quản trị). */
   audit: {
     all: ['audit'] as const,
     list: (filters: AuditQuery) => ['audit', 'list', filters] as const,
@@ -226,7 +226,7 @@ export const keys = {
   dashboard: {
     myIssues: ['my-issues'] as const,
     myBugs: ['my-bugs'] as const,
-    workspaceOverview: ['workspace-overview'] as const,
+    organizationOverview: ['organization-overview'] as const,
     leadership: ['leadership-overview'] as const,
   },
 

@@ -17,8 +17,8 @@ describe('personaOf', () => {
   });
   it('tester ưu tiên hơn ba', () =>
     expect(personaOf(m('Business Analyst', 'Tester'), can())).toBe('tester'));
-  it('Developer/DevOps/Designer/Workspace Member → dev', () => {
-    for (const r of ['Developer', 'DevOps', 'Designer', 'Workspace Member'])
+  it('Developer/DevOps/Designer/Organization Member → dev', () => {
+    for (const r of ['Developer', 'DevOps', 'Designer', 'Organization Member'])
       expect(personaOf(m(r), can())).toBe('dev');
   });
   it('không có vai trò dự án: suy theo quyền', () => {
@@ -27,8 +27,8 @@ describe('personaOf', () => {
     expect(personaOf([], can('sprint:manage', 'issue:assign'))).toBe('ba');
     expect(personaOf([], can())).toBe('dev');
   });
-  it('vai trò mặc định (chỉ Workspace Member) + quyền triage không gán → vẫn suy theo quyền', () => {
-    expect(personaOf(m('Workspace Member'), can('issue:triage'))).toBe('tester');
+  it('vai trò mặc định (chỉ Organization Member) + quyền triage không gán → vẫn suy theo quyền', () => {
+    expect(personaOf(m('Organization Member'), can('issue:triage'))).toBe('tester');
   });
   it('vai trò dev tường minh thắng suy luận theo quyền', () => {
     expect(personaOf(m('Developer'), can('issue:triage'))).toBe('dev');

@@ -165,11 +165,11 @@ export function InlinePriority({
     ],
     [priorities],
   );
-  // Danh sách của dự án đã có trong scope thì dùng nó; chưa có (meta đang tải) → hạng toàn workspace.
-  const workspaceRanks = usePriorityRanks();
+  // Danh sách của dự án đã có trong scope thì dùng nó; chưa có (meta đang tải) → hạng toàn organization.
+  const organizationRanks = usePriorityRanks();
   const ranks = useMemo(
-    () => (priorities.length > 0 ? priorities.map((p) => p.rank) : workspaceRanks),
-    [priorities, workspaceRanks],
+    () => (priorities.length > 0 ? priorities.map((p) => p.rank) : organizationRanks),
+    [priorities, organizationRanks],
   );
   return (
     <NoRowAction className="inline-flex shrink-0">

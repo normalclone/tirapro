@@ -24,9 +24,9 @@ import { MembersPage } from './MembersPage';
 
 const ROLE = {
   id: 'r-member',
-  name: 'Workspace Member',
+  name: 'Organization Member',
   color: null,
-  scope: 'WORKSPACE',
+  scope: 'ORGANIZATION',
   isSystem: true,
   permissionKeys: [],
 };

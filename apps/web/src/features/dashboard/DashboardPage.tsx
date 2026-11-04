@@ -32,7 +32,7 @@ import type { IssueDto } from '@tirapro/types';
 import { useProjects } from '../projects/api';
 import {
   useMyIssues,
-  useWorkspaceOverview,
+  useOrganizationOverview,
   type OverviewAttention,
   type OverviewForecast,
   type OverviewProject,
@@ -105,7 +105,7 @@ function useNow(): Date {
 
 export function DashboardPage() {
   const user = useAuth((s) => s.user);
-  const isAdmin = useAuth((s) => s.can('workspace:admin')) || user?.isSystemAdmin === true;
+  const isAdmin = useAuth((s) => s.can('organization:admin')) || user?.isSystemAdmin === true;
 
   const now = useNow();
 
@@ -158,14 +158,14 @@ function RecentsStrip() {
 /* ------------------------------------------------------------------ */
 
 function AdminOverview() {
-  const { data, isLoading, isError } = useWorkspaceOverview(true);
+  const { data, isLoading, isError } = useOrganizationOverview(true);
   // Lối vào báo cáo định kỳ: chỉ người quản lý được tích hợp mới tạo/sửa được.
   const canDigest = useAuth((s) => s.can('integration:manage'));
   const [createOpen, setCreateOpen] = useState(false);
 
   return (
     <section className="mb-12">
-      {/* Khối "Bắt đầu" ở ĐẦU Tổng quan (kể cả khi chưa có dự án nào): workspace mới thấy ngay việc cần làm tiếp. */}
+      {/* Khối "Bắt đầu" ở ĐẦU Tổng quan (kể cả khi chưa có dự án nào): organization mới thấy ngay việc cần làm tiếp. */}
       <OnboardingChecklist />
       <PrintHeader
         title="Tổng quan chung"
@@ -221,7 +221,7 @@ function AdminOverview() {
           {/* Cảnh báo — đặt trên cùng để đập vào mắt trước các số liệu */}
           <WarningCards warnings={data.warnings} />
 
-          <StatRow items={workspaceStatItems(data.totals)} />
+          <StatRow items={organizationStatItems(data.totals)} />
 
           {/* Sơ đồ + xu hướng — nhồi 4 khối/hàng cho dày */}
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -521,10 +521,10 @@ function SliceBar({ slices }: { slices: OverviewSlice[] }) {
 }
 
 /**
- * Hàng chỉ số của Tổng quan workspace. Thanh chỉ ở ô có mẫu số thật: "Hoàn thành" trên tổng việc, "Quá hạn" trên số việc
+ * Hàng chỉ số của Tổng quan organization. Thanh chỉ ở ô có mẫu số thật: "Hoàn thành" trên tổng việc, "Quá hạn" trên số việc
  * chưa xong (Tổng công việc / Bug / Đang làm không có đích nên chỉ số).
  */
-function workspaceStatItems(t: {
+function organizationStatItems(t: {
   total: number;
   bug: number;
   inProgress: number;
@@ -836,14 +836,14 @@ function PersonalOverview() {
 /** "Việc của tôi" trống: nút hành động đúng vai (dev → nhận việc, tester → báo lỗi, BA/PO/SM → viết yêu cầu). */
 function PersonalEmptyState({ projects }: { projects: { key: string }[] }) {
   const navigate = useNavigate();
-  const can = useCan(); // phản ứng khi quyền workspace đổi
-  const workspaceId = useAuth((s) => s.workspaceId);
+  const can = useCan(); // phản ứng khi quyền tổ chức đổi
+  const organizationId = useAuth((s) => s.organizationId);
   const memberships = useAuth((s) => s.memberships);
   const openCreate = useCreateIssueModal((s) => s.openCreate);
   const [createProject, setCreateProject] = useState(false);
 
   const persona = personaOf(
-    memberships.filter((m) => m.workspaceId === workspaceId),
+    memberships.filter((m) => m.organizationId === organizationId),
     can,
   );
   let lastViewRaw: string | null = null;

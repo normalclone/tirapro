@@ -12,11 +12,11 @@ const can =
   (m: Record<string, boolean | undefined>): ScopeCan =>
   (id) =>
     m[id];
-const base = { choice: null, canWorkspace: false, projects };
+const base = { choice: null, canOrganization: false, projects };
 
 describe('resolveRulesScope', () => {
-  it('quản trị workspace → "Tất cả quy tắc", được quản lý', () => {
-    expect(resolveRulesScope({ ...base, canWorkspace: true, projectCan: can({}) })).toEqual({
+  it('quản trị organization → "Tất cả quy tắc", được quản lý', () => {
+    expect(resolveRulesScope({ ...base, canOrganization: true, projectCan: can({}) })).toEqual({
       scope: 'all',
       canManage: true,
     });
@@ -57,42 +57,42 @@ describe('resolveRulesScope', () => {
       resolveRulesScope({ ...base, choice: 'p1', projectCan: can({ p1: false, p2: true }) }),
     ).toEqual({ scope: 'p1', canManage: false });
   });
-  it('chọn "Tất cả quy tắc" mà không phải quản trị workspace → canManage=false', () => {
+  it('chọn "Tất cả quy tắc" mà không phải quản trị organization → canManage=false', () => {
     expect(resolveRulesScope({ ...base, choice: 'all', projectCan: can({ p1: true }) })).toEqual({
       scope: 'all',
       canManage: false,
     });
   });
-  it('quản trị workspace chọn một dự án → được quản lý dù quyền dự án chưa tải', () => {
+  it('quản trị organization chọn một dự án → được quản lý dù quyền dự án chưa tải', () => {
     expect(
-      resolveRulesScope({ ...base, canWorkspace: true, choice: 'p2', projectCan: can({}) }),
+      resolveRulesScope({ ...base, canOrganization: true, choice: 'p2', projectCan: can({}) }),
     ).toEqual({ scope: 'p2', canManage: true });
   });
 });
 
 describe('projectIdsToCheck / shouldCheckMore — không bắn quyền cho mọi dự án', () => {
   const many = Array.from({ length: 12 }, (_, i) => ({ id: `p${i}` }));
-  it('quản trị workspace → không tra quyền dự án nào', () => {
+  it('quản trị organization → không tra quyền dự án nào', () => {
     expect(
-      projectIdsToCheck({ projects: many, choice: null, canWorkspace: true, limit: 5 }),
+      projectIdsToCheck({ projects: many, choice: null, canOrganization: true, limit: 5 }),
     ).toEqual([]);
   });
   it('người thường → chỉ `limit` dự án đầu; thêm dự án đã chọn nếu nằm ngoài đợt', () => {
     expect(
-      projectIdsToCheck({ projects: many, choice: null, canWorkspace: false, limit: 5 }),
+      projectIdsToCheck({ projects: many, choice: null, canOrganization: false, limit: 5 }),
     ).toEqual(['p0', 'p1', 'p2', 'p3', 'p4']);
     expect(
-      projectIdsToCheck({ projects: many, choice: 'p9', canWorkspace: false, limit: 2 }),
+      projectIdsToCheck({ projects: many, choice: 'p9', canOrganization: false, limit: 2 }),
     ).toEqual(['p0', 'p1', 'p9']);
     expect(
-      projectIdsToCheck({ projects: many, choice: 'all', canWorkspace: false, limit: 2 }),
+      projectIdsToCheck({ projects: many, choice: 'all', canOrganization: false, limit: 2 }),
     ).toEqual(['p0', 'p1']);
     expect(
-      projectIdsToCheck({ projects: undefined, choice: null, canWorkspace: false, limit: 5 }),
+      projectIdsToCheck({ projects: undefined, choice: null, canOrganization: false, limit: 5 }),
     ).toEqual([]);
   });
   const more = (m: Record<string, boolean | undefined>, limit = 5, choice: string | null = null) =>
-    shouldCheckMore({ projects: many, choice, canWorkspace: false, limit, projectCan: can(m) });
+    shouldCheckMore({ projects: many, choice, canOrganization: false, limit, projectCan: can(m) });
   const allFalse = Object.fromEntries(many.map((p) => [p.id, false]));
   it('đợt đã tra xong hết, không có quyền, còn dự án chưa tra → tra tiếp', () => {
     expect(more(allFalse)).toBe(true);
@@ -101,14 +101,14 @@ describe('projectIdsToCheck / shouldCheckMore — không bắn quyền cho mọi
     expect(more({ ...allFalse, p2: undefined })).toBe(false);
     expect(more({ ...allFalse, p2: true })).toBe(false);
   });
-  it('đã tra hết danh sách, đã chọn tay, hoặc quản trị workspace → dừng', () => {
+  it('đã tra hết danh sách, đã chọn tay, hoặc quản trị organization → dừng', () => {
     expect(more(allFalse, 12)).toBe(false);
     expect(more(allFalse, 5, 'p1')).toBe(false);
     expect(
       shouldCheckMore({
         projects: many,
         choice: null,
-        canWorkspace: true,
+        canOrganization: true,
         limit: 5,
         projectCan: can(allFalse),
       }),
@@ -120,8 +120,8 @@ describe('nextCheckLimit — vòng tăng đợt không kẹt khi đợt kế đ�
   const many = Array.from({ length: 22 }, (_, i) => ({ id: `p${i}` }));
   // Mọi quyền đã có sẵn trong cache (mount lại trang): dự án có quyền đầu tiên là p17.
   const cached = (id: string) => id === 'p17';
-  const step = (limit: number, choice: string | null = null, canWorkspace = false) =>
-    nextCheckLimit({ projects: many, choice, canWorkspace, limit, projectCan: can2(limit) });
+  const step = (limit: number, choice: string | null = null, canOrganization = false) =>
+    nextCheckLimit({ projects: many, choice, canOrganization, limit, projectCan: can2(limit) });
   // Chỉ các dự án nằm trong `limit` đầu mới "biết" quyền (đúng như `useProjectsCan` chỉ truy vấn các id đang tra).
   const can2 =
     (limit: number): ScopeCan =>
@@ -139,7 +139,7 @@ describe('nextCheckLimit — vòng tăng đợt không kẹt khi đợt kế đ�
     expect(
       resolveRulesScope({
         choice: null,
-        canWorkspace: false,
+        canOrganization: false,
         projects: many,
         projectCan: can2(limit),
       }),
@@ -152,7 +152,7 @@ describe('nextCheckLimit — vòng tăng đợt không kẹt khi đợt kế đ�
       const n = nextCheckLimit({
         projects: many,
         choice: null,
-        canWorkspace: false,
+        canOrganization: false,
         limit,
         projectCan: none,
       });
@@ -161,10 +161,10 @@ describe('nextCheckLimit — vòng tăng đợt không kẹt khi đợt kế đ�
     }
     expect(limit).toBeGreaterThanOrEqual(many.length);
     expect(
-      resolveRulesScope({ choice: null, canWorkspace: false, projects: many, projectCan: none }),
+      resolveRulesScope({ choice: null, canOrganization: false, projects: many, projectCan: none }),
     ).toEqual({ scope: 'p0', canManage: false });
   });
-  it('quản trị workspace hoặc đã chọn tay → giữ nguyên giới hạn', () => {
+  it('quản trị organization hoặc đã chọn tay → giữ nguyên giới hạn', () => {
     expect(step(5, null, true)).toBe(5);
     expect(step(5, 'p3')).toBe(5);
   });

@@ -35,7 +35,7 @@ export const DOC_GROUPS: DocGroup[] = [
         summary:
           'Tổ chức, dự án, công việc, bảng việc (board), việc chờ (backlog), sprint, quy trình (workflow), epic và việc con.',
         keywords:
-          'khai niem thuat ngu workspace project board backlog sprint workflow epic viec con la gi',
+          'khai niem thuat ngu organization project board backlog sprint workflow epic viec con la gi',
       },
       {
         id: 'dang-nhap',
@@ -128,7 +128,7 @@ export const DOC_GROUPS: DocGroup[] = [
         summary:
           'Quản trị chung thêm thành viên ở trang Thành viên, gán vai trò, tạo vai trò tuỳ biến ở Cài đặt → Vai trò, quản lý tích hợp và API key.',
         keywords:
-          'quan tri chung workspace admin them thanh vien moi phan quyen vai tro tuy bien nguoi dung moi cap quyen',
+          'quan tri chung organization admin them thanh vien moi phan quyen vai tro tuy bien nguoi dung moi cap quyen',
       },
       {
         id: 'vt-viewer',
@@ -143,7 +143,7 @@ export const DOC_GROUPS: DocGroup[] = [
         summary:
           'Console /admin riêng cho chủ hệ thống: tổng quan và sức khoẻ dịch vụ, tổ chức, tài khoản, cấu hình và feature flags.',
         keywords:
-          'quan tri he thong system admin console workspace tai khoan feature flag cau hinh he thong suc khoe',
+          'quan tri he thong system admin console organization tai khoan feature flag cau hinh he thong suc khoe',
       },
     ],
   },

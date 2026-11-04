@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useMyWorkspaces } from '@/features/workspace/api';
+import { useMyOrganizations } from '@/features/organization/api';
 import { fmtDateTime } from '@/lib/dateFormat';
 import { useAuth } from '@/stores/auth';
 
@@ -8,10 +8,10 @@ import { useAuth } from '@/stores/auth';
  * "In lúc dd/MM/yyyy HH:mm bởi <Tên>". Giờ in cập nhật ở `beforeprint` nên Ctrl/Cmd+P cũng đúng giờ bấm in.
  */
 export function PrintHeader({ title, subtitle }: { title: string; subtitle?: string }) {
-  const wsId = useAuth((s) => s.workspaceId);
+  const wsId = useAuth((s) => s.organizationId);
   const user = useAuth((s) => s.user);
-  const { data: workspaces } = useMyWorkspaces();
-  const workspace = workspaces?.find((w) => w.id === wsId)?.name;
+  const { data: organizations } = useMyOrganizations();
+  const organization = organizations?.find((w) => w.id === wsId)?.name;
   const [at, setAt] = useState(() => new Date());
 
   useEffect(() => {
@@ -22,7 +22,7 @@ export function PrintHeader({ title, subtitle }: { title: string; subtitle?: str
 
   return (
     <div data-print-only className="mb-4 border-b border-border pb-3">
-      {workspace && <p className="text-xs text-muted">{workspace}</p>}
+      {organization && <p className="text-xs text-muted">{organization}</p>}
       <h1 className="text-2xl font-semibold tracking-tight text-ink-strong">{title}</h1>
       {subtitle && <p className="mt-0.5 text-sm text-ink">{subtitle}</p>}
       <p className="mt-1 text-xs text-muted">

@@ -128,7 +128,7 @@ const DEFAULT_ROUTES = [
     'api',
   ].map((v) => `/settings/${v}`),
   '/admin',
-  '/admin/workspaces',
+  '/admin/organizations',
   '/admin/accounts',
   '/admin/config',
   '/admin/system',

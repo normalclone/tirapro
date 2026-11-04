@@ -109,7 +109,7 @@ describe('Thành viên > tab Nhân lực (thay cho /manage/resources)', () => {
     );
   });
 
-  it('chỉ có workspace:view + report:view (đến từ liên kết ở Tổng quan): bảng Nhân lực hiện, không nút quản lý, không lỗi', async () => {
+  it('chỉ có organization:view + report:view (đến từ liên kết ở Tổng quan): bảng Nhân lực hiện, không nút quản lý, không lỗi', async () => {
     h.get.mockImplementation((url: string) => {
       if (url === '/resources/workload')
         return Promise.resolve({
@@ -152,7 +152,7 @@ describe('Thành viên > tab Nhân lực (thay cho /manage/resources)', () => {
     });
     renderAt('/members?tab=resources', {
       admin: false,
-      permissions: ['workspace:view', 'report:view'],
+      permissions: ['organization:view', 'report:view'],
     });
     expect(screen.getByRole('tab', { name: 'Nhân lực' }).getAttribute('aria-selected')).toBe(
       'true',

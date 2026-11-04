@@ -76,14 +76,14 @@ export function createAssistantDeps(qc: QueryClient): AssistantDeps {
         staleTime: STALE,
       }),
     async canCreate(projectId) {
-      const { user, permissions: workspace } = useAuth.getState();
+      const { user, permissions: organization } = useAuth.getState();
       const isSystemAdmin = user?.isSystemAdmin === true;
-      if (hasPermission({ isSystemAdmin, workspace, project: undefined }, 'issue:create'))
+      if (hasPermission({ isSystemAdmin, organization, project: undefined }, 'issue:create'))
         return true;
       try {
         const res = await qc.fetchQuery(projectPermissionsQuery(projectId));
         return hasPermission(
-          { isSystemAdmin, workspace, project: res.permissions },
+          { isSystemAdmin, organization, project: res.permissions },
           'issue:create',
         );
       } catch {

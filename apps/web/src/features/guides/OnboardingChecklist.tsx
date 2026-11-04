@@ -14,7 +14,7 @@ import { onboardingActionLabel, onboardingTarget } from './onboarding';
 
 /**
  * Khối "Bắt đầu" ở đầu Tổng quan quản trị: bốn mục, mỗi mục là NÚT dẫn đúng tới hành động; mục xong tự đánh dấu
- * (server tính từ dữ liệu thật); "Ẩn khối này" ghi theo người; tự biến mất khi xong cả bốn hoặc workspace quá 30 ngày.
+ * (server tính từ dữ liệu thật); "Ẩn khối này" ghi theo người; tự biến mất khi xong cả bốn hoặc tổ chức quá 30 ngày.
  * Danh sách dọc (không lưới thẻ) theo DESIGN.md.
  */
 export function OnboardingChecklist() {

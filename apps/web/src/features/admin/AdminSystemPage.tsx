@@ -196,9 +196,9 @@ export function AdminSystemPage() {
                       </>
                     )}
                   </div>
-                  {e.workspace && (
+                  {e.organization && (
                     <span className="hidden shrink-0 text-xs text-faint sm:block">
-                      {e.workspace.name}
+                      {e.organization.name}
                     </span>
                   )}
                   <time className="shrink-0 text-xs text-faint" title={fmtDateTime(e.createdAt)}>

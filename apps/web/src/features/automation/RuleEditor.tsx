@@ -89,7 +89,7 @@ interface ActionDraft {
 
 interface Draft {
   name: string;
-  projectId: string; // '' = cả workspace
+  projectId: string; // '' = cả tổ chức
   trigger: RuleTrigger;
   toStatusId: string;
   /** ISSUE_TRANSITIONED: các đích khác cũng kích hoạt (cùng ý nghĩa ở quy trình khác) — giữ nguyên khi lưu, bỏ khi người dùng đổi đích. */

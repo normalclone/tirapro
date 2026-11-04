@@ -27,7 +27,7 @@ export interface AutomationRule extends Omit<
   triggerConfig: TriggerConfig;
 }
 
-/** `all` = mọi quy tắc của workspace (cần quyền cấp workspace); mã dự án = quy tắc của dự án đó + quy tắc cả workspace. */
+/** `all` = mọi quy tắc của tổ chức (cần quyền cấp tổ chức); mã dự án = quy tắc của dự án đó + quy tắc cả organization. */
 export const ALL_RULES = 'all';
 
 export function useRules(scope: string | undefined) {

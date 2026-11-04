@@ -1,7 +1,7 @@
 /** Hàm thuần cho quyền theo phạm vi của wiki (test được không cần DOM). */
 
 export interface WikiCanCtx {
-  /** Có quyền ở cấp workspace (áp cho tài liệu chung, `projectId = null`). */
+  /** Có quyền ở cấp tổ chức (áp cho tài liệu chung, `projectId = null`). */
   wsCan: boolean;
   /** Quyền theo từng dự án: true/false, `undefined` = quyền dự án đó đang tải. */
   projectCan: (projectId: string) => boolean | undefined;
@@ -13,7 +13,7 @@ export interface WikiCanCtx {
 }
 
 /**
- * Có quyền ở phạm vi của một trang không: trang chung → quyền workspace; trang của dự án → quyền dự án.
+ * Có quyền ở phạm vi của một trang không: trang chung → quyền tổ chức; trang của dự án → quyền dự án.
  * Quyền dự án đang tải hoặc dự án đã lưu trữ → false (không bày nút rồi bị 403/422). Dùng cho cả `wiki:manage`
  * (sửa/tạo/đổi chỗ) lẫn `project:admin` (xoá) — gọi hai lần với hai bản đồ quyền.
  */

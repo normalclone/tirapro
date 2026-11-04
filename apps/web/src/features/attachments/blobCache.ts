@@ -33,7 +33,7 @@ export class BlobUrlCache {
     }
   }
 
-  /** Giải phóng và bỏ mọi blob URL (đăng xuất / đổi workspace). */
+  /** Giải phóng và bỏ mọi blob URL (đăng xuất / đổi tổ chức). */
   clear(): void {
     for (const url of this.map.values()) this.revoke(url);
     this.map.clear();

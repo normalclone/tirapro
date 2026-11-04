@@ -79,7 +79,7 @@ interface RowEnv {
   mode: GridMode;
   loading: boolean;
   lockNoteId: string;
-  /** Đang giữ `workspace:admin` (P-C14)? Không → khoá ô quyền quản trị và mọi ô của vai trò đang giữ nó. */
+  /** Đang giữ `organization:admin` (P-C14)? Không → khoá ô quyền quản trị và mọi ô của vai trò đang giữ nó. */
   canGrantAdmin: boolean;
   /** id ghi chú lý do khoá kiểu P-C14 (mô tả của các ô khoá vì quản trị). */
   adminNoteId: string;
@@ -96,7 +96,7 @@ function GridHead({
   canGrantAdmin,
 }: {
   columns: RoleDto[];
-  /** Không phải quản trị: không nhân bản vai trò đang giữ `workspace:admin` (máy chủ từ chối, P-C14). */
+  /** Không phải quản trị: không nhân bản vai trò đang giữ `organization:admin` (máy chủ từ chối, P-C14). */
   canGrantAdmin: boolean;
   /** Hiện nhãn "Khoá" ở cột vai trò hệ thống (cả lúc đang chờ điều kiện sửa — để dòng tiêu đề không đổi chiều cao). */
   showLocks: boolean;
@@ -147,7 +147,7 @@ function GridHead({
 }
 
 /**
- * "Nhân bản" của một cột vai trò. Vai trò đang giữ `workspace:admin` + người không phải quản trị (P-C14): khoá kèm lý do
+ * "Nhân bản" của một cột vai trò. Vai trò đang giữ `organization:admin` + người không phải quản trị (P-C14): khoá kèm lý do
  * (`aria-disabled` vẫn focus được để đọc lý do; máy chủ vẫn từ chối tạo vai trò có quyền đó).
  */
 function CloneButton({

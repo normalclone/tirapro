@@ -27,7 +27,7 @@ const defer = <T>() => {
 
 function setup(send: (ids: string[]) => Promise<MemberDto>, uid = 'u1') {
   const qc = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
-  qc.setQueryData(keys.members.workspace, [member('u1', R('a')), member('u2', R('b'))]);
+  qc.setQueryData(keys.members.organization, [member('u1', R('a')), member('u2', R('b'))]);
   const invalidate = vi.spyOn(qc, 'invalidateQueries').mockResolvedValue();
   const run = (v: RolesVars) =>
     new MutationObserver(qc, memberRolesMutationOptions(qc, uid, send))
@@ -35,7 +35,7 @@ function setup(send: (ids: string[]) => Promise<MemberDto>, uid = 'u1') {
       .catch(() => undefined);
   const roles = (id = 'u1') =>
     qc
-      .getQueryData<MemberDto[]>(keys.members.workspace)!
+      .getQueryData<MemberDto[]>(keys.members.organization)!
       .find((m) => m.user.id === id)!
       .roles.map((r) => r.id);
   return { qc, run, roles, invalidate };
@@ -79,7 +79,7 @@ describe('memberRolesMutationOptions', () => {
     const calls: string[] = [];
     const gate = defer<MemberDto>();
     const qc = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
-    qc.setQueryData(keys.members.workspace, [member('u1', R('a')), member('u2', R('b'))]);
+    qc.setQueryData(keys.members.organization, [member('u1', R('a')), member('u2', R('b'))]);
     vi.spyOn(qc, 'invalidateQueries').mockResolvedValue();
     const p1 = new MutationObserver(
       qc,
@@ -143,7 +143,7 @@ describe('memberRolesMutationOptions', () => {
     gates[1]!.resolve(member('u1', R('a', 'c')));
     await Promise.all([p1, p2]);
     const hit = invalidate.mock.calls.map((c) => JSON.stringify(c[0]?.queryKey));
-    expect(hit).toContain(JSON.stringify(keys.members.workspace));
+    expect(hit).toContain(JSON.stringify(keys.members.organization));
     expect(hit).toContain(JSON.stringify(keys.projects.permissionsAll));
   });
 
@@ -151,12 +151,12 @@ describe('memberRolesMutationOptions', () => {
     const { qc, run, roles } = setup(() => Promise.resolve(member('u1', R('a'))), 'ghost');
     await run(vars('x'));
     expect(roles()).toEqual(['a']);
-    expect(qc.getQueryData<MemberDto[]>(keys.members.workspace)).toHaveLength(2);
+    expect(qc.getQueryData<MemberDto[]>(keys.members.organization)).toHaveLength(2);
   });
 
   it('đổi phiên (clearSessionCaches) giữa chừng: lỗi cũ không ghi đè dữ liệu của phiên mới', async () => {
     const gate = defer<MemberDto>();
-    queryClient.setQueryData(keys.members.workspace, [member('u1', R('a'))]);
+    queryClient.setQueryData(keys.members.organization, [member('u1', R('a'))]);
     const p = new MutationObserver(
       queryClient,
       memberRolesMutationOptions(queryClient, 'u1', () => gate.promise),
@@ -165,11 +165,11 @@ describe('memberRolesMutationOptions', () => {
       .catch(() => undefined);
     await settle();
     clearSessionCaches();
-    queryClient.setQueryData(keys.members.workspace, [member('u1', R('z'))]);
+    queryClient.setQueryData(keys.members.organization, [member('u1', R('z'))]);
     gate.reject(new Error('500'));
     await p;
     expect(
-      queryClient.getQueryData<MemberDto[]>(keys.members.workspace)![0]!.roles.map((r) => r.id),
+      queryClient.getQueryData<MemberDto[]>(keys.members.organization)![0]!.roles.map((r) => r.id),
     ).toEqual(['z']);
     queryClient.clear();
   });

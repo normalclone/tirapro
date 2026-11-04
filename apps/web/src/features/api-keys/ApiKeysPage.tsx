@@ -86,7 +86,7 @@ export function ApiKeysPage() {
   const [adding, setAdding] = useState(false);
   const [hideRevoked, setHideRevoked] = useState(true);
 
-  // 403 = không có quyền workspace:admin → hiện trạng thái "không có quyền" thay vì form tạo (sẽ 403).
+  // 403 = không có quyền organization:admin → hiện trạng thái "không có quyền" thay vì form tạo (sẽ 403).
   const forbidden = axios.isAxiosError(error) && error.response?.status === 403;
 
   const visibleKeys = useMemo(

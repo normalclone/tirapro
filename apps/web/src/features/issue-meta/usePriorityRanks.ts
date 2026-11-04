@@ -5,7 +5,7 @@ import { usePriorities } from '@/features/settings-admin/api';
 const DEFAULT_PRIORITY_RANKS: readonly number[] = [1, 2, 3, 4, 5];
 
 /**
- * Mọi hạng ưu tiên của workspace — để `PriorityIcon` suy mũi tên. Dùng chung query `priorities`
+ * Mọi hạng ưu tiên của tổ chức — để `PriorityIcon` suy mũi tên. Dùng chung query `priorities`
  * (mọi thành viên đọc được); chưa tải xong thì rơi về 5 mức mặc định để không nháy.
  */
 export function usePriorityRanks(): readonly number[] {

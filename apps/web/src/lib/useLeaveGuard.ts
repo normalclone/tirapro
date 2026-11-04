@@ -34,7 +34,7 @@ export function useLeaveGuard(opts: {
 /**
  * Gọi TRƯỚC thao tác sẽ tải lại cả trang (đổi/tạo tổ chức): còn bất kỳ mục chặn nào dirty (form, nháp wiki,
  * dashboard editor...) → hỏi "Bỏ các thay đổi chưa lưu?". Chỉ HỎI — không bỏ nháp. Bỏ nháp xảy ra ở
- * `commitLeaveApp()` (gọi trong `useSwitchWorkspace.onSuccess`) nên đổi lỗi thì nháp còn nguyên.
+ * `commitLeaveApp()` (gọi trong `useSwitchOrganization.onSuccess`) nên đổi lỗi thì nháp còn nguyên.
  */
 export function useConfirmLeaveApp(): () => Promise<boolean> {
   const confirm = useConfirm();

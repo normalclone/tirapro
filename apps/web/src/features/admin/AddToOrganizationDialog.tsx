@@ -9,15 +9,17 @@ import { SearchSelect } from '@/components/ui/SearchSelect';
 import { apiErrorMessage } from '@/lib/api';
 import { useOpenSession } from '@/lib/useOpenSession';
 import { useRoles } from '@/features/roles/api';
-import { useAddAdminUserToWorkspace, useAdminWorkspaces, type AdminUser } from './api';
+import { useAddAdminUserToOrganization, useAdminOrganizations, type AdminUser } from './api';
 
 /** Luôn mount (có hiệu ứng đóng); `key` theo lần mở → form khởi tạo lại mỗi lần mở. */
-export function AddToWorkspaceDialog(props: ComponentProps<typeof AddToWorkspaceDialogInner>) {
+export function AddToOrganizationDialog(
+  props: ComponentProps<typeof AddToOrganizationDialogInner>,
+) {
   const session = useOpenSession(props.open);
-  return <AddToWorkspaceDialogInner key={session} {...props} />;
+  return <AddToOrganizationDialogInner key={session} {...props} />;
 }
 
-function AddToWorkspaceDialogInner({
+function AddToOrganizationDialogInner({
   user,
   open,
   onClose,
@@ -26,13 +28,13 @@ function AddToWorkspaceDialogInner({
   open: boolean;
   onClose: () => void;
 }) {
-  const { data: workspaces } = useAdminWorkspaces();
-  const { data: roles } = useRoles('WORKSPACE');
-  const add = useAddAdminUserToWorkspace();
-  const [workspaceId, setWorkspaceId] = useState('');
+  const { data: organizations } = useAdminOrganizations();
+  const { data: roles } = useRoles('ORGANIZATION');
+  const add = useAddAdminUserToOrganization();
+  const [organizationId, setOrganizationId] = useState('');
   const [picked, setPicked] = useState<string[] | null>(null);
 
-  // Chỉ vai trò HỆ THỐNG: vai trò tuỳ biến thuộc workspace của admin đang xem, workspace đích sẽ từ chối.
+  // Chỉ vai trò HỆ THỐNG: vai trò tuỳ biến thuộc tổ chức của admin đang xem, tổ chức đích sẽ từ chối.
   const roleOptions = useMemo(
     () =>
       (roles ?? [])
@@ -41,20 +43,20 @@ function AddToWorkspaceDialogInner({
     [roles],
   );
   const defaultRoleIds = useMemo(() => {
-    const member = roleOptions.find((r) => r.name === SYSTEM_ROLES.WORKSPACE_MEMBER);
+    const member = roleOptions.find((r) => r.name === SYSTEM_ROLES.ORGANIZATION_MEMBER);
     return member ? [member.id] : [];
   }, [roleOptions]);
   const roleIds = picked ?? defaultRoleIds;
 
-  const wsOptions = (workspaces ?? [])
+  const wsOptions = (organizations ?? [])
     .filter((w) => !w.archived)
     .map((w) => ({ value: w.id, label: w.name, hint: `${w.members} thành viên` }));
 
   function submit(e: FormEvent) {
     e.preventDefault();
-    if (!workspaceId || add.isPending) return;
+    if (!organizationId || add.isPending) return;
     add.mutate(
-      { userId: user.id, workspaceId, roleIds: roleIds.length > 0 ? roleIds : undefined },
+      { userId: user.id, organizationId, roleIds: roleIds.length > 0 ? roleIds : undefined },
       {
         onSuccess: () => {
           toast.success(`Đã thêm ${user.displayName} vào tổ chức`);
@@ -81,21 +83,21 @@ function AddToWorkspaceDialogInner({
           </Button>
           <Button
             type="submit"
-            form="add-to-workspace-form"
+            form="add-to-organization-form"
             loading={add.isPending}
-            disabled={!workspaceId}
+            disabled={!organizationId}
           >
             Thêm
           </Button>
         </>
       }
     >
-      <form id="add-to-workspace-form" onSubmit={submit} className="space-y-4">
+      <form id="add-to-organization-form" onSubmit={submit} className="space-y-4">
         <div className="space-y-1.5">
           <span className="text-sm font-medium text-ink">Tổ chức</span>
           <SearchSelect
-            value={workspaceId}
-            onChange={setWorkspaceId}
+            value={organizationId}
+            onChange={setOrganizationId}
             options={wsOptions}
             placeholder="Chọn tổ chức…"
             searchPlaceholder="Tìm tổ chức…"

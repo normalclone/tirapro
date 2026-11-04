@@ -23,14 +23,14 @@ function Probe({ projectId }: { projectId: string | null }) {
 
 function setup(opts: {
   projectId: string | null;
-  workspaceAdmin?: boolean;
+  organizationAdmin?: boolean;
   projectPerms?: Record<string, string[]>;
 }) {
   act(() => {
     useAuth.setState({
       status: 'authed',
       user: { id: 'u', isSystemAdmin: false } as never,
-      permissions: opts.workspaceAdmin ? (['workspace:admin'] as never) : [],
+      permissions: opts.organizationAdmin ? (['organization:admin'] as never) : [],
     });
   });
   h.get.mockImplementation((url: string) => {
@@ -66,7 +66,7 @@ describe('useCanManageWorkflow: ai sửa được quy trình trong giao diện',
     setup({ projectId: null, projectPerms: { A: ['project:admin'] } });
     expect(screen.getByTestId('can').textContent).toBe('false');
     cleanup();
-    setup({ projectId: null, workspaceAdmin: true });
+    setup({ projectId: null, organizationAdmin: true });
     expect(screen.getByTestId('can').textContent).toBe('true');
   });
 });

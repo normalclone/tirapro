@@ -240,7 +240,7 @@ describe('trạng thái theo khoá gắn với PHIÊN (không rò sang người 
     const { qc, run, data } = setup(() => gate.promise);
     const p1 = run({ preferences: { COMMENT_ADDED: false } }); // người cũ: confirmed=false... đang chờ
     await settle();
-    resetPrefsKeyStates(qc); // đăng xuất / đổi workspace
+    resetPrefsKeyStates(qc); // đăng xuất / đổi tổ chức
     qc.setQueryData(keys.notificationPrefs, newUserData()); // người sau: máy chủ nói COMMENT_ADDED=true
     const fail = new MutationObserver(
       qc,

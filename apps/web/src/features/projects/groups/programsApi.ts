@@ -11,7 +11,7 @@ interface ProgramProjectRef {
 
 export interface ProgramDto {
   id: string;
-  workspaceId: string;
+  organizationId: string;
   name: string;
   description: string | null;
   color: string | null;

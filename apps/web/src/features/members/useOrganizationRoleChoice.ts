@@ -6,23 +6,23 @@ import { frozenAdminRoles } from './adminGrant';
 import { adminRoleIds } from './roleChange';
 
 /**
- * Chọn vai trò WORKSPACE khi thêm người: danh sách lựa chọn + vai trò mặc định "Thành viên" khi chưa chọn gì.
+ * Chọn vai trò ORGANIZATION khi thêm người: danh sách lựa chọn + vai trò mặc định "Thành viên" khi chưa chọn gì.
  * Dùng chung cho "chọn người có sẵn" và "tạo tài khoản mới".
  */
-export function useWorkspaceRoleChoice() {
-  const { data: wsRoles } = useRoles('WORKSPACE');
+export function useOrganizationRoleChoice() {
+  const { data: wsRoles } = useRoles('ORGANIZATION');
   const [roleIds, setRoleIds] = useState<string[]>([]);
   const roleOptions = useMemo(
     () => (wsRoles ?? []).map((r) => ({ id: r.id, name: r.name, color: r.color })),
     [wsRoles],
   );
   const defaultRoleIds = useMemo(() => {
-    const member = (wsRoles ?? []).find((r) => r.name === SYSTEM_ROLES.WORKSPACE_MEMBER);
+    const member = (wsRoles ?? []).find((r) => r.name === SYSTEM_ROLES.ORGANIZATION_MEMBER);
     return member ? [member.id] : [];
   }, [wsRoles]);
   const effectiveRoleIds = roleIds.length > 0 ? roleIds : defaultRoleIds;
-  // P-C14: người không phải quản trị không gán được vai trò mang `workspace:admin` (máy chủ trả 403).
-  const canGrantAdmin = useAuth((s) => s.can('workspace:admin'));
+  // P-C14: người không phải quản trị không gán được vai trò mang `organization:admin` (máy chủ trả 403).
+  const canGrantAdmin = useAuth((s) => s.can('organization:admin'));
   const frozen = useMemo(
     () => frozenAdminRoles(canGrantAdmin, adminRoleIds(wsRoles ?? [])),
     [canGrantAdmin, wsRoles],

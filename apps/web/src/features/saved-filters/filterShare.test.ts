@@ -120,7 +120,7 @@ describe('nối dây', () => {
   it('biểu mẫu "Tạo bộ lọc" không còn chọn phạm vi: bộ lọc mới riêng tư, chia sẻ qua hộp "Chia sẻ" sau khi lưu', () => {
     const s = src('FiltersPage.tsx');
     const form = s.slice(s.indexOf('function CreateFilterModalInner'));
-    expect(form).not.toMatch(/value: 'WORKSPACE'/);
+    expect(form).not.toMatch(/value: 'ORGANIZATION'/);
     expect(form).not.toMatch(/value: 'PRIVATE'/);
     expect(form).toContain('Bộ lọc mới chỉ mình bạn xem được');
   });

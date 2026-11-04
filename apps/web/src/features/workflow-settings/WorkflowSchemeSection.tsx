@@ -9,7 +9,7 @@ import { Skeleton } from '@/components/ui/primitives';
 import { QueryError } from '@/components/ui/QueryError';
 import { useProjects } from '@/features/projects/api';
 import { ChangePreviewDialog } from './ChangePreviewDialog';
-import { useWorkspaceScheme, type ChangeRequest } from './schemeApi';
+import { useOrganizationScheme, type ChangeRequest } from './schemeApi';
 import { selectableWorkflows } from './schemeModel';
 import type { Workflow } from './api';
 
@@ -17,10 +17,10 @@ import type { Workflow } from './api';
  * "Quy trình của tổ chức": mỗi loại việc dùng MỘT quy trình trong toàn tổ chức (bảng loại việc → quy trình). Đổi ô chọn rồi
  * "Lưu thay đổi" mở hộp XEM TRƯỚC (việc sẽ chuyển, quy tắc bị ảnh hưởng, bộ lọc theo tên) — chỉ khi xác nhận mới ghi.
  * Bên dưới liệt kê dự án đang dùng quy trình riêng cho một loại việc, kèm "Quay về dùng chung" (cũng qua xem trước).
- * Chỉ Quản trị chung (API GET/PUT cần `workspace:admin`) — trang chỉ vẽ mục này cho họ.
+ * Chỉ Quản trị chung (API GET/PUT cần `organization:admin`) — trang chỉ vẽ mục này cho họ.
  */
 export function WorkflowSchemeSection({ workflows }: { workflows: Workflow[] }) {
-  const schemeQuery = useWorkspaceScheme();
+  const schemeQuery = useOrganizationScheme();
   const scheme = schemeQuery.data;
   const types = useMemo(() => scheme?.issueTypes ?? [], [scheme]);
   const current = useMemo(
@@ -39,7 +39,7 @@ export function WorkflowSchemeSection({ workflows }: { workflows: Workflow[] }) 
   function save() {
     setTitle('Đổi quy trình của tổ chức');
     setRequest({
-      scope: 'workspace',
+      scope: 'organization',
       body: { items: changed.map((t) => ({ issueTypeId: t.id, workflowId: draft[t.id]! })) },
     });
   }

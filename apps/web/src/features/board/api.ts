@@ -141,7 +141,7 @@ export interface TransitionVars {
   boardId?: string;
   /** "Vẫn chuyển" khi cột đầy WIP (chỉ quản trị dự án được dùng). */
   force?: boolean;
-  /** Cách giải quyết khi vào Done (không gửi = máy chủ dùng mặc định của workspace). */
+  /** Cách giải quyết khi vào Done (không gửi = máy chủ dùng mặc định của tổ chức). */
   resolutionId?: string | null;
   /** Lý do/ghi chú — máy chủ lưu thành bình luận. */
   comment?: string;

@@ -134,7 +134,7 @@ describe('applyNotice (nói số việc áp được TRƯỚC khi chạy)', () =
 });
 
 describe('groupPermsFor', () => {
-  const ws = (p: string[]) => ({ isSystemAdmin: false, workspace: p, project: undefined });
+  const ws = (p: string[]) => ({ isSystemAdmin: false, organization: p, project: undefined });
   it('quyền theo dự án; sửa phải được MỌI việc trong nhóm', () => {
     const issues = [iss('a', 'p1', { reporterId: 'me' }), iss('b', 'p1', { reporterId: 'other' })];
     const base = { archived: false, issues, userId: 'me' };
@@ -153,7 +153,7 @@ describe('groupPermsFor', () => {
   });
   it('dự án đã lưu trữ → chỉ đọc, mọi hành động tắt (kể cả quản trị)', () => {
     const p = groupPermsFor({
-      ctx: { isSystemAdmin: true, workspace: [], project: undefined },
+      ctx: { isSystemAdmin: true, organization: [], project: undefined },
       archived: true,
       issues: [iss('a', 'p1')],
       userId: 'me',

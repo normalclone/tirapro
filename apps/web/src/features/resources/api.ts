@@ -33,7 +33,7 @@ export type { TimeOffKind };
 
 export interface TimeOffDto {
   id: string;
-  workspaceId: string;
+  organizationId: string;
   /** null = ngày lễ áp dụng cho toàn tổ chức. */
   userId: string | null;
   kind: TimeOffKind;

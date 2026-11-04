@@ -2,9 +2,9 @@ import { SYSTEM_ROLES } from '@tirapro/types';
 
 /** Câu giải nghĩa ngắn cho tooltip — người mới đọc là hiểu vai trò làm được gì. */
 const ROLE_HINTS: Record<string, string> = {
-  [SYSTEM_ROLES.WORKSPACE_ADMIN]: 'Toàn quyền: lập dự án, phân vai trò, đổi cấu hình chung.',
-  [SYSTEM_ROLES.WORKSPACE_MEMBER]: 'Làm việc bình thường: lập dự án, tạo và xử lý công việc.',
-  [SYSTEM_ROLES.WORKSPACE_VIEWER]: 'Chỉ xem, không sửa được gì.',
+  [SYSTEM_ROLES.ORGANIZATION_ADMIN]: 'Toàn quyền: lập dự án, phân vai trò, đổi cấu hình chung.',
+  [SYSTEM_ROLES.ORGANIZATION_MEMBER]: 'Làm việc bình thường: lập dự án, tạo và xử lý công việc.',
+  [SYSTEM_ROLES.ORGANIZATION_VIEWER]: 'Chỉ xem, không sửa được gì.',
   [SYSTEM_ROLES.PROJECT_ADMIN]: 'Quản lý một dự án: cấu hình, quy trình, thành viên của dự án đó.',
   [SYSTEM_ROLES.PROJECT_DEVELOPER]:
     'Bộ quyền cơ bản: nhận việc, cập nhật tiến độ, bình luận (bản cũ — thường dùng vai trò "Lập trình viên").',

@@ -11,7 +11,7 @@ interface AuditPage {
   pageInfo: { hasNextPage: boolean; endCursor: string | null; limit: number };
 }
 
-/** Nhật ký quản trị của workspace (GET /audit) — phân trang theo con trỏ, "Tải thêm" nạp trang kế. */
+/** Nhật ký quản trị của tổ chức (GET /audit) — phân trang theo con trỏ, "Tải thêm" nạp trang kế. */
 export function useAuditLog(filters: AuditQuery, enabled = true) {
   return useInfiniteQuery({
     queryKey: keys.audit.list(filters),

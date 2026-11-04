@@ -20,7 +20,7 @@ import { useAuth } from '@/stores/auth';
 import { useRoles } from '@/features/roles/api';
 import { MemberRolesCell } from './MemberRolesCell';
 import { memberCountParts } from './memberCount';
-import { useRemoveMember, useWorkspaceMembers } from './api';
+import { useRemoveMember, useOrganizationMembers } from './api';
 import { Tabs, TabPanel } from '@/components/ui/Tabs';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
 import { APP_NAV_LABELS, MANAGE_LABELS } from '@/lib/navLabels';
@@ -61,9 +61,9 @@ export function MembersPage() {
   const [memberSearch, setMemberSearch] = useState('');
   const memberQuery = useDeferredValue(memberSearch);
 
-  const membersQuery = useWorkspaceMembers();
+  const membersQuery = useOrganizationMembers();
   const { data: members } = membersQuery;
-  const { data: wsRoles } = useRoles('WORKSPACE');
+  const { data: wsRoles } = useRoles('ORGANIZATION');
 
   const tabs: { id: Tab; label: string }[] = [
     { id: 'members', label: 'Thành viên' },
@@ -185,7 +185,7 @@ export function MembersPage() {
       </TabPanel>
 
       <AddMemberDialog open={inviteOpen} onClose={() => setInviteOpen(false)} />
-      <AddPeopleDialog mode="workspace" open={bulkOpen} onClose={() => setBulkOpen(false)} />
+      <AddPeopleDialog mode="organization" open={bulkOpen} onClose={() => setBulkOpen(false)} />
     </PageFrame>
   );
 }

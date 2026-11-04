@@ -27,7 +27,7 @@ interface ProjectBrief {
 
 export interface IssueTemplate {
   id: string;
-  workspaceId: string;
+  organizationId: string;
   projectId: string | null;
   project: ProjectBrief | null;
   name: string;

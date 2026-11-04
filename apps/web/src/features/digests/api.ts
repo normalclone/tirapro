@@ -16,7 +16,7 @@ export interface Digest {
   projectId: string | null;
   channelId: string | null;
   metrics: string[];
-  /** userId của thành viên workspace nhận email. */
+  /** userId của thành viên tổ chức nhận email. */
   recipients: string[];
   deliverEmail: boolean;
   /** Digest gắn dự án RIÊNG TƯ: cho phép đăng nội dung vào nhóm Telegram (mặc định không). */
@@ -157,7 +157,7 @@ export interface DigestChannelOption {
 }
 
 /**
- * Mọi kênh Telegram ĐÃ BẬT của workspace (gộp qua các tích hợp). `loading` đúng khi còn đang tải — để giao diện
+ * Mọi kênh Telegram ĐÃ BẬT của tổ chức (gộp qua các tích hợp). `loading` đúng khi còn đang tải — để giao diện
  * không vội nói "chưa có kênh".
  */
 export function useDigestChannels(): { options: DigestChannelOption[]; loading: boolean } {

@@ -39,7 +39,7 @@ describe('MembersPage và bộ chọn tổ chức', () => {
     expect(page).not.toMatch(/\} người\s*<\/span>/);
   });
   it('mỗi <li> trong listbox có role="presentation"', () => {
-    const src = readFileSync(join(__dirname, '../workspace/WorkspaceOption.tsx'), 'utf8');
+    const src = readFileSync(join(__dirname, '../organization/OrganizationOption.tsx'), 'utf8');
     expect(src).toMatch(/<li role="presentation">/);
   });
 });

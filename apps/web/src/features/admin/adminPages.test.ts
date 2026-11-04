@@ -8,7 +8,7 @@ const src = (rel: string) => readFileSync(join(root, rel), 'utf8');
 /** 6 route của Quản trị hệ thống (ngoài SubNavLayout; sidebar app đổi chế độ admin). Tất cả `lg` (B-D1). */
 const PAGES: [route: string, file: string][] = [
   ['overview', 'features/admin/AdminOverviewPage.tsx'],
-  ['workspaces', 'features/admin/AdminWorkspacesPage.tsx'],
+  ['organizations', 'features/admin/AdminOrganizationsPage.tsx'],
   ['accounts', 'features/admin/AdminUsersPage.tsx'],
   ['config', 'features/admin/AdminConfigPage.tsx'],
   ['system', 'features/admin/AdminSystemPage.tsx'],

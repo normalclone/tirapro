@@ -3,7 +3,7 @@ import { useAuth } from '@/stores/auth';
 import { hasPermission } from '@/lib/permissions';
 
 /**
- * Luật hiển thị mục điều hướng theo quyền CẤP WORKSPACE (tập quyền trong `/auth/me`).
+ * Luật hiển thị mục điều hướng theo quyền CẤP ORGANIZATION (tập quyền trong `/auth/me`).
  * Chỉ làm UI khớp quyền API — không thêm quyền mới. Quyền cấp dự án (vd `automation:manage` ở
  * một dự án) không nằm trong tập này nên đi qua tab dự án, không qua sidebar.
  */
@@ -16,13 +16,13 @@ export interface NavContext {
 
 export const NAV_RULES = {
   // Thành viên tổ chức: chỉ người quản lý thành viên thấy mục này (2026-11-04, người dùng yêu cầu).
-  members: { any: ['member:manage', 'workspace:admin'] },
-  connect: { any: ['integration:manage', 'automation:manage', 'workspace:admin'] },
+  members: { any: ['member:manage', 'organization:admin'] },
+  connect: { any: ['integration:manage', 'automation:manage', 'organization:admin'] },
   // Tab "Ứng dụng bên ngoài" trong Kết nối (Telegram/Digest: ghi cần `integration:manage`).
-  connectIntegrations: { any: ['integration:manage', 'workspace:admin'] },
-  settingsGeneral: { any: ['workspace:admin'] },
-  settingsImport: { any: ['workspace:admin', 'import:run'] },
-  settingsApi: { any: ['workspace:admin'] },
+  connectIntegrations: { any: ['integration:manage', 'organization:admin'] },
+  settingsGeneral: { any: ['organization:admin'] },
+  settingsImport: { any: ['organization:admin', 'import:run'] },
+  settingsApi: { any: ['organization:admin'] },
   admin: 'systemAdmin',
 } as const satisfies Record<string, NavRule>;
 
@@ -30,7 +30,7 @@ export function canSeeNav(rule: NavRule, ctx: NavContext): boolean {
   if (rule === 'all') return true;
   if (ctx.isSystemAdmin) return true; // admin hệ thống đi qua mọi luật
   if (rule === 'systemAdmin') return false;
-  return rule.any.some((perm) => hasPermission({ workspace: ctx.permissions }, perm));
+  return rule.any.some((perm) => hasPermission({ organization: ctx.permissions }, perm));
 }
 
 /** Hook mỏng quanh `useAuth`: mục có hiện với người đang đăng nhập không. */

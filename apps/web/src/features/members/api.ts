@@ -74,7 +74,7 @@ export function useUpdateProfile() {
       (await api.patch<UserDto>('/users/me', input)).data,
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: keys.me });
-      void queryClient.invalidateQueries({ queryKey: keys.users.workspace });
+      void queryClient.invalidateQueries({ queryKey: keys.users.organization });
       // Làm mới user/quyền trong auth store (cập nhật tên & avatar ở mọi nơi).
       void bootstrap();
     },
@@ -111,7 +111,7 @@ export function useLogoutAll() {
 /** Refresh user ở mọi nơi (header, danh sách thành viên, avatar trên issue). */
 function refreshUserEverywhere(bootstrap: () => Promise<void>) {
   void queryClient.invalidateQueries({ queryKey: keys.me });
-  void queryClient.invalidateQueries({ queryKey: keys.users.workspace });
+  void queryClient.invalidateQueries({ queryKey: keys.users.organization });
   void bootstrap();
 }
 
@@ -142,9 +142,9 @@ export function useRemoveUserAvatar() {
 /* ------------------------------------------------------------------ */
 
 /** Danh sách thành viên của tổ chức hiện tại kèm vai trò (GET /members). */
-export function useWorkspaceMembers(enabled = true) {
+export function useOrganizationMembers(enabled = true) {
   return useQuery({
-    queryKey: keys.members.workspace,
+    queryKey: keys.members.organization,
     enabled,
     queryFn: async () => (await api.get<MemberDto[]>('/members')).data,
   });
@@ -160,8 +160,8 @@ export function useAddMember() {
     mutationFn: ({ userId, roleIds }: { userId: string; roleIds: string[] }) =>
       api.post<MemberDto>('/members', { userId, roleIds }).then((r) => r.data),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: keys.members.workspace });
-      void qc.invalidateQueries({ queryKey: keys.users.workspace });
+      void qc.invalidateQueries({ queryKey: keys.members.organization });
+      void qc.invalidateQueries({ queryKey: keys.users.organization });
     },
   });
 }
@@ -185,8 +185,8 @@ export function useCreateMemberAccount() {
       password?: string;
     }) => api.post<CreateMemberAccountResult>('/members/accounts', input).then((r) => r.data),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: keys.members.workspace });
-      void qc.invalidateQueries({ queryKey: keys.users.workspace });
+      void qc.invalidateQueries({ queryKey: keys.members.organization });
+      void qc.invalidateQueries({ queryKey: keys.users.organization });
       void qc.invalidateQueries({ queryKey: keys.users.allRoot });
     },
   });
@@ -201,8 +201,8 @@ export function useAddMembersBulk() {
         .post<{ added: number; skipped: number }>('/members/bulk', { userIds, roleIds })
         .then((r) => r.data),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: keys.members.workspace });
-      void qc.invalidateQueries({ queryKey: keys.users.workspace });
+      void qc.invalidateQueries({ queryKey: keys.members.organization });
+      void qc.invalidateQueries({ queryKey: keys.users.organization });
       void qc.invalidateQueries({ queryKey: keys.users.allRoot });
     },
   });
@@ -214,8 +214,8 @@ export function useRemoveMember() {
   return useMutation({
     mutationFn: (userId: string) => api.delete<Ack>(`/members/${userId}`).then((r) => r.data),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: keys.members.workspace });
-      void qc.invalidateQueries({ queryKey: keys.users.workspace });
+      void qc.invalidateQueries({ queryKey: keys.members.organization });
+      void qc.invalidateQueries({ queryKey: keys.users.organization });
     },
   });
 }

@@ -34,7 +34,7 @@ const statesOf = (qc: QueryClient): Map<string, KeyState> => {
   return m;
 };
 
-/** Đổi phiên (đăng xuất / đổi workspace): lần gửi còn bay giữ bản đồ CŨ trong context nên không ghi vào phiên sau. */
+/** Đổi phiên (đăng xuất / đổi tổ chức): lần gửi còn bay giữ bản đồ CŨ trong context nên không ghi vào phiên sau. */
 export function resetReactionStates(qc: QueryClient): void {
   keyStates.delete(qc);
 }

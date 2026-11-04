@@ -9,9 +9,9 @@ import { useAuth } from '@/stores/auth';
 export function useCanManageWorkflow(
   workflow: { projectId: string | null } | null | undefined,
 ): boolean {
-  const workspaceAdmin = useAuth((s) => s.can('workspace:admin'));
+  const organizationAdmin = useAuth((s) => s.can('organization:admin'));
   const projectId = workflow?.projectId ?? null;
   const can = useCan(projectId);
   const archived = useProjectArchived(projectId);
-  return workspaceAdmin || (projectId !== null && can('project:admin') && !archived);
+  return organizationAdmin || (projectId !== null && can('project:admin') && !archived);
 }

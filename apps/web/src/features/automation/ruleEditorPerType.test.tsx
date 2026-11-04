@@ -50,7 +50,7 @@ const BUG_DONE = statusIdOf('BUG', 'Done');
 const migrated = (): AutomationRule =>
   ({
     id: 'r1',
-    workspaceId: 'w',
+    organizationId: 'w',
     projectId: null,
     name: 'Khi xong thì báo',
     enabled: true,

@@ -39,13 +39,13 @@ export function useProjectsCan(
   perm: PermissionKey,
 ): (projectId: string) => boolean | undefined {
   const isSystemAdmin = useAuth((s) => s.user?.isSystemAdmin === true);
-  const workspace = useAuth((s) => s.permissions);
+  const organization = useAuth((s) => s.permissions);
   const results = useQueries({ queries: projectIds.map((id) => projectPermissionsQuery(id)) });
   const byId = new Map<string, boolean | undefined>();
   projectIds.forEach((id, i) => {
     const project = results[i]?.data?.permissions;
-    // Có từ cấp workspace/system admin → khỏi chờ quyền dự án; chưa có dữ liệu mà cũng chưa lỗi → chưa biết.
-    const known = hasPermission({ isSystemAdmin, workspace, project }, perm);
+    // Có từ cấp organization/system admin → khỏi chờ quyền dự án; chưa có dữ liệu mà cũng chưa lỗi → chưa biết.
+    const known = hasPermission({ isSystemAdmin, organization, project }, perm);
     byId.set(id, known || project || results[i]?.isError ? known : undefined);
   });
   return (id) => byId.get(id);
@@ -53,21 +53,21 @@ export function useProjectsCan(
 
 /**
  * Ngữ cảnh quyền + trạng thái lưu trữ của NHIỀU dự án một lúc (kết quả Bộ lọc trải nhiều dự án): dùng chung cache
- * `useProjectPermissions`. Quyền dự án chưa tải → chỉ có quyền cấp workspace (an toàn: coi là chưa đủ quyền).
+ * `useProjectPermissions`. Quyền dự án chưa tải → chỉ có quyền cấp tổ chức (an toàn: coi là chưa đủ quyền).
  */
 export function useProjectPermissionContexts(
   projectIds: readonly string[],
 ): (projectId: string) => { ctx: PermissionContext; archived: boolean } {
   const isSystemAdmin = useAuth((s) => s.user?.isSystemAdmin === true);
-  const workspace = useAuth((s) => s.permissions);
+  const organization = useAuth((s) => s.permissions);
   const results = useQueries({ queries: projectIds.map((id) => projectPermissionsQuery(id)) });
   const { data: projects } = useProjects(true, projectIds.length > 0);
   const byId = new Map<string, PermissionContext>();
   projectIds.forEach((id, i) => {
-    byId.set(id, { isSystemAdmin, workspace, project: results[i]?.data?.permissions });
+    byId.set(id, { isSystemAdmin, organization, project: results[i]?.data?.permissions });
   });
   return (id) => ({
-    ctx: byId.get(id) ?? { isSystemAdmin, workspace, project: undefined },
+    ctx: byId.get(id) ?? { isSystemAdmin, organization, project: undefined },
     archived: !!projects?.find((p) => p.id === id)?.archivedAt,
   });
 }
@@ -82,19 +82,19 @@ export function useLazyProjectCan(
   active: boolean,
 ): boolean {
   const isSystemAdmin = useAuth((s) => s.user?.isSystemAdmin === true);
-  const workspace = useAuth((s) => s.permissions);
+  const organization = useAuth((s) => s.permissions);
   const project = useProjectPermissions(active ? projectId : null).data?.permissions;
-  return hasPermission({ isSystemAdmin, workspace, project }, perm);
+  return hasPermission({ isSystemAdmin, organization, project }, perm);
 }
 
 /** `const can = useCan(project?.id); can('worklog:create')` — quyền hiệu lực trong dự án. */
 export function useCan(projectId?: string | null): (perm: PermissionKey) => boolean {
   const isSystemAdmin = useAuth((s) => s.user?.isSystemAdmin === true);
-  const workspace = useAuth((s) => s.permissions);
+  const organization = useAuth((s) => s.permissions);
   const project = useProjectPermissions(projectId).data?.permissions;
   return useCallback(
-    (perm) => hasPermission({ isSystemAdmin, workspace, project }, perm),
-    [isSystemAdmin, workspace, project],
+    (perm) => hasPermission({ isSystemAdmin, organization, project }, perm),
+    [isSystemAdmin, organization, project],
   );
 }
 
@@ -156,20 +156,20 @@ export function useCanIn(projectId?: string | null): (perm: PermissionKey) => bo
  */
 export function useCanEditIssue(projectId?: string | null): (issue: IssueOwnership) => boolean {
   const isSystemAdmin = useAuth((s) => s.user?.isSystemAdmin === true);
-  const workspace = useAuth((s) => s.permissions);
+  const organization = useAuth((s) => s.permissions);
   const userId = useAuth((s) => s.user?.id);
   const project = useProjectPermissions(projectId).data?.permissions;
   const archived = useProjectArchived(projectId);
   return useCallback(
-    (issue) => !archived && canEditIssue({ isSystemAdmin, workspace, project }, issue, userId),
-    [isSystemAdmin, workspace, project, userId, archived],
+    (issue) => !archived && canEditIssue({ isSystemAdmin, organization, project }, issue, userId),
+    [isSystemAdmin, organization, project, userId, archived],
   );
 }
 
 /**
  * `const canSchedule = useCanEditSchedule(projectId); canSchedule(issue)` — đổi lịch của MỘT công việc
  * (Ngày bắt đầu, Hạn; điểm ước lượng KHÔNG qua đây — B7): phải sửa được việc đó (`useCanEditIssue`) VÀ là người tạo/báo cáo hoặc quản trị
- * (project/workspace/system admin) — khớp `assertCanEditRestrictedFields` ở API. Một luật cho trang chi tiết, panel xem
+ * (project/organization/system admin) — khớp `assertCanEditRestrictedFields` ở API. Một luật cho trang chi tiết, panel xem
  * nhanh và Gantt (L15) để không có chỗ cho kéo được mà server từ chối một nửa.
  */
 export function useCanEditSchedule(projectId?: string | null): (issue: IssueOwnership) => boolean {
@@ -183,7 +183,7 @@ export function useCanEditSchedule(projectId?: string | null): (issue: IssueOwne
         (!!me?.id &&
           (issue.reporterId === me.id ||
             issue.createdById === me.id ||
-            can('workspace:admin') ||
+            can('organization:admin') ||
             can('project:admin')))),
     [canEdit, can, me],
   );

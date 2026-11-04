@@ -23,7 +23,7 @@ const KIND_LABEL: Record<JqlSuggestion['kind'], string> = {
   function: 'Hàm',
 };
 
-/** Danh mục giá trị thật của workspace cho `suggestJql` (đọc từ `/search/fields` + danh sách dự án đã tải). */
+/** Danh mục giá trị thật của tổ chức cho `suggestJql` (đọc từ `/search/fields` + danh sách dự án đã tải). */
 function useJqlCatalog(): JqlCatalog {
   const { data: fields } = useFilterFields();
   const { data: projects } = useProjects();

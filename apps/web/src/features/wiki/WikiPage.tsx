@@ -155,7 +155,7 @@ export function WikiPage() {
   const lazyOk = useCallback((pid: string) => !inactive(pid), [inactive]);
   const scopeWritable = canWrite(scopeProjectId);
   const scopeLoading = !scopeReady || pageWriteLoading(scopeProjectId);
-  // Thùng rác: cùng quyền với xoá trang (project:admin ở phạm vi đang chọn; "Tất cả"/chung = quyền workspace).
+  // Thùng rác: cùng quyền với xoá trang (project:admin ở phạm vi đang chọn; "Tất cả"/chung = quyền tổ chức).
   const scopeCanDelete = !scopeLoading && canDelete(scopeProjectId);
 
   const create = useCreateWikiPage();

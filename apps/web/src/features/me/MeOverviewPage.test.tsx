@@ -237,7 +237,7 @@ describe('Trang Của tôi', () => {
     );
   });
 
-  it('lỗi tải → thông báo lỗi có nút Thử lại; không dùng từ "workspace" trong chữ hiển thị', async () => {
+  it('lỗi tải → thông báo lỗi có nút Thử lại; không dùng từ "organization" trong chữ hiển thị', async () => {
     get.mockRejectedValue(new Error('boom'));
     const { container } = render(
       <QueryClientProvider
@@ -249,6 +249,6 @@ describe('Trang Của tôi', () => {
       </QueryClientProvider>,
     );
     expect(await screen.findByRole('button', { name: /Thử lại/ })).toBeTruthy();
-    expect(container.textContent?.toLowerCase()).not.toContain('workspace');
+    expect(container.textContent?.toLowerCase()).not.toContain('organization');
   });
 });

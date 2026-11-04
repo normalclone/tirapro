@@ -3,18 +3,18 @@ import axios from 'axios';
 import type {
   ProjectWorkflowSchemeDto,
   WorkflowChangeDto,
-  WorkspaceWorkflowSchemeDto,
+  OrganizationWorkflowSchemeDto,
 } from '@tirapro/types';
-import type { SetProjectOverrideInput, SetWorkspaceSchemeInput } from '@tirapro/shared';
+import type { SetProjectOverrideInput, SetOrganizationSchemeInput } from '@tirapro/shared';
 import { api } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
 
 /** Cấu hình quy trình theo loại việc của TỔ CHỨC (chỉ Quản trị chung — API trả 403 cho người khác). */
-export function useWorkspaceScheme(enabled = true) {
+export function useOrganizationScheme(enabled = true) {
   return useQuery({
     queryKey: keys.workflowScheme,
     queryFn: enabled
-      ? async () => (await api.get<WorkspaceWorkflowSchemeDto>('/workflow-schemes')).data
+      ? async () => (await api.get<OrganizationWorkflowSchemeDto>('/workflow-schemes')).data
       : skipToken,
   });
 }
@@ -34,13 +34,13 @@ export function useProjectScheme(projectId: string | undefined, opts?: { staleTi
 
 /** Một thay đổi quy trình: của tổ chức (PUT /workflow-schemes) hoặc ghi đè của một dự án (PUT /projects/:id/workflow-overrides). */
 export type ChangeRequest =
-  | { scope: 'workspace'; body: SetWorkspaceSchemeInput }
+  | { scope: 'organization'; body: SetOrganizationSchemeInput }
   | { scope: 'project'; projectId: string; body: SetProjectOverrideInput };
 
 /** Gửi thay đổi. `dryRun` chỉ xem trước (không ghi gì). Quay về dùng chung = PUT với `workflowId: null` (không DELETE kèm body). */
 export async function sendChange(req: ChangeRequest, dryRun: boolean): Promise<WorkflowChangeDto> {
   const url =
-    req.scope === 'workspace'
+    req.scope === 'organization'
       ? '/workflow-schemes'
       : `/projects/${req.projectId}/workflow-overrides`;
   const res = await api.put<WorkflowChangeDto>(url, req.body, {

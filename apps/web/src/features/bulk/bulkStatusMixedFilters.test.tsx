@@ -19,7 +19,7 @@ vi.mock('@/lib/api', async (orig) => {
 });
 vi.mock('@/features/projects/permissions', () => ({
   useProjectPermissionContexts: () => () => ({
-    ctx: { isSystemAdmin: true, workspace: [], project: undefined },
+    ctx: { isSystemAdmin: true, organization: [], project: undefined },
     archived: false,
   }),
 }));

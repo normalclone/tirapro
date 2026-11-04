@@ -4,7 +4,7 @@ import { raidCsv } from './exportCsv';
 
 const item = (extra: Partial<RaidItemDto>): RaidItemDto => ({
   id: 'r1',
-  workspaceId: 'w',
+  organizationId: 'w',
   projectId: 'p1',
   project: { id: 'p1', key: 'PAY', name: 'Cổng thanh toán' },
   kind: 'RISK',

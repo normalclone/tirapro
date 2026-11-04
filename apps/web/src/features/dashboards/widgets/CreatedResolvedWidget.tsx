@@ -9,7 +9,7 @@ import {
   YAxis,
 } from 'recharts';
 import { useAuth } from '@/stores/auth';
-import { useWorkspaceOverview } from '@/features/dashboard/api';
+import { useOrganizationOverview } from '@/features/dashboard/api';
 import { useCreatedResolved } from '@/features/reports/api';
 import { AXIS_PROPS, LEGEND_STYLE, TOOLTIP_STYLE } from '@/features/reports/charts';
 import { CHART_MARGIN, yAxisWidth } from '@/lib/chartAxis';
@@ -25,12 +25,12 @@ interface Point {
   resolved: number;
 }
 
-/** Tạo mới vs Đã xử lý: theo ngày (một dự án) hoặc theo tuần (toàn workspace). */
+/** Tạo mới vs Đã xử lý: theo ngày (một dự án) hoặc theo tuần (toàn tổ chức). */
 export function CreatedResolvedWidget({ title, config }: WidgetProps) {
   const projectId = cfgString(config, 'projectId');
   const canReport = useAuth((s) => s.can('report:view'));
   const daily = useCreatedResolved(projectId);
-  const weekly = useWorkspaceOverview(!projectId && canReport);
+  const weekly = useOrganizationOverview(!projectId && canReport);
 
   if (!projectId && !canReport) {
     return <WidgetFrame title={title} state="forbidden" forbiddenText="Cần quyền xem báo cáo" />;

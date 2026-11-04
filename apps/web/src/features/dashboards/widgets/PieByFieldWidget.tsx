@@ -1,6 +1,6 @@
 import { Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts';
 import { useAuth } from '@/stores/auth';
-import { useWorkspaceOverview, type OverviewSlice } from '@/features/dashboard/api';
+import { useOrganizationOverview, type OverviewSlice } from '@/features/dashboard/api';
 import { useProjectReport } from '@/features/reports/api';
 import { TOOLTIP_STYLE } from '@/features/reports/charts';
 import { STATUS_CATEGORY_LABEL } from '@/lib/terms';
@@ -9,7 +9,7 @@ import { queryWidgetState } from '../widgetState';
 import { WidgetFrame } from '../WidgetFrame';
 import type { WidgetProps } from './types';
 
-/** Màu dự phòng khi lát cắt không mang màu riêng (loại/ưu tiên của workspace thường có màu). */
+/** Màu dự phòng khi lát cắt không mang màu riêng (loại/ưu tiên của tổ chức thường có màu). */
 const FALLBACK_COLORS = [
   'var(--primary)',
   'var(--status-progress)',
@@ -22,13 +22,13 @@ const FALLBACK_COLORS = [
 type Field = 'status' | 'type' | 'priority';
 const isField = (v: unknown): v is Field => v === 'status' || v === 'type' || v === 'priority';
 
-/** Phân bố công việc theo trạng thái / loại / ưu tiên, của một dự án hoặc toàn workspace. */
+/** Phân bố công việc theo trạng thái / loại / ưu tiên, của một dự án hoặc toàn organization. */
 export function PieByFieldWidget({ title, config }: WidgetProps) {
   const field: Field = isField(config.field) ? config.field : 'status';
   const projectId = cfgString(config, 'projectId');
   const canReport = useAuth((s) => s.can('report:view'));
 
-  const overview = useWorkspaceOverview(!projectId && canReport);
+  const overview = useOrganizationOverview(!projectId && canReport);
   const report = useProjectReport(projectId);
 
   if (!projectId && !canReport) {

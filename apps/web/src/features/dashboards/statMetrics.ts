@@ -20,7 +20,7 @@ export const STAT_METRIC_META: Record<StatMetric, { label: string; hint: string 
   projects: { label: 'Dự án', hint: 'Số dự án đang hoạt động bạn xem được.' },
 };
 
-/** Nguồn số liệu chung của một ô: tổng quan workspace hoặc một dự án (đã chuẩn hoá về cùng hình dạng). */
+/** Nguồn số liệu chung của một ô: tổng quan tổ chức hoặc một dự án (đã chuẩn hoá về cùng hình dạng). */
 export interface StatSource {
   totals: {
     total: number;
@@ -77,7 +77,7 @@ export function resolvedLast14Days(series: CreatedResolvedPoint[]): number {
   return series.slice(-14).reduce((sum, p) => sum + p.resolved, 0);
 }
 
-/** Báo cáo dự án không có sẵn số bug → cộng các loại có tên chứa "bug"/"lỗi" (workspace có thể đổi tên loại). */
+/** Báo cáo dự án không có sẵn số bug → cộng các loại có tên chứa "bug"/"lỗi" (tổ chức có thể đổi tên loại). */
 export function sourceFromProjectReport(
   report: Pick<ProjectReport, 'totals' | 'byType'>,
   resolved14?: number | null,

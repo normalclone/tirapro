@@ -65,11 +65,11 @@ export interface Onboarding {
   doneCount: number;
   total: number;
   dismissed: boolean;
-  /** Server quyết định hiện khối: chưa ẩn, chưa xong cả bốn, workspace dưới 30 ngày. */
+  /** Server quyết định hiện khối: chưa ẩn, chưa xong cả bốn, tổ chức dưới 30 ngày. */
   visible: boolean;
 }
 
-/** Checklist "Bắt đầu" của workspace — chỉ quản trị gọi được (403 với người khác → khối không hiện). */
+/** Checklist "Bắt đầu" của tổ chức — chỉ quản trị gọi được (403 với người khác → khối không hiện). */
 export function useOnboarding(enabled = true) {
   return useQuery({
     queryKey: keys.guides.onboarding,

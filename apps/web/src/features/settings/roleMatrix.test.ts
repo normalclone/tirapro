@@ -33,10 +33,12 @@ describe('buildRoleMatrix', () => {
   });
 
   it('chỉ giữ quyền đúng phạm vi', () => {
-    const m = buildRoleMatrix(roles, PERMISSION_CATALOG, { scope: 'WORKSPACE' });
+    const m = buildRoleMatrix(roles, PERMISSION_CATALOG, { scope: 'ORGANIZATION' });
     expect(m.rows.length).toBeGreaterThan(0);
     expect(
-      m.rows.every((r) => PERMISSION_CATALOG.find((p) => p.key === r.key)!.scope === 'WORKSPACE'),
+      m.rows.every(
+        (r) => PERMISSION_CATALOG.find((p) => p.key === r.key)!.scope === 'ORGANIZATION',
+      ),
     ).toBe(true);
   });
 
@@ -117,16 +119,16 @@ describe('defaultColumnIds', () => {
     r('s1', 'Scrum Master', 'PROJECT', true),
     r('legacy', 'Project Developer', 'PROJECT', true),
     r('c1', 'QA Lead', 'PROJECT', false),
-    r('w1', 'Workspace Admin', 'WORKSPACE', true),
-    r('cw', 'Kế toán', 'WORKSPACE', false),
+    r('w1', 'Organization Admin', 'ORGANIZATION', true),
+    r('cw', 'Kế toán', 'ORGANIZATION', false),
   ];
   it('người chỉ đọc: vai trò hệ thống của phạm vi, trừ hai vai trò dự án cũ', () => {
     expect(defaultColumnIds(all, 'PROJECT', false)).toEqual(['s1']);
-    expect(defaultColumnIds(all, 'WORKSPACE', false)).toEqual(['w1']);
+    expect(defaultColumnIds(all, 'ORGANIZATION', false)).toEqual(['w1']);
   });
   it('người sửa được: thêm vai trò tuỳ chỉnh của đúng phạm vi', () => {
     expect(defaultColumnIds(all, 'PROJECT', true)).toEqual(['s1', 'c1']);
-    expect(defaultColumnIds(all, 'WORKSPACE', true)).toEqual(['w1', 'cw']);
+    expect(defaultColumnIds(all, 'ORGANIZATION', true)).toEqual(['w1', 'cw']);
   });
 });
 

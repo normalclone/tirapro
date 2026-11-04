@@ -17,7 +17,7 @@ export type FilterVisibility = 'PRIVATE' | 'SHARED';
 /** Bộ lọc đã lưu (`GET /filters`): `access = 'shared'` là bộ lọc người khác chia sẻ cho tôi. */
 export type SavedFilter = SavedFilterDto;
 
-/** Một giá trị JQL không có trong workspace, kèm giá trị gần đúng nhất (nếu có). */
+/** Một giá trị JQL không có trong tổ chức, kèm giá trị gần đúng nhất (nếu có). */
 interface JqlValueSuggestion {
   field: string;
   value: string;

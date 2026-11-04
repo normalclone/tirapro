@@ -14,11 +14,11 @@ import {
   useAddMember,
   useAllUsers,
   useCreateMemberAccount,
-  useWorkspaceMembers,
+  useOrganizationMembers,
   type CreateMemberAccountResult,
 } from './api';
 import { PASSWORD_POLICY_HINT, passwordPolicyError } from './passwordPolicy';
-import { useWorkspaceRoleChoice } from './useWorkspaceRoleChoice';
+import { useOrganizationRoleChoice } from './useOrganizationRoleChoice';
 import { SectionCard } from '@/components/ui/SectionCard';
 import { AddDialog } from '@/components/ui/AddDialog';
 
@@ -163,11 +163,11 @@ function AddExistingUser({
   const [userId, setUserId] = useState('');
   const [prefilledUser, setPrefilledUser] = useState<PoolUser | null>(null);
 
-  const { data: members } = useWorkspaceMembers();
+  const { data: members } = useOrganizationMembers();
   const { data: users, isLoading: usersLoading } = useAllUsers(search);
   const addMember = useAddMember();
   const { roleOptions, effectiveRoleIds, setRoleIds, resetRoles, frozen } =
-    useWorkspaceRoleChoice();
+    useOrganizationRoleChoice();
 
   // Loại người đã ở trong tổ chức khỏi pool.
   const memberUserIds = useMemo(() => new Set((members ?? []).map((m) => m.user.id)), [members]);
@@ -332,7 +332,7 @@ function CreateAccountForm({
   const [created, setCreated] = useState<CreateMemberAccountResult | null>(null);
 
   const { roleOptions, effectiveRoleIds, setRoleIds, resetRoles, frozen } =
-    useWorkspaceRoleChoice();
+    useOrganizationRoleChoice();
   const create = useCreateMemberAccount();
   // Mật khẩu tạm không được nằm lại trong MutationCache sau khi rời form ("chỉ hiện một lần").
   const resetCreate = create.reset;

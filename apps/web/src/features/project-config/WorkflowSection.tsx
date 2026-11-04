@@ -68,7 +68,7 @@ export function WorkflowSection({
         projectId,
         body: {
           issueTypeId: type.id,
-          workflowId: item?.workspaceWorkflowId ?? item?.workflowId ?? '',
+          workflowId: item?.organizationWorkflowId ?? item?.workflowId ?? '',
           statusMap: {},
           copy: true,
         },
@@ -158,7 +158,7 @@ export function WorkflowSection({
         targetWorkflowOf={(typeId) => {
           const item = scheme?.items.find((i) => i.issueTypeId === typeId);
           return request?.scope === 'project' && request.body.issueTypeId === typeId
-            ? (request.body.workflowId ?? item?.workspaceWorkflowId ?? undefined)
+            ? (request.body.workflowId ?? item?.organizationWorkflowId ?? undefined)
             : item?.workflowId;
         }}
         onClose={() => {
@@ -245,7 +245,7 @@ function optionsFor(
   byId: Map<string, Workflow>,
 ): SearchSelectOption[] {
   const out: SearchSelectOption[] = [];
-  const orgId = item?.workspaceWorkflowId ?? null;
+  const orgId = item?.organizationWorkflowId ?? null;
   if (orgId)
     out.push({
       value: SHARED,

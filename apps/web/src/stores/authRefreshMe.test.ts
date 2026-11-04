@@ -13,7 +13,7 @@ import { useAuth } from './auth';
 const me = (permissions: string[]) => ({
   data: {
     user: { id: 'u1', isSystemAdmin: false },
-    workspaceId: 'w1',
+    organizationId: 'w1',
     permissions,
     memberships: [],
   },
@@ -24,8 +24,8 @@ beforeEach(() => {
   useAuth.setState({
     status: 'authed',
     user: { id: 'u1', isSystemAdmin: false } as never,
-    workspaceId: 'w1',
-    permissions: ['member:manage', 'workspace:view'],
+    organizationId: 'w1',
+    permissions: ['member:manage', 'organization:view'],
     memberships: [],
   });
 });
@@ -33,7 +33,7 @@ beforeEach(() => {
 describe('useAuth.refreshMe', () => {
   it('nạp lại quyền từ /auth/me: mất member:manage thì can() sai ngay', async () => {
     expect(useAuth.getState().can('member:manage')).toBe(true);
-    get.mockResolvedValue(me(['workspace:view']));
+    get.mockResolvedValue(me(['organization:view']));
     await useAuth.getState().refreshMe();
     expect(get).toHaveBeenCalledWith('/auth/me');
     expect(useAuth.getState().can('member:manage')).toBe(false);

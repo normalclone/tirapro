@@ -1,8 +1,8 @@
 import { useId } from 'react';
 import { Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import type { MyWorkspace } from './api';
-import { workspaceSubline } from './workspaceSubline';
+import type { MyOrganization } from './api';
+import { organizationSubline } from './organizationSubline';
 
 /** Ô vuông bo góc: hiện logo của tổ chức nếu có, không thì chữ cái đầu. */
 function WsBadge({
@@ -36,20 +36,20 @@ function WsBadge({
  * Một mục của danh sách tổ chức: dòng 1 tên, dòng 2 "12 thành viên · Quản trị chung" (tooltip đầy đủ).
  * Tên truy cập = tên tổ chức (aria-labelledby); dòng 2 chỉ là mô tả (aria-describedby) — không gộp hết vào tên.
  */
-export function WorkspaceOption({
+export function OrganizationOption({
   ws,
   active,
   disabled,
   onPick,
 }: {
-  ws: MyWorkspace;
+  ws: MyOrganization;
   active: boolean;
   disabled: boolean;
-  onPick: (ws: MyWorkspace) => void;
+  onPick: (ws: MyOrganization) => void;
 }) {
   const nameId = useId();
   const descId = useId();
-  const sub = workspaceSubline(ws);
+  const sub = organizationSubline(ws);
   return (
     <li role="presentation">
       <button

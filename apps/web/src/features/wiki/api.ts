@@ -34,7 +34,7 @@ export interface WikiByIssue {
 
 export interface WikiPageDetail {
   id: string;
-  workspaceId: string;
+  organizationId: string;
   projectId: string | null;
   parentId: string | null;
   title: string;
@@ -167,7 +167,7 @@ export function useIssueDocs(issueId: string, enabled = true) {
   });
 }
 
-/** Người quản trị có thể cấp quyền viết / xoá trang ở phạm vi `scope` (rỗng = cấp workspace). Chỉ gọi khi `enabled`. */
+/** Người quản trị có thể cấp quyền viết / xoá trang ở phạm vi `scope` (rỗng = cấp tổ chức). Chỉ gọi khi `enabled`. */
 export function useWikiAdmins(scope: string, enabled: boolean) {
   return useQuery({
     queryKey: keys.wiki.admins(scope),

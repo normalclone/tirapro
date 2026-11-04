@@ -40,7 +40,7 @@ export function FiltersBulkDock({
     projectKeyById,
   });
   const { groups, availability: av } = bulk;
-  // Ưu tiên thuộc workspace → lấy từ meta của dự án đầu tiên; nhãn/trạng thái/người chỉ khi đúng một dự án.
+  // Ưu tiên thuộc tổ chức → lấy từ meta của dự án đầu tiên; nhãn/trạng thái/người chỉ khi đúng một dự án.
   const single = groups.length === 1 ? groups[0]! : null;
   const { data: meta } = useProjectMeta(projectKeyById.get(groups[0]?.projectId ?? ''));
   const { data: labels } = useProjectLabels(av.label.visible ? single?.projectId : undefined);

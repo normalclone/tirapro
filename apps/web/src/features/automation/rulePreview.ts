@@ -37,7 +37,7 @@ export interface PreviewViewInput {
   pending: boolean;
   isError: boolean;
   data?: PreviewMatchResult;
-  /** Quy tắc cấp dự án (true) hay cả workspace (false). */
+  /** Quy tắc cấp dự án (true) hay cả tổ chức (false). */
   scoped: boolean;
   /** Quy tắc THEO LỊCH: mỗi lần chạy chỉ xử lý tối đa `SCHEDULED_RUN_ISSUE_LIMIT` việc → nhắc khi số khớp vượt. */
   scheduled?: boolean;

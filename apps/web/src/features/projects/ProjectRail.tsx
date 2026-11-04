@@ -72,7 +72,7 @@ function useRailCollapse(
  * Rail dự án (submenu trái) — danh sách dự án + nút tạo dự án.
  * Dùng chung cho ProjectLayout và trang chi tiết issue để luôn giữ ngữ cảnh dự án.
  * Hai chế độ: mở (224px) / thu thành dải khoá 3 chữ (56px), nhớ theo người dùng; chưa chọn thì
- * tự thu khi workspace có ≤ 3 dự án để Bảng việc thấy đủ cột.
+ * tự thu khi tổ chức có ≤ 3 dự án để Bảng việc thấy đủ cột.
  *
  *  activeKey — key dự án đang xem (tô sáng).
  *  view      — segment view để link sang (board/backlog/…); mặc định "board".

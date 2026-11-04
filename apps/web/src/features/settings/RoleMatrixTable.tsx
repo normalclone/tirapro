@@ -9,7 +9,7 @@ import {
 } from '@tirapro/types';
 import { RoleBadge } from '@/components/ui/RoleBadge';
 import { Button } from '@/components/ui/Button';
-import { useWorkspaceMembers } from '@/features/members/api';
+import { useOrganizationMembers } from '@/features/members/api';
 import { useAuth } from '@/stores/auth';
 import { cn } from '@/lib/utils';
 import {
@@ -25,7 +25,7 @@ import { useRolePermEditor } from './useRolePermEditor';
 
 const SCOPES: { value: PermissionScope; label: string }[] = [
   { value: 'PROJECT', label: 'Cấp dự án' },
-  { value: 'WORKSPACE', label: 'Cấp tổ chức' },
+  { value: 'ORGANIZATION', label: 'Cấp tổ chức' },
 ];
 
 type Picked = Record<PermissionScope, string[] | null>;
@@ -59,13 +59,13 @@ export function RoleMatrixTable({
   const [grouped, setGrouped] = useState(false);
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
   // Lựa chọn cột theo từng phạm vi; null = dùng mặc định.
-  const [picked, setPicked] = useState<Picked>({ PROJECT: null, WORKSPACE: null });
+  const [picked, setPicked] = useState<Picked>({ PROJECT: null, ORGANIZATION: null });
   const captionId = useId();
   const lockNoteId = useId();
   const adminNoteId = useId();
-  const canGrantAdmin = useAuth((s) => s.can('workspace:admin')); // P-C14: boolean (đã gồm admin hệ thống)
+  const canGrantAdmin = useAuth((s) => s.can('organization:admin')); // P-C14: boolean (đã gồm admin hệ thống)
 
-  const members = useWorkspaceMembers(canEdit);
+  const members = useOrganizationMembers(canEdit);
   // Chỉ cho sửa khi đã có danh sách thành viên: chốt "quản trị cuối cùng" và "tự mất quyền" cần nó.
   const editable = canEdit && members.isSuccess;
   const mode: GridMode = editable ? 'edit' : canEdit ? 'loading' : 'readonly';

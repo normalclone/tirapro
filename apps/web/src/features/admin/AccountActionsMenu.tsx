@@ -18,7 +18,7 @@ import { Input } from '@/components/ui/Input';
 import { useConfirm } from '@/components/ui/useConfirm';
 import { apiErrorMessage } from '@/lib/api';
 import { useCopyToClipboard } from '@/lib/useCopyToClipboard';
-import { AddToWorkspaceDialog } from './AddToWorkspaceDialog';
+import { AddToOrganizationDialog } from './AddToOrganizationDialog';
 import { EditAccountDialog } from './EditAccountDialog';
 import {
   useResetAdminPassword,
@@ -55,7 +55,7 @@ export function AccountActionsMenu({ user }: { user: AdminUser }) {
     open: false,
     password: '',
   });
-  // Hộp thoại chỉ dựng từ lần mở đầu tiên (mỗi dòng đều có menu này — không tải danh sách workspace cho mọi dòng).
+  // Hộp thoại chỉ dựng từ lần mở đầu tiên (mỗi dòng đều có menu này — không tải danh sách tổ chức cho mọi dòng).
   const add = useLazyDialog();
   const edit = useLazyDialog();
   const clearTimer = useRef<ReturnType<typeof setTimeout>>();
@@ -185,7 +185,7 @@ export function AccountActionsMenu({ user }: { user: AdminUser }) {
       </DropdownMenu.Root>
 
       {edit.mounted && <EditAccountDialog user={user} open={edit.open} onClose={edit.hide} />}
-      {add.mounted && <AddToWorkspaceDialog user={user} open={add.open} onClose={add.hide} />}
+      {add.mounted && <AddToOrganizationDialog user={user} open={add.open} onClose={add.hide} />}
       <TempPasswordDialog
         open={temp.open}
         name={user.displayName}

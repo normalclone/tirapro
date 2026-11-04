@@ -24,7 +24,7 @@ const DEFAULT_COLOR = '#64748b';
 
 export function SeveritySection() {
   const confirm = useConfirm();
-  const canManage = useAuth((s) => s.can('workspace:admin'));
+  const canManage = useAuth((s) => s.can('organization:admin'));
   const severitiesQuery = useSeverities();
   const { data } = severitiesQuery;
   const create = useCreateSeverity();

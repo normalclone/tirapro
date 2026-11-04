@@ -2,8 +2,8 @@ import type { JiraImportSummary } from './api';
 
 /**
  * Câu báo khi có việc được nhập nhưng chưa có người phụ trách (null khi không có) — để "Cảnh báo" của báo cáo không
- * im lặng. Hai nhóm: người đã nhớ email (L28: tự gán khi họ được thêm vào workspace — không phải cảnh báo mất người)
- * và người không khớp thành viên nào, không có email (cần thêm họ vào workspace rồi gán lại).
+ * im lặng. Hai nhóm: người đã nhớ email (L28: tự gán khi họ được thêm vào tổ chức — không phải cảnh báo mất người)
+ * và người không khớp thành viên nào, không có email (cần thêm họ vào tổ chức rồi gán lại).
  */
 export function unmatchedAssigneesNotice(
   s: Pick<

@@ -7,7 +7,7 @@ import { MyTeamsPage, teamsOf } from './MyTeamsPage';
 const u = (id: string, name: string) => ({ id, displayName: name, email: `${id}@x.vn` }) as UserDto;
 const team = (id: string, name: string, members: UserDto[], lead?: UserDto): TeamDto => ({
   id,
-  workspaceId: 'w',
+  organizationId: 'w',
   name,
   key: id,
   members,

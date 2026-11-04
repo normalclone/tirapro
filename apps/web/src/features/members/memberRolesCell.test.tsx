@@ -10,8 +10,13 @@ import { MemberRolesCell } from './MemberRolesCell';
 const read = (p: string) => readFileSync(join(__dirname, p), 'utf8');
 
 const roles = [
-  { id: 'r-admin', name: 'Workspace Admin', permissionKeys: ['workspace:admin'], color: null },
-  { id: 'r-member', name: 'Workspace Member', permissionKeys: [], color: null },
+  {
+    id: 'r-admin',
+    name: 'Organization Admin',
+    permissionKeys: ['organization:admin'],
+    color: null,
+  },
+  { id: 'r-member', name: 'Organization Member', permissionKeys: [], color: null },
 ] as unknown as RoleDto[];
 const member = (roleIds: string[]): MemberDto =>
   ({
@@ -141,8 +146,8 @@ describe('RoleChecklist — vai trò bị khoá', () => {
   const out = renderToStaticMarkup(
     <RoleChecklist
       options={[
-        { id: 'r-admin', name: 'Workspace Admin' },
-        { id: 'r-member', name: 'Workspace Member' },
+        { id: 'r-admin', name: 'Organization Admin' },
+        { id: 'r-member', name: 'Organization Member' },
       ]}
       value={['r-admin']}
       onChange={() => undefined}

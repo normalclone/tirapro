@@ -152,7 +152,11 @@ describe('một nguồn nhãn (lib/navLabels.ts)', () => {
     ['features/projects/ProjectsPage.tsx', 'APP_NAV_LABELS.projects', APP_NAV_LABELS.projects],
     ['features/members/AccountPage.tsx', 'APP_NAV_LABELS.account', APP_NAV_LABELS.account],
     ['features/admin/AdminSystemPage.tsx', 'ADMIN_LABELS.system', ADMIN_LABELS.system],
-    ['features/admin/AdminWorkspacesPage.tsx', 'ADMIN_LABELS.workspaces', ADMIN_LABELS.workspaces],
+    [
+      'features/admin/AdminOrganizationsPage.tsx',
+      'ADMIN_LABELS.organizations',
+      ADMIN_LABELS.organizations,
+    ],
     ['features/admin/AdminUsersPage.tsx', 'ADMIN_LABELS.accounts', ADMIN_LABELS.accounts],
     [
       'features/project-config/ProjectConfigPage.tsx',
@@ -268,7 +272,7 @@ describe('không lộ tên enum/trường thô trên giao diện', () => {
 
 describe('vai trò hiển thị bằng tiếng Việt (roleLabel)', () => {
   it.each([
-    ['features/workspace/workspaceSubline.ts', /roleLabel\(ws\.roleName\)/],
+    ['features/organization/organizationSubline.ts', /roleLabel\(ws\.roleName\)/],
     ['features/issue-edit/useAssigneeOptions.ts', /roleNames\.map\(roleLabel\)/],
     ['features/quick-filters/AssigneeFilter.tsx', /label: roleLabel\(r\)/],
     ['features/members/AddPeopleDialog.tsx', /label: roleLabel\(n\)/],

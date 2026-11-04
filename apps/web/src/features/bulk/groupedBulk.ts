@@ -82,7 +82,7 @@ export interface ActionAvailability {
 
 /**
  * Quy tắc theo mô hình dữ liệu/API:
- * - XUYÊN DỰ ÁN được: Gán cho tôi (người dùng hiện tại), Ưu tiên (Priority thuộc workspace), Điểm (một con số).
+ * - XUYÊN DỰ ÁN được: Gán cho tôi (người dùng hiện tại), Ưu tiên (Priority thuộc tổ chức), Điểm (một con số).
  * - CHỈ khi đúng MỘT dự án: Đổi người phụ trách (danh sách người chọn được theo dự án), Nhãn (nhãn theo dự án),
  *   Trạng thái (quy trình theo dự án). Sprint/Epic không có ở Bộ lọc.
  * Quyền theo dự án: gán = `issue:assign`; ưu tiên/độ khó/nhãn = sửa được mọi việc của nhóm; điểm (chỉnh tay) = `project:admin`; trạng thái = `issue:transition`.

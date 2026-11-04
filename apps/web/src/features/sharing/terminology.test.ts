@@ -14,7 +14,7 @@ const files = dirs.flatMap((d) =>
 );
 
 const BANNED: Array<[RegExp, string]> = [
-  [/không gian/i, 'dùng "tổ chức" (đã bỏ khái niệm workspace)'],
+  [/không gian/i, 'dùng "tổ chức" (đã bỏ khái niệm organization)'],
   [/quản trị viên tổ chức/i, 'dùng tên vai trò hiển thị "Quản trị chung"'],
   [/chỉ thành viên dự án thấy/i, 'ghi chú dự án riêng tư phải nhắc Quản trị chung'],
 ];

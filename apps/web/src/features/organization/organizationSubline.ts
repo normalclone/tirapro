@@ -1,11 +1,11 @@
 import { roleLabel } from '@tirapro/types';
-import type { MyWorkspace } from './api';
+import type { MyOrganization } from './api';
 
 /**
  * Dòng 2 của mục tổ chức: "12 thành viên · Quản trị chung" (đếm trước, vai trò sau). `count` tách riêng để vẽ
  * `tabular-nums`. API cũ (chưa triển khai) không trả `memberCount` → chỉ còn vai trò.
  */
-export function workspaceSubline(ws: Pick<MyWorkspace, 'roleName' | 'memberCount'>): {
+export function organizationSubline(ws: Pick<MyOrganization, 'roleName' | 'memberCount'>): {
   count: number | null;
   text: string;
   title: string;

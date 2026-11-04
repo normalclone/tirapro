@@ -11,7 +11,7 @@ const STALE_MS = 60_000;
 /**
  * "Còn trống ~N giờ/tuần" cạnh từng người trong ô chọn người phụ trách (181). Rải `{...availability}` vào `<PeoplePicker>`.
  *
- * - Chỉ nạp khi danh sách ĐANG MỞ và người dùng có `workspace:view` (quyền của `GET /resources/workload`); thiếu quyền hoặc
+ * - Chỉ nạp khi danh sách ĐANG MỞ và người dùng có `organization:view` (quyền của `GET /resources/workload`); thiếu quyền hoặc
  *   chưa có dữ liệu → không hiện gì, không báo lỗi.
  * - MỘT lần gọi mỗi lần mở (khoá chỉ phụ thuộc tuần, không phụ thuộc từ khoá tìm): toàn bộ người × MỘT tuần.
  * - KHÔNG truyền `projectId`: tham số đó lọc cả phân bổ lẫn việc theo dự án nên "còn trống" sẽ cao ảo; ở đây cần tải tổng.
@@ -20,7 +20,7 @@ const STALE_MS = 60_000;
 export function useAssigneeAvailability(
   issue: { dueDate?: string | null; startDate?: string | null; assigneeId?: string | null } = {},
 ) {
-  const canView = useAuth((s) => s.can('workspace:view'));
+  const canView = useAuth((s) => s.can('organization:view'));
   const [open, setOpen] = useState(false);
   const week = useMemo(
     () =>

@@ -11,7 +11,7 @@ import { QueryError } from '@/components/ui/QueryError';
 import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { ADMIN_LABELS } from '@/lib/navLabels';
-import { useAdminWorkspaces, usePatchWorkspace, type AdminWorkspace } from './api';
+import { useAdminOrganizations, usePatchOrganization, type AdminOrganization } from './api';
 import { relTime } from './_ui';
 import { fmtNumber } from '@/lib/locale';
 import { ScrollX } from '@/components/ui/ScrollX';
@@ -25,9 +25,9 @@ const PLAN_STYLE: Record<string, string> = {
   ENTERPRISE: 'text-success',
 };
 
-export function AdminWorkspacesPage() {
-  const { data, isLoading, isError, error, refetch } = useAdminWorkspaces();
-  const patch = usePatchWorkspace();
+export function AdminOrganizationsPage() {
+  const { data, isLoading, isError, error, refetch } = useAdminOrganizations();
+  const patch = usePatchOrganization();
   const confirm = useConfirm();
   const [q, setQ] = useState('');
   const [showArchived, setShowArchived] = useState(true);
@@ -48,7 +48,7 @@ export function AdminWorkspacesPage() {
   // Rỗng do từ khoá / ẩn mục đã lưu trữ (khác với chưa có tổ chức nào): mới có nút xoá bộ lọc.
   const hasFilter = (q.trim() !== '' || !showArchived) && (data?.length ?? 0) > 0;
 
-  function changePlan(w: AdminWorkspace, plan: (typeof PLANS)[number]) {
+  function changePlan(w: AdminOrganization, plan: (typeof PLANS)[number]) {
     if (plan === w.plan) return;
     patch.mutate(
       { id: w.id, patch: { plan } },
@@ -59,7 +59,7 @@ export function AdminWorkspacesPage() {
     );
   }
 
-  async function toggleArchive(w: AdminWorkspace) {
+  async function toggleArchive(w: AdminOrganization) {
     const next = !w.archived;
     if (
       next &&
@@ -84,7 +84,7 @@ export function AdminWorkspacesPage() {
   return (
     <PageFrame size="lg">
       <PageHeader
-        title={ADMIN_LABELS.workspaces}
+        title={ADMIN_LABELS.organizations}
         description="Mọi tổ chức trong hệ thống — đổi gói dịch vụ, lưu trữ hoặc khôi phục."
       />
 

@@ -10,7 +10,7 @@ import {
 describe('canWriteAt', () => {
   const projectCan = (id: string) => (id === 'p1' ? true : id === 'loading' ? undefined : false);
 
-  it('trang chung (null) theo quyền cấp workspace', () => {
+  it('trang chung (null) theo quyền cấp organization', () => {
     expect(canWriteAt(null, { wsCan: true, projectCan })).toBe(true);
     expect(canWriteAt(null, { wsCan: false, projectCan })).toBe(false);
   });
@@ -65,7 +65,7 @@ describe('quyền theo phạm vi: dự án lưu trữ & không bắn N request (
     expect(canWriteAt('archived', ctx)).toBe(false);
     expect(writeLoadingAt('archived', ctx)).toBe(false);
   });
-  it('dự án đang hoạt động: quyền chưa về = đang tải; có rồi = ghi được; trang chung theo workspace', () => {
+  it('dự án đang hoạt động: quyền chưa về = đang tải; có rồi = ghi được; trang chung theo organization', () => {
     expect(writeLoadingAt('loading', ctx)).toBe(true);
     expect(canWriteAt('loading', ctx)).toBe(false);
     expect(canWriteAt('p1', ctx)).toBe(true);

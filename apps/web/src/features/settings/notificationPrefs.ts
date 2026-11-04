@@ -84,7 +84,7 @@ const statesOf = (qc: QueryClient): Map<string, KeyState> => {
 };
 
 /**
- * Bỏ toàn bộ trạng thái theo khoá của `qc` (đổi phiên: đăng xuất / đổi workspace). Lần lưu còn đang chạy giữ tham chiếu
+ * Bỏ toàn bộ trạng thái theo khoá của `qc` (đổi phiên: đăng xuất / đổi tổ chức). Lần lưu còn đang chạy giữ tham chiếu
  * bản đồ CŨ trong context nên không còn ghi/trừ vào bản đồ của người dùng sau.
  */
 export function resetPrefsKeyStates(qc: QueryClient): void {

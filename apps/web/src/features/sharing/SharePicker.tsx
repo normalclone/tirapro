@@ -52,7 +52,7 @@ export function SharePicker({
   keep?: { projectId?: string; teamId?: string };
 }) {
   const user = useAuth((s) => s.user);
-  const isAdmin = useAuth((s) => s.can('workspace:admin'));
+  const isAdmin = useAuth((s) => s.can('organization:admin'));
   const { data: projects } = useProjects(true);
   const { data: teams } = useTeams();
 

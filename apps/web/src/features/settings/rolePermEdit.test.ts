@@ -123,7 +123,7 @@ describe('planPermUndo', () => {
 
 /* ------------------------------ chốt quyền thiết yếu ------------------------------ */
 
-const ADMIN = 'workspace:admin';
+const ADMIN = 'organization:admin';
 const MANAGE = 'member:manage';
 const member = (id: string, roleIds: string[], status = 'ACTIVE'): MemberDto =>
   ({
@@ -161,7 +161,7 @@ describe('guardRoleEdit', () => {
     });
   });
 
-  it('TỰ mất workspace:admin → xác nhận lý do admin (ưu tiên hơn manage)', () => {
+  it('TỰ mất organization:admin → xác nhận lý do admin (ưu tiên hơn manage)', () => {
     expect(guardRoleEdit(ctx(), [ADMIN, MANAGE], ['issue:edit'])).toEqual({
       kind: 'confirm',
       reason: 'admin',
@@ -178,7 +178,7 @@ describe('guardRoleEdit', () => {
     expect(guardRoleEdit(c, [ADMIN, MANAGE], [])).toEqual({ kind: 'ok' });
   });
 
-  it('gỡ workspace:admin khiến KHÔNG còn quản trị viên hoạt động nào → chặn (phản chiếu máy chủ)', () => {
+  it('gỡ organization:admin khiến KHÔNG còn quản trị viên hoạt động nào → chặn (phản chiếu máy chủ)', () => {
     const c = ctx({ members: [member('x', ['custom']), member('v', ['viewer'])], selfId: 'v' });
     const r = guardRoleEdit(c, [ADMIN, MANAGE], [MANAGE]);
     expect(r.kind).toBe('blocked');
@@ -245,10 +245,10 @@ describe('cloneName', () => {
 });
 
 describe('grantsAdmin / grantAdminCopy (bật quyền quản trị cho vai trò)', () => {
-  it('chỉ true khi bộ trước KHÔNG có và bộ sau CÓ workspace:admin', () => {
-    expect(grantsAdmin(['issue:create'], ['issue:create', 'workspace:admin'])).toBe(true);
-    expect(grantsAdmin(['workspace:admin'], ['workspace:admin', 'issue:create'])).toBe(false);
-    expect(grantsAdmin(['workspace:admin'], [])).toBe(false);
+  it('chỉ true khi bộ trước KHÔNG có và bộ sau CÓ organization:admin', () => {
+    expect(grantsAdmin(['issue:create'], ['issue:create', 'organization:admin'])).toBe(true);
+    expect(grantsAdmin(['organization:admin'], ['organization:admin', 'issue:create'])).toBe(false);
+    expect(grantsAdmin(['organization:admin'], [])).toBe(false);
     expect(grantsAdmin([], ['member:manage'])).toBe(false);
   });
   it('lời nhắc nêu tên vai trò, số người đang giữ và hệ quả "toàn quyền quản trị"', () => {
@@ -264,9 +264,9 @@ describe('grantsAdmin / grantAdminCopy (bật quyền quản trị cho vai trò)
   });
 });
 
-describe('guardRoleEdit — chỉ quản trị mới cấp/gỡ workspace:admin (P-C14, phản chiếu máy chủ)', () => {
+describe('guardRoleEdit — chỉ quản trị mới cấp/gỡ organization:admin (P-C14, phản chiếu máy chủ)', () => {
   const notAdmin = () => ctx({ callerIsAdmin: false });
-  it('người không phải quản trị: BẬT hoặc TẮT workspace:admin bị chặn với lý do ngắn', () => {
+  it('người không phải quản trị: BẬT hoặc TẮT organization:admin bị chặn với lý do ngắn', () => {
     expect(guardRoleEdit(notAdmin(), [MANAGE], [MANAGE, ADMIN])).toEqual({
       kind: 'blocked',
       reason: ADMIN_GRANT_REASON,
@@ -276,7 +276,7 @@ describe('guardRoleEdit — chỉ quản trị mới cấp/gỡ workspace:admin 
       reason: ADMIN_GRANT_REASON,
     });
   });
-  it('vai trò ĐANG có workspace:admin: sửa quyền khác cũng bị chặn (máy chủ đòi quản trị)', () => {
+  it('vai trò ĐANG có organization:admin: sửa quyền khác cũng bị chặn (máy chủ đòi quản trị)', () => {
     expect(guardRoleEdit(notAdmin(), [ADMIN, MANAGE], [ADMIN, MANAGE, 'issue:edit'])).toEqual({
       kind: 'blocked',
       reason: ADMIN_GRANT_REASON,

@@ -18,7 +18,7 @@ import { useTeams } from '@/features/teams/api';
 import { cn } from '@/lib/utils';
 import {
   useAllUsers,
-  useWorkspaceMembers,
+  useOrganizationMembers,
   useProjectMembers,
   useAddMembersBulk,
   useAddProjectMembersBulk,
@@ -42,7 +42,7 @@ const STATUS_LABEL: Record<string, string> = {
 
 /**
  * Thêm NHIỀU người một lúc vào tổ chức hoặc dự án, có bộ lọc.
- * - workspace: danh sách chọn = người có tài khoản CHƯA thuộc tổ chức (lọc: tìm kiếm +
+ * - organization: danh sách chọn = người có tài khoản CHƯA thuộc tổ chức (lọc: tìm kiếm +
  *   trạng thái tài khoản; họ chưa có vai trò/nhóm ở đây nên 2 bộ lọc đó tự ẩn).
  * - project: danh sách chọn = thành viên chung CHƯA ở dự án (lọc: tìm kiếm + nhóm + vai trò).
  * Bộ lọc hiển thị theo DỮ LIỆU: chỉ hiện khi có giá trị để lọc.
@@ -55,17 +55,17 @@ export function AddPeopleDialog({
 }: {
   open: boolean;
   onClose: () => void;
-  mode: 'workspace' | 'project';
+  mode: 'organization' | 'project';
   projectId?: string;
 }) {
   const isProject = mode === 'project';
   const { data: allUsers } = useAllUsers(undefined, open && !isProject);
-  const { data: wsMembers } = useWorkspaceMembers();
+  const { data: wsMembers } = useOrganizationMembers();
   const { data: projMembers } = useProjectMembers(isProject ? projectId : undefined);
   const { data: teams } = useTeams();
-  const { data: roles } = useRoles(isProject ? 'PROJECT' : 'WORKSPACE');
-  // P-C14: người không phải quản trị không gán được vai trò mang `workspace:admin` (máy chủ trả 403).
-  const canGrantAdmin = useAuth((s) => s.can('workspace:admin'));
+  const { data: roles } = useRoles(isProject ? 'PROJECT' : 'ORGANIZATION');
+  // P-C14: người không phải quản trị không gán được vai trò mang `organization:admin` (máy chủ trả 403).
+  const canGrantAdmin = useAuth((s) => s.can('organization:admin'));
   const frozen = frozenAdminRoles(canGrantAdmin, adminRoleIds(roles ?? []));
   const addWs = useAddMembersBulk();
   const addProj = useAddProjectMembersBulk(projectId ?? '');

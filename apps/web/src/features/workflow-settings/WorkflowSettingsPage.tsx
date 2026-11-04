@@ -41,8 +41,8 @@ export function WorkflowSettingsPage() {
   const createWorkflow = useCreateWorkflow();
   const deleteWorkflow = useDeleteWorkflow();
   const confirm = useConfirm();
-  // Ghi quy trình cần `workspace:admin` (API) — người khác xem được, không thấy nút ghi.
-  const canManage = useAuth((s) => s.can('workspace:admin'));
+  // Ghi quy trình cần `organization:admin` (API) — người khác xem được, không thấy nút ghi.
+  const canManage = useAuth((s) => s.can('organization:admin'));
 
   // Hộp thoại sửa mở theo `?workflow=<id>` → tải lại trang vẫn mở đúng quy trình, Back/Esc đóng.
   const [params, setParams] = useSearchParams();

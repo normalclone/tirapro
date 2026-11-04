@@ -36,7 +36,7 @@ export function defaultConfig(source: KeyResultSource): KrSourceConfig {
   }
 }
 
-/** Đủ cấu hình để lưu chưa (BE vẫn kiểm lại: dự án thuộc workspace, JQL hợp lệ). */
+/** Đủ cấu hình để lưu chưa (BE vẫn kiểm lại: dự án thuộc tổ chức, JQL hợp lệ). */
 export function isSourceConfigComplete(source: KeyResultSource, config: KrSourceConfig): boolean {
   if (source === 'SPRINT_COMPLETION') return !!config?.projectId;
   if (source === 'ISSUE_COUNT_JQL') {

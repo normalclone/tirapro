@@ -38,7 +38,7 @@ import {
   useCanIn,
   useProjectPermissions,
 } from '@/features/projects/permissions';
-import { useMyWorkspaces } from '@/features/workspace/api';
+import { useMyOrganizations } from '@/features/organization/api';
 import { useDeleteIssue, useRetractIssue } from '@/features/issue-edit/api';
 import { RetractMenuItem } from './RetractMenuItem';
 import { IssueSummaryEdit } from './IssueSummaryEdit';
@@ -168,7 +168,7 @@ export function IssueDetailPage() {
   const { data: projects } = useProjects(true);
   const project = projects?.find((p) => p.id === issue?.projectId) ?? null;
   const projectKey = project?.key ?? '';
-  const workspaceName = useWorkspaceName();
+  const organizationName = useOrganizationName();
   // Trang chi tiết nằm ngoài ProjectLayout → tự nhận realtime của project chứa issue này.
   useProjectRealtime(issue?.projectId);
   // Việc cha chỉ để hiện breadcrumb: đọc từ cache dự án (có sẵn khi đi từ board sang) mà KHÔNG tải cả danh sách việc.
@@ -487,7 +487,7 @@ export function IssueDetailPage() {
             titleHidden={!showIssue}
             title={showIssue ? undefined : key}
             breadcrumb={[
-              { label: workspaceName },
+              { label: organizationName },
               project
                 ? { label: project.name, to: `/p/${project.key}/board` }
                 : { label: projectKey, mono: true },
@@ -975,8 +975,8 @@ export function IssueDetailPage() {
 }
 
 /** Tên tổ chức hiện tại cho breadcrumb. */
-function useWorkspaceName(): string {
-  const wsId = useAuth((s) => s.workspaceId);
-  const { data: workspaces } = useMyWorkspaces();
-  return workspaces?.find((w) => w.id === wsId)?.name ?? 'Tổ chức';
+function useOrganizationName(): string {
+  const wsId = useAuth((s) => s.organizationId);
+  const { data: organizations } = useMyOrganizations();
+  return organizations?.find((w) => w.id === wsId)?.name ?? 'Tổ chức';
 }

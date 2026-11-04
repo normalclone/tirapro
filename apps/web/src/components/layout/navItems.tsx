@@ -101,11 +101,11 @@ export const ADMIN_NAV: NavEntry[] = [
     match: (p) => p === '/admin',
   },
   {
-    to: '/admin/workspaces',
-    label: ADMIN_LABELS.workspaces,
-    tabLabel: TAB_SHORT_LABELS.adminWorkspaces,
+    to: '/admin/organizations',
+    label: ADMIN_LABELS.organizations,
+    tabLabel: TAB_SHORT_LABELS.adminOrganizations,
     Icon: Building2,
-    match: (p) => p.startsWith('/admin/workspaces'),
+    match: (p) => p.startsWith('/admin/organizations'),
   },
   {
     to: '/admin/accounts',

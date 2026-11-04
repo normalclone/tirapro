@@ -103,7 +103,7 @@ export function ChangePreviewDialog({
     setApplyError(null);
     setMissing([]);
     const body =
-      request.scope === 'workspace'
+      request.scope === 'organization'
         ? { ...request.body, statusMapByType: buildStatusMapByType(groups, choices) }
         : { ...request.body, statusMap: buildFlatStatusMap(groups, choices) };
     try {

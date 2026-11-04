@@ -20,8 +20,8 @@ import {
 } from './roleChange';
 
 const roles: { id: string; name: string; permissionKeys: PermissionKey[] }[] = [
-  { id: 'owner', name: 'OWNER', permissionKeys: ['workspace:admin', 'member:manage'] },
-  { id: 'admin', name: 'WORKSPACE_ADMIN', permissionKeys: ['workspace:admin'] },
+  { id: 'owner', name: 'OWNER', permissionKeys: ['organization:admin', 'member:manage'] },
+  { id: 'admin', name: 'ORGANIZATION_ADMIN', permissionKeys: ['organization:admin'] },
   { id: 'member', name: 'MEMBER', permissionKeys: ['issue:create'] },
   { id: 'viewer', name: 'VIEWER', permissionKeys: [] },
 ];
@@ -39,7 +39,7 @@ const mem = (
   }) as unknown as MemberDto;
 
 describe('adminRoleIds', () => {
-  it('chỉ các vai trò có quyền workspace:admin', () => {
+  it('chỉ các vai trò có quyền organization:admin', () => {
     expect([...ADMINS].sort()).toEqual(['admin', 'owner']);
   });
   it('không có vai trò nào → rỗng', () => {

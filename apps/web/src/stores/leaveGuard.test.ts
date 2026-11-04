@@ -172,8 +172,8 @@ describe('commitLeaveApp (sau khi đổi THÀNH CÔNG, ngay trước khi tải l
     expect(useLeaveGuardStore.getState().suspended).toBe(true);
   });
 
-  it('useSwitchWorkspace.onSuccess: nạp token + tải lại nằm trong finally sau commitLeaveApp', () => {
-    const api = readFileSync(join(__dirname, '..', 'features/workspace/api.ts'), 'utf8');
+  it('useSwitchOrganization.onSuccess: nạp token + tải lại nằm trong finally sau commitLeaveApp', () => {
+    const api = readFileSync(join(__dirname, '..', 'features/organization/api.ts'), 'utf8');
     expect(api).toMatch(
       /try \{\s*commitLeaveApp\(\);\s*\} finally \{\s*setAccessToken\(data\.accessToken\);[\s\S]*?window\.location\.assign\('\/'\);/,
     );

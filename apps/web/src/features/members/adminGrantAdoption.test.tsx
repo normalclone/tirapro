@@ -13,8 +13,8 @@ describe('P-C14 trên giao diện: khoá điều khiển quản trị cho ngư�
     const html = renderToStaticMarkup(
       <RoleChecklist
         options={[
-          { id: 'm', name: 'Workspace Member' },
-          { id: 'a', name: 'Workspace Admin' },
+          { id: 'm', name: 'Organization Member' },
+          { id: 'a', name: 'Organization Admin' },
         ]}
         value={['m']}
         onChange={() => undefined}
@@ -30,7 +30,7 @@ describe('P-C14 trên giao diện: khoá điều khiển quản trị cho ngư�
     const cell = src('features/members/MemberRolesCell.tsx');
     expect(cell).toContain('frozen: frozenAdminRoles(canGrantAdmin, adminIds)');
     expect(src('features/members/EditRolesPopover.tsx')).toContain('frozen={instant.frozen}');
-    const choice = src('features/members/useWorkspaceRoleChoice.ts');
+    const choice = src('features/members/useOrganizationRoleChoice.ts');
     expect(choice).toContain('frozenAdminRoles(canGrantAdmin');
     const add = src('features/members/AddMemberPanel.tsx');
     expect((add.match(/frozen=\{frozen\}/g) ?? []).length).toBe(2);
@@ -40,14 +40,14 @@ describe('P-C14 trên giao diện: khoá điều khiển quản trị cho ngư�
   it('chọn bằng bộ chọn boolean (không đăng ký cả hàm can)', () => {
     for (const f of [
       'features/members/MemberRolesCell.tsx',
-      'features/members/useWorkspaceRoleChoice.ts',
+      'features/members/useOrganizationRoleChoice.ts',
       'features/members/AddPeopleDialog.tsx',
       'features/settings/RoleMatrixTable.tsx',
       'features/settings/RolesPage.tsx',
       'features/settings/useRolePermEditor.ts',
     ]) {
       const s = src(f);
-      expect(s).toContain("useAuth((s) => s.can('workspace:admin'))");
+      expect(s).toContain("useAuth((s) => s.can('organization:admin'))");
       expect(s).not.toMatch(/useAuth\(\(s\) => s\.can\)/);
     }
   });
@@ -65,7 +65,7 @@ describe('P-C14 trên giao diện: khoá điều khiển quản trị cho ngư�
     expect(editor).toContain('grantAdminCopy(');
   });
 
-  it('hộp thoại vai trò: ô workspace:admin bị vô hiệu kèm lý do; sửa vai trò đang giữ quản trị là chỉ xem; nhân bản không gửi được', () => {
+  it('hộp thoại vai trò: ô organization:admin bị vô hiệu kèm lý do; sửa vai trò đang giữ quản trị là chỉ xem; nhân bản không gửi được', () => {
     const page = src('features/settings/RolesPage.tsx');
     expect(page).toContain('roleLockedForAdminGrant(canGrantAdmin, role?.permissionKeys ?? [])');
     expect(page).toContain('disabled={readOnly || adminLocked}');

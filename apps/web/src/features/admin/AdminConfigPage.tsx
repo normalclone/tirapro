@@ -215,8 +215,8 @@ export function AdminConfigPage() {
             <InfoRow label="Model chính">{data.ai.modelPrimary ?? '—'}</InfoRow>
             <InfoRow label="Model nhanh">{data.ai.modelFast ?? '—'}</InfoRow>
             <InfoRow label="Giới hạn token mỗi tổ chức / tháng">
-              {data.ai.monthlyQuotaPerWorkspace != null
-                ? fmtNumber(data.ai.monthlyQuotaPerWorkspace)
+              {data.ai.monthlyQuotaPerOrganization != null
+                ? fmtNumber(data.ai.monthlyQuotaPerOrganization)
                 : '—'}
             </InfoRow>
           </Panel>

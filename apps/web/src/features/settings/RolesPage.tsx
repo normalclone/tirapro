@@ -53,7 +53,7 @@ const ROLES_TABS: { id: RolesTab; label: string }[] = [
 const DEFAULT_ROLE_COLOR = paletteValue(LABEL_PALETTE[0]!, 'oklch');
 
 const SCOPE_LABEL: Record<RoleScope, string> = {
-  WORKSPACE: 'Cấp tổ chức',
+  ORGANIZATION: 'Cấp tổ chức',
   PROJECT: 'Cấp dự án',
 };
 
@@ -82,7 +82,11 @@ export function RolesPage() {
   const dialogOpen = !!(editing || creatingScope || cloning);
   const dialogTarget = useRetained(
     dialogOpen
-      ? { role: editing, scope: creatingScope ?? cloning?.scope ?? 'WORKSPACE', template: cloning }
+      ? {
+          role: editing,
+          scope: creatingScope ?? cloning?.scope ?? 'ORGANIZATION',
+          template: cloning,
+        }
       : null,
   );
 
@@ -102,7 +106,7 @@ export function RolesPage() {
   const grouped = useMemo(() => {
     const all = roles ?? [];
     return {
-      WORKSPACE: sortRoles(all.filter((r) => r.scope === 'WORKSPACE')),
+      ORGANIZATION: sortRoles(all.filter((r) => r.scope === 'ORGANIZATION')),
       PROJECT: sortRoles(all.filter((r) => r.scope === 'PROJECT')),
     };
   }, [roles]);
@@ -119,7 +123,7 @@ export function RolesPage() {
         }
         actions={
           canManage ? (
-            <Button size="sm" onClick={() => openCreate('WORKSPACE')} data-tour="roles-create">
+            <Button size="sm" onClick={() => openCreate('ORGANIZATION')} data-tour="roles-create">
               <Plus className="h-4 w-4" />
               Tạo vai trò
             </Button>
@@ -156,7 +160,7 @@ export function RolesPage() {
               description="Tạo vai trò đầu tiên để phân quyền cho thành viên."
               action={
                 canManage ? (
-                  <Button variant="secondary" size="sm" onClick={() => openCreate('WORKSPACE')}>
+                  <Button variant="secondary" size="sm" onClick={() => openCreate('ORGANIZATION')}>
                     <Plus className="h-4 w-4" />
                     Tạo vai trò
                   </Button>
@@ -176,7 +180,7 @@ export function RolesPage() {
               />
             ) : (
               <div className="space-y-8">
-                {(['WORKSPACE', 'PROJECT'] as const).map((scope) => (
+                {(['ORGANIZATION', 'PROJECT'] as const).map((scope) => (
                   <RoleGroup
                     key={scope}
                     scope={scope}
@@ -196,7 +200,7 @@ export function RolesPage() {
         key={session}
         open={dialogOpen}
         role={dialogTarget?.role ?? null}
-        initialScope={dialogTarget?.scope ?? 'WORKSPACE'}
+        initialScope={dialogTarget?.scope ?? 'ORGANIZATION'}
         template={dialogTarget?.template ?? null}
         canManage={canManage}
         onCreated={(r) => setRevealRoleId(r.id)}
@@ -304,12 +308,12 @@ function RoleRow({ role, onOpen }: { role: RoleDto; onOpen: () => void }) {
 
 /** Quyền nhóm theo scope, để dựng checklist. */
 const PERMS_BY_SCOPE: Record<PermissionScope, typeof PERMISSION_CATALOG> = {
-  WORKSPACE: PERMISSION_CATALOG.filter((p) => p.scope === 'WORKSPACE'),
+  ORGANIZATION: PERMISSION_CATALOG.filter((p) => p.scope === 'ORGANIZATION'),
   PROJECT: PERMISSION_CATALOG.filter((p) => p.scope === 'PROJECT'),
 };
 
 const PERM_SCOPE_LABEL: Record<PermissionScope, string> = {
-  WORKSPACE: 'Quyền ở cấp tổ chức',
+  ORGANIZATION: 'Quyền ở cấp tổ chức',
   PROJECT: 'Quyền cấp dự án',
 };
 
@@ -332,8 +336,8 @@ function RoleDialog({
   onClose: () => void;
 }) {
   const isCreate = role === null;
-  // P-C14: chỉ quản trị mới cấp/gỡ `workspace:admin` — người chỉ có `member:manage` không sửa được vai trò đang giữ nó.
-  const canGrantAdmin = useAuth((s) => s.can('workspace:admin'));
+  // P-C14: chỉ quản trị mới cấp/gỡ `organization:admin` — người chỉ có `member:manage` không sửa được vai trò đang giữ nó.
+  const canGrantAdmin = useAuth((s) => s.can('organization:admin'));
   const adminRoleLocked = roleLockedForAdminGrant(canGrantAdmin, role?.permissionKeys ?? []);
   const readOnly = !canManage || (role?.isSystem ?? false) || adminRoleLocked;
 
@@ -355,7 +359,8 @@ function RoleDialog({
 
   // Checklist hiển thị theo scope của vai trò (chung ↔ dự án). Khi đổi scope
   // lúc tạo mới, loại bỏ các quyền không còn thuộc scope đó.
-  const visibleScopes: PermissionScope[] = scope === 'WORKSPACE' ? ['WORKSPACE'] : ['PROJECT'];
+  const visibleScopes: PermissionScope[] =
+    scope === 'ORGANIZATION' ? ['ORGANIZATION'] : ['PROJECT'];
 
   function setScopeAndPrune(next: RoleScope) {
     setScope(next);
@@ -375,8 +380,8 @@ function RoleDialog({
 
   const trimmedName = name.trim();
   const permKeys = [...perms];
-  // Nhân bản từ vai trò đang có workspace:admin: ô quyền khoá nhưng vẫn tích sẵn → gửi đi sẽ bị 403, nên chặn ở đây.
-  const needsAdminToSubmit = !canGrantAdmin && perms.has('workspace:admin');
+  // Nhân bản từ vai trò đang có organization:admin: ô quyền khoá nhưng vẫn tích sẵn → gửi đi sẽ bị 403, nên chặn ở đây.
+  const needsAdminToSubmit = !canGrantAdmin && perms.has('organization:admin');
   const canSubmit =
     trimmedName.length > 0 && permKeys.length > 0 && !readOnly && !needsAdminToSubmit;
   const busy = createRole.isPending || updateRole.isPending;
@@ -519,7 +524,7 @@ function RoleDialog({
                   onChange={setScopeAndPrune}
                   fullWidth
                   options={[
-                    { value: 'WORKSPACE', label: 'Tổ chức' },
+                    { value: 'ORGANIZATION', label: 'Tổ chức' },
                     { value: 'PROJECT', label: 'Dự án' },
                   ]}
                 />

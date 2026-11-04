@@ -222,7 +222,7 @@ export function BoardPage() {
     () => canManageBacklog || canEditFull,
     [canManageBacklog, canEditFull],
   );
-  const canForceWip = can('project:admin') || can('workspace:admin');
+  const canForceWip = can('project:admin') || can('organization:admin');
   const currentUserId = useAuth((s) => s.user?.id);
   const { active: quickFilters, toggle: toggleQuickFilter } = useQuickFilters();
   const [assignee, setAssignee] = useState('');

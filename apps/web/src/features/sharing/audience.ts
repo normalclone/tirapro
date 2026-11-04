@@ -38,7 +38,7 @@ export function splitPeople(
 
 export interface AudienceInput {
   scope: ShareKind;
-  /** Số thành viên đang hoạt động của tổ chức (`/auth/workspaces`); thiếu khi API cũ. */
+  /** Số thành viên đang hoạt động của tổ chức (`/auth/organizations`); thiếu khi API cũ. */
   memberCount?: number;
   /** Nhóm đang chọn (đã có `members` từ `useTeams`), `null` = chưa chọn. */
   team?: { name: string; lead?: UserLike | null; members: readonly UserLike[] } | null;
@@ -62,7 +62,7 @@ export interface AudienceView {
 
 const withCount = (label: string, n: number | undefined) =>
   n === undefined ? label : `${label} (${fmtNumber(n)})`;
-const WORKSPACE_LABEL = 'Mọi thành viên tổ chức';
+const ORGANIZATION_LABEL = 'Mọi thành viên tổ chức';
 /**
  * Quản trị viên (tổ chức / hệ thống) thấy MỌI mục đã chia sẻ theo nhóm hoặc dự án, kể cả dự án riêng tư và nhóm họ không
  * thuộc (`dashboardVisibleWhere`, `visibilityScope` ← `visibleWhere` = `{}` cho admin). Mục RIÊNG TƯ thì không: admin không thấy.
@@ -86,7 +86,7 @@ export function audienceView(i: AudienceInput): AudienceView {
     case 'PRIVATE':
       return view('Chỉ bạn', null, []);
     case 'GLOBAL':
-      return view(withCount(WORKSPACE_LABEL, i.memberCount), null, []);
+      return view(withCount(ORGANIZATION_LABEL, i.memberCount), null, []);
     case 'TEAM': {
       if (!i.team) return view('Chọn nhóm để xem ai có quyền', null, []);
       const people = activePeople([i.team.lead, ...i.team.members]);

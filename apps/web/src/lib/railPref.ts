@@ -11,7 +11,7 @@ const AUTO_COLLAPSE_MAX = 3;
 
 /**
  * Rail thu gọn không? `stored` là giá trị đã lưu ('1' thu, '0' mở). Chưa từng chọn (null):
- * tự thu khi workspace có ≤ 3 dự án ĐANG HOẠT ĐỘNG (Bảng việc cần chỗ). Chưa biết số dự án (cache trống) → dùng kết quả
+ * tự thu khi tổ chức có ≤ 3 dự án ĐANG HOẠT ĐỘNG (Bảng việc cần chỗ). Chưa biết số dự án (cache trống) → dùng kết quả
  * tự động lần trước (`lastAuto`), không có thì mở.
  */
 export function resolveRailCollapsed(

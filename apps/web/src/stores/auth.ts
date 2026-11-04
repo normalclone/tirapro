@@ -8,16 +8,16 @@ import { disconnectSocket } from '@/lib/socket';
 interface AuthState {
   status: 'loading' | 'authed' | 'guest';
   user: UserDto | null;
-  workspaceId: string | null;
+  organizationId: string | null;
   permissions: PermissionKey[];
-  /** Vai trò của người dùng (cấp workspace + từng dự án) — dùng suy ra vai (dev/tester/BA) ở trang chủ. */
+  /** Vai trò của người dùng (cấp tổ chức + từng dự án) — dùng suy ra vai (dev/tester/BA) ở trang chủ. */
   memberships: MembershipDto[];
   login: (email: string, password: string) => Promise<void>;
   register: (input: {
     email: string;
     password: string;
     displayName: string;
-    workspaceName?: string;
+    organizationName?: string;
   }) => Promise<void>;
   logout: () => Promise<void>;
   bootstrap: () => Promise<void>;
@@ -29,7 +29,7 @@ interface AuthState {
 export const useAuth = create<AuthState>((set, get) => ({
   status: 'loading',
   user: null,
-  workspaceId: null,
+  organizationId: null,
   permissions: [],
   memberships: [],
 
@@ -54,21 +54,21 @@ export const useAuth = create<AuthState>((set, get) => ({
     setAccessToken(null);
     disconnectSocket(); // ngắt socket của phiên cũ → không giữ room/quyền của tài khoản trước
     clearSessionCaches(); // xoá cache theo phiên → không rò dữ liệu sang tài khoản khác
-    set({ status: 'guest', user: null, workspaceId: null, permissions: [], memberships: [] });
+    set({ status: 'guest', user: null, organizationId: null, permissions: [], memberships: [] });
   },
 
   async bootstrap() {
     // Dùng chung single-flight refresh với interceptor (không refresh chồng, không xoay refresh-token 2 lần).
     const token = await refreshAccessToken();
     if (!token) {
-      set({ status: 'guest', user: null, workspaceId: null, permissions: [], memberships: [] });
+      set({ status: 'guest', user: null, organizationId: null, permissions: [], memberships: [] });
       return;
     }
     try {
       await loadMe(set);
     } catch {
       setAccessToken(null);
-      set({ status: 'guest', user: null, workspaceId: null, permissions: [], memberships: [] });
+      set({ status: 'guest', user: null, organizationId: null, permissions: [], memberships: [] });
     }
   },
 
@@ -77,7 +77,7 @@ export const useAuth = create<AuthState>((set, get) => ({
     try {
       await loadMe(set);
     } catch {
-      /* mất mạng tạm thời: giữ quyền hiện có, lần nạp sau (đăng nhập/chuyển workspace) sẽ đồng bộ */
+      /* mất mạng tạm thời: giữ quyền hiện có, lần nạp sau (đăng nhập/chuyển tổ chức) sẽ đồng bộ */
     }
   },
 
@@ -92,7 +92,7 @@ async function loadMe(set: (p: Partial<AuthState>) => void) {
   set({
     status: 'authed',
     user: me.data.user,
-    workspaceId: me.data.workspaceId,
+    organizationId: me.data.organizationId,
     permissions: me.data.permissions,
     memberships: me.data.memberships ?? [],
   });
@@ -106,7 +106,7 @@ if (typeof window !== 'undefined') {
     useAuth.setState({
       status: 'guest',
       user: null,
-      workspaceId: null,
+      organizationId: null,
       permissions: [],
       memberships: [],
     });

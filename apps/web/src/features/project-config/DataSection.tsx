@@ -56,7 +56,7 @@ export function DataSection({
 }) {
   const jobsQuery = useImportJobs();
   const { data: jobsData } = jobsQuery;
-  const canAdminImport = useAuth((s) => s.can('workspace:admin'));
+  const canAdminImport = useAuth((s) => s.can('organization:admin'));
   const importCsv = useImportCsv();
   const importJson = useImportJson();
 

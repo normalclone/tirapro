@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 const root = join(__dirname, '..');
 const src = (rel: string) => readFileSync(join(root, rel), 'utf8');
 
-/** Trang workspace phẳng → cỡ khung (B-D1). */
+/** Trang tổ chức phẳng → cỡ khung (B-D1). */
 const PAGES: [name: string, file: string, size: 'sm' | 'xl'][] = [
   ['Tổng quan', 'features/dashboard/DashboardPage.tsx', 'xl'],
   ['Bảng tổng quan (xem)', 'features/dashboards/DashboardViewPage.tsx', 'xl'],
@@ -16,7 +16,7 @@ const PAGES: [name: string, file: string, size: 'sm' | 'xl'][] = [
   ['Tài khoản', 'features/members/AccountPage.tsx', 'sm'],
 ];
 
-describe('trang workspace phẳng dùng PageFrame + PageHeader (T8)', () => {
+describe('trang organization phẳng dùng PageFrame + PageHeader (T8)', () => {
   it.each(PAGES)(
     '%s: PageFrame đúng cỡ, PageHeader, không h1 tay/pageContainer/max-w',
     (_n, file, size) => {

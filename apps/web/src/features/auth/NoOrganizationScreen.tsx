@@ -5,9 +5,9 @@ import { useAuth } from '@/stores/auth';
 
 /**
  * Màn thay cho khung ứng dụng khi tài khoản chưa thuộc tổ chức nào (vd admin hệ thống vừa tạo tài khoản
- * nhưng chưa thêm vào đâu). Không sidebar, không truy vấn theo workspace → không còn ô lỗi đỏ.
+ * nhưng chưa thêm vào đâu). Không sidebar, không truy vấn theo tổ chức → không còn ô lỗi đỏ.
  */
-export function NoWorkspaceScreen() {
+export function NoOrganizationScreen() {
   const user = useAuth((s) => s.user);
   const logout = useAuth((s) => s.logout);
   const navigate = useNavigate();

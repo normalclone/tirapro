@@ -66,7 +66,7 @@ describe('useCan', () => {
     });
     expect(probe(qc, 'p2', 'worklog:create')).toBe(false);
   });
-  it('chưa tải/không có projectId → rơi về quyền workspace', () => {
+  it('chưa tải/không có projectId → rơi về quyền organization', () => {
     expect(probe(qc, 'p1', 'project:view')).toBe(true);
     expect(probe(qc, undefined, 'worklog:create')).toBe(false);
   });
@@ -162,8 +162,8 @@ describe('useCanEditSchedule — ai đổi Ngày bắt đầu/Hạn/Story points
     grant(['issue:edit', 'project:admin']);
     expect(probeSchedule(qc, 'p1', theirs)).toBe(true);
   });
-  it('quản trị workspace và system admin → true', () => {
-    useAuth.setState({ permissions: ['workspace:admin', 'issue:edit'] });
+  it('quản trị organization và system admin → true', () => {
+    useAuth.setState({ permissions: ['organization:admin', 'issue:edit'] });
     expect(probeSchedule(qc, 'p1', theirs)).toBe(true);
     useAuth.setState({ user: { id: 'u1', isSystemAdmin: true } as never, permissions: [] });
     expect(probeSchedule(qc, 'p1', theirs)).toBe(true);

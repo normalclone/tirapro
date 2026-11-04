@@ -74,8 +74,18 @@ const scheme = () => ({
   projectId: 'p1',
   issueTypes: TYPES,
   items: [
-    { issueTypeId: 't-task', workflowId: 'wfStd', isOverride: false, workspaceWorkflowId: 'wfStd' },
-    { issueTypeId: 't-bug', workflowId: 'wfCopy', isOverride: true, workspaceWorkflowId: 'wfBug' },
+    {
+      issueTypeId: 't-task',
+      workflowId: 'wfStd',
+      isOverride: false,
+      organizationWorkflowId: 'wfStd',
+    },
+    {
+      issueTypeId: 't-bug',
+      workflowId: 'wfCopy',
+      isOverride: true,
+      organizationWorkflowId: 'wfBug',
+    },
   ],
 });
 

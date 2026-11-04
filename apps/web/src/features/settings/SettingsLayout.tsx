@@ -53,7 +53,7 @@ const SETTINGS_GROUPS: {
         to: '/settings/audit',
         label: SETTINGS_LABELS.audit,
         icon: <ScrollText className="h-4 w-4" />,
-        permission: 'workspace:admin',
+        permission: 'organization:admin',
       },
     ],
   },
@@ -102,7 +102,7 @@ const SETTINGS_GROUPS: {
 ];
 
 export function SettingsLayout() {
-  const can = useCan(); // phản ứng khi quyền workspace đổi
+  const can = useCan(); // phản ứng khi quyền tổ chức đổi
   const permitted = useVisibleItems(SETTINGS_GROUPS.flatMap((g) => g.items));
   // Lọc quyền/luật vai trò TRƯỚC khi đưa cho SubNavLayout (rail và danh sách mobile dùng chung kết quả này).
   const groups: SubNavGroup[] = SETTINGS_GROUPS.map((g) => ({

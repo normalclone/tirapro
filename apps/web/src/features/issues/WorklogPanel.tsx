@@ -51,7 +51,7 @@ export function WorklogPanel({ issue, openRequest }: { issue: IssueDto; openRequ
   const [editingEstimate, setEditingEstimate] = useState(false);
 
   const canLog = can('worklog:create');
-  const isAdmin = can('project:admin') || can('workspace:admin');
+  const isAdmin = can('project:admin') || can('organization:admin');
   const canEstimate = canEditThis;
 
   // Phím `w` được xử lý ở IssueDetailPage (panel này chỉ mount khi cuộn tới) → nhận yêu cầu mở qua `openRequest`.

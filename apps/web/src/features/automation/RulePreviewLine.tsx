@@ -12,7 +12,7 @@ export function RulePreviewLine({
   scheduled = false,
 }: {
   conditions: RuleCondition[] | null;
-  /** '' = quy tắc cấp workspace. */
+  /** '' = quy tắc cấp organization. */
   projectId: string;
   /** Quy tắc theo lịch: nhắc giới hạn mỗi lần chạy khi số khớp lớn. */
   scheduled?: boolean;

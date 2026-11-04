@@ -39,7 +39,7 @@ export function MemberRolesCell({
   isSelf: boolean;
 }) {
   const user = member.user;
-  const canGrantAdmin = useAuth((s) => s.can('workspace:admin')); // P-C14: boolean (đã gồm admin hệ thống)
+  const canGrantAdmin = useAuth((s) => s.can('organization:admin')); // P-C14: boolean (đã gồm admin hệ thống)
   const clusterId = useId();
   const confirm = useConfirm();
   const triggerRef = useRef<HTMLButtonElement>(null);

@@ -13,7 +13,7 @@ function tagWith(src: string, cls: string, extra = ''): boolean {
   return re.test(src);
 }
 
-describe('Thành viên workspace', () => {
+describe('Thành viên organization', () => {
   const s = read('members/MembersPage.tsx');
   it('cột vai trò + trạng thái bề rộng cố định', () => {
     expect(tagWith(s, 'min-w-0 sm:w-56 sm:shrink-0')).toBe(true);

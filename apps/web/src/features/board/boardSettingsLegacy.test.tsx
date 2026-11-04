@@ -33,7 +33,7 @@ vi.mock('@/lib/api', async (orig) => {
                   issueTypeId: 't1',
                   workflowId: std.id,
                   isOverride: false,
-                  workspaceWorkflowId: std.id,
+                  organizationWorkflowId: std.id,
                 },
               ],
             },

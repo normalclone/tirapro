@@ -1,18 +1,18 @@
 export interface PermissionContext {
   isSystemAdmin?: boolean;
-  workspace: readonly string[];
+  organization: readonly string[];
   project?: readonly string[] | null;
 }
 
-/** Quyền hiệu lực ở dự án ⊇ quyền workspace (API hợp hai tập vai trò), nên chỉ cần tra cả hai tập. */
+/** Quyền hiệu lực ở dự án ⊇ quyền tổ chức (API hợp hai tập vai trò), nên chỉ cần tra cả hai tập. */
 export function hasPermission(ctx: PermissionContext, perm: string): boolean {
   return (
-    ctx.isSystemAdmin === true || ctx.workspace.includes(perm) || !!ctx.project?.includes(perm)
+    ctx.isSystemAdmin === true || ctx.organization.includes(perm) || !!ctx.project?.includes(perm)
   );
 }
 
 /** Khi dự án đã lưu trữ chỉ còn các quyền ĐỌC; mọi quyền ghi (tạo/kéo/gán/quản lý) tắt. */
-const READ_ONLY_PERMISSIONS = new Set(['project:view', 'report:view', 'workspace:view']);
+const READ_ONLY_PERMISSIONS = new Set(['project:view', 'report:view', 'organization:view']);
 export const allowedWhenArchived = (perm: string): boolean => READ_ONLY_PERMISSIONS.has(perm);
 
 /** Phần của issue dùng để xác định "việc của mình" — cùng quy ước `assertIssueOwner` của API. */

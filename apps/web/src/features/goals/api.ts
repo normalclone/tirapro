@@ -58,7 +58,7 @@ interface GoalIssueDto {
 
 export interface GoalDto {
   id: string;
-  workspaceId: string;
+  organizationId: string;
   projectId: string | null;
   project: { id: string; key: string; name: string } | null;
   name: string;

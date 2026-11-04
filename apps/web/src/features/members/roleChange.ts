@@ -1,7 +1,7 @@
 import type { MemberDto, PermissionKey, RoleRefDto } from '@tirapro/types';
 
-/** Quyền quyết định "quản trị workspace" — cùng khoá máy chủ dùng để chặn hạ quản trị viên cuối cùng. */
-const WORKSPACE_ADMIN: PermissionKey = 'workspace:admin';
+/** Quyền quyết định "quản trị tổ chức" — cùng khoá máy chủ dùng để chặn hạ quản trị viên cuối cùng. */
+const ORGANIZATION_ADMIN: PermissionKey = 'organization:admin';
 
 export const LAST_ADMIN_REASON =
   'Đây là quản trị viên cuối cùng — hãy cấp quyền quản trị cho người khác trước khi bỏ vai trò này';
@@ -17,9 +17,9 @@ export function roleIdsWith(
   return new Set(roles.filter((r) => r.permissionKeys.includes(key)).map((r) => r.id));
 }
 
-/** Id các vai trò có quyền quản trị workspace. */
+/** Id các vai trò có quyền quản trị organization. */
 export function adminRoleIds(roles: readonly { id: string; permissionKeys: PermissionKey[] }[]) {
-  return roleIdsWith(roles, WORKSPACE_ADMIN);
+  return roleIdsWith(roles, ORGANIZATION_ADMIN);
 }
 
 /** Id các vai trò có quyền quản lý thành viên. */
@@ -33,7 +33,7 @@ export function sameRoleSet(a: readonly string[], b: readonly string[]): boolean
 }
 
 /**
- * `userId` là quản trị workspace CUỐI CÙNG? Phản chiếu `assertNotLastWorkspaceAdmin` ở máy chủ: người này đang giữ vai
+ * `userId` là quản trị tổ chức CUỐI CÙNG? Phản chiếu `assertNotLastOrganizationAdmin` ở máy chủ: người này đang giữ vai
  * trò admin VÀ không còn ai KHÁC (tài khoản chưa bị vô hiệu hoá) giữ vai trò admin.
  */
 export function isLastAdmin(

@@ -2,36 +2,36 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { WorkspaceOption } from './WorkspaceOption';
-import { workspaceSubline } from './workspaceSubline';
+import { OrganizationOption } from './OrganizationOption';
+import { organizationSubline } from './organizationSubline';
 import { countActiveMembers } from '../members/memberCount';
 
 const read = (p: string) => readFileSync(join(__dirname, p), 'utf8');
-const ws = (o: Partial<Parameters<typeof workspaceSubline>[0]> = {}) => ({
+const ws = (o: Partial<Parameters<typeof organizationSubline>[0]> = {}) => ({
   id: 'w1',
   name: 'Tirapro Demo',
   slug: 'demo',
   avatarUrl: null,
-  roleName: 'Workspace Admin',
+  roleName: 'Organization Admin',
   memberCount: 12,
   ...o,
 });
 
-describe('workspaceSubline', () => {
+describe('organizationSubline', () => {
   it('đếm trước, vai trò sau; title đầy đủ', () => {
-    expect(workspaceSubline(ws())).toEqual({
+    expect(organizationSubline(ws())).toEqual({
       count: 12,
       text: 'thành viên · Quản trị chung',
       title: '12 thành viên đang hoạt động · Vai trò của bạn: Quản trị chung',
     });
   });
   it('1 thành viên và 0 vẫn đúng', () => {
-    expect(workspaceSubline(ws({ memberCount: 1 })).count).toBe(1);
-    expect(workspaceSubline(ws({ memberCount: 0 })).count).toBe(0);
+    expect(organizationSubline(ws({ memberCount: 1 })).count).toBe(1);
+    expect(organizationSubline(ws({ memberCount: 0 })).count).toBe(0);
   });
   it('thiếu memberCount (API cũ chưa triển khai) → chỉ vai trò, không "undefined"/NaN', () => {
     for (const memberCount of [undefined, null, Number.NaN, -1] as unknown as number[]) {
-      const s = workspaceSubline(ws({ memberCount }));
+      const s = organizationSubline(ws({ memberCount }));
       expect(s.count).toBeNull();
       expect(s.text).toBe('Quản trị chung');
       expect(s.title).toBe('Vai trò của bạn: Quản trị chung');
@@ -39,10 +39,10 @@ describe('workspaceSubline', () => {
   });
 });
 
-describe('WorkspaceOption', () => {
+describe('OrganizationOption', () => {
   const html = (o: { memberCount?: number | null; active?: boolean } = {}) =>
     renderToStaticMarkup(
-      <WorkspaceOption
+      <OrganizationOption
         ws={ws('memberCount' in o ? ({ memberCount: o.memberCount } as never) : {})}
         active={o.active ?? false}
         disabled={false}
@@ -81,10 +81,10 @@ describe('WorkspaceOption', () => {
 
 describe('nối dây', () => {
   it('không còn bộ chọn tổ chức / hộp lập tổ chức mới trong mã (thanh trên chỉ hiện tên)', () => {
-    expect(existsSync(join(__dirname, 'WorkspaceSwitcher.tsx'))).toBe(false);
-    expect(existsSync(join(__dirname, 'CreateWorkspaceModal.tsx'))).toBe(false);
+    expect(existsSync(join(__dirname, 'OrganizationSwitcher.tsx'))).toBe(false);
+    expect(existsSync(join(__dirname, 'CreateOrganizationModal.tsx'))).toBe(false);
   });
-  it('kiểu MyWorkspace có memberCount tuỳ chọn (API cũ)', () => {
+  it('kiểu MyOrganization có memberCount tuỳ chọn (API cũ)', () => {
     expect(read('api.ts')).toMatch(/memberCount\?: number/);
   });
 });
