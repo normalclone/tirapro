@@ -1145,9 +1145,11 @@ export function DocumentationPage() {
                   <Mono>Thành viên → Nhân lực</Mono>.
                 </Feature>
                 <Feature icon={<LayoutGrid className="h-4 w-4" />} title="Nhóm dự án">
-                  Gom dự án vào nhóm (một dự án có thể thuộc nhiều nhóm). Trang <Mono>Dự án</Mono>{' '}
-                  có cột <strong>Nhóm</strong> (bấm để thêm/bớt nhóm), công tắc{' '}
-                  <Mono>Danh sách / Theo nhóm</Mono> và nút <Mono>Quản lý nhóm</Mono>.
+                  Nhóm là của <strong>riêng từng người</strong>: mỗi người tự xếp dự án vào nhóm của
+                  mình (một dự án thuộc được nhiều nhóm), không ai thấy nhóm của người khác. Trang{' '}
+                  <Mono>Dự án</Mono> có cột <strong>Nhóm của tôi</strong> (bấm để thêm/bớt nhóm),
+                  công tắc <Mono>Danh sách / Theo nhóm</Mono> và nút{' '}
+                  <Mono>Quản lý nhóm của tôi</Mono>.
                 </Feature>
                 <Feature
                   icon={<Sparkles className="h-4 w-4" />}

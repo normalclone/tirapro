@@ -12,10 +12,9 @@ const dateInput = z
   .optional();
 
 export const createProgramSchema = z.object({
-  name: z.string().trim().min(1, 'Tên chương trình bắt buộc').max(120),
+  name: z.string().trim().min(1, 'Tên nhóm bắt buộc').max(120),
   description: z.string().max(1000).nullable().optional(),
   color: z.string().max(40).nullable().optional(),
-  ownerId: z.string().nullable().optional(),
   startDate: dateInput,
   targetDate: dateInput,
   /** Gán sẵn dự án ngay khi tạo (tuỳ chọn). */
@@ -24,16 +23,11 @@ export const createProgramSchema = z.object({
 
 export const updateProgramSchema = createProgramSchema.partial();
 
-export const setProgramProjectsSchema = z.object({
-  projectIds: z.array(z.string().min(1)).max(500),
-});
-
-/** `PUT /projects/:id/programs`: đặt lại toàn bộ nhóm của một dự án (`[]` = bỏ khỏi mọi nhóm). */
+/** `PUT /projects/:id/programs`: đặt lại toàn bộ nhóm CỦA NGƯỜI GỌI cho một dự án (`[]` = bỏ khỏi mọi nhóm). */
 export const setProjectProgramsSchema = z.object({
   programIds: z.array(z.string().min(1)).max(100),
 });
 
 export type CreateProgramInput = z.infer<typeof createProgramSchema>;
 export type UpdateProgramInput = z.infer<typeof updateProgramSchema>;
-export type SetProgramProjectsInput = z.infer<typeof setProgramProjectsSchema>;
 export type SetProjectProgramsInput = z.infer<typeof setProjectProgramsSchema>;

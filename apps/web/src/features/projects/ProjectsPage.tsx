@@ -47,7 +47,6 @@ export function ProjectsPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [manageOpen, setManageOpen] = useState(false);
   const [view, setView] = useProjectsView();
-  const canManageGroups = useAuth((s) => s.can('program:manage'));
   const programRefs = useProgramRefs();
   const last = useMemo(readLastView, []);
 
@@ -71,21 +70,19 @@ export function ProjectsPage() {
   // Hộp "Quản lý nhóm" đếm theo danh sách theo công tắc lưu trữ (không theo ô tìm).
   const counts = useMemo(() => groupCounts(projects ?? []), [projects]);
 
-  const createButton =
-    canCreate || canManageGroups ? (
-      <>
-        {canManageGroups && (
-          <Button size="sm" variant="secondary" onClick={() => setManageOpen(true)}>
-            <FolderTree className="h-4 w-4" /> Quản lý nhóm
-          </Button>
-        )}
-        {canCreate && (
-          <Button size="sm" onClick={() => setCreateOpen(true)}>
-            <Plus className="h-4 w-4" /> Tạo dự án
-          </Button>
-        )}
-      </>
-    ) : undefined;
+  // Nhóm là của riêng từng người: ai cũng quản lý được nhóm của mình, nên nút luôn có.
+  const createButton = (
+    <>
+      <Button size="sm" variant="secondary" onClick={() => setManageOpen(true)}>
+        <FolderTree className="h-4 w-4" /> Quản lý nhóm của tôi
+      </Button>
+      {canCreate && (
+        <Button size="sm" onClick={() => setCreateOpen(true)}>
+          <Plus className="h-4 w-4" /> Tạo dự án
+        </Button>
+      )}
+    </>
+  );
 
   return (
     <PageFrame size="xl">
@@ -180,13 +177,7 @@ export function ProjectsPage() {
       </QueryBoundary>
 
       <CreateProjectModal open={createOpen} onClose={() => setCreateOpen(false)} />
-      {canManageGroups && (
-        <ManageGroupsDialog
-          open={manageOpen}
-          onClose={() => setManageOpen(false)}
-          counts={counts}
-        />
-      )}
+      <ManageGroupsDialog open={manageOpen} onClose={() => setManageOpen(false)} counts={counts} />
     </PageFrame>
   );
 }

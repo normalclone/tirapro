@@ -7,18 +7,16 @@ import { PermissionsGuard } from '../rbac/permissions.guard';
 import { ProgramsController, ProjectProgramsController } from './programs.controller';
 
 /**
- * `PUT /projects/:id/programs` đi qua PermissionsGuard THẬT với metadata THẬT của controller: quyền `project:admin` được tính
- * theo CHÍNH dự án ở `:id` — quản trị dự án A không đổi được nhóm của dự án B; quản trị tổ chức (có quyền ở mọi dự án) thì
- * được; người chỉ xem thì không. RbacService giả trả quyền theo (người, dự án).
+ * Nhóm dự án là của riêng từng người: `PUT /projects/:id/programs` đi qua PermissionsGuard THẬT với metadata THẬT của
+ * controller — bất kỳ ai XEM được dự án ở `:id` đều tự xếp nhóm của mình (không cần quản trị dự án / quyền nhóm); dự án không
+ * xem được → bị chặn (403 thiếu quyền xem, hoặc 404 nếu dự án riêng tư người đó không thấy). RbacService giả trả quyền theo
+ * (người, dự án).
  */
 const PERMS: Record<string, Record<string, string[]>> = {
   // người → dự án → quyền hiệu lực
-  adminA: { A: ['project:view', 'project:admin'], B: ['project:view'] },
-  orgAdmin: {
-    A: ['project:view', 'project:admin'],
-    B: ['project:view', 'project:admin'],
-  },
   viewer: { A: ['project:view'], B: ['project:view'] },
+  adminA: { A: ['project:view', 'project:admin'], B: ['project:view'] },
+  onlyA: { A: ['project:view'] }, // không có quyền xem B
 };
 
 async function put(user: string, projectId: string): Promise<'ok' | number> {
@@ -50,29 +48,32 @@ async function put(user: string, projectId: string): Promise<'ok' | number> {
   }
 }
 
-describe('PUT /projects/:id/programs — quyền theo dự án ở :id', () => {
-  it('quản trị dự án A: đổi được nhóm của A, KHÔNG đổi được nhóm của B (403)', async () => {
-    expect(await put('adminA', 'A')).toBe('ok');
-    expect(await put('adminA', 'B')).toBe(403);
+describe('PUT /projects/:id/programs — ai xem được dự án thì xếp nhóm của mình', () => {
+  it('chỉ-xem (không quản trị) vẫn được; quản trị dự án cũng chỉ như một người xem (không có đặc quyền)', async () => {
+    expect(await put('viewer', 'A')).toBe('ok');
+    expect(await put('viewer', 'B')).toBe('ok');
+    expect(await put('adminA', 'B')).toBe('ok');
   });
 
-  it('quản trị tổ chức đổi được ở mọi dự án; người chỉ xem thì không', async () => {
-    expect(await put('orgAdmin', 'A')).toBe('ok');
-    expect(await put('orgAdmin', 'B')).toBe('ok');
-    expect(await put('viewer', 'A')).toBe(403);
+  it('không xem được dự án ở :id → bị chặn (403)', async () => {
+    expect(await put('onlyA', 'B')).toBe(403);
   });
 
-  it('không cần program:manage (việc của quản trị dự án), còn quản lý danh mục nhóm vẫn cần program:manage', () => {
+  it('không đòi program:manage hay project:admin; mọi route /programs chỉ cần workspace:view', () => {
     const reflector = new Reflector();
     const of = (cls: { prototype: object }, method: string) =>
       reflector.get<string[]>(
         PERMISSIONS_KEY,
         (cls.prototype as Record<string, () => unknown>)[method]!,
       );
-    expect(of(ProjectProgramsController, 'setForProject')).toEqual(['project:admin']);
-    expect(of(ProgramsController, 'create')).toEqual(['program:manage']);
-    expect(of(ProgramsController, 'update')).toEqual(['program:manage']);
-    expect(of(ProgramsController, 'setProjects')).toEqual(['program:manage']);
-    expect(of(ProgramsController, 'remove')).toEqual(['program:manage']);
+    expect(of(ProjectProgramsController, 'setForProject')).toEqual(['project:view']);
+    for (const m of ['list', 'get', 'create', 'update', 'remove'])
+      expect(of(ProgramsController, m), m).toEqual(['workspace:view']);
+  });
+
+  it('không còn route rollup / đặt dự án theo nhóm (đã gỡ)', () => {
+    const proto = ProgramsController.prototype as unknown as Record<string, unknown>;
+    expect(proto.rollup).toBeUndefined();
+    expect(proto.setProjects).toBeUndefined();
   });
 });

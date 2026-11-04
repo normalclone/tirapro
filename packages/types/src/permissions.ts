@@ -153,7 +153,8 @@ export const PERMISSION_CATALOG: PermissionDef[] = [
   },
   {
     key: PERMISSIONS.PROGRAM_MANAGE,
-    description: 'Quản lý chương trình / danh mục dự án',
+    description:
+      'Không còn dùng — nhóm dự án là của riêng từng người, ai cũng tự quản lý nhóm của mình',
     scope: 'WORKSPACE',
   },
   {

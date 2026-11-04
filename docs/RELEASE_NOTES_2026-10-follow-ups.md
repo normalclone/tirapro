@@ -935,7 +935,7 @@ Chưa có báo cáo nào xác nhận các mục này đã chạy; người kiể
 ## 2. Thay đổi người dùng thấy
 
 - **Bỏ mục "Danh mục" ở thanh bên.** Các đường dẫn cũ (`/manage/*`, `/portfolio`, `/goals`, `/raid`, `/resources`, `/sla`, `/clients`, `/settings/response-time`) vẫn chạy: chuyển về chỗ mới và hiện một dòng nói mục đó giờ ở đâu. `/manage/portfolio` → Dự án chế độ "Theo nhóm"; mục tiêu/rủi ro/thời gian xử lý/khách hàng → Dự án; nhân lực → Thành viên, tab Nhân lực.
-- **Nhóm dự án** (thay Danh mục dự án): một dự án thuộc nhiều nhóm. Trang Dự án có cột **Nhóm** (bấm để thêm/bớt, tạo nhóm mới tại chỗ), công tắc **Danh sách / Theo nhóm** (nhớ lựa chọn) và nút **Quản lý nhóm**. Đổi nhóm của một dự án cần quản trị dự án đó (hoặc quản trị chung); tạo/sửa/xoá nhóm cần `program:manage`.
+- **Nhóm dự án** (thay Danh mục dự án): một dự án thuộc nhiều nhóm. Trang Dự án có cột **Nhóm của tôi** (bấm để thêm/bớt, tạo nhóm mới tại chỗ), công tắc **Danh sách / Theo nhóm** (nhớ lựa chọn) và nút **Quản lý nhóm của tôi**. Nhóm là của RIÊNG từng người (xem mục "Nhóm dự án cá nhân" ngay dưới).
 - **Mục tiêu và Rủi ro & vướng mắc** là tab trong dự án (menu "Thêm"): luôn theo dự án đang mở, tạo mới gắn đúng dự án đó.
 - **Thời gian xử lý (SLA)** là mục trong Cấu hình dự án, kèm bảng công việc đang chạy đồng hồ của dự án; không còn cam kết cấp tổ chức (cam kết chọn theo dự án của việc).
 - **Nhân lực** là tab của trang Thành viên (`?tab=resources`), nên chỉ người thấy trang Thành viên (`member:manage` / quản trị chung) có lối vào qua menu.
@@ -951,5 +951,27 @@ Chưa có báo cáo nào xác nhận các mục này đã chạy; người kiể
 
 ## 4. Còn mở
 
-- `GET /programs/rollup` và `PUT /programs/:id/projects` còn trên API nhưng web không dùng nữa (trang Danh mục đã bỏ).
+- `GET /programs/rollup` và `PUT /programs/:id/projects` đã gỡ khỏi API (không còn nơi dùng).
 - Nhân lực chỉ còn lối vào qua trang Thành viên (người không quản lý thành viên chỉ vào được từ liên kết ở Tổng quan hoặc gõ đường dẫn).
+
+# Nhóm dự án cá nhân (2026-11)
+
+## 1. Cần làm khi triển khai
+
+- **Có migration:** `20261105300000_personal_groups` (áp sau `20261105200000_menu_regroup`). `Program.ownerId` thành bắt buộc; khoá duy nhất `(workspaceId, ownerId, name)` thay `(workspaceId, name)`; xoá người dùng thì xoá luôn nhóm riêng của họ (trước đây để trống chủ). **Nhóm không có chủ bị xoá** (kèm liên kết) — prod: 0 nhóm như vậy; 3 nhóm hiện có giữ nguyên cho người tạo (Hương 2 nhóm, Phúc 1 nhóm) cùng 8 liên kết dự án. Dump trước khi chạy; đã thử trên bản khôi phục snapshot prod.
+- Không có script chạy tay.
+
+## 2. Thay đổi người dùng thấy
+
+- **Nhóm dự án là của riêng từng người.** Mỗi người tự xếp dự án vào nhóm của mình (vd sếp xếp dự án X vào "Thanh Hóa", thành viên xếp cùng dự án đó vào "Team" của họ); không ai thấy nhóm của người khác. Cột **Nhóm của tôi**, cây "Theo nhóm", hộp **Nhóm của tôi** chỉ hiện nhóm của chính người dùng.
+- Ai xem được một dự án đều xếp nhóm cho dự án đó được (không cần quản trị dự án), và ai cũng tạo/sửa/xoá được nhóm của mình (không cần `program:manage`). Nhóm hết ô "Người phụ trách" (chủ nhóm luôn là người tạo).
+
+## 3. API
+
+- `GET|POST /programs`, `GET|PUT|DELETE /programs/:id`: chỉ nhóm của người gọi (nhóm của người khác → 404); chỉ cần `workspace:view`. `POST` bỏ qua `ownerId` trong body.
+- `PUT /projects/:id/programs`: đặt nhóm **của người gọi** cho dự án (quyền `project:view`), không đụng liên kết của người khác; nhóm không phải của mình → 422. `ProjectDto.programs`: chỉ nhóm của người gọi.
+- Gỡ `GET /programs/rollup` và `PUT /programs/:id/projects`. Quyền `program:manage` không còn dùng (giữ trong danh mục, mô tả ghi rõ).
+
+## 4. Còn mở
+
+- Khoá duy nhất theo `(workspaceId, ownerId, name)` (không chỉ `(ownerId, name)`) để một người ở nhiều tổ chức không bị trùng tên giữa các tổ chức.

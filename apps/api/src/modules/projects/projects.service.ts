@@ -40,11 +40,16 @@ const ISSUE_COUNT = {
   select: { issues: { where: { deletedAt: null, ...TRIAGE_VISIBLE } } },
 } satisfies Prisma.ProjectCountOutputTypeDefaultArgs;
 
-/** Nhóm dự án của một dự án (theo tên) — đi kèm mọi `ProjectDto`. */
-const PROGRAM_LINKS = {
-  select: { program: { select: { id: true, name: true, color: true } } },
-  orderBy: { program: { name: 'asc' } },
-} satisfies Prisma.Project$programLinksArgs;
+/**
+ * Nhóm dự án của một dự án (theo tên) — đi kèm mọi `ProjectDto`. Nhóm là của RIÊNG từng người: chỉ lấy nhóm của người xem,
+ * nhóm của người khác không bao giờ lộ ra (kể cả khi cùng gắn vào dự án này).
+ */
+const programLinksOf = (viewerId: string) =>
+  ({
+    where: { program: { ownerId: viewerId } },
+    select: { program: { select: { id: true, name: true, color: true } } },
+    orderBy: { program: { name: 'asc' } },
+  }) satisfies Prisma.Project$programLinksArgs;
 
 type ProjectRow = Prisma.ProjectGetPayload<object> & {
   programLinks?: { program: { id: string; name: string; color: string | null } }[];
@@ -254,15 +259,15 @@ export class ProjectsService {
         ...visible,
       },
       orderBy: { createdAt: 'desc' },
-      include: { _count: ISSUE_COUNT, lead: true, programLinks: PROGRAM_LINKS },
+      include: { _count: ISSUE_COUNT, lead: true, programLinks: programLinksOf(viewerId) },
     });
     return projects.map((p) => this.toDto(p, p._count.issues, p.lead));
   }
 
-  async getByKey(workspaceId: string, key: string): Promise<ProjectDto> {
+  async getByKey(workspaceId: string, key: string, viewerId: string): Promise<ProjectDto> {
     const p = await this.prisma.project.findFirst({
       where: { workspaceId, key, deletedAt: null },
-      include: { _count: ISSUE_COUNT, lead: true, programLinks: PROGRAM_LINKS },
+      include: { _count: ISSUE_COUNT, lead: true, programLinks: programLinksOf(viewerId) },
     });
     if (!p) throw new NotFoundAppException('Dự án');
     return this.toDto(p, p._count.issues, p.lead);
@@ -360,7 +365,7 @@ export class ProjectsService {
       nowPublic: privacyChanged && input.isPrivate === false,
       newMembers: privacyChanged ? [] : mustBeMembers,
     });
-    return this.getById(workspaceId, projectId);
+    return this.getById(workspaceId, projectId, userId);
   }
 
   /**
@@ -501,7 +506,7 @@ export class ProjectsService {
       data: { archivedAt: new Date(), isArchived: true, updatedById: userId },
     });
     if (count === 0) throw new BusinessRuleException('Dự án đã được lưu trữ từ trước');
-    return this.getById(workspaceId, projectId);
+    return this.getById(workspaceId, projectId, userId);
   }
 
   async unarchive(workspaceId: string, projectId: string, userId: string): Promise<ProjectDto> {
@@ -511,7 +516,7 @@ export class ProjectsService {
       data: { archivedAt: null, isArchived: false, updatedById: userId },
     });
     if (count === 0) throw new BusinessRuleException('Dự án đang hoạt động, không cần khôi phục');
-    return this.getById(workspaceId, projectId);
+    return this.getById(workspaceId, projectId, userId);
   }
 
   /** Xoá mềm dự án (chỉ admin workspace). Dữ liệu giữ nguyên; dự án biến mất khỏi mọi danh sách. */
@@ -525,10 +530,14 @@ export class ProjectsService {
     return { success: true };
   }
 
-  private async getById(workspaceId: string, projectId: string): Promise<ProjectDto> {
+  private async getById(
+    workspaceId: string,
+    projectId: string,
+    viewerId: string,
+  ): Promise<ProjectDto> {
     const p = await this.prisma.project.findFirst({
       where: { id: projectId, workspaceId, deletedAt: null },
-      include: { _count: ISSUE_COUNT, lead: true, programLinks: PROGRAM_LINKS },
+      include: { _count: ISSUE_COUNT, lead: true, programLinks: programLinksOf(viewerId) },
     });
     if (!p) throw new NotFoundAppException('Dự án');
     return this.toDto(p, p._count.issues, p.lead);
@@ -540,6 +549,7 @@ export class ProjectsService {
     key: string,
     file: Express.Multer.File | undefined,
     req: Request,
+    viewerId: string,
   ): Promise<ProjectDto> {
     const prev = await this.prisma.project.findFirst({
       where: { workspaceId, key, deletedAt: null },
@@ -550,11 +560,11 @@ export class ProjectsService {
     const avatarUrl = await this.media.saveAvatar(file, 'proj', req);
     await this.prisma.project.update({ where: { id: prev.id }, data: { avatarUrl } });
     await this.media.removeByUrl(prev.avatarUrl);
-    return this.getByKey(workspaceId, key);
+    return this.getByKey(workspaceId, key, viewerId);
   }
 
   /** Gỡ ảnh đại diện project. */
-  async clearAvatar(workspaceId: string, key: string): Promise<ProjectDto> {
+  async clearAvatar(workspaceId: string, key: string, viewerId: string): Promise<ProjectDto> {
     const prev = await this.prisma.project.findFirst({
       where: { workspaceId, key, deletedAt: null },
       select: { id: true, avatarUrl: true, archivedAt: true },
@@ -563,7 +573,7 @@ export class ProjectsService {
     assertNotArchived(prev.archivedAt);
     await this.prisma.project.update({ where: { id: prev.id }, data: { avatarUrl: null } });
     await this.media.removeByUrl(prev.avatarUrl);
-    return this.getByKey(workspaceId, key);
+    return this.getByKey(workspaceId, key, viewerId);
   }
 
   /** Config tạo issue: issue types + priorities của workspace (cho quick-add / AI generate). */
