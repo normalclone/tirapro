@@ -24,6 +24,8 @@ export interface RuleStatusParts {
 export interface RuleStatusRewrite extends RuleStatusParts {
   /** Có tham chiếu tới ít nhất một id có trong `map`. */
   touched: boolean;
+  /** Các id cũ (có trong `map`) mà quy tắc tham chiếu — để báo "id cũ → id mới" cho từng quy tắc. */
+  touchedIds: string[];
   /** Id cũ được tham chiếu mà `map` không có trạng thái thay thế (danh sách rỗng). Khác rỗng → giữ nguyên nội dung. */
   unmappable: string[];
 }
@@ -116,10 +118,18 @@ export function remapRuleStatusIds(rule: RuleStatusParts, map: StatusRefMap): Ru
   if (unmappable.size > 0)
     return {
       touched: true,
+      touchedIds: [...touched],
       unmappable: [...unmappable],
       triggerConfig: rule.triggerConfig,
       conditions: rule.conditions,
       actions: rule.actions,
     };
-  return { touched: touched.size > 0, unmappable: [], triggerConfig, conditions, actions };
+  return {
+    touched: touched.size > 0,
+    touchedIds: [...touched],
+    unmappable: [],
+    triggerConfig,
+    conditions,
+    actions,
+  };
 }

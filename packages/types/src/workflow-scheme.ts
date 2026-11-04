@@ -91,6 +91,8 @@ export interface AffectedRuleDto {
   outcome: 'rewritten' | 'disabled';
   /** `disabled`: các trạng thái cũ không còn thay thế. */
   unmappableStatusIds?: string[];
+  /** Trước → sau của từng trạng thái mà quy tắc nhắc tới (để người duyệt xem quy tắc sẽ khớp những trạng thái nào). */
+  statusRefs?: Array<{ fromId: string; fromName: string; toIds: string[]; toNames: string[] }>;
 }
 
 /** Kết quả `PUT /workflow-schemes`, `PUT|DELETE /projects/:id/workflow-overrides`; `dryRun=1` chỉ xem trước, không ghi. */

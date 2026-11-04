@@ -519,6 +519,20 @@ describe('DigestsService.buildDigest — việc chưa duyệt không tính', () 
   });
 });
 
+describe('DigestsService.buildDigest — số việc vừa xong chỉ đếm chuyển VÀO DONE', () => {
+  it('truy vấn lịch sử loại dòng DONE → DONE (oldCategory null hoặc khác DONE)', async () => {
+    const s = buildSetup();
+    await s.service.buildDigest('w1', undefined, ['summary'], 'u1');
+    const wheres = (
+      s.historyFind.mock.calls as unknown as [{ where: Record<string, unknown> }][]
+    ).map((c) => c[0].where);
+    const done = wheres.filter((w) => w.newCategory === 'DONE');
+    expect(done.length).toBeGreaterThan(0);
+    for (const w of done)
+      expect(w.OR).toEqual([{ oldCategory: null }, { oldCategory: { not: 'DONE' } }]);
+  });
+});
+
 describe('DigestsService.buildDigest — điểm sprint loại Epic', () => {
   it('groupBy cộng điểm còn lại của sprint loại Epic (điểm Epic = tổng việc con); groupBy đếm việc mở thì không', async () => {
     const s = buildSetup();

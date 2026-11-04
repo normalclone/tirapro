@@ -26,7 +26,10 @@ export async function moveIssuesToStatus(
     where: Prisma.IssueWhereInput;
     from: StatusRef;
     to: StatusRef;
+    /** Người sửa việc (`updatedById`). */
     actorId: string;
+    /** Người thực hiện ghi vào lịch sử STATUS; mặc định = `actorId`. Chuyển hàng loạt do cấu hình thì truyền người dùng hệ thống. */
+    historyActorId?: string;
     defaultResolutionId: string | null;
   },
 ): Promise<{ count: number; projectIds: string[] }> {
@@ -84,7 +87,7 @@ export async function moveIssuesToStatus(
         newValue: to.name,
         oldCategory: from.category,
         newCategory: to.category,
-        actorId,
+        actorId: args.historyActorId ?? actorId,
         occurredAt: now,
       })),
     });

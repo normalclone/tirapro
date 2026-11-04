@@ -10,6 +10,7 @@ import {
 } from '../../common/exceptions/app.exception';
 import { ERROR_CODES, type AffectedRuleDto, type WorkflowUsageDto } from '@tirapro/types';
 import { moveIssuesToStatus } from './issue-status-move';
+import { systemActorId } from './system-actor';
 import { lockWorkspaceWorkflows } from './workflow-move';
 import { publishRuleChanges, rewriteRuleStatusRefs } from './rule-status-refs';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -548,6 +549,7 @@ export class WorkflowAdminService {
               from,
               to,
               actorId,
+              historyActorId: await systemActorId(tx),
               defaultResolutionId: resolution?.id ?? null,
             }));
           }

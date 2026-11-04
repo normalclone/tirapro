@@ -111,7 +111,6 @@ export function toMoveRows(
   }));
 }
 
-/** Chạy thật mà còn nhóm chưa có đích do người dùng chọn → 422 STATUS_MAPPING_REQUIRED, mỗi trạng thái cũ một dòng. */
 /**
  * Khoá advisory theo workspace TRONG transaction (tự nhả khi commit/rollback): hai thay đổi quy trình đồng thời trong cùng một
  * workspace (PUT scheme, ghi đè dự án, xoá trạng thái có thay thế, script migrate) xếp hàng thay vì đọc kế hoạch cũ rồi chuyển
@@ -124,6 +123,7 @@ export async function lockWorkspaceWorkflows(
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`workflow-scheme:${workspaceId}`}))`;
 }
 
+/** Chạy thật mà còn nhóm chưa có đích do người dùng chọn → 422 STATUS_MAPPING_REQUIRED, mỗi trạng thái cũ một dòng. */
 export function assertAllMapped(moves: PlannedMove[], typeNames: Map<string, string>): void {
   const missing = new Map<string, ErrorDetail>();
   for (const m of moves) {

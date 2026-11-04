@@ -17,7 +17,18 @@ export async function rewriteRuleStatusRefs(
   db: Prisma.TransactionClient,
   workspaceId: string,
   fromToMap: StatusRefMap,
-  opts: { dryRun: boolean },
+  opts: {
+    dryRun: boolean;
+    /**
+     * Phạm vi của quy tắc: trả về các quy trình mà việc thuộc phạm vi quy tắc THỰC SỰ dùng (null = không giới hạn). Đích ở quy
+     * trình khác bị bỏ để quy tắc "Review code" không rộng ra thành mọi trạng thái của Bug/Epic nếu phạm vi quy tắc không có
+     * các loại đó. Không còn đích nào thì giữ danh sách đầy đủ (không tắt quy tắc chỉ vì phạm vi hẹp).
+     */
+    scopeOf?: (rule: {
+      projectId: string | null;
+      conditions: unknown;
+    }) => ReadonlySet<string> | null;
+  },
 ): Promise<{ affectedRules: AffectedRuleDto[] }> {
   const affectedRules: AffectedRuleDto[] = [];
   if (fromToMap.size === 0) return { affectedRules };
@@ -35,8 +46,31 @@ export async function rewriteRuleStatusRefs(
     },
     orderBy: { createdAt: 'asc' },
   });
+  if (rules.length === 0) return { affectedRules };
+  // Tên + quy trình của mọi trạng thái liên quan (id cũ và đích) để lọc theo phạm vi và in "trước → sau".
+  const involved = [...new Set([...fromToMap.keys(), ...[...fromToMap.values()].flat()])];
+  const info = new Map(
+    (
+      await db.status.findMany({
+        where: { id: { in: involved } },
+        select: { id: true, name: true, workflowId: true },
+      })
+    ).map((x) => [x.id, x]),
+  );
+  const nameOf = (id: string): string => info.get(id)?.name ?? id;
   for (const r of rules) {
-    const out = remapRuleStatusIds(r, fromToMap);
+    const allowed = opts.scopeOf?.(r) ?? null;
+    const map: StatusRefMap = allowed
+      ? new Map(
+          [...fromToMap].map(([from, targets]) => {
+            const kept = targets.filter(
+              (t) => t === from || allowed.has(info.get(t)?.workflowId ?? ''),
+            );
+            return [from, kept.length > 0 ? kept : targets] as const;
+          }),
+        )
+      : fromToMap;
+    const out = remapRuleStatusIds(r, map);
     if (!out.touched) continue;
     const base = {
       ruleId: r.id,
@@ -44,6 +78,10 @@ export async function rewriteRuleStatusRefs(
       projectId: r.projectId,
       createdById: r.createdById,
       wasEnabled: r.enabled,
+      statusRefs: out.touchedIds.map((fromId) => {
+        const toIds = out.unmappable.includes(fromId) ? [] : [...(map.get(fromId) ?? [])];
+        return { fromId, fromName: nameOf(fromId), toIds, toNames: toIds.map(nameOf) };
+      }),
     };
     if (out.unmappable.length > 0) {
       affectedRules.push({ ...base, outcome: 'disabled', unmappableStatusIds: out.unmappable });
@@ -67,6 +105,32 @@ export async function rewriteRuleStatusRefs(
       });
   }
   return { affectedRules };
+}
+
+/** Loại việc mà quy tắc giới hạn bằng điều kiện `typeId` (eq/in); null = không giới hạn loại. */
+export function ruleTypeScope(conditions: unknown): string[] | null {
+  if (!Array.isArray(conditions)) return null;
+  for (const c of conditions as Array<Record<string, unknown>>) {
+    if (c?.field !== 'typeId') continue;
+    if (c.op === 'eq' && typeof c.value === 'string') return [c.value];
+    if (c.op === 'in' && Array.isArray(c.value))
+      return c.value.filter((x): x is string => typeof x === 'string');
+  }
+  return null;
+}
+
+/**
+ * `scopeOf` cho các endpoint đổi quy trình: quy tắc giới hạn bằng điều kiện `typeId` thì chỉ nhận trạng thái ở quy trình đích của
+ * các loại đó; quy tắc không giới hạn loại nhận đích của mọi loại đang đổi. Không trúng loại nào → null (không giới hạn).
+ */
+export function scopeFromPairs(
+  pairs: Array<{ typeId: string; toWorkflowId: string }>,
+): (rule: { conditions: unknown }) => ReadonlySet<string> | null {
+  return (rule) => {
+    const types = ruleTypeScope(rule.conditions);
+    const hit = pairs.filter((p) => !types || types.includes(p.typeId));
+    return hit.length > 0 ? new Set(hit.map((p) => p.toWorkflowId)) : null;
+  };
 }
 
 /** Người nhận + nội dung thông báo "Quy tắc … đã tắt vì trạng thái không còn" cho các quy tắc vừa bị TẮT (đang bật trước đó). */
@@ -202,7 +266,9 @@ export async function ruleStepForMoves(
 ): Promise<AffectedRuleDto[]> {
   const base = await buildStatusRefMap(db, pairs, pick);
   const map = await keepStillUsedStatuses(db, base, dryRun ? pending : []);
-  return (await rewriteRuleStatusRefs(db, workspaceId, map, { dryRun })).affectedRules;
+  return (
+    await rewriteRuleStatusRefs(db, workspaceId, map, { dryRun, scopeOf: scopeFromPairs(pairs) })
+  ).affectedRules;
 }
 
 /** Các quy trình cũ cần ánh xạ cho quy tắc: quy trình trước đây của loại + quy trình của trạng thái việc đang được chuyển. */

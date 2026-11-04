@@ -128,6 +128,7 @@ function world(
   const prisma = {
     $transaction: vi.fn((fn: (t: unknown) => unknown) => fn(prisma)),
     $executeRaw: vi.fn((..._a: unknown[]) => Promise.resolve(0)),
+    user: { upsert: vi.fn(() => Promise.resolve({ id: 'SYS' })) },
     automationRule: {
       findMany: vi.fn(() => Promise.resolve(rules.map((r) => ({ ...r })))),
       update: vi.fn((a: { where: { id: string }; data: Record<string, unknown> }) => {
@@ -445,7 +446,10 @@ describe('WorkflowSchemeService.setWorkspaceScheme', () => {
     );
     for (const u of upd)
       expect(u.data).toMatchObject({ updatedById: 'u1', version: { increment: 1 } });
-    expect(w.prisma.issueHistory.createMany.mock.calls.flatMap((c) => c[0].data)).toHaveLength(4);
+    const history = w.prisma.issueHistory.createMany.mock.calls.flatMap((c) => c[0].data);
+    expect(history).toHaveLength(4);
+    // Lịch sử do HỆ THỐNG ghi (không phải quản trị viên bấm nút); người sửa việc vẫn là quản trị viên.
+    expect(history.every((h) => h.actorId === 'SYS')).toBe(true);
     expect(w.invalidate).toHaveBeenCalled();
   });
 

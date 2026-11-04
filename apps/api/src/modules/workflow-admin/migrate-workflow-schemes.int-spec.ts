@@ -43,6 +43,8 @@ describe.skipIf(!DB_URL)('migrateWorkflowSchemes ↔ Postgres thật', () => {
       select: { id: true, statusId: true, version: true, updatedAt: true, resolvedAt: true },
       orderBy: { id: 'asc' },
     });
+  const systemUser = async (): Promise<string> =>
+    (await prisma.user.findUniqueOrThrow({ where: { email: 'automation@tirapro.local' } })).id;
   const statusName = async (statusId: string) =>
     (await prisma.status.findUniqueOrThrow({ where: { id: statusId } })).name;
 
@@ -179,6 +181,76 @@ describe.skipIf(!DB_URL)('migrateWorkflowSchemes ↔ Postgres thật', () => {
         createdById: id('u'),
       },
     });
+    // Quy tắc giới hạn loại Task (chỉ Standard): không được rộng sang Bug/Epic. Quy tắc có điều kiện JQL theo tên.
+    await prisma.automationRule.create({
+      data: {
+        id: id('rule-std'),
+        workspaceId: WS_A,
+        name: 'Chỉ Task đang làm',
+        trigger: 'ISSUE_TRANSITIONED',
+        triggerConfig: { toStatusId: id('old-a-3') },
+        conditions: [{ field: 'typeId', op: 'eq', value: id('t-task-a') }],
+        actions: [],
+        createdById: id('u'),
+      },
+    });
+    await prisma.automationRule.create({
+      data: {
+        id: id('rule-jql'),
+        workspaceId: WS_A,
+        name: 'Có JQL theo tên',
+        trigger: 'ISSUE_CREATED',
+        triggerConfig: {},
+        conditions: [{ jql: 'status = "Đang test"' }],
+        actions: [],
+        createdById: id('u'),
+      },
+    });
+    // Tham chiếu theo TÊN trong JQL (chỉ báo): bộ lọc đã lưu, bộ lọc bảng, widget. "Done" vẫn tồn tại nên không bị báo.
+    await prisma.savedFilter.createMany({
+      data: [
+        {
+          id: id('f1'),
+          workspaceId: WS_A,
+          ownerId: id('u'),
+          name: 'Đang làm của tôi',
+          jql: 'status = "Đang làm"',
+        },
+        {
+          id: id('f2'),
+          workspaceId: WS_A,
+          ownerId: id('u'),
+          name: 'Đã xong',
+          jql: 'status = Done',
+        },
+      ],
+    });
+    await prisma.board.update({
+      where: { id: id('b-a') },
+      data: { filterJql: 'status in ("Chờ test")' },
+    });
+    await prisma.dashboard.create({
+      data: {
+        id: id('dash'),
+        workspaceId: WS_A,
+        ownerId: id('u'),
+        name: 'Tổng quan',
+        widgets: {
+          create: [
+            {
+              id: id('wg'),
+              type: 'ISSUE_LIST',
+              title: 'Chờ review',
+              config: { jql: 'status = "Review code"' },
+            },
+          ],
+        },
+      },
+    });
+    // Mẫu (isTemplate) trùng tên quy trình mặc định ở workspace B: không được nhận nhầm làm quy trình mặc định.
+    await prisma.workflow.create({
+      data: { id: id('tpl'), workspaceId: WS_B, name: 'Epic Workflow', isTemplate: true },
+    });
     await prisma.slaPolicy.create({
       data: { id: id('sla'), workspaceId: WS_A, name: 'SLA', responseMins: 60, resolveMins: 600 },
     });
@@ -227,16 +299,35 @@ describe.skipIf(!DB_URL)('migrateWorkflowSchemes ↔ Postgres thật', () => {
       toWorkflowName: 'Bug Workflow',
     });
     expect(find('EPIC', 'Đang làm')).toMatchObject({ toWorkflowName: 'Epic Workflow' });
-    expect(a.rules).toHaveLength(1);
+    expect(a.rules.map((r) => r.ruleId).sort()).toEqual([id('rule'), id('rule-std')].sort());
+    // Dry-run báo trước → sau của từng quy tắc: quy tắc không giới hạn loại nhận cả 3 quy trình, quy tắc loại Task chỉ Standard.
+    const wide = a.rules.find((r) => r.ruleId === id('rule'))!;
+    expect(wide.statusRefs![0]).toMatchObject({ fromName: 'Đang làm' });
+    expect(wide.statusRefs![0]!.toNames).toEqual(['In Progress', 'In Progress', 'In Progress']);
+    const narrow = a.rules.find((r) => r.ruleId === id('rule-std'))!;
+    expect(narrow).toMatchObject({ name: 'Chỉ Task đang làm', projectId: null });
+    expect(narrow.statusRefs![0]!.toNames).toEqual(['In Progress']);
+    expect(a.moves.every((m) => m.fromWorkflowName === 'Phát triển phần mềm')).toBe(true);
+    // Tham chiếu theo tên trong JQL sẽ hết khớp (chỉ báo): không báo bộ lọc dùng Done.
+    expect(a.nameRefs.map((n) => `${n.kind}:${n.id}`).sort()).toEqual(
+      [
+        `savedFilter:${id('f1')}`,
+        `boardFilter:${id('b-a')}`,
+        `widget:${id('wg')}`,
+        `rule:${id('rule-jql')}`,
+      ].sort(),
+    );
+    expect(a.nameRefs.find((n) => n.id === id('f1'))!.names).toEqual(['Đang làm']);
     // Workspace B: dòng cấu hình của quy trình tuỳ chỉnh thắng → Bug đi vào "Đang sửa" (gợi ý theo nhóm).
     const b = only(out, WS_B);
     expect(b.createdSchemeRows).toBe(5); // BUG đã có dòng
+    expect(b.createdWorkflows).toHaveLength(3); // mẫu cùng tên không bị nhận nhầm
     expect(b.moves.find((m) => m.issueTypeName === 'BUG')).toMatchObject({
       toStatusName: 'Đang sửa',
       toWorkflowName: 'Bug',
       via: 'suggested',
     });
-    expect(out.totals).toMatchObject({ workspaces: 2, movedIssues: 14, rulesRewritten: 1 });
+    expect(out.totals).toMatchObject({ workspaces: 2, movedIssues: 14, rulesRewritten: 2 });
     // Không ghi gì.
     expect(await issues(WS_A)).toEqual(before);
     expect(await prisma.workflow.count({ where: { workspaceId: WS_A } })).toBe(1);
@@ -273,7 +364,7 @@ describe.skipIf(!DB_URL)('migrateWorkflowSchemes ↔ Postgres thật', () => {
       newValue: 'In Progress',
       oldCategory: 'IN_PROGRESS',
       newCategory: 'IN_PROGRESS',
-      actorId: id('u'),
+      actorId: await systemUser(), // hệ thống ghi, không phải chủ tổ chức
     });
     // Mọi dòng cấu hình có mặt; ba quy trình mặc định chung của tổ chức.
     expect(await prisma.workspaceWorkflowScheme.count({ where: { workspaceId: WS_A } })).toBe(6);
@@ -322,6 +413,20 @@ describe.skipIf(!DB_URL)('migrateWorkflowSchemes ↔ Postgres thật', () => {
     expect(new Set(trig.toStatusIds).size).toBe(3);
     expect(trig.toStatusId).toBeUndefined();
     expect(rule.enabled).toBe(true);
+    // Quy tắc giới hạn loại Task chỉ nhận trạng thái Standard (không rộng sang Bug/Epic).
+    const std = (await prisma.automationRule.findUniqueOrThrow({ where: { id: id('rule-std') } }))
+      .triggerConfig as { toStatusId?: string; toStatusIds?: string[] };
+    expect(std.toStatusIds).toBeUndefined();
+    expect(await statusName(std.toStatusId!)).toBe('In Progress');
+    expect(
+      (await prisma.status.findUniqueOrThrow({ where: { id: std.toStatusId! } })).workflowId,
+    ).toBe(
+      (
+        await prisma.workflow.findFirstOrThrow({
+          where: { workspaceId: WS_A, name: 'Standard Workflow' },
+        })
+      ).id,
+    );
     // SLA + workspace B: quy trình "Bug" tuỳ chỉnh nguyên vẹn, việc Bug vào "Đang sửa".
     expect(await prisma.slaPolicy.count({ where: { id: id('sla') } })).toBe(1);
     expect(await prisma.status.count({ where: { workflowId: id('cbug') } })).toBe(3);
@@ -344,6 +449,20 @@ describe.skipIf(!DB_URL)('migrateWorkflowSchemes ↔ Postgres thật', () => {
     });
     expect((await run(true)).totals.movedIssues).toBe(0);
     expect(await issues(WS_A)).toEqual(snap);
+  });
+
+  it('đổi tên quy trình mặc định rồi chạy lại: không sinh bản trùng (nhận diện bằng dấu ổn định)', async () => {
+    await prisma.workflow.updateMany({
+      where: { workspaceId: WS_A, name: 'Standard Workflow' },
+      data: { name: 'Chuẩn của tổ chức' },
+    });
+    const out = await run(false);
+    expect(only(out, WS_A).createdWorkflows).toEqual([]);
+    expect(await prisma.workflow.count({ where: { workspaceId: WS_A } })).toBe(4);
+    await prisma.workflow.updateMany({
+      where: { workspaceId: WS_A, name: 'Chuẩn của tổ chức' },
+      data: { name: 'Standard Workflow' }, // trả lại cho các test sau
+    });
   });
 
   it('chạy cho một tổ chức: chỉ chạm đúng tổ chức đó', async () => {

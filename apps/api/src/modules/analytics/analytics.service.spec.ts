@@ -686,6 +686,10 @@ describe('AnalyticsService.createdResolved — đếm theo ngày bằng SQL', ()
     expect(sqlOf(queryRaw.mock.calls[0]!)).toContain('FROM "Issue"');
     expect(sqlOf(queryRaw.mock.calls[0]!)).toContain('"deletedAt" IS NULL');
     expect(sqlOf(queryRaw.mock.calls[1]!)).toContain(`"newCategory" = 'DONE'`);
+    // Chỉ chuyển VÀO DONE: dòng DONE → DONE (migrate/đổi quy trình) không phải việc vừa xong.
+    expect(sqlOf(queryRaw.mock.calls[1]!)).toContain(
+      `("oldCategory" IS NULL OR "oldCategory" <> 'DONE')`,
+    );
     for (const call of queryRaw.mock.calls) expect(paramsOf(call)).toContain('p1');
   });
 });

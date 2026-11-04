@@ -177,7 +177,9 @@ describe.skipIf(!DB_URL)('WorkflowSchemeService ↔ Postgres thật', () => {
     expect(hist.find((h) => h.issueId === id('a2'))).toMatchObject({
       oldValue: 'Đang làm',
       newValue: 'In Progress',
-      actorId: id('u'),
+      actorId: (
+        await prisma.user.findUniqueOrThrow({ where: { email: 'automation@tirapro.local' } })
+      ).id,
     });
     // Bảng của p1: mỗi trạng thái mới nằm trong cột cùng nhóm; trạng thái cũ vẫn còn.
     const cols = await prisma.boardColumn.findMany({

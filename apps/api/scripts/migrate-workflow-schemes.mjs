@@ -11,7 +11,8 @@
  *  3. chuyển việc (kể cả trong thùng rác) đang ở trạng thái của quy trình KHÁC quy trình hiệu lực: bảng ánh xạ cũ → cùng tên →
  *     cùng nhóm. SQL thô, KHÔNG đổi updatedAt, tăng version, ghi lịch sử STATUS;
  *  4. cột bảng: thêm trạng thái mới cạnh trạng thái cũ (không gỡ gì);
- *  5. quy tắc automation: sửa id trạng thái theo cùng ánh xạ; không ánh xạ được thì TẮT quy tắc + báo người tạo;
+ *  5. quy tắc automation: sửa id trạng thái theo cùng ánh xạ (chỉ sang quy trình mà phạm vi quy tắc dùng); không ánh xạ được thì
+ *     TẮT quy tắc + báo người tạo. Dry-run in từng quy tắc (trước -> sau) và các tham chiếu theo TÊN trong JQL sẽ hết khớp;
  *  6. quy trình cũ của dự án giữ nguyên (vẫn là defaultWorkflowId dự phòng). SLA / wipLimit không chứa id trạng thái.
  * --dry-run chạy đúng thuật toán thật rồi rollback nên số liệu khớp chạy thật. Idempotent: chạy lại không đổi gì.
  *
@@ -67,17 +68,31 @@ try {
     if (w.createdWorkflows.length) console.log(`  quy trình mới: ${w.createdWorkflows.join(', ')}`);
     console.log(`  dòng cấu hình mới: ${w.createdSchemeRows}`);
     if (w.moves.length) {
-      console.log('  dự án | loại việc | trạng thái cũ -> mới (quy trình) | số việc | nguồn');
+      console.log(
+        '  dự án | loại việc | quy trình nguồn | trạng thái cũ -> mới (quy trình đích) | số việc | nguồn ánh xạ',
+      );
       for (const m of w.moves)
         console.log(
-          `  ${m.projectKey} | ${m.issueTypeName} | ${m.fromStatusName} -> ${m.toStatusName} (${m.toWorkflowName}) | ${m.count} | ${m.via}`,
+          `  ${m.projectKey} | ${m.issueTypeName} | ${m.fromWorkflowName} | ${m.fromStatusName} -> ${m.toStatusName} (${m.toWorkflowName}) | ${m.count} | ${m.via}`,
         );
     }
     console.log(`  việc chuyển: ${w.movedIssues}; liên kết cột bảng thêm: ${w.boardLinksAdded}`);
-    for (const r of w.rules)
+    for (const r of w.rules) {
       console.log(
-        `  quy tắc "${r.name}": ${r.outcome === 'disabled' ? 'TẮT (không ánh xạ được trạng thái)' : 'đã sửa id trạng thái'}`,
+        `  quy tắc "${r.name}" [${r.projectId ? `dự án ${r.projectId}` : 'cả tổ chức'}]: ${r.outcome === 'disabled' ? 'SẼ BỊ TẮT (không ánh xạ được trạng thái)' : 'sửa id trạng thái'}`,
       );
+      for (const ref of r.statusRefs ?? [])
+        console.log(
+          `      ${ref.fromName} (${ref.fromId}) -> ${ref.toIds.length ? ref.toNames.map((n, i) => `${n} (${ref.toIds[i]})`).join(', ') : '(không có)'}`,
+        );
+    }
+    if (w.nameRefs.length) {
+      console.log(
+        '  THAM CHIẾU THEO TÊN trạng thái trong JQL sẽ KHÔNG còn khớp (chỉ báo, không sửa):',
+      );
+      for (const n of w.nameRefs)
+        console.log(`      [${n.kind}] ${n.label} (${n.id}): ${n.names.join(', ')}`);
+    }
   }
   const t = result.totals;
   console.log(

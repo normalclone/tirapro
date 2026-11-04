@@ -10,10 +10,12 @@ import { appendMissingBoardStatuses } from './board-columns-sync';
 import {
   buildStatusRefMap,
   disabledRuleNotices,
+  ruleTypeScope,
   fromWorkflowsOf,
   keepStillUsedStatuses,
   rewriteRuleStatusRefs,
 } from './rule-status-refs';
+import { systemActorId } from './system-actor';
 import {
   lockWorkspaceWorkflows,
   planMoves,
@@ -21,7 +23,11 @@ import {
   type PlannedMove,
 } from './workflow-move';
 
-/** Ba quy trình mặc định, tìm theo TÊN CHÍNH XÁC trong từng workspace (quy trình khác không bao giờ bị đụng tới). */
+/**
+ * Ba quy trình mặc định của từng workspace. Nhận diện bằng dấu ổn định `sourceTemplateId = tirapro-default:<KEY>` (đổi tên
+ * không sinh bản trùng); quy trình chung chưa có dấu mà trùng tên chính xác được nhận và đóng dấu. Quy trình khác không bị đụng.
+ */
+const DEFAULT_MARKER_PREFIX = 'tirapro-default:';
 const DEFAULT_KEYS = Object.keys(DEFAULT_WORKFLOWS) as WorkflowDefaultKey[];
 
 export interface MigrateOptions {
@@ -40,6 +46,8 @@ export interface MigrateOptions {
 export interface MigrateMoveRow {
   projectKey: string;
   issueTypeName: string;
+  /** Quy trình chứa trạng thái cũ (tổ chức gộp có thể có nhiều quy trình cùng tên trạng thái). */
+  fromWorkflowName: string;
   fromStatusName: string;
   toStatusName: string;
   toWorkflowName: string;
@@ -57,6 +65,16 @@ export interface MigrateWorkspaceResult {
   movedIssues: number;
   boardLinksAdded: number;
   rules: AffectedRuleDto[];
+  /** Đối tượng tham chiếu trạng thái theo TÊN trong JQL sẽ không còn khớp sau migrate (chỉ báo, không sửa). */
+  nameRefs: NameRef[];
+}
+
+export interface NameRef {
+  kind: 'savedFilter' | 'boardFilter' | 'widget' | 'rule' | 'keyResult';
+  id: string;
+  label: string;
+  /** Tên trạng thái cũ xuất hiện trong JQL và không còn trong quy trình hiệu lực nào. */
+  names: string[];
 }
 
 export interface MigrateResult {
@@ -153,11 +171,22 @@ async function migrateWorkspace(
   const defaultIdByKey = new Map<WorkflowDefaultKey, string>();
   for (const key of DEFAULT_KEYS) {
     const def = DEFAULT_WORKFLOWS[key];
-    const found = await tx.workflow.findFirst({
-      where: { workspaceId: ws.id, projectId: null, name: def.name },
-      select: { id: true },
-    });
+    const marker = `${DEFAULT_MARKER_PREFIX}${key}`;
+    const shared = { workspaceId: ws.id, projectId: null, isTemplate: false } as const;
+    const found =
+      (await tx.workflow.findFirst({
+        where: { ...shared, sourceTemplateId: marker },
+        select: { id: true },
+      })) ??
+      (await tx.workflow.findFirst({
+        where: { ...shared, name: def.name, sourceTemplateId: null },
+        select: { id: true },
+      }));
     if (found) {
+      await tx.workflow.updateMany({
+        where: { id: found.id, sourceTemplateId: null },
+        data: { sourceTemplateId: marker },
+      });
       defaultIdByKey.set(key, found.id);
       continue;
     }
@@ -166,6 +195,7 @@ async function migrateWorkspace(
         workspaceId: ws.id,
         name: def.name,
         isTemplate: false,
+        sourceTemplateId: marker,
         statuses: {
           create: def.statuses.map((s, i) => ({
             name: s.name,
@@ -294,17 +324,19 @@ async function migrateWorkspace(
     where: { workspaceId: ws.id, isDefault: true },
     select: { id: true },
   });
+  const actorId = await systemActorId(tx); // lịch sử ghi tên hệ thống, không phải chủ tổ chức
   let movedIssues = 0;
   const rows: MigrateMoveRow[] = [];
   const projectKey = new Map(projects.map((p) => [p.id, p.key]));
   const typeName = new Map(types.map((t) => [t.id, t.name]));
   for (const m of moves) {
-    const n = await moveRaw(tx, ws, m, resolution?.id ?? null);
+    const n = await moveRaw(tx, ws, actorId, m, resolution?.id ?? null);
     movedIssues += n;
     const to = statusById.get(m.to!.id);
     rows.push({
       projectKey: projectKey.get(m.projectId) ?? m.projectId,
       issueTypeName: typeName.get(m.typeId) ?? m.typeId,
+      fromWorkflowName: workflowName.get(m.from.workflowId ?? '') ?? '',
       fromStatusName: m.from.name,
       toStatusName: m.to!.name,
       toWorkflowName: workflowName.get(to?.workflowId ?? '') ?? '',
@@ -332,7 +364,26 @@ async function migrateWorkspace(
   }));
   const base = await buildStatusRefMap(tx, pairs, legacyPick);
   const map = await keepStillUsedStatuses(tx, base, []);
-  const { affectedRules } = await rewriteRuleStatusRefs(tx, ws.id, map, { dryRun: false });
+  // Phạm vi quy tắc: dự án của quy tắc (hoặc mọi dự án) × loại việc trong điều kiện typeId (hoặc mọi loại) → chỉ nhận trạng thái
+  // đích ở các quy trình mà phạm vi đó thật sự dùng, để quy tắc "Review code" không rộng sang Bug/Epic.
+  const { affectedRules } = await rewriteRuleStatusRefs(tx, ws.id, map, {
+    dryRun: false,
+    scopeOf: (rule) => {
+      const typeIds = ruleTypeScope(rule.conditions) ?? types.map((t) => t.id);
+      const projectIds = rule.projectId ? [rule.projectId] : projects.map((p) => p.id);
+      const used = new Set<string>();
+      for (const p of projectIds)
+        for (const t of typeIds) {
+          const w = effective(p, t);
+          if (w) used.add(w);
+        }
+      return used.size > 0 ? used : null;
+    },
+  });
+  const effectiveWorkflows = new Set(
+    projects.flatMap((p) => types.flatMap((t) => effective(p.id, t.id) ?? [])),
+  );
+  const nameRefs = await findNameRefs(tx, ws.id, allStatuses, effectiveWorkflows, moves);
 
   return {
     workspaceId: ws.id,
@@ -343,12 +394,76 @@ async function migrateWorkspace(
     movedIssues,
     boardLinksAdded,
     rules: affectedRules,
+    nameRefs,
   };
+}
+
+const lc = (x: string): string => x.trim().toLowerCase();
+const mentions = (text: string, name: string): boolean => {
+  const esc = name.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(^|[^\\p{L}\\p{N}])${esc}($|[^\\p{L}\\p{N}])`, 'iu').test(text);
+};
+
+/**
+ * Chỉ BÁO (không sửa) các đối tượng lọc theo TÊN trạng thái trong JQL — bộ lọc đã lưu, bộ lọc bảng, widget, điều kiện JQL của
+ * quy tắc, KR — mà tên đó sẽ không còn ở quy trình nào đang dùng sau migrate (nên câu lọc không còn khớp việc nào).
+ */
+async function findNameRefs(
+  tx: Prisma.TransactionClient,
+  workspaceId: string,
+  allStatuses: StatusInfo[],
+  effectiveWorkflows: ReadonlySet<string>,
+  moves: PlannedMove[],
+): Promise<NameRef[]> {
+  const live = new Set(
+    allStatuses.filter((x) => effectiveWorkflows.has(x.workflowId)).map((x) => lc(x.name)),
+  );
+  const gone = [...new Set(moves.map((m) => m.from.name))].filter((n) => !live.has(lc(n)));
+  if (gone.length === 0) return [];
+  const out: NameRef[] = [];
+  const check = (kind: NameRef['kind'], id: string, label: string, jql: unknown) => {
+    if (typeof jql !== 'string' || !jql) return;
+    const names = gone.filter((n) => mentions(jql, n));
+    if (names.length > 0) out.push({ kind, id, label, names });
+  };
+  for (const f of await tx.savedFilter.findMany({
+    where: { workspaceId, deletedAt: null },
+    select: { id: true, name: true, jql: true },
+  }))
+    check('savedFilter', f.id, f.name, f.jql);
+  for (const b of await tx.board.findMany({
+    where: { project: { workspaceId }, deletedAt: null, filterJql: { not: null } },
+    select: { id: true, name: true, filterJql: true, project: { select: { key: true } } },
+  }))
+    check('boardFilter', b.id, `${b.project.key} / ${b.name}`, b.filterJql);
+  for (const w of await tx.widget.findMany({
+    where: { dashboard: { workspaceId, deletedAt: null } },
+    select: { id: true, title: true, config: true, dashboard: { select: { name: true } } },
+  }))
+    check(
+      'widget',
+      w.id,
+      `${w.dashboard.name} / ${w.title}`,
+      (w.config as { jql?: unknown } | null)?.jql,
+    );
+  for (const r of await tx.automationRule.findMany({
+    where: { workspaceId },
+    select: { id: true, name: true, conditions: true },
+  }))
+    for (const c of Array.isArray(r.conditions) ? (r.conditions as Array<{ jql?: unknown }>) : [])
+      check('rule', r.id, r.name, c?.jql);
+  for (const k of await tx.keyResult.findMany({
+    where: { objective: { workspaceId } },
+    select: { id: true, name: true, sourceConfig: true },
+  }))
+    check('keyResult', k.id, k.name, (k.sourceConfig as { jql?: unknown } | null)?.jql);
+  return out;
 }
 
 async function moveRaw(
   tx: Prisma.TransactionClient,
-  ws: { id: string; ownerId: string },
+  ws: { id: string },
+  actorId: string,
   m: PlannedMove,
   defaultResolutionId: string | null,
 ): Promise<number> {
@@ -385,6 +500,6 @@ async function moveRaw(
     SELECT gen_random_uuid()::text, "id", "projectId", "sprintId", 'STATUS'::"HistoryField",
            ${m.from.name}, ${to.name},
            ${m.from.category}::"StatusCategory", ${to.category}::"StatusCategory",
-           ${ws.ownerId}, now(), now()
+           ${actorId}, now(), now()
       FROM moved`;
 }

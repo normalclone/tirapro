@@ -14,6 +14,7 @@ import { assertProjectIdWritable } from '../../common/project-writable';
 import { appendMissingBoardStatuses } from './board-columns-sync';
 import type { NotificationsService } from '../notifications/notifications.service';
 import { fromWorkflowsOf, publishRuleChanges, ruleStepForMoves } from './rule-status-refs';
+import { systemActorId } from './system-actor';
 import { moveIssuesToStatus } from './issue-status-move';
 import {
   assertAllMapped,
@@ -447,6 +448,7 @@ export class WorkflowSchemeService {
       where: { workspaceId, isDefault: true },
       select: { id: true },
     });
+    const historyActorId = await systemActorId(tx); // lịch sử ghi tên hệ thống, không phải quản trị viên
     for (const m of moves) {
       if (!m.to) continue; // đã bị assertAllMapped chặn; giữ để type-safe
       await moveIssuesToStatus(tx, {
@@ -454,6 +456,7 @@ export class WorkflowSchemeService {
         from: m.from,
         to: m.to,
         actorId,
+        historyActorId,
         defaultResolutionId: resolution?.id ?? null,
       });
     }

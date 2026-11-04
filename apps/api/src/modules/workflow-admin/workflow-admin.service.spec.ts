@@ -64,6 +64,7 @@ function make(opts: {
       delete: vi.fn(() => Promise.resolve({})),
     },
     status: {
+      findMany: vi.fn(() => Promise.resolve([])),
       findFirst: vi.fn(() =>
         Promise.resolve({ ...statusRow, workflow: { projectId: opts.projectId } }),
       ),
@@ -98,6 +99,7 @@ function make(opts: {
     },
     $transaction: vi.fn((fn: (t: unknown) => unknown) => fn(prisma)),
     $executeRaw: vi.fn((..._a: unknown[]) => Promise.resolve(0)),
+    user: { upsert: vi.fn(() => Promise.resolve({ id: 'SYS' })) },
     automationRule: {
       findMany: vi.fn(() => Promise.resolve(rules.map((r) => ({ ...r })))),
       update: vi.fn((a: { where: { id: string }; data: Record<string, unknown> }) => {
@@ -540,6 +542,13 @@ describe('WorkflowAdminService — quy trình theo loại việc: usedBy, WORKFL
         }),
       );
       expect(prisma.issueHistory.createMany).toHaveBeenCalledTimes(1);
+      expect(
+        (
+          prisma.issueHistory.createMany!.mock.calls[0] as unknown as [
+            { data: Array<{ actorId: string }> },
+          ]
+        )[0].data.every((h) => h.actorId === 'SYS'),
+      ).toBe(true);
       expect(prisma.status.delete).toHaveBeenCalledTimes(1);
       expect(prisma.$transaction).toHaveBeenCalled();
     });
