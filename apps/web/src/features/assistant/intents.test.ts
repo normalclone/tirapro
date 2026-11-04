@@ -177,3 +177,27 @@ describe('"của tôi" kèm loại / khoảng hạn', () => {
     expect(kind('bug tôi')).not.toBe('my-issues');
   });
 });
+
+describe('detectIntent — lệnh hàng loạt (đứng đúng chỗ trong thứ tự ưu tiên)', () => {
+  const table: [string, Intent['kind']][] = [
+    ['giao KYHOP-SUB-11..20 cho Linh', 'bulk-assign'],
+    ['Giao KYHOP-SUB-11, 12, 15 cho An, Bình', 'bulk-assign'],
+    ['gán các việc [Test] chưa giao của KYHOP cho Linh', 'bulk-assign'],
+    ['thêm Linh, An vào DEMO, ALPHA vai trò Tester', 'bulk-add-member'],
+    ['thêm Nhóm QA vào mọi dự án nhóm Thanh Hóa của tôi', 'bulk-add-member'],
+    ['gỡ Linh khỏi DEMO', 'bulk-remove-member'],
+    ['loại An ra khỏi mọi dự án nhóm Thanh Hóa của tôi', 'bulk-remove-member'],
+    // không được cướp các lệnh khác:
+    ['việc giao cho tôi', 'my-issues'],
+    ['giao cho tôi', 'my-issues'],
+    ['thêm bug login vào checklist', 'create'],
+    ['tạo task Sửa lỗi login !high @an', 'create'],
+    ['làm sao giao việc hàng loạt', 'help'],
+  ];
+  it.each(table)('%s → %s', (text, expected) => {
+    const k = kind(text);
+    // 'help' có thể mang tên khác trong bảng ý định hiện có; chỉ cần KHÔNG phải lệnh hàng loạt.
+    if (expected === 'help') expect(k).not.toMatch(/^bulk-/);
+    else expect(k).toBe(expected);
+  });
+});

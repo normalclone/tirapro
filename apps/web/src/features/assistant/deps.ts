@@ -1,5 +1,5 @@
 import type { QueryClient } from '@tanstack/react-query';
-import type { IssueDto, SprintDto, UserDto } from '@tirapro/types';
+import type { IssueDto, RoleDto, SprintDto, TeamDto, UserDto } from '@tirapro/types';
 import type { ProjectMeta } from '@/features/ai/api';
 import { fetchAllProjectIssues } from '@/features/issues/api';
 import { userSearchQuery } from '@/features/members/userSearch';
@@ -9,6 +9,7 @@ import { api, apiErrorCode } from '@/lib/api';
 import { hasPermission } from '@/lib/permissions';
 import { keys } from '@/lib/queryKeys';
 import { useAuth } from '@/stores/auth';
+import type { ProgramDto } from '@/features/projects/groups/programsApi';
 import type { AssistantDeps } from './respond';
 
 /** Dữ liệu Trợ lý đọc được giữ trong cache một lúc để hỏi liên tiếp không bắn lại cùng yêu cầu. */
@@ -74,6 +75,35 @@ export function createAssistantDeps(qc: QueryClient): AssistantDeps {
             )
           ).data,
         staleTime: STALE,
+      }),
+    getPeople: () =>
+      qc.fetchQuery({
+        queryKey: keys.users.search('', '', 200, false),
+        queryFn: async () =>
+          (await api.get<UserDto[]>(`/users?${userSearchQuery({ limit: 200, search: '' })}`)).data,
+        staleTime: STALE,
+      }),
+    async searchPeople(query) {
+      return (await api.get<UserDto[]>(`/users?${userSearchQuery({ limit: 20, search: query })}`))
+        .data;
+    },
+    getMyGroups: () =>
+      qc.fetchQuery({
+        queryKey: keys.programs.all,
+        queryFn: async () => (await api.get<ProgramDto[]>('/programs')).data,
+        staleTime: STALE,
+      }),
+    getTeams: () =>
+      qc.fetchQuery({
+        queryKey: keys.teams.all,
+        queryFn: async () => (await api.get<TeamDto[]>('/teams')).data,
+        staleTime: STALE,
+      }),
+    getProjectRoles: () =>
+      qc.fetchQuery({
+        queryKey: keys.roles.byScope('PROJECT'),
+        queryFn: async () => (await api.get<RoleDto[]>('/roles?scope=PROJECT')).data,
+        staleTime: 5 * 60_000,
       }),
     async canCreate(projectId) {
       const { user, permissions: organization } = useAuth.getState();

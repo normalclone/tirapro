@@ -10,6 +10,9 @@ import type { Intent, TypeHint } from './intents';
 import { MIN_SCORE, POPULAR_QUESTIONS, searchKnowledge } from './knowledge';
 import { dueJql, filtersHref, myIssuesJql, overdueJql, searchJql } from './queries';
 import { screenInfoOf } from './screens';
+import { bulkReply } from './bulkReply';
+import type { BulkActor } from './bulkPlan';
+import type { GroupRef, PersonRef, RoleRef, TeamRef } from './bulkResolve';
 
 /**
  * Bộ trả lời của Trợ lý (chế độ cơ bản): ý định → các khối nội dung. KHÔNG gọi AI ngoài; dữ liệu lấy qua `AssistantDeps`
@@ -36,6 +39,8 @@ export interface RespondEnv {
   issueKey: string | null;
   /** Người dùng vừa chọn dự án bằng chip cho lệnh tạo việc. */
   forceProjectKey?: string;
+  /** Người đang gõ — hiểu "giao cho tôi" và chặn nhầm lẫn khi khớp tên. */
+  actor?: BulkActor;
 }
 
 export interface AssistantDeps {
@@ -48,6 +53,16 @@ export interface AssistantDeps {
   getUsers(projectId: string): Promise<{ id: string; displayName: string }[]>;
   /** undefined = chưa biết (API vẫn kiểm khi tạo). */
   canCreate(projectId: string): Promise<boolean | undefined>;
+  /** Người trong tổ chức (tối đa 200) kèm email — để khớp tên ở lệnh hàng loạt. */
+  getPeople(): Promise<PersonRef[]>;
+  /** Tìm người phía máy chủ khi tên không có trong 200 người đã tải. */
+  searchPeople(query: string): Promise<PersonRef[]>;
+  /** Nhóm dự án CÁ NHÂN của người gõ (API chỉ trả nhóm của chính họ). */
+  getMyGroups(): Promise<GroupRef[]>;
+  /** Team của tổ chức kèm thành viên. */
+  getTeams(): Promise<TeamRef[]>;
+  /** Vai trò cấp dự án (để chọn vai trò khi thêm thành viên). */
+  getProjectRoles(): Promise<RoleRef[]>;
 }
 
 export const MAX_ROWS = 5;
@@ -426,6 +441,10 @@ export async function respond(
       return createFlow(intent, e, deps);
     case 'help':
       return helpReply(intent.query, e);
+    case 'bulk-assign':
+    case 'bulk-add-member':
+    case 'bulk-remove-member':
+      return bulkReply(intent, e, deps);
   }
 }
 

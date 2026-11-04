@@ -1,5 +1,6 @@
 import { normalizeVi } from '@/lib/text';
 import { guessIssueKey } from '@/features/command/issueKey';
+import { parseBulkCommand, type BulkIntent } from './bulkParse';
 
 /**
  * Nhận diện ý định của Trợ lý (chế độ cơ bản): LUẬT + từ khoá, không gọi AI/LLM nào, thuần hàm để test.
@@ -31,7 +32,9 @@ export type Intent =
   /** `text` = phần sau câu lệnh (tiêu đề + token `! @ # ~ ^`), có thể rỗng. */
   | { kind: 'create'; typeHint: TypeHint; text: string }
   /** Hỏi cách dùng / FAQ → kho tri thức. `explicit` = câu có dấu hiệu hỏi cách làm ("làm sao…", "ở đâu"). */
-  | { kind: 'help'; query: string; explicit: boolean };
+  | { kind: 'help'; query: string; explicit: boolean }
+  /** Thao tác hàng loạt (giao việc, thêm/gỡ thành viên): cấu trúc đã tách, CHƯA ghi gì — luôn qua thẻ xem trước. */
+  | BulkIntent;
 
 interface Word {
   raw: string;
@@ -220,6 +223,13 @@ export function detectIntent(raw: string): Intent {
     const create = parseCreateCommand(text);
     // "báo lỗi thế nào?" / "tạo task ở đâu" là câu hỏi cách làm, không phải tiêu đề việc.
     if (create && !QUESTION_TAIL.test(fold(create.text))) return { kind: 'create', ...create };
+  }
+
+  // Thao tác hàng loạt ("giao KYHOP-SUB-11, 12 cho Thuỷ", "thêm Linh vào KYHOP"): sau lệnh tạo việc (động từ "thêm" đi với
+  // danh từ việc là tạo việc) và trước các luật danh sách ("giao cho tôi").
+  if (!howto) {
+    const bulk = parseBulkCommand(text);
+    if (bulk) return bulk;
   }
 
   const here = has(

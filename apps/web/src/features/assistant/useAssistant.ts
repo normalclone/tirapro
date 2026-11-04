@@ -38,6 +38,8 @@ export function useAssistantController(open: boolean) {
   const { pathname } = useLocation();
   const qc = useQueryClient();
   const userId = useAuth((s) => s.user?.id);
+  const userName = useAuth((s) => s.user?.displayName);
+  const userEmail = useAuth((s) => s.user?.email);
 
   const [messages, dispatch] = useReducer(conversationReducer, userId, loadConversation);
   const [busy, setBusy] = useState(false);
@@ -73,8 +75,9 @@ export function useAssistantController(open: boolean) {
           }
         : { available: false },
       issueKey,
+      actor: userId ? { id: userId, displayName: userName ?? '', email: userEmail } : undefined,
     }),
-    [pathname, project, activeProjects, tourGuide, issueKey],
+    [pathname, project, activeProjects, tourGuide, issueKey, userId, userName, userEmail],
   );
   const envRef = useRef(env);
   envRef.current = env;

@@ -1,4 +1,5 @@
 import type { IssueDto, SprintDto } from '@tirapro/types';
+import type { GroupRef, PersonRef, RoleRef, TeamRef } from './bulkResolve';
 import type { DraftMeta } from './draft';
 import type { AssistantDeps, AssistantProject, RespondEnv } from './respond';
 
@@ -26,6 +27,44 @@ export const META: DraftMeta = {
 export const USERS = [
   { id: 'u-an', displayName: 'An Nguyễn' },
   { id: 'u-binh', displayName: 'Bình Trần' },
+];
+
+/** Người trong tổ chức (tên có dấu, hai "Thuỷ" để thử mơ hồ). */
+export const PEOPLE: PersonRef[] = [
+  { id: 'u-an', displayName: 'An Nguyễn', email: 'an@x.vn' },
+  { id: 'u-binh', displayName: 'Bình Trần', email: 'binh@x.vn' },
+  { id: 'u-linh', displayName: 'Phạm Linh', email: 'linh@x.vn' },
+  { id: 'u-thuy1', displayName: 'Nguyễn Thị Thuỷ', email: 'thuy.nguyen@x.vn' },
+  { id: 'u-thuy2', displayName: 'Lê Thủy', email: 'thuy.le@x.vn' },
+  { id: 'u-huong', displayName: 'Hương Đỗ', email: 'huong@x.vn' },
+];
+
+export const ROLES: RoleRef[] = [
+  { id: 'r-tester', name: 'Tester' },
+  { id: 'r-dev', name: 'Developer' },
+  { id: 'r-admin', name: 'Project Admin' },
+];
+
+/** Nhóm dự án cá nhân của người gõ (một nhóm có dự án đã lưu trữ). */
+export const GROUPS: GroupRef[] = [
+  {
+    id: 'g-th',
+    name: 'Thanh Hóa',
+    projects: [
+      { id: 'p1', key: 'DEMO', name: 'Demo' },
+      { id: 'p2', key: 'ALPHA', name: 'Alpha' },
+      { id: 'p9', key: 'OLD', name: 'Cũ', isArchived: true },
+    ],
+  },
+  { id: 'g-empty', name: 'Rỗng', projects: [] },
+];
+
+export const TEAMS: TeamRef[] = [
+  {
+    id: 't-qa',
+    name: 'QA',
+    members: [PEOPLE[2]!, PEOPLE[1]!],
+  },
 ];
 
 export const SPRINTS: SprintDto[] = [
@@ -102,6 +141,11 @@ export function makeDeps(over: Partial<AssistantDeps> = {}): AssistantDeps & { c
     getMeta: rec('getMeta', () => Promise.resolve(META)),
     getUsers: rec('getUsers', () => Promise.resolve(USERS)),
     canCreate: rec('canCreate', () => Promise.resolve(true)),
+    getPeople: rec('getPeople', () => Promise.resolve(PEOPLE)),
+    searchPeople: rec('searchPeople', () => Promise.resolve([])),
+    getMyGroups: rec('getMyGroups', () => Promise.resolve(GROUPS)),
+    getTeams: rec('getTeams', () => Promise.resolve(TEAMS)),
+    getProjectRoles: rec('getProjectRoles', () => Promise.resolve(ROLES)),
     ...over,
   };
 }
