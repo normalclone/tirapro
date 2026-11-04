@@ -63,6 +63,15 @@ export class ChildSprintFollowsParentException extends AppException {
   }
 }
 
+/** 422 mã riêng: Epic không làm việc cha trong cây — gửi kèm một Epic khác thì không biết chọn Epic nào. */
+export class ParentCannotBeEpicException extends AppException {
+  constructor(
+    message = 'Epic không làm việc cha — hãy gắn việc vào Epic bằng trường Epic, hoặc chọn một việc thường làm việc cha.',
+  ) {
+    super(ERROR_CODES.PARENT_CANNOT_BE_EPIC, message, HttpStatus.UNPROCESSABLE_ENTITY);
+  }
+}
+
 /** 422 mã riêng: Hạn bắt buộc, không được xoá trống — web/automation nhận ra mà không so khớp câu chữ. */
 export class DueDateRequiredException extends AppException {
   constructor(message = 'Hạn là bắt buộc — chọn một ngày thay vì xoá trống') {

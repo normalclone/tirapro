@@ -38,6 +38,7 @@ import { CommentsService } from '../comments/comments.service';
 import {
   BusinessRuleException,
   ChildSprintFollowsParentException,
+  ParentCannotBeEpicException,
   DueDateRequiredException,
   ForbiddenAppException,
   InvalidTransitionException,
@@ -233,9 +234,30 @@ export class IssuesService {
   ): Promise<{ sprintId: string | null } | null> {
     if (!parentId) return null;
     return db.issue.findFirst({
-      where: { id: parentId, workspaceId, deletedAt: null },
+      // Epic không làm việc cha (dữ liệu cũ có thể còn): bỏ qua để việc con không bị kéo theo sprint của Epic.
+      where: { id: parentId, workspaceId, deletedAt: null, NOT: { type: { key: 'EPIC' } } },
       select: { sprintId: true },
     });
+  }
+
+  /**
+   * `parentId` trỏ tới một EPIC được hiểu như Jira: gắn việc vào Epic ⇒ đổi thành `epicId = parentId`, `parentId = null`.
+   * Không đổi được khi cùng yêu cầu còn gửi `epicId` KHÁC (mơ hồ) ⇒ 422 PARENT_CANNOT_BE_EPIC. Epic đã gắn sẵn từ trước
+   * (không gửi `epicId`) bị thay bằng Epic vừa chọn — người dùng chủ động chọn Epic đó.
+   */
+  private async epicParentToEpicId<T extends { parentId?: string | null; epicId?: string | null }>(
+    db: Prisma.TransactionClient | PrismaService,
+    workspaceId: string,
+    input: T,
+  ): Promise<T> {
+    if (!input.parentId) return input;
+    const parent = await db.issue.findFirst({
+      where: { id: input.parentId, workspaceId, deletedAt: null },
+      select: { type: { select: { key: true } } },
+    });
+    if (parent?.type?.key !== 'EPIC') return input;
+    if (input.epicId && input.epicId !== input.parentId) throw new ParentCannotBeEpicException();
+    return { ...input, parentId: null, epicId: input.parentId };
   }
 
   /**
@@ -1140,7 +1162,7 @@ export class IssuesService {
     outerTx: Prisma.TransactionClient | null,
     workspaceId: string,
     userId: string,
-    input: CreateIssueInput,
+    rawInput: CreateIssueInput,
     deferred: Array<() => void> | null = null,
     /**
      * `api` (mặc định, `create`): đường người dùng — đòi `issue:transition` khi chọn trạng thái ≠ khởi tạo, chặn sprint
@@ -1154,6 +1176,8 @@ export class IssuesService {
     overrides?: { reporterId?: string },
   ): Promise<IssueDto> {
     const db: Prisma.TransactionClient = outerTx ?? this.prisma;
+    // Việc cha là Epic (API, Jira...) → gắn vào Epic thay vì làm con của Epic.
+    const input = await this.epicParentToEpicId(db, workspaceId, rawInput);
     // Chỉ đường import mới được mang mã ngoài vào, và phải đúng dạng mã Jira.
     const importedKey = origin === 'import' ? normalizeJiraKey(fixedKey) : null;
     const project = await db.project.findFirst({
@@ -1625,12 +1649,13 @@ export class IssuesService {
     workspaceId: string,
     userId: string,
     id: string,
-    input: UpdateIssueInput,
+    rawInput: UpdateIssueInput,
     opts?: AutomationEventMeta,
     ownOnly?: boolean,
   ): Promise<IssueDto> {
     // Hạn là bắt buộc: xoá trống không được (schema vẫn nhận null để tương thích, service từ chối rõ ràng).
-    if (input.dueDate === null) throw new DueDateRequiredException();
+    if (rawInput.dueDate === null) throw new DueDateRequiredException();
+    const input = await this.epicParentToEpicId(this.prisma, workspaceId, rawInput);
     const current = await this.requireIssue(workspaceId, id);
     if (ownOnly) this.assertOwnsIssue(userId, current);
     this.assertVersion(current.version, input.version);

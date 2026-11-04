@@ -37,6 +37,7 @@ import { ARCHIVED_PICK_HINT, CREATE_LAST_KEY } from '@/lib/currentProject';
 import { useCreateIssue } from './create-api';
 import { useProjectIssues } from './api';
 import { epicChoices, parentChoices } from '@/lib/epic';
+import { isEpicIssue } from '@/lib/issueRefs';
 import { blockOnInvalidDate } from '@/lib/dateGuard';
 import { fieldErrorId, type FieldError } from '@/lib/formErrors';
 import { useErrorFlow } from '@/lib/useErrorFlow';
@@ -325,7 +326,14 @@ export function CreateIssueModal() {
   const hideEpic = isEpicType || !!selType?.isSubtask;
   const hideParent = !!preset.parentId || isEpicType;
   // Việc con luôn vào sprint của việc cha: ô Sprint khoá và hiện sprint của cha (máy chủ cũng bỏ qua sprintId gửi kèm).
-  const parentIssueId = preset.parentId ?? (hideParent ? '' : parentPick);
+  // "Tạo việc con" trên một Epic = gắn việc vào Epic đó (epicId), không phải con trong cây: Epic không làm việc cha.
+  const presetParentIsEpic = (() => {
+    const p = preset.parentId ? projIssues.find((i) => i.id === preset.parentId) : undefined;
+    return !!p && isEpicIssue(p);
+  })();
+  const parentIssueId = presetParentIsEpic
+    ? ''
+    : (preset.parentId ?? (hideParent ? '' : parentPick));
   const hasParent = !!parentIssueId;
   const parentSprintId = projIssues.find((i) => i.id === parentIssueId)?.sprintId ?? '';
   useEffect(() => {
@@ -463,7 +471,7 @@ export function CreateIssueModal() {
         priorityId: v.priorityId || undefined,
         assigneeId: v.assigneeId || null,
         parentId: parentIssueId || undefined,
-        epicId: hideEpic ? undefined : epicId || undefined,
+        epicId: presetParentIsEpic ? preset.parentId : hideEpic ? undefined : epicId || undefined,
         // Điểm do máy chủ tính từ Loại × Độ khó × Ưu tiên — web không gửi `storyPoints` khi tạo.
         difficulty: (v.difficulty || 'MEDIUM') as Difficulty,
         // Việc con luôn vào sprint của việc cha (máy chủ cũng bỏ qua sprintId gửi kèm).

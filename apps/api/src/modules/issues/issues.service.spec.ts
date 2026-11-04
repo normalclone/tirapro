@@ -3800,6 +3800,7 @@ describe('IssuesService.update — lịch sử mô tả (B19)', () => {
   });
 });
 
+// eslint-disable-next-line max-lines-per-function -- một describe dùng chung bộ dựng tx cho mọi ca của cây việc
 describe('IssuesService — cây việc: server chặn đích sai của parentId/epicId (B22)', () => {
   const T = {
     task: { key: 'TASK', hierarchyLevel: 0, isSubtask: false },
@@ -3898,6 +3899,50 @@ describe('IssuesService — cây việc: server chặn đích sai của parentId
     });
     await expect(patch(tx, { parentId: null })).resolves.toBeDefined();
     await expect(patch(tx, { parentId: 'old' })).resolves.toBeDefined();
+  });
+
+  describe('parentId trỏ Epic => chuyển thành epicId (như Jira)', () => {
+    it('update: parentId = Epic => ghi epicId = Epic và parentId = null, không 422', async () => {
+      const tx = treeTx(issueRow({ parentId: 'old' }), {
+        e9: row({ type: T.epic }),
+        old: row(),
+      });
+      await expect(patch(tx, { parentId: 'e9' })).resolves.toBeDefined();
+      expect(tx.issue.updateMany.mock.calls[0]![0].data).toMatchObject({
+        epicId: 'e9',
+        parentId: null,
+      });
+    });
+
+    it('update: parentId = Epic kèm epicId KHÁC => 422 PARENT_CANNOT_BE_EPIC, không ghi', async () => {
+      const tx = treeTx(issueRow(), { e9: row({ type: T.epic }), e2: row({ type: T.epic }) });
+      await expect(patch(tx, { parentId: 'e9', epicId: 'e2' })).rejects.toMatchObject({
+        status: 422,
+        code: 'PARENT_CANNOT_BE_EPIC',
+      });
+      expect(tx.issue.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('update: parentId = Epic kèm đúng epicId đó => như gắn vào Epic', async () => {
+      const tx = treeTx(issueRow(), { e9: row({ type: T.epic }) });
+      await expect(patch(tx, { parentId: 'e9', epicId: 'e9' })).resolves.toBeDefined();
+      expect(tx.issue.updateMany.mock.calls[0]![0].data).toMatchObject({
+        epicId: 'e9',
+        parentId: null,
+      });
+    });
+
+    it('create: parentId = Epic => tạo với epicId = Epic, parentId = null', async () => {
+      const { tx, created } = createTxFor({ e9: row({ type: T.epic }) });
+      await makeService(tx).service.create('w1', 'u1', {
+        projectId: 'p1',
+        typeId: 't1',
+        summary: 's',
+        descriptionFormat: 'MARKDOWN',
+        parentId: 'e9',
+      });
+      expect(created.mock.calls[0]![0].data).toMatchObject({ epicId: 'e9', parentId: null });
+    });
   });
 
   describe('create (đường API)', () => {

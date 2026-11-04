@@ -11,7 +11,10 @@
  *    thức trừ khi chỉnh tay; ghi khi khác và tăng `version`;
  *  - việc cha có việc con: bỏ cờ `pointsManual` (cha thuần);
  *  - Epic = tổng điểm việc CẤP TRÊN (không cha, hoặc cha đã xoá mềm) thuộc Epic, chưa xoá; ghi khi khác và tăng `version`;
- *  - sửa dữ liệu cũ: sprint của việc con = sprint của việc cha còn sống (tăng `version`, không đổi `updatedAt`).
+ *  - BƯỚC ĐẦU (trước mọi bước tính): chuẩn hoá liên kết "cha là Epic" — việc còn sống có `parentId` trỏ Epic còn sống thì đổi
+ *    thành `epicId = parentId`, `parentId = NULL` (đã gắn Epic KHÁC thì giữ epicId đó, chỉ bỏ parentId); như Jira, Epic không
+ *    làm việc cha. Idempotent (chạy lại 0 dòng), SQL thô, tăng `version`, không đổi `updatedAt`;
+ *  - sửa dữ liệu cũ: sprint của việc con = sprint của việc cha còn sống, không kể cha là Epic (tăng `version`, không đổi `updatedAt`).
  * Không phát sự kiện realtime (script chạy lúc triển khai, chưa có ai mở trang).
  * Ghi bằng SQL thô và KHÔNG đổi `updatedAt` (SLA / "cập nhật gần đây" dựa vào nó; đây là tính lại của hệ thống, không phải
  * người dùng sửa). WHERE lặp lại đầu vào đã tính (loại, độ khó, ưu tiên) + `pointsManual = false` nên việc vừa bị người dùng
@@ -19,7 +22,8 @@
  *
  *   pnpm --filter @tirapro/api run points:recompute
  *
- * Cần DATABASE_URL và đã build @tirapro/types + @tirapro/shared. In đúng MỘT dòng kết quả:
+ * Cần DATABASE_URL và đã build @tirapro/types + @tirapro/shared. In hai dòng:
+ *   normalised N epic-parent links
  *   recomputed N issues, M epics, S child sprints synced
  */
 import { PrismaClient } from '@prisma/client';
@@ -49,6 +53,21 @@ try {
   const typeKey = new Map(types.map((t) => [t.id, t.key]));
   const priorityName = new Map(priorities.map((p) => [p.id, p.name]));
 
+  // Bước 1 — chuẩn hoá cha là Epic (xem đầu tệp). Việc con KHÔNG phải Epic; cả cha lẫn con còn sống. Phải chạy TRƯỚC mọi bước dưới:
+  // sau đây việc không còn là "con" của Epic nên điểm/sprint/tổng Epic tính theo cây đã chuẩn.
+  const normalised = await prisma.$executeRaw`
+    UPDATE "Issue" AS c
+    SET "epicId" = COALESCE(c."epicId", c."parentId"),
+        "parentId" = NULL,
+        "version" = c."version" + 1
+    FROM "Issue" AS p, "IssueType" AS pt, "IssueType" AS ct
+    WHERE c."parentId" = p."id"
+      AND pt."id" = p."typeId" AND pt."key" = 'EPIC'
+      AND ct."id" = c."typeId" AND ct."key" IS DISTINCT FROM 'EPIC'
+      AND c."deletedAt" IS NULL
+      AND p."deletedAt" IS NULL`;
+  console.log(`normalised ${normalised} epic-parent links`);
+
   // Việc con theo sprint của việc cha (sửa dữ liệu cũ, idempotent): đặt sprint của việc con = sprint của cha còn sống khi khác;
   // lặp theo tầng (cha → con → cháu). Tăng `version` (OCC) nhưng KHÔNG đổi `updatedAt`.
   let sprintSynced = 0;
@@ -60,6 +79,7 @@ try {
       WHERE c."parentId" = p."id"
         AND c."deletedAt" IS NULL
         AND p."deletedAt" IS NULL
+        AND p."typeId" NOT IN (SELECT "id" FROM "IssueType" WHERE "key" = 'EPIC')
         AND c."sprintId" IS DISTINCT FROM p."sprintId"`;
     if (n === 0) break;
     sprintSynced += n;

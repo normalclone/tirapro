@@ -75,6 +75,8 @@ export const ERROR_CODES = {
   POINTS_OVERRIDE_FORBIDDEN: 'POINTS_OVERRIDE_FORBIDDEN',
   POINTS_ROLLUP_ONLY: 'POINTS_ROLLUP_ONLY',
   CHILD_SPRINT_FOLLOWS_PARENT: 'CHILD_SPRINT_FOLLOWS_PARENT',
+  /** 422: việc cha là Epic nhưng việc lại được gắn vào một Epic KHÁC — mơ hồ nên không tự chuyển (parentId trỏ Epic thường được đổi thành epicId). */
+  PARENT_CANNOT_BE_EPIC: 'PARENT_CANNOT_BE_EPIC',
   /** 422: Hạn là bắt buộc — không xoá trống được (cập nhật/sửa hàng loạt/quy tắc đặt Hạn rỗng). */
   DUE_DATE_REQUIRED: 'DUE_DATE_REQUIRED',
   /** 413: tệp tải lên vượt giới hạn dung lượng. */
