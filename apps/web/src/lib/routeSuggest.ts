@@ -14,6 +14,7 @@ export interface RouteEntry {
  * Không đưa `/admin/*`: console quản trị chỉ dành admin hệ thống, không gợi ý cho người gõ nhầm.
  */
 export const ROUTE_CATALOG: readonly RouteEntry[] = [
+  { path: '/me', label: APP_NAV_LABELS.me, keywords: ['me', 'viec cua toi', 'ca nhan'] },
   { path: '/', label: APP_NAV_LABELS.home, keywords: ['dashboard', 'home', 'trang chu'] },
   { path: '/projects', label: APP_NAV_LABELS.projects, keywords: ['project', 'du an'] },
   { path: '/filters', label: APP_NAV_LABELS.filters, keywords: ['filter', 'bo loc', 'search'] },

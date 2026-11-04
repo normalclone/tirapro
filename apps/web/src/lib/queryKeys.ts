@@ -212,6 +212,8 @@ export const keys = {
     jql: (jql: string, limit: number) => ['dashboards', 'jql', jql, limit] as const,
   },
 
+  meOverview: ['me-overview'] as const,
+
   dashboard: {
     myIssues: ['my-issues'] as const,
     myBugs: ['my-bugs'] as const,

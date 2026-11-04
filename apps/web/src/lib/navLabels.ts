@@ -6,6 +6,7 @@
 
 /** Điều hướng chính (sidebar, thanh tab đáy, sheet "Tôi"). */
 export const APP_NAV_LABELS = {
+  me: 'Của tôi',
   home: 'Tổng quan',
   projects: 'Dự án',
   filters: 'Bộ lọc đã lưu',

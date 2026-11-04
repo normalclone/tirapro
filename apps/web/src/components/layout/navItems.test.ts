@@ -5,6 +5,7 @@ describe('navItems (nguồn chung sidebar / thanh tab đáy / sheet Tôi)', () =
   it('người dùng thường: sheet = mọi mục nav trừ 2 mục đã có trên thanh (Tổng quan, Dự án)', () => {
     const rest = sheetNavItems(NAV_ITEMS, false).map((i) => i.to);
     expect(rest).toEqual([
+      '/me',
       '/filters',
       '/members',
       '/manage',
@@ -18,6 +19,7 @@ describe('navItems (nguồn chung sidebar / thanh tab đáy / sheet Tôi)', () =
   it('sheet tôn trọng quyền: mục đã bị lọc khỏi danh sách đầu vào thì không xuất hiện', () => {
     const visible = NAV_ITEMS.filter((i) => !i.rule);
     expect(sheetNavItems(visible, false).map((i) => i.to)).toEqual([
+      '/me',
       '/filters',
       '/members',
       '/manage',
@@ -32,12 +34,21 @@ describe('navItems (nguồn chung sidebar / thanh tab đáy / sheet Tôi)', () =
       '/admin/points',
     ]);
   });
+  it('"Của tôi" (/me) đứng ngay trên Tổng quan và chỉ khớp đúng /me', () => {
+    const [me, home] = NAV_ITEMS;
+    expect(me!.to).toBe('/me');
+    expect(home!.to).toBe('/');
+    expect(me!.match('/me')).toBe(true);
+    expect(me!.match('/members')).toBe(false);
+    expect(home.match('/me')).toBe(false);
+  });
   it('Tổng quan và Dự án khớp đúng route (Dự án active cả /p/*)', () => {
-    const [home, projects] = NAV_ITEMS;
-    expect(home!.match('/')).toBe(true);
-    expect(home!.match('/projects')).toBe(false);
-    expect(projects!.match('/p/PSL/board')).toBe(true);
-    expect(projects!.match('/projects')).toBe(true);
+    const home = NAV_ITEMS.find((i) => i.to === '/')!;
+    const projects = NAV_ITEMS.find((i) => i.to === '/projects')!;
+    expect(home.match('/')).toBe(true);
+    expect(home.match('/projects')).toBe(false);
+    expect(projects.match('/p/PSL/board')).toBe(true);
+    expect(projects.match('/projects')).toBe(true);
   });
   it('thanh tab admin: nhãn dài "Không gian làm việc" có nhãn ngắn, các ô khác không cần', () => {
     const tabs = ADMIN_NAV.slice(0, ADMIN_TAB_COUNT);
