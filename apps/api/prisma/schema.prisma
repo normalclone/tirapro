@@ -269,6 +269,7 @@ model User {
   guideStates             UserGuideState[]
   apiKeys                 ApiKey[]
   teamMemberships         TeamMember[]
+  subTeamMemberships      ProjectSubTeamMember[]
   ledTeams                Team[]                   @relation("TeamLead")
   issueParticipations     IssueParticipant[]
   allocations             Allocation[]
@@ -567,6 +568,7 @@ model Project {
   healthUpdatedBy   User?                     @relation("ProjectHealthUpdater", fields: [healthUpdatedById], references: [id], onDelete: SetNull)
   memberships       ProjectMembership[]
   teamLinks         ProjectTeamLink[]
+  subTeams          ProjectSubTeam[]
   issues            Issue[]
   boards            Board[]
   sprints           Sprint[]
@@ -2382,4 +2384,33 @@ model PointsFormulaConfig {
   formula     Json
   updatedAt   DateTime @updatedAt
   updatedById String?
+}
+
+/// Team RIÊNG trong một dự án (lọc / nhóm trên board, báo cáo, JQL `team`) — KHÔNG cấp quyền. Thành viên ⊆ thành viên dự án.
+model ProjectSubTeam {
+  id          String   @id @default(cuid())
+  projectId   String
+  name        String
+  color       String?
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  project Project                @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  members ProjectSubTeamMember[]
+
+  @@unique([projectId, name])
+  @@index([projectId])
+}
+
+model ProjectSubTeamMember {
+  subTeamId String
+  userId    String
+  createdAt DateTime @default(now())
+
+  subTeam ProjectSubTeam @relation(fields: [subTeamId], references: [id], onDelete: Cascade)
+  user    User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([subTeamId, userId])
+  @@index([userId])
 }

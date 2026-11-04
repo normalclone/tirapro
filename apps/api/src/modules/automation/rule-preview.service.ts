@@ -13,6 +13,7 @@ import { SYSTEM_USER_EMAIL } from '../../common/system-user';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { ProjectAccessService } from '../rbac/project-access.service';
 import { compileJql, jqlDependsOnViewer } from '../search/jql-compiler';
+import { loadJqlSubTeams } from '../search/jql-teams';
 import { fieldConditionToWhere, isJqlCondition } from './rule-conditions';
 
 const UNSUPPORTED = 'không xem trước được điều kiện này';
@@ -67,7 +68,8 @@ export class RulePreviewService {
           throw e;
         }
         currentUserInJql ||= jqlDependsOnViewer(ast.where);
-        wheres.push(compileJql(ast, { currentUserId: systemId }).where);
+        const subTeams = await loadJqlSubTeams(this.prisma, organizationId, ast.where);
+        wheres.push(compileJql(ast, { currentUserId: systemId, subTeams }).where);
       } else {
         const where = fieldConditionToWhere(c);
         // `contains` trên chữ (không phải ngày) chỉ trả null vì có chữ ngoài tập gấp-hoa-thường chắc chắn → gợi ý cho người soạn.

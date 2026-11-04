@@ -998,6 +998,14 @@ Chưa có báo cáo nào xác nhận các mục này đã chạy; người kiể
 - Dự án công khai: gắn team **không làm giảm quyền** — người chỉ có vai trò nhờ team vẫn giữ vai trò mặc định theo tổ chức (ví dụ Thành viên vẫn là Developer) cộng thêm vai trò của team.
 - **Quyền:** gắn/gỡ cần `project:admin` của dự án (hoặc quản trị tổ chức). Sửa thành viên / xoá team đang gắn với vai trò mang `organization:admin` cần `organization:admin` (`team:manage` một mình không đủ — tránh tự nâng quyền qua team); team không gắn vai trò quản trị: quyền `team:manage` như cũ.
 
+## 2b. Team riêng trong dự án (không cấp quyền)
+
+- **Có migration:** `20261107100000_project_sub_teams` (bảng `ProjectSubTeam`, `ProjectSubTeamMember`; chỉ cộng thêm, đã kiểm trên PostgreSQL 16 và 18).
+- API `GET/POST /projects/:projectId/sub-teams`, `PATCH /:id`, `PUT /:id/members`, `DELETE /:id`: xem cần `project:view`, quản lý cần `project:admin`. Tên duy nhất trong dự án (không phân biệt hoa/thường); một người vào nhiều team; thành viên phải là thành viên dự án (dự án riêng tư: có `ProjectMembership`). Người rời dự án riêng tư, bị gỡ khỏi tổ chức hoặc khi dự án chuyển sang riêng tư mà họ chưa là thành viên thì tự ra khỏi team.
+- JQL trường `team`: `team = "QA"`, `!=`, `IN`, `NOT IN`, `IS [NOT] EMPTY` — người phụ trách thuộc team tên đó **trong chính dự án của việc** (hai dự án cùng có team "QA" thì mỗi việc xét theo team của dự án mình). Tên không tồn tại báo lỗi 422 kèm "ý bạn là", `GET /search/fields` trả `teams` để gợi ý giá trị. Chưa hỗ trợ `~` và ORDER BY `team`.
+- Board: `GET /boards/:id/issues?teamIds=a,b` lọc việc có người phụ trách thuộc các team đó; `GET /boards/:id/team-lanes` trả các làn theo team (kèm id thành viên) cho "Nhóm theo team"; `swimlaneBy` thêm giá trị `team`. Việc có người ở nhiều team nằm ở làn của từng team.
+- Báo cáo dự án: `GET /reports/project?projectId=…&teamId=…` thêm `byTeam` (số việc, đang làm, xong, quá hạn, điểm; điểm chỉ cộng việc lá; người ở nhiều team tính vào từng team nên tổng các dòng có thể lớn hơn tổng dự án; dòng "Chưa thuộc team nào" gồm việc chưa gán) và lọc toàn báo cáo theo team.
+
 ## 3. Còn mở
 
 - Tài khoản bị vô hiệu hoá / rời tổ chức chỉ được dọn ở lần đồng bộ kế tiếp (không có quyền nào khi không còn trong tổ chức nên vô hại).

@@ -34,6 +34,7 @@ import { touchedAdminRoleIds } from '../rbac/admin-grant';
 import { ApiKeyService } from '../api-keys/api-key.service';
 import { AuditService } from '../audit/audit.service';
 import { SYSTEM_USER_EMAIL } from '../../common/system-user';
+import { pruneSubTeamsOnOrganizationRemoved } from '../project-subteams/subteam-membership';
 import {
   clearDirectRoles,
   countActiveProjectMembers,
@@ -511,6 +512,7 @@ export class MembersService {
         where: { organizationId_userId: { organizationId, userId } },
       });
       await tx.projectMembership.deleteMany({ where: { userId, project: { organizationId } } });
+      await pruneSubTeamsOnOrganizationRemoved(tx, organizationId, userId); // ra khỏi mọi team riêng trong dự án của tổ chức
       return this.apiKeys.revokeAllForUser(organizationId, userId, tx);
     });
     await this.apiKeys.dropCaches(revokedPrefixes);

@@ -1,5 +1,11 @@
 import { Injectable } from '@nestjs/common';
-import { SWIMLANE_BY, type BoardDto, type IssueDto, type SwimlaneBy } from '@tirapro/types';
+import {
+  SWIMLANE_BY,
+  type BoardDto,
+  type BoardTeamLaneDto,
+  type IssueDto,
+  type SwimlaneBy,
+} from '@tirapro/types';
 import {
   JqlParseError,
   parseJql,
@@ -259,16 +265,21 @@ export class BoardsService {
     boardId: string,
     cursor: string | undefined,
     limit: number,
+    teamIds?: string[],
   ): Promise<PageResult<IssueDto>> {
     const board = await this.prisma.board.findFirst({
       where: { id: boardId, deletedAt: null, project: { organizationId, deletedAt: null } },
       select: { projectId: true, filterJql: true },
     });
     if (!board) throw new NotFoundAppException('Bảng việc');
+    // Bộ lọc nhanh theo team riêng của dự án: người phụ trách ∈ hợp thành viên các team đã chọn (cộng với bộ lọc JQL của board nếu có).
+    const assigneeIds = teamIds?.length
+      ? await this.teamMemberIds(board.projectId, teamIds)
+      : undefined;
     if (!board.filterJql?.trim()) {
       return this.issues.list(
         organizationId,
-        { projectId: board.projectId },
+        { projectId: board.projectId, ...(assigneeIds ? { assigneeIds } : {}) },
         cursor,
         limit,
         userId,
@@ -282,7 +293,44 @@ export class BoardsService {
       limit,
       excludeUntriaged: true, // cùng quy tắc với nhánh `list()` ở trên: việc chưa duyệt không lên board
       orderByRank: true, // cùng thứ tự với board không có bộ lọc (IssuesService.list: rank tăng dần) để phân trang khớp thứ tự hiển thị
+      ...(assigneeIds ? { assigneeIds } : {}),
     });
+  }
+
+  /** Hợp thành viên các team riêng `teamIds` của dự án; id không thuộc dự án → 422 (không lọc im lặng sai). */
+  private async teamMemberIds(projectId: string, teamIds: string[]): Promise<string[]> {
+    const unique = [...new Set(teamIds)];
+    const teams = await this.prisma.projectSubTeam.findMany({
+      where: { id: { in: unique }, projectId },
+      select: { members: { select: { userId: true } } },
+    });
+    if (teams.length !== unique.length)
+      throw new BusinessRuleException('Có team không thuộc dự án của bảng này');
+    return [...new Set(teams.flatMap((t) => t.members.map((m) => m.userId)))];
+  }
+
+  /**
+   * Dữ liệu swimlane "theo team": mỗi team riêng của dự án một làn (xếp theo tên) kèm id thành viên. Một việc nằm ở làn của TỪNG team mà
+   * người phụ trách thuộc về (người ở nhiều team → nhiều làn); việc chưa gán / người không thuộc team nào đi vào làn "Chưa thuộc team"
+   * (giao diện dựng từ `memberIds`).
+   */
+  async teamLanes(organizationId: string, boardId: string): Promise<BoardTeamLaneDto[]> {
+    const board = await this.prisma.board.findFirst({
+      where: { id: boardId, deletedAt: null, project: { organizationId, deletedAt: null } },
+      select: { projectId: true },
+    });
+    if (!board) throw new NotFoundAppException('Bảng việc');
+    const teams = await this.prisma.projectSubTeam.findMany({
+      where: { projectId: board.projectId },
+      orderBy: { name: 'asc' },
+      select: { id: true, name: true, color: true, members: { select: { userId: true } } },
+    });
+    return teams.map((t) => ({
+      teamId: t.id,
+      name: t.name,
+      color: t.color,
+      memberIds: t.members.map((m) => m.userId),
+    }));
   }
 
   private toDto(b: BoardRow): BoardDto {

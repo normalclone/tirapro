@@ -120,4 +120,13 @@ describe('suggestJql', () => {
     const r2 = suggestJql('status = "In AND summary ~ "x"', 12, cat);
     expect(r2.to).toBe(12);
   });
+  it('team: gợi ý tên trường, toán tử và giá trị từ danh mục', () => {
+    const withTeams = { ...cat, teams: ['QA', 'Dev nội bộ'] };
+    const l = (t: string) => suggestJql(t, t.length, withTeams).items.map((i) => i.insert);
+    expect(l('te')).toContain('team');
+    expect(l('team ')).toEqual(expect.arrayContaining(['=', '!=', 'IN']));
+    expect(l('team = ')).toEqual(expect.arrayContaining(['QA', '"Dev nội bộ"']));
+    // không cho ORDER BY team (không có thứ tự tự nhiên)
+    expect(l('project = X ORDER BY ')).not.toContain('team');
+  });
 });

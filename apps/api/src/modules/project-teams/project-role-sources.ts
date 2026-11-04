@@ -1,4 +1,5 @@
 import type { Prisma } from '@prisma/client';
+import { pruneSubTeamsOnMembershipRemoved } from '../project-subteams/subteam-membership';
 
 type Tx = Prisma.TransactionClient;
 
@@ -188,6 +189,7 @@ export async function reconcileTeamRoles(
   const alive = await ensurePrimary(tx, m);
   if (!alive) {
     await tx.projectMembership.delete({ where: { id: m.id } });
+    await pruneSubTeamsOnMembershipRemoved(tx, a.projectId, a.userId); // dự án riêng tư: không còn là thành viên → ra khỏi team riêng
     return { changed: true, created: false, removed: true, keptLastOfPrivate: false };
   }
   return { changed: true, created, removed: false, keptLastOfPrivate: false };
@@ -273,7 +275,11 @@ export async function clearDirectRoles(tx: Tx, membership: MembershipRef): Promi
   });
   const alive = await ensurePrimary(tx, membership);
   if (!alive) {
-    await tx.projectMembership.delete({ where: { id: membership.id } });
+    const gone = await tx.projectMembership.delete({
+      where: { id: membership.id },
+      select: { projectId: true, userId: true },
+    });
+    await pruneSubTeamsOnMembershipRemoved(tx, gone.projectId, gone.userId); // dự án riêng tư: ra khỏi team riêng
     return true;
   }
   return false;

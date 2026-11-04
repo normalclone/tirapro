@@ -36,6 +36,9 @@ export const AUDIT_ACTIONS = {
   WIKI_PAGE_RESTORED: 'wiki.page_restored',
   WIKI_VERSION_RESTORED: 'wiki.version_restored',
   POINTS_FORMULA_CHANGED: 'points.formula_changed',
+  PROJECT_SUBTEAM_CREATED: 'project_subteam.created',
+  PROJECT_SUBTEAM_UPDATED: 'project_subteam.updated',
+  PROJECT_SUBTEAM_DELETED: 'project_subteam.deleted',
 } as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];
 
@@ -73,6 +76,9 @@ export const AUDIT_ACTION_LABEL: Record<AuditAction, string> = {
   'wiki.page_restored': 'Khôi phục trang wiki đã xoá',
   'wiki.version_restored': 'Khôi phục phiên bản trang wiki',
   'points.formula_changed': 'Đổi cách tính điểm (toàn hệ thống)',
+  'project_subteam.created': 'Tạo team trong dự án',
+  'project_subteam.updated': 'Sửa team trong dự án',
+  'project_subteam.deleted': 'Xoá team trong dự án',
 };
 
 export interface AuditLogDto {

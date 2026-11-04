@@ -93,6 +93,39 @@ export interface ProjectTeamLinkDto {
   createdAt: ISODate;
 }
 
+/** Team RIÊNG trong dự án (lọc / nhóm board, báo cáo, JQL `team`; không cấp quyền). */
+export interface ProjectSubTeamDto {
+  id: ID;
+  projectId: ID;
+  name: string;
+  color: string | null;
+  /** Người trong team (đều là thành viên dự án), xếp theo tên. */
+  members: Array<{ id: ID; displayName: string; avatarUrl: string | null }>;
+  memberCount: number;
+  createdAt: ISODate;
+}
+
+/** Một làn swimlane theo team của board: việc có người phụ trách trong `memberIds` thuộc làn này (một người ở nhiều team → nằm ở nhiều làn). */
+export interface BoardTeamLaneDto {
+  teamId: ID;
+  name: string;
+  color: string | null;
+  memberIds: ID[];
+}
+
+/** Dòng "theo team" của báo cáo dự án. Một người ở nhiều team được tính vào MỖI team của họ (nên tổng các dòng có thể lớn hơn tổng dự án). Điểm chỉ cộng việc lá. */
+export interface ProjectReportTeamRow {
+  id: ID | null; // null = dòng "Chưa thuộc team nào" (gồm việc chưa gán)
+  name: string;
+  color: string | null;
+  memberCount: number;
+  total: number;
+  inProgress: number;
+  done: number;
+  overdue: number;
+  points: number;
+}
+
 export interface MembershipDto {
   id: ID;
   organizationId: ID;
@@ -456,7 +489,7 @@ export interface BoardColumnDto {
 }
 
 /** Cách nhóm thẻ thành swimlane trên board. */
-export const SWIMLANE_BY = ['none', 'assignee', 'epic', 'priority', 'parent'] as const;
+export const SWIMLANE_BY = ['none', 'assignee', 'epic', 'priority', 'parent', 'team'] as const;
 export type SwimlaneBy = (typeof SWIMLANE_BY)[number];
 
 export interface BoardDto {

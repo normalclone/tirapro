@@ -616,4 +616,24 @@ describe('RbacService — tư cách thành viên chỉ do team (gắn team khôn
     expect(b.roleIdsQueried()).toContain('rleg');
     expect(b.roleIdsQueried()).not.toContain('rdev');
   });
+
+  it('Người xem tổ chức (không có vai trò dự án mặc định) + vai trò nhờ team: chỉ có vai trò của team', async () => {
+    const t = teamSetup({ isPrivate: false, roles: [{ roleId: 'rrep', direct: false }] });
+    t.prisma.organizationMembership.findUnique.mockResolvedValue({
+      roleId: 'rv',
+      roles: [{ role: { id: 'rv', name: 'Organization Viewer' } }],
+    } as never);
+    await t.svc.getEffectivePermissions('U1', 'W1', 'P1');
+    expect(t.roleIdsQueried()).toContain('rrep');
+    expect(t.roleIdsQueried()).not.toContain('rdev');
+    expect(t.prisma.role.findMany).not.toHaveBeenCalled(); // không có vai trò mặc định để tra
+  });
+
+  it('không còn là thành viên tổ chức: vai trò nhờ team ở dự án cũng không cho quyền nào', async () => {
+    const t = teamSetup({ isPrivate: false, roles: [{ roleId: 'rrep', direct: false }] });
+    t.prisma.organizationMembership.findUnique.mockResolvedValue(null);
+    const perms = await t.svc.getEffectivePermissions('U1', 'W1', 'P1');
+    expect(perms.size).toBe(0);
+    expect(t.prisma.rolePermission.findMany).not.toHaveBeenCalled();
+  });
 });

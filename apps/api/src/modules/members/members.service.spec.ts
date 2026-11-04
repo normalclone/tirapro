@@ -97,6 +97,7 @@ describe('MembersService.removeOrganization', () => {
     const tx = {
       organizationMembership: { delete: vi.fn(() => Promise.resolve({})) },
       projectMembership: { deleteMany: vi.fn(() => Promise.resolve({ count: 2 })) },
+      projectSubTeamMember: { deleteMany: vi.fn(() => Promise.resolve({ count: 0 })) },
     };
     const prisma = {
       $transaction: vi.fn((fn: (t: unknown) => unknown) => Promise.resolve(fn(tx))),
@@ -140,6 +141,10 @@ describe('MembersService.removeOrganization', () => {
     });
     expect(tx.projectMembership.deleteMany).toHaveBeenCalledWith({
       where: { userId: 'u1', project: { organizationId: 'w1' } },
+    });
+    // ra khỏi mọi team riêng trong dự án của tổ chức (cùng transaction)
+    expect(tx.projectSubTeamMember.deleteMany).toHaveBeenCalledWith({
+      where: { userId: 'u1', subTeam: { project: { organizationId: 'w1' } } },
     });
     expect(apiKeys.revokeAllForUser).toHaveBeenCalledWith('w1', 'u1', tx);
     expect(apiKeys.dropCaches).toHaveBeenCalledWith(['pfx1', 'pfx2']);

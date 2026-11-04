@@ -49,6 +49,8 @@ export interface FilterFields {
   resolutions: FieldOption[];
   components: FieldOption[];
   versions: FieldOption[];
+  /** Team riêng trong dự án (JQL `team`) — API mới có; tuỳ chọn để dữ liệu cũ vẫn hợp lệ. */
+  teams?: FieldOption[];
 }
 
 /** Danh mục giá trị cho bộ dựng truy vấn trực quan (gom theo tổ chức). */

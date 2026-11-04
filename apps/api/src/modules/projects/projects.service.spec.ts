@@ -549,6 +549,7 @@ function setupPrivacyUpdate(opts: { cur?: Record<string, unknown> } = {}) {
   const tx = {
     project: { update: vi.fn((_a?: unknown) => Promise.resolve({ id: 'p1' })) },
     projectMembership: { upsert: vi.fn((_a?: unknown) => Promise.resolve({ id: 'pm' })) },
+    projectSubTeamMember: { deleteMany: vi.fn((_a?: unknown) => Promise.resolve({ count: 0 })) },
   };
   const prisma = {
     project: {
@@ -603,6 +604,13 @@ describe('ProjectsService.update — đổi riêng tư', () => {
         (c[0] as { where: { projectId_userId: { userId: string } } }).where.projectId_userId.userId,
     );
     expect(users.sort()).toEqual(['actor1', 'lead1']);
+    // người không có ProjectMembership ra khỏi team riêng của dự án (cùng transaction)
+    expect(tx.projectSubTeamMember.deleteMany).toHaveBeenCalledWith({
+      where: {
+        subTeam: { projectId: 'p1' },
+        user: { projectMemberships: { none: { projectId: 'p1' } } },
+      },
+    });
     expect(tx.projectMembership.upsert.mock.calls[0]![0]).toMatchObject({
       update: {},
       create: {

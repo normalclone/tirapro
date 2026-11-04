@@ -57,6 +57,7 @@ import { WatchersModule } from './modules/watchers/watchers.module';
 import { IssueLinksModule } from './modules/issue-links/issue-links.module';
 import { RolesModule } from './modules/roles/roles.module';
 import { MembersModule } from './modules/members/members.module';
+import { ProjectSubTeamsModule } from './modules/project-subteams/project-subteams.module';
 import { ProjectTeamsModule } from './modules/project-teams/project-teams.module';
 import { TeamsModule } from './modules/teams/teams.module';
 import { IssueExtrasModule } from './modules/issue-extras/issue-extras.module';
@@ -177,6 +178,7 @@ import { ApiKeyModule } from './modules/api-keys/api-key.module';
     MembersModule,
     TeamsModule,
     ProjectTeamsModule,
+    ProjectSubTeamsModule,
     IssueExtrasModule,
     SlaModule,
     PlanningModule,

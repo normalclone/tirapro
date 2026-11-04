@@ -32,6 +32,7 @@ import { SYSTEM_USER_EMAIL } from '../../common/system-user';
 import { IssuesService } from '../issues/issues.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { compileJql } from '../search/jql-compiler';
+import { loadJqlSubTeams } from '../search/jql-teams';
 import { runActions, type ActionContext, type StepLog } from './actions';
 import { describeCondition, evalFieldCondition, isJqlCondition } from './rule-conditions';
 import { RulesService, type CachedRule } from './rules.service';
@@ -402,7 +403,9 @@ export class RuleEngineService implements OnModuleInit, OnApplicationShutdown {
 
   /** `jql` → compile → đếm đúng issue này với bộ lọc đó; 1 = khớp. */
   private async matchesJql(jql: string, issue: IssueDto, systemId: string): Promise<boolean> {
-    const { where } = compileJql(parseJql(jql), { currentUserId: systemId });
+    const ast = parseJql(jql);
+    const subTeams = await loadJqlSubTeams(this.prisma, issue.organizationId, ast.where);
+    const { where } = compileJql(ast, { currentUserId: systemId, subTeams });
     const n = await this.prisma.issue.count({
       where: { id: issue.id, organizationId: issue.organizationId, deletedAt: null, AND: [where] },
     });
@@ -498,8 +501,11 @@ export class RuleEngineService implements OnModuleInit, OnApplicationShutdown {
     const systemId = await this.systemUserId();
     const wheres: Prisma.IssueWhereInput[] = [];
     for (const c of parsed.data) {
-      if (isJqlCondition(c))
-        wheres.push(compileJql(parseJql(c.jql), { currentUserId: systemId }).where);
+      if (isJqlCondition(c)) {
+        const ast = parseJql(c.jql);
+        const subTeams = await loadJqlSubTeams(this.prisma, rule.organizationId, ast.where);
+        wheres.push(compileJql(ast, { currentUserId: systemId, subTeams }).where);
+      }
     }
     const where: Prisma.IssueWhereInput = {
       AND: [

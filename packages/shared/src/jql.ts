@@ -36,6 +36,8 @@ export const JQL_FIELDS = {
   sprint: { type: 'ref', column: 'sprint.name' },
   labels: { type: 'array', column: 'labels' },
   component: { type: 'array', column: 'components' },
+  /** Team RIÊNG trong dự án của việc: người phụ trách thuộc team tên đó (so theo tên trong chính dự án của việc). */
+  team: { type: 'array', column: 'subTeams' },
   fixVersion: { type: 'array', column: 'fixVersions' },
   affectedVersion: { type: 'array', column: 'affectedVersions' },
   /** Mã công việc: mã Tirapro `PROJ-TYPE-N` hoặc mã Jira gốc `JRA-1` (L27) — luôn lưu HOA. */

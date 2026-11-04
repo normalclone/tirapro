@@ -92,6 +92,7 @@ describe('AnalyticsService.projectReport — aggregate SQL', () => {
     const count = vi.fn().mockResolvedValueOnce(2).mockResolvedValueOnce(4);
     const prisma = {
       project: { findFirst: vi.fn(() => Promise.resolve({ id: 'p1' })) },
+      projectSubTeam: { findMany: vi.fn(() => Promise.resolve([])) }, // dự án chưa có team riêng
       issue: { groupBy, count },
       status: { findMany: vi.fn(() => Promise.resolve(statuses)) },
       issueType: {

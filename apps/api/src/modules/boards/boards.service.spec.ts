@@ -443,6 +443,87 @@ describe('BoardsService.listIssues — board có filterJql sắp theo rank (Mino
   });
 });
 
+describe('BoardsService — bộ lọc / swimlane theo team riêng của dự án', () => {
+  function make(filterJql: string, teams: Array<{ id: string; members: string[] }>) {
+    const search = { search: vi.fn((..._a: unknown[]) => Promise.resolve({ data: [] })) };
+    const issues = { list: vi.fn((..._a: unknown[]) => Promise.resolve({ data: [] })) };
+    const prisma = {
+      board: { findFirst: vi.fn(() => Promise.resolve({ projectId: 'p1', filterJql })) },
+      projectSubTeam: {
+        findMany: vi.fn((a: { where: { id?: { in: string[] } } }) =>
+          Promise.resolve(
+            teams
+              .filter((t) => !a.where.id || a.where.id.in.includes(t.id))
+              .map((t) => ({
+                id: t.id,
+                name: t.id.toUpperCase(),
+                color: null,
+                members: t.members.map((userId) => ({ userId })),
+              })),
+          ),
+        ),
+      },
+    };
+    const service = new BoardsService(prisma as never, issues as never, search as never);
+    return { service, issues, search, prisma };
+  }
+  const TEAMS = [
+    { id: 'qa', members: ['u1', 'u2'] },
+    { id: 'dev', members: ['u2', 'u3'] },
+  ];
+
+  it('teamIds → người phụ trách ∈ hợp thành viên các team (đường không filterJql)', async () => {
+    const { service, issues } = make('', TEAMS);
+    await service.listIssues('w1', 'u9', 'b1', undefined, 50, ['qa', 'dev', 'qa']);
+    expect(issues.list.mock.calls[0]![1]).toEqual({
+      projectId: 'p1',
+      assigneeIds: ['u1', 'u2', 'u3'],
+    });
+  });
+
+  it('teamIds + filterJql của board → SearchService nhận thêm assigneeIds (giao với JQL)', async () => {
+    const { service, search } = make('status = Done', TEAMS);
+    await service.listIssues('w1', 'u9', 'b1', undefined, 50, ['dev']);
+    expect(search.search).toHaveBeenCalledWith(
+      'w1',
+      'u9',
+      expect.objectContaining({ jql: 'status = Done', assigneeIds: ['u2', 'u3'] }),
+    );
+  });
+
+  it('team rỗng (chưa có ai) → không việc nào (assigneeIds rỗng, không bỏ bộ lọc); không teamIds → như cũ', async () => {
+    const empty = make('', [{ id: 'e', members: [] }]);
+    await empty.service.listIssues('w1', 'u9', 'b1', undefined, 50, ['e']);
+    expect(empty.issues.list.mock.calls[0]![1]).toEqual({ projectId: 'p1', assigneeIds: [] });
+    const none = make('', TEAMS);
+    await none.service.listIssues('w1', 'u9', 'b1', undefined, 50);
+    expect(none.issues.list.mock.calls[0]![1]).toEqual({ projectId: 'p1' });
+    expect(none.prisma.projectSubTeam.findMany).not.toHaveBeenCalled();
+  });
+
+  it('team không thuộc dự án của bảng → 422, không truy vấn việc', async () => {
+    const { service, issues } = make('', TEAMS);
+    await expect(
+      service.listIssues('w1', 'u9', 'b1', undefined, 50, ['qa', 'cua-du-an-khac']),
+    ).rejects.toMatchObject({ status: 422 });
+    expect(issues.list).not.toHaveBeenCalled();
+  });
+
+  it('teamLanes: mỗi team một làn theo tên kèm id thành viên; bảng của tổ chức khác → 404', async () => {
+    const { service, prisma } = make('', TEAMS);
+    expect(await service.teamLanes('w1', 'b1')).toEqual([
+      { teamId: 'qa', name: 'QA', color: null, memberIds: ['u1', 'u2'] },
+      { teamId: 'dev', name: 'DEV', color: null, memberIds: ['u2', 'u3'] },
+    ]);
+    expect(prisma.projectSubTeam.findMany.mock.calls[0]![0]).toMatchObject({
+      where: { projectId: 'p1' },
+      orderBy: { name: 'asc' },
+    });
+    prisma.board.findFirst.mockResolvedValueOnce(null as never);
+    await expect(service.teamLanes('w2', 'b1')).rejects.toMatchObject({ status: 404 });
+  });
+});
+
 describe('BoardsService.listForProject — thiếu projectId (rò rỉ dự án riêng tư)', () => {
   it('projectId trống ⇒ 422, KHÔNG truy vấn (nếu không Prisma liệt kê bảng của MỌI dự án, kể cả riêng tư)', async () => {
     const findMany = vi.fn(() => Promise.resolve([]));

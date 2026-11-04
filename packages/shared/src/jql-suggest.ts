@@ -21,6 +21,8 @@ export interface JqlCatalog {
   /** Thành phần / phiên bản (B17) — tuỳ chọn để catalog cũ vẫn hợp lệ. */
   components?: string[];
   versions?: string[];
+  /** Tên team riêng trong dự án — tuỳ chọn để catalog cũ vẫn hợp lệ. */
+  teams?: string[];
 }
 
 export interface JqlSuggestion {
@@ -50,6 +52,7 @@ export const JQL_FIELD_HINTS: Record<JqlFieldName, string> = {
   sprint: 'Sprint',
   labels: 'Nhãn',
   component: 'Thành phần',
+  team: 'Team trong dự án (người phụ trách thuộc team)',
   fixVersion: 'Phiên bản sửa',
   affectedVersion: 'Phiên bản bị ảnh hưởng',
   key: 'Mã công việc (vd PROJ-STORY-7, hoặc mã Jira JRA-1)',
@@ -276,6 +279,8 @@ function catalogValues(field: JqlFieldName, cat: JqlCatalog): JqlSuggestion[] | 
       return vals(cat.labels);
     case 'component':
       return vals(cat.components);
+    case 'team':
+      return vals(cat.teams);
     case 'fixVersion':
     case 'affectedVersion':
       return vals(cat.versions);
