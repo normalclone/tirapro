@@ -485,12 +485,37 @@ export interface WidgetDto {
   refreshSec: number | null;
 }
 
+/** Người trong danh sách chia sẻ / chủ bộ lọc. */
+export interface SavedFilterPersonDto {
+  id: ID;
+  displayName: string;
+  avatarUrl: string | null;
+}
+
+/** Dự án được chia sẻ bộ lọc. */
+export interface SavedFilterProjectDto {
+  id: ID;
+  key: string;
+  name: string;
+}
+
+/**
+ * Bộ lọc đã lưu (`GET /filters`). `access`: `owner` = của tôi; `shared` = người khác chia sẻ cho tôi (qua dự án hoặc
+ * trực tiếp). Chủ thấy đủ danh sách chia sẻ; người khác chỉ thấy dự án HỌ xem được và chính mình trong danh sách người.
+ */
 export interface SavedFilterDto {
   id: ID;
   name: string;
   jql: string;
+  /** `SHARED` khi có ít nhất một dòng chia sẻ. */
   visibility: FilterVisibility;
   ownerId: ID;
+  isOwner: boolean;
+  access: 'owner' | 'shared';
+  owner: SavedFilterPersonDto | null;
+  sharedProjects: SavedFilterProjectDto[];
+  sharedUsers: SavedFilterPersonDto[];
+  createdAt: ISODate;
 }
 
 // ---------- Import từ Jira ----------

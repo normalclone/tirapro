@@ -58,6 +58,8 @@ const DEFAULT_NOTIFICATION_PREFS: NotificationPrefs = {
   SPRINT_STARTED: false,
   SPRINT_COMPLETED: false,
   WATCHING_UPDATE: false,
+  // Được chia sẻ bộ lọc: hành động trực tiếp nhắm vào người nhận, ít (mỗi người mới được thêm một lần) → bật.
+  FILTER_SHARED: true,
 };
 
 /**

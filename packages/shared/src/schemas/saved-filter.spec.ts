@@ -1,116 +1,120 @@
 import { describe, expect, it } from 'vitest';
 import {
-  SHARED_PROJECT_REQUIRED_MESSAGE,
-  effectiveFilterShareError,
+  MAX_SHARED_PROJECTS,
+  SHARE_TARGET_REQUIRED_MESSAGE,
+  resolveFilterShare,
   savedFilterCreateSchema,
   savedFilterUpdateSchema,
 } from './saved-filter';
 
 const base = { name: 'n', jql: 'project = HR' };
 
-describe('savedFilterCreateSchema — mức "Dự án" bắt buộc có dự án', () => {
-  it('PROJECT không kèm dự án (thiếu / null / rỗng) bị từ chối: nếu không, máy chủ coi là cả không gian thấy', () => {
+describe('savedFilterCreateSchema', () => {
+  it('SHARED không có dự án lẫn người nào (thiếu / rỗng) bị từ chối với câu rõ ràng', () => {
     for (const extra of [
-      { visibility: 'PROJECT' },
-      { visibility: 'PROJECT', sharedProjectId: null },
-      { visibility: 'PROJECT', sharedProjectId: undefined },
+      { visibility: 'SHARED' },
+      { visibility: 'SHARED', sharedProjectIds: [], sharedUserIds: [] },
     ]) {
       const r = savedFilterCreateSchema.safeParse({ ...base, ...extra });
       expect(r.success, JSON.stringify(extra)).toBe(false);
       if (!r.success) {
-        expect(r.error.issues[0]?.message).toBe(SHARED_PROJECT_REQUIRED_MESSAGE);
-        expect(r.error.issues[0]?.path).toEqual(['sharedProjectId']);
+        expect(r.error.issues[0]?.message).toBe(SHARE_TARGET_REQUIRED_MESSAGE);
+        expect(r.error.issues[0]?.path).toEqual(['sharedProjectIds']);
       }
     }
-    expect(
-      savedFilterCreateSchema.safeParse({ ...base, visibility: 'PROJECT', sharedProjectId: '' })
-        .success,
-    ).toBe(false);
   });
-  it('PROJECT + dự án, PRIVATE, WORKSPACE, và không nói gì (mặc định PRIVATE) đều hợp lệ', () => {
+  it('SHARED + ít nhất một dự án HOẶC một người; PRIVATE; không nói gì đều hợp lệ', () => {
     expect(
-      savedFilterCreateSchema.safeParse({ ...base, visibility: 'PROJECT', sharedProjectId: 'p1' })
+      savedFilterCreateSchema.safeParse({ ...base, visibility: 'SHARED', sharedProjectIds: ['p1'] })
+        .success,
+    ).toBe(true);
+    expect(
+      savedFilterCreateSchema.safeParse({ ...base, visibility: 'SHARED', sharedUserIds: ['u1'] })
         .success,
     ).toBe(true);
     expect(savedFilterCreateSchema.safeParse({ ...base, visibility: 'PRIVATE' }).success).toBe(
       true,
     );
-    expect(savedFilterCreateSchema.safeParse({ ...base, visibility: 'WORKSPACE' }).success).toBe(
-      true,
-    );
     expect(savedFilterCreateSchema.safeParse(base).success).toBe(true);
   });
-  it('giữ nguyên các luật cũ: tên và JQL bắt buộc', () => {
+  it('mức cũ WORKSPACE/PROJECT không còn hợp lệ', () => {
+    for (const visibility of ['WORKSPACE', 'PROJECT'])
+      expect(savedFilterCreateSchema.safeParse({ ...base, visibility }).success).toBe(false);
+  });
+  it('khử trùng id; chặn quá nhiều đích', () => {
+    const r = savedFilterCreateSchema.parse({
+      ...base,
+      visibility: 'SHARED',
+      sharedProjectIds: ['p1', 'p1', 'p2'],
+      sharedUserIds: ['u1', 'u1'],
+    });
+    expect(r.sharedProjectIds).toEqual(['p1', 'p2']);
+    expect(r.sharedUserIds).toEqual(['u1']);
+    const many = Array.from({ length: MAX_SHARED_PROJECTS + 1 }, (_, i) => `p${i}`);
+    expect(
+      savedFilterCreateSchema.safeParse({ ...base, visibility: 'SHARED', sharedProjectIds: many })
+        .success,
+    ).toBe(false);
+  });
+  it('giữ luật cũ: tên và JQL bắt buộc', () => {
     expect(savedFilterCreateSchema.safeParse({ name: '', jql: 'a = b' }).success).toBe(false);
     expect(savedFilterCreateSchema.safeParse({ name: 'x', jql: '' }).success).toBe(false);
   });
 });
 
 describe('savedFilterUpdateSchema', () => {
-  it('đổi sang PROJECT phải kèm dự án khác null', () => {
-    expect(savedFilterUpdateSchema.safeParse({ visibility: 'PROJECT' }).success).toBe(false);
-    expect(
-      savedFilterUpdateSchema.safeParse({ visibility: 'PROJECT', sharedProjectId: null }).success,
-    ).toBe(false);
-    expect(
-      savedFilterUpdateSchema.safeParse({ visibility: 'PROJECT', sharedProjectId: 'p1' }).success,
-    ).toBe(true);
-  });
-  it('các mức khác và sửa tên/JQL thì không đòi dự án; thân rỗng vẫn bị từ chối', () => {
-    expect(
-      savedFilterUpdateSchema.safeParse({ visibility: 'PRIVATE', sharedProjectId: null }).success,
-    ).toBe(true);
-    expect(
-      savedFilterUpdateSchema.safeParse({ visibility: 'WORKSPACE', sharedProjectId: null }).success,
-    ).toBe(true);
-    expect(savedFilterUpdateSchema.safeParse({ name: 'mới' }).success).toBe(true);
+  it('cần ít nhất một trường', () => {
     expect(savedFilterUpdateSchema.safeParse({}).success).toBe(false);
+    expect(savedFilterUpdateSchema.safeParse({ name: 'x' }).success).toBe(true);
+  });
+  it('SHARED tường minh phải kèm đích; gửi danh sách rỗng + PRIVATE là hợp lệ (bỏ chia sẻ)', () => {
+    expect(savedFilterUpdateSchema.safeParse({ visibility: 'SHARED' }).success).toBe(false);
+    expect(
+      savedFilterUpdateSchema.safeParse({
+        visibility: 'PRIVATE',
+        sharedProjectIds: [],
+        sharedUserIds: [],
+      }).success,
+    ).toBe(true);
   });
 });
 
-describe('effectiveFilterShareError — kiểm trạng thái SAU khi sửa (chốt chặn ở dịch vụ)', () => {
-  const row = (visibility: string, sharedProjectId: string | null) =>
-    ({ visibility, sharedProjectId }) as never;
-  it('không đụng tới visibility/sharedProjectId → luôn cho phép (bộ lọc cũ PROJECT + null vẫn đổi tên được)', () => {
-    expect(effectiveFilterShareError(row('PROJECT', null), { name: 'x' })).toBeNull();
-    expect(effectiveFilterShareError(row('PROJECT', null), {})).toBeNull();
+describe('resolveFilterShare', () => {
+  const shared = { visibility: 'SHARED' as const, sharedProjectIds: ['p1'], sharedUserIds: ['u1'] };
+  const priv = { visibility: 'PRIVATE' as const, sharedProjectIds: [], sharedUserIds: [] };
+  it('tạo mới: không nói gì → PRIVATE', () => {
+    expect(resolveFilterShare(null, {}).value).toEqual(priv);
   });
-  it('tạo/sửa ra PROJECT + null → lỗi, kể cả khi chỉ gỡ dự án của bộ lọc đang PROJECT', () => {
-    expect(effectiveFilterShareError(null, { visibility: 'PROJECT', sharedProjectId: null })).toBe(
-      SHARED_PROJECT_REQUIRED_MESSAGE,
-    );
-    expect(effectiveFilterShareError(null, { visibility: 'PROJECT' })).toBe(
-      SHARED_PROJECT_REQUIRED_MESSAGE,
-    );
-    expect(effectiveFilterShareError(row('PROJECT', 'p1'), { sharedProjectId: null })).toBe(
-      SHARED_PROJECT_REQUIRED_MESSAGE,
-    );
-    expect(effectiveFilterShareError(row('WORKSPACE', null), { visibility: 'PROJECT' })).toBe(
-      SHARED_PROJECT_REQUIRED_MESSAGE,
+  it('chỉ đổi tên/JQL (không đụng chia sẻ) → giữ nguyên, kể cả bộ lọc đang SHARED', () => {
+    expect(resolveFilterShare(shared, {}).value).toEqual(shared);
+  });
+  it('gửi danh sách mà không nói visibility: có đích → SHARED, hết đích → PRIVATE', () => {
+    expect(resolveFilterShare(priv, { sharedUserIds: ['u2'] }).value).toEqual({
+      visibility: 'SHARED',
+      sharedProjectIds: [],
+      sharedUserIds: ['u2'],
+    });
+    expect(resolveFilterShare(shared, { sharedProjectIds: [], sharedUserIds: [] }).value).toEqual(
+      priv,
     );
   });
-  it('đủ dự án, hoặc rời khỏi PROJECT → ổn', () => {
+  it('chỉ gửi một danh sách thì danh sách kia giữ nguyên', () => {
+    expect(resolveFilterShare(shared, { sharedProjectIds: ['p2'] }).value).toEqual({
+      visibility: 'SHARED',
+      sharedProjectIds: ['p2'],
+      sharedUserIds: ['u1'],
+    });
+  });
+  it('PRIVATE tường minh xoá hết đích', () => {
+    expect(resolveFilterShare(shared, { visibility: 'PRIVATE' }).value).toEqual(priv);
+  });
+  it('SHARED tường minh mà không còn đích → lỗi', () => {
+    expect(resolveFilterShare(priv, { visibility: 'SHARED' }).error).toBe(
+      SHARE_TARGET_REQUIRED_MESSAGE,
+    );
     expect(
-      effectiveFilterShareError(null, { visibility: 'PROJECT', sharedProjectId: 'p1' }),
-    ).toBeNull();
-    expect(
-      effectiveFilterShareError(row('PROJECT', 'p1'), {
-        visibility: 'PRIVATE',
-        sharedProjectId: null,
-      }),
-    ).toBeNull();
-    expect(effectiveFilterShareError(row('PROJECT', 'p1'), { visibility: 'WORKSPACE' })).toBeNull();
-    expect(
-      effectiveFilterShareError(row('PROJECT', null), {
-        visibility: 'WORKSPACE',
-        sharedProjectId: null,
-      }),
-    ).toBeNull();
-    expect(
-      effectiveFilterShareError(row('WORKSPACE', null), {
-        visibility: 'PROJECT',
-        sharedProjectId: 'p2',
-      }),
-    ).toBeNull();
+      resolveFilterShare(shared, { visibility: 'SHARED', sharedProjectIds: [], sharedUserIds: [] })
+        .error,
+    ).toBe(SHARE_TARGET_REQUIRED_MESSAGE);
   });
 });

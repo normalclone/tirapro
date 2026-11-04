@@ -66,6 +66,12 @@ describe('buildNotificationTitle', () => {
       'Trang cập nhật DEMO-3 (bạn đang theo dõi)',
     );
   });
+  it('FILTER_SHARED: "X đã chia sẻ bộ lọc “Y” với bạn"; thiếu tên không văng', () => {
+    expect(
+      t('FILTER_SHARED', { actorName: 'Trang', filterId: 'f1', filterName: 'Bug tuần này' }),
+    ).toBe('Trang đã chia sẻ bộ lọc “Bug tuần này” với bạn');
+    expect(t('FILTER_SHARED', {})).toBe('Hệ thống đã chia sẻ bộ lọc “chưa đặt tên” với bạn');
+  });
   it('gộp nhiều lần cập nhật: ghi số lần', () => {
     expect(t('WATCHING_UPDATE', { actorName: 'Trang', key: 'DEMO-3', count: 10 })).toBe(
       'Trang cập nhật DEMO-3 10 lần (bạn đang theo dõi)',

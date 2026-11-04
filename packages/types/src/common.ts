@@ -79,6 +79,10 @@ export const ERROR_CODES = {
   PARENT_CANNOT_BE_EPIC: 'PARENT_CANNOT_BE_EPIC',
   /** 422: Hạn là bắt buộc — không xoá trống được (cập nhật/sửa hàng loạt/quy tắc đặt Hạn rỗng). */
   DUE_DATE_REQUIRED: 'DUE_DATE_REQUIRED',
+  /** 422: chia sẻ bộ lọc cho người không thuộc tổ chức (hoặc đã vô hiệu hoá). */
+  FILTER_SHARE_USER_NOT_MEMBER: 'FILTER_SHARE_USER_NOT_MEMBER',
+  /** 422: chia sẻ bộ lọc cho dự án không tồn tại / chủ bộ lọc không xem được. */
+  FILTER_SHARE_PROJECT_NOT_VISIBLE: 'FILTER_SHARE_PROJECT_NOT_VISIBLE',
   /** 413: tệp tải lên vượt giới hạn dung lượng. */
   PAYLOAD_TOO_LARGE: 'PAYLOAD_TOO_LARGE',
   INTERNAL: 'INTERNAL',
