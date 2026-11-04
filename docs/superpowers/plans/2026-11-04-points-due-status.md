@@ -486,3 +486,45 @@ In the report, list each one with "converted" or "kept + why".
 - [ ] **Step 3: Implement + audit.**
 - [ ] **Step 4: Gates + impeccable detect on the touched features.**
 - [ ] **Step 5: Commit.**
+
+### Task 15 (with/after Task 14): inline "add" forms on list screens → "Thêm …" button + dialog
+
+User request (2026-11-04): every list screen that shows an always-open create form on the page itself (for example **Thành viên**, where the invite form sits above the member list) should instead show a primary button **"Thêm …"** in the page or section header, which opens a dialog containing the same form.
+
+**Audit:** grep `features/**` for page and section components that render a create or invite form at the top level of a list page. Candidates:
+- members / MembersSection (workspace + project)
+- labels (LabelsSection)
+- components (ComponentsSection)
+- versions (VersionsSection)
+- priorities and severities settings
+- custom fields (Trường thông tin thêm)
+- roles
+- teams
+- clients
+- api-keys
+- integrations
+- digests
+- SLA
+- RAID
+- goals
+- wiki spaces
+
+List each one in the report as "converted" or "kept + why".
+
+**Keep as is:**
+- quick-add rows that are part of a list's flow (backlog/board "+ Thêm việc…", checklist "Thêm bước", comment box, the link/attachment add inside issue sections)
+- search/filter bars
+
+**Dialog spec:**
+- Use the existing Dialog. The title is "Thêm <đối tượng>" (for members: "Mời thành viên").
+- The fields, validation and permissions are the same as today.
+- Submitting closes the dialog, shows the toast, and the new row appears in the list (it is highlighted briefly if the list already has a highlight pattern).
+- Esc returns focus to the button.
+- Unsaved input prompts before closing, using the existing confirm.
+- Without permission there is no button. The empty state's call to action opens the same dialog.
+
+- [ ] **Step 1: Failing tests.** For Thành viên (workspace) and at least one project-config section: the page shows the "Thêm…" button and no inline form; clicking opens a dialog with the form; submit sends the same request as before.
+- [ ] **Step 2: Run** → FAIL.
+- [ ] **Step 3: Implement + audit.**
+- [ ] **Step 4: Gates + impeccable detect.**
+- [ ] **Step 5: Commit.**
