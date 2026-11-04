@@ -61,7 +61,19 @@ function setup(rule = makeRule(), issue = issueDto()) {
       findMany: vi.fn(() => Promise.resolve([{ userId: 'a' }, { userId: 'b' }])),
     },
     projectMembership: { findMany: vi.fn(() => Promise.resolve([])) },
-    status: { findFirst: vi.fn(() => Promise.resolve({ name: 'Done' })) },
+    status: {
+      findFirst: vi.fn(() => Promise.resolve({ name: 'Done' })),
+      // Hành động transition tra các trạng thái đích ứng viên: id chứa '@wfX' thuộc quy trình wfX (mặc định wf1).
+      findMany: vi.fn((a: { where: { id: { in: string[] } } }) =>
+        Promise.resolve(
+          a.where.id.in.map((id) => ({
+            id,
+            name: 'Done',
+            workflowId: id.includes('@') ? id.split('@')[1] : 'wf1',
+          })),
+        ),
+      ),
+    },
     label: { findFirst: vi.fn(() => Promise.resolve({ id: 'L1', name: 'bug' })) },
     issueLabel: {
       createMany: vi.fn(() => Promise.resolve({ count: 1 })),
@@ -224,6 +236,54 @@ describe('RuleEngineService — kích hoạt theo sự kiện', () => {
       actorId: 'u1',
     });
     expect(b.prisma.automationRun.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('ISSUE_TRANSITIONED với nhiều trạng thái đích (toStatusIds, mỗi quy trình một cái) khớp khi trạng thái mới nằm trong danh sách', async () => {
+    const rule = makeRule({
+      trigger: 'ISSUE_TRANSITIONED',
+      triggerConfig: { toStatusIds: ['doneStd', 'doneBug'] },
+      conditions: [],
+    });
+    const a = setup(rule);
+    await a.engine.handle('ISSUE_TRANSITIONED', {
+      issue: issueDto({ status: { id: 'doing', name: 'Doing', category: 'IN_PROGRESS' } }) as never,
+      actorId: 'u1',
+    });
+    expect(a.prisma.automationRun.create).not.toHaveBeenCalled();
+    for (const id of ['doneStd', 'doneBug']) {
+      const b = setup(rule);
+      await b.engine.handle('ISSUE_TRANSITIONED', {
+        issue: issueDto({ status: { id, name: 'Done', category: 'DONE' } }) as never,
+        actorId: 'u1',
+      });
+      expect(b.prisma.automationRun.create).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  it('transition với alsoStatusIds: chọn trạng thái đích nằm cùng quy trình với việc; không có thì dùng trạng thái chính', async () => {
+    const rule = makeRule({
+      conditions: [],
+      actions: [
+        { type: 'transition', toStatusId: 'doneStd@wfStd', alsoStatusIds: ['doneBug@wfBug'] },
+      ],
+    });
+    const issueBug = issueDto({
+      status: { id: 'x', workflowId: 'wfBug', name: 'New', category: 'TODO' },
+    });
+    const inBug = setup(rule, issueBug);
+    await inBug.engine.handle('ISSUE_CREATED', { issue: issueBug as never, actorId: 'u1' });
+    expect((inBug.issues.transition.mock.calls[0] as unknown[])[3]).toMatchObject({
+      toStatusId: 'doneBug@wfBug',
+    });
+    const issueEpic = issueDto({
+      status: { id: 'y', workflowId: 'wfEpic', name: 'New', category: 'TODO' },
+    });
+    const other = setup(rule, issueEpic);
+    await other.engine.handle('ISSUE_CREATED', { issue: issueEpic as never, actorId: 'u1' });
+    // Không đích nào cùng quy trình: đi theo trạng thái chính (bước chuyển sẽ báo lỗi rõ ràng thay vì im lặng).
+    expect((other.issues.transition.mock.calls[0] as unknown[])[3]).toMatchObject({
+      toStatusId: 'doneStd@wfStd',
+    });
   });
 
   it('ISSUE_UPDATED với fields chỉ chạy khi trường đó vừa đổi', async () => {

@@ -204,7 +204,7 @@ describe.skipIf(!DB_URL)('WorkflowSchemeService ↔ Postgres thật', () => {
       { items: items(), statusMap: map() },
       false,
     );
-    expect(out).toEqual({ dryRun: false, moves: [], totalIssues: 0 });
+    expect(out).toEqual({ dryRun: false, moves: [], totalIssues: 0, affectedRules: [] });
     expect((await issueState(['a2']))[0]!.version).toBe(2);
   });
 

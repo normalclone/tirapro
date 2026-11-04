@@ -8,7 +8,20 @@ const ARCHIVED = 'Dự án đã lưu trữ — hãy khôi phục dự án trư�
 /** Người xem thấy mọi dự án (admin): visibleWhere = {}. */
 const ALL_ACCESS = { visibleWhere: vi.fn(() => Promise.resolve({})) };
 
-function make(opts: { projectId: string | null; archived?: boolean }) {
+function make(opts: {
+  projectId: string | null;
+  archived?: boolean;
+  rules?: Array<Record<string, unknown>>;
+}) {
+  const rules = (opts.rules ?? []).map((r) => ({
+    projectId: null,
+    createdById: 'u-rule',
+    enabled: true,
+    triggerConfig: {},
+    conditions: [],
+    actions: [],
+    ...r,
+  })) as unknown as Array<Record<string, unknown> & { id: string }>;
   const wfRow = {
     id: 'wf1',
     workspaceId: 'w1',
@@ -75,12 +88,41 @@ function make(opts: { projectId: string | null; archived?: boolean }) {
     },
     issue: { count: vi.fn(() => Promise.resolve(0)) },
     // Quy trình theo loại việc: mặc định không có gán nào.
-    workspaceWorkflowScheme: { findMany: vi.fn(() => Promise.resolve([])) },
-    projectWorkflowOverride: { findMany: vi.fn(() => Promise.resolve([])) },
+    workspaceWorkflowScheme: {
+      findMany: vi.fn(() => Promise.resolve([])),
+      count: vi.fn(() => Promise.resolve(0)),
+    },
+    projectWorkflowOverride: {
+      findMany: vi.fn(() => Promise.resolve([])),
+      count: vi.fn(() => Promise.resolve(0)),
+    },
     $transaction: vi.fn((fn: (t: unknown) => unknown) => fn(prisma)),
+    $executeRaw: vi.fn((..._a: unknown[]) => Promise.resolve(0)),
+    automationRule: {
+      findMany: vi.fn(() => Promise.resolve(rules.map((r) => ({ ...r })))),
+      update: vi.fn((a: { where: { id: string }; data: Record<string, unknown> }) => {
+        Object.assign(rules.find((r) => r.id === a.where.id)!, a.data);
+        return Promise.resolve({});
+      }),
+    },
   };
-  const service = new WorkflowAdminService(prisma as never, ALL_ACCESS as never);
-  return { service, prisma };
+  const published: Array<{ recipientId: string; payload: unknown; force?: boolean }> = [];
+  const notifications = {
+    publish: vi.fn((n: { recipientId: string; payload: unknown }, o?: { force?: boolean }) => {
+      published.push({ ...n, force: o?.force });
+      return Promise.resolve();
+    }),
+  };
+  const events = { emit: vi.fn() };
+  const resolver = { invalidate: vi.fn() };
+  const service = new WorkflowAdminService(
+    prisma as never,
+    ALL_ACCESS as never,
+    notifications as never,
+    events as never,
+    resolver as never,
+  );
+  return { service, prisma, rules, published, events, resolver };
 }
 
 /** Mọi đường ghi của service: [tên, hàm gọi, hàm trả về các mock ghi để kiểm "không ghi"]. */
@@ -513,6 +555,92 @@ describe('WorkflowAdminService — quy trình theo loại việc: usedBy, WORKFL
       });
       expect(prisma.status.delete).not.toHaveBeenCalled();
       expect(self.prisma.status.delete).not.toHaveBeenCalled();
+    });
+
+    it('(M1/L2) có thay thế: quy tắc nhắc trạng thái bị xoá được sửa sang trạng thái thay thế, trong cùng transaction đã khoá', async () => {
+      const m = make({
+        projectId: null,
+        rules: [{ id: 'r1', name: 'R', triggerConfig: { toStatusId: 's1' } }],
+      });
+      const order: string[] = [];
+      m.prisma.$executeRaw.mockImplementation(() => {
+        order.push('lock');
+        return Promise.resolve(0);
+      });
+      m.prisma.status.delete.mockImplementation(() => {
+        order.push('delete');
+        return Promise.resolve({});
+      });
+      m.prisma.automationRule.update.mockImplementation(
+        (a: { where: { id: string }; data: Record<string, unknown> }) => {
+          order.push('rule');
+          Object.assign(m.rules.find((r) => r.id === a.where.id)!, a.data);
+          return Promise.resolve({});
+        },
+      );
+      (m.prisma.issue.count as ReturnType<typeof vi.fn>).mockResolvedValue(0);
+      await m.service.removeStatus('w1', 'u1', 's1', 'sNew');
+      expect(order).toEqual(['lock', 'rule', 'delete']);
+      expect(m.rules[0]!.triggerConfig).toEqual({ toStatusId: 'sNew' });
+      expect(m.published).toEqual([]); // chỉ sửa id, không tắt → không báo
+      expect(m.events.emit).toHaveBeenCalledWith('automation.rules_changed', { workspaceId: 'w1' });
+      expect(m.resolver.invalidate).toHaveBeenCalled();
+    });
+
+    it('(M1) xoá không có thay thế (không còn việc): quy tắc nhắc nó bị TẮT và người tạo được báo SAU khi xoá; xoá lỗi thì không tắt/báo', async () => {
+      const m = make({
+        projectId: null,
+        rules: [{ id: 'r1', name: 'Khi xong', triggerConfig: { toStatusId: 's1' } }],
+      });
+      await m.service.removeStatus('w1', 'u1', 's1');
+      expect(m.rules[0]!.enabled).toBe(false);
+      expect(m.published).toEqual([
+        expect.objectContaining({
+          recipientId: 'u-rule',
+          force: true,
+          payload: { automationRuleDisabled: 'Khi xong' },
+        }),
+      ]);
+      const bad = make({
+        projectId: null,
+        rules: [{ id: 'r1', name: 'Khi xong', triggerConfig: { toStatusId: 's1' } }],
+      });
+      bad.prisma.status.delete.mockRejectedValue(new Error('boom'));
+      await expect(bad.service.removeStatus('w1', 'u1', 's1')).rejects.toThrow('boom');
+      expect(bad.published).toEqual([]);
+      expect(bad.events.emit).not.toHaveBeenCalled();
+    });
+
+    it('(L3) trạng thái ban đầu của quy trình đang được tổ chức/dự án dùng => 409 INITIAL_STATUS_IN_USE, không xoá; không dùng thì xoá được', async () => {
+      const initial = {
+        id: 's1',
+        workflowId: 'wf1',
+        isInitial: true,
+        workflow: { projectId: null },
+      };
+      const usedByScheme = make({ projectId: null });
+      usedByScheme.prisma.status.findFirst.mockResolvedValue(initial as never);
+      usedByScheme.prisma.workspaceWorkflowScheme.count.mockResolvedValue(1);
+      await expect(usedByScheme.service.removeStatus('w1', 'u1', 's1')).rejects.toMatchObject({
+        status: 409,
+        code: 'INITIAL_STATUS_IN_USE',
+      });
+      expect(usedByScheme.prisma.status.delete).not.toHaveBeenCalled();
+
+      const usedByOverride = make({ projectId: null });
+      usedByOverride.prisma.status.findFirst.mockResolvedValue(initial as never);
+      usedByOverride.prisma.projectWorkflowOverride.count.mockResolvedValue(1);
+      await expect(usedByOverride.service.removeStatus('w1', 'u1', 's1')).rejects.toMatchObject({
+        status: 409,
+        code: 'INITIAL_STATUS_IN_USE',
+      });
+
+      const free = make({ projectId: null });
+      free.prisma.status.findFirst.mockResolvedValue(initial as never);
+      expect(await free.service.removeStatus('w1', 'u1', 's1')).toEqual({
+        success: true,
+        moved: 0,
+      });
     });
 
     it('không còn việc => xoá thẳng, không cần thay thế, không chuyển gì', async () => {

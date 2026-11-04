@@ -181,6 +181,18 @@ describe('RulesService', () => {
   });
 });
 
+describe('RulesService.onRulesChanged — quy trình đổi quy tắc ngoài RulesService', () => {
+  it('sự kiện automation.rules_changed bỏ cache bộ nhớ của workspace nên engine đọc lại bản mới', async () => {
+    const { service, prisma } = setup();
+    await service.activeFor('w1', 'ISSUE_CREATED', 'p1');
+    await service.activeFor('w1', 'ISSUE_CREATED', 'p1');
+    expect(prisma.automationRule.findMany).toHaveBeenCalledTimes(1);
+    await service.onRulesChanged({ workspaceId: 'w1' });
+    await service.activeFor('w1', 'ISSUE_CREATED', 'p1');
+    expect(prisma.automationRule.findMany).toHaveBeenCalledTimes(2);
+  });
+});
+
 describe('RulesService — dự án lưu trữ là chỉ đọc', () => {
   const ARCHIVED = { status: 422, message: expect.stringContaining('lưu trữ') as unknown };
   const input = {

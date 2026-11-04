@@ -67,7 +67,7 @@ export async function planMoves(
     if (groups.length === 0) continue;
     const fromStatuses = await db.status.findMany({
       where: { id: { in: [...new Set(groups.map((g) => g.statusId))] } },
-      select: { id: true, name: true, category: true },
+      select: { id: true, name: true, category: true, workflowId: true },
     });
     const fromById = new Map(fromStatuses.map((s) => [s.id, s]));
     const targets = await targetsOf(scope.toWorkflowId);
@@ -112,6 +112,18 @@ export function toMoveRows(
 }
 
 /** Chạy thật mà còn nhóm chưa có đích do người dùng chọn → 422 STATUS_MAPPING_REQUIRED, mỗi trạng thái cũ một dòng. */
+/**
+ * Khoá advisory theo workspace TRONG transaction (tự nhả khi commit/rollback): hai thay đổi quy trình đồng thời trong cùng một
+ * workspace (PUT scheme, ghi đè dự án, xoá trạng thái có thay thế, script migrate) xếp hàng thay vì đọc kế hoạch cũ rồi chuyển
+ * việc chồng lên nhau. KHÔNG chặn đọc/ghi việc thường.
+ */
+export async function lockWorkspaceWorkflows(
+  tx: Prisma.TransactionClient,
+  workspaceId: string,
+): Promise<void> {
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`workflow-scheme:${workspaceId}`}))`;
+}
+
 export function assertAllMapped(moves: PlannedMove[], typeNames: Map<string, string>): void {
   const missing = new Map<string, ErrorDetail>();
   for (const m of moves) {

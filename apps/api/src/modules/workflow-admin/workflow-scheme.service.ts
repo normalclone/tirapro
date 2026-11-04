@@ -1,6 +1,8 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
+import type { EventEmitter2 } from '@nestjs/event-emitter';
 import { Prisma } from '@prisma/client';
 import type {
+  AffectedRuleDto,
   ProjectWorkflowSchemeDto,
   WorkflowChangeDto,
   WorkspaceWorkflowSchemeDto,
@@ -10,10 +12,13 @@ import { PrismaService } from '../../infra/prisma/prisma.service';
 import { BusinessRuleException, NotFoundAppException } from '../../common/exceptions/app.exception';
 import { assertProjectIdWritable } from '../../common/project-writable';
 import { appendMissingBoardStatuses } from './board-columns-sync';
+import type { NotificationsService } from '../notifications/notifications.service';
+import { fromWorkflowsOf, publishRuleChanges, ruleStepForMoves } from './rule-status-refs';
 import { moveIssuesToStatus } from './issue-status-move';
 import {
   assertAllMapped,
   assertMapInWorkspace,
+  lockWorkspaceWorkflows,
   planMoves,
   toMoveRows,
   type MoveScope,
@@ -43,6 +48,9 @@ export class WorkflowSchemeService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly resolver: WorkflowResolver,
+    // Tuỳ chọn để spec dựng bằng 2 đối số vẫn chạy; Nest DI tiêm bản thật (bỏ cache quy tắc + báo người tạo quy tắc bị tắt).
+    @Optional() private readonly notifications?: NotificationsService,
+    @Optional() private readonly events?: EventEmitter2,
   ) {}
 
   // ----------------------------------------------------------------------------------------- tổ chức
@@ -77,9 +85,66 @@ export class WorkflowSchemeService {
       ...Object.values(input.statusMapByType ?? {}),
     ]);
 
+    const pick = (typeId: string, fromId: string) =>
+      input.statusMapByType?.[typeId]?.[fromId] ?? input.statusMap?.[fromId];
+
+    if (dryRun) {
+      const plan = await this.planScheme(this.prisma, workspaceId, input, types);
+      const moves = await planMoves(this.prisma, workspaceId, plan.scopes, pick);
+      const rules = await ruleStepForMoves(
+        this.prisma,
+        workspaceId,
+        this.rulePairs(plan, moves),
+        pick,
+        moves,
+        true,
+      );
+      return this.result(true, moves, plan.ctx, rules);
+    }
+    let result: WorkflowChangeDto;
+    try {
+      result = await this.prisma.$transaction(async (tx) => {
+        // Khoá TRƯỚC khi đọc trạng thái hiện tại: hai thay đổi đồng thời xếp hàng và thấy kết quả của nhau (L2).
+        await lockWorkspaceWorkflows(tx, workspaceId);
+        const plan = await this.planScheme(tx, workspaceId, input, types);
+        const moves = await planMoves(tx, workspaceId, plan.scopes, pick);
+        assertAllMapped(moves, plan.ctx.typeNames);
+        for (const i of plan.changed)
+          await tx.workspaceWorkflowScheme.upsert({
+            where: { workspaceId_issueTypeId: { workspaceId, issueTypeId: i.issueTypeId } },
+            create: { workspaceId, issueTypeId: i.issueTypeId, workflowId: i.workflowId },
+            update: { workflowId: i.workflowId },
+          });
+        await this.applyMoves(tx, workspaceId, actorId, moves);
+        await this.syncBoards(tx, [...new Set(plan.scopes.flatMap((s) => s.projectIds))]);
+        const rules = await ruleStepForMoves(
+          tx,
+          workspaceId,
+          this.rulePairs(plan, moves),
+          pick,
+          moves,
+          false,
+        );
+        return this.result(false, moves, plan.ctx, rules);
+      }, TX_OPTIONS);
+    } finally {
+      // Kể cả rollback: lần nạp giữa chừng trong transaction có thể đã vào cache của request.
+      this.resolver.invalidate();
+    }
+    await publishRuleChanges(this.deps(), workspaceId, actorId, result.affectedRules);
+    return result;
+  }
+
+  /** Đọc trạng thái hiện tại (bằng `db`: client thường để xem trước, tx đã khoá để chạy thật) và dựng phạm vi chuyển việc. */
+  private async planScheme(
+    db: Prisma.TransactionClient,
+    workspaceId: string,
+    input: SetWorkspaceSchemeInput,
+    types: Array<{ id: string; name: string }>,
+  ) {
     const current = new Map(
       (
-        await this.prisma.workspaceWorkflowScheme.findMany({
+        await db.workspaceWorkflowScheme.findMany({
           where: { workspaceId },
           select: { issueTypeId: true, workflowId: true },
         })
@@ -87,11 +152,11 @@ export class WorkflowSchemeService {
     );
     const changed = input.items.filter((i) => current.get(i.issueTypeId) !== i.workflowId);
     // allow-deleted: việc của dự án đã xoá mềm/lưu trữ cũng phải khớp quy trình (khôi phục sau này không được lệch)
-    const projects = await this.prisma.project.findMany({
+    const projects = await db.project.findMany({
       where: { workspaceId },
-      select: { id: true, key: true },
+      select: { id: true, key: true, defaultWorkflowId: true },
     });
-    const overridden = await this.prisma.projectWorkflowOverride.findMany({
+    const overridden = await db.projectWorkflowOverride.findMany({
       where: { issueTypeId: { in: changed.map((i) => i.issueTypeId) }, project: { workspaceId } },
       select: { projectId: true, issueTypeId: true },
     });
@@ -104,35 +169,36 @@ export class WorkflowSchemeService {
         )
         .map((p) => p.id),
     }));
-    const pick = (typeId: string, fromId: string) =>
-      input.statusMapByType?.[typeId]?.[fromId] ?? input.statusMap?.[fromId];
+    // Quy trình TRƯỚC đây của từng loại: dòng cấu hình cũ, hoặc (chưa có) quy trình mặc định của các dự án.
+    const defaults = [
+      ...new Set(projects.flatMap((p) => (p.defaultWorkflowId ? [p.defaultWorkflowId] : []))),
+    ];
+    const previous = new Map(
+      changed.map((i) => [
+        i.issueTypeId,
+        current.has(i.issueTypeId) ? [current.get(i.issueTypeId)!] : defaults,
+      ]),
+    );
     const ctx: ChangeContext = {
       projectKeys: new Map(projects.map((p) => [p.id, p.key])),
       typeNames: new Map(types.map((t) => [t.id, t.name])),
     };
+    return { changed, scopes, previous, ctx };
+  }
 
-    if (dryRun) {
-      return this.result(true, await planMoves(this.prisma, workspaceId, scopes, pick), ctx);
-    }
-    try {
-      return await this.prisma.$transaction(async (tx) => {
-        const moves = await planMoves(tx, workspaceId, scopes, pick);
-        assertAllMapped(moves, ctx.typeNames);
-        for (const i of changed)
-          await tx.workspaceWorkflowScheme.upsert({
-            where: { workspaceId_issueTypeId: { workspaceId, issueTypeId: i.issueTypeId } },
-            create: { workspaceId, issueTypeId: i.issueTypeId, workflowId: i.workflowId },
-            update: { workflowId: i.workflowId },
-          });
-        await this.applyMoves(tx, workspaceId, actorId, moves);
-        const projectIds = [...new Set(scopes.flatMap((s) => s.projectIds))];
-        await this.syncBoards(tx, projectIds);
-        return this.result(false, moves, ctx);
-      }, TX_OPTIONS);
-    } finally {
-      // Kể cả rollback: lần nạp giữa chừng trong transaction có thể đã vào cache của request.
-      this.resolver.invalidate();
-    }
+  private rulePairs(
+    plan: { scopes: MoveScope[]; previous: Map<string, string[]> },
+    moves: PlannedMove[],
+  ) {
+    return plan.scopes.map((s) => ({
+      typeId: s.typeId,
+      toWorkflowId: s.toWorkflowId,
+      fromWorkflowIds: fromWorkflowsOf(s.typeId, plan.previous.get(s.typeId) ?? [], moves),
+    }));
+  }
+
+  private deps() {
+    return { events: this.events, notifications: this.notifications };
   }
 
   // ----------------------------------------------------------------------------------------- dự án
@@ -219,16 +285,26 @@ export class WorkflowSchemeService {
         ? await this.findCopy(this.prisma, workspaceId, projectId, source.name, project.key)
         : null;
       const target = existingCopy?.id ?? source.id;
-      const moves = await planMoves(
+      const scope = [{ typeId: type.id, projectIds: [projectId], toWorkflowId: target }];
+      const pick = (_t: string, from: string) => input.statusMap[from];
+      const moves = await planMoves(this.prisma, workspaceId, scope, pick);
+      const rules = await ruleStepForMoves(
         this.prisma,
         workspaceId,
-        [{ typeId: type.id, projectIds: [projectId], toWorkflowId: target }],
-        (_t, from) => input.statusMap[from],
+        await this.overridePairs(this.prisma, projectId, type.id, target, moves),
+        pick,
+        moves,
+        true,
       );
-      return this.result(true, moves, ctx);
+      return this.result(true, moves, ctx, rules);
     }
+    let result: WorkflowChangeDto;
     try {
-      return await this.prisma.$transaction(async (tx) => {
+      result = await this.prisma.$transaction(async (tx) => {
+        await lockWorkspaceWorkflows(tx, workspaceId);
+        // Đọc quy trình hiện tại TRƯỚC khi ghi (để biết quy trình cũ cần ánh xạ cho quy tắc).
+        this.resolver.invalidate(projectId);
+        const before = await this.overridePairs(tx, projectId, type.id, '', []);
         let targetId = source.id;
         let translate = (id: string | undefined) => id;
         if (input.copy) {
@@ -236,11 +312,12 @@ export class WorkflowSchemeService {
           targetId = copy.id;
           translate = (id) => (id ? (copy.sourceToCopy.get(id) ?? id) : id);
         }
+        const pick = (_t: string, from: string) => translate(input.statusMap[from]);
         const moves = await planMoves(
           tx,
           workspaceId,
           [{ typeId: type.id, projectIds: [projectId], toWorkflowId: targetId }],
-          (_t, from) => translate(input.statusMap[from]),
+          pick,
         );
         assertAllMapped(moves, ctx.typeNames);
         await tx.projectWorkflowOverride.upsert({
@@ -250,11 +327,37 @@ export class WorkflowSchemeService {
         });
         await this.applyMoves(tx, workspaceId, actorId, moves);
         await this.syncBoards(tx, [projectId]);
-        return this.result(false, moves, ctx);
+        const pairs = before.map((b) => ({
+          ...b,
+          toWorkflowId: targetId,
+          fromWorkflowIds: fromWorkflowsOf(type.id, b.fromWorkflowIds, moves),
+        }));
+        const rules = await ruleStepForMoves(tx, workspaceId, pairs, pick, moves, false);
+        return this.result(false, moves, ctx, rules);
       }, TX_OPTIONS);
     } finally {
       this.resolver.invalidate(projectId);
     }
+    await publishRuleChanges(this.deps(), workspaceId, actorId, result.affectedRules);
+    return result;
+  }
+
+  /** Cặp (loại việc, quy trình hiệu lực HIỆN TẠI của dự án → quy trình đích) cho bước quy tắc; `target` rỗng = chỉ lấy quy trình cũ. */
+  private async overridePairs(
+    db: Prisma.TransactionClient,
+    projectId: string,
+    typeId: string,
+    target: string,
+    moves: PlannedMove[],
+  ): Promise<Array<{ typeId: string; fromWorkflowIds: string[]; toWorkflowId: string }>> {
+    const { workflowId } = await this.resolver.forIssue(db, projectId, typeId);
+    return [
+      {
+        typeId,
+        toWorkflowId: target,
+        fromWorkflowIds: fromWorkflowsOf(typeId, workflowId ? [workflowId] : [], moves),
+      },
+    ];
   }
 
   /** Quay về dùng chung: chuyển việc của loại đó sang quy trình của tổ chức (hoặc mặc định của dự án), rồi xoá ghi đè. */
@@ -294,20 +397,41 @@ export class WorkflowSchemeService {
       { typeId: issueTypeId, projectIds: [projectId], toWorkflowId: shared },
     ];
     const pick = (_t: string, from: string) => statusMap[from];
-    if (dryRun)
-      return this.result(true, await planMoves(this.prisma, workspaceId, scope, pick), ctx);
+    if (dryRun) {
+      const moves = await planMoves(this.prisma, workspaceId, scope, pick);
+      const rules = await ruleStepForMoves(
+        this.prisma,
+        workspaceId,
+        await this.overridePairs(this.prisma, projectId, issueTypeId, shared, moves),
+        pick,
+        moves,
+        true,
+      );
+      return this.result(true, moves, ctx, rules);
+    }
+    let result: WorkflowChangeDto;
     try {
-      return await this.prisma.$transaction(async (tx) => {
+      result = await this.prisma.$transaction(async (tx) => {
+        await lockWorkspaceWorkflows(tx, workspaceId);
+        this.resolver.invalidate(projectId);
+        const before = await this.overridePairs(tx, projectId, issueTypeId, shared, []);
         const moves = await planMoves(tx, workspaceId, scope, pick);
         assertAllMapped(moves, ctx.typeNames);
         await tx.projectWorkflowOverride.deleteMany({ where: { projectId, issueTypeId } });
         await this.applyMoves(tx, workspaceId, actorId, moves);
         await this.syncBoards(tx, [projectId]);
-        return this.result(false, moves, ctx);
+        const pairs = before.map((b) => ({
+          ...b,
+          fromWorkflowIds: fromWorkflowsOf(issueTypeId, b.fromWorkflowIds, moves),
+        }));
+        const rules = await ruleStepForMoves(tx, workspaceId, pairs, pick, moves, false);
+        return this.result(false, moves, ctx, rules);
       }, TX_OPTIONS);
     } finally {
       this.resolver.invalidate(projectId);
     }
+    await publishRuleChanges(this.deps(), workspaceId, actorId, result.affectedRules);
+    return result;
   }
 
   // ----------------------------------------------------------------------------------------- helpers
@@ -345,9 +469,19 @@ export class WorkflowSchemeService {
     }
   }
 
-  private result(dryRun: boolean, moves: PlannedMove[], ctx: ChangeContext): WorkflowChangeDto {
+  private result(
+    dryRun: boolean,
+    moves: PlannedMove[],
+    ctx: ChangeContext,
+    affectedRules: AffectedRuleDto[] = [],
+  ): WorkflowChangeDto {
     const rows = toMoveRows(moves, { projects: ctx.projectKeys, types: ctx.typeNames });
-    return { dryRun, moves: rows, totalIssues: rows.reduce((n, r) => n + r.count, 0) };
+    return {
+      dryRun,
+      moves: rows,
+      totalIssues: rows.reduce((n, r) => n + r.count, 0),
+      affectedRules,
+    };
   }
 
   private async requireProject(workspaceId: string, projectId: string) {

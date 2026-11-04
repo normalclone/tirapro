@@ -5,6 +5,8 @@ export interface StatusRef {
   id: string;
   name: string;
   category: StatusCategory;
+  /** Có khi nạp từ DB (kế hoạch chuyển) — để biết các quy trình cũ cần ánh xạ cho quy tắc automation. */
+  workflowId?: string;
 }
 
 const CHUNK = 1000;

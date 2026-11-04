@@ -79,11 +79,27 @@ export interface WorkflowMoveRowDto {
   suggested: boolean;
 }
 
+/** Quy tắc automation bị ảnh hưởng khi trạng thái đổi: được sửa lại id trạng thái, hoặc bị TẮT vì không ánh xạ được. */
+export interface AffectedRuleDto {
+  ruleId: string;
+  name: string;
+  projectId: string | null;
+  /** Người tạo quy tắc — người nhận thông báo khi quy tắc bị tắt. */
+  createdById: string;
+  /** Quy tắc đang bật trước thay đổi (quy tắc đã tắt sẵn bị tắt tiếp thì không báo). */
+  wasEnabled: boolean;
+  outcome: 'rewritten' | 'disabled';
+  /** `disabled`: các trạng thái cũ không còn thay thế. */
+  unmappableStatusIds?: string[];
+}
+
 /** Kết quả `PUT /workflow-schemes`, `PUT|DELETE /projects/:id/workflow-overrides`; `dryRun=1` chỉ xem trước, không ghi. */
 export interface WorkflowChangeDto {
   dryRun: boolean;
   moves: WorkflowMoveRowDto[];
   totalIssues: number;
+  /** Quy tắc automation tham chiếu trạng thái đổi: dryRun chỉ liệt kê, chạy thật đã sửa/tắt. */
+  affectedRules: AffectedRuleDto[];
 }
 
 /** `GET /workflows` → `usedBy`: nơi quy trình đang được dùng. */

@@ -40,6 +40,7 @@ function world(
     overrides?: Array<{ projectId: string; issueTypeId: string; workflowId: string }>;
     archived?: boolean;
     existingCopy?: boolean;
+    rules?: Array<Record<string, unknown>>;
   } = {},
 ) {
   const statuses: St[] = [
@@ -112,11 +113,28 @@ function world(
   ];
   const scheme = [...(over.scheme ?? [])];
   const overrides = [...(over.overrides ?? [])];
+  const rules = (over.rules ?? []).map((r) => ({
+    projectId: null,
+    createdById: 'u-rule',
+    enabled: true,
+    triggerConfig: {},
+    conditions: [],
+    actions: [],
+    ...r,
+  })) as unknown as Array<Record<string, unknown> & { id: string }>;
   const wfOf = (statusId: string) => statuses.find((s) => s.id === statusId)!.workflowId;
   let nextId = 0;
 
   const prisma = {
     $transaction: vi.fn((fn: (t: unknown) => unknown) => fn(prisma)),
+    $executeRaw: vi.fn((..._a: unknown[]) => Promise.resolve(0)),
+    automationRule: {
+      findMany: vi.fn(() => Promise.resolve(rules.map((r) => ({ ...r })))),
+      update: vi.fn((a: { where: { id: string }; data: Record<string, unknown> }) => {
+        Object.assign(rules.find((r) => r.id === a.where.id)!, a.data);
+        return Promise.resolve({});
+      }),
+    },
     issueType: {
       findMany: vi.fn((a: { where: { id?: { in: string[] } } }) =>
         Promise.resolve(
@@ -251,12 +269,24 @@ function world(
     issue: {
       groupBy: vi.fn(
         (a: {
+          by: string[];
           where: {
             typeId: string;
+            statusId?: { in: string[] };
             projectId: { in: string[] };
             status: { workflowId: { not: string } };
           };
         }) => {
+          if (a.by.length === 1) {
+            // "còn việc ở trạng thái cũ?" (giữ id cũ trong quy tắc)
+            const m = new Map<string, number>();
+            for (const i of issues)
+              if (a.where.statusId?.in.includes(i.statusId))
+                m.set(i.statusId, (m.get(i.statusId) ?? 0) + 1);
+            return Promise.resolve(
+              [...m].map(([statusId, n]) => ({ statusId, _count: { _all: n } })),
+            );
+          }
           const m = new Map<string, number>();
           for (const i of issues)
             if (
@@ -305,8 +335,33 @@ function world(
   };
   const resolver = new WorkflowResolver();
   const invalidate = vi.spyOn(resolver, 'invalidate');
-  const service = new WorkflowSchemeService(prisma as never, resolver);
-  return { service, prisma, invalidate, issues, scheme, overrides, statuses, workflows };
+  const published: Array<{ recipientId: string; payload: unknown; force?: boolean }> = [];
+  const notifications = {
+    publish: vi.fn((n: { recipientId: string; payload: unknown }, o?: { force?: boolean }) => {
+      published.push({ ...n, force: o?.force });
+      return Promise.resolve();
+    }),
+  };
+  const events = { emit: vi.fn() };
+  const service = new WorkflowSchemeService(
+    prisma as never,
+    resolver,
+    notifications as never,
+    events as never,
+  );
+  return {
+    service,
+    prisma,
+    invalidate,
+    issues,
+    scheme,
+    overrides,
+    statuses,
+    workflows,
+    rules,
+    published,
+    events,
+  };
 }
 
 const items = [{ issueTypeId: 'tTask', workflowId: 'wfStd' }];
@@ -439,7 +494,7 @@ describe('WorkflowSchemeService.setWorkspaceScheme', () => {
   it('PUT lặp lại cùng cấu hình: không còn gì thay đổi => không chuyển việc, không ghi', async () => {
     const w = world({ scheme: [{ issueTypeId: 'tTask', workflowId: 'wfStd' }] });
     const out = await w.service.setWorkspaceScheme('w1', 'u1', { items }, false);
-    expect(out).toEqual({ dryRun: false, moves: [], totalIssues: 0 });
+    expect(out).toEqual({ dryRun: false, moves: [], totalIssues: 0, affectedRules: [] });
     expect(w.prisma.workspaceWorkflowScheme.upsert).not.toHaveBeenCalled();
     expect(w.prisma.issue.updateMany).not.toHaveBeenCalled();
   });
@@ -637,7 +692,7 @@ describe('WorkflowSchemeService.setProjectOverride / clearProjectOverride', () =
       true,
     );
     const again = await w.service.clearProjectOverride('w1', 'p2', 'u1', 'tTask', {}, false);
-    expect(again).toEqual({ dryRun: false, moves: [], totalIssues: 0 });
+    expect(again).toEqual({ dryRun: false, moves: [], totalIssues: 0, affectedRules: [] });
   });
 
   it('DELETE thiếu statusMap => 422 và ghi đè còn nguyên; dryRun chỉ xem trước', async () => {
@@ -671,5 +726,94 @@ describe('WorkflowSchemeService.setProjectOverride / clearProjectOverride', () =
       isOverride: false,
       workspaceWorkflowId: 'wfStd',
     });
+  });
+});
+
+// ------------------------------------------------------------------------------------------------
+// (M1/L2) Sửa quy tắc automation + khoá advisory + thông báo SAU commit — đường gọi PUT/ghi đè/DELETE
+// ------------------------------------------------------------------------------------------------
+
+const RULE = {
+  id: 'r1',
+  name: 'Khi đang làm',
+  createdById: 'u-rule',
+  trigger: 'ISSUE_TRANSITIONED',
+  triggerConfig: { toStatusId: 'o2' },
+  actions: [{ type: 'transition', toStatusId: 'o3' }],
+};
+const statusMap = { o1: 's1', o2: 's2', o3: 's3' };
+
+describe('WorkflowSchemeService — quy tắc automation, khoá, thông báo', () => {
+  it('PUT scheme dryRun: liệt kê affectedRules nhưng KHÔNG sửa quy tắc, không khoá, không báo', async () => {
+    const w = world({ rules: [RULE] });
+    const out = await w.service.setWorkspaceScheme('w1', 'u1', { items }, true);
+    expect(out.affectedRules).toEqual([
+      expect.objectContaining({ ruleId: 'r1', outcome: 'rewritten', createdById: 'u-rule' }),
+    ]);
+    expect(w.prisma.automationRule.update).not.toHaveBeenCalled();
+    expect(w.prisma.$executeRaw).not.toHaveBeenCalled();
+    expect(w.published).toEqual([]);
+    expect(w.events.emit).not.toHaveBeenCalled();
+  });
+
+  it('PUT scheme thật: khoá advisory lấy TRƯỚC khi đọc kế hoạch; quy tắc đổi sang id mới; bỏ cache quy tắc sau commit', async () => {
+    const w = world({ rules: [RULE] });
+    const order: string[] = [];
+    w.prisma.$executeRaw.mockImplementation(() => {
+      order.push('lock');
+      return Promise.resolve(0);
+    });
+    const realGroupBy = w.prisma.issue.groupBy.getMockImplementation()!;
+    w.prisma.issue.groupBy.mockImplementationOnce((a) => {
+      order.push('plan');
+      return realGroupBy(a);
+    });
+    const out = await w.service.setWorkspaceScheme('w1', 'u1', { items, statusMap }, false);
+    expect(order[0]).toBe('lock');
+    const rule = w.rules[0]!;
+    expect(rule.triggerConfig).toEqual({ toStatusId: 's2' });
+    expect(rule.actions).toEqual([{ type: 'transition', toStatusId: 's3' }]);
+    expect(out.affectedRules).toHaveLength(1);
+    expect(w.events.emit).toHaveBeenCalledWith('automation.rules_changed', { workspaceId: 'w1' });
+    expect(w.published).toEqual([]); // sửa được hết → không có quy tắc bị tắt, không ai cần báo
+  });
+
+  it('chạy thật bị rollback (thiếu statusMap): không sửa quy tắc, không bỏ cache, không báo ai', async () => {
+    const w = world({ rules: [RULE] });
+    await rejects(w.service.setWorkspaceScheme('w1', 'u1', { items }, false));
+    expect(w.prisma.automationRule.update).not.toHaveBeenCalled();
+    expect(w.events.emit).not.toHaveBeenCalled();
+    expect(w.published).toEqual([]);
+  });
+
+  it('ghi đè dự án thật: khoá + sửa quy tắc; DELETE ghi đè: khoá + sửa quy tắc; dryRun hai đường chỉ liệt kê', async () => {
+    const a = world({ rules: [RULE], scheme: [{ issueTypeId: 'tTask', workflowId: 'wfStd' }] });
+    const preview = await a.service.setProjectOverride(
+      'w1',
+      'p1',
+      'u1',
+      { issueTypeId: 'tTask', workflowId: 'wfOld', statusMap: {} },
+      true,
+    );
+    expect(preview.dryRun).toBe(true);
+    expect(a.prisma.automationRule.update).not.toHaveBeenCalled();
+    expect(a.prisma.$executeRaw).not.toHaveBeenCalled();
+
+    const b = world({
+      rules: [{ ...RULE, triggerConfig: { toStatusId: 'o2' } }],
+      scheme: [{ issueTypeId: 'tTask', workflowId: 'wfStd' }],
+      overrides: [{ projectId: 'p1', issueTypeId: 'tTask', workflowId: 'wfOld' }],
+    });
+    const out = await b.service.setProjectOverride(
+      'w1',
+      'p1',
+      'u1',
+      { issueTypeId: 'tTask', workflowId: null, statusMap },
+      false,
+    );
+    expect(b.prisma.$executeRaw).toHaveBeenCalledTimes(1);
+    expect(out.affectedRules.map((r) => r.ruleId)).toEqual(['r1']);
+    // Còn việc ở trạng thái cũ ở dự án khác (p2 vẫn ở quy trình cũ) thì quy tắc giữ cả id cũ lẫn mới.
+    expect(b.events.emit).toHaveBeenCalledWith('automation.rules_changed', { workspaceId: 'w1' });
   });
 });

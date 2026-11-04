@@ -72,6 +72,8 @@ const EXEMPT_METHODS: Record<string, string> = {
   'projects/projects.service.ts#archive': 'vòng đời dự án',
   'projects/projects.service.ts#unarchive': 'vòng đời dự án — chính là lối khôi phục',
   'projects/projects.service.ts#remove': 'vòng đời dự án (xoá mềm)',
+  'automation/rules.service.ts#onRulesChanged':
+    'chỉ bỏ cache quy tắc trong bộ nhớ khi script/API đổi quy trình sửa quy tắc; không ghi dữ liệu dự án',
   'automation/automation.service.ts#runDueRecurring':
     'cron; scanDueRecurring lọc `project: { archivedAt: null }` ở where',
   'automation/rule-engine.service.ts#onModuleInit':

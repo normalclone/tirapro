@@ -87,6 +87,8 @@ export const ERROR_CODES = {
   WORKFLOW_IN_USE: 'WORKFLOW_IN_USE',
   /** 409: trạng thái còn việc đang ở đó — xoá phải kèm `replacementStatusId`. */
   STATUS_HAS_ISSUES: 'STATUS_HAS_ISSUES',
+  /** 409: trạng thái khởi tạo của một quy trình đang được dùng theo loại việc/ghi đè dự án — không xoá được (việc mới sẽ không có chỗ bắt đầu). */
+  INITIAL_STATUS_IN_USE: 'INITIAL_STATUS_IN_USE',
   /** 413: tệp tải lên vượt giới hạn dung lượng. */
   PAYLOAD_TOO_LARGE: 'PAYLOAD_TOO_LARGE',
   INTERNAL: 'INTERNAL',

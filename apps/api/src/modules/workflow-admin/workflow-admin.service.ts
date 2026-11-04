@@ -1,4 +1,5 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Prisma } from '@prisma/client';
 import type { StatusCategory } from '@tirapro/types';
 import { PrismaService } from '../../infra/prisma/prisma.service';
@@ -7,8 +8,12 @@ import {
   ConflictAppException,
   NotFoundAppException,
 } from '../../common/exceptions/app.exception';
-import { ERROR_CODES, type WorkflowUsageDto } from '@tirapro/types';
+import { ERROR_CODES, type AffectedRuleDto, type WorkflowUsageDto } from '@tirapro/types';
 import { moveIssuesToStatus } from './issue-status-move';
+import { lockWorkspaceWorkflows } from './workflow-move';
+import { publishRuleChanges, rewriteRuleStatusRefs } from './rule-status-refs';
+import { NotificationsService } from '../notifications/notifications.service';
+import { WorkflowResolver } from './workflow-resolver.service';
 import { assertProjectIdWritable } from '../../common/project-writable';
 import { ProjectAccessService } from '../rbac/project-access.service';
 
@@ -140,6 +145,8 @@ const workflowInUse = (keys: string[]) =>
   `Quy trình đang được dự án {${keys.join(', ')}} dùng — dự án (kể cả dự án đã xoá) vẫn giữ quy trình này nên không xoá được`;
 const STATUS_HAS_ISSUES_MESSAGE =
   'Vẫn còn công việc đang ở trạng thái này — hãy chọn trạng thái thay thế để chuyển chúng sang trước khi xoá';
+const INITIAL_STATUS_IN_USE_MESSAGE =
+  'Đây là trạng thái ban đầu của quy trình đang được tổ chức hoặc dự án dùng — hãy đặt trạng thái ban đầu khác hoặc chọn quy trình khác ở đó trước khi xoá';
 const REPLACEMENT_INVALID = 'Trạng thái thay thế phải là một trạng thái khác của cùng quy trình';
 
 @Injectable()
@@ -147,6 +154,9 @@ export class WorkflowAdminService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly access: ProjectAccessService,
+    @Optional() private readonly notifications?: NotificationsService,
+    @Optional() private readonly events?: EventEmitter2,
+    @Optional() private readonly resolver?: WorkflowResolver,
   ) {}
 
   // ----- Workflows -----
@@ -502,15 +512,18 @@ export class WorkflowAdminService {
   ): Promise<{ success: true; moved: number }> {
     const existing = await this.requireStatus(workspaceId, statusId);
     await assertProjectIdWritable(this.prisma, existing.projectId);
+    if (existing.isInitial) await this.assertInitialNotInUse(workspaceId, existing.workflowId);
     // allow-deleted: issue đã xoá mềm vẫn giữ FK statusId nên vẫn chặn xoá trạng thái
     const usedByIssues = await this.prisma.issue.count({
       where: { statusId },
     });
     if (usedByIssues > 0 && !replacementStatusId)
       throw new ConflictAppException(ERROR_CODES.STATUS_HAS_ISSUES, STATUS_HAS_ISSUES_MESSAGE);
+    let affected: AffectedRuleDto[] = [];
     try {
       const moved = await this.prisma.$transaction(
         async (tx) => {
+          await lockWorkspaceWorkflows(tx, workspaceId);
           let count = 0;
           if (usedByIssues > 0) {
             const [from, to] = await Promise.all([
@@ -538,10 +551,31 @@ export class WorkflowAdminService {
               defaultResolutionId: resolution?.id ?? null,
             }));
           }
+          // Quy tắc automation nhắc tới trạng thái này: sang trạng thái thay thế; không có thay thế → tắt quy tắc + báo người tạo.
+          ({ affectedRules: affected } = await rewriteRuleStatusRefs(
+            tx,
+            workspaceId,
+            new Map([
+              [
+                statusId,
+                replacementStatusId && replacementStatusId !== statusId
+                  ? [replacementStatusId]
+                  : [],
+              ],
+            ]),
+            { dryRun: false },
+          ));
           await tx.status.delete({ where: { id: statusId } });
           return count;
         },
         { timeout: 120_000, maxWait: 10_000 },
+      );
+      this.resolver?.invalidate();
+      await publishRuleChanges(
+        { events: this.events, notifications: this.notifications },
+        workspaceId,
+        actorId,
+        affected,
       );
       return { success: true, moved };
     } catch (e) {
@@ -550,6 +584,24 @@ export class WorkflowAdminService {
       }
       throw e;
     }
+  }
+
+  /**
+   * Trạng thái ban đầu là nơi việc mới được tạo vào: xoá nó khi quy trình còn được loại việc của tổ chức hoặc ghi đè dự án dùng
+   * thì việc mới sẽ không có chỗ vào → 409 INITIAL_STATUS_IN_USE (hãy đặt trạng thái ban đầu khác trước).
+   */
+  private async assertInitialNotInUse(workspaceId: string, workflowId: string): Promise<void> {
+    const [scheme, overrides] = await Promise.all([
+      this.prisma.workspaceWorkflowScheme.count({ where: { workspaceId, workflowId } }),
+      this.prisma.projectWorkflowOverride.count({
+        where: { workflowId, project: { workspaceId } },
+      }),
+    ]);
+    if (scheme + overrides > 0)
+      throw new ConflictAppException(
+        ERROR_CODES.INITIAL_STATUS_IN_USE,
+        INITIAL_STATUS_IN_USE_MESSAGE,
+      );
   }
 
   // ----- Transitions -----
@@ -641,13 +693,23 @@ export class WorkflowAdminService {
   private async requireStatus(
     workspaceId: string,
     statusId: string,
-  ): Promise<{ id: string; workflowId: string; projectId: string | null }> {
+  ): Promise<{ id: string; workflowId: string; projectId: string | null; isInitial: boolean }> {
     const status = await this.prisma.status.findFirst({
       where: { id: statusId, workflow: { workspaceId } },
-      select: { id: true, workflowId: true, workflow: { select: { projectId: true } } },
+      select: {
+        id: true,
+        workflowId: true,
+        isInitial: true,
+        workflow: { select: { projectId: true } },
+      },
     });
     if (!status) throw new NotFoundAppException('Trạng thái');
-    return { id: status.id, workflowId: status.workflowId, projectId: status.workflow.projectId };
+    return {
+      id: status.id,
+      workflowId: status.workflowId,
+      isInitial: status.isInitial,
+      projectId: status.workflow.projectId,
+    };
   }
 
   private async requireTransition(

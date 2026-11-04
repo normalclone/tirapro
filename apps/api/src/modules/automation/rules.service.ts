@@ -1,7 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { OnEvent } from '@nestjs/event-emitter';
 import { CronExpressionParser } from 'cron-parser';
 import type { AutomationRule, Prisma } from '@prisma/client';
 import {
+  DOMAIN_EVENTS,
   type AutomationRuleDto,
   type AutomationRunDto,
   type AutomationRunStepDto,
@@ -92,6 +94,12 @@ export class RulesService {
     if (client) client.set(key, JSON.stringify(rules), 'EX', CACHE_TTL_SEC).catch(() => undefined);
     else this.memory.set(workspaceId, { at: Date.now(), rules });
     return rules;
+  }
+
+  /** Hệ thống sửa/tắt quy tắc hàng loạt (đổi quy trình theo loại việc, xoá trạng thái) → bỏ cache để engine đọc bản mới. */
+  @OnEvent(DOMAIN_EVENTS.AUTOMATION_RULES_CHANGED)
+  async onRulesChanged(p: { workspaceId: string }): Promise<void> {
+    await this.invalidate(p.workspaceId);
   }
 
   async invalidate(workspaceId: string): Promise<void> {
