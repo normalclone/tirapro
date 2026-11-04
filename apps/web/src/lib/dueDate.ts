@@ -3,6 +3,16 @@
  * so với "hôm nay" theo giờ Việt Nam (khớp phía API). Hạn hôm nay CHƯA quá hạn; hạn hôm qua là quá hạn.
  * Không phụ thuộc múi giờ của máy.
  */
+import { defaultDueDate } from '@tirapro/shared';
+
+/** Giờ điền sẵn cạnh ngày hạn (ô ngày+giờ); máy chủ chỉ giữ NGÀY, giờ chỉ để hiển thị. */
+const DEFAULT_DUE_TIME = '17:00';
+
+/** Hạn điền sẵn khi tạo việc = NGÀY MAI theo giờ Việt Nam (cùng `defaultDueDate` mà máy chủ dùng), dạng ô `yyyy-MM-ddTHH:mm`. */
+export function defaultDueInput(now: Date = new Date()): string {
+  return `${defaultDueDate(now).slice(0, 10)}T${DEFAULT_DUE_TIME}`;
+}
+
 export type DueLike = { dueDate: string | null; status?: { category?: string } | null };
 export type DueState = 'overdue' | 'soon' | 'normal';
 

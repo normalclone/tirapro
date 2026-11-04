@@ -291,6 +291,7 @@ export function DateTimeInput({
   min,
   max,
   required,
+  restoreOnEmpty,
   disabled,
   className,
 }: DateTimeInputProps) {
@@ -378,6 +379,7 @@ export function DateTimeInput({
             min={min}
             max={max}
             required={required}
+            restoreOnEmpty={restoreOnEmpty}
             disabled={disabled}
           />
         </div>

@@ -780,7 +780,8 @@ function ActionCard({
                   min={0}
                   value={a.value}
                   onChange={(e) => set({ value: e.target.value })}
-                  placeholder="Để trống = gỡ giá trị"
+                  placeholder={a.field === 'dueDate' ? 'Chọn ngày' : 'Để trống = gỡ giá trị'}
+                  required={a.field === 'dueDate'}
                 />
               )
             }

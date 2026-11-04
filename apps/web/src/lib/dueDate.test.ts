@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { dueDaysFromToday, dueState, isOverdue } from './dueDate';
+import { defaultDueInput, dueDaysFromToday, dueState, isOverdue } from './dueDate';
 
 const issue = (dueDate: string | null, category = 'IN_PROGRESS') => ({
   dueDate,
@@ -50,5 +50,14 @@ describe('không phụ thuộc múi giờ của máy', () => {
     expect(isOverdue(issue('2026-10-16T00:00:00.000Z'), NOW)).toBe(false);
     expect(isOverdue(issue('2026-10-15T00:00:00.000Z'), NOW)).toBe(true);
     expect(isOverdue(issue('2026-10-16T00:00:00.000Z'), LATE)).toBe(true);
+  });
+});
+
+describe('defaultDueInput — hạn điền sẵn = ngày mai theo giờ Việt Nam', () => {
+  it('17:00 VN ngày 04/11 → 05/11', () => {
+    expect(defaultDueInput(new Date('2026-11-04T10:00:00Z'))).toBe('2026-11-05T17:00');
+  });
+  it('sau 17:00Z đã sang ngày hôm sau ở VN (03:00 05/11 VN) → 06/11, không theo múi giờ máy', () => {
+    expect(defaultDueInput(new Date('2026-11-04T20:00:00Z'))).toBe('2026-11-06T17:00');
   });
 });

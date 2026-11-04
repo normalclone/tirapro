@@ -150,6 +150,27 @@ export function ruleIssueToFieldError(issue: RuleIssueLike, ids: RuleDraftIds): 
   return e;
 }
 
+/** Hạn là BẮT BUỘC: quy tắc không được đặt Hạn rỗng (API: 422 DUE_DATE_REQUIRED) → bắt ngay ở trình soạn. */
+export const DUE_REQUIRED_MESSAGE =
+  'Hạn không được để trống — hãy chọn một ngày (hoặc đổi sang trường khác)';
+
+/** Mỗi hành động `setField dueDate` có giá trị trống → một lỗi gắn đúng ô "Giá trị mới" của hành động đó. */
+function dueRequiredIssues(payload: unknown): RuleIssueLike[] {
+  const actions = (payload as { actions?: unknown })?.actions;
+  if (!Array.isArray(actions)) return [];
+  const out: RuleIssueLike[] = [];
+  actions.forEach((a: unknown, i) => {
+    const x = a as { type?: unknown; field?: unknown; value?: unknown } | null;
+    if (
+      x?.type === 'setField' &&
+      x.field === 'dueDate' &&
+      (x.value === null || x.value === undefined || x.value === '')
+    )
+      out.push({ path: ['actions', i, 'value'], message: DUE_REQUIRED_MESSAGE });
+  });
+  return out;
+}
+
 export type RuleValidation =
   | { ok: true; data: CreateRuleInput }
   | { ok: false; errors: FieldError[] };
@@ -163,8 +184,11 @@ const cmp = (a: readonly number[], b: readonly number[]): number =>
  */
 export function validateRulePayload(payload: unknown, ids: RuleDraftIds): RuleValidation {
   const parsed = createRuleSchema.safeParse(payload);
-  if (parsed.success) return { ok: true, data: parsed.data };
-  const ranked = parsed.error.issues.map((i) => toRanked(i, ids));
+  const dueIssues = dueRequiredIssues(payload);
+  if (parsed.success && dueIssues.length === 0) return { ok: true, data: parsed.data };
+  // Lời "Hạn bắt buộc" đứng trước: mỗi ô chỉ giữ một dòng, và câu này rõ hơn câu chung của schema.
+  const issues = [...dueIssues, ...(parsed.success ? [] : parsed.error.issues)];
+  const ranked = issues.map((i) => toRanked(i, ids));
   ranked.sort((a, b) => cmp(a.rank, b.rank)); // sort ổn định: giữ thứ tự zod khi cùng hạng
   const seen = new Set<string>();
   const errors: FieldError[] = [];

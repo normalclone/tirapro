@@ -964,13 +964,15 @@ export function IssueDueField({
 
   function save(raw: string) {
     setEditing(false);
+    // Hạn bắt buộc: ô trống KHÔNG xoá hạn (API 422 DUE_DATE_REQUIRED) — không gửi gì, hiện lại hạn cũ.
+    if (!raw) return;
     const cur = issue.dueDate ? toDateTimeInput(issue.dueDate) : '';
     if (raw === cur) return;
     patch.mutate(
       {
         id: issue.id,
         key: issue.key,
-        patch: { dueDate: raw ? localToCalendarIso(raw) : null },
+        patch: { dueDate: localToCalendarIso(raw) },
         version: issue.version,
       },
       { onError: (e) => toast.error(apiErrorMessage(e)) },

@@ -40,7 +40,7 @@ import { epicChoices, parentChoices } from '@/lib/epic';
 import { blockOnInvalidDate } from '@/lib/dateGuard';
 import { fieldErrorId, type FieldError } from '@/lib/formErrors';
 import { useErrorFlow } from '@/lib/useErrorFlow';
-import { dueDaysFromToday } from '@/lib/dueDate';
+import { defaultDueInput, dueDaysFromToday } from '@/lib/dueDate';
 import { CHILD_SPRINT_TIP } from '@/lib/points';
 import { TokenTitleInput } from './TokenTitleInput';
 import { validateCreateIssue, type CreateIssueField } from './createIssueForm';
@@ -192,7 +192,8 @@ export function CreateIssueModal() {
   const [assigneeId, setAssigneeId] = useState('');
   const [sprintId, setSprintId] = useState('');
   const [difficulty, setDifficulty] = useState<Difficulty>('MEDIUM');
-  const [due, setDue] = useState('');
+  // Hạn bắt buộc: điền sẵn NGÀY MAI (giờ VN); ô không xoá trống được (xoá rồi rời ô → điền lại).
+  const [due, setDue] = useState(() => defaultDueInput());
   const [envKind, setEnvKind] = useState('');
   const [envBuild, setEnvBuild] = useState('');
   const [epicId, setEpicId] = useState('');
@@ -254,7 +255,7 @@ export function CreateIssueModal() {
     setAssigneeId('');
     setSprintId('');
     setDifficulty('MEDIUM');
-    setDue('');
+    setDue(defaultDueInput());
     setEnvKind('');
     setEnvBuild('');
     setEpicId('');
@@ -542,7 +543,7 @@ export function CreateIssueModal() {
     setDescription('');
     setFiles([]);
     setDifficulty('MEDIUM');
-    setDue('');
+    setDue(defaultDueInput());
     setEnvKind('');
     setEnvBuild('');
     lastTokens.current = { clean: '' };
@@ -802,7 +803,7 @@ export function CreateIssueModal() {
           <Field
             className="sm:col-span-2"
             label="Hạn hoàn thành"
-            hint="(tùy chọn)"
+            hint="(mặc định: ngày mai)"
             title="Mốc phải xong, không được trước ngày tạo. Quá hạn mà chưa xong, việc sẽ hiện viền đỏ trên bảng."
             htmlFor="ci-due"
             error={errorOf('due')}
@@ -810,9 +811,12 @@ export function CreateIssueModal() {
             <DateTimeInput
               value={due}
               onChange={(v) => {
+                if (!v) return; // Hạn không để trống: xoá hết chữ thì giữ hạn cũ, rời ô sẽ điền lại
                 markManual('due');
                 setDue(v);
               }}
+              restoreOnEmpty
+              required
               id="ci-due"
               defaultTime="17:00"
               ariaLabel="Hạn hoàn thành"
