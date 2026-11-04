@@ -54,10 +54,10 @@ describe('không phụ thuộc múi giờ của máy', () => {
 });
 
 describe('defaultDueInput — hạn điền sẵn = ngày mai theo giờ Việt Nam', () => {
-  it('17:00 VN ngày 04/11 → 05/11', () => {
-    expect(defaultDueInput(new Date('2026-11-04T10:00:00Z'))).toBe('2026-11-05T17:00');
+  it('chiều 04/11 VN → 05/11', () => {
+    expect(defaultDueInput(new Date('2026-11-04T10:00:00Z'))).toBe('2026-11-05');
   });
   it('sau 17:00Z đã sang ngày hôm sau ở VN (03:00 05/11 VN) → 06/11, không theo múi giờ máy', () => {
-    expect(defaultDueInput(new Date('2026-11-04T20:00:00Z'))).toBe('2026-11-06T17:00');
+    expect(defaultDueInput(new Date('2026-11-04T20:00:00Z'))).toBe('2026-11-06');
   });
 });

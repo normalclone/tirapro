@@ -56,13 +56,14 @@ function open() {
   act(() => useCreateIssueModal.getState().openCreate());
 }
 
-describe('hộp Tạo việc: Hạn điền sẵn ngày mai (giờ VN) và không xoá trống được', () => {
+describe('hộp Tạo việc: Hạn điền sẵn ngày mai (giờ VN, chỉ ngày) và không xoá trống được', () => {
   it('ô Hạn hoàn thành ban đầu hiện NGÀY MAI theo giờ Việt Nam', async () => {
     open();
     const date = await screen.findByLabelText<HTMLInputElement>('Hạn hoàn thành');
     const tomorrow = defaultDueDate(new Date()).slice(0, 10); // yyyy-MM-dd
     expect(date.value).toBe(formatViDate(tomorrow));
-    expect(screen.getByLabelText<HTMLInputElement>('Hạn hoàn thành — giờ').value).toBe('17:00');
+    // Hạn là ngày lịch: không có ô giờ
+    expect(screen.queryByLabelText('Hạn hoàn thành — giờ')).toBeNull();
   });
 
   it('xoá hết ngày rồi rời ô → điền lại ngày mai (không để trống)', async () => {

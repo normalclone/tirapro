@@ -27,7 +27,7 @@ import { Dialog } from '@/components/ui/Dialog';
 import { ErrorSummary } from '@/components/ui/ErrorSummary';
 import { FieldErrorText } from '@/components/ui/FieldError';
 import { Input } from '@/components/ui/Input';
-import { DateTimeInput } from '@/components/ui/DateInput';
+import { DateInput } from '@/components/ui/DateInput';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { PeoplePicker } from '@/components/ui/PeoplePicker';
 import { useAssigneePicker } from '@/features/issue-edit/useAssigneeOptions';
@@ -394,7 +394,7 @@ export function CreateIssueModal() {
     if (f.assigneeId) setAssigneeId(f.assigneeId);
     if (f.sprintId) setSprintId(f.sprintId);
     if (f.difficulty) setDifficulty(f.difficulty as Difficulty);
-    if (f.due) setDue(f.due);
+    if (f.due) setDue(f.due.slice(0, 10)); // hạn là ngày lịch: bỏ phần giờ của token
   }
 
   // Đổi loại → tự điền mẫu mô tả (chỉ khi mô tả trống hoặc đang là mẫu; bỏ qua lần đặt mặc định đầu).
@@ -808,7 +808,7 @@ export function CreateIssueModal() {
             htmlFor="ci-due"
             error={errorOf('due')}
           >
-            <DateTimeInput
+            <DateInput
               value={due}
               onChange={(v) => {
                 if (!v) return; // Hạn không để trống: xoá hết chữ thì giữ hạn cũ, rời ô sẽ điền lại
@@ -818,7 +818,6 @@ export function CreateIssueModal() {
               restoreOnEmpty
               required
               id="ci-due"
-              defaultTime="17:00"
               ariaLabel="Hạn hoàn thành"
             />
           </Field>

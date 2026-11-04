@@ -28,10 +28,10 @@ import { isBugType } from './severity';
 import { dueState } from '@/lib/dueDate';
 import { apiErrorMessage } from '@/lib/api';
 import { isRollupPoints, parsePointsOverride, pointsTip, CHILD_SPRINT_TIP } from '@/lib/points';
-import { DIFFICULTIES, DIFFICULTY_LABELS } from '@tirapro/shared';
+import { DIFFICULTIES, DIFFICULTY_LABELS, formatCalendarDmy } from '@tirapro/shared';
 import { cn } from '@/lib/utils';
-import { fmtDate, fmtDateTime, fmtRelative, toDateInput, toDateTimeInput } from '@/lib/dateFormat';
-import { DateInput, DateTimeInput } from '@/components/ui/DateInput';
+import { fmtDate, fmtDateTime, fmtRelative, toDateInput } from '@/lib/dateFormat';
+import { DateInput } from '@/components/ui/DateInput';
 import type { FactField } from '@/features/issues/issueFacts';
 
 /** Trigger SearchSelect ở dạng badge/label (không viền, hover nền) — bấm để đổi. */
@@ -942,8 +942,9 @@ export function IssueDueField({
 }) {
   const patch = useUpdateIssue(issue.projectId);
   const [editing, setEditing] = useState(false);
-  const display = issue.dueDate ? fmtDateTime(issue.dueDate) : null;
-  const currentDue = issue.dueDate ? toDateTimeInput(issue.dueDate) : '';
+  // Hạn là NGÀY LỊCH (`YYYY-MM-DDT00:00:00Z`): hiển thị/sửa theo phần ngày, không qua múi giờ trình duyệt.
+  const display = issue.dueDate ? formatCalendarDmy(issue.dueDate) : null;
+  const currentDue = issue.dueDate ? issue.dueDate.slice(0, 10) : '';
   const [draft, setDraft] = useState(currentDue);
 
   // Màu theo hạn: quá hạn = đỏ đậm nổi bật, sắp đến hạn = vàng, còn lại = bình thường.
@@ -966,8 +967,7 @@ export function IssueDueField({
     setEditing(false);
     // Hạn bắt buộc: ô trống KHÔNG xoá hạn (API 422 DUE_DATE_REQUIRED) — không gửi gì, hiện lại hạn cũ.
     if (!raw) return;
-    const cur = issue.dueDate ? toDateTimeInput(issue.dueDate) : '';
-    if (raw === cur) return;
+    if (raw === currentDue) return;
     patch.mutate(
       {
         id: issue.id,
@@ -997,13 +997,15 @@ export function IssueDueField({
       }}
       editor={
         <InlineEditor onCancel={() => setEditing(false)}>
-          <DateTimeInput
+          <DateInput
             value={draft}
-            onChange={setDraft}
+            // Xoá trống không đổi bản nháp: rời ô thì điền lại hạn cũ (hạn bắt buộc).
+            onChange={(v) => v && setDraft(v)}
             onCommit={save}
+            restoreOnEmpty
             ariaLabel="Hạn hoàn thành"
             disabled={patch.isPending}
-            className={layout === 'tile' ? 'w-full' : 'w-56'}
+            className={layout === 'tile' ? 'w-full' : 'h-8 w-40 text-sm'}
           />
         </InlineEditor>
       }

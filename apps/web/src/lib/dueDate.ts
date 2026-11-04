@@ -5,12 +5,9 @@
  */
 import { defaultDueDate } from '@tirapro/shared';
 
-/** Giờ điền sẵn cạnh ngày hạn (ô ngày+giờ); máy chủ chỉ giữ NGÀY, giờ chỉ để hiển thị. */
-const DEFAULT_DUE_TIME = '17:00';
-
-/** Hạn điền sẵn khi tạo việc = NGÀY MAI theo giờ Việt Nam (cùng `defaultDueDate` mà máy chủ dùng), dạng ô `yyyy-MM-ddTHH:mm`. */
+/** Hạn điền sẵn khi tạo việc = NGÀY MAI theo giờ Việt Nam (cùng `defaultDueDate` mà máy chủ dùng), dạng ô ngày `yyyy-MM-dd`. */
 export function defaultDueInput(now: Date = new Date()): string {
-  return `${defaultDueDate(now).slice(0, 10)}T${DEFAULT_DUE_TIME}`;
+  return defaultDueDate(now).slice(0, 10);
 }
 
 export type DueLike = { dueDate: string | null; status?: { category?: string } | null };

@@ -1,5 +1,6 @@
 import type { IssueDto, SprintDto } from '@tirapro/types';
 import type { CreateIssueInput } from '@/features/issues/create-api';
+import { formatCalendarDmy } from '@tirapro/shared';
 import { fmtDate } from '@/lib/dateFormat';
 import { dueDaysFromToday, isOverdue } from '@/lib/dueDate';
 import { STATUS_CATEGORY_LABEL } from '@/lib/terms';
@@ -74,7 +75,7 @@ const rowOf = (i: IssueDto, now: Date): IssueRow => ({
   key: i.key,
   summary: i.summary,
   status: i.status.name,
-  due: i.dueDate ? fmtDate(i.dueDate) : null,
+  due: i.dueDate ? formatCalendarDmy(i.dueDate) : null,
   overdue: isOverdue(i, now),
 });
 
@@ -115,7 +116,7 @@ async function issueFacts(issue: IssueDto, deps: AssistantDeps, now: Date): Prom
   const children = all.filter((i) => i.parentId === issue.id).length;
   const overdue = isOverdue(issue, now);
   const dueLabel = issue.dueDate
-    ? `${fmtDate(issue.dueDate)}${overdue ? ` (quá hạn ${Math.abs(dueDaysFromToday(issue.dueDate, now))} ngày)` : ''}`
+    ? `${formatCalendarDmy(issue.dueDate)}${overdue ? ` (quá hạn ${Math.abs(dueDaysFromToday(issue.dueDate, now))} ngày)` : ''}`
     : 'Chưa đặt';
   return [
     {
