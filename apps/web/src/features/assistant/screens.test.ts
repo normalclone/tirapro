@@ -19,7 +19,8 @@ describe('screenInfoOf', () => {
     expect(screenInfoOf('/p/X/backlog').name).toBe('Việc chờ');
     expect(screenInfoOf('/issue/ABC-1').name).toBe('Công việc');
     expect(screenInfoOf('/settings/priorities').name).toBe('Cài đặt');
-    expect(screenInfoOf('/manage/risks').name).toContain('Danh mục');
+    expect(screenInfoOf('/p/X/risks').name).toBe('Rủi ro & vướng mắc');
+    expect(screenInfoOf('/manage/risks').name).toBe('Tirapro'); // mục Danh mục đã bỏ
     expect(screenInfoOf('/connect/integrations').name).toBe('Kết nối');
     expect(screenInfoOf('/khong-co').name).toBe('Tirapro');
   });

@@ -131,7 +131,6 @@ describe('chặn tái phạm khung trang (đợt 2 · phần B)', () => {
       'components/layout/subNavModel.ts',
       'components/layout/RailLayout.tsx',
       'features/settings/SettingsLayout.tsx',
-      'features/manage/ManageLayout.tsx',
       'features/connect/ConnectLayout.tsx',
       'features/project-config/ProjectConfigPage.tsx',
     ])
@@ -176,14 +175,10 @@ describe('chặn tái phạm khung trang (đợt 2 · phần B)', () => {
         /\bfunction (SectionCard|Card)\b/,
       );
   });
-  it('GroupCard, ClientCard, GoalCard được giữ vì là thẻ MỤC DANH SÁCH thu/mở (không phải thẻ khu vực)', () => {
-    // Lý do (DESIGN.md "Khung trang"): mỗi thẻ là một thực thể lặp (chương trình/khách hàng/mục tiêu), tiêu đề
+  it('GoalCard được giữ vì là thẻ MỤC DANH SÁCH thu/mở (không phải thẻ khu vực)', () => {
+    // Lý do (DESIGN.md "Khung trang"): mỗi thẻ là một thực thể lặp (mục tiêu), tiêu đề
     // là nút thu/mở kèm tiến độ/trạng thái — SectionCard (tiêu đề tĩnh + icon) không biểu diễn được. Phải thu/mở.
-    for (const [f, fn] of [
-      ['features/portfolio/PortfolioPage.tsx', 'GroupCard'],
-      ['features/clients/ClientsPage.tsx', 'ClientCard'],
-      ['features/goals/GoalsPage.tsx', 'GoalCard'],
-    ] as const) {
+    for (const [f, fn] of [['features/goals/GoalsPage.tsx', 'GoalCard']] as const) {
       const t = code(src(f));
       const start = t.indexOf(`function ${fn}(`);
       expect(start, `${f} ${fn}`).toBeGreaterThan(-1);

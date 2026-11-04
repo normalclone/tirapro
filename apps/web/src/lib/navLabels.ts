@@ -11,7 +11,6 @@ export const APP_NAV_LABELS = {
   projects: 'Dự án',
   filters: 'Bộ lọc đã lưu',
   members: 'Thành viên',
-  manage: 'Danh mục',
   wiki: 'Wiki',
   connect: 'Kết nối',
   settings: 'Cài đặt',
@@ -35,13 +34,11 @@ export const SETTINGS_LABELS = {
   api: 'API & kết nối lập trình',
 } as const;
 
-/** Mục con của Danh mục (`/manage/*`). */
+/** Nhãn của các màn từng nằm trong "Danh mục" (nay: tab dự án Mục tiêu / Rủi ro, tab Nhân lực của Thành viên). */
 export const MANAGE_LABELS = {
-  portfolio: 'Danh mục dự án',
   goals: 'Mục tiêu',
   risks: 'Rủi ro & vướng mắc',
   resources: 'Nhân lực',
-  clients: 'Khách hàng',
 } as const;
 
 /** Mục con của Kết nối (`/connect/*`). */

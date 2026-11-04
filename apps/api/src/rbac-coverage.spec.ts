@@ -80,6 +80,36 @@ describe('RBAC coverage', () => {
     );
   });
 
+  it('route dùng @PermissionsAnyOf(project:admin) mà có tham số :id phải có @ProjectRef (không thì quyền chỉ tính ở cấp tổ chức)', async () => {
+    const root = join(__dirname, 'modules');
+    const missing: string[] = [];
+    let checked = 0;
+    for (const file of findControllerFiles(root).sort()) {
+      const mod = (await import(file)) as Record<string, unknown>;
+      for (const exported of Object.values(mod)) {
+        if (typeof exported !== 'function') continue;
+        const ctrl = exported as Ctor;
+        if (Reflect.getMetadata(PATH_METADATA, ctrl) === undefined) continue;
+        for (const name of Object.getOwnPropertyNames(ctrl.prototype)) {
+          const handler = ctrl.prototype[name];
+          if (typeof handler !== 'function') continue;
+          if (Reflect.getMetadata(METHOD_METADATA, handler) === undefined) continue;
+          const anyOf = (Reflect.getMetadata(PERMISSIONS_ANY_KEY, handler) ??
+            Reflect.getMetadata(PERMISSIONS_ANY_KEY, ctrl)) as unknown[] | undefined;
+          if (!anyOf?.includes(PERMISSIONS.PROJECT_ADMIN)) continue;
+          checked++;
+          const path = String(Reflect.getMetadata(PATH_METADATA, handler) ?? '');
+          const hasParam = /:\w+/.test(path);
+          const hasRef = Reflect.getMetadata(PROJECT_REF_KEY, handler) !== undefined;
+          if (hasParam && !hasRef)
+            missing.push(`${relative(root, file)} → ${ctrl.name}.${name} (${path})`);
+        }
+      }
+    }
+    expect(checked).toBeGreaterThanOrEqual(10); // goals + raid + sla: chặn quét hụt
+    expect(missing, `Thiếu @ProjectRef:\n${missing.join('\n')}`).toEqual([]);
+  });
+
   it('route thả cảm xúc (077): chỉ cần XEM được việc (PROJECT_VIEW), KHÔNG COMMENT_CREATE; khoá theo bình luận → dự án', async () => {
     const { CommentsController } = await import('./modules/comments/comments.controller');
     const proto = CommentsController.prototype as unknown as Record<string, object>;

@@ -159,7 +159,7 @@ Cột Viewer = Workspace Viewer (đối chiếu read-only).
 | **Realtime** | Board/issue cập nhật tức thời, presence, typing | Mọi người đang xem board/issue (theo quyền view) |
 | **Analytics** | Báo cáo Sprint (tab đầu) / Burndown / Velocity / CFD / Tổng kết sprint (sau khi Kết thúc sprint) / QA | Reporter trở lên (xem); Project Admin (cấu hình) |
 | | Dashboard tùy biến + widget (Tổng quan → bộ chọn dashboard) | Người có `dashboard:manage` tạo; chia sẻ riêng tư / cả workspace / theo dự án / theo nhóm; chỉ chủ sửa |
-| | Xuất CSV (bộ lọc/JQL, Việc chờ, bug, sprint, Danh mục, rủi ro, nhân lực) + In / Lưu PDF (Tổng quan, báo cáo sprint) | Người xem được dữ liệu đó (Excel mở được CSV; không có xuất `.xlsx`/PDF phía máy chủ) |
+| | Xuất CSV (bộ lọc/JQL, Việc chờ, bug, sprint, rủi ro, nhân lực) + In / Lưu PDF (Tổng quan, báo cáo sprint) | Người xem được dữ liệu đó (Excel mở được CSV; không có xuất `.xlsx`/PDF phía máy chủ) |
 | **Lãnh đạo** | Sức khoẻ dự án (tự tính + PM ghi đè), thẻ Top rủi ro / OKR chậm / người quá tải, Digest | WS Admin / Project Admin; người nhận digest |
 | | OKR tự đo (số bug mở, % sprint, số công việc theo JQL) + lịch sử giá trị hằng ngày + check-in | Người có `goal:manage` |
 | **UX** | Command palette (Cmd+K), phím tắt, dark mode, PWA | Mọi người dùng đã đăng nhập |

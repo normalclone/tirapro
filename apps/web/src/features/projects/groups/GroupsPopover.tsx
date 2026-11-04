@@ -8,7 +8,7 @@ import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/stores/auth';
 import { ShareChecklist, type ChecklistItem } from '@/features/saved-filters/ShareChecklist';
-import { useCreateProgram, usePrograms } from '@/features/portfolio/api';
+import { useCreateProgram, usePrograms } from './programsApi';
 import { useLazyProjectCan, useProjectPermissions } from '../permissions';
 import { useSetProjectPrograms } from './api';
 import { groupCountLabel } from './groupModel';

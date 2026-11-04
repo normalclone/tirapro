@@ -9,6 +9,8 @@ import { ScrollToHash } from '@/features/docs/ScrollToHash';
 import { ConnectIndexRedirect } from '@/features/connect/ConnectIndexRedirect';
 import { SettingsIndexRedirect } from '@/features/settings/SettingsIndexRedirect';
 import { NAV_RULES } from '@/lib/navAccess';
+import { LEGACY_ROUTES } from '@/lib/legacyRoutes';
+import { MovedRedirect } from '@/components/layout/MovedRedirect';
 // Vào ngay từ đầu (unauth first paint + shell) → giữ eager, không tách chunk.
 import { LoginPage } from '@/features/auth/LoginPage';
 import { NoWorkspaceScreen } from '@/features/auth/NoWorkspaceScreen';
@@ -174,20 +176,11 @@ const AdminSystemPage = lazy(() =>
 const AdminPointsPage = lazy(() =>
   import('@/features/admin/AdminPointsPage').then((m) => ({ default: m.AdminPointsPage })),
 );
-const PortfolioPage = lazy(() =>
-  import('@/features/portfolio/PortfolioPage').then((m) => ({ default: m.PortfolioPage })),
-);
-const ClientsPage = lazy(() =>
-  import('@/features/clients/ClientsPage').then((m) => ({ default: m.ClientsPage })),
-);
 const GoalsPage = lazy(() =>
   import('@/features/goals/GoalsPage').then((m) => ({ default: m.GoalsPage })),
 );
 const RaidPage = lazy(() =>
   import('@/features/raid/RaidPage').then((m) => ({ default: m.RaidPage })),
-);
-const ManageLayout = lazy(() =>
-  import('@/features/manage/ManageLayout').then((m) => ({ default: m.ManageLayout })),
 );
 const ConnectLayout = lazy(() =>
   import('@/features/connect/ConnectLayout').then((m) => ({ default: m.ConnectLayout })),
@@ -327,23 +320,6 @@ export const router = createBrowserRouter([
             element: <RequireAccess rule={NAV_RULES.settingsApi} who="quản trị viên" />,
             children: [{ path: 'api', element: <ApiKeysPage /> }],
           },
-          // Cam kết thời gian đã chuyển vào Cấu hình của từng dự án.
-          { path: 'response-time', element: <Navigate to="/projects" replace /> },
-        ],
-      },
-      // Quản trị — gom các màn theo dõi cấp công ty vào một mục.
-      {
-        path: 'manage',
-        element: <ManageLayout />,
-        children: [
-          { index: true, element: <Navigate to="/manage/portfolio" replace /> },
-          { path: 'portfolio', element: <PortfolioPage /> },
-          // Đã chuyển: Mục tiêu / Rủi ro / Thời gian xử lý nằm trong từng dự án, Nhân lực nằm trong Thành viên.
-          { path: 'goals', element: <Navigate to="/projects" replace /> },
-          { path: 'risks', element: <Navigate to="/projects" replace /> },
-          { path: 'resources', element: <Navigate to="/members?tab=resources" replace /> },
-          { path: 'response-time', element: <Navigate to="/projects" replace /> },
-          { path: 'clients', element: <ClientsPage /> },
         ],
       },
       // Kết nối & tự động hoá.
@@ -372,13 +348,14 @@ export const router = createBrowserRouter([
         ],
       },
       { path: 'wiki', element: <WikiPage /> },
+      // Đường dẫn cũ của các màn đã chuyển chỗ khi bỏ mục "Danh mục" (bảng ở `lib/legacyRoutes`): chuyển hướng + báo mục đó giờ ở đâu.
+      ...LEGACY_ROUTES.map((r) => ({
+        path: r.from,
+        element: <MovedRedirect to={r.to} message={r.message} />,
+      })),
+      // Phần còn lại dưới /manage (đường dẫn lạ) cũng về trang Dự án thay vì 404.
+      { path: 'manage/*', element: <Navigate to="/projects" replace /> },
       // Giữ liên kết cũ hoạt động sau khi gộp menu.
-      { path: 'portfolio', element: <Navigate to="/manage/portfolio" replace /> },
-      { path: 'goals', element: <Navigate to="/projects" replace /> },
-      { path: 'raid', element: <Navigate to="/projects" replace /> },
-      { path: 'resources', element: <Navigate to="/members?tab=resources" replace /> },
-      { path: 'sla', element: <Navigate to="/projects" replace /> },
-      { path: 'clients', element: <Navigate to="/manage/clients" replace /> },
       { path: 'integrations', element: <Navigate to="/connect/integrations" replace /> },
       { path: 'automation', element: <Navigate to="/connect/automation" replace /> },
       { path: 'filters/:id?', element: <FiltersPage /> },

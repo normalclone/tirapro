@@ -38,7 +38,8 @@ export const SCREENS: ScreenInfo[] = [
   {
     pattern: '/projects',
     name: 'Dự án',
-    purpose: 'Danh sách các dự án bạn thấy; mở một dự án để vào Bảng việc, Việc chờ, Báo cáo…',
+    purpose:
+      'Danh sách các dự án bạn thấy, xem theo danh sách hoặc theo nhóm (cột Nhóm, nút Quản lý nhóm); mở một dự án để vào Bảng việc, Việc chờ, Báo cáo…',
     docAnchor: 'khai-niem',
     chips: ['Tạo dự án', 'Việc của tôi', 'Khái niệm cơ bản'],
   },
@@ -103,6 +104,22 @@ export const SCREENS: ScreenInfo[] = [
     chips: ['Việc của tôi', 'Việc quá hạn'],
   },
   {
+    pattern: '/p/:key/goals',
+    name: 'Mục tiêu dự án',
+    purpose:
+      'Mục tiêu theo quý của dự án, mỗi mục tiêu kèm kết quả then chốt đo được bằng số và công việc gắn vào để theo dõi tiến độ.',
+    docAnchor: 'quan-ly-nang-cao',
+    chips: ['Quản lý nâng cao gồm gì', 'Việc quá hạn'],
+  },
+  {
+    pattern: '/p/:key/risks',
+    name: 'Rủi ro & vướng mắc',
+    purpose:
+      'Sổ rủi ro, giả định, vấn đề và việc chờ bên khác của dự án; mỗi mục chấm xác suất × ảnh hưởng, kèm ma trận nhiệt.',
+    docAnchor: 'quan-ly-nang-cao',
+    chips: ['Quản lý nâng cao gồm gì', 'Việc quá hạn'],
+  },
+  {
     pattern: '/p/:key/trash',
     name: 'Thùng rác',
     purpose: 'Công việc đã xoá của dự án — khôi phục được trong thời hạn lưu.',
@@ -113,7 +130,7 @@ export const SCREENS: ScreenInfo[] = [
     pattern: '/p/:key/config',
     name: 'Cấu hình dự án',
     purpose:
-      'Thành viên, quy trình, thành phần, phiên bản, nhãn, bảng việc, tự động hoá, xuất/nhập dữ liệu và các thiết lập khác của dự án.',
+      'Thành viên, quy trình, thành phần, phiên bản, nhãn, thời gian xử lý (cam kết SLA), xuất/nhập dữ liệu và các thiết lập khác của dự án.',
     docAnchor: 'vt-lead',
     chips: ['Nhập Excel ở đâu?', 'Phân quyền thế nào?', 'Thêm người vào dự án'],
   },
@@ -142,7 +159,8 @@ export const SCREENS: ScreenInfo[] = [
   {
     pattern: '/members',
     name: 'Thành viên',
-    purpose: 'Quản lý thành viên của tổ chức: thêm người, đặt vai trò chung.',
+    purpose:
+      'Quản lý thành viên của tổ chức: thêm người, đặt vai trò chung; tab Nhóm và tab Nhân lực (ai đang gánh bao nhiêu giờ việc mỗi tuần).',
     docAnchor: 'them-nguoi-phan-quyen',
     chips: ['Phân quyền thế nào?', 'Thêm người mới'],
   },
@@ -194,16 +212,6 @@ const GROUPS: { re: RegExp; info: Omit<ScreenInfo, 'pattern'> }[] = [
         'Thiết lập tổ chức: thông tin chung, vai trò, nhật ký, thông báo, mức ưu tiên, trường, quy trình, nhập dữ liệu, API key.',
       docAnchor: 'vt-ws-admin',
       chips: ['Phân quyền thế nào?', 'Nhập Excel ở đâu?'],
-    },
-  },
-  {
-    re: /^\/manage(\/|$)/,
-    info: {
-      name: 'Danh mục (quản lý nâng cao)',
-      purpose:
-        'Danh mục dự án, mục tiêu OKR, rủi ro, nhân lực, cam kết thời gian xử lý, khách hàng.',
-      docAnchor: 'quan-ly-nang-cao',
-      chips: ['Quản lý nâng cao gồm gì', 'Việc của tôi'],
     },
   },
   {

@@ -67,7 +67,7 @@ export function useProjectReport(projectId?: string) {
 
 /**
  * Ghi đè / bỏ ghi đè sức khoẻ dự án (`PATCH /projects/:id/health`, cần `project:admin`). `health: null` = bỏ ghi đè.
- * Xong thì nạp lại mọi nơi hiện sức khoẻ: báo cáo dự án, Tổng quan admin, Danh mục.
+ * Xong thì nạp lại mọi nơi hiện sức khoẻ: báo cáo dự án, Tổng quan admin.
  */
 export function useSetProjectHealth(projectId: string) {
   const qc = useQueryClient();
@@ -77,7 +77,6 @@ export function useSetProjectHealth(projectId: string) {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: keys.reports.project(projectId) });
       void qc.invalidateQueries({ queryKey: keys.dashboard.workspaceOverview });
-      void qc.invalidateQueries({ queryKey: keys.programs.rollup });
     },
   });
 }

@@ -79,7 +79,6 @@ describe('một nguồn nhãn (lib/navLabels.ts)', () => {
       'components/layout/navItems.tsx',
       'lib/routeSuggest.ts',
       'features/settings/SettingsLayout.tsx',
-      'features/manage/ManageLayout.tsx',
       'features/connect/ConnectLayout.tsx',
     ]) {
       expect(src(f), f).toMatch(/from '@\/lib\/navLabels'/);
@@ -119,7 +118,6 @@ describe('một nguồn nhãn (lib/navLabels.ts)', () => {
     ['features/goals/GoalsPage.tsx', 'MANAGE_LABELS.goals', MANAGE_LABELS.goals],
     ['features/members/MembersPage.tsx', 'MANAGE_LABELS.resources', MANAGE_LABELS.resources],
     ['features/raid/RaidPage.tsx', 'MANAGE_LABELS.risks', MANAGE_LABELS.risks],
-    ['features/clients/ClientsPage.tsx', 'MANAGE_LABELS.clients', MANAGE_LABELS.clients],
     ['features/members/MembersPage.tsx', 'APP_NAV_LABELS.members', APP_NAV_LABELS.members],
     ['features/wiki/WikiPage.tsx', 'APP_NAV_LABELS.wiki', APP_NAV_LABELS.wiki],
     ['features/audit/AuditLogPage.tsx', 'SETTINGS_LABELS.audit', SETTINGS_LABELS.audit],
@@ -131,7 +129,6 @@ describe('một nguồn nhãn (lib/navLabels.ts)', () => {
     ['features/projects/ProjectLayout.tsx', 'CONNECT_LABELS.automation', CONNECT_LABELS.automation],
     ['features/projects/ProjectLayout.tsx', 'MANAGE_LABELS.risks', MANAGE_LABELS.risks],
     ['features/command/projectCommands.ts', 'CONNECT_LABELS.automation', CONNECT_LABELS.automation],
-    ['features/portfolio/PortfolioPage.tsx', 'MANAGE_LABELS.portfolio', MANAGE_LABELS.portfolio],
     ['features/command/CommandPalette.tsx', 'APP_NAV_LABELS.home', APP_NAV_LABELS.home],
     ['features/command/CommandPalette.tsx', 'APP_NAV_LABELS.wiki', APP_NAV_LABELS.wiki],
     ['features/connect/ConnectLayout.tsx', 'APP_NAV_LABELS.connect', APP_NAV_LABELS.connect],

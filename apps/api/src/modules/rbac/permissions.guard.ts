@@ -61,7 +61,8 @@ export class PermissionsGuard implements CanActivate {
     const has = (p: PermissionKey) => effective.has(p) || effective.has(`${p}:own`);
     const all = required ?? [];
     // `anyOf`: chỉ cần MỘT quyền (vd quyền cấp tổ chức HOẶC quản trị chính dự án ở route này).
-    const ok = all.every(has) && (anyOf.length === 0 || anyOf.some(has));
+    // Nghiêm: quyền `:own` KHÔNG thoả `anyOf` (không có bước kiểm sở hữu cho nhóm này nên `:own` sẽ thành quyền đầy đủ).
+    const ok = all.every(has) && (anyOf.length === 0 || anyOf.some((p) => effective.has(p)));
     if (!ok) throw new ForbiddenAppException('Bạn không có quyền thực hiện hành động này');
     // Quyền chỉ thoả bằng `:own` → đánh dấu để service kiểm quyền sở hữu tài nguyên (guard không biết chủ sở hữu).
     req.ownOnly = new Set(all.filter((p) => !effective.has(p)));

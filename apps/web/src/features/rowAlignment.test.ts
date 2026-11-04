@@ -84,18 +84,13 @@ describe('Bộ lọc đã lưu', () => {
   });
 });
 
-describe('Ngày nghỉ / Hợp đồng / Thùng rác / Triage', () => {
+describe('Ngày nghỉ / Thùng rác / Triage', () => {
   it('TimeOff: cột loại + ngày cố định', () => {
     const s = read('resources/TimeOffPanel.tsx');
     expect(tagWith(s, 'sm:w-28 sm:shrink-0')).toBe(true);
     expect(
       tagWith(s, 'whitespace-nowrap text-sm tabular-nums text-muted sm:w-32 sm:shrink-0'),
     ).toBe(true);
-  });
-  it('Clients: giá trị + thời hạn cố định bề rộng', () => {
-    const s = read('clients/ClientsPage.tsx');
-    expect(s).toContain('text-ink-strong sm:w-32 sm:text-right');
-    expect(s).toContain('text-xs sm:w-52 sm:text-right');
   });
   it('Trash: cột loại + mã cố định', () => {
     const s = read('trash/TrashPage.tsx');

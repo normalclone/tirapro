@@ -5,12 +5,6 @@ import { describe, expect, it } from 'vitest';
 const root = join(__dirname, '..', '..');
 const src = (rel: string) => readFileSync(join(root, rel), 'utf8');
 
-/** Route còn lại của Danh mục → file trang. Tất cả `xl` (B-D1). Mục tiêu/Rủi ro là tab dự án, SLA là mục Cấu hình, Nhân lực là tab Thành viên. */
-const PAGES: [route: string, file: string][] = [
-  ['portfolio', 'features/portfolio/PortfolioPage.tsx'],
-  ['clients', 'features/clients/ClientsPage.tsx'],
-];
-
 /** Tab trong dự án (`/p/:key/goals|risks`): khung `full` bọc trong vùng cuộn như mọi tab dự án, tiêu đề h2. */
 const PROJECT_TABS: [route: string, file: string][] = [
   ['goals', 'features/goals/GoalsPage.tsx'],
@@ -53,33 +47,7 @@ describe('Mục tiêu / Rủi ro là tab của dự án', () => {
   });
 });
 
-describe('trang Danh mục dùng PageFrame xl + PageHeader (T5)', () => {
-  it.each(PAGES)(
-    '%s: PageFrame xl, PageHeader, không h1 tay, không pageContainer/max-w',
-    (_r, file) => {
-      const s = src(file);
-      expect(s).toMatch(/<PageFrame size="xl">/);
-      expect(s).toMatch(/<PageHeader\b/);
-      expect(s).not.toMatch(/<h1\b/);
-      expect(s).not.toMatch(/pageContainer/);
-      expect(s).not.toMatch(/\bmax-w-(3xl|4xl|5xl|7xl)\b/);
-    },
-  );
-  it('trang trong SubNavLayout không tự truyền back', () => {
-    for (const [, file] of PAGES) expect(src(file), file).not.toMatch(/\bback=\{/);
-  });
-  it('nút tạo chính nằm trong PageHeader.actions, cùng cỡ sm', () => {
-    for (const [file, label] of [
-      ['features/portfolio/PortfolioPage.tsx', 'Tạo chương trình'],
-      ['features/clients/ClientsPage.tsx', 'Thêm khách hàng'],
-    ] as const) {
-      const s = src(file);
-      const start = s.indexOf('<PageHeader');
-      const actions = s.slice(start, s.indexOf('\n      />', start));
-      expect(actions, file).toContain(label);
-      expect(actions, file).toMatch(/<Button size="sm"/);
-    }
-  });
+describe('Nhân lực và các thẻ của Mục tiêu / Rủi ro / Thời gian xử lý', () => {
   it('Nhân lực: tab của Thành viên, Tải CSV chỉ ở tab khối lượng (cuối hàng bộ lọc)', () => {
     const r = src('features/resources/ResourcesPage.tsx');
     expect(r).toMatch(/tab === 'load' && \(\s*<div className="ml-auto">\s*<WorkloadExport/);
@@ -88,10 +56,8 @@ describe('trang Danh mục dùng PageFrame xl + PageHeader (T5)', () => {
   });
   it('nút tạo trong EmptyState là secondary (B-D6)', () => {
     for (const f of [
-      'features/portfolio/PortfolioPage.tsx',
       'features/goals/GoalsPage.tsx',
       'features/raid/RaidPage.tsx',
-      'features/clients/ClientsPage.tsx',
       'features/resources/TimeOffPanel.tsx',
       'features/resources/AllocationsPanel.tsx',
     ]) {

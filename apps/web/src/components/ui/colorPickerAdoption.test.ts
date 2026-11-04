@@ -8,7 +8,7 @@ const read = (rel: string) => readFileSync(join(__dirname, '..', '..', rel), 'ut
 const SITES: [string, RegExp[]][] = [
   ['features/settings/RolesPage.tsx', [/PRESET_COLORS/]],
   ['features/teams/TeamEditorModal.tsx', [/TEAM_COLORS/, /TEAM_COLOR_NAMES/]],
-  ['features/portfolio/ProgramEditorModal.tsx', [/PROGRAM_COLORS/]],
+  ['features/projects/groups/ProgramEditorModal.tsx', [/PROGRAM_COLORS/]],
   ['features/planning/PlanningPanel.tsx', [/MILESTONE_COLORS/, /MILESTONE_COLOR_NAMES/]],
   ['features/project-config/LabelsSection.tsx', [/DEFAULT_LABEL_COLOR\s*=\s*'#/, /type="color"/]],
 ];
@@ -28,7 +28,7 @@ describe('029a — một bảng màu và một bộ chọn màu', () => {
     expect(read('features/settings/RolesPage.tsx')).toMatch(/format="oklch"/);
     for (const rel of [
       'features/teams/TeamEditorModal.tsx',
-      'features/portfolio/ProgramEditorModal.tsx',
+      'features/projects/groups/ProgramEditorModal.tsx',
       'features/planning/PlanningPanel.tsx',
       'features/project-config/LabelsSection.tsx',
     ])

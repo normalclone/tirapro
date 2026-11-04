@@ -145,6 +145,7 @@ Mọi lỗi đi qua một `AllExceptionsFilter` global trả về JSON đồng n
 | 409 | `CONFLICT` / `INVALID_TRANSITION` | Vi phạm ràng buộc (vd workflow transition không hợp lệ) |
 | 409 | `IDEMPOTENCY_CONFLICT` | Idempotency-Key trùng với payload khác |
 | 409 | `RANK_NEIGHBORS_STALE` | Mốc kéo-thả (`beforeId`/`afterId`) của client đã lỗi thời — thứ tự hai mốc bị đảo so với server. Client tải lại danh sách rồi thả lại (server **không** rebalance cả dự án để "chữa"; xem §7.3) |
+| 422 | `PROJECT_REQUIRED` | Tạo/sửa mục tiêu, rủi ro/vướng mắc hoặc cam kết thời gian (SLA) mà không có dự án — cả ba luôn thuộc đúng một dự án |
 | 422 | `BUSINESS_RULE_VIOLATION` | Hợp lệ về schema nhưng vi phạm rule (vd sprint đã đóng, **dự án đã lưu trữ**, `GET /search` thiếu điều kiện — xem §6.1, §10) |
 | 429 | `RATE_LIMITED` | Vượt rate limit (kèm `Retry-After`) |
 | 503 | `AI_UNAVAILABLE` | Thiếu/lỗi Anthropic API key — AI degrade gracefully |
@@ -295,7 +296,7 @@ class ProjectDto {
 Dự án có `archivedAt != null` là **chỉ đọc**: mọi thao tác GHI vào dữ liệu của dự án (issue, sprint, board, worklog, comment, link, đính kèm, checklist, việc lặp lại, mẫu/quy tắc automation, dev-link webhook, OKR/SLA/wiki theo dự án, cột mốc/baseline, nhãn, trường tuỳ chỉnh, component/phiên bản, avatar…) trả
 `422 BUSINESS_RULE_VIOLATION` với message `"Dự án đã lưu trữ — hãy khôi phục dự án trước khi thay đổi"` (hằng `PROJECT_ARCHIVED_MESSAGE`, kiểm bằng `assertProjectWritable`/`assertIssueWritable` trong `common/project-writable.ts`).
 Đường không có người dùng để báo lỗi (webhook vào, cron việc lặp lại) **bỏ qua im lặng** issue của dự án lưu trữ (`WRITABLE_PROJECT_FILTER`) thay vì ném lỗi. Đọc (GET) vẫn bình thường.
-Ngoại lệ có chủ đích: (1) snapshot sprint (`sprints#snapshot`, chỉ phục vụ biểu đồ, không đổi dữ liệu người dùng); (2) Resources → Allocation và clients → Contract là dữ liệu cấp workspace, vẫn ghi được trên dự án lưu trữ (quyết định sản phẩm). Dự án **xoá mềm** (`deletedAt`) thì issue của nó biến khỏi mọi đường đọc (`/issues/:key`, danh sách, tìm kiếm/JQL, guard theo issue id) → `404`.
+Ngoại lệ có chủ đích: (1) snapshot sprint (`sprints#snapshot`, chỉ phục vụ biểu đồ, không đổi dữ liệu người dùng); (2) Resources → Allocation là dữ liệu cấp workspace, vẫn ghi được trên dự án lưu trữ (quyết định sản phẩm); gán nhóm dự án (`PUT /projects/{id}/programs`) cũng ghi được vì nhóm là phân loại cấp tổ chức. Dự án **xoá mềm** (`deletedAt`) thì issue của nó biến khỏi mọi đường đọc (`/issues/:key`, danh sách, tìm kiếm/JQL, guard theo issue id) → `404`.
 
 `key` được dùng làm prefix cho issue key (`PROJ-128`). Việc sinh số chạy (`128`) là sequence per-project — giao tiếp với subsystem **Persistence** (atomic counter trong transaction).
 
@@ -989,6 +990,10 @@ Chỉ liệt kê route **mới** và route **đổi hành vi/quyền** so với 
 | POST | `/dashboards/{id}/duplicate` | `dashboard:manage` | Nhân bản (che JQL/dự án ẩn) |
 | DELETE | `/dashboards/{id}` | `dashboard:manage` | Xoá (chủ; admin chỉ xoá bản đã chia sẻ) |
 | POST | `/digests/preview` | `integration:manage` | Xem trước digest (khối + định dạng) theo quyền người bấm; cùng quyền với tạo/sửa/chạy digest (phạm vi workspace) |
+| PUT | `/projects/{id}/programs` | `project:admin` (của CHÍNH dự án `{id}`) | Đặt lại TOÀN BỘ nhóm của dự án (`{programIds}`; nhóm lạ → `422`; dự án riêng tư không thấy → `404`); trả `{projectId, programs}`. Quản lý nhóm (tạo/sửa/xoá) vẫn là `/programs` với `program:manage` |
+| GET | `/sla/policies`, `/sla/board` | `workspace:view` | Cam kết thời gian / bảng đang chạy đồng hồ; `?projectId=` thu hẹp theo một dự án (cam kết luôn thuộc một dự án, không còn cam kết cấp tổ chức) |
+| POST | `/goals`, `/raid`, `/sla/policies` | quyền tổ chức (`goal:manage` / `risk:manage` / `sla:manage`) **hoặc** `project:admin` của dự án trong body | `projectId` bắt buộc (`422 PROJECT_REQUIRED`). Dự án của route lấy từ `body.projectId` |
+| PUT/DELETE | `/goals/{id}…`, `/raid/{id}`, `/sla/policies/{id}` | như trên, tính theo dự án của DÒNG dữ liệu | Dự án lấy từ dòng (`@ProjectRef('objective'\|'raid'\|'slaPolicy','id')`), không tin body; chuyển sang dự án khác kiểm quyền ở dự án đích |
 | GET | `/goals/{id}/progress-history` | `workspace:view` | Đường tiến độ mục tiêu (check-in tay + bản chụp hằng ngày) |
 | POST | `/goals/{id}/key-results/{krId}/check-ins` | `goal:manage` | Check-in KR nhập tay (giá trị + ghi chú); KR tự đo → `422` |
 | GET | `/goals/{id}/key-results/{krId}/check-ins` | `workspace:view` | Lịch sử check-in của KR |

@@ -114,11 +114,10 @@ describe('SubNavLayout — rail desktop', () => {
   });
 });
 
-describe('ba layout mỏng', () => {
-  it('Settings/Manage/Connect dùng SubNavLayout, không còn h1 hay dải chip tự vẽ', () => {
+describe('hai layout mỏng', () => {
+  it('Settings/Connect dùng SubNavLayout, không còn h1 hay dải chip tự vẽ', () => {
     for (const f of [
       'features/settings/SettingsLayout.tsx',
-      'features/manage/ManageLayout.tsx',
       'features/connect/ConnectLayout.tsx',
     ]) {
       const s = src(f);
@@ -128,10 +127,9 @@ describe('ba layout mỏng', () => {
   });
   it('basePath khớp khu vực', () => {
     expect(src('features/settings/SettingsLayout.tsx')).toMatch(/basePath="\/settings"/);
-    expect(src('features/manage/ManageLayout.tsx')).toMatch(/basePath="\/manage"/);
     expect(src('features/connect/ConnectLayout.tsx')).toMatch(/basePath="\/connect"/);
   });
-  it('mobile-audit đo trang gốc /settings, /manage, /connect (danh sách mục)', () => {
+  it('mobile-audit đo trang gốc /settings, /connect (danh sách mục)', () => {
     const audit = readFileSync(
       join(__dirname, '..', '..', '..', 'scripts', 'mobile-audit.mjs'),
       'utf8',
@@ -140,7 +138,7 @@ describe('ba layout mỏng', () => {
       audit.indexOf('const DEFAULT_ROUTES'),
       audit.indexOf('const routeArg'),
     );
-    for (const r of ["'/settings'", "'/manage'", "'/connect'"]) expect(routes).toContain(r);
+    for (const r of ["'/settings'", "'/connect'"]) expect(routes).toContain(r);
   });
   it('Cài đặt lọc quyền TRƯỚC khi truyền groups', () => {
     const s = src('features/settings/SettingsLayout.tsx');

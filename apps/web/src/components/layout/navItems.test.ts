@@ -8,20 +8,20 @@ describe('navItems (nguồn chung sidebar / thanh tab đáy / sheet Tôi)', () =
       '/me',
       '/filters',
       '/members',
-      '/manage',
       '/wiki',
       '/connect',
       '/settings',
       '/admin',
     ]);
     for (const p of USER_TAB_PATHS) expect(rest).not.toContain(p);
+    // Mục "Danh mục" đã bỏ: không còn lối vào /manage ở sidebar, thanh tab đáy hay sheet Tôi.
+    expect(NAV_ITEMS.some((i) => i.to.startsWith('/manage'))).toBe(false);
   });
   it('sheet tôn trọng quyền: mục đã bị lọc khỏi danh sách đầu vào thì không xuất hiện', () => {
     const visible = NAV_ITEMS.filter((i) => !i.rule);
     expect(sheetNavItems(visible, false).map((i) => i.to)).toEqual([
       '/me',
       '/filters',
-      '/manage',
       '/wiki',
       '/settings',
     ]);

@@ -23,7 +23,6 @@ export const ROUTE_CATALOG: readonly RouteEntry[] = [
     label: APP_NAV_LABELS.members,
     keywords: ['member', 'users', 'people', 'thanh vien'],
   },
-  { path: '/manage', label: APP_NAV_LABELS.manage, keywords: ['portfolio', 'danh muc', 'quan ly'] },
   { path: '/wiki', label: APP_NAV_LABELS.wiki, keywords: ['docs', 'tai lieu'] },
   {
     path: '/connect',

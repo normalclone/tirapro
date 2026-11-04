@@ -156,9 +156,19 @@ export const PERMISSION_CATALOG: PermissionDef[] = [
     description: 'Quản lý chương trình / danh mục dự án',
     scope: 'WORKSPACE',
   },
-  { key: PERMISSIONS.GOAL_MANAGE, description: 'Quản lý mục tiêu (OKR)', scope: 'WORKSPACE' },
+  {
+    key: PERMISSIONS.GOAL_MANAGE,
+    description:
+      'Quản lý mục tiêu (OKR) của mọi dự án — quản trị dự án vẫn tự quản lý mục tiêu của dự án mình',
+    scope: 'WORKSPACE',
+  },
   { key: PERMISSIONS.RISK_MANAGE, description: 'Quản lý sổ rủi ro (RAID)', scope: 'PROJECT' },
-  { key: PERMISSIONS.SLA_MANAGE, description: 'Cấu hình cam kết thời gian', scope: 'WORKSPACE' },
+  {
+    key: PERMISSIONS.SLA_MANAGE,
+    description:
+      'Cấu hình cam kết thời gian của mọi dự án — quản trị dự án vẫn tự cấu hình cho dự án mình',
+    scope: 'WORKSPACE',
+  },
   {
     key: PERMISSIONS.WIKI_MANAGE,
     description: 'Tạo/sửa tài liệu nội bộ (wiki) của dự án',

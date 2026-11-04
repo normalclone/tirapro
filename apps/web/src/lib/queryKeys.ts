@@ -91,7 +91,6 @@ export const keys = {
     quick: (q: string, limit = 8) => ['quick-search', q, limit] as const,
   },
 
-  clients: { all: ['clients'] as const },
   notificationPrefs: ['notification-preferences'] as const,
   severities: ['severities'] as const,
   priorities: ['priorities'] as const,
@@ -272,7 +271,6 @@ export const keys = {
 
   programs: {
     all: ['programs'] as const,
-    rollup: ['programs', 'rollup'] as const,
   },
 
   digests: {

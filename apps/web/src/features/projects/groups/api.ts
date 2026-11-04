@@ -3,7 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import type { ProjectDto, ProjectProgramRefDto } from '@tirapro/types';
 import { api } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
-import { usePrograms } from '@/features/portfolio/api';
+import { usePrograms } from './programsApi';
 
 /**
  * Đặt lại TOÀN BỘ nhóm của MỘT dự án (`PUT /projects/:id/programs`; cần `project:admin` của chính dự án đó). Ghi kết quả

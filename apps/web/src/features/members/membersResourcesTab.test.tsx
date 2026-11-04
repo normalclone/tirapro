@@ -24,12 +24,15 @@ function Where() {
   return <output data-testid="where">{l.pathname + l.search}</output>;
 }
 
-function renderAt(url: string) {
+function renderAt(
+  url: string,
+  who: { admin: boolean; permissions: string[] } = { admin: true, permissions: [] },
+) {
   act(() => {
     useAuth.setState({
       status: 'authed',
-      user: { id: 'me', displayName: 'Tôi', email: 'me@x', isSystemAdmin: true } as never,
-      permissions: [],
+      user: { id: 'me', displayName: 'Tôi', email: 'me@x', isSystemAdmin: who.admin } as never,
+      permissions: who.permissions as never,
     });
   });
   render(
@@ -104,5 +107,63 @@ describe('Thành viên > tab Nhân lực (thay cho /manage/resources)', () => {
     expect(screen.getByRole('tab', { name: 'Thành viên' }).getAttribute('aria-selected')).toBe(
       'true',
     );
+  });
+
+  it('chỉ có workspace:view + report:view (đến từ liên kết ở Tổng quan): bảng Nhân lực hiện, không nút quản lý, không lỗi', async () => {
+    h.get.mockImplementation((url: string) => {
+      if (url === '/resources/workload')
+        return Promise.resolve({
+          data: {
+            from: '2026-11-02',
+            to: '2026-11-15',
+            projectId: null,
+            hoursPerDay: 8,
+            weeks: [{ start: '2026-11-02', end: '2026-11-08', label: '02/11' }],
+            rows: [
+              {
+                user: { id: 'u2', email: 'a@x', displayName: 'Nguyễn An', avatarUrl: null },
+                weeks: [
+                  {
+                    weekStart: '2026-11-02',
+                    capacityHours: 40,
+                    assignedHours: 52,
+                    loggedHours: 0,
+                    workingDays: 5,
+                    offDays: 0,
+                    allocationPercent: 100,
+                    issueCount: 3,
+                    ratio: 1.3,
+                    overloaded: true,
+                  },
+                ],
+                totals: {
+                  capacityHours: 40,
+                  assignedHours: 52,
+                  loggedHours: 0,
+                  ratio: 1.3,
+                  overloaded: true,
+                },
+                usesDefaultCapacity: true,
+              },
+            ],
+          },
+        });
+      return Promise.resolve({ data: [] });
+    });
+    renderAt('/members?tab=resources', {
+      admin: false,
+      permissions: ['workspace:view', 'report:view'],
+    });
+    expect(screen.getByRole('tab', { name: 'Nhân lực' }).getAttribute('aria-selected')).toBe(
+      'true',
+    );
+    expect(await screen.findByText('Nguyễn An')).toBeTruthy();
+    expect(screen.getByText(/1 người/)).toBeTruthy();
+    // Không có lối quản lý thành viên / nhân lực.
+    expect(screen.queryByRole('button', { name: /Mời thành viên|Thêm nhiều người/ })).toBeNull();
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.queryByText(/Không tải được|403/)).toBeNull();
+    // Tab Phân bổ (chỉ đọc): không có nút thêm.
+    expect(screen.queryByRole('button', { name: /Thêm phân bổ/ })).toBeNull();
   });
 });

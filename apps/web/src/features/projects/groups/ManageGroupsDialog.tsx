@@ -6,8 +6,8 @@ import { Dialog } from '@/components/ui/Dialog';
 import { EmptyState, Skeleton } from '@/components/ui/primitives';
 import { useConfirm } from '@/components/ui/useConfirm';
 import { apiErrorMessage } from '@/lib/api';
-import { ProgramEditorModal } from '@/features/portfolio/ProgramEditorModal';
-import { useDeleteProgram, usePrograms, type ProgramDto } from '@/features/portfolio/api';
+import { ProgramEditorModal } from './ProgramEditorModal';
+import { useDeleteProgram, usePrograms, type ProgramDto } from './programsApi';
 import { GroupDot } from './GroupsPopover';
 
 /**

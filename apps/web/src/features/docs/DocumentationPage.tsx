@@ -596,23 +596,21 @@ export function DocumentationPage() {
               )}
               <H3>Chuyển tổ chức &amp; đăng xuất</H3>
               <P>
-                Nếu bạn thuộc nhiều nơi, dùng bộ chọn tổ chức ở đầu thanh bên để chuyển.
-                Đăng xuất ở menu người dùng góc phải trên (cũng có sẵn liên kết mở lại tài liệu
-                này).
+                Nếu bạn thuộc nhiều nơi, dùng bộ chọn tổ chức ở đầu thanh bên để chuyển. Đăng xuất ở
+                menu người dùng góc phải trên (cũng có sẵn liên kết mở lại tài liệu này).
               </P>
             </section>
 
             <section className="mb-14">
               <H2 id="vai-tro">Hiểu về vai trò</H2>
               <P>
-                <strong>Thành viên tính trên cả tổ chức</strong>: ai đã có tên ở đây là
-                tự động tham gia <em>mọi dự án công khai</em> bên trong — không cần thêm người vào
-                từng dự án. <strong>Dự án riêng tư</strong> (bật ở dự án → Cấu hình → Chung) là
-                ngoại lệ: chỉ những người được thêm riêng ở Cấu hình → Thành viên (cùng quản trị
-                tổ chức) mới thấy dự án đó. Vai trò trong dự án{' '}
-                <strong>mặc định</strong> suy từ vai trò chung (Quản trị chung → Quản trị dự án ·
-                Thành viên → Lập trình viên · Người xem → chỉ đọc), và có thể{' '}
-                <strong>đặt riêng</strong> cho từng người ở từng dự án khi cần.
+                <strong>Thành viên tính trên cả tổ chức</strong>: ai đã có tên ở đây là tự động tham
+                gia <em>mọi dự án công khai</em> bên trong — không cần thêm người vào từng dự án.{' '}
+                <strong>Dự án riêng tư</strong> (bật ở dự án → Cấu hình → Chung) là ngoại lệ: chỉ
+                những người được thêm riêng ở Cấu hình → Thành viên (cùng quản trị tổ chức) mới thấy
+                dự án đó. Vai trò trong dự án <strong>mặc định</strong> suy từ vai trò chung (Quản
+                trị chung → Quản trị dự án · Thành viên → Lập trình viên · Người xem → chỉ đọc), và
+                có thể <strong>đặt riêng</strong> cho từng người ở từng dự án khi cần.
               </P>
               <Cards>
                 <Card
@@ -765,9 +763,9 @@ export function DocumentationPage() {
               />
               <Legend />
               <Note kind="info">
-                Xem vai trò của mình: vào trang <strong>Thành viên</strong> của tổ chức
-                hoặc trang <strong>Cấu hình dự án → Thành viên</strong>. Không thấy một nút (sửa,
-                kéo-thả, cấu hình)? Gần như chắc chắn do vai trò của bạn chưa có quyền đó.
+                Xem vai trò của mình: vào trang <strong>Thành viên</strong> của tổ chức hoặc trang{' '}
+                <strong>Cấu hình dự án → Thành viên</strong>. Không thấy một nút (sửa, kéo-thả, cấu
+                hình)? Gần như chắc chắn do vai trò của bạn chưa có quyền đó.
               </Note>
             </section>
 
@@ -1059,8 +1057,8 @@ export function DocumentationPage() {
               <Steps
                 items={[
                   <>
-                    Vào trang <strong>Thành viên</strong> của tổ chức, chọn người có sẵn
-                    hoặc tạo tài khoản mới, rồi chọn vai trò chung cho họ.
+                    Vào trang <strong>Thành viên</strong> của tổ chức, chọn người có sẵn hoặc tạo
+                    tài khoản mới, rồi chọn vai trò chung cho họ.
                   </>,
                   <>
                     Xong! Họ đã tham gia mọi dự án công khai (dự án riêng tư cần thêm họ riêng). Chỉ
@@ -1103,9 +1101,9 @@ export function DocumentationPage() {
                 persona="Chủ hệ thống — đứng trên mọi tổ chức. Vào trang quản trị tại /admin."
               />
               <P>
-                Console quản trị có giao diện riêng, không gắn với tổ chức nào. Đăng
-                nhập tài khoản có cờ quản trị hệ thống (vd <Mono>admin@projira.dev</Mono>) rồi mở
-                menu người dùng → <strong>Admin hệ thống</strong>.
+                Console quản trị có giao diện riêng, không gắn với tổ chức nào. Đăng nhập tài khoản
+                có cờ quản trị hệ thống (vd <Mono>admin@projira.dev</Mono>) rồi mở menu người dùng →{' '}
+                <strong>Admin hệ thống</strong>.
               </P>
               <div className="border-t border-border">
                 <Feature icon={<ShieldCheck className="h-4 w-4" />} title="Tổng quan & sức khoẻ">
@@ -1117,8 +1115,7 @@ export function DocumentationPage() {
                   hữu.
                 </Feature>
                 <Feature icon={<Users className="h-4 w-4" />} title="Tài khoản">
-                  Tạo người dùng, cấp/thu quyền lập tổ chức mới và quyền quản trị hệ
-                  thống.
+                  Tạo người dùng, cấp/thu quyền lập tổ chức mới và quyền quản trị hệ thống.
                 </Feature>
                 <Feature icon={<Sparkles className="h-4 w-4" />} title="Cấu hình & Feature flags">
                   Bật/tắt runtime: đăng ký công khai, kill-switch AI, tích hợp, banner bảo trì; xem
@@ -1131,8 +1128,9 @@ export function DocumentationPage() {
             <section className="mb-14">
               <H2 id="quan-ly-nang-cao">Quản lý nâng cao</H2>
               <P>
-                Ngoài Scrum/Kanban, Tirapro hỗ trợ các mô hình quản lý sau — tất cả nằm trong mục
-                Danh mục của thanh điều hướng.
+                Ngoài Scrum/Kanban, Tirapro hỗ trợ các mô hình quản lý sau — mỗi thứ nằm đúng chỗ
+                của nó: trong từng dự án (menu <Mono>Thêm</Mono>), trong Cấu hình dự án hoặc trong
+                trang Thành viên.
               </P>
               <div className="border-t border-border">
                 <Feature icon={<GitBranch className="h-4 w-4" />} title="Lịch trình dự án">
@@ -1143,11 +1141,13 @@ export function DocumentationPage() {
                 </Feature>
                 <Feature icon={<Users className="h-4 w-4" />} title="Nhân lực">
                   Khai báo mỗi người dành bao nhiêu phần trăm thời gian cho dự án nào, cùng ngày
-                  nghỉ và ngày lễ. Bảng theo tuần tô màu cảnh báo ai đang quá tải.
+                  nghỉ và ngày lễ. Bảng theo tuần tô màu cảnh báo ai đang quá tải. Vào{' '}
+                  <Mono>Thành viên → Nhân lực</Mono>.
                 </Feature>
-                <Feature icon={<LayoutGrid className="h-4 w-4" />} title="Danh mục dự án">
-                  Gom nhiều dự án thành một chương trình để xem tiến độ chung và lịch trình tổng
-                  theo thời gian.
+                <Feature icon={<LayoutGrid className="h-4 w-4" />} title="Nhóm dự án">
+                  Gom dự án vào nhóm (một dự án có thể thuộc nhiều nhóm). Trang <Mono>Dự án</Mono>{' '}
+                  có cột <strong>Nhóm</strong> (bấm để thêm/bớt nhóm), công tắc{' '}
+                  <Mono>Danh sách / Theo nhóm</Mono> và nút <Mono>Quản lý nhóm</Mono>.
                 </Feature>
                 <Feature
                   icon={<Sparkles className="h-4 w-4" />}
@@ -1156,16 +1156,20 @@ export function DocumentationPage() {
                   Đặt mục tiêu theo quý kèm các kết quả then chốt đo được bằng số. Kết quả then chốt
                   có thể <strong>tự đo</strong> (số bug đang mở, % điểm hoàn tất của sprint, hoặc số
                   công việc theo một câu JQL): hệ thống ghi lại giá trị mỗi ngày và vẽ đường tiến
-                  độ; vẫn nhập tay và check-in kèm ghi chú được.
+                  độ; vẫn nhập tay và check-in kèm ghi chú được. Mỗi mục tiêu thuộc một dự án: vào
+                  dự án → <Mono>Thêm → Mục tiêu</Mono>.
                 </Feature>
                 <Feature icon={<TriangleAlert className="h-4 w-4" />} title="Rủi ro & vướng mắc">
                   Ghi nhận bốn nhóm: rủi ro (có thể xảy ra), giả định (đang tin là đúng), vấn đề
                   (đang xảy ra), phụ thuộc (chờ bên khác). Mỗi mục chấm điểm khả năng xảy ra × mức
-                  ảnh hưởng để biết cái nào đáng lo nhất.
+                  ảnh hưởng để biết cái nào đáng lo nhất. Vào dự án →{' '}
+                  <Mono>Thêm → Rủi ro &amp; vướng mắc</Mono>.
                 </Feature>
                 <Feature icon={<Bell className="h-4 w-4" />} title="Cam kết thời gian xử lý">
                   Đặt hạn phải phản hồi và phải xử lý xong. Hệ thống tự bấm giờ khi công việc được
-                  tạo, hiện đếm ngược ngay trên công việc và cảnh báo khi sắp trễ.
+                  tạo, hiện đếm ngược ngay trên công việc và cảnh báo khi sắp trễ. Đặt theo từng dự
+                  án ở <Mono>Cấu hình dự án → Thời gian xử lý</Mono>, cùng bảng công việc đang chạy
+                  đồng hồ.
                 </Feature>
                 <Feature icon={<BookOpen className="h-4 w-4" />} title="Wiki nội bộ">
                   Trang tài liệu dạng cây cho cả công ty hoặc riêng từng dự án, có tìm kiếm theo nội
@@ -1178,9 +1182,6 @@ export function DocumentationPage() {
                 <Feature icon={<Plug className="h-4 w-4" />} title="Tự động hoá">
                   Lưu mẫu công việc để tạo nhanh, và đặt lịch tự tạo công việc lặp lại theo
                   ngày/tuần/tháng.
-                </Feature>
-                <Feature icon={<Building2 className="h-4 w-4" />} title="Khách hàng & hợp đồng">
-                  Quản lý khách hàng, hợp đồng (giá trị, thời hạn) và gắn dự án theo khách hàng.
                 </Feature>
                 <Feature icon={<Check className="h-4 w-4" />} title="Trong mỗi công việc">
                   Thêm <strong>người tham gia</strong> (nhiều người cùng theo dõi một việc) và{' '}
@@ -1216,9 +1217,9 @@ export function DocumentationPage() {
               <H2 id="bao-cao">Báo cáo &amp; phân tích</H2>
               <P>
                 Reporter trở lên đều xem được báo cáo; quản trị dự án cấu hình.{' '}
-                <strong>Xuất CSV</strong> (kết quả bộ lọc / JQL, Việc chờ, bug, sprint, Danh mục,
-                rủi ro, nhân lực — mở bằng Excel được) và <strong>In / Lưu PDF</strong> cho Tổng
-                quan và báo cáo sprint khi cần chia sẻ ngoài.
+                <strong>Xuất CSV</strong> (kết quả bộ lọc / JQL, Việc chờ, bug, sprint, rủi ro, nhân
+                lực — mở bằng Excel được) và <strong>In / Lưu PDF</strong> cho Tổng quan và báo cáo
+                sprint khi cần chia sẻ ngoài.
               </P>
               <Table
                 head={['Báo cáo', 'Cho biết điều gì']}
@@ -1252,7 +1253,7 @@ export function DocumentationPage() {
                 <Feature icon={<TriangleAlert className="h-4 w-4" />} title="Sức khoẻ dự án">
                   Mỗi dự án có mức sức khoẻ tự tính từ tiến độ, việc quá hạn và rủi ro; quản trị dự
                   án có thể ghi đè kèm ghi chú (thẻ đầu tab Tổng quan của Báo cáo). Mức này hiện
-                  thành cột Sức khoẻ trên Tổng quan và Danh mục.
+                  thành cột Sức khoẻ trên Tổng quan.
                 </Feature>
                 <Feature icon={<LayoutGrid className="h-4 w-4" />} title="Thẻ trên Tổng quan">
                   Ba thẻ <em>Top rủi ro</em> (5 rủi ro mở điểm cao nhất), <em>OKR chậm</em> (so với
@@ -1363,9 +1364,7 @@ export function DocumentationPage() {
                 năng vẫn chạy ở chế độ heuristic; hỏi quản trị nếu cần bật đầy đủ.
               </P>
               <H3>Chuyển sang tổ chức khác thế nào?</H3>
-              <P>
-                Dùng bộ chọn tổ chức ở đầu thanh bên (chỉ hiện khi bạn thuộc nhiều nơi).
-              </P>
+              <P>Dùng bộ chọn tổ chức ở đầu thanh bên (chỉ hiện khi bạn thuộc nhiều nơi).</P>
             </section>
 
             <footer className="border-t border-border pt-6 text-sm text-faint">

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { DocsLink } from '@/components/ui/DocsLink';
 import { AlarmClock, Plus, Trash2, TriangleAlert } from 'lucide-react';
 import { toast } from 'sonner';
 import { apiErrorMessage } from '@/lib/api';
@@ -249,7 +250,12 @@ function SlaPolicies({
     <SectionCard
       headingLevel={3}
       title="Danh sách cam kết"
-      description="Mỗi cam kết áp cho công việc của dự án này; có thể giới hạn theo mức ưu tiên."
+      description={
+        <>
+          Mỗi cam kết áp cho công việc của dự án này; có thể giới hạn theo mức ưu tiên.{' '}
+          <DocsLink anchor="quan-ly-nang-cao" />
+        </>
+      }
       actions={
         canManage ? (
           <Button size="sm" variant="secondary" onClick={() => onOpenChange(true)}>

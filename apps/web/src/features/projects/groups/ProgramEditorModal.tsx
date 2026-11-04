@@ -11,7 +11,7 @@ import { useUserSelect } from '@/features/members/useUserSelect';
 import { useProjects } from '@/features/projects/api';
 import { ColorPicker } from '@/components/ui/ColorPicker';
 import { LABEL_PALETTE } from '@/lib/labelPalette';
-import { useCreateProgram, useUpdateProgram, type ProgramDto } from './api';
+import { useCreateProgram, useUpdateProgram, type ProgramDto } from './programsApi';
 import { toDateInput } from '@/lib/dateFormat';
 import { blockOnInvalidDate } from '@/lib/dateGuard';
 import { dateRangeError } from '@/lib/dateRange';

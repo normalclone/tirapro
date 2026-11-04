@@ -112,12 +112,6 @@ describe('mobile nền chung', () => {
       /CHIP_ROW_GAP_COARSE\s*=\s*'\[@media\(pointer:coarse\)\]:gap-y-4'/,
     );
   });
-  it('class tên chương trình ở Danh mục không có token hỏng (focus-visible trần / sm:flex-1:outline-none)', () => {
-    const f = src('features/portfolio/PortfolioPage.tsx');
-    expect(f).not.toMatch(/focus-visible sm:/);
-    expect(f).not.toMatch(/flex-1:outline/);
-    expect(f).toMatch(/sm:flex-1 focus-visible:outline-none/);
-  });
 });
 
 describe('gợi ý phím trên cảm ứng (.kbd-hint)', () => {

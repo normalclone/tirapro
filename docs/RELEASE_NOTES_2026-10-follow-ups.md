@@ -924,3 +924,32 @@ Chưa có báo cáo nào xác nhận các mục này đã chạy; người kiể
 - Bản xem trước của `PUT` (runtime) chưa mô phỏng bước bảng (xoá cột); chỉ `--dry-run` của script liệt kê "Sẽ xoá cột".
 - Chưa chạy trên VM 172.20.20.128 — đã chạy dry-run + chạy thật trên bản khôi phục snapshot prod (xem báo cáo `task-8-prep-report.md` ngoài repo).
 
+
+# Gom menu: bỏ "Danh mục", mỗi thứ về đúng chỗ (2026-11)
+
+## 1. Cần làm khi triển khai
+
+- **Có migration:** `20261105200000_menu_regroup` (áp sau `20261105100100_notification_filter_shared`). Nó: tạo bảng `ProjectProgram` (nhiều–nhiều dự án ↔ nhóm) và chép nguyên `Project.programId` sang đó rồi bỏ cột; đặt `Objective/RaidItem/SlaPolicy.projectId` thành bắt buộc; bỏ bảng `Client`, `Contract`, cột `Project.clientId` và quyền `client:manage`. **Có chốt chặn:** migration dừng và báo rõ nếu còn mục tiêu/rủi ro/cam kết không thuộc dự án nào, hoặc còn khách hàng/hợp đồng (prod: 0 mục như vậy). **Dump trước khi chạy**; thử trên bản khôi phục snapshot prod (đã chạy: 19 dự án, 8 liên kết nhóm, 0 mục tiêu không dự án).
+- Không có script chạy tay. Thứ tự: dump → deploy image → `prisma migrate deploy` → kiểm.
+
+## 2. Thay đổi người dùng thấy
+
+- **Bỏ mục "Danh mục" ở thanh bên.** Các đường dẫn cũ (`/manage/*`, `/portfolio`, `/goals`, `/raid`, `/resources`, `/sla`, `/clients`, `/settings/response-time`) vẫn chạy: chuyển về chỗ mới và hiện một dòng nói mục đó giờ ở đâu. `/manage/portfolio` → Dự án chế độ "Theo nhóm"; mục tiêu/rủi ro/thời gian xử lý/khách hàng → Dự án; nhân lực → Thành viên, tab Nhân lực.
+- **Nhóm dự án** (thay Danh mục dự án): một dự án thuộc nhiều nhóm. Trang Dự án có cột **Nhóm** (bấm để thêm/bớt, tạo nhóm mới tại chỗ), công tắc **Danh sách / Theo nhóm** (nhớ lựa chọn) và nút **Quản lý nhóm**. Đổi nhóm của một dự án cần quản trị dự án đó (hoặc quản trị chung); tạo/sửa/xoá nhóm cần `program:manage`.
+- **Mục tiêu và Rủi ro & vướng mắc** là tab trong dự án (menu "Thêm"): luôn theo dự án đang mở, tạo mới gắn đúng dự án đó.
+- **Thời gian xử lý (SLA)** là mục trong Cấu hình dự án, kèm bảng công việc đang chạy đồng hồ của dự án; không còn cam kết cấp tổ chức (cam kết chọn theo dự án của việc).
+- **Nhân lực** là tab của trang Thành viên (`?tab=resources`), nên chỉ người thấy trang Thành viên (`member:manage` / quản trị chung) có lối vào qua menu.
+- **Khách hàng & hợp đồng bị bỏ** (màn, API, dữ liệu). Prod không có dữ liệu nào.
+- Tổng quan: thẻ Top rủi ro / OKR chậm không còn "Xem tất cả" (không còn trang tổng hợp); bấm một dòng để tới tab của dự án đó.
+
+## 3. API
+
+- Quyền: tạo/sửa/xoá mục tiêu, rủi ro, cam kết thời gian của một dự án = quyền tổ chức (`goal:manage` / `risk:manage` / `sla:manage`) **hoặc** `project:admin` của chính dự án đó (decorator mới `@PermissionsAnyOf`; dự án lấy từ DÒNG dữ liệu, không tin body; chuyển dự án kiểm quyền ở dự án đích).
+- Mã lỗi mới: `422 PROJECT_REQUIRED` (tạo mục tiêu / rủi ro / cam kết mà không có dự án, hoặc sửa để bỏ dự án).
+- Endpoint mới: `PUT /projects/:id/programs` (`project:admin` của dự án). `GET /sla/policies|board` nhận `?projectId=`. `ProjectDto.programs` thay `programId`. Bỏ module `/clients`.
+- `GET /reports/leadership`: mỗi mục `slowGoals` có thêm `project {key,name}`.
+
+## 4. Còn mở
+
+- `GET /programs/rollup` và `PUT /programs/:id/projects` còn trên API nhưng web không dùng nữa (trang Danh mục đã bỏ).
+- Nhân lực chỉ còn lối vào qua trang Thành viên (người không quản lý thành viên chỉ vào được từ liên kết ở Tổng quan hoặc gõ đường dẫn).

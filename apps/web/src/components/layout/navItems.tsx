@@ -2,7 +2,6 @@ import type { LucideIcon } from 'lucide-react';
 import {
   Activity,
   BookOpen,
-  Briefcase,
   Building2,
   Calculator,
   Filter,
@@ -63,12 +62,6 @@ export const NAV_ITEMS: NavEntry[] = [
     Icon: Users,
     match: (p) => p.startsWith('/members'),
     rule: NAV_RULES.members,
-  },
-  {
-    to: '/manage',
-    label: APP_NAV_LABELS.manage,
-    Icon: Briefcase,
-    match: (p) => p.startsWith('/manage'),
   },
   {
     to: '/wiki',

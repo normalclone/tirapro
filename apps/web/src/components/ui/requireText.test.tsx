@@ -91,7 +91,6 @@ describe('269 · chỉ 4 nơi bắt gõ tên (RC2)', () => {
   const NOT: string[] = [
     'features/goals/GoalsPage.tsx',
     'features/dashboards/DashboardViewPage.tsx',
-    'features/clients/ClientsPage.tsx',
     'features/automation/RulesPage.tsx',
     'features/sla/SlaPage.tsx',
     'features/integrations/RepositorySection.tsx',

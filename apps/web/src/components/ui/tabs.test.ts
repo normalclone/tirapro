@@ -79,7 +79,6 @@ describe('không còn tablist tự vẽ', () => {
     'features/wiki/WikiHistoryDialog.tsx',
     'features/raid/RaidPage.tsx',
     'features/members/MembersPage.tsx',
-    'features/portfolio/PortfolioPage.tsx',
     'features/automation/AutomationPage.tsx',
     'features/reports/ReportsPage.tsx',
     'features/notifications/NotificationsPage.tsx',

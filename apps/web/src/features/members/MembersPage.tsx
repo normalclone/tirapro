@@ -35,7 +35,7 @@ const STATUS_META: Record<UserStatus, { label: string; className: string }> = {
 
 type Tab = 'members' | 'teams' | 'resources';
 
-/** `?tab=` hợp lệ → tab; còn lại → Thành viên (liên kết cũ `/manage/resources` chuyển về `?tab=resources`). */
+/** `?tab=` hợp lệ → tab; còn lại → Thành viên (liên kết cũ tới màn Nhân lực chuyển về `?tab=resources`). */
 function tabOf(param: string | null): Tab {
   return param === 'teams' || param === 'resources' ? param : 'members';
 }

@@ -78,13 +78,30 @@ const P = `/p/${PROJECT}`;
 const DEFAULT_ROUTES = [
   '/',
   '/projects',
-  ...['board', 'backlog', 'gantt', 'tree', 'reports', 'triage', 'trash', 'activity', 'config'].map(
-    (v) => `${P}/${v}`,
-  ),
+  ...[
+    'board',
+    'backlog',
+    'gantt',
+    'tree',
+    'reports',
+    'triage',
+    'trash',
+    'activity',
+    'goals',
+    'risks',
+    'config',
+  ].map((v) => `${P}/${v}`),
   // Cấu hình dự án là route con: gốc = danh sách mục; mục = trang con có hàng "‹ Cấu hình".
-  ...['general', 'members', 'components', 'versions', 'labels', 'data'].map(
-    (s) => `${P}/config/${s}`,
-  ),
+  ...[
+    'general',
+    'members',
+    'components',
+    'versions',
+    'labels',
+    'workflow',
+    'response-time',
+    'data',
+  ].map((s) => `${P}/config/${s}`),
   `/issue/${ISSUE}`,
   '/filters',
   '/members',
@@ -93,11 +110,8 @@ const DEFAULT_ROUTES = [
   '/notifications',
   // Trang gốc của khu vực có menu con: ở 390px là DANH SÁCH mục ("bước vào"), không redirect như desktop.
   '/settings',
-  '/manage',
   '/connect',
-  ...['portfolio', 'goals', 'risks', 'resources', 'response-time', 'clients'].map(
-    (v) => `/manage/${v}`,
-  ),
+  '/members?tab=resources',
   '/connect/integrations',
   '/connect/integrations/telegram',
   '/connect/integrations/digest',
@@ -110,7 +124,6 @@ const DEFAULT_ROUTES = [
     'priorities',
     'severities',
     'fields',
-    'response-time',
     'import',
     'api',
   ].map((v) => `/settings/${v}`),
@@ -576,7 +589,7 @@ const DIALOG_SCENARIOS = [
   },
   {
     name: 'okr-check-in',
-    route: '/manage/goals',
+    route: `${P}/goals`,
     open: async (pg) => {
       await needs(pg.getByRole('button', { name: /Check-in/ }), 'chưa có KR nhập tay');
       await clickText(pg, /Check-in/);

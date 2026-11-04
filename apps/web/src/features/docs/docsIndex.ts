@@ -154,9 +154,9 @@ export const DOC_GROUPS: DocGroup[] = [
         id: 'quan-ly-nang-cao',
         label: 'Quản lý nâng cao',
         summary:
-          'Lịch trình (đường găng), nhân lực, danh mục dự án, mục tiêu OKR, rủi ro, cam kết thời gian xử lý (SLA), wiki, tự động hoá, khách hàng và hợp đồng.',
+          'Lịch trình (đường găng), nhân lực, nhóm dự án, mục tiêu OKR, rủi ro, cam kết thời gian xử lý (SLA), wiki và tự động hoá.',
         keywords:
-          'quan ly nang cao lich trinh gantt duong gang nhan luc portfolio danh muc okr muc tieu rui ro sla wiki tu dong hoa khach hang hop dong',
+          'quan ly nang cao lich trinh gantt duong gang nhan luc nhom du an okr muc tieu rui ro sla thoi gian xu ly wiki tu dong hoa',
       },
       {
         id: 'ai',
