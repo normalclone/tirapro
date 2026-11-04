@@ -216,4 +216,33 @@ describe('Quy trình của tổ chức (bảng loại việc → quy trình)', (
     });
     expect(screen.getByText('+2 ghi đè ở dự án bạn không xem được')).toBeTruthy();
   });
+
+  it('một nhóm trải nhiều dự án ghi "Áp chung cho N dự án"; quy tắc toàn tổ chức chỉ được báo "cần quản trị chung xem lại"', async () => {
+    const base = change();
+    h.put.mockResolvedValue({
+      data: change({
+        moves: [base.moves[0], { ...base.moves[0], projectId: 'p2', projectKey: 'GSDA', count: 3 }],
+        totalIssues: 8,
+        affectedRules: [
+          {
+            ruleId: 'rw',
+            name: 'Quy tắc toàn tổ chức',
+            projectId: null,
+            createdById: 'u',
+            wasEnabled: true,
+            outcome: 'needsReview',
+            statusRefs: [],
+          },
+        ],
+      }),
+    });
+    const user = renderPage(true);
+    await user.click(await screen.findByRole('button', { name: 'Quy trình cho loại việc Task' }));
+    await user.click(await screen.findByRole('option', { name: 'Bug Workflow' }));
+    await user.click(await screen.findByRole('button', { name: 'Lưu thay đổi' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(await within(dialog).findByText('Áp chung cho 2 dự án')).toBeTruthy();
+    expect(within(dialog).getByText(/Áp toàn tổ chức — cần quản trị chung xem lại/)).toBeTruthy();
+    expect(within(dialog).queryByText('Sẽ được sửa')).toBeNull();
+  });
 });

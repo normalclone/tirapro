@@ -28,12 +28,20 @@ export async function rewriteRuleStatusRefs(
       projectId: string | null;
       conditions: unknown;
     }) => ReadonlySet<string> | null;
+    /**
+     * Đổi quy trình của MỘT dự án: chỉ sửa/tắt quy tắc CỦA dự án đó. Quy tắc áp toàn tổ chức (`projectId` null) nhắc tới trạng thái
+     * bị đổi chỉ được BÁO (`needsReview`: cần Quản trị chung xem lại), không ghi gì; quy tắc của dự án khác không được đọc.
+     */
+    projectScope?: string;
   },
 ): Promise<{ affectedRules: AffectedRuleDto[] }> {
   const affectedRules: AffectedRuleDto[] = [];
   if (fromToMap.size === 0) return { affectedRules };
   const rules = await db.automationRule.findMany({
-    where: { workspaceId },
+    where: {
+      workspaceId,
+      ...(opts.projectScope ? { OR: [{ projectId: opts.projectScope }, { projectId: null }] } : {}),
+    },
     select: {
       id: true,
       name: true,
@@ -83,6 +91,11 @@ export async function rewriteRuleStatusRefs(
         return { fromId, fromName: nameOf(fromId), toIds, toNames: toIds.map(nameOf) };
       }),
     };
+    if (opts.projectScope && r.projectId === null) {
+      // Quy tắc toàn tổ chức: chỉ báo, không sửa/tắt từ một thay đổi của riêng dự án.
+      affectedRules.push({ ...base, outcome: 'needsReview' });
+      continue;
+    }
     if (out.unmappable.length > 0) {
       affectedRules.push({ ...base, outcome: 'disabled', unmappableStatusIds: out.unmappable });
       if (!opts.dryRun && r.enabled)
@@ -263,11 +276,16 @@ export async function ruleStepForMoves(
   pick: (typeId: string, fromStatusId: string, toWorkflowId: string) => string | undefined,
   pending: PlannedMove[],
   dryRun: boolean,
+  projectScope?: string,
 ): Promise<AffectedRuleDto[]> {
   const base = await buildStatusRefMap(db, pairs, pick);
   const map = await keepStillUsedStatuses(db, base, dryRun ? pending : []);
   return (
-    await rewriteRuleStatusRefs(db, workspaceId, map, { dryRun, scopeOf: scopeFromPairs(pairs) })
+    await rewriteRuleStatusRefs(db, workspaceId, map, {
+      dryRun,
+      scopeOf: scopeFromPairs(pairs),
+      projectScope,
+    })
   ).affectedRules;
 }
 

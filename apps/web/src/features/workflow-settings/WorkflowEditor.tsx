@@ -10,7 +10,7 @@ import { Badge, EmptyState } from '@/components/ui/primitives';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { apiErrorMessage } from '@/lib/api';
 import { STATUS_CATEGORY_LABEL } from '@/lib/terms';
-import { useAuth } from '@/stores/auth';
+import { useCanManageWorkflow } from './useCanManageWorkflow';
 import { WorkflowGraph } from './WorkflowGraph';
 import { useReportDraft } from './unsavedDrafts';
 import {
@@ -76,7 +76,7 @@ function StatusSection({ workflow }: { workflow: Workflow }) {
   const updateStatus = useUpdateStatus();
   const deleteStatus = useDeleteStatus();
   const confirm = useConfirm();
-  const canManage = useAuth((s) => s.can('workspace:admin'));
+  const canManage = useCanManageWorkflow(workflow);
 
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState('');
@@ -284,7 +284,7 @@ function TransitionSection({ workflow }: { workflow: Workflow }) {
   const addTransition = useAddTransition();
   const deleteTransition = useDeleteTransition();
   const confirm = useConfirm();
-  const canManage = useAuth((s) => s.can('workspace:admin'));
+  const canManage = useCanManageWorkflow(workflow);
 
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState('');

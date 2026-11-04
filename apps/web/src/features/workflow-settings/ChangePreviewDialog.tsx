@@ -85,7 +85,7 @@ export function ChangePreviewDialog({
         : { ...request.body, statusMap: buildFlatStatusMap(groups, choices) };
     try {
       const result = await sendChange({ ...request, body } as ChangeRequest, false);
-      refresh(result);
+      refresh();
       toast.success(
         result.totalIssues > 0
           ? `Đã đổi quy trình · chuyển ${result.totalIssues} việc sang trạng thái mới`
@@ -239,6 +239,11 @@ function MovesSection({
                   {g.fromStatusName}
                   <ArrowRight className="h-3.5 w-3.5" aria-hidden />
                 </span>
+                {g.projects.length > 1 && (
+                  <span className="mt-0.5 block text-xs text-faint">
+                    Áp chung cho {g.projects.length} dự án
+                  </span>
+                )}
               </span>
               <SearchSelect
                 value={to ?? ''}
@@ -270,7 +275,7 @@ function RulesSection({
         Quy tắc tự động bị ảnh hưởng ({rules.length})
       </h3>
       <p className="mb-2 text-xs text-muted">
-        Quy tắc nhắc tới trạng thái cũ được đổi sang trạng thái mới tương ứng
+        Quy tắc của dự án nhắc tới trạng thái cũ được đổi sang trạng thái mới tương ứng
         {disabledCount > 0
           ? '; quy tắc không còn trạng thái thay thế sẽ bị TẮT và người tạo được báo'
           : ''}
@@ -286,16 +291,30 @@ function RulesSection({
                   <AlertTriangle className="h-3.5 w-3.5" aria-hidden />
                   {r.wasEnabled ? 'Sẽ bị tắt' : 'Đang tắt, giữ nguyên'}
                 </span>
+              ) : r.outcome === 'needsReview' ? (
+                <span className="inline-flex items-center gap-1 text-xs font-medium text-warning-ink">
+                  <AlertTriangle className="h-3.5 w-3.5" aria-hidden />
+                  Áp toàn tổ chức — cần quản trị chung xem lại
+                </span>
               ) : (
                 <span className="text-xs text-muted">Sẽ được sửa</span>
               )}
             </div>
-            {(r.statusRefs ?? []).map((ref) => (
-              <p key={ref.fromId} className="mt-0.5 text-xs text-muted">
-                {ref.fromName} <ArrowRight className="inline h-3 w-3" aria-hidden />{' '}
-                {ref.toNames.length > 0 ? ref.toNames.join(', ') : '(không có trạng thái thay thế)'}
+            {r.outcome !== 'needsReview' &&
+              (r.statusRefs ?? []).map((ref) => (
+                <p key={ref.fromId} className="mt-0.5 text-xs text-muted">
+                  {ref.fromName} <ArrowRight className="inline h-3 w-3" aria-hidden />{' '}
+                  {ref.toNames.length > 0
+                    ? ref.toNames.join(', ')
+                    : '(không có trạng thái thay thế)'}
+                </p>
+              ))}
+            {r.outcome === 'needsReview' && (
+              <p className="mt-0.5 text-xs text-muted">
+                Quy tắc này không bị đổi từ thay đổi của một dự án; nhờ quản trị chung kiểm tra lại
+                các trạng thái nó nhắc tới.
               </p>
-            ))}
+            )}
           </li>
         ))}
       </ul>

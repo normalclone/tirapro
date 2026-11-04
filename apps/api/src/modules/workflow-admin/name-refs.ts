@@ -9,6 +9,19 @@ const mentions = (text: string, name: string): boolean => {
 };
 
 /**
+ * Người gọi thấy được gì khi liệt kê tham chiếu theo tên: bộ lọc đã lưu của chính họ hoặc chia sẻ cho họ (cả tổ chức, hoặc dự án họ
+ * thấy), bảng/quy tắc CỦA DỰ ÁN đang đổi (`projectId`), bảng tổng quan của họ / chung / của dự án họ thấy, mục tiêu của dự án họ
+ * thấy hoặc của chính họ. `visibleProjectIds = null` = thấy mọi dự án. Không truyền scope (script migrate chạy bởi vận hành) =
+ * liệt kê hết.
+ */
+export interface NameRefScope {
+  viewerId: string;
+  visibleProjectIds: string[] | null;
+  /** Đổi quy trình của MỘT dự án: chỉ bảng và quy tắc của dự án đó bị ảnh hưởng. */
+  projectId?: string;
+}
+
+/**
  * Chỉ BÁO (không sửa) các đối tượng lọc theo TÊN trạng thái trong JQL — bộ lọc đã lưu, bộ lọc bảng, widget, điều kiện JQL của
  * quy tắc, KR — mà tên đó sẽ không còn ở quy trình nào đang dùng sau migrate (nên câu lọc không còn khớp việc nào).
  */
@@ -17,8 +30,12 @@ export async function findNameRefs(
   workspaceId: string,
   moves: ReadonlyArray<Pick<PlannedMove, 'from'>>,
   liveWorkflowIds: ReadonlySet<string>,
+  scope?: NameRefScope,
 ): Promise<NameRefDto[]> {
   if (moves.length === 0) return [];
+  const inVisible = (ids: string[] | null) => (ids === null ? {} : { in: ids });
+  const viewer = scope?.viewerId;
+  const visible = scope?.visibleProjectIds ?? null;
   const live = new Set(
     (
       await tx.status.findMany({
@@ -36,17 +53,54 @@ export async function findNameRefs(
     if (names.length > 0) out.push({ kind, id, label, names });
   };
   for (const f of await tx.savedFilter.findMany({
-    where: { workspaceId, deletedAt: null },
+    where: {
+      workspaceId,
+      deletedAt: null,
+      ...(scope
+        ? {
+            OR: [
+              { ownerId: viewer },
+              { visibility: 'WORKSPACE' as const },
+              {
+                visibility: 'PROJECT' as const,
+                sharedProjectId: visible === null ? { not: null } : inVisible(visible),
+              },
+            ],
+          }
+        : {}),
+    },
     select: { id: true, name: true, jql: true },
   }))
     check('savedFilter', f.id, f.name, f.jql);
   for (const b of await tx.board.findMany({
-    where: { project: { workspaceId }, deletedAt: null, filterJql: { not: null } },
+    where: {
+      project: { workspaceId },
+      ...(scope?.projectId ? { projectId: scope.projectId } : {}),
+      deletedAt: null,
+      filterJql: { not: null },
+    },
     select: { id: true, name: true, filterJql: true, project: { select: { key: true } } },
   }))
     check('boardFilter', b.id, `${b.project.key} / ${b.name}`, b.filterJql);
   for (const w of await tx.widget.findMany({
-    where: { dashboard: { workspaceId, deletedAt: null } },
+    where: {
+      dashboard: {
+        workspaceId,
+        deletedAt: null,
+        ...(scope
+          ? {
+              OR: [
+                { ownerId: viewer },
+                { scope: 'GLOBAL' as const },
+                {
+                  scope: 'PROJECT' as const,
+                  projectId: visible === null ? { not: null } : inVisible(visible),
+                },
+              ],
+            }
+          : {}),
+      },
+    },
     select: { id: true, title: true, config: true, dashboard: { select: { name: true } } },
   }))
     check(
@@ -56,13 +110,26 @@ export async function findNameRefs(
       (w.config as { jql?: unknown } | null)?.jql,
     );
   for (const r of await tx.automationRule.findMany({
-    where: { workspaceId },
+    where: { workspaceId, ...(scope?.projectId ? { projectId: scope.projectId } : {}) },
     select: { id: true, name: true, conditions: true },
   }))
     for (const c of Array.isArray(r.conditions) ? (r.conditions as Array<{ jql?: unknown }>) : [])
       check('rule', r.id, r.name, c?.jql);
   for (const k of await tx.keyResult.findMany({
-    where: { objective: { workspaceId } },
+    where: {
+      objective: {
+        workspaceId,
+        ...(scope
+          ? {
+              OR: [
+                { ownerId: viewer },
+                { projectId: null },
+                { projectId: visible === null ? { not: null } : inVisible(visible) },
+              ],
+            }
+          : {}),
+      },
+    },
     select: { id: true, name: true, sourceConfig: true },
   }))
     check('keyResult', k.id, k.name, (k.sourceConfig as { jql?: unknown } | null)?.jql);

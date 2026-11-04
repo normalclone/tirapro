@@ -96,7 +96,7 @@ const preview = (over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
-function renderRoute(perms: string[]) {
+function renderRoute(perms: string[], projectOver: Record<string, unknown> = {}) {
   act(() => {
     useAuth.setState({
       status: 'authed',
@@ -105,7 +105,8 @@ function renderRoute(perms: string[]) {
     });
   });
   h.get.mockImplementation((url: string) => {
-    if (url === '/projects/THCHUNG') return Promise.resolve({ data: project });
+    if (url === '/projects/THCHUNG')
+      return Promise.resolve({ data: { ...project, ...projectOver } });
     if (url === '/projects/p1/permissions/me')
       return Promise.resolve({ data: { projectId: 'p1', permissions: perms } });
     if (url === '/projects/p1/workflow-overrides') return Promise.resolve({ data: scheme() });
@@ -123,7 +124,7 @@ function renderRoute(perms: string[]) {
       </MemoryRouter>
     </QueryClientProvider>,
   );
-  return userEvent.setup();
+  return Object.assign(userEvent.setup(), { qc });
 }
 
 async function pick(user: ReturnType<typeof userEvent.setup>, label: string, option: RegExp) {
@@ -322,5 +323,42 @@ describe('Cấu hình dự án → Quy trình', () => {
     const row = dialog.querySelector('[data-move-row="t-task:o-test"]')!;
     expect(row.className).toContain('bg-danger');
     expect(screen.getByRole('dialog')).toBeTruthy();
+  });
+
+  it('hàng đang dùng quy trình RIÊNG của dự án không còn "Tạo bản riêng"; hàng theo tổ chức thì còn', async () => {
+    const user = renderRoute(['project:admin']);
+    await screen.findByText('Standard Workflow (THCHUNG)');
+    await user.click(await screen.findByRole('button', { name: 'Quy trình cho loại việc Bug' }));
+    expect(await screen.findByRole('option', { name: /^Theo tổ chức/ })).toBeTruthy();
+    expect(screen.queryByRole('option', { name: /Tạo bản riêng/ })).toBeNull();
+    await user.keyboard('{Escape}');
+    await user.click(await screen.findByRole('button', { name: 'Quy trình cho loại việc Task' }));
+    expect(
+      await screen.findByRole('option', { name: /Tạo bản riêng từ Standard Workflow/ }),
+    ).toBeTruthy();
+  });
+
+  it('dự án đã lưu trữ: chỉ xem và ghi chú nói rõ dự án đã lưu trữ (khôi phục để sửa), không bảo "nhờ quản trị chung"', async () => {
+    renderRoute(['project:admin'], { archivedAt: '2026-10-01T00:00:00Z' });
+    await screen.findByText('Standard Workflow');
+    expect(screen.queryByLabelText(/Quy trình cho loại việc/)).toBeNull();
+    expect(screen.getByRole('note').textContent).toMatch(
+      /Dự án đã lưu trữ — hãy khôi phục dự án để sửa/,
+    );
+    expect(screen.queryByText(/nhờ quản trị chung/)).toBeNull();
+  });
+
+  it('áp dụng chỉ làm mới quy trình/việc/bảng/sprint/quy tắc — không làm mới toàn bộ cache', async () => {
+    h.put.mockImplementation((_u: string, _b: unknown, cfg?: { params?: { dryRun?: number } }) =>
+      Promise.resolve({ data: preview({ dryRun: !!cfg?.params?.dryRun }) }),
+    );
+    const user = renderRoute(['project:admin']);
+    const spy = vi.spyOn(user.qc, 'invalidateQueries');
+    await pick(user, 'Quy trình cho loại việc Task', /^Bug Workflow$/);
+    const dialog = await screen.findByRole('dialog');
+    await user.click(await within(dialog).findByRole('button', { name: /Áp dụng và chuyển/ }));
+    await waitFor(() => expect(spy).toHaveBeenCalled());
+    const roots = spy.mock.calls.map((c) => (c[0] as { queryKey: string[] }).queryKey[0]).sort();
+    expect(roots).toEqual(['automation', 'boards', 'issues', 'sprints', 'workflows']);
   });
 });

@@ -98,6 +98,20 @@ const RESOURCE_RESOLVERS: Record<
     select: projectIdOnly,
     project: ownProjectId,
   },
+  // Quy trình / trạng thái / bước chuyển: projectId null = quy trình chung của tổ chức (áp quyền workspace).
+  workflow: { model: 'workflow', where: inWorkspace, select: projectIdOnly, project: ownProjectId },
+  workflowStatus: {
+    model: 'status',
+    where: (value, workspaceId) => ({ id: value, workflow: { workspaceId } }),
+    select: { workflow: { select: projectIdOnly } },
+    project: (row: { workflow: { projectId: string | null } }) => row.workflow.projectId,
+  },
+  workflowTransition: {
+    model: 'workflowTransition',
+    where: (value, workspaceId) => ({ id: value, workflow: { workspaceId } }),
+    select: { workflow: { select: projectIdOnly } },
+    project: (row: { workflow: { projectId: string | null } }) => row.workflow.projectId,
+  },
   repository: {
     model: 'codeRepository',
     where: inWorkspace,

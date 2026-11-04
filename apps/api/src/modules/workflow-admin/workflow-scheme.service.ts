@@ -28,6 +28,7 @@ import {
   type PlannedMove,
 } from './workflow-move';
 import { WorkflowResolver } from './workflow-resolver.service';
+import { ProjectAccessService } from '../rbac/project-access.service';
 
 /** Đổi quy trình có thể chuyển hàng nghìn việc: nới timeout mặc định 5s của interactive transaction. */
 const TX_OPTIONS = { timeout: 120_000, maxWait: 10_000 } as const;
@@ -54,6 +55,7 @@ export class WorkflowSchemeService {
     // Tuỳ chọn để spec dựng bằng 2 đối số vẫn chạy; Nest DI tiêm bản thật (bỏ cache quy tắc + báo người tạo quy tắc bị tắt).
     @Optional() private readonly notifications?: NotificationsService,
     @Optional() private readonly events?: EventEmitter2,
+    @Optional() private readonly access?: ProjectAccessService,
   ) {}
 
   // ----------------------------------------------------------------------------------------- tổ chức
@@ -118,7 +120,9 @@ export class WorkflowSchemeService {
         moves,
         true,
       );
-      const refs = await this.nameRefs(this.prisma, workspaceId, moves, plan);
+      const refs = await this.nameRefs(this.prisma, workspaceId, moves, plan, {
+        viewerId: actorId,
+      });
       return this.result(true, moves, plan.ctx, rules, refs);
     }
     let result: WorkflowChangeDto;
@@ -145,7 +149,7 @@ export class WorkflowSchemeService {
           moves,
           false,
         );
-        const refs = await this.nameRefs(tx, workspaceId, moves, plan);
+        const refs = await this.nameRefs(tx, workspaceId, moves, plan, { viewerId: actorId });
         return this.result(false, moves, plan.ctx, rules, refs);
       }, TX_OPTIONS);
     } finally {
@@ -316,11 +320,15 @@ export class WorkflowSchemeService {
         pick,
         moves,
         true,
+        projectId,
       );
-      const refs = await this.nameRefs(this.prisma, workspaceId, moves, {
-        targets: [target],
-        types: [type.id],
-      });
+      const refs = await this.nameRefs(
+        this.prisma,
+        workspaceId,
+        moves,
+        { targets: [target], types: [type.id] },
+        { viewerId: actorId, projectId },
+      );
       return this.result(true, moves, ctx, rules, refs);
     }
     let result: WorkflowChangeDto;
@@ -357,11 +365,14 @@ export class WorkflowSchemeService {
           toWorkflowId: targetId,
           fromWorkflowIds: fromWorkflowsOf(type.id, b.fromWorkflowIds, moves),
         }));
-        const rules = await ruleStepForMoves(tx, workspaceId, pairs, pick, moves, false);
-        const refs = await this.nameRefs(tx, workspaceId, moves, {
-          targets: [targetId],
-          types: [type.id],
-        });
+        const rules = await ruleStepForMoves(tx, workspaceId, pairs, pick, moves, false, projectId);
+        const refs = await this.nameRefs(
+          tx,
+          workspaceId,
+          moves,
+          { targets: [targetId], types: [type.id] },
+          { viewerId: actorId, projectId },
+        );
         return this.result(false, moves, ctx, rules, refs);
       }, TX_OPTIONS);
     } finally {
@@ -435,11 +446,15 @@ export class WorkflowSchemeService {
         pick,
         moves,
         true,
+        projectId,
       );
-      const refs = await this.nameRefs(this.prisma, workspaceId, moves, {
-        targets: [shared],
-        types: [issueTypeId],
-      });
+      const refs = await this.nameRefs(
+        this.prisma,
+        workspaceId,
+        moves,
+        { targets: [shared], types: [issueTypeId] },
+        { viewerId: actorId, projectId },
+      );
       return this.result(true, moves, ctx, rules, refs);
     }
     let result: WorkflowChangeDto;
@@ -457,11 +472,14 @@ export class WorkflowSchemeService {
           ...b,
           fromWorkflowIds: fromWorkflowsOf(issueTypeId, b.fromWorkflowIds, moves),
         }));
-        const rules = await ruleStepForMoves(tx, workspaceId, pairs, pick, moves, false);
-        const refs = await this.nameRefs(tx, workspaceId, moves, {
-          targets: [shared],
-          types: [issueTypeId],
-        });
+        const rules = await ruleStepForMoves(tx, workspaceId, pairs, pick, moves, false, projectId);
+        const refs = await this.nameRefs(
+          tx,
+          workspaceId,
+          moves,
+          { targets: [shared], types: [issueTypeId] },
+          { viewerId: actorId, projectId },
+        );
         return this.result(false, moves, ctx, rules, refs);
       }, TX_OPTIONS);
     } finally {
@@ -525,7 +543,11 @@ export class WorkflowSchemeService {
     };
   }
 
-  /** Bộ lọc/bảng/widget/quy tắc/KR lọc theo TÊN trạng thái sẽ biến mất sau thay đổi này (chỉ báo, xem `findNameRefs`). */
+  /**
+   * Bộ lọc/bảng/widget/quy tắc/KR lọc theo TÊN trạng thái sẽ biến mất sau thay đổi này (chỉ báo, xem `findNameRefs`), giới hạn ở
+   * những gì NGƯỜI GỌI thấy được (bộ lọc của mình/chia sẻ, bảng và quy tắc của dự án đang đổi…) — không lộ bộ lọc riêng tư hay
+   * bảng của dự án riêng tư.
+   */
   private async nameRefs(
     db: Prisma.TransactionClient,
     workspaceId: string,
@@ -533,14 +555,20 @@ export class WorkflowSchemeService {
     plan:
       | { scopes: MoveScope[]; changed: Array<{ issueTypeId: string }> }
       | { targets: string[]; types: string[] },
+    who: { viewerId: string; projectId?: string },
   ): Promise<NameRefDto[]> {
     const targets = 'scopes' in plan ? plan.scopes.map((s) => s.toWorkflowId) : plan.targets;
     const types = 'changed' in plan ? plan.changed.map((c) => c.issueTypeId) : plan.types;
+    if (moves.length === 0) return [];
+    const visibleProjectIds = this.access
+      ? await this.access.visibleProjectIds(who.viewerId, workspaceId)
+      : null;
     return findNameRefs(
       db,
       workspaceId,
       moves,
       await liveWorkflowIdsAfter(db, workspaceId, targets, types),
+      { viewerId: who.viewerId, visibleProjectIds, projectId: who.projectId },
     );
   }
 

@@ -21,6 +21,9 @@ export type ProjectResourceKind =
   | 'customField'
   | 'repository'
   | 'wikiPage'
+  | 'workflow'
+  | 'workflowStatus'
+  | 'workflowTransition'
   | 'projectKey';
 
 /**

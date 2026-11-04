@@ -59,14 +59,22 @@ export function useChangePreview(req: ChangeRequest | null) {
   });
 }
 
-/** Sau khi áp dụng: việc đã đổi trạng thái, bảng/quy tắc đổi cột → làm mới mọi thứ phụ thuộc quy trình. */
+/**
+ * Sau khi áp dụng: làm mới đúng những gì phụ thuộc quy trình — quy trình/cấu hình (cả bảng cột đổi dù không có việc chuyển), việc
+ * (trạng thái đổi), bảng việc, sprint và quy tắc automation. Không đụng truy vấn xem trước (đang hiện trong hộp thoại: làm mới nó
+ * sẽ gọi dryRun thừa ngay sau khi vừa ghi) và các dữ liệu không liên quan.
+ */
 export function useRefreshAfterChange() {
   const qc = useQueryClient();
-  return (result: WorkflowChangeDto) => {
-    // Trừ truy vấn xem trước (đang hiện trong hộp thoại): làm mới nó sẽ gọi dryRun thừa ngay sau khi vừa ghi.
-    if (result.totalIssues > 0 || result.affectedRules.length > 0)
-      void qc.invalidateQueries({ predicate: (q) => q.queryKey[0] !== 'workflow-change-preview' });
-    else void qc.invalidateQueries({ queryKey: keys.workflows });
+  return () => {
+    for (const queryKey of [
+      keys.workflows,
+      keys.issues.all,
+      ['boards'],
+      ['sprints'],
+      keys.automation.rulesRoot,
+    ])
+      void qc.invalidateQueries({ queryKey });
   };
 }
 

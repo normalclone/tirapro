@@ -565,7 +565,7 @@ export class WorkflowAdminService {
                   : [],
               ],
             ]),
-            { dryRun: false },
+            { dryRun: false, projectScope: existing.projectId ?? undefined },
           ));
           await tx.status.delete({ where: { id: statusId } });
           return count;
@@ -604,6 +604,21 @@ export class WorkflowAdminService {
         ERROR_CODES.INITIAL_STATUS_IN_USE,
         INITIAL_STATUS_IN_USE_MESSAGE,
       );
+  }
+
+  /**
+   * Dự án SỞ HỮU một quy trình / trạng thái / bước chuyển (null = quy trình chung của tổ chức). Controller dùng để quyết định ai
+   * được sửa: quy trình của dự án do Quản trị dự án đó (PermissionsGuard đã kiểm `project:admin` tại dự án), quy trình chung chỉ
+   * Quản trị chung. Không thuộc tổ chức này → 404.
+   */
+  async ownerProjectId(
+    workspaceId: string,
+    kind: 'workflow' | 'status' | 'transition',
+    id: string,
+  ): Promise<string | null> {
+    if (kind === 'workflow') return (await this.requireWorkflow(workspaceId, id)).projectId;
+    if (kind === 'status') return (await this.requireStatus(workspaceId, id)).projectId;
+    return (await this.requireTransition(workspaceId, id)).projectId;
   }
 
   // ----- Transitions -----

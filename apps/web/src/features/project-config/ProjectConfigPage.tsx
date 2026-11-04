@@ -164,7 +164,11 @@ export function ConfigSection() {
         {section === 'versions' && <VersionsSection projectId={projectId} canAdmin={canAdmin} />}
         {section === 'labels' && <LabelsSection projectId={projectId} canAdmin={canAdmin} />}
         {section === 'workflow' && (
-          <WorkflowSection projectId={projectId} canAdmin={canAdmin && !project?.archivedAt} />
+          <WorkflowSection
+            projectId={projectId}
+            canAdmin={canAdmin && !project?.archivedAt}
+            archived={!!project?.archivedAt}
+          />
         )}
         {section === 'data' && (
           <DataSection

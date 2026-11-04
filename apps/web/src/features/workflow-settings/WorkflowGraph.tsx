@@ -15,7 +15,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { useConfirm } from '@/components/ui/useConfirm';
 import { apiErrorMessage } from '@/lib/api';
-import { useAuth } from '@/stores/auth';
+import { useCanManageWorkflow } from './useCanManageWorkflow';
 import { cn } from '@/lib/utils';
 import {
   useAddStatus,
@@ -82,8 +82,8 @@ export function WorkflowGraph({ workflow, className, inDialog = false }: Workflo
   const addStatus = useAddStatus();
   const deleteStatus = useDeleteStatus();
   const confirm = useConfirm();
-  // Chỉ `workspace:admin` được sửa quy trình; người khác chỉ xem sơ đồ.
-  const canManage = useAuth((s) => s.can('workspace:admin'));
+  // Quản trị chung sửa mọi quy trình; Quản trị dự án sửa quy trình của chính dự án; người khác chỉ xem sơ đồ.
+  const canManage = useCanManageWorkflow(workflow);
 
   const statusById = useMemo(
     () => new Map(workflow.statuses.map((s) => [s.id, s])),

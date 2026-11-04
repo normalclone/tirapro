@@ -438,10 +438,6 @@ const READ_ALLOWLIST: Record<string, [Kind, string]> = {
     R_ROUTE_GUARDED,
   ],
   'issues/issues.service.ts::IssuesService.getTransitions': ['ROUTE_GUARDED', R_ROUTE_GUARDED],
-  'workflow-admin/workflow-scheme.service.ts::WorkflowSchemeService.setProjectOverride': [
-    'ROUTE_GUARDED',
-    R_ROUTE_GUARDED,
-  ],
   'issues/issues.service.ts::IssuesService.retract': ['ROUTE_GUARDED', R_ROUTE_GUARDED],
   'issues/issues.service.ts::IssuesService.restore': ['ROUTE_GUARDED', R_ROUTE_GUARDED],
   'issues/issues.service.ts::IssuesService.getDtosByIdsForSystem': [
@@ -556,13 +552,9 @@ const READ_ALLOWLIST: Record<string, [Kind, string]> = {
     'ADMIN_ONLY',
     R_ADMIN_ONLY,
   ],
-  'workflow-admin/workflow-scheme.service.ts::WorkflowSchemeService.setWorkspaceScheme': [
-    'ADMIN_ONLY',
-    R_ADMIN_ONLY,
-  ],
   'workflow-admin/workflow-admin.service.ts::WorkflowAdminService.removeStatus': [
-    'ADMIN_ONLY',
-    R_ADMIN_ONLY,
+    'ROUTE_GUARDED',
+    R_ROUTE_GUARDED,
   ],
   // ---- INTERNAL (9)
   'automation/rule-engine.service.ts::RuleEngineService.runScheduled': [
@@ -719,6 +711,36 @@ describe('dự án riêng tư — R1: service/gateway đọc dữ liệu theo d�
 
 /** Khoá: `file::Controller.route -> prop.method`. Loại lý do dùng cùng `Kind` (kiểm theo route). */
 const CONTROLLER_ALLOWLIST: Record<string, [Kind, string]> = {
+  'workflow-admin/workflow-admin.controller.ts::WorkflowAdminController.update -> workflows.updateWorkflow':
+    [
+      'ROUTE_GUARDED',
+      'sửa quy trình/trạng thái/bước chuyển theo id: route khoá theo DỰ ÁN SỞ HỮU (@Permissions project:admin + @ProjectRef workflow*), quy trình chung chỉ Quản trị chung (assertCanEdit); service không đọc dữ liệu dự án của người xem',
+    ],
+  'workflow-admin/workflow-admin.controller.ts::WorkflowAdminController.createStatus -> workflows.createStatus':
+    [
+      'ROUTE_GUARDED',
+      'sửa quy trình/trạng thái/bước chuyển theo id: route khoá theo DỰ ÁN SỞ HỮU (@Permissions project:admin + @ProjectRef workflow*), quy trình chung chỉ Quản trị chung (assertCanEdit); service không đọc dữ liệu dự án của người xem',
+    ],
+  'workflow-admin/workflow-admin.controller.ts::WorkflowAdminController.updateStatus -> workflows.updateStatus':
+    [
+      'ROUTE_GUARDED',
+      'sửa quy trình/trạng thái/bước chuyển theo id: route khoá theo DỰ ÁN SỞ HỮU (@Permissions project:admin + @ProjectRef workflow*), quy trình chung chỉ Quản trị chung (assertCanEdit); service không đọc dữ liệu dự án của người xem',
+    ],
+  'workflow-admin/workflow-admin.controller.ts::WorkflowAdminController.createTransition -> workflows.createTransition':
+    [
+      'ROUTE_GUARDED',
+      'sửa quy trình/trạng thái/bước chuyển theo id: route khoá theo DỰ ÁN SỞ HỮU (@Permissions project:admin + @ProjectRef workflow*), quy trình chung chỉ Quản trị chung (assertCanEdit); service không đọc dữ liệu dự án của người xem',
+    ],
+  'workflow-admin/workflow-admin.controller.ts::WorkflowAdminController.updateTransition -> workflows.updateTransition':
+    [
+      'ROUTE_GUARDED',
+      'sửa quy trình/trạng thái/bước chuyển theo id: route khoá theo DỰ ÁN SỞ HỮU (@Permissions project:admin + @ProjectRef workflow*), quy trình chung chỉ Quản trị chung (assertCanEdit); service không đọc dữ liệu dự án của người xem',
+    ],
+  'workflow-admin/workflow-admin.controller.ts::WorkflowAdminController.removeTransition -> workflows.removeTransition':
+    [
+      'ROUTE_GUARDED',
+      'sửa quy trình/trạng thái/bước chuyển theo id: route khoá theo DỰ ÁN SỞ HỮU (@Permissions project:admin + @ProjectRef workflow*), quy trình chung chỉ Quản trị chung (assertCanEdit); service không đọc dữ liệu dự án của người xem',
+    ],
   'admin/admin-console.controller.ts::AdminConsoleController.pointsFormula -> points.getFormula': [
     'ADMIN_ONLY',
     'console quản trị hệ thống — tự kiểm assertSysAdmin; bảng hệ số điểm là cấu hình toàn hệ thống, không thuộc dự án',

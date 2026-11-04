@@ -101,7 +101,11 @@ export interface AffectedRuleDto {
   createdById: string;
   /** Quy tắc đang bật trước thay đổi (quy tắc đã tắt sẵn bị tắt tiếp thì không báo). */
   wasEnabled: boolean;
-  outcome: 'rewritten' | 'disabled';
+  /**
+   * `needsReview`: quy tắc áp TOÀN TỔ CHỨC nhắc tới trạng thái bị đổi trong một thay đổi của riêng một dự án — không sửa/tắt, cần
+   * Quản trị chung xem lại.
+   */
+  outcome: 'rewritten' | 'disabled' | 'needsReview';
   /** `disabled`: các trạng thái cũ không còn thay thế. */
   unmappableStatusIds?: string[];
   /** Trước → sau của từng trạng thái mà quy tắc nhắc tới (để người duyệt xem quy tắc sẽ khớp những trạng thái nào). */

@@ -27,9 +27,12 @@ const COPY = '__copy';
 export function WorkflowSection({
   projectId,
   canAdmin,
+  archived = false,
 }: {
   projectId: string | undefined;
   canAdmin: boolean;
+  /** Dự án đã lưu trữ: chỉ xem, ghi chú nêu đúng lý do. */
+  archived?: boolean;
 }) {
   const schemeQuery = useProjectScheme(projectId);
   const workflowsQuery = useWorkflows();
@@ -97,7 +100,11 @@ export function WorkflowSection({
 
   return (
     <SectionCard>
-      {!canAdmin && <ReadOnlyNote />}
+      {archived ? (
+        <ReadOnlyNote message="Dự án đã lưu trữ — hãy khôi phục dự án để sửa quy trình." />
+      ) : (
+        !canAdmin && <ReadOnlyNote />
+      )}
       {loading && (
         <div className="space-y-2" aria-busy="true">
           {Array.from({ length: 4 }).map((_, i) => (
@@ -225,8 +232,13 @@ function optionsFor(
       group: 'Riêng của dự án',
     });
   }
+  // "Tạo bản riêng" chỉ khi quy trình đang dùng CHƯA là của dự án (đã riêng rồi thì sửa thẳng nó) và nguồn chép là quy trình chung.
   const source = orgId ?? item?.workflowId;
-  if (source)
+  const effective = item ? byId.get(item.workflowId) : undefined;
+  const sourceWf = source ? byId.get(source) : undefined;
+  const alreadyOwned = !!effective && effective.projectId !== null;
+  const sourceIsShared = !sourceWf || sourceWf.projectId === null;
+  if (source && !alreadyOwned && sourceIsShared)
     out.push({
       value: COPY,
       label: `Tạo bản riêng từ ${byId.get(source)?.name ?? 'quy trình hiện tại'}`,
