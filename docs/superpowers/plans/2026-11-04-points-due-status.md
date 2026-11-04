@@ -442,3 +442,47 @@ User decision (2026-11-04, "cách 2"); the spec's appendix "Bổ sung 2026-11-04
 - [ ] **Step 3: Implement.** Mirror the epic logic (same transaction, same lock ordering: children → parent → epic).
 - [ ] **Step 4: Gates.** Run full API, shared and web tests, typecheck and lint.
 - [ ] **Step 5: Commit.**
+
+### Task 14 (after Task 12): edit in a dialog instead of expanding below (workflows + similar screens)
+
+User request (2026-11-04): on Cài đặt → Quy trình, clicking a workflow expands it inline below the list (chevron rows, then the Sơ đồ/Danh sách tabs and the graph further down the page). Instead, **open a dialog (popup) to view and edit that workflow**. Audit every similar screen and convert it the same way.
+
+**Rule for the audit.** Convert a pattern when a list or settings row expands to show an **editor or detail form for that item**, or when selecting a row renders its editor further down the page. Keep these as they are, because their expand/collapse is the content:
+- hierarchy expanders: backlog sections, Tree, Wiki tree, project rail
+- filter or option disclosures
+- the assistant panel
+- the JQL editor
+- collapsible groups of read-only data
+
+Candidates to check (grep `aria-expanded`):
+- `workflow-settings/WorkflowSettingsPage.tsx` (must convert)
+- `automation/RulesPage.tsx`
+- `clients/ClientsPage.tsx`
+- `goals/GoalsPage.tsx`
+- `portfolio/PortfolioPage.tsx`
+- `settings/NotificationSection.tsx`
+- `digests/DigestsSection.tsx`
+- `integrations/TelegramSection.tsx`
+- `triage/TriageRow.tsx`
+- `reports/SprintSummaryPanel.tsx`
+
+In the report, list each one with "converted" or "kept + why".
+
+**Dialog spec:**
+- Use the existing `components/ui/Dialog`. Size it large enough for the workflow graph (near full viewport on desktop, full screen on mobile). The title is the item name, followed by its badges.
+- Content is the same editor as now (Sơ đồ/Danh sách tabs, status/transition editing, delete). Read-only users get the same dialog in view mode.
+- URL deep link: `?workflow=<id>`, and the equivalent for others where useful, so a refresh reopens the dialog.
+- Esc and close return focus to the row.
+- Unsaved edits prompt before closing, using the existing confirm.
+- The list row becomes a plain button row: name, badges, "Dùng bởi…", the delete action. No chevron.
+- The graph inside the dialog must fit on open. Reuse Task 11's fit logic: the fit runs when the dialog's container gets its size.
+
+- [ ] **Step 1: Failing tests.**
+  - Clicking a workflow row opens a dialog containing the graph or list tabs, and nothing renders below the list.
+  - Esc closes it and focus returns to the row.
+  - `?workflow=<id>` opens that dialog on load.
+  - For each other converted screen: one test that clicking the row opens a dialog with its editor.
+- [ ] **Step 2: Run** → FAIL.
+- [ ] **Step 3: Implement + audit.**
+- [ ] **Step 4: Gates + impeccable detect on the touched features.**
+- [ ] **Step 5: Commit.**
