@@ -98,6 +98,8 @@ function makeService(
   };
   // Tra Loại/Ưu tiên cho điểm tự tính: mặc định Task / không tên ưu tiên đặc biệt; spec riêng ghi đè qua `tx`.
   const txFull = {
+    // Khoá dòng Epic (FOR UPDATE) trước khi cộng lại tổng điểm.
+    $queryRaw: vi.fn(() => Promise.resolve([])),
     issueType: { findUnique: vi.fn(() => Promise.resolve({ key: 'TASK' })) },
     priority: { findUnique: vi.fn(() => Promise.resolve({ name: 'Medium' })) },
     ...tx,
@@ -4322,7 +4324,8 @@ describe('IssuesService — điểm tự tính: Epic — tổng điểm việc c
     });
     expect(events.emit).toHaveBeenCalledWith(
       DOMAIN_EVENTS.ISSUE_UPDATED,
-      expect.objectContaining({ changedFields: ['storyPoints'] }),
+      // Do hệ thống suy ra từ việc con: `bulk: true` để người theo dõi/tự động hoá/Telegram bỏ qua (realtime vẫn đi).
+      expect.objectContaining({ changedFields: ['storyPoints'], bulk: true }),
     );
   });
   it('điểm việc đổi (cùng Epic) => chỉ tính lại Epic đó; Epic không đổi tổng thì không ghi', async () => {
@@ -4353,6 +4356,21 @@ describe('IssuesService — điểm tự tính: Epic — tổng điểm việc c
     const t = pTx(issueRow(), issueRow());
     await makeService(t).service.softDelete('w1', 'u1', 'i1');
     expect(t.issue.aggregate).not.toHaveBeenCalled();
+  });
+  it('khôi phục CHÍNH một Epic => tính lại tổng của nó (việc con đổi lúc nó nằm trong Thùng rác)', async () => {
+    const epicType = { ...issueRow().type, key: 'EPIC' };
+    const t = pTx(issueRow({ deletedAt: new Date(), type: epicType, storyPoints: 5 }), issueRow(), {
+      epics: { i1: epicLike({ storyPoints: 5 }) },
+      sums: { i1: 9 },
+    });
+    await makeService(t).service.restore('w1', 'u1', 'p1', 'i1');
+    // lần ghi tổng của rollup (where.deletedAt = null), không phải UPDATE khôi phục (deletedAt: { not: null })
+    const rollup = (
+      t.issue.updateMany.mock.calls as unknown as Array<
+        [{ where: { deletedAt: unknown }; data: unknown }]
+      >
+    ).find((c) => c[0].where.deletedAt === null);
+    expect(rollup?.[0].data).toMatchObject({ storyPoints: 9 });
   });
   it('khôi phục việc (Epic còn sống) => cộng điểm lại; Epic đã xoá (bị gỡ epicId) => không tính', async () => {
     const deleted = { deletedAt: new Date(), epicId: 'eA', storyPoints: 3 };

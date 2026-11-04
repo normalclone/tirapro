@@ -298,22 +298,27 @@ export class IssuesService {
   }
 
   /**
-   * Phát `ISSUE_UPDATED` cho các Epic vừa đổi tổng điểm (sau commit) để board/danh sách của người khác cập nhật.
-   * Dữ liệu ĐÃ commit: lỗi đọc lại/phát chỉ ghi log, không làm hỏng request.
+   * Phát `ISSUE_UPDATED` cho các Epic vừa đổi tổng điểm (sau commit) để board/danh sách của người khác cập nhật realtime.
+   * Mang `bulk: true`: đây là thay đổi do HỆ THỐNG suy ra từ việc con, không phải người dùng sửa Epic — người theo dõi,
+   * quy tắc tự động hoá và Telegram bỏ qua (cùng cờ với nơi hệ thống phát hàng loạt). Dữ liệu ĐÃ commit: lỗi đọc lại/phát
+   * chỉ ghi log, không làm hỏng request.
    */
   private async emitEpicTotals(
     workspaceId: string,
     actorId: string,
     epicIds: string[],
   ): Promise<void> {
-    for (const id of epicIds) {
-      try {
-        await this.emitUpdatedFor(workspaceId, id, actorId, ['storyPoints']);
-      } catch (e) {
-        this.logger.warn(
-          `Epic ${id}: không phát được cập nhật tổng điểm — ${(e as Error).message}`,
-        );
-      }
+    if (epicIds.length === 0) return;
+    try {
+      for (const issue of await this.getDtosByIdsForSystem(workspaceId, epicIds))
+        this.events.emit(DOMAIN_EVENTS.ISSUE_UPDATED, {
+          issue,
+          actorId,
+          changedFields: ['storyPoints'],
+          bulk: true,
+        });
+    } catch (e) {
+      this.logger.warn(`Không phát được cập nhật tổng điểm Epic — ${(e as Error).message}`);
     }
   }
 
@@ -2183,7 +2188,9 @@ export class IssuesService {
       });
       if (count === 0) throw new NotFoundAppException('Công việc');
       const epicId = 'epicId' in detach ? null : current.epicId;
-      if (epicId) changedEpics = await this.points.rollupEpics(tx, [epicId]);
+      // Việc khôi phục là Epic: việc con có thể đã đổi trong lúc nó nằm trong Thùng rác (rollup bỏ qua Epic đã xoá).
+      const own = current.type.key === 'EPIC' ? [issueId] : [];
+      changedEpics = await this.points.rollupEpics(tx, [...own, ...(epicId ? [epicId] : [])]);
     });
     const row = await this.prisma.issue.findFirstOrThrow({
       where: { id: issueId, workspaceId, deletedAt: null },

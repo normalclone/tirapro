@@ -131,14 +131,22 @@ describe('PointsService.pointsFor', () => {
 describe('PointsService.rollupEpics', () => {
   /** `epics`: id → storyPoints hiện tại (undefined = Epic không tồn tại/đã xoá); `sums`: tổng việc con theo epicId. */
   function tx(epics: Record<string, number | undefined>, sums: Record<string, number | null>) {
+    const order: string[] = [];
     return {
+      order,
+      // Khoá dòng Epic: tagged template → (strings, id)
+      $queryRaw: vi.fn((_s: TemplateStringsArray, id: string) => {
+        order.push(`lock:${id}`);
+        return Promise.resolve([]);
+      }),
       issue: {
         findFirst: vi.fn(({ where }: { where: { id: string } }) =>
           Promise.resolve(epics[where.id] === undefined ? null : { storyPoints: epics[where.id] }),
         ),
-        aggregate: vi.fn(({ where }: { where: { epicId: string } }) =>
-          Promise.resolve({ _sum: { storyPoints: sums[where.epicId] ?? null } }),
-        ),
+        aggregate: vi.fn(({ where }: { where: { epicId: string } }) => {
+          order.push(`sum:${where.epicId}`);
+          return Promise.resolve({ _sum: { storyPoints: sums[where.epicId] ?? null } });
+        }),
         updateMany: vi.fn(() => Promise.resolve({ count: 1 })),
       },
     };
@@ -174,6 +182,13 @@ describe('PointsService.rollupEpics', () => {
     const changed = await make().service.rollupEpics(t as never, ['eB', 'gone', 'eA', 'eB']);
     expect(changed).toEqual(['eA', 'eB']);
     expect(t.issue.aggregate).toHaveBeenCalledTimes(2);
+  });
+  it('khoá dòng Epic (FOR UPDATE) TRƯỚC khi cộng lại, theo thứ tự id — hai transaction cùng Epic xếp hàng, không ghi đè nhau', async () => {
+    const t = tx({ eA: 1, eB: 1 }, { eA: 2, eB: 3 });
+    await make().service.rollupEpics(t as never, ['eB', 'eA']);
+    expect(t.order).toEqual(['lock:eA', 'sum:eA', 'lock:eB', 'sum:eB']);
+    const sql = (t.$queryRaw.mock.calls[0] as unknown as [TemplateStringsArray])[0].join('?');
+    expect(sql).toContain('FOR UPDATE');
   });
   it('danh sách rỗng => không truy vấn', async () => {
     const t = tx({}, {});

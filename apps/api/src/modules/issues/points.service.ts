@@ -134,11 +134,14 @@ export class PointsService implements OnModuleInit {
   /**
    * Đặt điểm mỗi Epic = tổng `storyPoints` của việc chưa xoá có `epicId` đó (kể cả sub-task); chỉ ghi khi tổng đổi, và khi
    * ghi thì tăng `version` (OCC đúng). Trả về id các Epic đã đổi để bên gọi phát sự kiện realtime SAU commit.
-   * Chạy TRONG transaction của bên gọi.
+   * Chạy TRONG transaction của bên gọi; khoá từng Epic theo thứ tự id để không deadlock giữa các lô.
    */
   async rollupEpics(tx: Prisma.TransactionClient, epicIds: string[]): Promise<string[]> {
     const changed: string[] = [];
     for (const id of [...new Set(epicIds)].filter(Boolean).sort()) {
+      // Khoá dòng Epic (FOR UPDATE, như khoá cột WIP): hai transaction cùng đổi việc con của một Epic xếp hàng, transaction sau
+      // cộng lại SAU khi transaction trước commit nên không ghi đè bằng tổng thiếu việc con của nhau.
+      await tx.$queryRaw`SELECT "id" FROM "Issue" WHERE "id" = ${id} FOR UPDATE`;
       const epic = await tx.issue.findFirst({
         where: { id, deletedAt: null },
         select: { storyPoints: true },
