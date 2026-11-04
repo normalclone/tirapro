@@ -370,6 +370,12 @@ Two requests the user added on 2026-11-04: "rà soát và thể hiện lại cá
    - In the settings graph, a click on a node must still work with the existing edit affordances: selection must not block editing.
    - Pure helper `reachability(wf, statusId): { direct: Set<transitionId>; future: Set<transitionId>; incoming: Set<transitionId>; nodes: Set<statusId> }` in `workflowLayout.ts` (or a new `workflowPaths.ts`), unit-tested.
 
+**4. Hide the workflows of trashed projects (user decision, 2026-11-04).**
+- On `/settings/workflows`, the "Quy trình của dự án" list must not show a workflow whose project is soft-deleted (`project.deletedAt != null`). Restoring the project shows it again.
+- Do it on the API: the workflows list excludes `project.deletedAt != null` unless `?includeTrashed=1` is passed. Then the web list, the counts ("Quy trình của dự án (9)"), and any project/workflow picker are all correct.
+- Templates (`projectId = null`) are unaffected.
+- Test: an API list with a trashed project's workflow excludes it; a web count matches.
+
 - [ ] **Step 1: Failing tests.**
   - `reachability` on the TIRA fixture from "Đang làm": `direct` = its outgoing transition ids; `future` contains the "Test đạt" transition (Đang test → Hoàn thành), and contains no transition already in `direct`.
   - Layout of the TIRA fixture: no overlapping label rectangles, and no two edges sharing a horizontal or vertical segment.
