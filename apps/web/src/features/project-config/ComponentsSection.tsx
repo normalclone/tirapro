@@ -3,6 +3,7 @@ import { Boxes, Plus, Pencil, Trash2, Check, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { EmptyState, Skeleton } from '@/components/ui/primitives';
 import { useConfirm } from '@/components/ui/useConfirm';
+import { AddDialog } from '@/components/ui/AddDialog';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { apiErrorMessage } from '@/lib/api';
@@ -57,7 +58,13 @@ export function ComponentsSection({
     const desc = description.trim();
     create.mutate(
       { name: trimmed, description: desc || undefined },
-      { onSuccess: resetAdd, onError: (e) => toast.error(apiErrorMessage(e)) },
+      {
+        onSuccess: () => {
+          resetAdd();
+          toast.success('Đã thêm thành phần');
+        },
+        onError: (e) => toast.error(apiErrorMessage(e)),
+      },
     );
   }
 
@@ -90,7 +97,7 @@ export function ComponentsSection({
             ))}
           </div>
         }
-        empty={() => components.length === 0 && !adding}
+        empty={() => components.length === 0}
         emptyState={
           <EmptyState
             icon={<Boxes className="h-6 w-6" />}
@@ -163,65 +170,65 @@ export function ComponentsSection({
         )}
       </QueryBoundary>
 
-      {canAdmin &&
-        (adding ? (
-          <div className="mt-4 rounded-md border border-border bg-surface-2 p-3">
-            <div className="flex flex-wrap items-end gap-3">
-              <div className="min-w-[10rem] flex-1">
-                <label htmlFor="comp-name" className="mb-1 block text-xs font-medium text-muted">
-                  Tên
-                </label>
-                <Input
-                  id="comp-name"
-                  value={name}
-                  autoFocus
-                  placeholder="VD: Thanh toán"
-                  onChange={(e) => setName(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') submitAdd();
-                    if (e.key === 'Escape') resetAdd();
-                  }}
-                />
-              </div>
-              <div className="min-w-[12rem] flex-1">
-                <label htmlFor="comp-desc" className="mb-1 block text-xs font-medium text-muted">
-                  Mô tả
-                </label>
-                <Input
-                  id="comp-desc"
-                  value={description}
-                  placeholder="Tuỳ chọn"
-                  onChange={(e) => setDescription(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') submitAdd();
-                    if (e.key === 'Escape') resetAdd();
-                  }}
-                />
-              </div>
-              <div className="flex items-center gap-2">
-                <Button size="sm" onClick={submitAdd} loading={create.isPending}>
-                  Lưu
-                </Button>
-                <Button size="sm" variant="ghost" onClick={resetAdd} disabled={create.isPending}>
-                  Huỷ
-                </Button>
-              </div>
-            </div>
+      {canAdmin && components.length > 0 && (
+        <Button
+          variant="secondary"
+          size="sm"
+          className="mt-4"
+          onClick={() => setAdding(true)}
+          disabled={!projectId}
+        >
+          <Plus className="h-4 w-4" />
+          Thêm thành phần
+        </Button>
+      )}
+      <AddDialog
+        open={adding}
+        onClose={resetAdd}
+        title="Thêm thành phần"
+        size="md"
+        dirty={name.trim() !== '' || description.trim() !== ''}
+      >
+        <div className="space-y-4">
+          <div className="min-w-[10rem] flex-1">
+            <label htmlFor="comp-name" className="mb-1 block text-xs font-medium text-muted">
+              Tên
+            </label>
+            <Input
+              id="comp-name"
+              value={name}
+              autoFocus
+              placeholder="VD: Thanh toán"
+              onChange={(e) => setName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') submitAdd();
+              }}
+            />
           </div>
-        ) : (
-          components.length > 0 && (
-            <Button
-              variant="secondary"
-              size="sm"
-              className="mt-4"
-              onClick={() => setAdding(true)}
-              disabled={!projectId}
-            >
-              <Plus className="h-4 w-4" />
-              Thêm thành phần
+          <div className="min-w-[12rem] flex-1">
+            <label htmlFor="comp-desc" className="mb-1 block text-xs font-medium text-muted">
+              Mô tả
+            </label>
+            <Input
+              id="comp-desc"
+              value={description}
+              placeholder="Tuỳ chọn"
+              onChange={(e) => setDescription(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') submitAdd();
+              }}
+            />
+          </div>
+          <div className="flex items-center justify-end gap-2">
+            <Button size="sm" onClick={submitAdd} loading={create.isPending}>
+              Lưu
             </Button>
-          )
-        ))}
+            <Button size="sm" variant="ghost" onClick={resetAdd} disabled={create.isPending}>
+              Huỷ
+            </Button>
+          </div>
+        </div>
+      </AddDialog>
     </SectionCard>
   );
 }

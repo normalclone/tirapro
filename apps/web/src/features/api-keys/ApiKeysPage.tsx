@@ -7,6 +7,7 @@ import {
   Copy,
   KeyRound,
   Plug,
+  Plus,
   Trash2,
   TriangleAlert,
 } from 'lucide-react';
@@ -16,6 +17,7 @@ import axios from 'axios';
 import { PageFrame } from '@/components/layout/PageFrame';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Badge, EmptyState, Skeleton } from '@/components/ui/primitives';
+import { AddDialog } from '@/components/ui/AddDialog';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { QueryError } from '@/components/ui/QueryError';
@@ -80,6 +82,8 @@ export function ApiKeysPage() {
   const [write, setWrite] = useState(false);
   const [expiresInDays, setExpiresInDays] = useState(0);
   const [created, setCreated] = useState<CreatedApiKey | null>(null);
+  // Form tạo khoá nằm trong hộp thoại "Tạo khoá" (nút ở đầu trang), không mở sẵn trên trang.
+  const [adding, setAdding] = useState(false);
   const [hideRevoked, setHideRevoked] = useState(true);
 
   // 403 = không có quyền workspace:admin → hiện trạng thái "không có quyền" thay vì form tạo (sẽ 403).
@@ -99,6 +103,8 @@ export function ApiKeysPage() {
       {
         onSuccess: (k) => {
           setCreated(k);
+          setAdding(false);
+          toast.success('Đã tạo khoá API');
           setName('');
           setWrite(false);
           setExpiresInDays(0);
@@ -119,6 +125,14 @@ export function ApiKeysPage() {
       <PageHeader
         title={SETTINGS_LABELS.api}
         description="Cấp khoá API để phần mềm khác và trợ lý AI (MCP) khai thác dữ liệu."
+        actions={
+          !forbidden && !isError ? (
+            <Button size="sm" onClick={() => setAdding(true)}>
+              <Plus className="h-4 w-4" />
+              Tạo khoá
+            </Button>
+          ) : undefined
+        }
       />
 
       {/* Điểm kết nối */}
@@ -221,48 +235,59 @@ export function ApiKeysPage() {
         <QueryError error={error} onRetry={() => void refetch()} />
       ) : (
         <>
-          {/* Tạo khoá mới */}
-          <form
-            onSubmit={submit}
-            className="mb-6 flex flex-wrap items-end gap-3 rounded-lg border border-border bg-surface p-4"
+          {/* Tạo khoá mới — hộp thoại, mở từ nút "Tạo khoá" ở đầu trang */}
+          <AddDialog
+            open={adding}
+            onClose={() => setAdding(false)}
+            title="Tạo khoá API"
+            description="Khoá chỉ hiện một lần sau khi tạo."
+            dirty={name.trim() !== ''}
           >
-            <div className="min-w-48 flex-1">
-              <label htmlFor="key-name" className="mb-1.5 block text-sm font-medium text-muted">
-                Tên khoá
+            <form onSubmit={submit} className="space-y-4">
+              <div>
+                <label htmlFor="key-name" className="mb-1.5 block text-sm font-medium text-muted">
+                  Tên khoá
+                </label>
+                <Input
+                  id="key-name"
+                  value={name}
+                  autoFocus
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="VD: n8n, Zapier, Claude…"
+                  className="text-sm"
+                />
+              </div>
+              <div>
+                <label htmlFor="key-expiry" className="mb-1.5 block text-sm font-medium text-muted">
+                  Thời hạn
+                </label>
+                <SearchSelect
+                  id="key-expiry"
+                  value={String(expiresInDays)}
+                  onChange={(v) => setExpiresInDays(Number(v))}
+                  options={EXPIRY_OPTIONS.map((o) => ({ value: String(o.value), label: o.label }))}
+                  className="w-full"
+                />
+              </div>
+              <label className="inline-flex cursor-pointer items-center gap-2 py-1 text-sm text-muted">
+                <input
+                  type="checkbox"
+                  checked={write}
+                  onChange={(e) => setWrite(e.target.checked)}
+                  className="h-4 w-4 rounded border-border accent-[var(--primary)]"
+                />
+                Cho phép ghi (tạo/sửa)
               </label>
-              <Input
-                id="key-name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="VD: n8n, Zapier, Claude…"
-                className="text-sm"
-              />
-            </div>
-            <div>
-              <label htmlFor="key-expiry" className="mb-1.5 block text-sm font-medium text-muted">
-                Thời hạn
-              </label>
-              <SearchSelect
-                id="key-expiry"
-                value={String(expiresInDays)}
-                onChange={(v) => setExpiresInDays(Number(v))}
-                options={EXPIRY_OPTIONS.map((o) => ({ value: String(o.value), label: o.label }))}
-                className="w-48"
-              />
-            </div>
-            <label className="inline-flex cursor-pointer items-center gap-2 py-2 text-sm text-muted">
-              <input
-                type="checkbox"
-                checked={write}
-                onChange={(e) => setWrite(e.target.checked)}
-                className="h-4 w-4 rounded border-border accent-[var(--primary)]"
-              />
-              Cho phép ghi (tạo/sửa)
-            </label>
-            <Button type="submit" size="sm" disabled={create.isPending || !name.trim()}>
-              Tạo khoá
-            </Button>
-          </form>
+              <div className="flex items-center justify-end gap-2">
+                <Button type="button" variant="ghost" size="sm" onClick={() => setAdding(false)}>
+                  Huỷ
+                </Button>
+                <Button type="submit" size="sm" loading={create.isPending} disabled={!name.trim()}>
+                  Tạo khoá
+                </Button>
+              </div>
+            </form>
+          </AddDialog>
 
           {/* Bộ lọc */}
           {revokedCount > 0 && (
@@ -294,6 +319,14 @@ export function ApiKeysPage() {
                 keys && keys.length > 0
                   ? 'Mọi khoá đã bị thu hồi. Bỏ lọc để xem lại.'
                   : 'Tạo khoá đầu tiên để tích hợp phần mềm ngoài hoặc MCP.'
+              }
+              action={
+                keys && keys.length > 0 ? undefined : (
+                  <Button variant="secondary" size="sm" onClick={() => setAdding(true)}>
+                    <Plus className="h-4 w-4" />
+                    Tạo khoá
+                  </Button>
+                )
               }
             />
           ) : (

@@ -3,6 +3,7 @@ import { Tag, Plus, Pencil, Trash2, Check, X, Rocket } from 'lucide-react';
 import { toast } from 'sonner';
 import { Badge, EmptyState, Skeleton } from '@/components/ui/primitives';
 import { useConfirm } from '@/components/ui/useConfirm';
+import { AddDialog } from '@/components/ui/AddDialog';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { DateInput } from '@/components/ui/DateInput';
@@ -83,7 +84,13 @@ export function VersionsSection({
     const desc = description.trim();
     create.mutate(
       { name: trimmed, description: desc || undefined, status },
-      { onSuccess: resetAdd, onError: (e) => toast.error(apiErrorMessage(e)) },
+      {
+        onSuccess: () => {
+          resetAdd();
+          toast.success('Đã thêm phiên bản');
+        },
+        onError: (e) => toast.error(apiErrorMessage(e)),
+      },
     );
   }
 
@@ -120,7 +127,7 @@ export function VersionsSection({
             ))}
           </div>
         }
-        empty={() => versions.length === 0 && !adding}
+        empty={() => versions.length === 0}
         emptyState={
           <EmptyState
             icon={<Tag className="h-6 w-6" />}
@@ -207,75 +214,75 @@ export function VersionsSection({
         )}
       </QueryBoundary>
 
-      {canAdmin &&
-        (adding ? (
-          <div className="mt-4 rounded-md border border-border bg-surface-2 p-3">
-            <div className="flex flex-wrap items-end gap-3">
-              <div className="min-w-[10rem] flex-1">
-                <label htmlFor="ver-name" className="mb-1 block text-xs font-medium text-muted">
-                  Tên
-                </label>
-                <Input
-                  id="ver-name"
-                  value={name}
-                  autoFocus
-                  placeholder="VD: 1.0.0"
-                  onChange={(e) => setName(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') submitAdd();
-                    if (e.key === 'Escape') resetAdd();
-                  }}
-                />
-              </div>
-              <div className="min-w-[12rem] flex-1">
-                <label htmlFor="ver-desc" className="mb-1 block text-xs font-medium text-muted">
-                  Mô tả
-                </label>
-                <Input
-                  id="ver-desc"
-                  value={description}
-                  placeholder="Tuỳ chọn"
-                  onChange={(e) => setDescription(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') submitAdd();
-                    if (e.key === 'Escape') resetAdd();
-                  }}
-                />
-              </div>
-              <div>
-                <span id="ver-status-label" className="mb-1 block text-xs font-medium text-muted">
-                  Trạng thái
-                </span>
-                <StatusSelect
-                  ariaLabelledby="ver-status-label"
-                  value={status}
-                  onChange={(s) => setStatus(s)}
-                />
-              </div>
-              <div className="flex items-center gap-2">
-                <Button size="sm" onClick={submitAdd} loading={create.isPending}>
-                  Lưu
-                </Button>
-                <Button size="sm" variant="ghost" onClick={resetAdd} disabled={create.isPending}>
-                  Huỷ
-                </Button>
-              </div>
-            </div>
+      {canAdmin && versions.length > 0 && (
+        <Button
+          variant="secondary"
+          size="sm"
+          className="mt-4"
+          onClick={() => setAdding(true)}
+          disabled={!projectId}
+        >
+          <Plus className="h-4 w-4" />
+          Thêm phiên bản
+        </Button>
+      )}
+      <AddDialog
+        open={adding}
+        onClose={resetAdd}
+        title="Thêm phiên bản"
+        size="md"
+        dirty={name.trim() !== '' || description.trim() !== ''}
+      >
+        <div className="space-y-4">
+          <div className="min-w-[10rem] flex-1">
+            <label htmlFor="ver-name" className="mb-1 block text-xs font-medium text-muted">
+              Tên
+            </label>
+            <Input
+              id="ver-name"
+              value={name}
+              autoFocus
+              placeholder="VD: 1.0.0"
+              onChange={(e) => setName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') submitAdd();
+              }}
+            />
           </div>
-        ) : (
-          versions.length > 0 && (
-            <Button
-              variant="secondary"
-              size="sm"
-              className="mt-4"
-              onClick={() => setAdding(true)}
-              disabled={!projectId}
-            >
-              <Plus className="h-4 w-4" />
-              Thêm phiên bản
+          <div className="min-w-[12rem] flex-1">
+            <label htmlFor="ver-desc" className="mb-1 block text-xs font-medium text-muted">
+              Mô tả
+            </label>
+            <Input
+              id="ver-desc"
+              value={description}
+              placeholder="Tuỳ chọn"
+              onChange={(e) => setDescription(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') submitAdd();
+              }}
+            />
+          </div>
+          <div>
+            <span id="ver-status-label" className="mb-1 block text-xs font-medium text-muted">
+              Trạng thái
+            </span>
+            <StatusSelect
+              ariaLabelledby="ver-status-label"
+              value={status}
+              onChange={(s) => setStatus(s)}
+            />
+          </div>
+          <div className="flex items-center justify-end gap-2">
+            <Button size="sm" onClick={submitAdd} loading={create.isPending}>
+              Lưu
             </Button>
-          )
-        ))}
+            <Button size="sm" variant="ghost" onClick={resetAdd} disabled={create.isPending}>
+              Huỷ
+            </Button>
+          </div>
+        </div>
+      </AddDialog>
     </SectionCard>
   );
 }

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Plus, Trash2, Check, Webhook, Copy } from 'lucide-react';
 import { toast } from 'sonner';
 import { useCopyToClipboard } from '@/lib/useCopyToClipboard';
+import { AddDialog } from '@/components/ui/AddDialog';
 import { Button } from '@/components/ui/Button';
 import { useConfirm } from '@/components/ui/useConfirm';
 import { Input } from '@/components/ui/Input';
@@ -122,7 +123,7 @@ export function RepositorySection() {
             ))}
           </div>
         }
-        empty={() => repos.length === 0 && !adding}
+        empty={() => repos.length === 0}
         emptyState={
           <EmptyState
             icon={<PlatformLogo platform="GITHUB" size={24} />}
@@ -152,93 +153,95 @@ export function RepositorySection() {
       </QueryBoundary>
 
       {/* Form thêm repo */}
-      {adding ? (
-        <div className="mt-4 rounded-md border border-border bg-surface-2 p-3">
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div>
-              <span id="repo-provider-label" className="mb-1 block text-xs font-medium text-muted">
-                Nhà cung cấp
-              </span>
-              <SegmentedControl<RepositoryProvider>
-                ariaLabelledby="repo-provider-label"
-                value={provider}
-                onChange={setProvider}
-                fullWidth
-                options={[
-                  { value: 'GITHUB', label: 'GitHub' },
-                  { value: 'GITLAB', label: 'GitLab' },
-                ]}
-              />
-            </div>
-            <div>
-              <label htmlFor="repo-name" className="mb-1 block text-xs font-medium text-muted">
-                Tên repo
-              </label>
-              <Input
-                id="repo-name"
-                value={name}
-                autoFocus
-                placeholder="org/repo"
-                onChange={(e) => setName(e.target.value)}
-              />
-            </div>
-            <div>
-              <label htmlFor="repo-url" className="mb-1 block text-xs font-medium text-muted">
-                URL
-              </label>
-              <Input
-                id="repo-url"
-                value={url}
-                placeholder="https://github.com/org/repo"
-                onChange={(e) => setUrl(e.target.value)}
-              />
-            </div>
-            <div>
-              <label htmlFor="repo-external" className="mb-1 block text-xs font-medium text-muted">
-                externalId
-              </label>
-              <Input
-                id="repo-external"
-                value={externalId}
-                placeholder="ID repo phía nhà cung cấp"
-                onChange={(e) => setExternalId(e.target.value)}
-              />
-            </div>
-            <div className="sm:col-span-2">
-              <label htmlFor="repo-secret" className="mb-1 block text-xs font-medium text-muted">
-                Webhook secret <span className="text-faint">(tùy chọn)</span>
-              </label>
-              <Input
-                id="repo-secret"
-                value={webhookSecret}
-                type="password"
-                autoComplete="off"
-                placeholder="Bí mật để xác thực webhook"
-                onChange={(e) => setWebhookSecret(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') submitAdd();
-                  if (e.key === 'Escape') resetAdd();
-                }}
-              />
-            </div>
+      {repos.length > 0 && (
+        <Button variant="secondary" size="sm" className="mt-4" onClick={() => setAdding(true)}>
+          <Plus className="h-4 w-4" />
+          Thêm repo
+        </Button>
+      )}
+      <AddDialog
+        open={adding}
+        onClose={resetAdd}
+        title="Thêm kho mã nguồn"
+        size="lg"
+        dirty={name.trim() !== '' || url.trim() !== '' || externalId.trim() !== ''}
+      >
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div>
+            <span id="repo-provider-label" className="mb-1 block text-xs font-medium text-muted">
+              Nhà cung cấp
+            </span>
+            <SegmentedControl<RepositoryProvider>
+              ariaLabelledby="repo-provider-label"
+              value={provider}
+              onChange={setProvider}
+              fullWidth
+              options={[
+                { value: 'GITHUB', label: 'GitHub' },
+                { value: 'GITLAB', label: 'GitLab' },
+              ]}
+            />
           </div>
-          <div className="mt-3 flex items-center gap-2">
-            <Button size="sm" onClick={submitAdd} loading={create.isPending}>
-              Thêm repo
-            </Button>
-            <Button size="sm" variant="ghost" onClick={resetAdd} disabled={create.isPending}>
-              Huỷ
-            </Button>
+          <div>
+            <label htmlFor="repo-name" className="mb-1 block text-xs font-medium text-muted">
+              Tên repo
+            </label>
+            <Input
+              id="repo-name"
+              value={name}
+              autoFocus
+              placeholder="org/repo"
+              onChange={(e) => setName(e.target.value)}
+            />
+          </div>
+          <div>
+            <label htmlFor="repo-url" className="mb-1 block text-xs font-medium text-muted">
+              URL
+            </label>
+            <Input
+              id="repo-url"
+              value={url}
+              placeholder="https://github.com/org/repo"
+              onChange={(e) => setUrl(e.target.value)}
+            />
+          </div>
+          <div>
+            <label htmlFor="repo-external" className="mb-1 block text-xs font-medium text-muted">
+              externalId
+            </label>
+            <Input
+              id="repo-external"
+              value={externalId}
+              placeholder="ID repo phía nhà cung cấp"
+              onChange={(e) => setExternalId(e.target.value)}
+            />
+          </div>
+          <div className="sm:col-span-2">
+            <label htmlFor="repo-secret" className="mb-1 block text-xs font-medium text-muted">
+              Webhook secret <span className="text-faint">(tùy chọn)</span>
+            </label>
+            <Input
+              id="repo-secret"
+              value={webhookSecret}
+              type="password"
+              autoComplete="off"
+              placeholder="Bí mật để xác thực webhook"
+              onChange={(e) => setWebhookSecret(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') submitAdd();
+              }}
+            />
           </div>
         </div>
-      ) : (
-        repos.length > 0 && (
-          <Button variant="secondary" size="sm" className="mt-4" onClick={() => setAdding(true)}>
-            <Plus className="h-4 w-4" />
+        <div className="mt-3 flex items-center gap-2">
+          <Button size="sm" onClick={submitAdd} loading={create.isPending}>
             Thêm repo
           </Button>
-        )
-      )}
+          <Button size="sm" variant="ghost" onClick={resetAdd} disabled={create.isPending}>
+            Huỷ
+          </Button>
+        </div>
+      </AddDialog>
     </SectionCard>
   );
 }

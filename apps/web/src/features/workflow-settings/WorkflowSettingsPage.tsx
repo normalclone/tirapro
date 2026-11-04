@@ -13,6 +13,7 @@ import { useAuth } from '@/stores/auth';
 import { ReadOnlyNote } from '@/components/ui/NoAccess';
 import { PageFrame } from '@/components/layout/PageFrame';
 import { PageHeader } from '@/components/layout/PageHeader';
+import { AddDialog } from '@/components/ui/AddDialog';
 import { WorkflowEditDialog } from './WorkflowEditDialog';
 import { useWorkflows, useCreateWorkflow, useDeleteWorkflow, type Workflow } from './api';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
@@ -119,7 +120,7 @@ export function WorkflowSettingsPage() {
         title="Danh sách quy trình"
         description="Chọn một quy trình để xem và chỉnh sửa chi tiết."
         actions={
-          canManage && !adding ? (
+          canManage ? (
             <Button size="sm" onClick={() => setAdding(true)}>
               <Plus className="h-4 w-4" />
               Tạo quy trình
@@ -136,7 +137,7 @@ export function WorkflowSettingsPage() {
               ))}
             </div>
           }
-          empty={() => workflows.length === 0 && !adding}
+          empty={() => workflows.length === 0}
           emptyState={
             <EmptyState
               icon={<GitBranch className="h-6 w-6" />}
@@ -183,71 +184,73 @@ export function WorkflowSettingsPage() {
         </QueryBoundary>
 
         {/* Form tạo workflow */}
-        {canManage && adding && (
-          <div className="mt-4 rounded-md border border-border bg-surface-2 p-3">
-            <div className="space-y-3">
-              <div>
-                <label htmlFor="wf-name" className="mb-1 block text-xs font-medium text-muted">
-                  Tên quy trình
-                </label>
-                <Input
-                  id="wf-name"
-                  value={name}
-                  autoFocus
-                  placeholder="VD: Quy trình phát triển"
-                  onChange={(e) => setName(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') submitAdd();
-                    if (e.key === 'Escape') resetAdd();
-                  }}
-                />
-              </div>
-              <div>
-                <label htmlFor="wf-desc" className="mb-1 block text-xs font-medium text-muted">
-                  Mô tả (tuỳ chọn)
-                </label>
-                <Input
-                  id="wf-desc"
-                  value={description}
-                  placeholder="Mô tả ngắn gọn quy trình"
-                  onChange={(e) => setDescription(e.target.value)}
-                />
-              </div>
-              <div>
-                <label htmlFor="wf-project" className="mb-1 block text-xs font-medium text-muted">
-                  Dự án (tuỳ chọn)
-                </label>
-                <SearchSelect
-                  id="wf-project"
-                  value={projectId}
-                  onChange={setProjectId}
-                  options={[
-                    { value: '', label: 'Toàn không gian làm việc' },
-                    ...(projects ?? []).map((p) => ({ value: p.id, label: p.name, hint: p.key })),
-                  ]}
-                  searchPlaceholder="Tìm dự án…"
-                  className="w-full"
-                />
-                <p className="mt-1 text-xs text-faint">
-                  Chọn “Toàn không gian làm việc” nếu quy trình dùng chung cho mọi dự án.
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
-                <Button size="sm" onClick={submitAdd} loading={createWorkflow.isPending}>
-                  Tạo
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={resetAdd}
-                  disabled={createWorkflow.isPending}
-                >
-                  Huỷ
-                </Button>
-              </div>
+        <AddDialog
+          open={adding}
+          onClose={resetAdd}
+          title="Tạo quy trình"
+          dirty={name.trim() !== '' || description.trim() !== ''}
+        >
+          <div className="space-y-3">
+            <div>
+              <label htmlFor="wf-name" className="mb-1 block text-xs font-medium text-muted">
+                Tên quy trình
+              </label>
+              <Input
+                id="wf-name"
+                value={name}
+                autoFocus
+                placeholder="VD: Quy trình phát triển"
+                onChange={(e) => setName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') submitAdd();
+                }}
+              />
+            </div>
+            <div>
+              <label htmlFor="wf-desc" className="mb-1 block text-xs font-medium text-muted">
+                Mô tả (tuỳ chọn)
+              </label>
+              <Input
+                id="wf-desc"
+                value={description}
+                placeholder="Mô tả ngắn gọn quy trình"
+                onChange={(e) => setDescription(e.target.value)}
+              />
+            </div>
+            <div>
+              <label htmlFor="wf-project" className="mb-1 block text-xs font-medium text-muted">
+                Dự án (tuỳ chọn)
+              </label>
+              <SearchSelect
+                id="wf-project"
+                value={projectId}
+                onChange={setProjectId}
+                options={[
+                  { value: '', label: 'Toàn không gian làm việc' },
+                  ...(projects ?? []).map((p) => ({ value: p.id, label: p.name, hint: p.key })),
+                ]}
+                searchPlaceholder="Tìm dự án…"
+                className="w-full"
+              />
+              <p className="mt-1 text-xs text-faint">
+                Chọn “Toàn không gian làm việc” nếu quy trình dùng chung cho mọi dự án.
+              </p>
+            </div>
+            <div className="flex items-center justify-end gap-2">
+              <Button size="sm" onClick={submitAdd} loading={createWorkflow.isPending}>
+                Tạo
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={resetAdd}
+                disabled={createWorkflow.isPending}
+              >
+                Huỷ
+              </Button>
             </div>
           </div>
-        )}
+        </AddDialog>
       </SectionCard>
 
       <WorkflowEditDialog workflow={selected} onClose={() => setSelectedId(null)} />
