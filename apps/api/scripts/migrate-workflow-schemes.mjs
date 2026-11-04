@@ -10,7 +10,7 @@
  *  2. đảm bảo dòng cấu hình cho mọi loại việc (dòng đã có luôn thắng → chạy lại sau khi quản trị viên chỉnh vẫn an toàn);
  *  3. chuyển việc (kể cả trong thùng rác) đang ở trạng thái của quy trình KHÁC quy trình hiệu lực: bảng ánh xạ cũ → cùng tên →
  *     cùng nhóm. SQL thô, KHÔNG đổi updatedAt, tăng version, ghi lịch sử STATUS;
- *  4. cột bảng: thêm trạng thái mới cạnh trạng thái cũ (không gỡ gì);
+ *  4. cột bảng: thêm trạng thái mới cạnh trạng thái cũ, rồi gỡ trạng thái cũ không còn việc và không thuộc quy trình đang dùng; liệt kê cột "ma" còn lại;
  *  5. quy tắc automation: sửa id trạng thái theo cùng ánh xạ (chỉ sang quy trình mà phạm vi quy tắc dùng); không ánh xạ được thì
  *     TẮT quy tắc + báo người tạo. Dry-run in từng quy tắc (trước -> sau) và các tham chiếu theo TÊN trong JQL sẽ hết khớp;
  *  6. quy trình cũ của dự án giữ nguyên (vẫn là defaultWorkflowId dự phòng). SLA / wipLimit không chứa id trạng thái.
@@ -79,6 +79,8 @@ try {
     console.log(
       `  việc chuyển: ${w.movedIssues}; liên kết cột bảng thêm: ${w.boardLinksAdded}, gỡ (trạng thái cũ không còn dùng): ${w.boardLinksRemoved}`,
     );
+    for (const g of w.ghostColumns ?? [])
+      console.log(`  CỘT MA (chỉ còn trạng thái cũ, cần dọn tay ở Cài đặt bảng): ${g}`);
     for (const r of w.rules) {
       console.log(
         `  quy tắc "${r.name}" [${r.projectId ? `dự án ${r.projectId}` : 'cả tổ chức'}]: ${r.outcome === 'disabled' ? 'SẼ BỊ TẮT (không ánh xạ được trạng thái)' : 'sửa id trạng thái'}`,

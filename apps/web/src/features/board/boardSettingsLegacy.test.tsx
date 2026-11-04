@@ -7,7 +7,11 @@ import type { BoardDto } from '@tirapro/types';
 import type * as ApiModule from '@/lib/api';
 import { defaultWorkflow, statusIdOf } from '@/features/issues/workflowFixtures';
 
-const h = vi.hoisted(() => ({ put: vi.fn() }));
+const h = vi.hoisted(() => ({
+  put: vi.fn(),
+  /** Việc của dự án (chỉ cần `status.id`). */
+  issues: vi.fn((): unknown[] => []),
+}));
 vi.mock('@/lib/api', async (orig) => {
   const real = await orig<typeof ApiModule>();
   const fx = await import('@/features/issues/workflowFixtures');
@@ -35,6 +39,8 @@ vi.mock('@/lib/api', async (orig) => {
             },
           });
         if (url === '/workflows') return Promise.resolve({ data: [std] });
+        if (url.startsWith('/issues?'))
+          return Promise.resolve({ data: { data: h.issues(), pageInfo: { hasNextPage: false } } });
         return Promise.resolve({ data: [] });
       }),
     },
@@ -72,6 +78,8 @@ const board = (): BoardDto => ({
 beforeEach(() => {
   Element.prototype.scrollIntoView = vi.fn();
   h.put.mockReset();
+  h.issues.mockReset();
+  h.issues.mockReturnValue([]);
 });
 afterEach(cleanup);
 
@@ -93,6 +101,20 @@ describe('Cài đặt bảng: trạng thái không còn thuộc quy trình nào 
       '1 trạng thái trong cột không còn thuộc quy trình',
     );
     expect(screen.queryByText('Trạng thái đã xoá')).toBeNull();
+  });
+
+  it('còn việc ở trạng thái cũ: chip và ghi chú nêu số việc, nút Bỏ khỏi bảng bị tắt (việc sẽ biến mất khỏi bảng)', async () => {
+    h.issues.mockReturnValue([
+      { id: 'i1', status: { id: 'legacy-status' } },
+      { id: 'i2', status: { id: 'legacy-status' } },
+    ]);
+    setup();
+    expect(await screen.findByText('Trạng thái không còn dùng · 2 việc')).toBeTruthy();
+    await waitFor(() =>
+      expect(screen.getByRole('status').textContent).toContain('Còn 2 việc đang ở đó'),
+    );
+    const btn = screen.getByRole('button', { name: /Bỏ khỏi bảng/ });
+    expect((btn as HTMLButtonElement).disabled).toBe(true);
   });
 
   it('"Bỏ khỏi bảng" gỡ chúng khỏi mọi cột, ghi chú biến mất', async () => {

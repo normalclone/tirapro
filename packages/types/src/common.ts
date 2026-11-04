@@ -87,6 +87,8 @@ export const ERROR_CODES = {
   WORKFLOW_IN_USE: 'WORKFLOW_IN_USE',
   /** 409: trạng thái còn việc đang ở đó — xoá phải kèm `replacementStatusId`. */
   STATUS_HAS_ISSUES: 'STATUS_HAS_ISSUES',
+  /** 422: bỏ khỏi bảng một trạng thái mà dự án còn việc ở đó (kể cả thùng rác) — việc sẽ biến mất khỏi bảng. `details[].field` = id trạng thái. */
+  BOARD_STATUS_HAS_ISSUES: 'BOARD_STATUS_HAS_ISSUES',
   /** 409: trạng thái khởi tạo của một quy trình đang được dùng theo loại việc/ghi đè dự án — không xoá được (việc mới sẽ không có chỗ bắt đầu). */
   INITIAL_STATUS_IN_USE: 'INITIAL_STATUS_IN_USE',
   /** 422: chia sẻ bộ lọc cho người không thuộc tổ chức (hoặc đã vô hiệu hoá). */

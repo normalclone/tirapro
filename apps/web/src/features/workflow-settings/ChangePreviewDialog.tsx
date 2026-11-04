@@ -91,6 +91,15 @@ export function ChangePreviewDialog({
           ? `Đã đổi quy trình · chuyển ${result.totalIssues} việc sang trạng thái mới`
           : 'Đã đổi quy trình',
       );
+      // Cột bảng chỉ còn trạng thái cũ (còn việc ở đó): không tự gỡ được → nói rõ để người quản trị dọn ở Cài đặt bảng.
+      if (result.ghostColumns && result.ghostColumns.length > 0)
+        toast.warning(
+          `${result.ghostColumns.length} cột bảng chỉ còn trạng thái của quy trình cũ`,
+          {
+            description: `${result.ghostColumns.join('; ')}. Chuyển các việc còn ở đó rồi dọn trong Cài đặt bảng.`,
+            duration: 12000,
+          },
+        );
       onApplied?.(result);
       onClose();
     } catch (e) {

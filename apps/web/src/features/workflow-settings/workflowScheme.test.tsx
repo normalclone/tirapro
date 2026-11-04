@@ -19,6 +19,7 @@ vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn(), warning: vi.fn() },
 }));
 
+import { toast } from 'sonner';
 import { useAuth } from '@/stores/auth';
 import { ConfirmHost, useConfirmStore } from '@/components/ui/useConfirm';
 import { WorkflowSettingsPage } from './WorkflowSettingsPage';
@@ -195,6 +196,32 @@ describe('Quy trình của tổ chức (bảng loại việc → quy trình)', (
       statusMapByType: { 't-task': { 'o-1': 's-todo' } },
     });
     expect(h.put.mock.calls[1]![2]?.params).toBeUndefined();
+  });
+
+  it('áp dụng thật mà còn cột bảng "ma" (chỉ còn trạng thái cũ) → toast cảnh báo liệt kê MÃ / Bảng / Cột', async () => {
+    h.put.mockImplementation((_u: string, _b: unknown, cfg?: { params?: { dryRun?: number } }) =>
+      Promise.resolve({
+        data: {
+          ...change({ dryRun: !!cfg?.params?.dryRun }),
+          ...(cfg?.params?.dryRun ? {} : { ghostColumns: ['GSDA / Bảng chính / Đang làm (cũ)'] }),
+        },
+      }),
+    );
+    const user = renderPage(true);
+    await user.click(await screen.findByRole('button', { name: 'Quy trình cho loại việc Task' }));
+    await user.click(await screen.findByRole('option', { name: 'Bug Workflow' }));
+    await user.click(await screen.findByRole('button', { name: 'Lưu thay đổi' }));
+    const dialog = await screen.findByRole('dialog', { name: /Đổi quy trình của tổ chức/ });
+    await user.click(
+      await within(dialog).findByRole('button', { name: /Áp dụng và chuyển 5 việc/ }),
+    );
+    await waitFor(() => expect(toast.warning).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(toast.warning).mock.calls[0]![0]).toBe(
+      '1 cột bảng chỉ còn trạng thái của quy trình cũ',
+    );
+    expect(
+      (vi.mocked(toast.warning).mock.calls[0]![1] as { description: string }).description,
+    ).toContain('GSDA / Bảng chính / Đang làm (cũ)');
   });
 
   it('dự án dùng quy trình riêng: "Quay về dùng chung" xem trước rồi PUT workflowId:null cho đúng dự án/loại', async () => {

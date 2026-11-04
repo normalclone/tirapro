@@ -97,8 +97,41 @@ export async function pruneUnusedBoardStatuses(
   tx: Prisma.TransactionClient,
   projectId: string,
   workflowIds: string[],
-): Promise<{ removed: number }> {
-  if (workflowIds.length === 0) return { removed: 0 };
+): Promise<{ removed: number; ghostColumns: string[] }> {
+  if (workflowIds.length === 0) return { removed: 0, ghostColumns: [] };
+  const removed = await removeUnusedLinks(tx, projectId, workflowIds);
+  return { removed, ghostColumns: await findGhostColumns(tx, projectId, workflowIds) };
+}
+
+/**
+ * Cột "ma": cột còn trạng thái nhưng TOÀN BỘ đều ngoài quy trình đang dùng (chỉ còn trạng thái cũ, thường vì còn việc nằm đó
+ * hoặc là trạng thái cuối của cột nên không gỡ được). Trả "MÃ / Bảng / Cột" để báo người quản trị.
+ */
+async function findGhostColumns(
+  tx: Prisma.TransactionClient,
+  projectId: string,
+  workflowIds: string[],
+): Promise<string[]> {
+  const columns = await tx.boardColumn.findMany({
+    where: { board: { projectId, deletedAt: null } },
+    orderBy: [{ boardId: 'asc' }, { order: 'asc' }],
+    select: {
+      name: true,
+      board: { select: { name: true, project: { select: { key: true } } } },
+      statuses: { select: { status: { select: { workflowId: true } } } },
+    },
+  });
+  const live = new Set(workflowIds);
+  return columns
+    .filter((c) => c.statuses.length > 0 && c.statuses.every((s) => !live.has(s.status.workflowId)))
+    .map((c) => `${c.board.project.key} / ${c.board.name} / ${c.name}`);
+}
+
+async function removeUnusedLinks(
+  tx: Prisma.TransactionClient,
+  projectId: string,
+  workflowIds: string[],
+): Promise<number> {
   const links = await tx.boardColumnStatus.findMany({
     where: {
       column: { board: { projectId, deletedAt: null } },
@@ -106,7 +139,7 @@ export async function pruneUnusedBoardStatuses(
     },
     select: { columnId: true, statusId: true },
   });
-  if (links.length === 0) return { removed: 0 };
+  if (links.length === 0) return 0;
   const statusIds = [...new Set(links.map((l) => l.statusId))];
   // allow-deleted: việc ở thùng rác vẫn đang giữ trạng thái đó (khôi phục cần chỗ trên bảng) nên PHẢI được đếm
   const inUse = await tx.issue.groupBy({
@@ -116,7 +149,7 @@ export async function pruneUnusedBoardStatuses(
   });
   const busy = new Set(inUse.map((r) => r.statusId));
   const candidates = links.filter((l) => !busy.has(l.statusId));
-  if (candidates.length === 0) return { removed: 0 };
+  if (candidates.length === 0) return 0;
   // Số trạng thái hiện có của từng cột: không gỡ cái cuối cùng.
   const columnIds = [...new Set(candidates.map((l) => l.columnId))];
   const counts = await tx.boardColumnStatus.groupBy({
@@ -136,5 +169,5 @@ export async function pruneUnusedBoardStatuses(
     await tx.boardColumnStatus.deleteMany({
       where: { columnId: d.columnId, statusId: d.statusId },
     });
-  return { removed: drop.length };
+  return drop.length;
 }

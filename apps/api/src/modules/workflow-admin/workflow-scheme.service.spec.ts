@@ -348,6 +348,7 @@ function world(
     widget: { findMany: vi.fn(() => Promise.resolve([])) },
     keyResult: { findMany: vi.fn(() => Promise.resolve([])) },
     board: { findMany: vi.fn((_a: { where: { projectId: string } }) => Promise.resolve([])) },
+    boardColumn: { findMany: vi.fn(() => Promise.resolve([])) },
     boardColumnStatus: {
       createMany: vi.fn(() => Promise.resolve({ count: 0 })),
       findMany: vi.fn(() => Promise.resolve([])),

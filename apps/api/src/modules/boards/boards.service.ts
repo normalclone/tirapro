@@ -8,7 +8,11 @@ import {
 } from '@tirapro/shared';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
-import { BusinessRuleException, NotFoundAppException } from '../../common/exceptions/app.exception';
+import {
+  BoardStatusHasIssuesException,
+  BusinessRuleException,
+  NotFoundAppException,
+} from '../../common/exceptions/app.exception';
 import { assertNotArchived } from '../../common/project-writable';
 import type { PageResult } from '../../common/dto/page-result';
 import { IssuesService } from '../issues/issues.service';
@@ -152,6 +156,31 @@ export class BoardsService {
       if (missing.length) parts.push(`chưa nằm trong cột nào: ${missing.join(', ')}`);
       if (duplicated.length) parts.push(`nằm ở nhiều hơn một cột: ${duplicated.join(', ')}`);
       throw new BusinessRuleException(`Mỗi trạng thái phải nằm đúng một cột — ${parts.join('; ')}`);
+    }
+
+    // Bỏ một trạng thái khỏi bảng (không còn cột nào chứa) khi dự án còn việc ở đó → việc biến mất khỏi bảng: từ chối.
+    const before = await this.prisma.boardColumnStatus.findMany({
+      where: { column: { boardId } },
+      select: { statusId: true, status: { select: { name: true } } },
+    });
+    const dropped = before.filter((l) => !seen.has(l.statusId));
+    if (dropped.length > 0) {
+      // allow-deleted: việc ở thùng rác vẫn giữ trạng thái đó (khôi phục cần chỗ trên bảng) nên PHẢI được đếm
+      const counts = await this.prisma.issue.groupBy({
+        by: ['statusId'],
+        where: { projectId: board.projectId, statusId: { in: dropped.map((d) => d.statusId) } },
+        _count: { _all: true },
+      });
+      if (counts.length > 0) {
+        const nameById = new Map(dropped.map((d) => [d.statusId, d.status.name]));
+        throw new BoardStatusHasIssuesException(
+          counts.map((c) => ({
+            statusId: c.statusId,
+            name: nameById.get(c.statusId) ?? c.statusId,
+            count: c._count._all,
+          })),
+        );
+      }
     }
 
     const names = columns.map((c) => c.name.trim().toLowerCase());

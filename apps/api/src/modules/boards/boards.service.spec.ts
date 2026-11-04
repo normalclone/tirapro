@@ -58,6 +58,10 @@ function make(
     scheme?: Array<{ issueTypeId: string; workflowId: string }>;
     types?: Array<{ id: string }>;
     statuses?: Array<{ id: string; name: string; workflowId: string }>;
+    /** Trạng thái đang nằm trong cột của bảng (trước khi lưu); mặc định = đúng các trạng thái trong `board.columns`. */
+    linked?: Array<{ statusId: string; name: string }>;
+    /** Số việc của dự án theo trạng thái (kể cả thùng rác). */
+    issueCounts?: Record<string, number>;
   } = {},
 ) {
   const liveIds =
@@ -99,6 +103,30 @@ function make(
     projectWorkflowOverride: { findMany: vi.fn(() => Promise.resolve([])) },
     workspaceWorkflowScheme: { findMany: vi.fn(() => Promise.resolve(opts.scheme ?? [])) },
     issueType: { findMany: vi.fn(() => Promise.resolve(opts.types ?? [{ id: 'tTask' }])) },
+    // Trạng thái đang nằm trong cột + đếm việc: để kiểm "bỏ trạng thái còn việc khỏi bảng".
+    boardColumnStatus: {
+      findMany: vi.fn(() => {
+        const cols =
+          (board as { columns?: Array<{ statuses?: Array<{ statusId: string }> }> }).columns ?? [];
+        const rows =
+          opts.linked ??
+          cols.flatMap((c) =>
+            (c.statuses ?? []).map((l) => ({ statusId: l.statusId, name: l.statusId })),
+          );
+        return Promise.resolve(
+          rows.map((r) => ({ statusId: r.statusId, status: { name: r.name } })),
+        );
+      }),
+    },
+    issue: {
+      groupBy: vi.fn((a: { where: { statusId: { in: string[] } } }) =>
+        Promise.resolve(
+          a.where.statusId.in
+            .filter((id) => (opts.issueCounts?.[id] ?? 0) > 0)
+            .map((id) => ({ statusId: id, _count: { _all: opts.issueCounts![id]! } })),
+        ),
+      ),
+    },
   };
   const service = new BoardsService(prisma as never, {} as never, {} as never);
   return { service, prisma, tx };
@@ -496,5 +524,66 @@ describe('BoardsService.setColumns — nhiều quy trình theo loại việc', (
       service.setColumns('w1', 'b1', { columns: [col('A', ['s1'])] }),
     ).rejects.toMatchObject({ status: 422 });
     expect(prisma.status.findMany).not.toHaveBeenCalled();
+  });
+});
+
+describe('BoardsService.setColumns — không bỏ khỏi bảng trạng thái còn việc', () => {
+  // Quy trình của dự án gồm s1..s3 (bắt buộc); `old` là trạng thái cũ còn nằm trong cột của bảng (quy trình mặc định cũ).
+  const base = () => boardRow();
+  const keep = [col('A', ['s1']), col('B', ['s2']), col('C', ['s3'])];
+
+  it('bỏ trạng thái cũ còn việc (kể cả thùng rác) → 422 BOARD_STATUS_HAS_ISSUES nêu tên và số việc, không ghi gì', async () => {
+    const { service, tx, prisma } = make(base(), {
+      linked: [
+        { statusId: 's1', name: 'Todo' },
+        { statusId: 's2', name: 'Doing' },
+        { statusId: 's3', name: 'Done' },
+        { statusId: 'old', name: 'Đang làm (cũ)' },
+      ],
+      issueCounts: { old: 3 },
+    });
+    await expect(service.setColumns('w1', 'b1', { columns: keep })).rejects.toMatchObject({
+      status: 422,
+      code: 'BOARD_STATUS_HAS_ISSUES',
+      details: [{ field: 'old', message: 'Đang làm (cũ): 3 việc' }],
+    });
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(tx.boardColumnStatus.createMany).not.toHaveBeenCalled();
+  });
+
+  it('thông báo lỗi nêu cả tên trạng thái lẫn số việc', async () => {
+    const { service } = make(base(), {
+      linked: [
+        { statusId: 's1', name: 'Todo' },
+        { statusId: 's2', name: 'Doing' },
+        { statusId: 's3', name: 'Done' },
+        { statusId: 'old', name: 'Đang làm (cũ)' },
+      ],
+      issueCounts: { old: 3 },
+    });
+    await expect(service.setColumns('w1', 'b1', { columns: keep })).rejects.toThrow(
+      /“Đang làm \(cũ\)” \(3 việc\)/,
+    );
+  });
+
+  it('bỏ trạng thái cũ KHÔNG còn việc → lưu bình thường', async () => {
+    const { service, tx } = make(base(), {
+      linked: [
+        { statusId: 's1', name: 'Todo' },
+        { statusId: 's2', name: 'Doing' },
+        { statusId: 's3', name: 'Done' },
+        { statusId: 'old', name: 'Cũ' },
+      ],
+      issueCounts: {},
+    });
+    await service.setColumns('w1', 'b1', { columns: keep });
+    expect(tx.boardColumnStatus.createMany).toHaveBeenCalledTimes(1);
+  });
+
+  it('giữ trạng thái còn việc (chỉ chuyển cột) → không bị chặn, không đếm việc', async () => {
+    const { service, prisma } = make(base(), { issueCounts: { s1: 9 } });
+    await service.setColumns('w1', 'b1', { columns: keep });
+    // s1..s3 vẫn nằm trong cột mới → không có trạng thái nào bị bỏ → không truy vấn đếm việc.
+    expect(prisma.issue.groupBy).not.toHaveBeenCalled();
   });
 });

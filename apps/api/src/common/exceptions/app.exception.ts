@@ -139,3 +139,23 @@ export class WipLimitReachedException extends AppException {
     super(ERROR_CODES.WIP_LIMIT_REACHED, message, HttpStatus.UNPROCESSABLE_ENTITY);
   }
 }
+
+/**
+ * 422 mã riêng: lưu cột bảng mà BỎ một trạng thái còn việc ở đó (trong dự án của bảng, kể cả thùng rác). Việc sẽ biến mất khỏi
+ * bảng; `details[].field` là id trạng thái để web chỉ đúng chỗ.
+ */
+export class BoardStatusHasIssuesException extends AppException {
+  constructor(rows: Array<{ statusId: string; name: string; count: number }>) {
+    const list = rows.map((r) => `“${r.name}” (${r.count} việc)`).join(', ');
+    super(
+      ERROR_CODES.BOARD_STATUS_HAS_ISSUES,
+      `Không bỏ được khỏi bảng vì dự án còn việc ở trạng thái ${list} — hãy chuyển các việc đó sang trạng thái khác trước.`,
+      HttpStatus.UNPROCESSABLE_ENTITY,
+      rows.map((r) => ({
+        field: r.statusId,
+        code: ERROR_CODES.BOARD_STATUS_HAS_ISSUES,
+        message: `${r.name}: ${r.count} việc`,
+      })),
+    );
+  }
+}

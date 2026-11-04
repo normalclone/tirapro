@@ -14,6 +14,7 @@ import { apiErrorMessage } from '@/lib/api';
 import { categoryColor } from '@/lib/statusColor';
 import { cn } from '@/lib/utils';
 import { boardMetaPatch } from './boardPatch';
+import { useProjectIssues } from '@/features/issues/api';
 import {
   useProjectStatuses,
   useSetBoardColumns,
@@ -172,9 +173,19 @@ export function BoardSettingsDialog({
   const unknownIds = statusesQ.data
     ? [...new Set(columns.flatMap((c) => c.statusIds).filter((id) => !statusById.has(id)))]
     : [];
+  // Số việc đang nằm ở từng trạng thái đó (danh sách việc của dự án đang xem; null = chưa tải). Máy chủ cũng từ chối bỏ trạng
+  // thái còn việc (kể cả việc trong thùng rác) nên đây chỉ là báo trước.
+  const { data: projectIssues } = useProjectIssues(projectId);
+  const issueCountOf = (id: string): number | null =>
+    projectIssues ? projectIssues.filter((i) => i.status.id === id).length : null;
+  const removableUnknown = unknownIds.filter((id) => issueCountOf(id) === 0);
+  const blockedUnknown = unknownIds.map((id) => issueCountOf(id) ?? 0).reduce((a, b) => a + b, 0);
   const removeUnknown = () =>
     setColumnsDraft((cols) =>
-      cols.map((c) => ({ ...c, statusIds: c.statusIds.filter((id) => statusById.has(id)) })),
+      cols.map((c) => ({
+        ...c,
+        statusIds: c.statusIds.filter((id) => !removableUnknown.includes(id)),
+      })),
     );
   const unassignStatus = (key: string, statusId: string) =>
     patchColumn(key, {
@@ -265,6 +276,9 @@ export function BoardSettingsDialog({
               columns={columns}
               unassigned={unassigned}
               unknownCount={unknownIds.length}
+              removableCount={removableUnknown.length}
+              blockedIssues={projectIssues ? blockedUnknown : null}
+              issueCountOf={issueCountOf}
               onRemoveUnknown={removeUnknown}
               ops={{
                 patchColumn,
@@ -327,6 +341,9 @@ function ColumnsTab({
   columns,
   unassigned,
   unknownCount,
+  removableCount,
+  blockedIssues,
+  issueCountOf,
   onRemoveUnknown,
   ops,
 }: {
@@ -337,6 +354,11 @@ function ColumnsTab({
   unassigned: StatusList;
   /** Số trạng thái trong cột không còn thuộc quy trình nào đang dùng. */
   unknownCount: number;
+  /** Trong số đó, bao nhiêu trạng thái không còn việc nào (gỡ được ngay). */
+  removableCount: number;
+  /** Tổng số việc còn nằm ở các trạng thái không còn dùng (những trạng thái đó chưa gỡ được). */
+  blockedIssues: number | null;
+  issueCountOf: (statusId: string) => number | null;
   onRemoveUnknown: () => void;
   ops: ColumnOps;
 }) {
@@ -357,10 +379,21 @@ function ColumnsTab({
         >
           <span className="min-w-0 flex-1">
             Có {unknownCount} trạng thái trong cột không còn thuộc quy trình nào của dự án (thường
-            là quy trình cũ). Nếu không còn việc nào ở các trạng thái đó thì nên bỏ đi cho gọn.
+            là quy trình cũ).{' '}
+            {blockedIssues === null
+              ? 'Đang kiểm tra còn việc nào ở đó không…'
+              : blockedIssues > 0
+                ? `Còn ${blockedIssues} việc đang ở đó — hãy chuyển các việc đó sang trạng thái khác trước, nếu không việc sẽ biến mất khỏi bảng.`
+                : 'Không còn việc nào ở đó nên bỏ đi cho gọn.'}
           </span>
-          <Button variant="secondary" size="sm" onClick={onRemoveUnknown}>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={onRemoveUnknown}
+            disabled={removableCount === 0}
+          >
             Bỏ khỏi bảng
+            {removableCount > 0 && removableCount < unknownCount ? ` (${removableCount})` : ''}
           </Button>
         </div>
       )}
@@ -431,7 +464,11 @@ function ColumnsTab({
                       style={{ background: s ? categoryColor(s.category) : 'var(--faint)' }}
                       aria-hidden
                     />
-                    {s ? withFlow(s) : 'Trạng thái không còn dùng'}
+                    {s
+                      ? withFlow(s)
+                      : `Trạng thái không còn dùng${
+                          issueCountOf(sid) ? ` · ${issueCountOf(sid)} việc` : ''
+                        }`}
                     <button
                       type="button"
                       aria-label={`Bỏ trạng thái ${s?.name ?? 'không còn dùng'} khỏi cột ${c.name || idx + 1}`}

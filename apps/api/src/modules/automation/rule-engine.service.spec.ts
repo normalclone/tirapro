@@ -49,13 +49,22 @@ function makeRule(over: Record<string, unknown> = {}) {
   };
 }
 
-function setup(rule = makeRule(), issue = issueDto()) {
+/** Quy trình theo loại việc (cấu hình của tổ chức); mặc định mọi loại rơi về quy trình mặc định `wf1` của dự án. */
+type Scheme = Array<{ issueTypeId: string; workflowId: string }>;
+
+function setup(rule = makeRule(), issue = issueDto(), scheme: Scheme = []) {
   const prisma = {
     user: {
       upsert: vi.fn(() => Promise.resolve({ id: SYS })),
       findUnique: vi.fn(() => Promise.resolve({ displayName: 'Bình' })),
     },
-    project: { findFirst: vi.fn(() => Promise.resolve({ leadId: 'lead1' })) },
+    project: {
+      findFirst: vi.fn(() => Promise.resolve({ leadId: 'lead1' })),
+      // Resolver quy trình theo loại việc.
+      findUnique: vi.fn(() => Promise.resolve({ workspaceId: 'w1', defaultWorkflowId: 'wf1' })),
+    },
+    projectWorkflowOverride: { findMany: vi.fn(() => Promise.resolve([])) },
+    workspaceWorkflowScheme: { findMany: vi.fn(() => Promise.resolve(scheme)) },
     workspaceMembership: {
       findFirst: vi.fn(() => Promise.resolve({ userId: 'x' })),
       findMany: vi.fn(() => Promise.resolve([{ userId: 'a' }, { userId: 'b' }])),
@@ -260,25 +269,41 @@ describe('RuleEngineService — kích hoạt theo sự kiện', () => {
     }
   });
 
-  it('transition với alsoStatusIds: chọn trạng thái đích nằm cùng quy trình với việc; không có thì dùng trạng thái chính', async () => {
+  it('transition với alsoStatusIds: chọn trạng thái đích nằm trong quy trình của LOẠI việc; không có thì dùng quy trình của trạng thái, rồi trạng thái chính', async () => {
     const rule = makeRule({
       conditions: [],
       actions: [
         { type: 'transition', toStatusId: 'doneStd@wfStd', alsoStatusIds: ['doneBug@wfBug'] },
       ],
     });
+    const scheme: Scheme = [
+      { issueTypeId: 'tBug', workflowId: 'wfBug' },
+      { issueTypeId: 'tEpic', workflowId: 'wfEpic' },
+    ];
     const issueBug = issueDto({
+      type: { id: 'tBug' },
       status: { id: 'x', workflowId: 'wfBug', name: 'New', category: 'TODO' },
     });
-    const inBug = setup(rule, issueBug);
+    const inBug = setup(rule, issueBug, scheme);
     await inBug.engine.handle('ISSUE_CREATED', { issue: issueBug as never, actorId: 'u1' });
     expect((inBug.issues.transition.mock.calls[0] as unknown[])[3]).toMatchObject({
       toStatusId: 'doneBug@wfBug',
     });
+    // Việc ở trạng thái LỆCH quy trình (loại Bug nhưng trạng thái của Standard): đích vẫn lấy theo quy trình của loại.
+    const odd = issueDto({
+      type: { id: 'tBug' },
+      status: { id: 'z', workflowId: 'wfStd', name: 'To Do', category: 'TODO' },
+    });
+    const inOdd = setup(rule, odd, scheme);
+    await inOdd.engine.handle('ISSUE_CREATED', { issue: odd as never, actorId: 'u1' });
+    expect((inOdd.issues.transition.mock.calls[0] as unknown[])[3]).toMatchObject({
+      toStatusId: 'doneBug@wfBug',
+    });
     const issueEpic = issueDto({
+      type: { id: 'tEpic' },
       status: { id: 'y', workflowId: 'wfEpic', name: 'New', category: 'TODO' },
     });
-    const other = setup(rule, issueEpic);
+    const other = setup(rule, issueEpic, scheme);
     await other.engine.handle('ISSUE_CREATED', { issue: issueEpic as never, actorId: 'u1' });
     // Không đích nào cùng quy trình: đi theo trạng thái chính (bước chuyển sẽ báo lỗi rõ ràng thay vì im lặng).
     expect((other.issues.transition.mock.calls[0] as unknown[])[3]).toMatchObject({

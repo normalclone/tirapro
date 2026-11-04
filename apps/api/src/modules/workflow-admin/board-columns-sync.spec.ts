@@ -112,7 +112,9 @@ describe('appendMissingBoardStatuses (M1: bảng vẫn lưu được, không th�
 
 describe('pruneUnusedBoardStatuses (không để cột "ma" sau khi chuyển đổi)', () => {
   /** Hai cột: `A` có {old1, new1}, `B` có {old2} (chỉ trạng thái cũ), `C` có {old3, new3}. `busy` = trạng thái còn việc. */
-  function fakeTx(busy: string[]) {
+  /** `columns`: các cột còn lại SAU khi gỡ, kèm quy trình của từng trạng thái còn trong cột (cho phần cột "ma"). */
+  type Col = { name: string; flows: string[] };
+  function fakeTx(busy: string[], columns: Col[] = []) {
     const links = [
       { columnId: 'A', statusId: 'old1' },
       { columnId: 'B', statusId: 'old2' },
@@ -132,6 +134,17 @@ describe('pruneUnusedBoardStatuses (không để cột "ma" sau khi chuyển đ�
       issue: {
         groupBy: vi.fn(() =>
           Promise.resolve(busy.map((statusId) => ({ statusId, _count: { _all: 3 } }))),
+        ),
+      },
+      boardColumn: {
+        findMany: vi.fn(() =>
+          Promise.resolve(
+            columns.map((c) => ({
+              name: c.name,
+              board: { name: 'Bảng chính', project: { key: 'KYHOP' } },
+              statuses: c.flows.map((workflowId) => ({ status: { workflowId } })),
+            })),
+          ),
         ),
       },
     };
@@ -165,7 +178,28 @@ describe('pruneUnusedBoardStatuses (không để cột "ma" sau khi chuyển đ�
   });
   it('không có quy trình đang dùng → không đụng gì', async () => {
     const tx = fakeTx([]);
-    expect(await pruneUnusedBoardStatuses(tx as never, 'p1', [])).toEqual({ removed: 0 });
+    expect(await pruneUnusedBoardStatuses(tx as never, 'p1', [])).toEqual({
+      removed: 0,
+      ghostColumns: [],
+    });
     expect(tx.boardColumnStatus.findMany).not.toHaveBeenCalled();
+  });
+
+  it('báo cột "ma": cột chỉ còn trạng thái của quy trình cũ (còn việc / trạng thái cuối) — liệt kê MÃ / Bảng / Cột', async () => {
+    const tx = fakeTx(
+      ['old3'],
+      [
+        { name: 'Cần làm', flows: ['wfNew'] },
+        { name: 'Đang làm (cũ)', flows: ['wfOld'] },
+        { name: 'Xong', flows: ['wfOld', 'wfNew'] },
+        { name: 'Trống', flows: [] },
+      ],
+    );
+    const r = await pruneUnusedBoardStatuses(tx as never, 'p1', ['wfNew']);
+    expect(r.ghostColumns).toEqual(['KYHOP / Bảng chính / Đang làm (cũ)']);
+  });
+  it('không có cột ma → danh sách rỗng', async () => {
+    const tx = fakeTx([], [{ name: 'A', flows: ['wfNew'] }]);
+    expect((await pruneUnusedBoardStatuses(tx as never, 'p1', ['wfNew'])).ghostColumns).toEqual([]);
   });
 });

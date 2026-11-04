@@ -130,6 +130,11 @@ export interface WorkflowChangeDto {
   affectedRules: AffectedRuleDto[];
   /** Bộ lọc/bảng/widget/quy tắc/KR lọc theo TÊN trạng thái cũ trong JQL sẽ không còn khớp (chỉ báo). */
   nameRefs: NameRefDto[];
+  /**
+   * Chỉ khi áp dụng thật: cột bảng "ma" — chỉ còn trạng thái của quy trình cũ (còn việc ở đó hoặc là trạng thái cuối của cột nên
+   * không tự gỡ được). Dạng "MÃ / Bảng / Cột"; người quản trị nên chuyển việc rồi dọn ở Cài đặt bảng.
+   */
+  ghostColumns?: string[];
 }
 
 /** `GET /workflows` → `usedBy`: nơi quy trình đang được dùng. */
