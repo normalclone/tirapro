@@ -25,7 +25,7 @@ import { EmptyState, Skeleton } from '@/components/ui/primitives';
 import { usePriorityRanks } from '@/features/issue-meta/usePriorityRanks';
 import { AXIS_PROPS, LEGEND_STYLE, TOOLTIP_STYLE } from '@/features/reports/charts';
 import { CHART_MARGIN, yAxisWidth } from '@/lib/chartAxis';
-import { dueState } from '@/lib/dueDate';
+import { filtersHref } from '@/features/assistant/queries';
 import { APP_NAV_LABELS } from '@/lib/navLabels';
 import { CHIP_ROW_GAP_COARSE, CHIP_TOUCH_HIT } from '@/lib/touchHit';
 import { cn } from '@/lib/utils';
@@ -35,7 +35,9 @@ import {
   chartSummary,
   defaultBugTab,
   filterByProject,
+  MY_OPEN_JQL,
   projectChips,
+  rowDue,
   type BugTab,
 } from './meView';
 
@@ -115,13 +117,20 @@ function MyIssuesSection({ items, open }: { items: MeIssueItemDto[]; open: numbe
 
   return (
     <section aria-labelledby="me-issues-h">
-      <div className="mb-3 flex flex-wrap items-baseline gap-x-2">
+      <div className="mb-3 flex flex-wrap items-baseline gap-x-2 gap-y-1">
         <h2 id="me-issues-h" className="text-base font-semibold text-ink-strong">
           Việc của tôi
         </h2>
-        <span className="tabular text-xs text-faint">
-          {open > items.length ? `${items.length} việc đầu trong ${open}` : open}
+        <span className="tabular text-xs text-muted">
+          {open} việc
+          {open > items.length ? ` · hiện ${items.length} việc đầu, xếp theo hạn` : ''}
         </span>
+        <Link
+          to={filtersHref(MY_OPEN_JQL)}
+          className="ml-auto text-xs font-medium text-primary hover:underline"
+        >
+          Xem tất cả
+        </Link>
       </div>
       {items.length === 0 ? (
         <EmptyState
@@ -140,7 +149,7 @@ function MyIssuesSection({ items, open }: { items: MeIssueItemDto[]; open: numbe
           {chips.length > 1 && (
             <div
               role="group"
-              aria-label="Lọc theo dự án"
+              aria-label={`Lọc theo dự án (trong ${items.length} việc đang hiện)`}
               className={cn(
                 'mb-3 flex flex-wrap items-center gap-x-1.5 gap-y-2',
                 CHIP_ROW_GAP_COARSE,
@@ -200,7 +209,7 @@ function ProjectChip({
       )}
     >
       <span className={cn(mono && 'font-mono')}>{label}</span>
-      <span className="tabular opacity-70">{count}</span>
+      <span className="tabular">{count}</span>
     </button>
   );
 }
@@ -217,7 +226,7 @@ function IssueList({ items }: { items: MeIssueItemDto[] }) {
 
 function IssueRow({ item }: { item: MeIssueItemDto }) {
   const ranks = usePriorityRanks();
-  const state = item.dueDate ? dueState(item) : null;
+  const state = rowDue(item);
   const overdue = state === 'overdue';
   return (
     <li>
@@ -253,7 +262,7 @@ function IssueRow({ item }: { item: MeIssueItemDto }) {
                 ? 'text-warning-ink'
                 : 'text-muted',
           )}
-          title={overdue ? 'Quá hạn' : state === 'soon' ? 'Sắp đến hạn' : undefined}
+          title={overdue ? 'Quá hạn' : state === 'soon' ? 'Đến hạn trong 7 ngày tới' : undefined}
         >
           {overdue && <AlertTriangle className="h-3 w-3" aria-hidden />}
           {item.dueDate ? (
@@ -262,7 +271,7 @@ function IssueRow({ item }: { item: MeIssueItemDto }) {
               {formatCalendarDmy(item.dueDate)}
             </>
           ) : (
-            <span className="text-faint">Chưa có hạn</span>
+            <span>Chưa có hạn</span>
           )}
         </span>
       </Link>
@@ -289,12 +298,25 @@ const BUG_EMPTY: Record<BugTab, { title: string; description: string }> = {
   },
 };
 
+/** Số việc nằm ngoài tên truy cập của tab (aria-hidden): trình đọc màn hình nghe "Mở lại", số hiện qua danh sách bên dưới. */
+function tabLabel(name: string, count: number) {
+  return (
+    <>
+      {name}
+      <span aria-hidden className="tabular">
+        {' · '}
+        {count}
+      </span>
+    </>
+  );
+}
+
 function BugsSection({ bugs }: { bugs: MeOverviewDto['bugs'] }) {
   const [tab, setTab] = useState<BugTab>(() => defaultBugTab(bugs));
   const items: TabItem<BugTab>[] = [
-    { id: 'awaitingRetest', label: `Chờ test lại · ${bugs.awaitingRetest.length}` },
-    { id: 'reopened', label: `Mở lại · ${bugs.reopened.length}` },
-    { id: 'assignedToMe', label: `Giao cho tôi · ${bugs.assignedToMe.length}` },
+    { id: 'awaitingRetest', label: tabLabel('Chờ test lại', bugs.awaitingRetest.length) },
+    { id: 'reopened', label: tabLabel('Mở lại', bugs.reopened.length) },
+    { id: 'assignedToMe', label: tabLabel('Giao cho tôi', bugs.assignedToMe.length) },
   ];
   const rows = bugs[tab];
   return (

@@ -40,7 +40,7 @@ describe('navItems (nguồn chung sidebar / thanh tab đáy / sheet Tôi)', () =
     expect(home!.to).toBe('/');
     expect(me!.match('/me')).toBe(true);
     expect(me!.match('/members')).toBe(false);
-    expect(home.match('/me')).toBe(false);
+    expect(home!.match('/me')).toBe(false);
   });
   it('Tổng quan và Dự án khớp đúng route (Dự án active cả /p/*)', () => {
     const home = NAV_ITEMS.find((i) => i.to === '/')!;

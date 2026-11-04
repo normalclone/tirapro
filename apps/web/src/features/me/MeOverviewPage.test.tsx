@@ -64,6 +64,11 @@ const data = (o: Partial<MeOverviewDto> = {}): MeOverviewDto => ({
   ...o,
 });
 
+const issueLinks = (el: HTMLElement) =>
+  within(el)
+    .getAllByRole('link')
+    .filter((a) => a.getAttribute('href')?.startsWith('/issue/'));
+
 function LocationProbe() {
   const loc = useLocation();
   return <p data-testid="loc">{loc.pathname}</p>;
@@ -95,7 +100,7 @@ describe('Trang Của tôi', () => {
     for (const label of ['Quá hạn', 'Đến hạn trong 7 ngày', 'Điểm xong tuần này'])
       expect(screen.getAllByText(label).length).toBeGreaterThan(0);
     const list = screen.getByRole('region', { name: 'Việc của tôi' });
-    const rows = within(list).getAllByRole('link');
+    const rows = issueLinks(list);
     expect(rows).toHaveLength(3);
     expect(rows[0]!.textContent).toContain('AAA');
     expect(rows[0]!.textContent).toContain('AAA-1');
@@ -108,26 +113,69 @@ describe('Trang Của tôi', () => {
 
   it('chip lọc theo dự án: chọn → chỉ việc dự án đó; bấm lại hoặc "Tất cả" → đủ', async () => {
     renderPage(data());
-    const group = await screen.findByRole('group', { name: 'Lọc theo dự án' });
+    const group = await screen.findByRole('group', { name: /Lọc theo dự án/ });
     const aaa = within(group).getByRole('button', { name: /AAA/ });
     expect(aaa.getAttribute('aria-pressed')).toBe('false');
     fireEvent.click(aaa);
     const list = screen.getByRole('region', { name: 'Việc của tôi' });
-    expect(within(list).getAllByRole('link')).toHaveLength(2);
+    expect(issueLinks(list)).toHaveLength(2);
     expect(within(list).queryByText('Tóm tắt BBB-2')).toBeNull();
     expect(aaa.getAttribute('aria-pressed')).toBe('true');
     fireEvent.click(aaa);
-    expect(within(list).getAllByRole('link')).toHaveLength(3);
+    expect(issueLinks(list)).toHaveLength(3);
     fireEvent.click(within(group).getByRole('button', { name: /BBB/ }));
-    expect(within(list).getAllByRole('link')).toHaveLength(1);
+    expect(issueLinks(list)).toHaveLength(1);
     fireEvent.click(within(group).getByRole('button', { name: /Tất cả/ }));
-    expect(within(list).getAllByRole('link')).toHaveLength(3);
+    expect(issueLinks(list)).toHaveLength(3);
+  });
+
+  it('tiêu đề luôn có "N việc" + liên kết "Xem tất cả" tới Bộ lọc với JQL việc chưa xong của tôi; bị cắt 50 thì nói rõ', async () => {
+    renderPage(data({ counts: { open: 83, overdue: 1, dueSoon: 2, donePointsThisWeek: 7 } }));
+    const section = await screen.findByRole('region', { name: 'Việc của tôi' });
+    expect(section.textContent).toContain('83 việc · hiện 3 việc đầu, xếp theo hạn');
+    const link = within(section).getByRole('link', { name: 'Xem tất cả' });
+    expect(link.getAttribute('href')).toBe(
+      `/filters?jql=${encodeURIComponent('assignee = currentUser() AND statusCategory != DONE ORDER BY due ASC')}`,
+    );
+  });
+
+  it('không bị cắt: chỉ "N việc" (có danh từ), vẫn có "Xem tất cả"', async () => {
+    renderPage(data());
+    const section = await screen.findByRole('region', { name: 'Việc của tôi' });
+    expect(section.textContent).toContain('3 việc');
+    expect(section.textContent).not.toContain('hiện');
+    expect(within(section).getByRole('link', { name: 'Xem tất cả' })).toBeTruthy();
+  });
+
+  it('hạn trong 7 ngày kể cả hôm nay được tô "sắp đến hạn" (khớp ô số); +7 ngày thì không; không dùng text-faint', async () => {
+    const vnDay = (plus: number) =>
+      new Date(Date.now() + 7 * 3_600_000 + plus * 86_400_000).toISOString().slice(0, 10);
+    renderPage(
+      data({
+        myIssues: [
+          item('AAA-1', 'AAA', { dueDate: `${vnDay(5)}T00:00:00.000Z` }),
+          item('AAA-2', 'AAA', { dueDate: `${vnDay(8)}T00:00:00.000Z` }),
+          item('AAA-3', 'AAA', { dueDate: null }),
+        ],
+      }),
+    );
+    const list = await screen.findByRole('region', { name: 'Việc của tôi' });
+    const rows = within(list)
+      .getAllByRole('link')
+      .filter((a) => a.getAttribute('href')?.startsWith('/issue/'));
+    const dueCell = (i: number) => rows[i]!.lastElementChild as HTMLElement;
+    expect(dueCell(0).className).toContain('text-warning-ink');
+    expect(dueCell(0).getAttribute('title')).toBe('Đến hạn trong 7 ngày tới');
+    expect(dueCell(1).className).not.toContain('text-warning-ink');
+    expect(dueCell(2).textContent).toBe('Chưa có hạn');
+    expect(dueCell(2).className).not.toContain('text-faint');
+    expect(list.innerHTML).not.toContain('text-faint');
   });
 
   it('chỉ một dự án → không hiện hàng chip', async () => {
     renderPage(data({ myIssues: [item('AAA-1', 'AAA')] }));
     await screen.findByRole('region', { name: 'Việc của tôi' });
-    expect(screen.queryByRole('group', { name: 'Lọc theo dự án' })).toBeNull();
+    expect(screen.queryByRole('group', { name: /Lọc theo dự án/ })).toBeNull();
   });
 
   it('bấm một việc → mở /issue/:key', async () => {
@@ -154,6 +202,8 @@ describe('Trang Của tôi', () => {
       'Mở lại · 1',
       'Giao cho tôi · 2',
     ]);
+    // Số việc không nằm trong tên truy cập của tab.
+    expect(within(tablist).getByRole('tab', { name: 'Mở lại' })).toBeTruthy();
     expect(tabs[1]!.getAttribute('aria-selected')).toBe('true');
     const panel = screen.getByRole('tabpanel');
     expect(within(panel).getByText('Tóm tắt AAA-9')).toBeTruthy();

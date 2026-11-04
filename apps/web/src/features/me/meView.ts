@@ -1,4 +1,5 @@
 import type { MeIssueItemDto, MeOverviewDto } from '@tirapro/types';
+import { dueDaysFromToday } from '@/lib/dueDate';
 
 /** Chip lọc nhanh theo dự án: mã dự án + số việc, nhiều việc nhất trước (đồng hạng theo mã). */
 export function projectChips(items: readonly MeIssueItemDto[]): { key: string; count: number }[] {
@@ -95,4 +96,24 @@ export function chartSummary(model: ChartModel): string {
   return parts.length
     ? `Điểm đã xong theo tuần, ${parts.join('; ')}`
     : 'Điểm đã xong theo tuần: chưa có';
+}
+
+/** JQL của liên kết "Xem tất cả": mọi việc chưa xong giao cho tôi (danh sách trên trang chỉ có 50 việc đầu). */
+export const MY_OPEN_JQL = 'assignee = currentUser() AND statusCategory != DONE ORDER BY due ASC';
+
+/** Cửa sổ "đến hạn" của ô số (khớp API): hôm nay … hôm nay + 6. */
+export const DUE_SOON_LAST_DAY = 6;
+
+export type RowDue = 'overdue' | 'soon' | null;
+
+/**
+ * Trạng thái hạn của MỘT dòng ở trang này: quá hạn (trước hôm nay, giờ VN) hoặc "sắp đến hạn" = trong 7 ngày kể cả hôm nay
+ * (đúng cửa sổ của ô "Đến hạn trong 7 ngày" — không dùng ngưỡng 2 ngày của `dueState` để số trên ô và dòng tô màu khớp nhau).
+ */
+export function rowDue(item: MeIssueItemDto, now: Date = new Date()): RowDue {
+  if (!item.dueDate || item.status.category === 'DONE') return null;
+  const days = dueDaysFromToday(item.dueDate, now);
+  if (Number.isNaN(days)) return null;
+  if (days < 0) return 'overdue';
+  return days <= DUE_SOON_LAST_DAY ? 'soon' : null;
 }
