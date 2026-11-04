@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Loader2, Lock } from 'lucide-react';
+import { Loader2, Lock, UserPlus } from 'lucide-react';
 import { toast } from 'sonner';
 import { localToCalendarIso } from '@/lib/calendarDate';
 import type { IssueDto } from '@tirapro/types';
@@ -18,6 +18,8 @@ import { SearchSelect } from '@/components/ui/SearchSelect';
 import { PeoplePicker } from '@/components/ui/PeoplePicker';
 import { AssigneeSuggestButton } from '@/features/ai/AssigneeSuggestButton';
 import { useAuth } from '@/stores/auth';
+import { useAi } from '@/stores/ai';
+import { ASSIGNED_TO_ME_TOAST, assignToMeVars } from './assignToMe';
 import { Input } from '@/components/ui/Input';
 import { Avatar } from '@/components/ui/primitives';
 import { PriorityIcon } from '@/components/ui/PriorityIcon';
@@ -564,7 +566,13 @@ export function IssueAssigneeControl({
   });
   const patch = useUpdateIssue(issue.projectId);
   const canEditThis = useCanEditIssue(issue.projectId)(issue);
-  const canSuggest = useAuth((s) => s.can('ai:use')) && canEditThis;
+  const aiEnabled = useAi((s) => s.enabled);
+  const canUseAi = useAuth((s) => s.can('ai:use'));
+  const canSuggest = aiEnabled && canUseAi && canEditThis;
+  // "Gán cho tôi": cần quyền gán (`issue:assign`) và sửa được việc (cùng điều kiện mở ô chọn người), và việc chưa là của mình.
+  const me = useAuth((s) => s.user);
+  const canAssign = useCanIn(issue.projectId)('issue:assign');
+  const showAssignMe = !!me && canAssign && canEditThis && issue.assignee?.id !== me.id;
   return (
     <div className="flex min-w-0 items-center gap-1">
       {canSuggest && (
@@ -650,6 +658,23 @@ export function IssueAssigneeControl({
             <span className="text-faint">Chưa gán</span>
           )}
         </span>
+      )}
+      {showAssignMe && (
+        <button
+          type="button"
+          disabled={patch.isPending}
+          title="Đặt bạn làm người phụ trách"
+          onClick={() =>
+            patch.mutate(assignToMeVars(issue, me), {
+              onSuccess: () => toast.success(ASSIGNED_TO_ME_TOAST, { duration: 2000 }),
+              onError: (e) => toast.error(apiErrorMessage(e)),
+            })
+          }
+          className="inline-flex h-6 shrink-0 items-center gap-1 whitespace-nowrap rounded-md px-1.5 text-xs text-primary transition-colors hover:bg-primary-subtle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:cursor-not-allowed disabled:text-disabled-fg [@media(pointer:coarse)]:min-h-9"
+        >
+          <UserPlus className="h-3.5 w-3.5" aria-hidden />
+          Gán cho tôi
+        </button>
       )}
     </div>
   );

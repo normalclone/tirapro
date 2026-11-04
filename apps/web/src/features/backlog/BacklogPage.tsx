@@ -85,6 +85,7 @@ import { applyPendingOrder, sortByRank } from '@/lib/rankOrder';
 import { epicAwareCollision, epicAwareKeyboardCoordinates } from '@/lib/sortableDnd';
 import { useMoveIssue, usePendingMoves, type MoveVars } from '@/features/issues/moveIssue';
 import { useAuth } from '@/stores/auth';
+import { useAi } from '@/stores/ai';
 import {
   useCanEditIssue,
   useProjectCan,
@@ -230,7 +231,10 @@ export function BacklogPage() {
     transition: can('issue:transition'),
   });
   const canDragIssue = useCallback(() => dragRoute !== null, [dragRoute]);
-  const canUseAi = useAuth((s) => s.can('ai:use'));
+  // Tắt "Trợ lý AI" ở thanh trên thì không còn nút gợi ý AI nào (trợ lý lập sprint là một gợi ý AI).
+  const aiEnabled = useAi((s) => s.enabled);
+  const canUseAiRole = useAuth((s) => s.can('ai:use'));
+  const canUseAi = aiEnabled && canUseAiRole;
   const currentUserId = useAuth((s) => s.user?.id);
 
   const createSprint = useCreateSprint(projectId ?? '');

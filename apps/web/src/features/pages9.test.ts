@@ -7,12 +7,13 @@ const src = (rel: string) => readFileSync(join(root, rel), 'utf8');
 
 describe('Bộ lọc, Wiki, chi tiết công việc dùng khung chung (T9)', () => {
   it.each([
-    ['Bộ lọc', 'features/saved-filters/FiltersPage.tsx'],
-    ['Wiki', 'features/wiki/WikiPage.tsx'],
-    ['Chi tiết công việc', 'features/issues/IssueDetailPage.tsx'],
-  ])('%s: PageFrame lg + PageHeader, không pageContainer/max-w', (_n, file) => {
+    ['Bộ lọc', 'features/saved-filters/FiltersPage.tsx', 'lg'],
+    ['Wiki', 'features/wiki/WikiPage.tsx', 'lg'],
+    // Trang việc đầy đủ lấp đầy vùng nội dung (không cột hẹp căn giữa để trống bên trái).
+    ['Chi tiết công việc', 'features/issues/IssueDetailPage.tsx', 'full'],
+  ])('%s: PageFrame cỡ chuẩn + PageHeader, không pageContainer/max-w', (_n, file, size) => {
     const s = src(file);
-    expect(s).toMatch(/<PageFrame size="lg"/);
+    expect(s).toContain(`<PageFrame size="${size}"`);
     expect(s).toMatch(/<PageHeader\b/);
     expect(s).not.toMatch(/pageContainer/);
     expect(s).not.toMatch(/\bmax-w-(3xl|4xl|5xl|7xl)\b/);

@@ -24,7 +24,6 @@ import {
   MessageSquare,
   MoreHorizontal,
   Trash2,
-  UserPlus,
   Workflow,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -54,6 +53,7 @@ import { IssueRelations } from '@/features/tree/IssueRelations';
 import { CustomFieldsPanel } from '@/features/issue-fields/CustomFieldsPanel';
 import { AttachmentsPanel } from '@/features/attachments/AttachmentsPanel';
 import { LinksPanel } from '@/features/issue-widgets/LinksPanel';
+import { ASSIGNED_TO_ME_TOAST, assignToMeVars } from '@/features/issue-edit/assignToMe';
 import { AddSectionButton, OptionalSection, OptionalSectionsScope } from './OptionalSections';
 import { RelatedDocsPanel } from '@/features/issue-widgets/RelatedDocsPanel';
 import { ChecklistPanel } from '@/features/issue-extras/ChecklistPanel';
@@ -368,16 +368,12 @@ export function IssueDetailPage() {
   const copyLinkRef = useRef(copyLink);
   copyLinkRef.current = copyLink;
 
-  const isMine = !!issue && !!me && issue.assigneeId === me.id;
   function assignToMe() {
     if (!issue || !me || issue.assigneeId === me.id) return;
-    updateIssue.mutate(
-      { id: issue.id, key: issue.key, patch: { assigneeId: me.id }, version: issue.version },
-      {
-        onSuccess: () => toast.success('Đã giao việc này cho bạn', { duration: 2000 }),
-        onError: (e) => toast.error(apiErrorMessage(e)),
-      },
-    );
+    updateIssue.mutate(assignToMeVars(issue, me), {
+      onSuccess: () => toast.success(ASSIGNED_TO_ME_TOAST, { duration: 2000 }),
+      onError: (e) => toast.error(apiErrorMessage(e)),
+    });
   }
 
   // Ghi vào "xem gần đây" mỗi khi mở/đổi issue.
@@ -468,7 +464,7 @@ export function IssueDetailPage() {
       <ProjectRail activeKey={projectKey} view="board" />
 
       <div className="relative min-w-0 flex-1 overflow-auto">
-        <PageFrame size="lg" className="py-6">
+        <PageFrame size="full" className="py-6">
           {/*
            * Đã có công việc: không vẽ tiêu đề ở đây — h1 là chính ô tiêu đề hiển thị bên dưới (title-less: chỉ breadcrumb +
            * actions). Đang tải/lỗi/không thấy: chưa có ô đó nên dùng h1 sr-only (`titleHidden`) → mọi trạng thái đúng một h1.
@@ -621,28 +617,6 @@ export function IssueDetailPage() {
                     <ListTree className="h-4 w-4" /> Tạo việc con
                   </button>
                 )}
-                {can('issue:create') && (
-                  <button
-                    type="button"
-                    className={TOOLBAR_BTN}
-                    title="Tạo một công việc mới giống hệt việc này để sửa lại cho nhanh"
-                    onClick={() => void cloneIssue()}
-                    disabled={createIssue.isPending}
-                  >
-                    <Copy className="h-4 w-4" /> Tạo bản sao
-                  </button>
-                )}
-                {me && !isMine && canEditThis && (
-                  <button
-                    type="button"
-                    className={TOOLBAR_BTN}
-                    onClick={assignToMe}
-                    disabled={updateIssue.isPending}
-                    title={withKey('Đặt bạn làm người phụ trách', 'issue.assignMe')}
-                  >
-                    <UserPlus className="h-4 w-4" /> Gán cho tôi
-                  </button>
-                )}
 
                 <DropdownMenu.Root>
                   <DropdownMenu.Trigger asChild>
@@ -660,6 +634,16 @@ export function IssueDetailPage() {
                       sideOffset={6}
                       className="z-dropdown w-48 overflow-hidden rounded-lg border border-border bg-surface p-1 shadow-lg animate-in fade-in zoom-in-95 duration-150"
                     >
+                      {can('issue:create') && (
+                        <DropdownMenu.Item
+                          onSelect={() => void cloneIssue()}
+                          disabled={createIssue.isPending}
+                          title="Tạo một công việc mới giống hệt việc này để sửa lại cho nhanh"
+                          className="flex cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-2 text-sm text-ink outline-none transition-colors data-[disabled]:cursor-not-allowed data-[disabled]:text-disabled-fg data-[highlighted]:bg-surface-2"
+                        >
+                          <Copy className="h-4 w-4 text-muted" /> Tạo bản sao
+                        </DropdownMenu.Item>
+                      )}
                       <DropdownMenu.Item
                         onSelect={() => copyLink()}
                         title={withKey('Sao chép liên kết công việc', 'issue.copyLink')}
