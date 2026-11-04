@@ -60,11 +60,12 @@ export class TeamsController {
   @Put(':id/members')
   @Permissions(PERMISSIONS.TEAM_MANAGE)
   async setMembers(
+    @CurrentUser() user: AuthUser,
     @OrganizationId() organizationId: string,
     @Param('id') id: string,
     @Body(new ZodValidationPipe(setTeamMembersSchema)) dto: SetTeamMembersInput,
   ) {
-    return this.teams.setMembers(organizationId, id, dto.memberIds);
+    return this.teams.setMembers(organizationId, id, dto.memberIds, user.id);
   }
 
   @Post(':id/assign-project')
@@ -80,7 +81,11 @@ export class TeamsController {
 
   @Delete(':id')
   @Permissions(PERMISSIONS.TEAM_MANAGE)
-  async remove(@OrganizationId() organizationId: string, @Param('id') id: string) {
-    return this.teams.remove(organizationId, id);
+  async remove(
+    @CurrentUser() user: AuthUser,
+    @OrganizationId() organizationId: string,
+    @Param('id') id: string,
+  ) {
+    return this.teams.remove(organizationId, id, user.id);
   }
 }

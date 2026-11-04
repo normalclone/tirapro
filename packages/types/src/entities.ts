@@ -75,6 +75,22 @@ export interface RoleRefDto {
   id: ID;
   name: string;
   color?: string | null;
+  /**
+   * Chỉ ở danh sách thành viên DỰ ÁN: vai trò này được gán TRỰC TIẾP (`direct`) và/hoặc có được nhờ team gắn vào dự án (`teams`).
+   * Người mất vai trò chỉ khi không còn nguồn nào. Vắng = không có thông tin nguồn (vai trò mặc định suy từ tổ chức).
+   */
+  direct?: boolean;
+  teams?: Array<{ id: ID; name: string }>;
+}
+
+/** Team của tổ chức đã gắn vào một dự án (`GET /projects/:id/teams`). */
+export interface ProjectTeamLinkDto {
+  id: ID;
+  projectId: ID;
+  teamId: ID;
+  team: { id: ID; name: string; key: string; color?: string | null; memberCount: number };
+  roles: RoleRefDto[];
+  createdAt: ISODate;
 }
 
 export interface MembershipDto {

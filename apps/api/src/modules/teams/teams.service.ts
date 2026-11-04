@@ -4,6 +4,8 @@ import { PrismaService } from '../../infra/prisma/prisma.service';
 import { toUserDto, USER_DTO_SELECT, type UserDtoSource } from '../../common/mappers/user.mapper';
 import { ForbiddenAppException, NotFoundAppException } from '../../common/exceptions/app.exception';
 import { MembersService } from '../members/members.service';
+import { lockTeamRoles } from '../project-teams/project-role-sources';
+import { ProjectTeamsService } from '../project-teams/project-teams.service';
 import { ProjectAccessService } from '../rbac/project-access.service';
 import type { CreateTeamInput, UpdateTeamInput } from './teams.schemas';
 
@@ -23,6 +25,8 @@ const TEAM_SELECT = {
   _count: { select: { members: true } },
 } satisfies Prisma.TeamSelect;
 
+const TEAM_TX_OPTS = { maxWait: 10_000, timeout: 60_000 } as const;
+
 /**
  * Nhóm (team) — nhóm thành viên trong tổ chức, dùng lại khắp dự án & issue.
  * Xoá nhóm = hard delete: Issue.teamId tự về null (FK SET NULL), TeamMember cascade.
@@ -33,6 +37,7 @@ export class TeamsService {
     private readonly prisma: PrismaService,
     private readonly members: MembersService,
     private readonly access: ProjectAccessService,
+    private readonly projectTeams: ProjectTeamsService,
   ) {}
 
   async list(organizationId: string) {
@@ -105,38 +110,43 @@ export class TeamsService {
     if (dto.memberIds !== undefined)
       replaceMembers = await this.validateOrganizationMembers(organizationId, dto.memberIds);
 
+    let leadToAdd: string | null = null;
     if (dto.leadId !== undefined) {
       const leadId = dto.leadId || null;
       if (leadId) await this.validateOrganizationMembers(organizationId, [leadId]);
       data.lead = leadId ? { connect: { id: leadId } } : { disconnect: true };
       if (leadId) {
         if (replaceMembers && !replaceMembers.includes(leadId)) replaceMembers.push(leadId);
-        else if (!replaceMembers) {
-          await this.prisma.teamMember.upsert({
-            where: { teamId_userId: { teamId, userId: leadId } },
-            create: { teamId, userId: leadId },
-            update: {},
-          });
-        }
+        else if (!replaceMembers) leadToAdd = leadId;
       }
     }
 
-    const ops: Prisma.PrismaPromise<unknown>[] = [
-      this.prisma.team.update({ where: { id: teamId }, data }),
-    ];
-    if (replaceMembers !== undefined) {
-      ops.push(this.prisma.teamMember.deleteMany({ where: { teamId } }));
-      ops.push(
-        this.prisma.teamMember.createMany({
+    // Đổi người trong nhóm và đồng bộ các dự án đang gắn nhóm nằm CÙNG transaction: nhóm và quyền dự án không lệch nhau.
+    const effects = await this.prisma.$transaction(async (tx) => {
+      await lockTeamRoles(tx, teamId); // trước khi sửa TeamMember: xếp hàng với gắn/gỡ nhóm và các lần đổi người khác
+      await tx.team.update({ where: { id: teamId }, data });
+      if (replaceMembers !== undefined) {
+        await tx.teamMember.deleteMany({ where: { teamId } });
+        await tx.teamMember.createMany({
           data: replaceMembers.map((userId) => ({ teamId, userId })),
-        }),
-      );
-    }
-    await this.prisma.$transaction(ops);
+        });
+      } else if (leadToAdd) {
+        await tx.teamMember.upsert({
+          where: { teamId_userId: { teamId, userId: leadToAdd } },
+          create: { teamId, userId: leadToAdd },
+          update: {},
+        });
+      }
+      return replaceMembers !== undefined || leadToAdd
+        ? this.projectTeams.syncTeam(tx, organizationId, teamId)
+        : [];
+    }, TEAM_TX_OPTS);
+    await this.projectTeams.publish(organizationId, effects, actingUserId);
+    await this.projectTeams.auditSync(organizationId, effects, actingUserId);
     return this.get(organizationId, teamId);
   }
 
-  async setMembers(organizationId: string, teamId: string, memberIds: string[]) {
+  async setMembers(organizationId: string, teamId: string, memberIds: string[], actorId?: string) {
     await this.requireTeam(organizationId, teamId);
     const ids = await this.validateOrganizationMembers(organizationId, memberIds);
     const cur = await this.prisma.team.findUnique({
@@ -144,16 +154,27 @@ export class TeamsService {
       select: { leadId: true },
     });
     if (cur?.leadId && !ids.includes(cur.leadId)) ids.push(cur.leadId); // giữ lead trong nhóm
-    await this.prisma.$transaction([
-      this.prisma.teamMember.deleteMany({ where: { teamId } }),
-      this.prisma.teamMember.createMany({ data: ids.map((userId) => ({ teamId, userId })) }),
-    ]);
+    const effects = await this.prisma.$transaction(async (tx) => {
+      await lockTeamRoles(tx, teamId);
+      await tx.teamMember.deleteMany({ where: { teamId } });
+      await tx.teamMember.createMany({ data: ids.map((userId) => ({ teamId, userId })) });
+      return this.projectTeams.syncTeam(tx, organizationId, teamId);
+    }, TEAM_TX_OPTS);
+    await this.projectTeams.publish(organizationId, effects, actorId);
+    await this.projectTeams.auditSync(organizationId, effects, actorId);
     return this.get(organizationId, teamId);
   }
 
-  async remove(organizationId: string, teamId: string) {
+  async remove(organizationId: string, teamId: string, actorId?: string) {
     await this.requireTeam(organizationId, teamId);
-    await this.prisma.team.delete({ where: { id: teamId } }); // Issue.teamId → null (FK), TeamMember cascade
+    // Gỡ nhóm khỏi mọi dự án TRƯỚC khi xoá (cùng transaction): chỉ gỡ phần vai trò nhờ nhóm này, vai trò gán trực tiếp / nhờ nhóm khác giữ.
+    const effects = await this.prisma.$transaction(async (tx) => {
+      const e = await this.projectTeams.unlinkTeamEverywhere(tx, organizationId, teamId);
+      await tx.team.delete({ where: { id: teamId } }); // Issue.teamId → null (FK), TeamMember cascade
+      return e;
+    }, TEAM_TX_OPTS);
+    await this.projectTeams.publish(organizationId, effects, actorId);
+    await this.projectTeams.auditSync(organizationId, effects, actorId, 'xoá nhóm');
     return { success: true };
   }
 

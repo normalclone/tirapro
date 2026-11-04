@@ -79,6 +79,7 @@ function setup(opts: {
       deleteMany: vi.fn(() => Promise.resolve({})),
       createMany: vi.fn(() => Promise.resolve({})),
     },
+    projectMembershipRoleTeam: { findMany: vi.fn(() => Promise.resolve([])) },
     projectMembership: {
       findUnique: vi.fn((_a?: unknown) =>
         Promise.resolve({

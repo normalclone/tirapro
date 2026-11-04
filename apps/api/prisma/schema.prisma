@@ -444,14 +444,50 @@ model OrganizationMembershipRole {
 }
 
 // Join: 1 thành viên có NHIỀU vai trò (cấp dự án).
+/// Vai trò của một thành viên dự án (đã gộp: mỗi (thành viên, vai trò) đúng MỘT dòng, nên mọi nơi đọc quyền không đổi).
+/// NGUỒN của vai trò: `direct` = được gán trực tiếp (dòng cũ mặc định là true) và/hoặc có dòng trong `teamSources` (vai trò nhờ team
+/// gắn vào dự án). Dòng chỉ bị xoá khi không còn nguồn nào (`direct = false` và hết `teamSources`).
 model ProjectMembershipRole {
   membershipId String
   roleId       String
-  membership   ProjectMembership @relation(fields: [membershipId], references: [id], onDelete: Cascade)
-  role         Role              @relation("ProjMembershipRoles", fields: [roleId], references: [id], onDelete: Cascade)
+  direct       Boolean                     @default(true)
+  membership   ProjectMembership           @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+  role         Role                        @relation("ProjMembershipRoles", fields: [roleId], references: [id], onDelete: Cascade)
+  teamSources  ProjectMembershipRoleTeam[]
 
   @@id([membershipId, roleId])
   @@index([roleId])
+}
+
+/// Nguồn "nhờ team" của một vai trò dự án: người này có vai trò đó vì team `teamId` được gắn vào dự án với vai trò ấy.
+/// Một người có cùng vai trò từ hai team thì có hai dòng — chỉ mất vai trò khi không còn nguồn nào (xem ProjectMembershipRole).
+model ProjectMembershipRoleTeam {
+  membershipId   String
+  roleId         String
+  teamId         String
+  createdAt      DateTime              @default(now())
+  membershipRole ProjectMembershipRole @relation(fields: [membershipId, roleId], references: [membershipId, roleId], onDelete: Cascade)
+  team           Team                  @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@id([membershipId, roleId, teamId])
+  @@index([teamId])
+}
+
+/// Team của tổ chức được gắn vào dự án: mọi thành viên team là thành viên dự án với `roleIds`, tự đồng bộ khi team đổi người.
+model ProjectTeamLink {
+  id          String   @id @default(cuid())
+  projectId   String
+  teamId      String
+  roleIds     String[]
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  team    Team    @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, teamId])
+  @@index([teamId])
 }
 
 // ============================ TEAMS =========================================
@@ -471,10 +507,12 @@ model Team {
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  lead         User?        @relation("TeamLead", fields: [leadId], references: [id], onDelete: SetNull)
+  organization Organization                @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  lead         User?                       @relation("TeamLead", fields: [leadId], references: [id], onDelete: SetNull)
   members      TeamMember[]
   dashboards   Dashboard[]
+  projectLinks ProjectTeamLink[]
+  roleSources  ProjectMembershipRoleTeam[]
 
   @@unique([organizationId, name])
   @@unique([organizationId, key])
@@ -528,6 +566,7 @@ model Project {
   lead              User?                     @relation("ProjectLead", fields: [leadId], references: [id], onDelete: SetNull)
   healthUpdatedBy   User?                     @relation("ProjectHealthUpdater", fields: [healthUpdatedById], references: [id], onDelete: SetNull)
   memberships       ProjectMembership[]
+  teamLinks         ProjectTeamLink[]
   issues            Issue[]
   boards            Board[]
   sprints           Sprint[]
