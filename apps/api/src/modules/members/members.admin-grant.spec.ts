@@ -116,7 +116,11 @@ function setup(opts: {
                 deleteMany: vi.fn(() => Promise.resolve({ count: 1 })),
               },
               projectMembershipRole: { createMany: vi.fn(() => Promise.resolve({})) },
-              projectSubTeamMember: { deleteMany: vi.fn(() => Promise.resolve({ count: 0 })) },
+              projectSubTeamMember: {
+                findMany: vi.fn(() => Promise.resolve([])),
+                deleteMany: vi.fn(() => Promise.resolve({ count: 0 })),
+              },
+              $executeRaw: vi.fn(() => Promise.resolve(0)),
               user: { create: vi.fn(() => Promise.resolve({ id: 'newU' })) },
             }),
           )

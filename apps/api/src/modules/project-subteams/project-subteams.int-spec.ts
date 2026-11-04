@@ -10,7 +10,10 @@ import { ProjectTeamsService } from '../project-teams/project-teams.service';
 import { RbacService } from '../rbac/rbac.service';
 import { SearchService } from '../search/search.service';
 import { ProjectSubTeamsService } from './project-subteams.service';
-import { pruneSubTeamsForPrivateProject } from './subteam-membership';
+import {
+  pruneSubTeamsForPrivateProject,
+  pruneSubTeamsOnMembershipRemoved,
+} from './subteam-membership';
 
 /**
  * Team riêng trong dự án TRÊN POSTGRES THẬT — OPT-IN, không chạy trong `pnpm test`. Kiểm: CRUD + bất biến "thành viên team ⊆ thành viên dự án"
@@ -287,6 +290,69 @@ describe.skipIf(!DB_URL)('team riêng trong dự án ↔ Postgres thật', () =>
       (await svc.list(ORG, p.pid)).find((x) => x.id === t.id)!.members.map((m) => m.id),
     ).toEqual([a]);
   });
+
+  it('tên chứa "_" / "%" không bị coi là ký tự đại diện khi kiểm trùng; vẫn trùng khi chỉ khác hoa/thường', async () => {
+    const { pid } = await newProject();
+    await svc.create(ORG, pid, { name: 'QA-Backend' }, ADMIN);
+    await svc.create(ORG, pid, { name: 'QA_Backend' }, ADMIN); // trước đây bị từ chối nhầm ('_' khớp '-')
+    await svc.create(ORG, pid, { name: '%' }, ADMIN); // trước đây trùng mọi team
+    await expect(svc.create(ORG, pid, { name: 'qa_backend' }, ADMIN)).rejects.toMatchObject({
+      status: 422,
+    });
+    await expect(svc.create(ORG, pid, { name: '%' }, ADMIN)).rejects.toMatchObject({ status: 422 });
+    expect((await svc.list(ORG, pid)).map((t) => t.name).sort()).toEqual([
+      '%',
+      'QA-Backend',
+      'QA_Backend',
+    ]);
+  });
+
+  it('đua: thêm người vào team ↔ người đó bị gỡ khỏi dự án riêng tư không để lại thành viên team không còn trong dự án', async () => {
+    const { pid } = await newProject(true);
+    await addMember(pid, a);
+    await addMember(pid, b);
+    const t = await svc.create(ORG, pid, { name: 'Race', memberIds: [a] }, ADMIN);
+    // 1. Giữ khoá hàng User(b): lần chèn b vào team (kiểm khoá ngoại) sẽ đứng chờ GIỮA chừng, sau khi đã đọc tư cách thành viên.
+    let releaseUser: () => void = () => undefined;
+    const held = new Promise<void>((r) => (releaseUser = r));
+    let locked: () => void = () => undefined;
+    const gotLock = new Promise<void>((r) => (locked = r));
+    const holder = prisma.$transaction(
+      async (tx) => {
+        await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${b} FOR UPDATE`;
+        locked();
+        await held;
+      },
+      { timeout: 30_000 },
+    );
+    await gotLock;
+    // 2. Thêm b: đã giữ khoá team riêng + đọc thấy b còn là thành viên, rồi kẹt ở lúc chèn.
+    const add = svc.setMembers(ORG, pid, t.id, [a, b], ADMIN);
+    await new Promise((r) => setTimeout(r, 400));
+    // 3. Gỡ b khỏi dự án: xoá ProjectMembership rồi prune. Phải CHỜ khoá của lần thêm (không được chạy chen trước).
+    let removed = false;
+    const removal = prisma
+      .$transaction(
+        async (tx) => {
+          await tx.projectMembership.delete({
+            where: { projectId_userId: { projectId: pid, userId: b } },
+          });
+          await pruneSubTeamsOnMembershipRemoved(tx, pid, b);
+        },
+        { timeout: 30_000 },
+      )
+      .then(() => (removed = true));
+    await new Promise((r) => setTimeout(r, 400));
+    expect(removed).toBe(false); // đang chờ khoá, chưa commit
+    releaseUser();
+    await holder;
+    await add;
+    await removal;
+    expect(await prisma.projectMembership.count({ where: { projectId: pid, userId: b } })).toBe(0);
+    expect(await prisma.projectSubTeamMember.count({ where: { subTeamId: t.id, userId: b } })).toBe(
+      0,
+    );
+  }, 30_000);
 
   // ───────────────────────── JQL `team` ─────────────────────────
 

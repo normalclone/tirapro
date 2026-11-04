@@ -550,6 +550,7 @@ function setupPrivacyUpdate(opts: { cur?: Record<string, unknown> } = {}) {
     project: { update: vi.fn((_a?: unknown) => Promise.resolve({ id: 'p1' })) },
     projectMembership: { upsert: vi.fn((_a?: unknown) => Promise.resolve({ id: 'pm' })) },
     projectSubTeamMember: { deleteMany: vi.fn((_a?: unknown) => Promise.resolve({ count: 0 })) },
+    $executeRaw: vi.fn((..._a: unknown[]) => Promise.resolve(0)),
   };
   const prisma = {
     project: {

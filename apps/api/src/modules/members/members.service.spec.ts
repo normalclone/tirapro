@@ -97,7 +97,11 @@ describe('MembersService.removeOrganization', () => {
     const tx = {
       organizationMembership: { delete: vi.fn(() => Promise.resolve({})) },
       projectMembership: { deleteMany: vi.fn(() => Promise.resolve({ count: 2 })) },
-      projectSubTeamMember: { deleteMany: vi.fn(() => Promise.resolve({ count: 0 })) },
+      projectSubTeamMember: {
+        findMany: vi.fn(() => Promise.resolve([])),
+        deleteMany: vi.fn(() => Promise.resolve({ count: 0 })),
+      },
+      $executeRaw: vi.fn(() => Promise.resolve(0)),
     };
     const prisma = {
       $transaction: vi.fn((fn: (t: unknown) => unknown) => Promise.resolve(fn(tx))),

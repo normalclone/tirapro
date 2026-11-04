@@ -192,16 +192,18 @@ export class ProjectSubTeamsService {
     return name;
   }
 
+  /**
+   * Tên trùng khi so `lower(name)` CHÍNH XÁC (không dùng ILIKE: `_` và `%` trong tên sẽ thành ký tự đại diện và báo trùng sai).
+   * Số team mỗi dự án ít nên đọc rồi so trong bộ nhớ.
+   */
   private async assertNameFree(tx: Tx, projectId: string, name: string, exceptId?: string) {
-    const dup = await tx.projectSubTeam.findFirst({
-      where: {
-        projectId,
-        name: { equals: name, mode: 'insensitive' },
-        ...(exceptId ? { id: { not: exceptId } } : {}),
-      },
-      select: { id: true },
+    const lower = name.toLowerCase();
+    const names = await tx.projectSubTeam.findMany({
+      where: { projectId, ...(exceptId ? { id: { not: exceptId } } : {}) },
+      select: { name: true },
     });
-    if (dup) throw new BusinessRuleException(`Dự án đã có team tên "${name}" — hãy chọn tên khác`);
+    if (names.some((n) => n.name.toLowerCase() === lower))
+      throw new BusinessRuleException(`Dự án đã có team tên "${name}" — hãy chọn tên khác`);
   }
 
   /**
