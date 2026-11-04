@@ -55,6 +55,7 @@ export const NAV_ITEMS: NavEntry[] = [
     label: APP_NAV_LABELS.members,
     Icon: Users,
     match: (p) => p.startsWith('/members'),
+    rule: NAV_RULES.members,
   },
   {
     to: '/manage',

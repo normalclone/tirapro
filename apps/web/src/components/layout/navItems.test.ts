@@ -19,7 +19,6 @@ describe('navItems (nguồn chung sidebar / thanh tab đáy / sheet Tôi)', () =
     const visible = NAV_ITEMS.filter((i) => !i.rule);
     expect(sheetNavItems(visible, false).map((i) => i.to)).toEqual([
       '/filters',
-      '/members',
       '/manage',
       '/wiki',
       '/settings',
@@ -31,6 +30,18 @@ describe('navItems (nguồn chung sidebar / thanh tab đáy / sheet Tôi)', () =
       '/admin/system',
       '/admin/points',
     ]);
+  });
+  it('Thành viên chỉ hiện với người quản lý thành viên', async () => {
+    const { canSeeNav } = await import('@/lib/navAccess');
+    const members = NAV_ITEMS.find((i) => i.to === '/members')!;
+    expect(members.rule).toBeDefined();
+    expect(canSeeNav(members.rule!, { isSystemAdmin: false, permissions: ['project:view'] })).toBe(
+      false,
+    );
+    expect(canSeeNav(members.rule!, { isSystemAdmin: false, permissions: ['member:manage'] })).toBe(
+      true,
+    );
+    expect(canSeeNav(members.rule!, { isSystemAdmin: true, permissions: [] })).toBe(true);
   });
   it('Tổng quan và Dự án khớp đúng route (Dự án active cả /p/*)', () => {
     const [home, projects] = NAV_ITEMS;
