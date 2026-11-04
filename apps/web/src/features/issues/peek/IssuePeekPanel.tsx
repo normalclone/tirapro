@@ -24,6 +24,12 @@ import { IssueDescription } from '@/features/issue-edit/DescriptionEditor';
 import { ChecklistPanel } from '@/features/issue-extras/ChecklistPanel';
 import { LinksPanel } from '@/features/issue-widgets/LinksPanel';
 import { IssueRelations } from '@/features/tree/IssueRelations';
+import {
+  AddSectionButton,
+  OptionalSection,
+  OptionalSectionsScope,
+  type OptionalSectionId,
+} from '../OptionalSections';
 import { activeDrag } from '@/lib/activeDrag';
 import { moveNavFocus } from '@/lib/listNav';
 import { hasDraftText, isOverlayOpen, shouldClosePeekOnEscape } from '@/lib/hotkeys';
@@ -306,6 +312,15 @@ function PeekBody({ issueKey, onClose }: { issueKey: string; onClose: () => void
   return <PeekContent issue={issue} />;
 }
 
+/** Các khối tuỳ chọn mà panel xem nhanh có (Tiêu chí, Tài liệu, Môi trường chỉ ở trang đầy đủ). */
+const PEEK_SECTIONS: readonly OptionalSectionId[] = [
+  'checklist',
+  'components',
+  'fixVersions',
+  'affectsVersions',
+  'links',
+];
+
 function PeekContent({ issue }: { issue: IssueDto }) {
   const can = useCanIn(issue.projectId);
   const canEditThis = useCanEditIssue(issue.projectId)(issue);
@@ -391,20 +406,45 @@ function PeekContent({ issue }: { issue: IssueDto }) {
 
       <IssuePeoplePanel issue={issue} />
 
-      <IssueComponentsPicker issue={issue} />
+      {/* Khối tuỳ chọn (rỗng thì ẩn, thêm lại qua "+ Thêm mục"); panel xem nhanh chỉ có các khối dưới đây. */}
+      <OptionalSectionsScope issue={issue} only={PEEK_SECTIONS}>
+        {(sections) => (
+          <>
+            <IssueComponentsPicker
+              issue={issue}
+              show={{
+                components: sections.visible('components'),
+                fixVersions: sections.visible('fixVersions'),
+                affectsVersions: sections.visible('affectsVersions'),
+              }}
+            />
 
-      <div>
-        <p className="mb-1.5 text-sm font-medium text-muted">Mô tả</p>
-        <IssueDescription issue={issue} />
-      </div>
+            <div>
+              <p className="mb-1.5 text-sm font-medium text-muted">Mô tả</p>
+              <IssueDescription issue={issue} />
+            </div>
 
-      <LazyPanel>
-        <ChecklistPanel issueId={issue.id} projectId={issue.projectId} owner={issue} />
-      </LazyPanel>
-      <IssueRelations issue={issue} />
-      <LazyPanel minHeight={64}>
-        <LinksPanel issueId={issue.id} canEdit={canEditThis} />
-      </LazyPanel>
+            <OptionalSection id="checklist" sections={sections}>
+              <LazyPanel force={sections.wasOpened('checklist')}>
+                <ChecklistPanel issueId={issue.id} projectId={issue.projectId} owner={issue} />
+              </LazyPanel>
+            </OptionalSection>
+            <IssueRelations issue={issue} />
+            <OptionalSection id="links" sections={sections}>
+              <LazyPanel minHeight={64} force={sections.wasOpened('links')}>
+                <LinksPanel
+                  issueId={issue.id}
+                  canEdit={canEditThis}
+                  autoOpen={sections.wasOpened('links')}
+                />
+              </LazyPanel>
+            </OptionalSection>
+            <div>
+              <AddSectionButton issue={issue} hidden={sections.hidden} onPick={sections.open} />
+            </div>
+          </>
+        )}
+      </OptionalSectionsScope>
       <LazyPanel minHeight={160}>
         <ActivityTabs issue={issue} tab={tab} onTab={setTab} />
       </LazyPanel>

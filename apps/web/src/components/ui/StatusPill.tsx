@@ -28,7 +28,12 @@ export function StatusPill({
         style={{ background: categoryColor(status.category) }}
         aria-hidden
       />
-      <span className={cn('max-w-[7rem] truncate', !alwaysShowName && 'hidden md:inline')}>
+      <span
+        className={cn(
+          alwaysShowName ? 'max-w-[12rem]' : 'hidden max-w-[7rem] md:inline',
+          'truncate',
+        )}
+      >
         {status.name}
       </span>
       {!alwaysShowName && <span className="sr-only md:hidden">{status.name}</span>}

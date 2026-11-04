@@ -57,6 +57,8 @@ describe('"Việc của tôi": tên trạng thái luôn hiện', () => {
     rerender(<StatusPill status={chuaTest} alwaysShowName />);
     expect(container.querySelector('.hidden')).toBeNull();
     expect(container.textContent).toBe('Chờ test');
+    // tên dài không bị cắt sớm (tooltip vẫn có tên đầy đủ)
+    expect(screen.getByText('Chờ test').className).toContain('max-w-[12rem]');
   });
 });
 

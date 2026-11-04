@@ -20,14 +20,21 @@ const STARTER = '- [ ] ';
  * (OCC + thử lại sau 409 như mô tả), hiện tiến độ "2/5 đạt", bấm để sửa. Lưu bằng nút hoặc ⌘/Ctrl+Enter, Esc huỷ.
  * Người gọi quyết định có hiện khối hay không (Story luôn hiện; loại khác chỉ khi đã có nội dung).
  */
-export function AcceptanceCriteria({ issue }: { issue: IssueDto }) {
+interface AcceptanceCriteriaProps {
+  issue: IssueDto;
+  /** Khối vừa được mở từ "+ Thêm mục": vào thẳng ô nhập (một ô tick sẵn) thay vì nút "Thêm tiêu chí". */
+  startEditing?: boolean;
+}
+
+export function AcceptanceCriteria({ issue, startEditing = false }: AcceptanceCriteriaProps) {
   const patch = useUpdateIssue(issue.projectId);
   const canEdit = useCanEditIssue(issue.projectId)(issue);
   const people = useAssigneeOptions(issue.projectId);
   const toggleTask = useTaskToggle(issue.projectId, 'acceptanceCriteria');
-  const [editing, setEditing] = useState(false);
+  const opensEmpty = startEditing && !issue.acceptanceCriteria;
+  const [editing, setEditing] = useState(opensEmpty);
   // Bản nháp chỉ được nạp lại ở start() (không đồng bộ theo issue qua effect: effect sẽ đè mất chữ đang giữ lại khi lưu lỗi/409).
-  const [draft, setDraft] = useState('');
+  const [draft, setDraft] = useState(opensEmpty ? STARTER : '');
 
   const text = issue.acceptanceCriteria;
   const progress = issue.acceptanceProgress;

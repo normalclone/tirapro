@@ -1,5 +1,5 @@
 import { useRef } from 'react';
-import { Package, Plus, X } from 'lucide-react';
+import { Plus, X } from 'lucide-react';
 import type { IssueDto } from '@tirapro/types';
 import { SearchSelect, type SearchSelectOption } from '@/components/ui/SearchSelect';
 import { useCanEditIssue } from '@/features/projects/permissions';
@@ -11,12 +11,26 @@ import {
 } from './api';
 import { availableToAdd } from './issueSets';
 
+export interface GroupVisibility {
+  components: boolean;
+  fixVersions: boolean;
+  affectsVersions: boolean;
+}
+const ALL_GROUPS: GroupVisibility = { components: true, fixVersions: true, affectsVersions: true };
+
 /**
  * Thành phần & phiên bản của công việc: chỉ hiện cái ĐÃ gắn (chip có nút bỏ) + "+ Thêm" chọn từ danh mục dự án.
  * Phiên bản chia hai nhóm: "Sửa ở phiên bản" (FIX) và "Bị ảnh hưởng ở phiên bản" (AFFECTS). Người chỉ-xem thấy chip
  * không có nút. Cập nhật tức thì (vá cache, không đổi `version` — xem `useToggleComponent`).
  */
-export function IssueComponentsPicker({ issue }: { issue: IssueDto }) {
+export function IssueComponentsPicker({
+  issue,
+  show = ALL_GROUPS,
+}: {
+  issue: IssueDto;
+  /** Nhóm nào được vẽ (khối tuỳ chọn: nhóm rỗng ẩn sau "+ Thêm mục"). Mặc định cả ba. */
+  show?: GroupVisibility;
+}) {
   const canEdit = useCanEditIssue(issue.projectId)(issue);
   const { data: catalogC = [] } = useProjectComponents(issue.projectId);
   const { data: catalogV = [] } = useProjectVersions(issue.projectId);
@@ -25,24 +39,7 @@ export function IssueComponentsPicker({ issue }: { issue: IssueDto }) {
 
   const fixes = issue.fixVersions.filter((v) => v.type === 'FIX');
   const affects = issue.fixVersions.filter((v) => v.type === 'AFFECTS');
-  const nothing = issue.components.length === 0 && issue.fixVersions.length === 0;
-
-  // Không có gì để hiện/thêm: giữ một dòng gọn như trước.
-  if (nothing && (!canEdit || (catalogC.length === 0 && catalogV.length === 0))) {
-    return (
-      <div className="flex items-center justify-between gap-3 text-sm">
-        <span className="flex items-center gap-1.5 font-medium text-muted">
-          <Package className="h-3.5 w-3.5" aria-hidden="true" />
-          Thành phần &amp; phiên bản
-        </span>
-        <span className="text-faint">
-          {canEdit
-            ? 'Dự án chưa có thành phần hay phiên bản nào — quản trị dự án tạo ở Cấu hình'
-            : '—'}
-        </span>
-      </div>
-    );
-  }
+  if (!show.components && !show.fixVersions && !show.affectsVersions) return null;
 
   const optsC: SearchSelectOption[] = availableToAdd(catalogC, issue.components).map((c) => ({
     value: c.id,
@@ -55,58 +52,67 @@ export function IssueComponentsPicker({ issue }: { issue: IssueDto }) {
 
   return (
     <div className="space-y-3">
-      <ChipGroup
-        label="Thành phần"
-        emptyText="Chưa gắn thành phần nào"
-        chips={issue.components.map((c) => ({
-          id: c.id,
-          name: c.name,
-          removeLabel: `Bỏ thành phần ${c.name}`,
-          onRemove: () => comp.detach.mutate(c.id),
-        }))}
-        canEdit={canEdit}
-        catalogEmpty={catalogC.length === 0}
-        catalogHint="Dự án chưa có thành phần nào — quản trị dự án tạo ở Cấu hình"
-        options={optsC}
-        addLabel="Thêm thành phần"
-        onAdd={(id) => comp.attach.mutate({ componentId: id, name: nameOf(catalogC, id) })}
-      />
-      <ChipGroup
-        label="Sửa ở phiên bản"
-        emptyText="Chưa gắn phiên bản nào"
-        chips={fixes.map((v) => ({
-          id: v.id,
-          name: v.name,
-          removeLabel: `Bỏ phiên bản sửa ${v.name}`,
-          onRemove: () => ver.detach.mutate({ versionId: v.id, type: 'FIX' }),
-        }))}
-        canEdit={canEdit}
-        catalogEmpty={catalogV.length === 0}
-        catalogHint="Dự án chưa có phiên bản nào — quản trị dự án tạo ở Cấu hình"
-        options={versionOpts('FIX')}
-        addLabel="Thêm phiên bản sửa"
-        onAdd={(id) =>
-          ver.attach.mutate({ versionId: id, name: nameOf(catalogV, id), type: 'FIX' })
-        }
-      />
-      <ChipGroup
-        label="Bị ảnh hưởng ở phiên bản"
-        emptyText="Chưa gắn phiên bản nào"
-        chips={affects.map((v) => ({
-          id: v.id,
-          name: v.name,
-          removeLabel: `Bỏ phiên bản bị ảnh hưởng ${v.name}`,
-          onRemove: () => ver.detach.mutate({ versionId: v.id, type: 'AFFECTS' }),
-        }))}
-        canEdit={canEdit}
-        catalogEmpty={catalogV.length === 0}
-        catalogHint="Dự án chưa có phiên bản nào — quản trị dự án tạo ở Cấu hình"
-        options={versionOpts('AFFECTS')}
-        addLabel="Thêm phiên bản bị ảnh hưởng"
-        onAdd={(id) =>
-          ver.attach.mutate({ versionId: id, name: nameOf(catalogV, id), type: 'AFFECTS' })
-        }
-      />
+      {show.components && (
+        <ChipGroup
+          label="Thành phần"
+          emptyText="Chưa gắn thành phần nào"
+          chips={issue.components.map((c) => ({
+            id: c.id,
+            name: c.name,
+            removeLabel: `Bỏ thành phần ${c.name}`,
+            onRemove: () => comp.detach.mutate(c.id),
+          }))}
+          canEdit={canEdit}
+          catalogEmpty={catalogC.length === 0}
+          catalogHint="Dự án chưa có thành phần nào — quản trị dự án tạo ở Cấu hình"
+          options={optsC}
+          addLabel="Thêm thành phần"
+          sectionId="components"
+          onAdd={(id) => comp.attach.mutate({ componentId: id, name: nameOf(catalogC, id) })}
+        />
+      )}
+      {show.fixVersions && (
+        <ChipGroup
+          label="Sửa ở phiên bản"
+          emptyText="Chưa gắn phiên bản nào"
+          chips={fixes.map((v) => ({
+            id: v.id,
+            name: v.name,
+            removeLabel: `Bỏ phiên bản sửa ${v.name}`,
+            onRemove: () => ver.detach.mutate({ versionId: v.id, type: 'FIX' }),
+          }))}
+          canEdit={canEdit}
+          catalogEmpty={catalogV.length === 0}
+          catalogHint="Dự án chưa có phiên bản nào — quản trị dự án tạo ở Cấu hình"
+          options={versionOpts('FIX')}
+          addLabel="Thêm phiên bản sửa"
+          sectionId="fixVersions"
+          onAdd={(id) =>
+            ver.attach.mutate({ versionId: id, name: nameOf(catalogV, id), type: 'FIX' })
+          }
+        />
+      )}
+      {show.affectsVersions && (
+        <ChipGroup
+          label="Bị ảnh hưởng ở phiên bản"
+          emptyText="Chưa gắn phiên bản nào"
+          chips={affects.map((v) => ({
+            id: v.id,
+            name: v.name,
+            removeLabel: `Bỏ phiên bản bị ảnh hưởng ${v.name}`,
+            onRemove: () => ver.detach.mutate({ versionId: v.id, type: 'AFFECTS' }),
+          }))}
+          canEdit={canEdit}
+          catalogEmpty={catalogV.length === 0}
+          catalogHint="Dự án chưa có phiên bản nào — quản trị dự án tạo ở Cấu hình"
+          options={versionOpts('AFFECTS')}
+          addLabel="Thêm phiên bản bị ảnh hưởng"
+          sectionId="affectsVersions"
+          onAdd={(id) =>
+            ver.attach.mutate({ versionId: id, name: nameOf(catalogV, id), type: 'AFFECTS' })
+          }
+        />
+      )}
     </div>
   );
 }
@@ -128,6 +134,7 @@ function ChipGroup({
   options,
   addLabel,
   onAdd,
+  sectionId,
 }: {
   label: string;
   emptyText: string;
@@ -138,12 +145,14 @@ function ChipGroup({
   options: SearchSelectOption[];
   addLabel: string;
   onAdd: (id: string) => void;
+  /** Id khối tuỳ chọn (`data-optional-section`) để "+ Thêm mục" cuộn/focus tới đúng nhóm. */
+  sectionId: string;
 }) {
   const showAdd = canEdit && !catalogEmpty && options.length > 0;
   const groupRef = useRef<HTMLDivElement>(null);
   return (
     // Một hàng mỗi nhóm (nhãn trái, chip phải) để ba nhóm rỗng không chiếm sáu dòng.
-    <div className="flex flex-wrap items-start gap-x-3 gap-y-1">
+    <div className="flex flex-wrap items-start gap-x-3 gap-y-1" data-optional-section={sectionId}>
       <p className="w-44 shrink-0 pt-0.5 text-sm font-medium text-muted">{label}</p>
       <div
         ref={groupRef}

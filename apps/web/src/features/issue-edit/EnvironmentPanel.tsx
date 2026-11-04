@@ -21,9 +21,16 @@ import { isBugType } from './severity';
  * Khối "Môi trường" của Bug: loại môi trường, trình duyệt, hệ điều hành, build, màn hình, URL.
  * Chỉ hiện với Bug; trống thì thu gọn thành một nút ("Thêm thông tin môi trường"), người chỉ xem thì không thấy gì.
  */
-export function EnvironmentPanel({ issue }: { issue: IssueDto }) {
+export function EnvironmentPanel({
+  issue,
+  startEditing = false,
+}: {
+  issue: IssueDto;
+  /** Khối vừa được mở từ "+ Thêm mục": vào thẳng form nhập. */
+  startEditing?: boolean;
+}) {
   const canEdit = useCanEditIssue(issue.projectId)(issue);
-  const [editing, setEditing] = useState(false);
+  const [editing, setEditing] = useState(startEditing && !issue.environment);
   if (!isBugType(issue.type)) return null;
   const env = issue.environment;
 
