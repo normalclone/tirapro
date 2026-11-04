@@ -42,11 +42,17 @@ export interface OptionalSectionData {
   docs?: number;
 }
 
-/** Nạp số mục checklist / liên kết / tài liệu bằng ĐÚNG các truy vấn mà từng khối dùng (chung cache, không gọi thừa). */
-export function useOptionalSectionData(issueId: string): OptionalSectionData {
-  const checklist = useChecklist(issueId).data?.length;
-  const links = useIssueLinks(issueId).data?.length;
-  const docs = useIssueDocs(issueId).data?.length;
+/**
+ * Nạp số mục checklist / liên kết / tài liệu bằng ĐÚNG các truy vấn mà từng khối dùng (chung cache, không gọi thừa).
+ * `only`: chỉ nạp cho các khối mà bề mặt này có (panel xem nhanh không có "Tài liệu liên quan" nên không gọi /wiki/by-issue).
+ */
+export function useOptionalSectionData(
+  issueId: string,
+  only: readonly OptionalSectionId[] = ALL_IDS,
+): OptionalSectionData {
+  const checklist = useChecklist(only.includes('checklist') ? issueId : undefined).data?.length;
+  const links = useIssueLinks(only.includes('links') ? issueId : '').data?.length;
+  const docs = useIssueDocs(issueId, only.includes('docs')).data?.length;
   return { checklist, links, docs };
 }
 
@@ -83,11 +89,13 @@ export interface OptionalSections {
   open: (id: OptionalSectionId) => void;
   /** Khối vừa được MỞ BẰNG TAY trong phiên này (rỗng nhưng phải hiện, và vào thẳng chế độ nhập). */
   wasOpened: (id: OptionalSectionId) => boolean;
+  /** ref callback của vỏ khối `id` — để cuộn/focus tìm khối trong CHÍNH vùng này, không quét cả document. */
+  refFor: (id: OptionalSectionId) => (el: HTMLElement | null) => void;
 }
 
 /**
  * Khối hiện khi có dữ liệu HOẶC đã được mở trong phiên xem trang này (state của component — không lưu lại; đổi sang việc
- * khác thì reset). `only`: tập khối mà bề mặt này có (panel xem nhanh không có Tiêu chí/Tài liệu/Môi trường).
+ * khác thì reset). Đã hiện một lần trong phiên thì GIỮ hiện (chốt) dù mục cuối cùng bị xoá — người dùng còn thấy ô thêm. `only`: tập khối mà bề mặt này có (panel xem nhanh không có Tiêu chí/Tài liệu/Môi trường).
  * Không đề nghị: "Thông tin môi trường" cho việc không phải Bug (khối chỉ có ở Bug), "Tài liệu liên quan" khi thiếu `wiki:manage`.
  */
 export function useOptionalSections(
@@ -102,15 +110,24 @@ export function useOptionalSections(
   });
   const opened = state.issueId === issue.id ? state.opened : EMPTY;
   const [focusId, setFocusId] = useState<OptionalSectionId | null>(null);
+  const roots = useRef(new Map<OptionalSectionId, HTMLElement>());
+  // Chốt: đã có dữ liệu một lần (cho việc này) thì giữ hiện. Ghi vào ref khi vẽ nhưng chỉ tăng dần và idempotent.
+  const latch = useRef<{ issueId: string; ids: Set<OptionalSectionId> }>({
+    issueId: issue.id,
+    ids: new Set(),
+  });
+  if (latch.current.issueId !== issue.id) latch.current = { issueId: issue.id, ids: new Set() };
+  const gated = (id: OptionalSectionId) =>
+    only.includes(id) && (id !== 'environment' || isBugType(issue.type));
+  for (const id of ALL_IDS)
+    if (gated(id) && sectionHasData(id, issue, data)) latch.current.ids.add(id);
 
   const offered = (id: OptionalSectionId) =>
     only.includes(id) &&
     (id !== 'environment' || isBugType(issue.type)) &&
     (id !== 'docs' || canWriteDocs);
   const visible = (id: OptionalSectionId) =>
-    only.includes(id) &&
-    (id !== 'environment' || isBugType(issue.type)) &&
-    (sectionHasData(id, issue, data) || opened.has(id));
+    gated(id) && (sectionHasData(id, issue, data) || opened.has(id) || latch.current.ids.has(id));
   const hidden = ALL_IDS.filter((id) => offered(id) && !visible(id));
 
   function open(id: OptionalSectionId) {
@@ -120,15 +137,28 @@ export function useOptionalSections(
     }));
     setFocusId(id);
   }
-  useScrollAndFocus(focusId, () => setFocusId(null));
+  useScrollAndFocus(focusId, roots.current, () => setFocusId(null));
 
-  return { visible, hidden, open, wasOpened: (id) => opened.has(id) };
+  return {
+    visible,
+    hidden,
+    open,
+    wasOpened: (id) => opened.has(id),
+    refFor: (id) => (el) => {
+      if (el) roots.current.set(id, el);
+      else roots.current.delete(id);
+    },
+  };
 }
 
 const EMPTY: ReadonlySet<OptionalSectionId> = new Set();
 
 /** Sau khi khối vừa mở được vẽ: cuộn tới và đưa con trỏ vào ô nhập đầu tiên (thử vài khung hình vì khối có thể dựng muộn). */
-function useScrollAndFocus(id: OptionalSectionId | null, done: () => void) {
+function useScrollAndFocus(
+  id: OptionalSectionId | null,
+  roots: ReadonlyMap<OptionalSectionId, HTMLElement>,
+  done: () => void,
+) {
   const doneRef = useRef(done);
   doneRef.current = done;
   useEffect(() => {
@@ -136,7 +166,7 @@ function useScrollAndFocus(id: OptionalSectionId | null, done: () => void) {
     let frames = 0;
     let raf = 0;
     const attempt = () => {
-      const root = document.querySelector<HTMLElement>(`[data-optional-section="${id}"]`);
+      const root = roots.get(id);
       const target = root?.querySelector<HTMLElement>(
         'textarea, input:not([type="hidden"]), select, [role="combobox"], button',
       );
@@ -150,7 +180,7 @@ function useScrollAndFocus(id: OptionalSectionId | null, done: () => void) {
     };
     raf = requestAnimationFrame(attempt);
     return () => cancelAnimationFrame(raf);
-  }, [id]);
+  }, [id, roots]);
 }
 
 /** Nạp dữ liệu + trạng thái "đã mở" một lần cho cả vùng nội dung; con vẽ các khối theo `sections`. */
@@ -163,7 +193,7 @@ export function OptionalSectionsScope({
   only?: readonly OptionalSectionId[];
   children: (sections: OptionalSections) => ReactNode;
 }) {
-  const data = useOptionalSectionData(issue.id);
+  const data = useOptionalSectionData(issue.id, only);
   const sections = useOptionalSections(issue, data, only);
   return <>{children(sections)}</>;
 }
@@ -179,7 +209,11 @@ export function OptionalSection({
   children: ReactNode;
 }) {
   if (!sections.visible(id)) return null;
-  return <div data-optional-section={id}>{children}</div>;
+  return (
+    <div data-optional-section={id} ref={sections.refFor(id)}>
+      {children}
+    </div>
+  );
 }
 
 const ITEM_CLS =

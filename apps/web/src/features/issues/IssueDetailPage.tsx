@@ -151,6 +151,8 @@ export function IssueDetailPage() {
   const can = useCanIn(issue?.projectId);
   const canEditThis = useCanEditIssue(issue?.projectId)(issue ?? {});
   const canTransition = can('issue:transition');
+  // Cùng điều kiện với nút "Gán cho tôi" ở ô Người phụ trách: phải có cả quyền gán lẫn quyền sửa việc này.
+  const canAssignMe = can('issue:assign') && canEditThis;
   // Thuộc tính chính: dưới lg hiện dải ngay dưới tiêu đề + "Thuộc tính khác"; từ lg như trước. Chọn bằng media query để
   // MỖI control chỉ dựng một lần (không trùng id/focus/phím tắt), thay vì dựng hai bản rồi ẩn bằng CSS.
   const isDesktop = useMediaQuery('(min-width: 1024px)', true);
@@ -323,7 +325,7 @@ export function IssueDetailPage() {
       // Chặn khi còn overlay/menu Radix đang MỞ (dialog đã đóng nhưng còn chạy hiệu ứng không chặn).
       if (isOverlayOpen()) return;
       // i = gán cho tôi, y = sao chép liên kết.
-      if ((e.key === 'i' || e.key === 'I') && canEditThis) {
+      if ((e.key === 'i' || e.key === 'I') && canAssignMe) {
         e.preventDefault();
         assignToMe();
         return;
@@ -361,6 +363,7 @@ export function IssueDetailPage() {
     issue?.version,
     canTransition,
     canEditThis,
+    canAssignMe,
   ]);
 
   const { copyKey, copyLink, keyCopied } = useIssueCopy(issue?.key ?? key);

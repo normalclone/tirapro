@@ -197,6 +197,53 @@ describe('khối tuỳ chọn của trang việc', () => {
     await waitFor(() => expect(shown()).toEqual(['links']));
   });
 
+  it('khối ĐÃ có dữ liệu không biến mất khi mục cuối bị xoá cùng phiên (chốt hiện); đổi sang việc khác thì thả', async () => {
+    mockApi({ links: [{ id: 1 }] });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    act(() => {
+      useAuth.setState({ user: { id: 'u', isSystemAdmin: true } as never, permissions: [] });
+    });
+    const tree = (i: IssueDto) => (
+      <QueryClientProvider client={qc}>
+        <MemoryRouter>
+          <Harness issue={i} />
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+    const { rerender } = render(tree(emptyBug()));
+    await waitFor(() => expect(shown()).toEqual(['links']));
+    mockApi({ links: [] }); // xoá mục cuối
+    await act(() => qc.invalidateQueries());
+    await waitFor(() =>
+      expect(
+        h.get.mock.calls.filter((c) => String(c[0]).endsWith('/links')).length,
+      ).toBeGreaterThan(1),
+    );
+    expect(shown()).toEqual(['links']); // vẫn còn khối, kèm ô thêm
+    expect(screen.getByLabelText('ô của Liên kết')).toBeTruthy();
+    rerender(tree({ ...emptyBug(), id: 'i2', key: 'I2' }));
+    await waitFor(() => expect(shown()).toEqual([]));
+  });
+
+  it('`only` giới hạn truy vấn: bề mặt không có "Tài liệu liên quan" thì không gọi /wiki/by-issue', async () => {
+    const issue = emptyBug();
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={qc}>
+        <MemoryRouter>
+          <OptionalSectionsScope issue={issue} only={['checklist', 'links', 'components']}>
+            {() => null}
+          </OptionalSectionsScope>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    await waitFor(() => expect(h.get).toHaveBeenCalledWith('/issues/i1/links'));
+    expect(h.get).toHaveBeenCalledWith('/issues/i1/checklist');
+    expect(h.get.mock.calls.map((c) => String(c[0])).some((u) => u.startsWith('/wiki/'))).toBe(
+      false,
+    );
+  });
+
   it('người chỉ xem (không có quyền sửa) không thấy nút', async () => {
     setup(emptyBug(), { editor: false });
     await waitFor(() => expect(h.get).toHaveBeenCalled());

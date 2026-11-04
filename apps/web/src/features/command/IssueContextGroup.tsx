@@ -8,6 +8,7 @@ import { useIssue, useUpdateIssue } from '@/features/issues/api';
 import { computeNextStatuses } from '@/features/issues/nextStatuses';
 import { useWorkflows } from '@/features/workflow-settings/api';
 import { useToggleWatch, useWatchState } from '@/features/issue-widgets/api';
+import { ASSIGNED_TO_ME_TOAST } from '@/features/issue-edit/assignToMe';
 import { ActionItem } from './ActionItem';
 import {
   requestFocusComment,
@@ -60,7 +61,7 @@ export function IssueContextGroup({
         patch: { assigneeId: me.id },
         version: issue.version,
       });
-      toast.success('Đã giao việc này cho bạn', { duration: 2000 });
+      toast.success(ASSIGNED_TO_ME_TOAST, { duration: 2000 });
     } catch (e) {
       toast.error(apiErrorMessage(e));
     }

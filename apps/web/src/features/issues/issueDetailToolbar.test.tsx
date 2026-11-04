@@ -8,12 +8,12 @@ import type { IssueDto } from '@tirapro/types';
 import type * as ApiModule from '@/lib/api';
 import { mk } from '@/lib/issueFixture';
 
-const h = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn() }));
+const h = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), patch: vi.fn() }));
 vi.mock('@/lib/api', async (orig) => {
   const real = await orig<typeof ApiModule>();
   return {
     ...real,
-    api: { get: h.get, post: h.post, patch: vi.fn(), put: vi.fn(), delete: vi.fn() },
+    api: { get: h.get, post: h.post, patch: h.patch, put: vi.fn(), delete: vi.fn() },
   };
 });
 vi.mock('sonner', () => ({
@@ -67,13 +67,19 @@ function mockApi(i: IssueDto) {
   });
 }
 
-function renderPage(i: IssueDto, editor = true) {
+function renderPage(i: IssueDto, editor = true, permissions: string[] = []) {
   mockApi(i);
   act(() => {
     useAuth.setState({
       status: 'authed',
-      user: { id: 'u', isSystemAdmin: editor } as never,
-      permissions: [],
+      user: {
+        id: 'u',
+        displayName: 'Tôi',
+        email: 'u@x.vn',
+        avatarUrl: null,
+        isSystemAdmin: editor,
+      } as never,
+      permissions: permissions as never,
     });
   });
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -108,6 +114,8 @@ beforeEach(() => {
   } as never;
   h.get.mockReset();
   h.post.mockReset();
+  h.patch.mockReset();
+  h.patch.mockResolvedValue({ data: { id: 'b1', version: 2 } });
 });
 afterEach(cleanup);
 
@@ -157,5 +165,28 @@ describe('trang việc đầy đủ lấp đầy vùng nội dung', () => {
     expect(frame.className).toContain('w-full');
     // vẫn giữ đệm ngang chuẩn của trang
     expect(frame.className).toMatch(/px-4/);
+  });
+});
+
+describe('phím tắt `i` (gán cho tôi) cùng điều kiện với nút: cần cả issue:assign lẫn quyền sửa', () => {
+  const base = ['issue:view', 'project:view', 'issue:edit'];
+
+  it('chỉ có quyền sửa, thiếu issue:assign: bấm i không gửi gì', async () => {
+    const user = renderPage(issue({ assigneeId: null, assignee: null }), false, base);
+    await screen.findByText('Lỗi đăng nhập');
+    await user.keyboard('i');
+    await new Promise((r) => setTimeout(r, 50));
+    expect(h.patch).not.toHaveBeenCalled();
+  });
+
+  it('đủ issue:assign + quyền sửa: bấm i gửi { assigneeId, version }', async () => {
+    const user = renderPage(issue({ assigneeId: null, assignee: null }), false, [
+      ...base,
+      'issue:assign',
+    ]);
+    await screen.findByText('Lỗi đăng nhập');
+    await user.keyboard('i');
+    await waitFor(() => expect(h.patch).toHaveBeenCalledTimes(1));
+    expect(h.patch).toHaveBeenCalledWith('/issues/b1', { assigneeId: 'u', version: 1 });
   });
 });
