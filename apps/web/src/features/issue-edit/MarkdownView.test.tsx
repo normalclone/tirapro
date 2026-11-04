@@ -128,3 +128,42 @@ describe('MarkdownView — mô tả dài không làm vỡ layout (logbug #12)', 
     expect(html('x'.repeat(500))).toContain('[overflow-wrap:anywhere]');
   });
 });
+
+describe('MarkdownView — link dán trơn bấm được', () => {
+  it('URL trơn thành thẻ a mở tab mới', () => {
+    const out = html('Ảnh lỗi: https://prnt.sc/OuyzVTUyrOS3 xem giúp');
+    const a =
+      /<a [^>]*href="https:\/\/prnt.sc\/OuyzVTUyrOS3"[^>]*>https:\/\/prnt.sc\/OuyzVTUyrOS3<\/a>/.exec(
+        out,
+      )?.[0] ?? '';
+    expect(a).toContain('target="_blank"');
+    expect(a).toContain('rel="noopener noreferrer nofollow"');
+    expect(out).toContain(' xem giúp');
+  });
+
+  it('bỏ dấu câu cuối khỏi link; giữ ngoặc cân bằng', () => {
+    const out = html('Xem https://a.io/x. Và (https://b.io/y), https://w.org/A_(b)!');
+    expect(out).toContain('href="https://a.io/x"');
+    expect(out).toContain('href="https://b.io/y"');
+    expect(out).toContain('href="https://w.org/A_(b)"');
+    expect(out).toContain('</a>. Và (');
+  });
+
+  it('dấu _ trong URL không biến thành chữ nghiêng', () => {
+    const out = html('https://x.io/a_b_c');
+    expect(out).toContain('href="https://x.io/a_b_c"');
+    expect(out).not.toContain('<em>');
+  });
+
+  it('URL trong [chữ](url) và trong `code` không bị xử lý lại', () => {
+    const out = html('[trang](https://a.io) `https://c.io`');
+    expect(out.match(/<a /g)?.length).toBe(1);
+    expect(out).toContain('>trang</a>');
+    expect(out).toContain('<code');
+  });
+
+  it('chỉ http/https: javascript: không thành link', () => {
+    const out = html('javascript:alert(1)');
+    expect(out).not.toContain('<a ');
+  });
+});
