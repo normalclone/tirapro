@@ -5,9 +5,7 @@ import { Button } from '@/components/ui/Button';
 import { Dialog } from '@/components/ui/Dialog';
 import { Input } from '@/components/ui/Input';
 import { DateRangeInput } from '@/components/ui/DateRangeInput';
-import { SearchSelect } from '@/components/ui/SearchSelect';
 import { RoleMultiSelect } from '@/components/ui/RoleMultiSelect';
-import { useUserSelect } from '@/features/members/useUserSelect';
 import { useProjects } from '@/features/projects/api';
 import { ColorPicker } from '@/components/ui/ColorPicker';
 import { LABEL_PALETTE } from '@/lib/labelPalette';
@@ -41,43 +39,10 @@ function Field({
 /** Màu mặc định của nhóm mới (Xanh dương của bảng màu chung). */
 const DEFAULT_PROGRAM_COLOR = LABEL_PALETTE[0]!.hex;
 
-/** Ô chọn người phụ trách nhóm (tìm theo tên, tải danh sách khi hộp mở). */
-function OwnerField({
-  open,
-  value,
-  onChange,
-}: {
-  open: boolean;
-  value: string;
-  onChange: (id: string) => void;
-}) {
-  const owners = useUserSelect({ enabled: open });
-  const options = useMemo(
-    () => [{ value: '', label: 'Chưa chỉ định' }, ...owners.options],
-    [owners.options],
-  );
-  return (
-    <Field label="Người phụ trách" hint="(tùy chọn)">
-      <SearchSelect
-        value={value}
-        onChange={onChange}
-        options={options}
-        onSearchChange={owners.onSearchChange}
-        moreHint={owners.moreHint}
-        resolveOption={owners.resolveOption}
-        placeholder="Chưa chỉ định"
-        searchPlaceholder="Tìm thành viên…"
-        ariaLabel="Người phụ trách nhóm"
-      />
-    </Field>
-  );
-}
-
 interface ProgramForm {
   name: string;
   color: string;
   description: string;
-  ownerId: string;
   startDate: string;
   targetDate: string;
   projectIds: string[];
@@ -88,13 +53,12 @@ const programPayload = (f: ProgramForm) => ({
   name: f.name.trim(),
   color: f.color,
   description: f.description.trim() || null,
-  ownerId: f.ownerId || null,
   startDate: f.startDate || null,
   targetDate: f.targetDate || null,
   projectIds: f.projectIds,
 });
 
-/** Modal tạo/sửa nhóm dự án: tên, màu, người phụ trách, thời hạn và tập dự án. */
+/** Modal tạo/sửa nhóm dự án CỦA TÔI: tên, màu, mô tả, thời hạn và tập dự án. */
 export function ProgramEditorModal({
   open,
   program,
@@ -112,7 +76,6 @@ export function ProgramEditorModal({
   const [name, setName] = useState('');
   const [color, setColor] = useState(DEFAULT_PROGRAM_COLOR);
   const [description, setDescription] = useState('');
-  const [ownerId, setOwnerId] = useState('');
   const [startDate, setStartDate] = useState('');
   const [targetDate, setTargetDate] = useState('');
   const [projectIds, setProjectIds] = useState<string[]>([]);
@@ -124,7 +87,6 @@ export function ProgramEditorModal({
     setName(program?.name ?? '');
     setColor(program?.color ?? DEFAULT_PROGRAM_COLOR);
     setDescription(program?.description ?? '');
-    setOwnerId(program?.owner?.id ?? '');
     setStartDate(toDateInput(program?.startDate));
     setTargetDate(toDateInput(program?.targetDate));
     setProjectIds(program?.projects.map((p) => p.id) ?? []);
@@ -147,7 +109,6 @@ export function ProgramEditorModal({
       name,
       color,
       description,
-      ownerId,
       startDate,
       targetDate,
       projectIds,
@@ -211,8 +172,6 @@ export function ProgramEditorModal({
             maxLength={1000}
           />
         </Field>
-
-        <OwnerField open={open} value={ownerId} onChange={setOwnerId} />
 
         <DateRangeInput
           groupLabel="Thời hạn nhóm"

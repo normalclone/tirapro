@@ -63,8 +63,12 @@ export class ProjectsController {
   @Permissions(PERMISSIONS.PROJECT_VIEW)
   @ProjectRef('projectKey', 'key')
   @Get(':key')
-  async getByKey(@OrganizationId() organizationId: string, @Param('key') key: string) {
-    return this.projects.getByKey(organizationId, key.toUpperCase());
+  async getByKey(
+    @OrganizationId() organizationId: string,
+    @CurrentUser() user: AuthUser,
+    @Param('key') key: string,
+  ) {
+    return this.projects.getByKey(organizationId, key.toUpperCase(), user.id);
   }
 
   @Permissions(PERMISSIONS.PROJECT_VIEW)
@@ -155,18 +159,23 @@ export class ProjectsController {
   @UseInterceptors(AvatarUploadInterceptor)
   async uploadAvatar(
     @OrganizationId() organizationId: string,
+    @CurrentUser() user: AuthUser,
     @Param('key') key: string,
     @UploadedFile() file: Express.Multer.File,
     @Req() req: Request,
   ) {
-    return this.projects.setAvatar(organizationId, key.toUpperCase(), file, req);
+    return this.projects.setAvatar(organizationId, key.toUpperCase(), file, req, user.id);
   }
 
   /** Gỡ ảnh đại diện project. */
   @Permissions(PERMISSIONS.PROJECT_ADMIN)
   @ProjectRef('projectKey', 'key')
   @Delete(':key/avatar')
-  async removeAvatar(@OrganizationId() organizationId: string, @Param('key') key: string) {
-    return this.projects.clearAvatar(organizationId, key.toUpperCase());
+  async removeAvatar(
+    @OrganizationId() organizationId: string,
+    @CurrentUser() user: AuthUser,
+    @Param('key') key: string,
+  ) {
+    return this.projects.clearAvatar(organizationId, key.toUpperCase(), user.id);
   }
 }

@@ -1,4 +1,4 @@
-import { useId, useState, type ReactNode } from 'react';
+import { useId, useState } from 'react';
 import * as Popover from '@radix-ui/react-popover';
 import { toast } from 'sonner';
 import type { ProjectDto, ProjectProgramRefDto } from '@tirapro/types';
@@ -6,10 +6,8 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
-import { useAuth } from '@/stores/auth';
 import { ShareChecklist, type ChecklistItem } from '@/features/saved-filters/ShareChecklist';
 import { useCreateProgram, usePrograms } from './programsApi';
-import { useLazyProjectCan, useProjectPermissions } from '../permissions';
 import { useSetProjectPrograms } from './api';
 import { groupCountLabel } from './groupModel';
 import { sameIds, toggleId } from './groupsDraft';
@@ -26,10 +24,10 @@ export function GroupDot({ color }: { color: string | null }) {
 }
 
 /**
- * Ô "Nhóm" của một dự án: "N nhóm" (0 → "—"); bấm mở popover liệt kê các nhóm của dự án. Quản trị dự án đó (hoặc Quản
- * trị chung) đổi được tập nhóm ngay trong popover (chọn nhiều, tìm theo tên, tạo nhóm mới tại chỗ nếu có quyền quản lý
- * nhóm — nhóm chỉ được tạo khi bấm Lưu); người khác chỉ đọc danh sách. Quyền tra LƯỜI (chỉ khi mở) nên trang nhiều dự án
- * không bắn N yêu cầu quyền. Đang tải / lỗi của quyền và của danh mục nhóm được báo rõ, không giả làm "trống"/"không có quyền".
+ * Ô "Nhóm của tôi" của một dự án: "N nhóm" (0 → "—"); bấm mở popover chọn các nhóm CỦA BẠN cho dự án (chọn nhiều, tìm theo
+ * tên, tạo nhóm mới tại chỗ — nhóm chỉ được tạo khi bấm Lưu). Nhóm là của riêng từng người: ai xem được dự án cũng tự xếp
+ * nhóm của mình, không ảnh hưởng người khác và không thấy nhóm của họ. Đang tải / lỗi của danh mục nhóm được báo rõ, không
+ * giả làm "trống".
  */
 export function GroupsCell({ project }: { project: ProjectDto }) {
   const [open, setOpen] = useState(false);
@@ -59,7 +57,7 @@ export function GroupsCell({ project }: { project: ProjectDto }) {
           className="z-dropdown w-[min(20rem,calc(100vw-1.5rem))] rounded-lg border border-border bg-surface p-3 shadow-lg outline-none data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95"
         >
           {/* Mỗi lần mở là một lần mount mới → bản nháp khởi tạo lại từ dữ liệu hiện tại. */}
-          <GroupsPopoverBody project={project} open={open} onClose={() => setOpen(false)} />
+          <GroupsPopoverBody project={project} onClose={() => setOpen(false)} />
         </Popover.Content>
       </Popover.Portal>
     </Popover.Root>
@@ -80,54 +78,15 @@ function Status({ text, onRetry }: { text: string; onRetry?: () => void }) {
   );
 }
 
-function GroupsPopoverBody({
-  project,
-  open,
-  onClose,
-}: {
-  project: ProjectDto;
-  open: boolean;
-  onClose: () => void;
-}) {
+function GroupsPopoverBody({ project, onClose }: { project: ProjectDto; onClose: () => void }) {
   const titleId = useId();
-  const canAdmin = useLazyProjectCan(project.id, 'project:admin', open);
-  const perms = useProjectPermissions(open ? project.id : null);
-  let content: ReactNode;
-  if (canAdmin) content = <GroupsEditor project={project} onClose={onClose} />;
-  else if (perms.isError)
-    content = (
-      <Status
-        text="Không tải được quyền của bạn ở dự án này."
-        onRetry={() => void perms.refetch()}
-      />
-    );
-  else if (perms.isPending) content = <Status text="Đang kiểm tra quyền…" />;
-  else content = <ReadOnlyGroups groups={project.programs} />;
   return (
     <div aria-labelledby={titleId} role="group">
       <h3 id={titleId} className="mb-2 truncate text-sm font-medium text-ink-strong">
-        Nhóm của {project.name}
+        Nhóm của tôi cho {project.name}
       </h3>
-      {content}
+      <GroupsEditor project={project} onClose={onClose} />
     </div>
-  );
-}
-
-function ReadOnlyGroups({ groups }: { groups: readonly ProjectProgramRefDto[] }) {
-  if (groups.length === 0)
-    return <p className="py-1 text-sm text-muted">Dự án chưa thuộc nhóm nào.</p>;
-  return (
-    <>
-      <ul className="space-y-1">
-        {groups.map((g) => (
-          <li key={g.id} className="flex items-center gap-2 text-sm text-ink">
-            <GroupDot color={g.color} />
-            <span className="min-w-0 truncate">{g.name}</span>
-          </li>
-        ))}
-      </ul>
-      <p className="mt-2 text-xs text-muted">Chỉ quản trị dự án mới đổi được nhóm.</p>
-    </>
   );
 }
 
@@ -145,7 +104,6 @@ function GroupsEditor({ project, onClose }: { project: ProjectDto; onClose: () =
   /** Nhóm mới gõ tại chỗ: id tạm `new:<n>` → tên. Bỏ tích = bỏ nhóm nháp. */
   const [drafts, setDrafts] = useState<{ id: string; name: string }[]>([]);
   const [newName, setNewName] = useState('');
-  const canCreate = useAuth((s) => s.can('program:manage'));
   const save = useSetProjectPrograms();
   const create = useCreateProgram();
   const busy = save.isPending || create.isPending;
@@ -205,35 +163,37 @@ function GroupsEditor({ project, onClose }: { project: ProjectDto; onClose: () =
   return (
     <div>
       <ShareChecklist
-        label="Nhóm"
+        label="Nhóm của tôi"
         items={items}
         selected={new Set(ids)}
         onToggle={toggle}
         searchPlaceholder="Tìm nhóm theo tên…"
-        emptyText={items.length === 0 ? 'Chưa có nhóm nào.' : 'Không có nhóm nào khớp.'}
+        emptyText={
+          items.length === 0
+            ? 'Bạn chưa có nhóm nào — gõ tên bên dưới để tạo.'
+            : 'Không có nhóm nào khớp.'
+        }
         disabled={busy}
       />
-      {canCreate && (
-        <div className="mt-2 flex items-center gap-2">
-          <Input
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault();
-                addDraft();
-              }
-            }}
-            placeholder="Tên nhóm mới"
-            aria-label="Tên nhóm mới"
-            maxLength={120}
-            className="h-8 text-sm"
-          />
-          <Button size="sm" variant="secondary" onClick={addDraft} disabled={!newName.trim()}>
-            Thêm nhóm
-          </Button>
-        </div>
-      )}
+      <div className="mt-2 flex items-center gap-2">
+        <Input
+          value={newName}
+          onChange={(e) => setNewName(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              addDraft();
+            }
+          }}
+          placeholder="Tên nhóm mới"
+          aria-label="Tên nhóm mới"
+          maxLength={120}
+          className="h-8 text-sm"
+        />
+        <Button size="sm" variant="secondary" onClick={addDraft} disabled={!newName.trim()}>
+          Thêm nhóm
+        </Button>
+      </div>
       {drafts.length > 0 && (
         <p className="mt-1.5 text-xs text-muted">Nhóm mới chỉ được tạo khi bạn bấm Lưu.</p>
       )}

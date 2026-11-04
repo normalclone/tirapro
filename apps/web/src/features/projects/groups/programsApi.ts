@@ -15,7 +15,6 @@ export interface ProgramDto {
   name: string;
   description: string | null;
   color: string | null;
-  owner: { id: string; displayName: string; avatarUrl: string | null } | null;
   startDate: string | null;
   targetDate: string | null;
   projects: ProgramProjectRef[];
@@ -27,7 +26,6 @@ export interface ProgramInput {
   name?: string;
   description?: string | null;
   color?: string | null;
-  ownerId?: string | null;
   startDate?: string | null;
   targetDate?: string | null;
   projectIds?: string[];

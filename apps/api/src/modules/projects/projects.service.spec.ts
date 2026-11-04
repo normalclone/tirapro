@@ -190,10 +190,12 @@ describe('ProjectsService — dự án lưu trữ là chỉ đọc (cài đặt 
       ACCESS as never,
       AUDIT as never,
     );
-    await expect(service.setAvatar('w1', 'DEMO', undefined, {} as never)).rejects.toMatchObject({
+    await expect(
+      service.setAvatar('w1', 'DEMO', undefined, {} as never, 'u1'),
+    ).rejects.toMatchObject({
       status: 422,
     });
-    await expect(service.clearAvatar('w1', 'DEMO')).rejects.toMatchObject({ status: 422 });
+    await expect(service.clearAvatar('w1', 'DEMO', 'u1')).rejects.toMatchObject({ status: 422 });
     expect(media.saveAvatar).not.toHaveBeenCalled();
     expect(prisma.project.update).not.toHaveBeenCalled();
   });
@@ -806,7 +808,7 @@ describe('ProjectsService — issueCount của thẻ dự án không tính việ
   it('list / getByKey / getById: `_count.issues` lọc deletedAt:null + TRIAGE_VISIBLE', async () => {
     const { service, prisma } = make();
     await service.list('w1', false, 'u1');
-    await service.getByKey('w1', 'DEMO');
+    await service.getByKey('w1', 'DEMO', 'u1');
     // getById (private) qua đường công khai `update`: tìm bằng findFirst có include
     await service.archive('w1', 'p1', 'u1');
     const calls = [
@@ -837,7 +839,10 @@ describe('ProjectsService — nhóm dự án (programs) trong ProjectDto', () =>
       { id: 'g2', name: 'Khách hàng', color: null },
     ]);
     prisma.project.findFirst.mockResolvedValue(row({ programLinks: links }));
-    expect((await service.getByKey('w1', 'DEMO')).programs.map((p) => p.id)).toEqual(['g1', 'g2']);
+    expect((await service.getByKey('w1', 'DEMO', 'u1')).programs.map((p) => p.id)).toEqual([
+      'g1',
+      'g2',
+    ]);
     expect((await service.archive('w1', 'p1', 'u1')).programs).toHaveLength(2);
     const includes = [
       ...prisma.project.findMany.mock.calls.map((c) => c[0]),
@@ -849,6 +854,30 @@ describe('ProjectsService — nhóm dự án (programs) trong ProjectDto', () =>
       ).toMatchObject({
         orderBy: { program: { name: 'asc' } },
       });
+  });
+
+  it('nhóm là của riêng từng người: mọi đường nạp programLinks lọc theo CHỦ NHÓM = người xem (không lộ nhóm của người khác)', async () => {
+    const { service, prisma } = make();
+    prisma.project.findMany.mockResolvedValue([row({ programLinks: [] })]);
+    prisma.project.findFirst.mockResolvedValue(row({ programLinks: [] }));
+    await service.list('w1', false, 'viewer-1');
+    await service.getByKey('w1', 'DEMO', 'viewer-2');
+    await service.archive('w1', 'p1', 'viewer-3');
+    const links = [
+      ...prisma.project.findMany.mock.calls.map((c) => c[0]),
+      ...prisma.project.findFirst.mock.calls.map((c) => c[0]),
+    ]
+      .filter((a) => (a as { include?: unknown }).include)
+      .map(
+        (a) =>
+          (a as unknown as { include: { programLinks: { where: unknown } } }).include.programLinks
+            .where,
+      );
+    expect(links).toEqual([
+      { program: { ownerId: 'viewer-1' } },
+      { program: { ownerId: 'viewer-2' } },
+      { program: { ownerId: 'viewer-3' } },
+    ]);
   });
 
   it('dự án chưa thuộc nhóm nào → programs = []', async () => {

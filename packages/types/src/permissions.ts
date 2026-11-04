@@ -153,7 +153,8 @@ export const PERMISSION_CATALOG: PermissionDef[] = [
   },
   {
     key: PERMISSIONS.PROGRAM_MANAGE,
-    description: 'Quản lý chương trình / danh mục dự án',
+    description:
+      'Không còn dùng — nhóm dự án là của riêng từng người, ai cũng tự quản lý nhóm của mình',
     scope: 'ORGANIZATION',
   },
   {
@@ -221,7 +222,7 @@ export const SYSTEM_ROLE_PERMISSIONS: Record<SystemRoleName, PermissionKey[]> = 
   [SYSTEM_ROLES.ORGANIZATION_ADMIN]: PERMISSION_CATALOG.map((p) => p.key),
   [SYSTEM_ROLES.ORGANIZATION_MEMBER]: [
     PERMISSIONS.ORGANIZATION_VIEW,
-    // Không có PROJECT_CREATE: tạo dự án chỉ dành cho Organization Admin (BA/Test/Dev không được tạo).
+    // Không có PROJECT_CREATE: tạo dự án chỉ dành cho Tổ chức Admin (BA/Test/Dev không được tạo).
     PERMISSIONS.PROJECT_VIEW,
     PERMISSIONS.AI_USE,
     PERMISSIONS.DASHBOARD_MANAGE,

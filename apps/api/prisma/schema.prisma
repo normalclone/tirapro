@@ -1971,18 +1971,20 @@ model Program {
   name           String
   description    String?
   color          String?
-  ownerId        String?
+  /// Nhóm là của RIÊNG người tạo (chủ nhóm): người khác không thấy, không sửa.
+  ownerId        String
   startDate      DateTime?
   targetDate     DateTime?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
   organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  owner        User?            @relation("ProgramOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  owner        User             @relation("ProgramOwner", fields: [ownerId], references: [id], onDelete: Cascade)
   projects     ProjectProgram[]
 
-  @@unique([organizationId, name])
+  @@unique([organizationId, ownerId, name])
   @@index([organizationId])
+  @@index([ownerId])
 }
 
 /// Dự án ↔ nhóm dự án (Program): nhiều–nhiều — một dự án thuộc được nhiều nhóm. Xoá dự án/nhóm thì gỡ liên kết.

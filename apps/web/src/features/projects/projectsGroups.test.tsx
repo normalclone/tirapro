@@ -55,13 +55,13 @@ beforeEach(() => {
       return Promise.resolve({ data: cfg?.params?.includeArchived ? [...LIVE, ARCHIVED] : LIVE });
     if (url === '/programs')
       return Promise.resolve({
-        data: [A, B, EMPTY].map((g) => ({ ...g, projects: [], projectCount: 0, owner: null })),
+        data: [A, B, EMPTY].map((g) => ({ ...g, projects: [], projectCount: 0 })),
       });
     return Promise.reject(new Error(`offline ${url}`));
   });
   useAuth.setState({
     user: { id: 'me', isSystemAdmin: false } as never,
-    permissions: ['project:create', 'program:manage'],
+    permissions: ['project:create'],
   });
 });
 afterEach(cleanup);
@@ -82,8 +82,8 @@ function renderPage(initial = '/projects') {
 
 const section = (name: RegExp | string) => screen.getByRole('region', { name });
 
-describe('trang Dự án — cột "Nhóm"', () => {
-  it('chế độ Danh sách: cột Nhóm hiện "N nhóm" / "—" cho từng dự án', async () => {
+describe('trang Dự án — cột "Nhóm của tôi"', () => {
+  it('chế độ Danh sách: cột "Nhóm của tôi" hiện "N nhóm" / "—" cho từng dự án', async () => {
     renderPage();
     await screen.findByText('Dự án AAA');
     expect(screen.getByRole('button', { name: /^2 nhóm.*Dự án AAA/ })).toBeTruthy();
@@ -180,31 +180,34 @@ describe('trang Dự án — chế độ "Danh sách / Theo nhóm"', () => {
   });
 });
 
-describe('trang Dự án — "Quản lý nhóm"', () => {
-  it('chỉ người có program:manage thấy nút; mở hộp liệt kê nhóm kèm số dự án ĐANG HIỆN (theo công tắc lưu trữ)', async () => {
+describe('trang Dự án — "Quản lý nhóm của tôi"', () => {
+  it('ai cũng có nút (nhóm là của riêng mình, không cần quyền nào); mở hộp liệt kê nhóm kèm số dự án ĐANG HIỆN (theo công tắc lưu trữ)', async () => {
     const user = renderPage();
     await screen.findByText('Dự án AAA');
-    await user.click(screen.getByRole('button', { name: /Quản lý nhóm/ }));
-    const dlg = await screen.findByRole('dialog', { name: 'Quản lý nhóm' });
+    await user.click(screen.getByRole('button', { name: /Quản lý nhóm của tôi/ }));
+    const dlg = await screen.findByRole('dialog', { name: 'Nhóm của tôi' });
     await within(dlg).findByText('Hạ tầng');
     const row = (name: string) => within(dlg).getByText(name).closest('li')!;
     expect(within(row('Hạ tầng')).getByText('2 dự án')).toBeTruthy(); // không đếm dự án lưu trữ đang ẩn
     expect(within(row('Nhóm rỗng')).getByText('0 dự án')).toBeTruthy();
   });
 
-  it('không có program:manage → không có nút "Quản lý nhóm"', async () => {
-    useAuth.setState({ permissions: ['project:create'] });
+  it('người không có quyền nào (chỉ xem) vẫn có nút và tự quản lý nhóm của mình; cột đầu bảng tên "Nhóm của tôi"', async () => {
+    useAuth.setState({ permissions: [] });
     renderPage();
     await screen.findByText('Dự án AAA');
-    expect(screen.queryByRole('button', { name: /Quản lý nhóm/ })).toBeNull();
+    expect(screen.getByRole('button', { name: /Quản lý nhóm của tôi/ })).toBeTruthy();
+    expect(screen.getByText('Nhóm của tôi', { selector: 'span' })).toBeTruthy();
+    // Tạo dự án vẫn theo quyền project:create (không liên quan tới nhóm)
+    expect(screen.queryByRole('button', { name: /Tạo dự án/ })).toBeNull();
   });
 
   it('xoá nhóm: xác nhận rồi DELETE /programs/:id', async () => {
     h.delete.mockResolvedValue({ data: { success: true } });
     const user = renderPage();
     await screen.findByText('Dự án AAA');
-    await user.click(screen.getByRole('button', { name: /Quản lý nhóm/ }));
-    const dlg = await screen.findByRole('dialog', { name: 'Quản lý nhóm' });
+    await user.click(screen.getByRole('button', { name: /Quản lý nhóm của tôi/ }));
+    const dlg = await screen.findByRole('dialog', { name: 'Nhóm của tôi' });
     await user.click(await within(dlg).findByRole('button', { name: 'Xoá nhóm Nhóm rỗng' }));
     await user.click(await screen.findByRole('button', { name: 'Xoá' }));
     await waitFor(() => expect(h.delete).toHaveBeenCalledWith('/programs/ge'));
