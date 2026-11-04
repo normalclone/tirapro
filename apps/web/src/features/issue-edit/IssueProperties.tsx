@@ -154,7 +154,7 @@ export function IssueTypeSelect({ issue }: { issue: IssueDto }) {
             {
               onError: (e) => {
                 const need = statusMappingNeeded(e);
-                if (need?.suggestedStatusId) {
+                if (need) {
                   setAsk({
                     seq: Date.now(),
                     typeId: v,
@@ -179,7 +179,9 @@ export function IssueTypeSelect({ issue }: { issue: IssueDto }) {
           key={ask.seq}
           open={askOpen}
           issueKey={issue.key}
+          projectId={issue.projectId}
           fromStatusName={issue.status.name}
+          newTypeId={ask.typeId}
           newTypeName={ask.typeName}
           suggestedStatusId={ask.suggestedStatusId}
           loading={patch.isPending}

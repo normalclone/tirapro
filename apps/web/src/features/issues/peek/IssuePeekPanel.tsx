@@ -38,6 +38,7 @@ import { useIssueCopy } from '../useIssueCopy';
 import { issueViewState } from '../issueViewState';
 import { ActivityTabs } from '../ActivityTabs';
 import { LazyPanel } from '../LazyPanel';
+import { RepairStatusPicker } from '../RepairStatusPicker';
 import { useIssueTransitions } from '../useIssueTransitions';
 import { IssueSummaryEdit } from '../IssueSummaryEdit';
 import { PeekNavControls } from './PeekNavControls';
@@ -324,7 +325,8 @@ const PEEK_SECTIONS: readonly OptionalSectionId[] = [
 function PeekContent({ issue }: { issue: IssueDto }) {
   const can = useCanIn(issue.projectId);
   const canEditThis = useCanEditIssue(issue.projectId)(issue);
-  const { nextStatuses, requestTransition, dialog, isPending } = useIssueTransitions(issue);
+  const { nextStatuses, mismatch, workflowName, requestTransition, dialog, isPending } =
+    useIssueTransitions(issue);
   const [tab, setTab] = useState<'comments' | 'history'>('comments');
   const canTransition = can('issue:transition');
 
@@ -360,7 +362,18 @@ function PeekContent({ issue }: { issue: IssueDto }) {
           />
           {issue.status.name}
         </span>
-        {canTransition && nextStatuses.length > 0 && (
+        {canTransition && mismatch && (
+          <>
+            <ChevronRight className="h-4 w-4 shrink-0 text-faint" aria-hidden />
+            <RepairStatusPicker
+              statuses={nextStatuses}
+              workflowName={workflowName}
+              disabled={isPending}
+              onPick={requestTransition}
+            />
+          </>
+        )}
+        {canTransition && !mismatch && nextStatuses.length > 0 && (
           <>
             <ChevronRight className="h-4 w-4 shrink-0 text-faint" aria-hidden />
             {nextStatuses.map((o) => (

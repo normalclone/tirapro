@@ -20,8 +20,9 @@ export function useWorkspaceScheme(enabled = true) {
 }
 
 /** Quy trình hiệu lực của từng loại việc trong MỘT dự án (ghi đè → tổ chức → mặc định của dự án). */
-export function useProjectScheme(projectId: string | undefined) {
+export function useProjectScheme(projectId: string | undefined, opts?: { staleTime?: number }) {
   return useQuery({
+    staleTime: opts?.staleTime,
     queryKey: keys.projectWorkflowScheme(projectId ?? ''),
     queryFn: projectId
       ? async () =>

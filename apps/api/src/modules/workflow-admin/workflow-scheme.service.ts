@@ -13,7 +13,7 @@ import { PrismaService } from '../../infra/prisma/prisma.service';
 import { BusinessRuleException, NotFoundAppException } from '../../common/exceptions/app.exception';
 import { assertProjectIdWritable } from '../../common/project-writable';
 import { findNameRefs, liveWorkflowIdsAfter } from './name-refs';
-import { appendMissingBoardStatuses } from './board-columns-sync';
+import { appendMissingBoardStatuses, pruneUnusedBoardStatuses } from './board-columns-sync';
 import type { NotificationsService } from '../notifications/notifications.service';
 import { fromWorkflowsOf, publishRuleChanges, ruleStepForMoves } from './rule-status-refs';
 import { systemActorId } from './system-actor';
@@ -516,13 +516,14 @@ export class WorkflowSchemeService {
     }
   }
 
-  /** Thêm trạng thái của quy trình đang dùng còn thiếu vào cột các bảng (xem `appendMissingBoardStatuses`). */
+  /** Thêm trạng thái của quy trình đang dùng còn thiếu vào cột các bảng, rồi gỡ trạng thái cũ không còn dùng và không còn việc (xem `pruneUnusedBoardStatuses`). */
   private async syncBoards(tx: Prisma.TransactionClient, projectIds: string[]): Promise<void> {
     for (const projectId of projectIds) {
       // Bỏ cache để đọc đúng cấu hình vừa ghi trong transaction này.
       this.resolver.invalidate(projectId);
       const inUse = [...new Set((await this.resolver.forProject(tx, projectId)).values())];
       await appendMissingBoardStatuses(tx, projectId, inUse);
+      await pruneUnusedBoardStatuses(tx, projectId, inUse);
     }
   }
 

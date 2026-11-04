@@ -19,11 +19,31 @@ import { useIssueTransitions } from './useIssueTransitions';
 const std = defaultWorkflow('STANDARD');
 const bug = defaultWorkflow('BUG');
 
+const typeOf = (id: string) => ({
+  id,
+  name: id,
+  key: null,
+  iconUrl: null,
+  color: null,
+  hierarchyLevel: 0,
+  isSubtask: false,
+});
+/** Cấu hình dự án: Task → Standard, Bug → Bug Workflow. */
+const SCHEME = {
+  projectId: 'p1',
+  issueTypes: [],
+  items: [
+    { issueTypeId: 'ty-task', workflowId: std.id, isOverride: false, workspaceWorkflowId: std.id },
+    { issueTypeId: 'ty-bug', workflowId: bug.id, isOverride: false, workspaceWorkflowId: bug.id },
+  ],
+};
+
 const issueIn = (key: 'STANDARD' | 'BUG', statusName: string): IssueDto => {
   const wf = key === 'BUG' ? bug : std;
   const s = wf.statuses.find((x) => x.name === statusName)!;
   return mk(`${key}-${statusName}`, {
     projectId: 'p1',
+    type: typeOf(key === 'BUG' ? 'ty-bug' : 'ty-task'),
     status: { ...s, workflowId: wf.id },
   });
 };
@@ -37,6 +57,7 @@ beforeEach(() => {
   h.get.mockReset();
   h.get.mockImplementation((url: string) => {
     if (url === '/workflows') return Promise.resolve({ data: [std, bug] });
+    if (url === '/projects/p1/workflow-overrides') return Promise.resolve({ data: SCHEME });
     if (url === '/projects')
       return Promise.resolve({ data: [{ id: 'p1', key: 'KYHOP', name: 'KYHOP' }] });
     if (url === '/projects/KYHOP/meta') return Promise.resolve({ data: { resolutions: [] } });
@@ -116,5 +137,27 @@ describe('Nút chuyển trạng thái theo quy trình của chính loại việc
     await waitFor(() => expect(result.current.nextStatuses.length).toBeGreaterThan(0));
     await waitFor(() => expect(h.get).toHaveBeenCalledWith(`/issues/${issue.id}/transitions`));
     expect(result.current.nextStatuses.some((s) => s.suggested)).toBe(false);
+  });
+});
+
+describe('trạng thái hiện tại nằm ngoài quy trình của loại việc (dữ liệu lệch)', () => {
+  it('Task mà đang ở trạng thái của Bug Workflow: không có bước nào, chỉ "chuyển về quy trình đúng" = trạng thái của Standard', async () => {
+    const odd = { ...issueIn('BUG', 'Reopened'), type: typeOf('ty-task') };
+    const { result } = renderHook(() => useIssueTransitions(odd), { wrapper });
+    await waitFor(() => expect(result.current.mismatch).toBe(true));
+    expect(result.current.workflowName).toBe('Standard Workflow');
+    const ids = result.current.nextStatuses.map((s) => s.id);
+    expect(ids.length).toBe(std.statuses.length);
+    expect(ids.every((id) => id.startsWith('standard:'))).toBe(true);
+    // Không còn gợi ý nào (không gọi API gợi ý vì không ở Pending).
+    expect(result.current.nextStatuses.some((s) => s.suggested)).toBe(false);
+  });
+  it('việc nhất quán (Task ở Standard) không bị coi là lệch', async () => {
+    const { result } = renderHook(() => useIssueTransitions(issueIn('STANDARD', 'In Review')), {
+      wrapper,
+    });
+    await waitFor(() => expect(result.current.nextStatuses.length).toBeGreaterThan(0));
+    await waitFor(() => expect(h.get).toHaveBeenCalledWith('/projects/p1/workflow-overrides'));
+    expect(result.current.mismatch).toBe(false);
   });
 });

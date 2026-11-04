@@ -21,9 +21,9 @@ export function statusMappingNeeded(e: unknown): StatusMappingNeeded | null {
       | undefined
   )?.error;
   if (err?.code !== 'STATUS_MAPPING_REQUIRED') return null;
+  // Thiếu `details`/gợi ý vẫn là "cần chọn trạng thái": hộp mở không chọn sẵn, người dùng tự chọn.
   const d = (err.details ?? []).find((x) => x.field === 'targetStatusId');
-  if (!d) return null;
-  return d.suggestedStatusId ? { suggestedStatusId: d.suggestedStatusId } : {};
+  return d?.suggestedStatusId ? { suggestedStatusId: d.suggestedStatusId } : {};
 }
 
 export interface TypeChangeChoices {
@@ -34,16 +34,22 @@ export interface TypeChangeChoices {
 }
 
 /**
- * Trạng thái để chọn trong quy trình mới: quy trình chứa trạng thái gợi ý. Không có gợi ý → rỗng (hộp báo không chọn được,
- * người dùng đổi loại ở nơi khác / báo quản trị) — KHÔNG đoán sang quy trình nào khác để khỏi gửi trạng thái sai.
+ * Trạng thái để chọn trong quy trình mới: quy trình chứa trạng thái gợi ý; không có gợi ý thì dùng quy trình `fallbackWorkflowId`
+ * (quy trình hiệu lực của loại mới trong dự án, tra từ cấu hình dự án). Cả hai đều không có → rỗng (hộp báo chưa tải/không chọn
+ * được) — KHÔNG đoán sang quy trình nào khác để khỏi gửi trạng thái sai.
  */
 export function typeChangeChoices(
   workflows: Workflow[] | undefined,
   suggestedStatusId: string | undefined,
+  fallbackWorkflowId?: string | null,
 ): TypeChangeChoices {
-  const workflow = suggestedStatusId
-    ? ((workflows ?? []).find((w) => w.statuses.some((s) => s.id === suggestedStatusId)) ?? null)
-    : null;
+  const all = workflows ?? [];
+  const workflow =
+    (suggestedStatusId
+      ? all.find((w) => w.statuses.some((s) => s.id === suggestedStatusId))
+      : undefined) ??
+    (fallbackWorkflowId ? all.find((w) => w.id === fallbackWorkflowId) : undefined) ??
+    null;
   return {
     workflow,
     statuses: workflow ? [...workflow.statuses].sort((a, b) => a.order - b.order) : [],

@@ -7,7 +7,7 @@ import type { IssueDto } from '@tirapro/types';
 import type * as ApiModule from '@/lib/api';
 import type * as IssuesApi from '@/features/issues/api';
 import { defaultWorkflow, statusIdOf } from '@/features/issues/workflowFixtures';
-import { mk } from '@/lib/issueFixture';
+import { TYPES, mk } from '@/lib/issueFixture';
 
 const h = vi.hoisted(() => ({ issue: null as unknown as IssueDto, get: vi.fn() }));
 vi.mock('@/lib/api', async (orig) => {
@@ -34,7 +34,11 @@ const bug = defaultWorkflow('BUG');
 const issueIn = (key: 'STANDARD' | 'BUG', statusName: string): IssueDto => {
   const wf = key === 'BUG' ? bug : std;
   const s = wf.statuses.find((x) => x.name === statusName)!;
-  return mk(`${key}-${statusName}`, { projectId: 'p1', status: { ...s, workflowId: wf.id } });
+  return mk(`${key}-${statusName}`, {
+    projectId: 'p1',
+    type: { ...TYPES.story, id: key === 'BUG' ? 'ty-bug' : 'ty-task' },
+    status: { ...s, workflowId: wf.id },
+  });
 };
 
 function renderGroup(issue: IssueDto) {
@@ -61,6 +65,27 @@ beforeEach(() => {
   h.get.mockReset();
   h.get.mockImplementation((url: string) => {
     if (url === '/workflows') return Promise.resolve({ data: [std, bug] });
+    if (url === '/projects/p1/workflow-overrides')
+      return Promise.resolve({
+        data: {
+          projectId: 'p1',
+          issueTypes: [],
+          items: [
+            {
+              issueTypeId: 'ty-task',
+              workflowId: std.id,
+              isOverride: false,
+              workspaceWorkflowId: std.id,
+            },
+            {
+              issueTypeId: 'ty-bug',
+              workflowId: bug.id,
+              isOverride: false,
+              workspaceWorkflowId: bug.id,
+            },
+          ],
+        },
+      });
     if (url.endsWith('/transitions'))
       return Promise.resolve({
         data: {

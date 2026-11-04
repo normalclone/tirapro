@@ -348,7 +348,12 @@ function world(
     widget: { findMany: vi.fn(() => Promise.resolve([])) },
     keyResult: { findMany: vi.fn(() => Promise.resolve([])) },
     board: { findMany: vi.fn((_a: { where: { projectId: string } }) => Promise.resolve([])) },
-    boardColumnStatus: { createMany: vi.fn(() => Promise.resolve({ count: 0 })) },
+    boardColumnStatus: {
+      createMany: vi.fn(() => Promise.resolve({ count: 0 })),
+      findMany: vi.fn(() => Promise.resolve([])),
+      groupBy: vi.fn(() => Promise.resolve([])),
+      deleteMany: vi.fn(() => Promise.resolve({ count: 0 })),
+    },
   };
   const resolver = new WorkflowResolver();
   const invalidate = vi.spyOn(resolver, 'invalidate');

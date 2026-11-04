@@ -94,6 +94,11 @@ interface Draft {
   toStatusId: string;
   /** ISSUE_TRANSITIONED: các đích khác cũng kích hoạt (cùng ý nghĩa ở quy trình khác) — giữ nguyên khi lưu, bỏ khi người dùng đổi đích. */
   toStatusIds: string[];
+  /**
+   * Quy tắc do hệ thống ghi chỉ có `toStatusIds` (không có `toStatusId`): ô chọn hiện phần tử đầu, phần còn lại ở `toStatusIds`,
+   * và khi lưu GIỮ đúng hình dạng đó (không thành "mọi lần chuyển", không đổi hình dạng). Đổi đích ở ô chọn thì tắt cờ.
+   */
+  toStatusIdsOnly: boolean;
   fields: string[];
   cron: string;
   conditions: CondDraft[];
@@ -180,6 +185,22 @@ const newCondition = (): CondDraft => ({
   values: [],
 });
 
+/** `{toStatusIds:[a,b,c]}` (hình dạng sau khi đổi quy trình) → ô chọn hiện `a`, `b`,`c` là đích cùng ý nghĩa ở quy trình khác. */
+function fromTriggerStatuses(cfg: {
+  toStatusId?: string;
+  toStatusIds?: string[];
+}): Pick<Draft, 'toStatusId' | 'toStatusIds' | 'toStatusIdsOnly'> {
+  if (cfg.toStatusId)
+    return {
+      toStatusId: cfg.toStatusId,
+      toStatusIds: cfg.toStatusIds ?? [],
+      toStatusIdsOnly: false,
+    };
+  const [first, ...rest] = cfg.toStatusIds ?? [];
+  if (first) return { toStatusId: first, toStatusIds: rest, toStatusIdsOnly: true };
+  return { toStatusId: '', toStatusIds: [], toStatusIdsOnly: false };
+}
+
 function fromRule(rule: AutomationRule | null, defaultProjectId: string): Draft {
   if (!rule) {
     return {
@@ -188,6 +209,7 @@ function fromRule(rule: AutomationRule | null, defaultProjectId: string): Draft 
       trigger: 'ISSUE_CREATED',
       toStatusId: '',
       toStatusIds: [],
+      toStatusIdsOnly: false,
       fields: [],
       cron: '',
       conditions: [],
@@ -198,8 +220,7 @@ function fromRule(rule: AutomationRule | null, defaultProjectId: string): Draft 
     name: rule.name,
     projectId: rule.projectId ?? '',
     trigger: rule.trigger,
-    toStatusId: rule.triggerConfig.toStatusId ?? '',
-    toStatusIds: rule.triggerConfig.toStatusIds ?? [],
+    ...fromTriggerStatuses(rule.triggerConfig),
     fields: rule.triggerConfig.fields ?? [],
     cron: rule.triggerConfig.cron ?? '',
     conditions: rule.conditions.map((c): CondDraft => {
@@ -287,10 +308,12 @@ function toPayload(d: Draft): unknown {
   const triggerConfig =
     d.trigger === 'ISSUE_TRANSITIONED'
       ? d.toStatusId
-        ? {
-            toStatusId: d.toStatusId,
-            ...(d.toStatusIds.length ? { toStatusIds: d.toStatusIds } : {}),
-          }
+        ? d.toStatusIdsOnly
+          ? { toStatusIds: [d.toStatusId, ...d.toStatusIds] }
+          : {
+              toStatusId: d.toStatusId,
+              ...(d.toStatusIds.length ? { toStatusIds: d.toStatusIds } : {}),
+            }
         : {}
       : d.trigger === 'ISSUE_UPDATED'
         ? d.fields.length
@@ -1175,7 +1198,9 @@ export function RuleEditor({
               >
                 <SearchSelect
                   value={draft.toStatusId}
-                  onChange={(toStatusId) => set({ toStatusId, toStatusIds: [] })}
+                  onChange={(toStatusId) =>
+                    set({ toStatusId, toStatusIds: [], toStatusIdsOnly: false })
+                  }
                   options={[{ value: '', label: 'Bất kỳ trạng thái nào' }, ...opts.statusesGrouped]}
                   searchPlaceholder="Tìm trạng thái…"
                   ariaLabel="Trạng thái đích"

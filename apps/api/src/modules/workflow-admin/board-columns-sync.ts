@@ -85,3 +85,56 @@ export async function appendMissingBoardStatuses(
   }
   return { added };
 }
+
+/**
+ * Sau khi đổi quy trình (và đã thêm trạng thái mới vào cột): GỠ khỏi cột các bảng của dự án những trạng thái CŨ mà (a) không
+ * thuộc quy trình nào đang dùng cho dự án và (b) không còn việc nào (kể cả thùng rác — khôi phục vẫn cần chỗ) ở trạng thái đó.
+ * Không thì mọi bảng đã chuyển đổi mang theo các cột "ma" và cài đặt bảng báo trạng thái lạ. Trạng thái cuối cùng của một cột
+ * KHÔNG bị gỡ (cột trống là cột hỏng; để người quản trị tự xử lý). Việc còn nằm ở trạng thái cũ thì giữ nguyên như cũ.
+ * Chạy trong transaction của bên gọi; idempotent. Gọi SAU `appendMissingBoardStatuses`.
+ */
+export async function pruneUnusedBoardStatuses(
+  tx: Prisma.TransactionClient,
+  projectId: string,
+  workflowIds: string[],
+): Promise<{ removed: number }> {
+  if (workflowIds.length === 0) return { removed: 0 };
+  const links = await tx.boardColumnStatus.findMany({
+    where: {
+      column: { board: { projectId, deletedAt: null } },
+      status: { workflowId: { notIn: workflowIds } },
+    },
+    select: { columnId: true, statusId: true },
+  });
+  if (links.length === 0) return { removed: 0 };
+  const statusIds = [...new Set(links.map((l) => l.statusId))];
+  // allow-deleted: việc ở thùng rác vẫn đang giữ trạng thái đó (khôi phục cần chỗ trên bảng) nên PHẢI được đếm
+  const inUse = await tx.issue.groupBy({
+    by: ['statusId'],
+    where: { projectId, statusId: { in: statusIds } },
+    _count: { _all: true },
+  });
+  const busy = new Set(inUse.map((r) => r.statusId));
+  const candidates = links.filter((l) => !busy.has(l.statusId));
+  if (candidates.length === 0) return { removed: 0 };
+  // Số trạng thái hiện có của từng cột: không gỡ cái cuối cùng.
+  const columnIds = [...new Set(candidates.map((l) => l.columnId))];
+  const counts = await tx.boardColumnStatus.groupBy({
+    by: ['columnId'],
+    where: { columnId: { in: columnIds } },
+    _count: { _all: true },
+  });
+  const left = new Map(counts.map((c) => [c.columnId, c._count._all]));
+  const drop: Array<{ columnId: string; statusId: string }> = [];
+  for (const l of candidates) {
+    const n = left.get(l.columnId) ?? 0;
+    if (n <= 1) continue;
+    left.set(l.columnId, n - 1);
+    drop.push(l);
+  }
+  for (const d of drop)
+    await tx.boardColumnStatus.deleteMany({
+      where: { columnId: d.columnId, statusId: d.statusId },
+    });
+  return { removed: drop.length };
+}

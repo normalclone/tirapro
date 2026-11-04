@@ -393,18 +393,23 @@ describe.skipIf(!DB_URL)('migrateWorkflowSchemes ↔ Postgres thật', () => {
       (await prisma.project.findUniqueOrThrow({ where: { id: id('p-a') } })).defaultWorkflowId,
     ).toBe(id('old-a'));
     expect(await prisma.status.count({ where: { workflowId: id('old-a') } })).toBe(9);
-    // Bảng: trạng thái mới nằm trong cột cùng nhóm, trạng thái cũ còn.
+    // Bảng: trạng thái mới nằm trong cột cùng nhóm; trạng thái cũ đã hết việc và không còn thuộc quy trình đang dùng bị gỡ.
     const cols = await prisma.boardColumn.findMany({
       where: { boardId: id('b-a') },
       include: { statuses: { include: { status: true } } },
       orderBy: { order: 'asc' },
     });
     expect(cols[0]!.statuses.map((s) => s.status.name)).toEqual(
-      expect.arrayContaining(['Cần làm', 'To Do', 'Ready', 'New']),
+      expect.arrayContaining(['To Do', 'Ready', 'New']),
     );
     expect(cols[2]!.statuses.map((s) => s.status.name)).toEqual(
-      expect.arrayContaining(['Hoàn thành', 'Done', 'Cancelled', 'Closed']),
+      expect.arrayContaining(['Done', 'Cancelled', 'Closed']),
     );
+    const oldIds = new Set(
+      (await prisma.status.findMany({ where: { workflowId: id('old-a') } })).map((s) => s.id),
+    );
+    expect(cols.flatMap((c) => c.statuses).filter((s) => oldIds.has(s.statusId))).toEqual([]);
+    expect(out.totals.boardLinksRemoved).toBeGreaterThan(0);
     // Quy tắc: id cũ thành id mới của cả ba quy trình (một id cũ → nhiều đích).
     const rule = await prisma.automationRule.findUniqueOrThrow({ where: { id: id('rule') } });
     const trig = rule.triggerConfig as { toStatusId?: string; toStatusIds?: string[] };
@@ -444,6 +449,7 @@ describe.skipIf(!DB_URL)('migrateWorkflowSchemes ↔ Postgres thật', () => {
       createdSchemeRows: 0,
       movedIssues: 0,
       boardLinksAdded: 0,
+      boardLinksRemoved: 0,
       rulesRewritten: 0,
       rulesDisabled: 0,
     });

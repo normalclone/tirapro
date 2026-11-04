@@ -4,9 +4,8 @@ import { toast } from 'sonner';
 import { apiErrorMessage } from '@/lib/api';
 import { useCanEditIssue, useCanIn } from '@/features/projects/permissions';
 import { useAuth } from '@/stores/auth';
-import { useIssue, useResumeSuggestion, useUpdateIssue } from '@/features/issues/api';
-import { computeNextStatuses, withSuggestedFirst } from '@/features/issues/nextStatuses';
-import { useWorkflows } from '@/features/workflow-settings/api';
+import { useIssue, useUpdateIssue } from '@/features/issues/api';
+import { useIssueNextStatuses } from '@/features/issues/useIssueNextStatuses';
 import { useToggleWatch, useWatchState } from '@/features/issue-widgets/api';
 import { ASSIGNED_TO_ME_TOAST } from '@/features/issue-edit/assignToMe';
 import { ActionItem } from './ActionItem';
@@ -37,7 +36,6 @@ export function IssueContextGroup({
 }) {
   const me = useAuth((s) => s.user);
   const { data: issue } = useIssue(issueKey);
-  const { data: workflows } = useWorkflows();
   const updateIssue = useUpdateIssue(issue?.projectId);
   const { data: watch } = useWatchState(issue?.id ?? '');
   const toggleWatch = useToggleWatch(issue?.id ?? '');
@@ -47,12 +45,8 @@ export function IssueContextGroup({
   const canTransition = can('issue:transition');
   const canComment = can('comment:create');
 
-  const resumeId = useResumeSuggestion(issue);
+  const { nextStatuses } = useIssueNextStatuses(issue);
   if (!issue) return null;
-  const nextStatuses = withSuggestedFirst(
-    computeNextStatuses(workflows, issue.status.id),
-    resumeId,
-  );
 
   // Bảng lệnh đóng ngay sau khi chọn nên component này bị gỡ (observer của mutation mất) → callback của `mutate`
   // sẽ không chạy. Dùng mutateAsync + try/catch: promise vẫn chạy tiếp sau khi unmount nên toast vẫn hiện.

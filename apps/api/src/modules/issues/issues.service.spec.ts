@@ -671,7 +671,10 @@ describe('IssuesService.bulkUpdate', () => {
           Promise.resolve(opts.allowTransition === false ? null : { id: 'tr' }),
         ),
       },
-      status: { findUnique: vi.fn(() => Promise.resolve({ category: 'IN_PROGRESS' })) },
+      status: {
+        findUnique: vi.fn(() => Promise.resolve({ category: 'IN_PROGRESS' })),
+        findMany: vi.fn(() => Promise.resolve([])),
+      },
     };
     return tx;
   }
@@ -987,7 +990,10 @@ function wipTx(
       update: vi.fn(() => Promise.resolve({ id: 'p1' })),
     },
     workflowTransition: { findFirst: vi.fn(() => Promise.resolve({ id: 'tr' })) },
-    status: { findUnique: vi.fn(() => Promise.resolve({ category: 'IN_PROGRESS' })) },
+    status: {
+      findUnique: vi.fn(() => Promise.resolve({ category: 'IN_PROGRESS' })),
+      findMany: vi.fn(() => Promise.resolve([])),
+    },
   };
 }
 
@@ -2468,7 +2474,10 @@ describe('IssuesService.bulkUpdate — :own trên tập lẫn', () => {
         findUnique: vi.fn(() => Promise.resolve({ archivedAt: null, defaultWorkflowId: 'wf' })),
       },
       workflowTransition: { findFirst: vi.fn(() => Promise.resolve({ id: 'tr' })) },
-      status: { findUnique: vi.fn(() => Promise.resolve({ category: 'IN_PROGRESS' })) },
+      status: {
+        findUnique: vi.fn(() => Promise.resolve({ category: 'IN_PROGRESS' })),
+        findMany: vi.fn(() => Promise.resolve([])),
+      },
       user: { findUnique: vi.fn(() => Promise.resolve({ isSystemAdmin: false })) },
     };
     const txSpy = vi.fn();
@@ -2682,7 +2691,10 @@ describe('IssuesService.bulkUpdate — đổi status cùng field khác', () => {
       issueHistory: { createMany: vi.fn(), create: vi.fn() },
       project: { findUnique: vi.fn(() => Promise.resolve({ defaultWorkflowId: 'wf' })) },
       workflowTransition: { findFirst: vi.fn(() => Promise.resolve({ id: 'tr' })) },
-      status: { findUnique: vi.fn(() => Promise.resolve({ category: 'IN_PROGRESS' })) },
+      status: {
+        findUnique: vi.fn(() => Promise.resolve({ category: 'IN_PROGRESS' })),
+        findMany: vi.fn(() => Promise.resolve([])),
+      },
     };
   }
 
@@ -5592,6 +5604,9 @@ describe('IssuesService — quy trình theo loại việc', () => {
           findUnique: vi.fn(({ where }: { where: { id: string } }) =>
             Promise.resolve(statusOf(where.id)),
           ),
+          findMany: vi.fn(({ where }: { where: { id: { in: string[] } } }) =>
+            Promise.resolve(where.id.in.map((id) => statusOf(id)).filter(Boolean)),
+          ),
         },
         resolution: { findFirst: vi.fn(() => Promise.resolve({ id: 'r-done' })) },
       };
@@ -5612,6 +5627,27 @@ describe('IssuesService — quy trình theo loại việc', () => {
       );
       await service.transition('w1', 'u1', 'i1', { version: 3, toStatusId: 'bug-todo' });
       expect(tx.issue.updateMany).toHaveBeenCalled();
+    });
+
+    it('việc đang ở trạng thái của quy trình KHÁC loại (dữ liệu lệch): được chuyển thẳng về bất kỳ trạng thái của quy trình đúng; sang quy trình khác nữa thì không', async () => {
+      // Bug mà trạng thái hiện tại là của Standard: không có bước nào xuất phát từ "std-prog" trong Bug Workflow.
+      const tx = trTx(rowWith('t-bug', 'std-prog', { version: 3 }), []);
+      const { service } = makeService(tx, scheme());
+      await service.transition('w1', 'u1', 'i1', { version: 3, toStatusId: 'bug-todo' });
+      expect(tx.issue.updateMany).toHaveBeenCalled();
+      const tx2 = trTx(rowWith('t-bug', 'std-prog', { version: 3 }), []);
+      const { service: s2 } = makeService(tx2, scheme());
+      await expect(
+        s2.transition('w1', 'u1', 'i1', { version: 3, toStatusId: 'std-todo' }),
+      ).rejects.toMatchObject({ status: 409 });
+    });
+
+    it('việc đang ở trạng thái ĐÚNG quy trình của loại nhưng không có bước tới đích vẫn bị chặn (ngoại lệ chỉ cho dữ liệu lệch)', async () => {
+      const tx = trTx(rowWith('t-bug', 'bug-new', { version: 3 }), []);
+      const { service } = makeService(tx, scheme());
+      await expect(
+        service.transition('w1', 'u1', 'i1', { version: 3, toStatusId: 'bug-done' }),
+      ).rejects.toMatchObject({ status: 409 });
     });
 
     it('Task trong cùng dự án đi theo bước của Standard (đối chứng với Bug)', async () => {

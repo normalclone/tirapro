@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { toast } from 'sonner';
 import { writeClipboard } from '@/lib/copyText';
 import { COPY_FAILED_MESSAGE } from '@/lib/useCopyToClipboard';
@@ -7,8 +7,8 @@ import { useProjectMeta } from '@/features/ai/api';
 import { useProjects } from '@/features/projects/api';
 import { useWorkflows } from '@/features/workflow-settings/api';
 import { apiErrorMessage } from '@/lib/api';
-import { useResumeSuggestion, useTransitionDetail } from './api';
-import { computeNextStatuses, withSuggestedFirst } from './nextStatuses';
+import { useTransitionDetail } from './api';
+import { useIssueNextStatuses } from './useIssueNextStatuses';
 import { transitionToastOptions } from './statusUndo';
 import { TransitionDialog, type DialogTransitionKind } from './TransitionDialog';
 import { defaultResolutionId, transitionKind } from './transitionKind';
@@ -68,14 +68,8 @@ export function useIssueTransitions(issue: IssueDto | undefined) {
   const statusIdNow = issue?.status.id;
   useEffect(() => setWaitingMeta(null), [statusIdNow]);
 
-  // Chỉ các trạng thái ở BƯỚC KẾ TIẾP — chuyển tiếp hợp lệ từ trạng thái hiện tại theo workflow.
-  const currentStatusId = issue?.status.id;
-  // Nút theo QUY TRÌNH CỦA CHÍNH VIỆC NÀY (Bug khác Task); rời Pending → trạng thái trước khi tạm dừng đứng đầu và nổi bật.
-  const resumeId = useResumeSuggestion(issue);
-  const nextStatuses = useMemo(
-    () => withSuggestedFirst(computeNextStatuses(workflows, currentStatusId), resumeId),
-    [workflows, currentStatusId, resumeId],
-  );
+  // Nút theo QUY TRÌNH CỦA LOẠI VIỆC (Bug khác Task, khớp máy chủ); rời Pending → trạng thái trước khi tạm dừng đứng đầu.
+  const { nextStatuses, mismatch, workflowName } = useIssueNextStatuses(issue);
 
   function changeStatus(
     toStatusId: string,
@@ -173,6 +167,9 @@ export function useIssueTransitions(issue: IssueDto | undefined) {
 
   return {
     nextStatuses,
+    /** Trạng thái hiện tại nằm ngoài quy trình của loại việc: `nextStatuses` là trạng thái của quy trình đúng (`workflowName`). */
+    mismatch,
+    workflowName,
     changeStatus,
     requestTransition,
     dialog,

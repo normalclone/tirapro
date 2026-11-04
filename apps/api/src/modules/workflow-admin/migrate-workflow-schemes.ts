@@ -11,7 +11,7 @@ import {
   LEGACY_STATUS_MAP,
   expandWorkflowTransitions,
 } from '@tirapro/shared';
-import { appendMissingBoardStatuses } from './board-columns-sync';
+import { appendMissingBoardStatuses, pruneUnusedBoardStatuses } from './board-columns-sync';
 import {
   buildStatusRefMap,
   disabledRuleNotices,
@@ -70,6 +70,8 @@ export interface MigrateWorkspaceResult {
   moves: MigrateMoveRow[];
   movedIssues: number;
   boardLinksAdded: number;
+  /** Trạng thái cũ (không còn dùng, không còn việc) đã gỡ khỏi cột bảng. */
+  boardLinksRemoved: number;
   rules: AffectedRuleDto[];
   /** Đối tượng tham chiếu trạng thái theo TÊN trong JQL sẽ không còn khớp sau migrate (chỉ báo, không sửa). */
   nameRefs: NameRefDto[];
@@ -84,6 +86,7 @@ export interface MigrateResult {
     createdSchemeRows: number;
     movedIssues: number;
     boardLinksAdded: number;
+    boardLinksRemoved: number;
     rulesRewritten: number;
     rulesDisabled: number;
   };
@@ -145,6 +148,7 @@ export async function migrateWorkflowSchemes(
       createdSchemeRows: sum((r) => r.createdSchemeRows),
       movedIssues: sum((r) => r.movedIssues),
       boardLinksAdded: sum((r) => r.boardLinksAdded),
+      boardLinksRemoved: sum((r) => r.boardLinksRemoved),
       rulesRewritten: sum((r) => r.rules.filter((x) => x.outcome === 'rewritten').length),
       rulesDisabled: sum((r) => r.rules.filter((x) => x.outcome === 'disabled').length),
     },
@@ -343,11 +347,14 @@ async function migrateWorkspace(
     });
   }
 
-  // 6. Cột bảng: thêm trạng thái mới của quy trình hiệu lực cạnh trạng thái cũ (không gỡ gì).
+  // 6. Cột bảng: thêm trạng thái mới của quy trình hiệu lực cạnh trạng thái cũ (rồi gỡ trạng thái cũ không còn dùng và không còn việc).
   let boardLinksAdded = 0;
+  let boardLinksRemoved = 0;
   for (const p of projects) {
     const used = [...new Set(types.flatMap((t) => effective(p.id, t.id) ?? []))];
     boardLinksAdded += (await appendMissingBoardStatuses(tx, p.id, used)).added;
+    // Trạng thái cũ không còn dùng và không còn việc → gỡ khỏi cột (không để cột "ma" sau chuyển đổi).
+    boardLinksRemoved += (await pruneUnusedBoardStatuses(tx, p.id, used)).removed;
   }
 
   // 7. Sửa quy tắc automation: cùng hàm với các API đổi quy trình.
@@ -391,6 +398,7 @@ async function migrateWorkspace(
     moves: rows,
     movedIssues,
     boardLinksAdded,
+    boardLinksRemoved,
     rules: affectedRules,
     nameRefs,
   };

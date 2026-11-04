@@ -195,16 +195,17 @@ describe.skipIf(!DB_URL)('WorkflowSchemeService ↔ Postgres thật', () => {
         await prisma.user.findUniqueOrThrow({ where: { email: 'automation@tirapro.local' } })
       ).id,
     });
-    // Bảng của p1: mỗi trạng thái mới nằm trong cột cùng nhóm; trạng thái cũ vẫn còn.
+    // Bảng của p1: mỗi trạng thái mới nằm trong cột cùng nhóm; trạng thái cũ (không còn việc, không thuộc quy trình đang dùng)
+    // bị gỡ — không để cột "ma" sau chuyển đổi.
     const cols = await prisma.boardColumn.findMany({
       where: { boardId: id('b-p1') },
       include: { statuses: true },
       orderBy: { order: 'asc' },
     });
     expect(cols.map((c) => c.statuses.map((s) => s.statusId).sort())).toEqual([
-      [id('old-0'), id('std-0')].sort(),
-      [id('old-1'), id('std-1')].sort(),
-      [id('old-2'), id('std-2')].sort(),
+      [id('std-0')],
+      [id('std-1')],
+      [id('std-2')],
     ]);
     // Bảng của p2 (ghi đè) không bị thêm trạng thái.
     const p2cols = await prisma.boardColumnStatus.count({
@@ -276,7 +277,7 @@ describe.skipIf(!DB_URL)('WorkflowSchemeService ↔ Postgres thật', () => {
     expect(copy.statuses.find((s) => s.id === b1.statusId)!.name).toBe('In Progress');
     expect(
       await prisma.boardColumnStatus.count({ where: { column: { boardId: id('b-p2') } } }),
-    ).toBe(6);
+    ).toBe(3); // 3 trạng thái của bản chép; 3 trạng thái cũ (hết việc, hết dùng) đã gỡ
     // Lặp lại: dùng lại bản chép, không chép thêm.
     await svc.setProjectOverride(
       WS,

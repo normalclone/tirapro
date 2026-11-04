@@ -7,12 +7,10 @@ import { useProjectSprints } from '@/features/backlog/api';
 import { buildSprintOptions } from '@/features/issue-edit/sprintOptions';
 import { useProjects } from '@/features/projects/api';
 import { useCanEditIssue, useCanIn } from '@/features/projects/permissions';
-import { useWorkflows } from '@/features/workflow-settings/api';
 import { openIssueInNewTab } from '@/lib/rowOpen';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/stores/auth';
-import { useResumeSuggestion } from '../api';
-import { computeNextStatuses, withSuggestedFirst } from '../nextStatuses';
+import { useIssueNextStatuses } from '../useIssueNextStatuses';
 import { useIssueCopy } from '../useIssueCopy';
 import { runIssueAction } from './issueActions';
 import { issueMenuModel, type MenuItemId, type MenuSurface } from './issueMenuModel';
@@ -90,12 +88,7 @@ function useIssueMenuData(issue: IssueDto, surface: MenuSurface, hasPeek: boolea
   const can = useCanIn(issue.projectId);
   const canEdit = useCanEditIssue(issue.projectId)(issue);
   const me = useAuth((s) => s.user);
-  const { data: workflows } = useWorkflows();
-  const resumeId = useResumeSuggestion(issue);
-  const nextStatuses = useMemo(
-    () => withSuggestedFirst(computeNextStatuses(workflows, issue.status.id), resumeId),
-    [workflows, issue.status.id, resumeId],
-  );
+  const { nextStatuses } = useIssueNextStatuses(issue);
   const { data: projects } = useProjects(true);
   const projectKey = projects?.find((p) => p.id === issue.projectId)?.key;
   const { data: meta } = useProjectMeta(projectKey);

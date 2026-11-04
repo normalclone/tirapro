@@ -4,6 +4,7 @@ import { defaultWorkflow, statusIdOf } from './workflowFixtures';
 import {
   canRevertTransition,
   computeNextStatuses,
+  resolveIssueFlow,
   transitionLabel,
   withSuggestedFirst,
   workflowOfStatus,
@@ -145,5 +146,30 @@ describe('workflowOfStatus — quy trình theo loại việc', () => {
     expect(workflowOfStatus(undefined, 'x')).toBeNull();
     expect(workflowOfStatus([standard], 'zzz')).toBeNull();
     expect(workflowOfStatus([standard], undefined)).toBeNull();
+  });
+});
+
+describe('resolveIssueFlow — bước kế theo quy trình của loại việc', () => {
+  const standard = defaultWorkflow('STANDARD');
+  const bug = defaultWorkflow('BUG');
+  it('nhất quán: như computeNextStatuses', () => {
+    const f = resolveIssueFlow([standard, bug], bug.id, statusIdOf('BUG', 'Ready for Retest'));
+    expect(f.mismatch).toBe(false);
+    expect(f.next.map((s) => s.name)).toEqual(
+      computeNextStatuses([standard, bug], statusIdOf('BUG', 'Ready for Retest')).map(
+        (s) => s.name,
+      ),
+    );
+  });
+  it('lệch: trạng thái của Standard nhưng loại dùng Bug Workflow → các trạng thái của Bug Workflow theo thứ tự', () => {
+    const f = resolveIssueFlow([standard, bug], bug.id, statusIdOf('STANDARD', 'In Review'));
+    expect(f.mismatch).toBe(true);
+    expect(f.next.map((s) => s.name)).toEqual(bug.statuses.map((s) => s.name));
+    expect(f.typeWorkflow?.name).toBe('Bug Workflow');
+  });
+  it('chưa biết quy trình của loại → suy từ trạng thái như trước, không báo lệch', () => {
+    const f = resolveIssueFlow([standard, bug], undefined, statusIdOf('STANDARD', 'In Review'));
+    expect(f.mismatch).toBe(false);
+    expect(f.next.length).toBeGreaterThan(0);
   });
 });

@@ -96,3 +96,23 @@ describe('verifyStageStatusIds — quy trình mặc định theo loại việc',
     expect(out.open.map((i) => i.id)).toEqual(['reopened', 'pending']);
   });
 });
+
+describe('verifyStageStatusIds — bước dẫn tới "Không xử lý"/Cancelled không phải bước chờ xác nhận', () => {
+  it('quy trình tuỳ chỉnh: Review → Done và Triage → "Không xử lý" (cùng nhóm xong): chỉ Review là bước chờ', () => {
+    const w: Workflow = {
+      ...wf([
+        st('todo', 0, 'TODO'),
+        st('doing', 1, 'IN_PROGRESS'),
+        st('review', 2, 'IN_PROGRESS'),
+        st('triage', 3, 'IN_PROGRESS'),
+        st('done', 4, 'DONE'),
+        { ...st('wontfix', 5, 'DONE'), name: 'Không xử lý' },
+      ]),
+      transitions: [
+        { id: 't1', name: 'Xong', fromStatusId: 'review', toStatusId: 'done', order: 0 },
+        { id: 't2', name: 'Bỏ qua', fromStatusId: 'triage', toStatusId: 'wontfix', order: 1 },
+      ],
+    };
+    expect([...verifyStageStatusIds([w])]).toEqual(['review']);
+  });
+});

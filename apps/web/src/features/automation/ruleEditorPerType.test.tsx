@@ -11,7 +11,11 @@ const h = vi.hoisted(() => ({ patch: vi.fn() }));
 vi.mock('@/lib/api', async (orig) => {
   const real = await orig<typeof ApiModule>();
   const fx = await import('@/features/issues/workflowFixtures');
-  const flows = [fx.defaultWorkflow('STANDARD'), fx.defaultWorkflow('BUG')];
+  const flows = [
+    fx.defaultWorkflow('STANDARD'),
+    fx.defaultWorkflow('BUG'),
+    fx.defaultWorkflow('EPIC'),
+  ];
   return {
     ...real,
     api: {
@@ -49,6 +53,12 @@ const migrated = (): AutomationRule =>
     conditions: [],
     actions: [{ type: 'transition', toStatusId: STD_DONE, alsoStatusIds: [BUG_DONE] }],
   }) as unknown as AutomationRule;
+
+/** Hình dạng THẬT sau khi đổi quy trình (`remapRuleStatusIds`): một trạng thái cũ → nhiều đích, chỉ `toStatusIds`, không `toStatusId`. */
+const serverShape = (): AutomationRule => ({
+  ...migrated(),
+  triggerConfig: { toStatusIds: [STD_DONE, BUG_DONE, statusIdOf('EPIC', 'Done')] },
+});
 
 function setup(rule: AutomationRule) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -115,5 +125,39 @@ describe('Sửa quy tắc đã được hệ thống mở rộng theo quy trình
     expect(within(list).getByText('Standard Workflow')).toBeTruthy();
     expect(within(list).getByText('Bug Workflow')).toBeTruthy();
     expect(defaultWorkflow('BUG').name).toBe('Bug Workflow');
+  });
+});
+
+describe('quy tắc chỉ có toStatusIds (hình dạng máy chủ ghi sau khi đổi quy trình)', () => {
+  it('hiện đích đầu trong ô chọn (không phải "Bất kỳ") và nêu các đích còn lại', async () => {
+    setup(serverShape());
+    await screen.findAllByRole('note');
+    const trigger = screen.getAllByRole('button', { name: 'Trạng thái đích' })[0]!;
+    expect(trigger.textContent).toContain('Done');
+    expect(trigger.textContent).not.toContain('Bất kỳ');
+    const note = screen.getAllByRole('note')[0]!;
+    expect(note.textContent).toContain('Done (Bug Workflow)');
+    expect(note.textContent).toContain('Done (Epic Workflow)');
+  });
+
+  it('lưu không đụng gì → triggerConfig y nguyên {toStatusIds:[a,b,c]}, không thêm toStatusId', async () => {
+    const user = setup(serverShape());
+    await screen.findAllByRole('note');
+    await user.click(screen.getByRole('button', { name: 'Lưu thay đổi' }));
+    await waitFor(() => expect(h.patch).toHaveBeenCalledTimes(1));
+    expect(h.patch.mock.calls[0]![1].triggerConfig).toEqual({
+      toStatusIds: [STD_DONE, BUG_DONE, statusIdOf('EPIC', 'Done')],
+    });
+  });
+
+  it('chọn "Bất kỳ trạng thái nào" là cách duy nhất để mở rộng: cấu hình trống', async () => {
+    const user = setup(serverShape());
+    await screen.findAllByRole('note');
+    await user.click(screen.getAllByRole('button', { name: 'Trạng thái đích' })[0]!);
+    const list = await screen.findByRole('listbox');
+    await user.click(within(list).getByRole('option', { name: /Bất kỳ trạng thái nào/ }));
+    await user.click(screen.getByRole('button', { name: 'Lưu thay đổi' }));
+    await waitFor(() => expect(h.patch).toHaveBeenCalledTimes(1));
+    expect(h.patch.mock.calls[0]![1].triggerConfig).toEqual({});
   });
 });

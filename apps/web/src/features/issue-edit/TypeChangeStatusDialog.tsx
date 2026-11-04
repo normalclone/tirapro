@@ -3,6 +3,7 @@ import { Shuffle } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Dialog } from '@/components/ui/Dialog';
 import { RadioCard } from '@/components/ui/RadioCard';
+import { useProjectScheme } from '@/features/workflow-settings/schemeApi';
 import { useWorkflows } from '@/features/workflow-settings/api';
 import { STATUS_CATEGORY_LABEL } from '@/lib/terms';
 import { typeChangeChoices } from './typeChange';
@@ -14,7 +15,9 @@ import { typeChangeChoices } from './typeChange';
 export function TypeChangeStatusDialog({
   open,
   issueKey,
+  projectId,
   fromStatusName,
+  newTypeId,
   newTypeName,
   suggestedStatusId,
   loading,
@@ -23,7 +26,9 @@ export function TypeChangeStatusDialog({
 }: {
   open: boolean;
   issueKey: string;
+  projectId: string;
   fromStatusName: string;
+  newTypeId: string;
   newTypeName: string;
   suggestedStatusId: string | undefined;
   loading?: boolean;
@@ -31,7 +36,16 @@ export function TypeChangeStatusDialog({
   onCancel: () => void;
 }) {
   const { data: workflows } = useWorkflows();
-  const { workflow, statuses } = typeChangeChoices(workflows, suggestedStatusId);
+  // Không có gợi ý của máy chủ: tra quy trình của loại mới trong cấu hình dự án; người dùng tự chọn (không chọn sẵn).
+  const { data: scheme, isLoading: schemeLoading } = useProjectScheme(
+    suggestedStatusId ? undefined : projectId,
+  );
+  const fallbackWorkflowId = scheme?.items.find((i) => i.issueTypeId === newTypeId)?.workflowId;
+  const { workflow, statuses } = typeChangeChoices(
+    workflows,
+    suggestedStatusId,
+    fallbackWorkflowId,
+  );
   const [picked, setPicked] = useState<string | null>(suggestedStatusId ?? null);
   const labelId = useId();
   const chosen = picked && statuses.some((s) => s.id === picked) ? picked : null;
@@ -62,7 +76,9 @@ export function TypeChangeStatusDialog({
     >
       {statuses.length === 0 ? (
         <p className="text-sm text-muted">
-          {workflows ? 'Quy trình mới chưa có trạng thái nào.' : 'Đang tải quy trình…'}
+          {!workflows || schemeLoading
+            ? 'Đang tải quy trình…'
+            : 'Không xác định được quy trình của loại mới — hãy thử lại hoặc báo quản trị.'}
         </p>
       ) : (
         <div>

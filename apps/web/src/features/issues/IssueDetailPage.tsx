@@ -72,6 +72,7 @@ import {
 } from '@/features/issue-edit/IssueProperties';
 import { AcceptanceCriteria } from '@/features/issue-edit/AcceptanceCriteria';
 import { IssueDescription } from '@/features/issue-edit/DescriptionEditor';
+import { RepairStatusPicker } from './RepairStatusPicker';
 import { useIssueTransitions } from './useIssueTransitions';
 import { LazyPanel } from './LazyPanel';
 import { useCanEditRestricted } from './useCanEditRestricted';
@@ -184,6 +185,8 @@ export function IssueDetailPage() {
 
   const {
     nextStatuses,
+    mismatch: statusMismatch,
+    workflowName: typeWorkflowName,
     requestTransition,
     dialog: transitionDialog,
     dialogOpen: transitionDialogOpen,
@@ -346,7 +349,14 @@ export function IssueDetailPage() {
         return;
       }
       const n = Number(e.key);
-      if (!canTransition || !Number.isInteger(n) || n < 1 || n > nextStatuses.length) return;
+      if (
+        !canTransition ||
+        statusMismatch ||
+        !Number.isInteger(n) ||
+        n < 1 ||
+        n > nextStatuses.length
+      )
+        return;
       const opt = nextStatuses[n - 1];
       if (opt) {
         e.preventDefault();
@@ -359,6 +369,7 @@ export function IssueDetailPage() {
   }, [
     shortcutsEnabled,
     nextStatuses,
+    statusMismatch,
     issue?.status.id,
     issue?.version,
     canTransition,
@@ -702,7 +713,18 @@ export function IssueDetailPage() {
                     >
                       <Workflow className="h-4 w-4" />
                     </button>
-                    {canTransition && nextStatuses.length > 0 && (
+                    {canTransition && statusMismatch && (
+                      <>
+                        <ChevronRight className="h-4 w-4 shrink-0 text-faint" aria-hidden />
+                        <RepairStatusPicker
+                          statuses={nextStatuses}
+                          workflowName={typeWorkflowName}
+                          disabled={transitionPending}
+                          onPick={requestTransition}
+                        />
+                      </>
+                    )}
+                    {canTransition && !statusMismatch && nextStatuses.length > 0 && (
                       <>
                         <ChevronRight className="h-4 w-4 shrink-0 text-faint" aria-hidden />
                         {nextStatuses.map((o, i) => (

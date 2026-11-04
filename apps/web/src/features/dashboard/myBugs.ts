@@ -1,9 +1,13 @@
 import type { Workflow } from '@/features/workflow-settings/api';
 
+/** Trạng thái nhóm xong nhưng KHÔNG phải kết quả "đã sửa": huỷ / không xử lý / từ chối — bước dẫn tới đó không phải bước chờ xác nhận. */
+const NOT_A_CLOSING_STEP =
+  /^(cancel|huỷ|hủy|không xử lý|khong xu ly|won'?t\s*(fix|do)|rejected|declined)/i;
+
 /**
  * Trạng thái "chờ xác nhận" = bước CUỐI trước Done của MỖI quy trình: trạng thái đang làm (IN_PROGRESS, không tính Pending)
  * có bước chuyển thẳng tới trạng thái xong (Bug: Ready for Retest; Standard: In Review; Epic: Awaiting Acceptance). Bước
- * "Huỷ" từ mọi trạng thái mở không tính. Quy trình không khai bước nào như vậy thì lấy trạng thái đang làm có `order` lớn
+ * tới trạng thái huỷ / "Không xử lý" (theo tên) từ mọi trạng thái mở không tính. Quy trình không khai bước nào như vậy thì lấy trạng thái đang làm có `order` lớn
  * nhất (không tính Pending). CHỈ khi quy trình có ≥ 2 trạng thái đang làm (Kanban một trạng thái → không có bước xác nhận).
  */
 export function verifyStageStatusIds(workflows: Workflow[] | undefined): Set<string> {
@@ -16,7 +20,7 @@ export function verifyStageStatusIds(workflows: Workflow[] | undefined): Set<str
       w.transitions.some((t) => {
         if (t.fromStatusId !== s.id) return false;
         const to = byId.get(t.toStatusId);
-        return to?.category === 'DONE' && !/^(cancel|huỷ)/i.test(to.name);
+        return to?.category === 'DONE' && !NOT_A_CLOSING_STEP.test(to.name);
       }),
     );
     const pool = closing.length > 0 ? closing : doing;

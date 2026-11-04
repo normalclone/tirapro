@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { IssueDto } from '@tirapro/types';
 import type * as ApiModule from '@/lib/api';
 import { defaultWorkflow, statusIdOf } from '../workflowFixtures';
-import { mk } from '@/lib/issueFixture';
+import { TYPES, mk } from '@/lib/issueFixture';
 
 const h = vi.hoisted(() => ({ get: vi.fn() }));
 vi.mock('@/lib/api', async (orig) => {
@@ -40,7 +40,11 @@ const bug = defaultWorkflow('BUG');
 const issueIn = (key: 'STANDARD' | 'BUG', statusName: string): IssueDto => {
   const wf = key === 'BUG' ? bug : std;
   const s = wf.statuses.find((x) => x.name === statusName)!;
-  return mk(`${key}-${statusName}`, { projectId: 'p1', status: { ...s, workflowId: wf.id } });
+  return mk(`${key}-${statusName}`, {
+    projectId: 'p1',
+    type: { ...TYPES.story, id: key === 'BUG' ? 'ty-bug' : 'ty-task' },
+    status: { ...s, workflowId: wf.id },
+  });
 };
 
 function renderMenu(issue: IssueDto) {
@@ -58,6 +62,27 @@ beforeEach(() => {
   h.get.mockReset();
   h.get.mockImplementation((url: string) => {
     if (url === '/workflows') return Promise.resolve({ data: [std, bug] });
+    if (url === '/projects/p1/workflow-overrides')
+      return Promise.resolve({
+        data: {
+          projectId: 'p1',
+          issueTypes: [],
+          items: [
+            {
+              issueTypeId: 'ty-task',
+              workflowId: std.id,
+              isOverride: false,
+              workspaceWorkflowId: std.id,
+            },
+            {
+              issueTypeId: 'ty-bug',
+              workflowId: bug.id,
+              isOverride: false,
+              workspaceWorkflowId: bug.id,
+            },
+          ],
+        },
+      });
     if (url.endsWith('/transitions'))
       return Promise.resolve({
         data: {
@@ -96,5 +121,14 @@ describe('Menu chuột phải/nút "…": mục Trạng thái theo quy trình c�
     renderMenu(issueIn('BUG', 'Pending'));
     await waitFor(() => expect(statusItems()).toContain('Gợi ý'));
     expect(statusItems().startsWith('Tiếp tục: In Progress')).toBe(true);
+  });
+});
+
+describe('Menu: việc đang ở trạng thái của quy trình khác loại', () => {
+  it('Task mà ở trạng thái của Bug Workflow: mục Trạng thái liệt kê trạng thái của Standard (chuyển về quy trình đúng)', async () => {
+    renderMenu({ ...issueIn('BUG', 'Reopened'), type: { ...TYPES.story, id: 'ty-task' } });
+    await waitFor(() => expect(statusItems()).toContain('Rework'));
+    expect(statusItems()).toContain('In Review');
+    expect(statusItems()).not.toContain('Reopened');
   });
 });

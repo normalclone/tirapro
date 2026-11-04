@@ -20,6 +20,27 @@ vi.mock('@/lib/api', async (orig) => {
       patch: h.patch,
       get: vi.fn((url: string) => {
         if (url === '/workflows') return Promise.resolve({ data: [stdWf, bugWf] });
+        if (url === '/projects/p1/workflow-overrides')
+          return Promise.resolve({
+            data: {
+              projectId: 'p1',
+              issueTypes: [],
+              items: [
+                {
+                  issueTypeId: 'ty-task',
+                  workflowId: stdWf.id,
+                  isOverride: false,
+                  workspaceWorkflowId: stdWf.id,
+                },
+                {
+                  issueTypeId: 'ty-bug',
+                  workflowId: bugWf.id,
+                  isOverride: false,
+                  workspaceWorkflowId: bugWf.id,
+                },
+              ],
+            },
+          });
         if (url === '/projects')
           return Promise.resolve({ data: [{ id: 'p1', key: 'KYHOP', name: 'KYHOP' }] });
         if (url === '/projects/KYHOP/meta')
@@ -187,6 +208,44 @@ describe('Đổi loại Task → Bug (khác quy trình) hỏi trạng thái tron
     await pickBug(user);
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Không đổi loại được'));
     expect(screen.queryByRole('dialog')).toBeNull();
+  });
+});
+
+describe('422 không kèm gợi ý trạng thái', () => {
+  const noSuggestion = () =>
+    new AxiosError('422', 'ERR_BAD_REQUEST', undefined, undefined, {
+      status: 422,
+      data: {
+        success: false,
+        error: {
+          code: 'STATUS_MAPPING_REQUIRED',
+          message: 'Hãy chọn trạng thái trong quy trình mới',
+        },
+      },
+    } as AxiosResponse);
+
+  it('vẫn mở hộp: liệt kê trạng thái quy trình của loại mới (tra từ cấu hình dự án), KHÔNG chọn sẵn, phải chọn rồi mới gửi', async () => {
+    h.patch.mockRejectedValueOnce(noSuggestion());
+    h.patch.mockResolvedValueOnce({ data: taskInReview() });
+    const user = setup(taskInReview());
+    await pickBug(user);
+    const dialog = await screen.findByRole('dialog', {
+      name: 'Chọn trạng thái trong quy trình mới',
+    });
+    const retest = await within(dialog).findByRole('radio', { name: 'Ready for Retest' });
+    expect(within(dialog).queryByRole('radio', { name: 'Rework' })).toBeNull();
+    for (const r of within(dialog).getAllByRole('radio'))
+      expect(r.getAttribute('aria-checked')).toBe('false');
+    const send = within(dialog).getByRole('button', { name: 'Đổi loại và chuyển' });
+    expect((send as HTMLButtonElement).disabled).toBe(true);
+    await user.click(retest);
+    await user.click(send);
+    await waitFor(() => expect(h.patch).toHaveBeenCalledTimes(2));
+    expect(h.patch.mock.calls[1]![1]).toEqual({
+      typeId: 'ty-bug',
+      targetStatusId: statusIdOf('BUG', 'Ready for Retest'),
+      version: 7,
+    });
   });
 });
 

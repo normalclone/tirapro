@@ -3004,7 +3004,12 @@ export class IssuesService {
     return workflowId || null;
   }
 
-  /** Chỉ cho chuyển sang `toStatusId` nếu workflow có transition từ trạng thái hiện tại (hoặc từ "bất kỳ"). */
+  /**
+   * Chỉ cho chuyển sang `toStatusId` nếu workflow có transition từ trạng thái hiện tại (hoặc từ "bất kỳ").
+   * Ngoại lệ "chuyển về quy trình đúng": trạng thái HIỆN TẠI không thuộc quy trình của loại việc (dữ liệu lệch, vd quy trình
+   * của loại vừa đổi mà việc chưa chuyển) thì cho đi thẳng tới BẤT KỲ trạng thái nào của quy trình đúng — không có bước nào
+   * xuất phát từ trạng thái lạ, nên nếu không việc sẽ kẹt vĩnh viễn.
+   */
   private async assertTransitionAllowed(
     workflowId: string | null,
     fromStatusId: string,
@@ -3015,7 +3020,16 @@ export class IssuesService {
       where: { workflowId, toStatusId, OR: [{ fromStatusId }, { fromStatusId: null }] },
       select: { id: true },
     });
-    if (!allowed) throw new InvalidTransitionException();
+    if (allowed) return;
+    // Không có bước hợp lệ: chỉ còn ngoại lệ "chuyển về quy trình đúng" (tra thêm khi cần, không tốn ở đường thường).
+    const ends = await this.prisma.status.findMany({
+      where: { id: { in: [fromStatusId, toStatusId] } },
+      select: { id: true, workflowId: true },
+    });
+    const from = ends.find((s) => s.id === fromStatusId);
+    const to = ends.find((s) => s.id === toStatusId);
+    if (from && to && from.workflowId !== workflowId && to.workflowId === workflowId) return;
+    throw new InvalidTransitionException();
   }
 
   /**

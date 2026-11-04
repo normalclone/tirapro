@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
-import { appendMissingBoardStatuses, pickColumnForCategory } from './board-columns-sync';
+import {
+  appendMissingBoardStatuses,
+  pickColumnForCategory,
+  pruneUnusedBoardStatuses,
+} from './board-columns-sync';
 
 describe('pickColumnForCategory', () => {
   const cols = [
@@ -103,5 +107,65 @@ describe('appendMissingBoardStatuses (M1: bảng vẫn lưu được, không th�
     expect(tx.status.findMany).not.toHaveBeenCalled();
     const empty = fakeTx([]);
     expect((await appendMissingBoardStatuses(empty as never, 'p1', ['wfNew'])).added).toBe(0);
+  });
+});
+
+describe('pruneUnusedBoardStatuses (không để cột "ma" sau khi chuyển đổi)', () => {
+  /** Hai cột: `A` có {old1, new1}, `B` có {old2} (chỉ trạng thái cũ), `C` có {old3, new3}. `busy` = trạng thái còn việc. */
+  function fakeTx(busy: string[]) {
+    const links = [
+      { columnId: 'A', statusId: 'old1' },
+      { columnId: 'B', statusId: 'old2' },
+      { columnId: 'C', statusId: 'old3' },
+    ];
+    const perColumn: Record<string, number> = { A: 2, B: 1, C: 2 };
+    return {
+      boardColumnStatus: {
+        findMany: vi.fn(() => Promise.resolve(links)),
+        groupBy: vi.fn(() =>
+          Promise.resolve(
+            Object.entries(perColumn).map(([columnId, n]) => ({ columnId, _count: { _all: n } })),
+          ),
+        ),
+        deleteMany: vi.fn(() => Promise.resolve({ count: 1 })),
+      },
+      issue: {
+        groupBy: vi.fn(() =>
+          Promise.resolve(busy.map((statusId) => ({ statusId, _count: { _all: 3 } }))),
+        ),
+      },
+    };
+  }
+
+  it('gỡ trạng thái cũ không còn việc; giữ trạng thái còn việc và trạng thái cuối cùng của cột', async () => {
+    const tx = fakeTx(['old3']);
+    const r = await pruneUnusedBoardStatuses(tx as never, 'p1', ['wfNew']);
+    // old1: không việc, cột A còn new1 → gỡ. old2: không việc nhưng là trạng thái cuối của cột B → giữ. old3: còn việc → giữ.
+    expect(r.removed).toBe(1);
+    expect(tx.boardColumnStatus.deleteMany).toHaveBeenCalledTimes(1);
+    expect(tx.boardColumnStatus.deleteMany).toHaveBeenCalledWith({
+      where: { columnId: 'A', statusId: 'old1' },
+    });
+  });
+  it('chỉ xét trạng thái NGOÀI quy trình đang dùng và đếm việc của chính dự án (kể cả thùng rác)', async () => {
+    const tx = fakeTx([]);
+    await pruneUnusedBoardStatuses(tx as never, 'p1', ['wfNew', 'wfBug']);
+    expect(tx.boardColumnStatus.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          column: { board: { projectId: 'p1', deletedAt: null } },
+          status: { workflowId: { notIn: ['wfNew', 'wfBug'] } },
+        },
+      }),
+    );
+    const where = (
+      tx.issue.groupBy.mock.calls[0] as unknown as [{ where: Record<string, unknown> }]
+    )[0].where;
+    expect(where).toEqual({ projectId: 'p1', statusId: { in: ['old1', 'old2', 'old3'] } });
+  });
+  it('không có quy trình đang dùng → không đụng gì', async () => {
+    const tx = fakeTx([]);
+    expect(await pruneUnusedBoardStatuses(tx as never, 'p1', [])).toEqual({ removed: 0 });
+    expect(tx.boardColumnStatus.findMany).not.toHaveBeenCalled();
   });
 });

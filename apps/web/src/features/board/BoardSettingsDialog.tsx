@@ -167,6 +167,15 @@ export function BoardSettingsDialog({
         return { ...c, statusIds: c.statusIds.filter((s) => s !== statusId) };
       }),
     );
+  // Trạng thái nằm trong cột nhưng không thuộc quy trình nào đang dùng trong dự án (vd quy trình cũ sau khi đổi quy trình theo loại
+  // việc, hoặc trạng thái đã xoá): hiện rõ để gỡ, không lặng lẽ gửi lại khi lưu.
+  const unknownIds = statusesQ.data
+    ? [...new Set(columns.flatMap((c) => c.statusIds).filter((id) => !statusById.has(id)))]
+    : [];
+  const removeUnknown = () =>
+    setColumnsDraft((cols) =>
+      cols.map((c) => ({ ...c, statusIds: c.statusIds.filter((id) => statusById.has(id)) })),
+    );
   const unassignStatus = (key: string, statusId: string) =>
     patchColumn(key, {
       statusIds: columns.find((c) => c.key === key)!.statusIds.filter((s) => s !== statusId),
@@ -255,6 +264,8 @@ export function BoardSettingsDialog({
               statusById={statusById}
               columns={columns}
               unassigned={unassigned}
+              unknownCount={unknownIds.length}
+              onRemoveUnknown={removeUnknown}
               ops={{
                 patchColumn,
                 moveColumn,
@@ -315,6 +326,8 @@ function ColumnsTab({
   statusById,
   columns,
   unassigned,
+  unknownCount,
+  onRemoveUnknown,
   ops,
 }: {
   statusesQ: ReturnType<typeof useProjectStatuses>;
@@ -322,6 +335,9 @@ function ColumnsTab({
   statusById: Map<string, StatusList[number]>;
   columns: DraftColumn[];
   unassigned: StatusList;
+  /** Số trạng thái trong cột không còn thuộc quy trình nào đang dùng. */
+  unknownCount: number;
+  onRemoveUnknown: () => void;
   ops: ColumnOps;
 }) {
   const { patchColumn, moveColumn, removeColumn, addColumn, assignStatus, unassignStatus } = ops;
@@ -333,6 +349,20 @@ function ColumnsTab({
         <p className="rounded-md bg-danger/10 px-3 py-2 text-sm text-danger">
           Không tải được danh sách trạng thái của dự án. Đóng hộp thoại và thử lại.
         </p>
+      )}
+      {unknownCount > 0 && (
+        <div
+          className="flex flex-wrap items-center gap-2 rounded-md bg-warning/10 px-3 py-2 text-sm text-ink"
+          role="status"
+        >
+          <span className="min-w-0 flex-1">
+            Có {unknownCount} trạng thái trong cột không còn thuộc quy trình nào của dự án (thường
+            là quy trình cũ). Nếu không còn việc nào ở các trạng thái đó thì nên bỏ đi cho gọn.
+          </span>
+          <Button variant="secondary" size="sm" onClick={onRemoveUnknown}>
+            Bỏ khỏi bảng
+          </Button>
+        </div>
       )}
       {columns.map((c, idx) => {
         const addable = statuses.filter((s) => !c.statusIds.includes(s.id));
@@ -401,10 +431,10 @@ function ColumnsTab({
                       style={{ background: s ? categoryColor(s.category) : 'var(--faint)' }}
                       aria-hidden
                     />
-                    {s ? withFlow(s) : 'Trạng thái đã xoá'}
+                    {s ? withFlow(s) : 'Trạng thái không còn dùng'}
                     <button
                       type="button"
-                      aria-label={`Bỏ trạng thái ${s?.name ?? ''} khỏi cột ${c.name || idx + 1}`}
+                      aria-label={`Bỏ trạng thái ${s?.name ?? 'không còn dùng'} khỏi cột ${c.name || idx + 1}`}
                       onClick={() => unassignStatus(c.key, sid)}
                       className="grid h-4 w-4 place-items-center rounded-full text-faint hover:bg-surface-3 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
                     >
