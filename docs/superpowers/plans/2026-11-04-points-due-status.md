@@ -175,7 +175,7 @@
 - Produces error `DUE_DATE_REQUIRED` (422) with the message `'Hạn là bắt buộc — chọn một ngày thay vì xoá trống'`.
 
 - [ ] **Step 1: Failing tests.**
-  - Create without `dueDate` at a mocked `now = 2026-11-04T16:30Z` → `dueDate = 2026-11-06T00:00:00.000Z`.
+  - Create without `dueDate` at a mocked `now = 2026-11-04T17:30Z` (00:30 ngày 05/11 giờ VN) → `dueDate = 2026-11-06T00:00:00.000Z`.
   - `createWithin` (import) without `dueDate` → it gets the default.
   - `update({dueDate:null})` → 422 `DUE_DATE_REQUIRED`.
   - A bulk patch with `dueDate:null` → 422.
