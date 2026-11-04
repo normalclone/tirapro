@@ -84,10 +84,12 @@ function setup() {
   const prisma = {
     $transaction: vi.fn((fn: (t: unknown) => unknown) => Promise.resolve(fn(tx))),
     project: {
-      findFirst: vi.fn(() =>
-        Promise.resolve({ ...c.project, archivedAt: null, defaultWorkflowId: 'wf1' }),
-      ),
+      findFirst: vi.fn(() => Promise.resolve({ ...c.project, archivedAt: null })),
+      // Resolver quy trình theo loại việc: mọi loại rơi về quy trình mặc định wf1.
+      findUnique: vi.fn(() => Promise.resolve({ workspaceId: 'w1', defaultWorkflowId: 'wf1' })),
     },
+    projectWorkflowOverride: { findMany: vi.fn(() => Promise.resolve([])) },
+    workspaceWorkflowScheme: { findMany: vi.fn(() => Promise.resolve([])) },
     importJob: {
       create: vi.fn(() => Promise.resolve({ id: 'job1' })),
       update: vi.fn(() => Promise.resolve({})),
@@ -783,7 +785,7 @@ describe('ExcelImportService — nhãn, danh mục, sub-task', () => {
       JSON.stringify((m.mock.calls[0]![0] as { where: unknown }).where);
     expect(where(s.prisma.issueType.findMany)).toContain('"workspaceId":"w1"');
     expect(where(s.prisma.priority.findMany)).toContain('"workspaceId":"w1"');
-    expect(where(s.prisma.status.findMany)).toContain('"workflowId":"wf1"');
+    expect(where(s.prisma.status.findMany)).toContain('"workflowId":{"in":["wf1"]}');
     for (const m of [
       s.prisma.projectMembership.findMany,
       s.prisma.sprint.findMany,
@@ -817,5 +819,67 @@ describe('ExcelImportService.template', () => {
 
   it('buildExcelTemplate dùng được độc lập', async () => {
     expect((await buildExcelTemplate(catalog)).length).toBeGreaterThan(1000);
+  });
+});
+
+describe('ExcelImportService — trạng thái theo quy trình của loại việc', () => {
+  /** Task → wfStd, Bug → wfBug; "Done" có ở cả hai quy trình, "Closed" chỉ có ở Bug. */
+  function multiSetup() {
+    const s = setup();
+    s.prisma.workspaceWorkflowScheme.findMany.mockResolvedValue([
+      { issueTypeId: 't-task', workflowId: 'wfStd' },
+      { issueTypeId: 't-bug', workflowId: 'wfBug' },
+    ] as never);
+    s.prisma.status.findMany.mockResolvedValue([
+      { id: 'std-todo', name: 'To Do', isInitial: true, workflowId: 'wfStd' },
+      { id: 'std-done', name: 'Done', isInitial: false, workflowId: 'wfStd' },
+      { id: 'bug-new', name: 'New', isInitial: true, workflowId: 'wfBug' },
+      { id: 'bug-done', name: 'Done', isInitial: false, workflowId: 'wfBug' },
+      { id: 'bug-closed', name: 'Closed', isInitial: false, workflowId: 'wfBug' },
+    ] as never);
+    return s;
+  }
+
+  it('cùng tên trạng thái "Done" → mỗi loại nhận trạng thái của CHÍNH quy trình loại đó', async () => {
+    const s = multiSetup();
+    const buf = await xlsxOf([
+      good({ [H.summary]: 'Task xong', [H.status]: 'Done' }),
+      good({ [H.summary]: 'Bug xong', [H.type]: 'Bug, nặng', [H.status]: 'Done' }),
+    ]);
+    const r = await s.service.commit('w1', 'u9', 'p1', upload(buf));
+    expect(r).toMatchObject({ created: 2, failed: 0 });
+    const input = (summary: string) =>
+      s.issues.createWithin.mock.calls.find((c) => c[3].summary === summary)![3] as {
+        statusId?: string;
+      };
+    expect(input('Task xong').statusId).toBe('std-done');
+    expect(input('Bug xong').statusId).toBe('bug-done');
+  });
+
+  it('trạng thái chỉ có ở quy trình khác (Closed của Bug dùng cho Task) → lỗi dòng, nêu loại việc', async () => {
+    const s = multiSetup();
+    const buf = await xlsxOf([good({ [H.summary]: 'Task sai', [H.status]: 'Closed' })]);
+    const r = await s.service.commit('w1', 'u9', 'p1', upload(buf));
+    expect(r).toMatchObject({ created: 0, failed: 1 });
+    expect(r.errors[0]!.error).toContain("loại việc 'Task'");
+    expect(s.issues.createWithin).not.toHaveBeenCalled();
+  });
+
+  it('không ghi trạng thái → bỏ trống (server dùng trạng thái khởi tạo của quy trình loại việc)', async () => {
+    const s = multiSetup();
+    const buf = await xlsxOf([good({ [H.summary]: 'Mới', [H.type]: 'Bug, nặng' })]);
+    await s.service.commit('w1', 'u9', 'p1', upload(buf));
+    const input = s.issues.createWithin.mock.calls[0]![3] as { statusId?: string };
+    expect(input.statusId).toBeUndefined();
+  });
+
+  it('dự án chưa có quy trình nào → không truy vấn trạng thái với workflowId rỗng', async () => {
+    const s = setup();
+    s.prisma.project.findUnique.mockResolvedValue({
+      workspaceId: 'w1',
+      defaultWorkflowId: null,
+    } as never);
+    await s.service.preview('w1', 'p1', upload(await xlsxOf([good()])));
+    expect(s.prisma.status.findMany).not.toHaveBeenCalled();
   });
 });

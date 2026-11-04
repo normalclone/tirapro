@@ -29,6 +29,8 @@ export interface ErrorDetail {
   field?: string;
   code: string;
   message: string;
+  /** `STATUS_MAPPING_REQUIRED`: trạng thái đích gợi ý trong quy trình mới (cùng tên, không có thì đầu tiên cùng nhóm). */
+  suggestedStatusId?: string;
 }
 
 export interface ApiErrorBody {
@@ -79,6 +81,8 @@ export const ERROR_CODES = {
   PARENT_CANNOT_BE_EPIC: 'PARENT_CANNOT_BE_EPIC',
   /** 422: Hạn là bắt buộc — không xoá trống được (cập nhật/sửa hàng loạt/quy tắc đặt Hạn rỗng). */
   DUE_DATE_REQUIRED: 'DUE_DATE_REQUIRED',
+  /** 422: đổi loại việc sang loại dùng quy trình khác mà thiếu `targetStatusId` — `details[0].suggestedStatusId` là gợi ý. */
+  STATUS_MAPPING_REQUIRED: 'STATUS_MAPPING_REQUIRED',
   /** 413: tệp tải lên vượt giới hạn dung lượng. */
   PAYLOAD_TOO_LARGE: 'PAYLOAD_TOO_LARGE',
   INTERNAL: 'INTERNAL',

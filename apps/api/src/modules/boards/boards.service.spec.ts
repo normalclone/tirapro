@@ -6,9 +6,9 @@ import { BoardsService } from './boards.service';
 const has = (text: string): unknown => expect.stringContaining(text);
 
 const STATUSES = [
-  { id: 's1', name: 'Todo' },
-  { id: 's2', name: 'Doing' },
-  { id: 's3', name: 'Done' },
+  { id: 's1', name: 'Todo', workflowId: 'wf' },
+  { id: 's2', name: 'Doing', workflowId: 'wf' },
+  { id: 's3', name: 'Done', workflowId: 'wf' },
 ];
 
 function boardRow(over: Record<string, unknown> = {}) {
@@ -50,7 +50,16 @@ function boardRow(over: Record<string, unknown> = {}) {
   };
 }
 
-function make(board: unknown = boardRow(), opts: { lockedColumnIds?: string[] } = {}) {
+function make(
+  board: unknown = boardRow(),
+  opts: {
+    lockedColumnIds?: string[];
+    /** Loại việc → quy trình theo workspace (không có = mọi loại rơi về quy trình mặc định của dự án). */
+    scheme?: Array<{ issueTypeId: string; workflowId: string }>;
+    types?: Array<{ id: string }>;
+    statuses?: Array<{ id: string; name: string; workflowId: string }>;
+  } = {},
+) {
   const liveIds =
     opts.lockedColumnIds ?? (board as { columns: Array<{ id: string }> }).columns.map((c) => c.id);
   const tx = {
@@ -76,7 +85,20 @@ function make(board: unknown = boardRow(), opts: { lockedColumnIds?: string[] } 
       findFirst: vi.fn(() => Promise.resolve(board)),
       update: vi.fn(() => Promise.resolve({})),
     },
-    status: { findMany: vi.fn(() => Promise.resolve(STATUSES)) },
+    status: {
+      findMany: vi.fn((a: { where: { workflowId: { in: string[] } } }) =>
+        Promise.resolve(
+          (opts.statuses ?? STATUSES).filter((s) => a.where.workflowId.in.includes(s.workflowId)),
+        ),
+      ),
+    },
+    // Resolver quy trình theo loại việc.
+    project: {
+      findUnique: vi.fn(() => Promise.resolve({ workspaceId: 'w1', defaultWorkflowId: 'wf' })),
+    },
+    projectWorkflowOverride: { findMany: vi.fn(() => Promise.resolve([])) },
+    workspaceWorkflowScheme: { findMany: vi.fn(() => Promise.resolve(opts.scheme ?? [])) },
+    issueType: { findMany: vi.fn(() => Promise.resolve(opts.types ?? [{ id: 'tTask' }])) },
   };
   const service = new BoardsService(prisma as never, {} as never, {} as never);
   return { service, prisma, tx };
@@ -408,5 +430,71 @@ describe('BoardsService.listForProject — thiếu projectId (rò rỉ dự án 
     const service = new BoardsService({ board: { findMany } } as never, {} as never, {} as never);
     await service.listForProject('w1', 'p1');
     expect(findMany.mock.calls[0]![0]).toMatchObject({ where: { projectId: 'p1' } });
+  });
+});
+
+describe('BoardsService.setColumns — nhiều quy trình theo loại việc', () => {
+  // Task → wfStd (a1, a2); Bug → wfBug (b1, b2); quy trình mặc định cũ `wf` (s1..s3) không còn loại việc nào dùng.
+  const STATUSES_MULTI = [
+    ...STATUSES,
+    { id: 'a1', name: 'To Do', workflowId: 'wfStd' },
+    { id: 'a2', name: 'Done', workflowId: 'wfStd' },
+    { id: 'b1', name: 'New', workflowId: 'wfBug' },
+    { id: 'b2', name: 'Closed', workflowId: 'wfBug' },
+  ];
+  const multi = {
+    scheme: [
+      { issueTypeId: 'tTask', workflowId: 'wfStd' },
+      { issueTypeId: 'tBug', workflowId: 'wfBug' },
+    ],
+    types: [{ id: 'tTask' }, { id: 'tBug' }],
+    statuses: STATUSES_MULTI,
+  };
+
+  it('cột phải phủ trạng thái của MỌI quy trình đang dùng: thiếu trạng thái Bug => 422 nêu tên', async () => {
+    const { service, prisma } = make(boardRow(), multi);
+    await expect(
+      service.setColumns('w1', 'b1', {
+        columns: [col('Mới', ['a1', 'b1']), col('Xong', ['a2'])],
+      }),
+    ).rejects.toMatchObject({ status: 422, message: has('Closed') });
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('một cột gom trạng thái của nhiều quy trình => ghi thành công', async () => {
+    const { service, tx } = make(boardRow(), multi);
+    await service.setColumns('w1', 'b1', {
+      columns: [col('Mới', ['a1', 'b1']), col('Xong', ['a2', 'b2'])],
+    });
+    const links = tx.boardColumnStatus.createMany.mock.calls[0]![0].data;
+    expect(links.map((l) => l.statusId).sort()).toEqual(['a1', 'a2', 'b1', 'b2']);
+  });
+
+  it('trạng thái của quy trình mặc định cũ vẫn được phép nằm trong cột (không bắt buộc)', async () => {
+    const { service, tx } = make(boardRow(), multi);
+    await service.setColumns('w1', 'b1', {
+      columns: [col('Mới', ['a1', 'b1', 's1']), col('Xong', ['a2', 'b2', 's2', 's3'])],
+    });
+    expect(tx.boardColumnStatus.createMany).toHaveBeenCalledTimes(1);
+  });
+
+  it('chỉ có quy trình cũ trong cột mà thiếu quy trình mới => vẫn 422 (cột cũ không đủ)', async () => {
+    const { service } = make(boardRow(), multi);
+    await expect(
+      service.setColumns('w1', 'b1', { columns: [col('Cũ', ['s1', 's2', 's3'])] }),
+    ).rejects.toMatchObject({ status: 422 });
+  });
+
+  it('không có quy trình nào (không scheme, không mặc định) => không truy vấn trạng thái với workflowId rỗng', async () => {
+    const board = boardRow({ project: { archivedAt: null, defaultWorkflowId: null } });
+    const { service, prisma } = make(board, { types: [{ id: 'tTask' }] });
+    prisma.project.findUnique.mockResolvedValue({
+      workspaceId: 'w1',
+      defaultWorkflowId: null,
+    } as never);
+    await expect(
+      service.setColumns('w1', 'b1', { columns: [col('A', ['s1'])] }),
+    ).rejects.toMatchObject({ status: 422 });
+    expect(prisma.status.findMany).not.toHaveBeenCalled();
   });
 });

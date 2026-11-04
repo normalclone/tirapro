@@ -11,6 +11,7 @@ import { PrismaService } from '../../../infra/prisma/prisma.service';
 import { NotFoundAppException } from '../../../common/exceptions/app.exception';
 import { assertNotArchived } from '../../../common/project-writable';
 import { ImportService, type PreparedItem, type RowError } from '../import.service';
+import { WorkflowResolver } from '../../workflow-admin/workflow-resolver.service';
 import { EXCEL_COLUMNS, epicLabel, splitMulti, type ExcelColumnKey } from './excel-columns';
 import {
   assertXlsxUpload,
@@ -69,6 +70,33 @@ interface Analysis {
 const rowMessage = (row: number, e: ExcelRowIssue): string =>
   `Dòng ${row} · ${e.column}: ${e.message}`;
 
+/**
+ * Trạng thái của một dòng: tra theo tên trong quy trình của loại việc ở dòng đó. Loại lỗi/thiếu (chưa biết quy trình) thì chỉ
+ * báo khi tên không có ở quy trình nào của dự án — dòng đó đã bị chặn bởi lỗi loại việc.
+ */
+function resolveRowStatus(
+  c: ProjectCatalog,
+  type: ProjectCatalog['types'][number] | undefined,
+  statusText: string,
+  fail: (message: string) => void,
+): string | undefined {
+  if (!statusText) return undefined;
+  const sameName = (xs: ProjectCatalog['statuses']) =>
+    xs.filter((x) => norm(x.name) === norm(statusText));
+  if (!type) {
+    if (sameName(c.statuses).length === 0)
+      fail(`'${statusText}' không có trong quy trình của dự án — hãy chọn từ danh sách`);
+    return undefined;
+  }
+  const workflowId = c.typeWorkflow.get(type.id);
+  const found = sameName(c.statuses.filter((s) => s.workflowId === workflowId))[0]?.id;
+  if (!found)
+    fail(
+      `'${statusText}' không có trong quy trình của loại việc '${type.name}' — hãy chọn từ danh sách`,
+    );
+  return found;
+}
+
 @Injectable()
 export class ExcelImportService {
   private readonly logger = new Logger(ExcelImportService.name);
@@ -76,13 +104,15 @@ export class ExcelImportService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly importer: ImportService,
+    // Quy trình theo loại việc; không phụ thuộc gì nên spec dựng bằng 2 đối số vẫn chạy.
+    private readonly workflows: WorkflowResolver = new WorkflowResolver(),
   ) {}
 
   /** Dự án phải thuộc workspace của request; mọi truy vấn danh mục bên dưới theo projectId này. */
   private async loadProject(workspaceId: string, projectId: string) {
     const project = await this.prisma.project.findFirst({
       where: { id: projectId, workspaceId, deletedAt: null },
-      select: { id: true, key: true, name: true, archivedAt: true, defaultWorkflowId: true },
+      select: { id: true, key: true, name: true, archivedAt: true },
     });
     if (!project) throw new NotFoundAppException('Dự án');
     return project;
@@ -90,9 +120,12 @@ export class ExcelImportService {
 
   private async loadCatalog(
     workspaceId: string,
-    project: { id: string; key: string; name: string; defaultWorkflowId: string | null },
+    project: { id: string; key: string; name: string },
   ): Promise<ProjectCatalog> {
     const projectId = project.id;
+    // Mỗi loại việc có quy trình riêng: lấy trạng thái của MỌI quy trình đang dùng trong dự án.
+    const typeWorkflow = await this.workflows.forProject(this.prisma, projectId);
+    const workflowIds = [...new Set(typeWorkflow.values())];
     const [types, priorities, statuses, memberships, sprints, epics, labels, components, versions] =
       await Promise.all([
         this.prisma.issueType.findMany({
@@ -105,11 +138,13 @@ export class ExcelImportService {
           select: { id: true, name: true },
           orderBy: [{ rank: 'desc' }, { name: 'asc' }],
         }),
-        this.prisma.status.findMany({
-          where: { workflowId: project.defaultWorkflowId ?? '' },
-          select: { id: true, name: true, isInitial: true },
-          orderBy: { order: 'asc' },
-        }),
+        workflowIds.length
+          ? this.prisma.status.findMany({
+              where: { workflowId: { in: workflowIds } },
+              select: { id: true, name: true, isInitial: true, workflowId: true },
+              orderBy: { order: 'asc' },
+            })
+          : Promise.resolve([]),
         this.prisma.projectMembership.findMany({
           where: { projectId, user: { status: 'ACTIVE' } },
           select: { user: { select: { id: true, displayName: true, email: true } } },
@@ -153,6 +188,7 @@ export class ExcelImportService {
       types,
       priorities,
       statuses,
+      typeWorkflow,
       members,
       sprints,
       epics,
@@ -336,14 +372,8 @@ export class ExcelImportService {
         err('priority', `'${priorityText}' không phải mức ưu tiên hợp lệ — hãy chọn từ danh sách`);
     }
 
-    // Trạng thái
-    let statusId: string | undefined;
-    const statusText = text('status');
-    if (statusText) {
-      statusId = byName(c.statuses, statusText)[0]?.id;
-      if (!statusId)
-        err('status', `'${statusText}' không có trong quy trình của dự án — hãy chọn từ danh sách`);
-    }
+    // Trạng thái: tra theo TÊN trong quy trình của chính loại việc ở dòng này (cùng tên có thể có ở nhiều quy trình).
+    const statusId = resolveRowStatus(c, type, text('status'), (m) => err('status', m));
 
     // Người
     const membersByEmail = new Map(c.members.map((m) => [norm(m.email), m.id]));

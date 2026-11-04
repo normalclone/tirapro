@@ -794,3 +794,55 @@ describe('ProjectsService — issueCount của thẻ dự án không tính việ
     }
   });
 });
+
+describe('ProjectsService.create — cache quy trình của resolver (đặt defaultWorkflowId)', () => {
+  function make(txBody?: (fn: (t: unknown) => unknown) => unknown) {
+    const ok = () => vi.fn((_a?: unknown) => Promise.resolve({ id: 'x' }));
+    const tx = {
+      project: {
+        create: vi.fn((_a?: unknown) => Promise.resolve(row({ id: 'p1', name: 'D' }))),
+        update: ok(),
+      },
+      workflow: { create: ok() },
+      status: { create: ok() },
+      workflowTransition: { create: ok() },
+      board: { create: ok() },
+      boardColumn: { create: ok() },
+      boardColumnStatus: { create: ok() },
+      projectMembership: { create: ok() },
+    };
+    const prisma = {
+      project: { findFirst: vi.fn(() => Promise.resolve(null)) },
+      role: { findFirst: vi.fn(() => Promise.resolve({ id: 'r-padmin' })) },
+      $transaction: vi.fn((fn: (t: unknown) => unknown) =>
+        txBody ? txBody(fn) : Promise.resolve(fn(tx)),
+      ),
+    };
+    const resolver = { invalidate: vi.fn() };
+    const svc = new ProjectsService(
+      prisma as never,
+      {} as never,
+      {} as never,
+      ACCESS as never,
+      AUDIT as never,
+      undefined,
+      resolver as never,
+    );
+    return { svc, resolver };
+  }
+
+  it('commit => bỏ cache của dự án vừa tạo', async () => {
+    const { svc, resolver } = make();
+    await svc.create('w1', 'u1', { key: 'D', name: 'D', type: 'SCRUM' } as never);
+    expect(resolver.invalidate).toHaveBeenCalledWith('p1');
+  });
+
+  it('rollback ($transaction ném lỗi) => bỏ cache của MỌI dự án trong request, lỗi vẫn ném ra', async () => {
+    const { svc, resolver } = make(() => Promise.reject(new Error('rollback')));
+    await expect(
+      svc.create('w1', 'u1', { key: 'D', name: 'D', type: 'SCRUM' } as never),
+    ).rejects.toThrow('rollback');
+    expect(resolver.invalidate).toHaveBeenCalledWith();
+    expect(resolver.invalidate).not.toHaveBeenCalledWith('p1');
+  });
+});

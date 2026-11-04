@@ -3,6 +3,7 @@
  * dự án có thể ghi đè riêng từng loại. Zero-dep; zod schema ở @tirapro/shared.
  */
 import type { StatusCategory } from './enums';
+import type { StatusDto } from './entities';
 
 /** Khoá ba quy trình mặc định (Standard / Bug / Epic Workflow). */
 export type WorkflowDefaultKey = 'STANDARD' | 'BUG' | 'EPIC';
@@ -43,4 +44,21 @@ export interface StatusMappingChoiceDto {
   category: StatusCategory;
   /** Gợi ý mặc định: cùng tên, nếu không có thì trạng thái đầu tiên cùng nhóm. */
   isSuggested: boolean;
+}
+
+/** Một bước chuyển khả dụng từ trạng thái hiện tại của việc (quy trình của chính loại việc đó). */
+export interface IssueTransitionOptionDto {
+  id: string;
+  name: string;
+  toStatus: StatusDto;
+}
+
+/** `GET /issues/:id/transitions`. */
+export interface IssueTransitionsDto {
+  /** Quy trình theo loại việc của việc này; null khi loại việc chưa có quy trình. */
+  workflowId: string | null;
+  currentStatusId: string;
+  transitions: IssueTransitionOptionDto[];
+  /** Chỉ khi đang ở Pending: trạng thái mở ngay trước khi tạm dừng (theo lịch sử) — giao diện gợi ý quay về đó. */
+  suggestedResumeStatusId?: string;
 }

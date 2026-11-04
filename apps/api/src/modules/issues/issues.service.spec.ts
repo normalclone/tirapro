@@ -107,6 +107,9 @@ function makeService(
     user: { findUnique: vi.fn(() => Promise.resolve({ isSystemAdmin: false })) },
     // Bảng hệ số: không có dòng → công thức mặc định (spec công thức nằm ở points.spec.ts của @tirapro/shared).
     pointsFormulaConfig: { findUnique: vi.fn(() => Promise.resolve(null)) },
+    // Quy trình theo loại việc: mặc định không ghi đè, không scheme → rơi về Project.defaultWorkflowId.
+    projectWorkflowOverride: { findMany: vi.fn(() => Promise.resolve([])) },
+    workspaceWorkflowScheme: { findMany: vi.fn(() => Promise.resolve([])) },
   };
   // Tra Loại/Ưu tiên cho điểm tự tính: mặc định Task / không tên ưu tiên đặc biệt; spec riêng ghi đè qua `tx`.
   const txFull = {
@@ -119,6 +122,18 @@ function makeService(
   // Việc con còn sống / Epic của việc con (liveDescendants, childEpicIds...): mặc định không có; spec riêng ghi đè findMany.
   const issueTable = tx.issue as Record<string, unknown> | undefined;
   if (issueTable && !issueTable.findMany) issueTable.findMany = vi.fn(() => Promise.resolve([]));
+  // Resolver quy trình tra `project.findUnique`; spec cũ chỉ mock `project.findFirst` (đã trả defaultWorkflowId) → bắc cầu.
+  const proj = (txFull as Record<string, unknown>).project as
+    | { findFirst?: (a: unknown) => unknown; findUnique?: unknown }
+    | undefined;
+  if (proj && proj.findFirst && !proj.findUnique) {
+    const ff = proj.findFirst;
+    const mirror = vi.fn(async (a: unknown) => {
+      const r = (await ff(a)) as Record<string, unknown> | null;
+      return r && { workspaceId: 'w1', ...r };
+    });
+    proj.findUnique = mirror;
+  }
   const prisma = {
     $transaction: (fn: (t: unknown) => unknown) => fn(txFull),
     ...base,
@@ -4279,6 +4294,10 @@ function pTx(
         Promise.resolve({ name: o.priorityNames?.[where.id] ?? 'Medium' }),
       ),
     },
+    // Dự án chưa có quy trình nào → đổi loại không đổi trạng thái (ca điểm không quan tâm quy trình).
+    project: {
+      findUnique: vi.fn(() => Promise.resolve({ workspaceId: 'w1', defaultWorkflowId: null })),
+    },
   };
 }
 /** Dữ liệu của lần `updateMany` đầu (ghi chính việc i1). */
@@ -5370,5 +5389,663 @@ describe('IssuesService — việc con mồ côi tính thẳng vào Epic (cha đ
       Promise.resolve(typeof a.where.parentId === 'string' ? [{ epicId: 'eB' }] : [])) as never);
     await makeService(t).service.restore('w1', 'u1', 'p1', 'i1');
     expect(epicWrite(t, 'eB')?.data).toMatchObject({ storyPoints: 0 });
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Quy trình theo LOẠI việc (workspace scheme): Task/Story → wfStd, Bug → wfBug.
+// ---------------------------------------------------------------------------------------------------------------------
+describe('IssuesService — quy trình theo loại việc', () => {
+  const SCHEME = [
+    { issueTypeId: 't-task', workflowId: 'wfStd' },
+    { issueTypeId: 't-story', workflowId: 'wfStd' },
+    { issueTypeId: 't-bug', workflowId: 'wfBug' },
+    { issueTypeId: 't-epic', workflowId: 'wfEpic' },
+  ];
+  const scheme = () => ({
+    workspaceWorkflowScheme: { findMany: vi.fn(() => Promise.resolve(SCHEME)) },
+  });
+  /** Trạng thái của từng quy trình (đủ cho gợi ý/ánh xạ). */
+  const STATUS = [
+    {
+      id: 'std-todo',
+      name: 'To Do',
+      category: 'TODO',
+      workflowId: 'wfStd',
+      order: 0,
+      isInitial: true,
+    },
+    {
+      id: 'std-prog',
+      name: 'In Progress',
+      category: 'IN_PROGRESS',
+      workflowId: 'wfStd',
+      order: 2,
+      isInitial: false,
+    },
+    {
+      id: 'std-done',
+      name: 'Done',
+      category: 'DONE',
+      workflowId: 'wfStd',
+      order: 6,
+      isInitial: false,
+    },
+    {
+      id: 'bug-new',
+      name: 'New',
+      category: 'TODO',
+      workflowId: 'wfBug',
+      order: 0,
+      isInitial: true,
+    },
+    {
+      id: 'bug-todo',
+      name: 'To Do',
+      category: 'TODO',
+      workflowId: 'wfBug',
+      order: 1,
+      isInitial: false,
+    },
+    {
+      id: 'bug-prog',
+      name: 'In Progress',
+      category: 'IN_PROGRESS',
+      workflowId: 'wfBug',
+      order: 2,
+      isInitial: false,
+    },
+    {
+      id: 'bug-pending',
+      name: 'Pending',
+      category: 'IN_PROGRESS',
+      workflowId: 'wfBug',
+      order: 5,
+      isInitial: false,
+    },
+    {
+      id: 'bug-done',
+      name: 'Done',
+      category: 'DONE',
+      workflowId: 'wfBug',
+      order: 6,
+      isInitial: false,
+    },
+    {
+      id: 'epic-start',
+      name: 'Not Started',
+      category: 'TODO',
+      workflowId: 'wfEpic',
+      order: 0,
+      isInitial: true,
+    },
+  ];
+  const statusOf = (id: string) => STATUS.find((s) => s.id === id)!;
+  const rowWith = (typeId: string, statusId: string, over: Record<string, unknown> = {}) =>
+    issueRow({
+      typeId,
+      type: {
+        id: typeId,
+        name: typeId,
+        key: typeId === 't-bug' ? 'BUG' : typeId === 't-epic' ? 'EPIC' : 'TASK',
+        iconUrl: null,
+        color: null,
+        hierarchyLevel: 0,
+        isSubtask: false,
+      },
+      statusId,
+      status: { ...statusOf(statusId), color: null },
+      ...over,
+    });
+  /** Bảng bước chuyển: chỉ khai những bước dùng trong test, tra theo (workflowId, toStatusId). */
+  const transitionFind = (allowed: Array<[string, string]>) =>
+    vi.fn(({ where }: { where: { workflowId: string; toStatusId: string } }) =>
+      Promise.resolve(
+        allowed.some(([w, to]) => w === where.workflowId && to === where.toStatusId)
+          ? { id: 'tr' }
+          : null,
+      ),
+    );
+  const statusFindMany = vi.fn(({ where }: { where: { workflowId: string } }) =>
+    Promise.resolve(STATUS.filter((s) => s.workflowId === where.workflowId)),
+  );
+
+  describe('create', () => {
+    const base = { projectId: 'p1', summary: 's', descriptionFormat: 'MARKDOWN' as const };
+    function createSetup() {
+      const { tx, created } = createTx(WF_DEFAULT);
+      // Trạng thái khởi tạo theo quy trình được hỏi.
+      tx.status.findFirst = vi.fn(
+        ({ where }: { where: { id?: string; workflowId: string; isInitial?: boolean } }) =>
+          Promise.resolve(
+            STATUS.find(
+              (s) =>
+                s.workflowId === where.workflowId &&
+                (where.isInitial === undefined || s.isInitial === where.isInitial) &&
+                (where.id === undefined || s.id === where.id),
+            ) ?? null,
+          ),
+      );
+      return { tx, created, ...makeService(tx, scheme()) };
+    }
+
+    it('tạo Bug => trạng thái khởi tạo của Bug Workflow (New)', async () => {
+      const { service, created } = createSetup();
+      await service.create('w1', 'u1', { ...base, typeId: 't-bug' });
+      expect(created.mock.calls[0]![0].data.statusId).toBe('bug-new');
+    });
+
+    it('tạo Task trong CÙNG dự án => trạng thái khởi tạo của Standard Workflow (To Do)', async () => {
+      const { service, created } = createSetup();
+      await service.create('w1', 'u1', { ...base, typeId: 't-task' });
+      expect(created.mock.calls[0]![0].data.statusId).toBe('std-todo');
+    });
+
+    it('statusId của quy trình khác loại (Bug tạo thẳng ở trạng thái Standard) => 422', async () => {
+      const { service, created } = createSetup();
+      await expect(
+        service.create('w1', 'u1', { ...base, typeId: 't-bug', statusId: 'std-prog' }),
+      ).rejects.toMatchObject({ status: 422 });
+      expect(created).not.toHaveBeenCalled();
+    });
+
+    it('không có quy trình nào (không scheme, dự án chưa có mặc định) => 422 và KHÔNG truy vấn status với workflowId rỗng', async () => {
+      const { tx, created } = createTx(WF_DEFAULT);
+      tx.project.findFirst = vi.fn(() =>
+        Promise.resolve({
+          id: 'p1',
+          key: 'P',
+          defaultWorkflowId: null,
+          leadId: null,
+          defaultAssigneeMode: 'NONE',
+          archivedAt: null,
+        } as never),
+      );
+      (tx.project as Record<string, unknown>).findUnique = vi.fn(() =>
+        Promise.resolve({ workspaceId: 'w1', defaultWorkflowId: null }),
+      );
+      const { service } = makeService(tx);
+      await expect(service.create('w1', 'u1', { ...base, typeId: 't-bug' })).rejects.toMatchObject({
+        status: 422,
+      });
+      expect(tx.status.findFirst).not.toHaveBeenCalled();
+      expect(created).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('transition / move / bulk theo quy trình của loại', () => {
+    function trTx(row: Record<string, unknown>, allowed: Array<[string, string]>) {
+      return {
+        issue: {
+          findFirst: vi.fn(() => Promise.resolve(row)),
+          findMany: vi.fn(() => Promise.resolve([])),
+          updateMany: vi.fn(() => Promise.resolve({ count: 1 })),
+          findFirstOrThrow: vi.fn(() => Promise.resolve({ ...row, version: 4 })),
+        },
+        issueHistory: { createMany: vi.fn(), create: vi.fn() },
+        // Dự án có quy trình mặc định cũ `wf`; quy trình theo loại do scheme quyết định.
+        project: {
+          findUnique: vi.fn(() => Promise.resolve({ workspaceId: 'w1', defaultWorkflowId: 'wf' })),
+        },
+        workflowTransition: { findFirst: transitionFind(allowed) },
+        status: {
+          findUnique: vi.fn(({ where }: { where: { id: string } }) =>
+            Promise.resolve(statusOf(where.id)),
+          ),
+        },
+        resolution: { findFirst: vi.fn(() => Promise.resolve({ id: 'r-done' })) },
+      };
+    }
+
+    it('Bug chỉ chuyển được theo bước của Bug Workflow; bước chỉ có ở Standard => 409 INVALID_TRANSITION', async () => {
+      const tx = trTx(rowWith('t-bug', 'bug-new', { version: 3 }), [
+        ['wfBug', 'bug-todo'],
+        ['wfStd', 'std-prog'],
+      ]);
+      const { service } = makeService(tx, scheme());
+      await expect(
+        service.transition('w1', 'u1', 'i1', { version: 3, toStatusId: 'std-prog' }),
+      ).rejects.toMatchObject({ status: 409 });
+      // Đã hỏi đúng quy trình của loại Bug, không phải quy trình khác.
+      expect(tx.workflowTransition.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ workflowId: 'wfBug' }) }),
+      );
+      await service.transition('w1', 'u1', 'i1', { version: 3, toStatusId: 'bug-todo' });
+      expect(tx.issue.updateMany).toHaveBeenCalled();
+    });
+
+    it('Task trong cùng dự án đi theo bước của Standard (đối chứng với Bug)', async () => {
+      const tx = trTx(rowWith('t-task', 'std-todo', { version: 3 }), [['wfStd', 'std-prog']]);
+      const { service } = makeService(tx, scheme());
+      await service.transition('w1', 'u1', 'i1', { version: 3, toStatusId: 'std-prog' });
+      expect(tx.workflowTransition.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ workflowId: 'wfStd' }) }),
+      );
+    });
+
+    it('loại việc không có quy trình ("" từ resolver) => 409 mà KHÔNG truy vấn bước chuyển với workflowId rỗng', async () => {
+      const tx = {
+        ...trTx(rowWith('t-task', 'std-todo', { version: 3 }), []),
+        project: {
+          findUnique: vi.fn(() => Promise.resolve({ workspaceId: 'w1', defaultWorkflowId: null })),
+        },
+      };
+      const { service } = makeService(tx);
+      await expect(
+        service.transition('w1', 'u1', 'i1', { version: 3, toStatusId: 'std-prog' }),
+      ).rejects.toMatchObject({ status: 409 });
+      expect(tx.workflowTransition.findFirst).not.toHaveBeenCalled();
+    });
+
+    it('move (kéo thẻ) cũng kiểm theo quy trình của loại', async () => {
+      const tx = trTx(rowWith('t-bug', 'bug-new', { version: 3 }), [['wfStd', 'std-prog']]);
+      const { service } = makeService(tx, scheme());
+      await expect(
+        service.move('w1', 'u1', 'i1', { version: 3, statusId: 'std-prog' }),
+      ).rejects.toMatchObject({ status: 409 });
+      expect(tx.workflowTransition.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ workflowId: 'wfBug' }) }),
+      );
+    });
+
+    it('bulk chuyển trạng thái trên lô hỗn hợp: việc có loại không có bước đó => 409 cả lô, chưa ghi gì', async () => {
+      const rows = [
+        rowWith('t-task', 'std-todo', { id: 'a' }),
+        rowWith('t-bug', 'bug-new', { id: 'b' }),
+      ];
+      const tx = {
+        ...trTx(rows[0]!, [['wfStd', 'std-prog']]),
+        issue: { ...trTx(rows[0]!, []).issue, findMany: vi.fn(() => Promise.resolve(rows)) },
+      };
+      const { service } = makeService(tx, scheme());
+      await expect(
+        service.bulkUpdate('w1', 'u1', {
+          projectId: 'p1',
+          items: [
+            { id: 'a', version: 3 },
+            { id: 'b', version: 3 },
+          ],
+          patch: { statusId: 'std-prog' },
+        }),
+      ).rejects.toMatchObject({ status: 409 });
+      expect(tx.issue.updateMany).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('đổi loại việc sang quy trình khác (update)', () => {
+    function updTx(row: Record<string, unknown>, extra: { allowedTypes?: boolean } = {}) {
+      const t = pTx(row, { ...row, version: 4 }, {});
+      return Object.assign(t, {
+        issueHistory: { createMany: vi.fn(), create: vi.fn() },
+        project: {
+          findUnique: vi.fn(() => Promise.resolve({ workspaceId: 'w1', defaultWorkflowId: 'wf' })),
+        },
+        status: {
+          findMany: statusFindMany,
+          findUnique: vi.fn(({ where }: { where: { id: string } }) =>
+            Promise.resolve(statusOf(where.id)),
+          ),
+        },
+        resolution: { findFirst: vi.fn(() => Promise.resolve({ id: 'r-done' })) },
+        ...(extra.allowedTypes === false ? {} : {}),
+      });
+    }
+
+    it('Task → Bug không gửi targetStatusId => 422 STATUS_MAPPING_REQUIRED kèm suggestedStatusId (cùng tên), chưa ghi gì', async () => {
+      const t = updTx(rowWith('t-task', 'std-prog', { version: 3 }));
+      const { service } = makeService(t, scheme());
+      const err = (await service
+        .update('w1', 'u1', 'i1', { version: 3, typeId: 't-bug' })
+        .catch((e: unknown) => e)) as {
+        status: number;
+        response: { code: string; details: Array<{ suggestedStatusId?: string }> };
+      };
+      expect(err.status).toBe(422);
+      expect(err.response.code).toBe('STATUS_MAPPING_REQUIRED');
+      expect(err.response.details[0]!.suggestedStatusId).toBe('bug-prog'); // "In Progress" cùng tên
+      expect(t.issue.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('gợi ý khi không có tên trùng: trạng thái đầu tiên cùng nhóm', async () => {
+      const t = updTx(rowWith('t-task', 'std-todo', { version: 3 }));
+      const { service } = makeService(t, scheme());
+      const err = (await service
+        .update('w1', 'u1', 'i1', { version: 3, typeId: 't-bug' })
+        .catch((e: unknown) => e)) as {
+        response: { details: Array<{ suggestedStatusId?: string }> };
+      };
+      expect(err.response.details[0]!.suggestedStatusId).toBe('bug-todo'); // "To Do" có ở Bug
+    });
+
+    it('có targetStatusId hợp lệ => ghi typeId + statusId, history STATUS, phát ISSUE_TRANSITIONED', async () => {
+      const t = updTx(rowWith('t-task', 'std-prog', { version: 3 }));
+      const { service, events } = makeService(t, scheme());
+      await service.update('w1', 'u1', 'i1', {
+        version: 3,
+        typeId: 't-bug',
+        targetStatusId: 'bug-todo',
+      });
+      expect(firstData(t)).toMatchObject({
+        typeId: 't-bug',
+        statusId: 'bug-todo',
+        resolutionId: null,
+        resolvedAt: null,
+      });
+      expect(t.issueHistory.create).toHaveBeenCalledTimes(1);
+      expect(events.emit).toHaveBeenCalledWith(
+        DOMAIN_EVENTS.ISSUE_TRANSITIONED,
+        expect.objectContaining({ fromStatusId: 'std-prog' }),
+      );
+    });
+
+    it('targetStatusId thuộc quy trình khác (trạng thái Standard cho Bug) => 422, chưa ghi', async () => {
+      const t = updTx(rowWith('t-task', 'std-prog', { version: 3 }));
+      const { service } = makeService(t, scheme());
+      await expect(
+        service.update('w1', 'u1', 'i1', {
+          version: 3,
+          typeId: 't-bug',
+          targetStatusId: 'std-done',
+        }),
+      ).rejects.toMatchObject({ status: 422 });
+      expect(t.issue.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('đích là Done => đặt Resolution mặc định + resolvedAt', async () => {
+      const t = updTx(rowWith('t-task', 'std-prog', { version: 3 }));
+      const { service } = makeService(t, scheme());
+      await service.update('w1', 'u1', 'i1', {
+        version: 3,
+        typeId: 't-bug',
+        targetStatusId: 'bug-done',
+      });
+      expect(firstData(t)).toMatchObject({ statusId: 'bug-done', resolutionId: 'r-done' });
+      expect(firstData(t).resolvedAt).toBeInstanceOf(Date);
+    });
+
+    it('Task → Story (cùng quy trình) => không cần targetStatusId, không đổi trạng thái', async () => {
+      const t = updTx(rowWith('t-task', 'std-prog', { version: 3 }));
+      const { service, events } = makeService(t, scheme());
+      await service.update('w1', 'u1', 'i1', { version: 3, typeId: 't-story' });
+      expect(firstData(t)).toMatchObject({ typeId: 't-story' });
+      expect(firstData(t)).not.toHaveProperty('statusId');
+      expect(t.issueHistory.create).not.toHaveBeenCalled();
+      expect(events.emit).not.toHaveBeenCalledWith(
+        DOMAIN_EVENTS.ISSUE_TRANSITIONED,
+        expect.anything(),
+      );
+    });
+
+    it('Bug → Epic cũng đi qua ánh xạ trạng thái (Epic Workflow)', async () => {
+      const t = updTx(rowWith('t-bug', 'bug-prog', { version: 3 }));
+      const { service } = makeService(t, scheme());
+      await expect(
+        service.update('w1', 'u1', 'i1', { version: 3, typeId: 't-epic' }),
+      ).rejects.toMatchObject({ response: { code: 'STATUS_MAPPING_REQUIRED' } });
+    });
+
+    it('đổi trạng thái kèm đổi loại cần quyền chuyển trạng thái => 403 nếu thiếu, chưa ghi', async () => {
+      const t = updTx(rowWith('t-task', 'std-prog', { version: 3 }));
+      const { service } = makeService(t, scheme(), undefined, ['issue:edit']);
+      await expect(
+        service.update('w1', 'u1', 'i1', {
+          version: 3,
+          typeId: 't-bug',
+          targetStatusId: 'bug-todo',
+        }),
+      ).rejects.toMatchObject({ status: 403 });
+      expect(t.issue.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('loại mới chưa có quy trình (dự án không có mặc định) => giữ trạng thái như trước, không hỏi', async () => {
+      const t = updTx(rowWith('t-task', 'std-prog', { version: 3 }));
+      t.project.findUnique = vi.fn(() =>
+        Promise.resolve({ workspaceId: 'w1', defaultWorkflowId: null }),
+      ) as never;
+      const { service } = makeService(t);
+      await service.update('w1', 'u1', 'i1', { version: 3, typeId: 't-bug' });
+      expect(firstData(t)).not.toHaveProperty('statusId');
+    });
+  });
+
+  describe('đổi loại hàng loạt (bulk)', () => {
+    function bTx(rows: Array<Record<string, unknown>>) {
+      return {
+        issue: {
+          findMany: vi.fn(() => Promise.resolve(rows)),
+          updateMany: vi.fn(() => Promise.resolve({ count: 1 })),
+          findFirst: vi.fn(() => Promise.resolve({ version: 5 })),
+          findFirstOrThrow: vi.fn(({ where }: { where: { id: string } }) =>
+            Promise.resolve({ ...rows.find((r) => r.id === where.id)!, version: 4 }),
+          ),
+        },
+        issueHistory: { createMany: vi.fn(), create: vi.fn() },
+        issueType: {
+          findFirst: vi.fn(() => Promise.resolve({ id: 't-bug', key: 'BUG' })),
+          findUnique: vi.fn(() => Promise.resolve({ key: 'BUG' })),
+        },
+        project: {
+          findUnique: vi.fn(() => Promise.resolve({ workspaceId: 'w1', defaultWorkflowId: 'wf' })),
+        },
+        status: {
+          findMany: statusFindMany,
+          findUnique: vi.fn(({ where }: { where: { id: string } }) =>
+            Promise.resolve(statusOf(where.id)),
+          ),
+        },
+        resolution: { findFirst: vi.fn(() => Promise.resolve({ id: 'r-done' })) },
+      };
+    }
+    const items = [
+      { id: 'a', version: 3 },
+      { id: 'b', version: 3 },
+      { id: 'c', version: 3 },
+    ];
+    const rows = () => [
+      rowWith('t-task', 'std-todo', { id: 'a' }),
+      rowWith('t-task', 'std-prog', { id: 'b' }),
+      rowWith('t-task', 'std-prog', { id: 'c' }),
+    ];
+
+    it('thiếu statusMap => 422 STATUS_MAPPING_REQUIRED, mỗi trạng thái nguồn một dòng (gộp việc cùng trạng thái), chưa ghi gì', async () => {
+      const t = bTx(rows());
+      const { service } = makeService(t, scheme());
+      const err = (await service
+        .bulkUpdate('w1', 'u1', { projectId: 'p1', items, patch: { typeId: 't-bug' } })
+        .catch((e: unknown) => e)) as {
+        status: number;
+        response: { code: string; details: Array<{ field: string; suggestedStatusId?: string }> };
+      };
+      expect(err.status).toBe(422);
+      expect(err.response.code).toBe('STATUS_MAPPING_REQUIRED');
+      expect(err.response.details.map((d) => d.field).sort()).toEqual([
+        'statusMap.std-prog',
+        'statusMap.std-todo',
+      ]);
+      expect(
+        err.response.details.find((d) => d.field === 'statusMap.std-prog')!.suggestedStatusId,
+      ).toBe('bug-prog');
+      expect(t.issue.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('statusMap đủ => mỗi việc nhận typeId mới + trạng thái đích, history STATUS cho từng việc', async () => {
+      const t = bTx(rows());
+      const { service } = makeService(t, scheme());
+      await service.bulkUpdate('w1', 'u1', {
+        projectId: 'p1',
+        items,
+        patch: { typeId: 't-bug' },
+        statusMap: { 'std-todo': 'bug-new', 'std-prog': 'bug-prog' },
+      });
+      const writes = (
+        t.issue.updateMany.mock.calls as unknown as Array<
+          [{ where: { id: string }; data: Record<string, unknown> }]
+        >
+      ).map((c) => c[0]);
+      expect(writes.find((w) => w.where.id === 'a')!.data).toMatchObject({
+        typeId: 't-bug',
+        statusId: 'bug-new',
+      });
+      expect(writes.find((w) => w.where.id === 'b')!.data).toMatchObject({
+        typeId: 't-bug',
+        statusId: 'bug-prog',
+      });
+      expect(t.issueHistory.create).toHaveBeenCalledTimes(3);
+    });
+
+    it('đích của statusMap thuộc quy trình khác => 422, chưa ghi', async () => {
+      const t = bTx(rows());
+      const { service } = makeService(t, scheme());
+      await expect(
+        service.bulkUpdate('w1', 'u1', {
+          projectId: 'p1',
+          items,
+          patch: { typeId: 't-bug' },
+          statusMap: { 'std-todo': 'std-prog', 'std-prog': 'bug-prog' },
+        }),
+      ).rejects.toMatchObject({ status: 422 });
+      expect(t.issue.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('lô đã ở loại đó hoặc cùng quy trình => không đòi statusMap', async () => {
+      const t = bTx([rowWith('t-bug', 'bug-new', { id: 'a' })]);
+      const { service } = makeService(t, scheme());
+      await service.bulkUpdate('w1', 'u1', {
+        projectId: 'p1',
+        items: [{ id: 'a', version: 3 }],
+        patch: { typeId: 't-bug' },
+      });
+      expect(t.issue.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('không đổi từ/sang Epic hàng loạt và không gộp đổi loại với đổi trạng thái', async () => {
+      const epicRows = [rowWith('t-epic', 'epic-start', { id: 'a' })];
+      const t = bTx(epicRows);
+      const { service } = makeService(t, scheme());
+      await expect(
+        service.bulkUpdate('w1', 'u1', {
+          projectId: 'p1',
+          items: [{ id: 'a', version: 3 }],
+          patch: { typeId: 't-bug' },
+          statusMap: { 'epic-start': 'bug-new' },
+        }),
+      ).rejects.toMatchObject({ status: 422 });
+      const t2 = bTx(rows());
+      const b = makeService(t2, scheme());
+      await expect(
+        b.service.bulkUpdate('w1', 'u1', {
+          projectId: 'p1',
+          items,
+          patch: { typeId: 't-bug', statusId: 'bug-new' },
+        }),
+      ).rejects.toMatchObject({ status: 422 });
+    });
+  });
+
+  describe('GET transitions', () => {
+    function gTx(row: Record<string, unknown>, history: { oldValue: string | null } | null) {
+      return {
+        issue: { findFirst: vi.fn(() => Promise.resolve(row)) },
+        workflowTransition: {
+          findMany: vi.fn(
+            ({ where }: { where: { workflowId: string; toStatusId: { not: string } } }) =>
+              Promise.resolve(
+                [
+                  {
+                    id: 'tr1',
+                    workflowId: 'wfBug',
+                    toStatusId: 'bug-new',
+                    name: 'Tiếp tục: New',
+                    toStatus: statusOf('bug-new'),
+                  },
+                  {
+                    id: 'tr2',
+                    workflowId: 'wfBug',
+                    toStatusId: 'bug-prog',
+                    name: 'Tiếp tục: In Progress',
+                    toStatus: statusOf('bug-prog'),
+                  },
+                  {
+                    id: 'tr3',
+                    workflowId: 'wfBug',
+                    toStatusId: 'bug-prog',
+                    name: 'Bắt đầu (từ mọi trạng thái)',
+                    toStatus: statusOf('bug-prog'),
+                  },
+                ].filter(
+                  (t) => t.workflowId === where.workflowId && t.toStatusId !== where.toStatusId.not,
+                ),
+              ),
+          ),
+        },
+        project: {
+          findUnique: vi.fn(() => Promise.resolve({ workspaceId: 'w1', defaultWorkflowId: 'wf' })),
+        },
+        issueHistory: { findFirst: vi.fn(() => Promise.resolve(history)) },
+        status: {
+          findFirst: vi.fn(({ where }: { where: { workflowId: string; name: string } }) =>
+            Promise.resolve(
+              STATUS.find(
+                (s) =>
+                  s.workflowId === where.workflowId &&
+                  s.name === where.name &&
+                  s.category !== 'DONE',
+              ) ?? null,
+            ),
+          ),
+        },
+      };
+    }
+    const issueSel = (typeId: string, statusId: string) => ({
+      id: 'i1',
+      projectId: 'p1',
+      typeId,
+      statusId,
+      status: { name: statusOf(statusId).name },
+    });
+
+    it('trả bước chuyển của quy trình riêng của loại việc, gộp bước trùng đích', async () => {
+      const t = gTx(issueSel('t-bug', 'bug-done'), null);
+      const { service } = makeService(t, scheme());
+      const dto = await service.getTransitions('w1', 'i1');
+      expect(dto.workflowId).toBe('wfBug');
+      expect(dto.transitions.map((x) => x.toStatus.id)).toEqual(['bug-new', 'bug-prog']);
+      expect(dto.suggestedResumeStatusId).toBeUndefined();
+    });
+
+    it('đang ở Pending => kèm suggestedResumeStatusId = trạng thái mở ngay trước khi tạm dừng (theo lịch sử)', async () => {
+      const t = gTx(issueSel('t-bug', 'bug-pending'), { oldValue: 'In Progress' });
+      const { service } = makeService(t, scheme());
+      const dto = await service.getTransitions('w1', 'i1');
+      expect(dto.suggestedResumeStatusId).toBe('bug-prog');
+      expect(t.issueHistory.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ newValue: 'Pending', field: 'STATUS' }),
+        }),
+      );
+    });
+
+    it('đang ở Pending nhưng không có lịch sử => không có gợi ý', async () => {
+      const t = gTx(issueSel('t-bug', 'bug-pending'), null);
+      const { service } = makeService(t, scheme());
+      expect((await service.getTransitions('w1', 'i1')).suggestedResumeStatusId).toBeUndefined();
+    });
+
+    it('việc không tồn tại => 404; loại không có quy trình => rỗng, không truy vấn bước chuyển', async () => {
+      const t = gTx(issueSel('t-bug', 'bug-new'), null);
+      t.issue.findFirst = vi.fn(() => Promise.resolve(null)) as never;
+      await expect(
+        makeService(t, scheme()).service.getTransitions('w1', 'i1'),
+      ).rejects.toMatchObject({ status: 404 });
+      const t2 = {
+        ...gTx(issueSel('t-bug', 'bug-new'), null),
+        project: {
+          findUnique: vi.fn(() => Promise.resolve({ workspaceId: 'w1', defaultWorkflowId: null })),
+        },
+      };
+      const dto = await makeService(t2).service.getTransitions('w1', 'i1');
+      expect(dto).toMatchObject({ workflowId: null, transitions: [] });
+      expect(t2.workflowTransition.findMany).not.toHaveBeenCalled();
+    });
   });
 });

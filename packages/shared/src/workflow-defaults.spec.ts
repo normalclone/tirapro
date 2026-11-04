@@ -8,6 +8,7 @@ import {
   mapStatusByCategory,
   setProjectOverrideSchema,
   setWorkspaceSchemeSchema,
+  suggestTargetStatus,
 } from './workflow-defaults';
 
 const KEYS = ['STANDARD', 'BUG', 'EPIC'] as const;
@@ -267,5 +268,26 @@ describe('setProjectOverrideSchema', () => {
         statusMap: { s1: 5 },
       }).success,
     ).toBe(false);
+  });
+});
+
+describe('suggestTargetStatus', () => {
+  const bug = DEFAULT_WORKFLOWS.BUG.statuses.map((s, order) => ({ ...s, order, id: s.name }));
+  it('cùng tên (không phân biệt hoa/thường) thắng', () => {
+    expect(suggestTargetStatus({ name: 'in progress', category: 'IN_PROGRESS' }, bug)?.id).toBe(
+      'In Progress',
+    );
+    expect(suggestTargetStatus({ name: 'Done', category: 'DONE' }, bug)?.id).toBe('Done');
+  });
+  it('không trùng tên: trạng thái ĐẦU TIÊN cùng nhóm theo order', () => {
+    expect(suggestTargetStatus({ name: 'Rework', category: 'IN_PROGRESS' }, bug)?.id).toBe(
+      'In Progress',
+    );
+    expect(suggestTargetStatus({ name: 'Ready', category: 'TODO' }, bug)?.id).toBe('New');
+  });
+  it('không có nhóm khớp: trạng thái khởi tạo; rỗng: null', () => {
+    const noDone = bug.filter((s) => s.category !== 'DONE');
+    expect(suggestTargetStatus({ name: 'Cancelled', category: 'DONE' }, noDone)?.id).toBe('New');
+    expect(suggestTargetStatus({ name: 'x', category: 'TODO' }, [])).toBeNull();
   });
 });

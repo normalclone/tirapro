@@ -26,6 +26,7 @@ import { ProjectHealthService } from '../analytics/project-health.service';
 import { AuditService, type AuditEntry } from '../audit/audit.service';
 import { SYSTEM_USER_EMAIL } from '../../common/system-user';
 import { ProjectAccessService } from '../rbac/project-access.service';
+import { WorkflowResolver } from '../workflow-admin/workflow-resolver.service';
 
 /**
  * `issueCount` của thẻ dự án: chưa xoá mềm và KHÔNG tính việc chưa duyệt (cùng số với Board/Tổng quan/Việc chờ). Prisma
@@ -45,6 +46,8 @@ export class ProjectsService {
     private readonly audit: AuditService,
     // Tuỳ chọn để spec dựng bằng 5 đối số vẫn chạy; Nest DI tiêm bản thật (phát sự kiện đổi riêng tư / đổi quyền xem).
     @Optional() private readonly events?: EventEmitter2,
+    // Quy trình theo loại việc: tạo dự án đặt `defaultWorkflowId` nên phải bỏ cache của resolver (kể cả khi rollback).
+    private readonly workflows: WorkflowResolver = new WorkflowResolver(),
   ) {}
 
   async create(
@@ -196,6 +199,8 @@ export class ProjectsService {
         return project;
       });
     } catch (e) {
+      // Rollback: không còn dự án/quy trình vừa tạo → bỏ mọi cache quy trình của request (không biết id dự án đã huỷ).
+      this.workflows.invalidate();
       // Khoá duy nhất [workspace, mã/tên] còn giữ cả dự án đã xoá mềm — báo rõ thay vì lỗi 500.
       if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
         throw new BusinessRuleException(
@@ -205,6 +210,8 @@ export class ProjectsService {
       throw e;
     }
 
+    // Commit: `defaultWorkflowId` vừa được đặt — mọi quy trình đã nạp cho dự án này (nếu có) đã cũ.
+    this.workflows.invalidate(project.id);
     return this.toDto(project, 0);
   }
 

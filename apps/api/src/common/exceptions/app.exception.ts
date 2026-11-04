@@ -94,6 +94,16 @@ export class InvalidTransitionException extends AppException {
   }
 }
 
+/**
+ * 422 STATUS_MAPPING_REQUIRED: đổi loại việc sang loại dùng quy trình khác mà không nói trạng thái đích.
+ * Mỗi `details[]` mang `suggestedStatusId` (cùng tên trạng thái, không có thì trạng thái đầu tiên cùng nhóm).
+ */
+export class StatusMappingRequiredException extends AppException {
+  constructor(message: string, details: ErrorDetail[]) {
+    super(ERROR_CODES.STATUS_MAPPING_REQUIRED, message, HttpStatus.UNPROCESSABLE_ENTITY, details);
+  }
+}
+
 export class BusinessRuleException extends AppException {
   constructor(message: string, details?: ErrorDetail[]) {
     super(ERROR_CODES.BUSINESS_RULE_VIOLATION, message, HttpStatus.UNPROCESSABLE_ENTITY, details);

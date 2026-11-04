@@ -22,9 +22,16 @@ export const catalog: ProjectCatalog = {
     { id: 'pr-l', name: 'Low' },
   ],
   statuses: [
-    { id: 's-todo', name: 'To Do', isInitial: true },
-    { id: 's-done', name: 'Done', isInitial: false },
+    { id: 's-todo', name: 'To Do', isInitial: true, workflowId: 'wf1' },
+    { id: 's-done', name: 'Done', isInitial: false, workflowId: 'wf1' },
   ],
+  // Mọi loại dùng một quy trình (wf1): cấu hình chưa tách theo loại việc.
+  typeWorkflow: new Map([
+    ['t-epic', 'wf1'],
+    ['t-task', 'wf1'],
+    ['t-bug', 'wf1'],
+    ['t-sub', 'wf1'],
+  ]),
   members: [
     { id: 'u1', displayName: 'Nguyễn An', email: 'an@x.com' },
     { id: 'u2', displayName: 'Nguyễn An', email: 'an2@x.com' }, // trùng tên

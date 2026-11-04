@@ -24,7 +24,10 @@ export interface ProjectCatalog {
     isSubtask: boolean;
   }>;
   priorities: Array<{ id: string; name: string }>;
-  statuses: Array<{ id: string; name: string; isInitial: boolean }>;
+  /** Trạng thái của MỌI quy trình đang dùng trong dự án (mỗi loại việc có thể dùng quy trình khác nhau). */
+  statuses: Array<{ id: string; name: string; isInitial: boolean; workflowId: string }>;
+  /** Loại việc → quy trình của loại đó trong dự án (thiếu = loại chưa có quy trình). */
+  typeWorkflow: Map<string, string>;
   members: Array<{ id: string; displayName: string; email: string }>;
   sprints: Array<{ id: string; name: string }>;
   epics: Array<{ id: string; key: string; summary: string }>;
@@ -59,7 +62,8 @@ function listValues(catalog: ProjectCatalog): Record<ExcelListKey, string[]> {
     // Loại việc con (sub-task) cần việc cha — biểu mẫu không có cột đó nên không đưa vào danh sách.
     type: clean(catalog.types.filter((t) => !t.isSubtask).map((t) => t.name)),
     priority: clean(catalog.priorities.map((p) => p.name)),
-    status: clean(catalog.statuses.map((s) => s.name)),
+    // Cùng tên ở nhiều quy trình (vd. "In Progress") chỉ hiện một lần trong danh sách.
+    status: clean([...new Set(catalog.statuses.map((s) => s.name))]),
     member: clean(catalog.members.map(personLabel)),
     sprint: clean(catalog.sprints.map((s) => s.name)),
     epic: clean(catalog.epics.map(epicLabel)),

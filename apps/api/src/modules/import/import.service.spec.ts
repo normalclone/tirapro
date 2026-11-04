@@ -160,7 +160,11 @@ describe('ImportService.createIssuesInChunks + IssuesService thật — sprint C
           }),
         ),
         update: vi.fn(() => Promise.resolve({ issueSequence: 1 })),
+        // Resolver quy trình theo loại việc.
+        findUnique: vi.fn(() => Promise.resolve({ workspaceId: 'w1', defaultWorkflowId: 'wf' })),
       },
+      projectWorkflowOverride: { findMany: vi.fn(() => Promise.resolve([])) },
+      workspaceWorkflowScheme: { findMany: vi.fn(() => Promise.resolve([])) },
       issueType: {
         findFirst: vi.fn(() => Promise.resolve({ id: 't1' })),
         findUnique: vi.fn(() => Promise.resolve({ key: 'TASK', name: 'Task' })),
@@ -255,7 +259,11 @@ describe('ImportService.createIssuesInChunks + IssuesService thật — epic c�
           }),
         ),
         update: vi.fn(() => Promise.resolve({ issueSequence: 1 })),
+        // Resolver quy trình theo loại việc.
+        findUnique: vi.fn(() => Promise.resolve({ workspaceId: 'w1', defaultWorkflowId: 'wf' })),
       },
+      projectWorkflowOverride: { findMany: vi.fn(() => Promise.resolve([])) },
+      workspaceWorkflowScheme: { findMany: vi.fn(() => Promise.resolve([])) },
       issueType: {
         findFirst: vi.fn(() => Promise.resolve({ id: 't1' })),
         findUnique: vi.fn(() => Promise.resolve({ key: 'TASK', name: 'Task' })),

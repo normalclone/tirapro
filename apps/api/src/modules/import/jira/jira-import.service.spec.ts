@@ -83,6 +83,12 @@ function setup(
     /** Việc mà ImportService báo "đụng unique mã" (nhập đồng thời) — nằm trong `duplicates`, không phải `errors`. */
     conflictSummaries?: string[];
     existingIssues?: ExistingIssue[];
+    /** Quy trình mặc định của dự án MỚI (project.findUnique). */
+    workflowDefault?: string;
+    /** Scheme workspace: loại việc → quy trình. */
+    scheme?: Array<{ issueTypeId: string; workflowId: string }>;
+    /** Trạng thái thêm vào kết quả `status.findMany` (vd. của quy trình theo loại việc). */
+    extraStatuses?: Array<Record<string, unknown>>;
   } = {},
 ) {
   const localDir = mkdtempSync(join(tmpRoot, 'storage-'));
@@ -107,8 +113,13 @@ function setup(
           args.where.key ? null : { id: 'p1', key: 'PROJ', defaultWorkflowId: 'wf1' },
         ),
       ),
-      findUnique: vi.fn(() => Promise.resolve({ defaultWorkflowId: 'wf2' })),
+      findUnique: vi.fn(() =>
+        Promise.resolve({ workspaceId: 'w1', defaultWorkflowId: opts.workflowDefault ?? 'wf2' }),
+      ),
     },
+    // Resolver quy trình theo loại việc: mặc định không ghi đè, không scheme → rơi về quy trình mặc định của dự án.
+    projectWorkflowOverride: { findMany: vi.fn(() => Promise.resolve([])) },
+    workspaceWorkflowScheme: { findMany: vi.fn(() => Promise.resolve(opts.scheme ?? [])) },
     issueType: {
       findMany: vi.fn(() =>
         Promise.resolve([
@@ -137,12 +148,20 @@ function setup(
       findMany: vi.fn(() => Promise.resolve([{ userId: 'u-an' }, { userId: 'u-binh' }])),
     },
     status: {
-      findMany: vi.fn(() =>
-        Promise.resolve([
-          { id: 's-todo', name: 'To Do', category: 'TODO' },
-          { id: 's-prog', name: 'In Progress', category: 'IN_PROGRESS' },
-          { id: 's-done', name: 'Done', category: 'DONE' },
-        ]),
+      // Ba trạng thái "mặc định" thuộc quy trình được hỏi (where.workflowId hoặc where.OR[0].workflowId), cộng thêm `extraStatuses`.
+      findMany: vi.fn(
+        (a?: {
+          where?: { workflowId?: string | { in: string[] }; OR?: Array<{ workflowId?: string }> };
+        }) => {
+          const w = a?.where?.workflowId;
+          const wf = typeof w === 'string' ? w : (a?.where?.OR?.[0]?.workflowId ?? 'wf1');
+          return Promise.resolve([
+            { id: 's-todo', name: 'To Do', category: 'TODO', workflowId: wf },
+            { id: 's-prog', name: 'In Progress', category: 'IN_PROGRESS', workflowId: wf },
+            { id: 's-done', name: 'Done', category: 'DONE', workflowId: wf },
+            ...(opts.extraStatuses ?? []),
+          ]);
+        },
       ),
       aggregate: vi.fn(() => Promise.resolve({ _max: { order: 2 } })),
       create: vi.fn((a: { data: { name: string } }) =>
@@ -1476,5 +1495,118 @@ describe('JiraImportService — nhớ email người phụ trách chưa có (L28
     expect(text).toContain('cuong@x.com');
     expect(text).not.toContain('Lê Minh Cường (4 việc)'); // không còn vào cảnh báo "không khớp"
     expect(c.prisma.importJob.create).not.toHaveBeenCalled();
+  });
+});
+
+describe('JiraImportService.run — trạng thái theo quy trình của loại việc', () => {
+  // Story/Task/Epic/Subtask → wfStd; Bug → wfBug. Trạng thái "Done" có ở cả hai quy trình, "In Review" chỉ có ở wfStd.
+  const EXTRA = [
+    {
+      id: 'std-todo',
+      name: 'To Do',
+      category: 'TODO',
+      workflowId: 'wfStd',
+      order: 0,
+      isInitial: true,
+    },
+    {
+      id: 'std-prog',
+      name: 'In Progress',
+      category: 'IN_PROGRESS',
+      workflowId: 'wfStd',
+      order: 2,
+      isInitial: false,
+    },
+    {
+      id: 'std-rev',
+      name: 'In Review',
+      category: 'IN_PROGRESS',
+      workflowId: 'wfStd',
+      order: 3,
+      isInitial: false,
+    },
+    {
+      id: 'std-done',
+      name: 'Done',
+      category: 'DONE',
+      workflowId: 'wfStd',
+      order: 6,
+      isInitial: false,
+    },
+    {
+      id: 'bug-new',
+      name: 'New',
+      category: 'TODO',
+      workflowId: 'wfBug',
+      order: 0,
+      isInitial: true,
+    },
+    {
+      id: 'bug-prog',
+      name: 'In Progress',
+      category: 'IN_PROGRESS',
+      workflowId: 'wfBug',
+      order: 2,
+      isInitial: false,
+    },
+    {
+      id: 'bug-done',
+      name: 'Done',
+      category: 'DONE',
+      workflowId: 'wfBug',
+      order: 6,
+      isInitial: false,
+    },
+  ];
+  const SCHEME = ['t-epic', 't-story', 't-task', 't-sub'].map((issueTypeId) => ({
+    issueTypeId,
+    workflowId: 'wfStd',
+  }));
+  SCHEME.push({ issueTypeId: 't-bug', workflowId: 'wfBug' });
+
+  async function runWith(mapping: JiraImportRunInput['mapping']) {
+    const c = setup({ scheme: SCHEME, extraStatuses: EXTRA });
+    const { analyzeId } = await c.service.analyze('w1', 'u1', file());
+    await c.service.run('w1', 'u1', runInput(analyzeId, { mapping }));
+    await c.service.waitForJob('job1');
+    return c;
+  }
+  const byId = (c: ReturnType<typeof setup>, summary: string) =>
+    c.created.find((p) => p.input.summary === summary)!.input.statusId;
+
+  it('Story và Bug cùng "Done": mỗi loại nhận trạng thái của quy trình CỦA LOẠI ĐÓ', async () => {
+    // Chọn trạng thái nguồn thuộc wfStd (đích hợp lệ của dự án này).
+    const c = await runWith({
+      ...fullMapping(),
+      statuses: {
+        Done: 'std-done',
+        'In Progress': 'std-prog',
+        'In Review': 'std-rev',
+        'To Do': 'std-todo',
+      },
+    });
+    expect(byId(c, 'Tích hợp cổng VNPay')).toBe('std-done'); // Story Done → Done của Standard
+    expect(byId(c, 'Lỗi làm tròn số tiền')).toBe('bug-done'); // Bug Done → Done của Bug (không phải std-done)
+    // Không việc nào còn trỏ vào trạng thái của quy trình khác loại của nó.
+    const bugs = c.created.filter((p) => p.input.typeId === 't-bug');
+    expect(bugs.length).toBeGreaterThan(0);
+    for (const b of bugs) expect(['bug-new', 'bug-prog', 'bug-done']).toContain(b.input.statusId);
+  });
+
+  it('trạng thái không có ở quy trình của loại (In Review của Standard cho Bug) → cùng nhóm đầu tiên', async () => {
+    const c = await runWith({
+      ...fullMapping(),
+      statuses: {
+        Done: 'std-done',
+        'In Progress': 'std-rev',
+        'In Review': 'std-rev',
+        'To Do': 'std-todo',
+      },
+    });
+    const bugs = c.created.filter((p) => p.input.typeId === 't-bug' && p.row !== undefined);
+    // Mọi Bug đang ở "In Progress/In Review" (nhóm IN_PROGRESS) rơi vào In Progress của Bug.
+    for (const b of bugs)
+      if (b.input.statusId !== 'bug-done')
+        expect(['bug-new', 'bug-prog']).toContain(b.input.statusId);
   });
 });

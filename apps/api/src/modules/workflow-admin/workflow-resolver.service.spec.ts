@@ -169,3 +169,59 @@ describe('WorkflowResolver.forProject', () => {
     });
   });
 });
+
+describe('WorkflowResolver — lỗi và invalidate', () => {
+  it('lần nạp thất bại không bị nhớ: lần gọi sau trong cùng request thử lại và thành công', async () => {
+    const tx = makeTx({});
+    tx.projectWorkflowOverride.findMany
+      .mockRejectedValueOnce(new Error('db tạm lỗi'))
+      .mockResolvedValue([] as never);
+    const r = new WorkflowResolver();
+    await inRequest(async () => {
+      await expect(r.forIssue(asTx(tx), 'p1', 'tBug')).rejects.toThrow('db tạm lỗi');
+      await expect(r.forIssue(asTx(tx), 'p1', 'tBug')).resolves.toEqual({ workflowId: 'wfDef' });
+      expect(tx.projectWorkflowOverride.findMany).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it('invalidate() không đối số bỏ cache của MỌI dự án trong request', async () => {
+    const tx = makeTx({});
+    const r = new WorkflowResolver();
+    await inRequest(async () => {
+      await r.forIssue(asTx(tx), 'p1', 'tBug');
+      await r.forIssue(asTx(tx), 'p2', 'tBug');
+      expect(tx.projectWorkflowOverride.findMany).toHaveBeenCalledTimes(2);
+      r.invalidate();
+      await r.forIssue(asTx(tx), 'p1', 'tBug');
+      await r.forIssue(asTx(tx), 'p2', 'tBug');
+      expect(tx.projectWorkflowOverride.findMany).toHaveBeenCalledTimes(4);
+    });
+  });
+
+  it('invalidate(p1) chỉ bỏ cache của p1, p2 còn nguyên', async () => {
+    const tx = makeTx({});
+    const r = new WorkflowResolver();
+    await inRequest(async () => {
+      await r.forIssue(asTx(tx), 'p1', 'tBug');
+      await r.forIssue(asTx(tx), 'p2', 'tBug');
+      r.invalidate('p1');
+      await r.forIssue(asTx(tx), 'p1', 'tBug');
+      await r.forIssue(asTx(tx), 'p2', 'tBug');
+      expect(tx.projectWorkflowOverride.findMany).toHaveBeenCalledTimes(3);
+    });
+  });
+
+  it('invalidate() ngoài request (không có store) là no-op, không ném lỗi', () => {
+    const r = new WorkflowResolver();
+    expect(() => r.invalidate()).not.toThrow();
+    expect(() => r.invalidate('p1')).not.toThrow();
+  });
+
+  it('invalidate() trong request chưa nạp gì cũng không ném lỗi', async () => {
+    const r = new WorkflowResolver();
+    await inRequest(() => {
+      expect(() => r.invalidate()).not.toThrow();
+      return Promise.resolve();
+    });
+  });
+});

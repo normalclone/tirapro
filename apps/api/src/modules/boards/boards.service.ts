@@ -13,6 +13,7 @@ import { assertNotArchived } from '../../common/project-writable';
 import type { PageResult } from '../../common/dto/page-result';
 import { IssuesService } from '../issues/issues.service';
 import { SearchService } from '../search/search.service';
+import { WorkflowResolver } from '../workflow-admin/workflow-resolver.service';
 
 const boardInclude = {
   columns: { include: { statuses: true }, orderBy: { order: 'asc' } },
@@ -35,6 +36,8 @@ export class BoardsService {
     private readonly prisma: PrismaService,
     private readonly issues: IssuesService,
     private readonly search: SearchService,
+    // Quy trình theo loại việc; không phụ thuộc gì nên spec dựng bằng 3 đối số vẫn chạy.
+    private readonly workflows: WorkflowResolver = new WorkflowResolver(),
   ) {}
 
   async listForProject(workspaceId: string, projectId: string): Promise<BoardDto[]> {
@@ -114,11 +117,20 @@ export class BoardsService {
     const board = await this.require(workspaceId, boardId);
     const { columns } = input;
 
-    const statuses = await this.prisma.status.findMany({
-      where: { workflowId: board.project.defaultWorkflowId ?? '' },
-      select: { id: true, name: true },
-    });
+    // Mỗi loại việc có thể dùng quy trình khác nhau, nên cột phải phủ trạng thái của MỌI quy trình đang dùng trong dự án
+    // (bắt buộc, mỗi trạng thái đúng một cột). Quy trình mặc định cũ của dự án vẫn được phép nằm trong cột (không bắt buộc)
+    // để cột cũ còn giữ thẻ cho tới khi việc được chuyển sang quy trình mới.
+    const inUse = new Set((await this.workflows.forProject(this.prisma, board.projectId)).values());
+    const legacy = board.project.defaultWorkflowId;
+    const workflowIds = [...new Set([...inUse, ...(legacy ? [legacy] : [])])];
+    const statuses = workflowIds.length
+      ? await this.prisma.status.findMany({
+          where: { workflowId: { in: workflowIds } },
+          select: { id: true, name: true, workflowId: true },
+        })
+      : [];
     const nameOf = new Map(statuses.map((s) => [s.id, s.name]));
+    const required = statuses.filter((s) => inUse.has(s.workflowId));
 
     const unknown = new Set<string>();
     const seen = new Map<string, number>();
@@ -133,7 +145,7 @@ export class BoardsService {
         'Có trạng thái không thuộc quy trình của dự án này — hãy tải lại trang rồi chọn lại',
       );
     }
-    const missing = statuses.filter((s) => !seen.has(s.id)).map((s) => s.name);
+    const missing = required.filter((s) => !seen.has(s.id)).map((s) => s.name);
     const duplicated = statuses.filter((s) => (seen.get(s.id) ?? 0) > 1).map((s) => s.name);
     if (missing.length || duplicated.length) {
       const parts: string[] = [];

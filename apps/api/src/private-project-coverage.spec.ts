@@ -361,7 +361,7 @@ const R_ADMIN_ONLY =
 
 /** Khoá: `file::Class.method`. Loại + lý do; ROUTE_GUARDED/BODY_PROJECT/REQUIRED_PROJECT/ADMIN_ONLY/INTERNAL được kiểm tự động. */
 const READ_ALLOWLIST: Record<string, [Kind, string]> = {
-  // ---- ROUTE_GUARDED (55)
+  // ---- ROUTE_GUARDED (56)
   'activity/activity.service.ts::ActivityService.listForIssue': ['ROUTE_GUARDED', R_ROUTE_GUARDED],
   'activity/activity.service.ts::ActivityService.getOne': ['ROUTE_GUARDED', R_ROUTE_GUARDED],
   'activity/activity.service.ts::ActivityService.listForProject': [
@@ -437,6 +437,7 @@ const READ_ALLOWLIST: Record<string, [Kind, string]> = {
     'ROUTE_GUARDED',
     R_ROUTE_GUARDED,
   ],
+  'issues/issues.service.ts::IssuesService.getTransitions': ['ROUTE_GUARDED', R_ROUTE_GUARDED],
   'issues/issues.service.ts::IssuesService.retract': ['ROUTE_GUARDED', R_ROUTE_GUARDED],
   'issues/issues.service.ts::IssuesService.restore': ['ROUTE_GUARDED', R_ROUTE_GUARDED],
   'issues/issues.service.ts::IssuesService.getDtosByIdsForSystem': [

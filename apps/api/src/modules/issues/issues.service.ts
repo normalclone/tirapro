@@ -9,6 +9,9 @@ import {
   type IssueDto,
   type IssueEnvironment,
   type IssueTransitionResultDto,
+  type ErrorDetail,
+  type IssueTransitionsDto,
+  type StatusCategory,
 } from '@tirapro/types';
 import {
   countTasks,
@@ -24,6 +27,7 @@ import {
   type MoveIssueInput,
   type TransitionIssueInput,
   type UpdateIssueInput,
+  suggestTargetStatus,
 } from '@tirapro/shared';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
@@ -45,6 +49,7 @@ import {
   NotFoundAppException,
   PointsOverrideForbiddenException,
   PointsRollupOnlyException,
+  StatusMappingRequiredException,
   VersionConflictException,
 } from '../../common/exceptions/app.exception';
 import { cursorPage, PageResult } from '../../common/dto/page-result';
@@ -54,6 +59,7 @@ import { mapIssueSets } from './issue-sets';
 import { PointsService } from './points.service';
 import { RankService } from './rank.service';
 import { WipService } from './wip.service';
+import { WorkflowResolver } from '../workflow-admin/workflow-resolver.service';
 
 const issueInclude = {
   type: true,
@@ -116,6 +122,12 @@ function changedFieldsOf(before: IssueRow, after: IssueRow): string[] {
   return TRACKED_FIELDS.filter((f) => !same(before[f], after[f]));
 }
 
+/** Trạng thái đích của một việc đổi loại sang quy trình khác. */
+interface TypeMove {
+  statusId: string;
+  category: StatusCategory;
+}
+
 /** Lô tối đa 100 issue × ~4 truy vấn tuần tự: mặc định 5s của interactive transaction quá sát, quá hạn là rollback cả lô. */
 const BULK_TX_OPTIONS = { timeout: 30_000, maxWait: 10_000 } as const;
 
@@ -151,6 +163,8 @@ export class IssuesService {
     private readonly access: ProjectAccessService = new ProjectAccessService(prisma, rbac),
     // Điểm tự tính + tổng Epic. Mặc định dựng từ prisma để spec dựng bằng ít đối số vẫn chạy; Nest DI tiêm bản thật.
     private readonly points: PointsService = new PointsService(prisma),
+    // Quy trình theo loại việc (không phụ thuộc gì nên dựng mặc định được; Nest DI tiêm bản dùng chung).
+    private readonly workflows: WorkflowResolver = new WorkflowResolver(),
   ) {}
 
   /**
@@ -337,7 +351,8 @@ export class IssuesService {
     const touchesPoints =
       patch.storyPoints !== undefined ||
       patch.difficulty !== undefined ||
-      patch.priorityId !== undefined;
+      patch.priorityId !== undefined ||
+      patch.typeId !== undefined;
     return touchesPoints
       ? this.idsWithLiveChildren(
           this.prisma,
@@ -466,15 +481,27 @@ export class IssuesService {
    * Đổi Ưu tiên/Độ khó của lô → tính lại điểm từng việc KHÔNG chỉnh tay. Tra bảng hệ số + tên ưu tiên MỘT lần cho cả lô;
    * `null` khi patch không đụng hai trường đó.
    */
-  private async bulkRecomputeContext(patch: BulkUpdateIssuesInput['patch']) {
-    if (patch.difficulty === undefined && patch.priorityId === undefined) return null;
+  private async bulkRecomputeContext(
+    patch: BulkUpdateIssuesInput['patch'],
+    newTypeKey: string | null,
+  ) {
+    if (
+      patch.difficulty === undefined &&
+      patch.priorityId === undefined &&
+      patch.typeId === undefined
+    )
+      return null;
     const priority = patch.priorityId
       ? await this.prisma.priority.findUnique({
           where: { id: patch.priorityId },
           select: { name: true },
         })
       : null;
-    return { formula: await this.points.getFormula(), priorityName: priority?.name ?? null };
+    return {
+      formula: await this.points.getFormula(),
+      priorityName: priority?.name ?? null,
+      typeKey: newTypeKey,
+    };
   }
 
   /** Điểm của MỘT việc trong lô: ghi đè tay, hoặc tự tính lại khi đổi Độ khó/Ưu tiên (việc chỉnh tay giữ nguyên). */
@@ -499,10 +526,11 @@ export class IssuesService {
       patch.priorityId !== undefined && patch.priorityId !== before.priorityId;
     // Việc đang có việc con: điểm là tổng việc con (rollupParents), không tính lại theo công thức.
     if (!recompute || override || before.pointsManual || isRollupParent) return;
-    if (!difficultyChanged && !priorityChanged) return;
+    const typeChanged = patch.typeId !== undefined && patch.typeId !== before.typeId;
+    if (!difficultyChanged && !priorityChanged && !typeChanged) return;
     const pts = computePoints(
       recompute.formula,
-      before.type.key,
+      typeChanged ? recompute.typeKey : before.type.key,
       patch.difficulty ?? before.difficulty,
       patch.priorityId !== undefined ? recompute.priorityName : (before.priority?.name ?? null),
     );
@@ -1185,7 +1213,6 @@ export class IssuesService {
       select: {
         id: true,
         key: true,
-        defaultWorkflowId: true,
         leadId: true,
         defaultAssigneeMode: true,
         archivedAt: true,
@@ -1224,6 +1251,7 @@ export class IssuesService {
       userId,
       workspaceId,
       project,
+      input.typeId,
       input.statusId,
       origin,
     );
@@ -1328,27 +1356,35 @@ export class IssuesService {
     db: Prisma.TransactionClient,
     userId: string,
     workspaceId: string,
-    project: { id: string; defaultWorkflowId: string | null },
+    project: { id: string },
+    typeId: string,
     requested: string | undefined,
     origin: 'api' | 'import',
   ): Promise<{ statusId: string; isDone: boolean }> {
-    const workflowId = project.defaultWorkflowId ?? '';
-    const initial = await db.status.findFirst({
-      where: { workflowId, isInitial: true },
-      select: { id: true },
-    });
+    // Quy trình theo LOẠI việc (ghi đè dự án → workspace → mặc định dự án). Không có quy trình = như dự án chưa cấu hình.
+    // Đọc cấu hình quy trình bằng client gốc, không phải `db` (có thể là transaction của bên gọi): cache của resolver sống
+    // theo request nên không được nạp từ một transaction có thể rollback / chưa commit.
+    const workflowId = await this.workflowFor(this.prisma, project.id, typeId);
+    const initial = workflowId
+      ? await db.status.findFirst({
+          where: { workflowId, isInitial: true },
+          select: { id: true },
+        })
+      : null;
     if (!requested) {
       if (!initial)
         throw new BusinessRuleException('Dự án chưa cấu hình quy trình/trạng thái khởi đầu');
       return { statusId: initial.id, isDone: false };
     }
-    const chosen = await db.status.findFirst({
-      where: { id: requested, workflowId },
-      select: { id: true, category: true },
-    });
+    const chosen = workflowId
+      ? await db.status.findFirst({
+          where: { id: requested, workflowId },
+          select: { id: true, category: true },
+        })
+      : null;
     if (!chosen)
       throw new BusinessRuleException(
-        'Trạng thái không thuộc quy trình của dự án này — hãy chọn lại trạng thái từ danh sách',
+        'Trạng thái không thuộc quy trình của loại việc này — hãy chọn lại trạng thái từ danh sách',
       );
     // Tạo thẳng ở trạng thái khác trạng thái khởi tạo cũng là một lần "chuyển trạng thái" → cần cùng quyền.
     if (origin === 'api' && chosen.id !== initial?.id)
@@ -1668,6 +1704,8 @@ export class IssuesService {
       parentId: input.parentId,
       projectId: current.projectId,
     });
+    // Đổi sang loại dùng quy trình KHÁC: phải chọn trạng thái đích trong quy trình mới (không để việc trỏ vào trạng thái của quy trình khác).
+    const typeMove = await this.planUpdateTypeMove(userId, workspaceId, current, input);
     if (input.epicId && input.epicId !== current.epicId) {
       await this.assertEpicValid(this.prisma, workspaceId, input.epicId, current.projectId, id);
       this.assertNotEpicWithEpic(current.type);
@@ -1735,6 +1773,19 @@ export class IssuesService {
     if (input.sprintId !== undefined) data.sprintId = input.sprintId ?? null;
     if (input.resolutionId !== undefined) data.resolutionId = input.resolutionId ?? null;
     if (input.typeId !== undefined && input.typeId) data.typeId = input.typeId;
+    if (typeMove) {
+      const toDone = typeMove.category === 'DONE';
+      data.statusId = typeMove.statusId;
+      data.resolutionId = toDone
+        ? await this.resolutionForDone(
+            this.prisma,
+            workspaceId,
+            input.resolutionId,
+            current.resolutionId,
+          )
+        : null;
+      data.resolvedAt = toDone ? new Date() : null;
+    }
     if (input.dueDate) data.dueDate = new Date(input.dueDate); // null đã bị chặn ở đầu update()
     if (input.startDate !== undefined)
       data.startDate = input.startDate ? new Date(input.startDate) : null;
@@ -1770,6 +1821,7 @@ export class IssuesService {
       await this.applyPoints(tx, current, input, data, manualPoints);
       const row = await this.updateWithVersion(tx, id, workspaceId, input.version, data);
       await this.recordChanges(tx, userId, current, row);
+      if (typeMove) await this.recordStatusChange(tx, userId, current, row);
       if (sprintChanged)
         cascaded = await this.cascadeSprint(
           tx,
@@ -1788,9 +1840,100 @@ export class IssuesService {
       changedFields: changedFieldsOf(current, updated),
       ...withMeta(opts),
     });
+    // Đổi loại kéo theo đổi trạng thái: automation/SLA/thông báo phải thấy đây là một lần chuyển trạng thái.
+    if (typeMove)
+      this.events.emit(DOMAIN_EVENTS.ISSUE_TRANSITIONED, {
+        issue: dto,
+        actorId: userId,
+        fromStatusId: current.statusId,
+        ...withMeta(opts),
+      });
     await this.emitEpicTotals(workspaceId, userId, changedEpics);
     await this.emitEpicTotals(workspaceId, userId, cascaded, ['sprintId']);
     return dto;
+  }
+
+  /** `update()` đổi loại sang quy trình khác: trạng thái đích (null = không đổi trạng thái) + kiểm quyền/chặn Done. */
+  private async planUpdateTypeMove(
+    userId: string,
+    workspaceId: string,
+    current: IssueWriteRow,
+    input: UpdateIssueInput,
+  ): Promise<TypeMove | null> {
+    if (!input.typeId || input.typeId === current.typeId) return null;
+    const plan = await this.planTypeChangeStatuses(
+      this.prisma,
+      current.projectId,
+      input.typeId,
+      [current],
+      () => input.targetStatusId,
+      'targetStatusId',
+    );
+    const move = plan.get(current.id) ?? null;
+    if (!move) return null;
+    // Đổi trạng thái luôn cần quyền chuyển trạng thái (update chỉ đòi issue:edit).
+    const { ownOnly } = await this.assertCanTransition(userId, workspaceId, current.projectId);
+    if (ownOnly) this.assertOwnsIssue(userId, current);
+    if (move.category === 'DONE') await this.assertNotBlockedForDone([current]);
+    return move;
+  }
+
+  /**
+   * Việc đổi sang loại `newTypeId`: với việc có trạng thái KHÔNG thuộc quy trình của loại mới, tìm trạng thái đích
+   * (`pick(row)`); thiếu → 422 STATUS_MAPPING_REQUIRED kèm `suggestedStatusId`; đích không thuộc quy trình mới → 422.
+   * Trả Map id việc → trạng thái đích, CHỈ gồm việc phải đổi trạng thái (cùng quy trình hoặc loại mới chưa có quy trình → rỗng).
+   */
+  private async planTypeChangeStatuses(
+    db: Prisma.TransactionClient,
+    projectId: string,
+    newTypeId: string,
+    rows: Array<{
+      id: string;
+      statusId: string;
+      status: { name: string; category: StatusCategory; workflowId: string };
+    }>,
+    pick: (row: { id: string; statusId: string }) => string | undefined,
+    field: string,
+  ): Promise<Map<string, TypeMove>> {
+    const out = new Map<string, TypeMove>();
+    const target = await this.workflowFor(db, projectId, newTypeId);
+    if (!target) return out;
+    const moving = rows.filter((r) => r.status.workflowId !== target);
+    if (moving.length === 0) return out;
+    const statuses = await db.status.findMany({
+      where: { workflowId: target },
+      orderBy: { order: 'asc' },
+      select: { id: true, name: true, category: true, order: true, isInitial: true },
+    });
+    const missing: ErrorDetail[] = [];
+    const missingStatuses = new Set<string>();
+    for (const r of moving) {
+      const wanted = pick(r);
+      if (wanted === undefined) {
+        if (missingStatuses.has(r.statusId)) continue;
+        missingStatuses.add(r.statusId);
+        const suggested = suggestTargetStatus(r.status, statuses);
+        missing.push({
+          field: field === 'targetStatusId' ? field : `${field}.${r.statusId}`,
+          code: 'STATUS_MAPPING_REQUIRED',
+          message: `Hãy chọn trạng thái trong quy trình mới cho việc đang ở "${r.status.name}"`,
+          ...(suggested ? { suggestedStatusId: suggested.id } : {}),
+        });
+        continue;
+      }
+      const chosen = statuses.find((s) => s.id === wanted);
+      if (!chosen)
+        throw new BusinessRuleException(
+          'Trạng thái đích không thuộc quy trình của loại việc mới — hãy chọn lại từ danh sách',
+        );
+      out.set(r.id, { statusId: chosen.id, category: chosen.category });
+    }
+    if (missing.length > 0)
+      throw new StatusMappingRequiredException(
+        'Loại việc mới dùng quy trình khác — hãy chọn trạng thái đích trong quy trình mới',
+        missing,
+      );
+    return out;
   }
 
   /**
@@ -1894,6 +2037,7 @@ export class IssuesService {
     const byId = new Map(rows.map((r) => [r.id, r]));
     if (ownOnly || transitionOwnOnly) for (const r of rows) this.assertOwnsIssue(userId, r); // một việc của người khác → 403 cả lô, chưa ghi gì
     await this.assertMetaInWorkspace(workspaceId, {
+      typeId: patch.typeId,
       priorityId: patch.priorityId,
       // Chỉ kiểm khi có việc thật sự đổi sprint (lô đã ở đúng sprint đó thì thôi).
       sprintId: rows.some((r) => r.sprintId !== patch.sprintId) ? patch.sprintId : undefined,
@@ -1929,14 +2073,27 @@ export class IssuesService {
         ...(labelOps.remove ?? []),
       ]);
 
+    // Đổi loại hàng loạt: việc sang quy trình khác phải có trạng thái đích trong `statusMap` (thiếu → 422 cả lô, chưa ghi gì).
+    const { typeMoves, newTypeKey } = await this.planBulkTypeChange(
+      userId,
+      workspaceId,
+      projectId,
+      rows,
+      patch,
+      input.statusMap,
+    );
+
     // Chuyển trạng thái: kiểm tra workflow đúng như transition() trước khi ghi bất cứ thứ gì.
     let toDone = false;
     let doneResolutionId: string | null = null;
     if (patch.statusId) {
-      const workflowId = await this.workflowIdOf(projectId);
+      // Mỗi loại việc có quy trình riêng: kiểm từng việc theo quy trình của loại của nó.
+      const workflowOf = new Map<string, string | null>();
       for (const r of rows) {
-        if (r.statusId !== patch.statusId)
-          await this.assertTransitionAllowed(workflowId, r.statusId, patch.statusId);
+        if (r.statusId === patch.statusId) continue;
+        if (!workflowOf.has(r.typeId))
+          workflowOf.set(r.typeId, await this.workflowFor(this.prisma, projectId, r.typeId));
+        await this.assertTransitionAllowed(workflowOf.get(r.typeId)!, r.statusId, patch.statusId);
       }
       toDone = (await this.statusCategory(patch.statusId)) === 'DONE';
       if (toDone)
@@ -1944,12 +2101,14 @@ export class IssuesService {
       // Một lần tra mặc định cho cả lô (bulk không nhận resolution tường minh).
       if (toDone) doneResolutionId = await this.defaultResolutionId(this.prisma, workspaceId);
     }
+    if (!doneResolutionId && [...typeMoves.values()].some((m) => m.category === 'DONE'))
+      doneResolutionId = await this.defaultResolutionId(this.prisma, workspaceId);
     // Giới hạn WIP của cột đích (nếu web gửi boardId); kiểm lại trong transaction sau khi khoá cột.
     const wip = patch.statusId
       ? await this.wipService.resolveWipColumn(input.boardId, projectId, patch.statusId)
       : null;
 
-    const recompute = await this.bulkRecomputeContext(patch);
+    const recompute = await this.bulkRecomputeContext(patch, newTypeKey);
     const sprintPlan = await this.planBulkSprint(workspaceId, rows, patch.sprintId);
 
     const conflicts: BulkUpdateIssuesResult['conflicts'] = [];
@@ -1990,6 +2149,7 @@ export class IssuesService {
           recompute,
           rollupParents,
           sprintFollowers: sprintPlan.followers,
+          typeMoves,
         });
         if (Object.keys(data).length === 0) {
           if (labelOps) labelIds.push(item.id);
@@ -2042,15 +2202,20 @@ export class IssuesService {
       recompute: Awaited<ReturnType<IssuesService['bulkRecomputeContext']>>;
       rollupParents: Set<string>;
       sprintFollowers: Set<string>;
+      typeMoves: Map<string, TypeMove>;
     },
   ): { data: Prisma.IssueUncheckedUpdateManyInput; statusChanged: boolean } {
-    const statusChanged = patch.statusId !== undefined && patch.statusId !== before.statusId;
+    const move = ctx.typeMoves.get(before.id);
+    const statusChanged =
+      !!move || (patch.statusId !== undefined && patch.statusId !== before.statusId);
     const data: Prisma.IssueUncheckedUpdateManyInput = {};
     if (statusChanged) {
-      data.statusId = patch.statusId;
-      data.resolutionId = ctx.toDone ? (before.resolutionId ?? ctx.doneResolutionId) : null;
-      data.resolvedAt = ctx.toDone ? new Date() : null;
+      const toDone = move ? move.category === 'DONE' : ctx.toDone;
+      data.statusId = move ? move.statusId : patch.statusId;
+      data.resolutionId = toDone ? (before.resolutionId ?? ctx.doneResolutionId) : null;
+      data.resolvedAt = toDone ? new Date() : null;
     }
+    if (patch.typeId !== undefined && patch.typeId !== before.typeId) data.typeId = patch.typeId;
     if (patch.assigneeId !== undefined && patch.assigneeId !== before.assigneeId)
       data.assigneeId = patch.assigneeId;
     if (patch.priorityId !== undefined && patch.priorityId !== before.priorityId)
@@ -2071,6 +2236,122 @@ export class IssuesService {
     );
     if (patch.epicId !== undefined && patch.epicId !== before.epicId) data.epicId = patch.epicId;
     return { data, statusChanged };
+  }
+
+  /** Đổi loại cả lô: kiểm điều kiện rồi trả trạng thái đích của việc phải đổi quy trình (xem `planTypeChangeStatuses`). */
+  private async planBulkTypeChange(
+    userId: string,
+    workspaceId: string,
+    projectId: string,
+    rows: IssueRow[],
+    patch: BulkUpdateIssuesInput['patch'],
+    statusMap: Record<string, string> | undefined,
+  ): Promise<{ typeMoves: Map<string, TypeMove>; newTypeKey: string | null }> {
+    const none = { typeMoves: new Map<string, TypeMove>(), newTypeKey: null };
+    if (!patch.typeId) return none;
+    if (patch.statusId)
+      throw new BusinessRuleException(
+        'Không đổi loại và đổi trạng thái trong cùng một lần — hãy đổi loại (kèm bảng trạng thái đích) rồi mới chuyển trạng thái',
+      );
+    const newType = await this.prisma.issueType.findFirst({
+      where: { id: patch.typeId, workspaceId },
+      select: { key: true },
+    });
+    const newTypeKey = newType?.key ?? null;
+    const changing = rows.filter((r) => r.typeId !== patch.typeId);
+    if (changing.length === 0) return { ...none, newTypeKey };
+    if (newTypeKey === 'EPIC' || changing.some((r) => r.type.key === 'EPIC'))
+      throw new BusinessRuleException(
+        'Không đổi loại hàng loạt từ hoặc sang Epic — hãy đổi từng việc một',
+      );
+    const plan = await this.planTypeChangeStatuses(
+      this.prisma,
+      projectId,
+      patch.typeId,
+      changing,
+      (r) => statusMap?.[r.statusId],
+      'statusMap',
+    );
+    if (plan.size > 0) {
+      const { ownOnly } = await this.assertCanTransition(userId, workspaceId, projectId);
+      if (ownOnly) for (const r of changing) this.assertOwnsIssue(userId, r);
+      const toDone = changing.filter((r) => plan.get(r.id)?.category === 'DONE');
+      await this.assertNotBlockedForDone(toDone);
+    }
+    return { typeMoves: plan, newTypeKey };
+  }
+
+  /**
+   * Các bước chuyển khả dụng từ trạng thái hiện tại, theo quy trình của CHÍNH loại việc này. Đang ở Pending thì kèm
+   * `suggestedResumeStatusId`: trạng thái mở ngay trước khi tạm dừng (theo lịch sử).
+   */
+  async getTransitions(workspaceId: string, id: string): Promise<IssueTransitionsDto> {
+    const issue = await this.prisma.issue.findFirst({
+      where: { id, workspaceId, deletedAt: null },
+      select: {
+        id: true,
+        projectId: true,
+        typeId: true,
+        statusId: true,
+        status: { select: { name: true } },
+      },
+    });
+    if (!issue) throw new NotFoundAppException('Công việc');
+    const workflowId = await this.workflowFor(this.prisma, issue.projectId, issue.typeId);
+    if (!workflowId) return { workflowId: null, currentStatusId: issue.statusId, transitions: [] };
+    const rows = await this.prisma.workflowTransition.findMany({
+      where: {
+        workflowId,
+        toStatusId: { not: issue.statusId },
+        OR: [{ fromStatusId: issue.statusId }, { fromStatusId: null }],
+      },
+      include: { toStatus: true },
+      orderBy: [{ order: 'asc' }, { id: 'asc' }],
+    });
+    const seen = new Set<string>();
+    const transitions: IssueTransitionsDto['transitions'] = [];
+    for (const t of rows) {
+      if (seen.has(t.toStatusId)) continue;
+      seen.add(t.toStatusId);
+      transitions.push({
+        id: t.id,
+        name: t.name,
+        toStatus: {
+          id: t.toStatus.id,
+          workflowId: t.toStatus.workflowId,
+          name: t.toStatus.name,
+          category: t.toStatus.category,
+          color: t.toStatus.color,
+          order: t.toStatus.order,
+          isInitial: t.toStatus.isInitial,
+        },
+      });
+    }
+    const dto: IssueTransitionsDto = { workflowId, currentStatusId: issue.statusId, transitions };
+    if (issue.status.name === 'Pending') {
+      const resume = await this.resumeStatusBeforePending(issue.id, workflowId, issue.status.name);
+      if (resume) dto.suggestedResumeStatusId = resume;
+    }
+    return dto;
+  }
+
+  /** Trạng thái mở ngay trước lần vào "Pending" gần nhất (lịch sử lưu theo TÊN trạng thái); null nếu không xác định được. */
+  private async resumeStatusBeforePending(
+    issueId: string,
+    workflowId: string,
+    pendingName: string,
+  ): Promise<string | null> {
+    const entered = await this.prisma.issueHistory.findFirst({
+      where: { issueId, field: 'STATUS', newValue: pendingName },
+      orderBy: { occurredAt: 'desc' },
+      select: { oldValue: true },
+    });
+    if (!entered?.oldValue) return null;
+    const prev = await this.prisma.status.findFirst({
+      where: { workflowId, name: entered.oldValue, category: { not: 'DONE' } },
+      select: { id: true, name: true },
+    });
+    return prev && prev.name !== pendingName ? prev.id : null;
   }
 
   /**
@@ -2261,8 +2542,8 @@ export class IssuesService {
     const reason = input.comment?.trim();
     if (reason) await this.assertCanWriteReason(userId, workspaceId, current.projectId);
 
-    // Validate transition theo workflow của project
-    const workflowId = await this.workflowIdOf(current.projectId);
+    // Validate transition theo workflow của LOẠI việc (không phải một workflow chung của dự án)
+    const workflowId = await this.workflowFor(this.prisma, current.projectId, current.typeId);
     await this.assertTransitionAllowed(workflowId, current.statusId, input.toStatusId);
 
     const isDone = (await this.statusCategory(input.toStatusId)) === 'DONE';
@@ -2367,7 +2648,7 @@ export class IssuesService {
     let moveResolutionId: string | null = null;
     if (statusChanged) {
       await this.assertTransitionAllowed(
-        await this.workflowIdOf(current.projectId),
+        await this.workflowFor(this.prisma, current.projectId, current.typeId),
         current.statusId,
         input.statusId!,
       );
@@ -2710,20 +2991,26 @@ export class IssuesService {
     }
   }
 
-  private async workflowIdOf(projectId: string): Promise<string> {
-    const project = await this.prisma.project.findUnique({
-      where: { id: projectId },
-      select: { defaultWorkflowId: true },
-    });
-    return project?.defaultWorkflowId ?? '';
+  /**
+   * Quy trình của loại việc trong dự án. Resolver trả `''` khi không có quy trình nào — ở đây đổi thành `null` để
+   * không bao giờ truy vấn với `workflowId: ''`.
+   */
+  private async workflowFor(
+    db: Prisma.TransactionClient,
+    projectId: string,
+    typeId: string,
+  ): Promise<string | null> {
+    const { workflowId } = await this.workflows.forIssue(db, projectId, typeId);
+    return workflowId || null;
   }
 
   /** Chỉ cho chuyển sang `toStatusId` nếu workflow có transition từ trạng thái hiện tại (hoặc từ "bất kỳ"). */
   private async assertTransitionAllowed(
-    workflowId: string,
+    workflowId: string | null,
     fromStatusId: string,
     toStatusId: string,
   ): Promise<void> {
+    if (!workflowId) throw new InvalidTransitionException();
     const allowed = await this.prisma.workflowTransition.findFirst({
       where: { workflowId, toStatusId, OR: [{ fromStatusId }, { fromStatusId: null }] },
       select: { id: true },

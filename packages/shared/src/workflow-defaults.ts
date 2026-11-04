@@ -212,3 +212,23 @@ export function mapStatusByCategory(category: StatusCategory, target: WorkflowDe
   }
   return category === 'IN_PROGRESS' ? 'In Progress' : 'Done';
 }
+
+/**
+ * Gợi ý trạng thái đích khi việc đổi sang quy trình khác: cùng tên (không phân biệt hoa/thường), nếu không có thì
+ * trạng thái đầu tiên cùng nhóm (theo `order`), nếu vẫn không có thì trạng thái khởi tạo, cuối cùng là trạng thái đầu tiên.
+ * Trả `null` khi quy trình đích rỗng.
+ */
+export function suggestTargetStatus<
+  T extends { name: string; category: StatusCategory; order?: number; isInitial?: boolean },
+>(from: { name: string; category: StatusCategory }, targets: readonly T[]): T | null {
+  if (targets.length === 0) return null;
+  const sorted = [...targets].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  const name = from.name.trim().toLowerCase();
+  return (
+    sorted.find((t) => t.name.trim().toLowerCase() === name) ??
+    sorted.find((t) => t.category === from.category) ??
+    sorted.find((t) => t.isInitial) ??
+    sorted[0] ??
+    null
+  );
+}

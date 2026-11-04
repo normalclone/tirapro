@@ -7,9 +7,10 @@ import { PointsService } from './points.service';
 import { RankService } from './rank.service';
 import { WipService } from './wip.service';
 import { CommentsModule } from '../comments/comments.module';
+import { WorkflowAdminModule } from '../workflow-admin/workflow-admin.module';
 
 @Module({
-  imports: [CommentsModule],
+  imports: [CommentsModule, WorkflowAdminModule],
   controllers: [IssuesController, TrashController],
   providers: [IssuesService, RankService, WipService, TrashService, PointsService],
   exports: [IssuesService, PointsService],
