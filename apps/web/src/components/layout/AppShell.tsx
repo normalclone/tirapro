@@ -8,7 +8,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
 } from 'lucide-react';
-import { WorkspaceSwitcher } from '@/features/workspace/WorkspaceSwitcher';
+import { PAGE_TITLE_SLOT_ID } from '@/components/layout/PageHeader';
 import { GuideLauncher } from '@/features/guides/GuideLauncher';
 import { AssistantButton, AssistantHost } from '@/features/assistant/AssistantPanel';
 import { useNotificationRealtime } from '@/lib/realtime';
@@ -75,9 +75,12 @@ export function AppShell({ children }: { children: ReactNode }) {
       {/* Main */}
       <div className="flex min-w-0 flex-1 flex-col print:block">
         <header className="flex h-[52px] shrink-0 items-center gap-2 border-b border-border px-4 print:hidden">
-          {/* Admin đứng trên mọi nơi → không có bộ chọn/nhãn tổ chức ở thanh trên. */}
-          {!admin && <WorkspaceSwitcher />}
-          <div className="min-w-0 flex-1 truncate text-sm text-muted" data-tour="topbar-context" />
+          {/* Tiêu đề trang (PageHeader cổng h1 lên đây) — thay cho tên tổ chức (người dùng yêu cầu 2026-11-04). */}
+          <div
+            id={PAGE_TITLE_SLOT_ID}
+            className="flex min-w-0 flex-1 items-center"
+            data-tour="topbar-context"
+          />
           <div className="flex items-center gap-2">
             {/* Dưới `lg` không còn nút nổi "Lệnh nhanh" → lối vào Bảng lệnh/tìm kiếm nằm ở đây (cùng sự kiện với nút nổi). */}
             <Button

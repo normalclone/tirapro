@@ -1,3 +1,4 @@
+import { CircleCheck, Info } from 'lucide-react';
 import { useEffect } from 'react';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { RouterProvider } from 'react-router-dom';
@@ -40,6 +41,11 @@ export function App() {
           right: 'max(16px, env(safe-area-inset-right))',
         }}
         theme={theme}
+        // Biểu tượng thông báo màu xanh thương hiệu (người dùng yêu cầu 2026-11-04) thay cho màu chữ mặc định.
+        icons={{
+          success: <CircleCheck className="h-5 w-5 text-primary" aria-hidden />,
+          info: <Info className="h-5 w-5 text-primary" aria-hidden />,
+        }}
         toastOptions={{
           style: {
             background: 'var(--surface)',
