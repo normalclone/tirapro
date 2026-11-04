@@ -116,6 +116,7 @@ export class WorkflowAdminController {
     @CurrentUser() user: AuthUser,
     @Query('projectId') projectId?: string,
     @Query('isTemplate') isTemplate?: string,
+    @Query('includeTrashed') includeTrashed?: string,
   ) {
     return this.workflows.listWorkflows(
       workspaceId,
@@ -123,6 +124,7 @@ export class WorkflowAdminController {
         projectId: projectId || undefined,
         isTemplate:
           isTemplate === undefined ? undefined : isTemplate === 'true' || isTemplate === '1',
+        includeTrashed: includeTrashed === 'true' || includeTrashed === '1',
       },
       user.id,
     );

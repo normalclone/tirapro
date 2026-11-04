@@ -279,6 +279,22 @@ describe('WorkflowAdminService — dự án riêng tư: quy trình và "Dùng b�
     });
   });
 
+  it('listWorkflows: mặc định loại quy trình của dự án đã xoá mềm (mẫu giữ nguyên); includeTrashed thì không loại', async () => {
+    const a = build({});
+    await a.svc.listWorkflows('w1', {}, 'u1');
+    expect(a.prisma.workflow.findMany.mock.calls[0]![0]).toMatchObject({
+      where: {
+        workspaceId: 'w1',
+        AND: [{ OR: [{ projectId: null }, { project: { deletedAt: null } }] }],
+      },
+    });
+    const b = build({});
+    await b.svc.listWorkflows('w1', { includeTrashed: true }, 'u1');
+    expect(
+      (b.prisma.workflow.findMany.mock.calls[0]![0] as { where: object }).where,
+    ).not.toHaveProperty('AND');
+  });
+
   it('getWorkflow quy trình của dự án ẩn → 404; thành viên thấy', async () => {
     const hiddenOne = build(visible);
     hiddenOne.prisma.workflow.findFirst.mockResolvedValueOnce(null as never);

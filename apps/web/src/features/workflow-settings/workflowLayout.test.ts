@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { StatusCategory, Workflow } from './api';
+import tira from './tiraWorkflow.fixture.json';
 import { layoutWorkflow, NODE_H, NODE_W, PITCH, type LayoutEdge } from './workflowLayout';
 
 type S = [string, StatusCategory];
@@ -105,9 +106,12 @@ const rectOf = (e: LayoutEdge) => ({
 });
 const hit = (a: Seg, b: Seg) => a.x1 < b.x2 && b.x1 < a.x2 && a.y1 < b.y2 && b.y1 < a.y2;
 
+const TIRA = tira as unknown as Pick<Workflow, 'statuses' | 'transitions'>;
+
 describe.each([
   ['DEV 9 trạng thái', DEV],
   ['Scrum', SCRUM],
+  ['TIRA thật (bản xuất từ DB)', TIRA],
 ])('layoutWorkflow – %s', (_n, wf) => {
   const L = layoutWorkflow(wf);
 
@@ -132,6 +136,20 @@ describe.each([
           if (s.x1 === s.x2) expect(hit(r, pad), `${ea.name} x ${o.name}`).toBe(false);
         }
     });
+  });
+
+  it('nhãn không nằm đè lên đoạn ngang của cung khác (kể cả cung cùng phía khác làn)', () => {
+    for (const ea of L.edges) {
+      const r = rectOf(ea);
+      for (const o of L.edges) {
+        if (o === ea) continue;
+        for (const s of segs(o))
+          if (s.y1 === s.y2)
+            expect(hit(r, { ...s, y1: s.y1 - 1, y2: s.y2 + 1 }), `${ea.name} x ${o.name}`).toBe(
+              false,
+            );
+      }
+    }
   });
 
   it('cung tiến ở phía trên, cung lùi ở phía dưới', () => {

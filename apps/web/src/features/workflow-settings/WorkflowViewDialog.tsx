@@ -1,180 +1,68 @@
-import { useEffect, useMemo } from 'react';
-import ReactFlow, {
-  Background,
-  Controls,
-  Handle,
-  Position,
-  MarkerType,
-  useNodesInitialized,
-  useReactFlow,
-  type Edge,
-  type Node,
-  type NodeProps,
-} from 'reactflow';
+import { useMemo } from 'react';
+import ReactFlow, { Background, Controls, Panel } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { Dialog } from '@/components/ui/Dialog';
 import { DelayedSpinner } from '@/components/ui/primitives';
-import { cn } from '@/lib/utils';
-import { useWorkflows, type StatusCategory, type Workflow } from './api';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
-import { STATUS_CATEGORY_LABEL } from '@/lib/terms';
+import { useWorkflows, type Workflow } from './api';
+import { layoutWorkflow } from './workflowLayout';
+import {
+  AutoFit,
+  buildEdges,
+  buildNodes,
+  edgeTypes,
+  HighlightProvider,
+  nodeTypes,
+  useStatusSelection,
+} from './WorkflowFlowParts';
 
-const ANY_ID = '__any__';
-const CATEGORY_VAR: Record<StatusCategory, string> = {
-  TODO: 'var(--status-todo)',
-  IN_PROGRESS: 'var(--status-progress)',
-  DONE: 'var(--status-done)',
-};
-const CATEGORY_COL: Record<StatusCategory, number> = { TODO: 1, IN_PROGRESS: 2, DONE: 3 };
-const COL_W = 240;
-const ROW_H = 104;
-
-type NodeData = {
-  label: string;
-  isAny?: boolean;
-  category?: StatusCategory;
-  color?: string | null;
-  isInitial?: boolean;
-  isCurrent?: boolean;
-};
-
-function autoLayout(wf: Workflow): Record<string, { x: number; y: number }> {
-  const counts: Record<StatusCategory, number> = { TODO: 0, IN_PROGRESS: 0, DONE: 0 };
-  const pos: Record<string, { x: number; y: number }> = { [ANY_ID]: { x: 0, y: 24 } };
-  for (const s of [...wf.statuses].sort((a, b) => a.order - b.order)) {
-    pos[s.id] = { x: CATEGORY_COL[s.category] * COL_W, y: 24 + counts[s.category] * ROW_H };
-    counts[s.category] += 1;
-  }
-  return pos;
-}
-
-function buildNodes(wf: Workflow, currentStatusId: string): Node<NodeData>[] {
-  const pos = autoLayout(wf);
-  const usesAny = wf.transitions.some((t) => t.fromStatusId == null);
-  const nodes: Node<NodeData>[] = [];
-  if (usesAny) {
-    nodes.push({
-      id: ANY_ID,
-      type: 'wf',
-      position: pos[ANY_ID]!,
-      data: { label: 'Bất kỳ trạng thái', isAny: true },
-      draggable: false,
-    });
-  }
-  for (const s of wf.statuses) {
-    nodes.push({
-      id: s.id,
-      type: 'wf',
-      position: pos[s.id] ?? { x: 0, y: 0 },
-      draggable: false,
-      data: {
-        label: s.name,
-        category: s.category,
-        color: s.color,
-        isInitial: s.isInitial,
-        isCurrent: s.id === currentStatusId,
-      },
-    });
-  }
-  return nodes;
-}
-
-function buildEdges(wf: Workflow): Edge[] {
-  return wf.transitions.map((t) => ({
-    id: t.id,
-    source: t.fromStatusId ?? ANY_ID,
-    target: t.toStatusId,
-    label: t.name,
-    type: 'smoothstep',
-    markerEnd: {
-      type: MarkerType.ArrowClosed,
-      width: 16,
-      height: 16,
-      color: 'var(--border-strong)',
-    },
-    style: { stroke: 'var(--border-strong)', strokeWidth: 1.5 },
-    labelStyle: { fill: 'var(--muted)', fontSize: 11, fontWeight: 500 },
-    labelBgStyle: { fill: 'var(--surface)', fillOpacity: 0.9 },
-    labelBgPadding: [4, 2] as [number, number],
-  }));
-}
-
-/** Node trạng thái chỉ-đọc; tô đậm trạng thái hiện tại. */
-function StatusNode({ data }: NodeProps<NodeData>) {
-  if (data.isAny) {
-    return (
-      <div className="rounded-lg border border-dashed border-border-strong bg-surface-2 px-3 py-2 text-sm text-muted">
-        {data.label}
-        <Handle
-          type="source"
-          position={Position.Right}
-          className="!h-2 !w-2 !border-2 !border-surface !bg-faint"
-        />
-      </div>
-    );
-  }
+/** Sơ đồ chỉ-đọc: cùng bố cục không chạm nhau + cung/node với trang cài đặt; chọn sẵn trạng thái hiện tại của việc. */
+function ReadOnlyGraph({
+  workflow,
+  currentStatusId,
+}: {
+  workflow: Workflow;
+  currentStatusId: string;
+}) {
+  const layout = useMemo(() => layoutWorkflow(workflow), [workflow]);
+  const nodes = useMemo(
+    () => buildNodes(workflow, layout, {}, currentStatusId),
+    [workflow, layout, currentStatusId],
+  );
+  const edges = useMemo(() => buildEdges(layout), [layout]);
+  const { selectedId, onNodeClick, onPaneClick } = useStatusSelection(currentStatusId, false);
   return (
-    <div
-      className={cn(
-        'relative min-w-[150px] rounded-lg border bg-surface px-3 py-2 shadow-sm',
-        data.isCurrent ? 'border-primary ring-2 ring-[var(--ring)]' : 'border-border',
-      )}
-    >
-      <Handle
-        type="target"
-        position={Position.Left}
-        className="!h-2 !w-2 !border-2 !border-surface !bg-[var(--border-strong)]"
-      />
-      <div className="flex items-center gap-2">
-        <span
-          className="h-2.5 w-2.5 shrink-0 rounded-full"
-          style={{
-            background:
-              data.color || (data.category ? CATEGORY_VAR[data.category] : 'var(--faint)'),
-          }}
-          aria-hidden
-        />
-        <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink-strong">
-          {data.label}
-        </span>
-        {data.isCurrent && (
-          <span className="rounded bg-primary px-1.5 py-0.5 text-[10px] font-medium text-primary-fg">
-            Hiện tại
-          </span>
-        )}
-        {!data.isCurrent && data.isInitial && (
-          <span className="rounded bg-primary-subtle px-1 py-0.5 text-[10px] font-medium text-primary">
-            Khởi tạo
-          </span>
-        )}
-      </div>
-      {data.category && (
-        <span className="mt-0.5 block text-[11px] text-faint">
-          {STATUS_CATEGORY_LABEL[data.category]}
-        </span>
-      )}
-      <Handle
-        type="source"
-        position={Position.Right}
-        className="!h-2 !w-2 !border-2 !border-surface !bg-primary"
-      />
-    </div>
+    <HighlightProvider workflow={workflow} selectedId={selectedId}>
+      <ReactFlow
+        nodes={nodes}
+        edges={edges}
+        nodeTypes={nodeTypes}
+        edgeTypes={edgeTypes}
+        nodesDraggable={false}
+        nodesConnectable={false}
+        nodesFocusable={false}
+        edgesFocusable={false}
+        elementsSelectable={false}
+        onNodeClick={onNodeClick}
+        onPaneClick={onPaneClick}
+        minZoom={0.3}
+        proOptions={{ hideAttribution: true }}
+      >
+        <AutoFit bounds={layout.bounds} fitKey={`${workflow.id}:${workflow.statuses.length}`} />
+        <Background gap={16} color="var(--border)" />
+        <Controls showInteractive={false} className="!border-border !bg-surface !shadow-md" />
+        <Panel position="bottom-right">
+          <p className="rounded-md border border-border bg-surface/90 px-2.5 py-1.5 text-xs text-muted shadow-sm">
+            Bấm một trạng thái để xem đường đi của nó · bấm nền hoặc Esc để bỏ chọn
+          </p>
+        </Panel>
+      </ReactFlow>
+    </HighlightProvider>
   );
 }
 
-const nodeTypes = { wf: StatusNode };
-
-function FitView({ dep }: { dep: string }) {
-  const initialized = useNodesInitialized();
-  const { fitView } = useReactFlow();
-  useEffect(() => {
-    if (initialized) fitView({ padding: 0.2, duration: 0 });
-  }, [initialized, dep, fitView]);
-  return null;
-}
-
 /**
- * Popup xem QUY TRÌNH (chỉ đọc) của workflow chứa trạng thái hiện tại; tô đậm trạng thái đang ở.
+ * Popup xem QUY TRÌNH (chỉ đọc) của workflow chứa trạng thái hiện tại; đánh dấu trạng thái đang ở và làm nổi đường đi của nó.
  */
 export function WorkflowViewDialog({
   open,
@@ -195,12 +83,6 @@ export function WorkflowViewDialog({
     [workflows, currentStatusId],
   );
 
-  const nodes = useMemo(
-    () => (workflow ? buildNodes(workflow, currentStatusId) : []),
-    [workflow, currentStatusId],
-  );
-  const edges = useMemo(() => (workflow ? buildEdges(workflow) : []), [workflow]);
-
   return (
     <Dialog
       open={open}
@@ -216,7 +98,7 @@ export function WorkflowViewDialog({
         )
       }
       size="xl"
-      className="h-[80vh]"
+      className="h-[80vh] max-w-[min(96vw,1500px)]"
       bodyClassName="relative p-0"
     >
       <div className="absolute inset-0 bg-surface-2">
@@ -230,23 +112,11 @@ export function WorkflowViewDialog({
         >
           {() =>
             workflow ? (
-              <ReactFlow
-                nodes={nodes}
-                edges={edges}
-                nodeTypes={nodeTypes}
-                fitView
-                nodesDraggable={false}
-                nodesConnectable={false}
-                elementsSelectable={false}
-                proOptions={{ hideAttribution: true }}
-              >
-                <FitView dep={workflow.id} />
-                <Background gap={16} color="var(--border)" />
-                <Controls
-                  showInteractive={false}
-                  className="!border-border !bg-surface !shadow-md"
-                />
-              </ReactFlow>
+              <ReadOnlyGraph
+                key={`${workflow.id}:${currentStatusId}`}
+                workflow={workflow}
+                currentStatusId={currentStatusId}
+              />
             ) : (
               <div className="grid h-full place-items-center px-6 text-center text-sm text-muted">
                 Không tìm thấy quy trình cho trạng thái này.
