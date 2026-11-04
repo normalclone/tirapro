@@ -34,7 +34,7 @@
 
 ## Review Focus
 1. An issue is created through import, automation, AI generation or clone **without** a dueDate or difficulty → it still gets due = created+1 (VN day) and difficulty MEDIUM, and its points are computed. Pin with a createWithin test (Task 3/5).
-2. An issue is created at 23:30 Vietnam time (16:30 UTC) → its due date is the next **VN** calendar day, not the UTC one. Pin with a `defaultDueDate` test (Task 1).
+2. An issue is created at 00:30 Vietnam time (17:30 UTC the previous day) → its due date is VN day + 1, not UTC day + 1. Pin with a `defaultDueDate` test (Task 1).
 3. A sub-task is moved to another epic, deleted, or restored → the totals of the old and new epics are both correct. Pin in Task 3.
 4. A non-PM sends `storyPoints` in an update or bulk patch → 403 `POINTS_OVERRIDE_FORBIDDEN`, and nothing is written. Pin in Task 3.
 5. Clearing the due date via update, bulk, or the automation "set dueDate = empty" → 422 `DUE_DATE_REQUIRED` (for automation: the action is skipped with a log warning). Pin in Task 5.
@@ -64,7 +64,7 @@
   - `computePoints(DEFAULT,'EPIC','MEDIUM','High') === null`.
   - Half-up rounding: a formula with base 1, difficulty ×1, priority ×1.5 gives 2.
   - `explainPoints(...)` returns exactly `'Bug · Khó · High = 2×3×1.5 = 9'`.
-  - `defaultDueDate(new Date('2026-11-04T16:30:00Z')) === '2026-11-06T00:00:00.000Z'` (it is already 2026-11-05 in VN).
+  - `defaultDueDate(new Date('2026-11-04T17:30:00Z')) === '2026-11-06T00:00:00.000Z'` (it is already 2026-11-05 in VN); `16:30Z` → `2026-11-05`.
   - `defaultDueDate(new Date('2026-11-04T03:00:00Z')) === '2026-11-05T00:00:00.000Z'`.
 - [ ] **Step 2: Run the tests.** `pnpm --filter @tirapro/shared test points` → FAIL.
 - [ ] **Step 3: Implement.** Compute the VN date as UTC+7 (fixed offset; Vietnam has no DST).
