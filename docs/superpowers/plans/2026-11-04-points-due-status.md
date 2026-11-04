@@ -238,6 +238,8 @@
   - `apps/web/src/features/saved-filters/ResultsTable.tsx` (summary column `max-w-[28rem] truncate` with a `title`; the other columns `whitespace-nowrap`; the status cell uses `StatusPill`)
 - Optionally add a prop `alwaysShowName` to `components/ui/StatusPill.tsx`.
 
+**Added by the user (2026-11-04):** in the saved-filter list (left column of `/filters`, item "Lọc bug todo · Cả không gian làm việc"), the share icon button floats right after the text. Pin it to the item's right edge: the text column is `min-w-0 flex-1` and the button is `ml-auto shrink-0`, vertically centred. Test: the share button is the last child and carries `ml-auto`, or the text wrapper carries `flex-1`.
+
 - [ ] **Step 1: Failing tests.**
   - A My-work row renders the text `Chờ test` for an issue whose status is Chờ test.
   - The results table's summary cell has the `truncate` class.
