@@ -251,13 +251,44 @@ describe('AnalyticsController — phạm vi nhóm dự án (projectIds)', () => 
   it('overview: không projectIds → như cũ; có → giao với dự án người xem thấy rồi mới thu hẹp; chuỗi rỗng → danh sách rỗng', async () => {
     const { controller, analytics } = make();
     await controller.overview('w1', user);
-    expect(analytics.organizationOverview).toHaveBeenLastCalledWith('w1', 'u9', undefined);
+    expect(analytics.organizationOverview).toHaveBeenLastCalledWith('w1', 'u9', undefined, {
+      byAssignee: false,
+    });
     expect(analytics.resolveScopeIds).not.toHaveBeenCalled();
     await controller.overview('w1', user, ' a, b ,hidden,a');
     expect(analytics.resolveScopeIds).toHaveBeenCalledWith('w1', 'u9', ['a', 'b', 'hidden']);
-    expect(analytics.organizationOverview).toHaveBeenLastCalledWith('w1', 'u9', ['a', 'b']);
+    expect(analytics.organizationOverview).toHaveBeenLastCalledWith('w1', 'u9', ['a', 'b'], {
+      byAssignee: false,
+    });
     await controller.overview('w1', user, '');
-    expect(analytics.organizationOverview).toHaveBeenLastCalledWith('w1', 'u9', []);
+    expect(analytics.organizationOverview).toHaveBeenLastCalledWith('w1', 'u9', [], {
+      byAssignee: false,
+    });
+  });
+
+  it('byAssignee=1 / true → bật; tham số lặp (mảng) được gộp thay vì ném 500; kiểu lạ → lỗi nghiệp vụ', async () => {
+    const { controller, analytics, leadership, qaReport } = make();
+    await controller.overview('w1', user, undefined, '1');
+    expect(analytics.organizationOverview).toHaveBeenLastCalledWith('w1', 'u9', undefined, {
+      byAssignee: true,
+    });
+    await controller.overview('w1', user, ['a,b', 'c'], 'true');
+    expect(analytics.resolveScopeIds).toHaveBeenLastCalledWith('w1', 'u9', ['a', 'b', 'c']);
+    await controller.leadershipOverview('w1', user, ['a', 'b']);
+    expect(leadership.get).toHaveBeenLastCalledWith('w1', 'u9', expect.any(Date), {
+      projectIds: ['a', 'b'],
+    });
+    await controller.qaForProjects('w1', user, ['a', 'b']);
+    expect(qaReport.reportForProjects).toHaveBeenLastCalledWith(
+      'w1',
+      'u9',
+      ['a', 'b'],
+      undefined,
+      undefined,
+    );
+    await expect(
+      controller.overview('w1', user, [{ x: 1 }] as unknown as string[]),
+    ).rejects.toBeInstanceOf(BusinessRuleException);
   });
 
   it('quá nhiều dự án trong một phạm vi → lỗi nghiệp vụ, không truy vấn', async () => {

@@ -62,6 +62,7 @@ export class AnalyticsService {
     viewerId: string,
     /** Thu hẹp vào các dự án này (ĐÃ giao với dự án người xem thấy — dùng `resolveScopeIds`); bỏ trống = mọi dự án người xem thấy. */
     restrictTo?: readonly string[],
+    opts: { byAssignee?: boolean } = {},
   ) {
     const viewerVisible = await this.access.visibleWhere(viewerId, organizationId);
     const visible: Prisma.ProjectWhereInput = restrictTo
@@ -194,30 +195,17 @@ export class AnalyticsService {
         take: 8,
         select: attentionSelect,
       }),
-      this.prisma.issue.groupBy({
-        by: ['assigneeId'],
-        where: { ...baseWhere, ...openStatus },
-        _count: { _all: true },
-      }),
+      // Chỉ khi được hỏi (`byAssignee`): Tổng quan chính không dùng nên không trả thêm một truy vấn + tra tên người.
+      opts.byAssignee
+        ? this.prisma.issue.groupBy({
+            by: ['assigneeId'],
+            where: { ...baseWhere, ...openStatus },
+            _count: { _all: true },
+          })
+        : Promise.resolve(null),
     ]);
 
-    const assigneeUsers = await this.prisma.user.findMany({
-      where: {
-        id: { in: openByAssignee.map((g) => g.assigneeId).filter((x): x is string => x !== null) },
-      },
-      select: { id: true, displayName: true },
-    });
-    const assigneeName = new Map(assigneeUsers.map((u) => [u.id, u.displayName]));
-    // Việc CHƯA xong theo người phụ trách (nhiều việc nhất lên trước, "Chưa gán" cuối) — nguồn cho ô tròn "theo người".
-    const byAssignee = openByAssignee
-      .map((g) => ({
-        name: g.assigneeId ? (assigneeName.get(g.assigneeId) ?? 'Không rõ') : 'Chưa gán',
-        color: null as string | null,
-        count: g._count._all,
-        unassigned: g.assigneeId === null,
-      }))
-      .sort((a, b) => Number(a.unassigned) - Number(b.unassigned) || b.count - a.count)
-      .map(({ unassigned: _u, ...r }) => r);
+    const byAssignee = openByAssignee ? await this.openByAssignee(openByAssignee) : undefined;
 
     const [statuses, types, priorities] = await Promise.all([
       this.prisma.status.findMany({
@@ -341,6 +329,26 @@ export class AnalyticsService {
       forecast,
       attention,
     };
+  }
+
+  /** Việc CHƯA xong theo người phụ trách (nhiều việc nhất lên trước, "Chưa gán" luôn cuối) — nguồn cho ô tròn "theo người". */
+  private async openByAssignee(
+    groups: Array<{ assigneeId: string | null; _count: { _all: number } }>,
+  ): Promise<Array<{ name: string; color: string | null; count: number }>> {
+    const users = await this.prisma.user.findMany({
+      where: { id: { in: groups.map((g) => g.assigneeId).filter((x): x is string => x !== null) } },
+      select: { id: true, displayName: true },
+    });
+    const name = new Map(users.map((u) => [u.id, u.displayName]));
+    return groups
+      .map((g) => ({
+        name: g.assigneeId ? (name.get(g.assigneeId) ?? 'Không rõ') : 'Chưa gán',
+        color: null as string | null,
+        count: g._count._all,
+        unassigned: g.assigneeId === null,
+      }))
+      .sort((a, b) => Number(a.unassigned) - Number(b.unassigned) || b.count - a.count)
+      .map(({ unassigned: _u, ...r }) => r);
   }
 
   // ---------- Báo cáo tổng hợp 1 dự án (cho màn Reports) ----------

@@ -1,6 +1,6 @@
 import { useAuth } from '@/stores/auth';
-import { useOrganizationOverview } from '@/features/dashboard/api';
 import { useCreatedResolved, useProjectReport } from '@/features/reports/api';
+import { formatPercent } from '@/features/reports/qaFormat';
 import { StatRow } from '@/components/ui/StatRow';
 import {
   resolvedLast14Days,
@@ -10,7 +10,9 @@ import {
   type StatMetric,
   type StatSource,
 } from '../statMetrics';
-import { cfgString } from '../widgetConfig';
+import { useWidgetScope } from '../scope/ScopeContext';
+import { aggregateIds } from '../scope/widgetScope';
+import { useScopedOverview, useScopedQa } from '../scope/scopedReports';
 import { queryWidgetState, type WidgetState } from '../widgetState';
 import { WidgetFrame } from '../WidgetFrame';
 import type { WidgetProps } from './types';
@@ -18,18 +20,45 @@ import type { WidgetProps } from './types';
 const METRICS = Object.keys(STAT_METRIC_META) as StatMetric[];
 const isMetric = (v: unknown): v is StatMetric => METRICS.includes(v as StatMetric);
 
-/** Một chỉ số (số cỡ vừa, kiểu `StatRow`; không còn số khổng lồ). Có `projectId` → số của dự án đó; không có → toàn tổ chức (cần quyền xem báo cáo). */
+/**
+ * Một chỉ số (số cỡ vừa, kiểu `StatRow`). Nguồn theo phạm vi của ô: một dự án → báo cáo dự án; nhóm dự án → tổng quan thu
+ * hẹp vào các dự án người xem thấy; toàn tổ chức → tổng quan chung (cần quyền xem báo cáo). "Tỉ lệ mở lại" lấy từ báo cáo QA.
+ */
 export function StatNumberWidget({ title, config }: WidgetProps) {
   const metric: StatMetric = isMetric(config.metric) ? config.metric : 'open';
-  const projectId = cfgString(config, 'projectId');
+  const scope = useWidgetScope(config);
+  const projectId = scope.kind === 'project' ? scope.projectId : undefined;
+  const isQa = metric === 'reopenRate';
   const canReport = useAuth((s) => s.can('report:view'));
+  const needsOrgReport = scope.kind !== 'project';
 
-  const overview = useOrganizationOverview(!projectId && canReport);
-  const report = useProjectReport(projectId);
+  const overview = useScopedOverview(aggregateIds(scope), needsOrgReport && canReport && !isQa);
+  const report = useProjectReport(isQa ? undefined : projectId);
   const resolved = useCreatedResolved(projectId && metric === 'done14' ? projectId : undefined);
+  const qa = useScopedQa(scope, isQa && (scope.kind === 'project' || canReport));
 
-  if (!projectId && !canReport) {
+  if (needsOrgReport && !canReport) {
     return <WidgetFrame title={title} state="forbidden" forbiddenText="Cần quyền xem báo cáo" />;
+  }
+
+  const meta = STAT_METRIC_META[metric];
+  if (isQa) {
+    const state = queryWidgetState({ data: qa.data, isError: qa.isError, error: qa.error });
+    return (
+      <WidgetFrame title={title} state={state} error={qa.error} onRetry={() => void qa.refetch()}>
+        <StatRow
+          cols="grid-cols-1"
+          bare
+          items={[
+            {
+              label: meta.label,
+              value: qa.data ? formatPercent(qa.data.reopenRate) : '—',
+              title: meta.hint,
+            },
+          ]}
+        />
+      </WidgetFrame>
+    );
   }
 
   const active = projectId ? report : overview;
@@ -53,7 +82,6 @@ export function StatNumberWidget({ title, config }: WidgetProps) {
       ? 'ready'
       : queryWidgetState({ data: undefined, isError: active.isError, error: active.error });
   const cell = src ? statCell(metric, src) : null;
-  const meta = STAT_METRIC_META[metric];
 
   return (
     <WidgetFrame

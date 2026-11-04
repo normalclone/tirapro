@@ -8,10 +8,9 @@ import { useProjects } from '@/features/projects/api';
 import { apiErrorMessage } from '@/lib/api';
 import { draftIssues, type DraftWidget } from './layoutOps';
 import { widgetDefOf } from './registry';
+import { PIE_FIELD_LABEL } from './pieSlices';
 import { STAT_METRIC_META, type StatMetric } from './statMetrics';
 import { cfgNumber, cfgString } from './widgetConfig';
-
-const PIE_FIELD_LABEL = { status: 'Trạng thái', type: 'Loại công việc', priority: 'Mức ưu tiên' };
 
 /** Một hàng nhãn + điều khiển, dùng chung trong hộp cấu hình. */
 function Field({
@@ -164,7 +163,9 @@ function ConfigForm({
     const opts = (projects ?? [])
       .filter((p) => !p.isArchived)
       .map((p) => ({ value: p.id, label: p.name, hint: p.key }));
-    return def?.project === 'optional' ? [{ value: '', label: 'Toàn bộ tổ chức' }, ...opts] : opts;
+    return def?.project === 'optional'
+      ? [{ value: '', label: 'Theo phạm vi dữ liệu của bảng' }, ...opts]
+      : opts;
   }, [projects, def?.project]);
 
   // Ô đã lưu có thể trỏ dự án không còn trong danh sách (đã lưu trữ…): vẫn hiện để người dùng thấy và đổi.
@@ -244,7 +245,7 @@ function ConfigForm({
             label={def.project === 'required' ? 'Dự án' : 'Phạm vi'}
             hint={
               def.project === 'optional'
-                ? 'Không chọn dự án: số liệu toàn tổ chức (cần quyền xem báo cáo).'
+                ? 'Không chọn dự án: ô lấy số liệu theo phạm vi dữ liệu của bảng (dự án, nhóm dự án hoặc toàn tổ chức).'
                 : undefined
             }
           >

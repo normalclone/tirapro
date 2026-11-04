@@ -74,6 +74,18 @@ describe('DASHBOARD_TEMPLATES', () => {
     }
   });
 
+  it('không câu JQL nào gọi tên trạng thái (tên trạng thái do quy trình của từng tổ chức quyết định)', () => {
+    const statusLiteral = /\bstatus\b\s*(!?=|!?~|(not\s+)?in\b)/i;
+    for (const t of DASHBOARD_TEMPLATES) {
+      for (const w of t.widgets.filter((x) => x.type === 'ISSUE_LIST')) {
+        expect(String(w.config.jql), `${t.key}/${w.title}`).not.toMatch(statusLiteral);
+      }
+    }
+    // Kiểm bộ lọc có hiệu lực: câu có tên trạng thái thì bị bắt, statusCategory thì không.
+    expect('status = "Done"').toMatch(statusLiteral);
+    expect('statusCategory = DONE').not.toMatch(statusLiteral);
+  });
+
   it('BURNDOWN/VELOCITY chỉ ở phạm vi một dự án và được gắn dự án; phạm vi khác bị loại', () => {
     const t = findDashboardTemplate('project-overview')!;
     const types = (s: 'PROJECT' | 'GROUP' | 'ORG') => templateWidgetsFor(t, s).map((w) => w.type);

@@ -400,16 +400,25 @@ describe('AnalyticsService.organizationOverview — aggregate SQL', () => {
       ...prisma.issue.count.mock.calls,
       ...prisma.issue.findMany.mock.calls,
     ].map((c) => (c[0] as { where: unknown }).where);
-    // 5 groupBy (gồm việc mở theo người) + 4 count + 3 findMany (cần chú ý)
-    expect(wheres).toHaveLength(12);
+    // 4 groupBy + 4 count + 3 findMany (cần chú ý)
+    expect(wheres).toHaveLength(11);
     for (const w of wheres) expect(hasTriageVisible(w)).toBe(true);
     expect(queryRaw.mock.calls).toHaveLength(2);
     for (const call of queryRaw.mock.calls) expect(sqlHasTriageVisible(flatSql(call))).toBe(true);
   });
 
+  it('byAssignee chỉ tính khi được hỏi: mặc định không có thêm truy vấn theo người và không có trường này', async () => {
+    const { service, prisma } = make();
+    const r = await service.organizationOverview('w1', 'u0');
+    expect(r.byAssignee).toBeUndefined();
+    expect(prisma.user.findMany).not.toHaveBeenCalled();
+    const bys = prisma.issue.groupBy.mock.calls.map((c) => (c[0] as { by: string[] }).by.join(','));
+    expect(bys).not.toContain('assigneeId');
+  });
+
   it('byAssignee: việc CHƯA xong theo người, nhiều việc nhất trước, "Chưa gán" luôn cuối', async () => {
     const { service } = make();
-    const r = await service.organizationOverview('w1', 'u0');
+    const r = await service.organizationOverview('w1', 'u0', undefined, { byAssignee: true });
     expect(r.byAssignee).toEqual([
       { name: 'Bình', color: null, count: 3 },
       { name: 'An', color: null, count: 1 },
@@ -527,13 +536,7 @@ describe('AnalyticsService.organizationOverview — aggregate SQL', () => {
     const { service, prisma, queryRaw } = make();
     await service.organizationOverview('w1', 'u0');
     const bys = prisma.issue.groupBy.mock.calls.map((c) => c[0].by.join(','));
-    expect(bys).toEqual([
-      'projectId,statusId',
-      'projectId,typeId',
-      'priorityId',
-      'projectId',
-      'assigneeId',
-    ]);
+    expect(bys).toEqual(['projectId,statusId', 'projectId,typeId', 'priorityId', 'projectId']);
     // findMany của issue chỉ cho danh sách "cần chú ý" và luôn có take 8
     for (const c of prisma.issue.findMany.mock.calls)
       expect((c[0] as { take: number }).take).toBe(8);

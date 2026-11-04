@@ -1,10 +1,12 @@
-import { Component, type ErrorInfo, type ReactNode } from 'react';
+import { Component, createContext, useContext, type ErrorInfo, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { AlertTriangle, Gauge, Lock, RotateCcw } from 'lucide-react';
 import { Skeleton } from '@/components/ui/primitives';
 import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import type { WidgetState } from './widgetState';
+
+export const WidgetScopeLabelContext = createContext<string | null>(null);
 
 export interface WidgetFrameProps {
   title: string;
@@ -15,6 +17,8 @@ export interface WidgetFrameProps {
   emptyText?: string;
   /** Câu cho state `forbidden`; mặc định nói về quyền xem dự án. */
   forbiddenText?: string;
+  /** Nhãn "ô lấy số liệu của đâu" dưới tiêu đề (mặc định: do ngữ cảnh phạm vi của bảng cấp qua `WidgetScopeProvider`). */
+  scopeLabel?: string | null;
   /** Liên kết "Xem tất cả" ở góc trên phải. */
   to?: { href: string; label: string };
   children?: ReactNode;
@@ -33,9 +37,12 @@ export function WidgetFrame({
   emptyText = 'Chưa có dữ liệu',
   forbiddenText = 'Bạn không có quyền xem số liệu này',
   to,
+  scopeLabel,
   children,
   className,
 }: WidgetFrameProps) {
+  const ctxLabel = useWidgetScopeLabel();
+  const label = scopeLabel === undefined ? ctxLabel : scopeLabel;
   return (
     <section
       aria-label={title}
@@ -55,6 +62,11 @@ export function WidgetFrame({
           </Link>
         )}
       </div>
+      {label && (
+        <p className="-mt-1.5 mb-2 truncate text-xs text-faint" title={label}>
+          {label}
+        </p>
+      )}
       <div className="min-h-[6rem] flex-1">
         {state === 'loading' && <WidgetSkeleton />}
         {state === 'error' && (
@@ -93,6 +105,11 @@ export function WidgetFrame({
       </div>
     </section>
   );
+}
+
+/** Nhãn phạm vi của ô hiện tại, do `WidgetScopeLabelProvider` cấp (tính một lần cho cả ô, không phải mỗi khung). */
+function useWidgetScopeLabel(): string | null {
+  return useContext(WidgetScopeLabelContext);
 }
 
 function WidgetSkeleton() {

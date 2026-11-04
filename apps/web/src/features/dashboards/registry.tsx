@@ -46,7 +46,8 @@ export interface WidgetDef {
 export const WIDGET_REGISTRY: Record<DashboardWidgetType, WidgetDef> = {
   STAT_NUMBER: {
     label: 'Chỉ số',
-    description: 'Một con số lớn: việc đang mở, quá hạn, bug, xong 14 ngày qua hoặc số dự án.',
+    description:
+      'Một con số: việc đang mở, quá hạn, bug, xong 14 ngày qua, số dự án hoặc tỉ lệ bug mở lại.',
     icon: Hash,
     defaultTitle: 'Việc đang mở',
     defaultConfig: { metric: 'open' },
@@ -56,7 +57,8 @@ export const WIDGET_REGISTRY: Record<DashboardWidgetType, WidgetDef> = {
   },
   PIE_BY_FIELD: {
     label: 'Phân bố',
-    description: 'Biểu đồ tròn công việc theo trạng thái, loại hoặc mức ưu tiên.',
+    description:
+      'Biểu đồ tròn công việc theo trạng thái, loại, mức ưu tiên, người phụ trách hoặc mức nghiêm trọng của bug.',
     icon: PieChart,
     defaultTitle: 'Phân bố theo trạng thái',
     defaultConfig: { field: 'status' },

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { GripVertical, LayoutDashboard, Plus, Users } from 'lucide-react';
+import { Database, GripVertical, LayoutDashboard, Plus, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import type { ProjectDto, TeamDto } from '@tirapro/types';
 import type { CustomDashboardDto, CustomWidgetDto, DashboardWidgetType } from '@tirapro/shared';
@@ -16,6 +16,10 @@ import { dashboardUrl } from '@/lib/copyText';
 import { useLeaveGuard } from '@/lib/useLeaveGuard';
 import { isOverlayOpen, isTypingTarget, shouldLeaveEditorOnEscape } from '@/lib/hotkeys';
 import { useSaveDashboard } from './api';
+import { DataScopeDialog } from './scope/DataScopeDialog';
+import { DashboardScopeProvider } from './scope/ScopedWidget';
+import { DATA_SCOPE_LABEL, dataScopeIssue, scopeValueOf } from './scope/dataScopeModel';
+import { dataScopeSummary, scopeInfoOf } from './scope/widgetScope';
 import { AddWidgetDialog } from './AddWidgetDialog';
 import {
   addWidget,
@@ -181,6 +185,78 @@ function shareTargetName(
   return undefined;
 }
 
+type DialogKey = 'add' | 'share' | 'data';
+
+/** Bốn hộp thoại của trình soạn (thêm ô, chia sẻ, phạm vi dữ liệu, cấu hình ô); luôn mount, mở bằng `open`. */
+function EditorDialogs({
+  dashboard,
+  saved,
+  draft,
+  open,
+  setOpen,
+  configWidget,
+  onCloseConfig,
+  onAdd,
+  onDraft,
+  onSaveConfig,
+}: {
+  dashboard: CustomDashboardDto | null;
+  saved: DashboardDraft;
+  draft: DashboardDraft;
+  open: Record<DialogKey, boolean>;
+  setOpen: Record<DialogKey, (open: boolean) => void>;
+  configWidget: DraftWidget | null;
+  onCloseConfig: () => void;
+  onAdd: (type: DashboardWidgetType) => void;
+  onDraft: (fn: (d: DashboardDraft) => DashboardDraft) => void;
+  onSaveConfig: (id: string, p: { title: string; config: Record<string, unknown> }) => void;
+}) {
+  return (
+    <>
+      <AddWidgetDialog open={open.add} onOpenChange={setOpen.add} onAdd={onAdd} />
+      <ShareDialog
+        open={open.share}
+        onOpenChange={setOpen.share}
+        value={pickShare(draft)}
+        onApply={(v) => onDraft((d) => ({ ...d, ...v }))}
+        link={shareLinkOf(dashboard, saved)}
+      />
+      <DataScopeDialog
+        open={open.data}
+        onOpenChange={setOpen.data}
+        current={dashboard ? scopeValueOf(dashboard) : NEW_DATA_SCOPE}
+        chosen={draft.dataScope}
+        onApply={(v) => onDraft((d) => ({ ...d, dataScope: v }))}
+      />
+      <WidgetConfigDialog widget={configWidget} onClose={onCloseConfig} onSave={onSaveConfig} />
+    </>
+  );
+}
+
+/** Phạm vi dữ liệu bảng mới chưa lưu (như dashboard cũ: toàn tổ chức). */
+const NEW_DATA_SCOPE = { dataScope: 'ORG', scopeProjectId: '', scopeProgramId: '' } as const;
+
+/** Nhãn trên thanh công cụ: phạm vi đang lưu, hoặc phạm vi vừa chọn (chưa lưu). */
+function dataLabelOf(draft: DashboardDraft, dashboard: CustomDashboardDto | null): string {
+  if (draft.dataScope)
+    return `${DATA_SCOPE_LABEL[draft.dataScope.dataScope]} (đổi — lưu để áp dụng)`;
+  return dashboard ? dataScopeSummary(dashboard) : DATA_SCOPE_LABEL.ORG;
+}
+
+/** Gợi ý kéo thả (chuột/cảm ứng và bàn phím) dưới thanh công cụ. */
+function DragHint() {
+  return (
+    <p className="mb-4 text-xs text-muted">
+      Kéo tay nắm <GripVertical className="inline h-3.5 w-3.5" aria-hidden /> để đổi chỗ.
+      <span className="kbd-hint">
+        {' '}
+        Bằng bàn phím: Tab tới tay nắm, Space nhấc, phím mũi tên di chuyển, Space thả. Esc để huỷ
+        soạn, Ctrl/Cmd+S để lưu.
+      </span>
+    </p>
+  );
+}
+
 function NameFields({
   name,
   description,
@@ -216,19 +292,23 @@ function NameFields({
 
 function EditorToolbar({
   shareLabel,
+  dataLabel,
   canAdd,
   canSave,
   saving,
   onShare,
+  onData,
   onAdd,
   onCancel,
   onSave,
 }: {
   shareLabel: string;
+  dataLabel: string;
   canAdd: boolean;
   canSave: boolean;
   saving: boolean;
   onShare: () => void;
+  onData: () => void;
   onAdd: () => void;
   onCancel: () => void;
   onSave: () => void;
@@ -238,6 +318,10 @@ function EditorToolbar({
       <Button variant="secondary" size="sm" onClick={onShare}>
         <Users className="h-4 w-4" aria-hidden />
         Ai xem: {shareLabel}
+      </Button>
+      <Button variant="secondary" size="sm" onClick={onData}>
+        <Database className="h-4 w-4" aria-hidden />
+        Dữ liệu: {dataLabel}
       </Button>
       <Button
         variant="secondary"
@@ -281,6 +365,7 @@ export function DashboardEditor({
   const [draft, setDraft] = useState<DashboardDraft>(saved);
   const [addOpen, setAddOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
+  const [dataOpen, setDataOpen] = useState(false);
   const [configId, setConfigId] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
 
@@ -294,11 +379,13 @@ export function DashboardEditor({
   const dirty = isDirty(saved, draft);
   const issues = useMemo(() => draftIssues(widgets), [widgets]);
   const shareError = shareValidation(draft.scope, draft.projectId, draft.teamId);
+  const dataError = draft.dataScope ? dataScopeIssue(draft.dataScope) : null;
   const nameOk = draft.name.trim().length > 0;
   const canSave =
     (dashboard === null || dirty) &&
     nameOk &&
     shareError === null &&
+    dataError === null &&
     Object.keys(issues).length === 0;
 
   const exitingRef = useRef(false);
@@ -347,7 +434,6 @@ export function DashboardEditor({
     removeToastsRef.current.add(toastId);
   }
 
-  const share = pickShare(draft);
   const shareName = shareTargetName(draft, projects, teams);
   const configWidget = widgets.find((w) => w.id === configId) ?? null;
 
@@ -367,6 +453,8 @@ export function DashboardEditor({
 
       <EditorToolbar
         shareLabel={`${SCOPE_LABEL[draft.scope]}${shareName ? ` · ${shareName}` : ''}`}
+        dataLabel={dataLabelOf(draft, dashboard)}
+        onData={() => setDataOpen(true)}
         canAdd={canAddWidget(widgets)}
         canSave={canSave}
         saving={saving}
@@ -375,14 +463,7 @@ export function DashboardEditor({
         onCancel={leave}
         onSave={() => void doSave()}
       />
-      <p className="mb-4 text-xs text-muted">
-        Kéo tay nắm <GripVertical className="inline h-3.5 w-3.5" aria-hidden /> để đổi chỗ.
-        <span className="kbd-hint">
-          {' '}
-          Bằng bàn phím: Tab tới tay nắm, Space nhấc, phím mũi tên di chuyển, Space thả. Esc để huỷ
-          soạn, Ctrl/Cmd+S để lưu.
-        </span>
-      </p>
+      <DragHint />
       {shareError && (
         <p role="alert" className="mb-3 text-sm text-danger">
           {shareError}
@@ -401,29 +482,30 @@ export function DashboardEditor({
           }
         />
       ) : (
-        <SortableGrid
-          widgets={widgets}
-          issues={issues}
-          onMove={(activeId, overId) => patch((l) => moveWidget(l, activeId, overId))}
-          onDraggingChange={setDragging}
-          onResize={(id, w) => patch((l) => resizeWidget(l, id, w))}
-          onConfig={setConfigId}
-          onRemove={onRemove}
-        />
+        <DashboardScopeProvider value={dashboard ? scopeInfoOf(dashboard) : null}>
+          <SortableGrid
+            widgets={widgets}
+            issues={issues}
+            onMove={(activeId, overId) => patch((l) => moveWidget(l, activeId, overId))}
+            onDraggingChange={setDragging}
+            onResize={(id, w) => patch((l) => resizeWidget(l, id, w))}
+            onConfig={setConfigId}
+            onRemove={onRemove}
+          />
+        </DashboardScopeProvider>
       )}
 
-      <AddWidgetDialog open={addOpen} onOpenChange={setAddOpen} onAdd={onAdd} />
-      <ShareDialog
-        open={shareOpen}
-        onOpenChange={setShareOpen}
-        value={share}
-        onApply={(v) => setDraft((d) => ({ ...d, ...v }))}
-        link={shareLinkOf(dashboard, saved)}
-      />
-      <WidgetConfigDialog
-        widget={configWidget}
-        onClose={() => setConfigId(null)}
-        onSave={(id, p) => {
+      <EditorDialogs
+        dashboard={dashboard}
+        saved={saved}
+        draft={draft}
+        open={{ add: addOpen, share: shareOpen, data: dataOpen }}
+        setOpen={{ add: setAddOpen, share: setShareOpen, data: setDataOpen }}
+        configWidget={configWidget}
+        onCloseConfig={() => setConfigId(null)}
+        onAdd={onAdd}
+        onDraft={setDraft}
+        onSaveConfig={(id, p) => {
           patch((l) => updateWidget(l, id, p));
           setConfigId(null);
         }}

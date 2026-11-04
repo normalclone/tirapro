@@ -18,11 +18,17 @@ const MAX_SCOPE_PROJECTS = 200;
  * `?projectIds=a,b,c` → danh sách id; vắng mặt → `undefined` (không thu hẹp); chuỗi rỗng → `[]` (phạm vi RỖNG, không phải
  * "tất cả" — nhóm không còn dự án nào người xem thấy thì ô phải trống).
  */
-function parseProjectIds(csv: string | undefined): string[] | undefined {
-  if (csv === undefined) return undefined;
+function parseProjectIds(raw: unknown): string[] | undefined {
+  if (raw === undefined) return undefined;
+  // `?projectIds=a&projectIds=b` (hoặc `projectIds[]=`) đến dưới dạng mảng — gộp lại như CSV thay vì để `split` ném lỗi (500).
+  const parts = Array.isArray(raw) ? raw : [raw];
+  if (!parts.every((p): p is string => typeof p === 'string')) {
+    throw new BusinessRuleException('projectIds không hợp lệ');
+  }
   const ids = [
     ...new Set(
-      csv
+      parts
+        .join(',')
         .split(',')
         .map((x) => x.trim())
         .filter(Boolean),
@@ -50,13 +56,17 @@ export class AnalyticsController {
     @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
     /** CSV id dự án (phạm vi nhóm dự án của dashboard): luôn giao với dự án người xem thấy ở máy chủ. */
-    @Query('projectIds') projectIds?: string,
+    @Query('projectIds') projectIds?: string | string[],
+    /** `1`/`true` = kèm `byAssignee` (việc chưa xong theo người) — chỉ ô "theo người" cần, Tổng quan chính không. */
+    @Query('byAssignee') byAssignee?: string,
   ) {
     const requested = parseProjectIds(projectIds);
     const scope = requested
       ? await this.analytics.resolveScopeIds(organizationId, user.id, requested)
       : undefined;
-    return this.analytics.organizationOverview(organizationId, user.id, scope);
+    return this.analytics.organizationOverview(organizationId, user.id, scope, {
+      byAssignee: byAssignee === '1' || byAssignee === 'true',
+    });
   }
 
   /** Ba thẻ lãnh đạo (Top rủi ro, OKR chậm, người quá tải) — organization-level như `overview`, lọc theo dự án người xem thấy. */
@@ -66,7 +76,7 @@ export class AnalyticsController {
     @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
     /** CSV id dự án như `overview`; thu hẹp rủi ro + mục tiêu chậm (thẻ người quá tải đo toàn tổ chức nên bị bỏ). */
-    @Query('projectIds') projectIds?: string,
+    @Query('projectIds') projectIds?: string | string[],
   ) {
     const requested = parseProjectIds(projectIds);
     if (!requested) return this.leadership.get(organizationId, user.id);
@@ -175,7 +185,7 @@ export class AnalyticsController {
   async qaForProjects(
     @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
-    @Query('projectIds') projectIds?: string,
+    @Query('projectIds') projectIds?: string | string[],
     @Query('from') from?: string,
     @Query('to') to?: string,
   ) {

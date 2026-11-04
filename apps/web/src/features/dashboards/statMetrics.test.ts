@@ -30,6 +30,12 @@ describe('statValue', () => {
   });
 });
 
+describe('reopenRate', () => {
+  it('không có trong nguồn tổng quan/dự án → null (ô lấy từ báo cáo chất lượng, không bịa số 0)', () => {
+    expect(statValue('reopenRate', overview)).toBeNull();
+  });
+});
+
 describe('resolvedLast14Days', () => {
   it('cộng resolved của 14 ngày cuối, bỏ ngày cũ hơn', () => {
     const series = Array.from({ length: 20 }, (_, i) => ({

@@ -73,10 +73,12 @@ export const DASHBOARD_TEMPLATES: readonly DashboardTemplate[] = [
     defaultScope: 'PROJECT',
     widgets: [
       {
+        // Không gọi tên trạng thái (quy trình mỗi tổ chức một khác — tên không có thì máy chủ báo 422): lấy nhóm "đang làm",
+        // nơi bug chờ sửa / chờ kiểm thử lại đứng.
         type: 'ISSUE_LIST',
-        title: 'Bug chờ kiểm thử lại',
+        title: 'Bug đang xử lý hoặc chờ kiểm thử lại',
         config: {
-          jql: 'type = Bug AND status = "Ready for Retest" ORDER BY updated DESC',
+          jql: 'type = Bug AND statusCategory = IN_PROGRESS ORDER BY updated DESC',
           limit: 10,
         },
         w: 2,
@@ -91,8 +93,8 @@ export const DASHBOARD_TEMPLATES: readonly DashboardTemplate[] = [
       },
       {
         type: 'ISSUE_LIST',
-        title: 'Bug còn mở',
-        config: { jql: 'type = Bug AND statusCategory != DONE ORDER BY updated DESC', limit: 10 },
+        title: 'Bug chưa xử lý',
+        config: { jql: 'type = Bug AND statusCategory = TODO ORDER BY updated DESC', limit: 10 },
         w: 2,
       },
       { type: 'CREATED_VS_RESOLVED', title: 'Tạo mới và đã xử lý', config: {}, w: 2 },

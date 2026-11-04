@@ -1,10 +1,19 @@
 import { Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts';
 import { useAuth } from '@/stores/auth';
-import { useOrganizationOverview, type OverviewSlice } from '@/features/dashboard/api';
+import type { OverviewSlice } from '@/features/dashboard/api';
 import { useProjectReport } from '@/features/reports/api';
 import { TOOLTIP_STYLE } from '@/features/reports/charts';
-import { STATUS_CATEGORY_LABEL } from '@/lib/terms';
-import { cfgString } from '../widgetConfig';
+import { useWidgetScope } from '../scope/ScopeContext';
+import { aggregateIds } from '../scope/widgetScope';
+import { useScopedOverview, useScopedQa } from '../scope/scopedReports';
+import {
+  isPieField,
+  isQaField,
+  slicesFromOverview,
+  slicesFromProject,
+  slicesFromQa,
+  type PieField,
+} from '../pieSlices';
 import { queryWidgetState } from '../widgetState';
 import { WidgetFrame } from '../WidgetFrame';
 import type { WidgetProps } from './types';
@@ -19,48 +28,32 @@ const FALLBACK_COLORS = [
   'var(--status-todo)',
 ];
 
-type Field = 'status' | 'type' | 'priority';
-const isField = (v: unknown): v is Field => v === 'status' || v === 'type' || v === 'priority';
-
-/** Phân bố công việc theo trạng thái / loại / ưu tiên, của một dự án hoặc toàn organization. */
+/** Phân bố công việc theo trạng thái / loại / ưu tiên / mức nghiêm trọng / người phụ trách, theo phạm vi của ô. */
 export function PieByFieldWidget({ title, config }: WidgetProps) {
-  const field: Field = isField(config.field) ? config.field : 'status';
-  const projectId = cfgString(config, 'projectId');
+  const field: PieField = isPieField(config.field) ? config.field : 'status';
+  const scope = useWidgetScope(config);
+  const projectId = scope.kind === 'project' ? scope.projectId : undefined;
   const canReport = useAuth((s) => s.can('report:view'));
+  const fromQa = isQaField(field);
+  const aggregated = scope.kind !== 'project';
 
-  const overview = useOrganizationOverview(!projectId && canReport);
-  const report = useProjectReport(projectId);
+  const overview = useScopedOverview(
+    aggregateIds(scope),
+    aggregated && canReport && !fromQa,
+    field === 'assignee',
+  );
+  const report = useProjectReport(fromQa ? undefined : projectId);
+  const qa = useScopedQa(scope, fromQa && (!aggregated || canReport));
 
-  if (!projectId && !canReport) {
+  if (aggregated && !canReport) {
     return <WidgetFrame title={title} state="forbidden" forbiddenText="Cần quyền xem báo cáo" />;
   }
 
-  const q = projectId ? report : overview;
+  const q = fromQa ? qa : projectId ? report : overview;
   let slices: OverviewSlice[] | undefined;
-  if (projectId && report.data) {
-    slices =
-      field === 'type'
-        ? report.data.byType
-        : field === 'priority'
-          ? report.data.byPriority
-          : report.data.byStatus;
-  } else if (!projectId && overview.data) {
-    const t = overview.data.totals;
-    slices =
-      field === 'type'
-        ? overview.data.byType
-        : field === 'priority'
-          ? overview.data.byPriority
-          : [
-              { name: STATUS_CATEGORY_LABEL.TODO, color: 'var(--status-todo)', count: t.todo },
-              {
-                name: STATUS_CATEGORY_LABEL.IN_PROGRESS,
-                color: 'var(--status-progress)',
-                count: t.inProgress,
-              },
-              { name: STATUS_CATEGORY_LABEL.DONE, color: 'var(--status-done)', count: t.done },
-            ];
-  }
+  if (fromQa) slices = qa.data ? slicesFromQa(qa.data) : undefined;
+  else if (projectId) slices = report.data ? slicesFromProject(field, report.data) : undefined;
+  else if (overview.data) slices = slicesFromOverview(field, overview.data);
   const data = (slices ?? []).filter((s) => s.count > 0);
   const state = queryWidgetState(
     { data: slices ? data : undefined, isError: q.isError, error: q.error },

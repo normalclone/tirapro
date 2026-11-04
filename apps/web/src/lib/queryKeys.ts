@@ -216,6 +216,7 @@ export const keys = {
   dashboards: {
     all: ['dashboards'] as const,
     list: ['dashboards', 'list'] as const,
+    templates: ['dashboards', 'templates'] as const,
     detail: (id: string) => ['dashboards', 'detail', id] as const,
     /** Kết quả `/search?jql=` của ô ISSUE_LIST. */
     jql: (jql: string, limit: number) => ['dashboards', 'jql', jql, limit] as const,
