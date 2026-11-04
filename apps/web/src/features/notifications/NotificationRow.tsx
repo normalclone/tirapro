@@ -7,6 +7,7 @@ import {
   MessageSquare,
   RefreshCw,
   Repeat,
+  Share2,
   UserPlus,
   type LucideIcon,
 } from 'lucide-react';
@@ -27,6 +28,7 @@ const TYPE_ICON: Record<NotificationType, LucideIcon> = {
   SPRINT_STARTED: Flag,
   SPRINT_COMPLETED: FlagOff,
   WATCHING_UPDATE: Eye,
+  FILTER_SHARED: Share2,
 };
 
 /** Loại có trích đoạn nội dung đáng hiển thị. */

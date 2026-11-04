@@ -1,50 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import {
-  DASHBOARD_SHARE_KINDS,
-  FILTER_SHARE_KINDS,
-  filterSharePatch,
-  filterShareValue,
-  projectOptionsFor,
-  sameShare,
-  teamOptionsFor,
-} from './shareModel';
+import { DASHBOARD_SHARE_KINDS, projectOptionsFor, sameShare, teamOptionsFor } from './shareModel';
 
-describe('mức chia sẻ của bộ lọc ↔ giá trị của hộp chia sẻ', () => {
-  it('bộ lọc không có nhóm: 3 mức; bảng tổng quan: 4 mức', () => {
-    expect(FILTER_SHARE_KINDS).toEqual(['PRIVATE', 'GLOBAL', 'PROJECT']);
+describe('mức chia sẻ của bảng tổng quan', () => {
+  it('bảng tổng quan: 4 mức (bộ lọc đã lưu có hộp chia sẻ riêng nhiều dự án + người)', () => {
     expect(DASHBOARD_SHARE_KINDS).toEqual(['PRIVATE', 'GLOBAL', 'PROJECT', 'TEAM']);
-  });
-  it('đọc: PRIVATE / WORKSPACE / PROJECT+dự án', () => {
-    expect(filterShareValue({ visibility: 'PRIVATE', sharedProjectId: null })).toEqual({
-      scope: 'PRIVATE',
-      projectId: '',
-      teamId: '',
-    });
-    expect(filterShareValue({ visibility: 'WORKSPACE', sharedProjectId: null }).scope).toBe(
-      'GLOBAL',
-    );
-    expect(filterShareValue({ visibility: 'PROJECT', sharedProjectId: 'p1' })).toEqual({
-      scope: 'PROJECT',
-      projectId: 'p1',
-      teamId: '',
-    });
-  });
-  it('PROJECT chưa gắn dự án (dữ liệu cũ) = máy chủ cho cả tổ chức thấy → hộp hiện đúng "Cả tổ chức"', () => {
-    expect(filterShareValue({ visibility: 'PROJECT', sharedProjectId: null }).scope).toBe('GLOBAL');
-  });
-  it('ghi: luôn gửi CẢ visibility lẫn sharedProjectId (đổi sang mức khác thì bỏ dự án cũ)', () => {
-    expect(filterSharePatch({ scope: 'PRIVATE', projectId: 'p1', teamId: '' })).toEqual({
-      visibility: 'PRIVATE',
-      sharedProjectId: null,
-    });
-    expect(filterSharePatch({ scope: 'GLOBAL', projectId: '', teamId: '' })).toEqual({
-      visibility: 'WORKSPACE',
-      sharedProjectId: null,
-    });
-    expect(filterSharePatch({ scope: 'PROJECT', projectId: 'p2', teamId: '' })).toEqual({
-      visibility: 'PROJECT',
-      sharedProjectId: 'p2',
-    });
   });
   it('sameShare so cả ba trường', () => {
     const a = { scope: 'PROJECT', projectId: 'p', teamId: '' } as const;

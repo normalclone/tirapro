@@ -24,6 +24,9 @@ import { ProjectLayout } from '@/features/projects/ProjectLayout';
 const DashboardPage = lazy(() =>
   import('@/features/dashboard/DashboardPage').then((m) => ({ default: m.DashboardPage })),
 );
+const MeOverviewPage = lazy(() =>
+  import('@/features/me/MeOverviewPage').then((m) => ({ default: m.MeOverviewPage })),
+);
 const DashboardViewPage = lazy(() =>
   import('@/features/dashboards/DashboardViewPage').then((m) => ({
     default: m.DashboardViewPage,
@@ -286,6 +289,7 @@ export const router = createBrowserRouter([
     errorElement: <RouteError />,
     children: [
       { index: true, element: <DashboardPage /> },
+      { path: 'me', element: <MeOverviewPage /> },
       { path: 'dashboards/:id', element: <DashboardViewPage /> },
       { path: 'projects', element: <ProjectsPage /> },
       { path: 'members', element: <MembersPage /> },

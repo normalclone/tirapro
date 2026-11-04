@@ -11,18 +11,24 @@ const OWN: SavedFilter = {
   id: 'f1',
   name: 'Lọc bug todo',
   jql: 'type = Bug AND statusCategory = TODO',
-  visibility: 'WORKSPACE',
-  sharedProjectId: null,
+  visibility: 'PRIVATE',
   ownerId: 'u',
   isOwner: true,
+  access: 'owner',
+  owner: { id: 'u', displayName: 'Tôi', avatarUrl: null },
+  sharedProjects: [],
+  sharedUsers: [],
   createdAt: '2026-11-01T00:00:00.000Z',
 };
 const SHARED: SavedFilter = {
   ...OWN,
   id: 'f2',
   name: 'Của đồng nghiệp',
+  visibility: 'SHARED',
   ownerId: 'x',
   isOwner: false,
+  access: 'shared',
+  owner: { id: 'x', displayName: 'Đồng nghiệp', avatarUrl: null },
 };
 
 const h = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), patch: vi.fn(), del: vi.fn() }));
@@ -161,5 +167,19 @@ describe('danh sách bộ lọc đã lưu: nút Chia sẻ sát mép phải', () 
       expect(text.className).toContain('flex-1');
       expect(text.className).toContain('min-w-0');
     }
+  });
+});
+
+describe('rail: nhóm "Của tôi" / "Được chia sẻ với tôi"', () => {
+  it('bộ lọc của mình và bộ lọc người khác chia sẻ nằm hai nhóm riêng; hàng của người khác ghi chủ sở hữu', async () => {
+    renderAt('/filters');
+    const mine = await screen.findByRole('region', { name: /Của tôi/ });
+    const shared = await screen.findByRole('region', { name: /Được chia sẻ với tôi/ });
+    expect(within(mine).getByText(OWN.name)).toBeTruthy();
+    expect(within(mine).queryByText(SHARED.name)).toBeNull();
+    expect(within(shared).getByText(SHARED.name)).toBeTruthy();
+    expect(within(shared).getByText(/Chủ: Đồng nghiệp/)).toBeTruthy();
+    expect(within(mine).getByText('Riêng tư')).toBeTruthy();
+    expect(within(shared).getByText('Được chia sẻ')).toBeTruthy();
   });
 });

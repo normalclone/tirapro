@@ -102,6 +102,7 @@ export const keys = {
   filters: {
     all: ['filters'] as const,
     fields: ['filter-fields'] as const,
+    audience: (body: string) => ['filter-audience', body] as const,
   },
 
   goals: {
@@ -211,6 +212,8 @@ export const keys = {
     /** Kết quả `/search?jql=` của ô ISSUE_LIST. */
     jql: (jql: string, limit: number) => ['dashboards', 'jql', jql, limit] as const,
   },
+
+  meOverview: ['me-overview'] as const,
 
   dashboard: {
     myIssues: ['my-issues'] as const,

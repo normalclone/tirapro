@@ -7,5 +7,7 @@ import type { NotificationPayload } from '@tirapro/shared';
 export function notificationHref(payload: NotificationPayload | null | undefined): string | null {
   if (payload?.bulk && payload.listJql)
     return `/filters?jql=${encodeURIComponent(payload.listJql)}`;
+  // Bộ lọc được chia sẻ: mở đúng bộ lọc đó.
+  if (payload?.filterId) return `/filters/${payload.filterId}`;
   return payload?.key ? `/issue/${payload.key}` : null;
 }

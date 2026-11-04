@@ -129,8 +129,8 @@ enum CustomFieldType {
 
 enum FilterVisibility {
   PRIVATE
-  WORKSPACE
-  PROJECT
+  /// Có ít nhất một dòng chia sẻ (dự án hoặc người cụ thể) — xem SavedFilterProjectShare / SavedFilterUserShare.
+  SHARED
 }
 
 enum DashboardScope {
@@ -165,6 +165,7 @@ enum NotificationType {
   SPRINT_STARTED
   SPRINT_COMPLETED
   WATCHING_UPDATE
+  FILTER_SHARED
 }
 
 enum ActivityAction {
@@ -263,6 +264,7 @@ model User {
   watching             IssueWatcher[]
   workLogs             WorkLog[]
   savedFilters         SavedFilter[]
+  savedFilterShares    SavedFilterUserShare[]
   dashboards           Dashboard[]
   guideStates          UserGuideState[]
   apiKeys              ApiKey[]
@@ -533,7 +535,7 @@ model Project {
   components   Component[]
   versions     Version[]
   customFields CustomField[]
-  savedFilters SavedFilter[]
+  savedFilterShares SavedFilterProjectShare[]
   dashboards   Dashboard[]
   activities   ActivityLog[]
   program      Program?    @relation(fields: [programId], references: [id], onDelete: SetNull)
@@ -1154,15 +1156,39 @@ model SavedFilter {
   jql             String   @db.Text
   astCache        Json?
   visibility      FilterVisibility @default(PRIVATE)
-  sharedProjectId String?
   deletedAt       DateTime?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
   workspace     Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   owner         User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-  sharedProject Project?  @relation(fields: [sharedProjectId], references: [id], onDelete: SetNull)
+  projectShares SavedFilterProjectShare[]
+  userShares    SavedFilterUserShare[]
   @@index([workspaceId, ownerId])
+}
+
+/// Bộ lọc chia sẻ cho thành viên của một dự án (một bộ lọc có thể chia sẻ cho nhiều dự án).
+model SavedFilterProjectShare {
+  filterId  String
+  projectId String
+  createdAt DateTime @default(now())
+
+  filter  SavedFilter @relation(fields: [filterId], references: [id], onDelete: Cascade)
+  project Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  @@id([filterId, projectId])
+  @@index([projectId])
+}
+
+/// Bộ lọc chia sẻ cho một người cụ thể.
+model SavedFilterUserShare {
+  filterId  String
+  userId    String
+  createdAt DateTime @default(now())
+
+  filter SavedFilter @relation(fields: [filterId], references: [id], onDelete: Cascade)
+  user   User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@id([filterId, userId])
+  @@index([userId])
 }
 
 // ============================ AI / EMBEDDINGS ===============================

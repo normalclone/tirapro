@@ -1,8 +1,10 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import {
+  filterAudienceSchema,
   savedFilterCreateSchema,
   savedFilterUpdateSchema,
+  type FilterAudienceInput,
   type SavedFilterCreateInput,
   type SavedFilterUpdateInput,
 } from '@tirapro/shared';
@@ -36,6 +38,17 @@ export class SavedFiltersController {
     @Body(new ZodValidationPipe(savedFilterCreateSchema)) body: CreateSavedFilterBody,
   ) {
     return this.filters.create(workspaceId, user.id, body);
+  }
+
+  /** Số người xem được một bản chia sẻ CHƯA lưu (hộp Chia sẻ). Tính theo người gọi: dự án họ không xem được bị bỏ qua. */
+  @Permissions(PERMISSIONS.FILTER_MANAGE)
+  @Post('audience')
+  async audience(
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
+    @Body(new ZodValidationPipe(filterAudienceSchema)) body: FilterAudienceInput,
+  ) {
+    return this.filters.audience(workspaceId, user.id, body);
   }
 
   @Permissions(PERMISSIONS.FILTER_MANAGE)

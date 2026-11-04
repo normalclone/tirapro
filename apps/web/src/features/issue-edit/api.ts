@@ -45,9 +45,10 @@ function useRemoveFromCaches(call: (v: IssueRef) => Promise<unknown>) {
       // Số issue/điểm của sprint đổi theo; việc vừa xoá xuất hiện trong Thùng rác.
       void qc.invalidateQueries({ queryKey: keys.sprints.byProject(v.projectId) });
       void qc.invalidateQueries({ queryKey: keys.trash(v.projectId) });
-      // Trang chủ (Việc của tôi, Bug tôi báo, tổng quan), hộp phân loại: việc vừa xoá/thu hồi không được còn hiện.
+      // Trang chủ (Việc của tôi, Bug tôi báo, tổng quan), trang Của tôi, hộp phân loại: việc vừa xoá/thu hồi không được còn hiện.
       void qc.invalidateQueries({ queryKey: keys.dashboard.myBugs });
       void qc.invalidateQueries({ queryKey: keys.dashboard.myIssues });
+      void qc.invalidateQueries({ queryKey: keys.meOverview });
       void qc.invalidateQueries({ queryKey: keys.dashboard.workspaceOverview });
       void qc.invalidateQueries({ queryKey: keys.triage.all });
     },

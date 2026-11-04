@@ -24,6 +24,9 @@ export interface NotificationPayload {
   bulk?: 'jira-import';
   /** JQL mở danh sách các việc của thông báo gộp (bấm thông báo → bộ lọc). */
   listJql?: string;
+  /** FILTER_SHARED: bộ lọc được chia sẻ (bấm → mở bộ lọc đó). */
+  filterId?: string;
+  filterName?: string;
   /** STATUS_CHANGED. */
   statusName?: string;
   fromStatusName?: string;
@@ -83,6 +86,8 @@ export function buildNotificationTitle(type: NotificationType, p: NotificationPa
       return `${who(p)} cập nhật ${key}${times(p)}`;
     case 'WATCHING_UPDATE':
       return `${who(p)} cập nhật ${key}${times(p)} (bạn đang theo dõi)`;
+    case 'FILTER_SHARED':
+      return `${who(p)} đã chia sẻ bộ lọc “${p.filterName || 'chưa đặt tên'}” với bạn`;
     default:
       return 'Có thông báo mới';
   }

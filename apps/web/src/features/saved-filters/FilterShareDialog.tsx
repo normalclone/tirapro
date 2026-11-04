@@ -1,27 +1,32 @@
-import { useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/Button';
 import { Dialog } from '@/components/ui/Dialog';
-import { SharePanel } from '@/features/sharing/SharePanel';
-import {
-  FILTER_COPY,
-  FILTER_SHARE_KINDS,
-  filterSharePatch,
-  filterShareValue,
-  sameShare,
-  type ShareValue,
-} from '@/features/sharing/shareModel';
-import { shareValidation } from '@/features/dashboards/layoutOps';
+import { RadioCard } from '@/components/ui/RadioCard';
+import { Avatar } from '@/components/ui/primitives';
+import { CopyLinkRow } from '@/features/sharing/CopyLinkRow';
+import { useWorkspaceMembers } from '@/features/members/api';
+import { useProjects } from '@/features/projects/api';
 import { apiErrorMessage } from '@/lib/api';
 import { filterUrl } from '@/lib/copyText';
+import { fmtNumber } from '@/lib/locale';
 import { useOpenSession } from '@/lib/useOpenSession';
-import { useUpdateFilter, type SavedFilter } from './api';
-import { canChangeFilterShare } from './filterShare';
+import { useAuth } from '@/stores/auth';
+import { useFilterAudience, useUpdateFilter, type FilterVisibility, type SavedFilter } from './api';
+import {
+  canChangeFilterShare,
+  draftChanged,
+  draftError,
+  draftFrom,
+  draftPatch,
+  type ShareDraft,
+} from './filterShare';
+import { ShareChecklist, type ChecklistItem } from './ShareChecklist';
 
 /**
- * "Chia sẻ" của một bộ lọc đã lưu: cùng `SharePanel` với bảng tổng quan (3 mức: không có nhóm). Chủ (`filter:manage`) đổi
- * mức rồi bấm "Lưu" (PATCH ngay, Cmd/Ctrl+Enter cũng lưu); người khác chỉ xem ai có quyền + sao chép liên kết
- * `/filters/:id`. Liên kết là đường dẫn trong ứng dụng — không có liên kết công khai.
+ * "Chia sẻ" của một bộ lọc đã lưu: "Chỉ mình tôi" hoặc "Chia sẻ" với NHIỀU dự án (ai xem được dự án đều thấy — dự án công
+ * khai: mọi người; dự án riêng tư: thành viên) và/hoặc từng người cụ thể cùng lúc. Chủ (`filter:manage`) chọn rồi bấm "Lưu" (PATCH ngay, Cmd/Ctrl+Enter cũng lưu); người khác chỉ xem
+ * ai có quyền + sao chép liên kết `/filters/:id`. Kết quả chạy luôn theo quyền của người xem.
  * Luôn mount (có hiệu ứng đóng): `filter = null` là đóng; mỗi lần mở là một lần mount mới nên bản nháp khởi tạo lại.
  */
 export function FilterShareDialog({
@@ -51,6 +56,24 @@ export function FilterShareDialog({
   );
 }
 
+const MODE_OPTIONS = [
+  {
+    value: 'PRIVATE' as const,
+    label: 'Chỉ mình tôi',
+    description: 'Chỉ bạn xem được bộ lọc này.',
+  },
+  {
+    value: 'SHARED' as const,
+    label: 'Chia sẻ',
+    description:
+      'Ai xem được các dự án bạn chọn (dự án công khai: mọi người; dự án riêng tư: thành viên) và những người bạn chọn sẽ thấy bộ lọc; kết quả vẫn theo quyền của người xem.',
+  },
+];
+
+function toggled(list: readonly string[], id: string): string[] {
+  return list.includes(id) ? list.filter((x) => x !== id) : [...list, id];
+}
+
 function ShareDialogInner({
   open,
   filter,
@@ -62,19 +85,23 @@ function ShareDialogInner({
   canManage: boolean;
   onClose: () => void;
 }) {
-  const saved = filterShareValue(filter);
-  const [draft, setDraft] = useState<ShareValue>(saved);
+  const saved = draftFrom(filter);
+  const [draft, setDraft] = useState<ShareDraft>(saved);
   const update = useUpdateFilter();
   const editable = canChangeFilterShare(filter, canManage);
-  const error = shareValidation(draft.scope, draft.projectId, draft.teamId);
-  const changed = !sameShare(draft, saved);
+  const error = draftError(draft);
+  const changed = draftChanged(draft, saved);
 
   async function save() {
     // Chặn gửi lặp: Cmd/Ctrl+Enter đi vòng qua trạng thái loading của nút.
     if (!editable || error || !changed || update.isPending) return;
     try {
-      await update.mutateAsync({ id: filter.id, ...filterSharePatch(draft) });
-      toast.success(`Đã đổi phạm vi chia sẻ của bộ lọc “${filter.name}”.`);
+      await update.mutateAsync({ id: filter.id, ...draftPatch(draft) });
+      toast.success(
+        draft.visibility === 'PRIVATE'
+          ? `Bộ lọc “${filter.name}” giờ chỉ mình bạn xem được.`
+          : `Đã cập nhật chia sẻ của bộ lọc “${filter.name}”.`,
+      );
       onClose();
     } catch (e) {
       toast.error(apiErrorMessage(e));
@@ -108,16 +135,173 @@ function ShareDialogInner({
         </>
       }
     >
-      <SharePanel
-        value={editable ? draft : saved}
-        onChange={setDraft}
-        kinds={FILTER_SHARE_KINDS}
-        copy={FILTER_COPY}
-        keep={{ projectId: saved.projectId }}
-        link={{ url: filterUrl(filter.id), saved }}
-        readOnly={!editable}
-        error={editable ? error : null}
-      />
+      {editable ? (
+        <>
+          <RadioCard<FilterVisibility>
+            ariaLabel="Ai xem được bộ lọc"
+            size="sm"
+            value={draft.visibility}
+            onChange={(visibility) => setDraft((d) => ({ ...d, visibility }))}
+            options={MODE_OPTIONS}
+          />
+          {draft.visibility === 'SHARED' && <SharedTargets draft={draft} onChange={setDraft} />}
+          {error && (
+            <p role="alert" className="mt-3 text-sm text-danger">
+              {error}
+            </p>
+          )}
+        </>
+      ) : (
+        <ReadOnlyShare filter={filter} />
+      )}
+      <AudienceBlock filter={filter} draft={editable ? draft : saved} />
+      <CopyLinkRow url={filterUrl(filter.id)} unsavedChange={editable && changed} />
     </Dialog>
+  );
+}
+
+/** Chọn nhiều dự án + nhiều người. Dự án: những dự án CHỦ thấy (máy chủ lọc) và chưa lưu trữ — dự án đã chọn luôn hiện. */
+function SharedTargets({
+  draft,
+  onChange,
+}: {
+  draft: ShareDraft;
+  onChange: (d: ShareDraft) => void;
+}) {
+  const me = useAuth((s) => s.user?.id);
+  const { data: projects } = useProjects(true);
+  const { data: members } = useWorkspaceMembers();
+
+  const projectItems: ChecklistItem[] = useMemo(
+    () =>
+      (projects ?? [])
+        .filter((p) => !p.isArchived || draft.projectIds.includes(p.id))
+        .map((p) => ({
+          id: p.id,
+          label: p.name,
+          hint: `${p.key} · ${p.isPrivate ? 'Riêng tư — chỉ thành viên thấy' : 'Công khai — mọi người xem được'}`,
+        })),
+    [projects, draft.projectIds],
+  );
+  const peopleItems: ChecklistItem[] = useMemo(
+    () =>
+      (members ?? [])
+        .filter((m) => m.user.id !== me && m.user.status !== 'DEACTIVATED')
+        .map((m) => ({
+          id: m.user.id,
+          label: m.user.displayName,
+          hint: m.user.email,
+          person: { avatarUrl: m.user.avatarUrl },
+        })),
+    [members, me],
+  );
+  const selectedProjects = useMemo(() => new Set(draft.projectIds), [draft.projectIds]);
+  const selectedUsers = useMemo(() => new Set(draft.userIds), [draft.userIds]);
+
+  return (
+    <div className="mt-4 space-y-4">
+      <ShareChecklist
+        label="Dự án — ai xem được dự án đều thấy"
+        items={projectItems}
+        selected={selectedProjects}
+        onToggle={(id) => onChange({ ...draft, projectIds: toggled(draft.projectIds, id) })}
+        searchPlaceholder="Tìm dự án theo tên hoặc mã…"
+        emptyText={projects ? 'Không có dự án nào khớp.' : 'Đang tải dự án…'}
+      />
+      <ShareChecklist
+        label="Người cụ thể"
+        items={peopleItems}
+        selected={selectedUsers}
+        onToggle={(id) => onChange({ ...draft, userIds: toggled(draft.userIds, id) })}
+        searchPlaceholder="Tìm theo tên hoặc email…"
+        emptyText={members ? 'Không có ai khớp.' : 'Đang tải danh sách…'}
+      />
+    </div>
+  );
+}
+
+/** Người không phải chủ: chỉ xem (chủ, dự án họ thấy, chính họ nếu được chia sẻ trực tiếp). */
+function ReadOnlyShare({ filter }: { filter: SavedFilter }) {
+  return (
+    <div className="space-y-2 text-sm text-muted">
+      <p>
+        {filter.owner ? `${filter.owner.displayName} chia sẻ` : 'Bộ lọc này được chia sẻ'} cho bạn.
+        Chỉ người tạo mới đổi được ai xem bộ lọc.
+      </p>
+      {filter.sharedProjects.length > 0 && (
+        <p>
+          Qua dự án:{' '}
+          <span className="text-ink">{filter.sharedProjects.map((p) => p.name).join(', ')}</span>
+        </p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * "Ai có quyền xem": số người do MÁY CHỦ tính (`POST /filters/audience`) theo đúng luật xem dự án — HỢP người được chọn
+ * và mọi người xem được ít nhất một dự án đã chọn, không đếm trùng, không tính chủ. Người không phải chủ không có số
+ * (họ chỉ thấy phần chia sẻ cho họ).
+ */
+function AudienceBlock({ filter, draft }: { filter: SavedFilter; draft: ShareDraft }) {
+  const shared = draft.visibility === 'SHARED';
+  const audience = useFilterAudience(
+    shared ? draft.projectIds : [],
+    shared ? draft.userIds : [],
+    filter.isOwner && shared,
+  );
+  const data = audience.data;
+  const shown = data?.people ?? [];
+  const extra = data ? data.count - shown.length : 0;
+  const hasTarget = draft.projectIds.length + draft.userIds.length > 0;
+  let headline: string;
+  if (!filter.isOwner) headline = 'Bạn xem được bộ lọc này';
+  else if (!shared) headline = 'Chỉ bạn';
+  else if (!hasTarget) headline = 'Chưa chọn dự án hay người nào';
+  else if (audience.isError) headline = 'Không tính được số người xem được';
+  else if (!data) headline = 'Đang tính số người xem được…';
+  else headline = `${fmtNumber(data.count)} người xem được (ngoài chủ bộ lọc)`;
+  const names =
+    shown.length > 0
+      ? `Gồm ${shown.map((p) => p.displayName).join(', ')}${extra > 0 ? ` và ${extra} người khác` : ''}.`
+      : null;
+
+  return (
+    <section aria-labelledby="share-audience" className="mt-4 rounded-lg border border-border p-3">
+      <h3 id="share-audience" className="text-xs font-medium text-muted">
+        Ai có quyền xem
+      </h3>
+      <div className="mt-2 flex items-center gap-2.5">
+        {shown.length > 0 && (
+          <span className="flex shrink-0 -space-x-1.5" aria-hidden="true">
+            {shown.map((p) => (
+              <span key={p.id} className="rounded-full ring-2 ring-surface">
+                <Avatar name={p.displayName} src={p.avatarUrl} size={24} decorative />
+              </span>
+            ))}
+            {extra > 0 && (
+              <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-surface-2 px-1.5 text-[11px] font-medium text-muted ring-2 ring-surface">
+                +{fmtNumber(extra)}
+              </span>
+            )}
+          </span>
+        )}
+        <div className="min-w-0">
+          <p className="text-sm text-ink" aria-busy={audience.pending || undefined}>
+            {headline}
+            {names && <span className="sr-only">. {names}</span>}
+          </p>
+          {shared && filter.isOwner && hasTarget && (
+            <p className="text-xs text-muted">
+              Dự án riêng tư chỉ tính thành viên (và quản trị); dự án công khai tính mọi người xem
+              được dự án đó.
+            </p>
+          )}
+          {shared && !filter.isOwner && (
+            <p className="text-xs text-muted">Bạn chỉ thấy phần được chia sẻ cho bạn.</p>
+          )}
+        </div>
+      </div>
+    </section>
   );
 }

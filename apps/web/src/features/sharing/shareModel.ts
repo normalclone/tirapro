@@ -1,8 +1,7 @@
 import { DASHBOARD_SCOPES, type DashboardScopeValue } from '@tirapro/shared';
 import type { SearchSelectOption } from '@/components/ui/SearchSelect';
-import type { FilterVisibility } from '@/features/saved-filters/api';
 
-/** Mức chia sẻ dùng chung cho hộp chia sẻ: của bảng tổng quan (4 mức); bộ lọc dùng 3 mức đầu (GLOBAL = WORKSPACE). */
+/** Mức chia sẻ của bảng tổng quan (4 mức). Bộ lọc đã lưu có hộp chia sẻ riêng (nhiều dự án + người cụ thể). */
 export type ShareKind = DashboardScopeValue;
 
 export interface ShareValue {
@@ -12,7 +11,6 @@ export interface ShareValue {
 }
 
 export const DASHBOARD_SHARE_KINDS: readonly ShareKind[] = DASHBOARD_SCOPES;
-export const FILTER_SHARE_KINDS: readonly ShareKind[] = ['PRIVATE', 'GLOBAL', 'PROJECT'];
 
 /** Lời giải thích mức chia sẻ theo loại đối tượng được chia sẻ. */
 export interface ShareCopy {
@@ -24,35 +22,6 @@ export const DASHBOARD_COPY: ShareCopy = {
   noun: 'bảng tổng quan',
   dataNote: 'dữ liệu từng ô vẫn theo quyền của người xem',
 };
-export const FILTER_COPY: ShareCopy = {
-  noun: 'bộ lọc',
-  dataNote: 'kết quả vẫn theo quyền của người xem',
-};
-
-/**
- * Bộ lọc → giá trị của hộp chia sẻ. `PROJECT` mà chưa gắn dự án (dữ liệu cũ: biểu mẫu tạo từng cho chọn "Dự án" không kèm
- * dự án) thì máy chủ cho cả tổ chức thấy (`visibilityScope`) → hộp hiện đúng "Cả tổ chức", không nói sai.
- */
-export function filterShareValue(f: {
-  visibility: FilterVisibility;
-  sharedProjectId: string | null;
-}): ShareValue {
-  if (f.visibility === 'PRIVATE') return { scope: 'PRIVATE', projectId: '', teamId: '' };
-  if (f.visibility === 'PROJECT' && f.sharedProjectId) {
-    return { scope: 'PROJECT', projectId: f.sharedProjectId, teamId: '' };
-  }
-  return { scope: 'GLOBAL', projectId: '', teamId: '' };
-}
-
-/** Giá trị hộp chia sẻ → phần PATCH `/filters/:id`: luôn gửi cả hai trường để dự án cũ không ở lại khi đổi mức. */
-export function filterSharePatch(v: ShareValue): {
-  visibility: FilterVisibility;
-  sharedProjectId: string | null;
-} {
-  if (v.scope === 'PRIVATE') return { visibility: 'PRIVATE', sharedProjectId: null };
-  if (v.scope === 'PROJECT') return { visibility: 'PROJECT', sharedProjectId: v.projectId };
-  return { visibility: 'WORKSPACE', sharedProjectId: null };
-}
 
 export const sameShare = (a: ShareValue, b: ShareValue): boolean =>
   a.scope === b.scope && a.projectId === b.projectId && a.teamId === b.teamId;

@@ -15,6 +15,7 @@ import {
   Search,
   Sparkles,
   Sun,
+  UserRound,
 } from 'lucide-react';
 import { useProjects } from '@/features/projects/api';
 import { routeToScreen, useHasTour } from '@/features/guides/routeToScreen';
@@ -220,6 +221,12 @@ export function CommandPalette() {
           heading="Điều hướng"
           className="text-faint [&_[cmdk-group-heading]]:px-3 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-faint"
         >
+          <ActionItem
+            value="cua toi viec cua toi me ca nhan"
+            icon={<UserRound className="h-4 w-4 shrink-0 text-muted" aria-hidden="true" />}
+            label={APP_NAV_LABELS.me}
+            onSelect={() => runAction(() => navigate('/me'))}
+          />
           <ActionItem
             value="tong quan dashboard home"
             icon={<LayoutDashboard className="h-4 w-4 shrink-0 text-muted" aria-hidden="true" />}
