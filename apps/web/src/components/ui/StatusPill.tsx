@@ -2,13 +2,18 @@ import type { IssueDto } from '@tirapro/types';
 import { categoryColor } from '@/lib/statusColor';
 import { cn } from '@/lib/utils';
 
-/** Chip TRẠNG THÁI: chấm theo nhóm (To Do / In Progress / Done) + tên (ẩn tên dưới `md`, chấm vẫn có tooltip). */
+/**
+ * Chip TRẠNG THÁI: chấm theo nhóm (To Do / In Progress / Done) + tên (ẩn tên dưới `md`, chấm vẫn có tooltip).
+ * `alwaysShowName`: danh sách mà trạng thái là thông tin chính ("Việc của tôi") — luôn hiện tên, mọi cỡ màn hình.
+ */
 export function StatusPill({
   status,
   className,
+  alwaysShowName,
 }: {
   status: Pick<IssueDto['status'], 'name' | 'category'>;
   className?: string;
+  alwaysShowName?: boolean;
 }) {
   return (
     <span
@@ -23,8 +28,15 @@ export function StatusPill({
         style={{ background: categoryColor(status.category) }}
         aria-hidden
       />
-      <span className="hidden max-w-[7rem] truncate md:inline">{status.name}</span>
-      <span className="sr-only md:hidden">{status.name}</span>
+      <span
+        className={cn(
+          alwaysShowName ? 'max-w-[12rem]' : 'hidden max-w-[7rem] md:inline',
+          'truncate',
+        )}
+      >
+        {status.name}
+      </span>
+      {!alwaysShowName && <span className="sr-only md:hidden">{status.name}</span>}
     </span>
   );
 }

@@ -52,13 +52,6 @@ describe('validateCreateIssue', () => {
     const exact = 'a'.repeat(255);
     expect(validateCreateIssue({ ...ok, summary: exact, cleanSummary: exact })).toEqual([]);
   });
-  it('điểm ước lượng tối đa 100 (#11)', () => {
-    expect(validateCreateIssue({ ...ok, points: '100' })).toEqual([]);
-    expect(validateCreateIssue({ ...ok, points: '101' })[0]).toMatchObject({
-      field: 'points',
-      message: 'Điểm tối đa 100',
-    });
-  });
   it('hạn trước ngày tạo → lỗi ở ô hạn (#10)', () => {
     expect(validateCreateIssue({ ...ok, dueInPast: true })[0]?.field).toBe('due');
   });

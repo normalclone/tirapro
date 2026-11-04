@@ -2,6 +2,8 @@ import { useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import type { BulkUpdateIssuesResult, IssueDto } from '@tirapro/types';
+import type { Difficulty } from '@tirapro/shared';
+import { isPointsLeaf, parentIdSetOf } from '@/lib/points';
 import { useConfirm } from '@/components/ui/useConfirm';
 import { api, apiErrorMessage } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
@@ -52,6 +54,34 @@ const restoreField =
   (field: BulkField, canRestore?: (prev: BulkValue) => boolean): UndoBuilder =>
   (targets, updated) =>
     planRestoreField(field, targets, updated, canRestore);
+
+/** Việc LÁ (Epic và việc có việc con có điểm tổng, không chỉnh tay) trong các nhóm mà hành động "Điểm" áp được. */
+function leafPointsTargets(
+  groups: readonly ProjectGroup[],
+  avail: { applyProjectIds: readonly string[] },
+  shown: readonly IssueDto[],
+) {
+  const parentIds = parentIdSetOf(shown);
+  const leaf = (i: IssueDto) => isPointsLeaf(i, parentIds);
+  const apply = new Set(avail.applyProjectIds);
+  const targets = groups
+    .filter((g) => apply.has(g.projectId))
+    .flatMap((g) => g.issues)
+    .filter(leaf);
+  return { leaf, targets };
+}
+
+/** Nhóm của các dự án áp được, chỉ giữ việc thoả `only` (bỏ nhóm hết việc). */
+function restrictGroups(
+  groups: readonly ProjectGroup[],
+  apply: ReadonlySet<string>,
+  only?: (i: IssueDto) => boolean,
+): ProjectGroup[] {
+  return groups
+    .filter((g) => apply.has(g.projectId))
+    .map((g) => (only ? { ...g, issues: g.issues.filter(only) } : g))
+    .filter((g) => g.issues.length > 0);
+}
 
 /** Ghi bản mới của các việc vào lớp phủ Bộ lọc (dòng đổi tại chỗ, không refetch). */
 function recordAll(updated: readonly IssueDto[]) {
@@ -215,10 +245,11 @@ export function useGroupedBulkEdit(a: {
     patch: BulkIssuePatch,
     verb: string,
     undo: UndoBuilder | null,
+    only?: (i: IssueDto) => boolean,
   ) {
     const avail = availability[id];
     const apply = new Set(avail.applyProjectIds);
-    const targets: ProjectGroup[] = groups.filter((g) => apply.has(g.projectId));
+    const targets = restrictGroups(groups, apply, only);
     if (targets.length === 0) return;
     // Báo TRƯỚC khi chạy nếu một phần việc bị bỏ qua vì thiếu quyền ở dự án của chúng.
     const notice = applyNotice(avail);
@@ -270,15 +301,22 @@ export function useGroupedBulkEdit(a: {
     assign: (assigneeId: string | null) => doField('assign', 'assigneeId', assigneeId, 'cập nhật'),
     setPriority: (priorityId: string | null) =>
       doField('priority', 'priorityId', priorityId, 'đặt ưu tiên cho'),
-    async setPoints(points: number | null) {
-      const apply = new Set(availability.points.applyProjectIds);
-      const targets = groups.filter((g) => apply.has(g.projectId)).flatMap((g) => g.issues);
+    setDifficulty: (difficulty: Difficulty) =>
+      doField('difficulty', 'difficulty', difficulty, 'đặt độ khó cho'),
+    /**
+     * Chỉnh tay điểm (chỉ Quản trị dự án, số nguyên 0–100): chỉ gửi cho VIỆC LÁ trong kết quả đang hiện (Epic và việc có việc
+     * con có điểm tổng). Không có Hoàn tác — xem `useBulkEdit.setPoints`.
+     */
+    async setPoints(points: number) {
+      const { leaf, targets } = leafPointsTargets(groups, availability.points, issues ?? []);
+      if (targets.length === 0)
+        return void toast.info('Epic và việc có việc con có điểm tổng — không chỉnh tay được.');
       const w = pointsEditWarningBulk(
         targets.filter((i) => i.storyPoints !== points),
         undefined,
       );
       if (w && !(await confirm(pointsConfirmOptions(w)))) return;
-      await doField('points', 'storyPoints', points, 'đặt điểm cho');
+      await run('points', { storyPoints: points }, 'chỉnh tay điểm cho', null, leaf);
     },
     addLabel: (labelId: string) =>
       run('label', { labels: { add: [labelId] } }, 'gắn nhãn cho', (targets, updated) => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { allowedWhenArchived, canEditIssue, hasPermission, parsePointsInput } from './permissions';
+import { allowedWhenArchived, canEditIssue, hasPermission } from './permissions';
 
 describe('hasPermission', () => {
   const base = { isSystemAdmin: false, workspace: ['project:view'], project: ['worklog:create'] };
@@ -67,18 +67,4 @@ describe('quyền sửa điểm = canEditIssue (B7/B10)', () => {
   });
   it('chỉ backlog:manage (không issue:edit) => KHÔNG sửa được điểm', () =>
     expect(canEditIssue(ctx(['backlog:manage']), issue, 'a')).toBe(false));
-});
-
-describe('parsePointsInput', () => {
-  it.each([
-    ['', null],
-    ['  ', null],
-    ['3', 3],
-    ['2,5', 2.5],
-    ['0', 0],
-    ['100', 100],
-  ])('%j => %j', (raw, v) => expect(parsePointsInput(raw)).toEqual({ ok: true, value: v }));
-  it.each(['abc', '-1', '101', '1e3x'])('%j => lỗi', (raw) =>
-    expect(parsePointsInput(raw)).toMatchObject({ ok: false }),
-  );
 });

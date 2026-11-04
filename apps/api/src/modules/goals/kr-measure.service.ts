@@ -8,6 +8,7 @@ import {
 import { BUG_TYPE_WHERE } from '../../common/bug-type';
 import { TtlCache } from '../../common/ttl-cache';
 import { TRIAGE_VISIBLE } from '../../common/triage-visibility';
+import { LEAF_POINTS_ONLY } from '../../common/points-scope';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { ProjectAccessService } from '../rbac/project-access.service';
 import { SearchService, VIEWER_JQL_MESSAGE } from '../search/search.service';
@@ -242,7 +243,13 @@ export class KrMeasureService {
       }));
     if (!sprint) return 0;
 
-    const inSprint = { sprintId: sprint.id, deletedAt: null, ...TRIAGE_VISIBLE };
+    // Chỉ để CỘNG điểm: chỉ việc lá (điểm Epic/việc cha = tổng việc con, cộng sẽ đếm đôi).
+    const inSprint = {
+      sprintId: sprint.id,
+      deletedAt: null,
+      ...TRIAGE_VISIBLE,
+      ...LEAF_POINTS_ONLY,
+    };
     const [all, done] = await Promise.all([
       this.prisma.issue.aggregate({ where: inSprint, _sum: { storyPoints: true } }),
       this.prisma.issue.aggregate({

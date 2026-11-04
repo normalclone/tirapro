@@ -179,7 +179,12 @@ describe('ImportService.createIssuesInChunks + IssuesService thật — sprint C
       },
       issueHistory: { create: vi.fn() },
     };
-    const prisma = { $transaction: (fn: (t: unknown) => unknown) => fn(tx), ...tx };
+    const prisma = {
+      $transaction: (fn: (t: unknown) => unknown) => fn(tx),
+      ...tx,
+      // Bảng hệ số điểm: không có dòng → công thức mặc định.
+      pointsFormulaConfig: { findUnique: vi.fn(() => Promise.resolve(null)) },
+    };
     const issues = new IssuesService(prisma as never, { emit: vi.fn() } as never, {} as never);
     const service = new ImportService(prisma as never, issues);
     const res = await service.createIssuesInChunks(
@@ -270,7 +275,12 @@ describe('ImportService.createIssuesInChunks + IssuesService thật — epic c�
       },
       issueHistory: { create: vi.fn() },
     };
-    const prisma = { $transaction: (fn: (t: unknown) => unknown) => fn(tx), ...tx };
+    const prisma = {
+      $transaction: (fn: (t: unknown) => unknown) => fn(tx),
+      ...tx,
+      // Bảng hệ số điểm: không có dòng → công thức mặc định.
+      pointsFormulaConfig: { findUnique: vi.fn(() => Promise.resolve(null)) },
+    };
     const issues = new IssuesService(prisma as never, { emit: vi.fn() } as never, {} as never);
     const service = new ImportService(prisma as never, issues);
     const item = {

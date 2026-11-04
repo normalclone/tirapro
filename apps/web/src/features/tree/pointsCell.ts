@@ -7,17 +7,20 @@ export interface PointsCell {
 }
 
 /**
- * Nội dung ô "Điểm" của một dòng Cây việc. Dòng có con và các việc bên trong có điểm → "đã xong/tổng" cộng dồn
- * (điểm riêng của dòng không tính vào tổng, chỉ nhắc trong tooltip); ngược lại rơi về điểm riêng của chính dòng.
+ * Nội dung ô "Điểm" của một dòng Cây việc. Dòng có con và các việc bên trong có điểm → "đã xong/tổng" cộng dồn, CHỈ đếm
+ * việc lá (điểm của việc cha chính là tổng điểm việc con nên không cộng thêm; chỉ nhắc trong tooltip); ngược lại rơi về
+ * điểm riêng của chính dòng.
  */
 export function pointsCell(own: number | null, rollup: PointsRollup | null): PointsCell {
   if (rollup && rollup.totalPoints > 0) {
     const ownNote =
-      own != null ? ` Bản thân việc này: ${own} điểm (không tính vào tổng bên trong).` : '';
+      own != null
+        ? ` Điểm của việc này (${own}) là tổng điểm việc con — tổng chỉ đếm việc lá.`
+        : '';
     return {
       text: `${rollup.donePoints}/${rollup.totalPoints}`,
       strong: true,
-      title: `Điểm của các việc bên trong: ${rollup.donePoints} đã xong / ${rollup.totalPoints} tổng (${rollup.count} việc).${ownNote}`,
+      title: `Điểm các việc lá bên trong: ${rollup.donePoints} đã xong / ${rollup.totalPoints} tổng (${rollup.count} việc).${ownNote}`,
     };
   }
   return own != null

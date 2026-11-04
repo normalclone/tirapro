@@ -317,15 +317,19 @@ describe('SprintsService.start — ngày và mục tiêu trong cùng giao dịch
 });
 
 describe('SprintsService.listForProject — groupBy thay cho kéo từng issue', () => {
-  it('đếm + cộng điểm bằng một groupBy, sprint trống => 0/0', async () => {
+  it('đếm và cộng điểm bằng hai groupBy (điểm LOẠI Epic), sprint trống => 0/0', async () => {
     const sprintFindMany = vi.fn(() =>
       Promise.resolve([
         sprintRow({ id: 's1', sequence: 2 }),
         sprintRow({ id: 's2', sequence: 1, state: 'FUTURE' }),
       ]),
     );
-    const groupBy = vi.fn(() =>
-      Promise.resolve([{ sprintId: 's1', _count: { _all: 3 }, _sum: { storyPoints: 8.5 } }]),
+    const groupBy = vi.fn((args: { _sum?: unknown }) =>
+      Promise.resolve(
+        args._sum
+          ? [{ sprintId: 's1', _sum: { storyPoints: 8.5 } }]
+          : [{ sprintId: 's1', _count: { _all: 3 } }],
+      ),
     );
     const { service } = make({ sprint: { findMany: sprintFindMany }, issue: { groupBy } });
     const list = await service.listForProject('w1', 'p1');
@@ -333,15 +337,27 @@ describe('SprintsService.listForProject — groupBy thay cho kéo từng issue',
       ['s1', 3, 8.5],
       ['s2', 0, 0],
     ]);
+    // việc chưa duyệt không tính vào sprint (cùng quy tắc với Board/Việc chờ)
+    const inSprints = {
+      sprintId: { in: ['s1', 's2'] },
+      deletedAt: null,
+      OR: [{ triageState: null }, { triageState: 'ACCEPTED' }],
+    };
+    expect(groupBy).toHaveBeenCalledTimes(2);
+    // số đếm: tính cả Epic
     expect(groupBy).toHaveBeenCalledWith({
       by: ['sprintId'],
-      // việc chưa duyệt không tính vào sprint (cùng quy tắc với Board/Việc chờ)
-      where: {
-        sprintId: { in: ['s1', 's2'] },
-        deletedAt: null,
-        OR: [{ triageState: null }, { triageState: 'ACCEPTED' }],
-      },
+      where: inSprints,
       _count: { _all: true },
+    });
+    // điểm: chỉ việc lá — loại Epic và việc cha (điểm của chúng = tổng việc con, cộng sẽ đếm đôi)
+    expect(groupBy).toHaveBeenCalledWith({
+      by: ['sprintId'],
+      where: {
+        ...inSprints,
+        NOT: { type: { key: 'EPIC' } },
+        children: { none: { deletedAt: null } },
+      },
       _sum: { storyPoints: true },
     });
     // không include issues nữa
@@ -351,8 +367,12 @@ describe('SprintsService.listForProject — groupBy thay cho kéo từng issue',
   });
 
   it('điểm null được tính là 0; không có sprint thì không gọi groupBy', async () => {
-    const groupBy = vi.fn(() =>
-      Promise.resolve([{ sprintId: 's1', _count: { _all: 2 }, _sum: { storyPoints: null } }]),
+    const groupBy = vi.fn((args: { _sum?: unknown }) =>
+      Promise.resolve(
+        args._sum
+          ? [{ sprintId: 's1', _sum: { storyPoints: null } }]
+          : [{ sprintId: 's1', _count: { _all: 2 } }],
+      ),
     );
     const findMany = vi
       .fn()
@@ -544,6 +564,82 @@ describe('SprintsService — việc chưa duyệt không tính vào snapshot/pay
     expect(hasTriageVisible(arg.where)).toBe(true);
   });
 
+  it('snapshot(): Task (5 điểm, đang có 2 sub-task) cùng hai sub-task 2 + 3 trong sprint => cam kết 5, không phải 10', async () => {
+    const t = tx();
+    t.issue.findMany.mockResolvedValue([
+      // Task cha: điểm = tổng việc con → bỏ khỏi phép cộng (có việc con chưa xoá)
+      {
+        storyPoints: 5,
+        status: { category: 'IN_PROGRESS' },
+        type: { key: 'TASK' },
+        _count: { children: 2 },
+      },
+      {
+        storyPoints: 2,
+        status: { category: 'DONE' },
+        type: { key: 'TASK' },
+        _count: { children: 0 },
+      },
+      {
+        storyPoints: 3,
+        status: { category: 'TODO' },
+        type: { key: 'TASK' },
+        _count: { children: 0 },
+      },
+    ] as never);
+    const { service } = make(t);
+    await service.snapshot(t as never, 's1', 'DAILY');
+    expect(t.sprintSnapshot.create.mock.calls[0]![0].data).toMatchObject({
+      committedPoints: 5,
+      completedPoints: 2,
+      remainingPoints: 3,
+      committedCount: 3, // số việc vẫn đếm cả việc cha
+    });
+    // chỉ để tra số con chưa xoá
+    const select = (t.issue.findMany.mock.calls[0]![0] as { select: { _count: unknown } }).select;
+    expect(select._count).toEqual({ select: { children: { where: { deletedAt: null } } } });
+  });
+
+  it('snapshot(): điểm cam kết/hoàn thành LOẠI Epic (điểm Epic = tổng việc con), số việc vẫn tính cả Epic', async () => {
+    const t = tx();
+    t.issue.findMany.mockResolvedValue([
+      {
+        storyPoints: 3,
+        status: { category: 'DONE' },
+        type: { key: 'TASK' },
+        _count: { children: 0 },
+      },
+      {
+        storyPoints: 5,
+        status: { category: 'TODO' },
+        type: { key: 'STORY' },
+        _count: { children: 0 },
+      },
+      {
+        storyPoints: 2,
+        status: { category: 'TODO' },
+        type: { key: null },
+        _count: { children: 0 },
+      },
+      // Epic chứa chính các việc trên: 3 + 5 + 2 = 10 — cộng thêm sẽ thành 20
+      {
+        storyPoints: 10,
+        status: { category: 'IN_PROGRESS' },
+        type: { key: 'EPIC' },
+        _count: { children: 0 },
+      },
+    ] as never);
+    const { service } = make(t);
+    await service.snapshot(t as never, 's1', 'DAILY');
+    expect(t.sprintSnapshot.create.mock.calls[0]![0].data).toMatchObject({
+      committedPoints: 10,
+      completedPoints: 3,
+      remainingPoints: 7,
+      committedCount: 4,
+      completedCount: 1,
+    });
+  });
+
   it('complete(): việc chưa duyệt vẫn được đưa ra khỏi sprint nhưng KHÔNG liệt vào carriedOver của payload', async () => {
     const t = tx();
     t.issue.findMany.mockImplementation((args: { select: { id?: boolean } }) =>
@@ -724,5 +820,69 @@ describe('SprintsService.listForProject — thiếu projectId (rò rỉ dự án
     });
     await expect(service.listForProject('w1', '')).rejects.toMatchObject({ status: 422 });
     expect(findMany).not.toHaveBeenCalled();
+  });
+});
+
+describe('SprintsService.complete — việc con theo sprint của việc cha', () => {
+  type W = {
+    status?: unknown;
+    id?: { in: string[] };
+    parentId?: { in: string[] };
+  };
+  const row = (id: string, parentId: string | null) => ({
+    id,
+    key: id,
+    summary: id,
+    storyPoints: 1,
+    triageState: null,
+    parentId,
+  });
+  function familyTx() {
+    const t = tx();
+    t.issue.findMany.mockImplementation(((a: { where: W }) => {
+      // việc chưa Done của sprint: cha p (chưa Done), con c1 của p (chưa Done), con c2 của cha dp ĐÃ Done
+      if (a.where.status) return Promise.resolve([row('p', null), row('c1', 'p'), row('c2', 'dp')]);
+      // cha nằm trong sprint này
+      if (a.where.id) return Promise.resolve([{ id: 'p' }, { id: 'dp' }]);
+      // việc con/cháu còn sống của p: c1 và một con đã Done (cd); cháu g của c1
+      if (a.where.parentId) {
+        const frontier = a.where.parentId.in;
+        return Promise.resolve(
+          [
+            { id: 'c1', parentId: 'p', sprintId: 's1' },
+            { id: 'cd', parentId: 'p', sprintId: 's1' },
+            { id: 'g', parentId: 'c1', sprintId: 's1' },
+          ].filter((d) => frontier.includes(d.parentId)),
+        );
+      }
+      return Promise.resolve([]);
+    }) as never);
+    return Object.assign(t, { $queryRaw: vi.fn(() => Promise.resolve([])) }); // khoá việc con (FOR UPDATE)
+  }
+  const moved = (t: ReturnType<typeof tx>) =>
+    (t.issue.updateMany.mock.calls as unknown as Array<[{ where: { id: { in: string[] } } }]>).map(
+      (c) => c[0].where.id.in.slice().sort(),
+    );
+
+  it('việc cha chưa Done kéo CẢ nhánh việc con/cháu (kể cả đã Done); việc con của cha đã Done ở lại', async () => {
+    const t = familyTx();
+    await make(t).service.complete('w1', 's1', 'u1');
+    // lần 1: gốc chưa Done (lọc not DONE); lần 2: việc con/cháu mọi trạng thái đi theo
+    expect(moved(t)).toEqual([['p'], ['c1', 'cd', 'g']]);
+    const hist = (
+      t.issueHistory.createMany.mock.calls as unknown as Array<
+        [{ data: Array<{ issueId: string }> }]
+      >
+    )
+      .flatMap((c) => c[0].data.map((d) => d.issueId))
+      .sort();
+    expect(hist).toEqual(['c1', 'cd', 'g', 'p']); // c2 ở lại: không chuyển, không lịch sử
+  });
+
+  it('carriedOver gồm việc chưa Done được chuyển (cha và con đi theo), không gồm việc con ở lại cùng cha đã Done', async () => {
+    const t = familyTx();
+    await make(t).service.complete('w1', 's1', 'u1');
+    const ids = (closePayload(t).carriedOver as Array<{ id: string }>).map((i) => i.id).sort();
+    expect(ids).toEqual(['c1', 'p']);
   });
 });

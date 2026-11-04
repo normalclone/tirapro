@@ -71,6 +71,14 @@ export const ERROR_CODES = {
   ADMIN_GRANT_REQUIRES_ADMIN: 'ADMIN_GRANT_REQUIRES_ADMIN',
   /** 403: chỉ quản trị hệ thống được đổi họ tên, email, ảnh đại diện — người dùng thường chỉ đổi mật khẩu, múi giờ, ngôn ngữ. */
   PROFILE_LOCKED: 'PROFILE_LOCKED',
+  /** 403: chỉ Quản trị dự án (`project:admin`) hoặc SA được ghi đè điểm tay — người khác đổi Loại/Độ khó/Ưu tiên để điểm tự tính. */
+  POINTS_OVERRIDE_FORBIDDEN: 'POINTS_OVERRIDE_FORBIDDEN',
+  POINTS_ROLLUP_ONLY: 'POINTS_ROLLUP_ONLY',
+  CHILD_SPRINT_FOLLOWS_PARENT: 'CHILD_SPRINT_FOLLOWS_PARENT',
+  /** 422: việc cha là Epic nhưng việc lại được gắn vào một Epic KHÁC — mơ hồ nên không tự chuyển (parentId trỏ Epic thường được đổi thành epicId). */
+  PARENT_CANNOT_BE_EPIC: 'PARENT_CANNOT_BE_EPIC',
+  /** 422: Hạn là bắt buộc — không xoá trống được (cập nhật/sửa hàng loạt/quy tắc đặt Hạn rỗng). */
+  DUE_DATE_REQUIRED: 'DUE_DATE_REQUIRED',
   /** 413: tệp tải lên vượt giới hạn dung lượng. */
   PAYLOAD_TOO_LARGE: 'PAYLOAD_TOO_LARGE',
   INTERNAL: 'INTERNAL',

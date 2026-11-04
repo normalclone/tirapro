@@ -4,6 +4,8 @@ import { toast } from 'sonner';
 import { SYSTEM_ROLES, type RuleTrigger } from '@tirapro/types';
 import {
   RULE_CONDITION_FIELDS,
+  DIFFICULTIES,
+  DIFFICULTY_LABELS,
   RULE_TRIGGERS,
   type CreateRuleInput,
   type RuleAction,
@@ -66,7 +68,8 @@ type CondDraft =
 interface ActionDraft {
   id: string;
   type: ActionType;
-  field: 'priorityId' | 'assigneeId' | 'sprintId' | 'dueDate' | 'storyPoints';
+  /** `storyPoints` chỉ còn khi MỞ quy tắc cũ: API bỏ qua hành động đó và từ chối lưu lại — người dùng đổi sang Độ khó. */
+  field: 'priorityId' | 'assigneeId' | 'sprintId' | 'dueDate' | 'storyPoints' | 'difficulty';
   value: string;
   mode: 'reporter' | 'lead' | 'user' | 'roundRobin';
   userId: string;
@@ -732,9 +735,12 @@ function ActionCard({
                 description: scoped ? undefined : 'Chọn dự án trước',
               },
               { value: 'dueDate', label: 'Hạn' },
-              { value: 'storyPoints', label: 'Điểm ước lượng' },
+              // Điểm tự tính theo công thức: quy tắc đặt Độ khó thay vì đặt điểm (quy tắc cũ đặt điểm bị bỏ qua).
+              { value: 'difficulty', label: 'Độ khó' },
             ]}
-            onChange={(v) => set({ field: v as ActionDraft['field'], value: '' })}
+            onChange={(v) =>
+              set({ field: v as ActionDraft['field'], value: a.field === v ? a.value : '' })
+            }
           />
           <Err id={fid('value')} error={err('value')}>
             {(p) =>
@@ -756,6 +762,16 @@ function ActionCard({
                   searchPlaceholder="Tìm…"
                   ariaLabel="Giá trị mới"
                 />
+              ) : a.field === 'difficulty' ? (
+                <SearchSelect
+                  {...p}
+                  value={a.value}
+                  onChange={(value) => set({ value })}
+                  options={DIFFICULTIES.map((d) => ({ value: d, label: DIFFICULTY_LABELS[d] }))}
+                  placeholder="Chọn độ khó…"
+                  searchPlaceholder="Tìm…"
+                  ariaLabel="Giá trị mới"
+                />
               ) : (
                 <Input
                   {...p}
@@ -764,7 +780,8 @@ function ActionCard({
                   min={0}
                   value={a.value}
                   onChange={(e) => set({ value: e.target.value })}
-                  placeholder="Để trống = gỡ giá trị"
+                  placeholder={a.field === 'dueDate' ? 'Chọn ngày' : 'Để trống = gỡ giá trị'}
+                  required={a.field === 'dueDate'}
                 />
               )
             }

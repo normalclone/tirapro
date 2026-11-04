@@ -20,17 +20,52 @@ import {
 import { PASSWORD_POLICY_HINT, passwordPolicyError } from './passwordPolicy';
 import { useWorkspaceRoleChoice } from './useWorkspaceRoleChoice';
 import { SectionCard } from '@/components/ui/SectionCard';
+import { AddDialog } from '@/components/ui/AddDialog';
+
+interface FlowProps {
+  /** Gửi xong (đã thêm người có sẵn / bấm "Xong" sau khi tạo tài khoản) — hộp thoại dùng để tự đóng. */
+  onFinished?: () => void;
+  /** Báo có nội dung đang nhập dở (để hộp thoại hỏi trước khi đóng). */
+  onDirtyChange?: (dirty: boolean, reason?: 'tempPassword') => void;
+}
 
 /**
- * Thẻ "Thêm thành viên" — MỘT hộp: chọn người có sẵn trong hệ thống (pool chung) HOẶC bấm
- * "Chưa có tài khoản? Tạo tài khoản mới" để tạo tài khoản + thêm cùng lúc.
- * Gated bằng `member:manage` — trùng với cách MembersPage kiểm tra quyền.
+ * MỘT luồng thêm thành viên: chọn người có sẵn trong hệ thống (pool chung) HOẶC bấm "Chưa có tài khoản? Tạo tài khoản mới"
+ * để tạo tài khoản + thêm cùng lúc. Dùng trong thẻ (bước Làm quen) và trong hộp thoại "Mời thành viên" của trang Thành viên.
  */
-export function AddMemberPanel() {
-  const canManage = useAuth((s) => s.can('member:manage'));
+function AddMemberFlow({ onFinished, onDirtyChange }: FlowProps) {
   const [mode, setMode] = useState<'pick' | 'create'>('pick');
   // Email vừa nhập nhưng đã có tài khoản → chuyển về "chọn người có sẵn" với ô tìm điền sẵn email.
   const [prefillEmail, setPrefillEmail] = useState('');
+  return mode === 'pick' ? (
+    <AddExistingUser
+      prefillEmail={prefillEmail}
+      onFinished={onFinished}
+      onDirtyChange={onDirtyChange}
+      onCreateNew={() => {
+        setPrefillEmail('');
+        setMode('create');
+      }}
+    />
+  ) : (
+    <CreateAccountForm
+      onFinished={onFinished}
+      onDirtyChange={onDirtyChange}
+      onBack={() => setMode('pick')}
+      onEmailExists={(email) => {
+        setPrefillEmail(email);
+        setMode('pick');
+      }}
+    />
+  );
+}
+
+/**
+ * Thẻ "Thêm thành viên" (bước Làm quen). Gated bằng `member:manage` — trùng với cách MembersPage kiểm tra quyền.
+ * Trang Thành viên dùng `AddMemberDialog` thay vì thẻ mở sẵn.
+ */
+export function AddMemberPanel() {
+  const canManage = useAuth((s) => s.can('member:manage'));
   if (!canManage) return null;
   return (
     <SectionCard
@@ -40,24 +75,71 @@ export function AddMemberPanel() {
       bare
       data-tour="members-add"
     >
-      {mode === 'pick' ? (
-        <AddExistingUser
-          prefillEmail={prefillEmail}
-          onCreateNew={() => {
-            setPrefillEmail('');
-            setMode('create');
-          }}
-        />
-      ) : (
-        <CreateAccountForm
-          onBack={() => setMode('pick')}
-          onEmailExists={(email) => {
-            setPrefillEmail(email);
-            setMode('pick');
-          }}
-        />
-      )}
+      <AddMemberFlow />
     </SectionCard>
+  );
+}
+
+/** Đóng khi mật khẩu tạm còn đang hiện: nói rõ nó sẽ không hiện lại (khác lời hỏi "nhập dở" chung). */
+const TEMP_PASSWORD_PROMPT = {
+  title: 'Mật khẩu tạm sẽ không hiện lại',
+  description: 'Mật khẩu tạm sẽ không hiện lại. Bạn đã chép lại chưa?',
+  confirmLabel: 'Đã chép, đóng',
+};
+
+/** Hộp thoại "Mời thành viên" — cùng luồng/trường/quyền với thẻ cũ; nút mở nằm ở đầu trang Thành viên. */
+export function AddMemberDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const [dirty, setDirty] = useState(false);
+  const [tempShown, setTempShown] = useState(false);
+  return (
+    <AddDialog
+      open={open}
+      onClose={() => {
+        setDirty(false);
+        setTempShown(false);
+        onClose();
+      }}
+      dirty={dirty}
+      dirtyPrompt={tempShown ? TEMP_PASSWORD_PROMPT : undefined}
+      title="Mời thành viên"
+      description="Chọn người có sẵn trong hệ thống hoặc tạo tài khoản mới."
+      size="lg"
+      bodyClassName="p-0"
+    >
+      <AddMemberFlow
+        onDirtyChange={(d, reason) => {
+          setDirty(d);
+          setTempShown(reason === 'tempPassword');
+        }}
+        onFinished={() => {
+          setDirty(false);
+          setTempShown(false);
+          onClose();
+        }}
+      />
+    </AddDialog>
+  );
+}
+
+/** Báo nội dung đang nhập dở lên hộp thoại bao quanh (nếu có). */
+function useReportDirty(
+  dirty: boolean,
+  onDirtyChange?: FlowProps['onDirtyChange'],
+  reason?: 'tempPassword',
+) {
+  useEffect(() => {
+    onDirtyChange?.(dirty, reason);
+  }, [dirty, reason, onDirtyChange]);
+}
+
+/** Dòng báo khi quay về từ "tạo tài khoản" vì email đã có tài khoản. */
+function PrefillNotice({ email, isMember }: { email: string; isMember: boolean }) {
+  return (
+    <p className="rounded-md bg-primary-subtle px-3 py-2 text-sm text-ink" role="status">
+      {isMember
+        ? `${email} đã là thành viên của không gian làm việc này.`
+        : `${email} đã có tài khoản — chọn người đó để thêm vào không gian làm việc.`}
+    </p>
   );
 }
 
@@ -70,7 +152,9 @@ type PoolUser = NonNullable<ReturnType<typeof useAllUsers>['data']>[number];
 function AddExistingUser({
   prefillEmail,
   onCreateNew,
-}: {
+  onFinished,
+  onDirtyChange,
+}: FlowProps & {
   prefillEmail: string;
   onCreateNew: () => void;
 }) {
@@ -98,6 +182,7 @@ function AddExistingUser({
     hint: u.email,
   }));
   const picked = addableUsers.find((u) => u.id === userId);
+  useReportDirty(userId !== '', onDirtyChange);
 
   // Quay lại từ "tạo tài khoản" vì email đã tồn tại: chọn sẵn đúng người đó (nếu chưa là thành viên).
   const prefilled = prefillEmail
@@ -137,6 +222,7 @@ function AddExistingUser({
         onSuccess: (m) => {
           toast.success(`Đã thêm ${m.user.displayName} vào không gian làm việc`);
           reset();
+          onFinished?.();
         },
         onError: (e) => toast.error(apiErrorMessage(e)),
       },
@@ -153,13 +239,7 @@ function AddExistingUser({
 
   return (
     <div className="space-y-4 p-5" onKeyDown={onKeyDown}>
-      {prefillEmail && (
-        <p className="rounded-md bg-primary-subtle px-3 py-2 text-sm text-ink" role="status">
-          {prefillIsMember
-            ? `${prefillEmail} đã là thành viên của không gian làm việc này.`
-            : `${prefillEmail} đã có tài khoản — chọn người đó để thêm vào không gian làm việc.`}
-        </p>
-      )}
+      {prefillEmail && <PrefillNotice email={prefillEmail} isMember={prefillIsMember} />}
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-1.5">
           <span className="text-sm font-medium text-ink">Người dùng</span>
@@ -240,7 +320,9 @@ function AddExistingUser({
 function CreateAccountForm({
   onBack,
   onEmailExists,
-}: {
+  onFinished,
+  onDirtyChange,
+}: FlowProps & {
   onBack: () => void;
   onEmailExists: (email: string) => void;
 }) {
@@ -256,6 +338,12 @@ function CreateAccountForm({
   const resetCreate = create.reset;
   useEffect(() => resetCreate, [resetCreate]);
   const passwordError = passwordPolicyError(password);
+  // Đang nhập dở, hoặc vừa tạo xong và mật khẩu tạm (chỉ hiện một lần) chưa được ghi lại → đóng thì phải hỏi.
+  const dirty =
+    created !== null
+      ? !!created.tempPassword
+      : email.trim() !== '' || displayName.trim() !== '' || password.trim() !== '';
+  useReportDirty(dirty, onDirtyChange, created?.tempPassword ? 'tempPassword' : undefined);
   const canSubmit =
     !!email.trim() && !!displayName.trim() && effectiveRoleIds.length > 0 && !passwordError;
 
@@ -306,6 +394,7 @@ function CreateAccountForm({
           setDisplayName('');
           setPassword('');
           resetRoles();
+          onFinished?.();
         }}
       />
     );

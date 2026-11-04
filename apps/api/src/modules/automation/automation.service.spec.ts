@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { AutomationService } from './automation.service';
 
 /** runNow là đường công khai gọi createIssueFrom (cùng đường với cron). */
-function setup(assignable: boolean) {
+function setup(assignable: boolean, payload: Record<string, unknown> = {}) {
   const prisma = {
     recurringIssue: {
       findFirst: vi.fn(() =>
@@ -10,7 +10,7 @@ function setup(assignable: boolean) {
           id: 'r1',
           name: 'Báo cáo tuần',
           projectId: 'p1',
-          payload: { typeId: 't1', summary: 'Báo cáo', assigneeId: 'gone' },
+          payload: { typeId: 't1', summary: 'Báo cáo', assigneeId: 'gone', ...payload },
           project: { id: 'p1', workspaceId: 'w1', leadId: null },
         }),
       ),
@@ -281,5 +281,26 @@ describe('AutomationService — danh sách mẫu/việc lặp không lộ dự �
     expect(prisma.recurringIssue.findMany.mock.calls[0]![0]).toMatchObject({
       where: { project: { workspaceId: 'w1', deletedAt: null } },
     });
+  });
+});
+
+describe('AutomationService — việc lặp lại mang độ khó, không mang điểm', () => {
+  it('payload có difficulty => truyền độ khó khi tạo việc; payload cũ có storyPoints => KHÔNG gửi điểm (điểm tự tính)', async () => {
+    const withDifficulty = setup(true, { difficulty: 'HARD', storyPoints: 13 });
+    await withDifficulty.service.runNow('w1', 'r1', 'u1');
+    const body = (withDifficulty.issues.create.mock.calls[0] as unknown[])[2] as Record<
+      string,
+      unknown
+    >;
+    expect(body).toMatchObject({ difficulty: 'HARD' });
+    expect(body).not.toHaveProperty('storyPoints');
+    const legacy = setup(true, { storyPoints: 8 });
+    await legacy.service.runNow('w1', 'r1', 'u1');
+    const legacyBody = (legacy.issues.create.mock.calls[0] as unknown[])[2] as Record<
+      string,
+      unknown
+    >;
+    expect(legacyBody).not.toHaveProperty('storyPoints');
+    expect(legacyBody).not.toHaveProperty('difficulty'); // mặc định Trung bình do lõi tạo việc đặt
   });
 });

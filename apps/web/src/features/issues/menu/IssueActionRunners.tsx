@@ -9,6 +9,7 @@ import { useConfirm } from '@/components/ui/useConfirm';
 import { apiErrorMessage } from '@/lib/api';
 import { useAuth } from '@/stores/auth';
 import { useIssueTransitions } from '../useIssueTransitions';
+import { ASSIGNED_TO_ME_TOAST } from '@/features/issue-edit/assignToMe';
 import { finishIssueAction, type IssueAction, type IssueActionRequest } from './issueActions';
 import { recordIssueChange, recordIssueDeleted } from './issueOverlay';
 import { runnerLifecycle } from './runnerLifecycle';
@@ -159,7 +160,7 @@ function AssignMeRunner({ issue, done }: { issue: IssueDto; done: () => void }) 
                 assignee: me,
               },
         );
-        toast.success('Đã giao việc này cho bạn', { duration: 2000 });
+        toast.success(ASSIGNED_TO_ME_TOAST, { duration: 2000 });
       } catch (e) {
         toast.error(apiErrorMessage(e));
       } finally {

@@ -91,6 +91,13 @@ enum IssueTypeKey {
   SUBTASK
 }
 
+enum IssueDifficulty {
+  EASY
+  MEDIUM
+  HARD
+  VERY_HARD
+}
+
 enum FixVersionType {
   FIX
   AFFECTS
@@ -746,7 +753,9 @@ model Issue {
   parentId           String?
   epicId             String?
   sprintId           String?
-  storyPoints        Float?
+  storyPoints        Float? // điểm cuối cùng: tự tính theo công thức (PointsFormulaConfig) trừ khi pointsManual
+  difficulty         IssueDifficulty @default(MEDIUM)
+  pointsManual       Boolean        @default(false) // PM/SA ghi đè tay → không tự tính lại khi đổi loại/độ khó/ưu tiên
   originalEstimate   Int?
   remainingEstimate  Int?
   timeSpent          Int?
@@ -2252,4 +2261,12 @@ model AuditLog {
   @@index([workspaceId, createdAt])
   @@index([workspaceId, action, createdAt])
   @@index([actorId, createdAt])
+}
+
+/// Bảng hệ số tính điểm TOÀN HỆ THỐNG (một dòng id='default'; chỉ SA sửa). `formula` = PointsFormula (@tirapro/shared).
+model PointsFormulaConfig {
+  id          String   @id @default("default")
+  formula     Json
+  updatedAt   DateTime @updatedAt
+  updatedById String?
 }

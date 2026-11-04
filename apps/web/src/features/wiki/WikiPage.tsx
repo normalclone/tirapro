@@ -801,15 +801,17 @@ export function WikiPage() {
                       </div>
 
                       {pg.body.trim() ? (
-                        <MarkdownView
-                          text={pg.body}
-                          issueRefs={Object.fromEntries(pg.issues.map((i) => [i.key, i]))}
-                          onToggleTask={
-                            canWrite(pg.projectId) && !update.isPending
-                              ? (i, c, t) => void toggleTask(pg, i, c, t)
-                              : undefined
-                          }
-                        />
+                        <div className="max-w-[75ch]">
+                          <MarkdownView
+                            text={pg.body}
+                            issueRefs={Object.fromEntries(pg.issues.map((i) => [i.key, i]))}
+                            onToggleTask={
+                              canWrite(pg.projectId) && !update.isPending
+                                ? (i, c, t) => void toggleTask(pg, i, c, t)
+                                : undefined
+                            }
+                          />
+                        </div>
                       ) : (
                         <EmptyState
                           size="compact"

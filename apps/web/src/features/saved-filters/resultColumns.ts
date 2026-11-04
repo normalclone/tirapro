@@ -1,4 +1,5 @@
 import type { IssueDto } from '@tirapro/types';
+import { formatCalendarDmy } from '@tirapro/shared';
 import { fmtDate } from '@/lib/dateFormat';
 
 /**
@@ -191,7 +192,7 @@ export function cellText(
         ? ''
         : String(issue.storyPoints);
     case 'due':
-      return issue.dueDate ? fmtDate(issue.dueDate) : '';
+      return issue.dueDate ? formatCalendarDmy(issue.dueDate) : '';
     case 'updated':
       return issue.updatedAt ? fmtDate(issue.updatedAt) : '';
     case 'project':

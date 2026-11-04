@@ -28,14 +28,15 @@ describe('buildQuickAddInput', () => {
     });
     expect(r.unmatched).toEqual([]);
   });
-  it('token ưu tiên/điểm/người/hạn được tách khỏi tiêu đề và gửi thành trường', () => {
-    const r = buildQuickAddInput('Đăng ký !cao ~5 @Bình ^15/8/2027', ctx, d)!;
+  it('token ưu tiên/độ khó/người/hạn được tách khỏi tiêu đề và gửi thành trường', () => {
+    const r = buildQuickAddInput('Đăng ký !cao ~khó @Bình ^15/8/2027', ctx, d)!;
     expect(r.input).toMatchObject({
       summary: 'Đăng ký',
       priorityId: 'p4',
-      storyPoints: 5,
+      difficulty: 'HARD',
       assigneeId: 'u1',
     });
+    expect(r.input).not.toHaveProperty('storyPoints'); // điểm do máy chủ tính
     expect(new Date(r.input.dueDate!).getDate()).toBe(15);
   });
   it('#sprint ghi đè extra.sprintId', () =>
@@ -59,7 +60,7 @@ describe('buildQuickAddInput', () => {
       'e1',
     ));
   it('chỉ có token (tiêu đề rỗng) => null', () =>
-    expect(buildQuickAddInput('!cao ~5', ctx, d)).toBeNull());
+    expect(buildQuickAddInput('!cao ~khó', ctx, d)).toBeNull());
 });
 
 describe('pickDefaultType', () => {

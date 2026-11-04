@@ -159,9 +159,10 @@ export function useWikiTrash(scope: string, enabled: boolean) {
 }
 
 /** Các trang wiki nhắc tới công việc `issueId`. */
-export function useIssueDocs(issueId: string) {
+export function useIssueDocs(issueId: string, enabled = true) {
   return useQuery({
     queryKey: keys.wiki.byIssue(issueId),
+    enabled,
     queryFn: async () => (await api.get<WikiByIssue[]>(`/wiki/by-issue/${issueId}`)).data,
   });
 }

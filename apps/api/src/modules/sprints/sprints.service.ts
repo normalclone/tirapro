@@ -10,10 +10,12 @@ import type {
 } from '@tirapro/shared';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
+import { liveDescendants, lockIssues } from '../../common/issue-tree';
 import { iso } from '../../common/mappers/date';
 import { BusinessRuleException, NotFoundAppException } from '../../common/exceptions/app.exception';
 import { assertNotArchived } from '../../common/project-writable';
 import { TRIAGE_VISIBLE, isUnreviewed } from '../../common/triage-visibility';
+import { countsTowardPoints, LEAF_POINTS_ONLY, LIVE_CHILD_COUNT } from '../../common/points-scope';
 
 /** Ngày lịch (UTC) của một thời điểm, dạng số để so sánh. */
 const utcDay = (d: Date) => Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
@@ -38,14 +40,26 @@ export class SprintsService {
     });
     if (sprints.length === 0) return [];
     // Đếm issue + tổng điểm bằng một câu GROUP BY (không kéo từng issue về); issue đã xoá mềm không tính.
-    const groups = await this.prisma.issue.groupBy({
-      by: ['sprintId'],
-      where: { sprintId: { in: sprints.map((s) => s.id) }, deletedAt: null, ...TRIAGE_VISIBLE },
-      _count: { _all: true },
-      _sum: { storyPoints: true },
-    });
+    // Điểm cộng riêng và chỉ VIỆC LÁ (điểm Epic/việc cha = tổng việc con → cộng sẽ đếm đôi); số đếm vẫn tính cả hai.
+    const inSprints = {
+      sprintId: { in: sprints.map((s) => s.id) },
+      deletedAt: null,
+      ...TRIAGE_VISIBLE,
+    };
+    const [groups, pointGroups] = await Promise.all([
+      this.prisma.issue.groupBy({ by: ['sprintId'], where: inSprints, _count: { _all: true } }),
+      this.prisma.issue.groupBy({
+        by: ['sprintId'],
+        where: { ...inSprints, ...LEAF_POINTS_ONLY },
+        _sum: { storyPoints: true },
+      }),
+    ]);
+    const pointsBySprint = new Map(pointGroups.map((g) => [g.sprintId, g._sum.storyPoints ?? 0]));
     const statsBySprint = new Map(
-      groups.map((g) => [g.sprintId, { count: g._count._all, points: g._sum.storyPoints ?? 0 }]),
+      groups.map((g) => [
+        g.sprintId,
+        { count: g._count._all, points: pointsBySprint.get(g.sprintId) ?? 0 },
+      ]),
     );
     return sprints.map((s) => {
       const st = statsBySprint.get(s.id);
@@ -194,10 +208,20 @@ export class SprintsService {
       // Thứ tự: (1) đóng sprint ở trên, (2) tính việc chưa Done, (3) tạo/khoá sprint đích, (4) snapshot CLOSE kèm
       // payload (việc chuyển tiếp + nơi chuyển), (5) mới chuyển issue ra. Snapshot vẫn chụp TOÀN BỘ sprint (cả việc sắp
       // bị đẩy ra) vì issue chưa di chuyển — velocity cần "cam kết" thật của sprint.
-      const pushed = await tx.issue.findMany({
+      const notDone = await tx.issue.findMany({
         where: { sprintId, deletedAt: null, status: { category: { not: 'DONE' } } },
-        select: { id: true, key: true, summary: true, storyPoints: true, triageState: true },
+        select: {
+          id: true,
+          key: true,
+          summary: true,
+          storyPoints: true,
+          triageState: true,
+          parentId: true,
+        },
       });
+      // Việc con theo sprint của cha: việc chưa Done có cha ở CÙNG sprint không tự chuyển — đi theo cha (cha chưa Done kéo
+      // cả nhánh, kể cả việc con đã Done) hoặc ở lại cùng cha đã Done.
+      const { pushed, roots } = await this.splitByParent(tx, sprintId, notDone);
 
       let targetSprintId: string | null = null;
       let movedTo: SprintClosePayload['movedTo'] = { kind: 'backlog' };
@@ -250,17 +274,37 @@ export class SprintsService {
         payload as unknown as Prisma.InputJsonValue,
       );
 
-      // Đưa issue chưa Done sang đích và ghi lịch sử cho từng issue.
-      if (pushed.length) {
+      // Đưa issue chưa Done sang đích và ghi lịch sử cho từng issue; việc con/cháu (mọi trạng thái) đi theo việc cha.
+      if (roots.length) {
+        const followers = (
+          await liveDescendants(
+            tx,
+            roots.map((i) => i.id),
+          )
+        ).filter((d) => d.sprintId === sprintId);
+        await lockIssues(
+          tx,
+          followers.map((d) => d.id),
+        ); // khoá việc con trước việc cha (cùng thứ tự với cộng điểm cha)
         await this.moveIssuesOut(tx, {
           sprintId,
           projectId: sprint.projectId,
-          ids: pushed.map((i) => i.id),
+          ids: roots.map((i) => i.id),
           targetSprintId,
           actorId,
           onlyNotDone: true,
         });
+        if (followers.length)
+          await this.moveIssuesOut(tx, {
+            sprintId,
+            projectId: sprint.projectId,
+            ids: followers.map((d) => d.id),
+            targetSprintId,
+            actorId,
+            onlyNotDone: false,
+          });
       }
+
       return tx.sprint.findUniqueOrThrow({ where: { id: sprintId } });
     });
     this.events.emit(DOMAIN_EVENTS.SPRINT_COMPLETED, { sprintId, projectId: sprint.projectId });
@@ -346,6 +390,32 @@ export class SprintsService {
     return { success: true };
   }
 
+  /**
+   * Tách việc chưa Done của sprint: `pushed` = sẽ rời sprint (liệt vào "chuyển tiếp"); `roots` = việc phải chuyển TRỰC TIẾP
+   * (không có cha ở sprint này). Việc chưa Done có cha ở sprint này: cha chưa Done → đi theo cha (thuộc `pushed`, không phải
+   * `roots`); cha đã Done → ở lại cùng cha (không thuộc `pushed`).
+   */
+  private async splitByParent<T extends { id: string; parentId: string | null }>(
+    tx: Prisma.TransactionClient,
+    sprintId: string,
+    notDone: T[],
+  ): Promise<{ pushed: T[]; roots: T[] }> {
+    const parentIds = [...new Set(notDone.map((i) => i.parentId).filter((x): x is string => !!x))];
+    if (parentIds.length === 0) return { pushed: notDone, roots: notDone };
+    const inSprint = new Set(
+      (
+        await tx.issue.findMany({
+          where: { id: { in: parentIds }, sprintId, deletedAt: null },
+          select: { id: true },
+        })
+      ).map((p) => p.id),
+    );
+    const notDoneIds = new Set(notDone.map((i) => i.id));
+    const parentHere = (i: T) => !!i.parentId && inSprint.has(i.parentId);
+    const pushed = notDone.filter((i) => !parentHere(i) || notDoneIds.has(i.parentId!));
+    return { pushed, roots: notDone.filter((i) => !parentHere(i)) };
+  }
+
   /** Tạo sprint FUTURE kế tiếp (cùng board) bên trong transaction của `complete`. */
   private async createNextSprint(
     tx: Prisma.TransactionClient,
@@ -429,10 +499,17 @@ export class SprintsService {
   ) {
     const issues = await tx.issue.findMany({
       where: { sprintId, deletedAt: null, ...TRIAGE_VISIBLE },
-      select: { storyPoints: true, status: { select: { category: true } } },
+      select: {
+        storyPoints: true,
+        status: { select: { category: true } },
+        type: { select: { key: true } },
+        ...LIVE_CHILD_COUNT,
+      },
     });
-    const committedPoints = issues.reduce((a, i) => a + (i.storyPoints ?? 0), 0);
-    const completedPoints = issues
+    // Điểm Epic/việc cha = tổng việc con → chỉ cộng việc lá (không đếm đôi); số việc hoàn thành vẫn tính cả hai.
+    const pointed = issues.filter(countsTowardPoints);
+    const committedPoints = pointed.reduce((a, i) => a + (i.storyPoints ?? 0), 0);
+    const completedPoints = pointed
       .filter((i) => i.status.category === 'DONE')
       .reduce((a, i) => a + (i.storyPoints ?? 0), 0);
     const completedCount = issues.filter((i) => i.status.category === 'DONE').length;

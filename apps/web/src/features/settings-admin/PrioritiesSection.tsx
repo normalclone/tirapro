@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Flag, Plus, Pencil, Trash2, Check, X, Star } from 'lucide-react';
 import { toast } from 'sonner';
+import { AddDialog } from '@/components/ui/AddDialog';
 import { Button } from '@/components/ui/Button';
 import { ReadOnlyNote } from '@/components/ui/NoAccess';
 import { useConfirm } from '@/components/ui/useConfirm';
@@ -58,7 +59,10 @@ export function PrioritiesSection() {
         rank: rank.trim() === '' ? undefined : Number(rank),
       },
       {
-        onSuccess: resetAdd,
+        onSuccess: () => {
+          resetAdd();
+          toast.success('Đã thêm mức ưu tiên');
+        },
         onError: (e) => toast.error(apiErrorMessage(e)),
       },
     );
@@ -97,7 +101,7 @@ export function PrioritiesSection() {
             ))}
           </div>
         }
-        empty={() => priorities.length === 0 && !adding}
+        empty={() => priorities.length === 0}
         emptyState={
           <EmptyState
             icon={<Flag className="h-6 w-6" />}
@@ -190,68 +194,69 @@ export function PrioritiesSection() {
       </QueryBoundary>
 
       {/* Form thêm mức ưu tiên — chỉ quản trị chung */}
-      {canManage && adding ? (
-        <div className="mt-4 rounded-md border border-border bg-surface-2 p-3">
-          <div className="flex flex-wrap items-end gap-3">
-            <div className="min-w-[10rem] flex-1">
-              <label htmlFor="prio-name" className="mb-1 block text-xs font-medium text-muted">
-                Tên
-              </label>
-              <Input
-                id="prio-name"
-                value={name}
-                autoFocus
-                placeholder="VD: Khẩn cấp"
-                onChange={(e) => setName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') submitAdd();
-                  if (e.key === 'Escape') resetAdd();
-                }}
-              />
-            </div>
-            <div>
-              <label htmlFor="prio-color" className="mb-1 block text-xs font-medium text-muted">
-                Màu
-              </label>
-              <input
-                id="prio-color"
-                type="color"
-                value={color}
-                onChange={(e) => setColor(e.target.value)}
-                className="h-9 w-12 cursor-pointer rounded-md border border-border bg-bg p-1"
-              />
-            </div>
-            <div className="w-20">
-              <label htmlFor="prio-rank" className="mb-1 block text-xs font-medium text-muted">
-                Rank
-              </label>
-              <Input
-                id="prio-rank"
-                type="number"
-                value={rank}
-                placeholder="0"
-                onChange={(e) => setRank(e.target.value)}
-              />
-            </div>
-            <div className="flex items-center gap-2">
-              <Button size="sm" onClick={submitAdd} loading={create.isPending}>
-                Lưu
-              </Button>
-              <Button size="sm" variant="ghost" onClick={resetAdd} disabled={create.isPending}>
-                Huỷ
-              </Button>
-            </div>
+      {canManage && priorities.length > 0 && (
+        <Button variant="secondary" size="sm" className="mt-4" onClick={() => setAdding(true)}>
+          <Plus className="h-4 w-4" />
+          Thêm mức ưu tiên
+        </Button>
+      )}
+      <AddDialog
+        open={adding}
+        onClose={resetAdd}
+        title="Thêm mức ưu tiên"
+        size="md"
+        dirty={name.trim() !== '' || rank.trim() !== ''}
+      >
+        <div className="space-y-4">
+          <div className="min-w-[10rem] flex-1">
+            <label htmlFor="prio-name" className="mb-1 block text-xs font-medium text-muted">
+              Tên
+            </label>
+            <Input
+              id="prio-name"
+              value={name}
+              autoFocus
+              placeholder="VD: Khẩn cấp"
+              onChange={(e) => setName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') submitAdd();
+              }}
+            />
+          </div>
+          <div>
+            <label htmlFor="prio-color" className="mb-1 block text-xs font-medium text-muted">
+              Màu
+            </label>
+            <input
+              id="prio-color"
+              type="color"
+              value={color}
+              onChange={(e) => setColor(e.target.value)}
+              className="h-9 w-12 cursor-pointer rounded-md border border-border bg-bg p-1"
+            />
+          </div>
+          <div className="w-20">
+            <label htmlFor="prio-rank" className="mb-1 block text-xs font-medium text-muted">
+              Rank
+            </label>
+            <Input
+              id="prio-rank"
+              type="number"
+              value={rank}
+              placeholder="0"
+              onChange={(e) => setRank(e.target.value)}
+            />
+          </div>
+          <div className="flex items-center justify-end gap-2">
+            <Button size="sm" onClick={submitAdd} loading={create.isPending}>
+              Lưu
+            </Button>
+            <Button size="sm" variant="ghost" onClick={resetAdd} disabled={create.isPending}>
+              Huỷ
+            </Button>
           </div>
         </div>
-      ) : (
-        canManage &&
-        priorities.length > 0 && (
-          <Button variant="secondary" size="sm" className="mt-4" onClick={() => setAdding(true)}>
-            <Plus className="h-4 w-4" />
-            Thêm mức ưu tiên
-          </Button>
-        )
-      )}
+      </AddDialog>
     </SectionCard>
   );
 }

@@ -1,8 +1,10 @@
 import { useEffect, useId, useRef } from 'react';
 import { Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
+import { DIFFICULTY_LABELS } from '@tirapro/shared';
 import { Button } from '@/components/ui/Button';
 import { apiErrorMessage } from '@/lib/api';
+import { useAi } from '@/stores/ai';
 import { AiFallbackNote } from './AiFallbackNote';
 import { AiSourceChips } from './AiSourceChips';
 import { aiSourceLabel } from './fallbackNote';
@@ -41,15 +43,20 @@ export function SuggestProgress({
  * `variant`: `card` = khung có tiêu đề h2 "Trợ lý AI" (vùng có tên); `bare` = không khung/tiêu đề, dùng trong phần mở/thu đã có nhãn
  * "Trợ lý AI" (không đọc lặp). Chỉ chạy khi bấm nút — mỗi lần chạy tốn hạn mức nên KHÔNG bao giờ tự chạy.
  */
-export function AiIssuePanel({
-  issueId,
-  onPeek,
-  variant = 'card',
-}: {
+interface AiIssuePanelProps {
   issueId: string;
   onPeek?: (key: string) => void;
   variant?: 'card' | 'bare';
-}) {
+}
+
+export function AiIssuePanel(props: AiIssuePanelProps) {
+  // Tắt "Trợ lý AI" ở thanh trên = không còn thẻ/nút/gợi ý AI nào (thẻ, "Tóm tắt", "Gợi ý ưu tiên & độ khó").
+  const aiEnabled = useAi((s) => s.enabled);
+  if (!aiEnabled) return null;
+  return <AiIssuePanelInner {...props} />;
+}
+
+function AiIssuePanelInner({ issueId, onPeek, variant = 'card' }: AiIssuePanelProps) {
   const headingId = useId();
   const { data: capabilities } = useAiCapabilities();
   const summarize = useSummarizeIssue();
@@ -140,9 +147,12 @@ export function AiIssuePanel({
                 Ưu tiên: {suggestion.priority}
               </span>
             )}
-            {typeof suggestion.storyPoints === 'number' && (
-              <span className="rounded bg-surface-2 px-1.5 py-0.5 text-xs text-ink">
-                {suggestion.storyPoints} điểm
+            {suggestion.difficulty && (
+              <span
+                className="rounded bg-surface-2 px-1.5 py-0.5 text-xs text-ink"
+                title="Độ khó AI đề xuất — điểm sẽ được hệ thống tự tính từ Loại × Độ khó × Ưu tiên"
+              >
+                Độ khó: {DIFFICULTY_LABELS[suggestion.difficulty]}
               </span>
             )}
             {suggestion.assigneeHint && (

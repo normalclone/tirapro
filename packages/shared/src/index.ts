@@ -33,6 +33,7 @@ export * from './guides';
 export * from './default-guides';
 export * from './csv';
 export * from './vn-date';
+export * from './points';
 export * from './digest';
 export * from './schemas/dashboard';
 export * from './goal-values';

@@ -554,7 +554,7 @@ export class AutomationService implements OnApplicationShutdown {
     if (p.description && p.description.trim()) out.description = p.description;
     if (p.assigneeId) out.assigneeId = p.assigneeId;
     if (p.labelIds?.length) out.labelIds = p.labelIds;
-    if (typeof p.storyPoints === 'number') out.storyPoints = p.storyPoints;
+    if (p.difficulty) out.difficulty = p.difficulty;
     return out;
   }
 
@@ -618,7 +618,7 @@ export class AutomationService implements OnApplicationShutdown {
       priorityId: payload.priorityId ?? null,
       assigneeId,
       labelIds: payload.labelIds ?? [],
-      storyPoints: payload.storyPoints ?? null,
+      ...(payload.difficulty ? { difficulty: payload.difficulty } : {}),
     });
   }
 

@@ -1,0 +1,530 @@
+# Điểm tự tính · Hạn bắt buộc · Trạng thái hiển thị · Ẩn khối trống — Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Story points are computed from Type × Difficulty × Priority, with a system-wide coefficient table that only the SA edits and a PM override. Every issue must have a due date (default: creation date + 1 day). Statuses are shown by name in "Việc của tôi" and in the filter results table. Empty blocks on the issue page are hidden behind a "+ Thêm mục" button.
+
+**Architecture:**
+- The pure formula lives in `@tirapro/shared` (`points.ts`) and is used by both the API and the web app.
+- The API enforces the formula in the single creation path (`IssuesService.createCore`), in `update`, in `bulkUpdate`, and in an epic roll-up helper.
+- The coefficient table is a one-row Prisma model, edited through the system-admin console.
+- The due-date rule is enforced on the server with a `DUE_DATE_REQUIRED` error code. Existing data is backfilled by SQL migrations.
+- The UI changes are local to the existing components.
+
+**Tech Stack:** NestJS 10 + Prisma + Postgres, zod (packages/shared), React 18 + TanStack Query + Tailwind, vitest.
+
+**Spec:** `docs/superpowers/specs/2026-11-04-points-due-status-design.md` (read it whole; sections 1–5 and "Quyết định của người viết").
+
+## Global Constraints
+- Branch `feat/points-due-status` in worktree `/Users/inrnee/tirapro-wt/integ`.
+- After changing `packages/types` or `packages/shared`, run `pnpm --filter @tirapro/types build && pnpm --filter @tirapro/shared build`.
+- After changing a Prisma enum, run `pnpm gen:enums`. Never hand-edit `packages/types/src/enums.ts`.
+- Error codes are `SCREAMING_SNAKE`. UI copy is Vietnamese. Every mutation bumps `version` (OCC).
+- Default coefficients, copied verbatim from the spec:
+  - Base by type: SUBTASK 1, TASK 2, BUG 2, STORY 3. Custom type (key null) uses the TASK base. EPIC = sum of its children.
+  - Difficulty: EASY ×1, MEDIUM ×2, HARD ×3, VERY_HARD ×5. Labels: Dễ / Trung bình / Khó / Rất khó. The default is MEDIUM.
+  - Priority, keyed by system priority name: Lowest ×1, Low ×1, Medium ×1, High ×1.5, Highest ×2. Any other name, or no priority, is ×1.
+  - Round half-up to an integer.
+- Manual override: integer 0–100, allowed only for `project:admin` or `isSystemAdmin`. It sets `pointsManual=true`. While manual, changes to type, difficulty or priority do not recompute.
+- `dueDate` is a calendar date stored as `YYYY-MM-DDT00:00:00.000Z`. "Ngày tạo + 1" is computed from the calendar day in `Asia/Ho_Chi_Minh`.
+- Gates: `pnpm lint` (0 errors), `pnpm -r typecheck`, `pnpm test`.
+- Commit trailer:
+  `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`
+  `Claude-Session: https://claude.ai/code/session_01UyXyiG8CW8csVM5RoBsjjU`
+
+## Review Focus
+1. An issue is created through import, automation, AI generation or clone **without** a dueDate or difficulty → it still gets due = created+1 (VN day) and difficulty MEDIUM, and its points are computed. Pin with a createWithin test (Task 3/5).
+2. An issue is created at 00:30 Vietnam time (17:30 UTC the previous day) → its due date is VN day + 1, not UTC day + 1. Pin with a `defaultDueDate` test (Task 1).
+3. A sub-task is moved to another epic, deleted, or restored → the totals of the old and new epics are both correct. Pin in Task 3.
+4. A non-PM sends `storyPoints` in an update or bulk patch → 403 `POINTS_OVERRIDE_FORBIDDEN`, and nothing is written. Pin in Task 3.
+5. Clearing the due date via update, bulk, or the automation "set dueDate = empty" → 422 `DUE_DATE_REQUIRED` (for automation: the action is skipped with a log warning). Pin in Task 5.
+
+---
+
+### Task 1: Pure formula + due-date helper in `@tirapro/shared`
+
+**Files:**
+- Create: `packages/shared/src/points.ts`, `packages/shared/src/points.test.ts`.
+- Export both from `packages/shared/src/index.ts`.
+
+**Interfaces — Produces:**
+- `type Difficulty = 'EASY'|'MEDIUM'|'HARD'|'VERY_HARD'`, and `DIFFICULTIES: readonly Difficulty[]`.
+- `DIFFICULTY_LABELS: Record<Difficulty,string>` (Dễ / Trung bình / Khó / Rất khó).
+- `interface PointsFormula { base: Record<'SUBTASK'|'TASK'|'BUG'|'STORY', number>; difficulty: Record<Difficulty, number>; priority: Record<'Lowest'|'Low'|'Medium'|'High'|'Highest', number> }`.
+- `DEFAULT_POINTS_FORMULA: PointsFormula`.
+- `pointsFormulaSchema` (zod). Each value is > 0 and ≤ 100.
+- `computePoints(f: PointsFormula, typeKey: string|null, difficulty: Difficulty, priorityName: string|null): number|null`. Returns `null` for EPIC.
+- `explainPoints(f, typeKey, typeName, difficulty, priorityName): string`. Example: `"Bug · Khó · High = 2×3×1.5 = 9"`.
+- `defaultDueDate(createdAt: Date): string`. Returns the ISO string of the VN calendar date + 1 at `T00:00:00.000Z`.
+
+- [ ] **Step 1: Write the failing tests.**
+  - `computePoints(DEFAULT,'BUG','HARD','High') === 9`.
+  - `computePoints(DEFAULT,'TASK','EASY','Medium') === 2`.
+  - `computePoints(DEFAULT,null,'MEDIUM',null) === 4` (custom type uses the TASK base).
+  - `computePoints(DEFAULT,'EPIC','MEDIUM','High') === null`.
+  - Half-up rounding: a formula with base 1, difficulty ×1, priority ×1.5 gives 2.
+  - `explainPoints(...)` returns exactly `'Bug · Khó · High = 2×3×1.5 = 9'`.
+  - `defaultDueDate(new Date('2026-11-04T17:30:00Z')) === '2026-11-06T00:00:00.000Z'` (it is already 2026-11-05 in VN); `16:30Z` → `2026-11-05`.
+  - `defaultDueDate(new Date('2026-11-04T03:00:00Z')) === '2026-11-05T00:00:00.000Z'`.
+- [ ] **Step 2: Run the tests.** `pnpm --filter @tirapro/shared test points` → FAIL.
+- [ ] **Step 3: Implement.** Compute the VN date as UTC+7 (fixed offset; Vietnam has no DST).
+- [ ] **Step 4: Run again** → PASS. Then build types and shared.
+- [ ] **Step 5: Commit.**
+
+### Task 2: Prisma schema + migrations (difficulty, pointsManual, formula table, data backfill)
+
+**Files:**
+- Modify: `apps/api/prisma/schema.prisma`.
+- Create the migrations:
+  - `apps/api/prisma/migrations/20261104100000_points_difficulty/migration.sql`
+  - `apps/api/prisma/migrations/20261104100100_due_date_backfill/migration.sql`
+
+**Interfaces — Produces:**
+- `enum IssueDifficulty { EASY MEDIUM HARD VERY_HARD }`.
+- `Issue.difficulty IssueDifficulty @default(MEDIUM)`.
+- `Issue.pointsManual Boolean @default(false)`.
+- `model PointsFormulaConfig { id String @id @default("default"); formula Json; updatedAt DateTime @updatedAt; updatedById String? }`.
+
+- [ ] **Step 1: Points migration.** Add the enum and columns. Every existing row gets MEDIUM and `pointsManual=false` through the column defaults. Insert the default row: `INSERT INTO "PointsFormulaConfig"(id, formula, "updatedAt") VALUES ('default', '<DEFAULT_POINTS_FORMULA as JSON>', now()) ON CONFLICT DO NOTHING`. Recomputing old points is NOT done in SQL; Task 4's script does it.
+- [ ] **Step 2: Due-date backfill migration (idempotent: only rows where `dueDate IS NULL`).**
+  - Not done: the status category is not DONE → `dueDate = ((now() AT TIME ZONE 'Asia/Ho_Chi_Minh')::date + 1)::timestamp AT TIME ZONE 'UTC'`.
+  - DONE → `dueDate = (COALESCE("resolvedAt","updatedAt") AT TIME ZONE 'Asia/Ho_Chi_Minh')::date` at 00:00 UTC.
+  - The DONE row may then be earlier than `createdAt`'s date; that is accepted, because this is a historical backfill.
+  - The column stays nullable, so imports of old data cannot fail at the DB level; the rule is enforced in the service.
+- [ ] **Step 3: Generate and verify.** Run `pnpm gen:enums`, `npx prisma generate`, then `npx prisma migrate diff` against the schema → no drift. Build types.
+- [ ] **Step 4: Verify the SQL.** Apply both migrations to a throwaway Postgres (pg18 at `/opt/homebrew/opt/postgresql@18/bin`, data dir in the scratchpad, port 5499, `--locale=C`, TCP only). Run `prisma migrate deploy`, then check the row counts in a seeded sample.
+- [ ] **Step 5: Commit.**
+
+### Task 3: API — compute points on every write path + epic roll-up + override
+
+**Files:**
+- Create: `apps/api/src/modules/issues/points.service.ts` and `points.service.spec.ts`.
+- Modify:
+  - `apps/api/src/modules/issues/issues.service.ts` (`createCore`, `update`, `bulkUpdate`, delete/restore, `epicId` changes, DTO mapping around L2150)
+  - `packages/shared/src/schemas/issue.ts` (add `difficulty` to create/update/bulk patch)
+  - `packages/types` IssueDto (`difficulty`, `pointsManual`, `pointsExplain`)
+  - `apps/api/src/modules/issues/issues.module.ts`
+  - `apps/api/src/modules/issues/issues.controller.ts` (new route)
+
+**Interfaces — Produces:**
+- `PointsService.getFormula(): Promise<PointsFormula>`. Cached in memory and invalidated by `setFormula`.
+- `PointsService.pointsFor(tx, issue: {typeId, difficulty, priorityId}): Promise<number|null>`.
+- `PointsService.rollupEpics(tx, epicIds: string[]): Promise<void>`. Sets each epic's `storyPoints` to the sum of `storyPoints` over its non-deleted issues with that `epicId` (sub-tasks included), and bumps its version.
+- Route `POST /issues/:id/points/reset`, permission `project:admin` or SA → `pointsManual=false` plus a recompute.
+- Error `POINTS_OVERRIDE_FORBIDDEN` (403).
+
+- [ ] **Step 1: Failing tests in `issues.service.spec.ts` / `points.service.spec.ts`:**
+  - Create with no `storyPoints`: Bug/HARD/High → 9, with `pointsManual=false`.
+  - Changing the priority of a non-manual issue recomputes its points. A manual issue keeps them.
+  - A non-PM update with `storyPoints` → 403 `POINTS_OVERRIDE_FORBIDDEN`. A PM update → `pointsManual=true`, and the value must be an integer 0–100.
+  - A bulk patch with `storyPoints` from a non-PM → 403. A bulk patch of `difficulty` recomputes each non-manual issue.
+  - `epicId` A→B on a 3-point issue: epic A drops by 3, epic B gains 3. Deleting or restoring the issue updates its epic's total.
+  - `createWithin` (import) ignores incoming `storyPoints` and computes them.
+- [ ] **Step 2: Run the tests** → FAIL.
+- [ ] **Step 3: Implement.**
+  - The override check is `rbac.getEffectivePermissions(user, ws, projectId).has('project:admin') || user.isSystemAdmin`.
+  - Remove the old comment at L1342 ("storyPoints không cần kiểm quyền riêng").
+  - The epic roll-up runs inside the same transaction.
+- [ ] **Step 4: Gates.** `pnpm --filter @tirapro/api test` → all PASS. Then run typecheck.
+- [ ] **Step 5: Commit.**
+
+### Task 4: API — formula admin endpoint, background recompute, AI and automation paths, one-off recompute script
+
+**Files:**
+- Modify:
+  - `apps/api/src/modules/admin/admin-console.controller.ts` + `admin-console.schemas.ts`
+  - `apps/api/src/modules/ai/ai.service.ts` (L30–L245)
+  - `apps/api/src/modules/automation/actions/issue-patch.ts` + `automation.schemas.ts`
+  - `/Users/inrnee/tirapro-data/vm128/deploy.sh` (outside the repo): add the line `sudo -u tirapro /opt/tirapro/run-as-tirapro.sh $N/apps/api node scripts/recompute-points.mjs 2>&1 | tail -1` after `seed-system-roles`.
+- Create: `apps/api/scripts/recompute-points.mjs`.
+
+**Interfaces — Produces:**
+- `GET /admin/points-formula` → `PointsFormula`.
+- `PUT /admin/points-formula` with a `pointsFormulaSchema` body → `PointsFormula`. Only `assertSysAdmin` may call it. It writes one audit entry `points.formula_changed`, then starts `PointsService.recomputeAll()` without awaiting it.
+- `PointsService.recomputeAll(): Promise<{updated:number}>`.
+  - Works project by project in batches of 500.
+  - Only touches non-manual, non-EPIC issues whose computed value differs. Bumps `version` on those.
+  - Then rolls up every epic.
+  - Emits the project-level realtime event the codebase already uses for bulk changes (find it next to the `bulkUpdate` emit), so open clients refetch.
+  - No per-issue activity entries.
+- `scripts/recompute-points.mjs`: same algorithm through a plain `PrismaClient`, idempotent. Prints `recomputed N issues, M epics`.
+- AI suggest: replace `storyPoints` with `difficulty` (enum of the four values) in the tool schema and the heuristic. The heuristic is length <80 → EASY, <200 → MEDIUM, <500 → HARD, otherwise VERY_HARD. The response field is renamed to `difficulty`; update the web consumer in Task 6.
+- Automation: remove `storyPoints` from the settable fields and add `difficulty`. An existing rule that still sets `storyPoints` skips that action and logs a warning in the run log. Setting `dueDate` to null/empty is skipped the same way, with warning `DUE_DATE_REQUIRED`.
+
+- [ ] **Step 1: Failing tests.**
+  - A non-SA calls `PUT /admin/points-formula` → 403.
+  - A valid PUT persists the formula, writes the audit entry, and calls `recomputeAll`.
+  - `recomputeAll` skips manual issues and epics, bumps version only on changed rows, and the epic total equals the sum of its children.
+  - The AI heuristic returns `difficulty`.
+  - An automation action that sets `storyPoints` → skipped with a warning.
+- [ ] **Step 2: Run** → FAIL.
+- [ ] **Step 3: Implement.**
+- [ ] **Step 4: Run the script against a throwaway DB.**
+  1. Apply the Task 2 migrations to the throwaway Postgres.
+  2. Seed 2 issues: one manual with 80 points, one with no points (Bug/MEDIUM/High).
+  3. Run `node scripts/recompute-points.mjs` → the manual issue is unchanged and the other has 6. A second run updates 0.
+- [ ] **Step 5: Gates, then commit.**
+
+### Task 5: API — due date default and "cannot clear"
+
+**Files:**
+- Modify: `apps/api/src/modules/issues/issues.service.ts` (`createCore` ~L776/870, `update` ~L1245–1276, `bulkUpdate` patch), `packages/shared/src/schemas/issue.ts`, `issues.service.spec.ts`.
+
+**Interfaces:**
+- Consumes `defaultDueDate` from Task 1.
+- Produces error `DUE_DATE_REQUIRED` (422) with the message `'Hạn là bắt buộc — chọn một ngày thay vì xoá trống'`.
+
+- [ ] **Step 1: Failing tests.**
+  - Create without `dueDate` at a mocked `now = 2026-11-04T17:30Z` (00:30 ngày 05/11 giờ VN) → `dueDate = 2026-11-06T00:00:00.000Z`.
+  - `createWithin` (import) without `dueDate` → it gets the default.
+  - `update({dueDate:null})` → 422 `DUE_DATE_REQUIRED`.
+  - A bulk patch with `dueDate:null` → 422.
+  - `update({dueDate:'2026-12-01T00:00:00.000Z'})` still works.
+- [ ] **Step 2: Run** → FAIL.
+- [ ] **Step 3: Implement.** The zod update schema keeps `.nullable()` for wire compatibility; the service rejects null.
+- [ ] **Step 4: Gates.**
+- [ ] **Step 5: Commit.**
+
+### Task 6: Web — difficulty, computed points, PM override, admin formula page
+
+**Files:**
+- Modify:
+  - `apps/web/src/features/issue-edit/IssueProperties.tsx` (`IssueStoryPointsInline` L383+, plus a new `IssueDifficultyInline` next to the priority control)
+  - `apps/web/src/features/issues/CreateIssueModal.tsx` (difficulty select, default "Trung bình"; remove the points input)
+  - `apps/web/src/features/bulk/bulkEdit.ts`, `useBulkEdit.ts`, `useGroupedBulkEdit.ts` (add difficulty; points only for PM)
+  - `apps/web/src/features/backlog/InlineEdits.tsx` (points cell read-only for non-PM)
+  - the AI consumers `features/ai/*` and `features/assistant/draft.ts` (rename to `difficulty`)
+  - `apps/web/src/app/router.tsx` + `features/admin/AdminLayout.tsx` (nav item "Cách tính điểm")
+- Create: `apps/web/src/features/admin/AdminPointsPage.tsx` + test.
+
+**Interfaces:**
+- Consumes `IssueDto.difficulty`, `pointsManual`, `pointsExplain`; `GET/PUT /admin/points-formula`; `POST /issues/:id/points/reset`; `DIFFICULTY_LABELS`.
+- Points display:
+  - Read-only for users without `project:admin`. Tooltip = `pointsExplain`.
+  - For a PM, clicking edits the value (integer 0–100). When `pointsManual`, show the small text "đã chỉnh tay" and a button "Tính lại theo công thức".
+- Admin page:
+  - Three small number tables (base / difficulty / priority) and a live example row "Bug · Khó · High = 9".
+  - Saving shows the toast "Đã lưu — đang tính lại điểm toàn hệ thống".
+
+- [ ] **Step 1: Failing component tests.**
+  - A non-PM sees no editable points button, and the tooltip contains `=`.
+  - A PM sees the reset button when `pointsManual`.
+  - The create modal defaults difficulty to MEDIUM and has no points input.
+  - The admin page validates values > 0.
+- [ ] **Step 2: Run** → FAIL.
+- [ ] **Step 3: Implement.** Bám DESIGN.md.
+- [ ] **Step 4: Gates.** Also run `node ~/.claude/skills/impeccable/scripts/detect.mjs --json apps/web/src/features/admin apps/web/src/features/issue-edit` and fix the findings.
+- [ ] **Step 5: Commit.**
+
+### Task 7: Web — due date prefilled and not clearable
+
+**Files:**
+- Modify: `IssueProperties.tsx` (the due inline around L860–890: no clear control; an empty value reverts), `CreateIssueModal.tsx` (prefill today+1 VN), bulk-edit due (no "Xoá hạn" option).
+
+- [ ] **Step 1: Failing tests.**
+  - The create modal's due date field initially shows tomorrow.
+  - The due inline has no clear button, and blurring an empty input sends no patch.
+- [ ] **Step 2: Run** → FAIL.
+- [ ] **Step 3: Implement.**
+- [ ] **Step 4: Run** → PASS.
+- [ ] **Step 5: Commit.**
+
+### Task 8: Web — status names in "Việc của tôi" and in the results table
+
+**Files:**
+- Modify:
+  - `apps/web/src/features/dashboard/DashboardPage.tsx` (row ~L930: replace the dot with `<StatusPill>`, and make the name always visible on this list)
+  - the "Việc của tôi chưa xong" gadget in `features/dashboards/registry.tsx`, if it renders the same dot
+  - `apps/web/src/features/saved-filters/ResultsTable.tsx` (summary column `max-w-[28rem] truncate` with a `title`; the other columns `whitespace-nowrap`; the status cell uses `StatusPill`)
+- Optionally add a prop `alwaysShowName` to `components/ui/StatusPill.tsx`.
+
+**Added by the user (2026-11-04):** in the saved-filter list (left column of `/filters`, item "Lọc bug todo · Cả không gian làm việc"), the share icon button floats right after the text. Pin it to the item's right edge: the text column is `min-w-0 flex-1` and the button is `ml-auto shrink-0`, vertically centred. Test: the share button is the last child and carries `ml-auto`, or the text wrapper carries `flex-1`.
+
+**Added by the user (2026-11-04):** on `/filters`, while a saved filter is selected (the header shows its name, e.g. "Việc của tôi"), the button next to "Chạy JQL" reads "Lưu truy vấn".
+- Rename it to **"Sửa"**, with a pencil icon.
+- It opens the existing edit flow for that saved filter (name, JQL, sharing), prefilled with the current JQL from the editor, and saves via update, not create.
+- With no saved filter selected (an ad-hoc query), keep "Lưu truy vấn" → create.
+- If the user lacks edit rights on the selected filter (a shared filter owned by someone else), show "Lưu thành bộ lọc mới" instead.
+- Test: with a selected owned filter the button text is "Sửa" and submitting calls update with the filter id; with no selection it is "Lưu truy vấn".
+
+- [ ] **Step 1: Failing tests.**
+  - A My-work row renders the text `Chờ test` for an issue whose status is Chờ test.
+  - The results table's summary cell has the `truncate` class.
+- [ ] **Step 2: Run** → FAIL.
+- [ ] **Step 3: Implement.**
+- [ ] **Step 4: Run** → PASS.
+- [ ] **Step 5: Commit.**
+
+### Task 9: Web — hide empty blocks behind "+ Thêm mục"
+
+**Files:**
+- Create: `apps/web/src/features/issues/OptionalSections.tsx` + test.
+- Modify: `apps/web/src/features/issues/IssueDetailPage.tsx`, `apps/web/src/features/issues/peek/IssuePeekPanel.tsx`.
+
+**Interfaces — Produces:**
+- `type OptionalSectionId = 'acceptance'|'checklist'|'components'|'fixVersions'|'affectsVersions'|'links'|'docs'|'environment'`.
+- `useOptionalSections(issue, data): { visible(id): boolean; hidden: OptionalSectionId[]; open(id): void }`.
+  - A section is visible when it has data or was opened in this page session (component state; no persistence).
+- `<AddSectionButton hidden={...} onPick={open} />` renders "+ Thêm mục" with a menu of Vietnamese labels:
+  - Tiêu chí chấp nhận
+  - Các bước cần làm
+  - Thành phần
+  - Sửa ở phiên bản
+  - Bị ảnh hưởng ở phiên bản
+  - Liên kết
+  - Tài liệu liên quan
+  - Thông tin môi trường
+
+  It renders nothing when `hidden` is empty or the user cannot edit.
+- Opening a section scrolls it into view and focuses its first input.
+- The Description and Attachments blocks are untouched.
+- "Has data" sources:
+  - `acceptanceCriteria` is non-blank
+  - the checklist has ≥1 item
+  - `components`, `fixVersions` or `affectsVersions` has length ≥1
+  - links ≥1
+  - related docs ≥1 (use the query the panel already makes; hide while it loads)
+  - `environment` is non-null
+
+- [ ] **Step 1: Failing tests.**
+  - An issue with all of these empty renders none of the 8 sections, plus the button.
+  - Picking "Liên kết" shows the links section and removes "Liên kết" from the menu.
+  - An issue with acceptance criteria shows that section without clicking.
+  - A viewer without edit permission sees no button.
+- [ ] **Step 2: Run** → FAIL.
+- [ ] **Step 3: Implement.** Use it in both the page and the peek panel.
+- [ ] **Step 4: Gates, plus the impeccable detect.**
+- [ ] **Step 5: Commit.**
+
+### Task 10: Web — AI off hides every AI suggestion; "Gán cho tôi" next to Người phụ trách
+
+Two requests the user added on 2026-11-04.
+
+**1. Turning the AI assistant off hides every AI suggestion.**
+- The header toggle "Trợ lý AI: Tắt" is backed by the store `useAi((s) => s.enabled)` (see `components/layout/AppShell.tsx:51`).
+- The assignee "Gợi ý" button stays visible while AI is off (it lives in `features/ai/AssigneeSuggestButton.tsx`, used from `IssueProperties.tsx` around L468).
+- Every AI-only control must render nothing while `enabled === false`:
+  - `AssigneeSuggestButton`
+  - the "Trợ lý AI" card / `AiIssuePanel` ("Tóm tắt", "Gợi ý ưu tiên & điểm"/difficulty)
+  - any other `features/ai/*` entry point found on the issue page, peek panel or create modal (grep for imports from `features/ai`)
+- Non-AI features stay visible.
+
+**2. Add a "Gán cho tôi" button next to Người phụ trách.**
+- It goes in the Người phụ trách row on the issue page and in the peek panel.
+- It appears only when the current user may assign (`issue:assign`, the same check the assignee picker uses) **and** the issue is not already assigned to them.
+- Clicking it patches `assigneeId = me` with OCC and an optimistic update, then shows the toast "Đã gán cho bạn".
+- Reuse the assign mutation the picker already uses.
+
+**Files:**
+- Modify: `features/ai/AssigneeSuggestButton.tsx`, `features/ai/AiIssuePanel.tsx` (or their call sites), `features/issue-edit/IssueProperties.tsx`.
+
+**3. Move "Tạo bản sao" into the "⋯ Thêm" menu (added by the user, 2026-11-04).**
+- Today the issue page toolbar (`Bình luận · Tạo việc con · Tạo bản sao · ⋯ Thêm`, in `features/issues/IssueDetailPage.tsx`) shows a standalone "Tạo bản sao" button.
+- Remove that button and add a "Tạo bản sao" item to the existing "Thêm" menu. Keep the same handler and permission, and put the item first in the menu.
+- Test: the toolbar has no standalone "Tạo bản sao" button; opening "Thêm" shows the item; clicking it opens the same clone flow.
+
+**4. The issue detail page fills the content area (added by the user, 2026-11-04).**
+- The full issue page (`/issue/:key`, `features/issues/IssueDetailPage.tsx`) is currently centred in a narrow max-width column, leaving a wide empty gutter on the left.
+- Make it use the full width of the app's content area, keeping the usual page padding.
+- The main column grows; the right "Epic / Người liên quan / Mốc thời gian" column keeps its current width.
+- Do not change the peek panel.
+- Test: the page root no longer carries the narrow `max-w-*` class (assert on the class); check visually at 1500px.
+
+- [ ] **Step 1: Failing tests.**
+  - With the store `enabled=false`, `AssigneeSuggestButton` renders null and the AI card renders null.
+  - With `enabled=true`, both render.
+  - "Gán cho tôi" is visible when the assignee is someone else and the user can assign; hidden when the issue is assigned to me; hidden without permission.
+  - Clicking it calls the patch with `{assigneeId: me.id, version}`.
+- [ ] **Step 2: Run** → FAIL.
+- [ ] **Step 3: Implement.**
+- [ ] **Step 4: Run** → PASS.
+- [ ] **Step 5: Commit.**
+
+### Task 11: Web — workflow graphs without overlaps + click to highlight paths
+
+Two requests the user added on 2026-11-04: "rà soát và thể hiện lại các cây workflow sao cho không bị chạm/đan xen", and "click vào trạng thái nào thì highlight đường đi hiện tại và tương lai của nó".
+
+**Findings (controller, screenshots on the VM):**
+- **(a) The read-only dialog `features/workflow-settings/WorkflowViewDialog.tsx`, opened from the issue page.**
+  - It uses its own `autoLayout`: three category columns, with reactflow smoothstep edges.
+  - Edges run in shared vertical channels and the labels overlap ("Tạm dừng", "Mở lại", "Sẵn sàng…/Cần làm rõ" are garbled).
+- **(b) The settings graph `WorkflowGraph.tsx` (`/settings/workflows`, Sơ đồ tab).**
+  - It already uses the non-overlapping lane layout in `workflowLayout.ts`.
+  - But on first render it is tiny and off-centre: fitView appears to run before the container has its size, or while it is hidden.
+
+**Requirements:**
+1. **`WorkflowViewDialog` uses the `workflowLayout.ts` layout and edge renderer** (one implementation, read-only mode), instead of its own `autoLayout` and smoothstep.
+   - Keep the "Hiện tại" badge on the issue's current status, the "Khởi tạo" badge, and the "Bất kỳ trạng thái" transitions, shown as the existing badge on the target node, as `workflowLayout` already does.
+   - No two edges may share a segment, and no label may overlap another label, a node, or an edge's vertical leg. Extend the existing `workflowLayout.test.ts` assertions to the real TIRA/ATP workflow fixture (9 statuses: Cần làm, Đang phân tích, Sẵn sàng phát triển, Đang làm, Review code, Chờ test, Đang test, Hoàn thành, Không xử lý), with its transitions (copy them from the DB dump the controller provides in `.superpowers/sdd/2026-11-04-points-due-status/tira-workflow.json`).
+2. **Fix the initial fit of the settings graph and the dialog.**
+   - Call fitView after nodes are initialized **and** the container has a non-zero size (ResizeObserver, or `useNodesInitialized` plus a size check). Re-fit when switching to the Sơ đồ tab and on container resize.
+   - The graph should fill the panel width with padding 0.1, with a minimum zoom such that labels stay readable (≥0.5). If the graph is wider than that allows, it is pannable instead of shrunk.
+3. **Click to highlight**, in both the dialog and the settings graph:
+   - Clicking a status selects it.
+   - The **current paths**, i.e. its direct outgoing transitions and their target nodes, are highlighted strongly (primary colour, thicker stroke, labels at full opacity).
+   - The **future paths**, i.e. every transition reachable after those (BFS over outgoing edges, excluding edges back into already-visited nodes so the loop doesn't take over), are highlighted lighter (primary at reduced opacity).
+   - Incoming edges into the selected node are shown in a neutral emphasis so you can see how you got there.
+   - Everything else is dimmed to about 25% opacity.
+   - Clicking the same node, the background, or pressing Esc clears the selection.
+   - In the issue dialog, the selection starts on the issue's current status.
+   - In the settings graph, a click on a node must still work with the existing edit affordances: selection must not block editing.
+   - Pure helper `reachability(wf, statusId): { direct: Set<transitionId>; future: Set<transitionId>; incoming: Set<transitionId>; nodes: Set<statusId> }` in `workflowLayout.ts` (or a new `workflowPaths.ts`), unit-tested.
+
+**4. Hide the workflows of trashed projects (user decision, 2026-11-04).**
+- On `/settings/workflows`, the "Quy trình của dự án" list must not show a workflow whose project is soft-deleted (`project.deletedAt != null`). Restoring the project shows it again.
+- Do it on the API: the workflows list excludes `project.deletedAt != null` unless `?includeTrashed=1` is passed. Then the web list, the counts ("Quy trình của dự án (9)"), and any project/workflow picker are all correct.
+- Templates (`projectId = null`) are unaffected.
+- Test: an API list with a trashed project's workflow excludes it; a web count matches.
+
+- [ ] **Step 1: Failing tests.**
+  - `reachability` on the TIRA fixture from "Đang làm": `direct` = its outgoing transition ids; `future` contains the "Test đạt" transition (Đang test → Hoàn thành), and contains no transition already in `direct`.
+  - Layout of the TIRA fixture: no overlapping label rectangles, and no two edges sharing a horizontal or vertical segment.
+  - The dialog renders through the shared layout: no smoothstep edge type.
+- [ ] **Step 2: Run** → FAIL.
+- [ ] **Step 3: Implement.**
+- [ ] **Step 4: Visual check.** Run the web dev server against a local API, or the controller does it on the VM after deploy. Take a screenshot of both graphs; the labels must be legible and not overlapping.
+- [ ] **Step 5: Gates + impeccable detect on `features/workflow-settings`, then commit.**
+
+### Task 12: Web — every page fills the content area (no centred max-width frame)
+
+User request (2026-11-04): "rà soát lại tất cả các trang, để fit-content chứ không co lại nữa". This subsumes Task 10 part 4: if Task 10 already did the issue page, keep it consistent with this task.
+
+**Finding:** page width has one source, `apps/web/src/components/layout/PageFrame.tsx`:
+- `PAGE_FRAME_WIDTH = { sm: 'max-w-3xl', lg: 'max-w-5xl', xl: 'max-w-7xl', full: '' }`.
+- About 45 call sites use it.
+- Other page roots may set their own `mx-auto max-w-*`, for example `features/docs/DocumentationPage.tsx:364` (`max-w-[1200px]`) and `:433`, as well as settings/admin layouts. Grep for them.
+
+**Requirements:**
+1. Every page frame uses the full width of the content area and keeps the existing padding (`px-4 sm:px-6`, the top and bottom padding, and `lg:pb-28` for the FAB).
+   - Set `sm`, `lg` and `xl` to `''` (keep the size prop so call sites don't churn, and update the doc comment to say widths are now uniform), or remove the prop. Pick one and keep every call site compiling.
+2. Readability guard, so that "full width" doesn't stretch single form controls across 1600px:
+   - In the settings and form pages (formerly `sm`), long single-line inputs, textareas and select rows inside form sections keep a sensible max width (`max-w-xl` on the field row, not on the page). Tables, lists, cards and graphs stretch.
+   - Prose pages (Wiki/Documentation article body) keep a readable measure on the article text column only (about 75ch). Side navs and toolbars stretch.
+3. Audit:
+   - Grep `apps/web/src` for page-root `mx-auto` + `max-w-` outside PageFrame and convert those page roots to full width. Dialogs, popovers, empty states and toasts keep their own max widths.
+   - List every page you changed in the report.
+4. Update the tests that assert `PAGE_FRAME_WIDTH` / `pageFrameClass` (grep `pageFrameClass` and `PAGE_FRAME_WIDTH` in `*.test.ts*`).
+
+- [ ] **Step 1: Failing test.** `pageFrameClass('lg')` and `pageFrameClass('sm')` contain no `max-w-` class.
+- [ ] **Step 2: Run** → FAIL.
+- [ ] **Step 3: Implement + audit.**
+- [ ] **Step 4: Gates.**
+  - Run impeccable detect on `apps/web/src`, and fix any new findings in the files you touched.
+  - Visual spot-check at 1600px of these pages: Tổng quan, Dự án, issue detail, Bộ lọc, Cài đặt → Quy trình, Cài đặt → Thông báo, Quản trị hệ thống, Wiki.
+- [ ] **Step 5: Commit.**
+
+
+### Task 13 (run right after Task 5, before Task 6): parent points = sum of sub-tasks; aggregations count leaves only
+
+User decision (2026-11-04, "cách 2"); the spec's appendix "Bổ sung 2026-11-04" is binding and replaces the old epic-sum rule.
+
+**Interfaces — Produces:**
+- `PointsService.rollupParents(tx, parentIds: string[]): Promise<void>`.
+  - It runs on each parent that is not an Epic and has ≥1 live child. It locks the rows in id order, sets `storyPoints` to the sum of the children's points, and bumps `version` only when the value changed.
+  - When a parent has no live children left, it recomputes the parent by formula, unless `pointsManual` is set.
+  - It returns the set of affected epic ids, so the caller can chain `rollupEpics`.
+- `rollupEpics` changes to: sum of `storyPoints` over live issues with `epicId` = the epic **and** `parentId IS NULL`.
+- `common/points-scope.ts` changes `EXCLUDE_EPIC_POINTS`, renamed to `LEAF_POINTS_ONLY` (update every user from Task 3). It excludes Epics **and** issues that have a live child: `children: { none: { deletedAt: null } }`, or the equivalent relation name in the schema.
+  - `countsTowardPoints(issue)` takes `childCount`/`hasChildren`. Add that to IssueDto if needed, as `hasLiveChildren: boolean`.
+- Overriding points by hand on a parent that has live children → 422 `POINTS_ROLLUP_ONLY`.
+- Recompute (`recomputeAll` and `scripts/recompute-points.mjs`) skips parents with live children in the formula pass, then runs a parent rollup pass (leaf parents first), then the epic rollup. It keeps the no-`updatedAt` and race rules from the Task 4 fix round.
+
+**Steps:**
+- [ ] **Step 1: Failing tests.**
+  - A Task with sub-tasks of 2 and 3 points → the Task is 5. Its epic counts the Task (5) once and does not count the sub-tasks again.
+  - Deleting a sub-task → the Task drops to 2, and the epic follows.
+  - Moving a sub-task to another parent → both parents and their epics update.
+  - The last child is deleted → the parent goes back to the formula value.
+  - A PM override on a parent with children → 422 `POINTS_ROLLUP_ONLY`.
+  - Sprint totals with a Task(5) and its two sub-tasks (2+3) in the sprint → 5.
+  - The recompute script on the throwaway DB gives the correct parent and epic totals, and a second run changes 0 rows.
+- [ ] **Step 2: Run** → FAIL.
+- [ ] **Step 3: Implement.** Mirror the epic logic (same transaction, same lock ordering: children → parent → epic).
+- [ ] **Step 4: Gates.** Run full API, shared and web tests, typecheck and lint.
+- [ ] **Step 5: Commit.**
+
+### Task 14 (after Task 12): edit in a dialog instead of expanding below (workflows + similar screens)
+
+User request (2026-11-04): on Cài đặt → Quy trình, clicking a workflow expands it inline below the list (chevron rows, then the Sơ đồ/Danh sách tabs and the graph further down the page). Instead, **open a dialog (popup) to view and edit that workflow**. Audit every similar screen and convert it the same way.
+
+**Rule for the audit.** Convert a pattern when a list or settings row expands to show an **editor or detail form for that item**, or when selecting a row renders its editor further down the page. Keep these as they are, because their expand/collapse is the content:
+- hierarchy expanders: backlog sections, Tree, Wiki tree, project rail
+- filter or option disclosures
+- the assistant panel
+- the JQL editor
+- collapsible groups of read-only data
+
+Candidates to check (grep `aria-expanded`):
+- `workflow-settings/WorkflowSettingsPage.tsx` (must convert)
+- `automation/RulesPage.tsx`
+- `clients/ClientsPage.tsx`
+- `goals/GoalsPage.tsx`
+- `portfolio/PortfolioPage.tsx`
+- `settings/NotificationSection.tsx`
+- `digests/DigestsSection.tsx`
+- `integrations/TelegramSection.tsx`
+- `triage/TriageRow.tsx`
+- `reports/SprintSummaryPanel.tsx`
+
+In the report, list each one with "converted" or "kept + why".
+
+**Dialog spec:**
+- Use the existing `components/ui/Dialog`. Size it large enough for the workflow graph (near full viewport on desktop, full screen on mobile). The title is the item name, followed by its badges.
+- Content is the same editor as now (Sơ đồ/Danh sách tabs, status/transition editing, delete). Read-only users get the same dialog in view mode.
+- URL deep link: `?workflow=<id>`, and the equivalent for others where useful, so a refresh reopens the dialog.
+- Esc and close return focus to the row.
+- Unsaved edits prompt before closing, using the existing confirm.
+- The list row becomes a plain button row: name, badges, "Dùng bởi…", the delete action. No chevron.
+- The graph inside the dialog must fit on open. Reuse Task 11's fit logic: the fit runs when the dialog's container gets its size.
+
+- [ ] **Step 1: Failing tests.**
+  - Clicking a workflow row opens a dialog containing the graph or list tabs, and nothing renders below the list.
+  - Esc closes it and focus returns to the row.
+  - `?workflow=<id>` opens that dialog on load.
+  - For each other converted screen: one test that clicking the row opens a dialog with its editor.
+- [ ] **Step 2: Run** → FAIL.
+- [ ] **Step 3: Implement + audit.**
+- [ ] **Step 4: Gates + impeccable detect on the touched features.**
+- [ ] **Step 5: Commit.**
+
+### Task 15 (with/after Task 14): inline "add" forms on list screens → "Thêm …" button + dialog
+
+User request (2026-11-04): every list screen that shows an always-open create form on the page itself (for example **Thành viên**, where the invite form sits above the member list) should instead show a primary button **"Thêm …"** in the page or section header, which opens a dialog containing the same form.
+
+**Audit:** grep `features/**` for page and section components that render a create or invite form at the top level of a list page. Candidates:
+- members / MembersSection (workspace + project)
+- labels (LabelsSection)
+- components (ComponentsSection)
+- versions (VersionsSection)
+- priorities and severities settings
+- custom fields (Trường thông tin thêm)
+- roles
+- teams
+- clients
+- api-keys
+- integrations
+- digests
+- SLA
+- RAID
+- goals
+- wiki spaces
+
+List each one in the report as "converted" or "kept + why".
+
+**Keep as is:**
+- quick-add rows that are part of a list's flow (backlog/board "+ Thêm việc…", checklist "Thêm bước", comment box, the link/attachment add inside issue sections)
+- search/filter bars
+
+**Dialog spec:**
+- Use the existing Dialog. The title is "Thêm <đối tượng>" (for members: "Mời thành viên").
+- The fields, validation and permissions are the same as today.
+- Submitting closes the dialog, shows the toast, and the new row appears in the list (it is highlighted briefly if the list already has a highlight pattern).
+- Esc returns focus to the button.
+- Unsaved input prompts before closing, using the existing confirm.
+- Without permission there is no button. The empty state's call to action opens the same dialog.
+
+- [ ] **Step 1: Failing tests.** For Thành viên (workspace) and at least one project-config section: the page shows the "Thêm…" button and no inline form; clicking opens a dialog with the form; submit sends the same request as before.
+- [ ] **Step 2: Run** → FAIL.
+- [ ] **Step 3: Implement + audit.**
+- [ ] **Step 4: Gates + impeccable detect.**
+- [ ] **Step 5: Commit.**

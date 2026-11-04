@@ -69,14 +69,21 @@ describe('epicProgress (theo điểm)', () => {
 });
 
 describe('rollupPoints (Cây việc, việc thường — đệ quy con cháu)', () => {
-  it('cộng con cháu theo cha-trong-cây, bỏ sub-task và chính root', () => {
+  it('chỉ cộng VIỆC LÁ (điểm việc cha đã là tổng con): không đếm trùng t và t2, bỏ chính root; count bỏ sub-task', () => {
     const list = [
-      mk('s', { storyPoints: 99 }),
-      mk('t', { parentId: 's', storyPoints: 3, done: true }),
-      mk('t2', { parentId: 't', storyPoints: 2 }),
+      mk('s', { storyPoints: 3 }), // = t + u (máy chủ cộng lên)
+      mk('t', { parentId: 's', storyPoints: 2 }), // = t2
+      mk('t2', { parentId: 't', storyPoints: 2, done: true }),
       mk('u', { parentId: 's', t: 'sub', storyPoints: 1 }),
     ];
-    expect(rollupPoints(list, 's')).toEqual({ donePoints: 3, totalPoints: 5, count: 2 });
+    expect(rollupPoints(list, 's')).toEqual({ donePoints: 2, totalPoints: 3, count: 2 });
+  });
+  it('Epic nằm dưới cây không bao giờ được cộng (điểm Epic là tổng)', () => {
+    const list = [
+      mk('s', { storyPoints: 0 }),
+      mk('e', { t: 'epic', parentId: 's', storyPoints: 7 }),
+    ];
+    expect(rollupPoints(list, 's').totalPoints).toBe(0);
   });
 });
 
@@ -102,11 +109,18 @@ describe('buildRowRollups — ô Điểm của Cây việc dùng cùng định n
     expect(rollupOf(list, 's')).toEqual({ donePoints: 0, totalPoints: 3, count: 1 });
   });
 
-  it('parentId việc thường + epicId=E: thuộc E (dù cây đặt dưới việc cha), E có rollup dù không có con trong cây', () => {
+  it('parentId việc thường + epicId=E: vẫn là thành viên E (có mục dù cây đặt dưới cha) nhưng điểm đã nằm trong điểm của cha → không cộng vào E', () => {
     const list = [
       mk('e', { t: 'epic' }),
       mk('p'),
       mk('x', { parentId: 'p', epicId: 'e', storyPoints: 4, done: true }),
+    ];
+    expect(rollupOf(list, 'e')).toEqual({ donePoints: 0, totalPoints: 0, count: 1 });
+  });
+  it('mồ côi (cha không còn trong tập nạp) tính vào E như việc cấp trên — đúng `PointsService.epicTotal`', () => {
+    const list = [
+      mk('e', { t: 'epic' }),
+      mk('x', { parentId: 'da-xoa', epicId: 'e', storyPoints: 4, done: true }),
     ];
     expect(rollupOf(list, 'e')).toEqual({ donePoints: 4, totalPoints: 4, count: 1 });
   });
@@ -215,8 +229,9 @@ describe('một định nghĩa thành viên epic (danh sách = tiến độ = pa
     expect(ids(applyEpicFilter(all, 'e1', byId))).toEqual(members);
     expect(ids(applyEpicFilter(all, 'none', byId))).toContain('subOfE'); // sub-task không thuộc epic nào
     expect(epicCounts(all).get('e1')).toBe(members.length);
+    // `underP` có cha thường `p` → điểm đã nằm trong `p`, không cộng vào epic (máy chủ: chỉ việc cấp trên).
     expect(epicProgress(all, 'e1', byId)).toMatchObject({
-      totalPoints: 10,
+      totalPoints: 5,
       donePoints: 3,
       totalCount: 3,
     });
@@ -234,11 +249,11 @@ describe('một định nghĩa thành viên epic (danh sách = tiến độ = pa
   it('epicTaskProgress: cùng đơn vị với epicProgress/panel — theo điểm khi có điểm', () => {
     const p = epicProgress(all, 'e1');
     expect(epicTaskProgress(all, 'e1')).toEqual({
-      total: 10,
+      total: 5,
       done: 3,
       inProgress: 0,
-      todo: 7,
-      pct: 30,
+      todo: 2,
+      pct: 60,
       unit: 'điểm',
     });
     expect(epicTaskProgress(all, 'e1')).toMatchObject({
@@ -269,9 +284,9 @@ describe('buildListProgressMap (dòng/thẻ epic dùng tập thành viên)', () 
     mk('a', { epicId: 'e', storyPoints: 2, done: true }),
     mk('b', { parentId: 'p', epicId: 'e', storyPoints: 2 }),
   ];
-  it('epic: số việc bằng thành viên (kể cả việc có cha thường); việc thường giữ tiến độ cây', () => {
+  it('epic: điểm chỉ tính việc cấp trên (b có cha thường p → đã nằm trong p); việc thường giữ tiến độ cây', () => {
     const m = buildListProgressMap(list);
-    expect(m.get('e')).toMatchObject({ total: 4, done: 2, pct: 50, unit: 'điểm' });
+    expect(m.get('e')).toMatchObject({ total: 2, done: 2, pct: 100, unit: 'điểm' });
     expect(m.get('p')).toMatchObject({ total: 1 });
   });
   it('epic không có thành viên => không có thanh', () =>

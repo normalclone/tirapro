@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   applyDrag,
+  buildScheduleUndoPatch,
   buildUnscheduledPatch,
   clampDelta,
   keyToDrag,
@@ -161,5 +162,23 @@ describe('orderSpans — thứ tự hàng ổn định sau khi thả', () => {
       'n0',
       'n1',
     ]);
+  });
+});
+
+describe('buildScheduleUndoPatch — hoàn tác lịch không bao giờ xoá Hạn', () => {
+  const iso = '2026-11-05T00:00:00.000Z';
+  it('trả các trường đã đổi về giá trị cũ (ngày bắt đầu cũ trống thì về null)', () => {
+    expect(buildScheduleUndoPatch({ startDate: null, dueDate: iso }, ['startDate'])).toEqual({
+      startDate: null,
+    });
+    expect(
+      buildScheduleUndoPatch({ startDate: iso, dueDate: iso }, ['startDate', 'dueDate']),
+    ).toEqual({ startDate: iso, dueDate: iso });
+  });
+  it('Hạn cũ trống (việc cũ) → không đưa dueDate vào bản vá (không bao giờ gửi dueDate: null)', () => {
+    const p = buildScheduleUndoPatch({ startDate: null, dueDate: null }, ['startDate', 'dueDate']);
+    expect(p).toEqual({ startDate: null });
+    expect(p && 'dueDate' in p).toBe(false);
+    expect(buildScheduleUndoPatch({ startDate: null, dueDate: null }, ['dueDate'])).toBeNull();
   });
 });

@@ -2,7 +2,13 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Plus } from 'lucide-react';
 import { toast } from 'sonner';
-import { normalizeEnvironment, type EnvironmentInput } from '@tirapro/shared';
+import {
+  DIFFICULTIES,
+  DIFFICULTY_LABELS,
+  normalizeEnvironment,
+  type Difficulty,
+  type EnvironmentInput,
+} from '@tirapro/shared';
 import { ENV_KIND_LABEL } from '@/features/issue-edit/environment';
 import { isBugType } from '@/features/issue-edit/severity';
 import { hasPendingImages, resolvePendingImages } from '@/features/issue-edit/pasteImage';
@@ -21,7 +27,7 @@ import { Dialog } from '@/components/ui/Dialog';
 import { ErrorSummary } from '@/components/ui/ErrorSummary';
 import { FieldErrorText } from '@/components/ui/FieldError';
 import { Input } from '@/components/ui/Input';
-import { DateTimeInput } from '@/components/ui/DateInput';
+import { DateInput } from '@/components/ui/DateInput';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { PeoplePicker } from '@/components/ui/PeoplePicker';
 import { useAssigneePicker } from '@/features/issue-edit/useAssigneeOptions';
@@ -31,10 +37,12 @@ import { ARCHIVED_PICK_HINT, CREATE_LAST_KEY } from '@/lib/currentProject';
 import { useCreateIssue } from './create-api';
 import { useProjectIssues } from './api';
 import { epicChoices, parentChoices } from '@/lib/epic';
+import { isEpicIssue } from '@/lib/issueRefs';
 import { blockOnInvalidDate } from '@/lib/dateGuard';
 import { fieldErrorId, type FieldError } from '@/lib/formErrors';
 import { useErrorFlow } from '@/lib/useErrorFlow';
-import { dueDaysFromToday } from '@/lib/dueDate';
+import { defaultDueInput, dueDaysFromToday } from '@/lib/dueDate';
+import { CHILD_SPRINT_TIP } from '@/lib/points';
 import { TokenTitleInput } from './TokenTitleInput';
 import { validateCreateIssue, type CreateIssueField } from './createIssueForm';
 import {
@@ -112,9 +120,24 @@ const FIELD_META: Record<CreateIssueField, { id: string; label: string }> = {
   project: { id: 'ci-project', label: 'Dự án' },
   type: { id: 'ci-type', label: 'Loại việc' },
   summary: { id: 'ci-summary', label: 'Tiêu đề' },
-  points: { id: 'ci-points', label: 'Điểm ước lượng' },
   due: { id: 'ci-due', label: 'Hạn hoàn thành' },
 };
+
+/** Sprint của việc cha có thể đã đóng (không có trong danh sách chọn được) — vẫn phải hiện đúng tên ở ô Sprint đã khoá. */
+function sprintOptionsWith(
+  options: Array<{ value: string; label: string }>,
+  sprintId: string,
+  sprints: Array<{ id: string; name: string }> | undefined,
+) {
+  if (!sprintId || options.some((o) => o.value === sprintId)) return options;
+  return [
+    ...options,
+    {
+      value: sprintId,
+      label: sprints?.find((x) => x.id === sprintId)?.name ?? 'Sprint của việc cha',
+    },
+  ];
+}
 
 /** Nhãn + gợi ý ngắn cho một ô nhập. `title` = giải nghĩa thuật ngữ (hiện khi rê chuột vào nhãn). */
 function Field({
@@ -169,8 +192,9 @@ export function CreateIssueModal() {
   const [priorityId, setPriorityId] = useState('');
   const [assigneeId, setAssigneeId] = useState('');
   const [sprintId, setSprintId] = useState('');
-  const [points, setPoints] = useState('');
-  const [due, setDue] = useState('');
+  const [difficulty, setDifficulty] = useState<Difficulty>('MEDIUM');
+  // Hạn bắt buộc: điền sẵn NGÀY MAI (giờ VN); ô không xoá trống được (xoá rồi rời ô → điền lại).
+  const [due, setDue] = useState(() => defaultDueInput());
   const [envKind, setEnvKind] = useState('');
   const [envBuild, setEnvBuild] = useState('');
   const [epicId, setEpicId] = useState('');
@@ -231,8 +255,8 @@ export function CreateIssueModal() {
     setPriorityId('');
     setAssigneeId('');
     setSprintId('');
-    setPoints('');
-    setDue('');
+    setDifficulty('MEDIUM');
+    setDue(defaultDueInput());
     setEnvKind('');
     setEnvBuild('');
     setEpicId('');
@@ -301,6 +325,17 @@ export function CreateIssueModal() {
   const isEpicType = selType?.key === 'EPIC';
   const hideEpic = isEpicType || !!selType?.isSubtask;
   const hideParent = !!preset.parentId || isEpicType;
+  // Việc con luôn vào sprint của việc cha: ô Sprint khoá và hiện sprint của cha (máy chủ cũng bỏ qua sprintId gửi kèm).
+  // "Tạo việc con" trên một Epic = gắn việc vào Epic đó (epicId), không phải con trong cây: Epic không làm việc cha.
+  const presetParentIsEpic = (() => {
+    const p = preset.parentId ? projIssues.find((i) => i.id === preset.parentId) : undefined;
+    return !!p && isEpicIssue(p);
+  })();
+  const parentIssueId = presetParentIsEpic
+    ? ''
+    : (preset.parentId ?? (hideParent ? '' : parentPick));
+  const hasParent = !!parentIssueId;
+  const parentSprintId = projIssues.find((i) => i.id === parentIssueId)?.sprintId ?? '';
   useEffect(() => {
     if (hideEpic) setEpicId('');
     if (hideParent) setParentPick('');
@@ -366,8 +401,8 @@ export function CreateIssueModal() {
     if (f.priorityId) setPriorityId(f.priorityId);
     if (f.assigneeId) setAssigneeId(f.assigneeId);
     if (f.sprintId) setSprintId(f.sprintId);
-    if (f.points != null) setPoints(f.points);
-    if (f.due) setDue(f.due);
+    if (f.difficulty) setDifficulty(f.difficulty as Difficulty);
+    if (f.due) setDue(f.due.slice(0, 10)); // hạn là ngày lịch: bỏ phần giờ của token
   }
 
   // Đổi loại → tự điền mẫu mô tả (chỉ khi mô tả trống hoặc đang là mẫu; bỏ qua lần đặt mặc định đầu).
@@ -394,7 +429,6 @@ export function CreateIssueModal() {
     typeId,
     summary,
     cleanSummary: parseTitleTokens(summary, tokenCtx).clean,
-    points,
     dueInPast,
   }).map((i) => ({ ...FIELD_META[i.field], message: i.message }));
   const flow = useErrorFlow(allErrors);
@@ -418,7 +452,7 @@ export function CreateIssueModal() {
     // Giá trị trên ô = giá trị được gửi: ô đổi tay thắng; token chỉ chèn cho ô chưa bị đổi tay và token chưa kịp
     // đồng bộ (đang gõ dở ở đuôi). Chỉ lược token khỏi tiêu đề khi TẠO.
     const v = resolveCreateValues(
-      { priorityId, assigneeId, sprintId, points, due },
+      { priorityId, assigneeId, sprintId, difficulty, due },
       lastTokens.current,
       tk,
       manualRef.current,
@@ -436,10 +470,12 @@ export function CreateIssueModal() {
         acceptanceCriteria: isStory ? acceptance.trim() || null : null,
         priorityId: v.priorityId || undefined,
         assigneeId: v.assigneeId || null,
-        parentId: preset.parentId ?? (hideParent ? undefined : parentPick || undefined),
-        epicId: hideEpic ? undefined : epicId || undefined,
-        storyPoints: v.points ? Number(v.points) : undefined,
-        sprintId: v.sprintId || undefined,
+        parentId: parentIssueId || undefined,
+        epicId: presetParentIsEpic ? preset.parentId : hideEpic ? undefined : epicId || undefined,
+        // Điểm do máy chủ tính từ Loại × Độ khó × Ưu tiên — web không gửi `storyPoints` khi tạo.
+        difficulty: (v.difficulty || 'MEDIUM') as Difficulty,
+        // Việc con luôn vào sprint của việc cha (máy chủ cũng bỏ qua sprintId gửi kèm).
+        sprintId: hasParent ? undefined : v.sprintId || undefined,
         dueDate: v.due ? localToCalendarIso(v.due) : undefined,
         environment: isBug
           ? normalizeEnvironment({
@@ -514,8 +550,8 @@ export function CreateIssueModal() {
     setSummary('');
     setDescription('');
     setFiles([]);
-    setPoints('');
-    setDue('');
+    setDifficulty('MEDIUM');
+    setDue(defaultDueInput());
     setEnvKind('');
     setEnvBuild('');
     lastTokens.current = { clean: '' };
@@ -686,7 +722,7 @@ export function CreateIssueModal() {
                 <code className="rounded bg-primary-subtle px-1 text-primary">#sprint</code>
               </span>
               <span>
-                <code className="rounded bg-primary-subtle px-1 text-primary">~điểm</code>
+                <code className="rounded bg-primary-subtle px-1 text-primary">~độ-khó</code>
               </span>
               <span>
                 <code className="rounded bg-primary-subtle px-1 text-primary">^hạn</code> (mai · t6
@@ -739,59 +775,57 @@ export function CreateIssueModal() {
             hint="(tùy chọn)"
             title="Sprint là khoảng thời gian làm việc ngắn, thường 1–2 tuần. Để trống thì việc nằm ở Việc chờ."
           >
-            <SearchSelect
-              value={sprintId}
-              onChange={(v) => {
-                markManual('sprintId');
-                setSprintId(v);
-              }}
-              disabled={!selId}
-              ariaLabel="Sprint"
-              options={sprintOptions}
-            />
+            <div title={hasParent ? CHILD_SPRINT_TIP : undefined}>
+              <SearchSelect
+                value={hasParent ? parentSprintId : sprintId}
+                onChange={(v) => {
+                  markManual('sprintId');
+                  setSprintId(v);
+                }}
+                disabled={!selId || hasParent}
+                ariaLabel="Sprint"
+                options={
+                  hasParent
+                    ? sprintOptionsWith(sprintOptions, parentSprintId, sprints)
+                    : sprintOptions
+                }
+              />
+            </div>
           </Field>
           <Field
-            label="Điểm ước lượng"
-            hint="(tùy chọn)"
-            title="Con số ước chừng độ lớn của việc — càng lớn càng tốn công. Dùng để đo sức làm của nhóm mỗi sprint."
-            htmlFor="ci-points"
-            error={errorOf('points')}
+            label="Độ khó"
+            title="Độ khó của việc — hệ thống tự tính điểm ước lượng từ Loại việc × Độ khó × Ưu tiên (xem bảng ở Quản trị → Cách tính điểm)."
+            htmlFor="ci-difficulty"
           >
-            <Input
-              id="ci-points"
-              type="number"
-              min={0}
-              max={100}
-              aria-invalid={errorOf('points') ? true : undefined}
-              aria-describedby={errorOf('points') ? fieldErrorId('ci-points') : undefined}
-              inputMode="numeric"
-              value={points}
-              onChange={(e) => {
-                markManual('points');
-                setPoints(e.target.value);
+            <SearchSelect
+              value={difficulty}
+              onChange={(v) => {
+                markManual('difficulty');
+                setDifficulty(v as Difficulty);
               }}
-              placeholder="VD: 3"
-              className="text-sm"
-              aria-label="Điểm ước lượng"
+              ariaLabel="Độ khó"
+              options={DIFFICULTIES.map((d) => ({ value: d, label: DIFFICULTY_LABELS[d] }))}
             />
           </Field>
           {/* Cả hàng: ô ngày dd/MM/yyyy + ô giờ HH:mm cần chỗ, và không để cột phải trống. */}
           <Field
             className="sm:col-span-2"
             label="Hạn hoàn thành"
-            hint="(tùy chọn)"
+            hint="(mặc định: ngày mai)"
             title="Mốc phải xong, không được trước ngày tạo. Quá hạn mà chưa xong, việc sẽ hiện viền đỏ trên bảng."
             htmlFor="ci-due"
             error={errorOf('due')}
           >
-            <DateTimeInput
+            <DateInput
               value={due}
               onChange={(v) => {
+                if (!v) return; // Hạn không để trống: xoá hết chữ thì giữ hạn cũ, rời ô sẽ điền lại
                 markManual('due');
                 setDue(v);
               }}
+              restoreOnEmpty
+              required
               id="ci-due"
-              defaultTime="17:00"
               ariaLabel="Hạn hoàn thành"
             />
           </Field>

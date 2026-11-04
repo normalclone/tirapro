@@ -3,7 +3,7 @@ import type { CreateIssueInput } from './create-api';
 import { parseTitleTokens, unmatchedTokens, type TokenCtx } from './titleTokens';
 
 /**
- * Dựng input tạo việc từ chữ gõ ở ô thêm nhanh: tách token `! ~ @ ^ #` (cùng parser với hộp tạo việc)
+ * Dựng input tạo việc từ chữ gõ ở ô thêm nhanh: tách token `! ~ @ ^ #` (`~` = độ khó) (cùng parser với hộp tạo việc)
  * thành trường; token ghi đè `extra`. `null` khi tiêu đề (sau khi bỏ token) rỗng.
  * `unmatched` = token không khớp (vẫn nằm trong tiêu đề) để báo người dùng.
  */
@@ -31,7 +31,7 @@ export function buildQuickAddInput(
     ...(tk.priorityId ? { priorityId: tk.priorityId } : {}),
     ...(tk.assigneeId ? { assigneeId: tk.assigneeId } : {}),
     ...(tk.sprintId ? { sprintId: tk.sprintId } : {}),
-    ...(tk.points != null ? { storyPoints: tk.points } : {}),
+    ...(tk.difficulty ? { difficulty: tk.difficulty } : {}),
     ...(tk.dueLocal ? { dueDate: localToCalendarIso(tk.dueLocal) } : {}),
   };
   return { input, unmatched: unmatchedTokens(text, ctx).map((u) => u.text) };

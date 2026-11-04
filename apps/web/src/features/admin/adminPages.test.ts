@@ -5,13 +5,14 @@ import { describe, expect, it } from 'vitest';
 const root = join(__dirname, '..', '..');
 const src = (rel: string) => readFileSync(join(root, rel), 'utf8');
 
-/** 5 route của Quản trị hệ thống (ngoài SubNavLayout; sidebar app đổi chế độ admin). Tất cả `lg` (B-D1). */
+/** 6 route của Quản trị hệ thống (ngoài SubNavLayout; sidebar app đổi chế độ admin). Tất cả `lg` (B-D1). */
 const PAGES: [route: string, file: string][] = [
   ['overview', 'features/admin/AdminOverviewPage.tsx'],
   ['workspaces', 'features/admin/AdminWorkspacesPage.tsx'],
   ['accounts', 'features/admin/AdminUsersPage.tsx'],
   ['config', 'features/admin/AdminConfigPage.tsx'],
   ['system', 'features/admin/AdminSystemPage.tsx'],
+  ['points', 'features/admin/AdminPointsPage.tsx'],
 ];
 
 describe('trang Quản trị hệ thống dùng PageFrame lg + PageHeader (T7)', () => {

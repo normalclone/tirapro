@@ -157,14 +157,14 @@ Mọi màn trong AppShell dựng từ bốn khối dùng chung ở `components/l
 
 **`PageFrame` — bề rộng + đệm (B-D1).** Nội dung mọi màn bắt đầu cùng một vị trí ngang. Đệm ngang 16px (mobile) / 24px (từ `sm`), dọc trên 24 → 32px, dưới 32px; từ `lg` đệm đáy 112px (`lg:pb-28`) để nút nổi (FAB) không che dòng cuối.
 
-| Cỡ     | Bề rộng            | Dùng cho                                                                                                                                              |
-| ------ | ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `sm`   | `max-w-3xl`        | form/danh sách hẹp: Cài đặt (trừ Vai trò & quyền, Quy trình), Thành viên, Thông báo, Tài khoản, Kết nối, Tự động hoá, Cấu hình dự án                  |
-| `lg`   | `max-w-5xl`        | màn làm việc vừa: chi tiết công việc, Bộ lọc, Wiki, Quản trị hệ thống, Quy trình, Vai trò & quyền                                                     |
-| `xl`   | `max-w-7xl`        | bảng mật độ cao: Tổng quan, Dự án, Bảng tổng quan, các trang Danh mục                                                                                 |
-| `full` | theo vùng nội dung | tab trong dự án: Việc mới vào, Thùng rác, Hoạt động, Cây việc, Báo cáo (Bảng việc/Việc chờ/Lịch trình là bề mặt công cụ riêng, không qua `PageFrame`) |
+| Cỡ     | Bề rộng                             | Dùng cho                                                                                                                                                                                         |
+| ------ | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `sm`   | theo vùng nội dung + `form-measure` | form/danh sách: Cài đặt (trừ Vai trò & quyền, Quy trình), Thành viên, Thông báo, Tài khoản, Kết nối, Tự động hoá, Cấu hình dự án — ô nhập một dòng / văn bản dài giữ 36rem, bảng và thẻ trải hết |
+| `lg`   | theo vùng nội dung                  | màn làm việc vừa: chi tiết công việc, Bộ lọc, Wiki, Quản trị hệ thống, Quy trình, Vai trò & quyền                                                                                                |
+| `xl`   | theo vùng nội dung                  | bảng mật độ cao: Tổng quan, Dự án, Bảng tổng quan, các trang Danh mục                                                                                                                            |
+| `full` | theo vùng nội dung                  | tab trong dự án: Việc mới vào, Thùng rác, Hoạt động, Cây việc, Báo cáo (Bảng việc/Việc chờ/Lịch trình là bề mặt công cụ riêng, không qua `PageFrame`)                                            |
 
-Ngoại lệ có chủ đích ngoài `PageFrame` (allowlist trong test, kèm lý do): cỡ hộp thoại `xl` của `Dialog`; bài viết của trang Hướng dẫn công khai.
+Từ Task 12 mọi cỡ đều lấp đầy vùng nội dung (tham số `size` giữ để nói ý định). Trang chữ dài (Wiki, Hướng dẫn) giữ cột chữ ~75ch ở chính cột bài viết. Ngoại lệ ngoài `PageFrame` (allowlist trong test): cỡ hộp thoại `xl` của `Dialog`.
 
 **`PageHeader` — đầu trang (B-D2).** Thứ tự: breadcrumb → tiêu đề (không icon) → **mô tả đúng một câu, một dòng** → nút bên phải.
 

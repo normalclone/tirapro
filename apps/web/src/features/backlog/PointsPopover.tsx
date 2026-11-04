@@ -4,21 +4,22 @@ import { Gauge } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { parsePointsInput } from '@/lib/permissions';
+import { parsePointsOverride } from '@/lib/points';
 import { cn } from '@/lib/utils';
 
-/** Dãy Fibonacci hay dùng khi ước lượng — chỉ là lối tắt, ô tự do vẫn nhập được số bất kỳ 0–1000. */
+/** Dãy Fibonacci hay dùng — chỉ là lối tắt, ô tự do vẫn nhập được số nguyên bất kỳ 0–100. */
 const FIBONACCI_POINTS = [1, 2, 3, 5, 8, 13, 21] as const;
 
 /**
- * Đặt điểm ước lượng cho cả lô: bấm một chip hoặc gõ số + Enter để áp dụng; để trống rồi Enter = xoá điểm.
+ * CHỈNH TAY điểm cho cả lô (chỉ Quản trị dự án): bấm một chip hoặc gõ số nguyên 0–100 + Enter. Không có "xoá điểm" — điểm
+ * luôn có (công thức tính sẵn); muốn bỏ chỉnh tay thì bấm "Tính lại theo công thức" ở từng việc.
  */
 export function PointsPopover({
   onApply,
   disabled,
   triggerClassName,
 }: {
-  onApply: (points: number | null) => void;
+  onApply: (points: number) => void;
   disabled?: boolean;
   /** Class thêm cho nút mở (vd rộng hết hàng trong sheet). */
   triggerClassName?: string;
@@ -26,13 +27,13 @@ export function PointsPopover({
   const [open, setOpen] = useState(false);
   const [raw, setRaw] = useState('');
 
-  function apply(value: number | null) {
+  function apply(value: number) {
     setOpen(false);
     setRaw('');
     onApply(value);
   }
   function submit() {
-    const r = parsePointsInput(raw);
+    const r = parsePointsOverride(raw);
     if (!r.ok) return void toast.error(r.error);
     apply(r.value);
   }
@@ -51,7 +52,7 @@ export function PointsPopover({
           variant="secondary"
           disabled={disabled}
           className={triggerClassName}
-          title="Đặt điểm ước lượng cho các việc đang chọn"
+          title="Chỉnh tay điểm cho các việc đang chọn (bỏ qua Epic và việc có việc con)"
         >
           <Gauge className="h-4 w-4" />
           Điểm
@@ -63,7 +64,7 @@ export function PointsPopover({
           sideOffset={6}
           className="z-dropdown w-64 rounded-lg border border-border bg-surface p-3 shadow-lg outline-none data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95"
         >
-          <p className="mb-2 text-xs text-muted">Điểm cho tất cả việc đang chọn</p>
+          <p className="mb-2 text-xs text-muted">Chỉnh tay điểm cho các việc đang chọn</p>
           <div className="mb-2 flex flex-wrap gap-1.5" role="group" aria-label="Điểm hay dùng">
             {FIBONACCI_POINTS.map((n) => (
               <button
@@ -84,13 +85,13 @@ export function PointsPopover({
               autoFocus
               type="number"
               min={0}
-              max={1000}
-              step="any"
-              inputMode="decimal"
+              max={100}
+              step={1}
+              inputMode="numeric"
               value={raw}
               onChange={(e) => setRaw(e.target.value)}
               placeholder="Số khác"
-              aria-label="Điểm ước lượng (số bất kỳ từ 0 đến 1000)"
+              aria-label="Điểm chỉnh tay (số nguyên từ 0 đến 100)"
               className="h-8 text-sm"
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
@@ -103,7 +104,9 @@ export function PointsPopover({
               Áp dụng
             </Button>
           </div>
-          <p className="mt-2 text-[11px] text-faint">Để trống rồi áp dụng = xoá điểm.</p>
+          <p className="mt-2 text-[11px] text-faint">
+            Điểm tự tính theo công thức; chỉnh tay sẽ đè lên công thức.
+          </p>
         </Popover.Content>
       </Popover.Portal>
     </Popover.Root>

@@ -67,6 +67,8 @@ export interface WorkflowDto {
 export interface ListWorkflowsFilter {
   projectId?: string;
   isTemplate?: boolean;
+  /** Mặc định quy trình của dự án đã xoá mềm (`project.deletedAt != null`) bị ẩn; `true` = vẫn liệt kê. */
+  includeTrashed?: boolean;
 }
 
 export interface CreateWorkflowInput {
@@ -158,6 +160,9 @@ export class WorkflowAdminService {
   ): Promise<WorkflowDto[]> {
     const visible = await this.access.visibleWhere(viewerId, workspaceId);
     const where: Prisma.WorkflowWhereInput = { workspaceId, ...this.readableWhere(visible) };
+    // Mẫu (projectId = null) không bị ảnh hưởng; quy trình của dự án trong thùng rác ẩn đi, khôi phục dự án thì hiện lại.
+    if (!filter.includeTrashed)
+      where.AND = [{ OR: [{ projectId: null }, { project: { deletedAt: null } }] }];
     if (filter.projectId !== undefined) where.projectId = filter.projectId;
     if (filter.isTemplate !== undefined) where.isTemplate = filter.isTemplate;
     const rows = await this.prisma.workflow.findMany({

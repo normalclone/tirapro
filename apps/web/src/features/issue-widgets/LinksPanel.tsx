@@ -15,12 +15,21 @@ import { IssueSearchBox } from './IssueSearchBox';
 import { parseRelationValue, relationOptions } from './linkOptions';
 
 /** `canEdit`: được sửa issue này — không thì chỉ xem (không nút thêm/xoá, tránh 403). */
-export function LinksPanel({ issueId, canEdit }: { issueId: string; canEdit: boolean }) {
+export function LinksPanel({
+  issueId,
+  canEdit,
+  autoOpen = false,
+}: {
+  issueId: string;
+  canEdit: boolean;
+  /** Khối vừa được mở từ "+ Thêm mục": mở sẵn form thêm liên kết. */
+  autoOpen?: boolean;
+}) {
   const { data: links } = useIssueLinks(issueId);
   const deleteLink = useDeleteLink(issueId);
   const confirm = useConfirm();
 
-  const [adding, setAdding] = useState(false);
+  const [adding, setAdding] = useState(autoOpen);
   const count = links?.length ?? 0;
   const linkedIds = useMemo(() => new Set((links ?? []).map((l) => l.otherIssue.id)), [links]);
 

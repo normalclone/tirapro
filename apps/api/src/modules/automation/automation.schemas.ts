@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { difficultyEnum } from '@tirapro/shared';
 
 /** Các trường mặc định của issue được lưu trong `payload` (Json) của mẫu / việc lặp lại. */
 export const issuePayloadSchema = z.object({
@@ -8,7 +9,8 @@ export const issuePayloadSchema = z.object({
   description: z.string().max(50_000).optional().nullable(),
   assigneeId: z.string().min(1).optional().nullable(),
   labelIds: z.array(z.string().min(1)).max(50).optional(),
-  storyPoints: z.number().min(0).max(100).optional().nullable(),
+  // Điểm tự tính theo công thức nên mẫu/việc lặp lại không mang điểm nữa (payload cũ có `storyPoints` bị zod bỏ qua); mang độ khó.
+  difficulty: difficultyEnum.optional().nullable(),
 });
 
 export type IssuePayload = z.infer<typeof issuePayloadSchema>;

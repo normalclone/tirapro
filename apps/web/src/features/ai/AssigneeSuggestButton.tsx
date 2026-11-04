@@ -5,24 +5,12 @@ import { Sparkles } from 'lucide-react';
 import { apiErrorMessage } from '@/lib/api';
 import { Avatar } from '@/components/ui/primitives';
 import { DelayedSpinner } from '@/components/ui/primitives';
+import { useAi } from '@/stores/ai';
 import { useSuggestAssignee } from './api';
 import { AiFallbackNote } from './AiFallbackNote';
 import { useAssigneeAvailability } from '@/features/resources/useAssigneeAvailability';
 
-/**
- * Nút "Gợi ý" cạnh ô chọn người phụ trách: hỏi máy chủ top 3 người phù hợp (kèm lý do),
- * bấm một người để gán. Việc gán do `onPick` xử lý (dùng đúng luồng sửa issue có kiểm phiên bản).
- */
-export function AssigneeSuggestButton({
-  projectId,
-  issueId,
-  dueDate,
-  startDate,
-  assigneeId,
-  disabled,
-  onPick,
-  className,
-}: {
+interface AssigneeSuggestButtonProps {
   projectId: string;
   issueId: string;
   /** Hạn / ngày bắt đầu của việc — chọn tuần để hiện "còn trống" (không có → tuần hiện tại). */
@@ -34,7 +22,29 @@ export function AssigneeSuggestButton({
   onPick: (userId: string) => void;
   /** Ghi thêm lên nút (vd `min-h-11` cho dải thuộc tính trên điện thoại). */
   className?: string;
-}) {
+}
+
+/**
+ * Nút "Gợi ý" cạnh ô chọn người phụ trách: hỏi máy chủ top 3 người phù hợp (kèm lý do),
+ * bấm một người để gán. Việc gán do `onPick` xử lý (dùng đúng luồng sửa issue có kiểm phiên bản).
+ */
+export function AssigneeSuggestButton(props: AssigneeSuggestButtonProps) {
+  // Tắt "Trợ lý AI" ở thanh trên = mọi gợi ý AI biến mất (không chỉ một vài chỗ).
+  const aiEnabled = useAi((s) => s.enabled);
+  if (!aiEnabled) return null;
+  return <AssigneeSuggestInner {...props} />;
+}
+
+function AssigneeSuggestInner({
+  projectId,
+  issueId,
+  dueDate,
+  startDate,
+  assigneeId,
+  disabled,
+  onPick,
+  className,
+}: AssigneeSuggestButtonProps) {
   const [open, setOpen] = useState(false);
   const suggest = useSuggestAssignee();
   const availability = useAssigneeAvailability({ dueDate, startDate, assigneeId });

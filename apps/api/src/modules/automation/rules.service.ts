@@ -16,7 +16,11 @@ import {
 } from '@tirapro/shared';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { RedisService } from '../../infra/redis/redis.service';
-import { BusinessRuleException, NotFoundAppException } from '../../common/exceptions/app.exception';
+import {
+  BusinessRuleException,
+  DueDateRequiredException,
+  NotFoundAppException,
+} from '../../common/exceptions/app.exception';
 import { assertNotArchived, assertProjectIdWritable } from '../../common/project-writable';
 import { TelegramService } from '../integrations/telegram.service';
 import { ProjectAccessService } from '../rbac/project-access.service';
@@ -134,6 +138,7 @@ export class RulesService {
   ): Promise<AutomationRuleDto> {
     if (input.projectId) await this.assertProject(workspaceId, input.projectId);
     this.assertSemantics(input.trigger, input.triggerConfig, input.conditions);
+    this.assertActionsSavable(input.actions);
     const row = await this.prisma.automationRule.create({
       data: {
         workspaceId,
@@ -162,6 +167,7 @@ export class RulesService {
     const triggerConfig = input.triggerConfig ?? (current.triggerConfig as Record<string, unknown>);
     const conditions = input.conditions ?? (current.conditions as unknown as RuleCondition[]);
     this.assertSemantics(trigger, triggerConfig, conditions);
+    if (input.actions !== undefined) this.assertActionsSavable(input.actions);
     const { count } = await this.prisma.automationRule.updateMany({
       where: { id, workspaceId },
       data: {
@@ -186,6 +192,22 @@ export class RulesService {
     if (count === 0) throw new NotFoundAppException('Quy tắc');
     await this.invalidate(workspaceId);
     return this.get(workspaceId, id);
+  }
+
+  /**
+   * Hạn là bắt buộc nên quy tắc không được ĐẶT Hạn rỗng: lưu quy tắc có `setField dueDate` null/rỗng → 422 `DUE_DATE_REQUIRED`.
+   * Quy tắc đã lưu từ trước vẫn đọc được; engine bỏ qua hành động đó khi chạy (kèm cảnh báo trong nhật ký).
+   */
+  private assertActionsSavable(actions: CreateRuleInput['actions']): void {
+    if (
+      actions.some(
+        (a) =>
+          a.type === 'setField' && a.field === 'dueDate' && (a.value === null || a.value === ''),
+      )
+    )
+      throw new DueDateRequiredException(
+        'Hạn là bắt buộc — quy tắc không đặt Hạn rỗng được, hãy chọn một ngày hoặc bỏ hành động này',
+      );
   }
 
   async remove(workspaceId: string, id: string): Promise<{ success: true }> {

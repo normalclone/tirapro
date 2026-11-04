@@ -85,7 +85,9 @@ export function BoardBulkDock({
       priorities={meta?.priorities ?? NO_PRIORITIES}
       labels={labels ?? NO_LABELS}
       statusOptions={statusOptions}
+      canAdmin={can('project:admin')}
       onSetPoints={(points) => void bulk.setPoints(points)}
+      onSetDifficulty={(d) => void bulk.setDifficulty(d)}
       onSetPriority={(id) => void bulk.setPriority(id)}
       onAddLabel={(id) => void bulk.addLabel(id)}
       onSetStatus={(id) => void bulk.setStatus(id)}

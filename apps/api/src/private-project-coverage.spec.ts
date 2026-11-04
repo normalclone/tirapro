@@ -443,6 +443,14 @@ const READ_ALLOWLIST: Record<string, [Kind, string]> = {
     'INTERNAL',
     'ngữ cảnh hệ thống có chủ đích (L28): chỉ dựng DTO để phát realtime sau khi nghiệp vụ tự gán việc đã kiểm quyền; không route nào gọi',
   ],
+  'issues/points.service.ts::PointsService.epicTotal': [
+    'INTERNAL',
+    'tổng điểm việc con của một Epic, gọi từ IssuesService trong transaction ghi (đã kiểm quyền/dự án); không route nào gọi',
+  ],
+  'issues/points.service.ts::PointsService.rollupEpics': [
+    'INTERNAL',
+    'cập nhật tổng điểm Epic sau khi IssuesService ghi việc (đã kiểm quyền/dự án); không route nào gọi',
+  ],
   'issues/trash.service.ts::TrashService.list': ['ROUTE_GUARDED', R_ROUTE_GUARDED],
   'labels/labels.service.ts::LabelsService.list': ['ROUTE_GUARDED', R_ROUTE_GUARDED],
   'labels/labels.service.ts::LabelsService.attach': ['ROUTE_GUARDED', R_ROUTE_GUARDED],
@@ -702,6 +710,20 @@ describe('dự án riêng tư — R1: service/gateway đọc dữ liệu theo d�
 
 /** Khoá: `file::Controller.route -> prop.method`. Loại lý do dùng cùng `Kind` (kiểm theo route). */
 const CONTROLLER_ALLOWLIST: Record<string, [Kind, string]> = {
+  'admin/admin-console.controller.ts::AdminConsoleController.pointsFormula -> points.getFormula': [
+    'ADMIN_ONLY',
+    'console quản trị hệ thống — tự kiểm assertSysAdmin; bảng hệ số điểm là cấu hình toàn hệ thống, không thuộc dự án',
+  ],
+  'admin/admin-console.controller.ts::AdminConsoleController.putPointsFormula -> points.getFormula':
+    [
+      'ADMIN_ONLY',
+      'console quản trị hệ thống — tự kiểm assertSysAdmin; bảng hệ số điểm là cấu hình toàn hệ thống, không thuộc dự án',
+    ],
+  'admin/admin-console.controller.ts::AdminConsoleController.putPointsFormula -> points.recomputeAll':
+    [
+      'ADMIN_ONLY',
+      'console quản trị hệ thống — tự kiểm assertSysAdmin; tính lại điểm toàn hệ thống ở nền, không trả dữ liệu dự án',
+    ],
   'admin/admin-console.controller.ts::AdminConsoleController.overview -> overviewSvc.overview': [
     'ADMIN_ONLY',
     'console quản trị hệ thống — tự kiểm assertSysAdmin trước khi gọi service',

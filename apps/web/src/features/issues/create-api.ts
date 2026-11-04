@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import type { IssueDto, IssueEnvironment } from '@tirapro/types';
+import type { Difficulty } from '@tirapro/shared';
 import { api } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
 
@@ -14,7 +15,8 @@ export interface CreateIssueInput {
   assigneeId?: string | null;
   parentId?: string | null;
   epicId?: string | null;
-  storyPoints?: number;
+  /** Độ khó (mặc định máy chủ: Trung bình). Điểm do máy chủ tính; web KHÔNG gửi `storyPoints` khi tạo. */
+  difficulty?: Difficulty;
   sprintId?: string | null;
   statusId?: string;
   dueDate?: string | null;

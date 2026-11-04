@@ -6,7 +6,6 @@ import { StatusPill } from '@/components/ui/StatusPill';
 import {
   InlinePoints,
   InlinePriority,
-  NO_EDIT_TIP,
   PointsChip,
   PriorityDot,
   type PriorityChoice,
@@ -18,6 +17,7 @@ import { Avatar } from '@/components/ui/primitives';
 import { SeverityBadge } from '@/components/ui/SeverityBadge';
 import { isBugType } from '@/features/issue-edit/severity';
 import { cn } from '@/lib/utils';
+import type { PointsRole } from '@/lib/points';
 import { useDropEdge } from '@/lib/dropHint';
 import { SORT_TRANSITION } from '@/lib/sortableDnd';
 import { sameProgress, type SubtreeProgress } from '@/lib/issueTree';
@@ -100,6 +100,7 @@ export function IssueRowBody({
   peeked,
   edit,
   canEdit,
+  pointsRole,
   menu,
 }: {
   issue: IssueDto;
@@ -123,6 +124,8 @@ export function IssueRowBody({
   edit?: RowEdit;
   /** Người dùng sửa được công việc này (`canEditIssue`) — một cờ cho cả điểm lẫn ưu tiên. */
   canEdit?: boolean;
+  /** Ô điểm: Quản trị dự án chỉnh tay (`edit`), chỉ đọc (`locked`), hay điểm tổng của Epic/việc cha (`rollup`). */
+  pointsRole?: PointsRole;
   /** Nút "…" (menu công việc) ở cuối dòng; bản overlay không truyền. */
   menu?: ReactNode;
 }) {
@@ -195,13 +198,14 @@ export function IssueRowBody({
       {edit ? (
         <InlinePoints
           issue={issue}
-          canEdit={!!canEdit}
+          role={pointsRole ?? 'locked'}
           sprints={edit.sprints}
           onSave={edit.onEditPoints}
-          lockedTip={NO_EDIT_TIP}
         />
       ) : (
-        issue.storyPoints != null && <PointsChip points={issue.storyPoints} />
+        issue.storyPoints != null && (
+          <PointsChip points={issue.storyPoints} title={issue.pointsExplain || undefined} />
+        )
       )}
       {issue.assignee ? (
         <span
@@ -242,7 +246,7 @@ export function IssueRowBody({
 export interface RowEdit {
   priorities: PriorityChoice[];
   sprints: SprintDto[] | undefined;
-  onEditPoints: (issue: IssueDto, value: number | null) => void;
+  onEditPoints: (issue: IssueDto, value: number) => void;
   onEditPriority: (issue: IssueDto, priority: PriorityDto | null) => void;
 }
 
@@ -260,6 +264,7 @@ interface IssueRowProps {
   peeked?: boolean;
   edit?: RowEdit;
   canEdit?: boolean;
+  pointsRole?: PointsRole;
 }
 
 /**
@@ -279,6 +284,7 @@ export const IssueRow = memo(
     peeked,
     edit,
     canEdit,
+    pointsRole,
   }: IssueRowProps) {
     const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
       id: issue.id,
@@ -320,6 +326,7 @@ export const IssueRow = memo(
           peeked={peeked}
           edit={edit}
           canEdit={canEdit}
+          pointsRole={pointsRole}
           // `onKeyDown` đứng SAU spread listeners: ghi đè có chủ đích, `rowKeyDown` tự chuyển tiếp cho dnd-kit.
           rootProps={
             {
@@ -347,5 +354,6 @@ export const IssueRow = memo(
     p.peeked === n.peeked &&
     p.edit === n.edit &&
     p.canEdit === n.canEdit &&
+    p.pointsRole === n.pointsRole &&
     sameProgress(p.progress, n.progress),
 );

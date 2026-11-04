@@ -144,6 +144,7 @@ export const FIELD_LABELS: Record<string, string> = {
   sprintId: 'Sprint',
   resolutionId: 'Kết quả xử lý',
   storyPoints: 'Điểm ước lượng',
+  difficulty: 'Độ khó',
   summary: 'Tiêu đề',
   labelIds: 'Nhãn',
   dueDate: 'Hạn',

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  DUE_REQUIRED_MESSAGE,
   RULE_ACTIONS_ID,
   RULE_CONDITIONS_ID,
   RULE_NAME_ID,
@@ -192,5 +193,35 @@ describe('ruleIssueToFieldError (đường dẫn zod → id trường)', () => {
       expect(ruleIssueToFieldError(issue(['actions', 0, key]), ids).id, key).toBe(
         `rule-act-a1-${key}`,
       );
+  });
+});
+
+describe('Hạn bắt buộc: quy tắc không đặt Hạn rỗng', () => {
+  const rule = (value: unknown) => ({
+    ...valid,
+    actions: [
+      { type: 'assign', mode: 'lead' },
+      { type: 'setField', field: 'dueDate', value },
+    ],
+  });
+  it.each([[null], ['']])('đặt Hạn = %j → lỗi gắn đúng ô "Giá trị mới" của hành động đó', (v) => {
+    const r = validateRulePayload(rule(v), ids);
+    expect(r.ok).toBe(false);
+    if (!r.ok)
+      expect(r.errors).toEqual([
+        {
+          id: actionFieldId('a2', 'value'),
+          label: 'Hành động 2 · Giá trị mới',
+          message: DUE_REQUIRED_MESSAGE,
+        },
+      ]);
+  });
+  it('đặt Hạn bằng một ngày hợp lệ thì qua; trường khác để trống vẫn được (gỡ giá trị)', () => {
+    expect(validateRulePayload(rule('2026-11-10T00:00:00.000Z'), ids).ok).toBe(true);
+    const other = {
+      ...valid,
+      actions: [{ type: 'setField', field: 'assigneeId', value: null }],
+    };
+    expect(validateRulePayload(other, ids).ok).toBe(true);
   });
 });

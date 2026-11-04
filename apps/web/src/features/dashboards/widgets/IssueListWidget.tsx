@@ -45,7 +45,7 @@ export function IssueListWidget({ title, config }: WidgetProps) {
             >
               <span className="shrink-0 font-mono text-xs text-muted">{issue.key}</span>
               <span className="min-w-0 flex-1 truncate text-sm text-ink">{issue.summary}</span>
-              <StatusPill status={issue.status} />
+              <StatusPill status={issue.status} alwaysShowName />
             </Link>
           </li>
         ))}

@@ -1,10 +1,11 @@
-import { useId, useState } from 'react';
+import { useRef, useState, type RefObject } from 'react';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { Link } from 'react-router-dom';
-import { Check, ChevronRight, Clock, ExternalLink, Repeat2, X } from 'lucide-react';
+import { Check, Clock, ExternalLink, FileText, Repeat2, X } from 'lucide-react';
 import type { TriageItemDto } from '@tirapro/types';
 import { Avatar } from '@/components/ui/primitives';
 import { Button } from '@/components/ui/Button';
+import { Dialog } from '@/components/ui/Dialog';
 import { SeverityBadge } from '@/components/ui/SeverityBadge';
 import { MarkdownView } from '@/features/issue-edit/MarkdownView';
 import { IssueKeyLink } from '@/features/issues/peek/IssueKeyLink';
@@ -77,9 +78,8 @@ function SnoozeMenu({
   );
 }
 
-/** Vùng mở rộng của một dòng: mô tả, thông tin người gửi/môi trường, Nhận… (AcceptForm) và Mở trang. */
+/** Nội dung hộp thoại chi tiết của một dòng: mô tả, thông tin người gửi/môi trường, Nhận… (AcceptForm) và Mở trang. */
 function TriageDetail({
-  id,
   issue,
   projectKey,
   canTriage,
@@ -87,7 +87,6 @@ function TriageDetail({
   onPeek,
   onAccept,
 }: {
-  id: string;
   issue: TriageItemDto;
   projectKey: string;
   canTriage: boolean;
@@ -100,10 +99,9 @@ function TriageDetail({
   const long = isLongDescription(issue.description);
   return (
     <div
-      id={id}
       role="region"
       aria-label={`Chi tiết ${issue.key}`}
-      className="grid gap-4 border-t border-border bg-surface-2/50 px-4 py-3 md:grid-cols-[minmax(0,1fr)_18rem]"
+      className="grid gap-4 md:grid-cols-[minmax(0,1fr)_18rem]"
     >
       <div className="min-w-0">
         {issue.description ? (
@@ -197,9 +195,50 @@ function TriageDetail({
   );
 }
 
+/** Hộp thoại chi tiết của một dòng (thay cho việc giãn dòng ra tại chỗ). Đóng thì trả focus về nút "Chi tiết" của dòng. */
+function TriageDetailDialog({
+  open,
+  onOpenChange,
+  returnFocusRef,
+  onPeek,
+  ...detail
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  returnFocusRef: RefObject<HTMLElement>;
+  issue: TriageItemDto;
+  projectKey: string;
+  canTriage: boolean;
+  pending: boolean;
+  onPeek: (key: string) => void;
+  onAccept: (issue: TriageItemDto, payload: AcceptPayload) => void;
+}) {
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title={`${detail.issue.key} · ${detail.issue.summary}`}
+      size="xl"
+      onCloseAutoFocus={(e) => {
+        e.preventDefault();
+        returnFocusRef.current?.focus();
+      }}
+    >
+      <TriageDetail
+        {...detail}
+        onPeek={(k) => {
+          onOpenChange(false);
+          onPeek(k);
+        }}
+      />
+    </Dialog>
+  );
+}
+
 /**
- * Một dòng Việc mới vào. Bấm tiêu đề/Enter = xem nhanh (panel bên phải, như mọi danh sách); nút mũi tên (aria-expanded)
- * mở rộng tại chỗ để đọc mô tả, người gửi, giờ gửi, loại yêu cầu, môi trường rồi Nhận (chọn Loại/Ưu tiên/Sprint) hoặc Từ chối.
+ * Một dòng Việc mới vào. Bấm tiêu đề/Enter = xem nhanh (panel bên phải, như mọi danh sách); nút "Chi tiết" mở HỘP THOẠI để
+ * đọc mô tả, người gửi, giờ gửi, loại yêu cầu, môi trường rồi Nhận (chọn Loại/Ưu tiên/Sprint) hoặc Từ chối — dòng không giãn
+ * ra làm danh sách nhảy.
  * Nút "Nhận" ở dòng thu gọn giữ đường nhận một chạm.
  */
 export function TriageRow({
@@ -226,8 +265,8 @@ export function TriageRow({
   onDecline: (issue: TriageItemDto) => void;
   onSnooze: (issue: TriageItemDto, days: number, label: string) => void;
 }) {
-  const [expanded, setExpanded] = useState(false);
-  const regionId = useId();
+  const [detailOpen, setDetailOpen] = useState(false);
+  const detailButtonRef = useRef<HTMLButtonElement>(null);
   const ranks = usePriorityRanks();
 
   return (
@@ -248,18 +287,15 @@ export function TriageRow({
             Từ sm trải phẳng một hàng như cũ (`sm:contents`). */}
         <div className="flex min-w-0 basis-full items-center gap-x-3 sm:contents">
           <button
+            ref={detailButtonRef}
             type="button"
-            onClick={() => setExpanded((v) => !v)}
-            aria-expanded={expanded}
-            aria-controls={regionId}
-            aria-label={`${expanded ? 'Thu gọn' : 'Mở rộng'} ${issue.key}`}
-            title={expanded ? 'Thu gọn' : 'Đọc mô tả và duyệt tại chỗ'}
+            onClick={() => setDetailOpen(true)}
+            aria-haspopup="dialog"
+            aria-label={`Chi tiết ${issue.key}`}
+            title="Đọc mô tả và duyệt"
             className="grid h-6 w-6 shrink-0 place-items-center rounded text-muted transition-colors hover:bg-surface-3 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
           >
-            <ChevronRight
-              className={cn('h-4 w-4 transition-transform duration-150', expanded && 'rotate-90')}
-              aria-hidden
-            />
+            <FileText className="h-4 w-4" aria-hidden />
           </button>
 
           {issue.occurrenceCount > 1 && (
@@ -346,17 +382,17 @@ export function TriageRow({
         )}
       </div>
 
-      {expanded && (
-        <TriageDetail
-          id={regionId}
-          issue={issue}
-          projectKey={projectKey}
-          canTriage={canTriage}
-          pending={pending}
-          onPeek={onPeek}
-          onAccept={onAccept}
-        />
-      )}
+      <TriageDetailDialog
+        open={detailOpen}
+        onOpenChange={setDetailOpen}
+        returnFocusRef={detailButtonRef}
+        issue={issue}
+        projectKey={projectKey}
+        canTriage={canTriage}
+        pending={pending}
+        onPeek={onPeek}
+        onAccept={onAccept}
+      />
     </li>
   );
 }

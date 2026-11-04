@@ -82,6 +82,13 @@ const ERROR_MESSAGES: Record<string, string> = {
   LAST_WORKSPACE_ADMIN: 'Không thể hạ hoặc gỡ quản trị viên cuối cùng của không gian làm việc.',
   ADMIN_GRANT_REQUIRES_ADMIN: 'Chỉ quản trị không gian làm việc mới cấp hoặc gỡ quyền quản trị.',
   RATE_LIMITED: 'Bạn thao tác hơi nhanh. Chờ vài giây rồi thử lại.',
+  POINTS_OVERRIDE_FORBIDDEN:
+    'Điểm tự tính theo Loại × Độ khó × Ưu tiên — chỉ Quản trị dự án mới chỉnh tay được. Hãy đổi Độ khó hoặc Ưu tiên.',
+  POINTS_ROLLUP_ONLY:
+    'Việc này có việc con nên điểm là tổng điểm các việc con — không chỉnh tay được. Hãy sửa điểm của từng việc con.',
+  CHILD_SPRINT_FOLLOWS_PARENT:
+    'Việc con luôn nằm cùng sprint với việc cha — hãy đổi sprint của việc cha, việc con sẽ đi theo.',
+  DUE_DATE_REQUIRED: 'Hạn là bắt buộc — hãy chọn một ngày thay vì xoá trống.',
   WORKFLOW_TRANSITION_INVALID:
     'Quy trình không cho chuyển thẳng sang trạng thái này. Hãy chọn một trạng thái trong danh sách gợi ý.',
 };

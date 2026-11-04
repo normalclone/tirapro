@@ -9,6 +9,7 @@ export type BulkField =
   | 'sprintId'
   | 'priorityId'
   | 'storyPoints'
+  | 'difficulty'
   | 'epicId'
   | 'statusId';
 export type BulkValue = string | number | null;

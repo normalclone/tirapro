@@ -519,6 +519,20 @@ describe('DigestsService.buildDigest — việc chưa duyệt không tính', () 
   });
 });
 
+describe('DigestsService.buildDigest — điểm sprint loại Epic', () => {
+  it('groupBy cộng điểm còn lại của sprint loại Epic (điểm Epic = tổng việc con); groupBy đếm việc mở thì không', async () => {
+    const s = buildSetup();
+    await s.service.buildDigest('w1', undefined, ['summary', 'sprint'], 'u1');
+    const calls = s.groupBy.mock.calls as unknown as [
+      { where: Record<string, unknown>; _sum?: unknown },
+    ][];
+    const sumCalls = calls.filter((c) => c[0]._sum);
+    expect(sumCalls.length).toBeGreaterThan(0);
+    for (const c of sumCalls) expect(c[0].where).toMatchObject({ NOT: { type: { key: 'EPIC' } } });
+    for (const c of calls.filter((x) => !x[0]._sum)) expect(c[0].where).not.toHaveProperty('NOT');
+  });
+});
+
 describe('DigestsService.buildDigest — quyền xem (dự án riêng tư)', () => {
   const visible = { OR: [{ isPrivate: false }, { memberships: { some: { userId: 'u1' } } }] };
 

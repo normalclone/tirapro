@@ -40,6 +40,8 @@ export interface GroupPerms {
   /** Sửa được MỌI việc đang chọn của nhóm (`issue:edit`, hoặc `issue:edit:own` với việc của mình). */
   canEdit: boolean;
   canTransition: boolean;
+  /** Quản trị dự án (`project:admin`) — chỉ người này chỉnh tay điểm. */
+  canAdmin: boolean;
 }
 
 /** Quyền trên một nhóm từ ngữ cảnh quyền của dự án đó. Dự án lưu trữ → chỉ đọc (`allowedWhenArchived`), kể cả quản trị. */
@@ -55,10 +57,18 @@ export function groupPermsFor(a: {
     canAssign: can('issue:assign'),
     canEdit: !a.archived && a.issues.every((i) => canEditIssue(a.ctx, i, a.userId)),
     canTransition: can('issue:transition'),
+    canAdmin: can('project:admin'),
   };
 }
 
-export type BulkActionId = 'assignMe' | 'assign' | 'priority' | 'points' | 'label' | 'status';
+export type BulkActionId =
+  | 'assignMe'
+  | 'assign'
+  | 'priority'
+  | 'points'
+  | 'difficulty'
+  | 'label'
+  | 'status';
 
 export interface ActionAvailability {
   visible: boolean;
@@ -75,14 +85,15 @@ export interface ActionAvailability {
  * - XUYÊN DỰ ÁN được: Gán cho tôi (người dùng hiện tại), Ưu tiên (Priority thuộc workspace), Điểm (một con số).
  * - CHỈ khi đúng MỘT dự án: Đổi người phụ trách (danh sách người chọn được theo dự án), Nhãn (nhãn theo dự án),
  *   Trạng thái (quy trình theo dự án). Sprint/Epic không có ở Bộ lọc.
- * Quyền theo dự án: gán = `issue:assign`; ưu tiên/điểm/nhãn = sửa được mọi việc của nhóm; trạng thái = `issue:transition`.
+ * Quyền theo dự án: gán = `issue:assign`; ưu tiên/độ khó/nhãn = sửa được mọi việc của nhóm; điểm (chỉnh tay) = `project:admin`; trạng thái = `issue:transition`.
  * Có quyền ở ít nhất một nhóm → hiện và chạy trên nhóm có quyền (nhóm còn lại bỏ qua, đếm trong `skipCount`).
  */
 const ACTION_RULES: Record<BulkActionId, { crossProject: boolean; perm: keyof GroupPerms }> = {
   assignMe: { crossProject: true, perm: 'canAssign' },
   assign: { crossProject: false, perm: 'canAssign' },
   priority: { crossProject: true, perm: 'canEdit' },
-  points: { crossProject: true, perm: 'canEdit' },
+  points: { crossProject: true, perm: 'canAdmin' },
+  difficulty: { crossProject: true, perm: 'canEdit' },
   label: { crossProject: false, perm: 'canEdit' },
   status: { crossProject: false, perm: 'canTransition' },
 };

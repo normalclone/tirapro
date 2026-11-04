@@ -24,7 +24,6 @@ import {
   MessageSquare,
   MoreHorizontal,
   Trash2,
-  UserPlus,
   Workflow,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -54,6 +53,8 @@ import { IssueRelations } from '@/features/tree/IssueRelations';
 import { CustomFieldsPanel } from '@/features/issue-fields/CustomFieldsPanel';
 import { AttachmentsPanel } from '@/features/attachments/AttachmentsPanel';
 import { LinksPanel } from '@/features/issue-widgets/LinksPanel';
+import { ASSIGNED_TO_ME_TOAST, assignToMeVars } from '@/features/issue-edit/assignToMe';
+import { AddSectionButton, OptionalSection, OptionalSectionsScope } from './OptionalSections';
 import { RelatedDocsPanel } from '@/features/issue-widgets/RelatedDocsPanel';
 import { ChecklistPanel } from '@/features/issue-extras/ChecklistPanel';
 import { IssueSlaBadge } from '@/features/sla/IssueSlaBadge';
@@ -63,6 +64,7 @@ import {
   IssueDatesPanel,
   IssueSprintSubtitle,
   IssueStoryPointsInline,
+  IssueDifficultyInline,
   IssueTypeSelect,
   IssuePrioritySelect,
   IssueSeveritySelect,
@@ -149,6 +151,8 @@ export function IssueDetailPage() {
   const can = useCanIn(issue?.projectId);
   const canEditThis = useCanEditIssue(issue?.projectId)(issue ?? {});
   const canTransition = can('issue:transition');
+  // Cùng điều kiện với nút "Gán cho tôi" ở ô Người phụ trách: phải có cả quyền gán lẫn quyền sửa việc này.
+  const canAssignMe = can('issue:assign') && canEditThis;
   // Thuộc tính chính: dưới lg hiện dải ngay dưới tiêu đề + "Thuộc tính khác"; từ lg như trước. Chọn bằng media query để
   // MỖI control chỉ dựng một lần (không trùng id/focus/phím tắt), thay vì dựng hai bản rồi ẩn bằng CSS.
   const isDesktop = useMediaQuery('(min-width: 1024px)', true);
@@ -289,7 +293,8 @@ export function IssueDetailPage() {
           ? uncheckAllTasks(issue.acceptanceCriteria)
           : undefined,
         priorityId: issue.priority?.id || undefined,
-        storyPoints: issue.storyPoints ?? undefined,
+        // Bản sao giữ ĐỘ KHÓ; điểm do máy chủ tính lại (không gửi storyPoints, kể cả khi bản gốc được PM chỉnh tay).
+        difficulty: issue.difficulty,
         sprintId: issue.sprintId || undefined,
       });
       toast.success(`Đã tạo bản sao: ${created.key}`);
@@ -320,7 +325,7 @@ export function IssueDetailPage() {
       // Chặn khi còn overlay/menu Radix đang MỞ (dialog đã đóng nhưng còn chạy hiệu ứng không chặn).
       if (isOverlayOpen()) return;
       // i = gán cho tôi, y = sao chép liên kết.
-      if ((e.key === 'i' || e.key === 'I') && canEditThis) {
+      if ((e.key === 'i' || e.key === 'I') && canAssignMe) {
         e.preventDefault();
         assignToMe();
         return;
@@ -358,6 +363,7 @@ export function IssueDetailPage() {
     issue?.version,
     canTransition,
     canEditThis,
+    canAssignMe,
   ]);
 
   const { copyKey, copyLink, keyCopied } = useIssueCopy(issue?.key ?? key);
@@ -365,16 +371,12 @@ export function IssueDetailPage() {
   const copyLinkRef = useRef(copyLink);
   copyLinkRef.current = copyLink;
 
-  const isMine = !!issue && !!me && issue.assigneeId === me.id;
   function assignToMe() {
     if (!issue || !me || issue.assigneeId === me.id) return;
-    updateIssue.mutate(
-      { id: issue.id, key: issue.key, patch: { assigneeId: me.id }, version: issue.version },
-      {
-        onSuccess: () => toast.success('Đã giao việc này cho bạn', { duration: 2000 }),
-        onError: (e) => toast.error(apiErrorMessage(e)),
-      },
-    );
+    updateIssue.mutate(assignToMeVars(issue, me), {
+      onSuccess: () => toast.success(ASSIGNED_TO_ME_TOAST, { duration: 2000 }),
+      onError: (e) => toast.error(apiErrorMessage(e)),
+    });
   }
 
   // Ghi vào "xem gần đây" mỗi khi mở/đổi issue.
@@ -465,7 +467,7 @@ export function IssueDetailPage() {
       <ProjectRail activeKey={projectKey} view="board" />
 
       <div className="relative min-w-0 flex-1 overflow-auto">
-        <PageFrame size="lg" className="py-6">
+        <PageFrame size="full" className="py-6">
           {/*
            * Đã có công việc: không vẽ tiêu đề ở đây — h1 là chính ô tiêu đề hiển thị bên dưới (title-less: chỉ breadcrumb +
            * actions). Đang tải/lỗi/không thấy: chưa có ô đó nên dùng h1 sr-only (`titleHidden`) → mọi trạng thái đúng một h1.
@@ -585,7 +587,11 @@ export function IssueDetailPage() {
                   <span className="text-faint" aria-hidden>
                     ·
                   </span>
-                  <IssueStoryPointsInline issue={issue} canEdit={canEditThis} />
+                  <IssueDifficultyInline issue={issue} />
+                  <span className="text-faint" aria-hidden>
+                    ·
+                  </span>
+                  <IssueStoryPointsInline issue={issue} />
                   <span className="text-faint" aria-hidden>
                     ·
                   </span>
@@ -614,28 +620,6 @@ export function IssueDetailPage() {
                     <ListTree className="h-4 w-4" /> Tạo việc con
                   </button>
                 )}
-                {can('issue:create') && (
-                  <button
-                    type="button"
-                    className={TOOLBAR_BTN}
-                    title="Tạo một công việc mới giống hệt việc này để sửa lại cho nhanh"
-                    onClick={() => void cloneIssue()}
-                    disabled={createIssue.isPending}
-                  >
-                    <Copy className="h-4 w-4" /> Tạo bản sao
-                  </button>
-                )}
-                {me && !isMine && canEditThis && (
-                  <button
-                    type="button"
-                    className={TOOLBAR_BTN}
-                    onClick={assignToMe}
-                    disabled={updateIssue.isPending}
-                    title={withKey('Đặt bạn làm người phụ trách', 'issue.assignMe')}
-                  >
-                    <UserPlus className="h-4 w-4" /> Gán cho tôi
-                  </button>
-                )}
 
                 <DropdownMenu.Root>
                   <DropdownMenu.Trigger asChild>
@@ -653,6 +637,16 @@ export function IssueDetailPage() {
                       sideOffset={6}
                       className="z-dropdown w-48 overflow-hidden rounded-lg border border-border bg-surface p-1 shadow-lg animate-in fade-in zoom-in-95 duration-150"
                     >
+                      {can('issue:create') && (
+                        <DropdownMenu.Item
+                          onSelect={() => void cloneIssue()}
+                          disabled={createIssue.isPending}
+                          title="Tạo một công việc mới giống hệt việc này để sửa lại cho nhanh"
+                          className="flex cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-2 text-sm text-ink outline-none transition-colors data-[disabled]:cursor-not-allowed data-[disabled]:text-disabled-fg data-[highlighted]:bg-surface-2"
+                        >
+                          <Copy className="h-4 w-4 text-muted" /> Tạo bản sao
+                        </DropdownMenu.Item>
+                      )}
                       <DropdownMenu.Item
                         onSelect={() => copyLink()}
                         title={withKey('Sao chép liên kết công việc', 'issue.copyLink')}
@@ -775,77 +769,122 @@ export function IssueDetailPage() {
                     </OtherFactsDisclosure>
                   )}
 
-                  {/* Story luôn có khối này (kể cả rỗng); loại khác chỉ khi đã có nội dung */}
-                  {(issue.type.key === 'STORY' || issue.acceptanceCriteria) && (
-                    <AcceptanceCriteria issue={issue} />
-                  )}
+                  {/* Khối tuỳ chọn: rỗng thì ẩn, thêm lại qua "+ Thêm mục" (Mô tả và Tệp đính kèm luôn hiện). */}
+                  <OptionalSectionsScope issue={issue}>
+                    {(sections) => (
+                      <>
+                        <OptionalSection id="acceptance" sections={sections}>
+                          <AcceptanceCriteria
+                            issue={issue}
+                            startEditing={sections.wasOpened('acceptance')}
+                          />
+                        </OptionalSection>
 
-                  {/* Danh sách bước nhỏ — nhẹ hơn việc con, chỉ để tick cho xong */}
-                  <LazyPanel>
-                    <ChecklistPanel issueId={issue.id} projectId={issue.projectId} owner={issue} />
-                  </LazyPanel>
+                        {/* Danh sách bước nhỏ — nhẹ hơn việc con, chỉ để tick cho xong */}
+                        <OptionalSection id="checklist" sections={sections}>
+                          <LazyPanel force={sections.wasOpened('checklist')}>
+                            <ChecklistPanel
+                              issueId={issue.id}
+                              projectId={issue.projectId}
+                              owner={issue}
+                            />
+                          </LazyPanel>
+                        </OptionalSection>
 
-                  <LazyPanel>
-                    <IssueRelations issue={issue} />
-                  </LazyPanel>
+                        <LazyPanel>
+                          <IssueRelations issue={issue} />
+                        </LazyPanel>
 
-                  {/* Thành phần & phiên bản + các trường do dự án tự thêm */}
-                  <IssueComponentsPicker issue={issue} />
-                  <EnvironmentPanel issue={issue} />
-                  <CustomFieldsPanel issueId={issue.id} canEdit={canEditThis} />
+                        {/* Thành phần & phiên bản (mỗi nhóm là một khối tuỳ chọn) + các trường do dự án tự thêm */}
+                        <IssueComponentsPicker
+                          issue={issue}
+                          show={{
+                            components: sections.visible('components'),
+                            fixVersions: sections.visible('fixVersions'),
+                            affectsVersions: sections.visible('affectsVersions'),
+                          }}
+                        />
+                        <OptionalSection id="environment" sections={sections}>
+                          <EnvironmentPanel
+                            issue={issue}
+                            startEditing={sections.wasOpened('environment')}
+                          />
+                        </OptionalSection>
+                        <CustomFieldsPanel issueId={issue.id} canEdit={canEditThis} />
 
-                  {FEATURES.repos && devLinks && devLinks.length > 0 && (
-                    <div>
-                      <p
-                        className="mb-2 text-sm font-medium text-muted"
-                        title="Nhánh, commit và pull request trên kho mã có nhắc tới mã công việc này"
-                      >
-                        Liên kết code ({devLinks.length})
-                      </p>
-                      <div className="space-y-1.5">
-                        {devLinks.map((d) => {
-                          const Icon =
-                            d.type === 'PULL_REQUEST'
-                              ? GitPullRequest
-                              : d.type === 'BRANCH'
-                                ? GitBranch
-                                : GitCommit;
-                          return (
-                            <a
-                              key={d.id}
-                              href={d.url}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="flex items-center gap-2 rounded-md border border-border bg-surface px-2.5 py-2 text-sm transition-colors hover:bg-surface-2"
+                        {FEATURES.repos && devLinks && devLinks.length > 0 && (
+                          <div>
+                            <p
+                              className="mb-2 text-sm font-medium text-muted"
+                              title="Nhánh, commit và pull request trên kho mã có nhắc tới mã công việc này"
                             >
-                              <Icon className="h-4 w-4 shrink-0 text-muted" />
-                              <span className="min-w-0 flex-1 truncate text-ink">
-                                {d.title || d.externalId}
-                              </span>
-                              {d.branch && (
-                                <span className="shrink-0 font-mono text-xs text-faint">
-                                  {d.branch}
-                                </span>
-                              )}
-                              {d.authorName && (
-                                <span className="shrink-0 text-xs text-muted">{d.authorName}</span>
-                              )}
-                            </a>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
+                              Liên kết code ({devLinks.length})
+                            </p>
+                            <div className="space-y-1.5">
+                              {devLinks.map((d) => {
+                                const Icon =
+                                  d.type === 'PULL_REQUEST'
+                                    ? GitPullRequest
+                                    : d.type === 'BRANCH'
+                                      ? GitBranch
+                                      : GitCommit;
+                                return (
+                                  <a
+                                    key={d.id}
+                                    href={d.url}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="flex items-center gap-2 rounded-md border border-border bg-surface px-2.5 py-2 text-sm transition-colors hover:bg-surface-2"
+                                  >
+                                    <Icon className="h-4 w-4 shrink-0 text-muted" />
+                                    <span className="min-w-0 flex-1 truncate text-ink">
+                                      {d.title || d.externalId}
+                                    </span>
+                                    {d.branch && (
+                                      <span className="shrink-0 font-mono text-xs text-faint">
+                                        {d.branch}
+                                      </span>
+                                    )}
+                                    {d.authorName && (
+                                      <span className="shrink-0 text-xs text-muted">
+                                        {d.authorName}
+                                      </span>
+                                    )}
+                                  </a>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
 
-                  <LazyPanel minHeight={64}>
-                    <LinksPanel issueId={issue.id} canEdit={canEditThis} />
-                  </LazyPanel>
-                  <LazyPanel minHeight={64}>
-                    <RelatedDocsPanel issue={issue} />
-                  </LazyPanel>
-                  <LazyPanel minHeight={64}>
-                    <AttachmentsPanel issueId={issue.id} canEdit={canEditThis} />
-                  </LazyPanel>
+                        <OptionalSection id="links" sections={sections}>
+                          <LazyPanel minHeight={64} force={sections.wasOpened('links')}>
+                            <LinksPanel
+                              issueId={issue.id}
+                              canEdit={canEditThis}
+                              autoOpen={sections.wasOpened('links')}
+                            />
+                          </LazyPanel>
+                        </OptionalSection>
+                        <OptionalSection id="docs" sections={sections}>
+                          <LazyPanel minHeight={64} force={sections.wasOpened('docs')}>
+                            <RelatedDocsPanel issue={issue} />
+                          </LazyPanel>
+                        </OptionalSection>
+                        <LazyPanel minHeight={64}>
+                          <AttachmentsPanel issueId={issue.id} canEdit={canEditThis} />
+                        </LazyPanel>
+
+                        <div>
+                          <AddSectionButton
+                            issue={issue}
+                            hidden={sections.hidden}
+                            onPick={sections.open}
+                          />
+                        </div>
+                      </>
+                    )}
+                  </OptionalSectionsScope>
 
                   {/* Hoạt động: tab Bình luận / Lịch sử */}
                   <LazyPanel id="issue-activity" minHeight={160}>

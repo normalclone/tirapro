@@ -71,11 +71,10 @@ describe('SubNavLayout — mobile ở trang con, có slot top', () => {
     expect(out.indexOf('Về dự án X', row)).toBeGreaterThan(row);
     expect(out.indexOf('Về dự án X', row)).toBeLessThan(out.indexOf('<h1>Vai trò</h1>'));
   });
-  it('hàng quay lại cùng bề rộng khung (max-w theo frameSize), giữ ?query ở link về danh sách', () => {
+  it('hàng quay lại cùng bề rộng khung (đồng nhất, không max-w), giữ ?query ở link về danh sách', () => {
     const out = render('/settings/roles?project=p1');
-    expect(out).toMatch(
-      /<div class="mx-auto [^"]*max-w-3xl[^"]*lg:hidden|<div class="mx-auto [^"]*lg:hidden[^"]*max-w-3xl/,
-    );
+    expect(out).toMatch(/<div class="mx-auto [^"]*lg:hidden/);
+    expect(out).not.toMatch(/max-w-/);
     expect(out).toMatch(/<a [^>]*aria-label="Quay lại Cài đặt"[^>]*href="\/settings\?project=p1"/);
   });
 });
@@ -151,13 +150,12 @@ describe('ba layout mỏng', () => {
 });
 
 describe('SubNavLayout — frameSize chỉ cho hàng quay lại', () => {
-  it('danh sách mục luôn sm kể cả khu vực có frameSize xl; hàng quay lại ở trang con theo frameSize', () => {
+  it('danh sách mục luôn là khung sm (form-measure) kể cả khi khu vực có frameSize xl; không còn max-w', () => {
     const list = render('/settings', 'xl');
-    expect(list).toMatch(/class="[^"]*max-w-3xl/);
-    expect(list).not.toMatch(/max-w-7xl/);
+    expect(list).toMatch(/class="[^"]*form-measure/); // danh sách mục luôn là khung sm
+    expect(list).not.toMatch(/max-w-/);
     const child = render('/settings/roles', 'xl');
-    expect(child).toMatch(
-      /<div class="mx-auto [^"]*max-w-7xl[^"]*lg:hidden|<div class="mx-auto [^"]*lg:hidden[^"]*max-w-7xl/,
-    );
+    expect(child).toMatch(/<div class="mx-auto [^"]*lg:hidden/);
+    expect(child).not.toMatch(/max-w-/);
   });
 });

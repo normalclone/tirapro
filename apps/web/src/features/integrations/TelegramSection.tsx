@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { Send, Plus, Trash2, ChevronDown, ChevronRight, Hash } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/Button';
+import { Dialog } from '@/components/ui/Dialog';
 import { useConfirm } from '@/components/ui/useConfirm';
 import { useOpenSession } from '@/lib/useOpenSession';
 import { Input } from '@/components/ui/Input';
@@ -179,7 +180,7 @@ export function TelegramSection() {
   );
 }
 
-function TelegramRow({
+export function TelegramRow({
   integration,
   canManage,
   onDelete,
@@ -193,7 +194,9 @@ function TelegramRow({
   /** Mở wizard ở bước thêm bot vào nhóm cho kết nối này. */
   onContinue: () => void;
 }) {
-  const [expanded, setExpanded] = useState(false);
+  // Kênh nhận thông báo sửa trong hộp thoại (không mở rộng bên dưới hàng).
+  const [channelsOpen, setChannelsOpen] = useState(false);
+  const rowButtonRef = useRef<HTMLButtonElement>(null);
   const test = useTestIntegration();
 
   function handleTest() {
@@ -210,18 +213,14 @@ function TelegramRow({
     <li className="rounded-md border border-border">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2.5">
         <button
+          ref={rowButtonRef}
           type="button"
-          onClick={() => canManage && setExpanded((v) => !v)}
+          onClick={() => canManage && setChannelsOpen(true)}
           disabled={!canManage}
+          aria-haspopup={canManage ? 'dialog' : undefined}
+          title={canManage ? 'Xem và sửa kênh nhận thông báo' : undefined}
           className="flex min-w-[14rem] flex-1 items-center gap-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] rounded-sm"
-          aria-expanded={canManage ? expanded : undefined}
         >
-          {canManage &&
-            (expanded ? (
-              <ChevronDown className="h-4 w-4 shrink-0 text-faint" />
-            ) : (
-              <ChevronRight className="h-4 w-4 shrink-0 text-faint" />
-            ))}
           <span className="truncate text-sm font-medium text-ink">{integration.name}</span>
           <HealthBadge health={integration.health} />
           <span className="truncate font-mono text-xs text-faint">
@@ -272,11 +271,27 @@ function TelegramRow({
         </p>
       )}
 
-      {canManage && expanded && (
-        <div className="border-t border-border bg-surface-2 px-3 py-3">
-          <ChannelList integrationId={integration.id} onLinkGroup={onContinue} />
-        </div>
-      )}
+      <Dialog
+        open={canManage && channelsOpen}
+        onOpenChange={setChannelsOpen}
+        title={integration.name}
+        icon={<Send className="h-4 w-4" />}
+        headerExtra={<HealthBadge health={integration.health} />}
+        description="Các nhóm Telegram nhận thông báo của kết nối này."
+        size="lg"
+        onCloseAutoFocus={(e) => {
+          e.preventDefault();
+          rowButtonRef.current?.focus();
+        }}
+      >
+        <ChannelList
+          integrationId={integration.id}
+          onLinkGroup={() => {
+            setChannelsOpen(false);
+            onContinue();
+          }}
+        />
+      </Dialog>
     </li>
   );
 }

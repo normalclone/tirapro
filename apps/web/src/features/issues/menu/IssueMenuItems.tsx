@@ -29,7 +29,12 @@ export interface MenuKit {
   }>;
   Separator: ComponentType<{ className?: string }>;
   Sub: ComponentType<{ children?: ReactNode }>;
-  SubTrigger: ComponentType<{ className?: string; disabled?: boolean; children?: ReactNode }>;
+  SubTrigger: ComponentType<{
+    className?: string;
+    disabled?: boolean;
+    title?: string;
+    children?: ReactNode;
+  }>;
   SubContent: ComponentType<{ className?: string; sideOffset?: number; children?: ReactNode }>;
   Portal: ComponentType<{ children?: ReactNode }>;
   RadioGroup: ComponentType<{ value?: string; children?: ReactNode }>;
@@ -108,6 +113,7 @@ function useIssueMenuData(issue: IssueDto, surface: MenuSurface, hasPeek: boolea
     statusOptions: nextStatuses.length,
     priorityOptions: priorities.length,
     sprintOptions: surface === 'backlog' && sprints ? sprintOptions.length : 0,
+    sprintLocked: !!issue.parentId,
   });
   return { entries, nextStatuses, priorities, sprintOptions };
 }
@@ -189,7 +195,7 @@ export function IssueMenuItems({
             />
           );
         const trigger = (
-          <kit.SubTrigger className={ITEM_CLS} disabled={e.disabled}>
+          <kit.SubTrigger className={ITEM_CLS} disabled={e.disabled} title={e.hint}>
             <span className="flex-1">{e.label}</span>
             <ChevronRight className="h-4 w-4 text-faint" aria-hidden />
           </kit.SubTrigger>

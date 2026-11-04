@@ -58,6 +58,7 @@ export const ADMIN_LABELS = {
   accounts: 'Tài khoản',
   config: 'Cấu hình',
   system: 'Hệ thống',
+  points: 'Cách tính điểm',
 } as const;
 
 /** Nhãn NGẮN cho ô trên thanh tab đáy khi nhãn đầy đủ bị cắt trên màn hẹp (nhãn đầy đủ giữ làm `aria-label`). */

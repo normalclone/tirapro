@@ -1,0 +1,204 @@
+{
+  "statuses": [
+    {
+      "id": "cmvz0bl2c00h0beb3u8x094a5",
+      "name": "Cần làm",
+      "category": "TODO",
+      "order": 0,
+      "isInitial": true,
+      "color": null
+    },
+    {
+      "id": "cmvz0bl2d00h2beb30v93ztyd",
+      "name": "Đang phân tích",
+      "category": "TODO",
+      "order": 1,
+      "isInitial": false,
+      "color": null
+    },
+    {
+      "id": "cmvz0bl2d00h4beb31qes8m3b",
+      "name": "Sẵn sàng phát triển",
+      "category": "TODO",
+      "order": 2,
+      "isInitial": false,
+      "color": null
+    },
+    {
+      "id": "cmvz0bl2e00h6beb3dc3py70f",
+      "name": "Đang làm",
+      "category": "IN_PROGRESS",
+      "order": 3,
+      "isInitial": false,
+      "color": null
+    },
+    {
+      "id": "cmvz0bl2f00h8beb3y87qvgm4",
+      "name": "Review code",
+      "category": "IN_PROGRESS",
+      "order": 4,
+      "isInitial": false,
+      "color": null
+    },
+    {
+      "id": "cmvz0bl2g00habeb3mup1ekkp",
+      "name": "Chờ test",
+      "category": "IN_PROGRESS",
+      "order": 5,
+      "isInitial": false,
+      "color": null
+    },
+    {
+      "id": "cmvz0bl2h00hcbeb3gfaltbho",
+      "name": "Đang test",
+      "category": "IN_PROGRESS",
+      "order": 6,
+      "isInitial": false,
+      "color": null
+    },
+    {
+      "id": "cmvz0bl2i00hebeb38l9w335c",
+      "name": "Hoàn thành",
+      "category": "DONE",
+      "order": 7,
+      "isInitial": false,
+      "color": null
+    },
+    {
+      "id": "cmvz0bl2j00hgbeb3b7jkhxdx",
+      "name": "Không xử lý",
+      "category": "DONE",
+      "order": 8,
+      "isInitial": false,
+      "color": null
+    }
+  ],
+  "transitions": [
+    {
+      "id": "cmvz0bl2k00hibeb36gfak5zf",
+      "name": "Phân tích",
+      "fromStatusId": "cmvz0bl2c00h0beb3u8x094a5",
+      "toStatusId": "cmvz0bl2d00h2beb30v93ztyd",
+      "order": 0
+    },
+    {
+      "id": "cmvz0bl2l00hkbeb3iqbeovm4",
+      "name": "Sẵn sàng phát triển",
+      "fromStatusId": "cmvz0bl2d00h2beb30v93ztyd",
+      "toStatusId": "cmvz0bl2d00h4beb31qes8m3b",
+      "order": 1
+    },
+    {
+      "id": "cmvz0bl2m00hmbeb3ben6mqrv",
+      "name": "Sẵn sàng phát triển",
+      "fromStatusId": "cmvz0bl2c00h0beb3u8x094a5",
+      "toStatusId": "cmvz0bl2d00h4beb31qes8m3b",
+      "order": 2
+    },
+    {
+      "id": "cmvz0bl2n00hobeb3ktaxxpfo",
+      "name": "Bắt đầu làm",
+      "fromStatusId": "cmvz0bl2c00h0beb3u8x094a5",
+      "toStatusId": "cmvz0bl2e00h6beb3dc3py70f",
+      "order": 3
+    },
+    {
+      "id": "cmvz0bl2o00hqbeb312vjux07",
+      "name": "Bắt đầu làm",
+      "fromStatusId": "cmvz0bl2d00h4beb31qes8m3b",
+      "toStatusId": "cmvz0bl2e00h6beb3dc3py70f",
+      "order": 4
+    },
+    {
+      "id": "cmvz0bl2p00hsbeb3yr80ztrr",
+      "name": "Cần làm rõ",
+      "fromStatusId": "cmvz0bl2d00h4beb31qes8m3b",
+      "toStatusId": "cmvz0bl2d00h2beb30v93ztyd",
+      "order": 5
+    },
+    {
+      "id": "cmvz0bl2q00hubeb3cliaq3t6",
+      "name": "Tạm dừng",
+      "fromStatusId": "cmvz0bl2e00h6beb3dc3py70f",
+      "toStatusId": "cmvz0bl2c00h0beb3u8x094a5",
+      "order": 6
+    },
+    {
+      "id": "cmvz0bl2r00hwbeb3e0ydqn27",
+      "name": "Gửi review",
+      "fromStatusId": "cmvz0bl2e00h6beb3dc3py70f",
+      "toStatusId": "cmvz0bl2f00h8beb3y87qvgm4",
+      "order": 7
+    },
+    {
+      "id": "cmvz0bl2s00hybeb35qxq31pa",
+      "name": "Trả lại",
+      "fromStatusId": "cmvz0bl2f00h8beb3y87qvgm4",
+      "toStatusId": "cmvz0bl2e00h6beb3dc3py70f",
+      "order": 8
+    },
+    {
+      "id": "cmvz0bl2t00i0beb37chtovup",
+      "name": "Chuyển test",
+      "fromStatusId": "cmvz0bl2e00h6beb3dc3py70f",
+      "toStatusId": "cmvz0bl2g00habeb3mup1ekkp",
+      "order": 9
+    },
+    {
+      "id": "cmvz0bl2u00i2beb3ofu5hk12",
+      "name": "Chuyển test",
+      "fromStatusId": "cmvz0bl2f00h8beb3y87qvgm4",
+      "toStatusId": "cmvz0bl2g00habeb3mup1ekkp",
+      "order": 10
+    },
+    {
+      "id": "cmvz0bl2u00i4beb37okwdah3",
+      "name": "Bắt đầu test",
+      "fromStatusId": "cmvz0bl2g00habeb3mup1ekkp",
+      "toStatusId": "cmvz0bl2h00hcbeb3gfaltbho",
+      "order": 11
+    },
+    {
+      "id": "cmvz0bl2v00i6beb3a81kttz6",
+      "name": "Test đạt",
+      "fromStatusId": "cmvz0bl2h00hcbeb3gfaltbho",
+      "toStatusId": "cmvz0bl2i00hebeb38l9w335c",
+      "order": 12
+    },
+    {
+      "id": "cmvz0bl2w00i8beb3n5exyz03",
+      "name": "Test không đạt",
+      "fromStatusId": "cmvz0bl2h00hcbeb3gfaltbho",
+      "toStatusId": "cmvz0bl2e00h6beb3dc3py70f",
+      "order": 13
+    },
+    {
+      "id": "cmvz0bl2x00iabeb3q93xy87n",
+      "name": "Test không đạt",
+      "fromStatusId": "cmvz0bl2g00habeb3mup1ekkp",
+      "toStatusId": "cmvz0bl2e00h6beb3dc3py70f",
+      "order": 14
+    },
+    {
+      "id": "cmvz0bl2y00icbeb3u697u2ug",
+      "name": "Không xử lý",
+      "fromStatusId": null,
+      "toStatusId": "cmvz0bl2j00hgbeb3b7jkhxdx",
+      "order": 15
+    },
+    {
+      "id": "cmvz0bl2y00iebeb3x6hekpb0",
+      "name": "Mở lại",
+      "fromStatusId": "cmvz0bl2i00hebeb38l9w335c",
+      "toStatusId": "cmvz0bl2c00h0beb3u8x094a5",
+      "order": 16
+    },
+    {
+      "id": "cmvz0bl2z00igbeb3zunltcs8",
+      "name": "Mở lại",
+      "fromStatusId": "cmvz0bl2j00hgbeb3b7jkhxdx",
+      "toStatusId": "cmvz0bl2c00h0beb3u8x094a5",
+      "order": 17
+    }
+  ]
+}

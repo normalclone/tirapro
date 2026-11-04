@@ -148,6 +148,8 @@ export function FiltersPage() {
   const [editTarget, setEditTarget] = useState<SavedFilter | null>(null);
   // Giữ bộ lọc gần nhất để nội dung hộp sửa không đổi giữa hiệu ứng đóng.
   const editShown = useRetained(editTarget);
+  // JQL đổ sẵn vào hộp SỬA: nút bút chì ở rail dùng JQL đã lưu; nút "Sửa" cạnh "Chạy JQL" dùng JQL đang gõ trong ô.
+  const [editInitialJql, setEditInitialJql] = useState('');
   const deleteFilter = useDeleteFilter();
   const confirm = useConfirm();
   const runFilter = useRunFilter();
@@ -405,7 +407,10 @@ export function FiltersPage() {
                   selectSaved(f);
                 }}
                 onShare={setShareTarget}
-                onEdit={setEditTarget}
+                onEdit={(f) => {
+                  setEditInitialJql(f.jql);
+                  setEditTarget(f);
+                }}
                 onDelete={handleDelete}
                 canManage={canManageFilters}
                 deleting={deleteFilter.isPending ? deleteFilter.variables : undefined}
@@ -447,12 +452,18 @@ export function FiltersPage() {
             onRun={runAdhoc}
             running={active.kind === 'adhoc' && isRunning}
             error={runError}
-            onSave={
+            save={
               canManageFilters
-                ? () => {
-                    setCreateInitialJql(jqlDraft.trim());
-                    setCreateOpen(true);
-                  }
+                ? saveAction(active.kind === 'filter' ? active.filter : null, {
+                    create: () => {
+                      setCreateInitialJql(jqlDraft.trim());
+                      setCreateOpen(true);
+                    },
+                    edit: (f) => {
+                      setEditInitialJql(jqlDraft.trim());
+                      setEditTarget(f);
+                    },
+                  })
                 : undefined
             }
           />
@@ -519,7 +530,7 @@ export function FiltersPage() {
             open={editTarget !== null}
             onClose={() => setEditTarget(null)}
             editing={editShown}
-            initialJql={editShown?.jql ?? ''}
+            initialJql={editInitialJql}
             saving={updateFilter.isPending}
             onSave={async (name, jql, visibility) => {
               const target = editTarget;
@@ -565,21 +576,42 @@ export function FiltersPage() {
 /* Thanh JQL nhanh (ad-hoc)                                            */
 /* ------------------------------------------------------------------ */
 
+/** Nút lưu cạnh "Chạy JQL": nhãn + hành động tuỳ việc đang xem bộ lọc đã lưu nào. */
+interface SaveAction {
+  mode: 'create' | 'edit' | 'copy';
+  label: string;
+  onClick: () => void;
+}
+
+/**
+ * - Chưa chọn bộ lọc đã lưu (truy vấn ad-hoc) → "Lưu truy vấn" (tạo mới).
+ * - Đang xem bộ lọc CỦA MÌNH → "Sửa" (mở hộp sửa của chính bộ lọc đó, đổ sẵn JQL đang gõ, lưu bằng cập nhật).
+ * - Đang xem bộ lọc người khác chia sẻ (không sửa được) → "Lưu thành bộ lọc mới" (tạo mới).
+ */
+export function saveAction(
+  filter: Pick<SavedFilter, 'isOwner'> | null,
+  on: { create: () => void; edit: (f: SavedFilter) => void },
+): SaveAction {
+  if (!filter) return { mode: 'create', label: 'Lưu truy vấn', onClick: on.create };
+  if (!filter.isOwner) return { mode: 'copy', label: 'Lưu thành bộ lọc mới', onClick: on.create };
+  return { mode: 'edit', label: 'Sửa', onClick: () => on.edit(filter as SavedFilter) };
+}
+
 function AdhocBar({
   value,
   onChange,
   onRun,
   running,
   error,
-  onSave,
+  save,
 }: {
   value: string;
   onChange: (v: string) => void;
   onRun: () => void;
   running: boolean;
   error: string | null;
-  /** Mở hộp "Tạo bộ lọc" với JQL đang gõ; undefined = không có quyền `filter:manage` → ẩn nút. */
-  onSave?: () => void;
+  /** Nút lưu cạnh "Chạy JQL" (xem `saveAction`); undefined = không có quyền `filter:manage` → ẩn nút. */
+  save?: SaveAction;
 }) {
   const { validation } = useJqlValidation(value);
   // Lỗi chạy gần nhất không lặp lại khi ô đã báo lỗi cho cùng câu (cú pháp/giá trị sai).
@@ -604,10 +636,14 @@ function AdhocBar({
             {!running && <Play className="h-4 w-4" aria-hidden />}
             Chạy JQL
           </Button>
-          {onSave && (
-            <Button size="sm" variant="secondary" onClick={onSave} disabled={empty}>
-              <Bookmark className="h-4 w-4" aria-hidden />
-              Lưu truy vấn
+          {save && (
+            <Button size="sm" variant="secondary" onClick={save.onClick} disabled={empty}>
+              {save.mode === 'edit' ? (
+                <Pencil className="h-4 w-4" aria-hidden />
+              ) : (
+                <Bookmark className="h-4 w-4" aria-hidden />
+              )}
+              {save.label}
             </Button>
           )}
         </div>
@@ -699,15 +735,6 @@ function SavedFilterList({
                       </Badge>
                     </span>
                   </button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => onShare(f)}
-                    aria-label={`Chia sẻ bộ lọc ${f.name}`}
-                    className={cn(ROW_ACTION_CLS, 'hover:text-ink')}
-                  >
-                    <Share2 className="h-4 w-4" aria-hidden />
-                  </Button>
                   {f.isOwner && canManage ? (
                     <>
                       <Button
@@ -732,13 +759,22 @@ function SavedFilterList({
                       </Button>
                     </>
                   ) : (
-                    // Giữ chỗ nút xoá: nút "Chia sẻ" không xê dịch giữa bộ lọc của mình và của người khác.
+                    // Giữ chỗ nút sửa/xoá: nút "Chia sẻ" (luôn là phần tử cuối, sát mép phải) không xê dịch giữa bộ lọc của mình và của người khác.
                     <span
                       className="invisible h-7 w-14 shrink-0 max-sm:hidden [@media(pointer:coarse)]:h-9 [@media(pointer:coarse)]:w-[4.5rem]"
                       aria-hidden
                       data-testid="row-action-placeholder"
                     />
                   )}
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => onShare(f)}
+                    aria-label={`Chia sẻ bộ lọc ${f.name}`}
+                    className={cn(ROW_ACTION_CLS, 'ml-auto hover:text-ink')}
+                  >
+                    <Share2 className="h-4 w-4" aria-hidden />
+                  </Button>
                 </div>
               </li>
             );

@@ -6,7 +6,7 @@ import { SearchSelect } from '@/components/ui/SearchSelect';
 import { useConfirm } from '@/components/ui/useConfirm';
 import { usePriorityRanks } from '@/features/issue-meta/usePriorityRanks';
 import { pointsConfirmOptions, pointsEditWarning } from '@/features/issues/pointsWarning';
-import { parsePointsInput } from '@/lib/permissions';
+import { parsePointsOverride, pointsTip, type PointsRole } from '@/lib/points';
 import { cn } from '@/lib/utils';
 import { TOUCH_HIT } from '@/lib/touchHit';
 
@@ -46,33 +46,28 @@ export function PointsChip({ points, title }: { points: number | null; title?: s
   );
 }
 
-const POINTS_TIP = 'Điểm ước lượng — bấm để đặt lại (Enter lưu, Esc huỷ)';
-export const NO_EDIT_TIP = 'Bạn không có quyền sửa công việc này';
-
 /**
  * Chip điểm bấm-để-sửa: bấm → ô số nhỏ; Enter/rời ô = lưu, Esc = huỷ. Việc Done / thuộc sprint đã kết thúc hỏi xác nhận
  * trước khi ghi (B9). `sprints` truyền từ trang (không gọi hook theo dòng — dòng là `memo`, danh sách có thể rất dài).
  */
 export function InlinePoints({
   issue,
-  canEdit,
+  role,
   sprints,
   onSave,
-  lockedTip,
 }: {
   issue: IssueDto;
-  canEdit: boolean;
+  /** `edit` = Quản trị dự án bấm để chỉnh tay; `locked`/`rollup` = chỉ đọc, rê chuột ra lời giải thích điểm. */
+  role: PointsRole;
   sprints: SprintDto[] | undefined;
-  onSave: (issue: IssueDto, value: number | null) => void;
-  /** Giải thích khi không sửa được (bỏ trống = tooltip chip mặc định). */
-  lockedTip?: string;
+  onSave: (issue: IssueDto, value: number) => void;
 }) {
   const [editing, setEditing] = useState(false);
   const confirm = useConfirm();
 
   async function commit(raw: string) {
     setEditing(false);
-    const r = parsePointsInput(raw);
+    const r = parsePointsOverride(raw);
     if (!r.ok) return void toast.error(r.error);
     if (r.value === issue.storyPoints) return;
     const w = pointsEditWarning(issue, sprints);
@@ -80,16 +75,10 @@ export function InlinePoints({
     onSave(issue, r.value);
   }
 
-  if (!canEdit) {
+  const tip = pointsTip(issue, role === 'rollup');
+  if (role !== 'edit') {
     return (
-      <PointsChip
-        points={issue.storyPoints}
-        title={
-          lockedTip && issue.storyPoints != null
-            ? `${issue.storyPoints} điểm ước lượng. ${lockedTip}`
-            : undefined
-        }
-      />
+      <PointsChip points={issue.storyPoints} title={issue.storyPoints != null ? tip : undefined} />
     );
   }
   if (editing) {
@@ -99,11 +88,11 @@ export function InlinePoints({
         autoFocus
         type="number"
         min={0}
-        max={1000}
-        step="any"
-        inputMode="decimal"
+        max={100}
+        step={1}
+        inputMode="numeric"
         defaultValue={issue.storyPoints ?? ''}
-        aria-label={`Điểm của ${issue.key}`}
+        aria-label={`Điểm chỉnh tay của ${issue.key}`}
         className="tabular h-6 w-14 rounded border border-primary bg-bg px-1 text-center text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
         onBlur={(e) => void commit(e.target.value)}
         onKeyDown={(e) => {
@@ -125,15 +114,18 @@ export function InlinePoints({
         e.stopPropagation();
         setEditing(true);
       }}
-      title={POINTS_TIP}
-      aria-label={`Điểm của ${issue.key}: ${issue.storyPoints ?? 'chưa đặt'}. Bấm để sửa`}
+      title={`${tip}. Bấm để chỉnh tay (Enter lưu, Esc huỷ)`}
+      aria-label={`Điểm của ${issue.key}: ${issue.storyPoints ?? 'chưa đặt'}. Bấm để chỉnh tay`}
       className={cn(
         'grid min-h-5 min-w-6 shrink-0 place-items-center rounded-full px-0.5 transition-colors hover:bg-surface-2',
         TOUCH_HIT,
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
       )}
     >
-      <PointsChip points={issue.storyPoints} title={POINTS_TIP} />
+      <PointsChip
+        points={issue.storyPoints}
+        title={`${tip}. Bấm để chỉnh tay (Enter lưu, Esc huỷ)`}
+      />
     </button>
   );
 }

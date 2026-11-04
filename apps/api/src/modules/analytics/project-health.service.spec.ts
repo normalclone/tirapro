@@ -257,3 +257,19 @@ describe('ProjectHealthService.forProjects — người xem (dự án riêng tư
     expect(access.visibleWhere).not.toHaveBeenCalled();
   });
 });
+
+describe('ProjectHealthService.forProjects — điểm sprint loại Epic', () => {
+  it('hai groupBy điểm sprint (cam kết, còn lại) đều loại Epic; truy vấn đếm theo dự án thì không', async () => {
+    const { service, prisma } = make();
+    await service.forProjects('w1', ['p1'], null);
+    const epicExcluded = { NOT: { type: { key: 'EPIC' } } };
+    const calls = prisma.issue.groupBy.mock.calls as unknown as Array<
+      [{ where: Record<string, unknown>; _sum?: unknown }]
+    >;
+    const sumCalls = calls.filter((c) => c[0]._sum);
+    expect(sumCalls).toHaveLength(2);
+    for (const c of sumCalls) expect(c[0].where).toMatchObject(epicExcluded);
+    for (const c of calls.filter((x) => !x[0]._sum))
+      expect(c[0].where).not.toMatchObject(epicExcluded);
+  });
+});

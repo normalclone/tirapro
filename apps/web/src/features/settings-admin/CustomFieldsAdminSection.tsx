@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { LayoutList, Plus, Pencil, Trash2, Check, X } from 'lucide-react';
 import { toast } from 'sonner';
+import { AddDialog } from '@/components/ui/AddDialog';
 import { Button } from '@/components/ui/Button';
 import { useConfirm } from '@/components/ui/useConfirm';
 import { Input } from '@/components/ui/Input';
@@ -98,7 +99,10 @@ export function CustomFieldsAdminSection() {
         options: optionPayload,
       },
       {
-        onSuccess: resetAdd,
+        onSuccess: () => {
+          resetAdd();
+          toast.success('Đã thêm trường thông tin');
+        },
         onError: (e) => toast.error(apiErrorMessage(e)),
       },
     );
@@ -140,7 +144,7 @@ export function CustomFieldsAdminSection() {
             ))}
           </div>
         }
-        empty={() => fields.length === 0 && !adding}
+        empty={() => fields.length === 0}
         emptyState={
           <EmptyState
             icon={<LayoutList className="h-6 w-6" />}
@@ -220,109 +224,109 @@ export function CustomFieldsAdminSection() {
       </QueryBoundary>
 
       {/* Form thêm trường — chỉ người có quyền quản lý trường thông tin thêm */}
-      {canManage && adding ? (
-        <div className="mt-4 rounded-md border border-border bg-surface-2 p-3">
-          <div className="space-y-3">
-            <div className="flex flex-wrap items-end gap-3">
-              <div className="min-w-[10rem] flex-1">
-                <label htmlFor="cf-name" className="mb-1 block text-xs font-medium text-muted">
-                  Tên trường
-                </label>
-                <Input
-                  id="cf-name"
-                  value={name}
-                  autoFocus
-                  placeholder="VD: Bộ phận"
-                  onChange={(e) => setName(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !hasOptions(type)) submitAdd();
-                    if (e.key === 'Escape') resetAdd();
-                  }}
-                />
-              </div>
-              <div className="w-44">
-                <label htmlFor="cf-type" className="mb-1 block text-xs font-medium text-muted">
-                  Loại
-                </label>
-                <SearchSelect
-                  id="cf-type"
-                  value={type}
-                  onChange={(v) => setType(v as CustomFieldType)}
-                  options={FIELD_TYPES.map((t) => ({ value: t.value, label: t.label }))}
-                  placeholder="Chọn loại…"
-                  className="w-full"
-                />
-              </div>
-            </div>
-
-            {/* Lựa chọn (chỉ với SELECT / MULTI_SELECT) */}
-            {hasOptions(type) && (
-              <div>
-                <span className="mb-1 block text-xs font-medium text-muted">Các lựa chọn</span>
-                <div className="space-y-2">
-                  {options.map((opt, i) => (
-                    <div key={i} className="flex items-center gap-2">
-                      <Input
-                        value={opt}
-                        placeholder={`Lựa chọn ${i + 1}`}
-                        aria-label={`Lựa chọn ${i + 1}`}
-                        onChange={(e) => setOptionAt(i, e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') addOption();
-                          if (e.key === 'Escape') resetAdd();
-                        }}
-                      />
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => removeOption(i)}
-                        disabled={options.length <= 1}
-                        title="Xoá lựa chọn"
-                        className="text-muted hover:text-danger"
-                      >
-                        <X className="h-4 w-4" />
-                        <span className="sr-only">Xoá lựa chọn {i + 1}</span>
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-                <Button variant="ghost" size="sm" className="mt-2" onClick={addOption}>
-                  <Plus className="h-4 w-4" />
-                  Thêm lựa chọn
-                </Button>
-              </div>
-            )}
-
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <label className="flex cursor-pointer items-center gap-2 text-sm text-ink">
-                <input
-                  type="checkbox"
-                  checked={isRequired}
-                  onChange={(e) => setIsRequired(e.target.checked)}
-                  className="h-4 w-4 cursor-pointer rounded border-border accent-[var(--primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
-                />
-                Bắt buộc
+      {canManage && fields.length > 0 && (
+        <Button variant="secondary" size="sm" className="mt-4" onClick={() => setAdding(true)}>
+          <Plus className="h-4 w-4" />
+          Thêm trường
+        </Button>
+      )}
+      <AddDialog
+        open={adding}
+        onClose={resetAdd}
+        title="Thêm trường thông tin"
+        size="lg"
+        dirty={name.trim() !== ''}
+      >
+        <div className="space-y-3">
+          <div className="space-y-4">
+            <div className="min-w-[10rem] flex-1">
+              <label htmlFor="cf-name" className="mb-1 block text-xs font-medium text-muted">
+                Tên trường
               </label>
-              <div className="flex items-center gap-2">
-                <Button size="sm" onClick={submitAdd} loading={create.isPending}>
-                  Lưu
-                </Button>
-                <Button size="sm" variant="ghost" onClick={resetAdd} disabled={create.isPending}>
-                  Huỷ
-                </Button>
+              <Input
+                id="cf-name"
+                value={name}
+                autoFocus
+                placeholder="VD: Bộ phận"
+                onChange={(e) => setName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !hasOptions(type)) submitAdd();
+                }}
+              />
+            </div>
+            <div className="w-44">
+              <label htmlFor="cf-type" className="mb-1 block text-xs font-medium text-muted">
+                Loại
+              </label>
+              <SearchSelect
+                id="cf-type"
+                value={type}
+                onChange={(v) => setType(v as CustomFieldType)}
+                options={FIELD_TYPES.map((t) => ({ value: t.value, label: t.label }))}
+                placeholder="Chọn loại…"
+                className="w-full"
+              />
+            </div>
+          </div>
+
+          {/* Lựa chọn (chỉ với SELECT / MULTI_SELECT) */}
+          {hasOptions(type) && (
+            <div>
+              <span className="mb-1 block text-xs font-medium text-muted">Các lựa chọn</span>
+              <div className="space-y-2">
+                {options.map((opt, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <Input
+                      value={opt}
+                      placeholder={`Lựa chọn ${i + 1}`}
+                      aria-label={`Lựa chọn ${i + 1}`}
+                      onChange={(e) => setOptionAt(i, e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') addOption();
+                      }}
+                    />
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => removeOption(i)}
+                      disabled={options.length <= 1}
+                      title="Xoá lựa chọn"
+                      className="text-muted hover:text-danger"
+                    >
+                      <X className="h-4 w-4" />
+                      <span className="sr-only">Xoá lựa chọn {i + 1}</span>
+                    </Button>
+                  </div>
+                ))}
               </div>
+              <Button variant="ghost" size="sm" className="mt-2" onClick={addOption}>
+                <Plus className="h-4 w-4" />
+                Thêm lựa chọn
+              </Button>
+            </div>
+          )}
+
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <label className="flex cursor-pointer items-center gap-2 text-sm text-ink">
+              <input
+                type="checkbox"
+                checked={isRequired}
+                onChange={(e) => setIsRequired(e.target.checked)}
+                className="h-4 w-4 cursor-pointer rounded border-border accent-[var(--primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+              />
+              Bắt buộc
+            </label>
+            <div className="flex items-center justify-end gap-2">
+              <Button size="sm" onClick={submitAdd} loading={create.isPending}>
+                Lưu
+              </Button>
+              <Button size="sm" variant="ghost" onClick={resetAdd} disabled={create.isPending}>
+                Huỷ
+              </Button>
             </div>
           </div>
         </div>
-      ) : (
-        canManage &&
-        fields.length > 0 && (
-          <Button variant="secondary" size="sm" className="mt-4" onClick={() => setAdding(true)}>
-            <Plus className="h-4 w-4" />
-            Thêm trường
-          </Button>
-        )
-      )}
+      </AddDialog>
     </SectionCard>
   );
 }

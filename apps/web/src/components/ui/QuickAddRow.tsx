@@ -21,7 +21,7 @@ import { SearchSelect } from './SearchSelect';
 
 /**
  * Hàng "thêm nhanh" issue — gõ tiêu đề + Enter là tạo ngay (keyboard-first, UX §3).
- * Hiểu token `!ưu-tiên ~điểm @người ^hạn #sprint` (cùng parser với hộp tạo việc), chọn được loại việc
+ * Hiểu token `!ưu-tiên ~độ-khó @người ^hạn #sprint` (cùng parser với hộp tạo việc), chọn được loại việc
  * (nhớ lần chọn), giữ focus để gõ việc kế tiếp.
  * Dùng ở đáy mỗi cột Board và mỗi khu Backlog/Sprint.
  *
@@ -140,7 +140,7 @@ export function QuickAddRow({
       )}
       <div
         className="min-w-0 flex-1"
-        title="Gõ !ưu-tiên ~điểm @người ^hạn #sprint ngay trong tiêu đề"
+        title="Gõ !ưu-tiên ~độ-khó @người ^hạn #sprint ngay trong tiêu đề"
       >
         <TokenTitleInput
           bare

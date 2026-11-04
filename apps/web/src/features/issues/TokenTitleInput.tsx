@@ -16,8 +16,8 @@ import {
 } from './titleTokens';
 
 /**
- * Ô tiêu đề "thông minh": gõ token (!ưu-tiên @người #sprint ~điểm ^hạn) →
- * gợi ý (dropdown cho !/@/#) + tô sáng token hợp lệ ngay trong ô. Trả text thô qua onChange.
+ * Ô tiêu đề "thông minh": gõ token (!ưu-tiên @người #sprint ~độ-khó ^hạn) →
+ * gợi ý (dropdown cho !/@/#/~) + tô sáng token hợp lệ ngay trong ô. Trả text thô qua onChange.
  */
 export function TokenTitleInput({
   value,
@@ -90,7 +90,7 @@ export function TokenTitleInput({
     const v = el.value;
     const caret = el.selectionStart ?? v.length;
     const at = activeTokenAt(v, caret);
-    if (at && (at.sym === '!' || at.sym === '@' || at.sym === '#')) {
+    if (at && (at.sym === '!' || at.sym === '@' || at.sym === '#' || at.sym === '~')) {
       const list = suggestFor(at.sym, at.partial, ctx);
       activeRef.current = { ...at, caretEnd: caret };
       setItems(list);

@@ -3,7 +3,7 @@ import axios from 'axios';
 import { useQueryClient } from '@tanstack/react-query';
 import { Sparkles, Wand2 } from 'lucide-react';
 import { toast } from 'sonner';
-import type { AiFallbackReason, AiGeneratedIssue } from '@tirapro/shared';
+import { DIFFICULTY_LABELS, type AiFallbackReason, type AiGeneratedIssue } from '@tirapro/shared';
 import { api, apiErrorMessage } from '@/lib/api';
 import { Button } from '@/components/ui/Button';
 import { useOpenSession } from '@/lib/useOpenSession';
@@ -137,7 +137,8 @@ function GenerateIssuesDialogInner({
           summary: r.summary.trim(),
           description: r.description ?? null,
           descriptionFormat: 'MARKDOWN',
-          storyPoints: typeof r.storyPoints === 'number' ? r.storyPoints : undefined,
+          // Điểm do máy chủ tính từ Loại × Độ khó × Ưu tiên; chỉ gửi độ khó AI đề xuất (nếu hợp lệ).
+          ...(r.difficulty ? { difficulty: r.difficulty } : {}),
         }),
       describeCreateError,
       (done, total) => setProgress({ done, total }),
@@ -293,9 +294,12 @@ function GenerateIssuesDialogInner({
                       ariaLabel="Loại công việc"
                       className="w-40"
                     />
-                    {typeof row.storyPoints === 'number' && (
-                      <span className="tabular rounded-full bg-surface-2 px-1.5 py-0.5 text-[10px] font-medium text-muted">
-                        {row.storyPoints} pts
+                    {row.difficulty && (
+                      <span
+                        className="rounded-full bg-surface-2 px-1.5 py-0.5 text-[10px] font-medium text-muted"
+                        title="Độ khó AI đề xuất — điểm do hệ thống tự tính"
+                      >
+                        {DIFFICULTY_LABELS[row.difficulty]}
                       </span>
                     )}
                     {row.description && (

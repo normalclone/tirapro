@@ -31,53 +31,64 @@ const ACCESS_ALL = {
   visibleProjectIds: vi.fn(() => Promise.resolve(null)),
 };
 
+const sum = (p: number | null) => ({ storyPoints: p });
+/** Kết quả groupBy giả theo `by` (và `_sum` = truy vấn tổng điểm riêng) cho projectReport. */
+const projectReportRows = (args: { by: string[]; _sum?: unknown }) => {
+  const by = args.by.join(',');
+  if (by === 'statusId') {
+    return [
+      { statusId: 's-todo', _count: { _all: 3 }, _sum: sum(5) },
+      { statusId: 's-prog', _count: { _all: 2 }, _sum: sum(8) },
+      { statusId: 's-done', _count: { _all: 5 }, _sum: sum(13) },
+    ];
+  }
+  if (by === 'typeId') {
+    return [
+      { typeId: 't-task', _count: { _all: 7 } },
+      { typeId: 't-bug', _count: { _all: 3 } },
+    ];
+  }
+  if (by === 'priorityId') {
+    return [
+      { priorityId: 'p-high', _count: { _all: 4 } },
+      { priorityId: null, _count: { _all: 6 } },
+    ];
+  }
+  if (by === 'assigneeId,statusId') {
+    return [
+      { assigneeId: 'u1', statusId: 's-prog', _count: { _all: 2 }, _sum: sum(8) },
+      { assigneeId: 'u1', statusId: 's-done', _count: { _all: 3 }, _sum: sum(8) },
+      { assigneeId: null, statusId: 's-todo', _count: { _all: 3 }, _sum: sum(5) },
+      { assigneeId: 'u2', statusId: 's-done', _count: { _all: 2 }, _sum: sum(5) },
+    ];
+  }
+  if (by === 'assigneeId' && args._sum) {
+    // tổng điểm theo người (truy vấn riêng, đã loại Epic)
+    return [
+      { assigneeId: 'u1', _sum: sum(16) },
+      { assigneeId: null, _sum: sum(5) },
+      { assigneeId: 'u2', _sum: sum(5) },
+    ];
+  }
+  if (by === 'assigneeId') {
+    return [
+      { assigneeId: 'u1', _count: { _all: 1 } },
+      { assigneeId: null, _count: { _all: 1 } },
+    ];
+  }
+  throw new Error(`groupBy bất ngờ: ${by}`);
+};
+
 describe('AnalyticsService.projectReport — aggregate SQL', () => {
   const statuses = [
     { id: 's-todo', name: 'To Do', category: 'TODO', order: 0 },
     { id: 's-prog', name: 'In Progress', category: 'IN_PROGRESS', order: 1 },
     { id: 's-done', name: 'Done', category: 'DONE', order: 2 },
   ];
-  const sum = (p: number | null) => ({ storyPoints: p });
-
   function make() {
-    const rows = (args: { by: string[] }) => {
-      const by = args.by.join(',');
-      if (by === 'statusId') {
-        return [
-          { statusId: 's-todo', _count: { _all: 3 }, _sum: sum(5) },
-          { statusId: 's-prog', _count: { _all: 2 }, _sum: sum(8) },
-          { statusId: 's-done', _count: { _all: 5 }, _sum: sum(13) },
-        ];
-      }
-      if (by === 'typeId') {
-        return [
-          { typeId: 't-task', _count: { _all: 7 } },
-          { typeId: 't-bug', _count: { _all: 3 } },
-        ];
-      }
-      if (by === 'priorityId') {
-        return [
-          { priorityId: 'p-high', _count: { _all: 4 } },
-          { priorityId: null, _count: { _all: 6 } },
-        ];
-      }
-      if (by === 'assigneeId,statusId') {
-        return [
-          { assigneeId: 'u1', statusId: 's-prog', _count: { _all: 2 }, _sum: sum(8) },
-          { assigneeId: 'u1', statusId: 's-done', _count: { _all: 3 }, _sum: sum(8) },
-          { assigneeId: null, statusId: 's-todo', _count: { _all: 3 }, _sum: sum(5) },
-          { assigneeId: 'u2', statusId: 's-done', _count: { _all: 2 }, _sum: sum(5) },
-        ];
-      }
-      if (by === 'assigneeId') {
-        return [
-          { assigneeId: 'u1', _count: { _all: 1 } },
-          { assigneeId: null, _count: { _all: 1 } },
-        ];
-      }
-      throw new Error(`groupBy bất ngờ: ${by}`);
-    };
-    const groupBy = vi.fn((args: { by: string[]; where?: unknown }) => Promise.resolve(rows(args)));
+    const groupBy = vi.fn((args: { by: string[]; where?: unknown; _sum?: unknown }) =>
+      Promise.resolve(projectReportRows(args)),
+    );
     const count = vi.fn().mockResolvedValueOnce(2).mockResolvedValueOnce(4);
     const prisma = {
       project: { findFirst: vi.fn(() => Promise.resolve({ id: 'p1' })) },
@@ -120,7 +131,15 @@ describe('AnalyticsService.projectReport — aggregate SQL', () => {
     await service.projectReport('w1', 'p1');
     expect(prisma.issue).not.toHaveProperty('findMany');
     const bys = prisma.issue.groupBy.mock.calls.map((c) => c[0].by.join(','));
-    expect(bys).toEqual(['statusId', 'typeId', 'priorityId', 'assigneeId,statusId', 'assigneeId']);
+    expect(bys).toEqual([
+      'statusId',
+      'typeId',
+      'priorityId',
+      'assigneeId,statusId',
+      'assigneeId',
+      'statusId', // tổng điểm theo trạng thái (loại Epic)
+      'assigneeId', // tổng điểm theo người (loại Epic)
+    ]);
     // mọi truy vấn đều bị chặn theo project + chưa xoá mềm
     for (const c of prisma.issue.groupBy.mock.calls) {
       expect(c[0].where).toMatchObject({ projectId: 'p1', deletedAt: null });
@@ -133,8 +152,21 @@ describe('AnalyticsService.projectReport — aggregate SQL', () => {
     const wheres = [...prisma.issue.groupBy.mock.calls, ...prisma.issue.count.mock.calls].map(
       (c) => (c[0] as { where: unknown }).where,
     );
-    expect(wheres).toHaveLength(7);
+    expect(wheres).toHaveLength(9);
     for (const w of wheres) expect(hasTriageVisible(w)).toBe(true);
+  });
+
+  it('tổng điểm LOẠI Epic (điểm Epic = tổng việc con, cộng sẽ đếm đôi); số đếm vẫn tính cả Epic', async () => {
+    const { service, prisma } = make();
+    await service.projectReport('w1', 'p1');
+    const epicExcluded = { NOT: { type: { key: 'EPIC' } } };
+    for (const c of prisma.issue.groupBy.mock.calls) {
+      const args = c[0] as { where: unknown; _sum?: unknown; _count?: unknown };
+      if (args._sum) expect(args.where).toMatchObject(epicExcluded);
+      else expect(args.where).not.toMatchObject(epicExcluded);
+      // không còn truy vấn nào vừa đếm vừa cộng điểm (cộng điểm phải đi qua bộ lọc loại Epic)
+      expect(args._sum && args._count).toBeFalsy();
+    }
   });
 
   it('giữ nguyên hình dạng response cũ từ cùng một fixture', async () => {
@@ -726,6 +758,18 @@ function makeBurndown(
 }
 
 describe('AnalyticsService.burndown — ưu tiên snapshot, thiếu thì tính từ lịch sử', () => {
+  it('điểm cam kết/đã xong chỉ cộng việc KHÔNG phải Epic (điểm Epic = tổng việc con, cộng sẽ đếm đôi)', async () => {
+    const { service, prisma } = makeBurndown([]);
+    await service.burndown('w1', 'p1', 'sp1');
+    const args = prisma.sprint.findFirst.mock.calls[0] as unknown as [
+      { include: { issues: { where: unknown } } },
+    ];
+    expect(args[0].include.issues.where).toMatchObject({
+      deletedAt: null,
+      NOT: { type: { key: 'EPIC' } },
+    });
+  });
+
   it('không có snapshot => giữ cách tính cũ từ lịch sử (không đổi hành vi trước khi deploy)', async () => {
     const { service } = makeBurndown([]);
     const r = await service.burndown('w1', 'p1', 'sp1');
@@ -1111,16 +1155,38 @@ describe('AnalyticsService.sprintSummary', () => {
       },
       [],
       [
-        { storyPoints: 5, status: { category: 'DONE' } },
-        { storyPoints: 3, status: { category: 'IN_PROGRESS' } },
-        { storyPoints: null, status: { category: 'TODO' } },
+        {
+          storyPoints: 5,
+          status: { category: 'DONE' },
+          type: { key: 'TASK' },
+          _count: { children: 0 },
+        },
+        {
+          storyPoints: 3,
+          status: { category: 'IN_PROGRESS' },
+          type: { key: 'BUG' },
+          _count: { children: 0 },
+        },
+        {
+          storyPoints: null,
+          status: { category: 'TODO' },
+          type: { key: null },
+          _count: { children: 0 },
+        },
+        // Epic trong sprint: điểm Epic = tổng việc con (đã nằm trong các dòng trên) → KHÔNG cộng điểm, nhưng vẫn là một việc.
+        {
+          storyPoints: 11,
+          status: { category: 'IN_PROGRESS' },
+          type: { key: 'EPIC' },
+          _count: { children: 0 },
+        },
       ],
     );
     const r = await service.sprintSummary('w1', 'p1', 'sp1');
-    expect(r.committed).toEqual({ points: 8, count: 3 });
+    expect(r.committed).toEqual({ points: 8, count: 4 });
     expect(r.initialCommitted).toBeNull();
     expect(r.completed).toEqual({ points: 5, count: 1 });
-    expect(r.remaining).toEqual({ points: 3, count: 2 });
+    expect(r.remaining).toEqual({ points: 3, count: 3 });
     expect(r.carriedOver).toEqual([]);
     expect(r.velocity).toEqual({ average: 0, sprintsCounted: 0, deltaPct: null });
     // 01/10 -> 18/10 = 18 ngày (tính cả hai đầu); hôm nay 15/10 là ngày thứ 15; còn 3 ngày
@@ -1206,8 +1272,18 @@ describe('AnalyticsService.sprintSummary — phạm vi và velocity', () => {
       },
       [],
       [
-        { storyPoints: 5, status: { category: 'DONE' } },
-        { storyPoints: 3, status: { category: 'TODO' } },
+        {
+          storyPoints: 5,
+          status: { category: 'DONE' },
+          type: { key: 'TASK' },
+          _count: { children: 0 },
+        },
+        {
+          storyPoints: 3,
+          status: { category: 'TODO' },
+          type: { key: 'TASK' },
+          _count: { children: 0 },
+        },
       ],
     );
     const r = await service.sprintSummary('w1', 'p1', 'sp1');

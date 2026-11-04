@@ -2,20 +2,21 @@ import type { HTMLAttributes } from 'react';
 import { cn } from '@/lib/utils';
 
 /**
- * Khung nội dung trang — MỘT nguồn duy nhất cho bề rộng + đệm (B-D1).
- * Nội dung mọi màn bắt đầu cùng một vị trí ngang → thao tác theo thói quen không bị lệch khi đổi màn.
+ * Khung nội dung trang — MỘT nguồn duy nhất cho đệm (B-D1) và, từ Task 12, bề rộng ĐỒNG NHẤT: mọi trang lấp đầy
+ * vùng nội dung (không còn khung căn giữa co lại). Nội dung mọi màn bắt đầu cùng một vị trí ngang.
  *
- *  sm   — form/danh sách hẹp (Cài đặt con, Thành viên, Thông báo, Tài khoản, Kết nối, Tự động hoá)
- *  lg   — màn làm việc vừa (chi tiết công việc, Bộ lọc, Wiki, Quản trị hệ thống, Quy trình, Vai trò & quyền)
- *  xl   — bảng mật độ cao (Tổng quan, Dự án, Bảng tổng quan, Danh mục)
- *  full — tab trong dự án (Bảng việc, Việc chờ, Lịch trình, Cây việc, Báo cáo…): theo bề ngang vùng nội dung
+ * Tham số `size` vẫn giữ để chỗ gọi không đổi và để nói ý định của trang:
+ *  sm   — form/danh sách (Cài đặt con, Thành viên, Thông báo, Tài khoản, Kết nối, Tự động hoá). Mang lớp `form-measure`:
+ *         ô nhập một dòng / ô văn bản dài trong trang này giữ bề rộng đọc được (36rem) thay vì kéo hết 1600px;
+ *         bảng, danh sách, thẻ, biểu đồ vẫn trải hết.
+ *  lg · xl · full — màn làm việc / bảng / tab trong dự án: không giới hạn.
  *
- * Đây là nơi DUY NHẤT được đặt `max-w-*` cho khung; trang/feature không tự đặt.
+ * Trang chữ dài (Wiki, Hướng dẫn) tự giữ cột chữ ~75ch ở CHÍNH cột bài viết; menu bên, thanh công cụ vẫn trải hết.
  */
 export const PAGE_FRAME_WIDTH = {
-  sm: 'max-w-3xl',
-  lg: 'max-w-5xl',
-  xl: 'max-w-7xl',
+  sm: '',
+  lg: '',
+  xl: '',
   full: '',
 } as const;
 
@@ -30,6 +31,7 @@ export function pageFrameClass(size: PageFrameSize, className?: string): string 
     // lg:pb-28: chừa chỗ cho nút nổi (FAB, chỉ có từ lg) để dòng cuối không bị che; dưới lg chỉ đệm pb-8.
     'mx-auto w-full px-4 pb-8 pt-6 sm:px-6 sm:pt-8 lg:pb-28',
     PAGE_FRAME_WIDTH[size],
+    size === 'sm' && 'form-measure',
     className,
   );
 }

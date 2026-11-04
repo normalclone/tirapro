@@ -2,7 +2,7 @@ import { useDeferredValue, useState } from 'react';
 import { Search, Trash2, UserPlus, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import type { MemberDto, RoleDto, UserStatus } from '@tirapro/types';
-import { AddMemberPanel } from './AddMemberPanel';
+import { AddMemberDialog } from './AddMemberPanel';
 import { TeamsPanel } from '@/features/teams/TeamsPanel';
 import { AddPeopleDialog } from './AddPeopleDialog';
 import { Avatar, Badge, EmptyState, Skeleton } from '@/components/ui/primitives';
@@ -39,6 +39,7 @@ export function MembersPage() {
   const canManage = useAuth((s) => s.can('member:manage'));
   const [tab, setTab] = useState<Tab>('members');
   const [bulkOpen, setBulkOpen] = useState(false);
+  const [inviteOpen, setInviteOpen] = useState(false);
   const [memberSearch, setMemberSearch] = useState('');
   const memberQuery = useDeferredValue(memberSearch);
 
@@ -56,6 +57,13 @@ export function MembersPage() {
       <PageHeader
         title={APP_NAV_LABELS.members}
         description="Ai có tên ở đây đều tham gia mọi dự án; nhóm giúp sắp xếp và giao vai trò hàng loạt."
+        actions={
+          canManage && tab === 'members' ? (
+            <Button size="sm" onClick={() => setInviteOpen(true)} data-tour="members-add">
+              <UserPlus className="h-4 w-4" /> Mời thành viên
+            </Button>
+          ) : undefined
+        }
       />
 
       <Tabs
@@ -73,8 +81,6 @@ export function MembersPage() {
           <TeamsPanel />
         ) : (
           <div className="space-y-8">
-            <AddMemberPanel />
-
             <SectionCard
               title="Danh sách thành viên"
               bare
@@ -129,7 +135,14 @@ export function MembersPage() {
                     <EmptyState
                       icon={<Users className="h-6 w-6" />}
                       title="Chưa có thành viên nào"
-                      description="Đây là danh sách người được vào không gian làm việc này. Chọn người dùng có sẵn ở ô phía trên để thêm người đầu tiên."
+                      description="Đây là danh sách người được vào không gian làm việc này. Bấm “Mời thành viên” để thêm người đầu tiên."
+                      action={
+                        canManage ? (
+                          <Button variant="secondary" size="sm" onClick={() => setInviteOpen(true)}>
+                            <UserPlus className="h-4 w-4" /> Mời thành viên
+                          </Button>
+                        ) : undefined
+                      }
                     />
                   }
                 >
@@ -149,6 +162,7 @@ export function MembersPage() {
         )}
       </TabPanel>
 
+      <AddMemberDialog open={inviteOpen} onClose={() => setInviteOpen(false)} />
       <AddPeopleDialog mode="workspace" open={bulkOpen} onClose={() => setBulkOpen(false)} />
     </PageFrame>
   );

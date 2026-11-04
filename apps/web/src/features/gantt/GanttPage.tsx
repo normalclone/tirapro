@@ -20,6 +20,7 @@ import { keys } from '@/lib/queryKeys';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   applyDrag,
+  buildScheduleUndoPatch,
   clampDelta,
   NO_SCHEDULE_PERM_HINT,
   orderSpans,
@@ -304,20 +305,21 @@ export function GanttPage() {
         {
           onSuccess: (res) => {
             refreshSchedule();
-            const old: Record<string, string | null> = {};
-            for (const f of fields) old[f] = issue[f];
+            const old = buildScheduleUndoPatch(issue, fields);
             toast.success(
               `Đã đổi lịch ${issue.key}: ${fmtDayMonth(next.start)} → ${fmtDayMonth(next.end)}`,
               {
                 duration: 5000,
-                action: {
-                  label: 'Hoàn tác',
-                  onClick: () =>
-                    updateIssue.mutate(
-                      { id: issue.id, key: issue.key, patch: old, version: res.data.version },
-                      { onSuccess: refreshSchedule },
-                    ),
-                },
+                action: old
+                  ? {
+                      label: 'Hoàn tác',
+                      onClick: () =>
+                        updateIssue.mutate(
+                          { id: issue.id, key: issue.key, patch: old, version: res.data.version },
+                          { onSuccess: refreshSchedule },
+                        ),
+                    }
+                  : undefined,
               },
             );
           },
@@ -352,21 +354,20 @@ export function GanttPage() {
       version: issue.version,
     });
     refreshSchedule();
+    // Hoàn tác không bao giờ xoá Hạn (422 DUE_DATE_REQUIRED): chỉ trả ngày bắt đầu về trống.
+    const undo = buildScheduleUndoPatch(issue, Object.keys(patch) as ('startDate' | 'dueDate')[]);
     toast.success(`Đã đặt ngày cho ${issue.key} — việc hiện thành thanh trên biểu đồ`, {
       duration: 5000,
-      action: {
-        label: 'Hoàn tác',
-        onClick: () =>
-          updateIssue.mutate(
-            {
-              id: issue.id,
-              key: issue.key,
-              patch: { startDate: null, dueDate: null },
-              version: res.data.version,
-            },
-            { onSuccess: refreshSchedule },
-          ),
-      },
+      action: undo
+        ? {
+            label: 'Hoàn tác',
+            onClick: () =>
+              updateIssue.mutate(
+                { id: issue.id, key: issue.key, patch: undo, version: res.data.version },
+                { onSuccess: refreshSchedule },
+              ),
+          }
+        : undefined,
     });
   }
 

@@ -225,3 +225,19 @@ describe('bulkResultTitle', () => {
     );
   });
 });
+
+describe('độ khó hàng loạt: Hoàn tác trả về độ khó cũ của từng việc', () => {
+  const mkD = (id: string, difficulty: string) =>
+    ({ id, version: 1, difficulty }) as unknown as IssueDto;
+  it('prevValueOf đọc difficulty; kế hoạch gom theo độ khó cũ, mỗi giá trị một request', () => {
+    const targets = [mkD('a', 'EASY'), mkD('b', 'HARD'), mkD('c', 'EASY')];
+    expect(prevValueOf(targets[1]!, 'difficulty')).toBe('HARD');
+    const updated: VersionedItem[] = targets.map((t) => ({ id: t.id, version: 2 }));
+    const plan = planRestoreField('difficulty', targets, updated)!;
+    expect(plan).toHaveLength(2);
+    expect(plan.find((p) => p.patch.difficulty === 'EASY')!.items.map((i) => i.id)).toEqual([
+      'a',
+      'c',
+    ]);
+  });
+});

@@ -1,14 +1,14 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Lock } from 'lucide-react';
+import { Loader2, Lock, UserPlus } from 'lucide-react';
 import { toast } from 'sonner';
 import { localToCalendarIso } from '@/lib/calendarDate';
 import type { IssueDto } from '@tirapro/types';
 import { useProjectMeta } from '@/features/ai/api';
 import { useProjects } from '@/features/projects/api';
-import { useCanEditIssue } from '@/features/projects/permissions';
+import { useCanEditIssue, useCanIn } from '@/features/projects/permissions';
 import { useProjectSprints, useMoveToSprint } from '@/features/backlog/api';
 import { BACKLOG_LABEL, buildSprintOptions } from './sprintOptions';
-import { useUpdateIssue } from '@/features/issues/api';
+import { useUpdateIssue, useResetPoints, useHasLoadedChildren } from '@/features/issues/api';
 import { pointsConfirmOptions, pointsEditWarning } from '@/features/issues/pointsWarning';
 import { useConfirm } from '@/components/ui/useConfirm';
 import { useAssigneePicker } from '@/features/issue-edit/useAssigneeOptions';
@@ -18,6 +18,8 @@ import { SearchSelect } from '@/components/ui/SearchSelect';
 import { PeoplePicker } from '@/components/ui/PeoplePicker';
 import { AssigneeSuggestButton } from '@/features/ai/AssigneeSuggestButton';
 import { useAuth } from '@/stores/auth';
+import { useAi } from '@/stores/ai';
+import { ASSIGNED_TO_ME_TOAST, assignToMeVars } from './assignToMe';
 import { Input } from '@/components/ui/Input';
 import { Avatar } from '@/components/ui/primitives';
 import { PriorityIcon } from '@/components/ui/PriorityIcon';
@@ -27,10 +29,11 @@ import { SeverityBadge } from '@/components/ui/SeverityBadge';
 import { isBugType } from './severity';
 import { dueState } from '@/lib/dueDate';
 import { apiErrorMessage } from '@/lib/api';
-import { parsePointsInput } from '@/lib/permissions';
+import { isRollupPoints, parsePointsOverride, pointsTip, CHILD_SPRINT_TIP } from '@/lib/points';
+import { DIFFICULTIES, DIFFICULTY_LABELS, formatCalendarDmy } from '@tirapro/shared';
 import { cn } from '@/lib/utils';
-import { fmtDate, fmtDateTime, fmtRelative, toDateInput, toDateTimeInput } from '@/lib/dateFormat';
-import { DateInput, DateTimeInput } from '@/components/ui/DateInput';
+import { fmtDate, fmtDateTime, fmtRelative, toDateInput } from '@/lib/dateFormat';
+import { DateInput } from '@/components/ui/DateInput';
 import type { FactField } from '@/features/issues/issueFacts';
 
 /** Trigger SearchSelect ở dạng badge/label (không viền, hover nền) — bấm để đổi. */
@@ -337,10 +340,13 @@ export function IssueSprintSubtitle({ issue }: { issue: IssueDto }) {
     [sprints, issue.sprintId],
   );
 
-  if (!canEdit) {
+  if (!canEdit || issue.parentId) {
     const current = sprintOptions.find((o) => o.value === (issue.sprintId ?? ''));
     return (
-      <span className="truncate text-sm text-muted" title="Sprint chứa việc này">
+      <span
+        className="truncate text-sm text-muted"
+        title={issue.parentId ? CHILD_SPRINT_TIP : 'Sprint chứa việc này'}
+      >
         {current?.label ?? BACKLOG_LABEL}
       </span>
     );
@@ -380,39 +386,52 @@ export function IssueSprintSubtitle({ issue }: { issue: IssueDto }) {
   );
 }
 
-/** Điểm ước lượng dạng label mờ ("N điểm"), bấm mới sửa; khoá nếu không có quyền. */
-export function IssueStoryPointsInline({ issue, canEdit }: { issue: IssueDto; canEdit: boolean }) {
+const POINTS_BTN =
+  '-mx-1 rounded px-1 text-sm text-muted transition-colors hover:bg-surface-2 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] [@media(pointer:coarse)]:min-h-9';
+
+/**
+ * Điểm do máy chủ tính (Loại × Độ khó × Ưu tiên). Ai cũng xem được, rê chuột ra lời giải thích (`pointsExplain`). CHỈ Quản trị
+ * dự án bấm để chỉnh tay (số nguyên 0–100; không có "xoá điểm" → web không gửi `storyPoints: null`); Epic và việc cha có việc
+ * con là điểm TỔNG → chỉ đọc. Đang chỉnh tay: hiện "đã chỉnh tay" + nút "Tính lại theo công thức".
+ */
+export function IssueStoryPointsInline({ issue }: { issue: IssueDto }) {
   const patch = useUpdateIssue(issue.projectId);
+  const reset = useResetPoints(issue.projectId);
   const { data: sprints } = useProjectSprints(issue.projectId);
+  const canAdmin = useCanIn(issue.projectId)('project:admin');
+  const childrenState = useHasLoadedChildren(issue.projectId, issue.id);
+  const hasChildren = childrenState === true;
   const confirm = useConfirm();
   const [editing, setEditing] = useState(false);
+  const rollup = isRollupPoints(issue, hasChildren);
+  // Danh sách việc của dự án chưa nạp → chưa biết đây có phải việc cha không: KHÔNG mở chỉnh tay (liên kết sâu lúc nguội).
+  const checking = canAdmin && !rollup && childrenState === undefined;
+  const canOverride = canAdmin && !rollup && !checking;
 
   async function save(raw: string) {
     setEditing(false);
-    const r = parsePointsInput(raw); // MỘT luật cho mọi nơi nhập điểm (dòng Việc chờ, hàng loạt, trang công việc)
+    const r = parsePointsOverride(raw);
     if (!r.ok) return toast.error(r.error);
-    const next = r.value;
-    if (next !== issue.storyPoints) {
-      const w = pointsEditWarning(issue, sprints);
-      if (w && !(await confirm(pointsConfirmOptions(w)))) return;
-      patch.mutate(
-        { id: issue.id, key: issue.key, patch: { storyPoints: next }, version: issue.version },
-        { onError: (e) => toast.error(apiErrorMessage(e)) },
-      );
-    }
+    if (r.value === issue.storyPoints) return;
+    const w = pointsEditWarning(issue, sprints);
+    if (w && !(await confirm(pointsConfirmOptions(w)))) return;
+    patch.mutate(
+      { id: issue.id, key: issue.key, patch: { storyPoints: r.value }, version: issue.version },
+      { onError: (e) => toast.error(apiErrorMessage(e)) },
+    );
   }
 
-  if (editing && canEdit) {
+  if (editing && canOverride) {
     return (
       <Input
         type="number"
         min={0}
         max={100}
-        step="any"
-        inputMode="decimal"
+        step={1}
+        inputMode="numeric"
         autoFocus
         className="h-6 w-16 text-sm"
-        aria-label="Điểm ước lượng"
+        aria-label="Điểm chỉnh tay"
         defaultValue={issue.storyPoints ?? ''}
         disabled={patch.isPending}
         onBlur={(e) => void save(e.target.value)}
@@ -428,23 +447,91 @@ export function IssueStoryPointsInline({ issue, canEdit }: { issue: IssueDto; ca
   }
 
   const text = issue.storyPoints != null ? `${issue.storyPoints} điểm` : null;
-  const tip = 'Điểm ước lượng — con số ước chừng độ lớn của việc, càng lớn càng tốn công.';
+  const tip = pointsTip(issue, hasChildren);
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      {canOverride ? (
+        <button
+          type="button"
+          onClick={() => setEditing(true)}
+          title={`${tip} Bấm để chỉnh tay.`}
+          className={POINTS_BTN}
+        >
+          {text ?? <span className="text-faint">—</span>}
+        </button>
+      ) : (
+        <span
+          className="inline-flex items-center gap-1 text-sm text-muted"
+          title={checking ? 'Đang kiểm tra việc con để biết có chỉnh tay được không…' : tip}
+        >
+          {text ?? '—'}
+          {checking && <Loader2 className="h-3 w-3 animate-spin" aria-label="Đang kiểm tra" />}
+        </span>
+      )}
+      {issue.pointsManual && !rollup && !checking && (
+        <>
+          <span className="text-xs text-faint">đã chỉnh tay</span>
+          {canAdmin && (
+            <button
+              type="button"
+              disabled={reset.isPending}
+              onClick={() =>
+                reset.mutate(
+                  { id: issue.id, key: issue.key },
+                  {
+                    onSuccess: () =>
+                      toast.success('Đã tính lại điểm theo công thức', { duration: 1800 }),
+                    onError: (e) => toast.error(apiErrorMessage(e)),
+                  },
+                )
+              }
+              className="rounded px-1 text-xs text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:cursor-not-allowed disabled:text-disabled-fg"
+            >
+              Tính lại theo công thức
+            </button>
+          )}
+        </>
+      )}
+    </span>
+  );
+}
+
+/** Độ khó (Dễ / Trung bình / Khó / Rất khó) — đầu vào của công thức điểm; ai sửa được việc thì đổi được. */
+export function IssueDifficultyInline({
+  issue,
+  className,
+}: {
+  issue: IssueDto;
+  className?: string;
+}) {
+  const patch = useUpdateIssue(issue.projectId);
+  const canEdit = useCanEditIssue(issue.projectId)(issue);
+  const label = DIFFICULTY_LABELS[issue.difficulty];
   if (!canEdit) {
     return (
-      <span className="text-sm text-muted" title={`${tip} Bạn không có quyền sửa công việc này.`}>
-        {text ?? '—'}
+      <span className="text-sm text-muted" title="Độ khó — một phần của công thức tính điểm">
+        {label}
       </span>
     );
   }
   return (
-    <button
-      type="button"
-      onClick={() => setEditing(true)}
-      title={`${tip} Bấm để đặt lại.`}
-      className="-mx-1 rounded px-1 text-sm text-muted transition-colors hover:bg-surface-2 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] [@media(pointer:coarse)]:min-h-9"
-    >
-      {text ?? <span className="text-faint">Đặt điểm ước lượng</span>}
-    </button>
+    <SearchSelect
+      ariaLabel="Độ khó"
+      value={issue.difficulty}
+      disabled={patch.isPending}
+      options={DIFFICULTIES.map((d) => ({ value: d, label: DIFFICULTY_LABELS[d] }))}
+      onChange={(v) => {
+        if (!v || v === issue.difficulty) return;
+        patch.mutate(
+          { id: issue.id, key: issue.key, patch: { difficulty: v }, version: issue.version },
+          { onError: (e) => toast.error(apiErrorMessage(e)) },
+        );
+      }}
+      className={cn(INLINE_TRIGGER, className)}
+      renderTrigger={() => (
+        <span title="Độ khó — đổi sẽ tính lại điểm theo công thức">{label}</span>
+      )}
+    />
   );
 }
 
@@ -479,7 +566,13 @@ export function IssueAssigneeControl({
   });
   const patch = useUpdateIssue(issue.projectId);
   const canEditThis = useCanEditIssue(issue.projectId)(issue);
-  const canSuggest = useAuth((s) => s.can('ai:use')) && canEditThis;
+  const aiEnabled = useAi((s) => s.enabled);
+  const canUseAi = useAuth((s) => s.can('ai:use'));
+  const canSuggest = aiEnabled && canUseAi && canEditThis;
+  // "Gán cho tôi": cần quyền gán (`issue:assign`) và sửa được việc (cùng điều kiện mở ô chọn người), và việc chưa là của mình.
+  const me = useAuth((s) => s.user);
+  const canAssign = useCanIn(issue.projectId)('issue:assign');
+  const showAssignMe = !!me && canAssign && canEditThis && issue.assignee?.id !== me.id;
   return (
     <div className="flex min-w-0 items-center gap-1">
       {canSuggest && (
@@ -565,6 +658,23 @@ export function IssueAssigneeControl({
             <span className="text-faint">Chưa gán</span>
           )}
         </span>
+      )}
+      {showAssignMe && (
+        <button
+          type="button"
+          disabled={patch.isPending}
+          title="Đặt bạn làm người phụ trách"
+          onClick={() =>
+            patch.mutate(assignToMeVars(issue, me), {
+              onSuccess: () => toast.success(ASSIGNED_TO_ME_TOAST, { duration: 2000 }),
+              onError: (e) => toast.error(apiErrorMessage(e)),
+            })
+          }
+          className="inline-flex h-6 shrink-0 items-center gap-1 whitespace-nowrap rounded-md px-1.5 text-xs text-primary transition-colors hover:bg-primary-subtle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:cursor-not-allowed disabled:text-disabled-fg [@media(pointer:coarse)]:min-h-9"
+        >
+          <UserPlus className="h-3.5 w-3.5" aria-hidden />
+          Gán cho tôi
+        </button>
       )}
     </div>
   );
@@ -857,8 +967,9 @@ export function IssueDueField({
 }) {
   const patch = useUpdateIssue(issue.projectId);
   const [editing, setEditing] = useState(false);
-  const display = issue.dueDate ? fmtDateTime(issue.dueDate) : null;
-  const currentDue = issue.dueDate ? toDateTimeInput(issue.dueDate) : '';
+  // Hạn là NGÀY LỊCH (`YYYY-MM-DDT00:00:00Z`): hiển thị/sửa theo phần ngày, không qua múi giờ trình duyệt.
+  const display = issue.dueDate ? formatCalendarDmy(issue.dueDate) : null;
+  const currentDue = issue.dueDate ? issue.dueDate.slice(0, 10) : '';
   const [draft, setDraft] = useState(currentDue);
 
   // Màu theo hạn: quá hạn = đỏ đậm nổi bật, sắp đến hạn = vàng, còn lại = bình thường.
@@ -879,13 +990,14 @@ export function IssueDueField({
 
   function save(raw: string) {
     setEditing(false);
-    const cur = issue.dueDate ? toDateTimeInput(issue.dueDate) : '';
-    if (raw === cur) return;
+    // Hạn bắt buộc: ô trống KHÔNG xoá hạn (API 422 DUE_DATE_REQUIRED) — không gửi gì, hiện lại hạn cũ.
+    if (!raw) return;
+    if (raw === currentDue) return;
     patch.mutate(
       {
         id: issue.id,
         key: issue.key,
-        patch: { dueDate: raw ? localToCalendarIso(raw) : null },
+        patch: { dueDate: localToCalendarIso(raw) },
         version: issue.version,
       },
       { onError: (e) => toast.error(apiErrorMessage(e)) },
@@ -910,13 +1022,15 @@ export function IssueDueField({
       }}
       editor={
         <InlineEditor onCancel={() => setEditing(false)}>
-          <DateTimeInput
+          <DateInput
             value={draft}
-            onChange={setDraft}
+            // Xoá trống không đổi bản nháp: rời ô thì điền lại hạn cũ (hạn bắt buộc).
+            onChange={(v) => v && setDraft(v)}
             onCommit={save}
+            restoreOnEmpty
             ariaLabel="Hạn hoàn thành"
             disabled={patch.isPending}
-            className={layout === 'tile' ? 'w-full' : 'w-56'}
+            className={layout === 'tile' ? 'w-full' : 'h-8 w-40 text-sm'}
           />
         </InlineEditor>
       }

@@ -1,4 +1,5 @@
-/* Gõ nhanh trong tiêu đề: !ưu-tiên @người #sprint ~điểm ^hạn — parse + gợi ý + chip xác nhận. */
+/* Gõ nhanh trong tiêu đề: !ưu-tiên @người #sprint ~độ-khó ^hạn — parse + gợi ý + chip xác nhận. */
+import { DIFFICULTIES, DIFFICULTY_LABELS, type Difficulty } from '@tirapro/shared';
 
 function normalize(s: string): string {
   // Hạ chữ thường TRƯỚC khi bỏ dấu: 'Đ' hoa chỉ thành 'đ' sau toLowerCase, rồi mới đổi sang 'd'.
@@ -91,7 +92,8 @@ export interface TokenResult {
   priorityId?: string;
   assigneeId?: string;
   sprintId?: string;
-  points?: number;
+  /** Độ khó từ token `~dễ|~tb|~khó|~rất khó` (điểm do máy chủ tính; web không còn nhận điểm từ token). */
+  difficulty?: Difficulty;
   dueLocal?: string;
 }
 
@@ -215,18 +217,50 @@ function matchSprintWord(sprints: Named[], word: string): Named | undefined {
   return pre.length === 1 ? pre[0] : undefined;
 }
 
+/* ---------- Độ khó (~dễ, ~tb, ~khó, ~rất khó) ---------- */
+
+/** `phrase` đã bỏ dấu; cụm dài thử trước ("rất khó" trước "khó"). Chỉ gõ chữ — điểm do máy chủ tính từ Loại × Độ khó × Ưu tiên. */
+const DIFFICULTY_ALIAS_LIST: { phrase: string; pretty: string; value: Difficulty }[] = [
+  { phrase: 'rat kho', pretty: 'rất khó', value: 'VERY_HARD' },
+  { phrase: 'ratkho', pretty: 'rất khó', value: 'VERY_HARD' },
+  { phrase: 'veryhard', pretty: 'very hard', value: 'VERY_HARD' },
+  { phrase: 'trung binh', pretty: 'trung bình', value: 'MEDIUM' },
+  { phrase: 'medium', pretty: 'medium', value: 'MEDIUM' },
+  { phrase: 'kho', pretty: 'khó', value: 'HARD' },
+  { phrase: 'hard', pretty: 'hard', value: 'HARD' },
+  { phrase: 'easy', pretty: 'easy', value: 'EASY' },
+  { phrase: 'de', pretty: 'dễ', value: 'EASY' },
+  { phrase: 'tb', pretty: 'tb', value: 'MEDIUM' },
+];
+/** Bốn mức hiện ở gợi ý (nhãn thật của hệ thống — chèn nhãn đầy đủ vẫn parse đúng). */
+const DIFFICULTY_CHOICES: { value: Difficulty; label: string }[] = DIFFICULTIES.map((d) => ({
+  value: d,
+  label: DIFFICULTY_LABELS[d],
+}));
+const DIFFICULTY_ALIASES = [...DIFFICULTY_ALIAS_LIST].sort(
+  (a, b) => b.phrase.length - a.phrase.length,
+);
+
+/** Độ khó đứng ngay sau `~`, phải đứng trọn từ ("~khó." vẫn nhận, "~khong" thì không). */
+function matchDifficulty(rest: string): { difficulty: Difficulty; length: number } | null {
+  for (const a of DIFFICULTY_ALIASES) {
+    const len = prefixLenOfName(rest, a.phrase);
+    if (len == null) continue;
+    const after = rest[len];
+    if (after !== undefined && !/[\s.,;:!?)]/.test(after)) continue;
+    return { difficulty: a.value, length: len };
+  }
+  return null;
+}
+
 /** Khớp 1 token đứng sau symbol. Trả giá trị + số ký tự (sau symbol) đã tiêu thụ, hoặc null nếu không khớp. */
 function matchToken(
   sym: string,
   rest: string,
   lists: { priorities: Named[]; users: Named[]; sprints: Named[] },
   prios: PriorityItem[],
-): { id?: string; points?: number; due?: string; length: number } | null {
-  if (sym === '~') {
-    // Chấp nhận điểm thập phân (`2.5`, `2,5`) — cùng dạng ô điểm; dấu chấm/phẩy cuối câu không bị nuốt.
-    const m = /^(\d+(?:[.,]\d+)?)/.exec(rest);
-    return m ? { points: Number(m[1]!.replace(',', '.')), length: m[1]!.length } : null;
-  }
+): { id?: string; difficulty?: Difficulty; due?: string; length: number } | null {
+  if (sym === '~') return matchDifficulty(rest);
   if (sym === '^') {
     const m = /^(\S+)/.exec(rest);
     if (m) {
@@ -260,13 +294,13 @@ function matchToken(
 }
 
 /** Loại token — dùng để tô sáng inline & phân nhánh khi áp trường. */
-export type TokenKind = 'assignee' | 'priority' | 'sprint' | 'points' | 'due';
+export type TokenKind = 'assignee' | 'priority' | 'sprint' | 'difficulty' | 'due';
 
 const SYM_KIND: Record<string, TokenKind> = {
   '!': 'priority',
   '@': 'assignee',
   '#': 'sprint',
-  '~': 'points',
+  '~': 'difficulty',
   '^': 'due',
 };
 
@@ -290,7 +324,9 @@ function isPartialPhrase(sym: string, rest: string, ctx: TokenCtx): boolean {
         ? ctx.users.map((u) => normalize(u.displayName))
         : sym === '#'
           ? ctx.sprints.filter((s) => s.state !== 'CLOSED').map((s) => normalize(s.name))
-          : [];
+          : sym === '~'
+            ? DIFFICULTY_ALIAS_LIST.map((a) => a.phrase)
+            : [];
   return names.some((n) => n.includes(' ') && n.length > typed.length && n.startsWith(typed));
 }
 
@@ -328,7 +364,7 @@ function scanTokens(
         if (ch === '!' && m.id) res.priorityId = m.id;
         else if (ch === '@' && m.id) res.assigneeId = m.id;
         else if (ch === '#' && m.id) res.sprintId = m.id;
-        else if (ch === '~' && m.points != null) res.points = m.points;
+        else if (ch === '~' && m.difficulty) res.difficulty = m.difficulty;
         else if (ch === '^' && m.due) res.dueLocal = m.due;
         const end = i + 1 + m.length;
         spans.push({ start: i, end, kind: SYM_KIND[ch]! });
@@ -380,7 +416,7 @@ const UNMATCHED_HINT: Record<TokenKind, string> = {
   priority: 'gõ ! để chọn mức ưu tiên từ danh sách',
   assignee: 'gõ @ để chọn người',
   sprint: 'gõ # để chọn sprint',
-  points: 'điểm là một số, ví dụ ~5',
+  difficulty: 'độ khó: ~dễ, ~tb, ~khó hoặc ~rất khó',
   due: 'hạn như mai, t6, 3d, 15/8',
 };
 
@@ -396,7 +432,7 @@ export function stripPartialTail(text: string): string {
   return m ? text.slice(0, m.index).trimEnd() : text;
 }
 
-const TOKEN_FIELDS = ['priorityId', 'assigneeId', 'sprintId', 'points', 'dueLocal'] as const;
+const TOKEN_FIELDS = ['priorityId', 'assigneeId', 'sprintId', 'difficulty', 'dueLocal'] as const;
 
 /** Các trường token có giá trị mới khác lần trước. Gỡ token (giá trị biến mất) KHÔNG được báo — ô giữ nguyên. */
 export function changedTokenFields(
@@ -415,7 +451,7 @@ export interface TokenFieldValues {
   priorityId: string;
   assigneeId: string;
   sprintId: string;
-  points: string;
+  difficulty: string;
   due: string;
 }
 export type TokenFieldKey = keyof TokenFieldValues;
@@ -424,7 +460,7 @@ const RESULT_TO_FIELD: [keyof Omit<TokenResult, 'clean'>, TokenFieldKey][] = [
   ['priorityId', 'priorityId'],
   ['assigneeId', 'assigneeId'],
   ['sprintId', 'sprintId'],
-  ['points', 'points'],
+  ['difficulty', 'difficulty'],
   ['dueLocal', 'due'],
 ];
 
@@ -528,7 +564,7 @@ export interface Suggestion {
   insert: string;
 }
 
-/** Danh sách gợi ý cho token đang gõ (chỉ !/@/# có danh sách). Chèn TÊN ĐẦY ĐỦ khi chọn. */
+/** Danh sách gợi ý cho token đang gõ (!/@/#/~ có danh sách). Chèn TÊN ĐẦY ĐỦ khi chọn. */
 export function suggestFor(sym: string, partial: string, ctx: TokenCtx): Suggestion[] {
   const nv = normalize(partial);
   const match = (name: string, strip = false) => {
@@ -577,6 +613,13 @@ export function suggestFor(sym: string, partial: string, ctx: TokenCtx): Suggest
           insert: `#${s.name}`,
         }))
     );
+  }
+  if (sym === '~') {
+    return DIFFICULTY_CHOICES.filter((d) => match(d.label)).map((d) => ({
+      id: d.value,
+      label: d.label,
+      insert: `~${d.label}`,
+    }));
   }
   return [];
 }

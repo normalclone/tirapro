@@ -13,7 +13,11 @@ describe('pointsCell', () => {
     expect(c.title).toContain('3 việc');
   });
   it('có điểm riêng lẫn bên trong: vẫn hiện cộng dồn và nhắc điểm riêng', () => {
-    expect(pointsCell(8, { donePoints: 0, totalPoints: 3, count: 1 }).title).toContain('8 điểm');
+    const t = pointsCell(8, { donePoints: 0, totalPoints: 3, count: 1 }).title;
+    expect(t).toContain('(8)');
+    expect(t).toContain('tổng điểm việc con');
+    expect(t).toContain('chỉ đếm việc lá');
+    expect(t).not.toContain('không tính vào tổng');
   });
   it('có con nhưng bên trong chưa có điểm: rơi về điểm riêng', () => {
     expect(pointsCell(2, { donePoints: 0, totalPoints: 0, count: 2 })).toMatchObject({ text: '2' });

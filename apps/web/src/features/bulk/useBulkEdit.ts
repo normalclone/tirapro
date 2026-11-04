@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
 import type { IssueDto, SprintDto } from '@tirapro/types';
+import type { Difficulty } from '@tirapro/shared';
+import { isPointsLeaf, parentIdSetOf } from '@/lib/points';
 import { useConfirm } from '@/components/ui/useConfirm';
 import { apiErrorMessage } from '@/lib/api';
 import { canRevertTransition } from '@/features/issues/nextStatuses';
@@ -73,8 +75,13 @@ export function useBulkEdit(a: {
     }
   }
 
-  async function run(patch: BulkIssuePatch, verb: string, undo: UndoBuilder | null) {
-    const targets = (issues ?? []).filter((i) => selected.has(i.id));
+  async function run(
+    patch: BulkIssuePatch,
+    verb: string,
+    undo: UndoBuilder | null,
+    only?: (i: IssueDto) => boolean,
+  ) {
+    const targets = (issues ?? []).filter((i) => selected.has(i.id) && (!only || only(i)));
     if (targets.length === 0) return;
     setBusy(true);
     try {
@@ -112,6 +119,8 @@ export function useBulkEdit(a: {
 
   const doField = (field: BulkField, value: BulkValue, verb: string, undo: UndoBuilder | null) =>
     run({ [field]: value }, verb, undo);
+  const SKIP_ROLLUP =
+    'Bỏ qua Epic và việc có việc con — điểm của chúng là tổng, không chỉnh tay được.';
 
   return {
     busy,
@@ -121,16 +130,25 @@ export function useBulkEdit(a: {
     /** Chuyển sprint (sprintId = null → Backlog). */
     moveToSprint: (sprintId: string | null) =>
       doField('sprintId', sprintId, 'chuyển', restoreField('sprintId')),
-    /** Đặt điểm (null = xoá). Có việc Done/thuộc sprint đã kết thúc → MỘT hộp xác nhận cho cả lô (B9). */
-    async setPoints(points: number | null) {
-      const targets = (issues ?? []).filter((i) => selected.has(i.id));
+    /**
+     * Chỉnh tay điểm (chỉ Quản trị dự án; số nguyên 0–100, không có "xoá điểm"). Chỉ gửi cho VIỆC LÁ: Epic và việc có việc con
+     * có điểm tổng. Không có Hoàn tác — điểm cũ thường do công thức tính, đặt lại từng giá trị cũ sẽ biến thành "chỉnh tay";
+     * muốn bỏ chỉnh tay thì bấm "Tính lại theo công thức" ở từng việc. Có việc Done/sprint đã kết thúc → MỘT hộp xác nhận (B9).
+     */
+    async setPoints(points: number) {
+      const parentIds = parentIdSetOf(issues ?? []);
+      const leaf = (i: IssueDto) => isPointsLeaf(i, parentIds);
+      const targets = (issues ?? []).filter((i) => selected.has(i.id) && leaf(i));
+      if (targets.length === 0) return void toast.info(SKIP_ROLLUP);
       const w = pointsEditWarningBulk(
         targets.filter((i) => i.storyPoints !== points),
         sprints,
       );
       if (w && !(await confirm(pointsConfirmOptions(w)))) return;
-      await doField('storyPoints', points, 'đặt điểm cho', restoreField('storyPoints'));
+      await run({ storyPoints: points }, 'chỉnh tay điểm cho', null, leaf);
     },
+    setDifficulty: (difficulty: Difficulty) =>
+      doField('difficulty', difficulty, 'đặt độ khó cho', restoreField('difficulty')),
     setPriority: (priorityId: string | null) =>
       doField('priorityId', priorityId, 'đặt ưu tiên cho', restoreField('priorityId')),
     setEpic: (epicId: string | null) =>

@@ -19,7 +19,7 @@ import { rowPeekProps } from '@/features/issues/peek/rowPeekProps';
 import { IssueContextMenu, IssueRowMenuButton } from '@/features/issues/menu/IssueContextMenu';
 import { SelectCheckbox } from '@/features/bulk/SelectCheckbox';
 import { handleShiftRangeClick } from '@/features/bulk/selectGesture';
-import { categoryColor } from '@/lib/statusColor';
+import { StatusPill } from '@/components/ui/StatusPill';
 import { useMediaQuery } from '@/lib/useMediaQuery';
 import { RESULTS_PAGE_SIZE, resultCountLabel } from './resultPaging';
 import { cn } from '@/lib/utils';
@@ -430,17 +430,9 @@ function ColumnPicker({
   );
 }
 
+/** Trạng thái là thông tin chính của bảng này → chip có chấm + TÊN luôn hiện (kể cả cỡ màn hình hẹp). */
 function StatusCell({ issue }: { issue: IssueDto }) {
-  return (
-    <span className="inline-flex items-center gap-1.5">
-      <span
-        className="h-2 w-2 shrink-0 rounded-full"
-        style={{ background: categoryColor(issue.status.category) }}
-        aria-hidden
-      />
-      {issue.status.name}
-    </span>
-  );
+  return <StatusPill status={issue.status} alwaysShowName />;
 }
 
 function PersonCell({ person }: { person: IssueDto['assignee'] }) {
@@ -474,7 +466,12 @@ function Cell({
         </IssueKeyLink>
       );
     case 'summary':
-      return <span className="block max-w-[32rem] truncate text-ink-strong">{text}</span>;
+      // Cột tóm tắt cắt chữ dài (`truncate`), đọc đủ qua tooltip; các cột khác `whitespace-nowrap` nên không xuống dòng.
+      return (
+        <span className="block max-w-[28rem] truncate text-ink-strong" title={text}>
+          {text}
+        </span>
+      );
     case 'type':
       return <IssueTypeBadge name={issue.type.name} color={issue.type.color} />;
     case 'status':

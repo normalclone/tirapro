@@ -95,6 +95,20 @@ function dayToIso(iso: string, edge: 'start' | 'end'): string {
   return new Date(`${iso}T${edge === 'start' ? '00:00:00' : '23:59:00'}`).toISOString();
 }
 
+/**
+ * Bản vá HOÀN TÁC lịch: trả các trường `fields` về giá trị cũ của việc. Hạn KHÔNG BAO GIỜ được xoá (API: 422
+ * DUE_DATE_REQUIRED) — việc cũ chưa có hạn thì giữ hạn mới, chỉ ngày bắt đầu được trả về trống. `null` = không có gì để hoàn tác.
+ */
+export function buildScheduleUndoPatch(
+  issue: { startDate: string | null; dueDate: string | null },
+  fields: readonly ('startDate' | 'dueDate')[],
+): { startDate?: string | null; dueDate?: string } | null {
+  const patch: { startDate?: string | null; dueDate?: string } = {};
+  if (fields.includes('startDate')) patch.startDate = issue.startDate;
+  if (fields.includes('dueDate') && issue.dueDate) patch.dueDate = issue.dueDate;
+  return Object.keys(patch).length > 0 ? patch : null;
+}
+
 export interface UnscheduledPatch {
   startDate?: string;
   dueDate?: string;

@@ -22,19 +22,21 @@ const all = walk(ROOT).map((p) => ({
 const code = (t: string) => t.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 const maxW = (s: string) => s.match(/max-w-[\w[\].-]+/g) ?? [];
 
-describe('PageFrame — bảng cỡ (B-D1)', () => {
-  it('đúng bốn cỡ sm|lg|xl|full', () => {
+describe('PageFrame — bề rộng đồng nhất (Task 12)', () => {
+  it('vẫn đủ bốn cỡ sm|lg|xl|full để chỗ gọi không đổi', () => {
     expect(Object.keys(PAGE_FRAME_WIDTH)).toEqual(['sm', 'lg', 'xl', 'full']);
   });
-  it.each([
-    ['sm', 'max-w-3xl'],
-    ['lg', 'max-w-5xl'],
-    ['xl', 'max-w-7xl'],
-  ] as const)('%s → %s', (size, cls) => {
-    expect(pageFrameClass(size)).toContain(cls);
-  });
-  it('full không giới hạn bề rộng', () => {
-    expect(maxW(pageFrameClass('full'))).toEqual([]);
+  it.each(['sm', 'lg', 'xl', 'full'] as const)(
+    '%s không có max-w-* (khung theo bề ngang vùng nội dung)',
+    (size) => {
+      expect(maxW(pageFrameClass(size))).toEqual([]);
+      expect(PAGE_FRAME_WIDTH[size]).toBe('');
+    },
+  );
+  it('trang biểu mẫu (sm) mang lớp form-measure để ô nhập dài giữ bề rộng đọc được; cỡ khác thì không', () => {
+    expect(pageFrameClass('sm').split(' ')).toContain('form-measure');
+    for (const size of ['lg', 'xl', 'full'] as const)
+      expect(pageFrameClass(size).split(' ')).not.toContain('form-measure');
   });
   it('đệm: ngang 16 → 24px, dọc 24 → 32px, đáy chừa FAB từ lg', () => {
     for (const size of ['sm', 'lg', 'xl', 'full'] as const) {
@@ -61,9 +63,8 @@ describe('PageFrame — bảng cỡ (B-D1)', () => {
 });
 
 describe('không max-w ngoài bảng cỡ khung', () => {
-  it('PageFrame.tsx: mọi max-w nằm trong bảng PAGE_FRAME_WIDTH', () => {
-    const table = Object.values(PAGE_FRAME_WIDTH).filter(Boolean);
-    for (const m of maxW(src('components/layout/PageFrame.tsx'))) expect(table).toContain(m);
+  it('PageFrame.tsx không còn max-w trong mã (chỉ được nhắc trong chú thích)', () => {
+    expect(maxW(code(src('components/layout/PageFrame.tsx')))).toEqual([]);
   });
   it('pageContainer (RB1) đã xoá: không còn file page.ts, không nơi nào gọi', () => {
     expect(existsSync(join(__dirname, 'page.ts'))).toBe(false);
@@ -74,12 +75,40 @@ describe('không max-w ngoài bảng cỡ khung', () => {
   });
 });
 
+describe('trang không tự đặt khung hẹp ở gốc (Task 12)', () => {
+  it('không có `mx-auto … max-w-<số>` hay max-w-[Npx] làm gốc trang ngoài hộp thoại/trạng thái trống', () => {
+    const ALLOW: Record<string, string> = {
+      'components/ui/StatusPanel.tsx':
+        'khối trạng thái rỗng/lỗi (max-w-md) căn giữa, không phải khung trang',
+      'features/projects/ProjectLayout.tsx':
+        'khối thông báo căn giữa (max-w-md), không phải khung trang',
+      'features/api-keys/ApiKeysPage.tsx': 'dòng mô tả của EmptyState (max-w-sm)',
+    };
+    const bad = all
+      .filter((f) => /\bmx-auto\b[^"`']*\bmax-w-(?!md\b|sm\b)[\w[\].-]+/.test(code(f.text)))
+      .map((f) => f.rel)
+      .filter((r) => !(r in ALLOW) && r !== 'components/layout/PageFrame.tsx');
+    expect(bad).toEqual([]);
+  });
+  it('bài Hướng dẫn: cột chữ giữ độ rộng đọc (~75ch), không phải max-w-3xl', () => {
+    const t = code(src('features/docs/DocumentationPage.tsx'));
+    expect(t).toMatch(/max-w-\[75ch\]/);
+    expect(t).not.toMatch(/max-w-\[1200px\]/);
+  });
+  it('bài Wiki: thân bài (MarkdownView) nằm trong cột ~75ch', () => {
+    expect(code(src('features/wiki/WikiPage.tsx'))).toMatch(/max-w-\[75ch\][^>]*>\s*<MarkdownView/);
+  });
+  it('globals.css có luật form-measure độ ưu tiên bằng 0 (tiện ích max-w-* của ô vẫn thắng)', () => {
+    const css = src('styles/globals.css');
+    expect(css).toMatch(/:where\(\.form-measure\)\s+:where\(/);
+    expect(css).toMatch(/max-width:\s*36rem/);
+  });
+});
+
 describe('chặn tái phạm khung trang (đợt 2 · phần B)', () => {
   // Chỗ DUY NHẤT được đặt max-w-3xl…7xl ngoài PageFrame — mỗi dòng kèm lý do.
   const MAXW_ALLOW: Record<string, string> = {
     'components/ui/Dialog.tsx': 'cỡ hộp thoại xl (bảng cỡ của Dialog, không phải khung trang)',
-    'features/docs/DocumentationPage.tsx':
-      'bài viết tài liệu công khai, độc lập (không trong AppShell)',
   };
   it('không max-w-(3xl|4xl|5xl|6xl|7xl) ngoài PageFrame, trừ danh sách cho phép có lý do', () => {
     const bad = all
