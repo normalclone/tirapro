@@ -1689,6 +1689,7 @@ function createTx(
     },
     priority: { findFirst: vi.fn(() => Promise.resolve(null)) },
     resolution: { findFirst: vi.fn(() => Promise.resolve({ id: 'r-done' })) },
+    $queryRaw: vi.fn(() => Promise.resolve([{ max: 0 }])),
     issue: {
       findFirst: vi.fn(({ where }: { where: { id?: string } }) =>
         Promise.resolve(where.id && where.id in epics ? epics[where.id] : null),
@@ -2002,20 +2003,22 @@ describe('IssuesService.createWithin — mã công việc nhập từ Jira (L27)
     expect(tx.issue.count).not.toHaveBeenCalled();
   });
 
-  it('không có fixedKey: đếm theo loại CHỈ trong dải mã Tirapro cùng tiền tố (việc nhập không làm lệch số)', async () => {
+  it('không có fixedKey: số kế tiếp = số LỚN NHẤT đang có trong dải mã cùng tiền tố của dự án + 1', async () => {
     const { tx, created } = createTx(WF);
-    tx.issue.count = vi.fn(() => Promise.resolve(2));
+    tx.$queryRaw = vi.fn(() => Promise.resolve([{ max: 2 }]));
     const { service } = makeService(tx);
     await service.createWithin(tx as never, 'w1', 'u1', baseInput, []);
-    const where = (
-      tx.issue.count.mock.calls[0] as unknown as [{ where: Record<string, unknown> }]
-    )[0].where;
-    expect(where).toMatchObject({
-      projectId: 'p1',
-      typeId: 't1',
-      key: { startsWith: 'P-TASK-' },
-    });
     expect(created.mock.calls[0]![0].data.key).toBe('P-TASK-3');
+    expect(tx.issue.count).not.toHaveBeenCalled();
+  });
+
+  it('dải mã có lỗ hổng (việc đổi loại / xoá cứng): lấy max chứ không đếm ⇒ không sinh mã trùng', async () => {
+    // P-TASK-1, P-TASK-5 còn lại (2..4 đã đổi loại hoặc bị xoá): đếm sẽ ra P-TASK-3 hoặc trùng; max ra P-TASK-6
+    const { tx, created } = createTx(WF);
+    tx.$queryRaw = vi.fn(() => Promise.resolve([{ max: 5 }]));
+    const { service } = makeService(tx);
+    await service.createWithin(tx as never, 'w1', 'u1', baseInput, []);
+    expect(created.mock.calls[0]![0].data.key).toBe('P-TASK-6');
   });
 
   it('đường API (create) bỏ qua fixedKey: người dùng không tự đặt được mã', async () => {
@@ -2024,7 +2027,6 @@ describe('IssuesService.createWithin — mã công việc nhập từ Jira (L27)
     // createCore là private; `create` không có tham số mã ⇒ luôn sinh mã Tirapro.
     await service.create('w1', 'u1', { ...baseInput, key: 'JRA-1' } as never);
     expect(created.mock.calls[0]![0].data.key).toBe('P-TASK-1');
-    expect(tx.issue.count).toHaveBeenCalled();
   });
 
   it('fixedKey sai dạng (mã Tirapro 3 đoạn) bị bỏ qua: rơi về mã Tirapro tự sinh', async () => {
