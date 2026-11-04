@@ -110,7 +110,7 @@ export function SignupPage() {
             </div>
             <div className="space-y-1.5">
               <label htmlFor="workspaceName" className="text-sm font-medium text-ink">
-                Tên không gian làm việc
+                Tên tổ chức
               </label>
               <Input
                 id="workspaceName"

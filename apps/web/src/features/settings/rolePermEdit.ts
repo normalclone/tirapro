@@ -108,14 +108,14 @@ const ADMIN: PermissionKey = 'workspace:admin';
 const MANAGE: PermissionKey = 'member:manage';
 
 const LAST_ADMIN_BLOCK_REASON =
-  'Không thể gỡ quyền quản trị cuối cùng — không gian làm việc sẽ không còn quản trị viên. Hãy cấp quyền quản trị cho vai trò khác trước.';
+  'Không thể gỡ quyền quản trị cuối cùng — tổ chức sẽ không còn quản trị viên. Hãy cấp quyền quản trị cho vai trò khác trước.';
 
 export interface GuardCtx {
   /** Vai trò đang sửa (bộ quyền của nó lấy từ `before`/`after`, không từ `roles`). */
   role: { id: string };
   /** Mọi vai trò (bản cache) — để tính quyền thành viên giữ qua các vai trò khác. */
   roles: readonly { id: string; permissionKeys: readonly string[] }[];
-  /** Thành viên không gian (kèm vai trò). `undefined` = chưa tải: chốt không tính được, lớp gọi phải khoá sửa. */
+  /** Thành viên tổ chức (kèm vai trò). `undefined` = chưa tải: chốt không tính được, lớp gọi phải khoá sửa. */
   members: readonly MemberDto[] | undefined;
   selfId: string | null;
   selfIsSystemAdmin: boolean;
@@ -197,7 +197,7 @@ export function cloneName(sourceName: string): string {
 export const grantsAdmin = (before: readonly string[], after: readonly string[]): boolean =>
   !before.includes(ADMIN) && after.includes(ADMIN);
 
-/** Lời nhắc xác nhận trước khi bật quyền "Quản trị không gian làm việc" cho một vai trò tuỳ chỉnh. */
+/** Lời nhắc xác nhận trước khi bật quyền "Quản trị tổ chức" cho một vai trò tuỳ chỉnh. */
 export function grantAdminCopy(
   roleName: string,
   memberCount: number,
@@ -207,8 +207,8 @@ export function grantAdminCopy(
       ? `Vai trò "${roleName}" đang gán cho ${memberCount} thành viên — tất cả sẽ`
       : `Vai trò "${roleName}" chưa gán cho ai; người được gán sau này sẽ`;
   return {
-    title: 'Cấp quyền "Quản trị không gian làm việc"?',
-    description: `Mọi người giữ vai trò này sẽ có toàn quyền quản trị không gian làm việc (thành viên, vai trò, cấu hình, mọi dự án). ${who} có quyền đó ngay khi lưu.`,
+    title: 'Cấp quyền "Quản trị tổ chức"?',
+    description: `Mọi người giữ vai trò này sẽ có toàn quyền quản trị tổ chức (thành viên, vai trò, cấu hình, mọi dự án). ${who} có quyền đó ngay khi lưu.`,
     confirmLabel: 'Cấp quyền quản trị',
   };
 }

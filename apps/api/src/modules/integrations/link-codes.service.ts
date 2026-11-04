@@ -269,7 +269,7 @@ export class LinkCodesService {
       await this.telegram.send(
         token,
         chatId,
-        `✅ Đã liên kết với Tirapro — không gian "${esc(ws?.name ?? '')}"`,
+        `✅ Đã liên kết với Tirapro — tổ chức "${esc(ws?.name ?? '')}"`,
       );
     } catch (err) {
       this.logger.warn(

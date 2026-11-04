@@ -9,7 +9,7 @@ import { cn } from '@/lib/utils';
 import { SectionCard } from '@/components/ui/SectionCard';
 
 /**
- * Hàng "Quyền xem" của cấu hình dự án: công tắc "Dự án riêng tư". Bật = chỉ thành viên dự án + quản trị không gian
+ * Hàng "Quyền xem" của cấu hình dự án: công tắc "Dự án riêng tư". Bật = chỉ thành viên dự án + quản trị tổ chức
  * làm việc thấy dự án (người khác mở URL nhận "Không tìm thấy dự án"). Mọi lần đổi đều qua hộp xác nhận nêu hệ quả.
  */
 export function PrivacySection({ project, canAdmin }: { project: ProjectDto; canAdmin: boolean }) {
@@ -34,14 +34,14 @@ export function PrivacySection({ project, canAdmin }: { project: ProjectDto; can
                 : losing === 0
                   ? 'Mọi người đang tham gia đều đã được thêm riêng nên không ai mất quyền.'
                   : `${losing} người đang tham gia mặc định sẽ mất quyền vào dự án.`
-            } Từ giờ chỉ thành viên được thêm ở mục Thành viên (cùng quản trị không gian làm việc) thấy dự án. Các kênh Telegram gắn riêng cho dự án này sẽ tự TẮT (bật lại ở mục Kết nối nếu thật sự cần), và báo cáo định kỳ của dự án không còn gửi vào kênh chat trừ khi bạn cho phép lại.`,
+            } Từ giờ chỉ thành viên được thêm ở mục Thành viên (cùng quản trị tổ chức) thấy dự án. Các kênh Telegram gắn riêng cho dự án này sẽ tự TẮT (bật lại ở mục Kết nối nếu thật sự cần), và báo cáo định kỳ của dự án không còn gửi vào kênh chat trừ khi bạn cho phép lại.`,
             confirmLabel: 'Chuyển sang riêng tư',
             destructive: true,
           }
         : {
             title: 'Mở dự án cho mọi thành viên?',
             description:
-              'Mọi thành viên không gian làm việc sẽ thấy và tham gia dự án theo vai trò mặc định của họ.',
+              'Mọi thành viên tổ chức sẽ thấy và tham gia dự án theo vai trò mặc định của họ.',
             confirmLabel: 'Mở dự án',
           },
     );
@@ -67,7 +67,7 @@ export function PrivacySection({ project, canAdmin }: { project: ProjectDto; can
             Dự án riêng tư
           </p>
           <p className="mt-0.5 text-sm text-muted">
-            Chỉ thành viên dự án và quản trị không gian làm việc thấy dự án này.
+            Chỉ thành viên dự án và quản trị tổ chức thấy dự án này.
           </p>
           {!canAdmin && <p className="mt-1 text-xs text-faint">Chỉ quản trị dự án mới đổi được.</p>}
         </div>

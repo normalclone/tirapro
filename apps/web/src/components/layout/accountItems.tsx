@@ -6,13 +6,14 @@ import {
   ShieldCheck,
   Sun,
   UserCircle,
+  Users,
   type LucideIcon,
 } from 'lucide-react';
 import { useAuth } from '@/stores/auth';
 import { useTheme } from '@/stores/theme';
 
 export interface AccountItem {
-  key: 'account' | 'docs' | 'admin' | 'theme' | 'logout';
+  key: 'account' | 'teams' | 'docs' | 'admin' | 'theme' | 'logout';
   label: string;
   Icon: LucideIcon;
   onSelect: () => void;
@@ -24,7 +25,7 @@ export interface AccountItem {
 
 /**
  * Các mục tài khoản — nguồn DUY NHẤT cho menu người dùng desktop (`UserMenu`) và sheet "Tôi" trên mobile
- * (`MobileSheets`). Thứ tự: Tài khoản, Hướng dẫn sử dụng, [Quản trị hệ thống], Giao diện sáng/tối, Đăng xuất.
+ * (`MobileSheets`). Thứ tự: Tài khoản, Nhóm của tôi, Hướng dẫn sử dụng, [Quản trị hệ thống], Giao diện sáng/tối, Đăng xuất.
  */
 export function useAccountItems(): AccountItem[] {
   const user = useAuth((s) => s.user);
@@ -34,6 +35,12 @@ export function useAccountItems(): AccountItem[] {
   if (!user) return [];
   const items: (AccountItem | false)[] = [
     { key: 'account', label: 'Tài khoản', Icon: UserCircle, onSelect: () => navigate('/account') },
+    {
+      key: 'teams',
+      label: 'Nhóm của tôi',
+      Icon: Users,
+      onSelect: () => navigate('/account/teams'),
+    },
     {
       key: 'docs',
       label: 'Hướng dẫn sử dụng',

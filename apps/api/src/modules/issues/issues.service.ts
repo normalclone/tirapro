@@ -775,7 +775,7 @@ export class IssuesService {
     const found = await Promise.all(jobs);
     if (found.some((r) => r == null)) {
       throw new NotFoundAppException(
-        'Loại công việc, mức ưu tiên, sprint (phải cùng dự án), kết quả xử lý, việc cha hoặc epic bạn chọn không thuộc không gian làm việc này — hãy chọn lại từ danh sách gợi ý',
+        'Loại công việc, mức ưu tiên, sprint (phải cùng dự án), kết quả xử lý, việc cha hoặc epic bạn chọn không thuộc tổ chức này — hãy chọn lại từ danh sách gợi ý',
       );
     }
     // Sprint đã hoàn thành không nhận thêm việc (bỏ gán/giữ nguyên thì không đi qua đây — xem `sprintIfChanged`).
@@ -870,7 +870,7 @@ export class IssuesService {
     });
     if (!parent)
       throw new NotFoundAppException(
-        'Việc cha bạn chọn không thuộc không gian làm việc này — hãy chọn lại từ danh sách gợi ý',
+        'Việc cha bạn chọn không thuộc tổ chức này — hãy chọn lại từ danh sách gợi ý',
       );
     if (parent.projectId !== self.projectId)
       throw new BusinessRuleException(
@@ -976,7 +976,7 @@ export class IssuesService {
     });
     if (!epic)
       throw new NotFoundAppException(
-        'Epic bạn chọn không thuộc không gian làm việc này — hãy chọn lại từ danh sách gợi ý',
+        'Epic bạn chọn không thuộc tổ chức này — hãy chọn lại từ danh sách gợi ý',
       );
     if (epic.projectId !== projectId)
       throw new BusinessRuleException(
@@ -1077,7 +1077,7 @@ export class IssuesService {
     if (!assigneeId) return;
     if (!(await this.isAssignableMember(workspaceId, assigneeId, db, projectId)))
       throw new BusinessRuleException(
-        'Người được giao không thuộc không gian làm việc này hoặc không xem được dự án — hãy chọn một thành viên khác',
+        'Người được giao không thuộc tổ chức này hoặc không xem được dự án — hãy chọn một thành viên khác',
       );
   }
 
@@ -2013,7 +2013,7 @@ export class IssuesService {
   /**
    * Sửa hàng loạt MỘT lô issue của cùng dự án trong một transaction. Item bị người khác sửa trước
    * (version lệch) không làm hỏng cả lô: được thu vào `conflicts` kèm version hiện tại.
-   * Item không thuộc dự án/không gian làm việc, hoặc chuyển trạng thái sai workflow → lỗi cho cả yêu cầu, chưa ghi gì.
+   * Item không thuộc dự án/tổ chức, hoặc chuyển trạng thái sai workflow → lỗi cho cả yêu cầu, chưa ghi gì.
    * Sự kiện chỉ phát sau khi commit.
    */
   async bulkUpdate(

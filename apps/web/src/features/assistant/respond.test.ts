@@ -137,7 +137,7 @@ describe('hỏi dữ liệu hệ thống', () => {
       { ...ENV, project: null, pathname: '/' },
       makeDeps({ searchJql: ok({ items: items.slice(0, 2), hasMore: false }) }),
     );
-    expect(allText(out)).toContain('trong toàn bộ workspace');
+    expect(allText(out)).toContain('trong toàn bộ tổ chức');
     expect(decodeURIComponent(find(out, 'issues')!.seeAllTo)).not.toContain('project');
     expect(find(out, 'issues')!.more).toBe(false);
   });

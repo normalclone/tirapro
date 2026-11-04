@@ -164,9 +164,7 @@ function ConfigForm({
     const opts = (projects ?? [])
       .filter((p) => !p.isArchived)
       .map((p) => ({ value: p.id, label: p.name, hint: p.key }));
-    return def?.project === 'optional'
-      ? [{ value: '', label: 'Toàn bộ không gian làm việc' }, ...opts]
-      : opts;
+    return def?.project === 'optional' ? [{ value: '', label: 'Toàn bộ tổ chức' }, ...opts] : opts;
   }, [projects, def?.project]);
 
   // Ô đã lưu có thể trỏ dự án không còn trong danh sách (đã lưu trữ…): vẫn hiện để người dùng thấy và đổi.
@@ -246,7 +244,7 @@ function ConfigForm({
             label={def.project === 'required' ? 'Dự án' : 'Phạm vi'}
             hint={
               def.project === 'optional'
-                ? 'Không chọn dự án: số liệu toàn không gian (cần quyền xem báo cáo).'
+                ? 'Không chọn dự án: số liệu toàn tổ chức (cần quyền xem báo cáo).'
                 : undefined
             }
           >

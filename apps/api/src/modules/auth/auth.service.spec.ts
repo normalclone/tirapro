@@ -145,7 +145,7 @@ describe('AuthService.refresh — tài khoản bị khoá và hoạt động g�
     expect(prisma.user.update).toHaveBeenCalled();
   });
 
-  it('user trả về cho web có canCreateWorkspace (màn "chưa thuộc không gian làm việc nào" cần)', async () => {
+  it('user trả về cho web có canCreateWorkspace (màn "chưa thuộc tổ chức nào" cần)', async () => {
     const { service } = makeSession({ canCreateWorkspace: true });
     const out = await service.refresh('fam.raw', {}, null);
     expect(out.user.canCreateWorkspace).toBe(true);
@@ -227,7 +227,7 @@ describe('AuthService.logoutAll', () => {
   });
 });
 
-describe('AuthService.listWorkspaces — memberCount (bộ chọn không gian làm việc)', () => {
+describe('AuthService.listWorkspaces — memberCount (bộ chọn tổ chức)', () => {
   function makeList(rows: unknown[]) {
     const findMany = vi.fn((_args: unknown) => Promise.resolve(rows));
     const prisma = { workspaceMembership: { findMany } };

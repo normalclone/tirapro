@@ -86,7 +86,7 @@ export function useRevokeAdminSessions() {
   });
 }
 
-/** Thêm tài khoản vào một không gian làm việc (bỏ trống vai trò → "Thành viên"). */
+/** Thêm tài khoản vào một tổ chức (bỏ trống vai trò → "Thành viên"). */
 export function useAddAdminUserToWorkspace() {
   const qc = useQueryClient();
   return useMutation({

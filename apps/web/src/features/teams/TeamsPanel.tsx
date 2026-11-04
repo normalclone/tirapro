@@ -49,7 +49,7 @@ function MemberStack({ team }: { team: TeamDto }) {
   );
 }
 
-/** Khu quản lý nhóm trong không gian làm việc — dùng ở tab "Nhóm" của trang Thành viên. */
+/** Khu quản lý nhóm trong tổ chức — dùng ở tab "Nhóm" của trang Thành viên. */
 export function TeamsPanel() {
   const canManage = useAuth((s) => s.can('team:manage'));
   const teamsQuery = useTeams();
@@ -72,8 +72,7 @@ export function TeamsPanel() {
     if (
       !(await confirm({
         title: `Xoá nhóm “${t.name}”?`,
-        description:
-          'Chỉ nhóm bị xoá — các thành viên vẫn ở lại không gian làm việc và giữ nguyên vai trò.',
+        description: 'Chỉ nhóm bị xoá — các thành viên vẫn ở lại tổ chức và giữ nguyên vai trò.',
         destructive: true,
       }))
     )
@@ -194,7 +193,7 @@ export function TeamsPanel() {
                       variant="ghost"
                       size="icon"
                       className="text-muted hover:text-danger"
-                      title="Xoá nhóm — thành viên vẫn ở lại không gian làm việc"
+                      title="Xoá nhóm — thành viên vẫn ở lại tổ chức"
                       aria-label={`Xoá nhóm ${t.name}`}
                       onClick={() => void handleDelete(t)}
                     >

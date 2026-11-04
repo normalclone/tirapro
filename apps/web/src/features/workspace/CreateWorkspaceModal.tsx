@@ -15,7 +15,7 @@ interface CreatedWorkspace {
   slug: string;
 }
 
-/** Lập không gian làm việc mới; trả về nơi vừa tạo. */
+/** Lập tổ chức mới; trả về nơi vừa tạo. */
 function useCreateWorkspace() {
   return useMutation({
     mutationFn: (name: string) =>
@@ -49,7 +49,7 @@ function CreateWorkspaceModalInner({ open, onClose }: { open: boolean; onClose: 
     // Đã hỏi "bỏ thay đổi chưa lưu" ở nút mở hộp này (WorkspaceSwitcher). Nháp chỉ bị bỏ khi đổi sang nơi mới thành công.
     try {
       const created = await create.mutateAsync(trimmedName);
-      toast.success(`Đã tạo không gian làm việc ${created.name}`);
+      toast.success(`Đã tạo tổ chức ${created.name}`);
       onClose();
       // Chuyển sang nơi vừa lập: cấp token mới + reload (xử lý trong useSwitchWorkspace).
       switchWs.mutate(created.id, { onError: (err) => toast.error(apiErrorMessage(err)) });
@@ -65,14 +65,14 @@ function CreateWorkspaceModalInner({ open, onClose }: { open: boolean; onClose: 
       onOpenChange={(o) => {
         if (!o) onClose();
       }}
-      title="Tạo không gian làm việc"
+      title="Tạo tổ chức"
       footer={
         <>
           <Button type="button" variant="ghost" onClick={onClose}>
             Huỷ
           </Button>
           <Button type="submit" form="create-workspace-form" loading={busy} disabled={!canSubmit}>
-            Tạo không gian làm việc
+            Tạo tổ chức
           </Button>
         </>
       }
@@ -80,7 +80,7 @@ function CreateWorkspaceModalInner({ open, onClose }: { open: boolean; onClose: 
       <form id="create-workspace-form" onSubmit={(e) => void submit(e)} className="space-y-4">
         <div>
           <label htmlFor="cw-name" className="mb-1.5 block text-sm font-medium text-muted">
-            Tên không gian làm việc
+            Tên tổ chức
           </label>
           <Input
             id="cw-name"

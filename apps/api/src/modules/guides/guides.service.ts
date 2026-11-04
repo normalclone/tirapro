@@ -32,7 +32,7 @@ export class GuidesService {
   constructor(private readonly prisma: PrismaService) {}
 
   /**
-   * Guide đã publish cho một màn (hoặc toàn bộ workspace nếu bỏ `screen`).
+   * Guide đã publish cho một màn (hoặc toàn bộ tổ chức nếu bỏ `screen`).
    * Hiển thị guide của workspace hiện tại hoặc guide toàn cục (workspaceId = null).
    */
   async listForScreen(user: AuthUser, screen?: string): Promise<GuideListItemDto[]> {

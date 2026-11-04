@@ -193,7 +193,7 @@ describe('RaidService — nhiều người phụ trách (logbug #27)', () => {
     expect(data.owners).toEqual({ create: [{ userId: 'a' }] });
   });
 
-  it('người ngoài không gian làm việc → 403 nêu cách sửa, không ghi', async () => {
+  it('người ngoài tổ chức → 403 nêu cách sửa, không ghi', async () => {
     const { service, prisma } = setup(['risk:manage']);
     await expect(
       service.create('w1', { title: 'T', projectId: null, ownerIds: ['a', 'outsider'] }, 'u1'),

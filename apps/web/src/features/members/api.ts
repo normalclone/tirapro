@@ -49,7 +49,7 @@ export function useSearchUsers(opts: UserSearchOpts & { enabled?: boolean } = {}
 
 /**
  * Toàn bộ user trong hệ thống (pool do system admin quản lý ở nơi khác) — để chọn
- * thêm vào không gian làm việc hiện tại. Gated backend bằng `member:manage`.
+ * thêm vào tổ chức hiện tại. Gated backend bằng `member:manage`.
  */
 export function useAllUsers(search?: string, enabled = true) {
   const q = search?.trim() ?? '';
@@ -138,10 +138,10 @@ export function useRemoveUserAvatar() {
 }
 
 /* ------------------------------------------------------------------ */
-/* Thành viên của không gian làm việc (kèm vai trò)                    */
+/* Thành viên của tổ chức (kèm vai trò)                    */
 /* ------------------------------------------------------------------ */
 
-/** Danh sách thành viên của không gian làm việc hiện tại kèm vai trò (GET /members). */
+/** Danh sách thành viên của tổ chức hiện tại kèm vai trò (GET /members). */
 export function useWorkspaceMembers(enabled = true) {
   return useQuery({
     queryKey: keys.members.workspace,
@@ -151,7 +151,7 @@ export function useWorkspaceMembers(enabled = true) {
 }
 
 /**
- * Thêm một user CÓ SẴN (từ pool hệ thống) vào không gian làm việc hiện tại kèm vai trò.
+ * Thêm một user CÓ SẴN (từ pool hệ thống) vào tổ chức hiện tại kèm vai trò.
  * Idempotent: nếu đã là thành viên thì cập nhật lại vai trò (POST /members).
  */
 export function useAddMember() {
@@ -172,7 +172,7 @@ export interface CreateMemberAccountResult {
   tempPassword?: string;
 }
 
-/** Tạo tài khoản mới + thêm vào không gian làm việc hiện tại trong một lần (POST /members/accounts). */
+/** Tạo tài khoản mới + thêm vào tổ chức hiện tại trong một lần (POST /members/accounts). */
 export function useCreateMemberAccount() {
   const qc = useQueryClient();
   return useMutation({
@@ -192,7 +192,7 @@ export function useCreateMemberAccount() {
   });
 }
 
-/** Thêm NHIỀU người vào không gian làm việc một lúc (cùng bộ vai trò). */
+/** Thêm NHIỀU người vào tổ chức một lúc (cùng bộ vai trò). */
 export function useAddMembersBulk() {
   const qc = useQueryClient();
   return useMutation({
@@ -208,7 +208,7 @@ export function useAddMembersBulk() {
   });
 }
 
-/** Gỡ một thành viên khỏi không gian làm việc (BE chặn gỡ owner/chính mình). */
+/** Gỡ một thành viên khỏi tổ chức (BE chặn gỡ owner/chính mình). */
 export function useRemoveMember() {
   const qc = useQueryClient();
   return useMutation({
@@ -234,7 +234,7 @@ export function useProjectMembers(projectId?: string) {
   });
 }
 
-/** Thêm NHIỀU người vào dự án một lúc (chỉ người đã thuộc không gian làm việc). */
+/** Thêm NHIỀU người vào dự án một lúc (chỉ người đã thuộc tổ chức). */
 export function useAddProjectMembersBulk(projectId: string) {
   const qc = useQueryClient();
   return useMutation({

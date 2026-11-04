@@ -142,7 +142,7 @@ export const SCREENS: ScreenInfo[] = [
   {
     pattern: '/members',
     name: 'Thành viên',
-    purpose: 'Quản lý thành viên của không gian làm việc: thêm người, đặt vai trò chung.',
+    purpose: 'Quản lý thành viên của tổ chức: thêm người, đặt vai trò chung.',
     docAnchor: 'them-nguoi-phan-quyen',
     chips: ['Phân quyền thế nào?', 'Thêm người mới'],
   },
@@ -178,8 +178,7 @@ export const SCREENS: ScreenInfo[] = [
   {
     pattern: '/admin',
     name: 'Quản trị hệ thống',
-    purpose:
-      'Console quản trị: tổng quan hệ thống, không gian làm việc, tài khoản, cấu hình và feature flags.',
+    purpose: 'Console quản trị: tổng quan hệ thống, tổ chức, tài khoản, cấu hình và feature flags.',
     docAnchor: 'vt-sys-admin',
     chips: ['Quản trị hệ thống làm gì', 'Phím tắt'],
   },
@@ -192,7 +191,7 @@ const GROUPS: { re: RegExp; info: Omit<ScreenInfo, 'pattern'> }[] = [
     info: {
       name: 'Cài đặt',
       purpose:
-        'Thiết lập không gian làm việc: thông tin chung, vai trò, nhật ký, thông báo, mức ưu tiên, trường, quy trình, nhập dữ liệu, API key.',
+        'Thiết lập tổ chức: thông tin chung, vai trò, nhật ký, thông báo, mức ưu tiên, trường, quy trình, nhập dữ liệu, API key.',
       docAnchor: 'vt-ws-admin',
       chips: ['Phân quyền thế nào?', 'Nhập Excel ở đâu?'],
     },

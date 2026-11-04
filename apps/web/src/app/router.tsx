@@ -24,6 +24,9 @@ import { ProjectLayout } from '@/features/projects/ProjectLayout';
 const DashboardPage = lazy(() =>
   import('@/features/dashboard/DashboardPage').then((m) => ({ default: m.DashboardPage })),
 );
+const MeOverviewPage = lazy(() =>
+  import('@/features/me/MeOverviewPage').then((m) => ({ default: m.MeOverviewPage })),
+);
 const DashboardViewPage = lazy(() =>
   import('@/features/dashboards/DashboardViewPage').then((m) => ({
     default: m.DashboardViewPage,
@@ -39,6 +42,9 @@ const NotificationsPage = lazy(() =>
   import('@/features/notifications/NotificationsPage').then((m) => ({
     default: m.NotificationsPage,
   })),
+);
+const MyTeamsPage = lazy(() =>
+  import('@/features/teams/MyTeamsPage').then((m) => ({ default: m.MyTeamsPage })),
 );
 const AccountPage = lazy(() =>
   import('@/features/members/AccountPage').then((m) => ({ default: m.AccountPage })),
@@ -239,7 +245,7 @@ function RequireAuth() {
     );
   }
   if (status === 'guest') return <Navigate to="/login" replace />;
-  // Chưa thuộc không gian làm việc nào: màn riêng thay cho khung ứng dụng (xem workspaceGate).
+  // Chưa thuộc tổ chức nào: màn riêng thay cho khung ứng dụng (xem workspaceGate).
   if (
     user &&
     needsWorkspaceScreen({ workspaceId, isSystemAdmin: user.isSystemAdmin === true }, pathname)
@@ -283,11 +289,13 @@ export const router = createBrowserRouter([
     errorElement: <RouteError />,
     children: [
       { index: true, element: <DashboardPage /> },
+      { path: 'me', element: <MeOverviewPage /> },
       { path: 'dashboards/:id', element: <DashboardViewPage /> },
       { path: 'projects', element: <ProjectsPage /> },
       { path: 'members', element: <MembersPage /> },
       { path: 'notifications', element: <NotificationsPage /> },
       { path: 'account', element: <AccountPage /> },
+      { path: 'account/teams', element: <MyTeamsPage /> },
       {
         path: 'admin',
         element: <AdminLayout />,

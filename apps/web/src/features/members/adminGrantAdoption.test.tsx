@@ -75,7 +75,7 @@ describe('P-C14 trên giao diện: khoá điều khiển quản trị cho ngư�
 
   it('thông báo lỗi 403 ADMIN_GRANT_REQUIRES_ADMIN có câu tiếng Việt riêng', () => {
     expect(src('lib/api.ts')).toContain(
-      "ADMIN_GRANT_REQUIRES_ADMIN: 'Chỉ quản trị không gian làm việc mới cấp hoặc gỡ quyền quản trị.'",
+      "ADMIN_GRANT_REQUIRES_ADMIN: 'Chỉ quản trị tổ chức mới cấp hoặc gỡ quyền quản trị.'",
     );
   });
 });

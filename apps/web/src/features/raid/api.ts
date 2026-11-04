@@ -67,7 +67,7 @@ function cleanParams(filter: RaidFilter): Record<string, string> {
   return p;
 }
 
-/** Sổ RAID của cả không gian làm việc (đã sắp theo điểm rủi ro giảm dần). */
+/** Sổ RAID của cả tổ chức (đã sắp theo điểm rủi ro giảm dần). */
 export function useRaidItems(filter: RaidFilter) {
   return useQuery({
     queryKey: keys.raid.list(filter),

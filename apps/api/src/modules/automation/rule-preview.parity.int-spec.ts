@@ -508,7 +508,7 @@ describe.skipIf(!DB_URL)('xem trước quy tắc ↔ engine trên Postgres thậ
   });
 
   /* ------------------------------------------------------------------ phạm vi ------------------------------------------------------------------ */
-  it('phạm vi: dự án riêng tư người soạn không thấy / lưu trữ / xoá mềm / việc xoá mềm / không gian khác không bao giờ được đếm', async () => {
+  it('phạm vi: dự án riêng tư người soạn không thấy / lưu trữ / xoá mềm / việc xoá mềm / tổ chức khác không bao giờ được đếm', async () => {
     const all = await service.previewMatch(WS, EDITOR, { conditions: [] });
     expect(all.count).toBe(FIXTURES.length); // mỗi nơi ngoài phạm vi có CÙNG bộ giá trị — chỉ bản trong phạm vi được đếm
     const total = await prisma.issue.count({ where: { id: { startsWith: TAG } } });
@@ -522,7 +522,7 @@ describe.skipIf(!DB_URL)('xem trước quy tắc ↔ engine trên Postgres thậ
       const r = await service.previewMatch(WS, EDITOR, { projectId: p, conditions: [] });
       expect(r.count, p).toBe(0);
     }
-    // Hỏi theo không gian thứ hai: chỉ đếm việc CỦA không gian đó (bản nhân của nó), không lẫn việc không gian thứ nhất.
+    // Hỏi theo tổ chức thứ hai: chỉ đếm việc CỦA tổ chức đó (bản nhân của nó), không lẫn việc tổ chức thứ nhất.
     const otherWs = await service.previewMatch(WS2, EDITOR, { conditions: [] });
     expect(otherWs.count).toBe(FIXTURES.length);
   });

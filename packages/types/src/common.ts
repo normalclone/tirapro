@@ -89,6 +89,10 @@ export const ERROR_CODES = {
   STATUS_HAS_ISSUES: 'STATUS_HAS_ISSUES',
   /** 409: trạng thái khởi tạo của một quy trình đang được dùng theo loại việc/ghi đè dự án — không xoá được (việc mới sẽ không có chỗ bắt đầu). */
   INITIAL_STATUS_IN_USE: 'INITIAL_STATUS_IN_USE',
+  /** 422: chia sẻ bộ lọc cho người không thuộc tổ chức (hoặc đã vô hiệu hoá). */
+  FILTER_SHARE_USER_NOT_MEMBER: 'FILTER_SHARE_USER_NOT_MEMBER',
+  /** 422: chia sẻ bộ lọc cho dự án không tồn tại / chủ bộ lọc không xem được. */
+  FILTER_SHARE_PROJECT_NOT_VISIBLE: 'FILTER_SHARE_PROJECT_NOT_VISIBLE',
   /** 413: tệp tải lên vượt giới hạn dung lượng. */
   PAYLOAD_TOO_LARGE: 'PAYLOAD_TOO_LARGE',
   INTERNAL: 'INTERNAL',

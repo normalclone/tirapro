@@ -134,8 +134,7 @@ export type CustomFieldType = (typeof CustomFieldType)[keyof typeof CustomFieldT
 
 export const FilterVisibility = {
   PRIVATE: 'PRIVATE',
-  WORKSPACE: 'WORKSPACE',
-  PROJECT: 'PROJECT',
+  SHARED: 'SHARED',
 } as const;
 export type FilterVisibility = (typeof FilterVisibility)[keyof typeof FilterVisibility];
 
@@ -173,6 +172,7 @@ export const NotificationType = {
   SPRINT_STARTED: 'SPRINT_STARTED',
   SPRINT_COMPLETED: 'SPRINT_COMPLETED',
   WATCHING_UPDATE: 'WATCHING_UPDATE',
+  FILTER_SHARED: 'FILTER_SHARED',
 } as const;
 export type NotificationType = (typeof NotificationType)[keyof typeof NotificationType];
 

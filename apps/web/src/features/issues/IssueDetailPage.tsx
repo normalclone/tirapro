@@ -974,9 +974,9 @@ export function IssueDetailPage() {
   );
 }
 
-/** Tên không gian làm việc hiện tại cho breadcrumb. */
+/** Tên tổ chức hiện tại cho breadcrumb. */
 function useWorkspaceName(): string {
   const wsId = useAuth((s) => s.workspaceId);
   const { data: workspaces } = useMyWorkspaces();
-  return workspaces?.find((w) => w.id === wsId)?.name ?? 'Không gian làm việc';
+  return workspaces?.find((w) => w.id === wsId)?.name ?? 'Tổ chức';
 }

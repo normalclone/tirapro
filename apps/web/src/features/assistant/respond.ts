@@ -80,7 +80,7 @@ const rowOf = (i: IssueDto, now: Date): IssueRow => ({
 });
 
 const scopeLabel = (e: RespondEnv) =>
-  e.project ? `trong dự án ${e.project.key}` : 'trong toàn bộ workspace';
+  e.project ? `trong dự án ${e.project.key}` : 'trong toàn bộ tổ chức';
 
 async function issueList(
   title: string,

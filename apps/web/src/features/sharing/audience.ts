@@ -38,7 +38,7 @@ export function splitPeople(
 
 export interface AudienceInput {
   scope: ShareKind;
-  /** Số thành viên đang hoạt động của không gian (`/auth/workspaces`); thiếu khi API cũ. */
+  /** Số thành viên đang hoạt động của tổ chức (`/auth/workspaces`); thiếu khi API cũ. */
   memberCount?: number;
   /** Nhóm đang chọn (đã có `members` từ `useTeams`), `null` = chưa chọn. */
   team?: { name: string; lead?: UserLike | null; members: readonly UserLike[] } | null;
@@ -62,9 +62,9 @@ export interface AudienceView {
 
 const withCount = (label: string, n: number | undefined) =>
   n === undefined ? label : `${label} (${fmtNumber(n)})`;
-const WORKSPACE_LABEL = 'Mọi thành viên không gian';
+const WORKSPACE_LABEL = 'Mọi thành viên tổ chức';
 /**
- * Quản trị viên (không gian / hệ thống) thấy MỌI mục đã chia sẻ theo nhóm hoặc dự án, kể cả dự án riêng tư và nhóm họ không
+ * Quản trị viên (tổ chức / hệ thống) thấy MỌI mục đã chia sẻ theo nhóm hoặc dự án, kể cả dự án riêng tư và nhóm họ không
  * thuộc (`dashboardVisibleWhere`, `visibilityScope` ← `visibleWhere` = `{}` cho admin). Mục RIÊNG TƯ thì không: admin không thấy.
  */
 const WITH_ADMINS = ' và Quản trị chung';
@@ -100,8 +100,8 @@ export function audienceView(i: AudienceInput): AudienceView {
       const p = i.project;
       if (!p) return view('Chọn dự án để xem ai có quyền', null, []);
       if (!p.isPrivate) {
-        // Không in `memberCount`: đó là số thành viên không gian, còn người chỉ có vai theo-dự-án (không có `project:view`
-        // cấp không gian) KHÔNG thấy dự án công khai — nên số đó sẽ nói quá.
+        // Không in `memberCount`: đó là số thành viên tổ chức, còn người chỉ có vai theo-dự-án (không có `project:view`
+        // cấp tổ chức) KHÔNG thấy dự án công khai — nên số đó sẽ nói quá.
         return view(
           'Mọi thành viên có quyền xem dự án',
           `Dự án ${p.name} công khai nên mọi thành viên có quyền xem dự án đều thấy.`,

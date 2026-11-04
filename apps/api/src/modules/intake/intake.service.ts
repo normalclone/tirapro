@@ -518,7 +518,7 @@ export class IntakeService {
     });
     if (!first)
       throw new BusinessRuleException(
-        'Không gian làm việc chưa có loại công việc nào — hãy vào Cấu hình để thêm ít nhất một loại công việc',
+        'Tổ chức chưa có loại công việc nào — hãy vào Cấu hình để thêm ít nhất một loại công việc',
       );
     return first.id;
   }

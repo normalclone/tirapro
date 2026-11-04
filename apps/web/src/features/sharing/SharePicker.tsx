@@ -15,7 +15,7 @@ import {
 
 const KIND_LABEL: Record<ShareKind, string> = {
   PRIVATE: 'Chỉ mình tôi',
-  GLOBAL: 'Cả không gian làm việc',
+  GLOBAL: 'Cả tổ chức',
   PROJECT: 'Thành viên dự án…',
   TEAM: 'Thành viên nhóm…',
 };

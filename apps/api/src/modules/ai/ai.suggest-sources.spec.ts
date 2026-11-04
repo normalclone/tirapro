@@ -84,7 +84,7 @@ describe('AiService.suggest — nguồn do MÁY CHỦ tính', () => {
     expect(out.sources?.map((s) => s.key)).toEqual(['TP-5', 'TP-4', 'TP-3']);
   });
 
-  it('chỉ lấy việc còn sống, đúng không gian + dự án, đã qua Triage (không trích việc chưa duyệt/đã xoá)', async () => {
+  it('chỉ lấy việc còn sống, đúng tổ chức + dự án, đã qua Triage (không trích việc chưa duyệt/đã xoá)', async () => {
     const { svc, findMany } = make({ ids: ['s2'], rows: [row(2)] });
     await svc.suggest('ws1', 'u1', 'i1');
     const where = findMany.mock.calls[0]![0].where as unknown as Record<string, unknown>;

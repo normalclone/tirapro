@@ -89,7 +89,7 @@ export function ProfilePanel() {
     <SectionCard
       icon={<UserCircle className="h-4 w-4" />}
       title="Hồ sơ của tôi"
-      description="Những thông tin này hiện với mọi thành viên khác, ở mọi không gian làm việc bạn tham gia."
+      description="Những thông tin này hiện với mọi thành viên khác, ở mọi tổ chức bạn tham gia."
       bare
     >
       <form ref={formRef} onSubmit={onSubmit} className="space-y-5 p-5">

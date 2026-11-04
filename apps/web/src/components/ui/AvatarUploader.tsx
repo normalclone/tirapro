@@ -37,7 +37,7 @@ async function downscale(file: File): Promise<File> {
 }
 
 /**
- * Khối tải ảnh đại diện dùng chung (người dùng / không gian làm việc / dự án).
+ * Khối tải ảnh đại diện dùng chung (người dùng / tổ chức / dự án).
  * Tự thu nhỏ ảnh phía client trước khi gửi multipart qua `uploadFn`.
  */
 export function AvatarUploader({

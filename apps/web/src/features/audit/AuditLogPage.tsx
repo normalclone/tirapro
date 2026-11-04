@@ -107,12 +107,12 @@ export function AuditLogPage() {
       <PageFrame size="sm">
         <PageHeader
           title={SETTINGS_LABELS.audit}
-          description="Ai đã thêm/gỡ thành viên, đổi vai trò, sửa tích hợp… trong không gian làm việc này."
+          description="Ai đã thêm/gỡ thành viên, đổi vai trò, sửa tích hợp… trong tổ chức này."
         />
         <EmptyState
           icon={<ShieldOff className="h-6 w-6" />}
           title="Bạn không có quyền xem nhật ký quản trị"
-          description="Chỉ quản trị không gian làm việc xem được nhật ký này. Hãy nhờ quản trị viên nếu bạn cần tra cứu."
+          description="Chỉ quản trị tổ chức xem được nhật ký này. Hãy nhờ quản trị viên nếu bạn cần tra cứu."
         />
       </PageFrame>
     );
@@ -125,7 +125,7 @@ export function AuditLogPage() {
     <PageFrame size="sm">
       <PageHeader
         title={SETTINGS_LABELS.audit}
-        description="Ai đã thêm/gỡ thành viên, đổi vai trò, sửa tích hợp… trong không gian làm việc này."
+        description="Ai đã thêm/gỡ thành viên, đổi vai trò, sửa tích hợp… trong tổ chức này."
       />
 
       <AuditFilterBar

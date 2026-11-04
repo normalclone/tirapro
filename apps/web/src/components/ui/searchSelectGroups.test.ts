@@ -6,9 +6,9 @@ describe('groupHeadingAt', () => {
     { group: undefined },
     { group: 'Của tôi' },
     { group: 'Của tôi' },
-    { group: 'Cả không gian' },
+    { group: 'Cả tổ chức' },
     { group: undefined },
-    { group: 'Cả không gian' },
+    { group: 'Cả tổ chức' },
   ];
 
   it('chỉ lựa chọn đầu mỗi nhóm liên tiếp có tiêu đề', () => {
@@ -16,9 +16,9 @@ describe('groupHeadingAt', () => {
       null,
       'Của tôi',
       null,
-      'Cả không gian',
+      'Cả tổ chức',
       null,
-      'Cả không gian',
+      'Cả tổ chức',
     ]);
   });
 

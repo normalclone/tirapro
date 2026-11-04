@@ -26,17 +26,17 @@ const d = (id: string, over: Partial<CustomDashboardSummaryDto>): CustomDashboar
 describe('scopeBadge / scopeDescription', () => {
   it('mỗi mức có nhãn tiếng Việt, dự án/nhóm kèm mã/tên', () => {
     expect(scopeBadge(base)).toBe('Riêng tư');
-    expect(scopeBadge(d('g', { scope: 'GLOBAL' }))).toBe('Cả không gian');
+    expect(scopeBadge(d('g', { scope: 'GLOBAL' }))).toBe('Cả tổ chức');
     expect(
       scopeBadge(d('p', { scope: 'PROJECT', project: { id: 'p1', key: 'WEB', name: 'Web' } })),
     ).toBe('Dự án WEB');
     expect(scopeBadge(d('t', { scope: 'TEAM', team: { id: 't1', name: 'QA' } }))).toBe('Nhóm QA');
-    expect(scopeDescription(d('g', { scope: 'GLOBAL' }))).toMatch(/không gian/);
+    expect(scopeDescription(d('g', { scope: 'GLOBAL' }))).toMatch(/tổ chức/);
   });
 });
 
 describe('groupDashboards', () => {
-  it('Của tôi trước (mọi mức), rồi Cả không gian, Dự án, Nhóm; bỏ nhóm rỗng', () => {
+  it('Của tôi trước (mọi mức), rồi Cả tổ chức, Dự án, Nhóm; bỏ nhóm rỗng', () => {
     const list = [
       d('t1', { scope: 'TEAM', team: { id: 'qa', name: 'QA' } }),
       d('p1', { scope: 'PROJECT', project: { id: 'w', key: 'WEB', name: 'Web' } }),
@@ -49,7 +49,7 @@ describe('groupDashboards', () => {
     const groups = groupDashboards(list);
     expect(groups.map((g) => g.title)).toEqual([
       'Của tôi',
-      'Cả không gian',
+      'Cả tổ chức',
       'Dự án: APP',
       'Dự án: WEB',
       'Nhóm: QA',

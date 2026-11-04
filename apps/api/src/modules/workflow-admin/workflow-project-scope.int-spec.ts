@@ -142,9 +142,13 @@ describe.skipIf(!DB_URL)('đổi quy trình của MỘT dự án ↔ Postgres th
           ownerId: id('o'),
           name: 'Chia sẻ cả tổ chức',
           jql: 'status = "Đang làm"',
-          visibility: 'WORKSPACE',
+          visibility: 'SHARED',
         },
       ],
+    });
+    // Chia sẻ cho dự án A (người xem là Quản trị dự án A, thấy A): chỉ chia sẻ cho dự án người xem thấy mới hiện trong báo cáo.
+    await prisma.savedFilterProjectShare.create({
+      data: { filterId: id('f-shared'), projectId: id('pa') },
     });
     // Bảng tổng quan riêng tư của dự án B.
     await prisma.dashboard.create({

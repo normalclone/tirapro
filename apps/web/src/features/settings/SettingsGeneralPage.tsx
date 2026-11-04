@@ -7,7 +7,7 @@ export const SettingsGeneralPage = () => (
   <PageFrame size="sm">
     <PageHeader
       title={SETTINGS_LABELS.general}
-      description="Logo hiện ở nút chuyển không gian làm việc trên thanh trên cùng."
+      description="Logo hiện ở nút chuyển tổ chức trên thanh trên cùng."
     />
     <WorkspaceBrandingPanel />
   </PageFrame>

@@ -1,6 +1,6 @@
 /**
  * Tirapro — chuyển tệp từ đĩa cục bộ (STORAGE_LOCAL_DIR) lên bucket S3/MinIO.
- * Đọc mọi khoá tệp mà DB đang tham chiếu (đính kèm, ảnh đại diện của người dùng / không gian / dự án) cộng `system-settings.json`,
+ * Đọc mọi khoá tệp mà DB đang tham chiếu (đính kèm, ảnh đại diện của người dùng / tổ chức / dự án) cộng `system-settings.json`,
  * rồi sao chép từ đĩa lên bucket. Định dạng khoá giữ nguyên nên đây chỉ là sao chép.
  *
  *   pnpm --filter @tirapro/api run storage:migrate-local-to-s3 -- --dry-run   # chỉ báo cáo, không ghi

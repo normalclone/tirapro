@@ -96,7 +96,7 @@ export function AdminOverviewPage() {
               cols="sm:grid-cols-3"
               items={[
                 {
-                  label: 'Không gian làm việc',
+                  label: 'Tổ chức',
                   value: fmtNumber(data.workspaces.active),
                   sub:
                     data.workspaces.archived > 0

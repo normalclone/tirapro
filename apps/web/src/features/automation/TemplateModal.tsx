@@ -38,7 +38,7 @@ export function TemplateModal({
     setPayload(template?.payload ?? {});
   }, [open, template]);
 
-  // Loại công việc / mức ưu tiên là cấu hình cấp không gian làm việc — cần một mã dự án bất kỳ để nạp.
+  // Loại công việc / mức ưu tiên là cấu hình cấp tổ chức — cần một mã dự án bất kỳ để nạp.
   const metaKey = useMemo(() => {
     const list = projects ?? [];
     const chosen = projectId !== SHARED ? list.find((p) => p.id === projectId) : undefined;
@@ -115,7 +115,7 @@ export function TemplateModal({
         <Field
           label="Phạm vi"
           htmlFor="tpl-project"
-          hint="Chọn “Dùng chung” thì mọi dự án trong không gian làm việc đều thấy mẫu này."
+          hint="Chọn “Dùng chung” thì mọi dự án trong tổ chức đều thấy mẫu này."
         >
           <SearchSelect
             id="tpl-project"

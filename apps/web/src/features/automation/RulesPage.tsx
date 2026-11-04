@@ -207,7 +207,7 @@ export function RulesPage() {
                             project ? 'bg-primary-subtle text-primary' : 'bg-surface-2 text-muted'
                           }
                         >
-                          {project ? project.key : 'Cả không gian làm việc'}
+                          {project ? project.key : 'Cả tổ chức'}
                         </Badge>
                         <Badge
                           className={

@@ -137,8 +137,8 @@ function PrefillNotice({ email, isMember }: { email: string; isMember: boolean }
   return (
     <p className="rounded-md bg-primary-subtle px-3 py-2 text-sm text-ink" role="status">
       {isMember
-        ? `${email} đã là thành viên của không gian làm việc này.`
-        : `${email} đã có tài khoản — chọn người đó để thêm vào không gian làm việc.`}
+        ? `${email} đã là thành viên của tổ chức này.`
+        : `${email} đã có tài khoản — chọn người đó để thêm vào tổ chức.`}
     </p>
   );
 }
@@ -169,7 +169,7 @@ function AddExistingUser({
   const { roleOptions, effectiveRoleIds, setRoleIds, resetRoles, frozen } =
     useWorkspaceRoleChoice();
 
-  // Loại người đã ở trong không gian làm việc khỏi pool.
+  // Loại người đã ở trong tổ chức khỏi pool.
   const memberUserIds = useMemo(() => new Set((members ?? []).map((m) => m.user.id)), [members]);
   const addableUsers = (users ?? []).filter((u) => !memberUserIds.has(u.id));
   // Người được chọn sẵn luôn có trong danh sách lựa chọn dù pool đã trở về không lọc.
@@ -220,7 +220,7 @@ function AddExistingUser({
       { userId, roleIds: effectiveRoleIds },
       {
         onSuccess: (m) => {
-          toast.success(`Đã thêm ${m.user.displayName} vào không gian làm việc`);
+          toast.success(`Đã thêm ${m.user.displayName} vào tổ chức`);
           reset();
           onFinished?.();
         },
@@ -249,7 +249,7 @@ function AddExistingUser({
             options={userSelectOptions}
             placeholder="Chọn người dùng…"
             searchPlaceholder="Tìm theo tên hoặc email…"
-            ariaLabel="Chọn người để thêm vào không gian làm việc"
+            ariaLabel="Chọn người để thêm vào tổ chức"
           />
           {!usersLoading && addableUsers.length === 0 && (
             <p className="text-xs text-faint">
@@ -301,7 +301,7 @@ function AddExistingUser({
         disabled={!userId || effectiveRoleIds.length === 0}
       >
         <UserPlus className="h-4 w-4" />
-        Thêm vào không gian làm việc
+        Thêm vào tổ chức
       </Button>
 
       <div className="border-t border-border pt-3">
@@ -314,7 +314,7 @@ function AddExistingUser({
 }
 
 /* ------------------------------------------------------------------ */
-/* Tạo tài khoản mới + thêm vào không gian làm việc                      */
+/* Tạo tài khoản mới + thêm vào tổ chức                      */
 /* ------------------------------------------------------------------ */
 
 function CreateAccountForm({

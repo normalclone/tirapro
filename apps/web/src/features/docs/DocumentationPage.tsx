@@ -440,7 +440,7 @@ export function DocumentationPage() {
             <p className="mb-8 text-[16px] leading-relaxed text-muted">
               Hướng dẫn dành cho người dùng — không phải tài liệu cài đặt. Nắm nhanh các khái niệm,
               rồi tìm đúng phần <strong>vai trò của bạn</strong> để biết mình làm được gì và làm thế
-              nào. Quyền thực tế = <em>hợp</em> của vai trò ở không gian làm việc và ở từng dự án.
+              nào. Quyền thực tế = <em>hợp</em> của vai trò ở tổ chức và ở từng dự án.
             </p>
 
             {/* mobile TOC chips */}
@@ -508,7 +508,7 @@ export function DocumentationPage() {
                 head={['Thuật ngữ', 'Ý nghĩa']}
                 rows={[
                   [
-                    <strong className="text-ink-strong">Không gian làm việc</strong>,
+                    <strong className="text-ink-strong">Tổ chức</strong>,
                     'Nơi riêng của một công ty hoặc phòng ban, chứa nhiều dự án và thành viên. Một người có thể thuộc nhiều nơi khác nhau.',
                   ],
                   [
@@ -594,9 +594,9 @@ export function DocumentationPage() {
                   </div>
                 </>
               )}
-              <H3>Chuyển không gian làm việc &amp; đăng xuất</H3>
+              <H3>Chuyển tổ chức &amp; đăng xuất</H3>
               <P>
-                Nếu bạn thuộc nhiều nơi, dùng bộ chọn không gian làm việc ở đầu thanh bên để chuyển.
+                Nếu bạn thuộc nhiều nơi, dùng bộ chọn tổ chức ở đầu thanh bên để chuyển.
                 Đăng xuất ở menu người dùng góc phải trên (cũng có sẵn liên kết mở lại tài liệu
                 này).
               </P>
@@ -605,18 +605,18 @@ export function DocumentationPage() {
             <section className="mb-14">
               <H2 id="vai-tro">Hiểu về vai trò</H2>
               <P>
-                <strong>Thành viên tính trên cả không gian làm việc</strong>: ai đã có tên ở đây là
+                <strong>Thành viên tính trên cả tổ chức</strong>: ai đã có tên ở đây là
                 tự động tham gia <em>mọi dự án công khai</em> bên trong — không cần thêm người vào
                 từng dự án. <strong>Dự án riêng tư</strong> (bật ở dự án → Cấu hình → Chung) là
                 ngoại lệ: chỉ những người được thêm riêng ở Cấu hình → Thành viên (cùng quản trị
-                không gian làm việc) mới thấy dự án đó. Vai trò trong dự án{' '}
+                tổ chức) mới thấy dự án đó. Vai trò trong dự án{' '}
                 <strong>mặc định</strong> suy từ vai trò chung (Quản trị chung → Quản trị dự án ·
                 Thành viên → Lập trình viên · Người xem → chỉ đọc), và có thể{' '}
                 <strong>đặt riêng</strong> cho từng người ở từng dự án khi cần.
               </P>
               <Cards>
                 <Card
-                  name="Vai trò cấp không gian làm việc"
+                  name="Vai trò cấp tổ chức"
                   val="Quản trị chung · Thành viên · Người xem"
                   desc="Quyền áp dụng cho toàn tổ chức"
                 />
@@ -637,7 +637,7 @@ export function DocumentationPage() {
                 ]}
                 rows={[
                   [
-                    'Xem không gian làm việc & dự án được phép',
+                    'Xem tổ chức & dự án được phép',
                     <Perm v="yes" />,
                     <Perm v="yes" />,
                     <Perm v="yes" />,
@@ -686,7 +686,7 @@ export function DocumentationPage() {
                     <Perm v="no" />,
                   ],
                   [
-                    'Quản trị nền tảng (nhiều không gian làm việc)',
+                    'Quản trị nền tảng (nhiều tổ chức)',
                     <Perm v="yes" />,
                     <Perm v="no" />,
                     <Perm v="no" />,
@@ -765,7 +765,7 @@ export function DocumentationPage() {
               />
               <Legend />
               <Note kind="info">
-                Xem vai trò của mình: vào trang <strong>Thành viên</strong> của không gian làm việc
+                Xem vai trò của mình: vào trang <strong>Thành viên</strong> của tổ chức
                 hoặc trang <strong>Cấu hình dự án → Thành viên</strong>. Không thấy một nút (sửa,
                 kéo-thả, cấu hình)? Gần như chắc chắn do vai trò của bạn chưa có quyền đó.
               </Note>
@@ -1041,11 +1041,11 @@ export function DocumentationPage() {
                 id="vt-ws-admin"
                 icon={<Building2 className="h-5 w-5" />}
                 title="Quản trị chung"
-                persona="Trưởng phòng / quản trị tổ chức — đứng trên tất cả dự án trong một không gian làm việc."
+                persona="Trưởng phòng / quản trị tổ chức — đứng trên tất cả dự án trong một tổ chức."
               />
               <CanDo
                 can={[
-                  'Tạo / sửa / lưu trữ / xoá dự án trong không gian làm việc.',
+                  'Tạo / sửa / lưu trữ / xoá dự án trong tổ chức.',
                   'Thêm trực tiếp thành viên (không có lời mời — người được thêm vào ngay), gỡ thành viên, tạo tài khoản mới, khoá / mở khoá, đặt lại mật khẩu, gán vai trò.',
                   'Tạo dự án từ mẫu (Scrum / Kanban / Quản lý yêu cầu); đặt dự án riêng tư; xem Cài đặt → Nhật ký quản trị.',
                   'Tạo vai trò tuỳ biến và trộn bộ quyền (RBAC).',
@@ -1059,7 +1059,7 @@ export function DocumentationPage() {
               <Steps
                 items={[
                   <>
-                    Vào trang <strong>Thành viên</strong> của không gian làm việc, chọn người có sẵn
+                    Vào trang <strong>Thành viên</strong> của tổ chức, chọn người có sẵn
                     hoặc tạo tài khoản mới, rồi chọn vai trò chung cho họ.
                   </>,
                   <>
@@ -1100,10 +1100,10 @@ export function DocumentationPage() {
                 id="vt-sys-admin"
                 icon={<ShieldCheck className="h-5 w-5" />}
                 title="Quản trị hệ thống"
-                persona="Chủ hệ thống — đứng trên mọi không gian làm việc. Vào trang quản trị tại /admin."
+                persona="Chủ hệ thống — đứng trên mọi tổ chức. Vào trang quản trị tại /admin."
               />
               <P>
-                Console quản trị có giao diện riêng, không gắn với không gian làm việc nào. Đăng
+                Console quản trị có giao diện riêng, không gắn với tổ chức nào. Đăng
                 nhập tài khoản có cờ quản trị hệ thống (vd <Mono>admin@projira.dev</Mono>) rồi mở
                 menu người dùng → <strong>Admin hệ thống</strong>.
               </P>
@@ -1112,12 +1112,12 @@ export function DocumentationPage() {
                   Số liệu toàn hệ thống và trạng thái degrade từng dịch vụ (DB · Redis · AI ·
                   Embedding · Lưu trữ).
                 </Feature>
-                <Feature icon={<Building2 className="h-4 w-4" />} title="Không gian làm việc">
+                <Feature icon={<Building2 className="h-4 w-4" />} title="Tổ chức">
                   Quản lý mọi nơi làm việc trong hệ thống: đổi gói, lưu trữ / khôi phục, xem chủ sở
                   hữu.
                 </Feature>
                 <Feature icon={<Users className="h-4 w-4" />} title="Tài khoản">
-                  Tạo người dùng, cấp/thu quyền lập không gian làm việc mới và quyền quản trị hệ
+                  Tạo người dùng, cấp/thu quyền lập tổ chức mới và quyền quản trị hệ
                   thống.
                 </Feature>
                 <Feature icon={<Sparkles className="h-4 w-4" />} title="Cấu hình & Feature flags">
@@ -1243,7 +1243,7 @@ export function DocumentationPage() {
                   ],
                   [
                     'Bảng tổng quan tuỳ biến — Tổng quan → bộ chọn bảng tổng quan',
-                    'Bộ chọn ở đầu Tổng quan (mặc định “Tổng quan chung”): chọn “Tạo bảng tổng quan mới…” để ghép widget kéo-thả. Chia sẻ: Chỉ mình tôi · Cả không gian làm việc · Thành viên dự án · Thành viên nhóm. Chỉ chủ bảng tổng quan được sửa.',
+                    'Bộ chọn ở đầu Tổng quan (mặc định “Tổng quan chung”): chọn “Tạo bảng tổng quan mới…” để ghép widget kéo-thả. Chia sẻ: Chỉ mình tôi · Cả tổ chức · Thành viên dự án · Thành viên nhóm. Chỉ chủ bảng tổng quan được sửa.',
                   ],
                 ]}
               />
@@ -1290,7 +1290,7 @@ export function DocumentationPage() {
                   mức ưu tiên và trạng thái, chạy nền có hiển thị tiến độ. Công việc nhập mang{' '}
                   <strong>đúng mã gốc</strong> (vd <Mono>JRA-1</Mono>); việc tạo mới sau đó vẫn theo
                   mã Tirapro. Nhập lại bỏ qua việc đã có mã. Người phụ trách chưa là thành viên sẽ
-                  tự được gán khi được thêm vào không gian làm việc.
+                  tự được gán khi được thêm vào tổ chức.
                 </Feature>
                 <Feature icon={<KeyRound className="h-4 w-4" />} title="API key & MCP">
                   Tạo API key ở <strong>Cài đặt → API &amp; kết nối lập trình</strong> cho phần mềm
@@ -1362,9 +1362,9 @@ export function DocumentationPage() {
                 Có thể quản trị hệ thống chưa cấu hình khoá AI, hoặc đã bật kill-switch. Các tính
                 năng vẫn chạy ở chế độ heuristic; hỏi quản trị nếu cần bật đầy đủ.
               </P>
-              <H3>Chuyển sang không gian làm việc khác thế nào?</H3>
+              <H3>Chuyển sang tổ chức khác thế nào?</H3>
               <P>
-                Dùng bộ chọn không gian làm việc ở đầu thanh bên (chỉ hiện khi bạn thuộc nhiều nơi).
+                Dùng bộ chọn tổ chức ở đầu thanh bên (chỉ hiện khi bạn thuộc nhiều nơi).
               </P>
             </section>
 

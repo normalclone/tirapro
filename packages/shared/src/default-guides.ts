@@ -157,7 +157,7 @@ export const DEFAULT_GUIDES: GuideSeed[] = [
         {
           selector: sel('members-list'),
           title: 'Danh sách thành viên',
-          body: 'Xem ai đang ở trong không gian làm việc, đổi vai trò hoặc gỡ khỏi không gian.',
+          body: 'Xem ai đang ở trong tổ chức, đổi vai trò hoặc gỡ khỏi tổ chức.',
           placement: 'top',
           order: 1,
         },
@@ -210,7 +210,7 @@ export const DEFAULT_GUIDES: GuideSeed[] = [
     type: 'CHECKLIST',
     screen: '/',
     title: 'Bắt đầu với Tirapro',
-    description: 'Bốn bước để không gian làm việc của bạn chạy được',
+    description: 'Bốn bước để tổ chức của bạn chạy được',
     order: 0,
     version: 1,
     // Tiến độ (`done`) tính từ dữ liệu thật theo `key` (OnboardingService); nhãn và đường dẫn lấy từ đây nên sửa không cần

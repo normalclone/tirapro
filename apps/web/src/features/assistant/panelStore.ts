@@ -41,6 +41,6 @@ export const useAssistantPanel = create<AssistantPanelState>((set) => ({
   setMinimized: (minimized) => set({ minimized }),
 }));
 
-/** Khu quản trị hệ thống (`/admin…`): Trợ lý ẩn ở đó (gắn với không gian làm việc, giống nút trợ lý AI). */
+/** Khu quản trị hệ thống (`/admin…`): Trợ lý ẩn ở đó (gắn với tổ chức, giống nút trợ lý AI). */
 export const isAdminPath = (pathname: string): boolean =>
   pathname === '/admin' || pathname.startsWith('/admin/');

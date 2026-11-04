@@ -31,7 +31,7 @@ export class ForbiddenAppException extends AppException {
  * `workspace:admin` hoặc admin hệ thống — `member:manage` một mình không đủ. Mã riêng để web hiện đúng lý do.
  */
 export class AdminGrantRequiresAdminException extends AppException {
-  constructor(message = 'Chỉ quản trị không gian làm việc mới cấp hoặc gỡ quyền quản trị.') {
+  constructor(message = 'Chỉ quản trị tổ chức mới cấp hoặc gỡ quyền quản trị.') {
     super(ERROR_CODES.ADMIN_GRANT_REQUIRES_ADMIN, message, HttpStatus.FORBIDDEN);
   }
 }
@@ -120,7 +120,7 @@ export class ConflictAppException extends AppException {
 /** Email đã có tài khoản dùng được — mã riêng để client nhận ra mà không so khớp câu chữ. */
 export class EmailAlreadyRegisteredException extends AppException {
   constructor(
-    message = 'Email này đã có tài khoản — hãy chọn người đó trong danh sách để thêm vào không gian làm việc',
+    message = 'Email này đã có tài khoản — hãy chọn người đó trong danh sách để thêm vào tổ chức',
   ) {
     super(ERROR_CODES.EMAIL_ALREADY_REGISTERED, message, HttpStatus.UNPROCESSABLE_ENTITY);
   }

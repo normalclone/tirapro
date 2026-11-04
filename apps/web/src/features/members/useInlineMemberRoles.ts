@@ -70,7 +70,7 @@ export function useInlineMemberRoles(
       baseline.current = null; // chuỗi kết thúc: không còn quyền để hoàn tác
       toastReplace(toastId, 'success', `Đã đổi vai trò của ${personName}: ${names}`, {
         duration: UNDO_TOAST_MS,
-        description: 'Bạn không còn quyền quản lý thành viên của không gian này.',
+        description: 'Bạn không còn quyền quản lý thành viên của tổ chức này.',
       });
       return;
     }

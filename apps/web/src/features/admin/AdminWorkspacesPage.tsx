@@ -45,7 +45,7 @@ export function AdminWorkspacesPage() {
       );
   }, [data, q, showArchived]);
 
-  // Rỗng do từ khoá / ẩn mục đã lưu trữ (khác với chưa có không gian nào): mới có nút xoá bộ lọc.
+  // Rỗng do từ khoá / ẩn mục đã lưu trữ (khác với chưa có tổ chức nào): mới có nút xoá bộ lọc.
   const hasFilter = (q.trim() !== '' || !showArchived) && (data?.length ?? 0) > 0;
 
   function changePlan(w: AdminWorkspace, plan: (typeof PLANS)[number]) {
@@ -64,7 +64,7 @@ export function AdminWorkspacesPage() {
     if (
       next &&
       !(await confirm({
-        title: `Lưu trữ không gian làm việc “${w.name}”?`,
+        title: `Lưu trữ tổ chức “${w.name}”?`,
         description:
           'Thành viên sẽ không vào được cho tới khi bạn khôi phục. Dữ liệu vẫn được giữ nguyên.',
         confirmLabel: 'Lưu trữ',
@@ -85,7 +85,7 @@ export function AdminWorkspacesPage() {
     <PageFrame size="lg">
       <PageHeader
         title={ADMIN_LABELS.workspaces}
-        description="Mọi không gian làm việc trong hệ thống — đổi gói dịch vụ, lưu trữ hoặc khôi phục."
+        description="Mọi tổ chức trong hệ thống — đổi gói dịch vụ, lưu trữ hoặc khôi phục."
       />
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
@@ -120,13 +120,13 @@ export function AdminWorkspacesPage() {
       ) : rows.length === 0 ? (
         <EmptyState
           icon={hasFilter ? <SearchX className="h-6 w-6" /> : <Building2 className="h-6 w-6" />}
-          title="Không có không gian làm việc nào"
+          title="Không có tổ chức nào"
           description={
             q
               ? 'Không có tên nào khớp từ khoá. Thử từ khoá ngắn hơn.'
               : hasFilter
-                ? 'Mọi không gian làm việc đang bị ẩn vì bộ lọc “Hiện đã lưu trữ” đang tắt.'
-                : 'Chưa có không gian làm việc nào được lập.'
+                ? 'Mọi tổ chức đang bị ẩn vì bộ lọc “Hiện đã lưu trữ” đang tắt.'
+                : 'Chưa có tổ chức nào được lập.'
           }
           action={
             hasFilter ? (
@@ -147,7 +147,7 @@ export function AdminWorkspacesPage() {
           <table className="w-full min-w-[720px] text-sm">
             <thead>
               <tr className="border-b border-border bg-surface-2 text-left text-xs text-faint">
-                <th className="px-4 py-2.5 font-medium">Không gian làm việc</th>
+                <th className="px-4 py-2.5 font-medium">Tổ chức</th>
                 <th className="px-4 py-2.5 font-medium">Chủ sở hữu</th>
                 <th className="px-4 py-2.5 font-medium">Gói</th>
                 <th

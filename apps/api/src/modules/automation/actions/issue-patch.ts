@@ -20,7 +20,7 @@ async function assertMember(ctx: ActionContext, userId: string): Promise<void> {
   });
   if (!m)
     throw new BusinessRuleException(
-      'Người được giao không thuộc không gian làm việc này — hãy chọn lại trong quy tắc',
+      'Người được giao không thuộc tổ chức này — hãy chọn lại trong quy tắc',
     );
 }
 

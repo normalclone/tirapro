@@ -235,14 +235,14 @@ export function WorkflowSettingsPage() {
                 value={projectId}
                 onChange={setProjectId}
                 options={[
-                  { value: '', label: 'Toàn không gian làm việc' },
+                  { value: '', label: 'Toàn tổ chức' },
                   ...(projects ?? []).map((p) => ({ value: p.id, label: p.name, hint: p.key })),
                 ]}
                 searchPlaceholder="Tìm dự án…"
                 className="w-full"
               />
               <p className="mt-1 text-xs text-faint">
-                Chọn “Toàn không gian làm việc” nếu quy trình dùng chung cho mọi dự án.
+                Chọn “Toàn tổ chức” nếu quy trình dùng chung cho mọi dự án.
               </p>
             </div>
             <div className="flex items-center justify-end gap-2">

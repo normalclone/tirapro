@@ -253,7 +253,7 @@ describe('grantsAdmin / grantAdminCopy (bật quyền quản trị cho vai trò)
   });
   it('lời nhắc nêu tên vai trò, số người đang giữ và hệ quả "toàn quyền quản trị"', () => {
     const c = grantAdminCopy('QA Lead', 3);
-    expect(c.title).toContain('Quản trị không gian làm việc');
+    expect(c.title).toContain('Quản trị tổ chức');
     expect(c.description).toContain('"QA Lead"');
     expect(c.description).toContain('3 thành viên');
     expect(c.description).toContain('toàn quyền quản trị');

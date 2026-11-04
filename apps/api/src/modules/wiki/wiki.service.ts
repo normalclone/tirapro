@@ -526,7 +526,7 @@ export class WikiService {
       const parent = await this.requireReadablePage(workspaceId, nextParentId, viewer);
       if (parent.projectId !== page.projectId) {
         throw new BusinessRuleException(
-          'Chỉ chuyển được trong cùng phạm vi — trang chung của không gian làm việc, hoặc trong cùng một dự án',
+          'Chỉ chuyển được trong cùng phạm vi — trang chung của tổ chức, hoặc trong cùng một dự án',
         );
       }
       if (await this.isDescendant(workspaceId, nextParentId, id)) {

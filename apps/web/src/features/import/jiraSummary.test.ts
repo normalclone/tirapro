@@ -33,7 +33,7 @@ describe('unmatchedAssigneesNotice', () => {
 });
 
 describe('unmatchedAssigneesNotice — email đã nhớ (L28)', () => {
-  it('chỉ có người đã nhớ email: câu "sẽ tự gán khi <email> được thêm vào không gian làm việc", không còn lời cảnh báo mất người', () => {
+  it('chỉ có người đã nhớ email: câu "sẽ tự gán khi <email> được thêm vào tổ chức", không còn lời cảnh báo mất người', () => {
     const t = unmatchedAssigneesNotice({
       skippedAssignees: 4,
       rememberedAssignees: 4,
@@ -41,7 +41,7 @@ describe('unmatchedAssigneesNotice — email đã nhớ (L28)', () => {
       unmatchedAssignees: [],
     });
     expect(t).toBe(
-      '4 việc chưa có người phụ trách — sẽ tự gán khi cuong@x.com được thêm vào không gian làm việc.',
+      '4 việc chưa có người phụ trách — sẽ tự gán khi cuong@x.com được thêm vào tổ chức.',
     );
     expect(t).not.toContain('mời');
   });
@@ -64,7 +64,7 @@ describe('unmatchedAssigneesNotice — email đã nhớ (L28)', () => {
     })!;
     expect(t).toContain('3 việc đã nhập nhưng chưa có người phụ trách');
     expect(t).toContain(': Bình');
-    expect(t).toContain('Hãy thêm họ vào không gian làm việc rồi gán lại.');
+    expect(t).toContain('Hãy thêm họ vào tổ chức rồi gán lại.');
     expect(t).toContain('4 việc chưa có người phụ trách — sẽ tự gán khi cuong@x.com');
     expect(t).not.toContain('mời');
   });

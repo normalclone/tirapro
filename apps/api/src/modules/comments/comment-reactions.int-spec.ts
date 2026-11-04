@@ -181,7 +181,7 @@ describe.skipIf(!DB_URL)('CommentReaction ↔ Postgres thật', () => {
     expect((await svc.list(WS, ISSUE, U.a)).map((c) => c.id)).not.toContain(C.gone);
   });
 
-  it('bình luận của không gian làm việc khác → 404 (không thả chéo)', async () => {
+  it('bình luận của tổ chức khác → 404 (không thả chéo)', async () => {
     await expect(svc.setReaction(id('ws-khac'), U.a, C.main, '👍', true)).rejects.toMatchObject({
       status: 404,
     });

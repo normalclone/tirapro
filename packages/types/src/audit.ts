@@ -55,7 +55,7 @@ export const AUDIT_ACTION_LABEL: Record<AuditAction, string> = {
   'account.reactivated': 'Mở khoá tài khoản',
   'account.password_reset': 'Đặt lại mật khẩu',
   'account.sessions_revoked': 'Thu hồi phiên đăng nhập',
-  'account.workspace_added': 'Thêm tài khoản vào không gian làm việc',
+  'account.workspace_added': 'Thêm tài khoản vào tổ chức',
   'integration.created': 'Tạo tích hợp',
   'integration.deleted': 'Xoá tích hợp',
   'integration.channel_added': 'Thêm kênh tích hợp',

@@ -128,7 +128,7 @@ describe('MembersService.removeWorkspace', () => {
       actorId: 'admin',
       action: 'member.removed',
       entityId: 'u1',
-      summary: 'Gỡ Bình (ba@x.vn) khỏi không gian làm việc',
+      summary: 'Gỡ Bình (ba@x.vn) khỏi tổ chức',
     });
   });
 

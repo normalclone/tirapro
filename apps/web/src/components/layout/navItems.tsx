@@ -13,6 +13,7 @@ import {
   Settings,
   ShieldCheck,
   SlidersHorizontal,
+  UserRound,
   Users,
 } from 'lucide-react';
 import { NAV_RULES, type NavRule } from '@/lib/navAccess';
@@ -32,6 +33,12 @@ export interface NavEntry {
 
 /** Nguồn DUY NHẤT của điều hướng chính: sidebar (từ lg), thanh tab đáy và sheet "Tôi" (dưới lg) cùng đọc mảng này. */
 export const NAV_ITEMS: NavEntry[] = [
+  {
+    to: '/me',
+    label: APP_NAV_LABELS.me,
+    Icon: UserRound,
+    match: (p) => p === '/me',
+  },
   {
     to: '/',
     label: APP_NAV_LABELS.home,
@@ -55,6 +62,7 @@ export const NAV_ITEMS: NavEntry[] = [
     label: APP_NAV_LABELS.members,
     Icon: Users,
     match: (p) => p.startsWith('/members'),
+    rule: NAV_RULES.members,
   },
   {
     to: '/manage',
@@ -91,7 +99,7 @@ export const NAV_ITEMS: NavEntry[] = [
   },
 ];
 
-// Menu riêng cho Admin hệ thống — đứng trên mọi không gian làm việc (không gắn với nơi nào cụ thể).
+// Menu riêng cho Admin hệ thống — đứng trên mọi tổ chức (không gắn với nơi nào cụ thể).
 export const ADMIN_NAV: NavEntry[] = [
   {
     to: '/admin',

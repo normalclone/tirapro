@@ -406,7 +406,7 @@ export function MatrixGrid({
       <table ref={tableRef} className="w-full min-w-max border-separate border-spacing-0 text-sm">
         <caption id={captionId} className="sr-only">
           {mode === 'edit' ? 'Quyền của các vai trò' : 'So sánh quyền giữa các vai trò'} —{' '}
-          {scope === 'PROJECT' ? 'cấp dự án' : 'cấp không gian làm việc'}
+          {scope === 'PROJECT' ? 'cấp dự án' : 'cấp tổ chức'}
         </caption>
         <GridHead
           columns={columns}

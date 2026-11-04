@@ -76,7 +76,7 @@ export function RepositorySection() {
     const secret = webhookSecret.trim();
     create.mutate(
       {
-        // integrationId của loại GITHUB/GITLAB trùng provider — backend tự khớp theo không gian làm việc.
+        // integrationId của loại GITHUB/GITLAB trùng provider — backend tự khớp theo tổ chức.
         integrationId: provider,
         provider,
         externalId: trimmedExternal,

@@ -156,7 +156,7 @@ export class TriageService {
       );
       if (!ok)
         throw new BusinessRuleException(
-          'Người được giao không thuộc không gian làm việc này hoặc không xem được dự án — hãy chọn một thành viên khác',
+          'Người được giao không thuộc tổ chức này hoặc không xem được dự án — hãy chọn một thành viên khác',
         );
     }
     if (hasIssueFields) {

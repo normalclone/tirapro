@@ -61,7 +61,7 @@ export class ProjectsService {
     });
     if (dup)
       throw new BusinessRuleException(
-        `Mã dự án "${input.key}" đã tồn tại trong không gian làm việc này — hãy chọn mã khác`,
+        `Mã dự án "${input.key}" đã tồn tại trong tổ chức này — hãy chọn mã khác`,
       );
 
     // `templateKey` thắng `type`; không có thì giữ hành vi cũ (chọn theo `type`).
@@ -273,7 +273,7 @@ export class ProjectsService {
       });
       if (dup)
         throw new BusinessRuleException(
-          `Tên dự án "${input.name}" đã được dùng trong không gian làm việc này — hãy chọn tên khác`,
+          `Tên dự án "${input.name}" đã được dùng trong tổ chức này — hãy chọn tên khác`,
         );
       data.name = input.name;
     }
@@ -423,7 +423,7 @@ export class ProjectsService {
     });
     if (!member)
       throw new BusinessRuleException(
-        'Người phụ trách phải là thành viên của không gian làm việc — hãy thêm họ vào không gian làm việc trước',
+        'Người phụ trách phải là thành viên của tổ chức — hãy thêm họ vào tổ chức trước',
       );
     if (member.user.status === 'DEACTIVATED' || member.user.email === SYSTEM_USER_EMAIL)
       throw new BusinessRuleException(

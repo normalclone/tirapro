@@ -16,6 +16,9 @@ describe('notificationHref', () => {
       `/filters?jql=${encodeURIComponent('assignee = me AND key IN ("PROJ-9", "PROJ-2")')}`,
     );
   });
+  it('bộ lọc được chia sẻ → mở đúng bộ lọc đó', () => {
+    expect(notificationHref({ filterId: 'f1', filterName: 'Bug tuần này' })).toBe('/filters/f1');
+  });
   it('gộp nhưng thiếu JQL (dữ liệu cũ) → rơi về việc đầu tiên; không có gì → null', () => {
     expect(notificationHref({ key: 'PROJ-9', bulk: 'jira-import' })).toBe('/issue/PROJ-9');
     expect(notificationHref({})).toBeNull();

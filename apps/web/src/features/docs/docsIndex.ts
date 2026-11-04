@@ -33,7 +33,7 @@ export const DOC_GROUPS: DocGroup[] = [
         id: 'khai-niem',
         label: 'Khái niệm cơ bản',
         summary:
-          'Không gian làm việc, dự án, công việc, bảng việc (board), việc chờ (backlog), sprint, quy trình (workflow), epic và việc con.',
+          'Tổ chức, dự án, công việc, bảng việc (board), việc chờ (backlog), sprint, quy trình (workflow), epic và việc con.',
         keywords:
           'khai niem thuat ngu workspace project board backlog sprint workflow epic viec con la gi',
       },
@@ -41,7 +41,7 @@ export const DOC_GROUPS: DocGroup[] = [
         id: 'dang-nhap',
         label: 'Đăng nhập & tài khoản',
         summary:
-          'Đăng nhập bằng email và mật khẩu được cấp; quên mật khẩu thì dùng liên kết đặt lại. Chuyển không gian làm việc và đăng xuất ở thanh bên và menu người dùng.',
+          'Đăng nhập bằng email và mật khẩu được cấp; quên mật khẩu thì dùng liên kết đặt lại. Chuyển tổ chức và đăng xuất ở thanh bên và menu người dùng.',
         keywords:
           'dang nhap dang xuat tai khoan mat khau quen mat khau doi mat khau chuyen khong gian lam viec',
       },
@@ -49,7 +49,7 @@ export const DOC_GROUPS: DocGroup[] = [
         id: 'vai-tro',
         label: 'Hiểu về vai trò',
         summary:
-          'Quyền thực tế là hợp của vai trò ở không gian làm việc và vai trò ở từng dự án. Có ma trận quyền cho Reporter, Developer, Quản trị dự án, Quản trị chung, Người xem.',
+          'Quyền thực tế là hợp của vai trò ở tổ chức và vai trò ở từng dự án. Có ma trận quyền cho Reporter, Developer, Quản trị dự án, Quản trị chung, Người xem.',
         keywords:
           'vai tro phan quyen quyen han ma tran quyen role permission admin viewer reporter developer',
       },
@@ -141,7 +141,7 @@ export const DOC_GROUPS: DocGroup[] = [
         id: 'vt-sys-admin',
         label: 'Quản trị hệ thống',
         summary:
-          'Console /admin riêng cho chủ hệ thống: tổng quan và sức khoẻ dịch vụ, không gian làm việc, tài khoản, cấu hình và feature flags.',
+          'Console /admin riêng cho chủ hệ thống: tổng quan và sức khoẻ dịch vụ, tổ chức, tài khoản, cấu hình và feature flags.',
         keywords:
           'quan tri he thong system admin console workspace tai khoan feature flag cau hinh he thong suc khoe',
       },
@@ -192,7 +192,7 @@ export const DOC_GROUPS: DocGroup[] = [
         id: 'faq',
         label: 'Câu hỏi thường gặp',
         summary:
-          'Không thấy nút sửa hay kéo-thả (thường do vai trò), không nhận được thông báo, quên mật khẩu, AI báo không khả dụng, chuyển không gian làm việc.',
+          'Không thấy nút sửa hay kéo-thả (thường do vai trò), không nhận được thông báo, quên mật khẩu, AI báo không khả dụng, chuyển tổ chức.',
         keywords:
           'cau hoi thuong gap faq loi khong thay nut khong nhan duoc thong bao quen mat khau',
       },

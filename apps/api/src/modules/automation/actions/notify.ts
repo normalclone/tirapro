@@ -47,7 +47,7 @@ export async function runNotify(
   );
   if (!visible.length)
     throw new BusinessRuleException(
-      'Không tìm thấy người nhận thông báo xem được công việc này trong không gian làm việc',
+      'Không tìm thấy người nhận thông báo xem được công việc này trong tổ chức',
     );
 
   const message = await renderTemplate(ctx, a.message);

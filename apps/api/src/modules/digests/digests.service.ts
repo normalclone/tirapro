@@ -1181,7 +1181,7 @@ export class DigestsService implements OnApplicationShutdown {
     });
     const ok = new Set(members.map((m) => m.id));
     if (recipients.some((r) => !ok.has(r))) {
-      throw new BusinessRuleException('Người nhận phải là thành viên của không gian làm việc.');
+      throw new BusinessRuleException('Người nhận phải là thành viên của tổ chức.');
     }
   }
 

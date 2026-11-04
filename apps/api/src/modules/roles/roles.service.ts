@@ -246,7 +246,7 @@ export class RolesService {
     if (admins > 0) return;
     throw new ConflictAppException(
       ERROR_CODES.LAST_WORKSPACE_ADMIN,
-      'Gỡ quyền này sẽ khiến không gian làm việc không còn quản trị viên — hãy cấp quyền quản trị cho vai trò khác trước',
+      'Gỡ quyền này sẽ khiến tổ chức không còn quản trị viên — hãy cấp quyền quản trị cho vai trò khác trước',
     );
   }
 

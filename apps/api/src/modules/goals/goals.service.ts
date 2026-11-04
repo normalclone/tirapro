@@ -960,7 +960,7 @@ export class GoalsService {
     });
     if (!m)
       throw new ForbiddenAppException(
-        'Chủ sở hữu không thuộc không gian làm việc này — hãy chọn một thành viên khác',
+        'Chủ sở hữu không thuộc tổ chức này — hãy chọn một thành viên khác',
       );
     return m.userId;
   }
@@ -988,7 +988,7 @@ export class GoalsService {
       throw new ForbiddenAppException(
         projectId
           ? 'Một số công việc không thuộc dự án của mục tiêu này — hãy bỏ chọn những công việc đó'
-          : 'Một số công việc không thuộc không gian làm việc này — hãy bỏ chọn những công việc đó',
+          : 'Một số công việc không thuộc tổ chức này — hãy bỏ chọn những công việc đó',
       );
     }
     return unique;

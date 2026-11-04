@@ -189,7 +189,7 @@ export class ProgramsService {
       });
       if (found.length !== ids.length)
         throw new BusinessRuleException(
-          'Một số dự án không thuộc không gian làm việc này — hãy bỏ chọn những dự án đó',
+          'Một số dự án không thuộc tổ chức này — hãy bỏ chọn những dự án đó',
         );
     }
     await this.prisma.$transaction([
@@ -407,7 +407,7 @@ export class ProgramsService {
     });
     if (!m)
       throw new ForbiddenAppException(
-        'Người phụ trách không thuộc không gian làm việc này — hãy chọn một thành viên khác',
+        'Người phụ trách không thuộc tổ chức này — hãy chọn một thành viên khác',
       );
     return ownerId;
   }

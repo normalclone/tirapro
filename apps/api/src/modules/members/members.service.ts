@@ -232,7 +232,7 @@ export class MembersService {
             action: AUDIT_ACTIONS.MEMBER_ACCOUNT_CREATED,
             entityType: 'user',
             entityId: user.id,
-            summary: `Tạo tài khoản ${input.displayName} (${email}) và thêm vào không gian làm việc`,
+            summary: `Tạo tài khoản ${input.displayName} (${email}) và thêm vào tổ chức`,
             meta: { roleIds: ids },
           },
           tx,
@@ -262,13 +262,13 @@ export class MembersService {
     return new EmailAlreadyRegisteredException();
   }
 
-  /** Tài khoản vô hiệu hoá và người dùng hệ thống của automation không được thêm vào không gian làm việc. */
+  /** Tài khoản vô hiệu hoá và người dùng hệ thống của automation không được thêm vào tổ chức. */
   private assertAddable(users: { status: string; email: string }[]): void {
     const bad = users.filter((u) => u.status === 'DEACTIVATED' || u.email === SYSTEM_USER_EMAIL);
     if (bad.length) {
       throw new BusinessRuleException(
         bad.length === 1
-          ? 'Không thể thêm tài khoản đã bị vô hiệu hoá hoặc tài khoản hệ thống vào không gian làm việc'
+          ? 'Không thể thêm tài khoản đã bị vô hiệu hoá hoặc tài khoản hệ thống vào tổ chức'
           : `Có ${bad.length} tài khoản đã bị vô hiệu hoá hoặc là tài khoản hệ thống — bỏ họ khỏi danh sách rồi thử lại`,
       );
     }
@@ -277,7 +277,7 @@ export class MembersService {
   private alreadyMember(): ConflictAppException {
     return new ConflictAppException(
       ERROR_CODES.ALREADY_MEMBER,
-      'Người này đã là thành viên của không gian làm việc — đổi vai trò ở trang Thành viên',
+      'Người này đã là thành viên của tổ chức — đổi vai trò ở trang Thành viên',
     );
   }
 
@@ -319,7 +319,7 @@ export class MembersService {
     if ((await this.countOtherWorkspaceAdmins(workspaceId, userId)) > 0) return;
     throw new ConflictAppException(
       ERROR_CODES.LAST_WORKSPACE_ADMIN,
-      'Đây là quản trị viên cuối cùng của không gian làm việc — hãy cấp quyền quản trị cho người khác trước',
+      'Đây là quản trị viên cuối cùng của tổ chức — hãy cấp quyền quản trị cho người khác trước',
     );
   }
 
@@ -425,7 +425,7 @@ export class MembersService {
         actorId,
         action: AUDIT_ACTIONS.MEMBER_ADDED,
         entityType: 'user',
-        summary: `Thêm ${toAdd.length} thành viên vào không gian làm việc`,
+        summary: `Thêm ${toAdd.length} thành viên vào tổ chức`,
         meta: { userIds: toAdd, roleIds: ids },
       });
       this.emitMemberAdded(workspaceId, toAdd, actorId);
@@ -441,7 +441,7 @@ export class MembersService {
     });
     if (ws?.ownerId === userId)
       throw new ForbiddenAppException(
-        'Không thể gỡ chủ sở hữu của không gian làm việc — hãy chuyển quyền sở hữu cho người khác trước',
+        'Không thể gỡ chủ sở hữu của tổ chức — hãy chuyển quyền sở hữu cho người khác trước',
       );
     // Gỡ một quản trị khỏi workspace = gỡ quyền quản trị của họ → cũng chỉ quản trị mới làm được (P-C14).
     await this.assertMayChangeAdminRoles(
@@ -487,7 +487,7 @@ export class MembersService {
       action: AUDIT_ACTIONS.MEMBER_REMOVED,
       entityType: 'user',
       entityId: userId,
-      summary: `Gỡ ${who} khỏi không gian làm việc`,
+      summary: `Gỡ ${who} khỏi tổ chức`,
     });
     return { success: true };
   }
@@ -758,7 +758,7 @@ export class MembersService {
     });
     if (!isMember)
       throw new ForbiddenAppException(
-        'Người dùng chưa thuộc không gian làm việc này — hãy thêm họ vào không gian làm việc trước',
+        'Người dùng chưa thuộc tổ chức này — hãy thêm họ vào tổ chức trước',
       );
   }
 
@@ -946,7 +946,7 @@ export class MembersService {
     });
     if (found.length !== unique.length) {
       throw new ForbiddenAppException(
-        `Một số vai trò không hợp lệ cho cấp ${scope === 'PROJECT' ? 'dự án' : 'không gian làm việc'}`,
+        `Một số vai trò không hợp lệ cho cấp ${scope === 'PROJECT' ? 'dự án' : 'tổ chức'}`,
       );
     }
     // Giữ thứ tự gốc (roleIds[0] = vai trò chính).

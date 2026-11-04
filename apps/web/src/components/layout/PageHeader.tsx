@@ -1,7 +1,29 @@
-import type { ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { Breadcrumb, type BreadcrumbItem } from '@/components/ui/Breadcrumb';
 import { cn } from '@/lib/utils';
 import { BackLink } from './BackLink';
+
+/** Ô trên thanh trên cùng nơi tiêu đề trang (h1) được đưa lên (AppShell vẽ ô này). */
+export const PAGE_TITLE_SLOT_ID = 'page-title-slot';
+
+/**
+ * Ô tiêu đề trên thanh trên: `undefined` = chưa dò (lần vẽ đầu), `null` = không có (test, trang ngoài khung) → vẽ tại chỗ.
+ * Dò trong layout effect nên tiêu đề lên thanh trước khi trình duyệt vẽ — không nháy.
+ */
+/** Render tĩnh (không DOM) không có layout effect → dùng effect thường để khỏi cảnh báo. */
+const useIsoLayoutEffect = typeof document === 'undefined' ? useEffect : useLayoutEffect;
+
+function useTitleSlot(): HTMLElement | null | undefined {
+  // Không có DOM (render tĩnh) → vẽ tại chỗ; ô đã có sẵn (đổi trang trong khung) → dùng ngay; còn lại dò sau khi gắn.
+  const [slot, setSlot] = useState<HTMLElement | null | undefined>(() =>
+    typeof document === 'undefined'
+      ? null
+      : (document.getElementById(PAGE_TITLE_SLOT_ID) ?? undefined),
+  );
+  useIsoLayoutEffect(() => setSlot(document.getElementById(PAGE_TITLE_SLOT_ID)), []);
+  return slot;
+}
 
 export type PageHeaderVariant = 'page' | 'tab';
 
@@ -61,6 +83,7 @@ export function PageHeader({
   ...rest
 }: PageHeaderProps) {
   const Heading = pageHeaderTag(variant);
+  const slot = useTitleSlot();
   const hasCrumb = !!breadcrumb && breadcrumb.some((b) => b.label.trim() !== '');
   if (titleHidden || title == null) {
     return (
@@ -98,16 +121,33 @@ export function PageHeader({
       )}
       <div className="flex flex-wrap items-start gap-x-4 gap-y-3">
         <div className="min-w-0 flex-1 basis-64">
-          <Heading
-            id={titleId}
-            className={cn(
-              'font-semibold tracking-tight text-ink-strong',
-              variant === 'tab' ? 'text-xl' : 'text-2xl',
-            )}
-          >
-            {title}
-          </Heading>
-          {description && <p className="mt-1 text-sm text-muted">{description}</p>}
+          {variant === 'page' && slot ? (
+            // Tiêu đề trang nằm trên thanh trên cùng (thay chỗ tên tổ chức); thân trang chỉ còn mô tả + nút.
+            createPortal(
+              <Heading
+                id={titleId}
+                className="truncate text-base font-semibold tracking-tight text-ink-strong"
+              >
+                {title}
+              </Heading>,
+              slot,
+            )
+          ) : variant === 'page' && slot === undefined ? null : (
+            <Heading
+              id={titleId}
+              className={cn(
+                'font-semibold tracking-tight text-ink-strong',
+                variant === 'tab' ? 'text-xl' : 'text-2xl',
+              )}
+            >
+              {title}
+            </Heading>
+          )}
+          {description && (
+            <p className={cn('text-sm text-muted', !(variant === 'page' && slot) && 'mt-1')}>
+              {description}
+            </p>
+          )}
         </div>
         {actions && (
           // `empty:hidden`: actions là component có lúc không vẽ gì (Tổng quan, Danh mục) → bỏ khung rỗng, khỏi chừa khe.

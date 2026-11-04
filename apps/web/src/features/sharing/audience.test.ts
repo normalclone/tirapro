@@ -41,11 +41,11 @@ describe('audienceView — ai có quyền xem', () => {
     expect(v.people).toEqual([]);
     expect(v.names).toBeNull();
   });
-  it('GLOBAL → "Mọi thành viên không gian (N)" với N theo memberCount; API cũ không có N thì bỏ phần (N)', () => {
+  it('GLOBAL → "Mọi thành viên tổ chức (N)" với N theo memberCount; API cũ không có N thì bỏ phần (N)', () => {
     expect(audienceView({ scope: 'GLOBAL', memberCount: 1234 }).headline).toBe(
-      'Mọi thành viên không gian (1.234)',
+      'Mọi thành viên tổ chức (1.234)',
     );
-    expect(audienceView({ scope: 'GLOBAL' }).headline).toBe('Mọi thành viên không gian');
+    expect(audienceView({ scope: 'GLOBAL' }).headline).toBe('Mọi thành viên tổ chức');
     expect(audienceView({ scope: 'GLOBAL', memberCount: 25 }).people).toEqual([]);
     expect(audienceView({ scope: 'GLOBAL', memberCount: 25 }).headline).not.toContain('quản trị'); // quản trị viên đã là thành viên
   });
@@ -93,7 +93,7 @@ describe('audienceView — ai có quyền xem', () => {
         projectMembers: { status: 'ready', people: activePeople(many(3)) },
       });
       expect(v.headline).toBe('Mọi thành viên có quyền xem dự án');
-      expect(v.headline).not.toContain('25'); // số thành viên không gian ≠ số người thấy dự án
+      expect(v.headline).not.toContain('25'); // số thành viên tổ chức ≠ số người thấy dự án
       expect(v.note).toBe('Dự án Web công khai nên mọi thành viên có quyền xem dự án đều thấy.');
       expect(v.people).toEqual([]);
     });

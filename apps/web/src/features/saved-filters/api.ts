@@ -1,22 +1,21 @@
-import { skipToken, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { IssueDto, ListResponse } from '@tirapro/types';
+import {
+  keepPreviousData,
+  skipToken,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
+import type { FilterAudienceDto, IssueDto, ListResponse, SavedFilterDto } from '@tirapro/types';
 import { api } from '@/lib/api';
 import { keys } from '@/lib/queryKeys';
 import { useDebouncedValue } from '@/lib/useDebouncedValue';
 import { RESULT_FETCH_LIMIT, toResultSet, type ResultSet } from './resultPaging';
 
-export type FilterVisibility = 'PRIVATE' | 'WORKSPACE' | 'PROJECT';
+/** `SHARED` = có ít nhất một dự án hoặc một người được chia sẻ. */
+export type FilterVisibility = 'PRIVATE' | 'SHARED';
 
-export interface SavedFilter {
-  id: string;
-  name: string;
-  jql: string;
-  visibility: FilterVisibility;
-  sharedProjectId: string | null;
-  ownerId: string;
-  isOwner: boolean;
-  createdAt: string;
-}
+/** Bộ lọc đã lưu (`GET /filters`): `access = 'shared'` là bộ lọc người khác chia sẻ cho tôi. */
+export type SavedFilter = SavedFilterDto;
 
 /** Một giá trị JQL không có trong workspace, kèm giá trị gần đúng nhất (nếu có). */
 interface JqlValueSuggestion {
@@ -52,7 +51,7 @@ export interface FilterFields {
   versions: FieldOption[];
 }
 
-/** Danh mục giá trị cho bộ dựng truy vấn trực quan (gom theo không gian làm việc). */
+/** Danh mục giá trị cho bộ dựng truy vấn trực quan (gom theo tổ chức). */
 export function useFilterFields() {
   return useQuery({
     queryKey: keys.filters.fields,
@@ -121,10 +120,42 @@ export function useSavedFilters() {
   });
 }
 
+/**
+ * "Ai xem được" một bản chia sẻ CHƯA lưu (POST /filters/audience): máy chủ tính theo đúng luật xem dự án (dự án công khai
+ * → ai xem được dự án đều thấy; dự án riêng tư → thành viên + quản trị) nên số khớp với người thực sự thấy bộ lọc.
+ * Chờ 300ms sau lần tích cuối; giữ số cũ trong lúc tính lại. `enabled=false` hoặc chưa chọn đích → không gọi.
+ */
+export function useFilterAudience(
+  projectIds: readonly string[],
+  userIds: readonly string[],
+  enabled: boolean,
+) {
+  const body = JSON.stringify({
+    sharedProjectIds: [...projectIds].sort(),
+    sharedUserIds: [...userIds].sort(),
+  });
+  const settled = useDebouncedValue(body, 300);
+  const hasTarget = projectIds.length + userIds.length > 0;
+  const query = useQuery({
+    queryKey: keys.filters.audience(settled),
+    queryFn:
+      enabled && hasTarget
+        ? async () =>
+            (await api.post<FilterAudienceDto>('/filters/audience', JSON.parse(settled))).data
+        : skipToken,
+    placeholderData: keepPreviousData,
+    staleTime: 30_000,
+    retry: false,
+  });
+  return { ...query, pending: enabled && hasTarget && (settled !== body || query.isFetching) };
+}
+
 export interface CreateFilterInput {
   name: string;
   jql: string;
   visibility?: FilterVisibility;
+  sharedProjectIds?: string[];
+  sharedUserIds?: string[];
 }
 
 export function useCreateFilter() {
@@ -143,8 +174,9 @@ export interface UpdateFilterInput {
   name?: string;
   jql?: string;
   visibility?: FilterVisibility;
-  /** `null` = bỏ dự án đã gắn (mức khác "Dự án"). */
-  sharedProjectId?: string | null;
+  /** Gửi cả hai danh sách khi đổi chia sẻ (`[]` = bỏ hết); không gửi = giữ nguyên. */
+  sharedProjectIds?: string[];
+  sharedUserIds?: string[];
 }
 
 /** Thân PATCH /filters/:id: bỏ `id` và mọi trường không đổi (máy chủ coi `undefined` là không sửa; `null` là xoá dự án). */
@@ -153,7 +185,7 @@ export function buildFilterPatch(input: UpdateFilterInput): Omit<UpdateFilterInp
   return Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== undefined));
 }
 
-/** Sửa bộ lọc đã lưu — hiện dùng để đổi phạm vi chia sẻ (`visibility`/`sharedProjectId`) sau khi tạo. Chỉ chủ (403 nếu khác). */
+/** Sửa bộ lọc đã lưu — đổi tên/truy vấn hoặc đổi chia sẻ (`visibility` + hai danh sách đích) sau khi tạo. Chỉ chủ (403 nếu khác). */
 export function useUpdateFilter() {
   const qc = useQueryClient();
   return useMutation({

@@ -57,7 +57,7 @@ function NoMatchingAccounts({ onReset }: { onReset: () => void }) {
   );
 }
 
-/** Màn Admin hệ thống: quản trị tài khoản toàn hệ thống + cấp quyền lập không gian làm việc. */
+/** Màn Admin hệ thống: quản trị tài khoản toàn hệ thống + cấp quyền lập tổ chức. */
 export function AdminUsersPage() {
   const me = useAuth((s) => s.user);
   const { data: users, isLoading, isError, error, refetch } = useAdminUsers();
@@ -90,7 +90,7 @@ export function AdminUsersPage() {
     <PageFrame size="lg">
       <PageHeader
         title={ADMIN_LABELS.accounts}
-        description="Tạo tài khoản và cấp quyền lập không gian làm việc mới hoặc quản trị hệ thống."
+        description="Tạo tài khoản và cấp quyền lập tổ chức mới hoặc quản trị hệ thống."
         actions={
           <Button
             size="sm"
@@ -168,7 +168,7 @@ export function AdminUsersPage() {
                       )}
                     </p>
                     <p className="truncate text-xs text-faint">
-                      {u.email} · {u.workspaceCount} không gian làm việc
+                      {u.email} · {u.workspaceCount} tổ chức
                     </p>
                     <p className="truncate text-xs text-faint">
                       {u.lastSeenAt
@@ -179,7 +179,7 @@ export function AdminUsersPage() {
                   {/* < sm: công tắc xuống hàng riêng, xếp dọc (nhãn trái, công tắc phải); menu thao tác lên cạnh tên. */}
                   <div className="flex shrink-0 items-center gap-4 max-sm:order-3 max-sm:w-full max-sm:flex-col max-sm:items-stretch max-sm:gap-0">
                     <Toggle
-                      label="Được lập không gian làm việc"
+                      label="Được lập tổ chức"
                       on={u.canCreateWorkspace}
                       disabled={update.isPending}
                       onChange={() => toggle(u, 'canCreateWorkspace')}
@@ -377,7 +377,7 @@ function CreateUserModal({ open, onClose }: { open: boolean; onClose: () => void
                 onChange={(e) => setCanCreate(e.target.checked)}
                 className="h-4 w-4 rounded border-border"
               />
-              Được lập không gian làm việc mới
+              Được lập tổ chức mới
             </label>
             <label className="flex items-center gap-2 text-sm text-ink">
               <input

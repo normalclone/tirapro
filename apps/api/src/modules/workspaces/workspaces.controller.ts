@@ -41,7 +41,7 @@ export class WorkspacesController {
   private assertCurrent(user: AuthUser, id: string): string {
     if (!user.workspaceId || user.workspaceId !== id) {
       throw new ForbiddenAppException(
-        'Chỉ sửa được không gian làm việc bạn đang mở — hãy chuyển sang không gian đó rồi thử lại',
+        'Chỉ sửa được tổ chức bạn đang mở — hãy chuyển sang tổ chức đó rồi thử lại',
       );
     }
     return id;

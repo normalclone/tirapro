@@ -401,8 +401,8 @@ function DryRunSummary({ result }: { result: JiraDryRunResult }) {
       )}
       {result.rememberedAssignees > 0 && (
         <p className="mt-1 text-muted">
-          {result.rememberedAssignees} việc sẽ tự gán khi người phụ trách được thêm vào không gian
-          làm việc.
+          {result.rememberedAssignees} việc sẽ tự gán khi người phụ trách được thêm vào tổ chức làm
+          việc.
         </p>
       )}
       {result.invalidKeys > 0 && (
@@ -483,7 +483,7 @@ function MappingTables({
 
       <MappingTable
         title="Người dùng"
-        hint="Chọn thành viên tương ứng, hoặc “Để trống” nếu cố ý không gán. Người “Chưa ghép” vẫn được nhập nhưng chưa có người phụ trách — điền email để tự gán khi họ được thêm vào không gian làm việc."
+        hint="Chọn thành viên tương ứng, hoặc “Để trống” nếu cố ý không gán. Người “Chưa ghép” vẫn được nhập nhưng chưa có người phụ trách — điền email để tự gán khi họ được thêm vào tổ chức."
         rows={analysis.users.map((u) => u.name)}
         value={maps.users[0]}
         fallback={UNMAPPED}

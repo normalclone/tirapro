@@ -38,7 +38,7 @@ export class AuthService {
       throw new ConflictException({ code: 'EMAIL_TAKEN', message: 'Email đã được đăng ký' });
 
     const passwordHash = await argon2.hash(input.password);
-    const wsName = input.workspaceName?.trim() || `Không gian của ${input.displayName}`;
+    const wsName = input.workspaceName?.trim() || `Tổ chức của ${input.displayName}`;
 
     const { user, workspaceId } = await this.prisma.$transaction(async (tx) => {
       const user = await tx.user.create({
@@ -290,7 +290,7 @@ export class AuthService {
     });
     if (!membership) {
       throw new ForbiddenAppException(
-        'Bạn không phải thành viên của không gian làm việc này — hãy liên hệ quản trị viên để được thêm vào',
+        'Bạn không phải thành viên của tổ chức này — hãy liên hệ quản trị viên để được thêm vào',
       );
     }
     const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });

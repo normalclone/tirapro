@@ -21,7 +21,7 @@ function setup() {
 }
 
 describe('AdminWorkspacesService.list — số thành viên', () => {
-  it('đếm cùng quy tắc "đang hoạt động" như bộ chọn không gian: bỏ DEACTIVATED và user hệ thống', async () => {
+  it('đếm cùng quy tắc "đang hoạt động" như bộ chọn tổ chức: bỏ DEACTIVATED và user hệ thống', async () => {
     const { svc, prisma } = setup();
     const page = await svc.list();
     const arg = (prisma.workspace.findMany.mock.calls[0] as unknown[])[0] as {

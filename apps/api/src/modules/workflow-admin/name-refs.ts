@@ -58,12 +58,15 @@ export async function findNameRefs(
       deletedAt: null,
       ...(scope
         ? {
+            // Cùng luật xem với màn Bộ lọc: của mình, chia sẻ trực tiếp cho mình, chia sẻ cho một dự án người xem thấy.
             OR: [
               { ownerId: viewer },
-              { visibility: 'WORKSPACE' as const },
+              { visibility: 'SHARED' as const, userShares: { some: { userId: viewer } } },
               {
-                visibility: 'PROJECT' as const,
-                sharedProjectId: visible === null ? { not: null } : inVisible(visible),
+                visibility: 'SHARED' as const,
+                projectShares: {
+                  some: { projectId: inVisible(visible), project: { deletedAt: null } },
+                },
               },
             ],
           }
