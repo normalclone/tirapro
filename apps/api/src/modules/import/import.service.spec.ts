@@ -170,6 +170,8 @@ describe('ImportService.createIssuesInChunks + IssuesService thật — sprint C
       },
       status: { findFirst: vi.fn(() => Promise.resolve({ id: 's1', category: 'TODO' })) },
       priority: { findFirst: vi.fn(() => Promise.resolve(null)) },
+      // mã kế tiếp = MAX số trong dải mã (nextTiraproKey)
+      $queryRaw: vi.fn(() => Promise.resolve([{ max: 0 }])),
       issue: {
         findFirst: vi.fn(() => Promise.resolve(null)),
         count: vi.fn(() => Promise.resolve(0)),
@@ -255,6 +257,7 @@ describe('ImportService.createIssuesInChunks + IssuesService thật — epic c�
       },
       status: { findFirst: vi.fn(() => Promise.resolve({ id: 's1', category: 'TODO' })) },
       priority: { findFirst: vi.fn(() => Promise.resolve(null)) },
+      $queryRaw: vi.fn(() => Promise.resolve([{ max: 0 }])),
       issue: {
         // truy vấn kiểm epic có `where.id = 'e1'`; truy vấn xếp rank cuối không có id
         findFirst: vi.fn(({ where }: { where: { id?: string } }) =>

@@ -948,9 +948,18 @@ export class IssuesService {
       select: { key: true, name: true },
     });
     const prefix = `${projectKey}-${issueTypePrefix(type?.key ?? null, type?.name ?? '')}-`;
-    const typeSeq =
-      // allow-deleted: đếm cả issue đã xoá để số thứ tự theo loại không sinh trùng key
-      (await tx.issue.count({ where: { projectId, typeId, key: { startsWith: prefix } } })) + 1;
+    // Lấy SỐ LỚN NHẤT trong dải mã cùng tiền tố của dự án (mọi loại, cả việc đã xoá) rồi +1 — KHÔNG đếm số dòng:
+    // đếm theo typeId bị lệch khi việc đổi loại (giữ mã cũ), khi hai loại cùng tiền tố hoặc khi có việc bị xoá cứng,
+    // sinh lại mã đã có ⇒ vi phạm @@unique([workspaceId, key]). Gọi sau khi đã khoá hàng dự án (UPDATE issueSequence)
+    // nên hai request đồng thời không lấy cùng một số.
+    const rows = await tx.$queryRaw<Array<{ max: number | null }>>`
+      WITH p AS (SELECT ${prefix}::text AS v)
+      SELECT MAX(substring(i."key" FROM char_length(p.v) + 1)::int) AS "max"
+      FROM "Issue" i, p
+      WHERE i."projectId" = ${projectId}
+        AND left(i."key", char_length(p.v)) = p.v
+        AND substring(i."key" FROM char_length(p.v) + 1) ~ '^[0-9]{1,9}$'`;
+    const typeSeq = Number(rows[0]?.max ?? 0) + 1;
     return `${prefix}${typeSeq}`;
   }
 
