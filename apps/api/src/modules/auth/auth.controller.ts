@@ -21,7 +21,7 @@ import type { AuthUser } from '../../common/types/request';
 import { AuthService } from './auth.service';
 import { TokenService } from './token.service';
 import { PasswordResetService } from './password-reset.service';
-import { switchWorkspaceSchema, type SwitchWorkspaceInput } from './auth.schemas';
+import { switchOrganizationSchema, type SwitchOrganizationInput } from './auth.schemas';
 import { AuthOnly } from '../../common/decorators/auth-only.decorator';
 import { REFRESH_COOKIE, clearRefreshCookie, setRefreshCookie } from './refresh-cookie';
 
@@ -81,12 +81,14 @@ export class AuthController {
     // để dò phiên (cookie httpOnly nên JS không tự biết). Trả 200 + null để console không đỏ 401.
     // Cookie CÓ nhưng sai/hết hạn/bị thu hồi vẫn 401 (tín hiệu tái sử dụng token — không nới).
     if (!token) return { accessToken: null };
-    // Access token cũ (có thể đã hết hạn) cho biết workspace đang làm việc — refresh phải giữ nguyên nó.
-    const preferredWorkspaceId = this.tokens.workspaceFromExpiredAccess(req.headers.authorization);
+    // Access token cũ (có thể đã hết hạn) cho biết tổ chức đang làm việc — refresh phải giữ nguyên nó.
+    const preferredOrganizationId = this.tokens.organizationFromExpiredAccess(
+      req.headers.authorization,
+    );
     const { refreshToken, ...rest } = await this.auth.refresh(
       token,
       this.meta(req),
-      preferredWorkspaceId,
+      preferredOrganizationId,
     );
     // refreshToken = null khi đây là lượt refresh đồng thời (tab khác đã xoay) — giữ nguyên cookie hiện có.
     if (refreshToken) this.setRefreshCookie(res, refreshToken);
@@ -122,35 +124,35 @@ export class AuthController {
     return out;
   }
 
-  // Tài khoản & danh sách workspace của chính người dùng; switchWorkspace tự kiểm tra thành viên trong service.
+  // Tài khoản & danh sách tổ chức của chính người dùng; switchOrganization tự kiểm tra thành viên trong service.
   @AuthOnly()
   @Get('me')
   async me(@CurrentUser() user: AuthUser) {
-    return this.auth.me(user.id, user.workspaceId);
+    return this.auth.me(user.id, user.organizationId);
   }
 
-  /** Danh sách workspace user là thành viên. */
-  // Tài khoản & danh sách workspace của chính người dùng; switchWorkspace tự kiểm tra thành viên trong service.
+  /** Danh sách tổ chức user là thành viên. */
+  // Tài khoản & danh sách tổ chức của chính người dùng; switchOrganization tự kiểm tra thành viên trong service.
   @AuthOnly()
-  @Get('workspaces')
-  async workspaces(@CurrentUser() user: AuthUser) {
-    return this.auth.listWorkspaces(user.id);
+  @Get('organizations')
+  async organizations(@CurrentUser() user: AuthUser) {
+    return this.auth.listOrganizations(user.id);
   }
 
-  /** Chuyển workspace: cấp access token mới + xoay refresh cookie (giống login). */
-  // Tài khoản & danh sách workspace của chính người dùng; switchWorkspace tự kiểm tra thành viên trong service.
+  /** Chuyển organization: cấp access token mới + xoay refresh cookie (giống login). */
+  // Tài khoản & danh sách tổ chức của chính người dùng; switchOrganization tự kiểm tra thành viên trong service.
   @AuthOnly()
   @HttpCode(200)
-  @Post('switch-workspace')
-  async switchWorkspace(
+  @Post('switch-organization')
+  async switchOrganization(
     @CurrentUser() user: AuthUser,
-    @Body(new ZodValidationPipe(switchWorkspaceSchema)) dto: SwitchWorkspaceInput,
+    @Body(new ZodValidationPipe(switchOrganizationSchema)) dto: SwitchOrganizationInput,
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const { refreshToken, ...rest } = await this.auth.switchWorkspace(
+    const { refreshToken, ...rest } = await this.auth.switchOrganization(
       user.id,
-      dto.workspaceId,
+      dto.organizationId,
       this.meta(req),
     );
     this.setRefreshCookie(res, refreshToken);

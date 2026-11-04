@@ -12,7 +12,7 @@ export const registerSchema = z.object({
   email: z.string().email('Email không hợp lệ').toLowerCase(),
   password: passwordSchema,
   displayName: z.string().min(1, 'Tên hiển thị bắt buộc').max(120),
-  workspaceName: z.string().min(1).max(120).optional(),
+  organizationName: z.string().min(1).max(120).optional(),
 });
 
 export const loginSchema = z.object({

@@ -31,12 +31,12 @@ describe('GuidesBootstrapService', () => {
     expect(tx.guide.update.mock.calls[0]![0]).toMatchObject({ where: { id: 'g2' } });
     expect(tx.guide.create.mock.calls.length).toBe(DEFAULT_GUIDES.length - 2);
     const first = (
-      tx.guide.create.mock.calls as unknown as [{ data: { workspaceId: unknown } }][]
+      tx.guide.create.mock.calls as unknown as [{ data: { organizationId: unknown } }][]
     )[0]![0];
-    expect(first.data.workspaceId).toBeNull();
+    expect(first.data.organizationId).toBeNull();
   });
 
-  it('so khớp guide toàn cục theo (workspaceId = null, key) và lấy khoá tư vấn trong CÙNG transaction', async () => {
+  it('so khớp guide toàn cục theo (organizationId = null, key) và lấy khoá tư vấn trong CÙNG transaction', async () => {
     const tx = {
       $executeRaw: vi.fn(() => Promise.resolve(1)),
       guide: {
@@ -51,7 +51,7 @@ describe('GuidesBootstrapService', () => {
     await new GuidesBootstrapService(prisma as never).ensureDefaults();
     expect(tx.$executeRaw).toHaveBeenCalledTimes(1);
     expect(tx.guide.findFirst).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { workspaceId: null, key: DEFAULT_GUIDES[0]!.key } }),
+      expect.objectContaining({ where: { organizationId: null, key: DEFAULT_GUIDES[0]!.key } }),
     );
     expect(tx.guide.create).not.toHaveBeenCalled();
     expect(tx.guide.update).not.toHaveBeenCalled(); // DB mới hơn code → không hạ cấp

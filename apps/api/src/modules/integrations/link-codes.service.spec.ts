@@ -32,7 +32,7 @@ const past = new Date(NOW.getTime() - 60_000);
 
 const integration = (over: Record<string, unknown> = {}) => ({
   id: 'g1',
-  workspaceId: 'w1',
+  organizationId: 'w1',
   type: 'TELEGRAM',
   name: 'n',
   config: { botToken: 'ENC', useGlobal: false, botUsername: 'TiraproBot' },
@@ -43,7 +43,7 @@ const integration = (over: Record<string, unknown> = {}) => ({
 const tokenRow = (over: Record<string, unknown> = {}) => ({
   id: 't1',
   token: 'K7M2QX',
-  workspaceId: 'w1',
+  organizationId: 'w1',
   projectId: null,
   integrationId: 'g1',
   createdById: 'u1',
@@ -71,7 +71,7 @@ function setup(
       ),
     },
     project: { findFirst: vi.fn(() => Promise.resolve({ id: 'p1' })) },
-    workspace: { findUnique: vi.fn(() => Promise.resolve({ name: 'Công ty A' })) },
+    organization: { findUnique: vi.fn(() => Promise.resolve({ name: 'Công ty A' })) },
     channelLinkToken: {
       findFirst: vi.fn(() => Promise.resolve(opts.token === undefined ? tokenRow() : opts.token)),
       count: vi.fn(() => Promise.resolve(0)),
@@ -124,7 +124,7 @@ describe('createCode', () => {
     expect(res.startGroupUrl).toBe('https://t.me/TiraproBot?startgroup=true');
     expect(prisma.channelLinkToken.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
-        workspaceId: 'w1',
+        organizationId: 'w1',
         integrationId: 'g1',
         createdById: 'u1',
         integrationType: 'TELEGRAM',
@@ -165,7 +165,7 @@ describe('createCode', () => {
     });
   });
 
-  it('không tìm thấy integration (hoặc workspace khác) → 404', async () => {
+  it('không tìm thấy integration (hoặc organization khác) → 404', async () => {
     const { service } = setup({ integration: null });
     await expect(service.createCode('w1', 'gX', 'u1')).rejects.toMatchObject({ status: 404 });
   });
@@ -181,7 +181,7 @@ describe('createCode', () => {
     expect(res.startGroupUrl).toBeNull();
   });
 
-  it('projectId không thuộc workspace → 404, không tạo mã', async () => {
+  it('projectId không thuộc organization → 404, không tạo mã', async () => {
     const { service, prisma } = setup();
     prisma.project.findFirst.mockResolvedValue(null as never);
     await expect(service.createCode('w1', 'g1', 'u1', 'pX')).rejects.toMatchObject({
@@ -225,7 +225,7 @@ describe('poll', () => {
       where: {
         token: 'K7M2QX',
         integrationId: 'g1',
-        workspaceId: 'w1',
+        organizationId: 'w1',
         consumedAt: null,
         expiresAt: { gt: NOW },
       },
@@ -309,11 +309,11 @@ describe('poll — hết hạn, lỗi và va chạm', () => {
     expect(none.telegram.recentUpdates).not.toHaveBeenCalled();
   });
 
-  it('mã của integration khác không khớp (truy vấn ràng integrationId + workspaceId)', async () => {
+  it('mã của integration khác không khớp (truy vấn ràng integrationId + organizationId)', async () => {
     const { service, prisma } = setup({ token: null });
     await service.poll('w1', 'g1', 'K7M2QX');
     expect(prisma.channelLinkToken.findFirst).toHaveBeenCalledWith({
-      where: { token: 'K7M2QX', integrationId: 'g1', workspaceId: 'w1' },
+      where: { token: 'K7M2QX', integrationId: 'g1', organizationId: 'w1' },
     });
   });
 

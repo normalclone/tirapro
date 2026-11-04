@@ -31,12 +31,12 @@ const MERGE_WINDOW_MS = 10 * 60_000;
 /** Số phiên bản lịch sử giữ lại cho mỗi trang (xoá bản cũ nhất khi vượt). */
 const MAX_VERSIONS = 200;
 
-/** Giá trị `projectId` đặc biệt trên query: chỉ lấy tài liệu chung của workspace. */
-const SCOPE_WORKSPACE = 'none';
+/** Giá trị `projectId` đặc biệt trên query: chỉ lấy tài liệu chung của organization. */
+const SCOPE_ORGANIZATION = 'none';
 
 const NODE_SELECT = {
   id: true,
-  workspaceId: true,
+  organizationId: true,
   projectId: true,
   parentId: true,
   title: true,
@@ -49,7 +49,7 @@ const NODE_SELECT = {
 
 type NodeRow = {
   id: string;
-  workspaceId: string;
+  organizationId: string;
   projectId: string | null;
   parentId: string | null;
   title: string;
@@ -120,7 +120,7 @@ export interface WikiTrashItemDto {
 
 export interface WikiPageDto {
   id: string;
-  workspaceId: string;
+  organizationId: string;
   projectId: string | null;
   parentId: string | null;
   title: string;
@@ -150,8 +150,8 @@ export interface WikiSearchHit {
 
 /**
  * Wiki / tài liệu nội bộ — trang markdown phân cấp (cây tự tham chiếu).
- * Phạm vi: `projectId = null` là tài liệu chung workspace, ngược lại thuộc một dự án.
- * Đọc = workspace:view, ghi = wiki:manage theo dự án của trang (trang chung: quyền workspace),
+ * Phạm vi: `projectId = null` là tài liệu chung tổ chức, ngược lại thuộc một dự án.
+ * Đọc = organization:view, ghi = wiki:manage theo dự án của trang (trang chung: quyền tổ chức),
  * xoá = project:admin (guard ở controller).
  */
 @Injectable()
@@ -165,20 +165,20 @@ export class WikiService {
   ) {}
 
   /**
-   * Cây trang theo phạm vi. `projectId` bỏ trống = mọi trang trong workspace mà `viewer` được đọc (trang chung +
+   * Cây trang theo phạm vi. `projectId` bỏ trống = mọi trang trong tổ chức mà `viewer` được đọc (trang chung +
    * trang của dự án người đó thấy; dự án riêng tư người ngoài không có trong cây).
    */
   async tree(
-    workspaceId: string,
+    organizationId: string,
     projectId: string | undefined,
     viewer: WikiActor,
   ): Promise<WikiNodeDto[]> {
     const rows = await this.prisma.wikiPage.findMany({
       where: {
-        workspaceId,
+        organizationId,
         deletedAt: null,
         ...this.scopeWhere(projectId),
-        ...(await this.readableWhere(viewer, workspaceId)),
+        ...(await this.readableWhere(viewer, organizationId)),
       },
       orderBy: [{ order: 'asc' }, { title: 'asc' }],
       select: NODE_SELECT,
@@ -188,7 +188,7 @@ export class WikiService {
 
   /** Tìm theo tiêu đề hoặc nội dung (không phân biệt hoa/thường). Trả danh sách phẳng. */
   async search(
-    workspaceId: string,
+    organizationId: string,
     q: string,
     projectId: string | undefined,
     viewer: WikiActor,
@@ -197,10 +197,10 @@ export class WikiService {
     if (!term) return [];
     const rows = await this.prisma.wikiPage.findMany({
       where: {
-        workspaceId,
+        organizationId,
         deletedAt: null,
         ...this.scopeWhere(projectId),
-        ...(await this.readableWhere(viewer, workspaceId)),
+        ...(await this.readableWhere(viewer, organizationId)),
         OR: [{ title: insensitiveContains(term) }, { body: insensitiveContains(term) }],
       },
       orderBy: { updatedAt: 'desc' },
@@ -219,25 +219,25 @@ export class WikiService {
 
   /**
    * Những người có thể cấp quyền viết wiki / xoá trang ở phạm vi này: ai đang có `project:admin`
-   * (qua vai workspace, hoặc vai dự án nếu có `projectId`). Dùng cho câu "Nhờ … cấp quyền" của FE.
-   * Tối đa 8 người, bỏ tài khoản đã vô hiệu hoá. `projectId` bỏ trống/`none` → chỉ quản trị workspace.
+   * (qua vai tổ chức, hoặc vai dự án nếu có `projectId`). Dùng cho câu "Nhờ … cấp quyền" của FE.
+   * Tối đa 8 người, bỏ tài khoản đã vô hiệu hoá. `projectId` bỏ trống/`none` → chỉ quản trị organization.
    */
   async admins(
-    workspaceId: string,
+    organizationId: string,
     projectId?: string,
   ): Promise<{ id: string; displayName: string }[]> {
     const has = { permissions: { some: { permission: { key: PERMISSIONS.PROJECT_ADMIN } } } };
     const active = { status: { not: 'DEACTIVATED' as const } };
     const holder = { OR: [{ role: has }, { roles: { some: { role: has } } }] };
     const select = { user: { select: { id: true, displayName: true } } } as const;
-    const ws = await this.prisma.workspaceMembership.findMany({
-      where: { workspaceId, user: active, ...holder },
+    const ws = await this.prisma.organizationMembership.findMany({
+      where: { organizationId, user: active, ...holder },
       select,
       orderBy: { user: { displayName: 'asc' } },
       take: 8,
     });
     const proj =
-      projectId && projectId !== SCOPE_WORKSPACE
+      projectId && projectId !== SCOPE_ORGANIZATION
         ? await this.prisma.projectMembership.findMany({
             where: { projectId, user: active, ...holder },
             select,
@@ -251,19 +251,19 @@ export class WikiService {
       .slice(0, 8);
   }
 
-  async get(workspaceId: string, id: string, viewer: WikiActor): Promise<WikiPageDto> {
+  async get(organizationId: string, id: string, viewer: WikiActor): Promise<WikiPageDto> {
     // Trang của dự án riêng tư người đọc không thấy = không tồn tại (404 như id sai).
     const page = await this.prisma.wikiPage.findFirst({
       where: {
         id,
-        workspaceId,
+        organizationId,
         deletedAt: null,
-        ...(await this.readableWhere(viewer, workspaceId)),
+        ...(await this.readableWhere(viewer, organizationId)),
       },
     });
     if (!page) throw new NotFoundAppException('Trang tài liệu');
 
-    const breadcrumb = await this.ancestors(workspaceId, page.parentId);
+    const breadcrumb = await this.ancestors(organizationId, page.parentId);
     const userIds = [page.createdById, page.updatedById].filter((v): v is string => !!v);
     const users = userIds.length
       ? await this.prisma.user.findMany({
@@ -273,7 +273,7 @@ export class WikiService {
       : [];
     const byId = new Map(users.map((u) => [u.id, u]));
     const links = await this.prisma.wikiPageIssue.findMany({
-      where: { wikiPageId: id, issue: await this.visibleIssueFilter(viewer, workspaceId) },
+      where: { wikiPageId: id, issue: await this.visibleIssueFilter(viewer, organizationId) },
       select: {
         issue: {
           select: {
@@ -289,7 +289,7 @@ export class WikiService {
 
     return {
       id: page.id,
-      workspaceId: page.workspaceId,
+      organizationId: page.organizationId,
       projectId: page.projectId,
       parentId: page.parentId,
       title: page.title,
@@ -314,15 +314,15 @@ export class WikiService {
 
   /** Các trang wiki nhắc tới một công việc (cho khối "Tài liệu liên quan"). */
   async byIssue(
-    workspaceId: string,
+    organizationId: string,
     issueId: string,
     viewer: WikiActor,
   ): Promise<WikiByIssueDto[]> {
     // Trang chung (không dự án) luôn thấy; trang của dự án chỉ khi người gọi xem được dự án đó.
-    const { project } = await this.visibleIssueFilter(viewer, workspaceId);
+    const { project } = await this.visibleIssueFilter(viewer, organizationId);
     const rows = await this.prisma.wikiPage.findMany({
       where: {
-        workspaceId,
+        organizationId,
         deletedAt: null,
         issues: { some: { issueId } },
         OR: [{ projectId: null }, { project }],
@@ -347,7 +347,7 @@ export class WikiService {
   }
 
   async create(
-    workspaceId: string,
+    organizationId: string,
     dto: CreateWikiPageInput,
     actor: WikiActor,
   ): Promise<WikiPageDto> {
@@ -357,22 +357,22 @@ export class WikiService {
     const projectId = dto.projectId ?? null;
     const parentId = dto.parentId ?? null;
     if (parentId) {
-      const parent = await this.requireWritablePage(workspaceId, parentId, actor);
+      const parent = await this.requireWritablePage(organizationId, parentId, actor);
       // Trang con luôn cùng phạm vi với trang cha; client gửi phạm vi khác → từ chối
       // (guard tính quyền theo body.projectId, không để nó lái ghi sang dự án khác).
       if (projectId !== parent.projectId) {
         throw new BusinessRuleException('Trang con phải cùng phạm vi (dự án) với trang cha');
       }
     } else if (projectId) {
-      await this.requireProject(workspaceId, projectId);
+      await this.requireProject(organizationId, projectId);
     }
 
     const body = dto.body ?? '';
-    const order = await this.nextOrder(workspaceId, projectId, parentId);
+    const order = await this.nextOrder(organizationId, projectId, parentId);
     const created = await this.prisma.$transaction(async (tx) => {
       const row = await tx.wikiPage.create({
         data: {
-          workspaceId,
+          organizationId,
           projectId,
           parentId,
           title,
@@ -386,29 +386,29 @@ export class WikiService {
       await this.snapshot(tx, row.id, title, body, actor.id);
       return row;
     });
-    if (dto.body) await this.syncIssueLinks(workspaceId, created.id, dto.body);
-    return this.get(workspaceId, created.id, actor);
+    if (dto.body) await this.syncIssueLinks(organizationId, created.id, dto.body);
+    return this.get(organizationId, created.id, actor);
   }
 
   async update(
-    workspaceId: string,
+    organizationId: string,
     id: string,
     dto: UpdateWikiPageInput,
     actor: WikiActor,
   ): Promise<WikiPageDto> {
-    const current = await this.requireWritablePage(workspaceId, id);
+    const current = await this.requireWritablePage(organizationId, id);
     const title = dto.title?.trim();
     if (dto.title !== undefined && !title) throw new BusinessRuleException('Tiêu đề bắt buộc');
     await this.writePage(
-      workspaceId,
+      organizationId,
       id,
       current.title,
       { title, body: dto.body },
       dto.expectedVersion,
       actor.id,
     );
-    if (dto.body !== undefined) await this.syncIssueLinks(workspaceId, id, dto.body);
-    return this.get(workspaceId, id, actor);
+    if (dto.body !== undefined) await this.syncIssueLinks(organizationId, id, dto.body);
+    return this.get(organizationId, id, actor);
   }
 
   /**
@@ -416,11 +416,11 @@ export class WikiService {
    * Đi qua cùng điểm lọc quyền đọc trang (`readableWhere`) như `getVersion`/`trash`.
    */
   async listVersions(
-    workspaceId: string,
+    organizationId: string,
     id: string,
     viewer: WikiActor,
   ): Promise<WikiVersionSummaryDto[]> {
-    await this.requireReadablePage(workspaceId, id, viewer);
+    await this.requireReadablePage(organizationId, id, viewer);
     const rows = await this.prisma.wikiPageVersion.findMany({
       where: { wikiPageId: id },
       orderBy: { version: 'desc' },
@@ -445,12 +445,12 @@ export class WikiService {
 
   /** Nội dung một phiên bản của trang. */
   async getVersion(
-    workspaceId: string,
+    organizationId: string,
     id: string,
     version: number,
     viewer: WikiActor,
   ): Promise<WikiVersionDto> {
-    await this.requireReadablePage(workspaceId, id, viewer);
+    await this.requireReadablePage(organizationId, id, viewer);
     const row = await this.prisma.wikiPageVersion.findFirst({
       where: { wikiPageId: id, version },
     });
@@ -473,20 +473,20 @@ export class WikiService {
    * (chặn dự án lưu trữ, OCC theo `expectedVersion` — bắt buộc vì người bấm đang xem một trạng thái cụ thể).
    */
   async restoreVersion(
-    workspaceId: string,
+    organizationId: string,
     id: string,
     version: number,
     dto: RestoreWikiVersionInput,
     actor: WikiActor,
   ): Promise<WikiPageDto> {
-    const current = await this.requireWritablePage(workspaceId, id);
+    const current = await this.requireWritablePage(organizationId, id);
     const target = await this.prisma.wikiPageVersion.findFirst({
       where: { wikiPageId: id, version },
       select: { version: true, title: true, body: true },
     });
     if (!target) throw new NotFoundAppException('Phiên bản trang tài liệu');
     await this.writePage(
-      workspaceId,
+      organizationId,
       id,
       current.title,
       { title: target.title, body: target.body },
@@ -494,9 +494,9 @@ export class WikiService {
       actor.id,
       `Khôi phục từ phiên bản ${target.version}`,
     );
-    await this.syncIssueLinks(workspaceId, id, target.body);
+    await this.syncIssueLinks(organizationId, id, target.body);
     await this.audit.record({
-      workspaceId,
+      organizationId,
       actorId: actor.id,
       action: AUDIT_ACTIONS.WIKI_VERSION_RESTORED,
       entityType: 'wikiPage',
@@ -504,7 +504,7 @@ export class WikiService {
       summary: `Khôi phục trang wiki “${target.title}” về phiên bản ${target.version}`,
       meta: { projectId: current.projectId, version: target.version },
     });
-    return this.get(workspaceId, id, actor);
+    return this.get(organizationId, id, actor);
   }
 
   /**
@@ -513,30 +513,30 @@ export class WikiService {
    * đánh lại `order` liên tục 0..n cho nhóm anh em cũ và mới.
    */
   async move(
-    workspaceId: string,
+    organizationId: string,
     id: string,
     dto: MoveWikiPageInput,
     viewer: WikiActor,
   ): Promise<WikiNodeDto[]> {
-    const page = await this.requireWritablePage(workspaceId, id);
+    const page = await this.requireWritablePage(organizationId, id);
     const nextParentId = dto.parentId === undefined ? page.parentId : dto.parentId;
 
     if (nextParentId === id) throw new BusinessRuleException('Không thể chuyển trang vào chính nó');
     if (nextParentId) {
-      const parent = await this.requireReadablePage(workspaceId, nextParentId, viewer);
+      const parent = await this.requireReadablePage(organizationId, nextParentId, viewer);
       if (parent.projectId !== page.projectId) {
         throw new BusinessRuleException(
           'Chỉ chuyển được trong cùng phạm vi — trang chung của tổ chức, hoặc trong cùng một dự án',
         );
       }
-      if (await this.isDescendant(workspaceId, nextParentId, id)) {
+      if (await this.isDescendant(organizationId, nextParentId, id)) {
         throw new BusinessRuleException('Không thể chuyển trang vào trang con của chính nó');
       }
     }
 
     const siblings = await this.prisma.wikiPage.findMany({
       where: {
-        workspaceId,
+        organizationId,
         deletedAt: null,
         projectId: page.projectId,
         parentId: nextParentId,
@@ -575,9 +575,9 @@ export class WikiService {
 
     // Nhóm anh em cũ có thể thủng số thứ tự → đánh lại cho gọn.
     if (page.parentId !== nextParentId)
-      await this.renumber(workspaceId, page.projectId, page.parentId);
+      await this.renumber(organizationId, page.projectId, page.parentId);
 
-    return this.tree(workspaceId, page.projectId ?? SCOPE_WORKSPACE, viewer);
+    return this.tree(organizationId, page.projectId ?? SCOPE_ORGANIZATION, viewer);
   }
 
   /**
@@ -586,16 +586,16 @@ export class WikiService {
    * `updatedAt` của chúng (đổi chỗ không phải sửa nội dung, như `move`). Đánh dấu xoá TRƯỚC (kiểm `deletedAt: null`
    * trong giao dịch: hai người xoá cùng lúc → người sau 404), rồi mới đọc/nâng con trong cùng giao dịch.
    */
-  async remove(workspaceId: string, id: string, actor: WikiActor): Promise<{ success: true }> {
-    const page = await this.requireWritablePage(workspaceId, id);
+  async remove(organizationId: string, id: string, actor: WikiActor): Promise<{ success: true }> {
+    const page = await this.requireWritablePage(organizationId, id);
     await this.prisma.$transaction(async (tx) => {
       const r = await tx.wikiPage.updateMany({
-        where: { id, workspaceId, deletedAt: null },
+        where: { id, organizationId, deletedAt: null },
         data: { deletedAt: new Date(), deletedById: actor.id },
       });
       if (r.count === 0) throw new NotFoundAppException('Trang tài liệu');
       const children = await tx.wikiPage.findMany({
-        where: { workspaceId, parentId: id, deletedAt: null },
+        where: { organizationId, parentId: id, deletedAt: null },
         select: { id: true, updatedAt: true },
       });
       for (const c of children) {
@@ -605,9 +605,9 @@ export class WikiService {
         });
       }
     });
-    await this.renumber(workspaceId, page.projectId, page.parentId);
+    await this.renumber(organizationId, page.projectId, page.parentId);
     await this.audit.record({
-      workspaceId,
+      organizationId,
       actorId: actor.id,
       action: AUDIT_ACTIONS.WIKI_PAGE_DELETED,
       entityType: 'wikiPage',
@@ -623,16 +623,16 @@ export class WikiService {
    * Qua cùng điểm lọc quyền đọc trang (`readableWhere`) như `get`/lịch sử.
    */
   async trash(
-    workspaceId: string,
+    organizationId: string,
     projectId: string | undefined,
     viewer: WikiActor,
   ): Promise<WikiTrashItemDto[]> {
     const rows = await this.prisma.wikiPage.findMany({
       where: {
-        workspaceId,
+        organizationId,
         deletedAt: { not: null },
         ...this.scopeWhere(projectId),
-        ...(await this.readableWhere(viewer, workspaceId)),
+        ...(await this.readableWhere(viewer, organizationId)),
       },
       orderBy: { deletedAt: 'desc' },
       take: 100,
@@ -652,33 +652,33 @@ export class WikiService {
    * Khôi phục trang đã xoá (kèm toàn bộ lịch sử). Trang cha cũ còn sống → giữ chỗ cũ (cuối nhóm anh em);
    * đã bị xoá/không còn → lên gốc. Các con đã được nâng lên lúc xoá KHÔNG tự trở lại.
    */
-  async undelete(workspaceId: string, id: string, viewer: WikiActor): Promise<WikiPageDto> {
+  async undelete(organizationId: string, id: string, viewer: WikiActor): Promise<WikiPageDto> {
     // allow-deleted: khôi phục trang đã xoá
     const page = await this.prisma.wikiPage.findFirst({
-      where: { id, workspaceId, deletedAt: { not: null } },
+      where: { id, organizationId, deletedAt: { not: null } },
       select: { id: true, title: true, projectId: true, parentId: true },
     });
     if (!page) throw new NotFoundAppException('Trang tài liệu');
     await assertProjectIdWritable(this.prisma, page.projectId);
     const parent = page.parentId
       ? await this.prisma.wikiPage.findFirst({
-          where: { id: page.parentId, workspaceId, deletedAt: null },
+          where: { id: page.parentId, organizationId, deletedAt: null },
           select: { id: true },
         })
       : null;
     const parentId = parent?.id ?? null;
     const r = await this.prisma.wikiPage.updateMany({
-      where: { id, workspaceId, deletedAt: { not: null } },
+      where: { id, organizationId, deletedAt: { not: null } },
       data: {
         deletedAt: null,
         deletedById: null,
         parentId,
-        order: await this.nextOrder(workspaceId, page.projectId, parentId),
+        order: await this.nextOrder(organizationId, page.projectId, parentId),
       },
     });
     if (r.count === 0) throw new NotFoundAppException('Trang tài liệu'); // người khác vừa khôi phục
     await this.audit.record({
-      workspaceId,
+      organizationId,
       actorId: viewer.id,
       action: AUDIT_ACTIONS.WIKI_PAGE_RESTORED,
       entityType: 'wikiPage',
@@ -686,7 +686,7 @@ export class WikiService {
       summary: `Khôi phục trang wiki “${page.title}”`,
       meta: { projectId: page.projectId },
     });
-    return this.get(workspaceId, id, viewer);
+    return this.get(organizationId, id, viewer);
   }
 
   // ───────────────────────── helpers ─────────────────────────
@@ -698,7 +698,7 @@ export class WikiService {
    * dòng trang nên hai lần lưu đồng thời được tuần tự hoá (không đua số phiên bản).
    */
   private async writePage(
-    workspaceId: string,
+    organizationId: string,
     id: string,
     currentTitle: string,
     patch: { title?: string; body?: string },
@@ -716,7 +716,7 @@ export class WikiService {
       const r = await tx.wikiPage.updateMany({
         where: {
           id,
-          workspaceId,
+          organizationId,
           deletedAt: null,
           ...(expectedVersion !== undefined ? { version: expectedVersion } : {}),
         },
@@ -725,7 +725,7 @@ export class WikiService {
       if (r.count === 0) {
         // Phân biệt "trang vừa bị xoá" (404) với "người khác vừa lưu" (409).
         const still = await tx.wikiPage.findFirst({
-          where: { id, workspaceId, deletedAt: null },
+          where: { id, organizationId, deletedAt: null },
           select: { id: true },
         });
         if (!still) throw new NotFoundAppException('Trang tài liệu');
@@ -808,16 +808,16 @@ export class WikiService {
    */
   private async readableWhere(
     viewer: WikiActor,
-    workspaceId: string,
+    organizationId: string,
   ): Promise<Prisma.WikiPageWhereInput> {
-    const visible = await this.access.visibleWhere(viewer.id, workspaceId);
+    const visible = await this.access.visibleWhere(viewer.id, organizationId);
     if (Object.keys(visible).length === 0) return {};
     return { AND: [{ OR: [{ projectId: null }, { project: { deletedAt: null, ...visible } }] }] };
   }
 
   /** Như `requirePage` cho đường đọc: trang phải còn sống và qua `readableWhere` (không → 404). */
-  private async requireReadablePage(workspaceId: string, id: string, viewer: WikiActor) {
-    return this.requirePage(workspaceId, id, await this.readableWhere(viewer, workspaceId));
+  private async requireReadablePage(organizationId: string, id: string, viewer: WikiActor) {
+    return this.requirePage(organizationId, id, await this.readableWhere(viewer, organizationId));
   }
 
   private async authorNames(ids: (string | null)[]): Promise<Map<string, string>> {
@@ -837,9 +837,9 @@ export class WikiService {
    */
   async visibleIssueFilter(
     viewer: WikiActor,
-    workspaceId: string,
+    organizationId: string,
   ): Promise<{ deletedAt: null; project: Prisma.ProjectWhereInput }> {
-    const visible = await this.access.visibleWhere(viewer.id, workspaceId);
+    const visible = await this.access.visibleWhere(viewer.id, organizationId);
     return { deletedAt: null, project: { deletedAt: null, ...visible } };
   }
 
@@ -848,13 +848,17 @@ export class WikiService {
    * Chạy SAU khi lưu trang: lỗi chỉ log, không làm hỏng việc lưu. Mã giống-mã nhưng không phải
    * công việc (vd "UTF-8") bị loại ở truy vấn.
    */
-  private async syncIssueLinks(workspaceId: string, pageId: string, body: string): Promise<void> {
+  private async syncIssueLinks(
+    organizationId: string,
+    pageId: string,
+    body: string,
+  ): Promise<void> {
     try {
       const keys = extractIssueKeys(body, MAX_LINKED_ISSUES);
       const issues = keys.length
         ? await this.prisma.issue.findMany({
             where: {
-              workspaceId,
+              organizationId,
               key: { in: keys },
               deletedAt: null,
               project: { deletedAt: null },
@@ -880,17 +884,17 @@ export class WikiService {
 
   private scopeWhere(projectId?: string) {
     if (!projectId) return {};
-    if (projectId === SCOPE_WORKSPACE) return { projectId: null };
+    if (projectId === SCOPE_ORGANIZATION) return { projectId: null };
     return { projectId };
   }
 
   private async requirePage(
-    workspaceId: string,
+    organizationId: string,
     id: string,
     extraWhere: Prisma.WikiPageWhereInput = {},
   ) {
     const page = await this.prisma.wikiPage.findFirst({
-      where: { id, workspaceId, deletedAt: null, ...extraWhere },
+      where: { id, organizationId, deletedAt: null, ...extraWhere },
       select: {
         id: true,
         projectId: true,
@@ -908,17 +912,17 @@ export class WikiService {
    * Như `requirePage` nhưng cho thao tác ghi: trang của dự án đã lưu trữ là chỉ đọc. Có `viewer` thì trang phải
    * đọc được với người đó (trang cha của dự án ẩn → 404, không lộ qua thông báo "khác phạm vi").
    */
-  private async requireWritablePage(workspaceId: string, id: string, viewer?: WikiActor) {
+  private async requireWritablePage(organizationId: string, id: string, viewer?: WikiActor) {
     const page = viewer
-      ? await this.requireReadablePage(workspaceId, id, viewer)
-      : await this.requirePage(workspaceId, id);
+      ? await this.requireReadablePage(organizationId, id, viewer)
+      : await this.requirePage(organizationId, id);
     await assertProjectIdWritable(this.prisma, page.projectId);
     return page;
   }
 
-  private async requireProject(workspaceId: string, projectId: string) {
+  private async requireProject(organizationId: string, projectId: string) {
     const p = await this.prisma.project.findFirst({
-      where: { id: projectId, workspaceId, deletedAt: null },
+      where: { id: projectId, organizationId, deletedAt: null },
       select: { id: true, archivedAt: true },
     });
     if (!p) throw new NotFoundAppException('Dự án');
@@ -927,12 +931,12 @@ export class WikiService {
   }
 
   private async nextOrder(
-    workspaceId: string,
+    organizationId: string,
     projectId: string | null,
     parentId: string | null,
   ): Promise<number> {
     const last = await this.prisma.wikiPage.findFirst({
-      where: { workspaceId, projectId, parentId, deletedAt: null },
+      where: { organizationId, projectId, parentId, deletedAt: null },
       orderBy: { order: 'desc' },
       select: { order: true },
     });
@@ -940,12 +944,12 @@ export class WikiService {
   }
 
   private async renumber(
-    workspaceId: string,
+    organizationId: string,
     projectId: string | null,
     parentId: string | null,
   ): Promise<void> {
     const rows = await this.prisma.wikiPage.findMany({
-      where: { workspaceId, projectId, parentId, deletedAt: null },
+      where: { organizationId, projectId, parentId, deletedAt: null },
       orderBy: [{ order: 'asc' }, { title: 'asc' }],
       select: { id: true, order: true, updatedAt: true },
     });
@@ -965,14 +969,14 @@ export class WikiService {
 
   /** `candidateId` có nằm trong nhánh con của `rootId` không (đi ngược lên theo parent). */
   private async isDescendant(
-    workspaceId: string,
+    organizationId: string,
     candidateId: string,
     rootId: string,
   ): Promise<boolean> {
     let cursor: string | null = candidateId;
     for (let depth = 0; cursor && depth < 100; depth += 1) {
       const row: { parentId: string | null } | null = await this.prisma.wikiPage.findFirst({
-        where: { id: cursor, workspaceId, deletedAt: null },
+        where: { id: cursor, organizationId, deletedAt: null },
         select: { parentId: true },
       });
       cursor = row?.parentId ?? null;
@@ -982,7 +986,7 @@ export class WikiService {
   }
 
   private async ancestors(
-    workspaceId: string,
+    organizationId: string,
     parentId: string | null,
   ): Promise<{ id: string; title: string }[]> {
     const chain: { id: string; title: string }[] = [];
@@ -990,7 +994,7 @@ export class WikiService {
     for (let depth = 0; cursor && depth < 100; depth += 1) {
       const row: { id: string; title: string; parentId: string | null } | null =
         await this.prisma.wikiPage.findFirst({
-          where: { id: cursor, workspaceId, deletedAt: null },
+          where: { id: cursor, organizationId, deletedAt: null },
           select: { id: true, title: true, parentId: true },
         });
       if (!row) break;

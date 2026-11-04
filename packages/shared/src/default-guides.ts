@@ -1,8 +1,8 @@
 import type { GuideContent } from './guides';
 
 /**
- * Hướng dẫn mặc định (Guide TOÀN CỤC, `workspaceId = null`) — nạp lúc khởi động API (`GuidesBootstrapService`), mọi
- * workspace (mới và cũ) thấy ngay. Nội dung nằm ở code để sửa qua review; muốn đổi thì TĂNG `version` (bản trong DB cũ
+ * Hướng dẫn mặc định (Guide TOÀN CỤC, `organizationId = null`) — nạp lúc khởi động API (`GuidesBootstrapService`), mọi
+ * tổ chức (mới và cũ) thấy ngay. Nội dung nằm ở code để sửa qua review; muốn đổi thì TĂNG `version` (bản trong DB cũ
  * hơn sẽ được cập nhật). `selector` trỏ tới thuộc tính `data-tour` ở giao diện web — test `tourSelectors` giữ chúng khớp.
  */
 export interface GuideSeed {

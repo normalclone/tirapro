@@ -11,7 +11,7 @@ import {
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
 import { ProjectRef } from '../../common/decorators/project-ref.decorator';
-import { WorkspaceId } from '../../common/decorators/workspace-id.decorator';
+import { OrganizationId } from '../../common/decorators/organization-id.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import type { AuthUser } from '../../common/types/request';
 import { WorklogsService } from './worklogs.service';
@@ -24,44 +24,44 @@ export class WorklogsController {
   @Permissions(PERMISSIONS.PROJECT_VIEW)
   @ProjectRef('issue', 'id')
   @Get('issues/:id/worklogs')
-  async list(@WorkspaceId() workspaceId: string, @Param('id') id: string) {
-    return this.worklogs.list(workspaceId, id);
+  async list(@OrganizationId() organizationId: string, @Param('id') id: string) {
+    return this.worklogs.list(organizationId, id);
   }
 
   @Permissions(PERMISSIONS.WORKLOG_CREATE)
   @ProjectRef('issue', 'id')
   @Post('issues/:id/worklogs')
   async create(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
     @Body(new ZodValidationPipe(createWorklogSchema)) dto: CreateWorklogInput,
   ) {
-    return this.worklogs.create(workspaceId, user.id, id, dto);
+    return this.worklogs.create(organizationId, user.id, id, dto);
   }
 
   @Permissions(PERMISSIONS.WORKLOG_UPDATE)
   @ProjectRef('worklog', 'id')
   @Patch('worklogs/:id')
   async update(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
     @Body(new ZodValidationPipe(updateWorklogSchema)) dto: UpdateWorklogInput,
   ) {
-    return this.worklogs.update(workspaceId, user.id, id, dto);
+    return this.worklogs.update(organizationId, user.id, id, dto);
   }
 
   @Permissions(PERMISSIONS.WORKLOG_DELETE)
   @ProjectRef('worklog', 'id')
   @Delete('worklogs/:id')
   async remove(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
     @Query(new ZodValidationPipe(deleteWorklogQuerySchema))
     query: { adjustRemaining?: 'auto' | 'leave' },
   ) {
-    return this.worklogs.remove(workspaceId, user.id, id, query.adjustRemaining);
+    return this.worklogs.remove(organizationId, user.id, id, query.adjustRemaining);
   }
 }

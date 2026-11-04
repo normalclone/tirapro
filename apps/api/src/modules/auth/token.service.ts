@@ -6,10 +6,20 @@ import { createId } from '@paralleldrive/cuid2';
 import { ERROR_CODES } from '@tirapro/types';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 
+/** Tổ chức trong access token: claim mới `organizationId`, rơi về claim cũ `workspaceId` của token phát trước khi đổi tên. */
+export const claimedOrganizationId = (
+  p: Pick<AccessTokenPayload, 'organizationId' | 'workspaceId'>,
+): string | null => p.organizationId ?? p.workspaceId ?? null;
+
 export interface AccessTokenPayload {
   sub: string;
   email: string;
-  workspaceId: string | null;
+  organizationId?: string | null;
+  /**
+   * Claim CŨ (trước đổi tên tổ chức). Access token đã cấp vẫn mang claim này tới khi hết hạn nên VẪN được chấp nhận
+   * (đọc qua `claimedOrganizationId`); token mới luôn phát `organizationId`.
+   */
+  workspaceId?: string | null;
   jti: string;
   /** Thời điểm cấp (giây, do jsonwebtoken tự thêm). Token cũ chỉ có trường này. */
   iat?: number;
@@ -37,13 +47,13 @@ export class TokenService {
     private readonly prisma: PrismaService,
   ) {}
 
-  signAccess(user: { id: string; email: string }, workspaceId: string | null) {
+  signAccess(user: { id: string; email: string }, organizationId: string | null) {
     const expiresIn = this.config.get<string>('jwt.accessExpiresIn') ?? '15m';
     const accessToken = this.jwt.sign(
       {
         sub: user.id,
         email: user.email,
-        workspaceId,
+        organizationId,
         jti: createId(),
         iatMs: Date.now(),
       } satisfies AccessTokenPayload,
@@ -61,7 +71,7 @@ export class TokenService {
     userId: string,
     family: string | null,
     meta: RefreshMeta,
-    workspaceId: string | null = null,
+    organizationId: string | null = null,
   ): Promise<string> {
     const raw = randomBytes(48).toString('base64url');
     const fam = family ?? createId();
@@ -71,7 +81,7 @@ export class TokenService {
         userId,
         tokenHash: this.hashToken(raw),
         family: fam,
-        workspaceId,
+        organizationId,
         expiresAt: new Date(Date.now() + ttlMs),
         userAgent: meta.userAgent?.slice(0, 255),
         ipAddress: meta.ipAddress,
@@ -80,13 +90,13 @@ export class TokenService {
     return `${fam}.${raw}`;
   }
 
-  /** Ghi workspace đang mở vào refresh token (raw `family.secret`) — dùng khi refresh chọn workspace khác token cũ. */
-  async setRefreshWorkspace(token: string, workspaceId: string | null): Promise<void> {
+  /** Ghi tổ chức đang mở vào refresh token (raw `family.secret`) — dùng khi refresh chọn tổ chức khác token cũ. */
+  async setRefreshOrganization(token: string, organizationId: string | null): Promise<void> {
     const [, raw] = token.split('.', 2);
     if (!raw) return;
     await this.prisma.refreshToken.updateMany({
       where: { tokenHash: this.hashToken(raw) },
-      data: { workspaceId },
+      data: { organizationId },
     });
   }
 
@@ -103,7 +113,7 @@ export class TokenService {
   async rotateRefresh(
     token: string,
     meta: RefreshMeta,
-  ): Promise<{ userId: string; newToken: string | null; workspaceId: string | null }> {
+  ): Promise<{ userId: string; newToken: string | null; organizationId: string | null }> {
     const [, raw] = token.split('.', 2);
     if (!raw)
       throw new UnauthorizedException({
@@ -137,7 +147,8 @@ export class TokenService {
           },
           select: { id: true },
         });
-        if (successor) return { userId: row.userId, newToken: null, workspaceId: row.workspaceId };
+        if (successor)
+          return { userId: row.userId, newToken: null, organizationId: row.organizationId };
       }
 
       await this.prisma.refreshToken.updateMany({
@@ -151,7 +162,7 @@ export class TokenService {
     }
 
     const row = await this.prisma.refreshToken.findUniqueOrThrow({ where: { tokenHash } });
-    const newToken = await this.issueRefresh(row.userId, row.family, meta, row.workspaceId);
+    const newToken = await this.issueRefresh(row.userId, row.family, meta, row.organizationId);
     // Race với thu hồi phiên: nếu admin khoá / đặt lại mật khẩu / revoke COMMIT trong lúc ta xoay token, token mới có thể
     // chèn SAU `updateMany` của họ. Kiểm lại SAU khi cấp: token cũ (đã giành được) sinh trước mốc thu hồi ⇒ không hợp lệ,
     // thu hồi cả family vừa cấp. (Nếu thu hồi commit sau lúc cấp thì `updateMany` của họ đã thu hồi luôn token mới.)
@@ -169,14 +180,14 @@ export class TokenService {
         message: 'Phiên đăng nhập đã bị thu hồi — hãy đăng nhập lại',
       });
     }
-    return { userId: row.userId, newToken, workspaceId: row.workspaceId };
+    return { userId: row.userId, newToken, organizationId: row.organizationId };
   }
 
   /**
-   * Đọc workspaceId từ access token ĐÃ HẾT HẠN (chữ ký vẫn phải đúng) để lúc refresh giữ nguyên
-   * workspace người dùng đang làm việc. Header thiếu/sai chữ ký => null (rơi về workspace đầu tiên).
+   * Đọc organizationId từ access token ĐÃ HẾT HẠN (chữ ký vẫn phải đúng) để lúc refresh giữ nguyên
+   * tổ chức người dùng đang làm việc. Header thiếu/sai chữ ký => null (rơi về tổ chức đầu tiên).
    */
-  workspaceFromExpiredAccess(authorization: string | undefined): string | null {
+  organizationFromExpiredAccess(authorization: string | undefined): string | null {
     const m = /^Bearer\s+(.+)$/i.exec(authorization ?? '');
     if (!m) return null;
     try {
@@ -184,7 +195,7 @@ export class TokenService {
         secret: this.config.get<string>('jwt.accessSecret'),
         ignoreExpiration: true,
       });
-      return payload.workspaceId ?? null;
+      return claimedOrganizationId(payload);
     } catch {
       return null;
     }

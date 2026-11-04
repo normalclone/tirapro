@@ -39,23 +39,31 @@ export class PermissionsGuard implements CanActivate {
     const user = req.user;
     if (!user) throw new ForbiddenAppException('Chưa xác thực');
     if (user.isSystemAdmin) return true;
-    if (!user.workspaceId)
+    if (!user.organizationId)
       throw new ForbiddenAppException('Bạn chưa chọn tổ chức — hãy chọn một tổ chức rồi thử lại');
 
-    const { projectId, notFoundLabel } = await this.resolveProject(context, req, user.workspaceId);
-    // Dự án người gọi không xem được (riêng tư không là thành viên; hoặc vai thiếu `project:view` cấp workspace) nhận 404
+    const { projectId, notFoundLabel } = await this.resolveProject(
+      context,
+      req,
+      user.organizationId,
+    );
+    // Dự án người gọi không xem được (riêng tư không là thành viên; hoặc vai thiếu `project:view` cấp tổ chức) nhận 404
     // TRƯỚC khi tính quyền, với CÙNG nhãn như khi tài nguyên không tồn tại
     // (cùng code/message/shape) — không lộ sự tồn tại của dự án/khoá dự án riêng tư.
     if (projectId)
       await this.rbac.assertProjectVisible(
         user.id,
-        user.workspaceId,
+        user.organizationId,
         projectId,
         notFoundLabel,
         false,
       );
 
-    const effective = await this.rbac.getEffectivePermissions(user.id, user.workspaceId, projectId);
+    const effective = await this.rbac.getEffectivePermissions(
+      user.id,
+      user.organizationId,
+      projectId,
+    );
     user.permissions = [...effective] as PermissionKey[];
 
     const has = (p: PermissionKey) => effective.has(p) || effective.has(`${p}:own`);
@@ -72,12 +80,12 @@ export class PermissionsGuard implements CanActivate {
   /**
    * Xác định projectId để tính quyền. KHÔNG bao giờ tin projectId từ query (client tự chọn
    * được → leo thang đặc quyền). Tài nguyên (issue/sprint/…) → lấy projectId thật từ DB;
-   * projectId thô (params/body) → bắt buộc thuộc workspace hiện tại.
+   * projectId thô (params/body) → bắt buộc thuộc tổ chức hiện tại.
    */
   private async resolveProject(
     context: ExecutionContext,
     req: AuthedRequest,
-    workspaceId: string,
+    organizationId: string,
   ): Promise<ResolvedProject> {
     const ref = this.reflector.getAllAndOverride<ProjectRefMeta | undefined>(PROJECT_REF_KEY, [
       context.getHandler(),
@@ -90,17 +98,20 @@ export class PermissionsGuard implements CanActivate {
         const source = kind === 'param' ? req.params : kind === 'body' ? req.body : req.query;
         const raw: unknown = source?.[param];
         // `?projectId=none` là sentinel "mục dùng chung" (vd /automation/templates) → không có dự án,
-        // chỉ tính quyền cấp workspace. Chuỗi rỗng đã được checkedProjectId coi là null.
+        // chỉ tính quyền cấp organization. Chuỗi rỗng đã được checkedProjectId coi là null.
         if (kind === 'query' && raw === 'none') return { projectId: null, notFoundLabel: 'Dự án' };
-        return { projectId: await this.checkedProjectId(raw, workspaceId), notFoundLabel: 'Dự án' };
+        return {
+          projectId: await this.checkedProjectId(raw, organizationId),
+          notFoundLabel: 'Dự án',
+        };
       }
       // Nhãn 404 của đường này: khoá dự án → "Dự án"; còn lại là tài nguyên theo id → "Tài nguyên".
       const notFoundLabel = kind === 'projectKey' ? 'Dự án' : 'Tài nguyên';
       const value = req.params?.[param];
       if (typeof value !== 'string' || !value) throw new NotFoundAppException(notFoundLabel);
-      const resolved = await this.rbac.resolveProjectId(workspaceId, kind, value);
+      const resolved = await this.rbac.resolveProjectId(organizationId, kind, value);
       if (!resolved) throw new NotFoundAppException(notFoundLabel);
-      return { projectId: resolved.projectId, notFoundLabel }; // projectId null = tài nguyên cấp workspace
+      return { projectId: resolved.projectId, notFoundLabel }; // projectId null = tài nguyên cấp tổ chức
     }
 
     // Không khai báo @ProjectRef: dùng params.projectId. body.projectId CHỈ được tin khi route
@@ -108,22 +119,22 @@ export class PermissionsGuard implements CanActivate {
     // lái dự án bằng body (PUT /x/:id với body.projectId của dự án mình có quyền).
     if (req.params?.projectId !== undefined)
       return {
-        projectId: await this.checkedProjectId(req.params.projectId, workspaceId),
+        projectId: await this.checkedProjectId(req.params.projectId, organizationId),
         notFoundLabel: 'Dự án',
       };
     const hasOtherParams = Object.keys(req.params ?? {}).length > 0;
     if (hasOtherParams) return { projectId: null, notFoundLabel: 'Dự án' };
     return {
-      projectId: await this.checkedProjectId(req.body?.projectId, workspaceId),
+      projectId: await this.checkedProjectId(req.body?.projectId, organizationId),
       notFoundLabel: 'Dự án',
     };
   }
 
-  private async checkedProjectId(raw: unknown, workspaceId: string): Promise<string | null> {
+  private async checkedProjectId(raw: unknown, organizationId: string): Promise<string | null> {
     if (raw === undefined || raw === null || raw === '') return null;
     // Mảng/đối tượng (vd ?projectId=a&projectId=b) là đầu vào không hợp lệ → coi như không tồn tại.
     if (typeof raw !== 'string') throw new NotFoundAppException('Dự án');
-    await this.rbac.assertProjectInWorkspace(raw, workspaceId);
+    await this.rbac.assertProjectInOrganization(raw, organizationId);
     return raw;
   }
 }

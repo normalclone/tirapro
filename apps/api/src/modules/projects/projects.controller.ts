@@ -25,7 +25,7 @@ import {
 import { PERMISSIONS, type PermissionKey, type ProjectPermissionsDto } from '@tirapro/types';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
-import { WorkspaceId } from '../../common/decorators/workspace-id.decorator';
+import { OrganizationId } from '../../common/decorators/organization-id.decorator';
 import { ProjectRef } from '../../common/decorators/project-ref.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import type { AuthUser } from '../../common/types/request';
@@ -43,35 +43,35 @@ export class ProjectsController {
   @Permissions(PERMISSIONS.PROJECT_VIEW)
   @Get()
   async list(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
     @Query('includeArchived') includeArchived?: string,
   ) {
-    return this.projects.list(workspaceId, includeArchived === 'true', user.id);
+    return this.projects.list(organizationId, includeArchived === 'true', user.id);
   }
 
   @Permissions(PERMISSIONS.PROJECT_CREATE)
   @Post()
   async create(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
     @Body(new ZodValidationPipe(createProjectSchema)) dto: CreateProjectInput,
   ) {
-    return this.projects.create(workspaceId, user.id, dto);
+    return this.projects.create(organizationId, user.id, dto);
   }
 
   @Permissions(PERMISSIONS.PROJECT_VIEW)
   @ProjectRef('projectKey', 'key')
   @Get(':key')
-  async getByKey(@WorkspaceId() workspaceId: string, @Param('key') key: string) {
-    return this.projects.getByKey(workspaceId, key.toUpperCase());
+  async getByKey(@OrganizationId() organizationId: string, @Param('key') key: string) {
+    return this.projects.getByKey(organizationId, key.toUpperCase());
   }
 
   @Permissions(PERMISSIONS.PROJECT_VIEW)
   @ProjectRef('projectKey', 'key')
   @Get(':key/meta')
-  async meta(@WorkspaceId() workspaceId: string, @Param('key') key: string) {
-    return this.projects.meta(workspaceId, key.toUpperCase());
+  async meta(@OrganizationId() organizationId: string, @Param('key') key: string) {
+    return this.projects.meta(organizationId, key.toUpperCase());
   }
 
   /** Quyền hiệu lực của chính người gọi ở dự án này — để web hiện đúng nút theo vai trò dự án. */
@@ -79,11 +79,11 @@ export class ProjectsController {
   @ProjectRef('param', 'id')
   @Get(':id/permissions/me')
   async myPermissions(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
   ): Promise<ProjectPermissionsDto> {
-    const perms = await this.rbac.getEffectivePermissions(user.id, workspaceId, id);
+    const perms = await this.rbac.getEffectivePermissions(user.id, organizationId, id);
     return { projectId: id, permissions: [...perms].sort() as PermissionKey[] };
   }
 
@@ -91,12 +91,12 @@ export class ProjectsController {
   @ProjectRef('param', 'id')
   @Patch(':id')
   async update(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
     @Body(new ZodValidationPipe(updateProjectSchema)) dto: UpdateProjectInput,
   ) {
-    return this.projects.update(workspaceId, id, user.id, dto);
+    return this.projects.update(organizationId, id, user.id, dto);
   }
 
   /** Ghi đè sức khoẻ dự án (kèm ghi chú) hoặc bỏ ghi đè (`health: null`). */
@@ -104,12 +104,12 @@ export class ProjectsController {
   @ProjectRef('param', 'id')
   @Patch(':id/health')
   async setHealth(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
     @Body(new ZodValidationPipe(setProjectHealthSchema)) dto: SetProjectHealthInput,
   ) {
-    return this.projects.setHealth(workspaceId, id, user.id, dto);
+    return this.projects.setHealth(organizationId, id, user.id, dto);
   }
 
   /** Lưu trữ dự án (chỉ đọc, ẩn khỏi danh sách mặc định). */
@@ -117,34 +117,34 @@ export class ProjectsController {
   @ProjectRef('param', 'id')
   @Post(':id/archive')
   async archive(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
   ) {
-    return this.projects.archive(workspaceId, id, user.id);
+    return this.projects.archive(organizationId, id, user.id);
   }
 
   @Permissions(PERMISSIONS.PROJECT_ADMIN)
   @ProjectRef('param', 'id')
   @Post(':id/unarchive')
   async unarchive(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
   ) {
-    return this.projects.unarchive(workspaceId, id, user.id);
+    return this.projects.unarchive(organizationId, id, user.id);
   }
 
-  /** Xoá mềm dự án — chỉ quản trị workspace. */
-  @Permissions(PERMISSIONS.WORKSPACE_ADMIN)
+  /** Xoá mềm dự án — chỉ quản trị organization. */
+  @Permissions(PERMISSIONS.ORGANIZATION_ADMIN)
   @ProjectRef('param', 'id')
   @Delete(':id')
   async remove(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
   ) {
-    return this.projects.remove(workspaceId, id, user.id);
+    return this.projects.remove(organizationId, id, user.id);
   }
 
   /** Tải ảnh đại diện project (cần quyền quản trị project). */
@@ -154,19 +154,19 @@ export class ProjectsController {
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(AvatarUploadInterceptor)
   async uploadAvatar(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @Param('key') key: string,
     @UploadedFile() file: Express.Multer.File,
     @Req() req: Request,
   ) {
-    return this.projects.setAvatar(workspaceId, key.toUpperCase(), file, req);
+    return this.projects.setAvatar(organizationId, key.toUpperCase(), file, req);
   }
 
   /** Gỡ ảnh đại diện project. */
   @Permissions(PERMISSIONS.PROJECT_ADMIN)
   @ProjectRef('projectKey', 'key')
   @Delete(':key/avatar')
-  async removeAvatar(@WorkspaceId() workspaceId: string, @Param('key') key: string) {
-    return this.projects.clearAvatar(workspaceId, key.toUpperCase());
+  async removeAvatar(@OrganizationId() organizationId: string, @Param('key') key: string) {
+    return this.projects.clearAvatar(organizationId, key.toUpperCase());
   }
 }

@@ -31,10 +31,10 @@ export type ProjectResourceKind =
 /**
  * Nguồn để PermissionsGuard biết route này thuộc dự án nào:
  * - `ProjectResourceKind`: giá trị ở `req.params[param]` là id tài nguyên (riêng `projectKey` là key dự án);
- *   guard tra DB (giới hạn theo workspace) để lấy projectId THẬT. comment/attachment/issueLink đi qua
- *   issue cha; raid/automationTemplate/automationRule/customField/repository có thể thuộc workspace (không gắn dự án).
+ *   guard tra DB (giới hạn theo tổ chức) để lấy projectId THẬT. comment/attachment/issueLink đi qua
+ *   issue cha; raid/automationTemplate/automationRule/customField/repository có thể thuộc tổ chức (không gắn dự án).
  * - `param | body | query`: projectId nằm thẳng ở `req.params | req.body | req.query[param]`;
- *   guard kiểm dự án đó thuộc workspace hiện tại.
+ *   guard kiểm dự án đó thuộc tổ chức hiện tại.
  */
 export type ProjectRefKind = ProjectResourceKind | 'param' | 'body' | 'query';
 

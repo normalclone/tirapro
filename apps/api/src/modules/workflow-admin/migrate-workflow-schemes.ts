@@ -14,7 +14,7 @@ import {
 import { findNameRefs } from './name-refs';
 import { systemActorId } from './system-actor';
 import {
-  lockWorkspaceWorkflows,
+  lockOrganizationWorkflows,
   planMoves,
   type MoveScope,
   type PlannedMove,
@@ -22,12 +22,12 @@ import {
 
 export interface MigrateOptions {
   dryRun: boolean;
-  /** Chỉ một workspace (id hoặc slug); bỏ trống = mọi workspace chưa xoá. */
-  workspace?: string;
+  /** Chỉ một tổ chức (id hoặc slug); bỏ trống = mọi tổ chức chưa xoá. */
+  organization?: string;
   /** Gọi SAU commit cho mỗi quy trình vừa bị tắt (người tạo nhận thông báo). Dry-run không bao giờ gọi. */
   notify?: (n: {
     recipientId: string;
-    workspaceId: string;
+    organizationId: string;
     ruleId: string;
     ruleName: string;
   }) => Promise<void>;
@@ -46,9 +46,9 @@ export interface MigrateMoveRow {
   via: 'legacy' | 'suggested';
 }
 
-export interface MigrateWorkspaceResult {
-  workspaceId: string;
-  workspaceName: string;
+export interface MigrateOrganizationResult {
+  organizationId: string;
+  organizationName: string;
   createdWorkflows: string[];
   createdSchemeRows: number;
   moves: MigrateMoveRow[];
@@ -67,9 +67,9 @@ export interface MigrateWorkspaceResult {
 
 export interface MigrateResult {
   dryRun: boolean;
-  workspaces: MigrateWorkspaceResult[];
+  organizations: MigrateOrganizationResult[];
   totals: {
-    workspaces: number;
+    organizations: number;
     createdWorkflows: number;
     createdSchemeRows: number;
     movedIssues: number;
@@ -82,7 +82,7 @@ export interface MigrateResult {
 }
 
 class DryRunRollback extends Error {
-  constructor(readonly result: MigrateWorkspaceResult) {
+  constructor(readonly result: MigrateOrganizationResult) {
     super('dry-run rollback');
   }
 }
@@ -90,7 +90,7 @@ class DryRunRollback extends Error {
 const TX = { timeout: 600_000, maxWait: 30_000 } as const;
 
 /**
- * Chuyển dữ liệu cũ sang quy trình theo loại việc. Mỗi workspace MỘT transaction (có khoá advisory như các thao tác quản trị
+ * Chuyển dữ liệu cũ sang quy trình theo loại việc. Mỗi tổ chức MỘT transaction (có khoá advisory như các thao tác quản trị
  * khác): đảm bảo 3 quy trình mặc định + dòng cấu hình cho mọi loại việc → chuyển việc đang ở trạng thái của quy trình KHÁC
  * quy trình hiệu lực (ghi đè dự án → cấu hình tổ chức) → thêm trạng thái mới vào cột bảng → sửa quy tắc automation.
  * Idempotent: chạy lại không đổi gì (dòng cấu hình đã có luôn thắng). `dryRun` chạy ĐÚNG thuật toán thật rồi rollback nên số
@@ -101,20 +101,22 @@ export async function migrateWorkflowSchemes(
   prisma: PrismaClient,
   opts: MigrateOptions,
 ): Promise<MigrateResult> {
-  const workspaces = await prisma.workspace.findMany({
+  const organizations = await prisma.organization.findMany({
     where: {
       deletedAt: null,
-      ...(opts.workspace ? { OR: [{ id: opts.workspace }, { slug: opts.workspace }] } : {}),
+      ...(opts.organization
+        ? { OR: [{ id: opts.organization }, { slug: opts.organization }] }
+        : {}),
     },
     select: { id: true, name: true, ownerId: true },
     orderBy: { createdAt: 'asc' },
   });
-  const results: MigrateWorkspaceResult[] = [];
-  for (const ws of workspaces) {
-    let result: MigrateWorkspaceResult;
+  const results: MigrateOrganizationResult[] = [];
+  for (const ws of organizations) {
+    let result: MigrateOrganizationResult;
     try {
       result = await prisma.$transaction(async (tx) => {
-        const r = await migrateWorkspace(tx, ws);
+        const r = await migrateOrganization(tx, ws);
         if (opts.dryRun) throw new DryRunRollback(r);
         return r;
       }, TX);
@@ -127,12 +129,13 @@ export async function migrateWorkflowSchemes(
       for (const n of disabledRuleNotices(ws.id, result.rules))
         await opts.notify(n).catch(() => undefined);
   }
-  const sum = (f: (r: MigrateWorkspaceResult) => number) => results.reduce((a, r) => a + f(r), 0);
+  const sum = (f: (r: MigrateOrganizationResult) => number) =>
+    results.reduce((a, r) => a + f(r), 0);
   return {
     dryRun: opts.dryRun,
-    workspaces: results,
+    organizations: results,
     totals: {
-      workspaces: results.length,
+      organizations: results.length,
       createdWorkflows: sum((r) => r.createdWorkflows.length),
       createdSchemeRows: sum((r) => r.createdSchemeRows),
       movedIssues: sum((r) => r.movedIssues),
@@ -152,33 +155,33 @@ interface StatusInfo {
   workflowId: string;
 }
 
-async function migrateWorkspace(
+async function migrateOrganization(
   tx: Prisma.TransactionClient,
   ws: { id: string; name: string; ownerId: string },
-): Promise<MigrateWorkspaceResult> {
-  await lockWorkspaceWorkflows(tx, ws.id);
+): Promise<MigrateOrganizationResult> {
+  await lockOrganizationWorkflows(tx, ws.id);
 
   const { createdWorkflows, defaultIdByKey, createdSchemeRows } = await ensureDefaultScheme(
     tx,
     ws.id,
   );
   const types = await tx.issueType.findMany({
-    where: { workspaceId: ws.id },
+    where: { organizationId: ws.id },
     select: { id: true, key: true, name: true },
   });
 
   // 3. Quy trình hiệu lực: ghi đè dự án → cấu hình tổ chức.
   const { projects, effective } = await loadEffectiveScheme(tx, ws.id);
 
-  // Trạng thái của mọi quy trình trong workspace (tên → ánh xạ cũ; danh sách đích theo quy trình).
+  // Trạng thái của mọi quy trình trong tổ chức (tên → ánh xạ cũ; danh sách đích theo quy trình).
   const allStatuses: StatusInfo[] = await tx.status.findMany({
-    where: { workflow: { workspaceId: ws.id } },
+    where: { workflow: { organizationId: ws.id } },
     orderBy: { order: 'asc' },
     select: { id: true, name: true, category: true, workflowId: true },
   });
   const statusById = new Map(allStatuses.map((s) => [s.id, s]));
   const workflows = await tx.workflow.findMany({
-    where: { workspaceId: ws.id },
+    where: { organizationId: ws.id },
     select: { id: true, name: true },
   });
   const workflowName = new Map(workflows.map((w) => [w.id, w.name]));
@@ -225,7 +228,7 @@ async function migrateWorkspace(
 
   // 5. Chuyển việc bằng SQL thô: tăng version + lịch sử STATUS, KHÔNG đổi updatedAt.
   const resolution = await tx.resolution.findFirst({
-    where: { workspaceId: ws.id, isDefault: true },
+    where: { organizationId: ws.id, isDefault: true },
     select: { id: true },
   });
   const actorId = await systemActorId(tx); // lịch sử ghi tên hệ thống, không phải chủ tổ chức
@@ -294,8 +297,8 @@ async function migrateWorkspace(
   const nameRefs = await findNameRefs(tx, ws.id, moves, effectiveWorkflows);
 
   return {
-    workspaceId: ws.id,
-    workspaceName: ws.name,
+    organizationId: ws.id,
+    organizationName: ws.name,
     createdWorkflows,
     createdSchemeRows,
     moves: rows,
@@ -312,23 +315,23 @@ async function migrateWorkspace(
 /** Quy trình hiệu lực của từng (dự án, loại việc): ghi đè dự án → cấu hình tổ chức. Kể cả dự án đã xoá mềm/lưu trữ. */
 async function loadEffectiveScheme(
   tx: Prisma.TransactionClient,
-  workspaceId: string,
+  organizationId: string,
 ): Promise<{
   projects: Array<{ id: string; key: string; defaultWorkflowId: string | null }>;
   effective: (projectId: string, typeId: string) => string | undefined;
 }> {
   const [scheme, overrides, projects] = await Promise.all([
-    tx.workspaceWorkflowScheme.findMany({
-      where: { workspaceId },
+    tx.organizationWorkflowScheme.findMany({
+      where: { organizationId },
       select: { issueTypeId: true, workflowId: true },
     }),
     tx.projectWorkflowOverride.findMany({
-      where: { project: { workspaceId } },
+      where: { project: { organizationId } },
       select: { projectId: true, issueTypeId: true, workflowId: true },
     }),
     // allow-deleted: dự án đã xoá mềm/lưu trữ cũng phải khớp (khôi phục sau này không được lệch)
     tx.project.findMany({
-      where: { workspaceId },
+      where: { organizationId },
       select: { id: true, key: true, defaultWorkflowId: true },
       orderBy: { key: 'asc' },
     }),
@@ -351,7 +354,7 @@ interface BoardSyncResult {
   deletedColumns: string[];
 }
 
-/** Bước 6 của `migrateWorkspace`: mỗi dự án thêm trạng thái mới vào cột của trạng thái cũ nó thay, rồi dọn trạng thái/cột cũ. */
+/** Bước 6 của `migrateOrganization`: mỗi dự án thêm trạng thái mới vào cột của trạng thái cũ nó thay, rồi dọn trạng thái/cột cũ. */
 async function syncProjectBoards(
   tx: Prisma.TransactionClient,
   projects: Array<{ id: string; used: string[] }>,
@@ -407,7 +410,7 @@ async function moveRaw(
              "version" = "version" + 1,
              "resolvedAt" = ${resolvedAt},
              "resolutionId" = ${resolutionId}
-       WHERE "workspaceId" = ${ws.id}
+       WHERE "organizationId" = ${ws.id}
          AND "projectId" = ${m.projectId}
          AND "typeId" = ${m.typeId}
          AND "statusId" = ${m.from.id}

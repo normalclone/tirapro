@@ -6,7 +6,7 @@ import type { AuthUser } from '../../common/types/request';
 import { MeController } from './me.controller';
 
 describe('MeController GET /me/overview', () => {
-  it('cần project:view; gọi service theo workspaceId (JWT) và user.id từ token', async () => {
+  it('cần project:view; gọi service theo organizationId (JWT) và user.id từ token', async () => {
     expect(Reflect.getMetadata(PERMISSIONS_KEY, MeController.prototype.getOverview)).toEqual([
       PERMISSIONS.PROJECT_VIEW,
     ]);

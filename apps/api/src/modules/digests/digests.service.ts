@@ -20,7 +20,7 @@ import {
   resolveDigestBlocks,
   overdueCutoff,
   vnTodayUtc,
-  WORKSPACE_ONLY_DIGEST_BLOCKS,
+  ORGANIZATION_ONLY_DIGEST_BLOCKS,
 } from '@tirapro/shared';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { TRIAGE_VISIBLE } from '../../common/triage-visibility';
@@ -44,7 +44,7 @@ export interface CreateDigestInput {
   projectId?: string;
   channelId?: string;
   metrics?: string[];
-  /** userId của thành viên workspace (nhận email khi `deliverEmail`). */
+  /** userId của thành viên tổ chức (nhận email khi `deliverEmail`). */
   recipients?: string[];
   deliverEmail?: boolean;
   /** Cho phép digest gắn dự án RIÊNG TƯ đăng vào kênh chung (mặc định không). */
@@ -99,7 +99,7 @@ const DISPATCH_SELECT = {
   deliverEmail: true,
   recipients: true,
   allowPrivateToChannel: true,
-  workspaceId: true,
+  organizationId: true,
   projectId: true,
   channelId: true,
   schedule: true,
@@ -114,7 +114,7 @@ const DISPATCH_SELECT = {
 /** Phần của subscription cần để dựng + gửi. */
 interface DeliverSub {
   name: string;
-  workspaceId: string;
+  organizationId: string;
   projectId: string | null;
   channelId: string | null;
   metrics: string[];
@@ -134,13 +134,13 @@ const uniq = (xs: readonly string[]): string[] => [...new Set(xs)];
 
 /** Ngữ cảnh dùng chung của các khối trong MỘT lượt dựng digest. */
 interface BlockContext {
-  workspaceId: string;
+  organizationId: string;
   projectId: string | undefined;
   viewerId: string;
   now: Date;
   /** `visibleWhere` của người xem — lồng vào `project: {...}`. */
   visible: Prisma.ProjectWhereInput;
-  /** Điều kiện Issue đã gồm workspace + dự án sống + dự án người xem thấy (+ projectId nếu có). */
+  /** Điều kiện Issue đã gồm tổ chức + dự án sống + dự án người xem thấy (+ projectId nếu có). */
   issueScope: Prisma.IssueWhereInput;
   /** Các thẻ lãnh đạo cần tải (chỉ ba khối risks/okr/workload) + lời hứa kết quả dùng chung. */
   cards?: readonly ('topRisks' | 'slowGoals' | 'overloaded')[];
@@ -172,14 +172,14 @@ export class DigestsService implements OnApplicationShutdown {
   // ------------------------------- CRUD -------------------------------
 
   /**
-   * Liệt kê subscription của workspace (lọc theo project nếu có). `viewerId` bắt buộc: báo cáo gắn dự án riêng tư
-   * người xem không thấy bị loại (tên/lịch/số liệu chọn của dự án ẩn không lộ); báo cáo cấp workspace luôn hiện.
+   * Liệt kê subscription của tổ chức (lọc theo project nếu có). `viewerId` bắt buộc: báo cáo gắn dự án riêng tư
+   * người xem không thấy bị loại (tên/lịch/số liệu chọn của dự án ẩn không lộ); báo cáo cấp tổ chức luôn hiện.
    */
-  async list(workspaceId: string, projectId: string | undefined, viewerId: string) {
-    const visibleIds = await this.access.visibleProjectIds(viewerId, workspaceId);
+  async list(organizationId: string, projectId: string | undefined, viewerId: string) {
+    const visibleIds = await this.access.visibleProjectIds(viewerId, organizationId);
     return this.prisma.reportSubscription.findMany({
       where: {
-        workspaceId,
+        organizationId,
         ...(projectId ? { projectId } : {}),
         ...(visibleIds ? { OR: [{ projectId: null }, { projectId: { in: visibleIds } }] } : {}),
       },
@@ -188,24 +188,24 @@ export class DigestsService implements OnApplicationShutdown {
   }
 
   /** Tạo subscription mới. */
-  async create(workspaceId: string, userId: string, input: CreateDigestInput) {
+  async create(organizationId: string, userId: string, input: CreateDigestInput) {
     // Báo cáo gắn dự án: người tạo phải THẤY dự án (dự án riêng tư người ngoài → 404, không tạo, không lộ sự tồn tại).
     if (input.projectId) {
-      await this.access.assertCanSee(userId, workspaceId, input.projectId, 'Dự án');
+      await this.access.assertCanSee(userId, organizationId, input.projectId, 'Dự án');
     }
     // `!== undefined` (không phải truthy): chuỗi rỗng cũng phải bị từ chối, không được lưu như một channelId.
     if (input.channelId !== undefined)
-      await this.assertChannelInWorkspace(workspaceId, input.channelId);
+      await this.assertChannelInOrganization(organizationId, input.channelId);
     const allowPrivate = await this.normalizePrivateFlag(
-      workspaceId,
+      organizationId,
       input.projectId ?? null,
       input.allowPrivateToChannel ?? false,
     );
     const recipients = uniq(input.recipients ?? []);
-    await this.assertEmailSettings(workspaceId, input.deliverEmail ?? false, recipients);
+    await this.assertEmailSettings(organizationId, input.deliverEmail ?? false, recipients);
     return this.prisma.reportSubscription.create({
       data: {
-        workspaceId,
+        organizationId,
         name: input.name,
         schedule: input.schedule ?? DigestSchedule.WEEKLY,
         projectId: input.projectId ?? null,
@@ -225,14 +225,14 @@ export class DigestsService implements OnApplicationShutdown {
   }
 
   /** Cập nhật subscription. Báo cáo gắn dự án người sửa không thấy = không tồn tại (404). */
-  async update(workspaceId: string, id: string, input: UpdateDigestInput, viewerId: string) {
-    const current = await this.requireSubscription(workspaceId, id, viewerId);
+  async update(organizationId: string, id: string, input: UpdateDigestInput, viewerId: string) {
+    const current = await this.requireSubscription(organizationId, id, viewerId);
     // null = gỡ kênh (không cần kiểm).
     if (input.channelId !== undefined && input.channelId !== null) {
-      await this.assertChannelInWorkspace(workspaceId, input.channelId);
+      await this.assertChannelInOrganization(organizationId, input.channelId);
     }
     const allowPrivate = await this.normalizePrivateFlag(
-      workspaceId,
+      organizationId,
       current.projectId,
       input.allowPrivateToChannel ?? current.allowPrivateToChannel,
     );
@@ -241,7 +241,7 @@ export class DigestsService implements OnApplicationShutdown {
     const deliverEmail = input.deliverEmail ?? current.deliverEmail;
     if (input.recipients !== undefined || input.deliverEmail !== undefined) {
       await this.assertEmailSettings(
-        workspaceId,
+        organizationId,
         deliverEmail,
         recipients,
         input.recipients !== undefined,
@@ -269,8 +269,8 @@ export class DigestsService implements OnApplicationShutdown {
   }
 
   /** Xóa subscription. */
-  async remove(workspaceId: string, id: string, viewerId: string): Promise<{ success: true }> {
-    await this.requireSubscription(workspaceId, id, viewerId);
+  async remove(organizationId: string, id: string, viewerId: string): Promise<{ success: true }> {
+    await this.requireSubscription(organizationId, id, viewerId);
     await this.prisma.reportSubscription.delete({ where: { id } });
     return { success: true };
   }
@@ -280,17 +280,17 @@ export class DigestsService implements OnApplicationShutdown {
    * - Mặc định `PUBLIC_VIEWER`: chỉ dự án CÔNG KHAI, kể cả khi người tạo là admin.
    * - Digest gắn dự án RIÊNG TƯ: chỉ khi người tạo bật tường minh `allowPrivateToChannel` thì dùng quyền người tạo;
    *   không bật → `null` = KHÔNG gửi vào kênh (chỉ email theo quyền từng người).
-   * - Dự án đã xoá/không thuộc workspace → `null`.
+   * - Dự án đã xoá/không thuộc tổ chức → `null`.
    */
   private async channelViewer(
-    workspaceId: string,
+    organizationId: string,
     projectId: string | null,
     allowPrivateToChannel: boolean,
     createdById: string | null,
   ): Promise<string | null> {
     if (!projectId) return PUBLIC_VIEWER;
     const project = await this.prisma.project.findFirst({
-      where: { id: projectId, workspaceId, deletedAt: null },
+      where: { id: projectId, organizationId, deletedAt: null },
       select: { isPrivate: true },
     });
     if (!project) return null;
@@ -309,7 +309,7 @@ export class DigestsService implements OnApplicationShutdown {
    * dự án công khai/đã xoá → chuẩn hoá về `false` (không để cờ "dính" rồi tự có hiệu lực khi dự án sau này thành riêng tư).
    */
   private async normalizePrivateFlag(
-    workspaceId: string,
+    organizationId: string,
     projectId: string | null,
     allow: boolean,
   ): Promise<boolean> {
@@ -320,7 +320,7 @@ export class DigestsService implements OnApplicationShutdown {
       );
     }
     const project = await this.prisma.project.findFirst({
-      where: { id: projectId, workspaceId, deletedAt: null },
+      where: { id: projectId, organizationId, deletedAt: null },
       select: { isPrivate: true },
     });
     return project?.isPrivate === true;
@@ -331,11 +331,18 @@ export class DigestsService implements OnApplicationShutdown {
    * công khai → riêng tư thì digest KHÔNG tự lên kênh bằng cờ cũ; muốn đăng phải bật lại (kèm cảnh báo trong form).
    */
   @OnEvent(DOMAIN_EVENTS.PROJECT_VISIBILITY_CHANGED)
-  async onProjectVisibilityChanged(p: { workspaceId?: string; projectId?: string }): Promise<void> {
-    if (!p?.workspaceId || !p?.projectId) return;
+  async onProjectVisibilityChanged(p: {
+    organizationId?: string;
+    projectId?: string;
+  }): Promise<void> {
+    if (!p?.organizationId || !p?.projectId) return;
     try {
       await this.prisma.reportSubscription.updateMany({
-        where: { workspaceId: p.workspaceId, projectId: p.projectId, allowPrivateToChannel: true },
+        where: {
+          organizationId: p.organizationId,
+          projectId: p.projectId,
+          allowPrivateToChannel: true,
+        },
         data: { allowPrivateToChannel: false },
       });
     } catch (err) {
@@ -351,7 +358,7 @@ export class DigestsService implements OnApplicationShutdown {
    * (chống bấm lặp gửi thư hàng loạt) — giữ chỗ bằng compare-and-set `lastRunAt` nên bấm đồng thời cũng chỉ một lần.
    */
   async run(
-    workspaceId: string,
+    organizationId: string,
     id: string,
     viewerId: string,
   ): Promise<{
@@ -361,7 +368,7 @@ export class DigestsService implements OnApplicationShutdown {
     /** Tên người nhận bị bỏ qua vì không thấy dự án gắn kèm (không nhận thư). */
     skippedRecipients: string[];
   }> {
-    const sub = await this.requireSubscription(workspaceId, id, viewerId);
+    const sub = await this.requireSubscription(organizationId, id, viewerId);
     const previous = sub.lastRunAt;
     const claimedAt = new Date();
     if (sub.deliverEmail) {
@@ -433,13 +440,13 @@ export class DigestsService implements OnApplicationShutdown {
     let channelModel: DigestModel | null = null;
     if (sub.channelId) {
       const viewer = await this.channelViewer(
-        sub.workspaceId,
+        sub.organizationId,
         sub.projectId,
         sub.allowPrivateToChannel,
         sub.createdById,
       );
       const model = viewer
-        ? await this.buildDigest(sub.workspaceId, projectId, sub.metrics, viewer, {
+        ? await this.buildDigest(sub.organizationId, projectId, sub.metrics, viewer, {
             closedSprintId: opts.closedSprintId,
           })
         : null;
@@ -447,7 +454,7 @@ export class DigestsService implements OnApplicationShutdown {
         channelSkipped = true; // dự án riêng tư chưa được phép đăng vào kênh (hoặc người tạo không còn thấy dự án)
       } else {
         channelModel = model;
-        const r = await this.send(sub.workspaceId, sub.channelId, renderTelegramHtml(model));
+        const r = await this.send(sub.organizationId, sub.channelId, renderTelegramHtml(model));
         telegram = r.sent;
         tokenUnusable = r.tokenUnusable;
         integrationError = r.integrationError;
@@ -485,7 +492,7 @@ export class DigestsService implements OnApplicationShutdown {
 
   private async actorText(sub: DeliverSub, actorId: string): Promise<string> {
     const model = await this.buildDigest(
-      sub.workspaceId,
+      sub.organizationId,
       sub.projectId ?? undefined,
       sub.metrics,
       actorId,
@@ -495,7 +502,7 @@ export class DigestsService implements OnApplicationShutdown {
 
   /**
    * Email: một thư/người nhận (không lộ danh sách), qua outbox (cron MailOutboxService gửi). Người nhận chỉ là thành
-   * viên workspace chưa bị khoá; nội dung dựng theo quyền xem của CHÍNH người nhận; digest gắn dự án thì người không
+   * viên tổ chức chưa bị khoá; nội dung dựng theo quyền xem của CHÍNH người nhận; digest gắn dự án thì người không
    * thấy dự án đó không nhận thư. Dựng theo lô song song (`EMAIL_BATCH`) để không tuần tự ≤50 lần. Lỗi xếp thư của
    * một người không chặn người khác. Trả số thư đã xếp.
    */
@@ -511,7 +518,7 @@ export class DigestsService implements OnApplicationShutdown {
         where: {
           id: { in: ids },
           status: { not: UserStatus.DEACTIVATED },
-          workspaceMemberships: { some: { workspaceId: sub.workspaceId } },
+          organizationMemberships: { some: { organizationId: sub.organizationId } },
         },
         select: { id: true, email: true, displayName: true },
       });
@@ -528,12 +535,15 @@ export class DigestsService implements OnApplicationShutdown {
     const skipped: string[] = [];
     const one = async (user: (typeof users)[number]): Promise<boolean> => {
       try {
-        if (sub.projectId && !(await this.access.canSee(user.id, sub.workspaceId, sub.projectId))) {
+        if (
+          sub.projectId &&
+          !(await this.access.canSee(user.id, sub.organizationId, sub.projectId))
+        ) {
           skipped.push(user.displayName); // không thấy dự án gắn kèm → không nhận thư (báo lại cho người chạy)
           return false;
         }
         const model = await this.buildDigest(
-          sub.workspaceId,
+          sub.organizationId,
           sub.projectId ?? undefined,
           sub.metrics,
           user.id,
@@ -570,7 +580,7 @@ export class DigestsService implements OnApplicationShutdown {
    * định) = bản theo quyền xem của CHÍNH người bấm, như một email gửi cho họ.
    */
   async preview(
-    workspaceId: string,
+    organizationId: string,
     viewerId: string,
     input: {
       projectId?: string;
@@ -580,12 +590,12 @@ export class DigestsService implements OnApplicationShutdown {
     },
   ): Promise<{ summaryText: string; channelSkipped: boolean }> {
     if (input.projectId) {
-      await this.access.assertCanSee(viewerId, workspaceId, input.projectId, 'Dự án');
+      await this.access.assertCanSee(viewerId, organizationId, input.projectId, 'Dự án');
     }
     let viewer = viewerId;
     if (input.as === 'channel') {
       const v = await this.channelViewer(
-        workspaceId,
+        organizationId,
         input.projectId ?? null,
         input.allowPrivateToChannel ?? false,
         viewerId,
@@ -593,7 +603,7 @@ export class DigestsService implements OnApplicationShutdown {
       if (!v) return { summaryText: '', channelSkipped: true };
       viewer = v;
     }
-    const model = await this.buildDigest(workspaceId, input.projectId, input.metrics, viewer);
+    const model = await this.buildDigest(organizationId, input.projectId, input.metrics, viewer);
     return { summaryText: renderPlainText(model), channelSkipped: false };
   }
 
@@ -606,7 +616,7 @@ export class DigestsService implements OnApplicationShutdown {
    * Mỗi khối bọc try/catch riêng: một nguồn lỗi chỉ làm khối đó trống (degrade-graceful).
    */
   async buildDigest(
-    workspaceId: string,
+    organizationId: string,
     projectId: string | undefined,
     blocks: readonly string[] | undefined,
     viewerId: string,
@@ -614,12 +624,12 @@ export class DigestsService implements OnApplicationShutdown {
   ): Promise<DigestModel> {
     const now = new Date();
     const wanted = resolveDigestBlocks(blocks).filter(
-      (b) => !(projectId && WORKSPACE_ONLY_DIGEST_BLOCKS.includes(b)),
+      (b) => !(projectId && ORGANIZATION_ONLY_DIGEST_BLOCKS.includes(b)),
     );
-    const visible = await this.access.visibleWhere(viewerId, workspaceId);
+    const visible = await this.access.visibleWhere(viewerId, organizationId);
     const project = projectId
       ? await this.prisma.project.findFirst({
-          where: { id: projectId, workspaceId, deletedAt: null, ...visible },
+          where: { id: projectId, organizationId, deletedAt: null, ...visible },
           select: { name: true },
         })
       : null;
@@ -638,13 +648,13 @@ export class DigestsService implements OnApplicationShutdown {
       };
     }
     const ctx: BlockContext = {
-      workspaceId,
+      organizationId,
       projectId,
       viewerId,
       now,
       visible,
       issueScope: {
-        workspaceId,
+        organizationId,
         deletedAt: null,
         project: { deletedAt: null, ...visible }, // dự án đã xoá mềm / riêng tư người xem không thấy → không lọt vào số liệu
         ...(projectId ? { projectId } : {}),
@@ -675,7 +685,7 @@ export class DigestsService implements OnApplicationShutdown {
           id: sprintId,
           deletedAt: null,
           project: {
-            workspaceId: ctx.workspaceId,
+            organizationId: ctx.organizationId,
             deletedAt: null,
             ...ctx.visible,
             ...(ctx.projectId ? { id: ctx.projectId } : {}),
@@ -774,7 +784,7 @@ export class DigestsService implements OnApplicationShutdown {
         state: SprintState.ACTIVE,
         deletedAt: null,
         project: {
-          workspaceId: ctx.workspaceId,
+          organizationId: ctx.organizationId,
           deletedAt: null,
           ...ctx.visible,
           ...(ctx.projectId ? { id: ctx.projectId } : {}),
@@ -816,7 +826,7 @@ export class DigestsService implements OnApplicationShutdown {
   ): Promise<DigestSection> {
     const card = LEADERSHIP_CARD_OF[block]!;
     // Một lần cho cả ba khối của cùng lượt dựng; chỉ tải các thẻ người dùng đã chọn.
-    ctx.leadership ??= this.leadership.get(ctx.workspaceId, ctx.viewerId, ctx.now, {
+    ctx.leadership ??= this.leadership.get(ctx.organizationId, ctx.viewerId, ctx.now, {
       cards: ctx.cards,
       projectId: ctx.projectId,
     });
@@ -870,7 +880,7 @@ export class DigestsService implements OnApplicationShutdown {
   private async healthSection(ctx: BlockContext): Promise<DigestSection> {
     const projects = await this.prisma.project.findMany({
       where: {
-        workspaceId: ctx.workspaceId,
+        organizationId: ctx.organizationId,
         deletedAt: null,
         ...ctx.visible,
         ...(ctx.projectId ? { id: ctx.projectId } : {}),
@@ -879,7 +889,7 @@ export class DigestsService implements OnApplicationShutdown {
       orderBy: { key: 'asc' },
     });
     const byId = await this.health.forProjects(
-      ctx.workspaceId,
+      ctx.organizationId,
       projects.map((p) => p.id),
       ctx.viewerId,
     );
@@ -978,10 +988,10 @@ export class DigestsService implements OnApplicationShutdown {
    * - Không có channelId / không tìm thấy kênh / kênh tắt / token thiếu → sent=false, KHÔNG ném.
    * - Token riêng của tích hợp không giải mã được → sent=false, tokenUnusable=true (KHÔNG rơi về bot toàn cục).
    * - Tích hợp đang ERROR nhưng token dùng được → sent=false, integrationError=true (chờ "Gửi thử" phục hồi).
-   * Kênh phải thuộc `workspaceId` (không gửi qua kênh của workspace khác).
+   * Kênh phải thuộc `organizationId` (không gửi qua kênh của tổ chức khác).
    */
   private async send(
-    workspaceId: string,
+    organizationId: string,
     channelId: string | null,
     text: string,
   ): Promise<{ sent: boolean; tokenUnusable: boolean; integrationError: boolean }> {
@@ -989,7 +999,7 @@ export class DigestsService implements OnApplicationShutdown {
     if (!channelId) return notSent;
     try {
       const channel = await this.prisma.integrationChannel.findFirst({
-        where: { id: channelId, workspaceId, isEnabled: true },
+        where: { id: channelId, organizationId, isEnabled: true },
         include: { integration: true },
       });
       if (!channel) return notSent;
@@ -1074,7 +1084,7 @@ export class DigestsService implements OnApplicationShutdown {
   }
 
   /**
-   * Sprint vừa đóng (sự kiện phát SAU commit): gửi các digest "Khi kết thúc sprint" đang bật của workspace
+   * Sprint vừa đóng (sự kiện phát SAU commit): gửi các digest "Khi kết thúc sprint" đang bật của tổ chức
    * (không gắn dự án, hoặc gắn đúng dự án của sprint). Lỗi ở đây không bao giờ lan ra việc đóng sprint.
    */
   @OnEvent(DOMAIN_EVENTS.SPRINT_COMPLETED)
@@ -1082,12 +1092,12 @@ export class DigestsService implements OnApplicationShutdown {
     try {
       const project = await this.prisma.project.findFirst({
         where: { id: event.projectId, deletedAt: null },
-        select: { workspaceId: true },
+        select: { organizationId: true },
       });
       if (!project) return;
       const subs = await this.prisma.reportSubscription.findMany({
         where: {
-          workspaceId: project.workspaceId,
+          organizationId: project.organizationId,
           isEnabled: true,
           schedule: DigestSchedule.SPRINT_END,
           OR: [{ projectId: null }, { projectId: event.projectId }],
@@ -1151,22 +1161,25 @@ export class DigestsService implements OnApplicationShutdown {
 
   // ----------------------------- Helpers ------------------------------
 
-  /** Kênh phải thuộc workspace của người gọi — chặn trỏ digest vào kênh Telegram của workspace khác. */
-  private async assertChannelInWorkspace(workspaceId: string, channelId: string): Promise<void> {
+  /** Kênh phải thuộc tổ chức của người gọi — chặn trỏ digest vào kênh Telegram của tổ chức khác. */
+  private async assertChannelInOrganization(
+    organizationId: string,
+    channelId: string,
+  ): Promise<void> {
     const channel = await this.prisma.integrationChannel.findFirst({
-      where: { id: channelId, workspaceId },
+      where: { id: channelId, organizationId },
       select: { id: true },
     });
     if (!channel) throw new NotFoundAppException('Kênh thông báo');
   }
 
   /**
-   * `deliverEmail` bắt buộc ≥1 người nhận; mọi người nhận phải là thành viên workspace (không nhập email tự do —
-   * tránh dùng Tirapro gửi thư ra ngoài; muốn thêm người = thêm vào workspace). `checkMembers`: chỉ tra DB khi
+   * `deliverEmail` bắt buộc ≥1 người nhận; mọi người nhận phải là thành viên tổ chức (không nhập email tự do —
+   * tránh dùng Tirapro gửi thư ra ngoài; muốn thêm người = thêm vào tổ chức). `checkMembers`: chỉ tra DB khi
    * danh sách người nhận vừa đổi (bật/tắt cờ không cần tra lại).
    */
   private async assertEmailSettings(
-    workspaceId: string,
+    organizationId: string,
     deliverEmail: boolean,
     recipients: string[],
     checkMembers = true,
@@ -1176,7 +1189,7 @@ export class DigestsService implements OnApplicationShutdown {
     }
     if (!checkMembers || recipients.length === 0) return;
     const members = await this.prisma.user.findMany({
-      where: { id: { in: recipients }, workspaceMemberships: { some: { workspaceId } } },
+      where: { id: { in: recipients }, organizationMemberships: { some: { organizationId } } },
       select: { id: true },
     });
     const ok = new Set(members.map((m) => m.id));
@@ -1186,13 +1199,13 @@ export class DigestsService implements OnApplicationShutdown {
   }
 
   /** Báo cáo gắn dự án riêng tư người gọi không thấy = không tồn tại (404 như id sai). */
-  private async requireSubscription(workspaceId: string, id: string, viewerId: string) {
+  private async requireSubscription(organizationId: string, id: string, viewerId: string) {
     const row = await this.prisma.reportSubscription.findFirst({
-      where: { id, workspaceId },
+      where: { id, organizationId },
     });
     if (!row) throw new NotFoundAppException('Báo cáo định kỳ');
     if (row.projectId) {
-      await this.access.assertCanSee(viewerId, workspaceId, row.projectId, 'Báo cáo định kỳ');
+      await this.access.assertCanSee(viewerId, organizationId, row.projectId, 'Báo cáo định kỳ');
     }
     return row;
   }

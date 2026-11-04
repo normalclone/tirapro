@@ -65,12 +65,12 @@ export class ProjectsService {
   ) {}
 
   async create(
-    workspaceId: string,
+    organizationId: string,
     userId: string,
     input: CreateProjectInput,
   ): Promise<ProjectDto> {
     const dup = await this.prisma.project.findFirst({
-      where: { workspaceId, key: input.key, deletedAt: null },
+      where: { organizationId, key: input.key, deletedAt: null },
       select: { id: true },
     });
     if (dup)
@@ -93,25 +93,25 @@ export class ProjectsService {
       where: {
         name: SYSTEM_ROLES.PROJECT_ADMIN,
         scope: 'PROJECT',
-        workspaceId: null,
+        organizationId: null,
         isSystem: true,
       },
       select: { id: true },
     });
 
-    // Dự án riêng tư mà không gán được quản trị nào sẽ mồ côi (không ai ngoài admin workspace thấy/quản lý được).
+    // Dự án riêng tư mà không gán được quản trị nào sẽ mồ côi (không ai ngoài admin tổ chức thấy/quản lý được).
     if (input.isPrivate && !adminRole)
       throw new BusinessRuleException(
         'Thiếu vai trò hệ thống "Quản trị dự án" — chưa thể tạo dự án riêng tư',
       );
-    if (input.leadId) await this.assertLeadEligible(workspaceId, input.leadId);
+    if (input.leadId) await this.assertLeadEligible(organizationId, input.leadId);
 
     let project: Prisma.ProjectGetPayload<object>;
     try {
       project = await this.prisma.$transaction(async (tx) => {
         const project = await tx.project.create({
           data: {
-            workspaceId,
+            organizationId,
             key: input.key,
             name: input.name,
             type: projectType,
@@ -125,7 +125,7 @@ export class ProjectsService {
         // Clone workflow từ template (config-driven) → workflow riêng của project
         const workflow = await tx.workflow.create({
           data: {
-            workspaceId,
+            organizationId,
             projectId: project.id,
             isTemplate: false,
             isDefault: true,
@@ -222,7 +222,7 @@ export class ProjectsService {
     } catch (e) {
       // Rollback: không còn dự án/quy trình vừa tạo → bỏ mọi cache quy trình của request (không biết id dự án đã huỷ).
       this.workflows.invalidate();
-      // Khoá duy nhất [workspace, mã/tên] còn giữ cả dự án đã xoá mềm — báo rõ thay vì lỗi 500.
+      // Khoá duy nhất [tổ chức, mã/tên] còn giữ cả dự án đã xoá mềm — báo rõ thay vì lỗi 500.
       if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
         throw new BusinessRuleException(
           `Mã hoặc tên dự án đã được dùng (có thể bởi một dự án đã xoá) — hãy chọn mã/tên khác`,
@@ -241,14 +241,14 @@ export class ProjectsService {
    * (theo ProjectAccessService); `viewerId` bắt buộc.
    */
   async list(
-    workspaceId: string,
+    organizationId: string,
     includeArchived: boolean,
     viewerId: string,
   ): Promise<ProjectDto[]> {
-    const visible = await this.access.visibleWhere(viewerId, workspaceId);
+    const visible = await this.access.visibleWhere(viewerId, organizationId);
     const projects = await this.prisma.project.findMany({
       where: {
-        workspaceId,
+        organizationId,
         deletedAt: null,
         ...(includeArchived ? {} : { archivedAt: null }),
         ...visible,
@@ -259,18 +259,18 @@ export class ProjectsService {
     return projects.map((p) => this.toDto(p, p._count.issues, p.lead));
   }
 
-  async getByKey(workspaceId: string, key: string): Promise<ProjectDto> {
+  async getByKey(organizationId: string, key: string): Promise<ProjectDto> {
     const p = await this.prisma.project.findFirst({
-      where: { workspaceId, key, deletedAt: null },
+      where: { organizationId, key, deletedAt: null },
       include: { _count: ISSUE_COUNT, lead: true, programLinks: PROGRAM_LINKS },
     });
     if (!p) throw new NotFoundAppException('Dự án');
     return this.toDto(p, p._count.issues, p.lead);
   }
 
-  private async requireProject(workspaceId: string, projectId: string) {
+  private async requireProject(organizationId: string, projectId: string) {
     const p = await this.prisma.project.findFirst({
-      where: { id: projectId, workspaceId, deletedAt: null },
+      where: { id: projectId, organizationId, deletedAt: null },
       select: { id: true, key: true, name: true, archivedAt: true, isPrivate: true, leadId: true },
     });
     if (!p) throw new NotFoundAppException('Dự án');
@@ -279,17 +279,17 @@ export class ProjectsService {
 
   /** Sửa tên / mô tả / người phụ trách / cách giao việc mặc định. Mã dự án không đổi được (đã nằm trong mã mọi công việc). */
   async update(
-    workspaceId: string,
+    organizationId: string,
     projectId: string,
     userId: string,
     input: UpdateProjectInput,
   ): Promise<ProjectDto> {
-    const cur = await this.requireProject(workspaceId, projectId);
+    const cur = await this.requireProject(organizationId, projectId);
     assertNotArchived(cur.archivedAt);
     const data: Prisma.ProjectUncheckedUpdateInput = { updatedById: userId };
     if (input.name !== undefined && input.name !== cur.name) {
       const dup = await this.prisma.project.findFirst({
-        where: { workspaceId, name: input.name, deletedAt: null, id: { not: projectId } },
+        where: { organizationId, name: input.name, deletedAt: null, id: { not: projectId } },
         select: { id: true },
       });
       if (dup)
@@ -303,7 +303,7 @@ export class ProjectsService {
     if (input.defaultAssigneeMode !== undefined)
       data.defaultAssigneeMode = input.defaultAssigneeMode;
     if (input.leadId !== undefined) {
-      if (input.leadId) await this.assertLeadEligible(workspaceId, input.leadId);
+      if (input.leadId) await this.assertLeadEligible(organizationId, input.leadId);
       data.leadId = input.leadId;
     }
     const privacyChanged = input.isPrivate !== undefined && input.isPrivate !== cur.isPrivate;
@@ -319,7 +319,7 @@ export class ProjectsService {
     }
     const auditEntry: AuditEntry | null = privacyChanged
       ? {
-          workspaceId,
+          organizationId,
           actorId: userId,
           action: AUDIT_ACTIONS.PROJECT_VISIBILITY_CHANGED,
           entityType: 'project',
@@ -333,7 +333,7 @@ export class ProjectsService {
     try {
       if (privacyChanged || mustBeMembers.some(Boolean)) {
         // Đổi cờ/thành viên + nhật ký cùng một transaction: không để lại thay đổi quyền không có vết.
-        await this.updateWithMembers(workspaceId, projectId, data, mustBeMembers, auditEntry);
+        await this.updateWithMembers(organizationId, projectId, data, mustBeMembers, auditEntry);
       } else {
         await this.prisma.project.update({ where: { id: projectId }, data, select: { id: true } });
       }
@@ -347,20 +347,20 @@ export class ProjectsService {
     }
     // Cache quyền (60s) giữ tập quyền cũ của người vừa được/bị đổi quyền thấy dự án → xoá ngay.
     if (privacyChanged) {
-      await this.access.onVisibilityChanged(workspaceId);
+      await this.access.onVisibilityChanged(organizationId);
       // Sau commit: socket của người không còn thấy dự án bị rút khỏi room project (gateway kiểm lại quyền từng người).
       this.events?.emit(DOMAIN_EVENTS.PROJECT_VISIBILITY_CHANGED, {
-        workspaceId,
+        organizationId,
         projectId,
         isPrivate: input.isPrivate === true,
         actorId: userId,
       });
-    } else await this.access.onMembersChanged(workspaceId, mustBeMembers);
-    this.emitProjectAccess(workspaceId, projectId, userId, {
+    } else await this.access.onMembersChanged(organizationId, mustBeMembers);
+    this.emitProjectAccess(organizationId, projectId, userId, {
       nowPublic: privacyChanged && input.isPrivate === false,
       newMembers: privacyChanged ? [] : mustBeMembers,
     });
-    return this.getById(workspaceId, projectId);
+    return this.getById(organizationId, projectId);
   }
 
   /**
@@ -368,7 +368,7 @@ export class ProjectsService {
    * chờ ở dự án đó (từng bị giữ vì người phụ trách chưa thấy dự án) được thử gán lại.
    */
   private emitProjectAccess(
-    workspaceId: string,
+    organizationId: string,
     projectId: string,
     actorId: string,
     change: { nowPublic: boolean; newMembers: (string | null | undefined)[] },
@@ -376,14 +376,14 @@ export class ProjectsService {
     const ids = [...new Set(change.newMembers.filter((u): u is string => !!u))];
     if (change.nowPublic)
       this.events?.emit(DOMAIN_EVENTS.PROJECT_ACCESS_CHANGED, {
-        workspaceId,
+        organizationId,
         projectId,
         userIds: null,
         actorId,
       });
     else if (ids.length)
       this.events?.emit(DOMAIN_EVENTS.PROJECT_ACCESS_CHANGED, {
-        workspaceId,
+        organizationId,
         projectId,
         userIds: ids,
         actorId,
@@ -395,7 +395,7 @@ export class ProjectsService {
    * và ghi nhật ký, tất cả một transaction.
    */
   private async updateWithMembers(
-    workspaceId: string,
+    organizationId: string,
     projectId: string,
     data: Prisma.ProjectUncheckedUpdateInput,
     userIds: (string | null | undefined)[],
@@ -408,7 +408,7 @@ export class ProjectsService {
             where: {
               name: SYSTEM_ROLES.PROJECT_ADMIN,
               scope: 'PROJECT',
-              workspaceId: null,
+              organizationId: null,
               isSystem: true,
             },
             select: { id: true },
@@ -436,10 +436,10 @@ export class ProjectsService {
     });
   }
 
-  /** Người phụ trách phải là thành viên workspace và còn hoạt động (không phải tài khoản vô hiệu hoá/hệ thống). */
-  private async assertLeadEligible(workspaceId: string, leadId: string): Promise<void> {
-    const member = await this.prisma.workspaceMembership.findUnique({
-      where: { workspaceId_userId: { workspaceId, userId: leadId } },
+  /** Người phụ trách phải là thành viên tổ chức và còn hoạt động (không phải tài khoản vô hiệu hoá/hệ thống). */
+  private async assertLeadEligible(organizationId: string, leadId: string): Promise<void> {
+    const member = await this.prisma.organizationMembership.findUnique({
+      where: { organizationId_userId: { organizationId, userId: leadId } },
       select: { id: true, user: { select: { status: true, email: true } } },
     });
     if (!member)
@@ -458,12 +458,12 @@ export class ProjectsService {
    * N ngày trước" để người đọc tự đánh giá độ cũ. Dự án lưu trữ là chỉ đọc.
    */
   async setHealth(
-    workspaceId: string,
+    organizationId: string,
     projectId: string,
     userId: string,
     input: SetProjectHealthInput,
   ): Promise<ProjectHealthDto> {
-    const cur = await this.requireProject(workspaceId, projectId);
+    const cur = await this.requireProject(organizationId, projectId);
     assertNotArchived(cur.archivedAt);
     let data: Prisma.ProjectUncheckedUpdateInput;
     if (input.health === null) {
@@ -487,47 +487,51 @@ export class ProjectsService {
       };
     }
     await this.prisma.project.update({ where: { id: projectId }, data, select: { id: true } });
-    const dto = (await this.health.forProjects(workspaceId, [projectId], null)).get(projectId); // đã qua guard dự án
+    const dto = (await this.health.forProjects(organizationId, [projectId], null)).get(projectId); // đã qua guard dự án
     if (!dto) throw new NotFoundAppException('Dự án');
     return dto;
   }
 
   /** Lưu trữ dự án: ẩn khỏi danh sách và chuyển sang chỉ đọc. Giữ `isArchived` đồng bộ cho các báo cáo cũ. */
-  async archive(workspaceId: string, projectId: string, userId: string): Promise<ProjectDto> {
-    await this.requireProject(workspaceId, projectId);
+  async archive(organizationId: string, projectId: string, userId: string): Promise<ProjectDto> {
+    await this.requireProject(organizationId, projectId);
     // Có điều kiện archivedAt null: hai lần lưu trữ đồng thời không ghi đè mốc thời gian của nhau.
     const { count } = await this.prisma.project.updateMany({
-      where: { id: projectId, workspaceId, deletedAt: null, archivedAt: null },
+      where: { id: projectId, organizationId, deletedAt: null, archivedAt: null },
       data: { archivedAt: new Date(), isArchived: true, updatedById: userId },
     });
     if (count === 0) throw new BusinessRuleException('Dự án đã được lưu trữ từ trước');
-    return this.getById(workspaceId, projectId);
+    return this.getById(organizationId, projectId);
   }
 
-  async unarchive(workspaceId: string, projectId: string, userId: string): Promise<ProjectDto> {
-    await this.requireProject(workspaceId, projectId);
+  async unarchive(organizationId: string, projectId: string, userId: string): Promise<ProjectDto> {
+    await this.requireProject(organizationId, projectId);
     const { count } = await this.prisma.project.updateMany({
-      where: { id: projectId, workspaceId, deletedAt: null, archivedAt: { not: null } },
+      where: { id: projectId, organizationId, deletedAt: null, archivedAt: { not: null } },
       data: { archivedAt: null, isArchived: false, updatedById: userId },
     });
     if (count === 0) throw new BusinessRuleException('Dự án đang hoạt động, không cần khôi phục');
-    return this.getById(workspaceId, projectId);
+    return this.getById(organizationId, projectId);
   }
 
-  /** Xoá mềm dự án (chỉ admin workspace). Dữ liệu giữ nguyên; dự án biến mất khỏi mọi danh sách. */
-  async remove(workspaceId: string, projectId: string, userId: string): Promise<{ success: true }> {
-    await this.requireProject(workspaceId, projectId);
+  /** Xoá mềm dự án (chỉ admin tổ chức). Dữ liệu giữ nguyên; dự án biến mất khỏi mọi danh sách. */
+  async remove(
+    organizationId: string,
+    projectId: string,
+    userId: string,
+  ): Promise<{ success: true }> {
+    await this.requireProject(organizationId, projectId);
     const { count } = await this.prisma.project.updateMany({
-      where: { id: projectId, workspaceId, deletedAt: null },
+      where: { id: projectId, organizationId, deletedAt: null },
       data: { deletedAt: new Date(), updatedById: userId },
     });
     if (count === 0) throw new NotFoundAppException('Dự án');
     return { success: true };
   }
 
-  private async getById(workspaceId: string, projectId: string): Promise<ProjectDto> {
+  private async getById(organizationId: string, projectId: string): Promise<ProjectDto> {
     const p = await this.prisma.project.findFirst({
-      where: { id: projectId, workspaceId, deletedAt: null },
+      where: { id: projectId, organizationId, deletedAt: null },
       include: { _count: ISSUE_COUNT, lead: true, programLinks: PROGRAM_LINKS },
     });
     if (!p) throw new NotFoundAppException('Dự án');
@@ -536,13 +540,13 @@ export class ProjectsService {
 
   /** Đặt ảnh đại diện project (xoá ảnh cũ best-effort). Trả về ProjectDto đầy đủ. */
   async setAvatar(
-    workspaceId: string,
+    organizationId: string,
     key: string,
     file: Express.Multer.File | undefined,
     req: Request,
   ): Promise<ProjectDto> {
     const prev = await this.prisma.project.findFirst({
-      where: { workspaceId, key, deletedAt: null },
+      where: { organizationId, key, deletedAt: null },
       select: { id: true, avatarUrl: true, archivedAt: true },
     });
     if (!prev) throw new NotFoundAppException('Dự án');
@@ -550,32 +554,32 @@ export class ProjectsService {
     const avatarUrl = await this.media.saveAvatar(file, 'proj', req);
     await this.prisma.project.update({ where: { id: prev.id }, data: { avatarUrl } });
     await this.media.removeByUrl(prev.avatarUrl);
-    return this.getByKey(workspaceId, key);
+    return this.getByKey(organizationId, key);
   }
 
   /** Gỡ ảnh đại diện project. */
-  async clearAvatar(workspaceId: string, key: string): Promise<ProjectDto> {
+  async clearAvatar(organizationId: string, key: string): Promise<ProjectDto> {
     const prev = await this.prisma.project.findFirst({
-      where: { workspaceId, key, deletedAt: null },
+      where: { organizationId, key, deletedAt: null },
       select: { id: true, avatarUrl: true, archivedAt: true },
     });
     if (!prev) throw new NotFoundAppException('Dự án');
     assertNotArchived(prev.archivedAt);
     await this.prisma.project.update({ where: { id: prev.id }, data: { avatarUrl: null } });
     await this.media.removeByUrl(prev.avatarUrl);
-    return this.getByKey(workspaceId, key);
+    return this.getByKey(organizationId, key);
   }
 
-  /** Config tạo issue: issue types + priorities của workspace (cho quick-add / AI generate). */
-  async meta(workspaceId: string, key: string) {
+  /** Config tạo issue: issue types + priorities của tổ chức (cho quick-add / AI generate). */
+  async meta(organizationId: string, key: string) {
     const project = await this.prisma.project.findFirst({
-      where: { workspaceId, key, deletedAt: null },
+      where: { organizationId, key, deletedAt: null },
       select: { id: true, key: true },
     });
     if (!project) throw new NotFoundAppException('Dự án');
     const [issueTypes, priorities, severities, resolutions] = await Promise.all([
       this.prisma.issueType.findMany({
-        where: { workspaceId },
+        where: { organizationId },
         orderBy: { hierarchyLevel: 'asc' },
         select: {
           id: true,
@@ -588,12 +592,12 @@ export class ProjectsService {
         },
       }),
       this.prisma.priority.findMany({
-        where: { workspaceId },
+        where: { organizationId },
         orderBy: { rank: 'desc' },
         select: { id: true, name: true, color: true, rank: true, isDefault: true },
       }),
       this.prisma.severity.findMany({
-        where: { workspaceId },
+        where: { organizationId },
         orderBy: { rank: 'desc' },
         select: {
           id: true,
@@ -605,7 +609,7 @@ export class ProjectsService {
         },
       }),
       this.prisma.resolution.findMany({
-        where: { workspaceId },
+        where: { organizationId },
         orderBy: { rank: 'asc' },
         select: { id: true, name: true, description: true, rank: true, isDefault: true },
       }),
@@ -620,7 +624,7 @@ export class ProjectsService {
   ): ProjectDto {
     return {
       id: p.id,
-      workspaceId: p.workspaceId,
+      organizationId: p.organizationId,
       key: p.key,
       name: p.name,
       description: p.description,

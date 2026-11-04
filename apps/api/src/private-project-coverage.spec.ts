@@ -13,7 +13,7 @@ import { describe, expect, it } from 'vitest';
  *  R2. Mọi route controller nhận `@CurrentUser()` phải truyền người dùng đó vào TỪNG lời gọi service (kiểm theo đúng lời gọi,
  *      không phải "đâu đó trong file có user.id"), HOẶC nằm trong `CONTROLLER_ALLOWLIST` kèm lý do đã kiểm tự động.
  *  R3. Chỉ `NotificationsService` được tạo dòng Notification / phát `NOTIFICATION_CREATED` (chốt lọc người nhận xem được việc).
- *  R4. Các điểm gửi ra ngoài đã khoá phải còn tham chiếu đúng thành phần khoá (Telegram, digest cấp workspace).
+ *  R4. Các điểm gửi ra ngoài đã khoá phải còn tham chiếu đúng thành phần khoá (Telegram, digest cấp tổ chức).
  *
  * Thêm service đọc chéo dự án mới ⇒ test này tự bắt; sửa bằng cách dùng `ProjectAccessService` (kèm test "người ngoài không
  * thấy" + "thành viên thấy") chứ không phải thêm vào allowlist.
@@ -227,7 +227,7 @@ interface ControllerCall {
   bodyProject: boolean;
   /** Route tự ném lỗi khi thiếu `projectId` (query bắt buộc). */
   requiresProjectId: boolean;
-  /** Route chỉ dành cho quản trị: `@Permissions(WORKSPACE_ADMIN…)` hoặc tự kiểm `isSystemAdmin`/`assertSysAdmin`. */
+  /** Route chỉ dành cho quản trị: `@Permissions(ORGANIZATION_ADMIN…)` hoặc tự kiểm `isSystemAdmin`/`assertSysAdmin`. */
   adminOnly: boolean;
   userParams: string[];
   passesUser: boolean;
@@ -272,7 +272,7 @@ function collectControllerCalls(): ControllerCall[] {
           decos.some(
             (d) =>
               decoratorName(d) === 'Permissions' &&
-              /WORKSPACE_ADMIN|SYSTEM_ADMIN/.test(d.getText()),
+              /ORGANIZATION_ADMIN|SYSTEM_ADMIN/.test(d.getText()),
           ) || /\bassertSysAdmin\b|\bisSystemAdmin\b/.test(bodyText);
         walk(m.body!, (n) => {
           if (!ts.isCallExpression(n) || !ts.isPropertyAccessExpression(n.expression)) return;
@@ -317,7 +317,7 @@ function collectControllerCalls(): ControllerCall[] {
  *  - BODY_PROJECT: như trên nhưng dự án nằm ở `req.body.projectId` (route ghi, đường dẫn không tham số, có `@Permissions`);
  *  - REQUIRED_PROJECT: `@ProjectRef('query'|'body')` + `@Permissions` và `projectId` BẮT BUỘC (route hoặc phương thức service ném lỗi
  *    khi thiếu) — nếu để trống thì guard không kiểm dự án nào và Prisma bỏ qua điều kiện `undefined`;
- *  - ADMIN_ONLY: mọi route gọi nó đều chỉ dành cho quản trị (`WORKSPACE_ADMIN`/quản trị hệ thống);
+ *  - ADMIN_ONLY: mọi route gọi nó đều chỉ dành cho quản trị (`ORGANIZATION_ADMIN`/quản trị hệ thống);
  *  - INTERNAL: KHÔNG route nào gọi trực tiếp (cron/sự kiện/được service khác gọi sau khi đã kiểm quyền);
  *  - REVIEWED: đã xem xét thủ công — dữ liệu không thuộc dự án hoặc đã lọc theo cách khác (lý do phải cụ thể).
  */
@@ -355,7 +355,7 @@ const R_BODY_PROJECT =
 const R_REQUIRED_PROJECT =
   'projectId query BẮT BUỘC (ném lỗi khi thiếu) + @ProjectRef query — guard 404 người ngoài dự án';
 const R_ADMIN_ONLY =
-  'route chỉ dành cho quản trị workspace/hệ thống — người đó đã xem được mọi dự án';
+  'route chỉ dành cho quản trị organization/hệ thống — người đó đã xem được mọi dự án';
 
 /** Khoá: `file::Class.method`. Loại + lý do; ROUTE_GUARDED/BODY_PROJECT/REQUIRED_PROJECT/ADMIN_ONLY/INTERNAL được kiểm tự động. */
 const READ_ALLOWLIST: Record<string, [Kind, string]> = {
@@ -562,11 +562,11 @@ const READ_ALLOWLIST: Record<string, [Kind, string]> = {
   ],
   'integrations/integrations.service.ts::IntegrationsService.onIssuesBulkUpdated': [
     'INTERNAL',
-    'bộ lắng nghe sự kiện (không phải route): chỉ tra khoá dự án để ghi vào tin gộp rồi gửi qua fanout — fanout loại dự án riêng tư khỏi kênh cấp workspace',
+    'bộ lắng nghe sự kiện (không phải route): chỉ tra khoá dự án để ghi vào tin gộp rồi gửi qua fanout — fanout loại dự án riêng tư khỏi kênh cấp organization',
   ],
   'integrations/integrations.service.ts::IntegrationsService.onCommentAdded': [
     'INTERNAL',
-    'bộ lắng nghe sự kiện (không phải route): chỉ tra khoá/tiêu đề việc rồi gửi qua fanout — fanout loại dự án riêng tư khỏi kênh cấp workspace',
+    'bộ lắng nghe sự kiện (không phải route): chỉ tra khoá/tiêu đề việc rồi gửi qua fanout — fanout loại dự án riêng tư khỏi kênh cấp organization',
   ],
   'issues/rank.service.ts::RankService.rankOf': [
     'INTERNAL',
@@ -576,9 +576,9 @@ const READ_ALLOWLIST: Record<string, [Kind, string]> = {
     'INTERNAL',
     'kiểm giới hạn WIP nội bộ trong chuyển trạng thái đã qua guard; chỉ đếm, không trả dữ liệu',
   ],
-  'rbac/rbac.service.ts::RbacService.assertProjectInWorkspace': [
+  'rbac/rbac.service.ts::RbacService.assertProjectInOrganization': [
     'INTERNAL',
-    'kiểm dự án thuộc workspace (nền tảng của guard); không trả dữ liệu dự án',
+    'kiểm dự án thuộc organization (nền tảng của guard); không trả dữ liệu dự án',
   ],
   'sla/sla.service.ts::SlaService.onCommentAdded': [
     'INTERNAL',
@@ -691,7 +691,7 @@ describe('dự án riêng tư — R1: service/gateway đọc dữ liệu theo d�
     expect(problems).toEqual([]);
   });
 
-  it('wiki không tự tính "thấy dự án" bằng project:view cấp workspace (một hàm quyết định duy nhất)', () => {
+  it('wiki không tự tính "thấy dự án" bằng project:view cấp organization (một hàm quyết định duy nhất)', () => {
     const ids = new Set<string>();
     walk(parse(join(MODULES, 'wiki/wiki.service.ts')), (n) => {
       if (ts.isIdentifier(n)) ids.add(n.text);
@@ -766,11 +766,9 @@ const CONTROLLER_ALLOWLIST: Record<string, [Kind, string]> = {
     'ADMIN_ONLY',
     'console quản trị hệ thống — tự kiểm assertSysAdmin trước khi gọi service',
   ],
-  'admin/admin-console.controller.ts::AdminConsoleController.workspaces -> workspacesSvc.list': [
-    'ADMIN_ONLY',
-    'console quản trị hệ thống — tự kiểm assertSysAdmin trước khi gọi service',
-  ],
-  'admin/admin-console.controller.ts::AdminConsoleController.patchWorkspace -> workspacesSvc.patch':
+  'admin/admin-console.controller.ts::AdminConsoleController.organizations -> organizationsSvc.list':
+    ['ADMIN_ONLY', 'console quản trị hệ thống — tự kiểm assertSysAdmin trước khi gọi service'],
+  'admin/admin-console.controller.ts::AdminConsoleController.patchOrganization -> organizationsSvc.patch':
     ['ADMIN_ONLY', 'console quản trị hệ thống — tự kiểm assertSysAdmin trước khi gọi service'],
   'admin/admin-console.controller.ts::AdminConsoleController.health -> systemSvc.health': [
     'ADMIN_ONLY',

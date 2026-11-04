@@ -123,7 +123,7 @@ export class FulltextSearcher {
    * (người gọi vẫn có nhánh `contains` phòng thủ). Lỗi khác được ném lại.
    */
   async search(
-    workspaceId: string,
+    organizationId: string,
     raw: string,
     opts: SearchOptions = {},
     tx?: TxClient,
@@ -140,7 +140,7 @@ export class FulltextSearcher {
     try {
       try {
         return await this.attempt(tx, () =>
-          this.ranked(db, built, workspaceId, projectFilter, limit),
+          this.ranked(db, built, organizationId, projectFilter, limit),
         );
       } catch (err) {
         // Phòng thủ: tsquery vẫn bị từ chối (42601) ⇒ chạy lại chỉ bằng nhánh ILIKE/trigram thay vì 500.
@@ -153,7 +153,7 @@ export class FulltextSearcher {
           );
         }
         return await this.attempt(tx, () =>
-          this.ranked(db, { ...built, tsquery: '' }, workspaceId, projectFilter, limit),
+          this.ranked(db, { ...built, tsquery: '' }, organizationId, projectFilter, limit),
         );
       }
     } catch (err) {
@@ -168,7 +168,7 @@ export class FulltextSearcher {
       const rows = await db.$queryRaw<{ id: string }[]>`
         SELECT i."id" FROM "Issue" i
         JOIN "Project" p ON p."id" = i."projectId"
-        WHERE i."workspaceId" = ${workspaceId}
+        WHERE i."organizationId" = ${organizationId}
           AND i."deletedAt" IS NULL
           AND p."deletedAt" IS NULL
           ${projectFilter}
@@ -187,7 +187,7 @@ export class FulltextSearcher {
    * Chỉ BỔ SUNG cho phép `contains` của compiler (hợp hai tập) nên bị cắt ở trần cũng không làm mất kết quả đã khớp chính xác.
    */
   async summaryContains(
-    workspaceId: string,
+    organizationId: string,
     raw: string,
     opts: SearchOptions = {},
   ): Promise<{ ids: string[] }> {
@@ -201,7 +201,7 @@ export class FulltextSearcher {
     const rows = await this.prisma.$queryRaw<{ id: string }[]>`
         SELECT i."id" FROM "Issue" i
         JOIN "Project" p ON p."id" = i."projectId"
-        WHERE i."workspaceId" = ${workspaceId}
+        WHERE i."organizationId" = ${organizationId}
           AND i."deletedAt" IS NULL
           AND p."deletedAt" IS NULL
           ${projectFilter}
@@ -231,7 +231,7 @@ export class FulltextSearcher {
   private async ranked(
     db: Pick<PrismaClient, '$queryRaw'>,
     built: FulltextQuery,
-    workspaceId: string,
+    organizationId: string,
     projectFilter: Prisma.Sql,
     limit: number,
   ): Promise<{ ids: string[] }> {
@@ -247,7 +247,7 @@ export class FulltextSearcher {
         FROM "Issue" i
         JOIN "Project" p ON p."id" = i."projectId"
         CROSS JOIN q
-        WHERE i."workspaceId" = ${workspaceId}
+        WHERE i."organizationId" = ${organizationId}
           AND i."deletedAt" IS NULL
           AND p."deletedAt" IS NULL
           ${projectFilter}

@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { PERMISSIONS } from '@tirapro/types';
 import { DIGEST_BLOCK_IDS } from '@tirapro/shared';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import { WorkspaceId } from '../../common/decorators/workspace-id.decorator';
+import { OrganizationId } from '../../common/decorators/organization-id.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import type { AuthUser } from '../../common/types/request';
@@ -68,64 +68,64 @@ export class DigestsController {
   @ProjectRef('query', 'projectId')
   @Get()
   async list(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
     @Query('projectId') projectId?: string,
   ) {
-    return this.digests.list(workspaceId, projectId, user.id);
+    return this.digests.list(organizationId, projectId, user.id);
   }
 
   /** Xem trước nội dung (chưa lưu) theo quyền xem của người bấm. Khai báo TRƯỚC `:id/run` cho rõ ràng. */
   @Post('preview')
-  // Cùng quyền với tạo/sửa/chạy digest (`integration:manage`, phạm vi workspace) — xem trước là bước của chính luồng đó.
+  // Cùng quyền với tạo/sửa/chạy digest (`integration:manage`, phạm vi tổ chức) — xem trước là bước của chính luồng đó.
   @Permissions(PERMISSIONS.INTEGRATION_MANAGE)
   async preview(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
     @Body(new ZodValidationPipe(previewDigestSchema)) dto: PreviewDigestBody,
   ) {
-    return this.digests.preview(workspaceId, user.id, dto);
+    return this.digests.preview(organizationId, user.id, dto);
   }
 
   @Post()
   @Permissions(PERMISSIONS.INTEGRATION_MANAGE)
   @ProjectRef('body', 'projectId')
   async create(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
     @Body(new ZodValidationPipe(createDigestSchema)) dto: CreateDigestBody,
   ) {
-    return this.digests.create(workspaceId, user.id, dto);
+    return this.digests.create(organizationId, user.id, dto);
   }
 
   @Patch(':id')
   @Permissions(PERMISSIONS.INTEGRATION_MANAGE)
   async update(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
     @Body(new ZodValidationPipe(updateDigestSchema)) dto: UpdateDigestBody,
   ) {
-    return this.digests.update(workspaceId, id, dto, user.id);
+    return this.digests.update(organizationId, id, dto, user.id);
   }
 
   @Delete(':id')
   @Permissions(PERMISSIONS.INTEGRATION_MANAGE)
   async remove(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
   ) {
-    return this.digests.remove(workspaceId, id, user.id);
+    return this.digests.remove(organizationId, id, user.id);
   }
 
   @Post(':id/run')
   @Permissions(PERMISSIONS.INTEGRATION_MANAGE)
   async run(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
   ) {
-    return this.digests.run(workspaceId, id, user.id);
+    return this.digests.run(organizationId, id, user.id);
   }
 }

@@ -19,7 +19,7 @@ const HEALTH_DTO = {
 };
 function healthStub() {
   return {
-    forProjects: vi.fn((_workspaceId: string, ids: string[]) =>
+    forProjects: vi.fn((_organizationId: string, ids: string[]) =>
       Promise.resolve(new Map(ids.map((id) => [id, HEALTH_DTO]))),
     ),
   };
@@ -213,14 +213,14 @@ describe('AnalyticsService.projectReport — aggregate SQL', () => {
     expect(health.forProjects).toHaveBeenCalledWith('w1', ['p1'], null);
   });
 
-  it('project không thuộc workspace => 404', async () => {
+  it('project không thuộc organization => 404', async () => {
     const { service, prisma } = make();
     prisma.project.findFirst.mockResolvedValueOnce(null as never);
     await expect(service.projectReport('w1', 'x')).rejects.toMatchObject({ status: 404 });
   });
 });
 
-describe('AnalyticsService.workspaceOverview — aggregate SQL', () => {
+describe('AnalyticsService.organizationOverview — aggregate SQL', () => {
   const NOW = new Date('2026-10-15T12:00:00.000Z');
   beforeEach(() => {
     vi.useFakeTimers();
@@ -358,7 +358,7 @@ describe('AnalyticsService.workspaceOverview — aggregate SQL', () => {
 
   it('mọi truy vấn issue của tổng quan loại dự án đã xoá mềm; raw SQL có EXISTS Project.deletedAt IS NULL', async () => {
     const { service, prisma, queryRaw } = make();
-    await service.workspaceOverview('w1', 'u0');
+    await service.organizationOverview('w1', 'u0');
     expect(prisma.issue.groupBy.mock.calls.length).toBeGreaterThan(0);
     for (const c of prisma.issue.groupBy.mock.calls)
       expect(JSON.stringify((c[0] as { where: unknown }).where)).toContain(
@@ -379,7 +379,7 @@ describe('AnalyticsService.workspaceOverview — aggregate SQL', () => {
 
   it('việc chưa duyệt/từ chối/hoãn (triageState khác null và khác ACCEPTED) KHÔNG lẫn vào số liệu: mọi where + raw SQL đều lọc', async () => {
     const { service, prisma, queryRaw } = make();
-    await service.workspaceOverview('w1', 'u0');
+    await service.organizationOverview('w1', 'u0');
     const wheres = [
       ...prisma.issue.groupBy.mock.calls,
       ...prisma.issue.count.mock.calls,
@@ -394,7 +394,7 @@ describe('AnalyticsService.workspaceOverview — aggregate SQL', () => {
 
   it('totals gồm cả project lưu trữ, byProject chỉ gồm project đang hiển thị', async () => {
     const { service } = make();
-    const r = await service.workspaceOverview('w1', 'u0');
+    const r = await service.organizationOverview('w1', 'u0');
     expect(r.projectCount).toBe(2);
     expect(r.totals).toEqual({ total: 10, todo: 6, inProgress: 1, done: 3, overdue: 2, bug: 6 });
     expect(r.projects).toEqual([
@@ -429,14 +429,14 @@ describe('AnalyticsService.workspaceOverview — aggregate SQL', () => {
 
   it('sức khoẻ lấy một lô cho các dự án đang hiển thị (không gồm dự án lưu trữ)', async () => {
     const { service, health } = make();
-    await service.workspaceOverview('w1', 'u0');
+    await service.organizationOverview('w1', 'u0');
     expect(health.forProjects).toHaveBeenCalledTimes(1);
     expect(health.forProjects).toHaveBeenCalledWith('w1', ['p1', 'p2'], 'u0');
   });
 
   it('byType/byPriority/trend/warnings/attention giữ đúng hình dạng cũ', async () => {
     const { service } = make();
-    const r = await service.workspaceOverview('w1', 'u0');
+    const r = await service.organizationOverview('w1', 'u0');
     expect(r.byType).toEqual([
       { name: 'Bug', color: '#f00', count: 6 },
       { name: 'Task', color: '#0af', count: 4 },
@@ -488,7 +488,7 @@ describe('AnalyticsService.workspaceOverview — aggregate SQL', () => {
 
   it('"Quá hạn" theo NGÀY VN: where dùng dueDate < đầu ngày VN (hạn hôm nay chưa quá hạn), không phải < bây giờ', async () => {
     const { service, prisma } = make();
-    await service.workspaceOverview('w1', 'u0');
+    await service.organizationOverview('w1', 'u0');
     // NOW = 19:00 VN ngày 15/10 → ranh giới = 2026-10-15T00:00Z
     const cutoff = new Date('2026-10-15T00:00:00.000Z');
     const overdueWheres = prisma.issue.groupBy.mock.calls
@@ -500,7 +500,7 @@ describe('AnalyticsService.workspaceOverview — aggregate SQL', () => {
 
   it('không kéo từng issue + câu raw xu hướng bind tham số, không nội suy chuỗi', async () => {
     const { service, prisma, queryRaw } = make();
-    await service.workspaceOverview('w1', 'u0');
+    await service.organizationOverview('w1', 'u0');
     const bys = prisma.issue.groupBy.mock.calls.map((c) => c[0].by.join(','));
     expect(bys).toEqual(['projectId,statusId', 'projectId,typeId', 'priorityId', 'projectId']);
     // findMany của issue chỉ cho danh sách "cần chú ý" và luôn có take 8
@@ -524,17 +524,17 @@ describe('AnalyticsService.workspaceOverview — aggregate SQL', () => {
       visibleProjectIds: vi.fn(() => Promise.resolve(ids)),
     });
 
-    it('workspaceOverview(w, viewer): project.findMany và mọi truy vấn issue chỉ tính dự án người xem thấy', async () => {
+    it('organizationOverview(w, viewer): project.findMany và mọi truy vấn issue chỉ tính dự án người xem thấy', async () => {
       const access = accessFor(['p1']);
       const { service, prisma, health } = make(access);
-      const overview = await service.workspaceOverview('w1', 'u1');
+      const overview = await service.organizationOverview('w1', 'u1');
       expect(overview.scoped).toBe(true);
       expect(access.visibleWhere).toHaveBeenCalledWith('u1', 'w1');
       // Sức khoẻ chỉ tính cho dự án đã lọc theo người xem (và truyền người xem tiếp làm lớp phòng thủ).
       expect(health.forProjects).toHaveBeenCalledWith('w1', ['p1', 'p2'], 'u1');
       expect(
         (prisma.project.findMany.mock.calls[0] as unknown as [{ where: unknown }])[0].where,
-      ).toMatchObject({ workspaceId: 'w1', deletedAt: null, ...visible });
+      ).toMatchObject({ organizationId: 'w1', deletedAt: null, ...visible });
       const calls = [
         ...prisma.issue.groupBy.mock.calls,
         ...prisma.issue.count.mock.calls,
@@ -548,7 +548,7 @@ describe('AnalyticsService.workspaceOverview — aggregate SQL', () => {
 
     it('raw SQL xu hướng 8 tuần giới hạn theo id dự án thấy được', async () => {
       const { service, queryRaw } = make(accessFor(['p1']));
-      await service.workspaceOverview('w1', 'u1');
+      await service.organizationOverview('w1', 'u1');
       expect(queryRaw.mock.calls.length).toBe(2);
       for (const c of queryRaw.mock.calls as unknown[][]) {
         const text = JSON.stringify(c[0]) + JSON.stringify(c.slice(1));
@@ -559,7 +559,7 @@ describe('AnalyticsService.workspaceOverview — aggregate SQL', () => {
 
     it('người xem là admin (visibleWhere {}, ids null) → không lọc dự án riêng tư', async () => {
       const admin = make(ACCESS_ALL);
-      await admin.service.workspaceOverview('w1', 'u9');
+      await admin.service.organizationOverview('w1', 'u9');
       for (const c of admin.prisma.issue.groupBy.mock.calls)
         expect(JSON.stringify((c[0] as { where: unknown }).where)).not.toContain('isPrivate');
       for (const c of admin.queryRaw.mock.calls as unknown[][])
@@ -867,8 +867,8 @@ describe('AnalyticsService.burndown — việc chưa duyệt không tính vào p
   });
 });
 
-describe('AnalyticsService.burndown — sprint phải thuộc đúng dự án trong workspace', () => {
-  it('chỉ tìm sprint thuộc đúng dự án trong workspace (chặn lấy sprint dự án khác bằng projectId của mình)', async () => {
+describe('AnalyticsService.burndown — sprint phải thuộc đúng dự án trong organization', () => {
+  it('chỉ tìm sprint thuộc đúng dự án trong organization (chặn lấy sprint dự án khác bằng projectId của mình)', async () => {
     const { service, prisma } = makeBurndown([]);
     await service.burndown('w1', 'p1', 'sp1');
     const where = (
@@ -878,7 +878,7 @@ describe('AnalyticsService.burndown — sprint phải thuộc đúng dự án tr
       id: 'sp1',
       projectId: 'p1',
       deletedAt: null,
-      project: { workspaceId: 'w1' },
+      project: { organizationId: 'w1' },
     });
   });
 
@@ -892,7 +892,7 @@ describe('AnalyticsService.burndown — sprint phải thuộc đúng dự án tr
 
   it('hành vi: sprint của dự án p2 + projectId của dự án mình (p1) => từ chối; đúng p2 => trả về', async () => {
     const { service, prisma } = makeBurndown([]);
-    // DB giả: chỉ sprint sp-p2 (thuộc p2, workspace w1) — findFirst áp đúng điều kiện where như Prisma
+    // DB giả: chỉ sprint sp-p2 (thuộc p2, tổ chức w1) — findFirst áp đúng điều kiện where như Prisma
     const sprintP2 = {
       id: 'sp-p2',
       projectId: 'p2',
@@ -904,12 +904,12 @@ describe('AnalyticsService.burndown — sprint phải thuộc đúng dự án tr
       issues: [],
     };
     prisma.sprint.findFirst.mockImplementation(((args: {
-      where: { id: string; projectId: string; project: { workspaceId: string } };
+      where: { id: string; projectId: string; project: { organizationId: string } };
     }) =>
       Promise.resolve(
         args.where.id === sprintP2.id &&
           args.where.projectId === sprintP2.projectId &&
-          args.where.project.workspaceId === 'w1'
+          args.where.project.organizationId === 'w1'
           ? sprintP2
           : null,
       )) as never);
@@ -1197,7 +1197,7 @@ describe('AnalyticsService.sprintSummary', () => {
     expect(r.time).toEqual({ totalDays: 18, elapsedDays: 15, daysLeft: 3 });
   });
 
-  it('sprint không khớp dự án/workspace => NotFound', async () => {
+  it('sprint không khớp dự án/organization => NotFound', async () => {
     const { service } = make(null);
     await expect(service.sprintSummary('w1', 'p-khac', 'sp1')).rejects.toBeInstanceOf(
       NotFoundAppException,

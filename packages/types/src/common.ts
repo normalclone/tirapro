@@ -67,9 +67,9 @@ export const ERROR_CODES = {
   CONFLICT: 'CONFLICT',
   /** Thêm người đã là thành viên (không âm thầm ghi đè vai trò) — đổi vai trò ở trang Thành viên. */
   ALREADY_MEMBER: 'ALREADY_MEMBER',
-  /** Hạ/gỡ quản trị workspace cuối cùng — workspace sẽ không còn ai quản trị. */
-  LAST_WORKSPACE_ADMIN: 'LAST_WORKSPACE_ADMIN',
-  /** 403: chỉ người đang giữ `workspace:admin` (hoặc admin hệ thống) mới cấp/gỡ quyền quản trị (P-C14). */
+  /** Hạ/gỡ quản trị tổ chức cuối cùng — tổ chức sẽ không còn ai quản trị. */
+  LAST_ORGANIZATION_ADMIN: 'LAST_ORGANIZATION_ADMIN',
+  /** 403: chỉ người đang giữ `organization:admin` (hoặc admin hệ thống) mới cấp/gỡ quyền quản trị (P-C14). */
   ADMIN_GRANT_REQUIRES_ADMIN: 'ADMIN_GRANT_REQUIRES_ADMIN',
   /** 403: chỉ quản trị hệ thống được đổi họ tên, email, ảnh đại diện — người dùng thường chỉ đổi mật khẩu, múi giờ, ngôn ngữ. */
   PROFILE_LOCKED: 'PROFILE_LOCKED',

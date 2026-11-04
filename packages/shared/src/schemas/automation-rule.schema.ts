@@ -253,7 +253,7 @@ export const testRuleSchema = z.object({
 
 /**
  * Xem trước "khớp N việc hiện có" của danh sách điều kiện (chưa lưu quy tắc). `projectId` trong body: guard phân quyền
- * đọc đúng trường này (`@ProjectRef('body', 'projectId')`); không có = quy tắc cấp workspace.
+ * đọc đúng trường này (`@ProjectRef('body', 'projectId')`); không có = quy tắc cấp organization.
  */
 export const previewMatchSchema = z.object({
   projectId: z.string().min(1).optional(),

@@ -36,23 +36,29 @@ describe.skipIf(!DB_URL)('/me/overview ↔ Postgres thật', () => {
     prisma = new PrismaClient({ datasources: { db: { url: DB_URL! } } });
     for (const u of [ME, OTHER])
       await prisma.user.create({ data: { id: u, email: `${u}@x.test`, displayName: u } });
-    await prisma.workspace.create({ data: { id: WS, name: TAG, slug: WS, ownerId: ME } });
+    await prisma.organization.create({ data: { id: WS, name: TAG, slug: WS, ownerId: ME } });
     await prisma.role.create({
-      data: { id: id('role'), workspaceId: WS, name: 'Member', scope: 'WORKSPACE' },
+      data: { id: id('role'), organizationId: WS, name: 'Member', scope: 'ORGANIZATION' },
     });
     for (const u of [ME, OTHER])
-      await prisma.workspaceMembership.create({
-        data: { workspaceId: WS, userId: u, roleId: id('role') },
+      await prisma.organizationMembership.create({
+        data: { organizationId: WS, userId: u, roleId: id('role') },
       });
     const key = TAG.slice(2, 8).toUpperCase();
     await prisma.project.create({
-      data: { id: PROJ.pub, workspaceId: WS, key: `${key}P`, name: 'Pub' },
+      data: { id: PROJ.pub, organizationId: WS, key: `${key}P`, name: 'Pub' },
     });
     await prisma.project.create({
-      data: { id: PROJ.sec, workspaceId: WS, key: `${key}S`, name: 'Sec', isPrivate: true },
+      data: { id: PROJ.sec, organizationId: WS, key: `${key}S`, name: 'Sec', isPrivate: true },
     });
     await prisma.project.create({
-      data: { id: PROJ.secMine, workspaceId: WS, key: `${key}M`, name: 'SecMine', isPrivate: true },
+      data: {
+        id: PROJ.secMine,
+        organizationId: WS,
+        key: `${key}M`,
+        name: 'SecMine',
+        isPrivate: true,
+      },
     });
     await prisma.projectMembership.create({
       data: { id: id('pm'), projectId: PROJ.secMine, userId: ME, roleId: id('role') },
@@ -60,10 +66,10 @@ describe.skipIf(!DB_URL)('/me/overview ↔ Postgres thật', () => {
     const types = { TASK: 'Task', BUG: 'Bug', EPIC: 'Epic', SUBTASK: 'Subtask' } as const;
     for (const [k, name] of Object.entries(types))
       await prisma.issueType.create({
-        data: { id: id(`type-${k}`), workspaceId: WS, name, key: k as keyof typeof types },
+        data: { id: id(`type-${k}`), organizationId: WS, name, key: k as keyof typeof types },
       });
     await prisma.workflow.create({
-      data: { id: id('wf'), workspaceId: WS, name: 'WF', isDefault: true },
+      data: { id: id('wf'), organizationId: WS, name: 'WF', isDefault: true },
     });
     const sts: [string, string, 'TODO' | 'IN_PROGRESS' | 'DONE'][] = [
       ['open', 'Open', 'TODO'],
@@ -78,10 +84,10 @@ describe.skipIf(!DB_URL)('/me/overview ↔ Postgres thật', () => {
         data: { id: id(`st-${k}`), workflowId: id('wf'), name, category },
       });
     await prisma.priority.create({
-      data: { id: id('pr-high'), workspaceId: WS, name: 'High', rank: 4 },
+      data: { id: id('pr-high'), organizationId: WS, name: 'High', rank: 4 },
     });
     await prisma.priority.create({
-      data: { id: id('pr-low'), workspaceId: WS, name: 'Low', rank: 1 },
+      data: { id: id('pr-low'), organizationId: WS, name: 'Low', rank: 1 },
     });
 
     interface Mk {
@@ -103,7 +109,7 @@ describe.skipIf(!DB_URL)('/me/overview ↔ Postgres thật', () => {
       await prisma.issue.create({
         data: {
           id: id(name),
-          workspaceId: WS,
+          organizationId: WS,
           projectId: o.project ?? PROJ.pub,
           number: n,
           key: `K${TAG}-${n}`,
@@ -182,19 +188,19 @@ describe.skipIf(!DB_URL)('/me/overview ↔ Postgres thật', () => {
 
   afterAll(async () => {
     if (!prisma) return;
-    await prisma.issue.updateMany({ where: { workspaceId: WS }, data: { parentId: null } });
-    await prisma.issue.deleteMany({ where: { workspaceId: WS } });
+    await prisma.issue.updateMany({ where: { organizationId: WS }, data: { parentId: null } });
+    await prisma.issue.deleteMany({ where: { organizationId: WS } });
     await prisma.projectMembership.deleteMany({
       where: { projectId: { in: Object.values(PROJ) } },
     });
-    await prisma.project.deleteMany({ where: { workspaceId: WS } });
-    await prisma.status.deleteMany({ where: { workflow: { workspaceId: WS } } });
-    await prisma.workflow.deleteMany({ where: { workspaceId: WS } });
-    await prisma.issueType.deleteMany({ where: { workspaceId: WS } });
-    await prisma.priority.deleteMany({ where: { workspaceId: WS } });
-    await prisma.workspaceMembership.deleteMany({ where: { workspaceId: WS } });
-    await prisma.role.deleteMany({ where: { workspaceId: WS } });
-    await prisma.workspace.deleteMany({ where: { id: WS } });
+    await prisma.project.deleteMany({ where: { organizationId: WS } });
+    await prisma.status.deleteMany({ where: { workflow: { organizationId: WS } } });
+    await prisma.workflow.deleteMany({ where: { organizationId: WS } });
+    await prisma.issueType.deleteMany({ where: { organizationId: WS } });
+    await prisma.priority.deleteMany({ where: { organizationId: WS } });
+    await prisma.organizationMembership.deleteMany({ where: { organizationId: WS } });
+    await prisma.role.deleteMany({ where: { organizationId: WS } });
+    await prisma.organization.deleteMany({ where: { id: WS } });
     await prisma.user.deleteMany({ where: { id: { in: [ME, OTHER] } } });
     await prisma.$disconnect();
   }, 120_000);

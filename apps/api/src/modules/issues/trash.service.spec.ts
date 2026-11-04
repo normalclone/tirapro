@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { TrashService } from './trash.service';
 
 describe('TrashService.list', () => {
-  it('chỉ lấy việc đã xoá của đúng dự án/workspace, mới xoá lên trước, kèm tên người xoá', async () => {
+  it('chỉ lấy việc đã xoá của đúng dự án/organization, mới xoá lên trước, kèm tên người xoá', async () => {
     const del = new Date('2026-10-16T09:00:00Z');
     const issue = {
       findMany: vi.fn(() =>
@@ -33,7 +33,7 @@ describe('TrashService.list', () => {
     const out = await service.list('w1', 'p1');
     expect(issue.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { workspaceId: 'w1', projectId: 'p1', deletedAt: { not: null } },
+        where: { organizationId: 'w1', projectId: 'p1', deletedAt: { not: null } },
         orderBy: { deletedAt: 'desc' },
       }),
     );

@@ -12,7 +12,7 @@ export const offsetPaginationQuerySchema = z.object({
   pageSize: z.coerce.number().int().min(1).max(100).default(25),
 });
 
-export const createWorkspaceSchema = z.object({
+export const createOrganizationSchema = z.object({
   name: z.string().min(1, 'Tên tổ chức bắt buộc').max(120),
 });
 
@@ -79,7 +79,7 @@ export const createSprintSchema = z.object({
 
 export type PaginationQuery = z.infer<typeof paginationQuerySchema>;
 export type CreateProjectInput = z.infer<typeof createProjectSchema>;
-export type CreateWorkspaceInput = z.infer<typeof createWorkspaceSchema>;
+export type CreateOrganizationInput = z.infer<typeof createOrganizationSchema>;
 export type CreateCommentInput = z.infer<typeof createCommentSchema>;
 export type UpdateCommentInput = z.infer<typeof updateCommentSchema>;
 export type ValidateJqlInput = z.infer<typeof validateJqlSchema>;

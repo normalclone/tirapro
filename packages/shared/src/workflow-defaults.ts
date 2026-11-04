@@ -1,15 +1,15 @@
 import type { IssueTypeKey, StatusCategory, WorkflowDefaultKey } from '@tirapro/types';
 
 export {
-  setWorkspaceSchemeSchema,
+  setOrganizationSchemeSchema,
   setProjectOverrideSchema,
-  type SetWorkspaceSchemeInput,
+  type SetOrganizationSchemeInput,
   type SetProjectOverrideInput,
 } from './schemas/workflow-scheme';
 
 /**
  * Ba quy trình mặc định (Standard / Bug / Epic) và bảng ánh xạ dữ liệu cũ.
- * MỘT nơi định nghĩa cho API (seed workspace mới, script migrate) + web.
+ * MỘT nơi định nghĩa cho API (seed tổ chức mới, script migrate) + web.
  */
 
 /** `from` của bước chuyển: tên trạng thái, `null` = mọi trạng thái, `'*OPEN'` = mọi trạng thái mở. */

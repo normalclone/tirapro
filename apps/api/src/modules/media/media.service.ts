@@ -30,7 +30,7 @@ const EXT_TO_MIME: Record<string, string> = {
 const MAX_AVATAR_BYTES = 5 * 1024 * 1024;
 
 /**
- * Lưu/serve ảnh đại diện (avatar/logo) cho user, workspace, project.
+ * Lưu/serve ảnh đại diện (avatar/logo) cho user, tổ chức, project.
  * Ảnh là dữ liệu công khai → serve qua route @Public (stream qua API), lưu qua ObjectStorage với khoá `avatars/<file>`
  * (local: {STORAGE_LOCAL_DIR}/avatars; s3: object cùng khoá trong bucket).
  * URL trả về là tuyệt đối (dựng từ request lúc upload) để nhúng trực tiếp bằng URL ảnh.

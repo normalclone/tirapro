@@ -261,14 +261,14 @@ describe('TriageService.toDto', () => {
 describe('TriageService — dự án riêng tư: hộp triage không lộ việc của dự án ẩn (P15)', () => {
   const visible = { OR: [{ isPrivate: false }, { memberships: { some: { userId: 'u1' } } }] };
 
-  it('inbox không có projectId (cấp workspace) ⇒ where.project = visible', async () => {
+  it('inbox không có projectId (cấp organization) ⇒ where.project = visible', async () => {
     const { service, prisma, access } = make();
     access.visibleWhere.mockResolvedValue(visible);
     await service.inbox('w1', undefined, undefined, 50, 'u1');
     expect(access.visibleWhere).toHaveBeenCalledWith('u1', 'w1');
     const where = (prisma.issue.findMany.mock.calls[0] as unknown as [{ where: object }])[0].where;
     expect(where).toMatchObject({
-      workspaceId: 'w1',
+      organizationId: 'w1',
       deletedAt: null,
       project: { deletedAt: null, ...visible },
     });
@@ -340,7 +340,7 @@ describe('TriageService — phát sự kiện đúng dạng IssueDto (S-I2)', ()
 });
 
 describe('TriageService.accept — kiểm người phụ trách (S-I3)', () => {
-  it('một chạm: người không gán được (khác workspace / đã khoá / không thấy dự án) => 422 và không ghi gì', async () => {
+  it('một chạm: người không gán được (khác organization / đã khoá / không thấy dự án) => 422 và không ghi gì', async () => {
     const { service, issues, update } = make();
     issues.isAssignableMember.mockResolvedValueOnce(false);
     await expect(

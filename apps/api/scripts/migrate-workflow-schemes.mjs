@@ -1,11 +1,11 @@
 /**
- * Tirapro — chuyển dữ liệu cũ sang "quy trình theo loại việc" (Standard / Bug / Epic) cho MỌI workspace (hoặc một workspace).
+ * Tirapro — chuyển dữ liệu cũ sang "quy trình theo loại việc" (Standard / Bug / Epic) cho MỌI tổ chức (hoặc một tổ chức).
  *
  *   node scripts/migrate-workflow-schemes.mjs --dry-run        # chỉ in kế hoạch + số liệu, KHÔNG ghi gì
  *   node scripts/migrate-workflow-schemes.mjs                  # chạy thật
- *   node scripts/migrate-workflow-schemes.mjs --workspace <id|slug>
+ *   node scripts/migrate-workflow-schemes.mjs --organization <id|slug>
  *
- * Mỗi workspace (một transaction, có khoá advisory như thao tác quản trị quy trình):
+ * Mỗi tổ chức (một transaction, có khoá advisory như thao tác quản trị quy trình):
  *  1. đảm bảo 3 quy trình mặc định theo TÊN CHÍNH XÁC (thiếu thì tạo; quy trình khác — kể cả "Bug" tuỳ chỉnh — không bị đụng);
  *  2. đảm bảo dòng cấu hình cho mọi loại việc (dòng đã có luôn thắng → chạy lại sau khi quản trị viên chỉnh vẫn an toàn);
  *  3. chuyển việc (kể cả trong thùng rác) đang ở trạng thái của quy trình KHÁC quy trình hiệu lực: bảng ánh xạ cũ → cùng tên →
@@ -22,10 +22,10 @@ import { PrismaClient } from '@prisma/client';
 
 const args = process.argv.slice(2);
 const dryRun = args.includes('--dry-run');
-const wsIdx = args.indexOf('--workspace');
-const workspace = wsIdx >= 0 ? args[wsIdx + 1] : undefined;
-if (wsIdx >= 0 && !workspace) {
-  console.error('--workspace cần kèm id hoặc slug.');
+const wsIdx = args.indexOf('--organization');
+const organization = wsIdx >= 0 ? args[wsIdx + 1] : undefined;
+if (wsIdx >= 0 && !organization) {
+  console.error('--organization cần kèm id hoặc slug.');
   process.exit(1);
 }
 if (!(process.env.DATABASE_URL ?? '').trim()) {
@@ -49,22 +49,22 @@ const tag = dryRun ? '[DRY-RUN] ' : '';
 try {
   const result = await migrateWorkflowSchemes(prisma, {
     dryRun,
-    workspace,
+    organization,
     // Thông báo ghi thẳng bảng Notification (script chạy ngoài Nest; cùng dạng với NotificationsService.publish:
     // loại ISSUE_UPDATED, không gắn việc, payload.automationRuleDisabled).
     notify: async (n) => {
       await prisma.notification.create({
         data: {
           recipientId: n.recipientId,
-          workspaceId: n.workspaceId,
+          organizationId: n.organizationId,
           type: 'ISSUE_UPDATED',
           payload: { automationRuleDisabled: n.ruleName },
         },
       });
     },
   });
-  for (const w of result.workspaces) {
-    console.log(`\n${tag}== ${w.workspaceName} (${w.workspaceId})`);
+  for (const w of result.organizations) {
+    console.log(`\n${tag}== ${w.organizationName} (${w.organizationId})`);
     if (w.createdWorkflows.length) console.log(`  quy trình mới: ${w.createdWorkflows.join(', ')}`);
     console.log(`  dòng cấu hình mới: ${w.createdSchemeRows}`);
     if (w.moves.length) {
@@ -106,7 +106,7 @@ try {
   }
   const t = result.totals;
   console.log(
-    `\n${tag}Tổng: ${t.workspaces} workspace, ${t.createdWorkflows} quy trình mới, ${t.createdSchemeRows} dòng cấu hình mới, ` +
+    `\n${tag}Tổng: ${t.organizations} tổ chức, ${t.createdWorkflows} quy trình mới, ${t.createdSchemeRows} dòng cấu hình mới, ` +
       `${t.movedIssues} việc chuyển, ${t.boardLinksAdded} liên kết cột thêm, ${t.boardLinksRemoved} gỡ, ${t.columnsDeleted} cột xoá, ${t.rulesRewritten} quy tắc sửa, ${t.rulesDisabled} quy tắc tắt` +
       `${dryRun ? ' (dry-run — chưa ghi gì)' : ''}.`,
   );

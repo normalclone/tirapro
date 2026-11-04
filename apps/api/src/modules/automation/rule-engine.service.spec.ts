@@ -12,7 +12,7 @@ function issueDto(over: Record<string, unknown> = {}) {
     id: 'i1',
     key: 'P-TASK-1',
     summary: 'Lỗi đăng nhập',
-    workspaceId: 'w1',
+    organizationId: 'w1',
     projectId: 'p1',
     status: { id: 's1', name: 'Todo', category: 'TODO' },
     type: { id: 't1' },
@@ -34,7 +34,7 @@ function issueDto(over: Record<string, unknown> = {}) {
 function makeRule(over: Record<string, unknown> = {}) {
   return {
     id: 'r1',
-    workspaceId: 'w1',
+    organizationId: 'w1',
     projectId: null,
     name: 'Giao cho lead',
     enabled: true,
@@ -61,11 +61,11 @@ function setup(rule = makeRule(), issue = issueDto(), scheme: Scheme = []) {
     project: {
       findFirst: vi.fn(() => Promise.resolve({ leadId: 'lead1' })),
       // Resolver quy trình theo loại việc.
-      findUnique: vi.fn(() => Promise.resolve({ workspaceId: 'w1', defaultWorkflowId: 'wf1' })),
+      findUnique: vi.fn(() => Promise.resolve({ organizationId: 'w1', defaultWorkflowId: 'wf1' })),
     },
     projectWorkflowOverride: { findMany: vi.fn(() => Promise.resolve([])) },
-    workspaceWorkflowScheme: { findMany: vi.fn(() => Promise.resolve(scheme)) },
-    workspaceMembership: {
+    organizationWorkflowScheme: { findMany: vi.fn(() => Promise.resolve(scheme)) },
+    organizationMembership: {
       findFirst: vi.fn(() => Promise.resolve({ userId: 'x' })),
       findMany: vi.fn(() => Promise.resolve([{ userId: 'a' }, { userId: 'b' }])),
     },
@@ -90,7 +90,7 @@ function setup(rule = makeRule(), issue = issueDto(), scheme: Scheme = []) {
     },
     issue: {
       count: vi.fn(() => Promise.resolve(1)),
-      findFirst: vi.fn(() => Promise.resolve({ workspaceId: 'w1' })),
+      findFirst: vi.fn(() => Promise.resolve({ organizationId: 'w1' })),
       // assertIssueWritable (action ghi trực tiếp prisma): mặc định dự án chưa lưu trữ
       findUnique: vi.fn(() => Promise.resolve({ project: { archivedAt: null } })),
     },
@@ -344,7 +344,7 @@ describe('RuleEngineService — kích hoạt theo chuyển trạng thái, trư�
         { where: { id: string; deletedAt: null; AND: unknown[] } },
       ]
     )[0];
-    expect(arg.where).toMatchObject({ id: 'i1', workspaceId: 'w1', deletedAt: null });
+    expect(arg.where).toMatchObject({ id: 'i1', organizationId: 'w1', deletedAt: null });
     expect(arg.where.AND).toHaveLength(1);
     expect(issues.update).toHaveBeenCalled();
 
@@ -446,7 +446,7 @@ describe('RuleEngineService — hành động', () => {
       ],
     });
     const { engine, prisma, comments } = setup(rule);
-    prisma.workspaceMembership.findFirst.mockResolvedValueOnce(null as never);
+    prisma.organizationMembership.findFirst.mockResolvedValueOnce(null as never);
     await engine.handle('ISSUE_CREATED', { issue: issueDto() as never, actorId: 'u1' });
     const run = lastRun(prisma);
     expect(run.status).toBe('FAILED');

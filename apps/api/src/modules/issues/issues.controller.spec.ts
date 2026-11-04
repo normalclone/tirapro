@@ -64,7 +64,7 @@ describe('IssuesController.resetPoints — "Tính lại theo công thức"', () 
     expect(Reflect.getMetadata('path', h)).toBe(':id/points/reset');
   });
 
-  it('chuyển tiếp tới resetPoints(workspace, người dùng, id)', async () => {
+  it('chuyển tiếp tới resetPoints(organization, người dùng, id)', async () => {
     const issues = { resetPoints: vi.fn(() => Promise.resolve({})) };
     const ctrl = new IssuesController(issues as never);
     await ctrl.resetPoints('w1', { id: 'u1' } as never, 'i1');

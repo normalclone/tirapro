@@ -11,7 +11,7 @@ function setup(membership: unknown = { id: 'M1' }, status = 'ACTIVE') {
     id: 'K1',
     hash: hashApiKeySecret(SECRET),
     scopes: ['read'],
-    workspaceId: 'W1',
+    organizationId: 'W1',
     userId: 'U1',
     revokedAt: null,
     expiresAt: null,
@@ -24,7 +24,7 @@ function setup(membership: unknown = { id: 'M1' }, status = 'ACTIVE') {
       update: vi.fn(() => Promise.resolve({})),
       findMany: vi.fn(() => Promise.resolve([{ prefix: 'p1' }, { prefix: 'p2' }])),
     },
-    workspaceMembership: { findUnique: vi.fn(() => Promise.resolve(membership)) },
+    organizationMembership: { findUnique: vi.fn(() => Promise.resolve(membership)) },
     // Đọc lại trạng thái chủ key sau khi ghi cache (chống race với khoá tài khoản).
     user: { findUnique: vi.fn(() => Promise.resolve({ status: 'ACTIVE' })) },
   };
@@ -38,17 +38,17 @@ function setup(membership: unknown = { id: 'M1' }, status = 'ACTIVE') {
 }
 
 describe('ApiKeyService.validate — membership', () => {
-  it('chấp nhận key của thành viên còn trong workspace', async () => {
+  it('chấp nhận key của thành viên còn trong organization', async () => {
     const { service, prisma } = setup();
     const ctx = await service.validate(RAW);
-    expect(ctx).toMatchObject({ userId: 'U1', workspaceId: 'W1' });
-    expect(prisma.workspaceMembership.findUnique).toHaveBeenCalledWith({
-      where: { workspaceId_userId: { workspaceId: 'W1', userId: 'U1' } },
+    expect(ctx).toMatchObject({ userId: 'U1', organizationId: 'W1' });
+    expect(prisma.organizationMembership.findUnique).toHaveBeenCalledWith({
+      where: { organizationId_userId: { organizationId: 'W1', userId: 'U1' } },
       select: { id: true },
     });
   });
 
-  it('từ chối key (chưa bị thu hồi) của member đã bị gỡ khỏi workspace và không ghi cache', async () => {
+  it('từ chối key (chưa bị thu hồi) của member đã bị gỡ khỏi organization và không ghi cache', async () => {
     const { service, client } = setup(null);
     await expect(service.validate(RAW)).resolves.toBeNull();
     expect(client.set).not.toHaveBeenCalled();
@@ -61,7 +61,7 @@ describe('ApiKeyService.validate — membership', () => {
 });
 
 describe('ApiKeyService.revokeAllForUser / dropCaches', () => {
-  it('thu hồi mọi key còn hiệu lực của user trong workspace bằng client giao dịch, trả prefix', async () => {
+  it('thu hồi mọi key còn hiệu lực của user trong organization bằng client giao dịch, trả prefix', async () => {
     const { service, prisma } = setup();
     const tx = {
       apiKey: {
@@ -72,7 +72,7 @@ describe('ApiKeyService.revokeAllForUser / dropCaches', () => {
     const prefixes = await service.revokeAllForUser('W1', 'U1', tx as never);
     expect(prefixes).toEqual(['p1', 'p2']);
     expect(tx.apiKey.updateMany).toHaveBeenCalledWith({
-      where: { workspaceId: 'W1', userId: 'U1', revokedAt: null },
+      where: { organizationId: 'W1', userId: 'U1', revokedAt: null },
       data: { revokedAt: expect.any(Date) as unknown },
     });
     expect(prisma.apiKey.updateMany).not.toHaveBeenCalled();
@@ -94,7 +94,7 @@ describe('ApiKeyService.revokeAllForUser / dropCaches', () => {
 });
 
 describe('ApiKeyService.dropCachesForUser — khoá tài khoản chặn key ngay', () => {
-  it('xoá cache của MỌI key còn hiệu lực của user (mọi workspace), không thu hồi key', async () => {
+  it('xoá cache của MỌI key còn hiệu lực của user (mọi organization), không thu hồi key', async () => {
     const { service, prisma, client } = setup();
     await service.dropCachesForUser('U1');
     expect(prisma.apiKey.findMany).toHaveBeenCalledWith({
@@ -113,7 +113,7 @@ describe('ApiKeyService.dropCachesForUser — khoá tài khoản chặn key ngay
       JSON.stringify({
         h: hashApiKeySecret(SECRET),
         exp: null,
-        ctx: { keyId: 'K1', userId: 'U1', workspaceId: 'W1', scopes: ['write'] },
+        ctx: { keyId: 'K1', userId: 'U1', organizationId: 'W1', scopes: ['write'] },
       }) as never,
     );
     await expect(service.validate(RAW)).resolves.toMatchObject({ userId: 'U1' });

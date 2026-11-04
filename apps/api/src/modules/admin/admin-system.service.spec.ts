@@ -9,7 +9,7 @@ function setup() {
         Promise.resolve([
           {
             id: 'a1',
-            workspaceId: 'w1',
+            organizationId: 'w1',
             actorId: 'u1',
             action: 'role.created',
             entityType: 'role',
@@ -17,7 +17,7 @@ function setup() {
             summary: 'Tạo vai trò "QA"',
             meta: {},
             createdAt: new Date('2026-10-02T00:00:00Z'),
-            workspace: { id: 'w1', name: 'WS' },
+            organization: { id: 'w1', name: 'WS' },
           },
         ]),
       ),
@@ -38,7 +38,7 @@ function setup() {
 }
 
 describe('AdminSystemService.audit', () => {
-  it('mặc định (kind=admin) đọc AuditLog, kèm workspace + người thực hiện', async () => {
+  it('mặc định (kind=admin) đọc AuditLog, kèm organization + người thực hiện', async () => {
     const { svc, prisma } = setup();
     const page = await svc.audit({ limit: 50, kind: 'admin', action: 'role.created' });
     expect(prisma.activityLog.findMany).not.toHaveBeenCalled();
@@ -49,7 +49,7 @@ describe('AdminSystemService.audit', () => {
     expect(page.data[0]).toMatchObject({
       id: 'a1',
       summary: 'Tạo vai trò "QA"',
-      workspace: { id: 'w1', name: 'WS' },
+      organization: { id: 'w1', name: 'WS' },
       actor: { id: 'u1', displayName: 'An' },
     });
   });

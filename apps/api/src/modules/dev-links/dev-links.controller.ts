@@ -16,14 +16,14 @@ import { z } from 'zod';
 import { PERMISSIONS } from '@tirapro/types';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { AuthUser } from '../../common/types/request';
-import { WorkspaceId } from '../../common/decorators/workspace-id.decorator';
+import { OrganizationId } from '../../common/decorators/organization-id.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
 import { ProjectRef } from '../../common/decorators/project-ref.decorator';
 import { Public } from '../../common/decorators/public.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { DevLinksService } from './dev-links.service';
 
-/** Body kết nối repository code (GitHub/GitLab) với workspace. */
+/** Body kết nối repository code (GitHub/GitLab) với organization. */
 const createRepositorySchema = z.object({
   integrationId: z.string().min(1, 'Thiếu integrationId'),
   provider: z.enum(['GITHUB', 'GITLAB']),
@@ -41,42 +41,45 @@ export type CreateRepositoryBody = z.infer<typeof createRepositorySchema>;
 export class DevLinksController {
   constructor(private readonly devLinks: DevLinksService) {}
 
-  /** Kết nối repository code (GitHub/GitLab) với workspace. */
+  /** Kết nối repository code (GitHub/GitLab) với organization. */
   @Post('dev/repositories')
   @Permissions(PERMISSIONS.INTEGRATION_MANAGE)
   async createRepository(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @Body(new ZodValidationPipe(createRepositorySchema)) body: CreateRepositoryBody,
   ) {
-    return this.devLinks.createRepository(workspaceId, body);
+    return this.devLinks.createRepository(organizationId, body);
   }
 
-  /** Liệt kê repository của workspace (lọc theo project nếu truyền). */
+  /** Liệt kê repository của tổ chức (lọc theo project nếu truyền). */
   @Permissions(PERMISSIONS.PROJECT_VIEW)
   @ProjectRef('query', 'projectId')
   @Get('dev/repositories')
   async listRepositories(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
     @Query('projectId') projectId?: string,
   ) {
-    return this.devLinks.listRepositories(workspaceId, projectId, user.id);
+    return this.devLinks.listRepositories(organizationId, projectId, user.id);
   }
 
   /** Gỡ kết nối một repository. */
   @ProjectRef('repository', 'id')
   @Delete('dev/repositories/:id')
   @Permissions(PERMISSIONS.INTEGRATION_MANAGE)
-  async removeRepository(@WorkspaceId() workspaceId: string, @Param('id') id: string) {
-    return this.devLinks.removeRepository(workspaceId, id);
+  async removeRepository(@OrganizationId() organizationId: string, @Param('id') id: string) {
+    return this.devLinks.removeRepository(organizationId, id);
   }
 
   /** Danh sách dev-link (commit/PR/branch) của một issue — dùng cho dev panel. */
   @Permissions(PERMISSIONS.PROJECT_VIEW)
   @ProjectRef('issue', 'issueId')
   @Get('issues/:issueId/dev-links')
-  async listIssueDevLinks(@WorkspaceId() workspaceId: string, @Param('issueId') issueId: string) {
-    return this.devLinks.listIssueDevLinks(workspaceId, issueId);
+  async listIssueDevLinks(
+    @OrganizationId() organizationId: string,
+    @Param('issueId') issueId: string,
+  ) {
+    return this.devLinks.listIssueDevLinks(organizationId, issueId);
   }
 
   /**

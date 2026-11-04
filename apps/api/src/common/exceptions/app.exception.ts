@@ -27,8 +27,8 @@ export class ForbiddenAppException extends AppException {
 }
 
 /**
- * P-C14: cấp/gỡ `workspace:admin` (qua vai trò của thành viên hoặc qua bộ quyền của vai trò) chỉ dành cho người đang giữ
- * `workspace:admin` hoặc admin hệ thống — `member:manage` một mình không đủ. Mã riêng để web hiện đúng lý do.
+ * P-C14: cấp/gỡ `organization:admin` (qua vai trò của thành viên hoặc qua bộ quyền của vai trò) chỉ dành cho người đang giữ
+ * `organization:admin` hoặc admin hệ thống — `member:manage` một mình không đủ. Mã riêng để web hiện đúng lý do.
  */
 export class AdminGrantRequiresAdminException extends AppException {
   constructor(message = 'Chỉ quản trị tổ chức mới cấp hoặc gỡ quyền quản trị.') {
@@ -110,7 +110,7 @@ export class BusinessRuleException extends AppException {
   }
 }
 
-/** 409 với mã nghiệp vụ riêng (ALREADY_MEMBER, LAST_WORKSPACE_ADMIN…) để client nhận ra mà không so khớp câu chữ. */
+/** 409 với mã nghiệp vụ riêng (ALREADY_MEMBER, LAST_ORGANIZATION_ADMIN…) để client nhận ra mà không so khớp câu chữ. */
 export class ConflictAppException extends AppException {
   constructor(code: ErrorCode | (string & {}), message: string) {
     super(code, message, HttpStatus.CONFLICT);

@@ -24,7 +24,7 @@ function makeGateway(
         isSystemAdmin: false,
       }),
     },
-    workspaceMembership: { findUnique: vi.fn().mockResolvedValue({ id: 'M1' }) },
+    organizationMembership: { findUnique: vi.fn().mockResolvedValue({ id: 'M1' }) },
   };
   const presence = {
     join: vi
@@ -70,7 +70,7 @@ function makeGateway(
   };
 }
 
-function makeClient(data: Record<string, unknown> = { userId: 'U1', workspaceId: 'W1' }) {
+function makeClient(data: Record<string, unknown> = { userId: 'U1', organizationId: 'W1' }) {
   const toEmit = vi.fn();
   return {
     id: 'sock-1',
@@ -86,19 +86,19 @@ function makeClient(data: Record<string, unknown> = { userId: 'U1', workspaceId:
 }
 
 describe('RealtimeGateway.onSubscribe — kiểm quyền', () => {
-  it('từ chối project thuộc workspace khác và không join', async () => {
+  it('từ chối project thuộc organization khác và không join', async () => {
     const { gateway, prisma } = makeGateway(null);
     const client = makeClient();
     const res = await gateway.onSubscribe({ kind: 'project', id: 'P2' }, client as never);
     expect(res).toEqual({ ok: false, error: 'FORBIDDEN' });
     expect(client.join).not.toHaveBeenCalled();
     expect(prisma.project.findFirst).toHaveBeenCalledWith({
-      where: { id: 'P2', workspaceId: 'W1', deletedAt: null },
+      where: { id: 'P2', organizationId: 'W1', deletedAt: null },
       select: { id: true },
     });
   });
 
-  it('cho join project thuộc workspace của mình', async () => {
+  it('cho join project thuộc organization của mình', async () => {
     const { gateway } = makeGateway({ id: 'P1' });
     const client = makeClient();
     const res = await gateway.onSubscribe({ kind: 'project', id: 'P1' }, client as never);
@@ -106,9 +106,9 @@ describe('RealtimeGateway.onSubscribe — kiểm quyền', () => {
     expect(client.join).toHaveBeenCalledWith('project:P1');
   });
 
-  it('không tra DB và từ chối khi client chưa có workspace', async () => {
+  it('không tra DB và từ chối khi client chưa có organization', async () => {
     const { gateway, prisma } = makeGateway({ id: 'P1' });
-    const client = makeClient({ userId: 'U1', workspaceId: null });
+    const client = makeClient({ userId: 'U1', organizationId: null });
     const res = await gateway.onSubscribe({ kind: 'project', id: 'P1' }, client as never);
     expect(res).toEqual({ ok: false, error: 'FORBIDDEN' });
     expect(prisma.project.findFirst).not.toHaveBeenCalled();
@@ -131,20 +131,20 @@ describe('RealtimeGateway.onSubscribe — kiểm quyền', () => {
     expect(client.join).toHaveBeenCalledWith('user:U1');
   });
 
-  it('chỉ cho join room workspace của mình (đúng tên room ws:<id>)', async () => {
+  it('chỉ cho join room organization của mình (đúng tên room org:<id>)', async () => {
     const { gateway } = makeGateway();
     const client = makeClient();
     expect(
-      await gateway.onSubscribe({ kind: 'workspace', id: 'W2' } as never, client as never),
+      await gateway.onSubscribe({ kind: 'organization', id: 'W2' } as never, client as never),
     ).toEqual({
       ok: false,
       error: 'FORBIDDEN',
     });
     expect(client.join).not.toHaveBeenCalled();
     expect(
-      await gateway.onSubscribe({ kind: 'workspace', id: 'W1' } as never, client as never),
+      await gateway.onSubscribe({ kind: 'organization', id: 'W1' } as never, client as never),
     ).toEqual({ ok: true });
-    expect(client.join).toHaveBeenCalledWith('ws:W1');
+    expect(client.join).toHaveBeenCalledWith('org:W1');
   });
 
   it('từ chối loại room lạ và payload thiếu', async () => {
@@ -184,14 +184,14 @@ function expectNoDataRooms(client: { join: ReturnType<typeof vi.fn> }) {
 describe('RealtimeGateway.handleConnection — membership', () => {
   function connect(userRow: unknown, membership: unknown) {
     const ctx = makeGateway();
-    ctx.jwt.verify.mockReturnValue({ sub: 'U1', workspaceId: 'W1' });
+    ctx.jwt.verify.mockReturnValue({ sub: 'U1', organizationId: 'W1' });
     ctx.prisma.user.findUnique.mockResolvedValue(userRow);
-    ctx.prisma.workspaceMembership.findUnique.mockResolvedValue(membership);
+    ctx.prisma.organizationMembership.findUnique.mockResolvedValue(membership);
     const client = { ...makeClient({}), handshake: { auth: { token: 't' }, headers: {} } };
     return { ...ctx, client };
   }
 
-  it('cho vào khi user ACTIVE và còn là thành viên workspace', async () => {
+  it('cho vào khi user ACTIVE và còn là thành viên organization', async () => {
     const { gateway, client, prisma } = connect(
       { status: 'ACTIVE', isSystemAdmin: false },
       { id: 'M1' },
@@ -199,11 +199,22 @@ describe('RealtimeGateway.handleConnection — membership', () => {
     await gateway.handleConnection(client as never);
     expect(client.disconnect).not.toHaveBeenCalled();
     expect(client.join).toHaveBeenCalledWith('user:U1');
-    expect(client.join).toHaveBeenCalledWith('ws:W1');
-    expect(prisma.workspaceMembership.findUnique).toHaveBeenCalledWith({
-      where: { workspaceId_userId: { workspaceId: 'W1', userId: 'U1' } },
+    expect(client.join).toHaveBeenCalledWith('org:W1');
+    expect(prisma.organizationMembership.findUnique).toHaveBeenCalledWith({
+      where: { organizationId_userId: { organizationId: 'W1', userId: 'U1' } },
       select: { id: true },
     });
+  });
+
+  it('token CŨ (claim `workspaceId`) vẫn vào đúng room org:<id> sau khi đổi tên', async () => {
+    const { gateway, client, jwt } = connect(
+      { status: 'ACTIVE', isSystemAdmin: false },
+      { id: 'M1' },
+    );
+    jwt.verify.mockReturnValue({ sub: 'U1', workspaceId: 'W1' });
+    await gateway.handleConnection(client as never);
+    expect(client.disconnect).not.toHaveBeenCalled();
+    expect(client.join).toHaveBeenCalledWith('org:W1');
   });
 
   it('từ chối (disconnect, không join room nào) khi token còn hạn nhưng không còn membership', async () => {
@@ -227,7 +238,7 @@ describe('RealtimeGateway.handleConnection — membership', () => {
     const { gateway, client, prisma } = connect({ status: 'ACTIVE', isSystemAdmin: true }, null);
     await gateway.handleConnection(client as never);
     expect(client.disconnect).not.toHaveBeenCalled();
-    expect(prisma.workspaceMembership.findUnique).not.toHaveBeenCalled();
+    expect(prisma.organizationMembership.findUnique).not.toHaveBeenCalled();
   });
 
   it('lỗi DB khi kiểm -> từ chối (fail closed)', async () => {
@@ -251,13 +262,13 @@ describe('RealtimeGateway.handleConnection — membership', () => {
 });
 
 describe('RealtimeGateway.onSubscribe — membership bị gỡ sau handshake', () => {
-  it('từ chối mọi room (kể cả workspace/project) và không join', async () => {
+  it('từ chối mọi room (kể cả organization/project) và không join', async () => {
     const { gateway, prisma } = makeGateway({ id: 'P1' });
-    prisma.workspaceMembership.findUnique.mockResolvedValue(null);
+    prisma.organizationMembership.findUnique.mockResolvedValue(null);
     const client = makeClient();
     for (const target of [
       { kind: 'project', id: 'P1' },
-      { kind: 'workspace', id: 'W1' },
+      { kind: 'organization', id: 'W1' },
       { kind: 'user', id: 'U1' },
     ] as const) {
       expect(await gateway.onSubscribe(target, client as never)).toEqual({
@@ -289,7 +300,7 @@ describe('RealtimeGateway — phiên bị thu hồi (sessionsRevokedAt)', () => 
   const revokedAt = new Date(2_000_500);
   function connect(token: Record<string, unknown>) {
     const ctx = makeGateway();
-    ctx.jwt.verify.mockReturnValue({ sub: 'U1', workspaceId: 'W1', ...token });
+    ctx.jwt.verify.mockReturnValue({ sub: 'U1', organizationId: 'W1', ...token });
     ctx.prisma.user.findUnique.mockResolvedValue({
       status: 'ACTIVE',
       isSystemAdmin: false,
@@ -326,7 +337,7 @@ describe('RealtimeGateway — phiên bị thu hồi (sessionsRevokedAt)', () => 
       isSystemAdmin: false,
       sessionsRevokedAt: revokedAt,
     });
-    const client = makeClient({ userId: 'U1', workspaceId: 'W1', iat: 2000, iatMs: 2_000_400 });
+    const client = makeClient({ userId: 'U1', organizationId: 'W1', iat: 2000, iatMs: 2_000_400 });
     expect(await gateway.onSubscribe({ kind: 'project', id: 'P1' }, client as never)).toEqual({
       ok: false,
       error: 'FORBIDDEN',
@@ -365,7 +376,7 @@ describe('RealtimeGateway — phiên bị thu hồi (sessionsRevokedAt)', () => 
 
   it('handleConnection vào room user TRƯỚC khi kiểm quyền (sự kiện thu hồi tới giữa chừng không lọt)', async () => {
     const ctx = makeGateway();
-    ctx.jwt.verify.mockReturnValue({ sub: 'U1', workspaceId: 'W1' });
+    ctx.jwt.verify.mockReturnValue({ sub: 'U1', organizationId: 'W1' });
     const order: string[] = [];
     const client = { ...makeClient({}), handshake: { auth: { token: 't' }, headers: {} } };
     client.join = vi.fn((room: string) => {
@@ -377,20 +388,20 @@ describe('RealtimeGateway — phiên bị thu hồi (sessionsRevokedAt)', () => 
     });
     await ctx.gateway.handleConnection(client as never);
     expect(order.slice(0, 2)).toEqual(['join:user:U1', 'hasAccess']);
-    expect(order).toContain('join:ws:W1');
+    expect(order).toContain('join:org:W1');
   });
 });
 
 describe('RealtimeGateway.onMemberRemoved', () => {
-  it('ngắt socket của đúng user trong room ws:<id>, giữ nguyên socket người khác', async () => {
+  it('ngắt socket của đúng user trong room org:<id>, giữ nguyên socket người khác', async () => {
     const { gateway, fetchSockets } = makeGateway();
     const mine = { data: { userId: 'U1' }, disconnect: vi.fn() };
     const mine2 = { data: { userId: 'U1' }, disconnect: vi.fn() };
     const other = { data: { userId: 'U2' }, disconnect: vi.fn() };
     fetchSockets.mockResolvedValue([mine, other, mine2]);
-    await gateway.onMemberRemoved({ workspaceId: 'W1', userId: 'U1' });
+    await gateway.onMemberRemoved({ organizationId: 'W1', userId: 'U1' });
     const server = (gateway as unknown as { server: { in: ReturnType<typeof vi.fn> } }).server;
-    expect(server.in).toHaveBeenCalledWith('ws:W1');
+    expect(server.in).toHaveBeenCalledWith('org:W1');
     expect(mine.disconnect).toHaveBeenCalledWith(true);
     expect(mine2.disconnect).toHaveBeenCalledWith(true);
     expect(other.disconnect).not.toHaveBeenCalled();
@@ -398,11 +409,11 @@ describe('RealtimeGateway.onMemberRemoved', () => {
 
   it('bỏ qua payload thiếu và nuốt lỗi fetchSockets', async () => {
     const { gateway, fetchSockets } = makeGateway();
-    await gateway.onMemberRemoved({ workspaceId: 'W1' });
+    await gateway.onMemberRemoved({ organizationId: 'W1' });
     expect(fetchSockets).not.toHaveBeenCalled();
     fetchSockets.mockRejectedValue(new Error('redis'));
     await expect(
-      gateway.onMemberRemoved({ workspaceId: 'W1', userId: 'U1' }),
+      gateway.onMemberRemoved({ organizationId: 'W1', userId: 'U1' }),
     ).resolves.toBeUndefined();
   });
 });
@@ -499,7 +510,7 @@ describe('RealtimeGateway — bridge notification & sprint', () => {
 });
 
 describe('RealtimeGateway — issue room', () => {
-  it('cho join room issue thuộc workspace, từ chối issue ngoài workspace', async () => {
+  it('cho join room issue thuộc organization, từ chối issue ngoài organization', async () => {
     const ok = makeGateway(null, { id: 'I1', projectId: 'P1' });
     const client = makeClient();
     expect(await ok.gateway.onSubscribe({ kind: 'issue', id: 'I1' }, client as never)).toEqual({
@@ -507,7 +518,7 @@ describe('RealtimeGateway — issue room', () => {
     });
     expect(client.join).toHaveBeenCalledWith('issue:I1');
     expect(ok.prisma.issue.findFirst).toHaveBeenCalledWith({
-      where: { id: 'I1', workspaceId: 'W1', deletedAt: null },
+      where: { id: 'I1', organizationId: 'W1', deletedAt: null },
       select: { id: true, projectId: true },
     });
 
@@ -549,10 +560,10 @@ describe('RealtimeGateway — presence', () => {
     expect(presence.join).not.toHaveBeenCalled();
   });
 
-  it('subscribe user/workspace/issue không kích hoạt presence', async () => {
+  it('subscribe user/organization/issue không kích hoạt presence', async () => {
     const { gateway, presence } = makeGateway({ id: 'P1' }, { id: 'I1' });
     const client = makeClient();
-    await gateway.onSubscribe({ kind: 'workspace', id: 'W1' }, client as never);
+    await gateway.onSubscribe({ kind: 'organization', id: 'W1' }, client as never);
     await gateway.onSubscribe({ kind: 'issue', id: 'I1' }, client as never);
     expect(presence.join).not.toHaveBeenCalled();
   });
@@ -744,7 +755,7 @@ describe('RealtimeGateway — dự án riêng tư (P16)', () => {
     };
     const other = { data: { userId: 'U2' }, rooms: new Set(['project:P1']), leave: vi.fn() };
     fetchSockets.mockResolvedValue([tab1, tab2, other]);
-    await gateway.onProjectMemberRemoved({ workspaceId: 'W1', projectId: 'P1', userId: 'U1' });
+    await gateway.onProjectMemberRemoved({ organizationId: 'W1', projectId: 'P1', userId: 'U1' });
     const server = (gateway as unknown as { server: { in: ReturnType<typeof vi.fn> } }).server;
     expect(server.in).toHaveBeenCalledWith('user:U1');
     expect(tab1.leave).toHaveBeenCalledWith('project:P1');
@@ -762,17 +773,17 @@ describe('RealtimeGateway — dự án riêng tư (P16)', () => {
 
   it('onProjectMemberRemoved: dự án công khai (người đó vẫn thấy) -> không rút socket', async () => {
     const { gateway, fetchSockets } = makeGateway(null, null, true);
-    await gateway.onProjectMemberRemoved({ workspaceId: 'W1', projectId: 'P1', userId: 'U1' });
+    await gateway.onProjectMemberRemoved({ organizationId: 'W1', projectId: 'P1', userId: 'U1' });
     expect(fetchSockets).not.toHaveBeenCalled();
   });
 
   it('onProjectMemberRemoved: payload thiếu bị bỏ qua, lỗi fetchSockets bị nuốt', async () => {
     const { gateway, fetchSockets } = makeGateway(null, null, false);
-    await gateway.onProjectMemberRemoved({ workspaceId: 'W1', projectId: 'P1' });
+    await gateway.onProjectMemberRemoved({ organizationId: 'W1', projectId: 'P1' });
     expect(fetchSockets).not.toHaveBeenCalled();
     fetchSockets.mockRejectedValue(new Error('redis'));
     await expect(
-      gateway.onProjectMemberRemoved({ workspaceId: 'W1', projectId: 'P1', userId: 'U1' }),
+      gateway.onProjectMemberRemoved({ organizationId: 'W1', projectId: 'P1', userId: 'U1' }),
     ).resolves.toBeUndefined();
   });
 });
@@ -796,7 +807,7 @@ describe('RealtimeGateway.onProjectVisibilityChanged (P16)', () => {
       leave: vi.fn(),
     };
     fetchSockets.mockResolvedValue([a1, b, a2]);
-    await gateway.onProjectVisibilityChanged({ workspaceId: 'W1', projectId: 'P1' });
+    await gateway.onProjectVisibilityChanged({ organizationId: 'W1', projectId: 'P1' });
     expect(a1.leave).toHaveBeenCalledWith('project:P1');
     expect(a1.leave).toHaveBeenCalledWith('issue:IP-1');
     expect(a2.leave).toHaveBeenCalledWith('project:P1');
@@ -808,11 +819,11 @@ describe('RealtimeGateway.onProjectVisibilityChanged (P16)', () => {
 
   it('payload thiếu bị bỏ qua; lỗi bị nuốt', async () => {
     const { gateway, fetchSockets } = makeGateway();
-    await gateway.onProjectVisibilityChanged({ workspaceId: 'W1' });
+    await gateway.onProjectVisibilityChanged({ organizationId: 'W1' });
     expect(fetchSockets).not.toHaveBeenCalled();
     fetchSockets.mockRejectedValue(new Error('redis'));
     await expect(
-      gateway.onProjectVisibilityChanged({ workspaceId: 'W1', projectId: 'P1' }),
+      gateway.onProjectVisibilityChanged({ organizationId: 'W1', projectId: 'P1' }),
     ).resolves.toBeUndefined();
   });
 });
@@ -855,7 +866,7 @@ describe('RealtimeGateway.onAccessChanged — đổi vai trò/quyền rà lại 
       leave: vi.fn(),
     };
     fetchSockets.mockResolvedValue([tab1, tab2, other]);
-    await gateway.onAccessChanged({ workspaceId: 'W1', userIds: ['U1'] });
+    await gateway.onAccessChanged({ organizationId: 'W1', userIds: ['U1'] });
     const server = (gateway as unknown as { server: { in: ReturnType<typeof vi.fn> } }).server;
     expect(server.in).toHaveBeenCalledWith('user:U1');
     expect(tab1.leave).toHaveBeenCalledWith('project:P1');
@@ -873,18 +884,18 @@ describe('RealtimeGateway.onAccessChanged — đổi vai trò/quyền rà lại 
     const { gateway, fetchSockets } = setup(() => true);
     const s = { data: { userId: 'U1' }, rooms: new Set(['project:P1']), leave: vi.fn() };
     fetchSockets.mockResolvedValue([s]);
-    await gateway.onAccessChanged({ workspaceId: 'W1', userIds: ['U1'] });
+    await gateway.onAccessChanged({ organizationId: 'W1', userIds: ['U1'] });
     expect(s.leave).not.toHaveBeenCalled();
   });
 
-  it('userIds vắng = cả workspace: rà mọi socket trong room ws:<id>, rút từng người mất quyền', async () => {
+  it('userIds vắng = cả organization: rà mọi socket trong room org:<id>, rút từng người mất quyền', async () => {
     const { gateway, fetchSockets } = setup((u) => u === 'U2');
-    const a = { data: { userId: 'U1' }, rooms: new Set(['ws:W1', 'project:P1']), leave: vi.fn() };
-    const b = { data: { userId: 'U2' }, rooms: new Set(['ws:W1', 'project:P1']), leave: vi.fn() };
+    const a = { data: { userId: 'U1' }, rooms: new Set(['org:W1', 'project:P1']), leave: vi.fn() };
+    const b = { data: { userId: 'U2' }, rooms: new Set(['org:W1', 'project:P1']), leave: vi.fn() };
     fetchSockets.mockResolvedValue([a, b]);
-    await gateway.onAccessChanged({ workspaceId: 'W1' });
+    await gateway.onAccessChanged({ organizationId: 'W1' });
     const server = (gateway as unknown as { server: { in: ReturnType<typeof vi.fn> } }).server;
-    expect(server.in).toHaveBeenCalledWith('ws:W1');
+    expect(server.in).toHaveBeenCalledWith('org:W1');
     expect(a.leave).toHaveBeenCalledWith('project:P1');
     expect(b.leave).not.toHaveBeenCalled();
   });
@@ -894,6 +905,6 @@ describe('RealtimeGateway.onAccessChanged — đổi vai trò/quyền rà lại 
     await gateway.onAccessChanged({});
     expect(fetchSockets).not.toHaveBeenCalled();
     fetchSockets.mockRejectedValue(new Error('redis'));
-    await expect(gateway.onAccessChanged({ workspaceId: 'W1' })).resolves.toBeUndefined();
+    await expect(gateway.onAccessChanged({ organizationId: 'W1' })).resolves.toBeUndefined();
   });
 });

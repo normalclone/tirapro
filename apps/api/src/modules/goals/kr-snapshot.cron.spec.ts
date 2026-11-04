@@ -29,21 +29,21 @@ const kr = (id: string, source = 'MANUAL', currentValue = 3): Kr => ({
 });
 
 function make(opts: {
-  workspaces?: string[];
+  organizations?: string[];
   objectives?: Record<string, Obj[]>;
   existing?: string[];
   measured?: Map<string, unknown>;
   redis?: unknown;
 }) {
   const prisma = {
-    workspace: {
+    organization: {
       findMany: vi.fn((_a?: unknown) =>
-        Promise.resolve((opts.workspaces ?? ['w1']).map((id) => ({ id }))),
+        Promise.resolve((opts.organizations ?? ['w1']).map((id) => ({ id }))),
       ),
     },
     objective: {
-      findMany: vi.fn((a: { where: { workspaceId: string } }) =>
-        Promise.resolve(opts.objectives?.[a.where.workspaceId] ?? []),
+      findMany: vi.fn((a: { where: { organizationId: string } }) =>
+        Promise.resolve(opts.objectives?.[a.where.organizationId] ?? []),
       ),
     },
     keyResult: { findFirst: vi.fn((_a?: unknown) => Promise.resolve(null as unknown)) },
@@ -141,12 +141,12 @@ describe('KrSnapshotCron.snapshotAll (L29)', () => {
     await cron.snapshotAll(NOW);
     const where = (prisma.objective.findMany.mock.calls[0]![0] as { where: unknown }).where;
     expect(where).toEqual({
-      workspaceId: 'w1',
+      organizationId: 'w1',
       status: 'ACTIVE',
       project: { deletedAt: null, archivedAt: null },
       keyResults: { some: {} },
     });
-    expect(prisma.workspace.findMany).toHaveBeenCalledWith(
+    expect(prisma.organization.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: { deletedAt: null } }),
     );
   });
@@ -196,9 +196,9 @@ describe('KrSnapshotCron.snapshotAll (L29)', () => {
     ]);
   });
 
-  it('một workspace lỗi không chặn workspace khác', async () => {
+  it('một organization lỗi không chặn organization khác', async () => {
     const { cron, prisma } = make({
-      workspaces: ['w1', 'w2'],
+      organizations: ['w1', 'w2'],
       objectives: { w2: [{ id: 'o', period: '2026-Q4', keyResults: [kr('k9')] }] },
     });
     prisma.objective.findMany.mockImplementationOnce(() => Promise.reject(new Error('boom')));
@@ -217,7 +217,7 @@ describe('KrSnapshotCron + KrMeasureService thật — KR JQL cũ dùng currentU
       ),
     };
     const prisma = {
-      workspace: { findMany: vi.fn(() => Promise.resolve([{ id: 'w1' }])) },
+      organization: { findMany: vi.fn(() => Promise.resolve([{ id: 'w1' }])) },
       objective: {
         findMany: vi.fn(() =>
           Promise.resolve([
@@ -275,7 +275,7 @@ describe('KrSnapshotCron.runDaily — khoá cron (L29)', () => {
       1800,
       'NX',
     );
-    expect(prisma.workspace.findMany).not.toHaveBeenCalled();
+    expect(prisma.organization.findMany).not.toHaveBeenCalled();
     expect(measurer.measure).not.toHaveBeenCalled();
   });
 
@@ -291,7 +291,7 @@ describe('KrSnapshotCron.snapshotKeyResult (L29)', () => {
     source: 'OPEN_BUGS',
     sourceConfig: {},
     currentValue: 3,
-    objective: { workspaceId: 'w1', status: 'ACTIVE', project: null },
+    objective: { organizationId: 'w1', status: 'ACTIVE', project: null },
     ...over,
   });
 
@@ -312,17 +312,17 @@ describe('KrSnapshotCron.snapshotKeyResult (L29)', () => {
 
   it('mục tiêu không ACTIVE / dự án đã xoá-lưu trữ / đo lỗi → không ghi', async () => {
     for (const row of [
-      krRow({ objective: { workspaceId: 'w1', status: 'CLOSED', project: null } }),
+      krRow({ objective: { organizationId: 'w1', status: 'CLOSED', project: null } }),
       krRow({
         objective: {
-          workspaceId: 'w1',
+          organizationId: 'w1',
           status: 'ACTIVE',
           project: { deletedAt: new Date(), archivedAt: null },
         },
       }),
       krRow({
         objective: {
-          workspaceId: 'w1',
+          organizationId: 'w1',
           status: 'ACTIVE',
           project: { deletedAt: null, archivedAt: new Date() },
         },

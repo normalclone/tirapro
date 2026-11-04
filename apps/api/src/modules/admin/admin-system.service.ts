@@ -54,19 +54,22 @@ export class AdminSystemService {
     return this.adminLog(params);
   }
 
-  /** Nhật ký quản trị toàn hệ thống (AuditLog), mới nhất trước; cùng hình dạng `AuditLogDto` (+ workspace). */
+  /** Nhật ký quản trị toàn hệ thống (AuditLog), mới nhất trước; cùng hình dạng `AuditLogDto` (+ tổ chức). */
   private async adminLog(params: AuditQueryInput) {
     const rows = await this.prisma.auditLog.findMany({
       where: {
-        ...(params.workspaceId ? { workspaceId: params.workspaceId } : {}),
+        ...(params.organizationId ? { organizationId: params.organizationId } : {}),
         ...(params.action ? { action: params.action } : {}),
       },
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       take: params.limit,
-      include: { workspace: { select: { id: true, name: true } } },
+      include: { organization: { select: { id: true, name: true } } },
     });
     const actors = await this.auditSvc.resolveActors(rows.map((r) => r.actorId));
-    const data = rows.map((r) => ({ ...this.auditSvc.toDto(r, actors), workspace: r.workspace }));
+    const data = rows.map((r) => ({
+      ...this.auditSvc.toDto(r, actors),
+      organization: r.organization,
+    }));
     return offsetPage(data, 1, Math.max(1, data.length), data.length);
   }
 
@@ -74,7 +77,7 @@ export class AdminSystemService {
   private async activityLog(params: AuditQueryInput) {
     const rows = await this.prisma.activityLog.findMany({
       where: {
-        ...(params.workspaceId ? { workspaceId: params.workspaceId } : {}),
+        ...(params.organizationId ? { organizationId: params.organizationId } : {}),
         ...(params.action ? { action: params.action as never } : {}),
       },
       orderBy: { createdAt: 'desc' },
@@ -87,7 +90,7 @@ export class AdminSystemService {
         field: true,
         actorId: true,
         createdAt: true,
-        workspace: { select: { id: true, name: true } },
+        organization: { select: { id: true, name: true } },
       },
     });
 
@@ -107,7 +110,7 @@ export class AdminSystemService {
       entityId: r.entityId,
       field: r.field,
       createdAt: r.createdAt.toISOString(),
-      workspace: r.workspace,
+      organization: r.organization,
       actor: r.actorId ? (actorMap.get(r.actorId) ?? null) : null,
     }));
     return offsetPage(data, 1, Math.max(1, data.length), data.length);

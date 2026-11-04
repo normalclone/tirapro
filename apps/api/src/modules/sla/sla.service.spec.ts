@@ -153,8 +153,8 @@ describe('SlaService — chính sách chỉ cấp dự án', () => {
     const wheres = (prisma.slaPolicy.findMany.mock.calls as unknown as [{ where: object }][]).map(
       (c) => c[0].where,
     );
-    expect(wheres[0]).toEqual({ workspaceId: 'w1', project: { deletedAt: null } });
-    expect(wheres[1]).toMatchObject({ workspaceId: 'w1', projectId: 'p9' });
+    expect(wheres[0]).toEqual({ organizationId: 'w1', project: { deletedAt: null } });
+    expect(wheres[1]).toMatchObject({ organizationId: 'w1', projectId: 'p9' });
     expect(wheres[0]).not.toHaveProperty('OR');
   });
 });
@@ -178,7 +178,7 @@ describe('SlaService — dự án riêng tư: bảng SLA và chính sách không
     const where = (prisma.issueSla.findMany.mock.calls[0] as unknown as [{ where: object }])[0]
       .where;
     expect(where).toMatchObject({
-      issue: { workspaceId: 'w1', deletedAt: null, project: { deletedAt: null, ...visible } },
+      issue: { organizationId: 'w1', deletedAt: null, project: { deletedAt: null, ...visible } },
       resolvedAt: null,
     });
   });
@@ -191,7 +191,7 @@ describe('SlaService — dự án riêng tư: bảng SLA và chính sách không
       prisma.issueSla.findMany.mock.calls[0] as unknown as [{ where: { issue: object } }]
     )[0].where.issue;
     expect(where).toMatchObject({
-      workspaceId: 'w1',
+      organizationId: 'w1',
       projectId: 'p9',
       project: { deletedAt: null, ...visible },
     });
@@ -224,7 +224,7 @@ describe('SlaService — dự án riêng tư: bảng SLA và chính sách không
     access.visibleWhere.mockResolvedValue(visible);
     await service.list('w1', 'u1');
     expect((prisma.slaPolicy.findMany.mock.calls as unknown[][])[0]![0]).toMatchObject({
-      where: { workspaceId: 'w1', project: { deletedAt: null, ...visible } },
+      where: { organizationId: 'w1', project: { deletedAt: null, ...visible } },
     });
   });
 
@@ -342,7 +342,7 @@ describe('SlaService — thời gian xử lý hiển thị đúng thực tế (l
     await service.onIssueCreated({
       issue: {
         id: 'i1',
-        workspaceId: 'w',
+        organizationId: 'w',
         projectId: 'p',
         priority: { id: 'high' },
         createdAt: created,
@@ -364,10 +364,10 @@ describe('SlaService — thời gian xử lý hiển thị đúng thực tế (l
   it('chọn chính sách CHỈ trong dự án của việc (không còn mặc định cấp tổ chức)', async () => {
     const { service, prisma } = make();
     await service.onIssueCreated({
-      issue: { id: 'i9', workspaceId: 'w', projectId: 'p', priority: { id: 'high' } },
+      issue: { id: 'i9', organizationId: 'w', projectId: 'p', priority: { id: 'high' } },
     });
     expect((prisma.slaPolicy.findMany.mock.calls as unknown[][])[0]![0]).toEqual({
-      where: { workspaceId: 'w', projectId: 'p', active: true },
+      where: { organizationId: 'w', projectId: 'p', active: true },
     });
   });
 
@@ -376,7 +376,7 @@ describe('SlaService — thời gian xử lý hiển thị đúng thực tế (l
     await service.onIssueUpdated({
       issue: {
         id: 'i1',
-        workspaceId: 'w',
+        organizationId: 'w',
         projectId: 'p',
         priority: { id: 'high' },
         createdAt: created,

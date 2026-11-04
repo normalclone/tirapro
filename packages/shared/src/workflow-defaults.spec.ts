@@ -7,7 +7,7 @@ import {
   expandWorkflowTransitions,
   mapStatusByCategory,
   setProjectOverrideSchema,
-  setWorkspaceSchemeSchema,
+  setOrganizationSchemeSchema,
   suggestTargetStatus,
 } from './workflow-defaults';
 
@@ -215,9 +215,9 @@ describe('mapStatusByCategory', () => {
   });
 });
 
-describe('setWorkspaceSchemeSchema', () => {
+describe('setOrganizationSchemeSchema', () => {
   it('nhận danh sách ánh xạ hợp lệ', () => {
-    const r = setWorkspaceSchemeSchema.safeParse({
+    const r = setOrganizationSchemeSchema.safeParse({
       items: [
         { issueTypeId: 't1', workflowId: 'w1' },
         { issueTypeId: 't2', workflowId: 'w2' },
@@ -226,12 +226,12 @@ describe('setWorkspaceSchemeSchema', () => {
     expect(r.success).toBe(true);
   });
   it('từ chối danh sách rỗng, thiếu workflowId, loại việc trùng', () => {
-    expect(setWorkspaceSchemeSchema.safeParse({ items: [] }).success).toBe(false);
-    expect(setWorkspaceSchemeSchema.safeParse({ items: [{ issueTypeId: 't1' }] }).success).toBe(
+    expect(setOrganizationSchemeSchema.safeParse({ items: [] }).success).toBe(false);
+    expect(setOrganizationSchemeSchema.safeParse({ items: [{ issueTypeId: 't1' }] }).success).toBe(
       false,
     );
     expect(
-      setWorkspaceSchemeSchema.safeParse({
+      setOrganizationSchemeSchema.safeParse({
         items: [
           { issueTypeId: 't1', workflowId: 'w1' },
           { issueTypeId: 't1', workflowId: 'w2' },

@@ -1,5 +1,5 @@
 /**
- * Catalog DEFAULT để seed khi tạo workspace. Đây là CONFIG khởi tạo, không phải
+ * Catalog DEFAULT để seed khi tạo organization. Đây là CONFIG khởi tạo, không phải
  * hằng số cứng — sau khi seed, admin sửa trong DB (Priority/Resolution/LinkType/
  * IssueType/Workflow). Workflow template được CLONE sang mỗi project khi tạo.
  */

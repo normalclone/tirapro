@@ -5,7 +5,7 @@ export interface RenderedMail {
   text: string;
 }
 
-/** Escape mọi giá trị người dùng đưa vào HTML (tên workspace, tiêu đề issue…) — chống chèn HTML vào email. */
+/** Escape mọi giá trị người dùng đưa vào HTML (tên tổ chức, tiêu đề issue…) — chống chèn HTML vào email. */
 export function escapeHtml(value: string): string {
   return value
     .replace(/&/g, '&amp;')

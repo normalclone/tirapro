@@ -103,11 +103,11 @@ export class ActivityService {
    * `fields` (tuỳ chọn) lọc theo loại thay đổi; mô tả chỉ trả bản xem trước (xem `getOne` cho bản đầy đủ).
    */
   async listForIssue(
-    workspaceId: string,
+    organizationId: string,
     issueId: string,
     fields?: HistoryField[],
   ): Promise<IssueActivityDto[]> {
-    await this.requireIssue(workspaceId, issueId);
+    await this.requireIssue(organizationId, issueId);
 
     const meta = await this.prisma.issueHistory.findMany({
       where: { issueId, ...(fields?.length ? { field: { in: fields } } : {}) },
@@ -151,11 +151,11 @@ export class ActivityService {
 
   /** Một dòng lịch sử với giá trị đầy đủ (không cắt). 404 nếu không thuộc công việc này. */
   async getOne(
-    workspaceId: string,
+    organizationId: string,
     issueId: string,
     activityId: string,
   ): Promise<IssueActivityDetailDto> {
-    await this.requireIssue(workspaceId, issueId);
+    await this.requireIssue(organizationId, issueId);
     const row = await this.prisma.issueHistory.findFirst({
       where: { id: activityId, issueId },
       select: historyFullSelect,
@@ -172,9 +172,9 @@ export class ActivityService {
     };
   }
 
-  private async requireIssue(workspaceId: string, issueId: string): Promise<void> {
+  private async requireIssue(organizationId: string, issueId: string): Promise<void> {
     const issue = await this.prisma.issue.findFirst({
-      where: { id: issueId, workspaceId, deletedAt: null },
+      where: { id: issueId, organizationId, deletedAt: null },
       select: { id: true },
     });
     if (!issue) throw new NotFoundAppException('Công việc');
@@ -185,13 +185,13 @@ export class ActivityService {
    * Dùng keyset trên [occurredAt, id] vì PK của IssueHistory là composite.
    */
   async listForProject(
-    workspaceId: string,
+    organizationId: string,
     projectId: string,
     cursor: string | undefined,
     limit: number,
   ): Promise<PageResult<ProjectActivityDto>> {
     const project = await this.prisma.project.findFirst({
-      where: { id: projectId, workspaceId, deletedAt: null },
+      where: { id: projectId, organizationId, deletedAt: null },
       select: { id: true },
     });
     if (!project) throw new NotFoundAppException('Dự án');

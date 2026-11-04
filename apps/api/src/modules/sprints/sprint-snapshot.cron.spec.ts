@@ -40,7 +40,7 @@ describe('SprintSnapshotCron', () => {
     expect(await cron.snapshotActiveSprints(NOW)).toBe(1);
     const [, id, kind, at] = sprints.snapshot.mock.calls[0]!;
     expect([id, kind, at.toISOString()]).toEqual(['s1', 'DAILY', '2026-10-15T23:59:59.999Z']);
-    // chỉ quét sprint ACTIVE chưa xoá, mọi workspace (không lọc workspaceId)
+    // chỉ quét sprint ACTIVE chưa xoá, mọi tổ chức (không lọc organizationId)
     expect(prisma.sprint.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { state: 'ACTIVE', deletedAt: null, project: { deletedAt: null } },

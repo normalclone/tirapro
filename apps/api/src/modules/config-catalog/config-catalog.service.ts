@@ -68,19 +68,19 @@ export class ConfigCatalogService {
 
   // ----- Severities -----
 
-  async listSeverities(workspaceId: string): Promise<SeverityDto[]> {
+  async listSeverities(organizationId: string): Promise<SeverityDto[]> {
     const rows = await this.prisma.severity.findMany({
-      where: { workspaceId },
+      where: { organizationId },
       orderBy: { rank: 'desc' },
     });
     return rows.map((r) => this.toSeverityDto(r));
   }
 
-  async createSeverity(workspaceId: string, input: CreateSeverityInput): Promise<SeverityDto> {
+  async createSeverity(organizationId: string, input: CreateSeverityInput): Promise<SeverityDto> {
     try {
       const row = await this.prisma.severity.create({
         data: {
-          workspaceId,
+          organizationId,
           name: input.name,
           description: input.description ?? null,
           color: input.color ?? null,
@@ -97,11 +97,11 @@ export class ConfigCatalogService {
   }
 
   async updateSeverity(
-    workspaceId: string,
+    organizationId: string,
     id: string,
     input: UpdateSeverityInput,
   ): Promise<SeverityDto> {
-    const existing = await this.requireSeverity(workspaceId, id);
+    const existing = await this.requireSeverity(organizationId, id);
     if (existing.isSystem) throw new BusinessRuleException(SYSTEM_LOCKED);
 
     const data: Prisma.SeverityUpdateInput = {};
@@ -115,7 +115,7 @@ export class ConfigCatalogService {
       const row = await this.prisma.$transaction(async (tx) => {
         if (input.isDefault === true) {
           await tx.severity.updateMany({
-            where: { workspaceId, isDefault: true, id: { not: id } },
+            where: { organizationId, isDefault: true, id: { not: id } },
             data: { isDefault: false },
           });
         }
@@ -130,8 +130,8 @@ export class ConfigCatalogService {
     }
   }
 
-  async removeSeverity(workspaceId: string, id: string): Promise<{ success: true }> {
-    const existing = await this.requireSeverity(workspaceId, id);
+  async removeSeverity(organizationId: string, id: string): Promise<{ success: true }> {
+    const existing = await this.requireSeverity(organizationId, id);
     if (existing.isSystem) throw new BusinessRuleException(SYSTEM_LOCKED);
     await this.prisma.severity.delete({ where: { id } });
     return { success: true };
@@ -139,19 +139,19 @@ export class ConfigCatalogService {
 
   // ----- Priorities -----
 
-  async listPriorities(workspaceId: string): Promise<PriorityDto[]> {
+  async listPriorities(organizationId: string): Promise<PriorityDto[]> {
     const rows = await this.prisma.priority.findMany({
-      where: { workspaceId },
+      where: { organizationId },
       orderBy: { rank: 'desc' },
     });
     return rows.map((r) => this.toPriorityDto(r));
   }
 
-  async createPriority(workspaceId: string, input: CreatePriorityInput): Promise<PriorityDto> {
+  async createPriority(organizationId: string, input: CreatePriorityInput): Promise<PriorityDto> {
     try {
       const row = await this.prisma.priority.create({
         data: {
-          workspaceId,
+          organizationId,
           name: input.name,
           iconKey: input.iconKey ?? null,
           color: input.color ?? null,
@@ -168,11 +168,11 @@ export class ConfigCatalogService {
   }
 
   async updatePriority(
-    workspaceId: string,
+    organizationId: string,
     id: string,
     input: UpdatePriorityInput,
   ): Promise<PriorityDto> {
-    const existing = await this.requirePriority(workspaceId, id);
+    const existing = await this.requirePriority(organizationId, id);
     if (existing.isSystem) throw new BusinessRuleException(SYSTEM_LOCKED);
 
     const data: Prisma.PriorityUpdateInput = {};
@@ -186,7 +186,7 @@ export class ConfigCatalogService {
       const row = await this.prisma.$transaction(async (tx) => {
         if (input.isDefault === true) {
           await tx.priority.updateMany({
-            where: { workspaceId, isDefault: true, id: { not: id } },
+            where: { organizationId, isDefault: true, id: { not: id } },
             data: { isDefault: false },
           });
         }
@@ -201,8 +201,8 @@ export class ConfigCatalogService {
     }
   }
 
-  async removePriority(workspaceId: string, id: string): Promise<{ success: true }> {
-    const existing = await this.requirePriority(workspaceId, id);
+  async removePriority(organizationId: string, id: string): Promise<{ success: true }> {
+    const existing = await this.requirePriority(organizationId, id);
     if (existing.isSystem) throw new BusinessRuleException(SYSTEM_LOCKED);
     await this.prisma.priority.delete({ where: { id } });
     return { success: true };
@@ -210,17 +210,17 @@ export class ConfigCatalogService {
 
   // ----- Helpers -----
 
-  private async requireSeverity(workspaceId: string, id: string): Promise<SeverityRow> {
+  private async requireSeverity(organizationId: string, id: string): Promise<SeverityRow> {
     const row = await this.prisma.severity.findFirst({
-      where: { id, workspaceId },
+      where: { id, organizationId },
     });
     if (!row) throw new NotFoundAppException('Mức độ');
     return row;
   }
 
-  private async requirePriority(workspaceId: string, id: string): Promise<PriorityRow> {
+  private async requirePriority(organizationId: string, id: string): Promise<PriorityRow> {
     const row = await this.prisma.priority.findFirst({
-      where: { id, workspaceId },
+      where: { id, organizationId },
     });
     if (!row) throw new NotFoundAppException('Mức ưu tiên');
     return row;

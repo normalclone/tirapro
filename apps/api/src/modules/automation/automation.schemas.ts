@@ -20,7 +20,7 @@ export type IssuePayload = z.infer<typeof issuePayloadSchema>;
 export const createTemplateSchema = z.object({
   name: z.string().min(1, 'Tên mẫu bắt buộc').max(120),
   description: z.string().max(500).optional().nullable(),
-  /** null = mẫu dùng chung cho mọi dự án trong workspace. */
+  /** null = mẫu dùng chung cho mọi dự án trong organization. */
   projectId: z.string().min(1).optional().nullable(),
   payload: issuePayloadSchema.optional().default({}),
 });

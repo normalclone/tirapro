@@ -49,7 +49,7 @@ export interface MeasureResult {
 @Injectable()
 export class KrMeasureService {
   private readonly logger = new Logger(KrMeasureService.name);
-  /** Cache 30s theo (workspace, người xem, nguồn+cấu hình): số đo phụ thuộc dự án người xem thấy nên khoá có viewerId. */
+  /** Cache 30s theo (tổ chức, người xem, nguồn+cấu hình): số đo phụ thuộc dự án người xem thấy nên khoá có viewerId. */
   private readonly cache = new TtlCache<MeasureResult>(MEASURE_CACHE_TTL_MS, MEASURE_CACHE_MAX);
 
   constructor(
@@ -59,7 +59,7 @@ export class KrMeasureService {
   ) {}
 
   async measure(
-    workspaceId: string,
+    organizationId: string,
     scope: MeasureScope,
     krs: MeasurableKr[],
   ): Promise<Map<string, MeasureResult>> {
@@ -81,21 +81,21 @@ export class KrMeasureService {
     const pending: Array<{ key: string; kr: MeasurableKr; ids: string[] }> = [];
     for (const [key, g] of groups) {
       const hit = cacheable
-        ? this.cache.read(this.cacheKey(workspaceId, scope, key), now)
+        ? this.cache.read(this.cacheKey(organizationId, scope, key), now)
         : undefined;
       if (hit) for (const id of g.ids) out.set(id, hit);
       else pending.push({ key, kr: g.kr, ids: g.ids });
     }
     if (pending.length === 0) return out;
 
-    const visible = await this.projectFilter(workspaceId, scope);
+    const visible = await this.projectFilter(organizationId, scope);
     const measuredAt = new Date().toISOString();
     await this.inPool(pending, async ({ key, kr, ids }) => {
       let result: MeasureResult;
       try {
-        const value = await this.measureOne(workspaceId, scope, visible, kr);
+        const value = await this.measureOne(organizationId, scope, visible, kr);
         result = { value, measuredAt, error: null };
-        if (cacheable) this.cache.put(this.cacheKey(workspaceId, scope, key), result);
+        if (cacheable) this.cache.put(this.cacheKey(organizationId, scope, key), result);
       } catch (err) {
         result = { value: null, measuredAt, error: this.messageOf(err) };
       }
@@ -104,8 +104,8 @@ export class KrMeasureService {
     return out;
   }
 
-  private cacheKey(workspaceId: string, scope: MeasureScope, groupKey: string): string {
-    return `${workspaceId}|${scope === 'public' ? 'public' : scope.viewerId}|${groupKey}`;
+  private cacheKey(organizationId: string, scope: MeasureScope, groupKey: string): string {
+    return `${organizationId}|${scope === 'public' ? 'public' : scope.viewerId}|${groupKey}`;
   }
 
   /** Chạy `fn` cho từng phần tử với tối đa `MEASURE_CONCURRENCY` việc đồng thời. `fn` tự bắt lỗi (không ném). */
@@ -118,18 +118,18 @@ export class KrMeasureService {
   }
 
   /**
-   * Kiểm cấu hình lúc LƯU (đã chuẩn hoá bằng `parseSourceConfig`): dự án nêu trong cấu hình phải thuộc workspace và
+   * Kiểm cấu hình lúc LƯU (đã chuẩn hoá bằng `parseSourceConfig`): dự án nêu trong cấu hình phải thuộc tổ chức và
    * người cấu hình thấy (404 'Dự án' như không tồn tại); JQL phải hợp lệ (cú pháp + giá trị) — sai → 422.
    */
   async validateConfig(
-    workspaceId: string,
+    organizationId: string,
     viewerId: string,
     source: KeyResultSource,
     config: KeyResultSourceConfig,
   ): Promise<void> {
     if (source === 'ISSUE_COUNT_JQL') {
       const res = await this.search.validate(
-        workspaceId,
+        organizationId,
         viewerId,
         (config as { jql: string }).jql,
       );
@@ -141,9 +141,9 @@ export class KrMeasureService {
     }
     const projectId = (config as { projectId?: string } | null)?.projectId;
     if (!projectId) return;
-    const visible = await this.access.visibleWhere(viewerId, workspaceId);
+    const visible = await this.access.visibleWhere(viewerId, organizationId);
     const found = await this.prisma.project.findFirst({
-      where: { id: projectId, workspaceId, deletedAt: null, ...visible },
+      where: { id: projectId, organizationId, deletedAt: null, ...visible },
       select: { id: true },
     });
     if (!found) throw new NotFoundAppException('Dự án');
@@ -163,12 +163,12 @@ export class KrMeasureService {
 
   /** Điều kiện `project` áp lên việc/dự án được đếm: theo người xem, hoặc `{ isPrivate: false }` cho phạm vi công khai. */
   private async projectFilter(
-    workspaceId: string,
+    organizationId: string,
     scope: MeasureScope,
   ): Promise<Prisma.ProjectWhereInput> {
     return scope === 'public'
       ? { isPrivate: false }
-      : this.access.visibleWhere(scope.viewerId, workspaceId);
+      : this.access.visibleWhere(scope.viewerId, organizationId);
   }
 
   private messageOf(err: unknown): string {
@@ -178,7 +178,7 @@ export class KrMeasureService {
   }
 
   private async measureOne(
-    workspaceId: string,
+    organizationId: string,
     scope: MeasureScope,
     visible: Prisma.ProjectWhereInput,
     kr: MeasurableKr,
@@ -189,7 +189,7 @@ export class KrMeasureService {
         const projectId = (cfg as { projectId?: string }).projectId;
         return this.prisma.issue.count({
           where: {
-            workspaceId,
+            organizationId,
             deletedAt: null,
             type: BUG_TYPE_WHERE,
             status: { category: { not: 'DONE' } },
@@ -201,15 +201,15 @@ export class KrMeasureService {
       }
       case 'SPRINT_COMPLETION':
         return this.sprintCompletion(
-          workspaceId,
+          organizationId,
           this.filterFor(scope, visible, true),
           (cfg as { projectId: string }).projectId,
         );
       case 'ISSUE_COUNT_JQL': {
         const jql = (cfg as { jql: string }).jql;
         return scope === 'public'
-          ? this.search.countPublic(workspaceId, jql)
-          : this.search.count(workspaceId, scope.viewerId, jql);
+          ? this.search.countPublic(organizationId, jql)
+          : this.search.count(organizationId, scope.viewerId, jql);
       }
       default:
         throw new Error(`Nguồn số liệu không hỗ trợ: ${String(kr.source)}`);
@@ -218,12 +218,12 @@ export class KrMeasureService {
 
   /** % điểm Done / điểm cam kết của sprint ACTIVE (không có → sprint đóng gần nhất); không điểm → 0. */
   private async sprintCompletion(
-    workspaceId: string,
+    organizationId: string,
     visible: Prisma.ProjectWhereInput,
     projectId: string,
   ): Promise<number> {
     const project = await this.prisma.project.findFirst({
-      where: { id: projectId, workspaceId, deletedAt: null, ...visible },
+      where: { id: projectId, organizationId, deletedAt: null, ...visible },
       select: { id: true },
     });
     // Dự án đã xoá hoặc riêng tư người xem không thấy: cùng một thông điệp như dự án không tồn tại (không lộ).

@@ -108,10 +108,10 @@ export class ExcelImportService {
     private readonly workflows: WorkflowResolver = new WorkflowResolver(),
   ) {}
 
-  /** Dự án phải thuộc workspace của request; mọi truy vấn danh mục bên dưới theo projectId này. */
-  private async loadProject(workspaceId: string, projectId: string) {
+  /** Dự án phải thuộc tổ chức của request; mọi truy vấn danh mục bên dưới theo projectId này. */
+  private async loadProject(organizationId: string, projectId: string) {
     const project = await this.prisma.project.findFirst({
-      where: { id: projectId, workspaceId, deletedAt: null },
+      where: { id: projectId, organizationId, deletedAt: null },
       select: { id: true, key: true, name: true, archivedAt: true },
     });
     if (!project) throw new NotFoundAppException('Dự án');
@@ -119,7 +119,7 @@ export class ExcelImportService {
   }
 
   private async loadCatalog(
-    workspaceId: string,
+    organizationId: string,
     project: { id: string; key: string; name: string },
   ): Promise<ProjectCatalog> {
     const projectId = project.id;
@@ -129,12 +129,12 @@ export class ExcelImportService {
     const [types, priorities, statuses, memberships, sprints, epics, labels, components, versions] =
       await Promise.all([
         this.prisma.issueType.findMany({
-          where: { workspaceId },
+          where: { organizationId },
           select: { id: true, name: true, key: true, hierarchyLevel: true, isSubtask: true },
           orderBy: [{ hierarchyLevel: 'desc' }, { name: 'asc' }],
         }),
         this.prisma.priority.findMany({
-          where: { workspaceId },
+          where: { organizationId },
           select: { id: true, name: true },
           orderBy: [{ rank: 'desc' }, { name: 'asc' }],
         }),
@@ -157,7 +157,7 @@ export class ExcelImportService {
         this.prisma.issue.findMany({
           where: {
             projectId,
-            workspaceId,
+            organizationId,
             deletedAt: null,
             type: { OR: [{ key: 'EPIC' }, { hierarchyLevel: { gte: 1 } }] },
           },
@@ -200,37 +200,37 @@ export class ExcelImportService {
 
   /** GET template — `.xlsx` theo cấu hình hiện tại của dự án. */
   async template(
-    workspaceId: string,
+    organizationId: string,
     projectId: string,
   ): Promise<{ buffer: Buffer; filename: string }> {
-    const project = await this.loadProject(workspaceId, projectId);
-    const catalog = await this.loadCatalog(workspaceId, project);
+    const project = await this.loadProject(organizationId, projectId);
+    const catalog = await this.loadCatalog(organizationId, project);
     const buffer = await buildExcelTemplate(catalog);
     return { buffer, filename: `Mau-nhap-cong-viec-${project.key}.xlsx` };
   }
 
   /** POST preview — không ghi DB. */
   async preview(
-    workspaceId: string,
+    organizationId: string,
     projectId: string,
     file: UploadFile,
   ): Promise<ExcelPreviewResult> {
-    const a = await this.analyze(workspaceId, projectId, file);
+    const a = await this.analyze(organizationId, projectId, file);
     return this.toPreview(a);
   }
 
   /** POST import — validate lại từ đầu, nhập dòng hợp lệ, bỏ dòng lỗi. */
   async commit(
-    workspaceId: string,
+    organizationId: string,
     userId: string,
     projectId: string,
     file: UploadFile,
   ): Promise<ExcelImportResult> {
-    const a = await this.analyze(workspaceId, projectId, file);
+    const a = await this.analyze(organizationId, projectId, file);
 
     const job = await this.prisma.importJob.create({
       data: {
-        workspaceId,
+        organizationId,
         source: 'EXCEL',
         status: 'RUNNING',
         createdById: userId,
@@ -254,7 +254,7 @@ export class ExcelImportService {
       }
       const labelCache = new Map(a.catalog.labels.map((l) => [l.name.toLowerCase(), l.id]));
       const written = await this.importer.createIssuesInChunks(
-        workspaceId,
+        organizationId,
         userId,
         items,
         labelCache,
@@ -313,14 +313,14 @@ export class ExcelImportService {
   }
 
   private async analyze(
-    workspaceId: string,
+    organizationId: string,
     projectId: string,
     file: UploadFile,
   ): Promise<Analysis> {
     const buffer = assertXlsxUpload(file);
-    const project = await this.loadProject(workspaceId, projectId);
+    const project = await this.loadProject(organizationId, projectId);
     assertNotArchived(project.archivedAt);
-    const catalog = await this.loadCatalog(workspaceId, project);
+    const catalog = await this.loadCatalog(organizationId, project);
     const { rows } = await parseExcelBuffer(buffer);
     const validated = rows.map((r) => this.validateRow(r, catalog, projectId));
     return { catalog, total: rows.length, rows: validated };

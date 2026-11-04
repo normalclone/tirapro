@@ -6,7 +6,7 @@ import { BusinessRuleException } from '../../common/exceptions/app.exception';
 import { cursorPage, type PageResult } from '../../common/dto/page-result';
 
 export interface AuditEntry {
-  workspaceId?: string | null;
+  organizationId?: string | null;
   actorId?: string | null;
   action: AuditAction;
   entityType: string;
@@ -39,7 +39,7 @@ export class AuditService {
    */
   async record(entry: AuditEntry, tx?: Prisma.TransactionClient): Promise<void> {
     const data = {
-      workspaceId: entry.workspaceId ?? null,
+      organizationId: entry.organizationId ?? null,
       actorId: entry.actorId ?? null,
       action: entry.action,
       entityType: entry.entityType,
@@ -60,9 +60,9 @@ export class AuditService {
     }
   }
 
-  /** Nhật ký của một workspace, mới nhất trước, phân trang con trỏ (id dòng cuối, keyset [createdAt, id]). */
-  async list(workspaceId: string, q: AuditListQuery): Promise<PageResult<AuditLogDto>> {
-    const where: Prisma.AuditLogWhereInput = { workspaceId };
+  /** Nhật ký của một tổ chức, mới nhất trước, phân trang con trỏ (id dòng cuối, keyset [createdAt, id]). */
+  async list(organizationId: string, q: AuditListQuery): Promise<PageResult<AuditLogDto>> {
+    const where: Prisma.AuditLogWhereInput = { organizationId };
     if (q.action) where.action = q.action;
     if (q.actorId) where.actorId = q.actorId;
     if (q.from || q.to) {
@@ -70,10 +70,10 @@ export class AuditService {
     }
     if (q.cursor) {
       const cur = await this.prisma.auditLog.findFirst({
-        where: { id: q.cursor, workspaceId },
+        where: { id: q.cursor, organizationId },
         select: { createdAt: true },
       });
-      // Con trỏ không tồn tại (đã xoá, hoặc của workspace khác): báo lỗi rõ — KHÔNG lặng lẽ trả lại trang đầu
+      // Con trỏ không tồn tại (đã xoá, hoặc của tổ chức khác): báo lỗi rõ — KHÔNG lặng lẽ trả lại trang đầu
       // (client sẽ nối trang đầu vào danh sách đang xem và lặp mãi).
       if (!cur)
         throw new BusinessRuleException('Con trỏ phân trang không hợp lệ — hãy tải lại trang');

@@ -11,35 +11,35 @@ import {
 import { AvatarUploadInterceptor } from '../../common/upload/upload.interceptor';
 import { ApiConsumes, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
-import { createWorkspaceSchema, type CreateWorkspaceInput } from '@tirapro/shared';
+import { createOrganizationSchema, type CreateOrganizationInput } from '@tirapro/shared';
 import { PERMISSIONS } from '@tirapro/types';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { ForbiddenAppException } from '../../common/exceptions/app.exception';
 import type { AuthUser } from '../../common/types/request';
-import { WorkspacesService } from './workspaces.service';
+import { OrganizationsService } from './organizations.service';
 import { AuthOnly } from '../../common/decorators/auth-only.decorator';
 
-@ApiTags('workspaces')
-@Controller('workspaces')
-export class WorkspacesController {
-  constructor(private readonly workspaces: WorkspacesService) {}
+@ApiTags('organizations')
+@Controller('organizations')
+export class OrganizationsController {
+  constructor(private readonly organizations: OrganizationsService) {}
 
-  /** Bất kỳ người dùng đã đăng nhập đều có thể tạo workspace mới (trở thành admin của nó). */
-  // Bất kỳ người dùng đã đăng nhập đều được tạo workspace mới (trở thành admin của nó); chưa thuộc workspace nào để cấp quyền.
+  /** Bất kỳ người dùng đã đăng nhập đều có thể tạo tổ chức mới (trở thành admin của nó). */
+  // Bất kỳ người dùng đã đăng nhập đều được tạo tổ chức mới (trở thành admin của nó); chưa thuộc tổ chức nào để cấp quyền.
   @AuthOnly()
   @Post()
   async create(
     @CurrentUser() user: AuthUser,
-    @Body(new ZodValidationPipe(createWorkspaceSchema)) dto: CreateWorkspaceInput,
+    @Body(new ZodValidationPipe(createOrganizationSchema)) dto: CreateOrganizationInput,
   ) {
-    return this.workspaces.create(user.id, dto);
+    return this.organizations.create(user.id, dto);
   }
 
-  /** Chỉ cho phép sửa workspace đang hoạt động (perm gắn với workspace hiện tại). */
+  /** Chỉ cho phép sửa tổ chức đang hoạt động (perm gắn với tổ chức hiện tại). */
   private assertCurrent(user: AuthUser, id: string): string {
-    if (!user.workspaceId || user.workspaceId !== id) {
+    if (!user.organizationId || user.organizationId !== id) {
       throw new ForbiddenAppException(
         'Chỉ sửa được tổ chức bạn đang mở — hãy chuyển sang tổ chức đó rồi thử lại',
       );
@@ -47,8 +47,8 @@ export class WorkspacesController {
     return id;
   }
 
-  /** Tải logo/ảnh workspace (workspace admin). */
-  @Permissions(PERMISSIONS.WORKSPACE_ADMIN)
+  /** Tải logo/ảnh tổ chức (tổ chức admin). */
+  @Permissions(PERMISSIONS.ORGANIZATION_ADMIN)
   @Post(':id/avatar')
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(AvatarUploadInterceptor)
@@ -58,13 +58,13 @@ export class WorkspacesController {
     @UploadedFile() file: Express.Multer.File,
     @Req() req: Request,
   ) {
-    return this.workspaces.setAvatar(this.assertCurrent(user, id), file, req);
+    return this.organizations.setAvatar(this.assertCurrent(user, id), file, req);
   }
 
-  /** Gỡ logo/ảnh workspace (workspace admin). */
-  @Permissions(PERMISSIONS.WORKSPACE_ADMIN)
+  /** Gỡ logo/ảnh tổ chức (tổ chức admin). */
+  @Permissions(PERMISSIONS.ORGANIZATION_ADMIN)
   @Delete(':id/avatar')
   async removeAvatar(@CurrentUser() user: AuthUser, @Param('id') id: string) {
-    return this.workspaces.clearAvatar(this.assertCurrent(user, id));
+    return this.organizations.clearAvatar(this.assertCurrent(user, id));
   }
 }

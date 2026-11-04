@@ -9,21 +9,21 @@ import { AuditService } from '../audit/audit.service';
 import { PointsService } from '../issues/points.service';
 import { SystemSettingsService } from '../system-settings/system-settings.service';
 import { AdminOverviewService } from './admin-overview.service';
-import { AdminWorkspacesService } from './admin-workspaces.service';
+import { AdminOrganizationsService } from './admin-organizations.service';
 import { AdminSystemService } from './admin-system.service';
 import {
   auditQuerySchema,
-  patchWorkspaceSchema,
+  patchOrganizationSchema,
   putPointsFormulaSchema,
   updateFlagsSchema,
-  type PatchWorkspaceInput,
+  type PatchOrganizationInput,
   type PutPointsFormulaInput,
   type UpdateFlagsInput,
 } from './admin-console.schemas';
 import { AuthOnly } from '../../common/decorators/auth-only.decorator';
 
-/** Console quản trị hệ thống (tổng quan, workspaces, cấu hình, health/audit) — CHỈ admin hệ thống. */
-// Chỉ admin hệ thống: từng handler tự kiểm tra isSystemAdmin (assertSysAdmin), không thuộc quyền RBAC của workspace.
+/** Console quản trị hệ thống (tổng quan, tổ chức, cấu hình, health/audit) — CHỈ admin hệ thống. */
+// Chỉ admin hệ thống: từng handler tự kiểm tra isSystemAdmin (assertSysAdmin), không thuộc quyền RBAC của organization.
 @AuthOnly()
 @ApiTags('admin')
 @Controller('admin')
@@ -32,7 +32,7 @@ export class AdminConsoleController {
 
   constructor(
     private readonly overviewSvc: AdminOverviewService,
-    private readonly workspacesSvc: AdminWorkspacesService,
+    private readonly organizationsSvc: AdminOrganizationsService,
     private readonly systemSvc: AdminSystemService,
     private readonly settings: SystemSettingsService,
     private readonly points: PointsService,
@@ -85,7 +85,7 @@ export class AdminConsoleController {
     const before = await this.points.getFormula();
     const saved = await this.points.setFormula(dto, user.id);
     await this.auditLog.record({
-      workspaceId: null,
+      organizationId: null,
       actorId: user.id,
       action: AUDIT_ACTIONS.POINTS_FORMULA_CHANGED,
       entityType: 'PointsFormulaConfig',
@@ -103,20 +103,20 @@ export class AdminConsoleController {
     return saved;
   }
 
-  @Get('workspaces')
-  async workspaces(@CurrentUser() user: AuthUser) {
+  @Get('organizations')
+  async organizations(@CurrentUser() user: AuthUser) {
     this.assertSysAdmin(user);
-    return this.workspacesSvc.list();
+    return this.organizationsSvc.list();
   }
 
-  @Patch('workspaces/:id')
-  async patchWorkspace(
+  @Patch('organizations/:id')
+  async patchOrganization(
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
-    @Body(new ZodValidationPipe(patchWorkspaceSchema)) dto: PatchWorkspaceInput,
+    @Body(new ZodValidationPipe(patchOrganizationSchema)) dto: PatchOrganizationInput,
   ) {
     this.assertSysAdmin(user);
-    return this.workspacesSvc.patch(id, dto);
+    return this.organizationsSvc.patch(id, dto);
   }
 
   @Get('system/health')

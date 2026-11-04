@@ -72,7 +72,7 @@ export interface ImportJsonResult {
   failed: number;
   total: number;
   errors: RowError[];
-  /** Số issue ĐÃ tạo nhưng bị bỏ gán vì email assignee không phải thành viên workspace (không báo lỗi dòng). */
+  /** Số issue ĐÃ tạo nhưng bị bỏ gán vì email assignee không phải thành viên tổ chức (không báo lỗi dòng). */
   skippedAssignees: number;
 }
 
@@ -137,13 +137,13 @@ export class ImportService {
    * Tái sử dụng IssuesService.create để đánh số/key/rank/workflow chuẩn xác.
    */
   async importCsv(
-    workspaceId: string,
+    organizationId: string,
     userId: string,
     { projectId, csv }: ImportCsvInput,
   ): Promise<ImportCsvResult> {
-    // 1. Xác minh project thuộc workspace.
+    // 1. Xác minh project thuộc organization.
     const project = await this.prisma.project.findFirst({
-      where: { id: projectId, workspaceId, deletedAt: null },
+      where: { id: projectId, organizationId, deletedAt: null },
       select: { id: true, archivedAt: true },
     });
     if (!project) throw new NotFoundAppException('Dự án');
@@ -152,7 +152,7 @@ export class ImportService {
     // 2. Tạo bản ghi ImportJob (RUNNING).
     const job = await this.prisma.importJob.create({
       data: {
-        workspaceId,
+        organizationId,
         source: 'CSV',
         status: 'RUNNING',
         createdById: userId,
@@ -170,14 +170,14 @@ export class ImportService {
         trim: true,
       }) as CsvRow[];
 
-      // 4. Nạp issue type & priority của workspace, dựng map theo tên (lowercase).
+      // 4. Nạp issue type & priority của tổ chức, dựng map theo tên (lowercase).
       const [types, priorities] = await Promise.all([
         this.prisma.issueType.findMany({
-          where: { workspaceId },
+          where: { organizationId },
           select: { id: true, name: true },
         }),
         this.prisma.priority.findMany({
-          where: { workspaceId },
+          where: { organizationId },
           select: { id: true, name: true },
         }),
       ]);
@@ -227,7 +227,7 @@ export class ImportService {
         }
       }
 
-      const written = await this.createIssuesInChunks(workspaceId, userId, items, new Map());
+      const written = await this.createIssuesInChunks(organizationId, userId, items, new Map());
       errors.push(...written.errors);
       errors.sort((x, y) => x.row - y.row);
       const created = written.created;
@@ -285,13 +285,13 @@ export class ImportService {
    * Lỗi từng issue không làm hỏng cả lần import.
    */
   async importJson(
-    workspaceId: string,
+    organizationId: string,
     userId: string,
     { projectId, data }: ImportJsonInput,
   ): Promise<ImportJsonResult> {
-    // 1. Xác minh project thuộc workspace.
+    // 1. Xác minh project thuộc organization.
     const project = await this.prisma.project.findFirst({
-      where: { id: projectId, workspaceId, deletedAt: null },
+      where: { id: projectId, organizationId, deletedAt: null },
       select: { id: true, archivedAt: true },
     });
     if (!project) throw new NotFoundAppException('Dự án');
@@ -304,7 +304,7 @@ export class ImportService {
     // dùng CSV và ghi nhận định dạng thực tế qua config.format.
     const job = await this.prisma.importJob.create({
       data: {
-        workspaceId,
+        organizationId,
         source: 'CSV',
         status: 'RUNNING',
         createdById: userId,
@@ -316,23 +316,23 @@ export class ImportService {
     });
 
     try {
-      // 3. Pre-resolve các lookup của workspace/project.
+      // 3. Pre-resolve các lookup của organization/project.
       const [types, priorities, projectLabels, users] = await Promise.all([
         this.prisma.issueType.findMany({
-          where: { workspaceId },
+          where: { organizationId },
           select: { id: true, name: true },
         }),
         this.prisma.priority.findMany({
-          where: { workspaceId },
+          where: { organizationId },
           select: { id: true, name: true },
         }),
         this.prisma.label.findMany({
           where: { projectId },
           select: { id: true, name: true },
         }),
-        // Chỉ thành viên workspace: người ngoài (hoặc tenant khác) coi như email không khớp → không có assignee.
+        // Chỉ thành viên organization: người ngoài (hoặc tenant khác) coi như email không khớp → không có assignee.
         this.prisma.user.findMany({
-          where: { workspaceMemberships: { some: { workspaceId } } },
+          where: { organizationMemberships: { some: { organizationId } } },
           select: { id: true, email: true },
         }),
       ]);
@@ -420,7 +420,7 @@ export class ImportService {
         }
       }
 
-      const written = await this.createIssuesInChunks(workspaceId, userId, items, labelByName);
+      const written = await this.createIssuesInChunks(organizationId, userId, items, labelByName);
       errors.push(...written.errors);
       errors.sort((x, y) => x.row - y.row);
       const created = written.created;
@@ -475,11 +475,11 @@ export class ImportService {
     }
   }
 
-  /** Danh sách ImportJob của workspace, mới nhất trước. */
-  async listJobs(workspaceId: string, cursor: string | undefined, limit: number) {
+  /** Danh sách ImportJob của tổ chức, mới nhất trước. */
+  async listJobs(organizationId: string, cursor: string | undefined, limit: number) {
     const take = Math.min(Math.max(limit || 20, 1), 100);
     const jobs = await this.prisma.importJob.findMany({
-      where: { workspaceId },
+      where: { organizationId },
       orderBy: { createdAt: 'desc' },
       take,
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
@@ -506,9 +506,9 @@ export class ImportService {
     }));
   }
 
-  /** Một ImportJob của workspace (để web poll tiến độ). */
-  async getJob(workspaceId: string, id: string): Promise<ImportJobDto> {
-    const j = await this.prisma.importJob.findFirst({ where: { id, workspaceId } });
+  /** Một ImportJob của tổ chức (để web poll tiến độ). */
+  async getJob(organizationId: string, id: string): Promise<ImportJobDto> {
+    const j = await this.prisma.importJob.findFirst({ where: { id, organizationId } });
     if (!j) throw new NotFoundAppException('Lần nhập dữ liệu');
     return {
       id: j.id,
@@ -590,7 +590,7 @@ export class ImportService {
    * khi transaction commit, tránh trỏ tới label đã bị rollback.
    */
   async createIssuesInChunks(
-    workspaceId: string,
+    organizationId: string,
     userId: string,
     items: PreparedItem[],
     labelCache: Map<string, string>,
@@ -599,12 +599,12 @@ export class ImportService {
     // Việc nền không có RequestStore nên cache quy trình theo request không áp dụng: mở bộ nhớ theo lần chạy để mỗi dòng
     // KHÔNG hỏi lại cấu hình quy trình (~4 truy vấn/dòng).
     return runWithWorkflowMemo(() =>
-      this.createChunks(workspaceId, userId, items, labelCache, hooks),
+      this.createChunks(organizationId, userId, items, labelCache, hooks),
     );
   }
 
   private async createChunks(
-    workspaceId: string,
+    organizationId: string,
     userId: string,
     items: PreparedItem[],
     labelCache: Map<string, string>,
@@ -635,7 +635,7 @@ export class ImportService {
           for (const it of batch) {
             const dto = await this.issues.createWithin(
               tx,
-              workspaceId,
+              organizationId,
               userId,
               it.input,
               deferred,

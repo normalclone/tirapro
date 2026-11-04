@@ -3,7 +3,7 @@ import { RulesService } from './rules.service';
 
 const row = (over: Record<string, unknown> = {}) => ({
   id: 'r1',
-  workspaceId: 'w1',
+  organizationId: 'w1',
   projectId: null,
   name: 'r',
   enabled: true,
@@ -57,7 +57,7 @@ function setup() {
 }
 
 describe('RulesService', () => {
-  it('activeFor lọc theo trigger + dự án (null = cả workspace) và cache bộ nhớ 60s đến khi invalidate', async () => {
+  it('activeFor lọc theo trigger + dự án (null = cả organization) và cache bộ nhớ 60s đến khi invalidate', async () => {
     const { service, prisma } = setup();
     const a = await service.activeFor('w1', 'ISSUE_CREATED', 'p1');
     expect(a.map((r) => r.id)).toEqual(['r1']); // r2 thuộc dự án khác, r3 khác trigger
@@ -182,12 +182,12 @@ describe('RulesService', () => {
 });
 
 describe('RulesService.onRulesChanged — quy trình đổi quy tắc ngoài RulesService', () => {
-  it('sự kiện automation.rules_changed bỏ cache bộ nhớ của workspace nên engine đọc lại bản mới', async () => {
+  it('sự kiện automation.rules_changed bỏ cache bộ nhớ của organization nên engine đọc lại bản mới', async () => {
     const { service, prisma } = setup();
     await service.activeFor('w1', 'ISSUE_CREATED', 'p1');
     await service.activeFor('w1', 'ISSUE_CREATED', 'p1');
     expect(prisma.automationRule.findMany).toHaveBeenCalledTimes(1);
-    await service.onRulesChanged({ workspaceId: 'w1' });
+    await service.onRulesChanged({ organizationId: 'w1' });
     await service.activeFor('w1', 'ISSUE_CREATED', 'p1');
     expect(prisma.automationRule.findMany).toHaveBeenCalledTimes(2);
   });
@@ -223,7 +223,7 @@ describe('RulesService — dự án lưu trữ là chỉ đọc', () => {
     expect(prisma.automationRule.deleteMany).not.toHaveBeenCalled();
   });
 
-  it('quy tắc cả workspace (không gắn dự án) vẫn sửa/xoá được', async () => {
+  it('quy tắc cả organization (không gắn dự án) vẫn sửa/xoá được', async () => {
     const { service, prisma } = archivedSetup();
     prisma.automationRule.findFirst.mockResolvedValue(row({ projectId: null }));
     await service.update('w1', 'r1', { enabled: false });
@@ -234,20 +234,20 @@ describe('RulesService — dự án lưu trữ là chỉ đọc', () => {
 });
 
 describe('RulesService.list — dự án riêng tư', () => {
-  it('người ngoài: chỉ quy tắc cả workspace + dự án thấy được (kể cả khi KHÔNG truyền projectId)', async () => {
+  it('người ngoài: chỉ quy tắc cả organization + dự án thấy được (kể cả khi KHÔNG truyền projectId)', async () => {
     const { service, prisma, access } = setup();
     access.visibleProjectIds.mockResolvedValue(['pVisible']);
     await service.list('w1', undefined, 'u1');
     expect(access.visibleProjectIds).toHaveBeenCalledWith('u1', 'w1');
     expect(prisma.automationRule.findMany.mock.calls[0]![0]).toMatchObject({
       where: {
-        workspaceId: 'w1',
+        organizationId: 'w1',
         AND: [{ OR: [{ projectId: null }, { projectId: { in: ['pVisible'] } }] }],
       },
     });
   });
 
-  it('có projectId: giữ OR (dự án đó + cả workspace) và vẫn thêm lọc người xem trong AND', async () => {
+  it('có projectId: giữ OR (dự án đó + cả organization) và vẫn thêm lọc người xem trong AND', async () => {
     const { service, prisma, access } = setup();
     access.visibleProjectIds.mockResolvedValue(['pVisible']);
     await service.list('w1', 'pVisible', 'u1');
@@ -263,7 +263,7 @@ describe('RulesService.list — dự án riêng tư', () => {
     const { service, prisma } = setup();
     await service.list('w1', undefined, 'admin');
     expect(prisma.automationRule.findMany.mock.calls[0]![0]).toMatchObject({
-      where: { workspaceId: 'w1' },
+      where: { organizationId: 'w1' },
     });
     expect(JSON.stringify(prisma.automationRule.findMany.mock.calls[0]![0])).not.toContain('AND');
   });

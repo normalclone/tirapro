@@ -176,7 +176,7 @@ export interface AssigneeTally {
   unmatched: Map<string, number>;
   blank: number;
   /**
-   * Người chưa ghép NHƯNG đã nhớ email (L28): việc của họ sẽ tự gán khi họ được thêm vào workspace — nên không vào
+   * Người chưa ghép NHƯNG đã nhớ email (L28): việc của họ sẽ tự gán khi họ được thêm vào tổ chức — nên không vào
    * `unmatched` (không phải cảnh báo "mất người phụ trách"), vẫn thuộc "việc chưa có người" của báo cáo.
    */
   remembered: Map<string, { email: string; count: number }>;
@@ -224,7 +224,7 @@ export function tallyAssignee(
 }
 
 export interface RememberedAssignees {
-  /** Số việc sẽ tự gán khi người phụ trách được thêm vào workspace. */
+  /** Số việc sẽ tự gán khi người phụ trách được thêm vào organization. */
   total: number;
   /** Email đã nhớ (khác nhau, nhiều việc nhất trước, ≤ `MAX_UNMATCHED_LISTED`). */
   emails: string[];
@@ -252,7 +252,7 @@ export function summarizeRemembered(
   };
 }
 
-/** Câu ghi chú (không phải cảnh báo) cho báo cáo/chạy thử: việc nào sẽ tự gán khi ai vào workspace. */
+/** Câu ghi chú (không phải cảnh báo) cho báo cáo/chạy thử: việc nào sẽ tự gán khi ai vào organization. */
 export function formatRemembered(r: RememberedAssignees, dryRun = false): string {
   // Chạy thử (phản hồi chỉ tới quản trị) nêu email; nhật ký job (đọc được qua import:run) thì KHÔNG nêu email.
   if (!dryRun)

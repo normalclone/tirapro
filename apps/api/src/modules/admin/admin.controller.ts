@@ -6,11 +6,11 @@ import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import type { AuthUser } from '../../common/types/request';
 import { AdminService } from './admin.service';
 import {
-  addToWorkspaceSchema,
+  addToOrganizationSchema,
   createUserSchema,
   listUsersQuerySchema,
   updateUserSchema,
-  type AddToWorkspaceInput,
+  type AddToOrganizationInput,
   type CreateUserInput,
   type ListUsersQuery,
   type UpdateUserInput,
@@ -18,7 +18,7 @@ import {
 import { AuthOnly } from '../../common/decorators/auth-only.decorator';
 
 /** Quản trị tài khoản hệ thống — CHỈ admin hệ thống (isSystemAdmin). */
-// Chỉ admin hệ thống: từng handler tự kiểm tra isSystemAdmin (assertSysAdmin), không thuộc quyền RBAC của workspace.
+// Chỉ admin hệ thống: từng handler tự kiểm tra isSystemAdmin (assertSysAdmin), không thuộc quyền RBAC của organization.
 @AuthOnly()
 @ApiTags('admin')
 @Controller('admin/users')
@@ -79,13 +79,13 @@ export class AdminController {
   }
 
   /** Thêm tài khoản vào một tổ chức (vd tài khoản mồ côi chưa thuộc nơi nào). */
-  @Post(':id/workspaces')
-  async addToWorkspace(
+  @Post(':id/organizations')
+  async addToOrganization(
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
-    @Body(new ZodValidationPipe(addToWorkspaceSchema)) dto: AddToWorkspaceInput,
+    @Body(new ZodValidationPipe(addToOrganizationSchema)) dto: AddToOrganizationInput,
   ) {
     this.assertSysAdmin(user);
-    return this.admin.addToWorkspace(user.id, id, dto);
+    return this.admin.addToOrganization(user.id, id, dto);
   }
 }

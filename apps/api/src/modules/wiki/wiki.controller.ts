@@ -2,7 +2,7 @@ import { Body, Controller, Delete, Get, HttpCode, Param, Post, Put, Query } from
 import { ApiTags } from '@nestjs/swagger';
 import { PERMISSIONS } from '@tirapro/types';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import { WorkspaceId } from '../../common/decorators/workspace-id.decorator';
+import { OrganizationId } from '../../common/decorators/organization-id.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
 import { ProjectRef } from '../../common/decorators/project-ref.decorator';
 import { PositiveInt32Pipe } from '../../common/pipes/positive-int32.pipe';
@@ -26,32 +26,32 @@ export class WikiController {
   constructor(private readonly wiki: WikiService) {}
 
   /**
-   * Cây trang tài liệu. `projectId` bỏ trống = mọi trang; `none` = tài liệu chung workspace.
+   * Cây trang tài liệu. `projectId` bỏ trống = mọi trang; `none` = tài liệu chung organization.
    * Có `q` thì trả danh sách phẳng các trang khớp tiêu đề/nội dung.
    */
   @ProjectRef('query', 'projectId')
   @Get()
-  @Permissions(PERMISSIONS.WORKSPACE_VIEW)
+  @Permissions(PERMISSIONS.ORGANIZATION_VIEW)
   async list(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
     @Query('projectId') projectId?: string,
     @Query('q') q?: string,
   ) {
-    const ws = workspaceId;
+    const ws = organizationId;
     if (q && q.trim()) return this.wiki.search(ws, q, projectId, user);
     return this.wiki.tree(ws, projectId, user);
   }
 
   /**
-   * Người có thể cấp quyền viết / xoá trang ở phạm vi `projectId` (bỏ trống/`none` = cấp workspace).
+   * Người có thể cấp quyền viết / xoá trang ở phạm vi `projectId` (bỏ trống/`none` = cấp tổ chức).
    * Đặt TRƯỚC `:id` để không bị nuốt thành id trang.
    */
   @ProjectRef('query', 'projectId')
   @Get('admins')
-  @Permissions(PERMISSIONS.WORKSPACE_VIEW)
-  async admins(@WorkspaceId() workspaceId: string, @Query('projectId') projectId?: string) {
-    return this.wiki.admins(workspaceId, projectId);
+  @Permissions(PERMISSIONS.ORGANIZATION_VIEW)
+  async admins(@OrganizationId() organizationId: string, @Query('projectId') projectId?: string) {
+    return this.wiki.admins(organizationId, projectId);
   }
 
   /** Trang wiki nhắc tới công việc `issueId` (khối "Tài liệu liên quan"). Đặt TRƯỚC `:id`. */
@@ -59,59 +59,59 @@ export class WikiController {
   @Get('by-issue/:issueId')
   @Permissions(PERMISSIONS.PROJECT_VIEW)
   async byIssue(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
     @Param('issueId') issueId: string,
   ) {
-    return this.wiki.byIssue(workspaceId, issueId, user);
+    return this.wiki.byIssue(organizationId, issueId, user);
   }
 
   /**
-   * Trang đã xoá (thùng rác) của phạm vi `projectId` (bỏ trống = cấp workspace, `none` = tài liệu chung).
-   * Chỉ Quản trị dự án / workspace. Đặt TRƯỚC `:id`.
+   * Trang đã xoá (thùng rác) của phạm vi `projectId` (bỏ trống = cấp tổ chức, `none` = tài liệu chung).
+   * Chỉ Quản trị dự án / organization. Đặt TRƯỚC `:id`.
    */
   @ProjectRef('query', 'projectId')
   @Get('trash')
   @Permissions(PERMISSIONS.PROJECT_ADMIN)
   async trash(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
     @Query('projectId') projectId?: string,
   ) {
-    return this.wiki.trash(workspaceId, projectId, user);
+    return this.wiki.trash(organizationId, projectId, user);
   }
 
   @Get(':id')
-  @Permissions(PERMISSIONS.WORKSPACE_VIEW)
+  @Permissions(PERMISSIONS.ORGANIZATION_VIEW)
   async get(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
   ) {
-    return this.wiki.get(workspaceId, id, user);
+    return this.wiki.get(organizationId, id, user);
   }
 
   /** Lịch sử phiên bản của trang (mới nhất trước, tối đa 200, không kèm nội dung). Quyền xem như `GET :id`. */
   @Get(':id/versions')
-  @Permissions(PERMISSIONS.WORKSPACE_VIEW)
+  @Permissions(PERMISSIONS.ORGANIZATION_VIEW)
   async versions(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
   ) {
-    return this.wiki.listVersions(workspaceId, id, user);
+    return this.wiki.listVersions(organizationId, id, user);
   }
 
   /** Nội dung một phiên bản (404 nếu không có). */
   @Get(':id/versions/:version')
-  @Permissions(PERMISSIONS.WORKSPACE_VIEW)
+  @Permissions(PERMISSIONS.ORGANIZATION_VIEW)
   async version(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
     @Param('version', PositiveInt32Pipe) version: number,
   ) {
-    return this.wiki.getVersion(workspaceId, id, version, user);
+    return this.wiki.getVersion(organizationId, id, version, user);
   }
 
   /** Khôi phục một phiên bản cũ (tạo phiên bản mới, không xoá lịch sử); 409 nếu trang vừa được sửa. */
@@ -120,36 +120,36 @@ export class WikiController {
   @HttpCode(200)
   @Permissions(PERMISSIONS.WIKI_MANAGE)
   async restoreVersion(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
     @Param('version', PositiveInt32Pipe) version: number,
     @Body(new ZodValidationPipe(restoreWikiVersionSchema)) dto: RestoreWikiVersionInput,
   ) {
-    return this.wiki.restoreVersion(workspaceId, id, version, dto, user);
+    return this.wiki.restoreVersion(organizationId, id, version, dto, user);
   }
 
   @ProjectRef('body', 'projectId')
   @Post()
   @Permissions(PERMISSIONS.WIKI_MANAGE)
   async create(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
     @Body(new ZodValidationPipe(createWikiPageSchema)) dto: CreateWikiPageInput,
   ) {
-    return this.wiki.create(workspaceId, dto, user);
+    return this.wiki.create(organizationId, dto, user);
   }
 
   @ProjectRef('wikiPage', 'id')
   @Put(':id')
   @Permissions(PERMISSIONS.WIKI_MANAGE)
   async update(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
     @Body(new ZodValidationPipe(updateWikiPageSchema)) dto: UpdateWikiPageInput,
   ) {
-    return this.wiki.update(workspaceId, id, dto, user);
+    return this.wiki.update(organizationId, id, dto, user);
   }
 
   /** Đổi trang cha và/hoặc thứ tự. Trả về cây đã cập nhật của phạm vi tương ứng. */
@@ -157,24 +157,24 @@ export class WikiController {
   @Put(':id/move')
   @Permissions(PERMISSIONS.WIKI_MANAGE)
   async move(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
     @Body(new ZodValidationPipe(moveWikiPageSchema)) dto: MoveWikiPageInput,
   ) {
-    return this.wiki.move(workspaceId, id, dto, user);
+    return this.wiki.move(organizationId, id, dto, user);
   }
 
-  /** Xoá mềm trang: chỉ Quản trị dự án (hoặc Workspace Admin với trang chung / mọi dự án). */
+  /** Xoá mềm trang: chỉ Quản trị dự án (hoặc Organization Admin với trang chung / mọi dự án). */
   @ProjectRef('wikiPage', 'id')
   @Delete(':id')
   @Permissions(PERMISSIONS.PROJECT_ADMIN)
   async remove(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
   ) {
-    return this.wiki.remove(workspaceId, id, user);
+    return this.wiki.remove(organizationId, id, user);
   }
 
   /** Khôi phục trang đã xoá (kèm lịch sử): cùng quyền với xoá, theo dự án của trang. */
@@ -183,10 +183,10 @@ export class WikiController {
   @HttpCode(200)
   @Permissions(PERMISSIONS.PROJECT_ADMIN)
   async undelete(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
   ) {
-    return this.wiki.undelete(workspaceId, id, user);
+    return this.wiki.undelete(organizationId, id, user);
   }
 }

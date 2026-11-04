@@ -31,7 +31,7 @@ const LAYOUT = { version: 1, columns: 3 } as const;
 
 const SUMMARY_SELECT = {
   id: true,
-  workspaceId: true,
+  organizationId: true,
   ownerId: true,
   projectId: true,
   teamId: true,
@@ -55,12 +55,12 @@ type DetailRow = Prisma.DashboardGetPayload<{ select: typeof DETAIL_SELECT }>;
 
 /** Người gọi + bộ lọc dự án đã phân giải một lần cho cả lượt xử lý. */
 interface Ctx extends DashboardViewer {
-  workspaceId: string;
+  organizationId: string;
   projectVisible: Prisma.ProjectWhereInput;
 }
 
 /**
- * DASHBOARD TUỲ BIẾN — CRUD dashboard + widget với 4 mức chia sẻ (riêng tư / cả workspace / theo dự án / theo nhóm).
+ * DASHBOARD TUỲ BIẾN — CRUD dashboard + widget với 4 mức chia sẻ (riêng tư / cả tổ chức / theo dự án / theo nhóm).
  * Quyền thấy/sửa nằm ở `dashboard-access.ts` (một nơi duy nhất). Dữ liệu TRONG ô KHÔNG kế thừa quyền người tạo:
  * mỗi ô gọi API với quyền của người xem (đọc chéo dự án đã lọc dự án riêng tư), nên chia sẻ dashboard không làm lộ dữ liệu.
  * Dashboard theo dự án vẫn gọi `assertNotArchived` khi tạo/sửa.
@@ -74,10 +74,10 @@ export class DashboardsService {
 
   // ------------------------------ đọc ------------------------------
 
-  async list(workspaceId: string, userId: string): Promise<CustomDashboardSummaryDto[]> {
-    const ctx = await this.ctx(workspaceId, userId);
+  async list(organizationId: string, userId: string): Promise<CustomDashboardSummaryDto[]> {
+    const ctx = await this.ctx(organizationId, userId);
     const rows = await this.prisma.dashboard.findMany({
-      where: { ...dashboardVisibleWhere(ctx, workspaceId, ctx.projectVisible), deletedAt: null },
+      where: { ...dashboardVisibleWhere(ctx, organizationId, ctx.projectVisible), deletedAt: null },
       select: SUMMARY_SELECT,
       orderBy: { updatedAt: 'desc' },
     });
@@ -85,8 +85,8 @@ export class DashboardsService {
     return sortDashboards(dtos);
   }
 
-  async get(workspaceId: string, id: string, userId: string): Promise<CustomDashboardDto> {
-    const ctx = await this.ctx(workspaceId, userId);
+  async get(organizationId: string, id: string, userId: string): Promise<CustomDashboardDto> {
+    const ctx = await this.ctx(organizationId, userId);
     const row = await this.requireVisible(ctx, id);
     return this.toDetail(ctx, row);
   }
@@ -94,18 +94,18 @@ export class DashboardsService {
   // ------------------------------ ghi ------------------------------
 
   async create(
-    workspaceId: string,
+    organizationId: string,
     userId: string,
     input: DashboardInput,
   ): Promise<CustomDashboardDto> {
-    const ctx = await this.ctx(workspaceId, userId);
+    const ctx = await this.ctx(organizationId, userId);
     this.assertWidgetCount(input.widgets);
     await this.assertQuota(ctx);
     const target = await this.resolveTarget(ctx, input, null);
     await this.assertWidgetProjects(ctx, input.widgets, new Set());
     const created = await this.prisma.dashboard.create({
       data: {
-        workspaceId,
+        organizationId,
         ownerId: userId,
         name: input.name,
         description: input.description ?? null,
@@ -117,17 +117,17 @@ export class DashboardsService {
       },
       select: { id: true },
     });
-    return this.get(workspaceId, created.id, userId);
+    return this.get(organizationId, created.id, userId);
   }
 
   /** Thay toàn bộ dashboard + widget trong một giao dịch; `updatedAt` lệch → 409 (người khác vừa sửa). */
   async update(
-    workspaceId: string,
+    organizationId: string,
     id: string,
     userId: string,
     input: DashboardUpdateInput,
   ): Promise<CustomDashboardDto> {
-    const ctx = await this.ctx(workspaceId, userId);
+    const ctx = await this.ctx(organizationId, userId);
     const row = await this.requireVisible(ctx, id);
     this.assertCanEdit(ctx, row);
     this.assertWidgetCount(input.widgets);
@@ -172,19 +172,19 @@ export class DashboardsService {
         }
       }
     });
-    return this.get(workspaceId, id, userId);
+    return this.get(organizationId, id, userId);
   }
 
   /** Bản sao PRIVATE của người gọi (ai thấy được thì nhân bản được) — lối để người không có quyền sửa tự chỉnh. */
-  async duplicate(workspaceId: string, id: string, userId: string): Promise<CustomDashboardDto> {
-    const ctx = await this.ctx(workspaceId, userId);
+  async duplicate(organizationId: string, id: string, userId: string): Promise<CustomDashboardDto> {
+    const ctx = await this.ctx(organizationId, userId);
     const row = await this.requireVisible(ctx, id);
     await this.assertQuota(ctx);
     const sanitize = await this.copySanitizer(ctx, row);
     const suffix = ' (bản sao)';
     const created = await this.prisma.dashboard.create({
       data: {
-        workspaceId,
+        organizationId,
         ownerId: userId,
         name: `${row.name.slice(0, 120 - suffix.length)}${suffix}`,
         description: row.description,
@@ -203,11 +203,11 @@ export class DashboardsService {
       },
       select: { id: true },
     });
-    return this.get(workspaceId, created.id, userId);
+    return this.get(organizationId, created.id, userId);
   }
 
-  async remove(workspaceId: string, id: string, userId: string): Promise<{ success: true }> {
-    const ctx = await this.ctx(workspaceId, userId);
+  async remove(organizationId: string, id: string, userId: string): Promise<{ success: true }> {
+    const ctx = await this.ctx(organizationId, userId);
     const row = await this.requireVisible(ctx, id);
     if (!canDeleteDashboard(ctx, row)) {
       throw new ForbiddenAppException('Bạn không có quyền xoá dashboard này');
@@ -218,12 +218,12 @@ export class DashboardsService {
 
   // ---------------------------- nội bộ ----------------------------
 
-  private async ctx(workspaceId: string, userId: string): Promise<Ctx> {
+  private async ctx(organizationId: string, userId: string): Promise<Ctx> {
     const [isAdmin, projectVisible] = await Promise.all([
-      this.access.seesAll(userId, workspaceId),
-      this.access.visibleWhere(userId, workspaceId),
+      this.access.seesAll(userId, organizationId),
+      this.access.visibleWhere(userId, organizationId),
     ]);
-    return { userId, isAdmin, workspaceId, projectVisible };
+    return { userId, isAdmin, organizationId, projectVisible };
   }
 
   /** Không thấy = 404 (không phân biệt "không tồn tại" — không lộ dashboard riêng tư/dự án riêng tư). */
@@ -231,7 +231,7 @@ export class DashboardsService {
     const row = await this.prisma.dashboard.findFirst({
       where: {
         id,
-        ...dashboardVisibleWhere(ctx, ctx.workspaceId, ctx.projectVisible),
+        ...dashboardVisibleWhere(ctx, ctx.organizationId, ctx.projectVisible),
         deletedAt: null,
       },
       select: DETAIL_SELECT,
@@ -259,7 +259,7 @@ export class DashboardsService {
 
   private async assertQuota(ctx: Ctx): Promise<void> {
     const owned = await this.prisma.dashboard.count({
-      where: { workspaceId: ctx.workspaceId, ownerId: ctx.userId, deletedAt: null },
+      where: { organizationId: ctx.organizationId, ownerId: ctx.userId, deletedAt: null },
     });
     if (owned >= DASHBOARD_LIMITS.dashboardsPerOwner) {
       throw new BusinessRuleException(
@@ -284,7 +284,7 @@ export class DashboardsService {
       const project = await this.prisma.project.findFirst({
         where: {
           id: projectId,
-          workspaceId: ctx.workspaceId,
+          organizationId: ctx.organizationId,
           deletedAt: null,
           ...(changed ? ctx.projectVisible : {}),
         },
@@ -298,7 +298,7 @@ export class DashboardsService {
       const teamId = input.teamId!;
       const changed = !current || current.scope !== 'TEAM' || current.teamId !== teamId;
       const team = await this.prisma.team.findFirst({
-        where: { id: teamId, workspaceId: ctx.workspaceId, deletedAt: null },
+        where: { id: teamId, organizationId: ctx.organizationId, deletedAt: null },
         select: {
           id: true,
           leadId: true,
@@ -316,7 +316,7 @@ export class DashboardsService {
   }
 
   /**
-   * `projectId` trong config phải thuộc workspace và người gọi thấy được. Dự án đã nằm sẵn trong ô cũ (`alreadyStored`)
+   * `projectId` trong config phải thuộc tổ chức và người gọi thấy được. Dự án đã nằm sẵn trong ô cũ (`alreadyStored`)
    * không bị kiểm lại — người sửa dashboard chung không bị chặn vì một ô của người khác trỏ dự án họ không thấy.
    */
   private async assertWidgetProjects(
@@ -333,7 +333,7 @@ export class DashboardsService {
     const found = await this.prisma.project.findMany({
       where: {
         id: { in: [...ids] },
-        workspaceId: ctx.workspaceId,
+        organizationId: ctx.organizationId,
         deletedAt: null,
         ...ctx.projectVisible,
       },
@@ -371,7 +371,7 @@ export class DashboardsService {
             .findMany({
               where: {
                 id: { in: ids },
-                workspaceId: ctx.workspaceId,
+                organizationId: ctx.organizationId,
                 deletedAt: null,
                 ...ctx.projectVisible,
               },
@@ -412,7 +412,7 @@ export class DashboardsService {
     const found = await this.prisma.project.findMany({
       where: {
         id: { in: ids },
-        workspaceId: ctx.workspaceId,
+        organizationId: ctx.organizationId,
         deletedAt: null,
         ...ctx.projectVisible,
       },
@@ -483,7 +483,7 @@ export class DashboardsService {
     );
     if (!hasJql || ctx.isAdmin || row.ownerId === ctx.userId) return identity;
     const hidden = await this.prisma.project.findMany({
-      where: { workspaceId: ctx.workspaceId, deletedAt: null, NOT: ctx.projectVisible },
+      where: { organizationId: ctx.organizationId, deletedAt: null, NOT: ctx.projectVisible },
       select: { id: true, key: true },
     });
     if (hidden.length === 0) return identity;

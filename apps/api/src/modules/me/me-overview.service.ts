@@ -52,7 +52,7 @@ const toItem = (r: ItemRow): MeIssueItemDto => ({
 });
 
 /**
- * Tổng quan cá nhân (`GET /me/overview`) trong workspace hiện tại. Phạm vi việc = đúng luật hiển thị của tìm kiếm/Tổng quan:
+ * Tổng quan cá nhân (`GET /me/overview`) trong tổ chức hiện tại. Phạm vi việc = đúng luật hiển thị của tìm kiếm/Tổng quan:
  * `ProjectAccessService.visibleWhere` (dự án riêng tư chỉ cho thành viên), dự án chưa xoá, việc chưa xoá, việc đã duyệt
  * (`TRIAGE_VISIBLE`). Không có đường tắt bỏ qua RBAC.
  */
@@ -64,13 +64,13 @@ export class MeOverviewService {
   ) {}
 
   async overview(
-    workspaceId: string,
+    organizationId: string,
     userId: string,
     now: Date = new Date(),
   ): Promise<MeOverviewDto> {
-    const visible = await this.access.visibleWhere(userId, workspaceId);
+    const visible = await this.access.visibleWhere(userId, organizationId);
     const base: Prisma.IssueWhereInput = {
-      workspaceId,
+      organizationId,
       deletedAt: null,
       project: { deletedAt: null, ...visible },
       // Trong `AND` (không spread `OR` của TRIAGE_VISIBLE) để không đè `OR` ở các where dẫn xuất.
@@ -85,7 +85,7 @@ export class MeOverviewService {
     const weeks = vnWeekStarts(now);
 
     const statuses = await this.prisma.status.findMany({
-      where: { workflow: { workspaceId } },
+      where: { workflow: { organizationId } },
       select: { id: true, name: true, category: true },
     });
     const { awaitingRetest, reopened } = classifyStatuses(statuses);
@@ -171,7 +171,7 @@ export class MeOverviewService {
   }
 
   private async bugList(where: Prisma.IssueWhereInput): Promise<MeIssueItemDto[]> {
-    // `where` luôn dựng từ `base` (workspaceId, deletedAt: null, dự án xem được, đã duyệt).
+    // `where` luôn dựng từ `base` (organizationId, deletedAt: null, dự án xem được, đã duyệt).
     const rows = await this.prisma.issue.findMany({
       where,
       select: ITEM_SELECT,

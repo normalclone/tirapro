@@ -156,7 +156,7 @@ export class IntakeService {
    * Người báo luôn thành watcher.
    */
   async report(
-    workspaceId: string,
+    organizationId: string,
     userId: string,
     input: ReportIssueInput,
     opts: ReportOptions = {},
@@ -169,7 +169,7 @@ export class IntakeService {
     for (const [k, v] of this.recent) if (now - v.at > RECENT_REPORT_TTL_MS) this.recent.delete(k);
     const hit = this.recent.get(dedupeKey);
     if (hit) return hit.promise;
-    const promise = this.reportOnce(dedupeKey, workspaceId, userId, input, opts);
+    const promise = this.reportOnce(dedupeKey, organizationId, userId, input, opts);
     this.recent.set(dedupeKey, { at: now, promise });
     promise.catch(() => this.recent.delete(dedupeKey));
     return promise;
@@ -182,7 +182,7 @@ export class IntakeService {
    */
   private async reportOnce(
     dedupeKey: string,
-    workspaceId: string,
+    organizationId: string,
     userId: string,
     input: ReportIssueInput,
     opts: ReportOptions,
@@ -190,7 +190,7 @@ export class IntakeService {
     const client = (
       this.redis?.isAvailable() ? this.redis.getClient() : null
     ) as DedupeClient | null;
-    if (!client) return this.doReport(workspaceId, userId, input, opts);
+    if (!client) return this.doReport(organizationId, userId, input, opts);
 
     const key = `intake:report:${createHash('sha1').update(dedupeKey).digest('hex')}`;
     let acquired: boolean;
@@ -198,18 +198,18 @@ export class IntakeService {
       acquired = (await client.set(key, PENDING, 'EX', RECENT_REPORT_TTL_SEC, 'NX')) === 'OK';
     } catch (err) {
       this.logger.warn(`Redis lỗi khi lấy khoá chống gửi đôi — dùng khoá bộ nhớ: ${errMsg(err)}`);
-      return this.doReport(workspaceId, userId, input, opts);
+      return this.doReport(organizationId, userId, input, opts);
     }
 
     if (!acquired) {
       const shared = await this.waitForSharedResult(client, key);
       if (shared) return shared;
       // Khoá đã biến mất (lần đầu lỗi hoặc hết hạn) hoặc Redis lỗi giữa chừng: tự chạy, không để mất báo cáo.
-      return this.doReport(workspaceId, userId, input, opts);
+      return this.doReport(organizationId, userId, input, opts);
     }
 
     try {
-      const result = await this.doReport(workspaceId, userId, input, opts);
+      const result = await this.doReport(organizationId, userId, input, opts);
       await client
         .set(key, JSON.stringify(result), 'EX', RECENT_REPORT_TTL_SEC)
         .catch(async (e: unknown) => {
@@ -248,15 +248,15 @@ export class IntakeService {
   }
 
   private async doReport(
-    workspaceId: string,
+    organizationId: string,
     userId: string,
     input: ReportIssueInput,
     opts: ReportOptions,
   ): Promise<ReportResult> {
     const canComment = opts.canComment ?? true;
-    // 1. Xác minh project thuộc workspace hiện tại, chưa lưu trữ (cả nhánh gộp lẫn tạo mới).
+    // 1. Xác minh project thuộc tổ chức hiện tại, chưa lưu trữ (cả nhánh gộp lẫn tạo mới).
     const project = await this.prisma.project.findFirst({
-      where: { id: input.projectId, workspaceId, deletedAt: null },
+      where: { id: input.projectId, organizationId, deletedAt: null },
       select: { id: true, archivedAt: true },
     });
     if (!project) throw new NotFoundAppException('Dự án');
@@ -269,15 +269,15 @@ export class IntakeService {
         select: { id: true, key: true, severityId: true, triageState: true },
       });
       if (!target) throw new NotFoundAppException('Công việc cần gộp');
-      return this.appendReport(workspaceId, userId, target, input, 'chosen');
+      return this.appendReport(organizationId, userId, target, input, 'chosen');
     }
 
     // Gộp tự động chỉ cho Bug (client cũ mặc định BUG): yêu cầu tính năng/câu hỏi trùng tiêu đề một Bug vẫn là việc riêng.
     if (!input.forceNew && canComment && input.kind === 'BUG') {
-      const hit = await this.findLiveExactTitle(workspaceId, input.projectId, input.summary);
-      if (hit) return this.appendReport(workspaceId, userId, hit, input, 'auto');
+      const hit = await this.findLiveExactTitle(organizationId, input.projectId, input.summary);
+      if (hit) return this.appendReport(organizationId, userId, hit, input, 'auto');
     }
-    return this.createNew(workspaceId, userId, input);
+    return this.createNew(organizationId, userId, input);
   }
 
   /**
@@ -285,26 +285,26 @@ export class IntakeService {
    * kể cả bug đã đóng (đánh `closed`) vì "bug cũ tái diễn" là ca phổ biến.
    */
   async findDuplicates(
-    workspaceId: string,
+    organizationId: string,
     projectId: string,
     summary: string,
     viewerId: string,
     limit = SUGGESTION_LIMIT,
   ): Promise<DuplicateSuggestion[]> {
     const project = await this.prisma.project.findFirst({
-      where: { id: projectId, workspaceId, deletedAt: null },
+      where: { id: projectId, organizationId, deletedAt: null },
       select: { id: true },
     });
     if (!project) throw new NotFoundAppException('Dự án');
     // Dự án riêng tư người báo không thấy → 404 như dự án không tồn tại (kể cả khi tiêu đề quá ngắn để tìm).
-    await this.search.assertProjectVisibleTo(viewerId, workspaceId, projectId);
+    await this.search.assertProjectVisibleTo(viewerId, organizationId, projectId);
 
     const query = summary.trim();
     if ([...query].length < MIN_QUERY_LENGTH) return [];
     const take = Math.min(Math.max(Math.trunc(limit) || SUGGESTION_LIMIT, 1), SUGGESTION_LIMIT);
 
     const ids = await this.search.similarIssueIds(
-      workspaceId,
+      organizationId,
       projectId,
       query,
       viewerId,
@@ -352,13 +352,13 @@ export class IntakeService {
    * Dò trùng ngầm chỉ là phụ: lỗi (timeout, DB tạm…) thì ghi log và coi như không trùng để báo lỗi vẫn được ghi.
    */
   private async findLiveExactTitle(
-    workspaceId: string,
+    organizationId: string,
     projectId: string,
     summary: string,
   ): Promise<MergeTarget | null> {
     try {
       // Đã qua guard dự án của POST /intake/report → ngữ cảnh hệ thống (null), không kiểm lại quyền xem.
-      const ids = await this.search.similarIssueIds(workspaceId, projectId, summary, null, 10);
+      const ids = await this.search.similarIssueIds(organizationId, projectId, summary, null, 10);
       if (ids.length === 0) return null;
       const candidates = await this.prisma.issue.findMany({
         where: { id: { in: ids }, projectId, deletedAt: null },
@@ -390,7 +390,7 @@ export class IntakeService {
 
   /** Gộp vào bug có sẵn: tăng số lần + watcher trong một giao dịch, rồi (sau commit) lưu nội dung thành bình luận. */
   private async appendReport(
-    workspaceId: string,
+    organizationId: string,
     userId: string,
     target: MergeTarget,
     input: ReportIssueInput,
@@ -428,7 +428,7 @@ export class IntakeService {
     // Việc bị Từ chối quay lại hàng chờ: báo realtime (cùng IssueDto đầy đủ) để Board/Việc mới vào của người khác cập nhật.
     if (target.triageState === 'DECLINED')
       await this.issues
-        .emitUpdatedFor(workspaceId, target.id, userId, ['triageState'])
+        .emitUpdatedFor(organizationId, target.id, userId, ['triageState'])
         .catch((err: unknown) =>
           this.logger.warn(`Không phát được cập nhật triage cho ${target.key}: ${errMsg(err)}`),
         );
@@ -437,7 +437,7 @@ export class IntakeService {
       this.prisma.user.findUnique({ where: { id: userId }, select: { displayName: true } }),
       input.severityId && input.severityId !== target.severityId
         ? this.prisma.severity.findFirst({
-            where: { id: input.severityId, workspaceId },
+            where: { id: input.severityId, organizationId },
             select: { name: true },
           })
         : Promise.resolve(null),
@@ -450,7 +450,7 @@ export class IntakeService {
       severityName: severity?.name ?? null,
       attachments,
     });
-    const comment = await this.comments.create(workspaceId, userId, target.id, {
+    const comment = await this.comments.create(organizationId, userId, target.id, {
       body,
       bodyFormat: 'MARKDOWN',
     });
@@ -465,11 +465,11 @@ export class IntakeService {
   }
 
   private async createNew(
-    workspaceId: string,
+    organizationId: string,
     userId: string,
     input: ReportIssueInput,
   ): Promise<ReportCreatedResult> {
-    const typeId = input.typeId ?? (await this.resolveTypeId(workspaceId, input.kind));
+    const typeId = input.typeId ?? (await this.resolveTypeId(organizationId, input.kind));
     const createInput: CreateIssueInput = {
       projectId: input.projectId,
       typeId,
@@ -482,7 +482,7 @@ export class IntakeService {
     // Trạng thái duyệt đặt NGAY lúc tạo (cùng transaction, trước khi phát ISSUE_CREATED): sự kiện realtime mang
     // `triageState: 'PENDING'` nên Board của người khác không chèn việc chưa duyệt, automation "khi tạo việc" và thông báo
     // "được giao" bỏ qua việc này cho tới khi được Nhận. Không tăng `version` (version bắt đầu như việc mới tạo).
-    const created = await this.issues.create(workspaceId, userId, createInput, undefined, {
+    const created = await this.issues.create(organizationId, userId, createInput, undefined, {
       triageState: 'PENDING',
       triageSource: input.kind,
       occurrenceCount: 1,
@@ -498,21 +498,21 @@ export class IntakeService {
   }
 
   /** typeId theo loại yêu cầu: key → tên → loại đầu tiên theo hierarchyLevel. */
-  private async resolveTypeId(workspaceId: string, kind: RequestKind): Promise<string> {
+  private async resolveTypeId(organizationId: string, kind: RequestKind): Promise<string> {
     const want = KIND_TYPE[kind];
     const byKey = await this.prisma.issueType.findFirst({
-      where: { workspaceId, key: want.key },
+      where: { organizationId, key: want.key },
       select: { id: true },
     });
     if (byKey) return byKey.id;
     const byName = await this.prisma.issueType.findFirst({
-      where: { workspaceId, name: want.name },
+      where: { organizationId, name: want.name },
       select: { id: true },
     });
     if (byName) return byName.id;
 
     const first = await this.prisma.issueType.findFirst({
-      where: { workspaceId },
+      where: { organizationId },
       orderBy: { hierarchyLevel: 'asc' },
       select: { id: true },
     });

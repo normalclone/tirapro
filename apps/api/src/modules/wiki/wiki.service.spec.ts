@@ -31,7 +31,7 @@ function setup(archived: boolean, pageProjectId: string | null = 'p1') {
   const archivedAt = archived ? new Date() : null;
   const page = {
     id: 'g1',
-    workspaceId: 'w1',
+    organizationId: 'w1',
     projectId: pageProjectId,
     parentId: null,
     title: 'T',
@@ -72,7 +72,7 @@ function setup(archived: boolean, pageProjectId: string | null = 'p1') {
       createMany: vi.fn(() => Promise.resolve({ count: 0 })),
       findMany: vi.fn((): Promise<unknown[]> => Promise.resolve([])),
     },
-    workspaceMembership: { findMany: vi.fn((): Promise<Member[]> => Promise.resolve([])) },
+    organizationMembership: { findMany: vi.fn((): Promise<Member[]> => Promise.resolve([])) },
     projectMembership: { findMany: vi.fn((): Promise<Member[]> => Promise.resolve([])) },
     $transaction: vi.fn((arg: unknown) =>
       typeof arg === 'function' ? (arg as (tx: unknown) => unknown)(prisma) : Promise.resolve([]),
@@ -111,7 +111,7 @@ describe('WikiService — dự án lưu trữ là chỉ đọc', () => {
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
-  it('trang chung của workspace vẫn xoá được', async () => {
+  it('trang chung của organization vẫn xoá được', async () => {
     const { service, prisma } = setup(true, null);
     await service.remove('w1', 'g1', U);
     expect(prisma.$transaction).toHaveBeenCalled();
@@ -159,9 +159,9 @@ describe('WikiService.create — phạm vi trang con khớp trang cha (A8)', () 
 describe('WikiService.admins — "xin ai" cấp quyền / xoá trang (A9)', () => {
   const user = (id: string, displayName: string) => ({ user: { id, displayName } });
 
-  it('gộp quản trị workspace + dự án, khử trùng, sắp theo tên', async () => {
+  it('gộp quản trị organization + dự án, khử trùng, sắp theo tên', async () => {
     const { service, prisma } = setup(false);
-    prisma.workspaceMembership.findMany.mockResolvedValueOnce([user('a', 'An')]);
+    prisma.organizationMembership.findMany.mockResolvedValueOnce([user('a', 'An')]);
     prisma.projectMembership.findMany.mockResolvedValueOnce([user('b', 'Bình'), user('a', 'An')]);
     await expect(service.admins('w1', 'p1')).resolves.toEqual([
       { id: 'a', displayName: 'An' },
@@ -171,10 +171,10 @@ describe('WikiService.admins — "xin ai" cấp quyền / xoá trang (A9)', () =
       permissions: { some: { permission: { key: 'project:admin' } } },
     };
     const active = { status: { not: 'DEACTIVATED' } };
-    expect(prisma.workspaceMembership.findMany).toHaveBeenCalledWith(
+    expect(prisma.organizationMembership.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
-          workspaceId: 'w1',
+          organizationId: 'w1',
           user: active,
           OR: [{ role: has }, { roles: { some: { role: has } } }],
         },
@@ -192,18 +192,21 @@ describe('WikiService.admins — "xin ai" cấp quyền / xoá trang (A9)', () =
     );
   });
 
-  it.each([undefined, 'none'])('projectId=%s → chỉ hỏi quản trị workspace', async (projectId) => {
-    const { service, prisma } = setup(false);
-    prisma.workspaceMembership.findMany.mockResolvedValueOnce([user('a', 'An')]);
-    await expect(service.admins('w1', projectId)).resolves.toEqual([
-      { id: 'a', displayName: 'An' },
-    ]);
-    expect(prisma.projectMembership.findMany).not.toHaveBeenCalled();
-  });
+  it.each([undefined, 'none'])(
+    'projectId=%s → chỉ hỏi quản trị organization',
+    async (projectId) => {
+      const { service, prisma } = setup(false);
+      prisma.organizationMembership.findMany.mockResolvedValueOnce([user('a', 'An')]);
+      await expect(service.admins('w1', projectId)).resolves.toEqual([
+        { id: 'a', displayName: 'An' },
+      ]);
+      expect(prisma.projectMembership.findMany).not.toHaveBeenCalled();
+    },
+  );
 
   it('tối đa 8 người sau khi gộp', async () => {
     const { service, prisma } = setup(false);
-    prisma.workspaceMembership.findMany.mockResolvedValueOnce(
+    prisma.organizationMembership.findMany.mockResolvedValueOnce(
       Array.from({ length: 8 }, (_, i) => user(`w${i}`, `Ws ${i}`)),
     );
     prisma.projectMembership.findMany.mockResolvedValueOnce(
@@ -247,7 +250,7 @@ describe('WikiService.update — chống ghi đè theo version nội dung (A10)'
     await service.update('w1', 'g1', { body: 'mới', expectedVersion: 3 }, U);
     expect(prisma.wikiPage.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: 'g1', workspaceId: 'w1', deletedAt: null, version: 3 },
+        where: { id: 'g1', organizationId: 'w1', deletedAt: null, version: 3 },
         data: expect.objectContaining({
           body: 'mới',
           updatedById: 'u1',
@@ -262,7 +265,7 @@ describe('WikiService.update — chống ghi đè theo version nội dung (A10)'
     await service.update('w1', 'g1', { body: 'mới' }, U);
     expect(prisma.wikiPage.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: 'g1', workspaceId: 'w1', deletedAt: null },
+        where: { id: 'g1', organizationId: 'w1', deletedAt: null },
         data: expect.objectContaining({ version: { increment: 1 } }) as unknown,
       }),
     );
@@ -359,7 +362,7 @@ describe('WikiService — liên kết trang ↔ công việc (A11)', () => {
     expect(prisma.issue.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
-          workspaceId: 'w1',
+          organizationId: 'w1',
           key: { in: ['DEMO-STORY-3', 'UTF-8'] },
           deletedAt: null,
           project: { deletedAt: null },
@@ -439,7 +442,7 @@ describe('WikiService — liên kết trang ↔ công việc (A11)', () => {
     );
   });
 
-  it('byIssue(): lọc theo workspace + liên kết, kèm projectKey', async () => {
+  it('byIssue(): lọc theo organization + liên kết, kèm projectKey', async () => {
     const { service, prisma } = setup(false);
     prisma.wikiPage.findMany.mockResolvedValueOnce([
       {
@@ -476,7 +479,7 @@ describe('WikiService — liên kết trang ↔ công việc (A11)', () => {
     expect(prisma.wikiPage.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
-          workspaceId: 'w1',
+          organizationId: 'w1',
           deletedAt: null,
           issues: { some: { issueId: 'i1' } },
           OR: [{ projectId: null }, { project: { deletedAt: null } }],
@@ -544,7 +547,7 @@ describe('WikiService — dự án riêng tư: người ngoài không thấy tra
     const { service, prisma } = setup(false);
     await service.tree('w1', undefined, U);
     expect((prisma.wikiPage.findMany.mock.calls[0]![0] as { where: object }).where).toEqual({
-      workspaceId: 'w1',
+      organizationId: 'w1',
       deletedAt: null,
     });
   });
@@ -555,7 +558,7 @@ describe('WikiService — dự án riêng tư: người ngoài không thấy tra
     prisma.wikiPage.findFirst.mockResolvedValueOnce(null as never);
     await expect(service.get('w1', 'g1', U)).rejects.toMatchObject({ status: 404 });
     expect(prisma.wikiPage.findFirst.mock.calls[0]![0]).toMatchObject({
-      where: { id: 'g1', workspaceId: 'w1', deletedAt: null, ...readable },
+      where: { id: 'g1', organizationId: 'w1', deletedAt: null, ...readable },
     });
     // thành viên: findFirst trả trang → get() thành công
     await expect(service.get('w1', 'g1', U)).resolves.toMatchObject({ id: 'g1' });
@@ -724,7 +727,7 @@ describe('WikiService — xem/khôi phục phiên bản (A18)', () => {
     expect(sel).not.toHaveProperty('body');
   });
 
-  it('listVersions()/getVersion(): trang không có trong workspace → 404, không đọc lịch sử', async () => {
+  it('listVersions()/getVersion(): trang không có trong organization → 404, không đọc lịch sử', async () => {
     const { service, prisma } = setup(false);
     prisma.wikiPage.findFirst.mockResolvedValue(null as never);
     await expect(service.listVersions('w1', 'g1', U)).rejects.toMatchObject({ status: 404 });
@@ -761,7 +764,7 @@ describe('WikiService — xem/khôi phục phiên bản (A18)', () => {
     await service.restoreVersion('w1', 'g1', 2, { expectedVersion: 4 }, { id: 'u3' });
     expect(prisma.wikiPage.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: 'g1', workspaceId: 'w1', deletedAt: null, version: 4 },
+        where: { id: 'g1', organizationId: 'w1', deletedAt: null, version: 4 },
         data: expect.objectContaining({
           title: 'Cũ',
           body: 'bản 2',
@@ -833,7 +836,7 @@ describe('WikiService — xoá mềm trang, thùng rác, khôi phục (A20)', ()
     await service.remove('w1', 'g1', { id: 'u9' });
     expect(prisma.wikiPage.delete).not.toHaveBeenCalled();
     expect(prisma.wikiPage.updateMany).toHaveBeenCalledWith({
-      where: { id: 'g1', workspaceId: 'w1', deletedAt: null },
+      where: { id: 'g1', organizationId: 'w1', deletedAt: null },
       data: { deletedAt: expect.any(Date) as unknown, deletedById: 'u9' },
     });
   });
@@ -867,7 +870,7 @@ describe('WikiService — xoá mềm trang, thùng rác, khôi phục (A20)', ()
     await service.remove('w1', 'g1', { id: 'u9' });
     expect(audit.record).toHaveBeenCalledWith(
       expect.objectContaining({
-        workspaceId: 'w1',
+        organizationId: 'w1',
         actorId: 'u9',
         action: 'wiki.page_deleted',
         entityType: 'wikiPage',
@@ -884,7 +887,7 @@ describe('WikiService — xoá mềm trang, thùng rác, khôi phục (A20)', ()
     ]);
     await service.remove('w1', 'g1', { id: 'u9' });
     expect(prisma.wikiPage.findMany.mock.calls[0]![0]).toMatchObject({
-      where: { workspaceId: 'w1', parentId: 'g1', deletedAt: null },
+      where: { organizationId: 'w1', parentId: 'g1', deletedAt: null },
     });
     expect(prisma.wikiPage.update).toHaveBeenCalledWith({
       where: { id: 'c1' },
@@ -934,7 +937,7 @@ describe('WikiService — đọc/khôi phục xoá mềm (A20)', () => {
     const out = await service.trash('w1', 'p1', U);
     expect(prisma.wikiPage.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { workspaceId: 'w1', deletedAt: { not: null }, projectId: 'p1' },
+        where: { organizationId: 'w1', deletedAt: { not: null }, projectId: 'p1' },
         orderBy: { deletedAt: 'desc' },
         take: 100,
       }),
@@ -962,7 +965,7 @@ describe('WikiService — đọc/khôi phục xoá mềm (A20)', () => {
     await service.trash('w1', 'none', U);
     expect(prisma.wikiPage.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { workspaceId: 'w1', deletedAt: { not: null }, projectId: null },
+        where: { organizationId: 'w1', deletedAt: { not: null }, projectId: null },
       }),
     );
   });
@@ -975,7 +978,7 @@ describe('WikiService — đọc/khôi phục xoá mềm (A20)', () => {
       .mockResolvedValueOnce({ order: 4 } as never); // nextOrder: anh em cuối có order 4
     await service.undelete('w1', 'g1', U);
     expect(prisma.wikiPage.updateMany).toHaveBeenCalledWith({
-      where: { id: 'g1', workspaceId: 'w1', deletedAt: { not: null } },
+      where: { id: 'g1', organizationId: 'w1', deletedAt: { not: null } },
       data: { deletedAt: null, deletedById: null, parentId: 'par', order: 5 },
     });
   });
@@ -1002,7 +1005,7 @@ describe('WikiService — đọc/khôi phục xoá mềm (A20)', () => {
     prisma.wikiPage.findFirst.mockResolvedValueOnce(null as never);
     await expect(service.undelete('w1', 'g1', U)).rejects.toMatchObject({ status: 404 });
     expect(prisma.wikiPage.findFirst.mock.calls[0]![0]).toMatchObject({
-      where: { id: 'g1', workspaceId: 'w1', deletedAt: { not: null } },
+      where: { id: 'g1', organizationId: 'w1', deletedAt: { not: null } },
     });
     expect(prisma.wikiPage.updateMany).not.toHaveBeenCalled();
   });
@@ -1157,7 +1160,7 @@ describe('WikiService — nhật ký kiểm toán & điểm lọc quyền đọc
     await service.restoreVersion('w1', 'g1', 2, { expectedVersion: 0 }, { id: 'u3' });
     expect(audit.record).toHaveBeenCalledWith(
       expect.objectContaining({
-        workspaceId: 'w1',
+        organizationId: 'w1',
         actorId: 'u3',
         action: 'wiki.version_restored',
         entityId: 'g1',

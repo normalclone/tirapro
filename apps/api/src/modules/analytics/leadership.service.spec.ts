@@ -174,7 +174,7 @@ describe('LeadershipService.get', () => {
     );
   });
 
-  it('workspace trống → ba mảng rỗng', async () => {
+  it('organization trống → ba mảng rỗng', async () => {
     const { svc } = make();
     expect(await svc.get('w1', 'u1', NOW)).toEqual({
       topRisks: [],
@@ -194,7 +194,7 @@ describe('LeadershipService.get — tuỳ chọn cho digest', () => {
     expect(resources.workload).not.toHaveBeenCalled();
   });
 
-  it('projectId: thu hẹp rủi ro/OKR vào dự án và bỏ thẻ nhân lực (cấp workspace)', async () => {
+  it('projectId: thu hẹp rủi ro/OKR vào dự án và bỏ thẻ nhân lực (cấp organization)', async () => {
     const { svc, raid, goals, resources } = make();
     await svc.get('w1', 'u1', NOW, { projectId: 'p1' });
     expect(raid.list).toHaveBeenCalledWith(

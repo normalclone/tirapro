@@ -29,7 +29,7 @@ export class ApiHelpController {
         note: 'token = JWT (đăng nhập web) hoặc API key tira_ (Cài đặt → API & MCP). Quyền theo RBAC của chủ khoá; khoá read-only chỉ gọi được GET.',
       },
       concepts: {
-        workspace: 'Mọi dữ liệu thuộc 1 workspace (tenant); API key gắn cứng 1 workspace.',
+        organization: 'Mọi dữ liệu thuộc 1 organization (tenant); API key gắn cứng 1 organization.',
         issueKey:
           'Định dạng {DỰ_ÁN}-{LOẠI}-{số}, vd DEMO-BUG-1. GET theo key; PATCH/transition theo id.',
         occ: 'Cập nhật issue cần gửi "version" hiện tại (optimistic concurrency).',

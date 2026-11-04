@@ -49,7 +49,7 @@ export class UsersService {
   }
 
   /**
-   * Thành viên của workspace (picker người phụ trách / @mention / bộ lọc). Lọc phía SERVER:
+   * Thành viên của tổ chức (picker người phụ trách / @mention / bộ lọc). Lọc phía SERVER:
    * - mặc định loại tài khoản đã khoá (DEACTIVATED) và người dùng hệ thống automation; `includeInactive` giữ cả hai
    *   (màn bộ lọc theo người phụ trách cũ vẫn thấy tài khoản đã khoá);
    * - `projectId`: người gọi phải xem được dự án (404 như không tồn tại); chỉ trả người `canSee` dự án đó (cùng quyết định
@@ -58,18 +58,18 @@ export class UsersService {
    * - `limit` (mặc định 50, tối đa 200) áp SAU lọc quyền xem dự án.
    * `isSystemAdmin`/`lastSeenAt` chỉ khi `privileged` (người xem có `member:manage`).
    */
-  async listWorkspaceMembers(
-    workspaceId: string,
+  async listOrganizationMembers(
+    organizationId: string,
     viewerId: string,
     q: { search?: string; projectId?: string; limit?: number; includeInactive?: boolean },
     privileged: boolean,
   ): Promise<MemberUserDto[]> {
     const limit = Math.min(Math.max(Math.trunc(q.limit ?? 50) || 50, 1), 200);
-    if (q.projectId) await this.access.assertCanSee(viewerId, workspaceId, q.projectId);
+    if (q.projectId) await this.access.assertCanSee(viewerId, organizationId, q.projectId);
     const search = q.search?.trim();
-    const matchingIds = search ? await this.accentInsensitiveIds(workspaceId, search) : [];
-    const where: Prisma.WorkspaceMembershipWhereInput = {
-      workspaceId,
+    const matchingIds = search ? await this.accentInsensitiveIds(organizationId, search) : [];
+    const where: Prisma.OrganizationMembershipWhereInput = {
+      organizationId,
       user: {
         ...(q.includeInactive
           ? {}
@@ -88,7 +88,7 @@ export class UsersService {
     const orderBy = [{ createdAt: 'asc' as const }, { id: 'asc' as const }];
     const out: ReturnType<typeof this.toDto>[] = [];
     if (!q.projectId) {
-      const rows = await this.prisma.workspaceMembership.findMany({
+      const rows = await this.prisma.organizationMembership.findMany({
         where,
         select: { user: true },
         take: limit,
@@ -100,7 +100,7 @@ export class UsersService {
       const batch = Math.min(limit * 2, 400);
       let cursor: string | undefined;
       for (let i = 0; i < 10 && out.length < limit; i++) {
-        const rows = await this.prisma.workspaceMembership.findMany({
+        const rows = await this.prisma.organizationMembership.findMany({
           where,
           select: { id: true, user: true },
           take: batch,
@@ -109,7 +109,7 @@ export class UsersService {
         });
         for (const m of rows) {
           if (out.length >= limit) break;
-          if (await this.access.canSee(m.user.id, workspaceId, q.projectId))
+          if (await this.access.canSee(m.user.id, organizationId, q.projectId))
             out.push(this.toDto(m.user));
         }
         if (rows.length < batch) break;
@@ -123,13 +123,13 @@ export class UsersService {
    * Id thành viên có tên khớp KHÔNG phân biệt dấu (bỏ dấu cả hai phía bằng `translate`, như tìm công việc). Chỉ bổ sung cho
    * so khớp `contains` có dấu của Prisma; lỗi truy vấn thì bỏ qua (vẫn còn so khớp có dấu).
    */
-  private async accentInsensitiveIds(workspaceId: string, search: string): Promise<string[]> {
+  private async accentInsensitiveIds(organizationId: string, search: string): Promise<string[]> {
     const needle = normalizeVi(search);
     if (!needle) return [];
     try {
       const rows = await this.prisma.$queryRaw<Array<{ id: string }>>`
-        SELECT u."id" FROM "WorkspaceMembership" m JOIN "User" u ON u."id" = m."userId"
-        WHERE m."workspaceId" = ${workspaceId}
+        SELECT u."id" FROM "OrganizationMembership" m JOIN "User" u ON u."id" = m."userId"
+        WHERE m."organizationId" = ${organizationId}
           AND lower(translate(u."displayName", ${VI_TRANSLATE_FROM}, ${VI_TRANSLATE_TO})) LIKE ${`%${escapeLike(needle)}%`}
         LIMIT 500`;
       return rows.map((r) => r.id);
@@ -176,10 +176,10 @@ export class UsersService {
     );
   }
 
-  /** Chỉ tra được người dùng cùng workspace — không lộ email/hồ sơ của user ngoài workspace. */
-  async getById(workspaceId: string, id: string, privileged = false) {
-    const m = await this.prisma.workspaceMembership.findUnique({
-      where: { workspaceId_userId: { workspaceId, userId: id } },
+  /** Chỉ tra được người dùng cùng tổ chức — không lộ email/hồ sơ của user ngoài organization. */
+  async getById(organizationId: string, id: string, privileged = false) {
+    const m = await this.prisma.organizationMembership.findUnique({
+      where: { organizationId_userId: { organizationId, userId: id } },
       select: { user: true },
     });
     if (!m) throw new NotFoundAppException('Người dùng');

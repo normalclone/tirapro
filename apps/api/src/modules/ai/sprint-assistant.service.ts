@@ -92,7 +92,7 @@ export class SprintAssistantService {
   ) {}
 
   async plan(
-    workspaceId: string,
+    organizationId: string,
     userId: string,
     input: SprintPlanInput,
   ): Promise<AiSprintPlanResult> {
@@ -101,7 +101,7 @@ export class SprintAssistantService {
         id: input.sprintId,
         projectId: input.projectId,
         deletedAt: null,
-        project: { workspaceId, deletedAt: null },
+        project: { organizationId, deletedAt: null },
       },
       select: { id: true, state: true },
     });
@@ -125,7 +125,7 @@ export class SprintAssistantService {
 
     const backlog = (await this.prisma.issue.findMany({
       where: {
-        workspaceId,
+        organizationId,
         projectId: input.projectId,
         sprintId: null,
         deletedAt: null,
@@ -195,7 +195,7 @@ export class SprintAssistantService {
     }
 
     const claude = await this.pickWithClaude(
-      workspaceId,
+      organizationId,
       userId,
       goal,
       capacity,
@@ -237,7 +237,7 @@ export class SprintAssistantService {
   }
 
   private async pickWithClaude(
-    workspaceId: string,
+    organizationId: string,
     userId: string,
     goal: string,
     capacity: number,
@@ -254,7 +254,7 @@ export class SprintAssistantService {
       const { data, reason } = await this.claude.extract<{
         picks: { id: string; reason: string }[];
       }>({
-        ctx: { workspaceId, userId, feature: 'sprint-plan' },
+        ctx: { organizationId, userId, feature: 'sprint-plan' },
         model: this.claude.modelFast,
         system:
           'Bạn là trợ lý lập kế hoạch sprint Agile. Từ danh sách ứng viên trong Việc chờ (đã sắp theo mức ưu tiên) và mục tiêu sprint, ' +

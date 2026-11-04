@@ -3,7 +3,7 @@ import { ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
 import { CustomFieldType } from '@prisma/client';
 import { PERMISSIONS } from '@tirapro/types';
-import { WorkspaceId } from '../../common/decorators/workspace-id.decorator';
+import { OrganizationId } from '../../common/decorators/organization-id.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
 import { ProjectRef } from '../../common/decorators/project-ref.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
@@ -53,38 +53,38 @@ export class CustomFieldsController {
   @ProjectRef('query', 'projectId')
   @Get('custom-fields')
   async list(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
     @Query('projectId') projectId?: string,
   ) {
-    return this.customFields.listDefinitions(workspaceId, projectId || undefined, user.id);
+    return this.customFields.listDefinitions(organizationId, projectId || undefined, user.id);
   }
 
   @Post('custom-fields')
   @Permissions(PERMISSIONS.CUSTOM_FIELD_MANAGE)
   async create(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @Body(new ZodValidationPipe(createCustomFieldSchema)) dto: CreateCustomFieldBody,
   ) {
-    return this.customFields.createDefinition(workspaceId, dto);
+    return this.customFields.createDefinition(organizationId, dto);
   }
 
   @ProjectRef('customField', 'id')
   @Patch('custom-fields/:id')
   @Permissions(PERMISSIONS.CUSTOM_FIELD_MANAGE)
   async update(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @Param('id') id: string,
     @Body(new ZodValidationPipe(updateCustomFieldSchema)) dto: UpdateCustomFieldBody,
   ) {
-    return this.customFields.updateDefinition(workspaceId, id, dto);
+    return this.customFields.updateDefinition(organizationId, id, dto);
   }
 
   @ProjectRef('customField', 'id')
   @Delete('custom-fields/:id')
   @Permissions(PERMISSIONS.CUSTOM_FIELD_MANAGE)
-  async remove(@WorkspaceId() workspaceId: string, @Param('id') id: string) {
-    return this.customFields.softDeleteDefinition(workspaceId, id);
+  async remove(@OrganizationId() organizationId: string, @Param('id') id: string) {
+    return this.customFields.softDeleteDefinition(organizationId, id);
   }
 
   // ============================ VALUES (per issue) ============================
@@ -92,22 +92,25 @@ export class CustomFieldsController {
   @Permissions(PERMISSIONS.PROJECT_VIEW)
   @ProjectRef('issue', 'issueId')
   @Get('issues/:issueId/custom-fields')
-  async listIssueValues(@WorkspaceId() workspaceId: string, @Param('issueId') issueId: string) {
-    return this.customFields.listIssueValues(workspaceId, issueId);
+  async listIssueValues(
+    @OrganizationId() organizationId: string,
+    @Param('issueId') issueId: string,
+  ) {
+    return this.customFields.listIssueValues(organizationId, issueId);
   }
 
   @ProjectRef('issue', 'issueId')
   @Put('issues/:issueId/custom-fields/:fieldId')
   @Permissions(PERMISSIONS.ISSUE_EDIT)
   async setIssueValue(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
     @Param('issueId') issueId: string,
     @Param('fieldId') fieldId: string,
     @Body(new ZodValidationPipe(setCustomFieldValueSchema)) body: { value: unknown },
     @OwnOnly(PERMISSIONS.ISSUE_EDIT) ownOnly: boolean,
   ) {
-    await this.ownership.assertOwnsIssue(ownOnly, workspaceId, user.id, issueId);
-    return this.customFields.setIssueValue(workspaceId, issueId, fieldId, body.value);
+    await this.ownership.assertOwnsIssue(ownOnly, organizationId, user.id, issueId);
+    return this.customFields.setIssueValue(organizationId, issueId, fieldId, body.value);
   }
 }

@@ -62,8 +62,8 @@ describe('ImportService — ghi theo lô', () => {
   });
 });
 
-describe('ImportService.importJson — assignee chỉ là thành viên workspace', () => {
-  it('chỉ nạp user thuộc workspace; email không phải thành viên => không có assignee, lô vẫn chạy', async () => {
+describe('ImportService.importJson — assignee chỉ là thành viên organization', () => {
+  it('chỉ nạp user thuộc organization; email không phải thành viên => không có assignee, lô vẫn chạy', async () => {
     const { service, prisma, issues } = setup(undefined, [{ id: 'u2', email: 'Member@x.vn' }]);
     const res = await service.importJson('w1', 'u1', {
       projectId: 'p1',
@@ -75,7 +75,9 @@ describe('ImportService.importJson — assignee chỉ là thành viên workspace
       },
     });
     expect(prisma.user.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { workspaceMemberships: { some: { workspaceId: 'w1' } } } }),
+      expect.objectContaining({
+        where: { organizationMemberships: { some: { organizationId: 'w1' } } },
+      }),
     );
     expect(res).toMatchObject({ created: 2, failed: 0 });
     const assignees = issues.createWithin.mock.calls.map((c) => c[3].assigneeId);
@@ -119,7 +121,7 @@ describe('ImportService.createIssuesInChunks + IssuesService thật — sprint C
       id: 'i1',
       key: 'P-TASK-1',
       summary: 's',
-      workspaceId: 'w1',
+      organizationId: 'w1',
       projectId: 'p1',
       type: {
         id: 't1',
@@ -161,10 +163,10 @@ describe('ImportService.createIssuesInChunks + IssuesService thật — sprint C
         ),
         update: vi.fn(() => Promise.resolve({ issueSequence: 1 })),
         // Resolver quy trình theo loại việc.
-        findUnique: vi.fn(() => Promise.resolve({ workspaceId: 'w1', defaultWorkflowId: 'wf' })),
+        findUnique: vi.fn(() => Promise.resolve({ organizationId: 'w1', defaultWorkflowId: 'wf' })),
       },
       projectWorkflowOverride: { findMany: vi.fn(() => Promise.resolve([])) },
-      workspaceWorkflowScheme: { findMany: vi.fn(() => Promise.resolve([])) },
+      organizationWorkflowScheme: { findMany: vi.fn(() => Promise.resolve([])) },
       issueType: {
         findFirst: vi.fn(() => Promise.resolve({ id: 't1' })),
         findUnique: vi.fn(() => Promise.resolve({ key: 'TASK', name: 'Task' })),
@@ -219,7 +221,7 @@ describe('ImportService.createIssuesInChunks + IssuesService thật — nạp c�
       id: 'i1',
       key: 'P-TASK-1',
       summary: 's',
-      workspaceId: 'w1',
+      organizationId: 'w1',
       projectId: 'p1',
       type: {
         id: 't1',
@@ -261,10 +263,10 @@ describe('ImportService.createIssuesInChunks + IssuesService thật — nạp c�
         ),
         update: vi.fn(() => Promise.resolve({ issueSequence: 1 })),
         // Resolver quy trình theo loại việc.
-        findUnique: vi.fn(() => Promise.resolve({ workspaceId: 'w1', defaultWorkflowId: 'wf' })),
+        findUnique: vi.fn(() => Promise.resolve({ organizationId: 'w1', defaultWorkflowId: 'wf' })),
       },
       projectWorkflowOverride: { findMany: vi.fn(() => Promise.resolve([])) },
-      workspaceWorkflowScheme: { findMany: vi.fn(() => Promise.resolve([])) },
+      organizationWorkflowScheme: { findMany: vi.fn(() => Promise.resolve([])) },
       issueType: {
         findFirst: vi.fn(() => Promise.resolve({ id: 't1' })),
         findUnique: vi.fn(() => Promise.resolve({ key: 'TASK', name: 'Task' })),
@@ -311,7 +313,7 @@ describe('ImportService.createIssuesInChunks + IssuesService thật — nạp c�
     // Không có RequestStore (việc nền) nhưng vẫn chỉ nạp cấu hình quy trình một lần.
     expect(tx.project.findUnique).toHaveBeenCalledTimes(1);
     expect(tx.projectWorkflowOverride.findMany).toHaveBeenCalledTimes(1);
-    expect(tx.workspaceWorkflowScheme.findMany).toHaveBeenCalledTimes(1);
+    expect(tx.organizationWorkflowScheme.findMany).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -321,7 +323,7 @@ describe('ImportService.createIssuesInChunks + IssuesService thật — epic c�
       id: 'i1',
       key: 'P-TASK-1',
       summary: 's',
-      workspaceId: 'w1',
+      organizationId: 'w1',
       projectId: 'p1',
       type: {
         id: 't1',
@@ -362,10 +364,10 @@ describe('ImportService.createIssuesInChunks + IssuesService thật — epic c�
         ),
         update: vi.fn(() => Promise.resolve({ issueSequence: 1 })),
         // Resolver quy trình theo loại việc.
-        findUnique: vi.fn(() => Promise.resolve({ workspaceId: 'w1', defaultWorkflowId: 'wf' })),
+        findUnique: vi.fn(() => Promise.resolve({ organizationId: 'w1', defaultWorkflowId: 'wf' })),
       },
       projectWorkflowOverride: { findMany: vi.fn(() => Promise.resolve([])) },
-      workspaceWorkflowScheme: { findMany: vi.fn(() => Promise.resolve([])) },
+      organizationWorkflowScheme: { findMany: vi.fn(() => Promise.resolve([])) },
       issueType: {
         findFirst: vi.fn(() => Promise.resolve({ id: 't1' })),
         findUnique: vi.fn(() => Promise.resolve({ key: 'TASK', name: 'Task' })),
@@ -465,7 +467,7 @@ describe('ImportService.createIssuesInChunks — fixedKey (L27)', () => {
     const { service, issues } = setup();
     issues.createWithin.mockImplementation(async (_t, _w, _u, input: { summary: string }) => {
       await Promise.resolve();
-      if (input.summary === 'dup') throw p2002(['workspaceId', 'key']);
+      if (input.summary === 'dup') throw p2002(['organizationId', 'key']);
       return { id: `id-${input.summary}` };
     });
     const res = await service.createIssuesInChunks(
@@ -485,7 +487,7 @@ describe('ImportService.createIssuesInChunks — fixedKey (L27)', () => {
     issues.createWithin.mockImplementation(async (_t, _w, _u, input: { summary: string }) => {
       await Promise.resolve();
       if (input.summary === 'x') throw p2002(['projectId', 'number']);
-      if (input.summary === 'y') throw p2002(['workspaceId', 'key']);
+      if (input.summary === 'y') throw p2002(['organizationId', 'key']);
       return { id: `id-${input.summary}` };
     });
     const res = await service.createIssuesInChunks(

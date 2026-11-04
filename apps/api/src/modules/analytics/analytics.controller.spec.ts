@@ -18,7 +18,7 @@ import type { QaReportService } from './qa-report.service';
 
 describe('AnalyticsController.burndown — metadata', () => {
   const h = AnalyticsController.prototype.burndown;
-  it('kiểm report:view theo dự án (query projectId), không chỉ theo workspace', () => {
+  it('kiểm report:view theo dự án (query projectId), không chỉ theo organization', () => {
     expect(Reflect.getMetadata(PERMISSIONS_KEY, h)).toEqual([PERMISSIONS.REPORT_VIEW]);
     expect(Reflect.getMetadata(PROJECT_REF_KEY, h)).toEqual({ kind: 'query', param: 'projectId' });
   });
@@ -48,14 +48,14 @@ describe('AnalyticsController.sprintSummary — metadata', () => {
 });
 
 describe('AnalyticsController.burndown — guard thật + controller', () => {
-  /** Member: KHÔNG có report:view ở cấp workspace, chỉ có ở dự án p1 (vai trò dự án Developer). */
+  /** Member: KHÔNG có report:view ở cấp tổ chức, chỉ có ở dự án p1 (vai trò dự án Developer). */
   function setup(query: Record<string, string>) {
     const rbac = {
       getEffectivePermissions: vi.fn((_u: string, _w: string, projectId?: string | null) =>
         Promise.resolve(new Set<string>(projectId === 'p1' ? [PERMISSIONS.REPORT_VIEW] : [])),
       ),
       resolveProjectId: vi.fn(),
-      assertProjectInWorkspace: vi.fn(() => Promise.resolve()),
+      assertProjectInOrganization: vi.fn(() => Promise.resolve()),
       assertProjectVisible: vi.fn(() => Promise.resolve()),
     };
     const guard = new PermissionsGuard(new Reflector(), rbac as unknown as RbacService);
@@ -65,7 +65,11 @@ describe('AnalyticsController.burndown — guard thật + controller', () => {
       {} as unknown as QaReportService,
       {} as unknown as LeadershipService,
     );
-    const req = { user: { id: 'U1', workspaceId: 'w1', isSystemAdmin: false }, params: {}, query };
+    const req = {
+      user: { id: 'U1', organizationId: 'w1', isSystemAdmin: false },
+      params: {},
+      query,
+    };
     const ctx = {
       getHandler: () => AnalyticsController.prototype.burndown,
       getClass: () => AnalyticsController,
@@ -74,10 +78,10 @@ describe('AnalyticsController.burndown — guard thật + controller', () => {
     return { guard, controller, rbac, analytics, ctx };
   }
 
-  it('member có report:view ở dự án (không có ở workspace) => guard cho qua và service nhận đủ workspace/dự án/sprint (200, không 403)', async () => {
+  it('member có report:view ở dự án (không có ở organization) => guard cho qua và service nhận đủ organization/dự án/sprint (200, không 403)', async () => {
     const { guard, controller, rbac, analytics, ctx } = setup({ projectId: 'p1', sprintId: 'sp1' });
     await expect(guard.canActivate(ctx)).resolves.toBe(true);
-    expect(rbac.assertProjectInWorkspace).toHaveBeenCalledWith('p1', 'w1');
+    expect(rbac.assertProjectInOrganization).toHaveBeenCalledWith('p1', 'w1');
     expect(rbac.getEffectivePermissions).toHaveBeenCalledWith('U1', 'w1', 'p1');
     await controller.burndown('w1', 'sp1', 'p1');
     expect(analytics.burndown).toHaveBeenCalledWith('w1', 'p1', 'sp1');
@@ -88,7 +92,7 @@ describe('AnalyticsController.burndown — guard thật + controller', () => {
     await expect(guard.canActivate(ctx)).rejects.toBeInstanceOf(ForbiddenAppException);
   });
 
-  it('thiếu projectId => guard chỉ tính quyền workspace (member bị 403); controller cũng từ chối nếu lọt tới', async () => {
+  it('thiếu projectId => guard chỉ tính quyền organization (member bị 403); controller cũng từ chối nếu lọt tới', async () => {
     const { guard, controller, ctx } = setup({ sprintId: 'sp1' });
     await expect(guard.canActivate(ctx)).rejects.toBeInstanceOf(ForbiddenAppException);
     await expect(controller.burndown('w1', 'sp1', undefined)).rejects.toBeInstanceOf(
@@ -132,7 +136,7 @@ describe('AnalyticsController.qa — guard thật', () => {
       getClass: () => AnalyticsController,
       switchToHttp: () => ({
         getRequest: () => ({
-          user: { id: 'U1', workspaceId: 'w1', isSystemAdmin: false },
+          user: { id: 'U1', organizationId: 'w1', isSystemAdmin: false },
           params: {},
           query,
           body: {},
@@ -146,18 +150,18 @@ describe('AnalyticsController.qa — guard thật', () => {
     const prisma = {
       project: {
         findFirst: vi.fn((args: { select?: Record<string, unknown> }) => {
-          // assertProjectVisible (quyết định công khai/riêng tư + thành viên) vs assertProjectInWorkspace (chỉ tồn tại).
+          // assertProjectVisible (quyết định công khai/riêng tư + thành viên) vs assertProjectInOrganization (chỉ tồn tại).
           if (args.select?.isPrivate) {
             return Promise.resolve(hidden ? { isPrivate: true, memberships: [] } : null);
           }
           return Promise.resolve(hidden ? { id: 'P1' } : null);
         }),
       },
-      workspaceMembership: {
+      organizationMembership: {
         findUnique: vi.fn(() =>
           Promise.resolve({
             roleId: 'r',
-            roles: [{ role: { id: 'r', name: 'Workspace Member' } }],
+            roles: [{ role: { id: 'r', name: 'Organization Member' } }],
           }),
         ),
       },
@@ -193,7 +197,7 @@ describe('AnalyticsController.qa — guard thật', () => {
       const rbac = {
         getEffectivePermissions: vi.fn(() => Promise.resolve(new Set<string>(perms))),
         resolveProjectId: vi.fn(),
-        assertProjectInWorkspace: vi.fn(() => Promise.resolve()),
+        assertProjectInOrganization: vi.fn(() => Promise.resolve()),
         assertProjectVisible: vi.fn(() => Promise.resolve()),
       };
       return new PermissionsGuard(new Reflector(), rbac as unknown as RbacService);
@@ -209,7 +213,7 @@ describe('AnalyticsController.qa — guard thật', () => {
 
 describe('AnalyticsController.leadershipOverview', () => {
   const h = AnalyticsController.prototype.leadershipOverview;
-  it('workspace-level như overview: report:view, không gắn ProjectRef', () => {
+  it('organization-level như overview: report:view, không gắn ProjectRef', () => {
     expect(Reflect.getMetadata(PERMISSIONS_KEY, h)).toEqual([PERMISSIONS.REPORT_VIEW]);
     expect(Reflect.getMetadata(PROJECT_REF_KEY, h)).toBeUndefined();
   });

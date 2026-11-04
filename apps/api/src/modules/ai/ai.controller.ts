@@ -11,7 +11,7 @@ import {
 } from '@tirapro/shared';
 import { PERMISSIONS } from '@tirapro/types';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import { WorkspaceId } from '../../common/decorators/workspace-id.decorator';
+import { OrganizationId } from '../../common/decorators/organization-id.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
 import { ProjectRef } from '../../common/decorators/project-ref.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
@@ -33,23 +33,23 @@ export class AiController {
   ) {}
 
   /** Trạng thái khả dụng của AI (không cần quyền — chỉ báo bật/tắt). */
-  // Chỉ báo AI bật/tắt cho mọi người dùng đã đăng nhập, không lộ dữ liệu workspace.
+  // Chỉ báo AI bật/tắt cho mọi người dùng đã đăng nhập, không lộ dữ liệu organization.
   @AuthOnly()
   @Get('capabilities')
   capabilities() {
     return this.ai.capabilities();
   }
 
-  /** projectId trong body: guard kiểm dự án thuộc workspace + người gọi xem được (dự án riêng tư → 404). */
+  /** projectId trong body: guard kiểm dự án thuộc tổ chức + người gọi xem được (dự án riêng tư → 404). */
   @ProjectRef('body', 'projectId')
   @Post('generate-issues')
   @Permissions(PERMISSIONS.AI_USE)
   async generateIssues(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
     @Body(new ZodValidationPipe(generateIssuesSchema)) dto: GenerateIssuesInput,
   ) {
-    return this.ai.generateIssues(workspaceId, user.id, dto);
+    return this.ai.generateIssues(organizationId, user.id, dto);
   }
 
   @ProjectRef('issue', 'id')
@@ -57,10 +57,10 @@ export class AiController {
   @Permissions(PERMISSIONS.AI_USE)
   async summarize(
     @CurrentUser() user: AuthUser,
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @Param('id') id: string,
   ) {
-    return this.ai.summarizeIssue(workspaceId, user.id, id);
+    return this.ai.summarizeIssue(organizationId, user.id, id);
   }
 
   @ProjectRef('issue', 'id')
@@ -68,10 +68,10 @@ export class AiController {
   @Permissions(PERMISSIONS.AI_USE)
   async suggest(
     @CurrentUser() user: AuthUser,
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @Param('id') id: string,
   ) {
-    return this.ai.suggest(workspaceId, user.id, id);
+    return this.ai.suggest(organizationId, user.id, id);
   }
 
   /** Gợi ý người nhận việc. projectId nằm trong body (guard kiểm quyền trên đó); service kiểm issue thuộc dự án. */
@@ -80,10 +80,10 @@ export class AiController {
   @Permissions(PERMISSIONS.AI_USE, PERMISSIONS.ISSUE_EDIT)
   async suggestAssignee(
     @CurrentUser() user: AuthUser,
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @Body(new ZodValidationPipe(suggestAssigneeSchema)) dto: SuggestAssigneeInput,
   ) {
-    return this.assignees.suggest(workspaceId, user.id, dto);
+    return this.assignees.suggest(organizationId, user.id, dto);
   }
 
   /** Trợ lý lập sprint: đề xuất issue từ backlog vào sprint theo năng lực. Không tự ghi — web áp dụng qua bulk update. */
@@ -92,9 +92,9 @@ export class AiController {
   @Permissions(PERMISSIONS.AI_USE, PERMISSIONS.SPRINT_MANAGE)
   async sprintPlan(
     @CurrentUser() user: AuthUser,
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @Body(new ZodValidationPipe(sprintPlanSchema)) dto: SprintPlanInput,
   ) {
-    return this.sprintAssistant.plan(workspaceId, user.id, dto);
+    return this.sprintAssistant.plan(organizationId, user.id, dto);
   }
 }

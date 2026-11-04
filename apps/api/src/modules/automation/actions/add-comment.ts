@@ -9,7 +9,7 @@ export async function runAddComment(
   const body = await renderTemplate(ctx, a.body);
   if (ctx.dryRun) return `Sẽ bình luận: ${body.slice(0, 200)}`;
   await ctx.deps.comments.create(
-    ctx.workspaceId,
+    ctx.organizationId,
     ctx.actorId,
     ctx.issue.id,
     { body, bodyFormat: 'MARKDOWN', parentId: null, mentionUserIds: [] },

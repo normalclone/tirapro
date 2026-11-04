@@ -44,20 +44,20 @@ export class BoardsService {
     private readonly workflows: WorkflowResolver = new WorkflowResolver(),
   ) {}
 
-  async listForProject(workspaceId: string, projectId: string): Promise<BoardDto[]> {
+  async listForProject(organizationId: string, projectId: string): Promise<BoardDto[]> {
     // Thiếu projectId ⇒ Prisma bỏ qua điều kiện, liệt kê bảng của MỌI dự án (kể cả riêng tư): bắt buộc phải có.
     if (!projectId) throw new BusinessRuleException('Thiếu projectId');
     const boards = await this.prisma.board.findMany({
-      where: { projectId, deletedAt: null, project: { workspaceId, deletedAt: null } },
+      where: { projectId, deletedAt: null, project: { organizationId, deletedAt: null } },
       include: boardInclude,
       orderBy: { createdAt: 'asc' },
     });
     return boards.map((b) => this.toDto(b));
   }
 
-  async get(workspaceId: string, boardId: string): Promise<BoardDto> {
+  async get(organizationId: string, boardId: string): Promise<BoardDto> {
     const board = await this.prisma.board.findFirst({
-      where: { id: boardId, deletedAt: null, project: { workspaceId, deletedAt: null } },
+      where: { id: boardId, deletedAt: null, project: { organizationId, deletedAt: null } },
       include: boardInclude,
     });
     if (!board) throw new NotFoundAppException('Bảng việc');
@@ -65,9 +65,9 @@ export class BoardsService {
   }
 
   /** Board dùng cho thao tác GHI: dự án đã lưu trữ thì từ chối ngay. */
-  private async require(workspaceId: string, boardId: string) {
+  private async require(organizationId: string, boardId: string) {
     const board = await this.prisma.board.findFirst({
-      where: { id: boardId, deletedAt: null, project: { workspaceId, deletedAt: null } },
+      where: { id: boardId, deletedAt: null, project: { organizationId, deletedAt: null } },
       include: boardWriteInclude,
     });
     if (!board) throw new NotFoundAppException('Bảng việc');
@@ -76,8 +76,12 @@ export class BoardsService {
   }
 
   /** Sửa tên / loại (Scrum ↔ Kanban) / bộ lọc JQL / cách chia swimlane. `filterJql` rỗng = bỏ bộ lọc. */
-  async update(workspaceId: string, boardId: string, input: UpdateBoardInput): Promise<BoardDto> {
-    const board = await this.require(workspaceId, boardId);
+  async update(
+    organizationId: string,
+    boardId: string,
+    input: UpdateBoardInput,
+  ): Promise<BoardDto> {
+    const board = await this.require(organizationId, boardId);
     const data: Prisma.BoardUpdateInput = {};
     if (input.name !== undefined) data.name = input.name;
     if (input.type !== undefined) data.type = input.type;
@@ -105,7 +109,7 @@ export class BoardsService {
       data.swimlaneConfig = { ...prev, by: input.swimlaneBy };
     }
     await this.prisma.board.update({ where: { id: boardId }, data, select: { id: true } });
-    return this.get(workspaceId, boardId);
+    return this.get(organizationId, boardId);
   }
 
   /**
@@ -114,11 +118,11 @@ export class BoardsService {
    * tạo cột mới, ghi lại liên kết cột-trạng thái; `order` theo thứ tự mảng.
    */
   async setColumns(
-    workspaceId: string,
+    organizationId: string,
     boardId: string,
     input: SetBoardColumnsInput,
   ): Promise<BoardDto> {
-    const board = await this.require(workspaceId, boardId);
+    const board = await this.require(organizationId, boardId);
     const { columns } = input;
 
     // Mỗi loại việc có thể dùng quy trình khác nhau, nên cột phải phủ trạng thái của MỌI quy trình đang dùng trong dự án
@@ -242,7 +246,7 @@ export class BoardsService {
       }
       throw e;
     }
-    return this.get(workspaceId, boardId);
+    return this.get(organizationId, boardId);
   }
 
   /**
@@ -250,21 +254,27 @@ export class BoardsService {
    * như `/issues?projectId`. Dùng chung đường truy vấn của Search nên `currentUser()` + full-text hoạt động.
    */
   async listIssues(
-    workspaceId: string,
+    organizationId: string,
     userId: string,
     boardId: string,
     cursor: string | undefined,
     limit: number,
   ): Promise<PageResult<IssueDto>> {
     const board = await this.prisma.board.findFirst({
-      where: { id: boardId, deletedAt: null, project: { workspaceId, deletedAt: null } },
+      where: { id: boardId, deletedAt: null, project: { organizationId, deletedAt: null } },
       select: { projectId: true, filterJql: true },
     });
     if (!board) throw new NotFoundAppException('Bảng việc');
     if (!board.filterJql?.trim()) {
-      return this.issues.list(workspaceId, { projectId: board.projectId }, cursor, limit, userId);
+      return this.issues.list(
+        organizationId,
+        { projectId: board.projectId },
+        cursor,
+        limit,
+        userId,
+      );
     }
-    return this.search.search(workspaceId, userId, {
+    return this.search.search(organizationId, userId, {
       mode: 'jql',
       jql: board.filterJql,
       projectId: board.projectId,

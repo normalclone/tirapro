@@ -27,7 +27,7 @@ export interface NameRefScope {
  */
 export async function findNameRefs(
   tx: Prisma.TransactionClient,
-  workspaceId: string,
+  organizationId: string,
   moves: ReadonlyArray<Pick<PlannedMove, 'from'>>,
   liveWorkflowIds: ReadonlySet<string>,
   scope?: NameRefScope,
@@ -54,7 +54,7 @@ export async function findNameRefs(
   };
   for (const f of await tx.savedFilter.findMany({
     where: {
-      workspaceId,
+      organizationId,
       deletedAt: null,
       ...(scope
         ? {
@@ -77,7 +77,7 @@ export async function findNameRefs(
     check('savedFilter', f.id, f.name, f.jql);
   for (const b of await tx.board.findMany({
     where: {
-      project: { workspaceId },
+      project: { organizationId },
       ...(scope?.projectId ? { projectId: scope.projectId } : {}),
       deletedAt: null,
       filterJql: { not: null },
@@ -88,7 +88,7 @@ export async function findNameRefs(
   for (const w of await tx.widget.findMany({
     where: {
       dashboard: {
-        workspaceId,
+        organizationId,
         deletedAt: null,
         ...(scope
           ? {
@@ -113,7 +113,7 @@ export async function findNameRefs(
       (w.config as { jql?: unknown } | null)?.jql,
     );
   for (const r of await tx.automationRule.findMany({
-    where: { workspaceId, ...(scope?.projectId ? { projectId: scope.projectId } : {}) },
+    where: { organizationId, ...(scope?.projectId ? { projectId: scope.projectId } : {}) },
     select: { id: true, name: true, conditions: true },
   }))
     for (const c of Array.isArray(r.conditions) ? (r.conditions as Array<{ jql?: unknown }>) : [])
@@ -121,7 +121,7 @@ export async function findNameRefs(
   for (const k of await tx.keyResult.findMany({
     where: {
       objective: {
-        workspaceId,
+        organizationId,
         ...(scope
           ? {
               OR: [
@@ -145,17 +145,17 @@ export async function findNameRefs(
  */
 export async function liveWorkflowIdsAfter(
   db: Prisma.TransactionClient,
-  workspaceId: string,
+  organizationId: string,
   targetWorkflowIds: string[],
   changedTypeIds: string[],
 ): Promise<Set<string>> {
   const [scheme, overrides] = await Promise.all([
-    db.workspaceWorkflowScheme.findMany({
-      where: { workspaceId, issueTypeId: { notIn: changedTypeIds } },
+    db.organizationWorkflowScheme.findMany({
+      where: { organizationId, issueTypeId: { notIn: changedTypeIds } },
       select: { workflowId: true },
     }),
     db.projectWorkflowOverride.findMany({
-      where: { project: { workspaceId } },
+      where: { project: { organizationId } },
       select: { workflowId: true },
     }),
   ]);

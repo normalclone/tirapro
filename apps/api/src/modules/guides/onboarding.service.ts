@@ -3,7 +3,7 @@ import { GuideProgressState } from '@prisma/client';
 import { DEFAULT_GUIDES, type ChecklistContent } from '@tirapro/shared';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 
-/** Khoá của guide checklist "Bắt đầu" (Guide toàn cục nạp bởi GuidesBootstrapService; workspace có thể ghi đè bản riêng). */
+/** Khoá của guide checklist "Bắt đầu" (Guide toàn cục nạp bởi GuidesBootstrapService; tổ chức có thể ghi đè bản riêng). */
 const ONBOARDING_GUIDE_KEY = 'onboarding-start';
 
 /** Bốn mục có logic tính tiến độ; khoá lạ trong bản ghi Guide bị bỏ qua. */
@@ -22,11 +22,11 @@ export interface OnboardingDto {
   total: number;
   /** Người dùng đã bấm "Ẩn khối này". */
   dismissed: boolean;
-  /** Hiện khối: chưa ẩn, chưa xong cả bốn, và workspace dưới 30 ngày tuổi. */
+  /** Hiện khối: chưa ẩn, chưa xong cả bốn, và tổ chức dưới 30 ngày tuổi. */
   visible: boolean;
 }
 
-/** Workspace cũ hơn mốc này không bị nhắc "Bắt đầu" nữa. */
+/** Tổ chức cũ hơn mốc này không bị nhắc "Bắt đầu" nữa. */
 const VISIBLE_DAYS = 30;
 
 const KNOWN_KEYS: readonly OnboardingItemKey[] = [
@@ -43,33 +43,33 @@ const FALLBACK_ITEMS: ChecklistContent['items'] = (() => {
 })();
 
 /**
- * Checklist "Bắt đầu" cho quản trị workspace mới. Tiến độ TÍNH TỪ DỮ LIỆU THẬT (luôn đúng kể cả khi người khác làm hộ);
+ * Checklist "Bắt đầu" cho quản trị tổ chức mới. Tiến độ TÍNH TỪ DỮ LIỆU THẬT (luôn đúng kể cả khi người khác làm hộ);
  * chỉ việc ẩn lưu theo người (`UserGuideState`). Chỉ đọc + trạng thái người dùng.
  */
 @Injectable()
 export class OnboardingService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async get(userId: string, workspaceId: string): Promise<OnboardingDto> {
+  async get(userId: string, organizationId: string): Promise<OnboardingDto> {
     const [guide, project, members, sprint, telegram, state, ws] = await Promise.all([
       this.prisma.guide.findFirst({
         where: {
           key: ONBOARDING_GUIDE_KEY,
           isPublished: true,
-          OR: [{ workspaceId }, { workspaceId: null }],
+          OR: [{ organizationId }, { organizationId: null }],
         },
-        // Bản của workspace trước: Postgres đặt NULL TRƯỚC khi DESC nên phải ép `nulls: 'last'` (bản toàn cục xuống cuối).
-        orderBy: { workspaceId: { sort: 'desc', nulls: 'last' } },
+        // Bản của tổ chức trước: Postgres đặt NULL TRƯỚC khi DESC nên phải ép `nulls: 'last'` (bản toàn cục xuống cuối).
+        orderBy: { organizationId: { sort: 'desc', nulls: 'last' } },
         select: { key: true, content: true },
       }),
-      this.prisma.project.count({ where: { workspaceId, deletedAt: null } }),
+      this.prisma.project.count({ where: { organizationId, deletedAt: null } }),
       // Không tính tài khoản đã vô hiệu hoá (chỉ người còn dùng được mới là "đã thêm thành viên").
-      this.prisma.workspaceMembership.count({
-        where: { workspaceId, user: { status: { not: 'DEACTIVATED' } } },
+      this.prisma.organizationMembership.count({
+        where: { organizationId, user: { status: { not: 'DEACTIVATED' } } },
       }),
       this.prisma.sprint.count({
         where: {
-          project: { workspaceId, deletedAt: null },
+          project: { organizationId, deletedAt: null },
           deletedAt: null,
           state: { in: ['ACTIVE', 'CLOSED'] },
         },
@@ -77,7 +77,7 @@ export class OnboardingService {
       // Chỉ tính khi CÓ kênh bật — tích hợp "Hoạt động" mà chưa có kênh thì chưa gửi được gì.
       this.prisma.integration.count({
         where: {
-          workspaceId,
+          organizationId,
           type: 'TELEGRAM',
           status: 'ACTIVE',
           channels: { some: { isEnabled: true } },
@@ -87,8 +87,8 @@ export class OnboardingService {
         where: { userId_guideKey: { userId, guideKey: ONBOARDING_GUIDE_KEY } },
         select: { state: true },
       }),
-      this.prisma.workspace.findFirst({
-        where: { id: workspaceId, deletedAt: null },
+      this.prisma.organization.findFirst({
+        where: { id: organizationId, deletedAt: null },
         select: { createdAt: true },
       }),
     ]);

@@ -26,7 +26,7 @@ export async function assertProjectWritable(
   assertNotArchived(p?.archivedAt);
 }
 
-/** `projectId` tuỳ chọn (mục cấp workspace có thể không gắn dự án) — null/undefined thì bỏ qua. */
+/** `projectId` tuỳ chọn (mục cấp tổ chức có thể không gắn dự án) — null/undefined thì bỏ qua. */
 export async function assertProjectIdWritable(
   db: Pick<Prisma.TransactionClient, 'project'>,
   projectId: string | null | undefined,

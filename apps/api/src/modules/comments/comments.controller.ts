@@ -9,7 +9,7 @@ import {
   type UpdateCommentInput,
 } from '@tirapro/shared';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import { WorkspaceId } from '../../common/decorators/workspace-id.decorator';
+import { OrganizationId } from '../../common/decorators/organization-id.decorator';
 import { ProjectRef } from '../../common/decorators/project-ref.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import type { AuthUser } from '../../common/types/request';
@@ -26,35 +26,35 @@ export class CommentsController {
   @ProjectRef('issue', 'issueId')
   @Get('issues/:issueId/comments')
   async list(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
     @Param('issueId') issueId: string,
   ) {
-    return this.comments.list(workspaceId, issueId, user.id);
+    return this.comments.list(organizationId, issueId, user.id);
   }
 
   @Permissions(PERMISSIONS.COMMENT_CREATE)
   @ProjectRef('issue', 'issueId')
   @Post('issues/:issueId/comments')
   async create(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
     @Param('issueId') issueId: string,
     @Body(new ZodValidationPipe(createCommentSchema)) dto: CreateCommentInput,
   ) {
-    return this.comments.create(workspaceId, user.id, issueId, dto);
+    return this.comments.create(organizationId, user.id, issueId, dto);
   }
 
   @Permissions(PERMISSIONS.COMMENT_EDIT_OWN)
   @ProjectRef('comment', 'id')
   @Patch('comments/:id')
   async update(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
     @Body(new ZodValidationPipe(updateCommentSchema)) body: UpdateCommentInput,
   ) {
-    return this.comments.update(workspaceId, user.id, id, body.body, body.version);
+    return this.comments.update(organizationId, user.id, id, body.body, body.version);
   }
 
   @Permissions(PERMISSIONS.COMMENT_EDIT_OWN)
@@ -62,13 +62,13 @@ export class CommentsController {
   @Delete('comments/:id')
   async remove(
     @CurrentUser() user: AuthUser,
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @Param('id') id: string,
   ) {
     // Guard chỉ đòi quyền sửa-của-mình; xoá bình luận của người khác cần thêm comment:delete.
     const canDeleteAny =
       user.isSystemAdmin || (user.permissions?.includes(PERMISSIONS.COMMENT_DELETE) ?? false);
-    return this.comments.softDelete(workspaceId, user.id, id, canDeleteAny);
+    return this.comments.softDelete(organizationId, user.id, id, canDeleteAny);
   }
 
   // Thả/bỏ cảm xúc: ai XEM được việc đều thả được (kể cả chỉ-xem) — KHÔNG đòi COMMENT_CREATE. Dự án lưu trữ → 422 ở service.
@@ -77,23 +77,23 @@ export class CommentsController {
   @ProjectRef('comment', 'id')
   @Put('comments/:id/reactions/:emoji')
   async react(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
     @Param('emoji', new ZodValidationPipe(commentReactionEmojiSchema)) emoji: CommentReactionEmoji,
   ) {
-    return this.comments.setReaction(workspaceId, user.id, id, emoji, true);
+    return this.comments.setReaction(organizationId, user.id, id, emoji, true);
   }
 
   @Permissions(PERMISSIONS.PROJECT_VIEW)
   @ProjectRef('comment', 'id')
   @Delete('comments/:id/reactions/:emoji')
   async unreact(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
     @Param('emoji', new ZodValidationPipe(commentReactionEmojiSchema)) emoji: CommentReactionEmoji,
   ) {
-    return this.comments.setReaction(workspaceId, user.id, id, emoji, false);
+    return this.comments.setReaction(organizationId, user.id, id, emoji, false);
   }
 }

@@ -70,7 +70,7 @@ export class AdminOverviewService {
         hasKey: !!c.get<string>('ai.anthropicApiKey'),
         modelPrimary: c.get<string>('ai.modelPrimary') ?? null,
         modelFast: c.get<string>('ai.modelFast') ?? null,
-        monthlyQuotaPerWorkspace: c.get<number>('ai.monthlyQuotaPerWorkspace') ?? null,
+        monthlyQuotaPerOrganization: c.get<number>('ai.monthlyQuotaPerOrganization') ?? null,
       },
       embedding: { provider, dim: c.get<number>('embedding.dim') ?? null, hasKey: !!embKey },
       redis: {
@@ -112,8 +112,8 @@ export class AdminOverviewService {
       act24h,
       act7d,
     ] = await Promise.all([
-      this.prisma.workspace.count({ where: { deletedAt: null } }),
-      this.prisma.workspace.count({ where: { deletedAt: { not: null } } }),
+      this.prisma.organization.count({ where: { deletedAt: null } }),
+      this.prisma.organization.count({ where: { deletedAt: { not: null } } }),
       this.prisma.user.count(),
       this.prisma.user.count({ where: { status: 'ACTIVE' } }),
       this.prisma.user.count({ where: { isSystemAdmin: true } }),
@@ -133,7 +133,7 @@ export class AdminOverviewService {
 
     const aiReq = aiAgg._count._all;
     return {
-      workspaces: { total: wsActive + wsArchived, active: wsActive, archived: wsArchived },
+      organizations: { total: wsActive + wsArchived, active: wsActive, archived: wsArchived },
       users: {
         total: usersTotal,
         active: usersActive,

@@ -2,7 +2,7 @@ import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/commo
 import { ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
 import { PERMISSIONS } from '@tirapro/types';
-import { WorkspaceId } from '../../common/decorators/workspace-id.decorator';
+import { OrganizationId } from '../../common/decorators/organization-id.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { ConfigCatalogService } from './config-catalog.service';
@@ -70,67 +70,67 @@ export class ConfigCatalogController {
 
   // ----- Severities -----
 
-  @Permissions(PERMISSIONS.WORKSPACE_VIEW)
+  @Permissions(PERMISSIONS.ORGANIZATION_VIEW)
   @Get('severities')
-  async listSeverities(@WorkspaceId() workspaceId: string) {
-    return this.catalog.listSeverities(workspaceId);
+  async listSeverities(@OrganizationId() organizationId: string) {
+    return this.catalog.listSeverities(organizationId);
   }
 
   @Post('severities')
-  @Permissions(PERMISSIONS.WORKSPACE_ADMIN)
+  @Permissions(PERMISSIONS.ORGANIZATION_ADMIN)
   async createSeverity(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @Body(new ZodValidationPipe(createSeveritySchema)) dto: CreateSeverityBody,
   ) {
-    return this.catalog.createSeverity(workspaceId, dto);
+    return this.catalog.createSeverity(organizationId, dto);
   }
 
   @Patch('severities/:id')
-  @Permissions(PERMISSIONS.WORKSPACE_ADMIN)
+  @Permissions(PERMISSIONS.ORGANIZATION_ADMIN)
   async updateSeverity(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @Param('id') id: string,
     @Body(new ZodValidationPipe(updateSeveritySchema)) dto: UpdateSeverityBody,
   ) {
-    return this.catalog.updateSeverity(workspaceId, id, dto);
+    return this.catalog.updateSeverity(organizationId, id, dto);
   }
 
   @Delete('severities/:id')
-  @Permissions(PERMISSIONS.WORKSPACE_ADMIN)
-  async removeSeverity(@WorkspaceId() workspaceId: string, @Param('id') id: string) {
-    return this.catalog.removeSeverity(workspaceId, id);
+  @Permissions(PERMISSIONS.ORGANIZATION_ADMIN)
+  async removeSeverity(@OrganizationId() organizationId: string, @Param('id') id: string) {
+    return this.catalog.removeSeverity(organizationId, id);
   }
 
   // ----- Priorities -----
 
-  @Permissions(PERMISSIONS.WORKSPACE_VIEW)
+  @Permissions(PERMISSIONS.ORGANIZATION_VIEW)
   @Get('priorities')
-  async listPriorities(@WorkspaceId() workspaceId: string) {
-    return this.catalog.listPriorities(workspaceId);
+  async listPriorities(@OrganizationId() organizationId: string) {
+    return this.catalog.listPriorities(organizationId);
   }
 
   @Post('priorities')
-  @Permissions(PERMISSIONS.WORKSPACE_ADMIN)
+  @Permissions(PERMISSIONS.ORGANIZATION_ADMIN)
   async createPriority(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @Body(new ZodValidationPipe(createPrioritySchema)) dto: CreatePriorityBody,
   ) {
-    return this.catalog.createPriority(workspaceId, dto);
+    return this.catalog.createPriority(organizationId, dto);
   }
 
   @Patch('priorities/:id')
-  @Permissions(PERMISSIONS.WORKSPACE_ADMIN)
+  @Permissions(PERMISSIONS.ORGANIZATION_ADMIN)
   async updatePriority(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @Param('id') id: string,
     @Body(new ZodValidationPipe(updatePrioritySchema)) dto: UpdatePriorityBody,
   ) {
-    return this.catalog.updatePriority(workspaceId, id, dto);
+    return this.catalog.updatePriority(organizationId, id, dto);
   }
 
   @Delete('priorities/:id')
-  @Permissions(PERMISSIONS.WORKSPACE_ADMIN)
-  async removePriority(@WorkspaceId() workspaceId: string, @Param('id') id: string) {
-    return this.catalog.removePriority(workspaceId, id);
+  @Permissions(PERMISSIONS.ORGANIZATION_ADMIN)
+  async removePriority(@OrganizationId() organizationId: string, @Param('id') id: string) {
+    return this.catalog.removePriority(organizationId, id);
   }
 }

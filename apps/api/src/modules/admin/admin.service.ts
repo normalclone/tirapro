@@ -16,7 +16,7 @@ import { ApiKeyService } from '../api-keys/api-key.service';
 import { MembersService } from '../members/members.service';
 import { SYSTEM_USER_EMAIL } from '../../common/system-user';
 import type {
-  AddToWorkspaceInput,
+  AddToOrganizationInput,
   CreateUserInput,
   ListUsersQuery,
   UpdateUserInput,
@@ -29,10 +29,10 @@ const USER_SELECT = {
   avatarUrl: true,
   status: true,
   isSystemAdmin: true,
-  canCreateWorkspace: true,
+  canCreateOrganization: true,
   lastSeenAt: true,
   createdAt: true,
-  _count: { select: { workspaceMemberships: true } },
+  _count: { select: { organizationMemberships: true } },
 } as const;
 
 type Row = {
@@ -42,10 +42,10 @@ type Row = {
   avatarUrl: string | null;
   status: string;
   isSystemAdmin: boolean;
-  canCreateWorkspace: boolean;
+  canCreateOrganization: boolean;
   lastSeenAt: Date | null;
   createdAt: Date;
-  _count: { workspaceMemberships: number };
+  _count: { organizationMemberships: number };
 };
 
 /** Quản trị tài khoản toàn hệ thống (chỉ admin hệ thống). */
@@ -84,10 +84,10 @@ export class AdminService {
       avatarUrl: u.avatarUrl,
       status: u.status,
       isSystemAdmin: u.isSystemAdmin,
-      canCreateWorkspace: u.canCreateWorkspace,
+      canCreateOrganization: u.canCreateOrganization,
       // Tài khoản nội bộ của tự động hoá: không khoá / đặt lại mật khẩu được → web ẩn menu thao tác.
       isAutomation: u.email === SYSTEM_USER_EMAIL,
-      workspaceCount: u._count.workspaceMemberships,
+      organizationCount: u._count.organizationMemberships,
       lastSeenAt: u.lastSeenAt?.toISOString() ?? null,
       createdAt: u.createdAt.toISOString(),
     };
@@ -120,7 +120,7 @@ export class AdminService {
     const exists = await this.prisma.user.findUnique({ where: { email }, select: { id: true } });
     if (exists) throw new BusinessRuleException('Email đã tồn tại');
 
-    // Tạo tài khoản bởi admin hệ thống có thể trả mật khẩu tạm; để thêm người vào workspace dùng POST /members (người có sẵn) hoặc POST /members/accounts (tạo mới).
+    // Tạo tài khoản bởi admin hệ thống có thể trả mật khẩu tạm; để thêm người vào tổ chức dùng POST /members (người có sẵn) hoặc POST /members/accounts (tạo mới).
     let tempPassword: string | undefined;
     // Mật khẩu tạm: ngẫu nhiên bằng crypto, luôn thoả chính sách chung (không dùng cuid — không phải bí mật an toàn).
     const plain = input.password ?? (tempPassword = generateTempPassword());
@@ -131,7 +131,7 @@ export class AdminService {
         displayName: input.displayName,
         passwordHash,
         isSystemAdmin: input.isSystemAdmin ?? false,
-        canCreateWorkspace: input.canCreateWorkspace ?? false,
+        canCreateOrganization: input.canCreateOrganization ?? false,
       },
       select: USER_SELECT,
     });
@@ -144,7 +144,7 @@ export class AdminService {
       summary: `Tạo tài khoản ${created.displayName} (${created.email})${created.isSystemAdmin ? ' với quyền admin hệ thống' : ''}`,
       meta: {
         isSystemAdmin: created.isSystemAdmin,
-        canCreateWorkspace: created.canCreateWorkspace,
+        canCreateOrganization: created.canCreateOrganization,
       },
     });
     return { ...this.toDto(created), tempPassword };
@@ -159,7 +159,7 @@ export class AdminService {
         displayName: true,
         email: true,
         isSystemAdmin: true,
-        canCreateWorkspace: true,
+        canCreateOrganization: true,
       },
     });
     if (!found) throw new NotFoundAppException('Người dùng');
@@ -182,7 +182,7 @@ export class AdminService {
       email: newEmail,
       displayName: input.displayName,
       isSystemAdmin: input.isSystemAdmin,
-      canCreateWorkspace: input.canCreateWorkspace,
+      canCreateOrganization: input.canCreateOrganization,
     };
     // Hạ quyền admin hệ thống (kể cả tự hạ) cũng không được để hệ thống hết admin → cùng bộ chặn với khoá admin cuối.
     const demoting = input.isSystemAdmin === false && found.isSystemAdmin;
@@ -192,11 +192,11 @@ export class AdminService {
           return tx.user.update({ where: { id }, data, select: USER_SELECT });
         })
       : await this.prisma.user.update({ where: { id }, data, select: USER_SELECT });
-    // Bật/tắt admin hệ thống đổi phạm vi thấy dự án ở MỌI workspace: gateway rà lại socket đang mở của người đó
+    // Bật/tắt admin hệ thống đổi phạm vi thấy dự án ở MỌI organization: gateway rà lại socket đang mở của người đó
     // (isSystemAdmin đọc trực tiếp từ DB, không có cache quyền để xoá).
     if (input.isSystemAdmin !== undefined && input.isSystemAdmin !== found.isSystemAdmin)
       this.events.emit(DOMAIN_EVENTS.ACCESS_CHANGED, { userIds: [id] });
-    // Đổi quyền hệ thống (admin hệ thống / được lập workspace) — thao tác quản trị giá trị cao nhất.
+    // Đổi quyền hệ thống (admin hệ thống / được lập tổ chức) — thao tác quản trị giá trị cao nhất.
     const permChanges: string[] = [];
     if (input.isSystemAdmin !== undefined && input.isSystemAdmin !== found.isSystemAdmin) {
       permChanges.push(
@@ -204,10 +204,12 @@ export class AdminService {
       );
     }
     if (
-      input.canCreateWorkspace !== undefined &&
-      input.canCreateWorkspace !== found.canCreateWorkspace
+      input.canCreateOrganization !== undefined &&
+      input.canCreateOrganization !== found.canCreateOrganization
     ) {
-      permChanges.push(input.canCreateWorkspace ? 'cho phép lập tổ chức' : 'thu quyền lập tổ chức');
+      permChanges.push(
+        input.canCreateOrganization ? 'cho phép lập tổ chức' : 'thu quyền lập tổ chức',
+      );
     }
     if (newEmail) {
       await this.audit.record({
@@ -228,7 +230,7 @@ export class AdminService {
         summary: `Với tài khoản ${found.displayName} (${found.email}): ${permChanges.join(', ')}`,
         meta: {
           isSystemAdmin: updated.isSystemAdmin,
-          canCreateWorkspace: updated.canCreateWorkspace,
+          canCreateOrganization: updated.canCreateOrganization,
         },
       });
     }
@@ -274,10 +276,10 @@ export class AdminService {
       await this.apiKeys.dropCachesForUser(id);
       this.emitSessionsRevoked(id);
     }
-    // Thao tác quản trị toàn hệ thống → workspaceId null (xem ở /admin/system).
+    // Thao tác quản trị toàn hệ thống → organizationId null (xem ở /admin/system).
     await this.audit.record({
       actorId,
-      workspaceId: null,
+      organizationId: null,
       action: deactivate ? AUDIT_ACTIONS.ACCOUNT_DEACTIVATED : AUDIT_ACTIONS.ACCOUNT_REACTIVATED,
       entityType: 'user',
       entityId: id,
@@ -315,7 +317,7 @@ export class AdminService {
     this.emitSessionsRevoked(id);
     await this.audit.record({
       actorId,
-      workspaceId: null,
+      organizationId: null,
       action: AUDIT_ACTIONS.ACCOUNT_PASSWORD_RESET,
       entityType: 'user',
       entityId: id,
@@ -343,7 +345,7 @@ export class AdminService {
     this.emitSessionsRevoked(id);
     await this.audit.record({
       actorId,
-      workspaceId: null,
+      organizationId: null,
       action: AUDIT_ACTIONS.ACCOUNT_SESSIONS_REVOKED,
       entityType: 'user',
       entityId: id,
@@ -354,24 +356,28 @@ export class AdminService {
   }
 
   /**
-   * Thêm một tài khoản có sẵn vào tổ chức. Bỏ trống vai trò → "Workspace Member". Người đã là thành viên
+   * Thêm một tài khoản có sẵn vào tổ chức. Bỏ trống vai trò → "Organization Member". Người đã là thành viên
    * bị từ chối (tránh âm thầm ghi đè vai trò đang có — muốn đổi vai trò dùng trang Thành viên).
    */
-  async addToWorkspace(actorId: string | undefined, userId: string, input: AddToWorkspaceInput) {
+  async addToOrganization(
+    actorId: string | undefined,
+    userId: string,
+    input: AddToOrganizationInput,
+  ) {
     const [user, ws] = await Promise.all([
       this.prisma.user.findUnique({
         where: { id: userId },
         select: { id: true, email: true, displayName: true },
       }),
-      this.prisma.workspace.findFirst({
-        where: { id: input.workspaceId, deletedAt: null },
+      this.prisma.organization.findFirst({
+        where: { id: input.organizationId, deletedAt: null },
         select: { id: true, name: true },
       }),
     ]);
     if (!user) throw new NotFoundAppException('Người dùng');
     if (!ws) throw new NotFoundAppException('Tổ chức');
-    const existing = await this.prisma.workspaceMembership.findUnique({
-      where: { workspaceId_userId: { workspaceId: ws.id, userId } },
+    const existing = await this.prisma.organizationMembership.findUnique({
+      where: { organizationId_userId: { organizationId: ws.id, userId } },
       select: { id: true },
     });
     if (existing) {
@@ -383,9 +389,9 @@ export class AdminService {
     if (roleIds.length === 0) {
       const memberRole = await this.prisma.role.findFirst({
         where: {
-          name: SYSTEM_ROLES.WORKSPACE_MEMBER,
-          scope: 'WORKSPACE',
-          workspaceId: null,
+          name: SYSTEM_ROLES.ORGANIZATION_MEMBER,
+          scope: 'ORGANIZATION',
+          organizationId: null,
           isSystem: true,
         },
         select: { id: true },
@@ -393,16 +399,16 @@ export class AdminService {
       if (!memberRole) throw new NotFoundAppException('Vai trò Thành viên');
       roleIds = [memberRole.id];
     }
-    const member = await this.members.addWorkspace(ws.id, userId, roleIds, actorId);
-    // Nhật ký toàn hệ thống (workspaceId null); nhật ký của workspace đích đã có `member.added` từ MembersService.
+    const member = await this.members.addOrganization(ws.id, userId, roleIds, actorId);
+    // Nhật ký toàn hệ thống (organizationId null); nhật ký của tổ chức đích đã có `member.added` từ MembersService.
     await this.audit.record({
       actorId,
-      workspaceId: null,
-      action: AUDIT_ACTIONS.ACCOUNT_WORKSPACE_ADDED,
+      organizationId: null,
+      action: AUDIT_ACTIONS.ACCOUNT_ORGANIZATION_ADDED,
       entityType: 'user',
       entityId: userId,
       summary: `Thêm ${user.displayName} (${user.email}) vào tổ chức ${ws.name}`,
-      meta: { workspaceId: ws.id, roleIds },
+      meta: { organizationId: ws.id, roleIds },
     });
     return member;
   }

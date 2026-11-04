@@ -27,7 +27,7 @@ import {
 import { DOMAIN_EVENTS, PERMISSIONS } from '@tirapro/types';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
-import { WorkspaceId } from '../../common/decorators/workspace-id.decorator';
+import { OrganizationId } from '../../common/decorators/organization-id.decorator';
 import { ForbiddenAppException } from '../../common/exceptions/app.exception';
 import { profileLockedException } from './profile-locked';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
@@ -49,22 +49,22 @@ export class UsersController {
   ) {}
 
   /**
-   * Danh sách thành viên workspace hiện tại (picker người phụ trách / @mention / bộ lọc), lọc phía server:
+   * Danh sách thành viên tổ chức hiện tại (picker người phụ trách / @mention / bộ lọc), lọc phía server:
    * `search`, `projectId` (chỉ người xem được dự án; người gọi phải xem được dự án — 404 nếu không), `limit` (mặc định 50,
    * tối đa 200), `includeInactive=true` (giữ tài khoản đã khoá + tài khoản hệ thống).
    */
-  @Permissions(PERMISSIONS.WORKSPACE_VIEW)
+  @Permissions(PERMISSIONS.ORGANIZATION_VIEW)
   @Get()
   async list(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
     @Query('search') search?: string,
     @Query('projectId') projectId?: string,
     @Query('limit') limit?: string,
     @Query('includeInactive') includeInactive?: string,
   ) {
-    return this.users.listWorkspaceMembers(
-      workspaceId,
+    return this.users.listOrganizationMembers(
+      organizationId,
       user.id,
       {
         search: search?.slice(0, 100),
@@ -110,10 +110,14 @@ export class UsersController {
     }
     const { revokedAtMs } = await this.users.changePassword(user.id, body);
     // Mọi phiên (kể cả thiết bị này) đã bị thu hồi → cấp phiên mới cho thiết bị đang đổi mật khẩu.
-    const { refreshToken, ...session } = await this.auth.reissueSession(user.id, user.workspaceId, {
-      userAgent: req.headers['user-agent'],
-      ipAddress: req.ip,
-    });
+    const { refreshToken, ...session } = await this.auth.reissueSession(
+      user.id,
+      user.organizationId,
+      {
+        userAgent: req.headers['user-agent'],
+        ipAddress: req.ip,
+      },
+    );
     setRefreshCookie(res, refreshToken, !!this.config.get<boolean>('isProd'));
     // Ngắt socket của các thiết bị khác (token cũ); socket mới của thiết bị này (token vừa cấp) không bị đụng.
     this.events.emit(DOMAIN_EVENTS.ACCOUNT_SESSIONS_REVOKED, { userId: user.id, revokedAtMs });
@@ -144,13 +148,13 @@ export class UsersController {
     return this.users.clearAvatar(user.id);
   }
 
-  @Permissions(PERMISSIONS.WORKSPACE_VIEW)
+  @Permissions(PERMISSIONS.ORGANIZATION_VIEW)
   @Get(':id')
   async getOne(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
   ) {
-    return this.users.getById(workspaceId, id, canSeeAdminUserFields(user));
+    return this.users.getById(organizationId, id, canSeeAdminUserFields(user));
   }
 }

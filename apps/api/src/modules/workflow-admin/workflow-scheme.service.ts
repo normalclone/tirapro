@@ -6,9 +6,9 @@ import type {
   NameRefDto,
   ProjectWorkflowSchemeDto,
   WorkflowChangeDto,
-  WorkspaceWorkflowSchemeDto,
+  OrganizationWorkflowSchemeDto,
 } from '@tirapro/types';
-import type { SetProjectOverrideInput, SetWorkspaceSchemeInput } from '@tirapro/shared';
+import type { SetProjectOverrideInput, SetOrganizationSchemeInput } from '@tirapro/shared';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { BusinessRuleException, NotFoundAppException } from '../../common/exceptions/app.exception';
 import { assertProjectIdWritable } from '../../common/project-writable';
@@ -20,8 +20,8 @@ import { systemActorId } from './system-actor';
 import { moveIssuesToStatus } from './issue-status-move';
 import {
   assertAllMapped,
-  assertMapInWorkspace,
-  lockWorkspaceWorkflows,
+  assertMapInOrganization,
+  lockOrganizationWorkflows,
   planMoves,
   toMoveRows,
   type MoveScope,
@@ -48,7 +48,7 @@ interface ChangeContext {
 }
 
 /**
- * Quy trình theo loại việc: cấu hình ở cấp tổ chức (workspace) và ghi đè từng dự án.
+ * Quy trình theo loại việc: cấu hình ở cấp tổ chức (tổ chức) và ghi đè từng dự án.
  * Mọi thay đổi: (1) chuyển việc đang ở quy trình bị bỏ sang trạng thái đích trong CÙNG transaction (tăng version + lịch sử
  * STATUS), (2) thêm trạng thái mới còn thiếu vào cột các bảng của dự án bị ảnh hưởng, (3) bỏ cache của resolver — cả khi rollback.
  * `dryRun` chỉ lập bảng "việc sẽ chuyển", không ghi gì.
@@ -67,19 +67,19 @@ export class WorkflowSchemeService {
 
   // ----------------------------------------------------------------------------------------- tổ chức
 
-  async getWorkspaceScheme(workspaceId: string): Promise<WorkspaceWorkflowSchemeDto> {
-    const rows = await this.prisma.workspaceWorkflowScheme.findMany({
-      where: { workspaceId },
+  async getOrganizationScheme(organizationId: string): Promise<OrganizationWorkflowSchemeDto> {
+    const rows = await this.prisma.organizationWorkflowScheme.findMany({
+      where: { organizationId },
       select: { issueTypeId: true, workflowId: true },
       orderBy: { issueType: { hierarchyLevel: 'desc' } },
     });
-    return { items: rows, issueTypes: await this.schemeTypes(workspaceId) };
+    return { items: rows, issueTypes: await this.schemeTypes(organizationId) };
   }
 
   /** Loại việc của tổ chức (cấp phân cấp giảm dần: Epic trước, Sub-task cuối) cho bảng cấu hình. */
-  private schemeTypes(workspaceId: string) {
+  private schemeTypes(organizationId: string) {
     return this.prisma.issueType.findMany({
-      where: { workspaceId },
+      where: { organizationId },
       orderBy: [{ hierarchyLevel: 'desc' }, { name: 'asc' }],
       select: {
         id: true,
@@ -92,23 +92,23 @@ export class WorkflowSchemeService {
     });
   }
 
-  async setWorkspaceScheme(
-    workspaceId: string,
+  async setOrganizationScheme(
+    organizationId: string,
     actorId: string,
-    input: SetWorkspaceSchemeInput,
+    input: SetOrganizationSchemeInput,
     dryRun: boolean,
   ): Promise<WorkflowChangeDto> {
     const types = await this.prisma.issueType.findMany({
-      where: { id: { in: input.items.map((i) => i.issueTypeId) }, workspaceId },
+      where: { id: { in: input.items.map((i) => i.issueTypeId) }, organizationId },
       select: { id: true, name: true },
     });
     if (types.length !== input.items.length) throw new NotFoundAppException('Loại việc');
     const workflowIds = [...new Set(input.items.map((i) => i.workflowId))];
     const found = await this.prisma.workflow.count({
-      where: { id: { in: workflowIds }, workspaceId, isTemplate: false, projectId: null },
+      where: { id: { in: workflowIds }, organizationId, isTemplate: false, projectId: null },
     });
     if (found !== workflowIds.length) throw new BusinessRuleException(WORKFLOW_NOT_SELECTABLE);
-    await assertMapInWorkspace(this.prisma, workspaceId, [
+    await assertMapInOrganization(this.prisma, organizationId, [
       input.statusMap,
       ...Object.values(input.statusMapByType ?? {}),
     ]);
@@ -117,17 +117,17 @@ export class WorkflowSchemeService {
       input.statusMapByType?.[typeId]?.[fromId] ?? input.statusMap?.[fromId];
 
     if (dryRun) {
-      const plan = await this.planScheme(this.prisma, workspaceId, input, types);
-      const moves = await planMoves(this.prisma, workspaceId, plan.scopes, pick);
+      const plan = await this.planScheme(this.prisma, organizationId, input, types);
+      const moves = await planMoves(this.prisma, organizationId, plan.scopes, pick);
       const rules = await ruleStepForMoves(
         this.prisma,
-        workspaceId,
+        organizationId,
         this.rulePairs(plan, moves),
         pick,
         moves,
         true,
       );
-      const refs = await this.nameRefs(this.prisma, workspaceId, moves, plan, {
+      const refs = await this.nameRefs(this.prisma, organizationId, moves, plan, {
         viewerId: actorId,
       });
       return this.result(true, moves, plan.ctx, rules, refs);
@@ -136,17 +136,17 @@ export class WorkflowSchemeService {
     try {
       result = await this.prisma.$transaction(async (tx) => {
         // Khoá TRƯỚC khi đọc trạng thái hiện tại: hai thay đổi đồng thời xếp hàng và thấy kết quả của nhau (L2).
-        await lockWorkspaceWorkflows(tx, workspaceId);
-        const plan = await this.planScheme(tx, workspaceId, input, types);
-        const moves = await planMoves(tx, workspaceId, plan.scopes, pick);
+        await lockOrganizationWorkflows(tx, organizationId);
+        const plan = await this.planScheme(tx, organizationId, input, types);
+        const moves = await planMoves(tx, organizationId, plan.scopes, pick);
         assertAllMapped(moves, plan.ctx.typeNames);
         for (const i of plan.changed)
-          await tx.workspaceWorkflowScheme.upsert({
-            where: { workspaceId_issueTypeId: { workspaceId, issueTypeId: i.issueTypeId } },
-            create: { workspaceId, issueTypeId: i.issueTypeId, workflowId: i.workflowId },
+          await tx.organizationWorkflowScheme.upsert({
+            where: { organizationId_issueTypeId: { organizationId, issueTypeId: i.issueTypeId } },
+            create: { organizationId, issueTypeId: i.issueTypeId, workflowId: i.workflowId },
             update: { workflowId: i.workflowId },
           });
-        await this.applyMoves(tx, workspaceId, actorId, moves);
+        await this.applyMoves(tx, organizationId, actorId, moves);
         const boards = await this.syncBoards(
           tx,
           [...new Set(plan.scopes.flatMap((s) => s.projectIds))],
@@ -154,34 +154,34 @@ export class WorkflowSchemeService {
         );
         const rules = await ruleStepForMoves(
           tx,
-          workspaceId,
+          organizationId,
           this.rulePairs(plan, moves),
           pick,
           moves,
           false,
         );
-        const refs = await this.nameRefs(tx, workspaceId, moves, plan, { viewerId: actorId });
+        const refs = await this.nameRefs(tx, organizationId, moves, plan, { viewerId: actorId });
         return this.result(false, moves, plan.ctx, rules, refs, boards);
       }, TX_OPTIONS);
     } finally {
       // Kể cả rollback: lần nạp giữa chừng trong transaction có thể đã vào cache của request.
       this.resolver.invalidate();
     }
-    await publishRuleChanges(this.deps(), workspaceId, actorId, result.affectedRules);
+    await publishRuleChanges(this.deps(), organizationId, actorId, result.affectedRules);
     return result;
   }
 
   /** Đọc trạng thái hiện tại (bằng `db`: client thường để xem trước, tx đã khoá để chạy thật) và dựng phạm vi chuyển việc. */
   private async planScheme(
     db: Prisma.TransactionClient,
-    workspaceId: string,
-    input: SetWorkspaceSchemeInput,
+    organizationId: string,
+    input: SetOrganizationSchemeInput,
     types: Array<{ id: string; name: string }>,
   ) {
     const current = new Map(
       (
-        await db.workspaceWorkflowScheme.findMany({
-          where: { workspaceId },
+        await db.organizationWorkflowScheme.findMany({
+          where: { organizationId },
           select: { issueTypeId: true, workflowId: true },
         })
       ).map((r) => [r.issueTypeId, r.workflowId]),
@@ -189,11 +189,14 @@ export class WorkflowSchemeService {
     const changed = input.items.filter((i) => current.get(i.issueTypeId) !== i.workflowId);
     // allow-deleted: việc của dự án đã xoá mềm/lưu trữ cũng phải khớp quy trình (khôi phục sau này không được lệch)
     const projects = await db.project.findMany({
-      where: { workspaceId },
+      where: { organizationId },
       select: { id: true, key: true, defaultWorkflowId: true },
     });
     const overridden = await db.projectWorkflowOverride.findMany({
-      where: { issueTypeId: { in: changed.map((i) => i.issueTypeId) }, project: { workspaceId } },
+      where: {
+        issueTypeId: { in: changed.map((i) => i.issueTypeId) },
+        project: { organizationId },
+      },
       select: { projectId: true, issueTypeId: true },
     });
     const scopes: MoveScope[] = changed.map((i) => ({
@@ -241,18 +244,18 @@ export class WorkflowSchemeService {
 
   /** Quy trình hiệu lực của từng loại việc trong dự án: ghi đè → tổ chức → mặc định của dự án. */
   async getProjectScheme(
-    workspaceId: string,
+    organizationId: string,
     projectId: string,
   ): Promise<ProjectWorkflowSchemeDto> {
-    const project = await this.requireProject(workspaceId, projectId);
+    const project = await this.requireProject(organizationId, projectId);
     const [types, overrides, scheme] = await Promise.all([
-      this.prisma.issueType.findMany({ where: { workspaceId }, select: { id: true } }),
+      this.prisma.issueType.findMany({ where: { organizationId }, select: { id: true } }),
       this.prisma.projectWorkflowOverride.findMany({
         where: { projectId },
         select: { issueTypeId: true, workflowId: true },
       }),
-      this.prisma.workspaceWorkflowScheme.findMany({
-        where: { workspaceId },
+      this.prisma.organizationWorkflowScheme.findMany({
+        where: { organizationId },
         select: { issueTypeId: true, workflowId: true },
       }),
     ]);
@@ -260,18 +263,18 @@ export class WorkflowSchemeService {
     const ws = new Map(scheme.map((s) => [s.issueTypeId, s.workflowId]));
     const items: ProjectWorkflowSchemeDto['items'] = [];
     for (const t of types) {
-      const workspaceWorkflowId = ws.get(t.id) ?? null;
+      const organizationWorkflowId = ws.get(t.id) ?? null;
       const overrideId = ov.get(t.id);
-      const workflowId = overrideId ?? workspaceWorkflowId ?? project.defaultWorkflowId;
+      const workflowId = overrideId ?? organizationWorkflowId ?? project.defaultWorkflowId;
       if (!workflowId) continue;
       items.push({
         issueTypeId: t.id,
         workflowId,
         isOverride: overrideId !== undefined,
-        workspaceWorkflowId,
+        organizationWorkflowId,
       });
     }
-    return { projectId, items, issueTypes: await this.schemeTypes(workspaceId) };
+    return { projectId, items, issueTypes: await this.schemeTypes(organizationId) };
   }
 
   /**
@@ -280,7 +283,7 @@ export class WorkflowSchemeService {
    * `statusMap` khi đó có thể trỏ vào trạng thái của quy trình NGUỒN, được đổi sang trạng thái cùng tên của bản chép.
    */
   async setProjectOverride(
-    workspaceId: string,
+    organizationId: string,
     projectId: string,
     actorId: string,
     input: SetProjectOverrideInput,
@@ -288,7 +291,7 @@ export class WorkflowSchemeService {
   ): Promise<WorkflowChangeDto> {
     if (input.workflowId === null)
       return this.clearProjectOverride(
-        workspaceId,
+        organizationId,
         projectId,
         actorId,
         input.issueTypeId,
@@ -297,13 +300,13 @@ export class WorkflowSchemeService {
       );
     const workflowId = input.workflowId;
     await assertProjectIdWritable(this.prisma, projectId);
-    const project = await this.requireProject(workspaceId, projectId);
-    const type = await this.requireType(workspaceId, input.issueTypeId);
-    await assertMapInWorkspace(this.prisma, workspaceId, [input.statusMap]);
+    const project = await this.requireProject(organizationId, projectId);
+    const type = await this.requireType(organizationId, input.issueTypeId);
+    await assertMapInOrganization(this.prisma, organizationId, [input.statusMap]);
     const source = await this.prisma.workflow.findFirst({
       where: {
         id: workflowId,
-        workspaceId,
+        organizationId,
         isTemplate: false,
         OR: [{ projectId: null }, ...(input.copy ? [] : [{ projectId }])],
       },
@@ -318,15 +321,15 @@ export class WorkflowSchemeService {
     if (dryRun) {
       // Chép chưa xảy ra: xem trước theo trạng thái của quy trình NGUỒN (cùng tên/nhóm với bản chép sẽ tạo).
       const existingCopy = input.copy
-        ? await this.findCopy(this.prisma, workspaceId, projectId, source.name, project.key)
+        ? await this.findCopy(this.prisma, organizationId, projectId, source.name, project.key)
         : null;
       const target = existingCopy?.id ?? source.id;
       const scope = [{ typeId: type.id, projectIds: [projectId], toWorkflowId: target }];
       const pick = (_t: string, from: string) => input.statusMap[from];
-      const moves = await planMoves(this.prisma, workspaceId, scope, pick);
+      const moves = await planMoves(this.prisma, organizationId, scope, pick);
       const rules = await ruleStepForMoves(
         this.prisma,
-        workspaceId,
+        organizationId,
         await this.overridePairs(this.prisma, projectId, type.id, target, moves),
         pick,
         moves,
@@ -335,7 +338,7 @@ export class WorkflowSchemeService {
       );
       const refs = await this.nameRefs(
         this.prisma,
-        workspaceId,
+        organizationId,
         moves,
         { targets: [target], types: [type.id] },
         { viewerId: actorId, projectId },
@@ -345,21 +348,21 @@ export class WorkflowSchemeService {
     let result: WorkflowChangeDto;
     try {
       result = await this.prisma.$transaction(async (tx) => {
-        await lockWorkspaceWorkflows(tx, workspaceId);
+        await lockOrganizationWorkflows(tx, organizationId);
         // Đọc quy trình hiện tại TRƯỚC khi ghi (để biết quy trình cũ cần ánh xạ cho quy tắc).
         this.resolver.invalidate(projectId);
         const before = await this.overridePairs(tx, projectId, type.id, '', []);
         let targetId = source.id;
         let translate = (id: string | undefined) => id;
         if (input.copy) {
-          const copy = await this.ensureCopy(tx, workspaceId, project, source);
+          const copy = await this.ensureCopy(tx, organizationId, project, source);
           targetId = copy.id;
           translate = (id) => (id ? (copy.sourceToCopy.get(id) ?? id) : id);
         }
         const pick = (_t: string, from: string) => translate(input.statusMap[from]);
         const moves = await planMoves(
           tx,
-          workspaceId,
+          organizationId,
           [{ typeId: type.id, projectIds: [projectId], toWorkflowId: targetId }],
           pick,
         );
@@ -369,17 +372,25 @@ export class WorkflowSchemeService {
           create: { projectId, issueTypeId: type.id, workflowId: targetId },
           update: { workflowId: targetId },
         });
-        await this.applyMoves(tx, workspaceId, actorId, moves);
+        await this.applyMoves(tx, organizationId, actorId, moves);
         const boards = await this.syncBoards(tx, [projectId], moves);
         const pairs = before.map((b) => ({
           ...b,
           toWorkflowId: targetId,
           fromWorkflowIds: fromWorkflowsOf(type.id, b.fromWorkflowIds, moves),
         }));
-        const rules = await ruleStepForMoves(tx, workspaceId, pairs, pick, moves, false, projectId);
+        const rules = await ruleStepForMoves(
+          tx,
+          organizationId,
+          pairs,
+          pick,
+          moves,
+          false,
+          projectId,
+        );
         const refs = await this.nameRefs(
           tx,
-          workspaceId,
+          organizationId,
           moves,
           { targets: [targetId], types: [type.id] },
           { viewerId: actorId, projectId },
@@ -389,7 +400,7 @@ export class WorkflowSchemeService {
     } finally {
       this.resolver.invalidate(projectId);
     }
-    await publishRuleChanges(this.deps(), workspaceId, actorId, result.affectedRules);
+    await publishRuleChanges(this.deps(), organizationId, actorId, result.affectedRules);
     return result;
   }
 
@@ -413,7 +424,7 @@ export class WorkflowSchemeService {
 
   /** Quay về dùng chung: chuyển việc của loại đó sang quy trình của tổ chức (hoặc mặc định của dự án), rồi xoá ghi đè. */
   async clearProjectOverride(
-    workspaceId: string,
+    organizationId: string,
     projectId: string,
     actorId: string,
     issueTypeId: string,
@@ -421,9 +432,9 @@ export class WorkflowSchemeService {
     dryRun: boolean,
   ): Promise<WorkflowChangeDto> {
     await assertProjectIdWritable(this.prisma, projectId);
-    const project = await this.requireProject(workspaceId, projectId);
-    const type = await this.requireType(workspaceId, issueTypeId);
-    await assertMapInWorkspace(this.prisma, workspaceId, [statusMap]);
+    const project = await this.requireProject(organizationId, projectId);
+    const type = await this.requireType(organizationId, issueTypeId);
+    await assertMapInOrganization(this.prisma, organizationId, [statusMap]);
     const ctx: ChangeContext = {
       projectKeys: new Map([[projectId, project.key]]),
       typeNames: new Map([[type.id, type.name]]),
@@ -435,8 +446,8 @@ export class WorkflowSchemeService {
     if (!override) return this.result(dryRun, [], ctx); // đã dùng chung — không có gì để làm (idempotent)
     const shared =
       (
-        await this.prisma.workspaceWorkflowScheme.findUnique({
-          where: { workspaceId_issueTypeId: { workspaceId, issueTypeId } },
+        await this.prisma.organizationWorkflowScheme.findUnique({
+          where: { organizationId_issueTypeId: { organizationId, issueTypeId } },
           select: { workflowId: true },
         })
       )?.workflowId ?? project.defaultWorkflowId;
@@ -449,10 +460,10 @@ export class WorkflowSchemeService {
     ];
     const pick = (_t: string, from: string) => statusMap[from];
     if (dryRun) {
-      const moves = await planMoves(this.prisma, workspaceId, scope, pick);
+      const moves = await planMoves(this.prisma, organizationId, scope, pick);
       const rules = await ruleStepForMoves(
         this.prisma,
-        workspaceId,
+        organizationId,
         await this.overridePairs(this.prisma, projectId, issueTypeId, shared, moves),
         pick,
         moves,
@@ -461,7 +472,7 @@ export class WorkflowSchemeService {
       );
       const refs = await this.nameRefs(
         this.prisma,
-        workspaceId,
+        organizationId,
         moves,
         { targets: [shared], types: [issueTypeId] },
         { viewerId: actorId, projectId },
@@ -471,22 +482,30 @@ export class WorkflowSchemeService {
     let result: WorkflowChangeDto;
     try {
       result = await this.prisma.$transaction(async (tx) => {
-        await lockWorkspaceWorkflows(tx, workspaceId);
+        await lockOrganizationWorkflows(tx, organizationId);
         this.resolver.invalidate(projectId);
         const before = await this.overridePairs(tx, projectId, issueTypeId, shared, []);
-        const moves = await planMoves(tx, workspaceId, scope, pick);
+        const moves = await planMoves(tx, organizationId, scope, pick);
         assertAllMapped(moves, ctx.typeNames);
         await tx.projectWorkflowOverride.deleteMany({ where: { projectId, issueTypeId } });
-        await this.applyMoves(tx, workspaceId, actorId, moves);
+        await this.applyMoves(tx, organizationId, actorId, moves);
         const boards = await this.syncBoards(tx, [projectId], moves);
         const pairs = before.map((b) => ({
           ...b,
           fromWorkflowIds: fromWorkflowsOf(issueTypeId, b.fromWorkflowIds, moves),
         }));
-        const rules = await ruleStepForMoves(tx, workspaceId, pairs, pick, moves, false, projectId);
+        const rules = await ruleStepForMoves(
+          tx,
+          organizationId,
+          pairs,
+          pick,
+          moves,
+          false,
+          projectId,
+        );
         const refs = await this.nameRefs(
           tx,
-          workspaceId,
+          organizationId,
           moves,
           { targets: [shared], types: [issueTypeId] },
           { viewerId: actorId, projectId },
@@ -496,7 +515,7 @@ export class WorkflowSchemeService {
     } finally {
       this.resolver.invalidate(projectId);
     }
-    await publishRuleChanges(this.deps(), workspaceId, actorId, result.affectedRules);
+    await publishRuleChanges(this.deps(), organizationId, actorId, result.affectedRules);
     return result;
   }
 
@@ -504,20 +523,20 @@ export class WorkflowSchemeService {
 
   private async applyMoves(
     tx: Prisma.TransactionClient,
-    workspaceId: string,
+    organizationId: string,
     actorId: string,
     moves: PlannedMove[],
   ): Promise<void> {
     if (moves.length === 0) return;
     const resolution = await tx.resolution.findFirst({
-      where: { workspaceId, isDefault: true },
+      where: { organizationId, isDefault: true },
       select: { id: true },
     });
     const historyActorId = await systemActorId(tx); // lịch sử ghi tên hệ thống, không phải quản trị viên
     for (const m of moves) {
       if (!m.to) continue; // đã bị assertAllMapped chặn; giữ để type-safe
       await moveIssuesToStatus(tx, {
-        where: { workspaceId, typeId: m.typeId, projectId: m.projectId },
+        where: { organizationId, typeId: m.typeId, projectId: m.projectId },
         from: m.from,
         to: m.to,
         actorId,
@@ -581,7 +600,7 @@ export class WorkflowSchemeService {
    */
   private async nameRefs(
     db: Prisma.TransactionClient,
-    workspaceId: string,
+    organizationId: string,
     moves: PlannedMove[],
     plan:
       | { scopes: MoveScope[]; changed: Array<{ issueTypeId: string }> }
@@ -591,28 +610,28 @@ export class WorkflowSchemeService {
     const targets = 'scopes' in plan ? plan.scopes.map((s) => s.toWorkflowId) : plan.targets;
     const types = 'changed' in plan ? plan.changed.map((c) => c.issueTypeId) : plan.types;
     if (moves.length === 0) return [];
-    const visibleProjectIds = await this.access.visibleProjectIds(who.viewerId, workspaceId);
+    const visibleProjectIds = await this.access.visibleProjectIds(who.viewerId, organizationId);
     return findNameRefs(
       db,
-      workspaceId,
+      organizationId,
       moves,
-      await liveWorkflowIdsAfter(db, workspaceId, targets, types),
+      await liveWorkflowIdsAfter(db, organizationId, targets, types),
       { viewerId: who.viewerId, visibleProjectIds, projectId: who.projectId },
     );
   }
 
-  private async requireProject(workspaceId: string, projectId: string) {
+  private async requireProject(organizationId: string, projectId: string) {
     const project = await this.prisma.project.findFirst({
-      where: { id: projectId, workspaceId, deletedAt: null },
+      where: { id: projectId, organizationId, deletedAt: null },
       select: { id: true, key: true, defaultWorkflowId: true },
     });
     if (!project) throw new NotFoundAppException('Dự án');
     return project;
   }
 
-  private async requireType(workspaceId: string, issueTypeId: string) {
+  private async requireType(organizationId: string, issueTypeId: string) {
     const type = await this.prisma.issueType.findFirst({
-      where: { id: issueTypeId, workspaceId },
+      where: { id: issueTypeId, organizationId },
       select: { id: true, name: true },
     });
     if (!type) throw new NotFoundAppException('Loại việc');
@@ -625,13 +644,13 @@ export class WorkflowSchemeService {
 
   private findCopy(
     db: Prisma.TransactionClient,
-    workspaceId: string,
+    organizationId: string,
     projectId: string,
     sourceName: string,
     projectKey: string,
   ) {
     return db.workflow.findFirst({
-      where: { workspaceId, projectId, name: this.copyName(sourceName, projectKey) },
+      where: { organizationId, projectId, name: this.copyName(sourceName, projectKey) },
       select: { id: true },
     });
   }
@@ -639,13 +658,13 @@ export class WorkflowSchemeService {
   /** Bản chép riêng của dự án (dùng lại nếu đã chép): trạng thái + bước chuyển; trả bảng id nguồn → id bản chép theo TÊN. */
   private async ensureCopy(
     tx: Prisma.TransactionClient,
-    workspaceId: string,
+    organizationId: string,
     project: { id: string; key: string },
     source: Prisma.WorkflowGetPayload<{ include: { statuses: true; transitions: true } }>,
   ): Promise<{ id: string; sourceToCopy: Map<string, string> }> {
     const existing = await tx.workflow.findFirst({
       where: {
-        workspaceId,
+        organizationId,
         projectId: project.id,
         name: this.copyName(source.name, project.key),
       },
@@ -662,7 +681,7 @@ export class WorkflowSchemeService {
     }
     const wf = await tx.workflow.create({
       data: {
-        workspaceId,
+        organizationId,
         projectId: project.id,
         name: this.copyName(source.name, project.key),
         description: source.description,

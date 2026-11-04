@@ -24,7 +24,7 @@ const OWNER: Record<string, string | null> = {
 const ROUTES: Array<{
   name: keyof WorkflowAdminController;
   ids: [string, string, string]; // dự án A, dự án B, chung
-  args: (id: string) => unknown[]; // sau (workspaceId, user)
+  args: (id: string) => unknown[]; // sau (organizationId, user)
 }> = [
   { name: 'update', ids: ['wA', 'wB', 'wS'], args: (id) => [id, { name: 'Tên mới' }] },
   {
@@ -62,7 +62,7 @@ function build() {
       Promise.resolve({ projectId: OWNER[id] ?? null }),
     ),
     assertProjectVisible: vi.fn(() => Promise.resolve()),
-    assertProjectInWorkspace: vi.fn(() => Promise.resolve()),
+    assertProjectInOrganization: vi.fn(() => Promise.resolve()),
     getEffectivePermissions: vi.fn(),
   };
   const guard = new PermissionsGuard(new Reflector(), rbac as never);
@@ -80,7 +80,7 @@ const paA: Who = {
 };
 const wsAdmin: Who = {
   id: 'wa',
-  effective: () => ['project:view', 'project:admin', 'workspace:admin'],
+  effective: () => ['project:view', 'project:admin', 'organization:admin'],
 };
 /** Vai tuỳ biến mang `project:admin` ở cấp tổ chức nhưng KHÔNG phải Quản trị chung. */
 const orgProjectAdmin: Who = { id: 'cust', effective: () => ['project:view', 'project:admin'] };
@@ -93,7 +93,7 @@ async function run(who: Who, route: (typeof ROUTES)[number], id: string) {
   const handler = WorkflowAdminController.prototype[route.name] as (...a: never[]) => unknown;
   const user: Record<string, unknown> = {
     id: who.id,
-    workspaceId: 'W1',
+    organizationId: 'W1',
     isSystemAdmin: !!who.isSystemAdmin,
   };
   const req = { user, params: { id }, query: {}, body: {} };
@@ -147,7 +147,7 @@ describe('Sửa quy trình: ai được phép (guard thật + kiểm sở hữu)
     const { controller } = build();
     const user = {
       id: 'paA',
-      workspaceId: 'W1',
+      organizationId: 'W1',
       isSystemAdmin: false,
       permissions: ['project:admin'],
     };

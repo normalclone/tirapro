@@ -1,4 +1,4 @@
-// Nạp dữ liệu demo CHỈ khi DB rỗng (chưa có Workspace nào).
+// Nạp dữ liệu demo CHỈ khi DB rỗng (chưa có Tổ chức nào).
 // Dùng cho hosting free tier (không có preDeployCommand / Shell): chạy trong startCommand,
 // migrate/db:raw idempotent chạy mỗi lần khởi động, còn seed chỉ chạy 1 lần ở lần boot đầu.
 import { spawnSync } from 'node:child_process';
@@ -7,14 +7,14 @@ const { PrismaClient } = await import('@prisma/client');
 const prisma = new PrismaClient();
 let count = 0;
 try {
-  count = await prisma.workspace.count();
+  count = await prisma.organization.count();
 } catch (e) {
-  console.error('seed-if-empty: không đếm được workspace:', e?.message);
+  console.error('seed-if-empty: không đếm được organization:', e?.message);
 }
 await prisma.$disconnect();
 
 if (count > 0) {
-  console.log(`seed-if-empty: đã có ${count} workspace → bỏ qua seed.`);
+  console.log(`seed-if-empty: đã có ${count} tổ chức → bỏ qua seed.`);
   process.exit(0);
 }
 

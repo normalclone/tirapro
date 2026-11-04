@@ -82,15 +82,18 @@ if (!health.ok) {
 const prisma = new PrismaClient();
 let report;
 try {
-  const [attachments, users, workspaces, projects] = await Promise.all([
+  const [attachments, users, organizations, projects] = await Promise.all([
     prisma.attachment.findMany({ select: { storageKey: true, mimeType: true } }),
     prisma.user.findMany({ where: { avatarUrl: { not: null } }, select: { avatarUrl: true } }),
-    prisma.workspace.findMany({ where: { avatarUrl: { not: null } }, select: { avatarUrl: true } }),
+    prisma.organization.findMany({
+      where: { avatarUrl: { not: null } },
+      select: { avatarUrl: true },
+    }),
     prisma.project.findMany({ where: { avatarUrl: { not: null } }, select: { avatarUrl: true } }),
   ]);
   const keys = collectKeys({
     attachmentKeys: attachments.map((a) => a.storageKey),
-    avatarUrls: [...users, ...workspaces, ...projects].map((r) => r.avatarUrl),
+    avatarUrls: [...users, ...organizations, ...projects].map((r) => r.avatarUrl),
   });
   const contentTypes = new Map(attachments.map((a) => [a.storageKey, a.mimeType]));
   console.log(

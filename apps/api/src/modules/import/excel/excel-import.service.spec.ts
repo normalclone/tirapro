@@ -86,10 +86,10 @@ function setup() {
     project: {
       findFirst: vi.fn(() => Promise.resolve({ ...c.project, archivedAt: null })),
       // Resolver quy trình theo loại việc: mọi loại rơi về quy trình mặc định wf1.
-      findUnique: vi.fn(() => Promise.resolve({ workspaceId: 'w1', defaultWorkflowId: 'wf1' })),
+      findUnique: vi.fn(() => Promise.resolve({ organizationId: 'w1', defaultWorkflowId: 'wf1' })),
     },
     projectWorkflowOverride: { findMany: vi.fn(() => Promise.resolve([])) },
-    workspaceWorkflowScheme: { findMany: vi.fn(() => Promise.resolve([])) },
+    organizationWorkflowScheme: { findMany: vi.fn(() => Promise.resolve([])) },
     importJob: {
       create: vi.fn(() => Promise.resolve({ id: 'job1' })),
       update: vi.fn(() => Promise.resolve({})),
@@ -330,12 +330,12 @@ describe('ExcelImportService.preview', () => {
     await expect(s.service.preview('w1', 'p1', undefined)).rejects.toThrow('Thiếu tệp Excel');
   });
 
-  it('không ghi DB; dự án khác workspace → 404; dự án lưu trữ → chặn', async () => {
+  it('không ghi DB; dự án khác organization → 404; dự án lưu trữ → chặn', async () => {
     const s = setup();
     s.prisma.project.findFirst.mockResolvedValueOnce(null as never);
     await expect(s.service.preview('w1', 'p1', upload(await xlsxOf([good()])))).rejects.toThrow();
     expect(s.prisma.project.findFirst).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { id: 'p1', workspaceId: 'w1', deletedAt: null } }),
+      expect.objectContaining({ where: { id: 'p1', organizationId: 'w1', deletedAt: null } }),
     );
     s.prisma.project.findFirst.mockResolvedValueOnce({ id: 'p1', archivedAt: new Date() } as never);
     await expect(s.service.preview('w1', 'p1', upload(await xlsxOf([good()])))).rejects.toThrow();
@@ -377,7 +377,7 @@ describe('ExcelImportService.commit', () => {
     // Job
     expect(s.prisma.importJob.create).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ source: 'EXCEL', createdById: 'u9', workspaceId: 'w1' }),
+        data: expect.objectContaining({ source: 'EXCEL', createdById: 'u9', organizationId: 'w1' }),
       }),
     );
     expect(s.prisma.importJob.update).toHaveBeenCalledWith(
@@ -778,13 +778,13 @@ describe('ExcelImportService — nhãn, danh mục, sub-task', () => {
     ]);
   });
 
-  it('mọi truy vấn danh mục đều ràng workspaceId/projectId', async () => {
+  it('mọi truy vấn danh mục đều ràng organizationId/projectId', async () => {
     const s = setup();
     await s.service.preview('w1', 'p1', upload(await xlsxOf([good()])));
     const where = (m: { mock: { calls: unknown[][] } }) =>
       JSON.stringify((m.mock.calls[0]![0] as { where: unknown }).where);
-    expect(where(s.prisma.issueType.findMany)).toContain('"workspaceId":"w1"');
-    expect(where(s.prisma.priority.findMany)).toContain('"workspaceId":"w1"');
+    expect(where(s.prisma.issueType.findMany)).toContain('"organizationId":"w1"');
+    expect(where(s.prisma.priority.findMany)).toContain('"organizationId":"w1"');
     expect(where(s.prisma.status.findMany)).toContain('"workflowId":{"in":["wf1"]}');
     for (const m of [
       s.prisma.projectMembership.findMany,
@@ -795,7 +795,7 @@ describe('ExcelImportService — nhãn, danh mục, sub-task', () => {
     ])
       expect(where(m)).toContain('"projectId":"p1"');
     expect(where(s.prisma.issue.findMany)).toContain('"projectId":"p1"');
-    expect(where(s.prisma.issue.findMany)).toContain('"workspaceId":"w1"');
+    expect(where(s.prisma.issue.findMany)).toContain('"organizationId":"w1"');
   });
 });
 
@@ -826,7 +826,7 @@ describe('ExcelImportService — trạng thái theo quy trình của loại vi�
   /** Task → wfStd, Bug → wfBug; "Done" có ở cả hai quy trình, "Closed" chỉ có ở Bug. */
   function multiSetup() {
     const s = setup();
-    s.prisma.workspaceWorkflowScheme.findMany.mockResolvedValue([
+    s.prisma.organizationWorkflowScheme.findMany.mockResolvedValue([
       { issueTypeId: 't-task', workflowId: 'wfStd' },
       { issueTypeId: 't-bug', workflowId: 'wfBug' },
     ] as never);
@@ -876,7 +876,7 @@ describe('ExcelImportService — trạng thái theo quy trình của loại vi�
   it('dự án chưa có quy trình nào → không truy vấn trạng thái với workflowId rỗng', async () => {
     const s = setup();
     s.prisma.project.findUnique.mockResolvedValue({
-      workspaceId: 'w1',
+      organizationId: 'w1',
       defaultWorkflowId: null,
     } as never);
     await s.service.preview('w1', 'p1', upload(await xlsxOf([good()])));

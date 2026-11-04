@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { AdminWorkspacesService } from './admin-workspaces.service';
+import { AdminOrganizationsService } from './admin-organizations.service';
 import { SYSTEM_USER_EMAIL } from '../../common/system-user';
 
 function setup() {
@@ -14,17 +14,17 @@ function setup() {
     _count: { memberships: 7, projects: 2, issues: 30 },
   };
   const prisma = {
-    workspace: { findMany: vi.fn(() => Promise.resolve([row])) },
+    organization: { findMany: vi.fn(() => Promise.resolve([row])) },
     activityLog: { groupBy: vi.fn(() => Promise.resolve([])) },
   };
-  return { svc: new AdminWorkspacesService(prisma as never), prisma };
+  return { svc: new AdminOrganizationsService(prisma as never), prisma };
 }
 
-describe('AdminWorkspacesService.list — số thành viên', () => {
+describe('AdminOrganizationsService.list — số thành viên', () => {
   it('đếm cùng quy tắc "đang hoạt động" như bộ chọn tổ chức: bỏ DEACTIVATED và user hệ thống', async () => {
     const { svc, prisma } = setup();
     const page = await svc.list();
-    const arg = (prisma.workspace.findMany.mock.calls[0] as unknown[])[0] as {
+    const arg = (prisma.organization.findMany.mock.calls[0] as unknown[])[0] as {
       select: { _count: { select: { memberships: unknown } } };
     };
     expect(arg.select._count.select.memberships).toEqual({

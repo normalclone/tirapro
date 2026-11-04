@@ -46,7 +46,7 @@ function setup(opts: {
         });
       }),
     },
-    workspaceMembership: {
+    organizationMembership: {
       findMany: vi.fn((a: { where: { userId?: { in: string[] }; role?: unknown } }) =>
         Promise.resolve(
           a.where.role
@@ -77,7 +77,7 @@ function setup(opts: {
   );
   const ctx = {
     deps: { prisma, notifications, events },
-    workspaceId: 'w1',
+    organizationId: 'w1',
     actorId: SYS,
     rule: { id: 'r1', name: 'Báo khi P1' },
     trigger: 'ISSUE_CREATED',
@@ -89,7 +89,7 @@ function setup(opts: {
       key: 'HRX-1',
       summary: 'Việc nhạy cảm',
       projectId: 'p-private',
-      workspaceId: 'w1',
+      organizationId: 'w1',
     },
     reload: vi.fn(),
     actorName: () => Promise.resolve('Tirapro Automation'),
@@ -112,7 +112,7 @@ describe('automation notify — dự án riêng tư', () => {
     expect(out).toContain('1 người');
   });
 
-  it('roles ở cấp workspace: người có vai đó nhưng không xem được dự án thì bị loại; thành viên dự án nhận', async () => {
+  it('roles ở cấp organization: người có vai đó nhưng không xem được dự án thì bị loại; thành viên dự án nhận', async () => {
     const { ctx, created, pushed } = setup({
       wsRoleMembers: [OUTSIDER],
       projectRoleMembers: [MEMBER],

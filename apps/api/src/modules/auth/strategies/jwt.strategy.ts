@@ -4,7 +4,7 @@ import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { PrismaService } from '../../../infra/prisma/prisma.service';
 import type { AuthUser } from '../../../common/types/request';
-import type { AccessTokenPayload } from '../token.service';
+import { claimedOrganizationId, type AccessTokenPayload } from '../token.service';
 import { isSessionRevoked } from '../session-revocation';
 
 @Injectable()
@@ -41,10 +41,11 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
       throw new UnauthorizedException('Phiên đăng nhập đã bị thu hồi — hãy đăng nhập lại');
     }
     // Kiểm tra membership MỖI request (PK lookup rẻ): token còn hạn nhưng đã bị gỡ khỏi
-    // workspace thì không được tiếp tục dùng. System admin được miễn.
-    if (payload.workspaceId && !user.isSystemAdmin) {
-      const membership = await this.prisma.workspaceMembership.findUnique({
-        where: { workspaceId_userId: { workspaceId: payload.workspaceId, userId: user.id } },
+    // tổ chức thì không được tiếp tục dùng. System admin được miễn.
+    const organizationId = claimedOrganizationId(payload);
+    if (organizationId && !user.isSystemAdmin) {
+      const membership = await this.prisma.organizationMembership.findUnique({
+        where: { organizationId_userId: { organizationId, userId: user.id } },
         select: { id: true },
       });
       if (!membership) {
@@ -58,7 +59,7 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
       email: user.email,
       displayName: user.displayName,
       isSystemAdmin: user.isSystemAdmin,
-      workspaceId: payload.workspaceId,
+      organizationId,
     };
   }
 }

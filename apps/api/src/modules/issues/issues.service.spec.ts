@@ -29,7 +29,7 @@ function issueRow(over: Record<string, unknown> = {}) {
     id: 'i1',
     key: 'P-TASK-1',
     summary: 's',
-    workspaceId: 'w1',
+    organizationId: 'w1',
     projectId: 'p1',
     number: 1,
     description: null,
@@ -98,9 +98,9 @@ function makeService(
   comments?: { create: ReturnType<typeof vi.fn> },
   perms: string[] = ['issue:edit', 'backlog:manage', 'issue:transition', 'comment:create'],
 ) {
-  // Mặc định mọi assignee đều là thành viên workspace; ca "người ngoài" ghi đè workspaceMembership qua prismaExtra.
+  // Mặc định mọi assignee đều là thành viên tổ chức; ca "người ngoài" ghi đè organizationMembership qua prismaExtra.
   const base = {
-    workspaceMembership: { findFirst: vi.fn(() => Promise.resolve({ userId: 'u2' })) },
+    organizationMembership: { findFirst: vi.fn(() => Promise.resolve({ userId: 'u2' })) },
     // Không có liên kết "Blocks" chưa xong (kiểm chặn khi chuyển sang Done, logbug #23).
     issueLink: { findMany: vi.fn(() => Promise.resolve([])) },
     // Người gọi không phải SA (ca ghi đè điểm); ca SA ghi đè qua prismaExtra.user.
@@ -109,7 +109,7 @@ function makeService(
     pointsFormulaConfig: { findUnique: vi.fn(() => Promise.resolve(null)) },
     // Quy trình theo loại việc: mặc định không ghi đè, không scheme → rơi về Project.defaultWorkflowId.
     projectWorkflowOverride: { findMany: vi.fn(() => Promise.resolve([])) },
-    workspaceWorkflowScheme: { findMany: vi.fn(() => Promise.resolve([])) },
+    organizationWorkflowScheme: { findMany: vi.fn(() => Promise.resolve([])) },
   };
   // Tra Loại/Ưu tiên cho điểm tự tính: mặc định Task / không tên ưu tiên đặc biệt; spec riêng ghi đè qua `tx`.
   const txFull = {
@@ -130,7 +130,7 @@ function makeService(
     const ff = proj.findFirst;
     const mirror = vi.fn(async (a: unknown) => {
       const r = (await ff(a)) as Record<string, unknown> | null;
-      return r && { workspaceId: 'w1', ...r };
+      return r && { organizationId: 'w1', ...r };
     });
     proj.findUnique = mirror;
   }
@@ -349,7 +349,12 @@ describe('IssuesService — OCC atomic', () => {
       assigneeId: 'u2',
     });
     const call = tx.issue.updateMany.mock.calls[0]![0];
-    expect(call.where).toMatchObject({ id: 'i1', workspaceId: 'w1', deletedAt: null, version: 3 });
+    expect(call.where).toMatchObject({
+      id: 'i1',
+      organizationId: 'w1',
+      deletedAt: null,
+      version: 3,
+    });
     expect(call.data).toMatchObject({
       summary: 'mới',
       assigneeId: 'u2',
@@ -465,13 +470,13 @@ describe('IssuesService.update — severityId, environment', () => {
     };
   }
 
-  it('kiểm mức thuộc workspace, ghi severityId, null để bỏ mức', async () => {
+  it('kiểm mức thuộc organization, ghi severityId, null để bỏ mức', async () => {
     const tx = occTx();
     const severity = { findFirst: vi.fn(() => Promise.resolve({ id: 'sv1' })) };
     const { service } = makeService(tx, { severity });
     await service.update('w1', 'u1', 'i1', { version: 3, severityId: 'sv1' });
     expect(severity.findFirst).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { id: 'sv1', workspaceId: 'w1' } }),
+      expect.objectContaining({ where: { id: 'sv1', organizationId: 'w1' } }),
     );
     expect(tx.issue.updateMany.mock.calls[0]![0].data).toMatchObject({ severityId: 'sv1' });
     await service.update('w1', 'u1', 'i1', { version: 3, severityId: null });
@@ -494,7 +499,7 @@ describe('IssuesService.update — severityId, environment', () => {
     expect(tx.issue.updateMany.mock.calls[2]![0].data).not.toHaveProperty('environment');
   });
 
-  it('mức của workspace khác => 404, chưa ghi', async () => {
+  it('mức của organization khác => 404, chưa ghi', async () => {
     const tx = occTx();
     const { service } = makeService(tx, {
       severity: { findFirst: vi.fn(() => Promise.resolve(null)) },
@@ -599,11 +604,11 @@ describe('IssuesService.restore — khôi phục việc từ Thùng rác', () =>
     const dto = await service.restore('w1', 'u9', 'p1', 'i1');
     expect(issue.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: 'i1', workspaceId: 'w1', projectId: 'p1', deletedAt: { not: null } },
+        where: { id: 'i1', organizationId: 'w1', projectId: 'p1', deletedAt: { not: null } },
       }),
     );
     expect(issue.updateMany).toHaveBeenCalledWith({
-      where: { id: 'i1', workspaceId: 'w1', projectId: 'p1', deletedAt: { not: null } },
+      where: { id: 'i1', organizationId: 'w1', projectId: 'p1', deletedAt: { not: null } },
       data: { deletedAt: null, updatedById: 'u9', version: { increment: 1 } },
     });
     expect(dto.id).toBe('i1');
@@ -714,7 +719,7 @@ describe('IssuesService.bulkUpdate', () => {
     const { service } = makeService(tx, { resolution });
     await service.bulkUpdate('w1', 'u1', { projectId: 'p1', items, patch: { statusId: 's2' } });
     expect(resolution.findFirst).not.toHaveBeenCalledWith(
-      expect.objectContaining({ where: { workspaceId: 'w1', isDefault: true } }),
+      expect.objectContaining({ where: { organizationId: 'w1', isDefault: true } }),
     );
     for (const call of tx.issue.updateMany.mock.calls as unknown as Array<
       [{ data: Record<string, unknown> }]
@@ -758,7 +763,7 @@ describe('IssuesService.bulkUpdate', () => {
     const summary = calls.filter(([n]) => n === 'issue.bulk_updated');
     expect(summary).toHaveLength(1);
     expect(summary[0]![1]).toMatchObject({
-      workspaceId: 'w1',
+      organizationId: 'w1',
       projectId: 'p1',
       actorId: 'u1',
       count: 2,
@@ -778,7 +783,7 @@ describe('IssuesService.bulkUpdate', () => {
     expect(tx.issue.updateMany).toHaveBeenCalledTimes(1);
   });
 
-  it('item không thuộc dự án/workspace => 404 cho cả yêu cầu, chưa mở transaction', async () => {
+  it('item không thuộc dự án/organization => 404 cho cả yêu cầu, chưa mở transaction', async () => {
     const tx = bulkTx({ rows: [issueRow({ id: 'a' })] });
     const txSpy = vi.fn();
     const { service } = makeService(tx, { $transaction: txSpy });
@@ -787,7 +792,7 @@ describe('IssuesService.bulkUpdate', () => {
     ).rejects.toMatchObject({ status: 404 });
     expect(txSpy).not.toHaveBeenCalled();
     expect(tx.issue.findMany.mock.calls[0]?.[0]).toMatchObject({
-      where: { workspaceId: 'w1', projectId: 'p1', deletedAt: null },
+      where: { organizationId: 'w1', projectId: 'p1', deletedAt: null },
     });
   });
 
@@ -1204,7 +1209,7 @@ describe('IssuesService.move — workflow, resolution, sự kiện', () => {
     expect(tx.issueHistory.create).toHaveBeenCalledTimes(1);
   });
 
-  it('sang DONE => resolvedAt đặt, resolutionId = Resolution mặc định của workspace; rời DONE => cả hai null', async () => {
+  it('sang DONE => resolvedAt đặt, resolutionId = Resolution mặc định của organization; rời DONE => cả hai null', async () => {
     const done = wipTx({ count: 0 });
     done.status.findUnique = vi.fn(() => Promise.resolve({ category: 'DONE' }));
     const resolution = { findFirst: vi.fn(() => Promise.resolve({ id: 'r-done' })) };
@@ -1213,7 +1218,7 @@ describe('IssuesService.move — workflow, resolution, sự kiện', () => {
       statusId: 's2',
     });
     expect(resolution.findFirst).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { workspaceId: 'w1', isDefault: true } }),
+      expect.objectContaining({ where: { organizationId: 'w1', isDefault: true } }),
     );
     const d1 = done.issue.updateMany.mock.calls[0] as unknown as [
       { data: Record<string, unknown> },
@@ -1264,7 +1269,7 @@ describe('IssuesService.transition — Resolution mặc định và lý do', () 
     )[0].data;
     expect(data.resolutionId).toBe('r-cnr');
     expect(resolution.findFirst).not.toHaveBeenCalledWith(
-      expect.objectContaining({ where: { workspaceId: 'w1', isDefault: true } }),
+      expect.objectContaining({ where: { organizationId: 'w1', isDefault: true } }),
     );
     expect(comments.create).toHaveBeenCalledWith(
       'w1',
@@ -1366,7 +1371,7 @@ describe('IssuesService.transition — Resolution mặc định và lý do', () 
     )[0].data;
     expect(data).toMatchObject({ resolutionId: null, resolvedAt: null });
     expect(resolution.findFirst).not.toHaveBeenCalledWith(
-      expect.objectContaining({ where: { workspaceId: 'w1', isDefault: true } }),
+      expect.objectContaining({ where: { organizationId: 'w1', isDefault: true } }),
     );
   });
 
@@ -1391,10 +1396,10 @@ describe('IssuesService.transition — Resolution mặc định và lý do', () 
 
 describe('IssuesService — assignee phải là thành viên, sprint phải cùng dự án', () => {
   const noMember = () => ({
-    workspaceMembership: { findFirst: vi.fn(() => Promise.resolve(null)) },
+    organizationMembership: { findFirst: vi.fn(() => Promise.resolve(null)) },
   });
 
-  it('update(assigneeId) người ngoài workspace => 422, chưa ghi', async () => {
+  it('update(assigneeId) người ngoài organization => 422, chưa ghi', async () => {
     const tx = {
       issue: {
         findFirst: vi.fn(() => Promise.resolve(issueRow())),
@@ -1408,9 +1413,9 @@ describe('IssuesService — assignee phải là thành viên, sprint phải cùn
     await expect(
       service.update('w1', 'u1', 'i1', { version: 3, assigneeId: 'xx' }),
     ).rejects.toMatchObject({ status: 422 });
-    expect(extra.workspaceMembership.findFirst).toHaveBeenCalledWith(
+    expect(extra.organizationMembership.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { workspaceId: 'w1', userId: 'xx', user: { status: { not: 'DEACTIVATED' } } },
+        where: { organizationId: 'w1', userId: 'xx', user: { status: { not: 'DEACTIVATED' } } },
       }),
     );
     expect(tx.issue.updateMany).not.toHaveBeenCalled();
@@ -1430,10 +1435,10 @@ describe('IssuesService — assignee phải là thành viên, sprint phải cùn
     await expect(
       service.update('w1', 'u1', 'i1', { version: 3, assigneeId: null }),
     ).resolves.toBeDefined();
-    expect(extra.workspaceMembership.findFirst).not.toHaveBeenCalled();
+    expect(extra.organizationMembership.findFirst).not.toHaveBeenCalled();
   });
 
-  it('create(assigneeId) người ngoài workspace => 422, chưa ghi', async () => {
+  it('create(assigneeId) người ngoài organization => 422, chưa ghi', async () => {
     const tx = {
       project: {
         findFirst: vi.fn(() =>
@@ -1463,7 +1468,7 @@ describe('IssuesService — assignee phải là thành viên, sprint phải cùn
     expect(tx.issue.create).not.toHaveBeenCalled();
   });
 
-  it('bulkUpdate(patch.assigneeId) người ngoài workspace => 422, không ghi gì', async () => {
+  it('bulkUpdate(patch.assigneeId) người ngoài organization => 422, không ghi gì', async () => {
     const tx = {
       issue: {
         findMany: vi.fn(() => Promise.resolve([issueRow({ id: 'a' })])),
@@ -1925,13 +1930,13 @@ describe('IssuesService.create — statusId phải thuộc workflow của dự �
     { id: 's9', category: 'DONE', isInitial: false },
   ];
 
-  it('severityId: kiểm thuộc workspace rồi ghi vào issue; sai workspace => 404, không tạo', async () => {
+  it('severityId: kiểm thuộc organization rồi ghi vào issue; sai organization => 404, không tạo', async () => {
     const { tx, created } = createTx(WF);
     const severity = { findFirst: vi.fn(() => Promise.resolve({ id: 'sv1' })) };
     const { service } = makeService({ ...tx, severity }, {});
     await service.create('w1', 'u1', { ...baseInput, severityId: 'sv1' });
     expect(severity.findFirst).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { id: 'sv1', workspaceId: 'w1' } }),
+      expect.objectContaining({ where: { id: 'sv1', organizationId: 'w1' } }),
     );
     expect(created.mock.calls[0]![0].data.severityId).toBe('sv1');
     const bad = createTx(WF);
@@ -2167,7 +2172,7 @@ describe('IssuesService — epicId được lưu và hợp lệ (FW11 + review)'
 
   it.each([
     ['chính issue này', 'i1', {}, 422],
-    ['không tồn tại / ngoài workspace', 'ghost', {}, 404],
+    ['không tồn tại / ngoài organization', 'ghost', {}, 404],
     [
       'khác dự án',
       'e1',
@@ -2502,10 +2507,10 @@ describe('IssuesService.bulkUpdate — :own trên tập lẫn', () => {
 
 describe('IssuesService — assignee không đổi / tài khoản vô hiệu hoá', () => {
   const noMember = () => ({
-    workspaceMembership: { findFirst: vi.fn(() => Promise.resolve(null)) },
+    organizationMembership: { findFirst: vi.fn(() => Promise.resolve(null)) },
   });
 
-  it('update gửi lại assigneeId cũ (người đã rời workspace) => KHÔNG kiểm thành viên, không 422', async () => {
+  it('update gửi lại assigneeId cũ (người đã rời organization) => KHÔNG kiểm thành viên, không 422', async () => {
     const tx = {
       issue: {
         findFirst: vi.fn(() => Promise.resolve(issueRow({ assigneeId: 'gone' }))),
@@ -2521,7 +2526,7 @@ describe('IssuesService — assignee không đổi / tài khoản vô hiệu ho�
     await expect(
       service.update('w1', 'u1', 'i1', { version: 3, summary: 'mới', assigneeId: 'gone' }),
     ).resolves.toBeDefined();
-    expect(extra.workspaceMembership.findFirst).not.toHaveBeenCalled();
+    expect(extra.organizationMembership.findFirst).not.toHaveBeenCalled();
   });
 
   it('gán MỚI cho tài khoản DEACTIVATED => điều kiện where loại DEACTIVATED, 422 khi không khớp', async () => {
@@ -2538,9 +2543,9 @@ describe('IssuesService — assignee không đổi / tài khoản vô hiệu ho�
     await expect(
       service.update('w1', 'u1', 'i1', { version: 3, assigneeId: 'off' }),
     ).rejects.toMatchObject({ status: 422 });
-    expect(extra.workspaceMembership.findFirst).toHaveBeenCalledWith(
+    expect(extra.organizationMembership.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { workspaceId: 'w1', userId: 'off', user: { status: { not: 'DEACTIVATED' } } },
+        where: { organizationId: 'w1', userId: 'off', user: { status: { not: 'DEACTIVATED' } } },
       }),
     );
     expect(tx.issue.updateMany).not.toHaveBeenCalled();
@@ -2569,7 +2574,7 @@ describe('IssuesService — assignee không đổi / tài khoản vô hiệu ho�
       'u1',
       input,
     );
-    expect(same.workspaceMembership.findFirst).not.toHaveBeenCalled();
+    expect(same.organizationMembership.findFirst).not.toHaveBeenCalled();
 
     const diff = mk([issueRow({ id: 'a', assigneeId: null })]);
     await expect(
@@ -2587,7 +2592,7 @@ describe('IssuesService — dự án đã xoá mềm', () => {
     const { service } = makeService({ issue: { findFirst } });
     await expect(service.getByKey('w1', 'P-TASK-1', null)).rejects.toMatchObject({ status: 404 });
     expect((findFirst.mock.calls[0] as unknown as [{ where: unknown }])[0].where).toMatchObject({
-      workspaceId: 'w1',
+      organizationId: 'w1',
       key: 'P-TASK-1',
       deletedAt: null,
       ...projectFilter,
@@ -2599,7 +2604,7 @@ describe('IssuesService — dự án đã xoá mềm', () => {
     const { service } = makeService({ issue: { findMany } });
     await service.list('w1', {}, undefined, 50, null);
     expect((findMany.mock.calls[0] as unknown as [{ where: unknown }])[0].where).toMatchObject({
-      workspaceId: 'w1',
+      organizationId: 'w1',
       deletedAt: null,
       ...projectFilter,
     });
@@ -3105,11 +3110,11 @@ describe('IssuesService.query — rankHint (id khớp FTS lên trước, phần 
     expect(findMany.mock.calls[0]![0]).toMatchObject({ cursor: { id: 'x' }, skip: 1 });
   });
 
-  it('phần xếp hạng lọc theo scope (workspace, chưa xoá, dự án còn sống)', async () => {
+  it('phần xếp hạng lọc theo scope (organization, chưa xoá, dự án còn sống)', async () => {
     const { service, findMany } = svc(['a'], []);
     await service.query('w1', {}, [], undefined, 5, null, { rankHint: ['a'] });
     const json = JSON.stringify(findMany.mock.calls[0]![0]);
-    expect(json).toContain('"workspaceId":"w1"');
+    expect(json).toContain('"organizationId":"w1"');
     expect(json).toContain('"deletedAt":null');
     expect(json).toContain('"project":{"deletedAt":null}');
   });
@@ -3872,7 +3877,7 @@ describe('IssuesService — cây việc: server chặn đích sai của parentId
     expect(tx.issue.updateMany).not.toHaveBeenCalled();
   });
 
-  it('cha ở dự án khác => 422; cha không tồn tại/ngoài workspace => 404', async () => {
+  it('cha ở dự án khác => 422; cha không tồn tại/ngoài organization => 404', async () => {
     const tx = treeTx(issueRow(), { p9: row({ projectId: 'p2' }) });
     await expect(patch(tx, { parentId: 'p9' })).rejects.toMatchObject({ status: 422 });
     await expect(patch(tx, { parentId: 'ghost' })).rejects.toMatchObject({ status: 404 });
@@ -4034,7 +4039,7 @@ describe('IssuesService — dự án riêng tư (P13)', () => {
     await service.list('w1', {}, undefined, 20, 'u1');
     expect(access.visibleWhere).toHaveBeenCalledWith('u1', 'w1');
     expect(whereOf(prisma.issue.findMany)).toMatchObject({
-      workspaceId: 'w1',
+      organizationId: 'w1',
       deletedAt: null,
       project: { deletedAt: null, ...visible },
     });
@@ -4075,7 +4080,7 @@ describe('IssuesService — dự án riêng tư (P13)', () => {
     const { service, prisma } = makeWithAccess();
     const hidden = await service.getByKey('w1', 'HR-1', 'u1').catch((e: unknown) => e);
     expect(whereOf(prisma.issue.findFirst)).toMatchObject({
-      workspaceId: 'w1',
+      organizationId: 'w1',
       key: 'HR-1',
       project: { deletedAt: null, ...visible },
     });
@@ -4113,7 +4118,7 @@ describe('IssuesService — người phụ trách phải xem được dự án (
     issue: { create: vi.fn() },
   });
 
-  it('create(assigneeId) là thành viên workspace nhưng không thấy dự án riêng tư => 422, chưa ghi', async () => {
+  it('create(assigneeId) là thành viên organization nhưng không thấy dự án riêng tư => 422, chưa ghi', async () => {
     const tx = projectTx();
     const { service, canSee } = makeService(tx);
     canSee.mockResolvedValue(false);
@@ -4308,7 +4313,7 @@ function pTx(
     },
     // Dự án chưa có quy trình nào → đổi loại không đổi trạng thái (ca điểm không quan tâm quy trình).
     project: {
-      findUnique: vi.fn(() => Promise.resolve({ workspaceId: 'w1', defaultWorkflowId: null })),
+      findUnique: vi.fn(() => Promise.resolve({ organizationId: 'w1', defaultWorkflowId: null })),
     },
   };
 }
@@ -5405,7 +5410,7 @@ describe('IssuesService — việc con mồ côi tính thẳng vào Epic (cha đ
 });
 
 // ---------------------------------------------------------------------------------------------------------------------
-// Quy trình theo LOẠI việc (workspace scheme): Task/Story → wfStd, Bug → wfBug.
+// Quy trình theo LOẠI việc (tổ chức scheme): Task/Story → wfStd, Bug → wfBug.
 // ---------------------------------------------------------------------------------------------------------------------
 describe('IssuesService — quy trình theo loại việc', () => {
   const SCHEME = [
@@ -5415,7 +5420,7 @@ describe('IssuesService — quy trình theo loại việc', () => {
     { issueTypeId: 't-epic', workflowId: 'wfEpic' },
   ];
   const scheme = () => ({
-    workspaceWorkflowScheme: { findMany: vi.fn(() => Promise.resolve(SCHEME)) },
+    organizationWorkflowScheme: { findMany: vi.fn(() => Promise.resolve(SCHEME)) },
   });
   /** Trạng thái của từng quy trình (đủ cho gợi ý/ánh xạ). */
   const STATUS = [
@@ -5574,7 +5579,7 @@ describe('IssuesService — quy trình theo loại việc', () => {
         } as never),
       );
       (tx.project as Record<string, unknown>).findUnique = vi.fn(() =>
-        Promise.resolve({ workspaceId: 'w1', defaultWorkflowId: null }),
+        Promise.resolve({ organizationId: 'w1', defaultWorkflowId: null }),
       );
       const { service } = makeService(tx);
       await expect(service.create('w1', 'u1', { ...base, typeId: 't-bug' })).rejects.toMatchObject({
@@ -5597,7 +5602,9 @@ describe('IssuesService — quy trình theo loại việc', () => {
         issueHistory: { createMany: vi.fn(), create: vi.fn() },
         // Dự án có quy trình mặc định cũ `wf`; quy trình theo loại do scheme quyết định.
         project: {
-          findUnique: vi.fn(() => Promise.resolve({ workspaceId: 'w1', defaultWorkflowId: 'wf' })),
+          findUnique: vi.fn(() =>
+            Promise.resolve({ organizationId: 'w1', defaultWorkflowId: 'wf' }),
+          ),
         },
         workflowTransition: { findFirst: transitionFind(allowed) },
         status: {
@@ -5667,7 +5674,9 @@ describe('IssuesService — quy trình theo loại việc', () => {
       const tx = {
         ...trTx(rowWith('t-task', 'std-todo', { version: 3 }), []),
         project: {
-          findUnique: vi.fn(() => Promise.resolve({ workspaceId: 'w1', defaultWorkflowId: null })),
+          findUnique: vi.fn(() =>
+            Promise.resolve({ organizationId: 'w1', defaultWorkflowId: null }),
+          ),
         },
       };
       const { service } = makeService(tx);
@@ -5720,7 +5729,9 @@ describe('IssuesService — quy trình theo loại việc', () => {
       return Object.assign(t, {
         issueHistory: { createMany: vi.fn(), create: vi.fn() },
         project: {
-          findUnique: vi.fn(() => Promise.resolve({ workspaceId: 'w1', defaultWorkflowId: 'wf' })),
+          findUnique: vi.fn(() =>
+            Promise.resolve({ organizationId: 'w1', defaultWorkflowId: 'wf' }),
+          ),
         },
         status: {
           findMany: statusFindMany,
@@ -5842,7 +5853,7 @@ describe('IssuesService — quy trình theo loại việc', () => {
     it('loại mới chưa có quy trình (dự án không có mặc định) => giữ trạng thái như trước, không hỏi', async () => {
       const t = updTx(rowWith('t-task', 'std-prog', { version: 3 }));
       t.project.findUnique = vi.fn(() =>
-        Promise.resolve({ workspaceId: 'w1', defaultWorkflowId: null }),
+        Promise.resolve({ organizationId: 'w1', defaultWorkflowId: null }),
       ) as never;
       const { service } = makeService(t);
       await service.update('w1', 'u1', 'i1', { version: 3, typeId: 't-bug' });
@@ -5867,7 +5878,9 @@ describe('IssuesService — quy trình theo loại việc', () => {
           findUnique: vi.fn(() => Promise.resolve({ key: 'BUG' })),
         },
         project: {
-          findUnique: vi.fn(() => Promise.resolve({ workspaceId: 'w1', defaultWorkflowId: 'wf' })),
+          findUnique: vi.fn(() =>
+            Promise.resolve({ organizationId: 'w1', defaultWorkflowId: 'wf' }),
+          ),
         },
         status: {
           findMany: statusFindMany,
@@ -6021,7 +6034,9 @@ describe('IssuesService — quy trình theo loại việc', () => {
           ),
         },
         project: {
-          findUnique: vi.fn(() => Promise.resolve({ workspaceId: 'w1', defaultWorkflowId: 'wf' })),
+          findUnique: vi.fn(() =>
+            Promise.resolve({ organizationId: 'w1', defaultWorkflowId: 'wf' }),
+          ),
         },
         issueHistory: { findFirst: vi.fn(() => Promise.resolve(history)) },
         status: {
@@ -6082,7 +6097,9 @@ describe('IssuesService — quy trình theo loại việc', () => {
       const t2 = {
         ...gTx(issueSel('t-bug', 'bug-new'), null),
         project: {
-          findUnique: vi.fn(() => Promise.resolve({ workspaceId: 'w1', defaultWorkflowId: null })),
+          findUnique: vi.fn(() =>
+            Promise.resolve({ organizationId: 'w1', defaultWorkflowId: null }),
+          ),
         },
       };
       const dto = await makeService(t2).service.getTransitions('w1', 'i1');

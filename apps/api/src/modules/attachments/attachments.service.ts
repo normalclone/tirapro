@@ -54,14 +54,14 @@ export class AttachmentsService {
     this.maxFileSizeMb = config.get<StorageConfig>('storage')?.maxFileSizeMb ?? 25;
   }
 
-  /** Tải tệp đính kèm cho một issue (chỉ trong workspace). */
+  /** Tải tệp đính kèm cho một issue (chỉ trong tổ chức). */
   async upload(
-    workspaceId: string,
+    organizationId: string,
     userId: string,
     issueId: string,
     file: Express.Multer.File | undefined,
   ): Promise<AttachmentDto> {
-    await this.requireIssue(workspaceId, issueId);
+    await this.requireIssue(organizationId, issueId);
     await assertIssueWritable(this.prisma, issueId);
     if (!file) throw new BusinessRuleException('Thiếu file');
 
@@ -72,7 +72,7 @@ export class AttachmentsService {
 
     // multer đọc tên tệp theo latin1 → khôi phục UTF-8 (tiếng Việt) trước khi lưu DB/khoá; chỉ khi giải mã sạch.
     const fileName = fixLatin1Utf8(file.originalname);
-    const { storageKey, checksum } = await this.writeFile(workspaceId, file, fileName);
+    const { storageKey, checksum } = await this.writeFile(organizationId, file, fileName);
 
     let row;
     try {
@@ -95,8 +95,8 @@ export class AttachmentsService {
   }
 
   /** Danh sách tệp đính kèm của issue, mới nhất trước. */
-  async list(workspaceId: string, issueId: string): Promise<AttachmentDto[]> {
-    await this.requireIssue(workspaceId, issueId);
+  async list(organizationId: string, issueId: string): Promise<AttachmentDto[]> {
+    await this.requireIssue(organizationId, issueId);
     const rows = await this.prisma.attachment.findMany({
       where: { issueId },
       orderBy: { createdAt: 'desc' },
@@ -104,9 +104,9 @@ export class AttachmentsService {
     return rows.map((r) => this.toDto(r));
   }
 
-  /** Chuẩn bị stream tải xuống (kiểm tra scope qua issue.workspaceId). */
-  async download(workspaceId: string, id: string): Promise<AttachmentDownload> {
-    const att = await this.requireScoped(workspaceId, id);
+  /** Chuẩn bị stream tải xuống (kiểm tra scope qua issue.organizationId). */
+  async download(organizationId: string, id: string): Promise<AttachmentDownload> {
+    const att = await this.requireScoped(organizationId, id);
     const obj = await getOrNull(this.logger, this.storage, att.storageKey);
     if (!obj) throw new NotFoundAppException('Tệp');
     return {
@@ -118,8 +118,8 @@ export class AttachmentsService {
   }
 
   /** Xóa tệp đính kèm + best-effort xóa object (lỗi xoá object chỉ được log, không chặn người dùng). */
-  async remove(workspaceId: string, id: string): Promise<{ ok: true }> {
-    const att = await this.requireScoped(workspaceId, id);
+  async remove(organizationId: string, id: string): Promise<{ ok: true }> {
+    const att = await this.requireScoped(organizationId, id);
     if (att.issueId) await assertIssueWritable(this.prisma, att.issueId);
     await this.prisma.attachment.delete({ where: { id: att.id } });
     // Không ném lại để tránh dữ liệu mồ côi trong DB sau khi đã xóa row.
@@ -127,13 +127,13 @@ export class AttachmentsService {
     return { ok: true };
   }
 
-  /** Ghi buffer vào kho lưu trữ. Trả storageKey (`{workspaceId}/{cuid}-{tên}`) + checksum sha256. */
+  /** Ghi buffer vào kho lưu trữ. Trả storageKey (`{organizationId}/{cuid}-{tên}`) + checksum sha256. */
   private async writeFile(
-    workspaceId: string,
+    organizationId: string,
     file: Express.Multer.File,
     fileName: string,
   ): Promise<{ storageKey: string; checksum: string }> {
-    const storageKey = `${workspaceId}/${createId()}-${this.sanitizeName(fileName)}`;
+    const storageKey = `${organizationId}/${createId()}-${this.sanitizeName(fileName)}`;
     const { checksum } = await putOrThrowBusiness(
       this.logger,
       this.storage,
@@ -154,20 +154,20 @@ export class AttachmentsService {
     return cleaned.length ? cleaned : 'file';
   }
 
-  /** Issue phải thuộc workspace và chưa xóa mềm. */
-  private async requireIssue(workspaceId: string, issueId: string) {
+  /** Issue phải thuộc tổ chức và chưa xóa mềm. */
+  private async requireIssue(organizationId: string, issueId: string) {
     const issue = await this.prisma.issue.findFirst({
-      where: { id: issueId, workspaceId, deletedAt: null },
+      where: { id: issueId, organizationId, deletedAt: null },
       select: { id: true },
     });
     if (!issue) throw new NotFoundAppException('Công việc');
     return issue;
   }
 
-  /** Attachment phải có issue thuộc workspace hiện tại. */
-  private async requireScoped(workspaceId: string, id: string) {
+  /** Attachment phải có issue thuộc tổ chức hiện tại. */
+  private async requireScoped(organizationId: string, id: string) {
     const att = await this.prisma.attachment.findFirst({
-      where: { id, issue: { workspaceId } },
+      where: { id, issue: { organizationId } },
     });
     if (!att) throw new NotFoundAppException('Tệp đính kèm');
     return att;

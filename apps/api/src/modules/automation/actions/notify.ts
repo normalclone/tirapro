@@ -8,7 +8,7 @@ import { claimBatchNotice } from './batch-notice';
  * Gửi thông báo trong ứng dụng cho người/vai trò chỉ định. Đi qua `NotificationsService.publish` (chốt trung tâm):
  * người nhận KHÔNG xem được dự án của việc (dự án riêng tư) thì không được báo/đẩy realtime/gửi email; tôn trọng
  * cài đặt (ISSUE_UPDATED mặc định tắt nhưng quy tắc là yêu cầu tường minh nên `force`; người đã TẮT tường minh thì thắng)
- * và gộp thông báo cùng loại trong 60 giây. Nhánh `roles`: vai ở cấp workspace chỉ tính người xem được dự án của việc.
+ * và gộp thông báo cùng loại trong 60 giây. Nhánh `roles`: vai ở cấp tổ chức chỉ tính người xem được dự án của việc.
  */
 export async function runNotify(
   ctx: ActionContext,
@@ -18,22 +18,22 @@ export async function runNotify(
   const recipients = new Set<string>();
 
   if (a.userIds?.length) {
-    const members = await prisma.workspaceMembership.findMany({
-      where: { workspaceId: ctx.workspaceId, userId: { in: a.userIds } },
+    const members = await prisma.organizationMembership.findMany({
+      where: { organizationId: ctx.organizationId, userId: { in: a.userIds } },
       select: { userId: true },
     });
     for (const m of members) recipients.add(m.userId);
   }
   if (a.roles?.length) {
-    const byWs = await prisma.workspaceMembership.findMany({
-      where: { workspaceId: ctx.workspaceId, role: { name: { in: a.roles } } },
+    const byWs = await prisma.organizationMembership.findMany({
+      where: { organizationId: ctx.organizationId, role: { name: { in: a.roles } } },
       select: { userId: true },
     });
     const byProject = await prisma.projectMembership.findMany({
       where: {
         projectId: ctx.issue.projectId,
         role: { name: { in: a.roles } },
-        project: { workspaceId: ctx.workspaceId },
+        project: { organizationId: ctx.organizationId },
       },
       select: { userId: true },
     });
@@ -42,7 +42,7 @@ export async function runNotify(
   // Chỉ người xem được dự án của việc (cả `userIds` lẫn `roles`) — dự án riêng tư không lộ khoá/tiêu đề ra ngoài.
   const visible = await ctx.deps.notifications.filterCanSee(
     [...recipients],
-    ctx.workspaceId,
+    ctx.organizationId,
     ctx.issue.projectId,
   );
   if (!visible.length)
@@ -62,7 +62,7 @@ export async function runNotify(
     await ctx.deps.notifications.publish(
       {
         recipientId,
-        workspaceId: ctx.workspaceId,
+        organizationId: ctx.organizationId,
         type: 'ISSUE_UPDATED',
         issueId: ctx.issue.id,
         projectId: ctx.issue.projectId,

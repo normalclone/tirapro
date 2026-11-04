@@ -55,7 +55,7 @@ describe('GET/PUT /admin/points-formula — Cách tính điểm', () => {
         actorId: 'sa1',
         action: 'points.formula_changed',
         entityType: 'PointsFormulaConfig',
-        workspaceId: null,
+        organizationId: null,
         meta: { before: DEFAULT_POINTS_FORMULA, after: CUSTOM },
       }),
     );

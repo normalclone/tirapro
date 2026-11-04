@@ -8,7 +8,7 @@
 export const DOMAIN_EVENTS = {
   ISSUE_CREATED: 'issue.created',
   ISSUE_UPDATED: 'issue.updated',
-  // payload { workspaceId, projectId, actorId, count, issueIds } — MỘT sự kiện cho cả lô `PATCH /issues/bulk` (SAU commit): Telegram gửi
+  // payload { organizationId, projectId, actorId, count, issueIds } — MỘT sự kiện cho cả lô `PATCH /issues/bulk` (SAU commit): Telegram gửi
   // một tin gộp "N việc được cập nhật bởi X"; từng việc vẫn có ISSUE_UPDATED riêng kèm `batch: { id, size }`
   ISSUES_BULK_UPDATED: 'issue.bulk_updated',
   ISSUE_SETS_CHANGED: 'issue.sets_changed', // payload IssueSetsChangedPayload — gắn/bỏ thành phần/phiên bản (KHÔNG đổi version của việc)
@@ -26,23 +26,23 @@ export const DOMAIN_EVENTS = {
   SPRINT_COMPLETED: 'sprint.completed',
   SPRINT_UPDATED: 'sprint.updated',
   MEMBER_ROLE_CHANGED: 'member.role_changed',
-  // payload { workspaceId, userIds: string[], actorId?: string } — người mới được thêm vào workspace (SAU commit); Jira import tự gán việc theo email đã nhớ
+  // payload { organizationId, userIds: string[], actorId?: string } — người mới được thêm vào tổ chức (SAU commit); Jira import tự gán việc theo email đã nhớ
   MEMBER_ADDED: 'member.added',
-  // payload { workspaceId, projectId, userIds?: string[] | null, actorId? } — người được thêm vào dự án (userIds) hoặc dự án
+  // payload { organizationId, projectId, userIds?: string[] | null, actorId? } — người được thêm vào dự án (userIds) hoặc dự án
   // vừa mở công khai (userIds null = mọi người): việc Jira đang chờ ở dự án đó có thể được gán (SAU commit)
   PROJECT_ACCESS_CHANGED: 'project.access_changed',
-  MEMBER_REMOVED: 'member.removed', // payload { workspaceId, userId } — gateway ngắt socket của user khỏi workspace
-  // payload { workspaceId, projectId, userId } — người dùng bị gỡ khỏi dự án (riêng tư): gateway rút socket của họ khỏi room project nếu không còn thấy dự án
+  MEMBER_REMOVED: 'member.removed', // payload { organizationId, userId } — gateway ngắt socket của user khỏi tổ chức
+  // payload { organizationId, projectId, userId } — người dùng bị gỡ khỏi dự án (riêng tư): gateway rút socket của họ khỏi room project nếu không còn thấy dự án
   PROJECT_MEMBER_REMOVED: 'project.member_removed',
-  // payload { workspaceId, projectId, isPrivate, actorId? } — cờ riêng tư của dự án đổi: gateway rà lại socket trong room project, ai không còn thấy thì bị rút;
+  // payload { organizationId, projectId, isPrivate, actorId? } — cờ riêng tư của dự án đổi: gateway rà lại socket trong room project, ai không còn thấy thì bị rút;
   // sang riêng tư (isPrivate=true) thì kênh Telegram sự kiện gắn dự án bị tắt, digest bị xoá cờ allowPrivateToChannel
   PROJECT_VISIBILITY_CHANGED: 'project.visibility_changed',
   // payload { userId } — phiên của user bị thu hồi (khoá / đặt lại mật khẩu / đăng xuất mọi thiết bị): gateway ngắt mọi socket của user
   ACCOUNT_SESSIONS_REVOKED: 'account.sessions_revoked',
-  // payload { workspaceId?, userIds?: string[] } (userIds vắng = cả workspace; có userIds mà không có workspaceId = mọi workspace của họ) — quyền xem của người dùng có thể đã đổi (vai trò
-  // workspace/dự án, bộ quyền vai trò, quản trị hệ thống…, SAU commit): gateway kiểm lại `canSee` cho socket đang ở room project/issue
+  // payload { organizationId?, userIds?: string[] } (userIds vắng = cả tổ chức; có userIds mà không có organizationId = mọi tổ chức của họ) — quyền xem của người dùng có thể đã đổi (vai trò
+  // organization/dự án, bộ quyền vai trò, quản trị hệ thống…, SAU commit): gateway kiểm lại `canSee` cho socket đang ở room project/issue
   ACCESS_CHANGED: 'access.changed',
-  // payload { workspaceId } — quy tắc automation vừa được hệ thống sửa/tắt hàng loạt (đổi quy trình, xoá trạng thái, SAU commit): bỏ cache quy tắc
+  // payload { organizationId } — quy tắc automation vừa được hệ thống sửa/tắt hàng loạt (đổi quy trình, xoá trạng thái, SAU commit): bỏ cache quy tắc
   AUTOMATION_RULES_CHANGED: 'automation.rules_changed',
   NOTIFICATION_CREATED: 'notification.created',
   MENTION_CREATED: 'mention.created',
@@ -92,7 +92,7 @@ export const WS_EVENTS = {
 export type WsEvent = (typeof WS_EVENTS)[keyof typeof WS_EVENTS];
 
 export const rooms = {
-  workspace: (id: string) => `ws:${id}`,
+  organization: (id: string) => `org:${id}`,
   user: (id: string) => `user:${id}`,
   project: (id: string) => `project:${id}`,
   board: (id: string) => `board:${id}`,

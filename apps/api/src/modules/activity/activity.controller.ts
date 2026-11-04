@@ -1,6 +1,6 @@
 import { Controller, Get, Param, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
-import { WorkspaceId } from '../../common/decorators/workspace-id.decorator';
+import { OrganizationId } from '../../common/decorators/organization-id.decorator';
 import { ActivityService } from './activity.service';
 import { Permissions } from '../../common/decorators/permissions.decorator';
 import { ProjectRef } from '../../common/decorators/project-ref.decorator';
@@ -16,35 +16,35 @@ export class ActivityController {
   @ProjectRef('issue', 'issueId')
   @Get('issues/:issueId/activity')
   async forIssue(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @Param('issueId') issueId: string,
     @Query('fields') fields?: string | string[],
   ) {
-    return this.activity.listForIssue(workspaceId, issueId, parseFields(fields));
+    return this.activity.listForIssue(organizationId, issueId, parseFields(fields));
   }
 
   @Permissions(PERMISSIONS.PROJECT_VIEW)
   @ProjectRef('issue', 'issueId')
   @Get('issues/:issueId/activity/:activityId')
   async oneForIssue(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @Param('issueId') issueId: string,
     @Param('activityId') activityId: string,
   ) {
-    return this.activity.getOne(workspaceId, issueId, activityId);
+    return this.activity.getOne(organizationId, issueId, activityId);
   }
 
   @Permissions(PERMISSIONS.PROJECT_VIEW)
   @ProjectRef('param', 'projectId')
   @Get('projects/:projectId/activity')
   async forProject(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @Param('projectId') projectId: string,
     @Query('cursor') cursor?: string,
     @Query('limit') limit?: string,
   ) {
     return this.activity.listForProject(
-      workspaceId,
+      organizationId,
       projectId,
       cursor,
       Math.min(Math.max(Number(limit) || 50, 1), 100),

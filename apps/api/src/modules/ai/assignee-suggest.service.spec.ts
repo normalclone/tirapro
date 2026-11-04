@@ -147,7 +147,7 @@ describe('AssigneeSuggestService', () => {
     const arg = extract.mock.calls[0]![0] as { model: string; ctx: unknown; prompt: string };
     expect(arg.prompt).toMatch(/u1/);
     expect(arg.model).toBe('fast-m');
-    expect(arg.ctx).toEqual({ workspaceId: 'ws1', userId: 'me', feature: 'suggest-assignee' });
+    expect(arg.ctx).toEqual({ organizationId: 'ws1', userId: 'me', feature: 'suggest-assignee' });
     for (const secret of ['secret.vn', 'uA', 'uB', 'uC']) expect(arg.prompt).not.toContain(secret);
     for (const col of ['giải_cùng_nhãn_thành_phần=', 'giải_cùng_loại=', 'hoạt_động_14_ngày='])
       expect(arg.prompt).toContain(col);

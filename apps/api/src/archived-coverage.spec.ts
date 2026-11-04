@@ -25,41 +25,40 @@ const EXEMPT: Record<string, string> = {
   'saved-filters/saved-filters.service.ts': 'bộ lọc của người dùng, không thuộc dự án',
   'notifications/notifications.service.ts': 'thông báo của người dùng',
   'ai/ai.service.ts': 'ghi qua IssuesService (đã chặn)',
-  'ai/ai-quota.service.ts': 'hạn mức workspace',
+  'ai/ai-quota.service.ts': 'hạn mức tổ chức',
   'ai/assignee-suggest.service.ts': 'chỉ đọc',
   'ai/claude.service.ts': 'gọi LLM',
   'ai/sprint-assistant.service.ts': 'đề xuất, ghi qua SprintsService/IssuesService (đã chặn)',
   'admin/admin.service.ts': 'quản trị hệ thống',
   'admin/admin-overview.service.ts': 'quản trị hệ thống',
   'admin/admin-system.service.ts': 'quản trị hệ thống',
-  'admin/admin-workspaces.service.ts': 'quản trị hệ thống',
+  'admin/admin-organizations.service.ts': 'quản trị hệ thống',
   'audit/audit.service.ts': 'nhật ký quản trị, không thuộc dự án',
-  'api-keys/api-key.service.ts': 'khoá API cấp workspace',
+  'api-keys/api-key.service.ts': 'khoá API cấp tổ chức',
   'auth/auth.service.ts': 'định danh',
   'auth/password-reset.service.ts': 'định danh',
   'auth/token.service.ts': 'định danh',
-  'programs/programs.service.ts': 'cấp workspace',
-  'resources/resources.service.ts': 'cấp workspace',
-  'teams/teams.service.ts': 'cấp workspace',
+  'programs/programs.service.ts': 'cấp tổ chức',
+  'resources/resources.service.ts': 'cấp tổ chức',
+  'teams/teams.service.ts': 'cấp tổ chức',
   'roles/roles.service.ts': 'phân quyền',
   'members/members.service.ts': 'phân quyền truy cập (quản trị cần chỉnh khi lưu trữ)',
-  'config-catalog/config-catalog.service.ts': 'danh mục cấp workspace',
-  'guides/guides.service.ts': 'hướng dẫn workspace',
+  'config-catalog/config-catalog.service.ts': 'danh mục cấp tổ chức',
+  'guides/guides.service.ts': 'hướng dẫn tổ chức',
   'guides/guides-bootstrap.service.ts': 'nạp hướng dẫn mặc định',
   'guides/onboarding.service.ts': 'chỉ đọc + trạng thái người dùng',
   'system-settings/system-settings.service.ts': 'cấu hình hệ thống',
-  'integrations/integrations.service.ts': 'hạ tầng tích hợp cấp workspace',
-  'integrations/link-codes.service.ts':
-    'mã liên kết nhóm Telegram — hạ tầng tích hợp cấp workspace',
+  'integrations/integrations.service.ts': 'hạ tầng tích hợp cấp tổ chức',
+  'integrations/link-codes.service.ts': 'mã liên kết nhóm Telegram — hạ tầng tích hợp cấp tổ chức',
   'integrations/telegram.service.ts': 'gửi tin',
-  'digests/digests.service.ts': 'hạ tầng báo cáo định kỳ cấp workspace',
+  'digests/digests.service.ts': 'hạ tầng báo cáo định kỳ cấp tổ chức',
   'import/jira/jira-import.service.ts': 'tạo dự án mới; ghi issue qua IssuesService',
   'mail/mail-outbox.service.ts': 'hàng đợi thư',
   'mail/mail.service.ts': 'gửi thư',
   'media/media.service.ts': 'lưu tệp',
   'users/users.service.ts': 'tài khoản',
-  'workspaces/workspaces.service.ts': 'workspace',
-  'workspaces/workspace-bootstrap.service.ts': 'khởi tạo workspace',
+  'organizations/organizations.service.ts': 'tổ chức',
+  'organizations/organization-bootstrap.service.ts': 'khởi tạo tổ chức',
 };
 
 /**
@@ -99,11 +98,9 @@ const EXEMPT_METHODS: Record<string, string> = {
   'dashboards/dashboards.service.ts#duplicate':
     'bản sao PRIVATE của người gọi, không gắn dự án (dashboard cấp người dùng)',
   'dashboards/dashboards.service.ts#remove':
-    'xoá mềm dashboard (cấp workspace/người dùng/nhóm); dọn dẹp vẫn được khi dự án đã lưu trữ — tạo/sửa mới chặn bằng assertNotArchived',
-  'dev-links/dev-links.service.ts#createRepository':
-    'kho mã nguồn là hạ tầng tích hợp cấp workspace',
-  'dev-links/dev-links.service.ts#removeRepository':
-    'kho mã nguồn là hạ tầng tích hợp cấp workspace',
+    'xoá mềm dashboard (cấp tổ chức/người dùng/nhóm); dọn dẹp vẫn được khi dự án đã lưu trữ — tạo/sửa mới chặn bằng assertNotArchived',
+  'dev-links/dev-links.service.ts#createRepository': 'kho mã nguồn là hạ tầng tích hợp cấp tổ chức',
+  'dev-links/dev-links.service.ts#removeRepository': 'kho mã nguồn là hạ tầng tích hợp cấp tổ chức',
   'issues/rank.service.ts#resolveRank':
     'chỉ đánh lại rank khi hết chỗ chèn; mọi caller (IssuesService.createCore/move) đã chặn dự án lưu trữ trước khi gọi',
   'issues/points.service.ts#setFormula':
@@ -116,8 +113,8 @@ const EXEMPT_METHODS: Record<string, string> = {
     'helper chạy TRONG transaction của IssuesService (create/update/bulk/xoá/khôi phục) và của recomputeAll — các nơi đó đã chặn dự án lưu trữ trước khi gọi (recomputeAll cố ý chạy mọi dự án)',
   'import/import.service.ts#resolveOrCreateLabel':
     'helper nội bộ của luồng import (đã chặn trước khi tạo ImportJob)',
-  'workflow-admin/workflow-scheme.service.ts#setWorkspaceScheme':
-    'cấu hình quy trình cấp tổ chức (workspace:admin): cố ý chuyển cả việc của dự án lưu trữ sang quy trình mới để dữ liệu nhất quán khi khôi phục; ghi đè riêng từng dự án thì có guard',
+  'workflow-admin/workflow-scheme.service.ts#setOrganizationScheme':
+    'cấu hình quy trình cấp tổ chức (organization:admin): cố ý chuyển cả việc của dự án lưu trữ sang quy trình mới để dữ liệu nhất quán khi khôi phục; ghi đè riêng từng dự án thì có guard',
   'sla/sla.service.ts#onIssueCreated': 'phản ứng sự kiện issue (ghi issue đã bị chặn ở nguồn)',
   'sla/sla.service.ts#onCommentAdded': 'phản ứng sự kiện issue (ghi comment đã bị chặn ở nguồn)',
   'sla/sla.service.ts#onIssueUpdated':

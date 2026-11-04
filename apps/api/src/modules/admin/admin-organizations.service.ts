@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { BusinessRuleException, NotFoundAppException } from '../../common/exceptions/app.exception';
 import { offsetPage } from '../../common/dto/page-result';
-import type { PatchWorkspaceInput } from './admin-console.schemas';
+import type { PatchOrganizationInput } from './admin-console.schemas';
 import { ACTIVE_MEMBERSHIP_COUNT } from '../../common/active-member';
 
 const WS_SELECT = {
@@ -17,9 +17,9 @@ const WS_SELECT = {
   _count: { select: { memberships: ACTIVE_MEMBERSHIP_COUNT, projects: true, issues: true } },
 } as const;
 
-/** Quản trị mọi workspace (tenant) toàn hệ thống — chỉ admin hệ thống. */
+/** Quản trị mọi tổ chức (tenant) toàn hệ thống — chỉ admin hệ thống. */
 @Injectable()
-export class AdminWorkspacesService {
+export class AdminOrganizationsService {
   constructor(private readonly prisma: PrismaService) {}
 
   private toDto(
@@ -52,31 +52,34 @@ export class AdminWorkspacesService {
 
   async list() {
     const [rows, activity] = await Promise.all([
-      // allow-deleted: console admin liệt kê cả workspace đã lưu trữ (cờ `archived`)
-      this.prisma.workspace.findMany({ orderBy: { createdAt: 'asc' }, select: WS_SELECT }),
-      this.prisma.activityLog.groupBy({ by: ['workspaceId'], _max: { createdAt: true } }),
+      // allow-deleted: console admin liệt kê cả tổ chức đã lưu trữ (cờ `archived`)
+      this.prisma.organization.findMany({ orderBy: { createdAt: 'asc' }, select: WS_SELECT }),
+      this.prisma.activityLog.groupBy({ by: ['organizationId'], _max: { createdAt: true } }),
     ]);
-    const last = new Map(activity.map((a) => [a.workspaceId, a._max.createdAt]));
+    const last = new Map(activity.map((a) => [a.organizationId, a._max.createdAt]));
     const data = rows.map((w) => this.toDto(w, last.get(w.id) ?? null));
     return offsetPage(data, 1, Math.max(1, data.length), data.length);
   }
 
   private async one(id: string) {
     const [w, act] = await Promise.all([
-      this.prisma.workspace.findUnique({ where: { id }, select: WS_SELECT }),
-      this.prisma.activityLog.aggregate({ where: { workspaceId: id }, _max: { createdAt: true } }),
+      this.prisma.organization.findUnique({ where: { id }, select: WS_SELECT }),
+      this.prisma.activityLog.aggregate({
+        where: { organizationId: id },
+        _max: { createdAt: true },
+      }),
     ]);
     if (!w) throw new NotFoundAppException('Tổ chức');
     return this.toDto(w, act._max.createdAt ?? null);
   }
 
-  async patch(id: string, input: PatchWorkspaceInput) {
-    const ws = await this.prisma.workspace.findUnique({ where: { id }, select: { id: true } });
+  async patch(id: string, input: PatchOrganizationInput) {
+    const ws = await this.prisma.organization.findUnique({ where: { id }, select: { id: true } });
     if (!ws) throw new NotFoundAppException('Tổ chức');
 
     if (input.ownerId) {
-      const member = await this.prisma.workspaceMembership.findFirst({
-        where: { workspaceId: id, userId: input.ownerId },
+      const member = await this.prisma.organizationMembership.findFirst({
+        where: { organizationId: id, userId: input.ownerId },
         select: { id: true },
       });
       if (!member)
@@ -85,7 +88,7 @@ export class AdminWorkspacesService {
         );
     }
 
-    await this.prisma.workspace.update({
+    await this.prisma.organization.update({
       where: { id },
       data: {
         ...(input.plan ? { plan: input.plan } : {}),

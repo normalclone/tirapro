@@ -23,7 +23,7 @@ import type {
   TriageState,
   UserStatus,
   WidgetType,
-  WorkspacePlan,
+  OrganizationPlan,
 } from './enums';
 import type { PermissionKey } from './permissions';
 
@@ -40,7 +40,7 @@ export interface UserDto {
   status: UserStatus;
   isSystemAdmin: boolean;
   /** Có quyền lập tổ chức mới (admin hệ thống cấp). Chỉ có trong `/auth/me`, `/auth/login`… của chính mình. */
-  canCreateWorkspace?: boolean;
+  canCreateOrganization?: boolean;
   lastSeenAt: ISODate | null;
   createdAt: ISODate;
 }
@@ -49,7 +49,7 @@ export interface UserDto {
  * Người dùng NHÚNG trong dữ liệu khác (người phụ trách/báo lỗi của công việc, tác giả bình luận): chỉ định danh + hiển thị,
  * KHÔNG mang `isSystemAdmin` / `lastSeenAt` (không lộ ai là quản trị hệ thống hay lần hoạt động gần nhất cho mọi người xem việc).
  */
-export type UserRefDto = Omit<UserDto, 'isSystemAdmin' | 'lastSeenAt' | 'canCreateWorkspace'>;
+export type UserRefDto = Omit<UserDto, 'isSystemAdmin' | 'lastSeenAt' | 'canCreateOrganization'>;
 
 /**
  * Người dùng trong danh sách thành viên / `GET /users`: `isSystemAdmin` và `lastSeenAt` chỉ có khi người xem có
@@ -60,12 +60,12 @@ export type MemberUserDto = UserRefDto & { isSystemAdmin?: boolean; lastSeenAt?:
 /** Người dùng trong pool chung (picker "thêm thành viên") — chỉ những trường picker cần. */
 export type PoolUserDto = Pick<UserDto, 'id' | 'email' | 'displayName' | 'avatarUrl' | 'status'>;
 
-export interface WorkspaceDto {
+export interface OrganizationDto {
   id: ID;
   name: string;
   slug: string;
   ownerId: ID;
-  plan: WorkspacePlan;
+  plan: OrganizationPlan;
   settings: Record<string, unknown>;
   createdAt: ISODate;
 }
@@ -79,7 +79,7 @@ export interface RoleRefDto {
 
 export interface MembershipDto {
   id: ID;
-  workspaceId: ID;
+  organizationId: ID;
   userId: ID;
   roleId: ID; // vai trò CHÍNH (mặc định hiển thị)
   roleName: string;
@@ -91,7 +91,7 @@ export interface MembershipDto {
 /** Role đầy đủ cho catalog/CRUD. */
 export interface RoleDto {
   id: ID;
-  workspaceId: ID | null; // null = role hệ thống (dùng chung), khác null = custom của workspace
+  organizationId: ID | null; // null = role hệ thống (dùng chung), khác null = custom của tổ chức
   name: string;
   scope: RoleScope;
   isSystem: boolean;
@@ -103,7 +103,7 @@ export interface RoleDto {
   updatedAt?: ISODate;
 }
 
-/** Một thành viên kèm danh sách vai trò (workspace hoặc project). */
+/** Một thành viên kèm danh sách vai trò (tổ chức hoặc project). */
 export interface MemberDto {
   membershipId: ID;
   user: MemberUserDto;
@@ -111,15 +111,15 @@ export interface MemberDto {
   joinedAt?: ISODate | null;
   /**
    * Chỉ dùng ở danh sách thành viên DỰ ÁN: `true` = vai trò được ĐẶT RIÊNG cho dự án
-   * này (ghi đè), `false` = đang dùng vai trò MẶC ĐỊNH suy từ vai trò workspace.
+   * này (ghi đè), `false` = đang dùng vai trò MẶC ĐỊNH suy từ vai trò organization.
    */
   isOverride?: boolean;
 }
 
-/** Nhóm (team) đầy đủ — nhóm thành viên trong workspace. */
+/** Nhóm (team) đầy đủ — nhóm thành viên trong organization. */
 export interface TeamDto {
   id: ID;
-  workspaceId: ID;
+  organizationId: ID;
   name: string;
   key: string;
   description?: string | null;
@@ -132,12 +132,12 @@ export interface TeamDto {
 
 export interface AuthMeDto {
   user: UserDto;
-  workspaceId: ID | null;
+  organizationId: ID | null;
   memberships: MembershipDto[];
-  permissions: PermissionKey[]; // effective trong workspace hiện tại
+  permissions: PermissionKey[]; // effective trong tổ chức hiện tại
 }
 
-/** Quyền hiệu lực của người đang đăng nhập ở MỘT dự án (= vai trò workspace ∪ vai trò dự án). */
+/** Quyền hiệu lực của người đang đăng nhập ở MỘT dự án (= vai trò tổ chức ∪ vai trò dự án). */
 export interface ProjectPermissionsDto {
   projectId: ID;
   permissions: PermissionKey[];
@@ -179,7 +179,7 @@ export interface ProjectProgramRefDto {
 
 export interface ProjectDto {
   id: ID;
-  workspaceId: ID;
+  organizationId: ID;
   key: string;
   name: string;
   description: string | null;
@@ -191,7 +191,7 @@ export interface ProjectDto {
   isArchived: boolean;
   /** Thời điểm lưu trữ; null = đang hoạt động. Dự án đã lưu trữ chỉ đọc. */
   archivedAt: ISODate | null;
-  /** Dự án riêng tư: chỉ thành viên dự án + quản trị workspace thấy (người khác nhận 404). */
+  /** Dự án riêng tư: chỉ thành viên dự án + quản trị tổ chức thấy (người khác nhận 404). */
   isPrivate: boolean;
   /** Các nhóm dự án chứa dự án này (theo tên); rỗng = chưa thuộc nhóm nào. */
   programs: ProjectProgramRefDto[];
@@ -335,7 +335,7 @@ export interface IssueVersionRefDto {
 }
 
 export interface IssueDto extends IssueSummaryDto {
-  workspaceId: ID;
+  organizationId: ID;
   projectId: ID;
   number: number;
   description: string | null;
@@ -573,11 +573,11 @@ export interface JiraDryRunResult {
   sprints: number;
   labels: number;
   comments: number;
-  /** Số dòng sẽ bị bỏ qua vì mã Jira đã có trong workspace hoặc lặp trong tệp (chỉ khi giữ mã Jira, L27). */
+  /** Số dòng sẽ bị bỏ qua vì mã Jira đã có trong tổ chức hoặc lặp trong tệp (chỉ khi giữ mã Jira, L27). */
   duplicateKeys: number;
   /** Số dòng có mã Jira sai dạng `KEY-123` — vẫn tạo nhưng bằng mã Tirapro tự sinh (L27). */
   invalidKeys: number;
-  /** Số việc sẽ tự gán khi người phụ trách (đã nhớ email, chưa là thành viên) được thêm vào workspace (L28). */
+  /** Số việc sẽ tự gán khi người phụ trách (đã nhớ email, chưa là thành viên) được thêm vào tổ chức (L28). */
   rememberedAssignees: number;
   warnings: string[];
 }
@@ -615,7 +615,7 @@ export interface WorklogListDto {
 /** Quy tắc tự động hoá (khi… nếu… thì…). `conditions`/`actions` là JSON đã qua zod ở `@tirapro/shared`. */
 export interface AutomationRuleDto {
   id: ID;
-  workspaceId: ID;
+  organizationId: ID;
   projectId: ID | null;
   name: string;
   enabled: boolean;
@@ -669,7 +669,7 @@ export interface MeIssueItemDto {
   dueDate: ISODate | null;
 }
 
-/** Tổng quan cá nhân trong workspace hiện tại: chỉ dự án người xem thấy được. */
+/** Tổng quan cá nhân trong tổ chức hiện tại: chỉ dự án người xem thấy được. */
 export interface MeOverviewDto {
   counts: {
     /** Việc chưa xong giao cho tôi. */

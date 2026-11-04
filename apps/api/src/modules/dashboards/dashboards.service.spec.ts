@@ -20,7 +20,7 @@ interface Opts {
 function rowOf(over: Record<string, unknown> = {}) {
   return {
     id: 'd1',
-    workspaceId: 'w1',
+    organizationId: 'w1',
     ownerId: 'u1',
     projectId: null,
     teamId: null,
@@ -111,7 +111,7 @@ describe('DashboardsService.list', () => {
     await svc.list('w1', 'u1');
     const where = (prisma.dashboard.findMany.mock.calls[0] as unknown as [{ where: object }])[0]
       .where;
-    expect(where).toMatchObject({ workspaceId: 'w1', deletedAt: null });
+    expect(where).toMatchObject({ organizationId: 'w1', deletedAt: null });
     const json = JSON.stringify(where);
     expect(json).toContain('"ownerId":"u1"');
     expect(json).toContain('"scope":"GLOBAL"');
@@ -220,12 +220,12 @@ describe('DashboardsService.create', () => {
     ).rejects.toMatchObject({ status: 422 });
   });
 
-  it('PROJECT: truy vấn dự án ràng workspace + chưa xoá + visibleWhere của người gọi', async () => {
+  it('PROJECT: truy vấn dự án ràng organization + chưa xoá + visibleWhere của người gọi', async () => {
     const visible = { memberships: { some: { userId: 'u1' } } };
     const { svc, prisma } = make({ visibleWhere: visible });
     await svc.create('w1', 'u1', input({ scope: 'PROJECT', projectId: 'p1' }));
     const arg = JSON.stringify(prisma.project.findFirst.mock.calls[0]);
-    expect(arg).toContain('"workspaceId":"w1"');
+    expect(arg).toContain('"organizationId":"w1"');
     expect(arg).toContain('"deletedAt":null');
     expect(arg).toContain('"memberships"');
   });
@@ -265,7 +265,7 @@ describe('DashboardsService.create', () => {
     expect(full.prisma.dashboard.create).not.toHaveBeenCalled();
   });
 
-  it('projectId trong config phải thuộc workspace và người gọi thấy được → nếu không 422', async () => {
+  it('projectId trong config phải thuộc organization và người gọi thấy được → nếu không 422', async () => {
     const { svc, prisma } = make();
     prisma.project.findMany.mockResolvedValue([]); // không tìm thấy dự án trong config
     await expect(
@@ -276,7 +276,7 @@ describe('DashboardsService.create', () => {
       ),
     ).rejects.toMatchObject({ status: 422 });
     const arg = JSON.stringify(prisma.project.findMany.mock.calls[0]);
-    expect(arg).toContain('"workspaceId":"w1"');
+    expect(arg).toContain('"organizationId":"w1"');
     expect(arg).toContain('"deletedAt":null');
   });
 
@@ -287,7 +287,7 @@ describe('DashboardsService.create', () => {
       prisma.dashboard.create.mock.calls[0] as unknown as [{ data: Record<string, unknown> }]
     )[0].data;
     expect(data).toMatchObject({
-      workspaceId: 'w1',
+      organizationId: 'w1',
       ownerId: 'u1',
       name: 'Mới',
       scope: 'PRIVATE',
@@ -311,7 +311,7 @@ describe('DashboardsService.update', () => {
 
   it('I1: chỉ CHỦ sửa/đổi mức chia sẻ — admin, project:admin, trưởng nhóm đều 403, không mở giao dịch', async () => {
     const cases = [
-      { row: rowOf({ scope: 'GLOBAL', ownerId: 'other' }), isAdmin: true }, // admin workspace
+      { row: rowOf({ scope: 'GLOBAL', ownerId: 'other' }), isAdmin: true }, // admin tổ chức
       { row: rowOf({ scope: 'PROJECT', projectId: 'p1', ownerId: 'other' }), isAdmin: false },
       {
         row: rowOf({

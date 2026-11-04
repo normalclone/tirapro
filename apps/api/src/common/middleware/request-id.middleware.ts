@@ -17,7 +17,7 @@ export function resolveRequestId(req: IncomingMessage): string {
 
 /**
  * Gắn request id xuyên suốt log/REST/WS và mở AsyncLocalStorage cho request.
- * `userId/workspaceId` được JwtAuthGuard điền sau khi xác thực.
+ * `userId/organizationId` được JwtAuthGuard điền sau khi xác thực.
  */
 @Injectable()
 export class RequestIdMiddleware implements NestMiddleware {
@@ -25,6 +25,6 @@ export class RequestIdMiddleware implements NestMiddleware {
     // pino-http có thể đã gán req.id trước (cùng hàm resolveRequestId) — giữ nguyên.
     req.id = req.id || resolveRequestId(req);
     res.setHeader('X-Request-Id', req.id);
-    requestContext.run({ requestId: req.id, userId: undefined, workspaceId: undefined }, next);
+    requestContext.run({ requestId: req.id, userId: undefined, organizationId: undefined }, next);
   }
 }

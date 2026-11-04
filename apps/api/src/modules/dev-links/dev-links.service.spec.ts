@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { DevLinksService } from './dev-links.service';
 
-const LIVE_ISSUE = { workspaceId: 'w1', deletedAt: null, project: { deletedAt: null } };
+const LIVE_ISSUE = { organizationId: 'w1', deletedAt: null, project: { deletedAt: null } };
 
 describe('DevLinksService — bỏ issue của dự án xoá mềm', () => {
   it('listIssueDevLinks: tra issue với project.deletedAt:null; dự án đã xoá => 404', async () => {
@@ -31,7 +31,7 @@ function setup(project: { archivedAt: Date | null; deletedAt: Date | null }) {
       findUnique: vi.fn(() =>
         Promise.resolve({
           id: 'r1',
-          workspaceId: 'w1',
+          organizationId: 'w1',
           webhookSecret: 's3cret',
           isEnabled: true,
           provider: 'GITLAB',
@@ -92,7 +92,7 @@ describe('DevLinksService.listRepositories — dự án riêng tư (P15)', () =>
     await service.listRepositories('w1', undefined, 'u1');
     expect(access.visibleProjectIds).toHaveBeenCalledWith('u1', 'w1');
     expect(where(findMany)).toEqual({
-      workspaceId: 'w1',
+      organizationId: 'w1',
       OR: [{ projectId: null }, { projectId: { in: ['p1'] } }],
     });
   });
@@ -100,7 +100,7 @@ describe('DevLinksService.listRepositories — dự án riêng tư (P15)', () =>
   it('thấy hết (admin) → không thêm điều kiện', async () => {
     const { service, findMany } = build(null);
     await service.listRepositories('w1', undefined, 'u1');
-    expect(where(findMany)).toEqual({ workspaceId: 'w1' });
+    expect(where(findMany)).toEqual({ organizationId: 'w1' });
   });
 });
 

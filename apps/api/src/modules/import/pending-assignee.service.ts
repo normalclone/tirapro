@@ -10,7 +10,7 @@ import { ProjectAccessService } from '../rbac/project-access.service';
 
 /** Payload của `DOMAIN_EVENTS.MEMBER_ADDED`. */
 export interface MemberAddedPayload {
-  workspaceId: string;
+  organizationId: string;
   userIds: string[];
   /** Người thêm (ghi vào lịch sử gán); vắng thì lấy người đã nhập việc. */
   actorId?: string;
@@ -18,7 +18,7 @@ export interface MemberAddedPayload {
 
 /** Payload của `DOMAIN_EVENTS.PROJECT_ACCESS_CHANGED`: người được thêm vào dự án, hoặc `userIds: null` = dự án vừa mở công khai. */
 export interface ProjectAccessChangedPayload {
-  workspaceId: string;
+  organizationId: string;
   projectId: string;
   userIds?: string[] | null;
   actorId?: string;
@@ -36,7 +36,7 @@ interface Claim {
 
 /**
  * Tự gán các việc nhập từ Jira cho người phụ trách chưa có tài khoản/chưa là thành viên khi họ được thêm vào
- * workspace (L28) — và thử lại khi họ được cấp quyền xem dự án riêng tư (thêm vào dự án / dự án mở công khai).
+ * tổ chức (L28) — và thử lại khi họ được cấp quyền xem dự án riêng tư (thêm vào dự án / dự án mở công khai).
  * Khớp CHỈ theo email (chữ thường) — không đoán theo tên. Hàng chờ do Jira import ghi (`ImportPendingAssignee`),
  * xoá khi xử lý xong.
  */
@@ -56,7 +56,7 @@ export class PendingAssigneeService {
   @OnEvent(DOMAIN_EVENTS.MEMBER_ADDED)
   async onMemberAdded(payload: MemberAddedPayload): Promise<void> {
     await this.safely(() =>
-      this.claimFor(payload.workspaceId, payload.userIds, { actorId: payload.actorId }),
+      this.claimFor(payload.organizationId, payload.userIds, { actorId: payload.actorId }),
     );
   }
 
@@ -64,7 +64,7 @@ export class PendingAssigneeService {
   @OnEvent(DOMAIN_EVENTS.PROJECT_ACCESS_CHANGED)
   async onProjectAccessChanged(payload: ProjectAccessChangedPayload): Promise<void> {
     await this.safely(() =>
-      this.claimFor(payload.workspaceId, payload.userIds ?? null, {
+      this.claimFor(payload.organizationId, payload.userIds ?? null, {
         actorId: payload.actorId,
         projectId: payload.projectId,
       }),
@@ -90,7 +90,7 @@ export class PendingAssigneeService {
    *   và MỘT thông báo gộp cho mỗi người ("Bạn được giao N việc từ nhập Jira").
    */
   async claimFor(
-    workspaceId: string,
+    organizationId: string,
     userIds: string[] | null,
     opts: { actorId?: string; projectId?: string } = {},
   ): Promise<number> {
@@ -109,7 +109,7 @@ export class PendingAssigneeService {
       if (byEmail.size === 0) return 0;
       pending = await this.prisma.importPendingAssignee.findMany({
         where: {
-          workspaceId,
+          organizationId,
           email: { in: [...byEmail.keys()] },
           ...(opts.projectId ? { projectId: opts.projectId } : {}),
         },
@@ -117,15 +117,15 @@ export class PendingAssigneeService {
       });
     } else {
       pending = await this.prisma.importPendingAssignee.findMany({
-        where: { workspaceId, projectId: opts.projectId! },
+        where: { organizationId, projectId: opts.projectId! },
         select,
       });
       if (pending.length === 0) return 0;
       const users = await this.prisma.user.findMany({
         where: {
           email: { in: [...new Set(pending.map((p) => p.email))] },
-          // chỉ thành viên workspace mới nhận việc
-          workspaceMemberships: { some: { workspaceId } },
+          // chỉ thành viên tổ chức mới nhận việc
+          organizationMemberships: { some: { organizationId } },
         },
         select: { id: true, email: true, status: true },
       });
@@ -141,14 +141,14 @@ export class PendingAssigneeService {
       const userId = byEmail.get(p.email);
       if (!userId) continue;
       const k = `${userId}:${p.projectId}`;
-      if (!seen.has(k)) seen.set(k, await this.access.canSee(userId, workspaceId, p.projectId));
+      if (!seen.has(k)) seen.set(k, await this.access.canSee(userId, organizationId, p.projectId));
       if (seen.get(k))
         claims.push({ rowId: p.id, issueId: p.issueId, projectId: p.projectId, userId });
     }
     if (claims.length === 0) return 0;
 
     const assigned = await this.assignInBatches(claims, opts.actorId);
-    await this.announce(workspaceId, assigned, opts.actorId);
+    await this.announce(organizationId, assigned, opts.actorId);
     return assigned.length;
   }
 
@@ -225,7 +225,7 @@ export class PendingAssigneeService {
    * bỏ qua) + MỘT thông báo gộp cho mỗi người. Lỗi ở đây chỉ log — việc đã gán rồi.
    */
   private async announce(
-    workspaceId: string,
+    organizationId: string,
     assigned: Array<{ issueId: string; userId: string; key: string; summary?: string }>,
     actorId: string | undefined,
   ): Promise<void> {
@@ -233,7 +233,7 @@ export class PendingAssigneeService {
     try {
       // null/ngữ cảnh hệ thống có chủ đích: quyền xem đã kiểm bằng canSee ở trên.
       const dtos = await this.issues.getDtosByIdsForSystem(
-        workspaceId,
+        organizationId,
         assigned.map((a) => a.issueId),
       );
       for (const dto of dtos) {
@@ -256,7 +256,7 @@ export class PendingAssigneeService {
         const first = list[0]!;
         await this.notifications.publish({
           recipientId: userId,
-          workspaceId,
+          organizationId,
           type: 'ISSUE_ASSIGNED',
           issueId: first.issueId,
           actorId: actorId ?? null,

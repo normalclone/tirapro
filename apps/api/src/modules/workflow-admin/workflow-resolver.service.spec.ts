@@ -3,7 +3,7 @@ import { requestContext } from '../../common/context/request-context';
 import { WorkflowResolver, runWithWorkflowMemo } from './workflow-resolver.service';
 
 interface Data {
-  project?: { workspaceId: string; defaultWorkflowId: string | null } | null;
+  project?: { organizationId: string; defaultWorkflowId: string | null } | null;
   overrides?: { issueTypeId: string; workflowId: string }[];
   schemes?: { issueTypeId: string; workflowId: string }[];
   types?: { id: string }[];
@@ -12,13 +12,13 @@ interface Data {
 /** Prisma giả đủ cho resolver; mọi lời gọi đếm được để kiểm cache. */
 function makeTx(d: Data) {
   const project =
-    d.project === undefined ? { workspaceId: 'w1', defaultWorkflowId: 'wfDef' } : d.project;
+    d.project === undefined ? { organizationId: 'w1', defaultWorkflowId: 'wfDef' } : d.project;
   return {
     project: { findUnique: vi.fn(() => Promise.resolve(project)) },
     projectWorkflowOverride: {
       findMany: vi.fn(() => Promise.resolve(d.overrides ?? [])),
     },
-    workspaceWorkflowScheme: {
+    organizationWorkflowScheme: {
       findMany: vi.fn(() => Promise.resolve(d.schemes ?? [])),
     },
     issueType: { findMany: vi.fn(() => Promise.resolve(d.types ?? [])) },
@@ -29,7 +29,7 @@ const asTx = (t: ReturnType<typeof makeTx>) => t as unknown as Tx;
 const inRequest = <T>(fn: () => Promise<T>) => requestContext.run({ requestId: 'r1' }, fn);
 
 describe('WorkflowResolver.forIssue', () => {
-  it('ghi đè của dự án thắng quy trình workspace và mặc định', async () => {
+  it('ghi đè của dự án thắng quy trình organization và mặc định', async () => {
     const tx = makeTx({
       overrides: [{ issueTypeId: 'tBug', workflowId: 'wfOverride' }],
       schemes: [{ issueTypeId: 'tBug', workflowId: 'wfScheme' }],
@@ -40,7 +40,7 @@ describe('WorkflowResolver.forIssue', () => {
     });
   });
 
-  it('không có ghi đè → dùng quy trình workspace', async () => {
+  it('không có ghi đè → dùng quy trình organization', async () => {
     const tx = makeTx({
       overrides: [{ issueTypeId: 'tOther', workflowId: 'wfOverride' }],
       schemes: [{ issueTypeId: 'tBug', workflowId: 'wfScheme' }],
@@ -49,14 +49,14 @@ describe('WorkflowResolver.forIssue', () => {
     await expect(r.forIssue(asTx(tx), 'p1', 'tBug')).resolves.toEqual({ workflowId: 'wfScheme' });
   });
 
-  it('không có workspace scheme → rơi về Project.defaultWorkflowId', async () => {
+  it('không có organization scheme → rơi về Project.defaultWorkflowId', async () => {
     const tx = makeTx({});
     const r = new WorkflowResolver();
     await expect(r.forIssue(asTx(tx), 'p1', 'tBug')).resolves.toEqual({ workflowId: 'wfDef' });
   });
 
   it('không có gì cả (defaultWorkflowId null) → workflowId rỗng như code cũ', async () => {
-    const tx = makeTx({ project: { workspaceId: 'w1', defaultWorkflowId: null } });
+    const tx = makeTx({ project: { organizationId: 'w1', defaultWorkflowId: null } });
     const r = new WorkflowResolver();
     await expect(r.forIssue(asTx(tx), 'p1', 'tBug')).resolves.toEqual({ workflowId: '' });
   });
@@ -67,14 +67,14 @@ describe('WorkflowResolver.forIssue', () => {
     await expect(r.forIssue(asTx(tx), 'pX', 'tBug')).rejects.toMatchObject({ status: 404 });
   });
 
-  it('tra theo đúng dự án và workspace của dự án', async () => {
+  it('tra theo đúng dự án và organization của dự án', async () => {
     const tx = makeTx({});
     await new WorkflowResolver().forIssue(asTx(tx), 'p1', 'tBug');
     expect(tx.projectWorkflowOverride.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: { projectId: 'p1' } }),
     );
-    expect(tx.workspaceWorkflowScheme.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { workspaceId: 'w1' } }),
+    expect(tx.organizationWorkflowScheme.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { organizationId: 'w1' } }),
     );
   });
 });
@@ -92,7 +92,7 @@ describe('WorkflowResolver cache theo request', () => {
       expect(c).toEqual({ workflowId: 'wfDef' });
       // tBug lần 2 + tTask đều suy ra từ cùng bản đã nạp của dự án p1.
       expect(tx.project.findUnique.mock.calls.length).toBe(callsAfterFirst);
-      expect(tx.workspaceWorkflowScheme.findMany).toHaveBeenCalledTimes(1);
+      expect(tx.organizationWorkflowScheme.findMany).toHaveBeenCalledTimes(1);
       expect(tx.projectWorkflowOverride.findMany).toHaveBeenCalledTimes(1);
     });
   });
@@ -126,7 +126,7 @@ describe('WorkflowResolver cache theo request', () => {
 });
 
 describe('WorkflowResolver.forProject', () => {
-  it('trả Map loại việc → quy trình với thứ tự ghi đè > workspace > mặc định', async () => {
+  it('trả Map loại việc → quy trình với thứ tự ghi đè > organization > mặc định', async () => {
     const tx = makeTx({
       types: [{ id: 'tTask' }, { id: 'tBug' }, { id: 'tEpic' }],
       overrides: [{ issueTypeId: 'tEpic', workflowId: 'wfEpicOv' }],
@@ -142,13 +142,13 @@ describe('WorkflowResolver.forProject', () => {
       tEpic: 'wfEpicOv',
     });
     expect(tx.issueType.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { workspaceId: 'w1' } }),
+      expect.objectContaining({ where: { organizationId: 'w1' } }),
     );
   });
 
   it('không có quy trình mặc định và không có scheme → loại việc đó vắng mặt trong Map', async () => {
     const tx = makeTx({
-      project: { workspaceId: 'w1', defaultWorkflowId: null },
+      project: { organizationId: 'w1', defaultWorkflowId: null },
       types: [{ id: 'tTask' }, { id: 'tBug' }],
       schemes: [{ issueTypeId: 'tBug', workflowId: 'wfBug' }],
     });
@@ -235,7 +235,7 @@ describe('runWithWorkflowMemo — bộ nhớ theo lần chạy cho việc nền 
     });
     expect(tx.project.findUnique).toHaveBeenCalledTimes(1);
     expect(tx.projectWorkflowOverride.findMany).toHaveBeenCalledTimes(1);
-    expect(tx.workspaceWorkflowScheme.findMany).toHaveBeenCalledTimes(1);
+    expect(tx.organizationWorkflowScheme.findMany).toHaveBeenCalledTimes(1);
   });
 
   it('hết lần chạy thì bỏ bộ nhớ: lần chạy sau nạp lại', async () => {

@@ -50,8 +50,8 @@ describe.skipIf(!DB_URL)('sửa vai trò ↔ Postgres thật', () => {
   beforeAll(async () => {
     prisma = new PrismaClient({ datasources: { db: { url: DB_URL! } } });
     for (const [key, scope] of [
-      ['workspace:admin', 'WORKSPACE'],
-      ['member:manage', 'WORKSPACE'],
+      ['organization:admin', 'ORGANIZATION'],
+      ['member:manage', 'ORGANIZATION'],
       ['issue:edit', 'PROJECT'],
       ['issue:create', 'PROJECT'],
     ] as const) {
@@ -72,18 +72,18 @@ describe.skipIf(!DB_URL)('sửa vai trò ↔ Postgres thật', () => {
         },
       });
     }
-    await prisma.workspace.create({
+    await prisma.organization.create({
       data: { id: WS, name: TAG, slug: TAG, ownerId: U.owner },
     });
     const perm = async (keys: string[]) =>
       (
         await prisma.permission.findMany({ where: { key: { in: keys } }, select: { id: true } })
       ).map((p) => ({ permissionId: p.id }));
-    const mkRole = async (rid: string, scope: 'WORKSPACE' | 'PROJECT', keys: string[]) =>
+    const mkRole = async (rid: string, scope: 'ORGANIZATION' | 'PROJECT', keys: string[]) =>
       prisma.role.create({
         data: {
           id: rid,
-          workspaceId: WS,
+          organizationId: WS,
           name: rid,
           scope,
           permissions: { create: await perm(keys) },
@@ -91,21 +91,21 @@ describe.skipIf(!DB_URL)('sửa vai trò ↔ Postgres thật', () => {
       });
     await mkRole(ROLE.plain, 'PROJECT', ['issue:edit']);
     await mkRole(ROLE.plain2, 'PROJECT', ['issue:edit']);
-    await mkRole(ROLE.mgr, 'WORKSPACE', ['member:manage']); // chỉ quản lý thành viên, KHÔNG phải quản trị
-    await mkRole(ROLE.admin, 'WORKSPACE', ['workspace:admin', 'member:manage']);
-    await mkRole(ROLE.admin2, 'WORKSPACE', ['workspace:admin']);
+    await mkRole(ROLE.mgr, 'ORGANIZATION', ['member:manage']); // chỉ quản lý thành viên, KHÔNG phải quản trị
+    await mkRole(ROLE.admin, 'ORGANIZATION', ['organization:admin', 'member:manage']);
+    await mkRole(ROLE.admin2, 'ORGANIZATION', ['organization:admin']);
     const member = async (uid: string, roleId: string) => {
-      const m = await prisma.workspaceMembership.create({
-        data: { workspaceId: WS, userId: uid, roleId },
+      const m = await prisma.organizationMembership.create({
+        data: { organizationId: WS, userId: uid, roleId },
       });
-      await prisma.workspaceMembershipRole.create({ data: { membershipId: m.id, roleId } });
+      await prisma.organizationMembershipRole.create({ data: { membershipId: m.id, roleId } });
     };
     await member(U.a, ROLE.admin);
     await member(U.mgr, ROLE.mgr);
 
     svc = new RolesService(
       prisma as unknown as PrismaService,
-      // RbacService THẬT (không Redis → tính quyền thẳng từ DB) để P-C14 dùng đúng đường `holdsWorkspaceAdmin`.
+      // RbacService THẬT (không Redis → tính quyền thẳng từ DB) để P-C14 dùng đúng đường `holdsOrganizationAdmin`.
       Object.assign(
         new RbacService(
           prisma as unknown as PrismaService,
@@ -114,7 +114,7 @@ describe.skipIf(!DB_URL)('sửa vai trò ↔ Postgres thật', () => {
             isAvailable: () => false,
           } as never,
         ),
-        { invalidateWorkspace: vi.fn() },
+        { invalidateOrganization: vi.fn() },
       ),
       { record: vi.fn() } as never,
       { emit } as never,
@@ -124,9 +124,9 @@ describe.skipIf(!DB_URL)('sửa vai trò ↔ Postgres thật', () => {
   afterAll(async () => {
     if (!prisma) return;
     const like = { startsWith: TAG };
-    await prisma.workspaceMembership.deleteMany({ where: { workspaceId: WS } });
+    await prisma.organizationMembership.deleteMany({ where: { organizationId: WS } });
     await prisma.role.deleteMany({ where: { id: like } });
-    await prisma.workspace.deleteMany({ where: { id: like } });
+    await prisma.organization.deleteMany({ where: { id: like } });
     await prisma.user.deleteMany({ where: { id: like } });
     await prisma.$disconnect();
   }, 60_000);
@@ -136,19 +136,19 @@ describe.skipIf(!DB_URL)('sửa vai trò ↔ Postgres thật', () => {
     await expect(
       svc.create(
         WS,
-        { name: `${TAG}-x`, scope: 'WORKSPACE', permissionKeys: ['workspace:admin'] },
+        { name: `${TAG}-x`, scope: 'ORGANIZATION', permissionKeys: ['organization:admin'] },
         U.mgr,
       ),
     ).rejects.toMatchObject(denied);
-    expect(await prisma.role.count({ where: { workspaceId: WS, name: `${TAG}-x` } })).toBe(0);
+    expect(await prisma.role.count({ where: { organizationId: WS, name: `${TAG}-x` } })).toBe(0);
     await expect(
-      svc.update(WS, ROLE.plain2, { permissionKeys: ['issue:edit', 'workspace:admin'] }, U.mgr),
+      svc.update(WS, ROLE.plain2, { permissionKeys: ['issue:edit', 'organization:admin'] }, U.mgr),
     ).rejects.toMatchObject(denied);
     await expect(
       svc.update(WS, ROLE.admin2, { permissionKeys: [] }, U.mgr), // gỡ quản trị
     ).rejects.toMatchObject(denied);
     expect(await keysOf(ROLE.plain2)).toEqual(['issue:edit']);
-    expect(await keysOf(ROLE.admin2)).toEqual(['workspace:admin']);
+    expect(await keysOf(ROLE.admin2)).toEqual(['organization:admin']);
   });
 
   it('P-C14: cùng người đó vẫn sửa được vai trò không dính quản trị', async () => {
@@ -157,8 +157,13 @@ describe.skipIf(!DB_URL)('sửa vai trò ↔ Postgres thật', () => {
   });
 
   it('P-C14: quản trị tổ chức (không phải admin hệ thống) cấp được quyền quản trị', async () => {
-    await svc.update(WS, ROLE.plain2, { permissionKeys: ['issue:edit', 'workspace:admin'] }, U.a);
-    expect(await keysOf(ROLE.plain2)).toEqual(['issue:edit', 'workspace:admin']);
+    await svc.update(
+      WS,
+      ROLE.plain2,
+      { permissionKeys: ['issue:edit', 'organization:admin'] },
+      U.a,
+    );
+    expect(await keysOf(ROLE.plain2)).toEqual(['issue:edit', 'organization:admin']);
     await svc.update(WS, ROLE.plain2, { permissionKeys: ['issue:edit'] }, U.a);
     expect(await keysOf(ROLE.plain2)).toEqual(['issue:edit']);
   });
@@ -212,26 +217,26 @@ describe.skipIf(!DB_URL)('sửa vai trò ↔ Postgres thật', () => {
     expect(await keysOf(ROLE.plain)).toHaveLength(1);
   });
 
-  it('gỡ quyền quản trị khỏi vai trò mà người DUY NHẤT còn hoạt động giữ → 409 LAST_WORKSPACE_ADMIN, hoàn lại bộ quyền', async () => {
+  it('gỡ quyền quản trị khỏi vai trò mà người DUY NHẤT còn hoạt động giữ → 409 LAST_ORGANIZATION_ADMIN, hoàn lại bộ quyền', async () => {
     emit.mockClear();
     await expect(
       svc.update(WS, ROLE.admin, { permissionKeys: ['member:manage'] }, U.owner),
-    ).rejects.toMatchObject({ code: 'LAST_WORKSPACE_ADMIN' });
-    expect(await keysOf(ROLE.admin)).toEqual(['member:manage', 'workspace:admin']);
+    ).rejects.toMatchObject({ code: 'LAST_ORGANIZATION_ADMIN' });
+    expect(await keysOf(ROLE.admin)).toEqual(['member:manage', 'organization:admin']);
     expect(emit).not.toHaveBeenCalled();
   });
 
   it('người giữ vai trò admin khác đã VÔ HIỆU HOÁ không tính → vẫn chặn', async () => {
     await prisma.user.update({ where: { id: U.b }, data: { status: 'DEACTIVATED' } });
-    const m = await prisma.workspaceMembership.create({
-      data: { workspaceId: WS, userId: U.b, roleId: ROLE.admin2 },
+    const m = await prisma.organizationMembership.create({
+      data: { organizationId: WS, userId: U.b, roleId: ROLE.admin2 },
     });
-    await prisma.workspaceMembershipRole.create({
+    await prisma.organizationMembershipRole.create({
       data: { membershipId: m.id, roleId: ROLE.admin2 },
     });
     await expect(
       svc.update(WS, ROLE.admin, { permissionKeys: ['member:manage'] }, U.owner),
-    ).rejects.toMatchObject({ code: 'LAST_WORKSPACE_ADMIN' });
+    ).rejects.toMatchObject({ code: 'LAST_ORGANIZATION_ADMIN' });
   });
 
   it('có quản trị viên khác đang hoạt động → cho gỡ', async () => {

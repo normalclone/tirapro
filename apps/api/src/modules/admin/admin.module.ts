@@ -3,7 +3,7 @@ import { AdminController } from './admin.controller';
 import { AdminConsoleController } from './admin-console.controller';
 import { AdminService } from './admin.service';
 import { AdminOverviewService } from './admin-overview.service';
-import { AdminWorkspacesService } from './admin-workspaces.service';
+import { AdminOrganizationsService } from './admin-organizations.service';
 import { AdminSystemService } from './admin-system.service';
 import { MembersModule } from '../members/members.module';
 import { IssuesModule } from '../issues/issues.module';
@@ -11,6 +11,6 @@ import { IssuesModule } from '../issues/issues.module';
 @Module({
   imports: [MembersModule, IssuesModule],
   controllers: [AdminController, AdminConsoleController],
-  providers: [AdminService, AdminOverviewService, AdminWorkspacesService, AdminSystemService],
+  providers: [AdminService, AdminOverviewService, AdminOrganizationsService, AdminSystemService],
 })
 export class AdminModule {}

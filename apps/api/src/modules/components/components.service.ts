@@ -66,8 +66,8 @@ export class ComponentsService {
 
   // ============================ COMPONENTS ==================================
 
-  async listComponents(workspaceId: string, projectId: string): Promise<ComponentDto[]> {
-    await this.requireProject(workspaceId, projectId);
+  async listComponents(organizationId: string, projectId: string): Promise<ComponentDto[]> {
+    await this.requireProject(organizationId, projectId);
     const rows = await this.prisma.component.findMany({
       where: { projectId },
       orderBy: { name: 'asc' },
@@ -76,11 +76,11 @@ export class ComponentsService {
   }
 
   async createComponent(
-    workspaceId: string,
+    organizationId: string,
     projectId: string,
     input: CreateComponentInput,
   ): Promise<ComponentDto> {
-    await this.requireProject(workspaceId, projectId);
+    await this.requireProject(organizationId, projectId);
     await assertProjectWritable(this.prisma, projectId);
     try {
       const row = await this.prisma.component.create({
@@ -101,11 +101,11 @@ export class ComponentsService {
   }
 
   async updateComponent(
-    workspaceId: string,
+    organizationId: string,
     componentId: string,
     input: UpdateComponentInput,
   ): Promise<ComponentDto> {
-    const cur = await this.requireComponent(workspaceId, componentId);
+    const cur = await this.requireComponent(organizationId, componentId);
     await assertProjectWritable(this.prisma, cur.projectId);
     const data: Prisma.ComponentUpdateInput = {};
     if (input.name !== undefined) data.name = input.name;
@@ -125,20 +125,20 @@ export class ComponentsService {
     }
   }
 
-  async removeComponent(workspaceId: string, componentId: string): Promise<{ success: true }> {
-    const cur = await this.requireComponent(workspaceId, componentId);
+  async removeComponent(organizationId: string, componentId: string): Promise<{ success: true }> {
+    const cur = await this.requireComponent(organizationId, componentId);
     await assertProjectWritable(this.prisma, cur.projectId);
     await this.prisma.component.delete({ where: { id: componentId } });
     return { success: true };
   }
 
   async attachComponent(
-    workspaceId: string,
+    organizationId: string,
     userId: string,
     issueId: string,
     componentId: string,
   ): Promise<{ ok: true }> {
-    const issue = await this.requireIssue(workspaceId, issueId);
+    const issue = await this.requireIssue(organizationId, issueId);
     await assertIssueWritable(this.prisma, issueId);
     const component = await this.prisma.component.findFirst({
       where: { id: componentId, projectId: issue.projectId },
@@ -161,12 +161,12 @@ export class ComponentsService {
   }
 
   async detachComponent(
-    workspaceId: string,
+    organizationId: string,
     userId: string,
     issueId: string,
     componentId: string,
   ): Promise<{ ok: true }> {
-    const issue = await this.requireIssue(workspaceId, issueId);
+    const issue = await this.requireIssue(organizationId, issueId);
     await assertIssueWritable(this.prisma, issueId);
     const component = await this.prisma.component.findFirst({
       where: { id: componentId, projectId: issue.projectId },
@@ -185,8 +185,8 @@ export class ComponentsService {
 
   // ============================ VERSIONS ====================================
 
-  async listVersions(workspaceId: string, projectId: string): Promise<VersionDto[]> {
-    await this.requireProject(workspaceId, projectId);
+  async listVersions(organizationId: string, projectId: string): Promise<VersionDto[]> {
+    await this.requireProject(organizationId, projectId);
     const rows = await this.prisma.version.findMany({
       where: { projectId },
       orderBy: { name: 'asc' },
@@ -195,11 +195,11 @@ export class ComponentsService {
   }
 
   async createVersion(
-    workspaceId: string,
+    organizationId: string,
     projectId: string,
     input: CreateVersionInput,
   ): Promise<VersionDto> {
-    await this.requireProject(workspaceId, projectId);
+    await this.requireProject(organizationId, projectId);
     await assertProjectWritable(this.prisma, projectId);
     try {
       const row = await this.prisma.version.create({
@@ -222,11 +222,11 @@ export class ComponentsService {
   }
 
   async updateVersion(
-    workspaceId: string,
+    organizationId: string,
     versionId: string,
     input: UpdateVersionInput,
   ): Promise<VersionDto> {
-    const cur = await this.requireVersion(workspaceId, versionId);
+    const cur = await this.requireVersion(organizationId, versionId);
     await assertProjectWritable(this.prisma, cur.projectId);
     const data: Prisma.VersionUpdateInput = {};
     if (input.name !== undefined) data.name = input.name;
@@ -252,21 +252,21 @@ export class ComponentsService {
     }
   }
 
-  async removeVersion(workspaceId: string, versionId: string): Promise<{ success: true }> {
-    const cur = await this.requireVersion(workspaceId, versionId);
+  async removeVersion(organizationId: string, versionId: string): Promise<{ success: true }> {
+    const cur = await this.requireVersion(organizationId, versionId);
     await assertProjectWritable(this.prisma, cur.projectId);
     await this.prisma.version.delete({ where: { id: versionId } });
     return { success: true };
   }
 
   async attachVersion(
-    workspaceId: string,
+    organizationId: string,
     userId: string,
     issueId: string,
     versionId: string,
     type: FixVersionType,
   ): Promise<{ ok: true }> {
-    const issue = await this.requireIssue(workspaceId, issueId);
+    const issue = await this.requireIssue(organizationId, issueId);
     await assertIssueWritable(this.prisma, issueId);
     const version = await this.prisma.version.findFirst({
       where: { id: versionId, projectId: issue.projectId },
@@ -289,13 +289,13 @@ export class ComponentsService {
   }
 
   async detachVersion(
-    workspaceId: string,
+    organizationId: string,
     userId: string,
     issueId: string,
     versionId: string,
     type: FixVersionType,
   ): Promise<{ ok: true }> {
-    const issue = await this.requireIssue(workspaceId, issueId);
+    const issue = await this.requireIssue(organizationId, issueId);
     await assertIssueWritable(this.prisma, issueId);
     const version = await this.prisma.version.findFirst({
       where: { id: versionId, projectId: issue.projectId },
@@ -363,36 +363,36 @@ export class ComponentsService {
 
   // ============================ SCOPE GUARDS ================================
 
-  private async requireProject(workspaceId: string, projectId: string) {
+  private async requireProject(organizationId: string, projectId: string) {
     const project = await this.prisma.project.findFirst({
-      where: { id: projectId, workspaceId, deletedAt: null },
+      where: { id: projectId, organizationId, deletedAt: null },
       select: { id: true },
     });
     if (!project) throw new NotFoundAppException('Dự án');
     return project;
   }
 
-  private async requireComponent(workspaceId: string, componentId: string) {
+  private async requireComponent(organizationId: string, componentId: string) {
     const component = await this.prisma.component.findFirst({
-      where: { id: componentId, project: { workspaceId, deletedAt: null } },
+      where: { id: componentId, project: { organizationId, deletedAt: null } },
       select: { id: true, projectId: true },
     });
     if (!component) throw new NotFoundAppException('Hạng mục');
     return component;
   }
 
-  private async requireVersion(workspaceId: string, versionId: string) {
+  private async requireVersion(organizationId: string, versionId: string) {
     const version = await this.prisma.version.findFirst({
-      where: { id: versionId, project: { workspaceId, deletedAt: null } },
+      where: { id: versionId, project: { organizationId, deletedAt: null } },
       select: { id: true, projectId: true },
     });
     if (!version) throw new NotFoundAppException('Phiên bản');
     return version;
   }
 
-  private async requireIssue(workspaceId: string, issueId: string) {
+  private async requireIssue(organizationId: string, issueId: string) {
     const issue = await this.prisma.issue.findFirst({
-      where: { id: issueId, workspaceId, deletedAt: null },
+      where: { id: issueId, organizationId, deletedAt: null },
       select: { id: true, projectId: true, sprintId: true },
     });
     if (!issue) throw new NotFoundAppException('Công việc');

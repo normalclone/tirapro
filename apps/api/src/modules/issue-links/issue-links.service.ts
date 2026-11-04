@@ -13,7 +13,7 @@ import { isIssueOwner, type IssueOwners } from '../rbac/issue-ownership.service'
 import { RbacService } from '../rbac/rbac.service';
 import { ProjectAccessService } from '../rbac/project-access.service';
 
-/** Loại liên kết khả dụng trong workspace. */
+/** Loại liên kết khả dụng trong organization. */
 export interface LinkTypeView {
   id: string;
   name: string;
@@ -100,10 +100,10 @@ export class IssueLinksService {
     private readonly access: ProjectAccessService = new ProjectAccessService(prisma, rbac),
   ) {}
 
-  /** Danh sách loại liên kết của workspace. */
-  async listTypes(workspaceId: string): Promise<LinkTypeView[]> {
+  /** Danh sách loại liên kết của organization. */
+  async listTypes(organizationId: string): Promise<LinkTypeView[]> {
     const rows = await this.prisma.linkType.findMany({
-      where: { workspaceId },
+      where: { organizationId },
       orderBy: { name: 'asc' },
     });
     return rows.map((r) => this.toTypeView(r));
@@ -114,7 +114,7 @@ export class IssueLinksService {
    * ("issueId is caused by targetIssueId" ⇒ lưu target causes issueId). Quyền/lưu trữ kiểm như nhau cho cả hai chiều.
    */
   async create(
-    workspaceId: string,
+    organizationId: string,
     issueId: string,
     input: CreateIssueLinkInput,
     actor: LinkActor,
@@ -125,10 +125,10 @@ export class IssueLinksService {
       );
     }
 
-    // Cả hai issue phải thuộc workspace của người dùng.
-    const source = await this.requireIssue(workspaceId, issueId);
+    // Cả hai issue phải thuộc tổ chức của người dùng.
+    const source = await this.requireIssue(organizationId, issueId);
     // Đích không tồn tại (hoặc đã xoá) bị từ chối cùng lỗi với "không có quyền ở dự án đích" — xem LINK_TARGET_DENIED.
-    const target = await this.findIssue(workspaceId, input.targetIssueId);
+    const target = await this.findIssue(organizationId, input.targetIssueId);
     if (!target) throw new ForbiddenAppException(LINK_TARGET_DENIED);
     // Nguồn: guard đã kiểm quyền; archived của dự án nguồn chặn ngay.
     await assertIssueWritable(this.prisma, issueId);
@@ -138,16 +138,16 @@ export class IssueLinksService {
       // Dự án riêng tư của đích mà người gọi không thấy → cùng lỗi với "đích không tồn tại" (không lộ sự tồn tại).
       if (
         !actor.isSystemAdmin &&
-        !(await this.access.canSee(actor.id, workspaceId, target.projectId))
+        !(await this.access.canSee(actor.id, organizationId, target.projectId))
       )
         throw new ForbiddenAppException(LINK_TARGET_DENIED);
-      await this.assertCanEditAcrossProject(workspaceId, actor, target);
+      await this.assertCanEditAcrossProject(organizationId, actor, target);
     }
     await assertIssueWritable(this.prisma, input.targetIssueId);
 
-    // Loại liên kết phải thuộc workspace.
+    // Loại liên kết phải thuộc organization.
     const linkType = await this.prisma.linkType.findFirst({
-      where: { id: input.linkTypeId, workspaceId },
+      where: { id: input.linkTypeId, organizationId },
     });
     if (!linkType) throw new NotFoundAppException('Loại liên kết');
 
@@ -208,11 +208,15 @@ export class IssueLinksService {
     );
   }
 
-  /** Xóa liên kết — issue nguồn của liên kết phải thuộc workspace. */
-  async remove(workspaceId: string, linkId: string, actor: LinkActor): Promise<{ success: true }> {
+  /** Xóa liên kết — issue nguồn của liên kết phải thuộc organization. */
+  async remove(
+    organizationId: string,
+    linkId: string,
+    actor: LinkActor,
+  ): Promise<{ success: true }> {
     const link = await this.prisma.issueLink.findFirst({
       // Cho cả liên kết có đầu NGUỒN đã xoá mềm: người dùng cần dọn được liên kết "đã xoá" hiện ở công việc còn lại.
-      where: { id: linkId, source: { workspaceId } },
+      where: { id: linkId, source: { organizationId } },
       select: {
         id: true,
         sourceIssueId: true,
@@ -234,7 +238,7 @@ export class IssueLinksService {
     // Issue đích đã xoá mềm → cho dọn link mồ côi, không đòi quyền ở đầu đó. `listForIssue` đã ẩn loại link này
     // nên UI không còn nút xoá cho chúng; nhánh này chỉ còn tới được khi gọi API trực tiếp với id link.
     if (!link.target.deletedAt && link.target.projectId !== link.source.projectId) {
-      await this.assertCanEditAcrossProject(workspaceId, actor, link.target);
+      await this.assertCanEditAcrossProject(organizationId, actor, link.target);
     }
     // Đầu đã xoá mềm không còn "ghi được" — chỉ kiểm đầu còn sống.
     if (!link.source.deletedAt) await assertIssueWritable(this.prisma, link.sourceIssueId);
@@ -245,14 +249,14 @@ export class IssueLinksService {
 
   /** Tất cả liên kết của issue (nguồn HOẶC đích), chuẩn hóa theo góc nhìn issue. */
   async listForIssue(
-    workspaceId: string,
+    organizationId: string,
     issueId: string,
     actor: LinkActor,
   ): Promise<IssueLinkView[]> {
-    const self = await this.requireIssue(workspaceId, issueId);
+    const self = await this.requireIssue(organizationId, issueId);
     // Giữ link tới issue đã xoá mềm (hiện "đã xoá", logbug #21); chỉ ẩn khi dự án đầu kia đã xoá mềm
     // (IssueLink không có deletedAt → lọc trên quan hệ).
-    const liveEnd = { workspaceId, ...LIVE_PROJECT };
+    const liveEnd = { organizationId, ...LIVE_PROJECT };
     const rows = await this.prisma.issueLink.findMany({
       where: {
         OR: [
@@ -275,11 +279,11 @@ export class IssueLinksService {
         // Tuần tự có chủ ý: chỉ vài dự án khác nhau, kết quả cache theo canView.
         const perms = actor.isSystemAdmin
           ? null
-          : await this.rbac.getEffectivePermissions(actor.id, workspaceId, other.projectId);
+          : await this.rbac.getEffectivePermissions(actor.id, organizationId, other.projectId);
         ok =
           perms === null ||
           (perms.has(PERMISSIONS.PROJECT_VIEW) &&
-            (await this.access.canSee(actor.id, workspaceId, other.projectId)));
+            (await this.access.canSee(actor.id, organizationId, other.projectId)));
         canView.set(other.projectId, ok);
       }
       if (ok) visible.push(row);
@@ -288,27 +292,31 @@ export class IssueLinksService {
   }
 
   // ---------- helpers ----------
-  private async findIssue(workspaceId: string, issueId: string): Promise<LinkWriteRow | null> {
+  private async findIssue(organizationId: string, issueId: string): Promise<LinkWriteRow | null> {
     return this.prisma.issue.findFirst({
-      where: { id: issueId, workspaceId, deletedAt: null, ...LIVE_PROJECT },
+      where: { id: issueId, organizationId, deletedAt: null, ...LIVE_PROJECT },
       select: linkWriteSelect,
     });
   }
 
-  private async requireIssue(workspaceId: string, issueId: string): Promise<LinkWriteRow> {
-    const issue = await this.findIssue(workspaceId, issueId);
+  private async requireIssue(organizationId: string, issueId: string): Promise<LinkWriteRow> {
+    const issue = await this.findIssue(organizationId, issueId);
     if (!issue) throw new NotFoundAppException('Công việc');
     return issue;
   }
 
   /** Ở dự án của issue `issue`: cần `issue:edit`, hoặc `issue:edit:own` và là chủ issue đó. */
   private async assertCanEditAcrossProject(
-    workspaceId: string,
+    organizationId: string,
     actor: LinkActor,
     issue: IssueOwners & { projectId: string },
   ): Promise<void> {
     if (actor.isSystemAdmin) return;
-    const perms = await this.rbac.getEffectivePermissions(actor.id, workspaceId, issue.projectId);
+    const perms = await this.rbac.getEffectivePermissions(
+      actor.id,
+      organizationId,
+      issue.projectId,
+    );
     if (perms.has(PERMISSIONS.ISSUE_EDIT)) return;
     if (perms.has(`${PERMISSIONS.ISSUE_EDIT}:own`) && isIssueOwner(actor.id, issue)) return;
     throw new ForbiddenAppException(LINK_TARGET_DENIED);

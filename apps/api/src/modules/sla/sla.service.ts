@@ -32,11 +32,11 @@ export class SlaService {
    * sách của dự án người đó thấy: chính sách của dự án riêng tư người ngoài không thấy bị loại (tên chính sách/khoá/tên
    * dự án không lộ). `projectId` thu hẹp theo một dự án (bảng "Thời gian xử lý" của dự án).
    */
-  async list(workspaceId: string, viewerId: string, projectId?: string) {
-    const visible = await this.access.visibleWhere(viewerId, workspaceId);
+  async list(organizationId: string, viewerId: string, projectId?: string) {
+    const visible = await this.access.visibleWhere(viewerId, organizationId);
     const rows = await this.prisma.slaPolicy.findMany({
       where: {
-        workspaceId,
+        organizationId,
         ...(projectId ? { projectId } : {}),
         project: { deletedAt: null, ...visible },
       },
@@ -59,13 +59,13 @@ export class SlaService {
     }));
   }
 
-  async create(workspaceId: string, dto: CreateSlaPolicyInput, viewerId: string) {
+  async create(organizationId: string, dto: CreateSlaPolicyInput, viewerId: string) {
     const projectId = requireProjectId(dto.projectId, 'chính sách thời gian xử lý');
-    await this.access.assertCanSee(viewerId, workspaceId, projectId);
+    await this.access.assertCanSee(viewerId, organizationId, projectId);
     await assertProjectWritable(this.prisma, projectId);
     await this.prisma.slaPolicy.create({
       data: {
-        workspaceId,
+        organizationId,
         name: dto.name.trim(),
         projectId,
         priorityId: dto.priorityId ?? null,
@@ -74,19 +74,19 @@ export class SlaService {
         active: dto.active ?? true,
       },
     });
-    return this.list(workspaceId, viewerId);
+    return this.list(organizationId, viewerId);
   }
 
-  async update(workspaceId: string, id: string, dto: UpdateSlaPolicyInput, viewerId: string) {
+  async update(organizationId: string, id: string, dto: UpdateSlaPolicyInput, viewerId: string) {
     const found = await this.prisma.slaPolicy.findFirst({
-      where: { id, workspaceId },
+      where: { id, organizationId },
       select: { id: true, projectId: true },
     });
     if (!found) throw new NotFoundAppException('Cam kết thời gian xử lý');
     // Chính sách của dự án riêng tư người gọi không thấy = không tồn tại; không gắn được sang dự án ẩn.
     await this.access.assertCanSee(
       viewerId,
-      workspaceId,
+      organizationId,
       found.projectId,
       'Cam kết thời gian xử lý',
     );
@@ -97,14 +97,14 @@ export class SlaService {
         ? requireProjectId(dto.projectId, 'chính sách thời gian xử lý')
         : undefined;
     if (nextProjectId) {
-      await this.access.assertCanSee(viewerId, workspaceId, nextProjectId);
+      await this.access.assertCanSee(viewerId, organizationId, nextProjectId);
       await assertProjectWritable(this.prisma, nextProjectId);
       // Guard chỉ tính quyền ở dự án HIỆN TẠI của chính sách → chuyển sang dự án khác phải kiểm quyền Ở ĐÍCH.
       if (nextProjectId !== found.projectId)
         await assertCanManageInProject(
           this.rbac,
           viewerId,
-          workspaceId,
+          organizationId,
           nextProjectId,
           PERMISSIONS.SLA_MANAGE,
           'chính sách thời gian xử lý',
@@ -121,32 +121,32 @@ export class SlaService {
         ...(dto.active !== undefined ? { active: dto.active } : {}),
       },
     });
-    return this.list(workspaceId, viewerId);
+    return this.list(organizationId, viewerId);
   }
 
-  async remove(workspaceId: string, id: string, viewerId: string) {
+  async remove(organizationId: string, id: string, viewerId: string) {
     const found = await this.prisma.slaPolicy.findFirst({
-      where: { id, workspaceId },
+      where: { id, organizationId },
       select: { projectId: true },
     });
     if (found) {
       await this.access.assertCanSee(
         viewerId,
-        workspaceId,
+        organizationId,
         found.projectId,
         'Cam kết thời gian xử lý',
       );
       await assertProjectWritable(this.prisma, found.projectId);
     }
-    await this.prisma.slaPolicy.deleteMany({ where: { id, workspaceId } });
+    await this.prisma.slaPolicy.deleteMany({ where: { id, organizationId } });
     return { success: true };
   }
 
   // ───────────── Trạng thái SLA của issue ─────────────
 
-  async getForIssue(workspaceId: string, issueId: string) {
+  async getForIssue(organizationId: string, issueId: string) {
     const issue = await this.prisma.issue.findFirst({
-      where: { id: issueId, workspaceId, deletedAt: null },
+      where: { id: issueId, organizationId, deletedAt: null },
       select: {
         id: true,
         resolvedAt: true,
@@ -188,12 +188,12 @@ export class SlaService {
    * Danh sách issue đang có SLA (theo dõi vi phạm / sắp trễ) — chỉ việc của dự án `viewerId` thấy (khoá, tiêu đề,
    * người phụ trách của dự án riêng tư người ngoài không lộ).
    */
-  async board(workspaceId: string, viewerId: string, projectId?: string) {
-    const visible = await this.access.visibleWhere(viewerId, workspaceId);
+  async board(organizationId: string, viewerId: string, projectId?: string) {
+    const visible = await this.access.visibleWhere(viewerId, organizationId);
     const rows = await this.prisma.issueSla.findMany({
       where: {
         issue: {
-          workspaceId,
+          organizationId,
           deletedAt: null,
           // Việc đã ở trạng thái DONE thì không còn "đang chạy đồng hồ", dù dòng SLA chưa được đóng (logbug #26).
           status: { category: { not: 'DONE' } },
@@ -242,9 +242,9 @@ export class SlaService {
    * Chọn chính sách khớp nhất CHỈ trong dự án của việc: ưu tiên đúng mức ưu tiên > chính sách dự án áp mọi mức. Không còn
    * mặc định cấp tổ chức — dự án không có chính sách thì việc không có đồng hồ SLA.
    */
-  private async pickPolicy(workspaceId: string, projectId: string, priorityId: string | null) {
+  private async pickPolicy(organizationId: string, projectId: string, priorityId: string | null) {
     const candidates = await this.prisma.slaPolicy.findMany({
-      where: { workspaceId, projectId, active: true },
+      where: { organizationId, projectId, active: true },
     });
     const matching = candidates.filter((p) => !p.priorityId || p.priorityId === priorityId);
     if (matching.length === 0) return null;
@@ -259,7 +259,7 @@ export class SlaService {
       const { issue } = payload as {
         issue: {
           id: string;
-          workspaceId: string;
+          organizationId: string;
           projectId: string;
           priority?: { id: string } | null;
           createdAt?: string | Date | null;
@@ -267,7 +267,7 @@ export class SlaService {
       };
       if (!issue?.id) return;
       const policy = await this.pickPolicy(
-        issue.workspaceId,
+        issue.organizationId,
         issue.projectId,
         issue.priority?.id ?? null,
       );
@@ -354,7 +354,7 @@ export class SlaService {
       const { issue, changedFields } = payload as {
         issue?: {
           id: string;
-          workspaceId: string;
+          organizationId: string;
           projectId: string;
           createdAt?: string | Date | null;
           priority?: { id: string } | null;
@@ -368,7 +368,7 @@ export class SlaService {
       });
       if (!sla || sla.resolvedAt) return;
       const policy = await this.pickPolicy(
-        issue.workspaceId,
+        issue.organizationId,
         issue.projectId,
         issue.priority?.id ?? null,
       );

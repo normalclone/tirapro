@@ -14,7 +14,7 @@ type ApiScope = 'read' | 'write';
 export interface ApiKeyContext {
   keyId: string;
   userId: string;
-  workspaceId: string;
+  organizationId: string;
   email: string;
   displayName: string;
   scopes: ApiScope[];
@@ -74,9 +74,9 @@ export class ApiKeyService {
     };
   }
 
-  async list(workspaceId: string) {
+  async list(organizationId: string) {
     const rows = await this.prisma.apiKey.findMany({
-      where: { workspaceId },
+      where: { organizationId },
       orderBy: { createdAt: 'desc' },
       select: {
         id: true,
@@ -93,7 +93,7 @@ export class ApiKeyService {
     return offsetPage(data, 1, Math.max(1, data.length), data.length);
   }
 
-  async create(workspaceId: string, userId: string, input: CreateApiKeyInput) {
+  async create(organizationId: string, userId: string, input: CreateApiKeyInput) {
     const { prefix, secret, full } = this.gen();
     const hash = hashApiKeySecret(secret);
     const scopes: ApiScope[] = input.write ? ['read', 'write'] : ['read'];
@@ -101,7 +101,7 @@ export class ApiKeyService {
       ? new Date(Date.now() + input.expiresInDays * 86_400_000)
       : null;
     const rec = await this.prisma.apiKey.create({
-      data: { workspaceId, userId, name: input.name, prefix, hash, scopes, expiresAt },
+      data: { organizationId, userId, name: input.name, prefix, hash, scopes, expiresAt },
       select: {
         id: true,
         name: true,
@@ -117,9 +117,9 @@ export class ApiKeyService {
     return { ...this.toDto(rec), key: full };
   }
 
-  async revoke(id: string, workspaceId: string) {
+  async revoke(id: string, organizationId: string) {
     const found = await this.prisma.apiKey.findFirst({
-      where: { id, workspaceId },
+      where: { id, organizationId },
       select: { id: true, prefix: true },
     });
     if (!found) throw new NotFoundAppException('Khoá API');
@@ -129,21 +129,21 @@ export class ApiKeyService {
   }
 
   /**
-   * Thu hồi MỌI key còn hiệu lực của user trong workspace (khi gỡ thành viên). Nhận client giao dịch để
+   * Thu hồi MỌI key còn hiệu lực của user trong tổ chức (khi gỡ thành viên). Nhận client giao dịch để
    * chạy cùng transaction với việc xoá membership; trả về prefix để gọi `dropCaches` SAU khi commit.
    */
   async revokeAllForUser(
-    workspaceId: string,
+    organizationId: string,
     userId: string,
     db: Prisma.TransactionClient | PrismaService = this.prisma,
   ): Promise<string[]> {
     const keys = await db.apiKey.findMany({
-      where: { workspaceId, userId, revokedAt: null },
+      where: { organizationId, userId, revokedAt: null },
       select: { prefix: true },
     });
     if (keys.length === 0) return [];
     await db.apiKey.updateMany({
-      where: { workspaceId, userId, revokedAt: null },
+      where: { organizationId, userId, revokedAt: null },
       data: { revokedAt: new Date() },
     });
     return keys.map((k) => k.prefix);
@@ -155,7 +155,7 @@ export class ApiKeyService {
   }
 
   /**
-   * Xoá cache xác thực của MỌI key (mọi workspace) của một user — gọi khi tài khoản bị vô hiệu hoá để key chặn NGAY,
+   * Xoá cache xác thực của MỌI key (mọi tổ chức) của một user — gọi khi tài khoản bị vô hiệu hoá để key chặn NGAY,
    * không đợi hết TTL 60s. Không thu hồi key: mở khoá tài khoản thì key dùng lại được (validate kiểm `user.status`).
    */
   async dropCachesForUser(userId: string): Promise<void> {
@@ -185,7 +185,7 @@ export class ApiKeyService {
         id: true,
         hash: true,
         scopes: true,
-        workspaceId: true,
+        organizationId: true,
         userId: true,
         revokedAt: true,
         expiresAt: true,
@@ -195,9 +195,9 @@ export class ApiKeyService {
     if (!key || key.revokedAt) return null;
     if (key.expiresAt && key.expiresAt.getTime() < Date.now()) return null;
     if (key.user.status === 'DEACTIVATED') return null;
-    // Chủ key đã bị gỡ khỏi workspace thì key không còn dùng được (kể cả khi chưa kịp bị thu hồi).
-    const membership = await this.prisma.workspaceMembership.findUnique({
-      where: { workspaceId_userId: { workspaceId: key.workspaceId, userId: key.userId } },
+    // Chủ key đã bị gỡ khỏi tổ chức thì key không còn dùng được (kể cả khi chưa kịp bị thu hồi).
+    const membership = await this.prisma.organizationMembership.findUnique({
+      where: { organizationId_userId: { organizationId: key.organizationId, userId: key.userId } },
       select: { id: true },
     });
     if (!membership) return null;
@@ -208,7 +208,7 @@ export class ApiKeyService {
     const ctx: ApiKeyContext = {
       keyId: key.id,
       userId: key.userId,
-      workspaceId: key.workspaceId,
+      organizationId: key.organizationId,
       email: key.user.email,
       displayName: key.user.displayName,
       scopes: key.scopes as ApiScope[],

@@ -39,7 +39,7 @@ function setup(
       findFirst: vi.fn(() =>
         Promise.resolve({
           id: 's1',
-          workspaceId: 'w1',
+          organizationId: 'w1',
           projectId: null,
           channelId: 'ch1',
           metrics: [],
@@ -151,22 +151,22 @@ describe('DigestsService.run — token không dùng được', () => {
   });
 });
 
-describe('DigestsService — kênh phải thuộc workspace', () => {
-  it('send(run) ràng workspaceId của subscription khi tra kênh', async () => {
+describe('DigestsService — kênh phải thuộc organization', () => {
+  it('send(run) ràng organizationId của subscription khi tra kênh', async () => {
     const { service, prisma } = setup({ kind: 'global' });
     await service.run('w1', 's1', 'u1');
     expect(prisma.integrationChannel.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
           id: 'ch1',
-          workspaceId: 'w1',
+          organizationId: 'w1',
           isEnabled: true,
         }) as unknown,
       }),
     );
   });
 
-  it('create với channelId của workspace khác -> 404, không ghi', async () => {
+  it('create với channelId của organization khác -> 404, không ghi', async () => {
     const { service, prisma } = setup({ kind: 'global' });
     prisma.integrationChannel.findFirst.mockResolvedValueOnce(null as never);
     const create = vi.fn();
@@ -175,12 +175,12 @@ describe('DigestsService — kênh phải thuộc workspace', () => {
       service.create('w1', 'u1', { name: 'n', channelId: 'khac-ws' }),
     ).rejects.toMatchObject({ status: 404 });
     expect(prisma.integrationChannel.findFirst).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { id: 'khac-ws', workspaceId: 'w1' } }),
+      expect.objectContaining({ where: { id: 'khac-ws', organizationId: 'w1' } }),
     );
     expect(create).not.toHaveBeenCalled();
   });
 
-  it('update channelId của workspace khác -> 404, không ghi', async () => {
+  it('update channelId của organization khác -> 404, không ghi', async () => {
     const { service, prisma } = setup({ kind: 'global' });
     prisma.integrationChannel.findFirst.mockResolvedValueOnce(null as never);
     await expect(service.update('w1', 's1', { channelId: 'khac-ws' }, 'u1')).rejects.toMatchObject({
@@ -248,7 +248,7 @@ function makeNode(
           table.map((s) => ({
             ...s,
             ...(opts.snapshotLastRunAt !== undefined ? { lastRunAt: opts.snapshotLastRunAt } : {}),
-            workspaceId: 'w1',
+            organizationId: 'w1',
             projectId: null,
             channelId: 'c1',
             schedule: 'DAILY',
@@ -325,7 +325,7 @@ describe('DigestsService.runScheduled — chống gửi đôi (CAS lastRunAt)', 
     const { service, send, updateMany } = makeNode([{ id: 's1', lastRunAt: null }]);
     await service.runScheduled();
     expect(send).toHaveBeenCalledTimes(1);
-    expect(send).toHaveBeenCalledWith('w1', 'c1', expect.stringContaining('tổng kết')); // ràng workspaceId của subscription
+    expect(send).toHaveBeenCalledWith('w1', 'c1', expect.stringContaining('tổng kết')); // ràng organizationId của subscription
     expect(updateMany.mock.invocationCallOrder[0]!).toBeLessThan(send.mock.invocationCallOrder[0]!);
   });
 
@@ -437,7 +437,7 @@ describe('DigestsService.buildDigest — chọn khối', () => {
     });
   });
 
-  it('digest gắn dự án bỏ khối workload (cấp workspace) và thu hẹp rủi ro/OKR vào dự án', async () => {
+  it('digest gắn dự án bỏ khối workload (cấp organization) và thu hẹp rủi ro/OKR vào dự án', async () => {
     const { service, leadership } = buildSetup();
     const model = await service.buildDigest('w1', 'p1', ['risks', 'workload'], 'u1');
     expect(ids(model)).toEqual(['risks']);
@@ -584,7 +584,7 @@ describe('DigestsService.buildDigest — quyền xem (dự án riêng tư)', () 
 const subRow = (over: Record<string, unknown> = {}) =>
   ({
     id: 's1',
-    workspaceId: 'w1',
+    organizationId: 'w1',
     projectId: null,
     channelId: 'ch1',
     metrics: [],
@@ -598,7 +598,7 @@ const subRow = (over: Record<string, unknown> = {}) =>
 
 describe('DigestsService — người xem của nội dung gửi nơi chung', () => {
   const OPTS = { closedSprintId: undefined };
-  it('run: digest toàn workspace dùng PUBLIC_VIEWER (kể cả khi người tạo là admin)', async () => {
+  it('run: digest toàn organization dùng PUBLIC_VIEWER (kể cả khi người tạo là admin)', async () => {
     const { service, prisma } = setup({ kind: 'global' });
     prisma.reportSubscription.findFirst.mockResolvedValue(subRow());
     const spy = vi.spyOn(service, 'buildDigest');
@@ -859,11 +859,11 @@ describe('DigestsService.onSprintCompleted — SPRINT_END theo sự kiện (L20)
     }));
     const node = makeNode(table);
     const prisma = prismaOf(node.service);
-    prisma.project = { findFirst: vi.fn(() => Promise.resolve({ workspaceId: 'w1' })) };
+    prisma.project = { findFirst: vi.fn(() => Promise.resolve({ organizationId: 'w1' })) };
     prisma.reportSubscription.findMany = vi.fn(() =>
       Promise.resolve(
         subs.map((s) => ({
-          workspaceId: 'w1',
+          organizationId: 'w1',
           channelId: 'c1',
           schedule: 'SPRINT_END',
           metrics: [],
@@ -877,12 +877,12 @@ describe('DigestsService.onSprintCompleted — SPRINT_END theo sự kiện (L20)
     return { ...node, prisma };
   }
 
-  it('gửi các digest SPRINT_END đang bật của workspace chứa sprint', async () => {
+  it('gửi các digest SPRINT_END đang bật của organization chứa sprint', async () => {
     const t = sprintEnd([{ id: 'a' }, { id: 'b', projectId: 'p1' }]);
     await t.service.onSprintCompleted({ sprintId: 'sp1', projectId: 'p1' });
     expect(t.send).toHaveBeenCalledTimes(2);
     const where = json(t.prisma.reportSubscription.findMany);
-    expect(where).toContain('"workspaceId":"w1"');
+    expect(where).toContain('"organizationId":"w1"');
     expect(where).toContain('"schedule":"SPRINT_END"');
     expect(where).toContain('"isEnabled":true');
     expect(where).toContain('"OR":[{"projectId":null},{"projectId":"p1"}]');
@@ -961,7 +961,7 @@ function emailSetup(over: Record<string, unknown> = {}, users: unknown[] = USERS
   const t = setup({ kind: 'global' });
   t.prisma.reportSubscription.findFirst.mockResolvedValue({
     id: 's1',
-    workspaceId: 'w1',
+    organizationId: 'w1',
     projectId: null,
     channelId: null,
     metrics: ['summary'],
@@ -992,7 +992,7 @@ describe('DigestsService — gửi Email (L21)', () => {
     });
   });
 
-  it('chỉ lấy thành viên workspace chưa bị khoá (không gửi cho người ngoài/đã vô hiệu hoá)', async () => {
+  it('chỉ lấy thành viên organization chưa bị khoá (không gửi cho người ngoài/đã vô hiệu hoá)', async () => {
     const t = emailSetup();
     await t.service.run('w1', 's1', 'u1');
     expect(json(t.prisma.user.findMany)).toBe(
@@ -1000,7 +1000,7 @@ describe('DigestsService — gửi Email (L21)', () => {
         where: {
           id: { in: ['u2', 'u3'] },
           status: { not: 'DEACTIVATED' },
-          workspaceMemberships: { some: { workspaceId: 'w1' } },
+          organizationMemberships: { some: { organizationId: 'w1' } },
         },
         select: { id: true, email: true, displayName: true },
       }),
@@ -1082,7 +1082,7 @@ describe('DigestsService — cấu hình kênh Email (L21)', () => {
     expect(create).not.toHaveBeenCalled();
   });
 
-  it('create: người nhận ngoài workspace → 422, không ghi', async () => {
+  it('create: người nhận ngoài organization → 422, không ghi', async () => {
     const { service, prisma } = setup({ kind: 'global' });
     const create = vi.fn();
     (prisma.reportSubscription as Record<string, unknown>).create = create;
@@ -1139,7 +1139,7 @@ describe('DigestsService — cấu hình kênh Email (L21)', () => {
         Promise.resolve([
           {
             id: 's1',
-            workspaceId: 'w1',
+            organizationId: 'w1',
             projectId: null,
             channelId: null,
             schedule: 'DAILY',
@@ -1188,7 +1188,7 @@ describe('DigestsService — dự án riêng tư: người không thấy → 404
     const t = setup({ kind: 'global' });
     t.prisma.reportSubscription.findFirst.mockResolvedValue({
       id: 's1',
-      workspaceId: 'w1',
+      organizationId: 'w1',
       projectId: 'pHidden',
       channelId: 'ch1',
       metrics: [],
@@ -1226,7 +1226,7 @@ describe('DigestsService.run — email: xác nhận phía FE + giới hạn tầ
     const t = setup({ kind: 'global' });
     t.prisma.reportSubscription.findFirst.mockResolvedValue({
       id: 's1',
-      workspaceId: 'w1',
+      organizationId: 'w1',
       projectId: null,
       channelId: null,
       metrics: ['summary'],
@@ -1299,13 +1299,13 @@ describe('DigestsService.onSprintCompleted — nội dung & không mất digest 
   function sprintEnd(n: number) {
     const t = setup({ kind: 'global' });
     const p = prismaOf(t.service) as PrismaMock & Record<string, Record<string, Mock>>;
-    p.project = { findFirst: vi.fn(() => Promise.resolve({ workspaceId: 'w1' })) };
+    p.project = { findFirst: vi.fn(() => Promise.resolve({ organizationId: 'w1' })) };
     p.reportSubscription.findMany = vi.fn(() =>
       Promise.resolve(
         Array.from({ length: n }, (_, i) => ({
           id: `s${i}`,
           name: 'T',
-          workspaceId: 'w1',
+          organizationId: 'w1',
           projectId: null,
           channelId: 'ch1',
           metrics: ['summary'],
@@ -1387,7 +1387,7 @@ describe('DigestsService.run — N3 hoàn lastRunAt bằng CAS; M4 báo người
     const t = setup({ kind: 'global' });
     t.prisma.reportSubscription.findFirst.mockResolvedValue({
       id: 's1',
-      workspaceId: 'w1',
+      organizationId: 'w1',
       projectId: 'p1',
       channelId: null,
       metrics: ['summary'],
@@ -1467,9 +1467,9 @@ describe('DigestsService — cờ allowPrivateToChannel không "dính" (N1)', ()
 
   it('N1: dự án đổi công khai ⇄ riêng tư (sự kiện) → xoá cờ của mọi digest gắn dự án đó, digest không tự lên kênh', async () => {
     const { service, prisma } = setup({ kind: 'global' });
-    await service.onProjectVisibilityChanged({ workspaceId: 'w1', projectId: 'p1' });
+    await service.onProjectVisibilityChanged({ organizationId: 'w1', projectId: 'p1' });
     expect(prisma.reportSubscription.updateMany).toHaveBeenCalledWith({
-      where: { workspaceId: 'w1', projectId: 'p1', allowPrivateToChannel: true },
+      where: { organizationId: 'w1', projectId: 'p1', allowPrivateToChannel: true },
       data: { allowPrivateToChannel: false },
     });
     // Thiếu dữ liệu sự kiện / lỗi DB → không ném.
@@ -1478,7 +1478,7 @@ describe('DigestsService — cờ allowPrivateToChannel không "dính" (N1)', ()
     expect(prisma.reportSubscription.updateMany).not.toHaveBeenCalled();
     prisma.reportSubscription.updateMany.mockRejectedValueOnce(new Error('db'));
     await expect(
-      service.onProjectVisibilityChanged({ workspaceId: 'w1', projectId: 'p1' }),
+      service.onProjectVisibilityChanged({ organizationId: 'w1', projectId: 'p1' }),
     ).resolves.toBeUndefined();
   });
 });

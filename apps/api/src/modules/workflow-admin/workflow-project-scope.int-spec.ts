@@ -25,15 +25,15 @@ let svc: WorkflowSchemeService;
 async function seedBase(): Promise<void> {
   for (const u of ['u', 'o'])
     await prisma.user.create({ data: { id: id(u), email: `${id(u)}@ps.test`, displayName: u } });
-  await prisma.workspace.create({ data: { id: WS, name: WS, slug: WS, ownerId: id('o') } });
+  await prisma.organization.create({ data: { id: WS, name: WS, slug: WS, ownerId: id('o') } });
   await prisma.resolution.create({
-    data: { id: id('res'), workspaceId: WS, name: 'Done', isDefault: true },
+    data: { id: id('res'), organizationId: WS, name: 'Done', isDefault: true },
   });
   for (const [wf, name, names] of [
     ['old', 'Cũ', ['Cần làm', 'Đang làm', 'Xong']],
     ['std', 'Standard', ['To Do', 'In Progress', 'Done']],
   ] as const) {
-    await prisma.workflow.create({ data: { id: id(wf), workspaceId: WS, name } });
+    await prisma.workflow.create({ data: { id: id(wf), organizationId: WS, name } });
     await prisma.status.createMany({
       data: names.map((n, i) => ({
         id: id(`${wf}-${i}`),
@@ -46,10 +46,10 @@ async function seedBase(): Promise<void> {
     });
   }
   await prisma.issueType.create({
-    data: { id: id('t'), workspaceId: WS, name: 'Task', key: 'TASK' },
+    data: { id: id('t'), organizationId: WS, name: 'Task', key: 'TASK' },
   });
-  await prisma.workspaceWorkflowScheme.create({
-    data: { workspaceId: WS, issueTypeId: id('t'), workflowId: id('old') },
+  await prisma.organizationWorkflowScheme.create({
+    data: { organizationId: WS, issueTypeId: id('t'), workflowId: id('old') },
   });
   for (const [p, key, priv] of [
     ['pa', 'PSA', false],
@@ -58,7 +58,7 @@ async function seedBase(): Promise<void> {
     await prisma.project.create({
       data: {
         id: id(p),
-        workspaceId: WS,
+        organizationId: WS,
         key,
         name: key,
         isPrivate: priv,
@@ -79,7 +79,7 @@ async function seedBase(): Promise<void> {
         id: id(`i-${p}`),
         key: `${key}-1`,
         number: 1,
-        workspaceId: WS,
+        organizationId: WS,
         projectId: id(p),
         typeId: id('t'),
         statusId: id('old-1'),
@@ -101,7 +101,7 @@ async function seedRefs(): Promise<void> {
     await prisma.automationRule.create({
       data: {
         id: id(r),
-        workspaceId: WS,
+        organizationId: WS,
         projectId,
         name: `Quy tắc ${r}`,
         trigger: 'ISSUE_TRANSITIONED',
@@ -116,21 +116,21 @@ async function seedRefs(): Promise<void> {
     data: [
       {
         id: id('f-own'),
-        workspaceId: WS,
+        organizationId: WS,
         ownerId: id('u'),
         name: 'Của tôi',
         jql: 'status = "Đang làm"',
       },
       {
         id: id('f-other'),
-        workspaceId: WS,
+        organizationId: WS,
         ownerId: id('o'),
         name: 'Riêng của người khác',
         jql: 'status = "Đang làm"',
       },
       {
         id: id('f-shared'),
-        workspaceId: WS,
+        organizationId: WS,
         ownerId: id('o'),
         name: 'Chia sẻ cả tổ chức',
         jql: 'status = "Đang làm"',
@@ -146,7 +146,7 @@ async function seedRefs(): Promise<void> {
   await prisma.dashboard.create({
     data: {
       id: id('dash'),
-      workspaceId: WS,
+      organizationId: WS,
       ownerId: id('o'),
       projectId: id('pb'),
       name: 'Tổng quan B',
@@ -181,8 +181,8 @@ beforeAll(async () => {
 
 afterAll(async () => {
   if (!prisma) return;
-  await prisma.project.deleteMany({ where: { workspaceId: WS } });
-  await prisma.workspace.deleteMany({ where: { id: WS } });
+  await prisma.project.deleteMany({ where: { organizationId: WS } });
+  await prisma.organization.deleteMany({ where: { id: WS } });
   await prisma.user.deleteMany({ where: { id: { startsWith: TAG } } });
   await prisma.$disconnect();
 }, 60_000);
@@ -240,12 +240,12 @@ describe.skipIf(!DB_URL)('đổi quy trình của MỘT dự án ↔ Postgres th
     expect(await ruleTrigger('rb')).toEqual({ toStatusId: id('old-1') });
     expect(await ruleTrigger('rws')).toEqual({ toStatusId: id('old-1') });
     const enabled = await prisma.automationRule.findMany({
-      where: { workspaceId: WS },
+      where: { organizationId: WS },
       select: { id: true, enabled: true },
     });
     expect(enabled.every((r) => r.enabled)).toBe(true);
     const issues = await prisma.issue.findMany({
-      where: { workspaceId: WS },
+      where: { organizationId: WS },
       select: { id: true, statusId: true },
     });
     expect(issues.find((i) => i.id === id('i-pa'))!.statusId).toBe(id('std-1'));

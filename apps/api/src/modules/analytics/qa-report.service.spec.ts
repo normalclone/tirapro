@@ -68,7 +68,7 @@ const FROM = '2026-10-01';
 const TO = '2026-10-15';
 
 describe('QaReportService.report — truy cập và tham số', () => {
-  it('dự án không thuộc workspace => 404', async () => {
+  it('dự án không thuộc organization => 404', async () => {
     const { svc } = make({ project: null });
     await expect(svc.report('W1', 'PX')).rejects.toBeInstanceOf(NotFoundAppException);
   });

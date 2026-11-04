@@ -3,7 +3,9 @@ import { NotificationsService } from './notifications.service';
 
 const visible = { OR: [{ isPrivate: false }, { memberships: { some: { userId: 'u1' } } }] };
 
-function setup(opts: { isSystemAdmin?: boolean; workspaces?: string[]; visible?: unknown } = {}) {
+function setup(
+  opts: { isSystemAdmin?: boolean; organizations?: string[]; visible?: unknown } = {},
+) {
   const prisma = {
     notification: {
       findMany: vi.fn((_a?: unknown) => Promise.resolve([] as unknown[])),
@@ -15,9 +17,11 @@ function setup(opts: { isSystemAdmin?: boolean; workspaces?: string[]; visible?:
         Promise.resolve([] as { id: string; displayName: string; avatarUrl?: string | null }[]),
       ),
     },
-    workspaceMembership: {
+    organizationMembership: {
       findMany: vi.fn(() =>
-        Promise.resolve((opts.workspaces ?? ['w1']).map((workspaceId) => ({ workspaceId }))),
+        Promise.resolve(
+          (opts.organizations ?? ['w1']).map((organizationId) => ({ organizationId })),
+        ),
       ),
     },
   };
@@ -64,13 +68,13 @@ describe('NotificationsService.listMine — lọc phía API', () => {
 });
 
 describe('NotificationsService — dự án riêng tư: thông báo cũ của dự án không còn thấy biến mất (P16)', () => {
-  it('listMine: OR [không gắn việc, việc của dự án còn thấy được theo từng workspace]', async () => {
+  it('listMine: OR [không gắn việc, việc của dự án còn thấy được theo từng organization]', async () => {
     const { service, prisma, access } = setup({ visible });
     await service.listMine('u1', undefined, 30);
     expect(access.visibleWhere).toHaveBeenCalledWith('u1', 'w1');
     expect(whereOf(prisma.notification.findMany)).toEqual({
       recipientId: 'u1',
-      OR: [{ issueId: null }, { workspaceId: 'w1', issue: { project: visible } }],
+      OR: [{ issueId: null }, { organizationId: 'w1', issue: { project: visible } }],
     });
   });
 
@@ -80,16 +84,16 @@ describe('NotificationsService — dự án riêng tư: thông báo cũ của d�
     expect(whereOf(prisma.notification.count)).toEqual({
       recipientId: 'u1',
       readAt: null,
-      OR: [{ issueId: null }, { workspaceId: 'w1', issue: { project: visible } }],
+      OR: [{ issueId: null }, { organizationId: 'w1', issue: { project: visible } }],
     });
   });
 
-  it('người thấy hết dự án (admin workspace): vẫn chỉ trong workspace còn là thành viên; mỗi workspace một điều kiện', async () => {
-    const { service, prisma } = setup({ workspaces: ['w1', 'w2'], visible: {} });
+  it('người thấy hết dự án (admin organization): vẫn chỉ trong organization còn là thành viên; mỗi organization một điều kiện', async () => {
+    const { service, prisma } = setup({ organizations: ['w1', 'w2'], visible: {} });
     await service.listMine('u1', undefined, 30);
     expect(whereOf(prisma.notification.findMany)).toEqual({
       recipientId: 'u1',
-      OR: [{ issueId: null }, { workspaceId: 'w1' }, { workspaceId: 'w2' }],
+      OR: [{ issueId: null }, { organizationId: 'w1' }, { organizationId: 'w2' }],
     });
   });
 

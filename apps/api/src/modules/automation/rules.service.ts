@@ -29,7 +29,7 @@ import { ProjectAccessService } from '../rbac/project-access.service';
 import { maskWebhookActions, openSecret, sealWebhookActions } from './webhook-secret';
 
 const CACHE_TTL_SEC = 60;
-const cacheKey = (workspaceId: string) => `automation:rules:${workspaceId}`;
+const cacheKey = (organizationId: string) => `automation:rules:${organizationId}`;
 const RUNS_PAGE = 50;
 
 type RuleRow = AutomationRule;
@@ -40,7 +40,7 @@ export type CachedRule = Omit<RuleRow, 'lastRunAt' | 'createdAt' | 'updatedAt'> 
 };
 
 /**
- * CRUD quy tắc automation + cache danh sách quy tắc đang bật theo workspace
+ * CRUD quy tắc automation + cache danh sách quy tắc đang bật theo tổ chức
  * (Redis 60 giây khi có, nếu không thì Map trong bộ nhớ). Cache bị xoá khi quy tắc đổi.
  */
 @Injectable()
@@ -57,20 +57,20 @@ export class RulesService {
 
   /* ------------------------------ cache ------------------------------ */
 
-  /** Quy tắc ĐANG BẬT của workspace áp cho `trigger` + dự án của issue (rule.projectId null = cả workspace). */
+  /** Quy tắc ĐANG BẬT của tổ chức áp cho `trigger` + dự án của issue (rule.projectId null = cả tổ chức). */
   async activeFor(
-    workspaceId: string,
+    organizationId: string,
     trigger: RuleTrigger,
     projectId: string,
   ): Promise<CachedRule[]> {
-    const all = await this.enabledRules(workspaceId);
+    const all = await this.enabledRules(organizationId);
     return all.filter(
       (r) => r.trigger === trigger && (r.projectId === null || r.projectId === projectId),
     );
   }
 
-  private async enabledRules(workspaceId: string): Promise<CachedRule[]> {
-    const key = cacheKey(workspaceId);
+  private async enabledRules(organizationId: string): Promise<CachedRule[]> {
+    const key = cacheKey(organizationId);
     const client = this.redis.isAvailable() ? this.redis.getClient() : null;
     if (client) {
       try {
@@ -80,11 +80,11 @@ export class RulesService {
         /* Redis lỗi: đọc thẳng DB */
       }
     } else {
-      const m = this.memory.get(workspaceId);
+      const m = this.memory.get(organizationId);
       if (m && Date.now() - m.at < CACHE_TTL_SEC * 1000) return m.rules;
     }
     const rows = await this.prisma.automationRule.findMany({
-      where: { workspaceId, enabled: true },
+      where: { organizationId, enabled: true },
       orderBy: { createdAt: 'asc' },
     });
     const rules: CachedRule[] = rows.map((r) => ({
@@ -92,38 +92,38 @@ export class RulesService {
       lastRunAt: r.lastRunAt?.toISOString() ?? null,
     }));
     if (client) client.set(key, JSON.stringify(rules), 'EX', CACHE_TTL_SEC).catch(() => undefined);
-    else this.memory.set(workspaceId, { at: Date.now(), rules });
+    else this.memory.set(organizationId, { at: Date.now(), rules });
     return rules;
   }
 
   /** Hệ thống sửa/tắt quy tắc hàng loạt (đổi quy trình theo loại việc, xoá trạng thái) → bỏ cache để engine đọc bản mới. */
   @OnEvent(DOMAIN_EVENTS.AUTOMATION_RULES_CHANGED)
-  async onRulesChanged(p: { workspaceId: string }): Promise<void> {
-    await this.invalidate(p.workspaceId);
+  async onRulesChanged(p: { organizationId: string }): Promise<void> {
+    await this.invalidate(p.organizationId);
   }
 
-  async invalidate(workspaceId: string): Promise<void> {
-    this.memory.delete(workspaceId);
+  async invalidate(organizationId: string): Promise<void> {
+    this.memory.delete(organizationId);
     const client = this.redis.isAvailable() ? this.redis.getClient() : null;
-    if (client) await client.del(cacheKey(workspaceId)).catch(() => undefined);
+    if (client) await client.del(cacheKey(organizationId)).catch(() => undefined);
   }
 
   /* ------------------------------- CRUD ------------------------------ */
 
   /**
-   * Quy tắc của dự án riêng tư người xem không thấy bị loại (không có `projectId`: trước đây trả TẤT CẢ quy tắc workspace —
-   * lộ tên quy tắc/điều kiện/hành động của dự án riêng tư). Quy tắc cả workspace luôn hiện.
+   * Quy tắc của dự án riêng tư người xem không thấy bị loại (không có `projectId`: trước đây trả TẤT CẢ quy tắc tổ chức —
+   * lộ tên quy tắc/điều kiện/hành động của dự án riêng tư). Quy tắc cả tổ chức luôn hiện.
    */
   async list(
-    workspaceId: string,
+    organizationId: string,
     projectId: string | undefined,
     viewerId: string,
   ): Promise<AutomationRuleDto[]> {
-    const ids = await this.access.visibleProjectIds(viewerId, workspaceId);
+    const ids = await this.access.visibleProjectIds(viewerId, organizationId);
     const rows = await this.prisma.automationRule.findMany({
       where: {
-        workspaceId,
-        // Có projectId: quy tắc của dự án đó + quy tắc cả workspace; không có: tất cả dự án người xem thấy.
+        organizationId,
+        // Có projectId: quy tắc của dự án đó + quy tắc cả tổ chức; không có: tất cả dự án người xem thấy.
         ...(projectId ? { OR: [{ projectId }, { projectId: null }] } : {}),
         ...(ids === null
           ? {}
@@ -135,21 +135,21 @@ export class RulesService {
     return rows.map((r) => this.toDto(r));
   }
 
-  async get(workspaceId: string, id: string): Promise<AutomationRuleDto> {
-    return this.toDto(await this.require(workspaceId, id));
+  async get(organizationId: string, id: string): Promise<AutomationRuleDto> {
+    return this.toDto(await this.require(organizationId, id));
   }
 
   async create(
-    workspaceId: string,
+    organizationId: string,
     userId: string,
     input: CreateRuleInput,
   ): Promise<AutomationRuleDto> {
-    if (input.projectId) await this.assertProject(workspaceId, input.projectId);
+    if (input.projectId) await this.assertProject(organizationId, input.projectId);
     this.assertSemantics(input.trigger, input.triggerConfig, input.conditions);
     this.assertActionsSavable(input.actions);
     const row = await this.prisma.automationRule.create({
       data: {
-        workspaceId,
+        organizationId,
         projectId: input.projectId ?? null,
         name: input.name,
         enabled: input.enabled ?? true,
@@ -160,16 +160,16 @@ export class RulesService {
         createdById: userId,
       },
     });
-    await this.invalidate(workspaceId);
+    await this.invalidate(organizationId);
     return this.toDto(row);
   }
 
   async update(
-    workspaceId: string,
+    organizationId: string,
     id: string,
     input: UpdateRuleInput,
   ): Promise<AutomationRuleDto> {
-    const current = await this.require(workspaceId, id);
+    const current = await this.require(organizationId, id);
     await assertProjectIdWritable(this.prisma, current.projectId);
     const trigger = input.trigger ?? current.trigger;
     const triggerConfig = input.triggerConfig ?? (current.triggerConfig as Record<string, unknown>);
@@ -177,7 +177,7 @@ export class RulesService {
     this.assertSemantics(trigger, triggerConfig, conditions);
     if (input.actions !== undefined) this.assertActionsSavable(input.actions);
     const { count } = await this.prisma.automationRule.updateMany({
-      where: { id, workspaceId },
+      where: { id, organizationId },
       data: {
         ...(input.name !== undefined ? { name: input.name } : {}),
         ...(input.enabled !== undefined ? { enabled: input.enabled } : {}),
@@ -198,8 +198,8 @@ export class RulesService {
       },
     });
     if (count === 0) throw new NotFoundAppException('Quy tắc');
-    await this.invalidate(workspaceId);
-    return this.get(workspaceId, id);
+    await this.invalidate(organizationId);
+    return this.get(organizationId, id);
   }
 
   /**
@@ -218,17 +218,19 @@ export class RulesService {
       );
   }
 
-  async remove(workspaceId: string, id: string): Promise<{ success: true }> {
-    const row = await this.require(workspaceId, id);
+  async remove(organizationId: string, id: string): Promise<{ success: true }> {
+    const row = await this.require(organizationId, id);
     await assertProjectIdWritable(this.prisma, row.projectId);
-    const { count } = await this.prisma.automationRule.deleteMany({ where: { id, workspaceId } });
+    const { count } = await this.prisma.automationRule.deleteMany({
+      where: { id, organizationId },
+    });
     if (count === 0) throw new NotFoundAppException('Quy tắc');
-    await this.invalidate(workspaceId);
+    await this.invalidate(organizationId);
     return { success: true };
   }
 
-  async runs(workspaceId: string, id: string, cursor?: string): Promise<AutomationRunDto[]> {
-    await this.require(workspaceId, id);
+  async runs(organizationId: string, id: string, cursor?: string): Promise<AutomationRunDto[]> {
+    await this.require(organizationId, id);
     const rows = await this.prisma.automationRun.findMany({
       where: { ruleId: id },
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
@@ -239,7 +241,7 @@ export class RulesService {
     const keys = issueIds.length
       ? // allow-deleted: chỉ tra mã để hiển thị lịch sử chạy — issue đã xoá vẫn phải hiện đúng mã
         await this.prisma.issue.findMany({
-          where: { id: { in: issueIds }, workspaceId },
+          where: { id: { in: issueIds }, organizationId },
           select: { id: true, key: true },
         })
       : [];
@@ -261,18 +263,18 @@ export class RulesService {
     return openSecret(this.cipher, stored);
   }
 
-  /** Dùng bởi controller/engine: quy tắc thuộc workspace hoặc NotFound. */
-  async require(workspaceId: string, id: string): Promise<RuleRow> {
-    const row = await this.prisma.automationRule.findFirst({ where: { id, workspaceId } });
+  /** Dùng bởi controller/engine: quy tắc thuộc tổ chức hoặc NotFound. */
+  async require(organizationId: string, id: string): Promise<RuleRow> {
+    const row = await this.prisma.automationRule.findFirst({ where: { id, organizationId } });
     if (!row) throw new NotFoundAppException('Quy tắc');
     return row;
   }
 
   /* ----------------------------- validation --------------------------- */
 
-  private async assertProject(workspaceId: string, projectId: string): Promise<void> {
+  private async assertProject(organizationId: string, projectId: string): Promise<void> {
     const p = await this.prisma.project.findFirst({
-      where: { id: projectId, workspaceId, deletedAt: null },
+      where: { id: projectId, organizationId, deletedAt: null },
       select: { id: true, archivedAt: true },
     });
     if (!p) throw new NotFoundAppException('Dự án');
@@ -318,7 +320,7 @@ export class RulesService {
   private toDto(r: RuleRow): AutomationRuleDto {
     return {
       id: r.id,
-      workspaceId: r.workspaceId,
+      organizationId: r.organizationId,
       projectId: r.projectId,
       name: r.name,
       enabled: r.enabled,

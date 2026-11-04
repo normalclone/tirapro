@@ -43,21 +43,21 @@ export class AnalyticsService {
     private readonly access: ProjectAccessService,
   ) {}
 
-  // ---------- Tổng quan workspace (mọi dự án người xem được thấy) ----------
+  // ---------- Tổng quan tổ chức (mọi dự án người xem được thấy) ----------
   /**
    * `viewerId`: chỉ tính/hiện dự án người đó được thấy (dự án riêng tư chỉ cho thành viên + admin).
    * Số liệu hai người xem có thể khác nhau. `viewerId` bắt buộc.
    */
-  async workspaceOverview(workspaceId: string, viewerId: string) {
-    const visible = await this.access.visibleWhere(viewerId, workspaceId);
-    const visibleIds = await this.access.visibleProjectIds(viewerId, workspaceId, visible);
+  async organizationOverview(organizationId: string, viewerId: string) {
+    const visible = await this.access.visibleWhere(viewerId, organizationId);
+    const visibleIds = await this.access.visibleProjectIds(viewerId, organizationId, visible);
     const now = new Date();
     const DAY = 24 * 3600 * 1000;
     const WEEK = 7 * DAY;
     const HIGH_RANK = 4; // High/Highest
 
     const projects = await this.prisma.project.findMany({
-      where: { workspaceId, deletedAt: null, isArchived: false, ...visible },
+      where: { organizationId, deletedAt: null, isArchived: false, ...visible },
       select: { id: true, key: true, name: true },
       orderBy: { createdAt: 'asc' },
     });
@@ -81,7 +81,7 @@ export class AnalyticsService {
     // Việc chưa duyệt/từ chối/hoãn (Việc mới vào) KHÔNG lẫn vào số liệu — như Board/Việc chờ/QA/KR. Bỏ vào `AND` (không
     // spread `OR` của TRIAGE_VISIBLE) vì các where dẫn xuất bên dưới có `OR` riêng ở gốc.
     const baseWhere: Prisma.IssueWhereInput = {
-      workspaceId,
+      organizationId,
       deletedAt: null,
       project: { deletedAt: null, ...visible },
       AND: [TRIAGE_VISIBLE],
@@ -133,8 +133,8 @@ export class AnalyticsService {
       }),
       this.prisma.issue.groupBy({ by: ['priorityId'], where: baseWhere, _count: { _all: true } }),
       this.prisma.issue.groupBy({ by: ['projectId'], where: overdueWhere, _count: { _all: true } }),
-      this.weekBuckets('createdAt', workspaceId, now, visibleIds),
-      this.weekBuckets('resolvedAt', workspaceId, now, visibleIds),
+      this.weekBuckets('createdAt', organizationId, now, visibleIds),
+      this.weekBuckets('resolvedAt', organizationId, now, visibleIds),
       this.prisma.issue.count({
         where: { ...baseWhere, resolvedAt: { gte: new Date(now.getTime() - 14 * DAY) } },
       }),
@@ -260,7 +260,7 @@ export class AnalyticsService {
 
     // Sức khoẻ: một lô cho mọi dự án đang hiển thị (danh sách đã là dự án sống, chưa lưu trữ).
     const healthMap = await this.health.forProjects(
-      workspaceId,
+      organizationId,
       projects.map((p) => p.id),
       viewerId,
     );
@@ -300,8 +300,8 @@ export class AnalyticsService {
   }
 
   // ---------- Báo cáo tổng hợp 1 dự án (cho màn Reports) ----------
-  async projectReport(workspaceId: string, projectId: string) {
-    await this.requireProject(workspaceId, projectId);
+  async projectReport(organizationId: string, projectId: string) {
+    await this.requireProject(organizationId, projectId);
     const now = new Date();
     const DAY = 24 * 3600 * 1000;
     const HIGH_RANK = 4; // High/Highest
@@ -511,7 +511,7 @@ export class AnalyticsService {
     });
 
     const health =
-      (await this.health.forProjects(workspaceId, [projectId], null)).get(projectId) ?? null; // đã qua guard dự án
+      (await this.health.forProjects(organizationId, [projectId], null)).get(projectId) ?? null; // đã qua guard dự án
 
     return {
       totals,
@@ -533,7 +533,7 @@ export class AnalyticsService {
 
   // ---------- Burndown (1 sprint) ----------
   async burndown(
-    workspaceId: string,
+    organizationId: string,
     projectId: string,
     sprintId: string,
   ): Promise<BurndownReport> {
@@ -544,7 +544,7 @@ export class AnalyticsService {
         id: sprintId,
         projectId,
         deletedAt: null,
-        project: { workspaceId, deletedAt: null },
+        project: { organizationId, deletedAt: null },
       },
       include: {
         issues: {
@@ -633,7 +633,7 @@ export class AnalyticsService {
 
   // ---------- Tổng kết sprint (1 sprint) ----------
   async sprintSummary(
-    workspaceId: string,
+    organizationId: string,
     projectId: string,
     sprintId: string,
   ): Promise<SprintSummaryReport> {
@@ -643,7 +643,7 @@ export class AnalyticsService {
         id: sprintId,
         projectId,
         deletedAt: null,
-        project: { workspaceId, deletedAt: null },
+        project: { organizationId, deletedAt: null },
       },
       include: {
         snapshots: {
@@ -754,8 +754,8 @@ export class AnalyticsService {
   }
 
   // ---------- Velocity (N sprint CLOSED gần nhất) ----------
-  async velocity(workspaceId: string, projectId: string, limit = 8): Promise<VelocityReport> {
-    await this.requireProject(workspaceId, projectId);
+  async velocity(organizationId: string, projectId: string, limit = 8): Promise<VelocityReport> {
+    await this.requireProject(organizationId, projectId);
     const sprints = await this.prisma.sprint.findMany({
       where: { projectId, state: 'CLOSED', deletedAt: null },
       orderBy: { sequence: 'desc' },
@@ -793,12 +793,12 @@ export class AnalyticsService {
    * STATUS không xuất hiện; issue xoá mềm vẫn được tính (giống bản cũ).
    */
   async cfd(
-    workspaceId: string,
+    organizationId: string,
     projectId: string,
     fromStr?: string,
     toStr?: string,
   ): Promise<CfdReport> {
-    await this.requireProject(workspaceId, projectId);
+    await this.requireProject(organizationId, projectId);
     const { from, to } = range(fromStr, toStr);
     const days = eachDay(from, to);
     const lo = new Date(`${days[0]}T00:00:00.000Z`);
@@ -840,12 +840,12 @@ export class AnalyticsService {
 
   // ---------- Created vs Resolved ----------
   async createdResolved(
-    workspaceId: string,
+    organizationId: string,
     projectId: string,
     fromStr?: string,
     toStr?: string,
   ): Promise<CreatedResolvedReport> {
-    await this.requireProject(workspaceId, projectId);
+    await this.requireProject(organizationId, projectId);
     const { from, to } = range(fromStr, toStr);
     const days = eachDay(from, to);
     const lo = new Date(`${days[0]}T00:00:00.000Z`);
@@ -879,13 +879,13 @@ export class AnalyticsService {
   }
 
   /**
-   * Đếm issue của workspace theo "tuổi tuần" của một cột thời gian: idx 0 = 7 ngày gần nhất tính lùi từ
+   * Đếm issue của tổ chức theo "tuổi tuần" của một cột thời gian: idx 0 = 7 ngày gần nhất tính lùi từ
    * `now`, idx 7 = tuần thứ 8. Tên cột là literal cố định (không nhận từ người dùng); mọi giá trị khác
    * đều là tham số bind.
    */
   private async weekBuckets(
     column: 'createdAt' | 'resolvedAt',
-    workspaceId: string,
+    organizationId: string,
     now: Date,
     /** null = không giới hạn; ngược lại chỉ đếm việc của các dự án này (dự án riêng tư người xem không thấy bị loại). */
     visibleIds: string[] | null = null,
@@ -900,7 +900,7 @@ export class AnalyticsService {
             SELECT floor(extract(epoch FROM (${utc(now)} - "createdAt")) / 604800) AS idx,
                    count(*) AS n
             FROM "Issue"
-            WHERE "workspaceId" = ${workspaceId} AND "deletedAt" IS NULL
+            WHERE "organizationId" = ${organizationId} AND "deletedAt" IS NULL
               AND EXISTS (SELECT 1 FROM "Project" p WHERE p."id" = "Issue"."projectId" AND p."deletedAt" IS NULL)
               ${onlyVisible}
               AND ${triageVisibleSql()}
@@ -910,7 +910,7 @@ export class AnalyticsService {
             SELECT floor(extract(epoch FROM (${utc(now)} - "resolvedAt")) / 604800) AS idx,
                    count(*) AS n
             FROM "Issue"
-            WHERE "workspaceId" = ${workspaceId} AND "deletedAt" IS NULL
+            WHERE "organizationId" = ${organizationId} AND "deletedAt" IS NULL
               AND EXISTS (SELECT 1 FROM "Project" p WHERE p."id" = "Issue"."projectId" AND p."deletedAt" IS NULL)
               ${onlyVisible}
               AND ${triageVisibleSql()}
@@ -921,9 +921,9 @@ export class AnalyticsService {
       .filter((r) => r.idx >= 0 && r.idx <= 7);
   }
 
-  private async requireProject(workspaceId: string, projectId: string) {
+  private async requireProject(organizationId: string, projectId: string) {
     const p = await this.prisma.project.findFirst({
-      where: { id: projectId, workspaceId, deletedAt: null },
+      where: { id: projectId, organizationId, deletedAt: null },
       select: { id: true },
     });
     if (!p) throw new NotFoundAppException('Dự án');

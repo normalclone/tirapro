@@ -207,14 +207,14 @@ async function main() {
   ).json?.accessToken;
   if (!TOKEN) throw new Error('Không đăng nhập được — API chạy chưa?');
 
-  const ws = await prisma.workspace.findFirst({ orderBy: { createdAt: 'asc' } });
-  const project = await prisma.project.findFirst({ where: { key: 'DEMO', workspaceId: ws.id } });
+  const ws = await prisma.organization.findFirst({ orderBy: { createdAt: 'asc' } });
+  const project = await prisma.project.findFirst({ where: { key: 'DEMO', organizationId: ws.id } });
   const statuses = await prisma.status.findMany({
     where: { workflowId: project.defaultWorkflowId },
   });
-  const types = await prisma.issueType.findMany({ where: { workspaceId: ws.id } });
-  const prios = await prisma.priority.findMany({ where: { workspaceId: ws.id } });
-  const sevs = await prisma.severity.findMany({ where: { workspaceId: ws.id } });
+  const types = await prisma.issueType.findMany({ where: { organizationId: ws.id } });
+  const prios = await prisma.priority.findMany({ where: { organizationId: ws.id } });
+  const sevs = await prisma.severity.findMany({ where: { organizationId: ws.id } });
   const sid = (name) => statuses.find((s) => s.name === name).id;
   const catOf = (name) => statuses.find((s) => s.name === name).category;
   const tid = (name) => types.find((t) => t.name === name).id;
@@ -400,7 +400,7 @@ async function main() {
   ];
   for (const f of wantFilters)
     if (!filters.find((x) => x.name === f.name))
-      await api('POST', '/filters', { ...f, visibility: 'WORKSPACE' });
+      await api('POST', '/filters', { ...f, visibility: 'ORGANIZATION' });
   console.log('🔎 saved filters');
 
   // 9) Watch + link

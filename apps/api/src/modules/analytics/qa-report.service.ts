@@ -55,13 +55,13 @@ export class QaReportService {
   constructor(private readonly prisma: PrismaService) {}
 
   async report(
-    workspaceId: string,
+    organizationId: string,
     projectId: string,
     fromStr?: string,
     toStr?: string,
   ): Promise<QaReportDto> {
     const project = await this.prisma.project.findFirst({
-      where: { id: projectId, workspaceId, deletedAt: null },
+      where: { id: projectId, organizationId, deletedAt: null },
       select: { id: true },
     });
     if (!project) throw new NotFoundAppException('Dự án');
@@ -86,7 +86,7 @@ export class QaReportService {
         this.statusEvents(projectId, from, to),
         this.closeTime(projectId, from, to),
         this.prisma.severity.findMany({
-          where: { workspaceId },
+          where: { organizationId },
           select: { id: true, name: true, color: true, rank: true },
         }),
         this.prisma.version.findMany({

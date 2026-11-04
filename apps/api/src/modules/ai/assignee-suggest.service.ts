@@ -69,13 +69,13 @@ export class AssigneeSuggestService {
   ) {}
 
   async suggest(
-    workspaceId: string,
+    organizationId: string,
     userId: string,
     input: SuggestAssigneeInput,
   ): Promise<AiAssigneeSuggestResult> {
     // Kiểm issue THUỘC dự án trong body (PermissionsGuard chỉ kiểm quyền trên projectId đó).
     const issue = await this.prisma.issue.findFirst({
-      where: { id: input.issueId, projectId: input.projectId, workspaceId, deletedAt: null },
+      where: { id: input.issueId, projectId: input.projectId, organizationId, deletedAt: null },
       select: {
         id: true,
         summary: true,
@@ -102,7 +102,7 @@ export class AssigneeSuggestService {
     if (candidates.length < 2) return { source: 'heuristic', suggestions: top };
 
     const ranked = await this.rankWithClaude(
-      workspaceId,
+      organizationId,
       userId,
       issue,
       candidates.slice(0, MAX_CANDIDATES),
@@ -295,7 +295,7 @@ export class AssigneeSuggestService {
 
   // ---------- Claude ----------
   private async rankWithClaude(
-    workspaceId: string,
+    organizationId: string,
     userId: string,
     issue: { summary: string; type: { name: string } },
     candidates: Candidate[],
@@ -312,7 +312,7 @@ export class AssigneeSuggestService {
       const { data, reason } = await this.claude.extract<{
         ranking: { id: string; reason: string }[];
       }>({
-        ctx: { workspaceId, userId, feature: 'suggest-assignee' },
+        ctx: { organizationId, userId, feature: 'suggest-assignee' },
         model: this.claude.modelFast,
         system:
           'Bạn giúp trưởng nhóm chọn người nhận một công việc. Cho bảng số liệu của các ứng viên đã ẩn danh (u1, u2…), ' +

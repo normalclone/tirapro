@@ -11,7 +11,7 @@ export async function runCreateSubtask(
   a: Extract<RuleAction, { type: 'createSubtask' }>,
 ): Promise<ActionResult> {
   const type = await ctx.deps.prisma.issueType.findFirst({
-    where: { id: a.typeId, workspaceId: ctx.workspaceId },
+    where: { id: a.typeId, organizationId: ctx.organizationId },
     select: { name: true, isSubtask: true },
   });
   if (!type) throw new NotFoundAppException('Loại công việc');
@@ -22,7 +22,7 @@ export async function runCreateSubtask(
   const summary = (await renderTemplate(ctx, a.summary)).slice(0, 255);
   if (ctx.dryRun) return `Sẽ tạo sub-task "${summary}"`;
   const created = await ctx.deps.issues.create(
-    ctx.workspaceId,
+    ctx.organizationId,
     ctx.actorId,
     {
       projectId: ctx.issue.projectId,

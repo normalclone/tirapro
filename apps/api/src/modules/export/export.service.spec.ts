@@ -123,7 +123,7 @@ describe('ExportService.exportIssuesCsv', () => {
       'u1',
       expect.objectContaining({ mode: 'jql', jql: 'type = Bug', limit: 200 }),
     );
-    expect(out.filename).toMatch(/^tirapro-workspace-jql-\d{8}\.csv$/);
+    expect(out.filename).toMatch(/^tirapro-organization-jql-\d{8}\.csv$/);
   });
 
   it('cột theo columns, luôn có Mã đầu tiên; dấu ; khi delimiter=semicolon', async () => {
@@ -206,7 +206,7 @@ describe('ExportService.exportIssuesCsv', () => {
     expect(query).not.toHaveBeenCalled();
   });
 
-  it('projectId không có trong workspace → NotFoundAppException', async () => {
+  it('projectId không có trong organization → NotFoundAppException', async () => {
     const { svc, prisma } = setup();
     prisma.project.findFirst.mockResolvedValue(null);
     await expect(

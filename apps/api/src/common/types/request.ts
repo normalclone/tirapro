@@ -5,9 +5,9 @@ export interface AuthUser {
   id: string;
   email: string;
   displayName: string;
-  workspaceId: string | null;
+  organizationId: string | null;
   isSystemAdmin: boolean;
-  /** Quyền hiệu lực trong workspace hiện tại (PermissionsGuard nạp). */
+  /** Quyền hiệu lực trong tổ chức hiện tại (PermissionsGuard nạp). */
   permissions?: PermissionKey[];
 }
 

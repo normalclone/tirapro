@@ -11,7 +11,7 @@ import {
 import { ERROR_CODES, type AffectedRuleDto, type WorkflowUsageDto } from '@tirapro/types';
 import { moveIssuesToStatus } from './issue-status-move';
 import { systemActorId } from './system-actor';
-import { lockWorkspaceWorkflows } from './workflow-move';
+import { lockOrganizationWorkflows } from './workflow-move';
 import { publishRuleChanges, rewriteRuleStatusRefs } from './rule-status-refs';
 import { NotificationsService } from '../notifications/notifications.service';
 import { WorkflowResolver } from './workflow-resolver.service';
@@ -43,7 +43,7 @@ export interface TransitionDto {
 
 export interface WorkflowDto {
   id: string;
-  workspaceId: string;
+  organizationId: string;
   projectId: string | null;
   name: string;
   description: string | null;
@@ -172,12 +172,12 @@ export class WorkflowAdminService {
 
   /** `viewerId` bắt buộc: quy trình của dự án riêng tư người xem không thấy bị loại; `usedBy` chỉ gồm dự án thấy được. */
   async listWorkflows(
-    workspaceId: string,
+    organizationId: string,
     filter: ListWorkflowsFilter,
     viewerId: string,
   ): Promise<WorkflowDto[]> {
-    const visible = await this.access.visibleWhere(viewerId, workspaceId);
-    const where: Prisma.WorkflowWhereInput = { workspaceId, ...this.readableWhere(visible) };
+    const visible = await this.access.visibleWhere(viewerId, organizationId);
+    const where: Prisma.WorkflowWhereInput = { organizationId, ...this.readableWhere(visible) };
     // Mẫu (projectId = null) không bị ảnh hưởng; quy trình của dự án trong thùng rác ẩn đi, khôi phục dự án thì hiện lại.
     if (!filter.includeTrashed)
       where.AND = [{ OR: [{ projectId: null }, { project: { deletedAt: null } }] }];
@@ -189,7 +189,7 @@ export class WorkflowAdminService {
       orderBy: [{ isDefault: 'desc' }, { name: 'asc' }],
     });
     const usedBy = await this.usedByMap(
-      workspaceId,
+      organizationId,
       rows.map((r) => r.id),
       visible,
     );
@@ -201,7 +201,7 @@ export class WorkflowAdminService {
    * lấy dự án người xem thấy + MỘT groupBy đếm dự án không thấy (`hidden`). `visible` = `{}` → thấy hết, `hidden` rỗng.
    */
   private async usedByMap(
-    workspaceId: string,
+    organizationId: string,
     workflowIds: string[],
     visible: Prisma.ProjectWhereInput,
   ): Promise<Map<string, UsedBy>> {
@@ -214,7 +214,7 @@ export class WorkflowAdminService {
     };
     // allow-deleted: liệt kê cả dự án đã xoá mềm vì chúng vẫn giữ tham chiếu
     const projects = await this.prisma.project.findMany({
-      where: { workspaceId, defaultWorkflowId: { in: workflowIds }, ...visible },
+      where: { organizationId, defaultWorkflowId: { in: workflowIds }, ...visible },
       select: { id: true, key: true, name: true, defaultWorkflowId: true, deletedAt: true },
       orderBy: { key: 'asc' },
     });
@@ -231,33 +231,33 @@ export class WorkflowAdminService {
       // allow-deleted: dự án đã xoá mềm (riêng tư) vẫn giữ tham chiếu nên vẫn chặn xoá quy trình
       const hidden = await this.prisma.project.groupBy({
         by: ['defaultWorkflowId'],
-        where: { workspaceId, defaultWorkflowId: { in: workflowIds }, NOT: visible },
+        where: { organizationId, defaultWorkflowId: { in: workflowIds }, NOT: visible },
         _count: { _all: true },
       });
       for (const h of hidden) {
         if (h.defaultWorkflowId) entry(h.defaultWorkflowId).hiddenCount = h._count._all;
       }
     }
-    await this.addSchemeUsage(workspaceId, workflowIds, visible, entry);
+    await this.addSchemeUsage(organizationId, workflowIds, visible, entry);
     return map;
   }
 
   /** Loại việc của tổ chức + ghi đè của dự án đang trỏ vào các quy trình `workflowIds`. */
   private async addSchemeUsage(
-    workspaceId: string,
+    organizationId: string,
     workflowIds: string[],
     visible: Prisma.ProjectWhereInput,
     entry: (id: string) => UsedBy,
   ): Promise<void> {
     const typeKey = (t: { key: string | null; name: string }) => t.key ?? t.name;
-    const scheme = await this.prisma.workspaceWorkflowScheme.findMany({
-      where: { workspaceId, workflowId: { in: workflowIds } },
+    const scheme = await this.prisma.organizationWorkflowScheme.findMany({
+      where: { organizationId, workflowId: { in: workflowIds } },
       select: { workflowId: true, issueType: { select: { key: true, name: true } } },
       orderBy: { issueType: { hierarchyLevel: 'desc' } },
     });
     for (const s of scheme) entry(s.workflowId).usage.scheme.push(typeKey(s.issueType));
     const overrides = await this.prisma.projectWorkflowOverride.findMany({
-      where: { workflowId: { in: workflowIds }, project: { workspaceId, ...visible } },
+      where: { workflowId: { in: workflowIds }, project: { organizationId, ...visible } },
       select: {
         workflowId: true,
         project: { select: { key: true } },
@@ -273,33 +273,33 @@ export class WorkflowAdminService {
     if (Object.keys(visible).length === 0) return;
     const hidden = await this.prisma.projectWorkflowOverride.groupBy({
       by: ['workflowId'],
-      where: { workflowId: { in: workflowIds }, project: { workspaceId, NOT: visible } },
+      where: { workflowId: { in: workflowIds }, project: { organizationId, NOT: visible } },
       _count: { _all: true },
     });
     for (const h of hidden) entry(h.workflowId).usage.hiddenOverrideCount = h._count._all;
   }
 
   /** Quy trình của dự án riêng tư người xem không thấy = không tồn tại (404 như id sai). */
-  async getWorkflow(workspaceId: string, id: string, viewerId: string): Promise<WorkflowDto> {
-    const visible = await this.access.visibleWhere(viewerId, workspaceId);
+  async getWorkflow(organizationId: string, id: string, viewerId: string): Promise<WorkflowDto> {
+    const visible = await this.access.visibleWhere(viewerId, organizationId);
     const row = await this.prisma.workflow.findFirst({
-      where: { id, workspaceId, ...this.readableWhere(visible) },
+      where: { id, organizationId, ...this.readableWhere(visible) },
       include: workflowInclude,
     });
     if (!row) throw new NotFoundAppException('Quy trình');
-    const usedBy = await this.usedByMap(workspaceId, [row.id], visible);
+    const usedBy = await this.usedByMap(organizationId, [row.id], visible);
     return this.toWorkflowDto(row, usedBy.get(row.id));
   }
 
-  async createWorkflow(workspaceId: string, input: CreateWorkflowInput): Promise<WorkflowDto> {
+  async createWorkflow(organizationId: string, input: CreateWorkflowInput): Promise<WorkflowDto> {
     if (input.projectId) {
-      await this.requireProject(workspaceId, input.projectId);
+      await this.requireProject(organizationId, input.projectId);
     }
     await assertProjectIdWritable(this.prisma, input.projectId);
     try {
       const row = await this.prisma.workflow.create({
         data: {
-          workspaceId,
+          organizationId,
           name: input.name,
           description: input.description ?? null,
           projectId: input.projectId ?? null,
@@ -314,11 +314,11 @@ export class WorkflowAdminService {
   }
 
   async updateWorkflow(
-    workspaceId: string,
+    organizationId: string,
     id: string,
     input: UpdateWorkflowInput,
   ): Promise<WorkflowDto> {
-    const existing = await this.requireWorkflow(workspaceId, id);
+    const existing = await this.requireWorkflow(organizationId, id);
     await assertProjectIdWritable(this.prisma, existing.projectId);
 
     const data: Prisma.WorkflowUpdateInput = {};
@@ -328,11 +328,11 @@ export class WorkflowAdminService {
 
     try {
       const row = await this.prisma.$transaction(async (tx) => {
-        // isDefault chỉ duy nhất trong phạm vi (workspace, project) của workflow.
+        // isDefault chỉ duy nhất trong phạm vi (tổ chức, project) của workflow.
         if (input.isDefault === true) {
           await tx.workflow.updateMany({
             where: {
-              workspaceId,
+              organizationId,
               projectId: existing.projectId,
               isDefault: true,
               id: { not: id },
@@ -346,23 +346,23 @@ export class WorkflowAdminService {
           include: workflowInclude,
         });
       });
-      // Chỉ Quản trị workspace gọi được (thấy mọi dự án) → không lọc usedBy.
-      const usedBy = await this.usedByMap(workspaceId, [row.id], {});
+      // Chỉ Quản trị tổ chức gọi được (thấy mọi dự án) → không lọc usedBy.
+      const usedBy = await this.usedByMap(organizationId, [row.id], {});
       return this.toWorkflowDto(row, usedBy.get(row.id));
     } catch (e) {
       throw this.mapWorkflowError(e);
     }
   }
 
-  async removeWorkflow(workspaceId: string, id: string): Promise<{ success: true }> {
-    const existing = await this.requireWorkflow(workspaceId, id);
+  async removeWorkflow(organizationId: string, id: string): Promise<{ success: true }> {
+    const existing = await this.requireWorkflow(organizationId, id);
     await assertProjectIdWritable(this.prisma, existing.projectId);
-    await this.assertNotInScheme(workspaceId, id);
+    await this.assertNotInScheme(organizationId, id);
     // Project.defaultWorkflowId là String? (không phải FK) nên xóa sẽ không tự
     // báo P2003 — phải tự kiểm tra tham chiếu.
     // allow-deleted: dự án đã xoá mềm vẫn giữ tham chiếu defaultWorkflowId
     const usedByProjects = await this.prisma.project.findMany({
-      where: { workspaceId, defaultWorkflowId: id },
+      where: { organizationId, defaultWorkflowId: id },
       select: { key: true },
       orderBy: { key: 'asc' },
     });
@@ -394,14 +394,14 @@ export class WorkflowAdminService {
    * 409 WORKFLOW_IN_USE khi quy trình còn được gán cho một loại việc của tổ chức hoặc là ghi đè của một dự án (FK Restrict
    * cũng chặn, nhưng chỉ báo "đang dùng ở nơi khác" mà không nói ở đâu).
    */
-  private async assertNotInScheme(workspaceId: string, workflowId: string): Promise<void> {
+  private async assertNotInScheme(organizationId: string, workflowId: string): Promise<void> {
     const [scheme, overrides] = await Promise.all([
-      this.prisma.workspaceWorkflowScheme.findMany({
-        where: { workspaceId, workflowId },
+      this.prisma.organizationWorkflowScheme.findMany({
+        where: { organizationId, workflowId },
         select: { issueType: { select: { key: true, name: true } } },
       }),
       this.prisma.projectWorkflowOverride.findMany({
-        where: { workflowId, project: { workspaceId } },
+        where: { workflowId, project: { organizationId } },
         select: {
           project: { select: { key: true } },
           issueType: { select: { key: true, name: true } },
@@ -428,11 +428,11 @@ export class WorkflowAdminService {
   // ----- Statuses -----
 
   async createStatus(
-    workspaceId: string,
+    organizationId: string,
     workflowId: string,
     input: CreateStatusInput,
   ): Promise<StatusDto> {
-    const wf = await this.requireWorkflow(workspaceId, workflowId);
+    const wf = await this.requireWorkflow(organizationId, workflowId);
     await assertProjectIdWritable(this.prisma, wf.projectId);
     try {
       const row = await this.prisma.$transaction(async (tx) => {
@@ -463,11 +463,11 @@ export class WorkflowAdminService {
   }
 
   async updateStatus(
-    workspaceId: string,
+    organizationId: string,
     statusId: string,
     input: UpdateStatusInput,
   ): Promise<StatusDto> {
-    const existing = await this.requireStatus(workspaceId, statusId);
+    const existing = await this.requireStatus(organizationId, statusId);
     await assertProjectIdWritable(this.prisma, existing.projectId);
 
     const data: Prisma.StatusUpdateInput = {};
@@ -506,14 +506,14 @@ export class WorkflowAdminService {
    * cùng một transaction.
    */
   async removeStatus(
-    workspaceId: string,
+    organizationId: string,
     actorId: string,
     statusId: string,
     replacementStatusId?: string,
   ): Promise<{ success: true; moved: number }> {
-    const existing = await this.requireStatus(workspaceId, statusId);
+    const existing = await this.requireStatus(organizationId, statusId);
     await assertProjectIdWritable(this.prisma, existing.projectId);
-    if (existing.isInitial) await this.assertInitialNotInUse(workspaceId, existing.workflowId);
+    if (existing.isInitial) await this.assertInitialNotInUse(organizationId, existing.workflowId);
     // allow-deleted: issue đã xoá mềm vẫn giữ FK statusId nên vẫn chặn xoá trạng thái
     const usedByIssues = await this.prisma.issue.count({
       where: { statusId },
@@ -524,7 +524,7 @@ export class WorkflowAdminService {
     try {
       const moved = await this.prisma.$transaction(
         async (tx) => {
-          await lockWorkspaceWorkflows(tx, workspaceId);
+          await lockOrganizationWorkflows(tx, organizationId);
           let count = 0;
           if (usedByIssues > 0) {
             const [from, to] = await Promise.all([
@@ -541,11 +541,11 @@ export class WorkflowAdminService {
             ]);
             if (!to) throw new BusinessRuleException(REPLACEMENT_INVALID);
             const resolution = await tx.resolution.findFirst({
-              where: { workspaceId, isDefault: true },
+              where: { organizationId, isDefault: true },
               select: { id: true },
             });
             ({ count } = await moveIssuesToStatus(tx, {
-              where: { workspaceId },
+              where: { organizationId },
               from,
               to,
               actorId,
@@ -556,7 +556,7 @@ export class WorkflowAdminService {
           // Quy tắc automation nhắc tới trạng thái này: sang trạng thái thay thế; không có thay thế → tắt quy tắc + báo người tạo.
           ({ affectedRules: affected } = await rewriteRuleStatusRefs(
             tx,
-            workspaceId,
+            organizationId,
             new Map([
               [
                 statusId,
@@ -575,7 +575,7 @@ export class WorkflowAdminService {
       this.resolver?.invalidate();
       await publishRuleChanges(
         { events: this.events, notifications: this.notifications },
-        workspaceId,
+        organizationId,
         actorId,
         affected,
       );
@@ -592,11 +592,11 @@ export class WorkflowAdminService {
    * Trạng thái ban đầu là nơi việc mới được tạo vào: xoá nó khi quy trình còn được loại việc của tổ chức hoặc ghi đè dự án dùng
    * thì việc mới sẽ không có chỗ vào → 409 INITIAL_STATUS_IN_USE (hãy đặt trạng thái ban đầu khác trước).
    */
-  private async assertInitialNotInUse(workspaceId: string, workflowId: string): Promise<void> {
+  private async assertInitialNotInUse(organizationId: string, workflowId: string): Promise<void> {
     const [scheme, overrides] = await Promise.all([
-      this.prisma.workspaceWorkflowScheme.count({ where: { workspaceId, workflowId } }),
+      this.prisma.organizationWorkflowScheme.count({ where: { organizationId, workflowId } }),
       this.prisma.projectWorkflowOverride.count({
-        where: { workflowId, project: { workspaceId } },
+        where: { workflowId, project: { organizationId } },
       }),
     ]);
     if (scheme + overrides > 0)
@@ -612,23 +612,23 @@ export class WorkflowAdminService {
    * Quản trị chung. Không thuộc tổ chức này → 404.
    */
   async ownerProjectId(
-    workspaceId: string,
+    organizationId: string,
     kind: 'workflow' | 'status' | 'transition',
     id: string,
   ): Promise<string | null> {
-    if (kind === 'workflow') return (await this.requireWorkflow(workspaceId, id)).projectId;
-    if (kind === 'status') return (await this.requireStatus(workspaceId, id)).projectId;
-    return (await this.requireTransition(workspaceId, id)).projectId;
+    if (kind === 'workflow') return (await this.requireWorkflow(organizationId, id)).projectId;
+    if (kind === 'status') return (await this.requireStatus(organizationId, id)).projectId;
+    return (await this.requireTransition(organizationId, id)).projectId;
   }
 
   // ----- Transitions -----
 
   async createTransition(
-    workspaceId: string,
+    organizationId: string,
     workflowId: string,
     input: CreateTransitionInput,
   ): Promise<TransitionDto> {
-    const wf = await this.requireWorkflow(workspaceId, workflowId);
+    const wf = await this.requireWorkflow(organizationId, workflowId);
     await assertProjectIdWritable(this.prisma, wf.projectId);
     await this.assertStatusInWorkflow(workflowId, input.toStatusId, 'toStatusId');
     if (input.fromStatusId) {
@@ -647,11 +647,11 @@ export class WorkflowAdminService {
   }
 
   async updateTransition(
-    workspaceId: string,
+    organizationId: string,
     transitionId: string,
     input: UpdateTransitionInput,
   ): Promise<TransitionDto> {
-    const existing = await this.requireTransition(workspaceId, transitionId);
+    const existing = await this.requireTransition(organizationId, transitionId);
     await assertProjectIdWritable(this.prisma, existing.projectId);
 
     const data: Prisma.WorkflowTransitionUpdateInput = {};
@@ -677,8 +677,8 @@ export class WorkflowAdminService {
     return this.toTransitionDto(row);
   }
 
-  async removeTransition(workspaceId: string, transitionId: string): Promise<{ success: true }> {
-    const existing = await this.requireTransition(workspaceId, transitionId);
+  async removeTransition(organizationId: string, transitionId: string): Promise<{ success: true }> {
+    const existing = await this.requireTransition(organizationId, transitionId);
     await assertProjectIdWritable(this.prisma, existing.projectId);
     await this.prisma.workflowTransition.delete({ where: { id: transitionId } });
     return { success: true };
@@ -686,9 +686,9 @@ export class WorkflowAdminService {
 
   // ----- Helpers -----
 
-  private async requireProject(workspaceId: string, projectId: string) {
+  private async requireProject(organizationId: string, projectId: string) {
     const project = await this.prisma.project.findFirst({
-      where: { id: projectId, workspaceId, deletedAt: null },
+      where: { id: projectId, organizationId, deletedAt: null },
       select: { id: true },
     });
     if (!project) throw new NotFoundAppException('Dự án');
@@ -696,23 +696,23 @@ export class WorkflowAdminService {
   }
 
   private async requireWorkflow(
-    workspaceId: string,
+    organizationId: string,
     id: string,
-  ): Promise<{ id: string; workspaceId: string; projectId: string | null }> {
+  ): Promise<{ id: string; organizationId: string; projectId: string | null }> {
     const wf = await this.prisma.workflow.findFirst({
-      where: { id, workspaceId },
-      select: { id: true, workspaceId: true, projectId: true },
+      where: { id, organizationId },
+      select: { id: true, organizationId: true, projectId: true },
     });
     if (!wf) throw new NotFoundAppException('Quy trình');
     return wf;
   }
 
   private async requireStatus(
-    workspaceId: string,
+    organizationId: string,
     statusId: string,
   ): Promise<{ id: string; workflowId: string; projectId: string | null; isInitial: boolean }> {
     const status = await this.prisma.status.findFirst({
-      where: { id: statusId, workflow: { workspaceId } },
+      where: { id: statusId, workflow: { organizationId } },
       select: {
         id: true,
         workflowId: true,
@@ -730,11 +730,11 @@ export class WorkflowAdminService {
   }
 
   private async requireTransition(
-    workspaceId: string,
+    organizationId: string,
     transitionId: string,
   ): Promise<{ id: string; workflowId: string; projectId: string | null }> {
     const transition = await this.prisma.workflowTransition.findFirst({
-      where: { id: transitionId, workflow: { workspaceId } },
+      where: { id: transitionId, workflow: { organizationId } },
       select: { id: true, workflowId: true, workflow: { select: { projectId: true } } },
     });
     if (!transition) throw new NotFoundAppException('Bước chuyển trạng thái');
@@ -775,7 +775,7 @@ export class WorkflowAdminService {
   ): WorkflowDto {
     return {
       id: row.id,
-      workspaceId: row.workspaceId,
+      organizationId: row.organizationId,
       projectId: row.projectId,
       name: row.name,
       description: row.description,

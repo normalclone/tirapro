@@ -75,7 +75,7 @@ function setup(opts: { watchers: string[]; assignee?: string }) {
         Promise.resolve(a.data.map((d) => ({ mentionedUserId: d.mentionedUserId }))),
       ),
     },
-    workspaceMembership: {
+    organizationMembership: {
       findMany: vi.fn((a: { where: { userId: { in: string[] } } }) =>
         Promise.resolve(a.where.userId.in.map((userId) => ({ userId }))),
       ),
@@ -85,7 +85,7 @@ function setup(opts: { watchers: string[]; assignee?: string }) {
       findFirst: vi.fn(() =>
         Promise.resolve({
           id: 'i1',
-          workspaceId: 'w1',
+          organizationId: 'w1',
           key: 'TP-1',
           summary: 'Sửa lỗi',
           assigneeId: opts.assignee ?? null,
@@ -107,7 +107,7 @@ function setup(opts: { watchers: string[]; assignee?: string }) {
   return { rows, notifications, watchers, events };
 }
 
-const issue = { id: 'i1', workspaceId: 'w1', key: 'TP-1', summary: 'Sửa lỗi' };
+const issue = { id: 'i1', organizationId: 'w1', key: 'TP-1', summary: 'Sửa lỗi' };
 
 describe('không gửi đôi theo dõi vs trực tiếp — cả hai thứ tự', () => {
   const withDesc = { ...issue, assigneeId: null, description: 'cc @[Ba](user:w1)' };
@@ -276,7 +276,7 @@ describe('ISSUE_UPDATED giao việc hàng loạt (L28 fix)', () => {
     const { rows, notifications } = setup({ watchers: [] });
     await notifications.publish({
       recipientId: 'u2',
-      workspaceId: 'w1',
+      organizationId: 'w1',
       type: 'ISSUE_ASSIGNED',
       issueId: 'i1',
       actorId: 'a1',
@@ -287,7 +287,7 @@ describe('ISSUE_UPDATED giao việc hàng loạt (L28 fix)', () => {
     // phát thường (không count) vẫn là 1
     await notifications.publish({
       recipientId: 'u3',
-      workspaceId: 'w1',
+      organizationId: 'w1',
       type: 'ISSUE_ASSIGNED',
       issueId: 'i2',
       actorId: 'a1',
@@ -344,7 +344,7 @@ describe('Việc chưa duyệt (Triage) chưa báo "được giao" (S-I1)', () =
     expect(rows[0]!.recipientId).toBe('u2');
   });
 
-  it('người báo (watcher) nhận thông báo khi triage phát IssueDto đầy đủ (có workspaceId)', async () => {
+  it('người báo (watcher) nhận thông báo khi triage phát IssueDto đầy đủ (có organizationId)', async () => {
     const { rows, watchers } = setup({ watchers: ['w1'] });
     await watchers.onIssueUpdated({
       issue: { ...issue, triageState: 'ACCEPTED' },

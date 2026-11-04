@@ -21,7 +21,7 @@ const archivedProject = { ...pubProject, archivedAt: new Date() };
 
 const issue = (id: string, project: object, extra: Row = {}): Row => ({
   id,
-  workspaceId: 'W1',
+  organizationId: 'W1',
   deletedAt: null,
   project,
   projectId: project === secret ? 'SEC' : project === mine ? 'MINE' : 'PUB',
@@ -47,7 +47,7 @@ const HIDDEN: Row[] = [
   issue('H3', pubProject, { deletedAt: new Date() }), // issue xoá mềm
   issue('H4', deletedProject), // dự án xoá mềm
   issue('H5', archivedProject), // dự án lưu trữ: quy tắc không chạy
-  issue('H6', pubProject, { workspaceId: 'W2' }),
+  issue('H6', pubProject, { organizationId: 'W2' }),
   issue('H7', secret, { assigneeId: 'SYS' }),
 ];
 
@@ -89,7 +89,7 @@ const status = (v: string) => ({ field: 'statusId', op: 'eq', value: v }) as con
 
 /* ------------------------------------------------------------------------------------------------------------- */
 describe('RulePreviewService — riêng tư và phạm vi', () => {
-  it('chỉ đếm theo quyền xem của NGƯỜI SOẠN: dự án riêng tư không thấy / xoá mềm / lưu trữ / issue xoá / workspace khác không vào số đếm', async () => {
+  it('chỉ đếm theo quyền xem của NGƯỜI SOẠN: dự án riêng tư không thấy / xoá mềm / lưu trữ / issue xoá / organization khác không vào số đếm', async () => {
     const withHidden = await run(make().service, { conditions: [status('s1')] });
     const onlyVisible = await run(make({ rows: VISIBLE }).service, { conditions: [status('s1')] });
     expect(withHidden).toEqual(onlyVisible);
@@ -99,7 +99,7 @@ describe('RulePreviewService — riêng tư và phạm vi', () => {
     expect(leaky.count).toBeGreaterThan(withHidden.count as number);
   });
 
-  it('mọi lần đếm mang đủ: workspace + deletedAt + dự án chưa xoá/chưa lưu trữ + visibleWhere(người soạn)', async () => {
+  it('mọi lần đếm mang đủ: organization + deletedAt + dự án chưa xoá/chưa lưu trữ + visibleWhere(người soạn)', async () => {
     const { service, counts, access } = make();
     await run(service, { conditions: [status('s1')] });
     expect(access.visibleWhere).toHaveBeenCalledWith('U1', 'W1');
@@ -109,7 +109,7 @@ describe('RulePreviewService — riêng tư và phạm vi', () => {
     expect(outer.deletedAt).toBeNull();
     const where = outer.AND[0]!;
     expect(where).toMatchObject({
-      workspaceId: 'W1',
+      organizationId: 'W1',
       deletedAt: null,
       project: {
         deletedAt: null,
@@ -120,7 +120,7 @@ describe('RulePreviewService — riêng tư và phạm vi', () => {
     expect(where).not.toHaveProperty('projectId');
   });
 
-  it('quy tắc cấp dự án: thêm projectId; cấp workspace: không', async () => {
+  it('quy tắc cấp dự án: thêm projectId; cấp organization: không', async () => {
     const ws = await run(make().service, { conditions: [status('s1')] });
     const proj = await run(make().service, { projectId: 'PUB', conditions: [status('s1')] });
     expect(ws.count).toBe(5);

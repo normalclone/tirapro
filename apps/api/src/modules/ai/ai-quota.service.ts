@@ -16,15 +16,16 @@ export class AiQuotaService {
    * Hạn mức <= 0 = không giới hạn. Kiểm tra là best-effort: hai lời gọi song song cùng sát ngưỡng
    * có thể vượt ngưỡng một chút (chấp nhận được cho hạn mức mềm theo tháng).
    */
-  async assertWithinQuota(workspaceId: string): Promise<void> {
+  async assertWithinQuota(organizationId: string): Promise<void> {
     const quota =
-      this.config.get<{ monthlyQuotaPerWorkspace?: number }>('ai')?.monthlyQuotaPerWorkspace ?? 0;
+      this.config.get<{ monthlyQuotaPerOrganization?: number }>('ai')
+        ?.monthlyQuotaPerOrganization ?? 0;
     if (quota <= 0) return;
 
     const now = new Date();
     const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
     const agg = await this.prisma.aiGenerationLog.aggregate({
-      where: { workspaceId, success: true, createdAt: { gte: monthStart } },
+      where: { organizationId, success: true, createdAt: { gte: monthStart } },
       _sum: { inputTokens: true, outputTokens: true },
     });
     const used = (agg._sum.inputTokens ?? 0) + (agg._sum.outputTokens ?? 0);

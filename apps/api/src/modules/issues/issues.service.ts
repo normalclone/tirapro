@@ -173,10 +173,10 @@ export class IssuesService {
    */
   private async canOverridePoints(
     userId: string,
-    workspaceId: string,
+    organizationId: string,
     projectId: string,
   ): Promise<boolean> {
-    const perms = await this.rbac.getEffectivePermissions(userId, workspaceId, projectId);
+    const perms = await this.rbac.getEffectivePermissions(userId, organizationId, projectId);
     if (perms.has(PERMISSIONS.PROJECT_ADMIN)) return true;
     const u = await this.prisma.user.findUnique({
       where: { id: userId },
@@ -192,13 +192,13 @@ export class IssuesService {
   private async planCreatePoints(
     origin: 'api' | 'import',
     userId: string,
-    workspaceId: string,
+    organizationId: string,
     projectId: string,
     input: CreateIssueInput,
   ): Promise<{ difficulty: Difficulty; manual: number | null }> {
     const difficulty = input.difficulty ?? 'MEDIUM';
     if (origin !== 'api' || input.storyPoints == null) return { difficulty, manual: null };
-    const allowed = await this.canOverridePoints(userId, workspaceId, projectId);
+    const allowed = await this.canOverridePoints(userId, organizationId, projectId);
     return { difficulty, manual: allowed ? this.assertManualPoints(input.storyPoints) : null };
   }
 
@@ -209,7 +209,7 @@ export class IssuesService {
    */
   private async rollupOnCreate(
     tx: Prisma.TransactionClient,
-    workspaceId: string,
+    organizationId: string,
     userId: string,
     created: { epicId: string | null; parentId: string | null },
     after: Array<() => void> | null,
@@ -222,7 +222,7 @@ export class IssuesService {
     });
     if (changed.length)
       after?.push(() => {
-        void this.emitEpicTotals(workspaceId, userId, changed);
+        void this.emitEpicTotals(organizationId, userId, changed);
       });
   }
 
@@ -243,13 +243,13 @@ export class IssuesService {
   /** Sprint của việc cha còn sống (`null` khi không có cha hoặc cha đã xoá — khi đó việc con không bị ràng buộc sprint). */
   private async parentSprintOf(
     db: Prisma.TransactionClient | PrismaService,
-    workspaceId: string,
+    organizationId: string,
     parentId: string | null | undefined,
   ): Promise<{ sprintId: string | null } | null> {
     if (!parentId) return null;
     return db.issue.findFirst({
       // Epic không làm việc cha (dữ liệu cũ có thể còn): bỏ qua để việc con không bị kéo theo sprint của Epic.
-      where: { id: parentId, workspaceId, deletedAt: null, NOT: { type: { key: 'EPIC' } } },
+      where: { id: parentId, organizationId, deletedAt: null, NOT: { type: { key: 'EPIC' } } },
       select: { sprintId: true },
     });
   }
@@ -261,12 +261,12 @@ export class IssuesService {
    */
   private async epicParentToEpicId<T extends { parentId?: string | null; epicId?: string | null }>(
     db: Prisma.TransactionClient | PrismaService,
-    workspaceId: string,
+    organizationId: string,
     input: T,
   ): Promise<T> {
     if (!input.parentId) return input;
     const parent = await db.issue.findFirst({
-      where: { id: input.parentId, workspaceId, deletedAt: null },
+      where: { id: input.parentId, organizationId, deletedAt: null },
       select: { type: { select: { key: true } } },
     });
     if (parent?.type?.key !== 'EPIC') return input;
@@ -280,12 +280,12 @@ export class IssuesService {
    * sang cha mới → sprint của việc đồng bộ theo cha mới. Trả sprint phải ghi (`undefined` = không áp đặt).
    */
   private async syncSprintWithParent(
-    workspaceId: string,
+    organizationId: string,
     current: { parentId: string | null },
     input: { parentId?: string | null; sprintId?: string | null },
   ): Promise<string | null | undefined> {
     const parentId = input.parentId !== undefined ? input.parentId : current.parentId;
-    const parent = await this.parentSprintOf(this.prisma, workspaceId, parentId);
+    const parent = await this.parentSprintOf(this.prisma, organizationId, parentId);
     if (!parent) return undefined;
     if (input.sprintId !== undefined && (input.sprintId ?? null) !== parent.sprintId)
       throw new ChildSprintFollowsParentException();
@@ -367,13 +367,13 @@ export class IssuesService {
    */
   private async syncSprintOnRestore(
     tx: Prisma.TransactionClient,
-    workspaceId: string,
+    organizationId: string,
     userId: string,
     current: { id: string; projectId: string; sprintId: string | null },
     parentId: string | null,
   ): Promise<string[]> {
     let sprintId = current.sprintId;
-    const parent = await this.parentSprintOf(tx, workspaceId, parentId);
+    const parent = await this.parentSprintOf(tx, organizationId, parentId);
     if (parent && parent.sprintId !== current.sprintId) {
       sprintId = parent.sprintId;
       await tx.issue.updateMany({ where: { id: current.id }, data: { sprintId } });
@@ -451,7 +451,7 @@ export class IssuesService {
    */
   private async resolveBulkManualPoints(
     userId: string,
-    workspaceId: string,
+    organizationId: string,
     projectId: string,
     rows: IssueRow[],
     requested: number | null | undefined,
@@ -461,7 +461,7 @@ export class IssuesService {
     // Việc đã đúng điểm này và chưa chỉnh tay: gửi lại không phải ghi đè → không đổi gì, không cần quyền.
     const overridden = rows.filter((r) => isPointsOverride(r, requested));
     if (overridden.length === 0) return undefined;
-    if (!(await this.canOverridePoints(userId, workspaceId, projectId))) {
+    if (!(await this.canOverridePoints(userId, organizationId, projectId))) {
       if (rows.some((r) => r.storyPoints !== requested))
         throw new PointsOverrideForbiddenException();
       return undefined;
@@ -553,14 +553,14 @@ export class IssuesService {
    * chỉ ghi log, không làm hỏng request.
    */
   private async emitEpicTotals(
-    workspaceId: string,
+    organizationId: string,
     actorId: string,
     epicIds: string[],
     changedFields: string[] = ['storyPoints'],
   ): Promise<void> {
     if (epicIds.length === 0) return;
     try {
-      for (const issue of await this.getDtosByIdsForSystem(workspaceId, epicIds))
+      for (const issue of await this.getDtosByIdsForSystem(organizationId, epicIds))
         this.events.emit(DOMAIN_EVENTS.ISSUE_UPDATED, {
           issue,
           actorId,
@@ -573,42 +573,42 @@ export class IssuesService {
   }
 
   /**
-   * Điều kiện `project` của mọi truy vấn đọc cấp workspace: dự án chưa xoá mềm + (có `viewerId`) dự án người đó được thấy.
+   * Điều kiện `project` của mọi truy vấn đọc cấp organization: dự án chưa xoá mềm + (có `viewerId`) dự án người đó được thấy.
    * `viewerId` BẮT BUỘC: `null` = ngữ cảnh hệ thống (rule-engine, worklogs, cron, board đã qua guard) — không lọc riêng tư
    * (phải nêu rõ, quên truyền là lỗi biên dịch chứ không lặng lẽ không lọc).
    * Gộp vào scope gốc (không lọc sau) để cursor/phân trang đúng và không lộ qua đếm.
    */
   private async projectScope(
-    workspaceId: string,
+    organizationId: string,
     viewerId: string | null,
   ): Promise<Prisma.ProjectWhereInput> {
-    const visible = viewerId ? await this.access.visibleWhere(viewerId, workspaceId) : {};
+    const visible = viewerId ? await this.access.visibleWhere(viewerId, organizationId) : {};
     return { deletedAt: null, ...visible };
   }
 
   /**
    * Resolution khi một việc VÀO nhóm Done. Ưu tiên: `explicit` (kể cả `null` rõ ràng = "không đặt")
-   * > giữ `current` > Resolution `isDefault` của workspace > null nếu workspace không có.
+   * > giữ `current` > Resolution `isDefault` của tổ chức > null nếu tổ chức không có.
    * Chọn mặc định ở BE (không để FE) để kéo-thả board, bulk, phím tắt, API/MCP/automation đều có dữ liệu —
    * báo cáo QA dựa vào đó.
    */
   private async resolutionForDone(
     db: Prisma.TransactionClient | PrismaService,
-    workspaceId: string,
+    organizationId: string,
     explicit: string | null | undefined,
     current: string | null,
   ): Promise<string | null> {
     if (explicit !== undefined) return explicit;
     if (current) return current;
-    return this.defaultResolutionId(db, workspaceId);
+    return this.defaultResolutionId(db, organizationId);
   }
 
   private async defaultResolutionId(
     db: Prisma.TransactionClient | PrismaService,
-    workspaceId: string,
+    organizationId: string,
   ): Promise<string | null> {
     const d = await db.resolution.findFirst({
-      where: { workspaceId, isDefault: true },
+      where: { organizationId, isDefault: true },
       select: { id: true },
     });
     return d?.id ?? null;
@@ -616,17 +616,17 @@ export class IssuesService {
 
   /**
    * Hạn (dueDate) & Ngày bắt đầu (startDate) — một luật "ai đổi lịch" — chỉ người TẠO/BÁO CÁO issue hoặc QUẢN TRỊ
-   * (project admin / workspace admin / system admin) được sửa. Ném lỗi nếu vi phạm.
+   * (project admin / tổ chức admin / system admin) được sửa. Ném lỗi nếu vi phạm.
    * Story points KHÔNG qua đây: ai sửa được công việc (`issue:edit`, hoặc `:own` với việc của mình) thì sửa được điểm.
    */
   private async assertCanEditRestrictedFields(
     userId: string,
-    workspaceId: string,
+    organizationId: string,
     issue: { reporterId: string | null; createdById: string | null; projectId: string },
   ): Promise<void> {
     if (issue.reporterId === userId || issue.createdById === userId) return;
-    const perms = await this.rbac.getEffectivePermissions(userId, workspaceId, issue.projectId);
-    if (perms.has(PERMISSIONS.PROJECT_ADMIN) || perms.has(PERMISSIONS.WORKSPACE_ADMIN)) return;
+    const perms = await this.rbac.getEffectivePermissions(userId, organizationId, issue.projectId);
+    if (perms.has(PERMISSIONS.PROJECT_ADMIN) || perms.has(PERMISSIONS.ORGANIZATION_ADMIN)) return;
     const u = await this.prisma.user.findUnique({
       where: { id: userId },
       select: { isSystemAdmin: true },
@@ -687,10 +687,10 @@ export class IssuesService {
    */
   private async assertCanTransition(
     userId: string,
-    workspaceId: string,
+    organizationId: string,
     projectId: string,
   ): Promise<{ ownOnly: boolean }> {
-    const perms = await this.rbac.getEffectivePermissions(userId, workspaceId, projectId);
+    const perms = await this.rbac.getEffectivePermissions(userId, organizationId, projectId);
     if (perms.has(PERMISSIONS.ISSUE_TRANSITION)) return { ownOnly: false };
     const u = await this.prisma.user.findUnique({
       where: { id: userId },
@@ -703,21 +703,21 @@ export class IssuesService {
     );
   }
 
-  /** Priority mặc định của workspace (undefined nếu chưa cấu hình). */
+  /** Priority mặc định của tổ chức (undefined nếu chưa cấu hình). */
   private async defaultPriorityId(
     db: Prisma.TransactionClient,
-    workspaceId: string,
+    organizationId: string,
   ): Promise<string | undefined> {
     const def = await db.priority.findFirst({
-      where: { workspaceId, isDefault: true },
+      where: { organizationId, isDefault: true },
       select: { id: true },
     });
     return def?.id;
   }
 
-  /** Đảm bảo metadata/quan hệ (nếu truyền) thuộc đúng workspace — chống gán/liên kết chéo tenant. */
-  private async assertMetaInWorkspace(
-    workspaceId: string,
+  /** Đảm bảo metadata/quan hệ (nếu truyền) thuộc đúng tổ chức — chống gán/liên kết chéo tenant. */
+  private async assertMetaInOrganization(
+    organizationId: string,
     m: {
       typeId?: string | null;
       priorityId?: string | null;
@@ -727,7 +727,7 @@ export class IssuesService {
       allowClosedSprint?: boolean;
       resolutionId?: string | null;
       parentId?: string | null;
-      /** Dự án của issue/lô: có thì `sprintId` phải thuộc CHÍNH dự án này (không chỉ cùng workspace). */
+      /** Dự án của issue/lô: có thì `sprintId` phải thuộc CHÍNH dự án này (không chỉ cùng tổ chức). */
       projectId?: string;
     },
     db: Prisma.TransactionClient = this.prisma,
@@ -735,20 +735,26 @@ export class IssuesService {
     const jobs: Array<Promise<{ id: string; state?: string } | null>> = [];
     if (m.typeId)
       jobs.push(
-        db.issueType.findFirst({ where: { id: m.typeId, workspaceId }, select: { id: true } }),
+        db.issueType.findFirst({ where: { id: m.typeId, organizationId }, select: { id: true } }),
       );
     if (m.priorityId)
       jobs.push(
-        db.priority.findFirst({ where: { id: m.priorityId, workspaceId }, select: { id: true } }),
+        db.priority.findFirst({
+          where: { id: m.priorityId, organizationId },
+          select: { id: true },
+        }),
       );
     if (m.severityId)
       jobs.push(
-        db.severity.findFirst({ where: { id: m.severityId, workspaceId }, select: { id: true } }),
+        db.severity.findFirst({
+          where: { id: m.severityId, organizationId },
+          select: { id: true },
+        }),
       );
     if (m.resolutionId)
       jobs.push(
         db.resolution.findFirst({
-          where: { id: m.resolutionId, workspaceId },
+          where: { id: m.resolutionId, organizationId },
           select: { id: true },
         }),
       );
@@ -758,7 +764,7 @@ export class IssuesService {
           where: {
             id: m.sprintId,
             deletedAt: null,
-            project: { workspaceId, deletedAt: null },
+            project: { organizationId, deletedAt: null },
             ...(m.projectId ? { projectId: m.projectId } : {}),
           },
           select: { id: true, state: true },
@@ -767,7 +773,7 @@ export class IssuesService {
     if (m.parentId)
       jobs.push(
         db.issue.findFirst({
-          where: { id: m.parentId, workspaceId, deletedAt: null },
+          where: { id: m.parentId, organizationId, deletedAt: null },
           select: { id: true },
         }),
       );
@@ -805,7 +811,7 @@ export class IssuesService {
    * Trả `true` khi mốc rank được dùng. Không đụng DB quyền nếu request không có sprint/mốc.
    */
   private async assertMoveCapabilities(
-    workspaceId: string,
+    organizationId: string,
     userId: string,
     current: {
       projectId: string;
@@ -816,7 +822,11 @@ export class IssuesService {
     want: { sprintChanged: boolean; wantsRank: boolean; statusChanged: boolean },
   ): Promise<boolean> {
     if (!want.sprintChanged && !want.wantsRank) return true;
-    const perms = await this.rbac.getEffectivePermissions(userId, workspaceId, current.projectId);
+    const perms = await this.rbac.getEffectivePermissions(
+      userId,
+      organizationId,
+      current.projectId,
+    );
     let admin: boolean | undefined;
     const isAdmin = async () =>
       (admin ??= !!(
@@ -856,7 +866,7 @@ export class IssuesService {
    */
   private async assertParentPlacement(
     db: Prisma.TransactionClient,
-    workspaceId: string,
+    organizationId: string,
     self: { projectId: string; type: { key: string | null; hierarchyLevel: number } },
     parentId: string,
   ): Promise<void> {
@@ -865,7 +875,7 @@ export class IssuesService {
         'Epic là cấp cao nhất — không thể đặt Epic vào bên trong một việc khác, chỉ có thể gắn việc vào Epic',
       );
     const parent = await db.issue.findFirst({
-      where: { id: parentId, workspaceId, deletedAt: null },
+      where: { id: parentId, organizationId, deletedAt: null },
       select: { projectId: true, type: { select: { isSubtask: true } } },
     });
     if (!parent)
@@ -889,7 +899,7 @@ export class IssuesService {
    */
   private async assertNoTreeCycle(
     db: Prisma.TransactionClient,
-    workspaceId: string,
+    organizationId: string,
     selfId: string,
     startId: string,
   ): Promise<void> {
@@ -904,7 +914,7 @@ export class IssuesService {
       seen.add(cur);
       const row: { parentId: string | null; epicId: string | null } | null =
         await db.issue.findFirst({
-          where: { id: cur, workspaceId, deletedAt: null },
+          where: { id: cur, organizationId, deletedAt: null },
           select: { parentId: true, epicId: true },
         });
       cur = row ? (row.parentId ?? row.epicId ?? null) : null;
@@ -918,45 +928,45 @@ export class IssuesService {
   /** Việc cha khi TẠO việc (chỉ đường API, `strict`): cùng luật `assertParentPlacement` với loại của việc sắp tạo. */
   private async assertParentForCreate(
     db: Prisma.TransactionClient,
-    workspaceId: string,
+    organizationId: string,
     input: { parentId?: string | null; typeId: string },
     projectId: string,
     strict: boolean,
   ): Promise<void> {
     if (!strict || !input.parentId) return; // import giữ nguyên dữ liệu gốc
     const type = await db.issueType.findFirst({
-      where: { id: input.typeId, workspaceId },
+      where: { id: input.typeId, organizationId },
       select: { key: true, hierarchyLevel: true },
     });
     if (type)
-      await this.assertParentPlacement(db, workspaceId, { projectId, type }, input.parentId);
+      await this.assertParentPlacement(db, organizationId, { projectId, type }, input.parentId);
   }
 
   /** Epic khi TẠO việc: epic đích hợp lệ (+ chính việc không phải Epic, chỉ đường API — import giữ nguyên dữ liệu gốc). */
   private async assertEpicForCreate(
     db: Prisma.TransactionClient,
-    workspaceId: string,
+    organizationId: string,
     input: { epicId?: string | null; typeId: string },
     projectId: string,
     strict: boolean,
   ): Promise<void> {
-    await this.assertEpicValid(db, workspaceId, input.epicId!, projectId, null, strict);
+    await this.assertEpicValid(db, organizationId, input.epicId!, projectId, null, strict);
     if (!strict) return;
     const t = await db.issueType.findFirst({
-      where: { id: input.typeId, workspaceId },
+      where: { id: input.typeId, organizationId },
       select: { key: true, hierarchyLevel: true },
     });
     if (t) this.assertNotEpicWithEpic(t);
   }
 
   /**
-   * Epic của issue: phải tồn tại trong workspace, CÙNG dự án, đúng loại Epic (`key = EPIC` hoặc `hierarchyLevel >= 1`;
+   * Epic của issue: phải tồn tại trong tổ chức, CÙNG dự án, đúng loại Epic (`key = EPIC` hoặc `hierarchyLevel >= 1`;
    * bỏ qua kiểm LOẠI khi `checkType = false` — đường import),
    * không phải chính issue và không tạo vòng (epic đang trỏ ngược về issue này) — vi phạm: 404/422.
    */
   private async assertEpicValid(
     db: Prisma.TransactionClient,
-    workspaceId: string,
+    organizationId: string,
     epicId: string,
     projectId: string,
     selfId: string | null,
@@ -967,7 +977,7 @@ export class IssuesService {
         'Một công việc không thể là epic của chính nó — hãy chọn một epic khác',
       );
     const epic = await db.issue.findFirst({
-      where: { id: epicId, workspaceId, deletedAt: null },
+      where: { id: epicId, organizationId, deletedAt: null },
       select: {
         projectId: true,
         epicId: true,
@@ -994,7 +1004,7 @@ export class IssuesService {
           'Không thể chọn epic này vì sẽ tạo vòng lặp (epic đó đang thuộc về công việc này)',
         );
       const next: { epicId: string | null } | null = await db.issue.findFirst({
-        where: { id: cur, workspaceId, deletedAt: null },
+        where: { id: cur, organizationId, deletedAt: null },
         select: { epicId: true },
       });
       cur = next?.epicId ?? null;
@@ -1006,7 +1016,7 @@ export class IssuesService {
    * và chuỗi `epicId` của epic không được chạm một item của lô (tránh N × chuỗi truy vấn).
    */
   private async assertEpicForBulk(
-    workspaceId: string,
+    organizationId: string,
     epicId: string,
     projectId: string,
     ids: string[],
@@ -1015,12 +1025,12 @@ export class IssuesService {
       throw new BusinessRuleException(
         'Một công việc không thể là epic của chính nó — hãy chọn một epic khác',
       );
-    await this.assertEpicValid(this.prisma, workspaceId, epicId, projectId, null);
+    await this.assertEpicValid(this.prisma, organizationId, epicId, projectId, null);
     // Đi ngược tổ tiên theo cha-trong-cây `parentId ?? epicId` (cùng định nghĩa với FE `treeParentId`).
     const parentOf = async (id: string): Promise<string | null> => {
       const r: { parentId: string | null; epicId: string | null } | null =
         await this.prisma.issue.findFirst({
-          where: { id, workspaceId, deletedAt: null },
+          where: { id, organizationId, deletedAt: null },
           select: { parentId: true, epicId: true },
         });
       return r ? (r.parentId ?? r.epicId ?? null) : null;
@@ -1046,36 +1056,36 @@ export class IssuesService {
   }
 
   /**
-   * Có thể gán mới cho user này không: là thành viên workspace, tài khoản chưa bị vô hiệu hoá và (có `projectId`) thấy
+   * Có thể gán mới cho user này không: là thành viên tổ chức, tài khoản chưa bị vô hiệu hoá và (có `projectId`) thấy
    * được dự án — dự án riêng tư chỉ giao cho thành viên dự án/quản trị, để không "giao việc rồi họ không mở được".
    */
   async isAssignableMember(
-    workspaceId: string,
+    organizationId: string,
     userId: string,
     db: Prisma.TransactionClient = this.prisma,
     projectId?: string,
   ): Promise<boolean> {
-    const member = await db.workspaceMembership.findFirst({
-      where: { workspaceId, userId, user: { status: { not: 'DEACTIVATED' } } },
+    const member = await db.organizationMembership.findFirst({
+      where: { organizationId, userId, user: { status: { not: 'DEACTIVATED' } } },
       select: { userId: true },
     });
     if (!member) return false;
-    return !projectId || (await this.access.canSee(userId, workspaceId, projectId));
+    return !projectId || (await this.access.canSee(userId, organizationId, projectId));
   }
 
   /**
-   * Gán MỚI: người được giao phải là thành viên workspace còn hoạt động — chặn gán user của tenant khác
+   * Gán MỚI: người được giao phải là thành viên tổ chức còn hoạt động — chặn gán user của tenant khác
    * hay tài khoản đã vô hiệu hoá. `null`/rỗng (bỏ gán) luôn hợp lệ. Chỉ gọi khi assignee thật sự đổi:
-   * việc cũ còn giữ người đã rời workspace thì không được làm hỏng các sửa không liên quan.
+   * việc cũ còn giữ người đã rời tổ chức thì không được làm hỏng các sửa không liên quan.
    */
-  private async assertAssigneeInWorkspace(
-    workspaceId: string,
+  private async assertAssigneeInOrganization(
+    organizationId: string,
     assigneeId: string | null | undefined,
     db: Prisma.TransactionClient = this.prisma,
     projectId?: string,
   ): Promise<void> {
     if (!assigneeId) return;
-    if (!(await this.isAssignableMember(workspaceId, assigneeId, db, projectId)))
+    if (!(await this.isAssignableMember(organizationId, assigneeId, db, projectId)))
       throw new BusinessRuleException(
         'Người được giao không thuộc tổ chức này hoặc không xem được dự án — hãy chọn một thành viên khác',
       );
@@ -1083,17 +1093,17 @@ export class IssuesService {
 
   /**
    * Kiểm người được giao lúc tạo. Import chạy trong transaction có thể vừa tạo dự án (chưa commit) nên không kiểm quyền xem
-   * dự án ở đó (chỉ kiểm thành viên workspace như trước).
+   * dự án ở đó (chỉ kiểm thành viên tổ chức như trước).
    */
   private assertCreateAssignee(
-    workspaceId: string,
+    organizationId: string,
     assigneeId: string | null | undefined,
     db: Prisma.TransactionClient,
     projectId: string,
     origin: 'api' | 'import',
   ): Promise<void> {
-    return this.assertAssigneeInWorkspace(
-      workspaceId,
+    return this.assertAssigneeInOrganization(
+      organizationId,
       assigneeId,
       db,
       origin === 'import' ? undefined : projectId,
@@ -1101,7 +1111,7 @@ export class IssuesService {
   }
 
   async create(
-    workspaceId: string,
+    organizationId: string,
     userId: string,
     input: CreateIssueInput,
     opts?: AutomationEventMeta,
@@ -1113,7 +1123,7 @@ export class IssuesService {
   ): Promise<IssueDto> {
     const dto = await this.createCore(
       null,
-      workspaceId,
+      organizationId,
       userId,
       input,
       null,
@@ -1130,12 +1140,12 @@ export class IssuesService {
    * `update()` (triage, intake). Ngữ cảnh HỆ THỐNG có chủ đích như `getDtosByIdsForSystem`: nghiệp vụ đã tự kiểm quyền.
    */
   async emitUpdatedFor(
-    workspaceId: string,
+    organizationId: string,
     issueId: string,
     actorId: string,
     changedFields: string[],
   ): Promise<IssueDto | null> {
-    const [dto] = await this.getDtosByIdsForSystem(workspaceId, [issueId]);
+    const [dto] = await this.getDtosByIdsForSystem(organizationId, [issueId]);
     if (!dto) return null;
     this.events.emit(DOMAIN_EVENTS.ISSUE_UPDATED, { issue: dto, actorId, changedFields });
     return dto;
@@ -1148,14 +1158,14 @@ export class IssuesService {
    */
   createWithin(
     tx: Prisma.TransactionClient,
-    workspaceId: string,
+    organizationId: string,
     userId: string,
     input: CreateIssueInput,
     deferred: Array<() => void> = [],
     /**
      * Mã Jira gốc (`JRA-1`) dùng làm `Issue.key` (L27). Tham số NỘI BỘ — không đi qua DTO/zod/Controller nên API công
      * khai không đặt được mã. Chỉ nhận dạng `KEY-123` (đúng một dấu `-`, tách khỏi dải mã Tirapro `PROJ-TYPE-N`);
-     * sai dạng thì bỏ qua và sinh mã Tirapro như thường. Người gọi tự kiểm trùng (unique `(workspaceId, key)`).
+     * sai dạng thì bỏ qua và sinh mã Tirapro như thường. Người gọi tự kiểm trùng (unique `(organizationId, key)`).
      */
     fixedKey?: string,
     /**
@@ -1166,7 +1176,7 @@ export class IssuesService {
   ): Promise<IssueDto> {
     return this.createCore(
       tx,
-      workspaceId,
+      organizationId,
       userId,
       input,
       deferred,
@@ -1188,7 +1198,7 @@ export class IssuesService {
 
   private async createCore(
     outerTx: Prisma.TransactionClient | null,
-    workspaceId: string,
+    organizationId: string,
     userId: string,
     rawInput: CreateIssueInput,
     deferred: Array<() => void> | null = null,
@@ -1205,11 +1215,11 @@ export class IssuesService {
   ): Promise<IssueDto> {
     const db: Prisma.TransactionClient = outerTx ?? this.prisma;
     // Việc cha là Epic (API, Jira...) → gắn vào Epic thay vì làm con của Epic.
-    const input = await this.epicParentToEpicId(db, workspaceId, rawInput);
+    const input = await this.epicParentToEpicId(db, organizationId, rawInput);
     // Chỉ đường import mới được mang mã ngoài vào, và phải đúng dạng mã Jira.
     const importedKey = origin === 'import' ? normalizeJiraKey(fixedKey) : null;
     const project = await db.project.findFirst({
-      where: { id: input.projectId, workspaceId, deletedAt: null },
+      where: { id: input.projectId, organizationId, deletedAt: null },
       select: {
         id: true,
         key: true,
@@ -1224,12 +1234,12 @@ export class IssuesService {
     const dueDate = this.resolveCreateDueDate(input.dueDate, input.startDate);
     this.assertScheduleOrder(input.startDate, dueDate);
     // Việc con luôn vào sprint của việc cha (sprintId gửi kèm bị bỏ qua).
-    const parentRef = await this.parentSprintOf(db, workspaceId, input.parentId);
+    const parentRef = await this.parentSprintOf(db, organizationId, input.parentId);
     const sprintId = parentRef ? parentRef.sprintId : input.sprintId;
     // Import có thể mang dữ liệu lịch sử (hạn đã qua) nên chỉ kiểm khi tạo tay/API.
     if (origin !== 'import') this.assertDueNotBeforeCreated(dueDate, null);
-    await this.assertMetaInWorkspace(
-      workspaceId,
+    await this.assertMetaInOrganization(
+      organizationId,
       {
         typeId: input.typeId,
         priorityId: input.priorityId,
@@ -1242,29 +1252,29 @@ export class IssuesService {
       db,
     );
     if (input.epicId)
-      await this.assertEpicForCreate(db, workspaceId, input, project.id, origin === 'api');
-    await this.assertParentForCreate(db, workspaceId, input, project.id, origin === 'api');
-    await this.assertCreateAssignee(workspaceId, input.assigneeId, db, project.id, origin);
+      await this.assertEpicForCreate(db, organizationId, input, project.id, origin === 'api');
+    await this.assertParentForCreate(db, organizationId, input, project.id, origin === 'api');
+    await this.assertCreateAssignee(organizationId, input.assigneeId, db, project.id, origin);
 
     const { statusId, isDone } = await this.resolveCreateStatus(
       db,
       userId,
-      workspaceId,
+      organizationId,
       project,
       input.typeId,
       input.statusId,
       origin,
     );
 
-    const doneResolutionId = isDone ? await this.defaultResolutionId(db, workspaceId) : null;
+    const doneResolutionId = isDone ? await this.defaultResolutionId(db, organizationId) : null;
 
-    // Priority mặc định của workspace nếu không truyền
-    const priorityId = input.priorityId || (await this.defaultPriorityId(db, workspaceId));
+    // Priority mặc định của tổ chức nếu không truyền
+    const priorityId = input.priorityId || (await this.defaultPriorityId(db, organizationId));
 
     const assigneeId =
       input.assigneeId ?? (project.defaultAssigneeMode === 'PROJECT_LEAD' ? project.leadId : null);
 
-    const plan = await this.planCreatePoints(origin, userId, workspaceId, project.id, input);
+    const plan = await this.planCreatePoints(origin, userId, organizationId, project.id, input);
 
     // Sự kiện đánh số lại rank (nếu hết chỗ chèn) chỉ phát SAU commit: tự mở transaction → chạy ngay sau `$transaction`;
     // nằm trong transaction của bên gọi (import) → đẩy vào `deferred` của họ.
@@ -1283,14 +1293,14 @@ export class IssuesService {
       const pts = await this.pointsForCreate(tx, input.typeId, priorityId, plan);
       const created = await tx.issue.create({
         data: {
-          workspaceId,
+          organizationId,
           projectId: project.id,
           number,
           key,
           typeId: input.typeId,
           statusId,
           resolvedAt: isDone ? new Date() : null,
-          // Tạo thẳng ở Done: cùng quy ước chuyển sang Done — luôn có Resolution (mặc định workspace) để báo cáo QA tin cậy.
+          // Tạo thẳng ở Done: cùng quy ước chuyển sang Done — luôn có Resolution (mặc định tổ chức) để báo cáo QA tin cậy.
           ...(doneResolutionId ? { resolutionId: doneResolutionId } : {}),
           priorityId: priorityId ?? null,
           severityId: input.severityId ?? null,
@@ -1314,7 +1324,7 @@ export class IssuesService {
         include: issueInclude,
       });
       if (input.labelIds?.length) {
-        // Nhãn phải thuộc đúng dự án (⇒ đúng workspace) — chống gắn nhãn chéo tenant/chéo dự án.
+        // Nhãn phải thuộc đúng dự án (⇒ đúng tổ chức) — chống gắn nhãn chéo tenant/chéo dự án.
         const ids = [...new Set(input.labelIds)];
         const valid = await tx.label.findMany({
           where: { id: { in: ids }, projectId: project.id },
@@ -1340,7 +1350,13 @@ export class IssuesService {
           occurredAt: new Date(),
         },
       });
-      await this.rollupOnCreate(tx, workspaceId, userId, created, outerTx ? deferred : afterCommit);
+      await this.rollupOnCreate(
+        tx,
+        organizationId,
+        userId,
+        created,
+        outerTx ? deferred : afterCommit,
+      );
       return created;
     };
     // timeout 30s như transaction đánh số lại rank riêng trước đây (dự án lớn hết chỗ chèn thì rebalance chạy trong đây).
@@ -1355,13 +1371,13 @@ export class IssuesService {
   private async resolveCreateStatus(
     db: Prisma.TransactionClient,
     userId: string,
-    workspaceId: string,
+    organizationId: string,
     project: { id: string },
     typeId: string,
     requested: string | undefined,
     origin: 'api' | 'import',
   ): Promise<{ statusId: string; isDone: boolean }> {
-    // Quy trình theo LOẠI việc (ghi đè dự án → workspace → mặc định dự án). Không có quy trình = như dự án chưa cấu hình.
+    // Quy trình theo LOẠI việc (ghi đè dự án → tổ chức → mặc định dự án). Không có quy trình = như dự án chưa cấu hình.
     // Đọc cấu hình quy trình bằng client gốc, không phải `db` (có thể là transaction của bên gọi): cache của resolver sống
     // theo request nên không được nạp từ một transaction có thể rollback / chưa commit.
     const workflowId = await this.workflowFor(this.prisma, project.id, typeId);
@@ -1388,7 +1404,7 @@ export class IssuesService {
       );
     // Tạo thẳng ở trạng thái khác trạng thái khởi tạo cũng là một lần "chuyển trạng thái" → cần cùng quyền.
     if (origin === 'api' && chosen.id !== initial?.id)
-      await this.assertCanTransition(userId, workspaceId, project.id);
+      await this.assertCanTransition(userId, organizationId, project.id);
     return { statusId: chosen.id, isDone: chosen.category === 'DONE' };
   }
 
@@ -1430,7 +1446,7 @@ export class IssuesService {
     const prefix = `${projectKey}-${issueTypePrefix(type?.key ?? null, type?.name ?? '')}-`;
     // Lấy SỐ LỚN NHẤT trong dải mã cùng tiền tố của dự án (mọi loại, cả việc đã xoá) rồi +1 — KHÔNG đếm số dòng:
     // đếm theo typeId bị lệch khi việc đổi loại (giữ mã cũ), khi hai loại cùng tiền tố hoặc khi có việc bị xoá cứng,
-    // sinh lại mã đã có ⇒ vi phạm @@unique([workspaceId, key]). Gọi sau khi đã khoá hàng dự án (UPDATE issueSequence)
+    // sinh lại mã đã có ⇒ vi phạm @@unique([organizationId, key]). Gọi sau khi đã khoá hàng dự án (UPDATE issueSequence)
     // nên hai request đồng thời không lấy cùng một số.
     const rows = await tx.$queryRaw<Array<{ max: number | null }>>`
       WITH p AS (SELECT ${prefix}::text AS v)
@@ -1444,16 +1460,16 @@ export class IssuesService {
   }
 
   async list(
-    workspaceId: string,
+    organizationId: string,
     filter: IssueListFilter,
     cursor: string | undefined,
     limit: number,
     viewerId: string | null,
   ): Promise<PageResult<IssueDto>> {
     const where: Prisma.IssueWhereInput = {
-      workspaceId,
+      organizationId,
       deletedAt: null,
-      project: await this.projectScope(workspaceId, viewerId),
+      project: await this.projectScope(organizationId, viewerId),
       projectId: filter.projectId,
       statusId: filter.statusId,
       assigneeId: filter.assigneeId,
@@ -1491,14 +1507,14 @@ export class IssuesService {
   }
 
   /**
-   * Truy vấn theo where đã biên dịch (vd từ JQL/Search). Tự ghép workspace + soft-delete.
+   * Truy vấn theo where đã biên dịch (vd từ JQL/Search). Tự ghép tổ chức + soft-delete.
    * `rawIds` (kết quả full-text, đã xếp theo rank): chỉ lấy các id đó và — khi không có `orderBy` —
    * giữ đúng thứ tự rank (tối đa vài trăm id nên sắp xếp/phân trang trong bộ nhớ).
    * `rankHint` (id đã xếp hạng, KHÔNG giới hạn tập kết quả): khi không có `orderBy`, các id này
    * khớp `where` lên trước theo thứ tự rank, phần còn lại khớp `where` theo `updatedAt` giảm dần.
    */
   async query(
-    workspaceId: string,
+    organizationId: string,
     where: Prisma.IssueWhereInput,
     orderBy: Prisma.IssueOrderByWithRelationInput[],
     cursor: string | undefined,
@@ -1508,7 +1524,11 @@ export class IssuesService {
   ): Promise<PageResult<IssueDto>> {
     const scope: Prisma.IssueWhereInput = {
       AND: [
-        { workspaceId, deletedAt: null, project: await this.projectScope(workspaceId, viewerId) },
+        {
+          organizationId,
+          deletedAt: null,
+          project: await this.projectScope(organizationId, viewerId),
+        },
         where,
       ],
     };
@@ -1547,7 +1567,7 @@ export class IssuesService {
     const cursorRanked = cursor !== undefined && pos.has(cursor);
     const out: IssueDto[] = [];
     if (!cursor || cursorRanked) {
-      // allow-deleted: scope do `query()` dựng sẵn (có `workspaceId, deletedAt: null`)
+      // allow-deleted: scope do `query()` dựng sẵn (có `organizationId, deletedAt: null`)
       const rows = await this.prisma.issue.findMany({
         where: { AND: [scope, { id: { in: rank } }] },
         include: issueInclude,
@@ -1559,7 +1579,7 @@ export class IssuesService {
       out.push(...sorted.filter((i) => pos.get(i.id)! > after).slice(0, limit + 1));
     }
     if (out.length < limit + 1) {
-      // allow-deleted: scope do `query()` dựng sẵn (có `workspaceId, deletedAt: null`)
+      // allow-deleted: scope do `query()` dựng sẵn (có `organizationId, deletedAt: null`)
       const rest = await this.prisma.issue.findMany({
         where: { AND: [scope, { id: { notIn: rank } }] },
         include: issueInclude,
@@ -1586,7 +1606,7 @@ export class IssuesService {
     const first = finalOrder[0] as { severity?: { rank?: string } };
     if (first.severity?.rank === 'desc')
       return this.queryNullsLastBySeverity(where, finalOrder, cursor, limit);
-    // allow-deleted: where do `query()` dựng sẵn (scope có `workspaceId, deletedAt: null`); queryOrdered chỉ nhận scope đó
+    // allow-deleted: where do `query()` dựng sẵn (scope có `organizationId, deletedAt: null`); queryOrdered chỉ nhận scope đó
     const rows = await this.prisma.issue.findMany({
       where,
       include: issueInclude,
@@ -1610,7 +1630,7 @@ export class IssuesService {
   ): Promise<PageResult<IssueDto>> {
     let cursorInUnset = false;
     if (cursor) {
-      // allow-deleted: where do `query()` dựng sẵn (scope có `workspaceId, deletedAt: null`)
+      // allow-deleted: where do `query()` dựng sẵn (scope có `organizationId, deletedAt: null`)
       const c = await this.prisma.issue.findFirst({
         where: { AND: [where, { id: cursor }] },
         select: { severityId: true },
@@ -1621,7 +1641,7 @@ export class IssuesService {
     const take = limit + 1;
     const rows: IssueRow[] = [];
     if (!cursorInUnset) {
-      // allow-deleted: where do `query()` dựng sẵn (scope có `workspaceId, deletedAt: null`)
+      // allow-deleted: where do `query()` dựng sẵn (scope có `organizationId, deletedAt: null`)
       const withSeverity = await this.prisma.issue.findMany({
         where: { AND: [where, { severityId: { not: null } }] },
         include: issueInclude,
@@ -1632,7 +1652,7 @@ export class IssuesService {
       rows.push(...withSeverity);
     }
     if (rows.length < take) {
-      // allow-deleted: where do `query()` dựng sẵn (scope có `workspaceId, deletedAt: null`)
+      // allow-deleted: where do `query()` dựng sẵn (scope có `organizationId, deletedAt: null`)
       const unset = await this.prisma.issue.findMany({
         where: { AND: [where, { severityId: null }] },
         include: issueInclude,
@@ -1653,22 +1673,22 @@ export class IssuesService {
    * DTO của NHIỀU việc theo id trong MỘT truy vấn — ngữ cảnh HỆ THỐNG có chủ đích (không lọc dự án riêng tư): chỉ dùng
    * để phát sự kiện realtime sau khi nghiệp vụ đã tự kiểm quyền (vd tự gán việc Jira). Không dùng cho đường đọc của người dùng.
    */
-  async getDtosByIdsForSystem(workspaceId: string, ids: string[]): Promise<IssueDto[]> {
+  async getDtosByIdsForSystem(organizationId: string, ids: string[]): Promise<IssueDto[]> {
     if (ids.length === 0) return [];
     const rows = await this.prisma.issue.findMany({
-      where: { workspaceId, id: { in: ids }, deletedAt: null, project: { deletedAt: null } },
+      where: { organizationId, id: { in: ids }, deletedAt: null, project: { deletedAt: null } },
       include: issueInclude,
     });
     return rows.map((r) => this.toDto(r));
   }
 
-  async getByKey(workspaceId: string, key: string, viewerId: string | null): Promise<IssueDto> {
+  async getByKey(organizationId: string, key: string, viewerId: string | null): Promise<IssueDto> {
     const issue = await this.prisma.issue.findFirst({
       where: {
-        workspaceId,
+        organizationId,
         key,
         deletedAt: null,
-        project: await this.projectScope(workspaceId, viewerId),
+        project: await this.projectScope(organizationId, viewerId),
       },
       include: issueInclude,
     });
@@ -1683,25 +1703,26 @@ export class IssuesService {
    */
   /** Epic mới hợp lệ + cha mới đặt đúng chỗ (không Epic có cha, cùng dự án, không sub-task) và không vòng theo `parentId ?? epicId`. */
   private async assertUpdatePlacement(
-    workspaceId: string,
+    organizationId: string,
     id: string,
     current: IssueWriteRow,
     input: UpdateIssueInput,
   ): Promise<void> {
     if (input.epicId && input.epicId !== current.epicId) {
-      await this.assertEpicValid(this.prisma, workspaceId, input.epicId, current.projectId, id);
+      await this.assertEpicValid(this.prisma, organizationId, input.epicId, current.projectId, id);
       this.assertNotEpicWithEpic(current.type);
     }
     const newParent = input.parentId && input.parentId !== current.parentId ? input.parentId : null;
     const newEpic = input.epicId && input.epicId !== current.epicId ? input.epicId : null;
     if (newParent && newParent !== id)
-      await this.assertParentPlacement(this.prisma, workspaceId, current, newParent);
+      await this.assertParentPlacement(this.prisma, organizationId, current, newParent);
     for (const start of [newParent, newEpic])
-      if (start && start !== id) await this.assertNoTreeCycle(this.prisma, workspaceId, id, start);
+      if (start && start !== id)
+        await this.assertNoTreeCycle(this.prisma, organizationId, id, start);
   }
 
   async update(
-    workspaceId: string,
+    organizationId: string,
     userId: string,
     id: string,
     rawInput: UpdateIssueInput,
@@ -1710,11 +1731,11 @@ export class IssuesService {
   ): Promise<IssueDto> {
     // Hạn là bắt buộc: xoá trống không được (schema vẫn nhận null để tương thích, service từ chối rõ ràng).
     if (rawInput.dueDate === null) throw new DueDateRequiredException();
-    const input = await this.epicParentToEpicId(this.prisma, workspaceId, rawInput);
-    const current = await this.requireIssue(workspaceId, id);
+    const input = await this.epicParentToEpicId(this.prisma, organizationId, rawInput);
+    const current = await this.requireIssue(organizationId, id);
     if (ownOnly) this.assertOwnsIssue(userId, current);
     this.assertVersion(current.version, input.version);
-    await this.assertMetaInWorkspace(workspaceId, {
+    await this.assertMetaInOrganization(organizationId, {
       typeId: input.typeId,
       priorityId: input.priorityId,
       severityId: input.severityId,
@@ -1724,11 +1745,11 @@ export class IssuesService {
       projectId: current.projectId,
     });
     // Đổi sang loại dùng quy trình KHÁC: phải chọn trạng thái đích trong quy trình mới (không để việc trỏ vào trạng thái của quy trình khác).
-    const typeMove = await this.planUpdateTypeMove(userId, workspaceId, current, input);
-    await this.assertUpdatePlacement(workspaceId, id, current, input);
+    const typeMove = await this.planUpdateTypeMove(userId, organizationId, current, input);
+    await this.assertUpdatePlacement(organizationId, id, current, input);
     if (input.assigneeId !== undefined && input.assigneeId !== current.assigneeId)
-      await this.assertAssigneeInWorkspace(
-        workspaceId,
+      await this.assertAssigneeInOrganization(
+        organizationId,
         input.assigneeId,
         this.prisma,
         current.projectId,
@@ -1739,7 +1760,7 @@ export class IssuesService {
       (input.dueDate !== undefined || input.startDate !== undefined) &&
       opts?.automationDepth === undefined
     ) {
-      await this.assertCanEditRestrictedFields(userId, workspaceId, current);
+      await this.assertCanEditRestrictedFields(userId, organizationId, current);
     }
     // Thứ tự ngày tính trên giá trị HIỆU LỰC sau khi sửa (trường không gửi giữ giá trị hiện có) — và CHỈ khi request
     // đổi startDate/dueDate: dữ liệu cũ sai thứ tự (API trước đây không kiểm) không được làm mọi chỉnh sửa khác 422.
@@ -1757,7 +1778,7 @@ export class IssuesService {
     // Gửi lại đúng điểm hiện có (vd form gửi cả đối tượng) KHÔNG phải ghi đè — với ai cũng vậy: không bật cờ, không ghi.
     let manualPoints: number | undefined;
     if (input.storyPoints !== undefined && isPointsOverride(current, input.storyPoints)) {
-      if (await this.canOverridePoints(userId, workspaceId, current.projectId)) {
+      if (await this.canOverridePoints(userId, organizationId, current.projectId)) {
         if (current.type.key === 'EPIC')
           throw new BusinessRuleException(
             'Điểm của Epic là tổng điểm các việc con — không chỉnh tay được',
@@ -1788,7 +1809,7 @@ export class IssuesService {
       data.resolutionId = toDone
         ? await this.resolutionForDone(
             this.prisma,
-            workspaceId,
+            organizationId,
             input.resolutionId,
             current.resolutionId,
           )
@@ -1808,11 +1829,11 @@ export class IssuesService {
         throw new BusinessRuleException(
           'Một công việc không thể là việc cha của chính nó — hãy chọn một công việc khác làm việc cha',
         );
-      if (input.parentId) await this.assertNoParentCycle(workspaceId, id, input.parentId);
+      if (input.parentId) await this.assertNoParentCycle(organizationId, id, input.parentId);
       data.parentId = input.parentId ?? null;
     }
     // Việc con theo sprint của cha: chặn đặt sprint riêng; đổi cha thì đồng bộ sprint theo cha mới.
-    const synced = await this.syncSprintWithParent(workspaceId, current, input);
+    const synced = await this.syncSprintWithParent(organizationId, current, input);
     if (synced !== undefined) data.sprintId = synced;
     const newSprint =
       synced !== undefined
@@ -1828,7 +1849,7 @@ export class IssuesService {
       // Khoá nhánh việc con TRƯỚC khi ghi việc cha (thứ tự con → cha, như cộng điểm).
       const subtree = sprintChanged ? await this.lockSubtree(tx, [id]) : [];
       await this.applyPoints(tx, current, input, data, manualPoints);
-      const row = await this.updateWithVersion(tx, id, workspaceId, input.version, data);
+      const row = await this.updateWithVersion(tx, id, organizationId, input.version, data);
       await this.recordChanges(tx, userId, current, row);
       if (typeMove) await this.recordStatusChange(tx, userId, current, row);
       if (sprintChanged)
@@ -1857,15 +1878,15 @@ export class IssuesService {
         fromStatusId: current.statusId,
         ...withMeta(opts),
       });
-    await this.emitEpicTotals(workspaceId, userId, changedEpics);
-    await this.emitEpicTotals(workspaceId, userId, cascaded, ['sprintId']);
+    await this.emitEpicTotals(organizationId, userId, changedEpics);
+    await this.emitEpicTotals(organizationId, userId, cascaded, ['sprintId']);
     return dto;
   }
 
   /** `update()` đổi loại sang quy trình khác: trạng thái đích (null = không đổi trạng thái) + kiểm quyền/chặn Done. */
   private async planUpdateTypeMove(
     userId: string,
-    workspaceId: string,
+    organizationId: string,
     current: IssueWriteRow,
     input: UpdateIssueInput,
   ): Promise<TypeMove | null> {
@@ -1881,7 +1902,7 @@ export class IssuesService {
     const move = plan.get(current.id) ?? null;
     if (!move) return null;
     // Đổi trạng thái luôn cần quyền chuyển trạng thái (update chỉ đòi issue:edit).
-    const { ownOnly } = await this.assertCanTransition(userId, workspaceId, current.projectId);
+    const { ownOnly } = await this.assertCanTransition(userId, organizationId, current.projectId);
     if (ownOnly) this.assertOwnsIssue(userId, current);
     if (move.category === 'DONE') await this.assertNotBlockedForDone([current]);
     return move;
@@ -2027,7 +2048,7 @@ export class IssuesService {
    */
   /** Đổi trạng thái hàng loạt: từng việc phải đi được theo quy trình của LOẠI của nó; đích DONE thì không bị chặn và lấy giải pháp mặc định một lần. */
   private async checkBulkStatusMove(
-    workspaceId: string,
+    organizationId: string,
     projectId: string,
     rows: IssueRow[],
     statusId: string | undefined,
@@ -2045,11 +2066,14 @@ export class IssuesService {
     if (!toDone) return { toDone, doneResolutionId: null };
     await this.assertNotBlockedForDone(rows.filter((r) => r.statusId !== statusId));
     // Một lần tra mặc định cho cả lô (bulk không nhận resolution tường minh).
-    return { toDone, doneResolutionId: await this.defaultResolutionId(this.prisma, workspaceId) };
+    return {
+      toDone,
+      doneResolutionId: await this.defaultResolutionId(this.prisma, organizationId),
+    };
   }
 
   async bulkUpdate(
-    workspaceId: string,
+    organizationId: string,
     userId: string,
     input: BulkUpdateIssuesInput,
     ownOnly?: boolean,
@@ -2059,16 +2083,17 @@ export class IssuesService {
     // Đổi trạng thái chỉ đi qua quyền chuyển trạng thái (giống POST :id/transition), không đi chung quyền sửa.
     let transitionOwnOnly = false;
     if (patch.statusId)
-      transitionOwnOnly = (await this.assertCanTransition(userId, workspaceId, projectId)).ownOnly;
+      transitionOwnOnly = (await this.assertCanTransition(userId, organizationId, projectId))
+        .ownOnly;
     await assertProjectWritable(this.prisma, projectId);
     const rows = await this.prisma.issue.findMany({
-      where: { id: { in: items.map((i) => i.id) }, workspaceId, projectId, deletedAt: null },
+      where: { id: { in: items.map((i) => i.id) }, organizationId, projectId, deletedAt: null },
       include: issueInclude,
     });
     if (rows.length !== items.length) throw new NotFoundAppException('Công việc');
     const byId = new Map(rows.map((r) => [r.id, r]));
     if (ownOnly || transitionOwnOnly) for (const r of rows) this.assertOwnsIssue(userId, r); // một việc của người khác → 403 cả lô, chưa ghi gì
-    await this.assertMetaInWorkspace(workspaceId, {
+    await this.assertMetaInOrganization(organizationId, {
       typeId: patch.typeId,
       priorityId: patch.priorityId,
       // Chỉ kiểm khi có việc thật sự đổi sprint (lô đã ở đúng sprint đó thì thôi).
@@ -2077,11 +2102,16 @@ export class IssuesService {
     });
     // Chỉ kiểm khi có hàng thật sự đổi assignee (hàng đã giữ đúng assignee đó thì bỏ qua).
     if (patch.assigneeId !== undefined && rows.some((r) => r.assigneeId !== patch.assigneeId))
-      await this.assertAssigneeInWorkspace(workspaceId, patch.assigneeId, this.prisma, projectId);
+      await this.assertAssigneeInOrganization(
+        organizationId,
+        patch.assigneeId,
+        this.prisma,
+        projectId,
+      );
     const rollupParents = await this.bulkRollupParents(rows, patch);
     const manualPoints = await this.resolveBulkManualPoints(
       userId,
-      workspaceId,
+      organizationId,
       projectId,
       rows,
       patch.storyPoints,
@@ -2090,7 +2120,7 @@ export class IssuesService {
     if (patch.epicId) for (const r of rows) this.assertNotEpicWithEpic(r.type);
     if (patch.epicId)
       await this.assertEpicForBulk(
-        workspaceId,
+        organizationId,
         patch.epicId,
         projectId,
         items.map((i) => i.id),
@@ -2108,7 +2138,7 @@ export class IssuesService {
     // Đổi loại hàng loạt: việc sang quy trình khác phải có trạng thái đích trong `statusMap` (thiếu → 422 cả lô, chưa ghi gì).
     const { typeMoves, newTypeKey } = await this.planBulkTypeChange(
       userId,
-      workspaceId,
+      organizationId,
       projectId,
       rows,
       patch,
@@ -2116,18 +2146,23 @@ export class IssuesService {
     );
 
     // Chuyển trạng thái: kiểm tra workflow đúng như transition() trước khi ghi bất cứ thứ gì.
-    const statusMove = await this.checkBulkStatusMove(workspaceId, projectId, rows, patch.statusId);
+    const statusMove = await this.checkBulkStatusMove(
+      organizationId,
+      projectId,
+      rows,
+      patch.statusId,
+    );
     const toDone = statusMove.toDone;
     let doneResolutionId = statusMove.doneResolutionId;
     if (!doneResolutionId && [...typeMoves.values()].some((m) => m.category === 'DONE'))
-      doneResolutionId = await this.defaultResolutionId(this.prisma, workspaceId);
+      doneResolutionId = await this.defaultResolutionId(this.prisma, organizationId);
     // Giới hạn WIP của cột đích (nếu web gửi boardId); kiểm lại trong transaction sau khi khoá cột.
     const wip = patch.statusId
       ? await this.wipService.resolveWipColumn(input.boardId, projectId, patch.statusId)
       : null;
 
     const recompute = await this.bulkRecomputeContext(patch, newTypeKey);
-    const sprintPlan = await this.planBulkSprint(workspaceId, rows, patch.sprintId);
+    const sprintPlan = await this.planBulkSprint(organizationId, rows, patch.sprintId);
 
     const conflicts: BulkUpdateIssuesResult['conflicts'] = [];
     let changedEpics: string[] = [];
@@ -2147,7 +2182,7 @@ export class IssuesService {
         if (incoming > 0)
           await this.wipService.enforceWip(tx, wip, {
             userId,
-            workspaceId,
+            organizationId,
             projectId,
             incoming,
             force: input.force,
@@ -2176,7 +2211,13 @@ export class IssuesService {
         }
         data.updatedById = userId;
         try {
-          const after = await this.updateWithVersion(tx, item.id, workspaceId, item.version, data);
+          const after = await this.updateWithVersion(
+            tx,
+            item.id,
+            organizationId,
+            item.version,
+            data,
+          );
           await this.recordChanges(tx, userId, before, after);
           if (statusChanged) await this.recordStatusChange(tx, userId, before, after);
           changed.push({ before, after });
@@ -2203,9 +2244,9 @@ export class IssuesService {
       );
     }, BULK_TX_OPTIONS);
 
-    const fresh = await this.emitBulkEvents(workspaceId, userId, projectId, changed, labelIds);
-    await this.emitEpicTotals(workspaceId, userId, changedEpics);
-    await this.emitEpicTotals(workspaceId, userId, cascaded, ['sprintId']);
+    const fresh = await this.emitBulkEvents(organizationId, userId, projectId, changed, labelIds);
+    await this.emitEpicTotals(organizationId, userId, changedEpics);
+    await this.emitEpicTotals(organizationId, userId, cascaded, ['sprintId']);
     return { updated: result.map((r) => this.toDto(fresh.get(r.id) ?? r)), conflicts };
   }
 
@@ -2259,7 +2300,7 @@ export class IssuesService {
   /** Đổi loại cả lô: kiểm điều kiện rồi trả trạng thái đích của việc phải đổi quy trình (xem `planTypeChangeStatuses`). */
   private async planBulkTypeChange(
     userId: string,
-    workspaceId: string,
+    organizationId: string,
     projectId: string,
     rows: IssueRow[],
     patch: BulkUpdateIssuesInput['patch'],
@@ -2272,7 +2313,7 @@ export class IssuesService {
         'Không đổi loại và đổi trạng thái trong cùng một lần — hãy đổi loại (kèm bảng trạng thái đích) rồi mới chuyển trạng thái',
       );
     const newType = await this.prisma.issueType.findFirst({
-      where: { id: patch.typeId, workspaceId },
+      where: { id: patch.typeId, organizationId },
       select: { key: true },
     });
     const newTypeKey = newType?.key ?? null;
@@ -2291,7 +2332,7 @@ export class IssuesService {
       'statusMap',
     );
     if (plan.size > 0) {
-      const { ownOnly } = await this.assertCanTransition(userId, workspaceId, projectId);
+      const { ownOnly } = await this.assertCanTransition(userId, organizationId, projectId);
       if (ownOnly) for (const r of changing) this.assertOwnsIssue(userId, r);
       const toDone = changing.filter((r) => plan.get(r.id)?.category === 'DONE');
       await this.assertNotBlockedForDone(toDone);
@@ -2303,9 +2344,9 @@ export class IssuesService {
    * Các bước chuyển khả dụng từ trạng thái hiện tại, theo quy trình của CHÍNH loại việc này. Đang ở Pending thì kèm
    * `suggestedResumeStatusId`: trạng thái mở ngay trước khi tạm dừng (theo lịch sử).
    */
-  async getTransitions(workspaceId: string, id: string): Promise<IssueTransitionsDto> {
+  async getTransitions(organizationId: string, id: string): Promise<IssueTransitionsDto> {
     const issue = await this.prisma.issue.findFirst({
-      where: { id, workspaceId, deletedAt: null },
+      where: { id, organizationId, deletedAt: null },
       select: {
         id: true,
         projectId: true,
@@ -2378,7 +2419,7 @@ export class IssuesService {
    * sẽ đổi sprint (kể cả việc con hợp lệ) — gốc của các nhánh phải khoá + cascade.
    */
   private async planBulkSprint(
-    workspaceId: string,
+    organizationId: string,
     rows: IssueRow[],
     sprintId: string | null | undefined,
   ): Promise<{ followers: Set<string>; roots: string[] }> {
@@ -2396,7 +2437,7 @@ export class IssuesService {
       const parents = await this.prisma.issue.findMany({
         where: {
           id: { in: [...new Set(outside.map((r) => r.parentId!))] },
-          workspaceId,
+          organizationId,
           deletedAt: null,
         },
         select: { id: true, sprintId: true },
@@ -2458,7 +2499,7 @@ export class IssuesService {
    * Trả về map id → hàng đã đọc lại (rỗng khi lô không đổi nhãn).
    */
   private async emitBulkEvents(
-    workspaceId: string,
+    organizationId: string,
     userId: string,
     projectId: string,
     changed: Array<{ before: IssueRow; after: IssueRow }>,
@@ -2469,7 +2510,7 @@ export class IssuesService {
     if (labelIds.length) {
       try {
         const reread = await this.prisma.issue.findMany({
-          where: { id: { in: labelIds }, workspaceId, deletedAt: null },
+          where: { id: { in: labelIds }, organizationId, deletedAt: null },
           include: issueInclude,
         });
         for (const r of reread) fresh.set(r.id, r);
@@ -2533,7 +2574,7 @@ export class IssuesService {
     }
     if (touched.size > 0)
       this.events.emit(DOMAIN_EVENTS.ISSUES_BULK_UPDATED, {
-        workspaceId,
+        organizationId,
         projectId,
         actorId: userId,
         count: touched.size,
@@ -2543,22 +2584,22 @@ export class IssuesService {
   }
 
   async transition(
-    workspaceId: string,
+    organizationId: string,
     userId: string,
     id: string,
     input: TransitionIssueInput,
     opts?: AutomationEventMeta,
     ownOnly?: boolean,
   ): Promise<IssueTransitionResultDto> {
-    const current = await this.requireIssue(workspaceId, id);
+    const current = await this.requireIssue(organizationId, id);
     if (ownOnly) this.assertOwnsIssue(userId, current);
     this.assertVersion(current.version, input.version);
-    await this.assertMetaInWorkspace(workspaceId, { resolutionId: input.resolutionId });
+    await this.assertMetaInOrganization(organizationId, { resolutionId: input.resolutionId });
     if (current.statusId === input.toStatusId) return this.toDto(current);
     // Lý do được lưu thành bình luận → cần `comment:create`. Thiếu quyền thì báo TRƯỚC khi ghi gì
     // (bỏ qua im lặng sẽ nuốt chữ người dùng đã gõ).
     const reason = input.comment?.trim();
-    if (reason) await this.assertCanWriteReason(userId, workspaceId, current.projectId);
+    if (reason) await this.assertCanWriteReason(userId, organizationId, current.projectId);
 
     // Validate transition theo workflow của LOẠI việc (không phải một workflow chung của dự án)
     const workflowId = await this.workflowFor(this.prisma, current.projectId, current.typeId);
@@ -2569,7 +2610,7 @@ export class IssuesService {
     const resolutionId = isDone
       ? await this.resolutionForDone(
           this.prisma,
-          workspaceId,
+          organizationId,
           input.resolutionId,
           current.resolutionId,
         )
@@ -2585,12 +2626,12 @@ export class IssuesService {
       if (wip)
         await this.wipService.enforceWip(tx, wip, {
           userId,
-          workspaceId,
+          organizationId,
           projectId: current.projectId,
           incoming: 1,
           force: input.force,
         });
-      const row = await this.updateWithVersion(tx, id, workspaceId, input.version, {
+      const row = await this.updateWithVersion(tx, id, organizationId, input.version, {
         statusId: input.toStatusId,
         updatedById: userId,
         resolutionId,
@@ -2611,7 +2652,7 @@ export class IssuesService {
     // để FE nói rõ cho người dùng (không nuốt im lặng chữ họ đã gõ).
     try {
       if (!this.comments) throw new Error('CommentsService chưa được tiêm');
-      await this.comments.create(workspaceId, userId, id, {
+      await this.comments.create(organizationId, userId, id, {
         body: `*Chuyển ${current.status.name} → ${updated.status.name}*\n\n${reason}`,
         bodyFormat: 'MARKDOWN',
       });
@@ -2622,8 +2663,8 @@ export class IssuesService {
     }
   }
 
-  private async assertCanWriteReason(userId: string, workspaceId: string, projectId: string) {
-    const perms = await this.rbac.getEffectivePermissions(userId, workspaceId, projectId);
+  private async assertCanWriteReason(userId: string, organizationId: string, projectId: string) {
+    const perms = await this.rbac.getEffectivePermissions(userId, organizationId, projectId);
     if (perms.has(PERMISSIONS.COMMENT_CREATE)) return;
     const u = await this.prisma.user.findUnique({
       where: { id: userId },
@@ -2634,31 +2675,31 @@ export class IssuesService {
   }
 
   async move(
-    workspaceId: string,
+    organizationId: string,
     userId: string,
     id: string,
     input: MoveIssueInput,
     ownOnly?: boolean,
   ): Promise<IssueDto> {
-    const current = await this.requireIssue(workspaceId, id);
+    const current = await this.requireIssue(organizationId, id);
     if (ownOnly) this.assertOwnsIssue(userId, current);
     this.assertVersion(current.version, input.version);
     const statusChanged = !!input.statusId && input.statusId !== current.statusId;
     const sprintChanged = this.sprintIfChanged(input.sprintId, current.sprintId) !== undefined;
     const wantsRank = !!input.afterId || !!input.beforeId;
     // `/move` chỉ đòi `issue:transition` nhưng còn nhận sprint + mốc rank: hai việc đó cần quyền riêng (như `/rank`).
-    const useRankHint = await this.assertMoveCapabilities(workspaceId, userId, current, {
+    const useRankHint = await this.assertMoveCapabilities(organizationId, userId, current, {
       sprintChanged,
       wantsRank,
       statusChanged,
     });
-    await this.assertMetaInWorkspace(workspaceId, {
+    await this.assertMetaInOrganization(organizationId, {
       sprintId: this.sprintIfChanged(input.sprintId, current.sprintId),
       projectId: current.projectId,
     });
     // Việc con theo sprint của cha: không kéo riêng sang sprint khác (kéo việc cha, việc con đi theo).
     if (sprintChanged)
-      await this.syncSprintWithParent(workspaceId, current, { sprintId: input.sprintId });
+      await this.syncSprintWithParent(organizationId, current, { sprintId: input.sprintId });
 
     // Kéo sang cột khác là đổi trạng thái: đi đúng workflow như transition()/bulkUpdate(). Kiểm TRƯỚC resolveRank
     // để không rebalance rank rồi mới báo lỗi; kéo cùng cột/xếp lại thứ tự không đụng workflow.
@@ -2676,7 +2717,7 @@ export class IssuesService {
       if (toDone)
         moveResolutionId = await this.resolutionForDone(
           this.prisma,
-          workspaceId,
+          organizationId,
           undefined,
           current.resolutionId,
         );
@@ -2715,7 +2756,7 @@ export class IssuesService {
         if (wip)
           await this.wipService.enforceWip(tx, wip, {
             userId,
-            workspaceId,
+            organizationId,
             projectId: current.projectId,
             incoming: 1,
             force: input.force,
@@ -2728,16 +2769,26 @@ export class IssuesService {
             id,
             async () => ({
               prev: input.afterId
-                ? await this.rankService.rankOf(workspaceId, current.projectId, input.afterId, tx)
+                ? await this.rankService.rankOf(
+                    organizationId,
+                    current.projectId,
+                    input.afterId,
+                    tx,
+                  )
                 : null,
               next: input.beforeId
-                ? await this.rankService.rankOf(workspaceId, current.projectId, input.beforeId, tx)
+                ? await this.rankService.rankOf(
+                    organizationId,
+                    current.projectId,
+                    input.beforeId,
+                    tx,
+                  )
                 : null,
             }),
           );
         // Đổi sprint của việc cha: khoá nhánh việc con rồi cho chúng đi theo (sau khi ghi cha).
         const subtree = sprintChanged ? await this.lockSubtree(tx, [id]) : [];
-        const row = await this.updateWithVersion(tx, id, workspaceId, input.version, {
+        const row = await this.updateWithVersion(tx, id, organizationId, input.version, {
           rank,
           statusId: input.statusId ?? current.statusId,
           sprintId: input.sprintId !== undefined ? input.sprintId : current.sprintId,
@@ -2790,19 +2841,19 @@ export class IssuesService {
         actorId: userId,
         changedFields: ['sprintId'],
       });
-    await this.emitEpicTotals(workspaceId, userId, cascaded, ['sprintId']);
+    await this.emitEpicTotals(organizationId, userId, cascaded, ['sprintId']);
     return dto;
   }
 
   /** Soft-delete (vào Recycle Bin). */
-  async softDelete(workspaceId: string, userId: string, id: string): Promise<{ success: true }> {
-    const current = await this.requireIssue(workspaceId, id);
+  async softDelete(organizationId: string, userId: string, id: string): Promise<{ success: true }> {
+    const current = await this.requireIssue(organizationId, id);
     // updateMany + deletedAt:null để hai lần xoá đồng thời chỉ một lần thắng (và chỉ phát sự kiện một lần).
     // Trừ điểm khỏi việc cha/Epic trong cùng transaction.
     let changedEpics: string[] = [];
     await this.prisma.$transaction(async (tx) => {
       const { count } = await tx.issue.updateMany({
-        where: { id, workspaceId, deletedAt: null },
+        where: { id, organizationId, deletedAt: null },
         data: { deletedAt: new Date(), updatedById: userId, version: { increment: 1 } },
       });
       if (count === 0) throw new NotFoundAppException('Công việc');
@@ -2821,7 +2872,7 @@ export class IssuesService {
       projectId: current.projectId,
       actorId: userId,
     });
-    await this.emitEpicTotals(workspaceId, userId, changedEpics);
+    await this.emitEpicTotals(organizationId, userId, changedEpics);
     return { success: true };
   }
 
@@ -2830,8 +2881,8 @@ export class IssuesService {
    * Server quyết hết điều kiện: đúng người, trong `RETRACT_WINDOW_MS` kể từ `createdAt`, chưa có việc con,
    * chưa có bình luận của người KHÁC. Xoá mềm → vào Thùng rác (quản trị dự án khôi phục được).
    */
-  async retract(workspaceId: string, userId: string, id: string): Promise<{ success: true }> {
-    const current = await this.requireIssue(workspaceId, id); // đã chặn dự án lưu trữ
+  async retract(organizationId: string, userId: string, id: string): Promise<{ success: true }> {
+    const current = await this.requireIssue(organizationId, id); // đã chặn dự án lưu trữ
     if (current.reporterId !== userId && current.createdById !== userId)
       throw new ForbiddenAppException(
         'Chỉ người báo cáo công việc này mới thu hồi được — hãy nhờ quản trị dự án xoá',
@@ -2857,17 +2908,17 @@ export class IssuesService {
       throw new BusinessRuleException('Công việc đã có việc con — hãy nhờ quản trị dự án xoá');
     if (others > 0)
       throw new BusinessRuleException('Đã có người bình luận — hãy nhờ quản trị dự án xoá');
-    return this.softDelete(workspaceId, userId, id);
+    return this.softDelete(organizationId, userId, id);
   }
 
   /** Khôi phục việc đã xoá mềm (Thùng rác). Dự án lưu trữ → chặn; hai lần đồng thời chỉ một lần thắng. */
   async restore(
-    workspaceId: string,
+    organizationId: string,
     userId: string,
     projectId: string,
     issueId: string,
   ): Promise<IssueDto> {
-    const where = { id: issueId, workspaceId, projectId, deletedAt: { not: null } };
+    const where = { id: issueId, organizationId, projectId, deletedAt: { not: null } };
     // allow-deleted: khôi phục cố ý đọc việc đã xoá mềm
     const current = await this.prisma.issue.findFirst({ where, include: issueWriteInclude });
     if (!current) throw new NotFoundAppException('Công việc');
@@ -2878,7 +2929,7 @@ export class IssuesService {
       refs.length
         ? (
             await this.prisma.issue.findMany({
-              where: { id: { in: refs }, workspaceId, deletedAt: null },
+              where: { id: { in: refs }, organizationId, deletedAt: null },
               select: { id: true },
             })
           ).map((r) => r.id)
@@ -2905,7 +2956,7 @@ export class IssuesService {
       if (count === 0) throw new NotFoundAppException('Công việc');
       const epicId = 'epicId' in detach ? null : current.epicId;
       const parentId = 'parentId' in detach ? null : current.parentId;
-      cascaded = await this.syncSprintOnRestore(tx, workspaceId, userId, current, parentId);
+      cascaded = await this.syncSprintOnRestore(tx, organizationId, userId, current, parentId);
       // Việc khôi phục là Epic/việc cha: việc con có thể đã đổi trong lúc nó nằm trong Thùng rác (rollup bỏ qua việc đã xoá).
       const isEpic = current.type.key === 'EPIC';
       const ownIsParent = !isEpic && (await this.idsWithLiveChildren(tx, [issueId])).size > 0;
@@ -2920,7 +2971,7 @@ export class IssuesService {
       });
     });
     const row = await this.prisma.issue.findFirstOrThrow({
-      where: { id: issueId, workspaceId, deletedAt: null },
+      where: { id: issueId, organizationId, deletedAt: null },
       include: issueInclude,
     });
     const dto = this.toDto(row);
@@ -2929,8 +2980,8 @@ export class IssuesService {
       actorId: userId,
       changedFields: ['deletedAt', ...orphaned],
     });
-    await this.emitEpicTotals(workspaceId, userId, changedEpics);
-    await this.emitEpicTotals(workspaceId, userId, cascaded, ['sprintId']);
+    await this.emitEpicTotals(organizationId, userId, changedEpics);
+    await this.emitEpicTotals(organizationId, userId, cascaded, ['sprintId']);
     return dto;
   }
 
@@ -2938,9 +2989,9 @@ export class IssuesService {
    * "Tính lại theo công thức": bỏ chỉnh tay (`pointsManual=false`) rồi tính lại điểm từ Loại × Độ khó × Ưu tiên.
    * Chỉ Quản trị dự án/SA (route đã chặn bằng `project:admin`; kiểm lại ở đây). Epic không có điểm chỉnh tay.
    */
-  async resetPoints(workspaceId: string, userId: string, id: string): Promise<IssueDto> {
-    const current = await this.requireIssue(workspaceId, id);
-    if (!(await this.canOverridePoints(userId, workspaceId, current.projectId)))
+  async resetPoints(organizationId: string, userId: string, id: string): Promise<IssueDto> {
+    const current = await this.requireIssue(organizationId, id);
+    if (!(await this.canOverridePoints(userId, organizationId, current.projectId)))
       throw new PointsOverrideForbiddenException();
     if (current.type.key === 'EPIC')
       throw new BusinessRuleException(
@@ -2955,7 +3006,7 @@ export class IssuesService {
       });
       // Việc đang có việc con: điểm vẫn là tổng việc con (chỉ bỏ cờ chỉnh tay), không đặt theo công thức.
       const isParent = (await this.idsWithLiveChildren(tx, [id])).size > 0;
-      const row = await this.updateWithVersion(tx, id, workspaceId, current.version, {
+      const row = await this.updateWithVersion(tx, id, organizationId, current.version, {
         pointsManual: false,
         ...(computed !== null && !isParent ? { storyPoints: computed } : {}),
         updatedById: userId,
@@ -2970,15 +3021,15 @@ export class IssuesService {
       actorId: userId,
       changedFields: changedFieldsOf(current, updated),
     });
-    await this.emitEpicTotals(workspaceId, userId, changedEpics);
+    await this.emitEpicTotals(organizationId, userId, changedEpics);
     return dto;
   }
 
   // ---------- helpers ----------
   /** Issue dùng cho thao tác GHI: dự án đã lưu trữ thì từ chối ngay. */
-  private async requireIssue(workspaceId: string, id: string): Promise<IssueWriteRow> {
+  private async requireIssue(organizationId: string, id: string): Promise<IssueWriteRow> {
     const issue = await this.prisma.issue.findFirst({
-      where: { id, workspaceId, deletedAt: null },
+      where: { id, organizationId, deletedAt: null },
       include: issueWriteInclude,
     });
     if (!issue) throw new NotFoundAppException('Công việc');
@@ -2988,7 +3039,7 @@ export class IssuesService {
 
   /** Chặn vòng lặp cây: đi ngược từ parent mới lên gốc, không được gặp lại chính issue con. */
   private async assertNoParentCycle(
-    workspaceId: string,
+    organizationId: string,
     childId: string,
     newParentId: string,
   ): Promise<void> {
@@ -3001,7 +3052,7 @@ export class IssuesService {
         );
       }
       const p: { parentId: string | null } | null = await this.prisma.issue.findFirst({
-        where: { id: cur, workspaceId, deletedAt: null },
+        where: { id: cur, organizationId, deletedAt: null },
         select: { parentId: true },
       });
       cur = p?.parentId ?? null;
@@ -3110,17 +3161,17 @@ export class IssuesService {
   private async updateWithVersion(
     tx: Prisma.TransactionClient,
     id: string,
-    workspaceId: string,
+    organizationId: string,
     version: number,
     data: Prisma.IssueUncheckedUpdateManyInput,
   ): Promise<IssueRow> {
     const { count } = await tx.issue.updateMany({
-      where: { id, workspaceId, deletedAt: null, version },
+      where: { id, organizationId, deletedAt: null, version },
       data: { ...data, version: { increment: 1 } },
     });
     if (count === 0) {
       const cur = await tx.issue.findFirst({
-        where: { id, workspaceId, deletedAt: null },
+        where: { id, organizationId, deletedAt: null },
         select: { version: true },
       });
       if (!cur) throw new NotFoundAppException('Công việc');
@@ -3232,7 +3283,7 @@ export class IssuesService {
           }
         : null,
       assignee: i.assignee ? toUserRefDto(i.assignee) : null,
-      workspaceId: i.workspaceId,
+      organizationId: i.organizationId,
       projectId: i.projectId,
       number: i.number,
       description: i.description,

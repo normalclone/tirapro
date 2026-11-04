@@ -17,7 +17,7 @@ type ListQuery = z.infer<typeof listQuerySchema>;
 
 /** Hộp thư đi — CHỈ admin hệ thống. Trả metadata, không trả nội dung thư (có thể chứa liên kết còn hiệu lực). */
 @ApiTags('admin')
-@AuthOnly() // Chỉ admin hệ thống: handler tự kiểm isSystemAdmin, không thuộc RBAC workspace.
+@AuthOnly() // Chỉ admin hệ thống: handler tự kiểm isSystemAdmin, không thuộc RBAC organization.
 @Controller('admin/mail-outbox')
 export class MailAdminController {
   constructor(private readonly prisma: PrismaService) {}

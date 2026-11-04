@@ -54,7 +54,7 @@ function make(
   board: unknown = boardRow(),
   opts: {
     lockedColumnIds?: string[];
-    /** Loại việc → quy trình theo workspace (không có = mọi loại rơi về quy trình mặc định của dự án). */
+    /** Loại việc → quy trình theo tổ chức (không có = mọi loại rơi về quy trình mặc định của dự án). */
     scheme?: Array<{ issueTypeId: string; workflowId: string }>;
     types?: Array<{ id: string }>;
     statuses?: Array<{ id: string; name: string; workflowId: string }>;
@@ -98,10 +98,10 @@ function make(
     },
     // Resolver quy trình theo loại việc.
     project: {
-      findUnique: vi.fn(() => Promise.resolve({ workspaceId: 'w1', defaultWorkflowId: 'wf' })),
+      findUnique: vi.fn(() => Promise.resolve({ organizationId: 'w1', defaultWorkflowId: 'wf' })),
     },
     projectWorkflowOverride: { findMany: vi.fn(() => Promise.resolve([])) },
-    workspaceWorkflowScheme: { findMany: vi.fn(() => Promise.resolve(opts.scheme ?? [])) },
+    organizationWorkflowScheme: { findMany: vi.fn(() => Promise.resolve(opts.scheme ?? [])) },
     issueType: { findMany: vi.fn(() => Promise.resolve(opts.types ?? [{ id: 'tTask' }])) },
     // Trạng thái đang nằm trong cột + đếm việc: để kiểm "bỏ trạng thái còn việc khỏi bảng".
     boardColumnStatus: {
@@ -419,7 +419,7 @@ describe('BoardsService — dự án đã xoá mềm = board không tồn tại 
     ).rejects.toMatchObject({ status: 404 });
     await expect(service.update('w1', 'b1', { name: 'x' })).rejects.toMatchObject({ status: 404 });
     for (const call of prisma.board.findFirst.mock.calls as unknown as [{ where: unknown }][])
-      expect(call[0].where).toMatchObject({ project: { workspaceId: 'w1', deletedAt: null } });
+      expect(call[0].where).toMatchObject({ project: { organizationId: 'w1', deletedAt: null } });
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 });
@@ -517,7 +517,7 @@ describe('BoardsService.setColumns — nhiều quy trình theo loại việc', (
     const board = boardRow({ project: { archivedAt: null, defaultWorkflowId: null } });
     const { service, prisma } = make(board, { types: [{ id: 'tTask' }] });
     prisma.project.findUnique.mockResolvedValue({
-      workspaceId: 'w1',
+      organizationId: 'w1',
       defaultWorkflowId: null,
     } as never);
     await expect(

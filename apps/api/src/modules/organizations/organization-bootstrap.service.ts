@@ -13,17 +13,17 @@ import { ensureDefaultScheme } from '../workflow-admin/default-scheme';
 type Tx = Prisma.TransactionClient | PrismaClient;
 
 /**
- * Bootstrap config cho workspace mới: clone DEFAULT_* (issue types, priorities, severities,
- * resolutions, link types) + tạo workflow templates. Dùng khi register / tạo workspace.
+ * Bootstrap config cho tổ chức mới: clone DEFAULT_* (issue types, priorities, severities,
+ * resolutions, link types) + tạo workflow templates. Dùng khi register / tạo organization.
  * (Cùng nguồn catalog với prisma/seed.ts.)
  */
 @Injectable()
-export class WorkspaceBootstrapService {
-  async bootstrap(tx: Tx, workspaceId: string): Promise<void> {
+export class OrganizationBootstrapService {
+  async bootstrap(tx: Tx, organizationId: string): Promise<void> {
     for (const t of DEFAULT_ISSUE_TYPES) {
       await tx.issueType.create({
         data: {
-          workspaceId,
+          organizationId,
           name: t.name,
           key: t.key,
           color: t.color,
@@ -35,11 +35,11 @@ export class WorkspaceBootstrapService {
     }
     // Quy trình theo loại việc: tổ chức mới có sẵn 3 quy trình mặc định + dòng cấu hình cho từng loại việc vừa tạo,
     // để dự án đầu tiên tạo việc ngay được (không thì loại việc nào cũng "không có quy trình").
-    await ensureDefaultScheme(tx, workspaceId);
+    await ensureDefaultScheme(tx, organizationId);
     for (const p of DEFAULT_PRIORITIES) {
       await tx.priority.create({
         data: {
-          workspaceId,
+          organizationId,
           name: p.name,
           iconKey: p.iconKey,
           color: p.color,
@@ -52,7 +52,7 @@ export class WorkspaceBootstrapService {
     for (const s of DEFAULT_SEVERITIES) {
       await tx.severity.create({
         data: {
-          workspaceId,
+          organizationId,
           name: s.name,
           description: s.description,
           color: s.color,
@@ -65,7 +65,7 @@ export class WorkspaceBootstrapService {
     for (const r of DEFAULT_RESOLUTIONS) {
       await tx.resolution.create({
         data: {
-          workspaceId,
+          organizationId,
           name: r.name,
           description: r.description,
           rank: r.rank,
@@ -77,7 +77,7 @@ export class WorkspaceBootstrapService {
     for (const l of DEFAULT_LINK_TYPES) {
       await tx.linkType.create({
         data: {
-          workspaceId,
+          organizationId,
           name: l.name,
           outwardName: l.outwardName,
           inwardName: l.inwardName,
@@ -88,7 +88,7 @@ export class WorkspaceBootstrapService {
     for (const tpl of DEFAULT_WORKFLOW_TEMPLATES) {
       const wf = await tx.workflow.create({
         data: {
-          workspaceId,
+          organizationId,
           projectId: null,
           isTemplate: true,
           isDefault: !!tpl.isDefault,

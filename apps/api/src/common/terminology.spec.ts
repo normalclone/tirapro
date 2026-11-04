@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 /**
  * Quét mã nguồn chặn tái phạm thuật ngữ ở chuỗi API trả/gửi cho người dùng (docs/UX_CONVENTIONS.md §19):
  * "công việc" thay "issue", "Việc chờ" thay "Backlog", tên sprint thân thiện thay vì enum ACTIVE/FUTURE/CLOSED,
- * dự án / quy trình / tổ chức / nhật ký thời gian thay project / workflow / workspace / worklog.
+ * dự án / quy trình / tổ chức / nhật ký thời gian thay project / workflow / tổ chức / worklog.
  *
  * Quét MỌI chuỗi tiếng Việt (nháy đơn/kép/backtick, kể cả nhiều dòng) trong `apps/api/src/modules/**` — không phụ thuộc
  * cách viết câu (`throw new …Exception(`, `message:`, nối chuỗi nhiều dòng…) — trừ chuỗi trong lời gọi log cho dev/ops
@@ -27,7 +27,7 @@ const SKIP = [
   /jira-csv\.parser\.ts$/, // tên cột Jira ("Issue key", "Summary") là chữ thật trong tệp Jira
 ];
 const TERM_BAD =
-  /\b(issues?|backlog|ACTIVE|FUTURE|CLOSED|workflows?|worklogs?|projects?|workspaces?)\b/i;
+  /\b(issues?|backlog|ACTIVE|FUTURE|CLOSED|workflows?|worklogs?|projects?|organizations?)\b/i;
 const VI = /[À-ỹ]/;
 /** Chữ trích menu thật của Jira người dùng phải bấm, hoặc tên thẻ phân tách prompt (`<issue>`) — giữ nguyên. */
 const EXEMPT = /Export issues|Xem tất cả issue|Issue key|thẻ <issue>/;
@@ -150,7 +150,7 @@ describe('thuật ngữ API', () => {
     // tên enum
     expect(lits("throw new X('Đã có sprint đang ACTIVE');")).toHaveLength(1);
     // log cho dev/ops và chuỗi Jira: không tính
-    expect(lits('this.logger.warn(`Chụp KR workspace ${id} lỗi`);')).toHaveLength(0);
+    expect(lits('this.logger.warn(`Chụp KR organization ${id} lỗi`);')).toHaveLength(0);
     expect(lits('const t = \'Xuất từ Jira bằng "Export issues"\';')).toHaveLength(0);
     // chuỗi toàn tiếng Anh/mã (không có chữ Việt) và comment không tính
     expect(lits("const k = 'issue'; // Dòng này nói về issue tiếng Việt")).toHaveLength(0);

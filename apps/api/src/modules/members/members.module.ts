@@ -1,9 +1,9 @@
 import { Module } from '@nestjs/common';
-import { WorkspaceMembersController, ProjectMembersController } from './members.controller';
+import { OrganizationMembersController, ProjectMembersController } from './members.controller';
 import { MembersService } from './members.service';
 
 @Module({
-  controllers: [WorkspaceMembersController, ProjectMembersController],
+  controllers: [OrganizationMembersController, ProjectMembersController],
   providers: [MembersService],
   exports: [MembersService],
 })

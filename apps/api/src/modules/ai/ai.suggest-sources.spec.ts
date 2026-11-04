@@ -8,7 +8,7 @@ type ExtractArg = Parameters<ClaudeService['extract']>[0];
 const issue = {
   id: 'i1',
   key: 'TP-1',
-  workspaceId: 'ws1',
+  organizationId: 'ws1',
   projectId: 'p1',
   summary: 'Đăng nhập lỗi trên Android',
   description: 'Không đăng nhập được',
@@ -88,7 +88,7 @@ describe('AiService.suggest — nguồn do MÁY CHỦ tính', () => {
     const { svc, findMany } = make({ ids: ['s2'], rows: [row(2)] });
     await svc.suggest('ws1', 'u1', 'i1');
     const where = findMany.mock.calls[0]![0].where as unknown as Record<string, unknown>;
-    expect(where).toMatchObject({ workspaceId: 'ws1', projectId: 'p1', deletedAt: null });
+    expect(where).toMatchObject({ organizationId: 'ws1', projectId: 'p1', deletedAt: null });
     expect(JSON.stringify(where)).toContain('ACCEPTED');
   });
 

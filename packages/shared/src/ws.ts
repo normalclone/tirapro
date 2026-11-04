@@ -11,9 +11,9 @@ import type {
 /** Room client được phép subscribe — khớp kiểm quyền ở RealtimeGateway.onSubscribe. */
 export type RoomTarget =
   | { kind: 'user'; id: string }
-  | { kind: 'workspace'; id: string }
+  | { kind: 'organization'; id: string }
   | { kind: 'project'; id: string }
-  /** Room của một issue (nhận `typing`) — chỉ vào được khi issue thuộc workspace của token. */
+  /** Room của một issue (nhận `typing`) — chỉ vào được khi issue thuộc tổ chức của token. */
   | { kind: 'issue'; id: string };
 
 /** Kết quả ack của `subscribe`: FORBIDDEN khi không có quyền vào room đó. */

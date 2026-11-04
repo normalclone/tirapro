@@ -1,16 +1,16 @@
 import { SYSTEM_ROLES } from './permissions';
 
 /**
- * Tên vai trò hệ thống được lưu trong CSDL bằng tiếng Anh (`Workspace Admin`,
+ * Tên vai trò hệ thống được lưu trong CSDL bằng tiếng Anh (`Organization Admin`,
  * `Project Developer`…) để mã nguồn, API và seed dùng chung một khoá. Bảng này chỉ
  * đổi CHỮ HIỂN THỊ sang tiếng Việt — không đổi dữ liệu.
  *
  * Vai trò do người dùng tự đặt không có trong bảng: giữ nguyên tên họ đã nhập.
  */
 const ROLE_LABELS: Record<string, string> = {
-  [SYSTEM_ROLES.WORKSPACE_ADMIN]: 'Quản trị chung',
-  [SYSTEM_ROLES.WORKSPACE_MEMBER]: 'Thành viên',
-  [SYSTEM_ROLES.WORKSPACE_VIEWER]: 'Người xem',
+  [SYSTEM_ROLES.ORGANIZATION_ADMIN]: 'Quản trị chung',
+  [SYSTEM_ROLES.ORGANIZATION_MEMBER]: 'Thành viên',
+  [SYSTEM_ROLES.ORGANIZATION_VIEWER]: 'Người xem',
   [SYSTEM_ROLES.PROJECT_ADMIN]: 'Quản trị dự án',
   // Khác nhãn với DEVELOPER (bộ quyền đầy đủ hơn) để danh sách vai trò không có hai dòng trùng tên.
   [SYSTEM_ROLES.PROJECT_DEVELOPER]: 'Lập trình viên (cơ bản)',

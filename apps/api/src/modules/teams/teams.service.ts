@@ -9,7 +9,7 @@ import type { CreateTeamInput, UpdateTeamInput } from './teams.schemas';
 
 const TEAM_SELECT = {
   id: true,
-  workspaceId: true,
+  organizationId: true,
   name: true,
   key: true,
   description: true,
@@ -24,7 +24,7 @@ const TEAM_SELECT = {
 } satisfies Prisma.TeamSelect;
 
 /**
- * Nhóm (team) — nhóm thành viên trong workspace, dùng lại khắp dự án & issue.
+ * Nhóm (team) — nhóm thành viên trong tổ chức, dùng lại khắp dự án & issue.
  * Xoá nhóm = hard delete: Issue.teamId tự về null (FK SET NULL), TeamMember cascade.
  */
 @Injectable()
@@ -35,37 +35,37 @@ export class TeamsService {
     private readonly access: ProjectAccessService,
   ) {}
 
-  async list(workspaceId: string) {
+  async list(organizationId: string) {
     const rows = await this.prisma.team.findMany({
-      where: { workspaceId, deletedAt: null },
+      where: { organizationId, deletedAt: null },
       orderBy: { name: 'asc' },
       select: TEAM_SELECT,
     });
     return rows.map((t) => this.toTeamDto(t));
   }
 
-  async get(workspaceId: string, teamId: string) {
+  async get(organizationId: string, teamId: string) {
     const t = await this.prisma.team.findFirst({
-      where: { id: teamId, workspaceId, deletedAt: null },
+      where: { id: teamId, organizationId, deletedAt: null },
       select: TEAM_SELECT,
     });
     if (!t) throw new NotFoundAppException('Nhóm');
     return this.toTeamDto(t);
   }
 
-  async create(workspaceId: string, dto: CreateTeamInput, actingUserId: string) {
+  async create(organizationId: string, dto: CreateTeamInput, actingUserId: string) {
     const name = dto.name.trim();
     if (!name) throw new ForbiddenAppException('Tên nhóm bắt buộc');
-    await this.assertNameFree(workspaceId, name);
+    await this.assertNameFree(organizationId, name);
     const { memberIds, leadId } = await this.resolveMembersAndLead(
-      workspaceId,
+      organizationId,
       dto.memberIds ?? [],
       dto.leadId ?? null,
     );
-    const key = await this.uniqueKey(workspaceId, this.slugify(dto.key || name));
+    const key = await this.uniqueKey(organizationId, this.slugify(dto.key || name));
     const created = await this.prisma.team.create({
       data: {
-        workspaceId,
+        organizationId,
         name,
         key,
         description: dto.description ?? null,
@@ -77,22 +77,22 @@ export class TeamsService {
       },
       select: { id: true },
     });
-    return this.get(workspaceId, created.id);
+    return this.get(organizationId, created.id);
   }
 
-  async update(workspaceId: string, teamId: string, dto: UpdateTeamInput, actingUserId: string) {
-    const team = await this.requireTeam(workspaceId, teamId);
+  async update(organizationId: string, teamId: string, dto: UpdateTeamInput, actingUserId: string) {
+    const team = await this.requireTeam(organizationId, teamId);
     const data: Prisma.TeamUpdateInput = { updatedById: actingUserId };
 
     if (dto.name !== undefined && dto.name !== null) {
       const name = dto.name.trim();
       if (!name) throw new ForbiddenAppException('Tên nhóm bắt buộc');
-      await this.assertNameFree(workspaceId, name, teamId);
+      await this.assertNameFree(organizationId, name, teamId);
       data.name = name;
     }
     if (dto.key !== undefined && dto.key !== null) {
       data.key = await this.uniqueKey(
-        workspaceId,
+        organizationId,
         this.slugify(dto.key || dto.name || team.name),
         teamId,
       );
@@ -103,11 +103,11 @@ export class TeamsService {
     // Thành viên + lead: thay toàn bộ danh sách nếu memberIds gửi lên; đảm bảo lead luôn là thành viên.
     let replaceMembers: string[] | undefined;
     if (dto.memberIds !== undefined)
-      replaceMembers = await this.validateWorkspaceMembers(workspaceId, dto.memberIds);
+      replaceMembers = await this.validateOrganizationMembers(organizationId, dto.memberIds);
 
     if (dto.leadId !== undefined) {
       const leadId = dto.leadId || null;
-      if (leadId) await this.validateWorkspaceMembers(workspaceId, [leadId]);
+      if (leadId) await this.validateOrganizationMembers(organizationId, [leadId]);
       data.lead = leadId ? { connect: { id: leadId } } : { disconnect: true };
       if (leadId) {
         if (replaceMembers && !replaceMembers.includes(leadId)) replaceMembers.push(leadId);
@@ -133,12 +133,12 @@ export class TeamsService {
       );
     }
     await this.prisma.$transaction(ops);
-    return this.get(workspaceId, teamId);
+    return this.get(organizationId, teamId);
   }
 
-  async setMembers(workspaceId: string, teamId: string, memberIds: string[]) {
-    await this.requireTeam(workspaceId, teamId);
-    const ids = await this.validateWorkspaceMembers(workspaceId, memberIds);
+  async setMembers(organizationId: string, teamId: string, memberIds: string[]) {
+    await this.requireTeam(organizationId, teamId);
+    const ids = await this.validateOrganizationMembers(organizationId, memberIds);
     const cur = await this.prisma.team.findUnique({
       where: { id: teamId },
       select: { leadId: true },
@@ -148,27 +148,27 @@ export class TeamsService {
       this.prisma.teamMember.deleteMany({ where: { teamId } }),
       this.prisma.teamMember.createMany({ data: ids.map((userId) => ({ teamId, userId })) }),
     ]);
-    return this.get(workspaceId, teamId);
+    return this.get(organizationId, teamId);
   }
 
-  async remove(workspaceId: string, teamId: string) {
-    await this.requireTeam(workspaceId, teamId);
+  async remove(organizationId: string, teamId: string) {
+    await this.requireTeam(organizationId, teamId);
     await this.prisma.team.delete({ where: { id: teamId } }); // Issue.teamId → null (FK), TeamMember cascade
     return { success: true };
   }
 
   /** Thêm CẢ nhóm vào một dự án: mỗi thành viên → project membership với vai trò đã chọn. */
   async assignToProject(
-    workspaceId: string,
+    organizationId: string,
     teamId: string,
     projectId: string,
     roleIds: string[],
     actorId: string | null,
   ) {
-    await this.requireTeam(workspaceId, teamId);
+    await this.requireTeam(organizationId, teamId);
     // Route không có `@ProjectRef` (projectId nằm ở body, route có :id) nên guard không kiểm dự án: người gọi không thấy
     // dự án riêng tư thì 404 như dự án không tồn tại (không thêm được ai, không lộ sự tồn tại).
-    if (actorId) await this.access.assertCanSee(actorId, workspaceId, projectId, 'Dự án');
+    if (actorId) await this.access.assertCanSee(actorId, organizationId, projectId, 'Dự án');
     const teamMembers = await this.prisma.teamMember.findMany({
       // Bỏ qua tài khoản đã vô hiệu hoá — không đặt vai trò dự án cho họ (và không làm hỏng cả lượt giao nhóm).
       where: { teamId, user: { status: { not: 'DEACTIVATED' } } },
@@ -177,7 +177,7 @@ export class TeamsService {
     let added = 0;
     for (const m of teamMembers) {
       await this.members.addProject(
-        workspaceId,
+        organizationId,
         projectId,
         m.userId,
         roleIds,
@@ -190,19 +190,19 @@ export class TeamsService {
 
   // ───────────────────────── helpers ─────────────────────────
 
-  private async requireTeam(workspaceId: string, teamId: string) {
+  private async requireTeam(organizationId: string, teamId: string) {
     const t = await this.prisma.team.findFirst({
-      where: { id: teamId, workspaceId, deletedAt: null },
+      where: { id: teamId, organizationId, deletedAt: null },
       select: { id: true, key: true, name: true },
     });
     if (!t) throw new NotFoundAppException('Nhóm');
     return t;
   }
 
-  private async assertNameFree(workspaceId: string, name: string, excludeId?: string) {
+  private async assertNameFree(organizationId: string, name: string, excludeId?: string) {
     const clash = await this.prisma.team.findFirst({
       where: {
-        workspaceId,
+        organizationId,
         name,
         deletedAt: null,
         ...(excludeId ? { NOT: { id: excludeId } } : {}),
@@ -212,15 +212,15 @@ export class TeamsService {
     if (clash) throw new ForbiddenAppException('Tên nhóm đã tồn tại');
   }
 
-  /** Các userId phải là thành viên workspace. Trả danh sách unique giữ thứ tự. */
-  private async validateWorkspaceMembers(
-    workspaceId: string,
+  /** Các userId phải là thành viên organization. Trả danh sách unique giữ thứ tự. */
+  private async validateOrganizationMembers(
+    organizationId: string,
     userIds: string[],
   ): Promise<string[]> {
     const unique = [...new Set(userIds)];
     if (unique.length === 0) return [];
-    const rows = await this.prisma.workspaceMembership.findMany({
-      where: { workspaceId, userId: { in: unique } },
+    const rows = await this.prisma.organizationMembership.findMany({
+      where: { organizationId, userId: { in: unique } },
       select: { userId: true },
     });
     if (rows.length !== unique.length)
@@ -231,14 +231,14 @@ export class TeamsService {
   }
 
   private async resolveMembersAndLead(
-    workspaceId: string,
+    organizationId: string,
     memberIds: string[],
     leadId: string | null,
   ) {
-    const ids = await this.validateWorkspaceMembers(workspaceId, memberIds);
+    const ids = await this.validateOrganizationMembers(organizationId, memberIds);
     let lead: string | null = null;
     if (leadId) {
-      await this.validateWorkspaceMembers(workspaceId, [leadId]);
+      await this.validateOrganizationMembers(organizationId, [leadId]);
       lead = leadId;
       if (!ids.includes(leadId)) ids.push(leadId); // lead luôn thuộc nhóm
     }
@@ -259,14 +259,18 @@ export class TeamsService {
     return base || 'team';
   }
 
-  private async uniqueKey(workspaceId: string, base: string, excludeId?: string): Promise<string> {
+  private async uniqueKey(
+    organizationId: string,
+    base: string,
+    excludeId?: string,
+  ): Promise<string> {
     let key = base;
     let n = 1;
-    // Unique index (workspaceId,key) không lọc deletedAt; nhưng ta hard-delete nên chỉ cần né các nhóm còn sống.
+    // Unique index (organizationId,key) không lọc deletedAt; nhưng ta hard-delete nên chỉ cần né các nhóm còn sống.
     for (;;) {
-      // allow-deleted: unique (workspaceId,key) không lọc deletedAt nên phải né cả nhóm đã xoá mềm
+      // allow-deleted: unique (organizationId,key) không lọc deletedAt nên phải né cả nhóm đã xoá mềm
       const clash = await this.prisma.team.findFirst({
-        where: { workspaceId, key, ...(excludeId ? { NOT: { id: excludeId } } : {}) },
+        where: { organizationId, key, ...(excludeId ? { NOT: { id: excludeId } } : {}) },
         select: { id: true },
       });
       if (!clash) return key;
@@ -278,7 +282,7 @@ export class TeamsService {
 
   private toTeamDto(t: {
     id: string;
-    workspaceId: string;
+    organizationId: string;
     name: string;
     key: string;
     description: string | null;
@@ -290,7 +294,7 @@ export class TeamsService {
   }) {
     return {
       id: t.id,
-      workspaceId: t.workspaceId,
+      organizationId: t.organizationId,
       name: t.name,
       key: t.key,
       description: t.description,

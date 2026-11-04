@@ -30,10 +30,10 @@ function make(
       ),
     },
     project: { count: vi.fn((..._a: unknown[]) => Promise.resolve(counts.project)) },
-    workspaceMembership: { count: vi.fn((..._a: unknown[]) => Promise.resolve(counts.members)) },
+    organizationMembership: { count: vi.fn((..._a: unknown[]) => Promise.resolve(counts.members)) },
     sprint: { count: vi.fn((..._a: unknown[]) => Promise.resolve(counts.sprint)) },
     integration: { count: vi.fn((..._a: unknown[]) => Promise.resolve(counts.telegram)) },
-    workspace: {
+    organization: {
       findFirst: vi.fn((..._a: unknown[]) =>
         Promise.resolve({
           createdAt: new Date(Date.now() - (over.createdDaysAgo ?? 1) * 86_400_000),
@@ -51,7 +51,7 @@ function make(
 }
 
 describe('OnboardingService.get', () => {
-  it('workspace mới tinh: 0/4, hiện khối', async () => {
+  it('organization mới tinh: 0/4, hiện khối', async () => {
     const out = await make({ project: 0, members: 1, sprint: 0, telegram: 0 }).svc.get('u1', 'w1');
     expect(out).toMatchObject({ doneCount: 0, total: 4, dismissed: false, visible: true });
     expect(out.items.map((i) => i.done)).toEqual([false, false, false, false]);
@@ -69,7 +69,7 @@ describe('OnboardingService.get', () => {
     expect(out.doneCount).toBe(3);
   });
 
-  it('xong cả 4 → visible=false; đã ẩn → visible=false; workspace > 30 ngày → visible=false', async () => {
+  it('xong cả 4 → visible=false; đã ẩn → visible=false; organization > 30 ngày → visible=false', async () => {
     expect(
       (await make({ project: 1, members: 2, sprint: 1, telegram: 1 }).svc.get('u1', 'w1')).visible,
     ).toBe(false);
@@ -96,10 +96,10 @@ describe('OnboardingService.get', () => {
     await svc.get('u1', 'w1');
     const where = (m: { mock: { calls: unknown[][] } }) =>
       (m.mock.calls[0] as unknown as [{ where: unknown }])[0].where;
-    expect(where(prisma.project.count)).toMatchObject({ workspaceId: 'w1', deletedAt: null });
+    expect(where(prisma.project.count)).toMatchObject({ organizationId: 'w1', deletedAt: null });
     // tài khoản đã vô hiệu hoá không tính là "đã thêm thành viên"
-    expect(where(prisma.workspaceMembership.count)).toEqual({
-      workspaceId: 'w1',
+    expect(where(prisma.organizationMembership.count)).toEqual({
+      organizationId: 'w1',
       user: { status: { not: 'DEACTIVATED' } },
     });
     expect(where(prisma.integration.count)).toMatchObject({
@@ -110,11 +110,11 @@ describe('OnboardingService.get', () => {
     expect(where(prisma.sprint.count)).toMatchObject({
       deletedAt: null,
       state: { in: ['ACTIVE', 'CLOSED'] },
-      project: { workspaceId: 'w1', deletedAt: null },
+      project: { organizationId: 'w1', deletedAt: null },
     });
   });
 
-  it('lấy nhãn/đường dẫn từ Guide (bản workspace trước bản toàn cục); bỏ khoá lạ trong DB', async () => {
+  it('lấy nhãn/đường dẫn từ Guide (bản organization trước bản toàn cục); bỏ khoá lạ trong DB', async () => {
     const { svc, prisma } = make(
       { project: 0, members: 1, sprint: 0, telegram: 0 },
       {
@@ -134,9 +134,9 @@ describe('OnboardingService.get', () => {
       where: {
         key: 'onboarding-start',
         isPublished: true,
-        OR: [{ workspaceId: 'w1' }, { workspaceId: null }],
+        OR: [{ organizationId: 'w1' }, { organizationId: null }],
       },
-      orderBy: { workspaceId: { sort: 'desc', nulls: 'last' } },
+      orderBy: { organizationId: { sort: 'desc', nulls: 'last' } },
     });
     expect(out.items.map((i) => i.key)).toEqual(['create_project']);
     expect(out.items[0]!.label).toBe('Dự án đầu tiên của bạn');

@@ -13,7 +13,7 @@ describe('WipService.resolveWipColumn', () => {
 
 describe('WipService.enforceWip — việc chưa duyệt không ăn chỗ WIP', () => {
   const wip = { id: 'c1', name: 'To Do', wipLimit: 3, statusIds: ['s1'], boardType: 'KANBAN' };
-  const ctx = { userId: 'u1', workspaceId: 'w1', projectId: 'p1', incoming: 1 };
+  const ctx = { userId: 'u1', organizationId: 'w1', projectId: 'p1', incoming: 1 };
 
   function make(boardType: string, count: number) {
     const tx = {

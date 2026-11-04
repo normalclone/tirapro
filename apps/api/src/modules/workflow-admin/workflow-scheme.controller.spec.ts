@@ -13,12 +13,12 @@ import type { WorkflowSchemeService } from './workflow-scheme.service';
 const proto = WorkflowSchemeController.prototype;
 
 describe('WorkflowSchemeController — metadata quyền', () => {
-  it('cấu hình của tổ chức (GET/PUT workflow-schemes): workspace:admin', () => {
+  it('cấu hình của tổ chức (GET/PUT workflow-schemes): organization:admin', () => {
     expect(Reflect.getMetadata(PERMISSIONS_KEY, proto.getScheme)).toEqual([
-      PERMISSIONS.WORKSPACE_ADMIN,
+      PERMISSIONS.ORGANIZATION_ADMIN,
     ]);
     expect(Reflect.getMetadata(PERMISSIONS_KEY, proto.setScheme)).toEqual([
-      PERMISSIONS.WORKSPACE_ADMIN,
+      PERMISSIONS.ORGANIZATION_ADMIN,
     ]);
   });
   it('ghi đè dự án (PUT/DELETE): project:admin theo :id của dự án; xem: project:view', () => {
@@ -37,17 +37,17 @@ describe('WorkflowSchemeController — metadata quyền', () => {
 });
 
 describe('WorkflowSchemeController — guard thật: ai được gọi (403 cho người còn lại)', () => {
-  /** Vai trò → quyền hiệu lực (vai trò workspace gồm cả quyền dự án; vai trò dự án chỉ có ở dự án p1). */
+  /** Vai trò → quyền hiệu lực (vai trò tổ chức gồm cả quyền dự án; vai trò dự án chỉ có ở dự án p1). */
   function run(handler: (...a: never[]) => unknown, perms: string[], isSystemAdmin = false) {
     const rbac = {
       getEffectivePermissions: vi.fn(() => Promise.resolve(new Set<string>(perms))),
       resolveProjectId: vi.fn(),
-      assertProjectInWorkspace: vi.fn(() => Promise.resolve()),
+      assertProjectInOrganization: vi.fn(() => Promise.resolve()),
       assertProjectVisible: vi.fn(() => Promise.resolve()),
     };
     const guard = new PermissionsGuard(new Reflector(), rbac as unknown as RbacService);
     const req = {
-      user: { id: 'U1', workspaceId: 'w1', isSystemAdmin },
+      user: { id: 'U1', organizationId: 'w1', isSystemAdmin },
       params: { id: 'p1' },
       query: {},
       body: {},
@@ -63,10 +63,10 @@ describe('WorkflowSchemeController — guard thật: ai được gọi (403 cho 
     SYSTEM_ROLE_PERMISSIONS[role];
 
   it.each([
-    ['Workspace Admin', perms(SYSTEM_ROLES.WORKSPACE_ADMIN), true],
+    ['Organization Admin', perms(SYSTEM_ROLES.ORGANIZATION_ADMIN), true],
     ['Project Admin', perms(SYSTEM_ROLES.PROJECT_ADMIN), false],
     ['Developer', perms(SYSTEM_ROLES.DEVELOPER), false],
-    ['Workspace Member', perms(SYSTEM_ROLES.WORKSPACE_MEMBER), false],
+    ['Organization Member', perms(SYSTEM_ROLES.ORGANIZATION_MEMBER), false],
   ])('workflow-schemes (tổ chức) — %s', async (_n, p, allowed) => {
     for (const h of [proto.getScheme, proto.setScheme]) {
       if (allowed) await expect(run(h, p)).resolves.toBe(true);
@@ -80,10 +80,10 @@ describe('WorkflowSchemeController — guard thật: ai được gọi (403 cho 
   });
 
   it.each([
-    ['Workspace Admin', perms(SYSTEM_ROLES.WORKSPACE_ADMIN), true],
+    ['Organization Admin', perms(SYSTEM_ROLES.ORGANIZATION_ADMIN), true],
     ['Project Admin', perms(SYSTEM_ROLES.PROJECT_ADMIN), true],
     ['Developer', perms(SYSTEM_ROLES.DEVELOPER), false],
-    ['Workspace Member', perms(SYSTEM_ROLES.WORKSPACE_MEMBER), false],
+    ['Organization Member', perms(SYSTEM_ROLES.ORGANIZATION_MEMBER), false],
   ])('ghi đè dự án (PUT/DELETE) — %s', async (_n, p, allowed) => {
     for (const h of [proto.setOverride, proto.clearOverride]) {
       if (allowed) await expect(run(h, p)).resolves.toBe(true);
@@ -99,7 +99,7 @@ describe('WorkflowSchemeController — guard thật: ai được gọi (403 cho 
 describe('WorkflowSchemeController — truyền tham số', () => {
   function build() {
     const schemes = {
-      setWorkspaceScheme: vi.fn(() => Promise.resolve({})),
+      setOrganizationScheme: vi.fn(() => Promise.resolve({})),
       setProjectOverride: vi.fn(() => Promise.resolve({})),
       clearProjectOverride: vi.fn(() => Promise.resolve({})),
     };
@@ -117,7 +117,7 @@ describe('WorkflowSchemeController — truyền tham số', () => {
     await c.setScheme('w1', user, dto, 'true');
     await c.setScheme('w1', user, dto, undefined);
     await c.setScheme('w1', user, dto, '0');
-    expect(schemes.setWorkspaceScheme.mock.calls.map((x) => (x as unknown[])[3])).toEqual([
+    expect(schemes.setOrganizationScheme.mock.calls.map((x) => (x as unknown[])[3])).toEqual([
       true,
       true,
       false,

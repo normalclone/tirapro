@@ -6,7 +6,7 @@ const issue = {
   id: 'i1',
   key: 'TP-1',
   summary: 'Sửa lỗi',
-  workspaceId: 'w1',
+  organizationId: 'w1',
   projectId: 'p1',
   assigneeId: 'u2' as string | null,
 };
@@ -72,7 +72,7 @@ function setup(
       ),
     },
     $transaction: vi.fn((fn: (t: unknown) => unknown) => fn(prisma)),
-    workspaceMembership: {
+    organizationMembership: {
       findMany: vi.fn((a: { where: { userId: { in: string[] } } }) =>
         Promise.resolve(
           a.where.userId.in.filter((id) => members.includes(id)).map((userId) => ({ userId })),
@@ -151,18 +151,18 @@ describe('NotificationsService — ISSUE_ASSIGNED', () => {
 describe('NotificationsService — MENTIONED', () => {
   const payload = { comment: { id: 'c1', authorId: 'a1' }, issueId: 'i1', actorId: 'a1' };
 
-  it('chỉ thành viên workspace và ≠ actor mới nhận MENTIONED; truy vấn thành viên theo workspace của issue', async () => {
+  it('chỉ thành viên organization và ≠ actor mới nhận MENTIONED; truy vấn thành viên theo organization của issue', async () => {
     const { service, created, prisma } = setup(['u3']);
     await service.onCommentAdded({ ...payload, mentionIds: ['u3', 'ngoai', 'a1'] });
     const types = created();
     expect(types).toContainEqual({ type: 'MENTIONED', to: 'u3' });
     expect(types.filter((n) => n.type === 'MENTIONED')).toHaveLength(1);
     const where = (
-      prisma.workspaceMembership.findMany.mock.calls[0] as unknown as [
-        { where: { workspaceId: string; userId: { in: string[] } } },
+      prisma.organizationMembership.findMany.mock.calls[0] as unknown as [
+        { where: { organizationId: string; userId: { in: string[] } } },
       ]
     )[0].where;
-    expect(where.workspaceId).toBe('w1');
+    expect(where.organizationId).toBe('w1');
     expect(where.userId.in).toEqual(['u3', 'ngoai']);
     // assignee u2 vẫn nhận COMMENT_ADDED
     expect(types).toContainEqual({ type: 'COMMENT_ADDED', to: 'u2' });
@@ -177,7 +177,7 @@ describe('NotificationsService — MENTIONED', () => {
   it('không có mentionIds → không truy vấn thành viên', async () => {
     const { service, prisma } = setup();
     await service.onCommentAdded(payload);
-    expect(prisma.workspaceMembership.findMany).not.toHaveBeenCalled();
+    expect(prisma.organizationMembership.findMany).not.toHaveBeenCalled();
   });
 });
 
@@ -328,7 +328,7 @@ describe('NotificationsService — @mention trong mô tả công việc', () => 
       actorId: 'a1',
       changedFields: ['summary'],
     });
-    expect(prisma.workspaceMembership.findMany).not.toHaveBeenCalled();
+    expect(prisma.organizationMembership.findMany).not.toHaveBeenCalled();
     expect(prisma.notification.create).not.toHaveBeenCalled();
   });
 
@@ -501,7 +501,7 @@ describe('NotificationsService — gộp theo công việc trong 60 giây (A14)'
     await service.publish(
       {
         recipientId: 'u2',
-        workspaceId: 'w1',
+        organizationId: 'w1',
         type: 'WATCHING_UPDATE',
         issueId: 'i1',
         actorId: 'a1',
@@ -525,7 +525,7 @@ describe('NotificationsService — gộp theo công việc trong 60 giây (A14)'
     await service.publish(
       {
         recipientId: 'u2',
-        workspaceId: 'w1',
+        organizationId: 'w1',
         type: 'WATCHING_UPDATE',
         issueId: 'i1',
         actorId: 'a1',
@@ -537,7 +537,7 @@ describe('NotificationsService — gộp theo công việc trong 60 giây (A14)'
     const noForce = setup();
     await noForce.service.publish({
       recipientId: 'u2',
-      workspaceId: 'w1',
+      organizationId: 'w1',
       type: 'WATCHING_UPDATE',
       issueId: 'i1',
       actorId: 'a1',
@@ -560,7 +560,7 @@ describe('NotificationsService — gộp theo công việc trong 60 giây (A14)'
 describe('NotificationsService — vòng sửa 1 (A14)', () => {
   const watch = {
     recipientId: 'u2',
-    workspaceId: 'w1',
+    organizationId: 'w1',
     type: 'WATCHING_UPDATE' as const,
     issueId: 'i1',
     actorId: 'a1',
@@ -708,7 +708,7 @@ describe('NotificationsService — dự án riêng tư: người nhận phải x
     await service.publish(
       {
         recipientId: 'w9',
-        workspaceId: 'w1',
+        organizationId: 'w1',
         type: 'WATCHING_UPDATE',
         issueId: 'i1',
         actorId: 'a1',
@@ -725,7 +725,7 @@ describe('NotificationsService — dự án riêng tư: người nhận phải x
     const { service, access } = setup([], { canSee: () => false });
     await service.publish({
       recipientId: 'u2',
-      workspaceId: 'w1',
+      organizationId: 'w1',
       type: 'SPRINT_STARTED',
       actorId: 'a1',
       payload: {},
@@ -740,7 +740,7 @@ describe('NotificationsService — dự án riêng tư: người nhận phải x
     });
     await service.publish({
       recipientId: 'u2',
-      workspaceId: 'w1',
+      organizationId: 'w1',
       type: 'SPRINT_STARTED',
       actorId: 'a1',
       payload: {},

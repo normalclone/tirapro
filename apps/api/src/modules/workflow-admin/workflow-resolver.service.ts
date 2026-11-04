@@ -7,12 +7,12 @@ import { NotFoundAppException } from '../../common/exceptions/app.exception';
 /** Một phần Prisma mà resolver dùng — nhận cả `PrismaService` lẫn client trong `$transaction`. */
 type Db = Pick<
   Prisma.TransactionClient,
-  'project' | 'projectWorkflowOverride' | 'workspaceWorkflowScheme' | 'issueType'
+  'project' | 'projectWorkflowOverride' | 'organizationWorkflowScheme' | 'issueType'
 >;
 
 /** Cấu hình quy trình đã nạp của MỘT dự án: đủ để suy ra quy trình cho mọi loại việc. */
 interface LoadedScheme {
-  workspaceId: string;
+  organizationId: string;
   defaultWorkflowId: string | null;
   overrides: Map<string, string>;
   scheme: Map<string, string>;
@@ -39,7 +39,7 @@ export function runWithWorkflowMemo<T>(fn: () => Promise<T>): Promise<T> {
 
 /**
  * Nguồn duy nhất cho câu hỏi "việc loại X của dự án P theo quy trình nào":
- * ghi đè của dự án → quy trình workspace (scheme) → `Project.defaultWorkflowId`.
+ * ghi đè của dự án → quy trình tổ chức (scheme) → `Project.defaultWorkflowId`.
  *
  * Cache trong một request đủ vì cấu hình này chỉ đổi qua các thao tác quản trị; thao tác đó phải gọi
  * `invalidate()` nếu còn đọc lại quy trình trong cùng request.
@@ -55,11 +55,11 @@ export class WorkflowResolver {
     return { workflowId: this.pick(loaded, typeId) ?? '' };
   }
 
-  /** Quy trình của mọi loại việc trong workspace của dự án. Loại không suy ra được thì vắng trong Map. */
+  /** Quy trình của mọi loại việc trong tổ chức của dự án. Loại không suy ra được thì vắng trong Map. */
   async forProject(tx: Db, projectId: string): Promise<Map<string, string>> {
     const loaded = await this.load(tx, projectId);
     const types = await tx.issueType.findMany({
-      where: { workspaceId: loaded.workspaceId },
+      where: { organizationId: loaded.organizationId },
       select: { id: true },
     });
     const out = new Map<string, string>();
@@ -115,7 +115,7 @@ export class WorkflowResolver {
   private async fetch(tx: Db, projectId: string): Promise<LoadedScheme> {
     const project = await tx.project.findUnique({
       where: { id: projectId },
-      select: { workspaceId: true, defaultWorkflowId: true },
+      select: { organizationId: true, defaultWorkflowId: true },
     });
     if (!project) throw new NotFoundAppException('Dự án');
     const [overrides, scheme] = await Promise.all([
@@ -123,13 +123,13 @@ export class WorkflowResolver {
         where: { projectId },
         select: { issueTypeId: true, workflowId: true },
       }),
-      tx.workspaceWorkflowScheme.findMany({
-        where: { workspaceId: project.workspaceId },
+      tx.organizationWorkflowScheme.findMany({
+        where: { organizationId: project.organizationId },
         select: { issueTypeId: true, workflowId: true },
       }),
     ]);
     return {
-      workspaceId: project.workspaceId,
+      organizationId: project.organizationId,
       defaultWorkflowId: project.defaultWorkflowId,
       overrides: new Map(overrides.map((o) => [o.issueTypeId, o.workflowId])),
       scheme: new Map(scheme.map((s) => [s.issueTypeId, s.workflowId])),

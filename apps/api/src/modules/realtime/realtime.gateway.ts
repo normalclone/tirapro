@@ -25,6 +25,7 @@ import type {
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { PresenceService, type PresenceProfile } from './presence.service';
 import { isSessionRevoked } from '../auth/session-revocation';
+import { claimedOrganizationId } from '../auth/token.service';
 import { ProjectAccessService } from '../rbac/project-access.service';
 
 /** Thời điểm cấp access token (để so với `sessionsRevokedAt`). */
@@ -55,7 +56,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
   ) {}
 
   /**
-   * Xác thực JWT rồi kiểm lại với DB: user còn ACTIVE và (trừ system admin) vẫn là thành viên workspace
+   * Xác thực JWT rồi kiểm lại với DB: user còn ACTIVE và (trừ system admin) vẫn là thành viên tổ chức
    * trong token. Token còn hạn của người đã bị gỡ/khoá KHÔNG được nhận realtime. Thất bại → ngắt kết nối.
    */
   async handleConnection(client: TypedSocket): Promise<void> {
@@ -65,7 +66,9 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
         String(client.handshake.headers.authorization ?? '').replace('Bearer ', '');
       const payload = this.jwt.verify<{
         sub: string;
-        workspaceId: string | null;
+        organizationId?: string | null;
+        /** Claim cũ của access token phát trước khi đổi tên (vẫn nhận tới khi hết hạn). */
+        workspaceId?: string | null;
         iat?: number;
         iatMs?: number;
       }>(raw, {
@@ -74,35 +77,36 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
       // Gán ngay (đồng bộ) để subscribe đến sớm vẫn có danh tính; mỗi lần subscribe sẽ kiểm membership lại.
       const data = client.data as {
         userId?: string;
-        workspaceId?: string | null;
+        organizationId?: string | null;
         iat?: number;
         iatMs?: number;
       };
+      const organizationId = claimedOrganizationId(payload);
       data.userId = payload.sub;
-      data.workspaceId = payload.workspaceId;
+      data.organizationId = organizationId;
       // Giữ mốc cấp token: mỗi lần subscribe kiểm lại với `sessionsRevokedAt` như guard HTTP.
       data.iat = payload.iat;
       data.iatMs = payload.iatMs;
       // Vào room user TRƯỚC khi kiểm: sự kiện thu hồi phiên tới giữa hai bước vẫn ngắt được socket này
       // (nếu chưa join, event lọt qua; còn kiểm sau thì `hasAccess` thấy mốc thu hồi). Chưa được cấp quyền gì khác ở bước này.
       await client.join(rooms.user(payload.sub));
-      if (!(await this.hasAccess(payload.sub, payload.workspaceId, payload))) {
+      if (!(await this.hasAccess(payload.sub, organizationId, payload))) {
         client.disconnect(true);
         return;
       }
-      if (payload.workspaceId) void client.join(rooms.workspace(payload.workspaceId));
+      if (organizationId) void client.join(rooms.organization(organizationId));
     } catch {
       client.disconnect(true);
     }
   }
 
   /**
-   * User còn ACTIVE và (trừ system admin) còn là thành viên workspace. Không có workspace trong token
+   * User còn ACTIVE và (trừ system admin) còn là thành viên organization. Không có tổ chức trong token
    * thì chỉ cần ACTIVE (khi đó chỉ vào được room user của chính mình). Lỗi DB → từ chối (fail closed).
    */
   private async hasAccess(
     userId: string,
-    workspaceId: string | null | undefined,
+    organizationId: string | null | undefined,
     issued: TokenIssued,
   ): Promise<boolean> {
     try {
@@ -113,9 +117,9 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
       if (!user || user.status === 'DEACTIVATED') return false;
       // Token cấp trước mốc thu hồi phiên (đặt lại mật khẩu, đăng xuất mọi thiết bị…) không được mở/giữ socket.
       if (isSessionRevoked(issued, user.sessionsRevokedAt)) return false;
-      if (!workspaceId || user.isSystemAdmin) return true;
-      const membership = await this.prisma.workspaceMembership.findUnique({
-        where: { workspaceId_userId: { workspaceId, userId } },
+      if (!organizationId || user.isSystemAdmin) return true;
+      const membership = await this.prisma.organizationMembership.findUnique({
+        where: { organizationId_userId: { organizationId, userId } },
         select: { id: true },
       });
       return membership != null;
@@ -128,8 +132,8 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
   }
 
   /**
-   * Chỉ cho vào room của chính mình: user = chính user, workspace = workspace của token,
-   * project = project còn sống thuộc workspace của token. Mọi trường hợp khác trả FORBIDDEN.
+   * Chỉ cho vào room của chính mình: user = chính user, tổ chức = tổ chức của token,
+   * project = project còn sống thuộc tổ chức của token. Mọi trường hợp khác trả FORBIDDEN.
    */
   @SubscribeMessage(WS_EVENTS.SUBSCRIBE)
   async onSubscribe(
@@ -326,8 +330,8 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     switch (target.kind) {
       case 'user':
         return rooms.user(target.id);
-      case 'workspace':
-        return rooms.workspace(target.id);
+      case 'organization':
+        return rooms.organization(target.id);
       case 'project':
         return rooms.project(target.id);
       case 'issue':
@@ -344,29 +348,29 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
   ): Promise<string | null> {
     const room = this.roomName(target);
     if (!room || !target) return null;
-    const { userId, workspaceId, iat, iatMs } = client.data as {
+    const { userId, organizationId, iat, iatMs } = client.data as {
       userId?: string;
-      workspaceId?: string | null;
+      organizationId?: string | null;
       iat?: number;
       iatMs?: number;
     };
     // Kiểm lại MỖI lần subscribe: member bị gỡ / user bị khoá / phiên bị thu hồi sau lúc handshake thì không vào thêm room nào.
-    if (!userId || !(await this.hasAccess(userId, workspaceId, { iat, iatMs }))) return null;
+    if (!userId || !(await this.hasAccess(userId, organizationId, { iat, iatMs }))) return null;
     switch (target.kind) {
       case 'user':
         return userId && target.id === userId ? room : null;
-      case 'workspace':
-        return workspaceId && target.id === workspaceId ? room : null;
+      case 'organization':
+        return organizationId && target.id === organizationId ? room : null;
       case 'project': {
-        if (!workspaceId) return null;
+        if (!organizationId) return null;
         try {
           const project = await this.prisma.project.findFirst({
-            where: { id: target.id, workspaceId, deletedAt: null },
+            where: { id: target.id, organizationId, deletedAt: null },
             select: { id: true },
           });
           if (!project) return null;
           // Dự án riêng tư: chỉ thành viên/quản trị vào room (kiểm MỘT lần lúc subscribe + rút khi bị gỡ — `onProjectMemberRemoved`).
-          return (await this.access.canSee(userId, workspaceId, project.id)) ? room : null;
+          return (await this.access.canSee(userId, organizationId, project.id)) ? room : null;
         } catch (err) {
           this.logger.warn(
             `Kiểm quyền subscribe project thất bại: ${err instanceof Error ? err.message : String(err)}`,
@@ -375,15 +379,15 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
         }
       }
       case 'issue': {
-        if (!workspaceId) return null;
+        if (!organizationId) return null;
         try {
           const issue = await this.prisma.issue.findFirst({
-            where: { id: target.id, workspaceId, deletedAt: null },
+            where: { id: target.id, organizationId, deletedAt: null },
             select: { id: true, projectId: true },
           });
           if (!issue) return null;
           // Room issue (presence/typing) cũng theo quyền xem dự án của công việc.
-          return (await this.access.canSee(userId, workspaceId, issue.projectId)) ? room : null;
+          return (await this.access.canSee(userId, organizationId, issue.projectId)) ? room : null;
         } catch (err) {
           this.logger.warn(
             `Kiểm quyền subscribe issue thất bại: ${err instanceof Error ? err.message : String(err)}`,
@@ -406,12 +410,12 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     this.server.to(rooms.project(projectId)).emit(event, ...args);
   }
 
-  /** Member bị gỡ khỏi workspace → ngắt mọi socket của họ trong workspace đó (room ws:<id>), kể cả node khác. */
+  /** Member bị gỡ khỏi tổ chức → ngắt mọi socket của họ trong tổ chức đó (room org:<id>), kể cả node khác. */
   @OnEvent(DOMAIN_EVENTS.MEMBER_REMOVED)
-  async onMemberRemoved(p: { workspaceId?: string; userId?: string }) {
-    if (!p?.workspaceId || !p?.userId || !this.server) return;
+  async onMemberRemoved(p: { organizationId?: string; userId?: string }) {
+    if (!p?.organizationId || !p?.userId || !this.server) return;
     try {
-      const sockets = await this.server.in(rooms.workspace(p.workspaceId)).fetchSockets();
+      const sockets = await this.server.in(rooms.organization(p.organizationId)).fetchSockets();
       for (const s of sockets) {
         if ((s.data as { userId?: string }).userId === p.userId) s.disconnect(true);
       }
@@ -474,13 +478,13 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
    */
   @OnEvent(DOMAIN_EVENTS.PROJECT_MEMBER_REMOVED)
   async onProjectMemberRemoved(p: {
-    workspaceId?: string;
+    organizationId?: string;
     projectId?: string;
     userId?: string;
   }): Promise<void> {
-    if (!p?.workspaceId || !p?.projectId || !p?.userId || !this.server) return;
+    if (!p?.organizationId || !p?.projectId || !p?.userId || !this.server) return;
     try {
-      if (await this.access.canSee(p.userId, p.workspaceId, p.projectId)) return;
+      if (await this.access.canSee(p.userId, p.organizationId, p.projectId)) return;
       // Room cá nhân chứa MỌI socket của người đó (kể cả tab chỉ mở một việc mà không vào room project).
       const sockets = await this.server.in(rooms.user(p.userId)).fetchSockets();
       await this.evictFromProjectRooms(
@@ -499,8 +503,11 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
    * tư mà không là thành viên) bị rút khỏi room project và các room issue của dự án. Mỗi người kiểm một lần dù nhiều tab.
    */
   @OnEvent(DOMAIN_EVENTS.PROJECT_VISIBILITY_CHANGED)
-  async onProjectVisibilityChanged(p: { workspaceId?: string; projectId?: string }): Promise<void> {
-    if (!p?.workspaceId || !p?.projectId || !this.server) return;
+  async onProjectVisibilityChanged(p: {
+    organizationId?: string;
+    projectId?: string;
+  }): Promise<void> {
+    if (!p?.organizationId || !p?.projectId || !this.server) return;
     try {
       const sockets = await this.server.in(rooms.project(p.projectId)).fetchSockets();
       const verdict = new Map<string, boolean>();
@@ -509,7 +516,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
         const userId = (s.data as { userId?: string }).userId;
         if (!userId) continue;
         if (!verdict.has(userId))
-          verdict.set(userId, await this.access.canSee(userId, p.workspaceId, p.projectId));
+          verdict.set(userId, await this.access.canSee(userId, p.organizationId, p.projectId));
         if (!verdict.get(userId)) evict.push(s);
       }
       await this.evictFromProjectRooms(evict, p.projectId);
@@ -521,15 +528,15 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
   }
 
   /**
-   * Quyền của người dùng có thể đã đổi (vai trò workspace/dự án, bộ quyền của vai trò, quản trị hệ thống…) → kiểm lại
+   * Quyền của người dùng có thể đã đổi (vai trò organization/dự án, bộ quyền của vai trò, quản trị hệ thống…) → kiểm lại
    * `canSee` cho MỌI room `project:*`/`issue:*` mà socket của họ đang ở; dự án không còn thấy thì rút khỏi room dự án + các room
-   * issue của dự án (tái dùng `evictFromProjectRooms`). `userIds` vắng = cả workspace (vd sửa bộ quyền của một vai trò
+   * issue của dự án (tái dùng `evictFromProjectRooms`). `userIds` vắng = cả tổ chức (vd sửa bộ quyền của một vai trò
    * tuỳ biến). Mỗi (người, dự án) kiểm một lần dù nhiều tab. Phát SAU khi cache quyền đã xoá nên `canSee` đọc quyền mới.
    */
   @OnEvent(DOMAIN_EVENTS.ACCESS_CHANGED)
-  async onAccessChanged(p: { workspaceId?: string; userIds?: string[] }): Promise<void> {
-    // Phải có userIds (mọi workspace của họ) hoặc workspaceId (cả workspace). Quản trị hệ thống đổi quyền chỉ có userIds.
-    if (!this.server || (!p?.userIds?.length && !p?.workspaceId)) return;
+  async onAccessChanged(p: { organizationId?: string; userIds?: string[] }): Promise<void> {
+    // Phải có userIds (mọi tổ chức của họ) hoặc organizationId (cả tổ chức). Quản trị hệ thống đổi quyền chỉ có userIds.
+    if (!this.server || (!p?.userIds?.length && !p?.organizationId)) return;
     try {
       type Remote = Awaited<ReturnType<ReturnType<Server['in']>['fetchSockets']>>[number];
       let sockets: Remote[] = [];
@@ -539,7 +546,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
           sockets.push(...mine.filter((s) => (s.data as { userId?: string }).userId === userId));
         }
       } else {
-        sockets = await this.server.in(rooms.workspace(p.workspaceId!)).fetchSockets();
+        sockets = await this.server.in(rooms.organization(p.organizationId!)).fetchSockets();
       }
       const projectPrefix = rooms.project('');
       const issuePrefix = rooms.issue('');
@@ -560,13 +567,13 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
       const verdict = new Map<string, boolean>(); // `${userId}|${projectId}`
       const evict = new Map<string, Remote[]>(); // projectId -> sockets cần rút
       for (const s of sockets) {
-        const { userId, workspaceId: socketWs } = s.data as {
+        const { userId, organizationId: socketWs } = s.data as {
           userId?: string;
-          workspaceId?: string | null;
+          organizationId?: string | null;
         };
-        // Quyền tính theo workspace của CHÍNH socket (userIds không kèm workspaceId khi quản trị hệ thống đổi quyền).
-        const workspaceId = socketWs ?? p.workspaceId;
-        if (!userId || !workspaceId) continue;
+        // Quyền tính theo tổ chức của CHÍNH socket (userIds không kèm organizationId khi quản trị hệ thống đổi quyền).
+        const organizationId = socketWs ?? p.organizationId;
+        if (!userId || !organizationId) continue;
         const projects = new Set<string>();
         for (const r of s.rooms ?? []) {
           if (r.startsWith(projectPrefix)) projects.add(r.slice(projectPrefix.length));
@@ -576,9 +583,9 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
           }
         }
         for (const projectId of projects) {
-          const key = `${userId}|${workspaceId}|${projectId}`;
+          const key = `${userId}|${organizationId}|${projectId}`;
           if (!verdict.has(key))
-            verdict.set(key, await this.access.canSee(userId, workspaceId, projectId));
+            verdict.set(key, await this.access.canSee(userId, organizationId, projectId));
           if (verdict.get(key)) continue;
           const list = evict.get(projectId) ?? [];
           list.push(s);

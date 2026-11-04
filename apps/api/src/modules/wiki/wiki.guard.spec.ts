@@ -12,14 +12,14 @@ function run(opts: {
   handler: keyof WikiController;
   req: Record<string, unknown>;
   pageProject?: string | null;
-  perms: Record<string, string[]>; // projectId ('-' = cấp workspace) → quyền hiệu lực
+  perms: Record<string, string[]>; // projectId ('-' = cấp tổ chức) → quyền hiệu lực
 }) {
   const rbac = {
     getEffectivePermissions: vi.fn((_u: string, _w: string, p?: string | null) =>
       Promise.resolve(new Set(opts.perms[p ?? '-'] ?? [])),
     ),
     resolveProjectId: vi.fn(() => Promise.resolve({ projectId: opts.pageProject ?? null })),
-    assertProjectInWorkspace: vi.fn(() => Promise.resolve()),
+    assertProjectInOrganization: vi.fn(() => Promise.resolve()),
     assertProjectVisible: vi.fn(() => Promise.resolve()),
   };
   const guard = new PermissionsGuard(
@@ -31,7 +31,7 @@ function run(opts: {
     getClass: () => WikiController,
     switchToHttp: () => ({
       getRequest: () => ({
-        user: { id: 'U1', workspaceId: 'W1', isSystemAdmin: false },
+        user: { id: 'U1', organizationId: 'W1', isSystemAdmin: false },
         ...opts.req,
       }),
     }),
@@ -63,7 +63,7 @@ describe('PermissionsGuard × WikiController (A8)', () => {
     await expect(allowed).resolves.toBe(true);
   });
 
-  it('PUT/move trang chung (projectId null) với quyền dự án P → 403 (cần quyền cấp workspace)', async () => {
+  it('PUT/move trang chung (projectId null) với quyền dự án P → 403 (cần quyền cấp organization)', async () => {
     for (const handler of ['update', 'move'] as const) {
       const { allowed } = run({
         handler,

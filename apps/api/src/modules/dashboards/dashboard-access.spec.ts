@@ -13,8 +13,8 @@ describe('dashboardVisibleWhere', () => {
   const where = dashboardVisibleWhere({ userId: 'u1', isAdmin: false }, 'w1', visible);
   const json = JSON.stringify(where);
 
-  it('luôn ràng workspace và chưa xoá', () => {
-    expect(where).toMatchObject({ workspaceId: 'w1', deletedAt: null });
+  it('luôn ràng organization và chưa xoá', () => {
+    expect(where).toMatchObject({ organizationId: 'w1', deletedAt: null });
   });
 
   it('gồm: của tôi, GLOBAL, PROJECT qua visibleWhere (dự án sống), TEAM theo thành viên/trưởng nhóm (nhóm sống)', () => {
@@ -59,7 +59,7 @@ describe('canEditDashboard / canDeleteDashboard — I1: chỉ chủ sửa, admin
     }
   });
 
-  it('admin workspace KHÔNG sửa/đổi mức chia sẻ dashboard người khác', () => {
+  it('admin organization KHÔNG sửa/đổi mức chia sẻ dashboard người khác', () => {
     for (const scope of ['PRIVATE', 'GLOBAL', 'PROJECT', 'TEAM'] as const) {
       expect(canEditDashboard(me(true), d(scope))).toBe(false);
     }
@@ -85,7 +85,7 @@ describe('dashboardVisibleWhere — đánh giá trên ma trận dữ liệu (kh�
   const priv = { deletedAt: null, isPrivate: true, memberships: [{ userId: 'pm' }] };
   const team = { deletedAt: null, leadId: 'lead', members: [{ userId: 'tm' }] };
   const row = (over: Record<string, unknown>) => ({
-    workspaceId: 'w1',
+    organizationId: 'w1',
     deletedAt: null,
     ownerId: 'someone',
     scope: 'GLOBAL',
@@ -103,7 +103,7 @@ describe('dashboardVisibleWhere — đánh giá trên ma trận dữ liệu (kh�
     teamD: row({ scope: 'TEAM', team }),
     teamDeleted: row({ scope: 'TEAM', team: { ...team, deletedAt: new Date() } }),
     deletedDash: row({ scope: 'GLOBAL', deletedAt: new Date() }),
-    otherWs: row({ scope: 'GLOBAL', workspaceId: 'w2' }),
+    otherWs: row({ scope: 'GLOBAL', organizationId: 'w2' }),
   };
   const visibleFor = (userId: string, isAdmin = false) => {
     const projectVisible = isAdmin

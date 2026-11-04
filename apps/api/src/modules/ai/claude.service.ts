@@ -21,7 +21,7 @@ const CLAUDE_MAX_RETRIES = 1;
 
 /** Ngữ cảnh ghi `AiGenerationLog` + kiểm hạn mức cho mỗi lần gọi. */
 export interface AiCallContext {
-  workspaceId: string;
+  organizationId: string;
   userId?: string | null;
   /** Tên tính năng để thống kê: 'generate-issues' | 'summarize' | 'suggest' … */
   feature: string;
@@ -147,7 +147,7 @@ export class ClaudeService {
   ): Promise<ClaudeOutcome<string>> {
     // Cả thiếu khóa lẫn kill-switch của admin đều degrade về heuristic, không gọi API.
     if (!this.client || !this.available()) return { data: null, reason: 'unconfigured' };
-    await this.quota.assertWithinQuota(ctx.workspaceId);
+    await this.quota.assertWithinQuota(ctx.organizationId);
 
     const started = Date.now();
     let res: Anthropic.Message;
@@ -203,7 +203,7 @@ export class ClaudeService {
     try {
       await this.prisma.aiGenerationLog.create({
         data: {
-          workspaceId: ctx.workspaceId,
+          organizationId: ctx.organizationId,
           userId: ctx.userId ?? null,
           feature: ctx.feature,
           model,

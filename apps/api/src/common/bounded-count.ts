@@ -92,7 +92,7 @@ export async function runBounded<T>(
 
 /**
  * MỘT lần đếm issue trong ngân sách chung (`runBounded`). `where` do nơi gọi dựng (phải đã gồm phạm vi
- * workspace/dự án/quyền xem); ở đây chỉ lặp `deletedAt: null` làm chốt chặn tầng thấp nhất để việc đã xoá mềm không
+ * organization/dự án/quyền xem); ở đây chỉ lặp `deletedAt: null` làm chốt chặn tầng thấp nhất để việc đã xoá mềm không
  * bao giờ được đếm.
  */
 export function boundedIssueCount(

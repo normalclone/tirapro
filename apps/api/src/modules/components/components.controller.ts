@@ -2,7 +2,7 @@ import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/commo
 import { ApiTags } from '@nestjs/swagger';
 import { FixVersionType, VersionStatus } from '@tirapro/types';
 import { z } from 'zod';
-import { WorkspaceId } from '../../common/decorators/workspace-id.decorator';
+import { OrganizationId } from '../../common/decorators/organization-id.decorator';
 import { ProjectRef } from '../../common/decorators/project-ref.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { ComponentsService } from './components.service';
@@ -90,30 +90,33 @@ export class ComponentsController {
   @Permissions(PERMISSIONS.PROJECT_VIEW)
   @ProjectRef('param', 'projectId')
   @Get('projects/:projectId/components')
-  async listComponents(@WorkspaceId() workspaceId: string, @Param('projectId') projectId: string) {
-    return this.components.listComponents(workspaceId, projectId);
+  async listComponents(
+    @OrganizationId() organizationId: string,
+    @Param('projectId') projectId: string,
+  ) {
+    return this.components.listComponents(organizationId, projectId);
   }
 
   @Permissions(PERMISSIONS.PROJECT_ADMIN)
   @ProjectRef('param', 'projectId')
   @Post('projects/:projectId/components')
   async createComponent(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @Param('projectId') projectId: string,
     @Body(new ZodValidationPipe(createComponentSchema)) dto: CreateComponentDto,
   ) {
-    return this.components.createComponent(workspaceId, projectId, dto);
+    return this.components.createComponent(organizationId, projectId, dto);
   }
 
   @Permissions(PERMISSIONS.PROJECT_ADMIN)
   @ProjectRef('component', 'id')
   @Patch('components/:id')
   async updateComponent(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @Param('id') id: string,
     @Body(new ZodValidationPipe(updateComponentSchema)) dto: UpdateComponentDto,
   ) {
-    return this.components.updateComponent(workspaceId, id, {
+    return this.components.updateComponent(organizationId, id, {
       name: dto.name,
       description: dto.description,
       leadId: dto.leadId ?? undefined,
@@ -123,36 +126,36 @@ export class ComponentsController {
   @Permissions(PERMISSIONS.PROJECT_ADMIN)
   @ProjectRef('component', 'id')
   @Delete('components/:id')
-  async removeComponent(@WorkspaceId() workspaceId: string, @Param('id') id: string) {
-    return this.components.removeComponent(workspaceId, id);
+  async removeComponent(@OrganizationId() organizationId: string, @Param('id') id: string) {
+    return this.components.removeComponent(organizationId, id);
   }
 
   @Permissions(PERMISSIONS.ISSUE_EDIT)
   @ProjectRef('issue', 'issueId')
   @Post('issues/:issueId/components')
   async attachComponent(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
     @Param('issueId') issueId: string,
     @Body(new ZodValidationPipe(attachComponentSchema)) dto: AttachComponentDto,
     @OwnOnly(PERMISSIONS.ISSUE_EDIT) ownOnly: boolean,
   ) {
-    await this.ownership.assertOwnsIssue(ownOnly, workspaceId, user.id, issueId);
-    return this.components.attachComponent(workspaceId, user.id, issueId, dto.componentId);
+    await this.ownership.assertOwnsIssue(ownOnly, organizationId, user.id, issueId);
+    return this.components.attachComponent(organizationId, user.id, issueId, dto.componentId);
   }
 
   @Permissions(PERMISSIONS.ISSUE_EDIT)
   @ProjectRef('issue', 'issueId')
   @Delete('issues/:issueId/components/:componentId')
   async detachComponent(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
     @Param('issueId') issueId: string,
     @Param('componentId') componentId: string,
     @OwnOnly(PERMISSIONS.ISSUE_EDIT) ownOnly: boolean,
   ) {
-    await this.ownership.assertOwnsIssue(ownOnly, workspaceId, user.id, issueId);
-    return this.components.detachComponent(workspaceId, user.id, issueId, componentId);
+    await this.ownership.assertOwnsIssue(ownOnly, organizationId, user.id, issueId);
+    return this.components.detachComponent(organizationId, user.id, issueId, componentId);
   }
 
   // ============================ VERSIONS ====================================
@@ -160,65 +163,68 @@ export class ComponentsController {
   @Permissions(PERMISSIONS.PROJECT_VIEW)
   @ProjectRef('param', 'projectId')
   @Get('projects/:projectId/versions')
-  async listVersions(@WorkspaceId() workspaceId: string, @Param('projectId') projectId: string) {
-    return this.components.listVersions(workspaceId, projectId);
+  async listVersions(
+    @OrganizationId() organizationId: string,
+    @Param('projectId') projectId: string,
+  ) {
+    return this.components.listVersions(organizationId, projectId);
   }
 
   @Permissions(PERMISSIONS.PROJECT_ADMIN)
   @ProjectRef('param', 'projectId')
   @Post('projects/:projectId/versions')
   async createVersion(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @Param('projectId') projectId: string,
     @Body(new ZodValidationPipe(createVersionSchema)) dto: CreateVersionDto,
   ) {
-    return this.components.createVersion(workspaceId, projectId, dto);
+    return this.components.createVersion(organizationId, projectId, dto);
   }
 
   @Permissions(PERMISSIONS.PROJECT_ADMIN)
   @ProjectRef('version', 'id')
   @Patch('versions/:id')
   async updateVersion(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @Param('id') id: string,
     @Body(new ZodValidationPipe(updateVersionSchema)) dto: UpdateVersionDto,
   ) {
-    return this.components.updateVersion(workspaceId, id, dto);
+    return this.components.updateVersion(organizationId, id, dto);
   }
 
   @Permissions(PERMISSIONS.PROJECT_ADMIN)
   @ProjectRef('version', 'id')
   @Delete('versions/:id')
-  async removeVersion(@WorkspaceId() workspaceId: string, @Param('id') id: string) {
-    return this.components.removeVersion(workspaceId, id);
+  async removeVersion(@OrganizationId() organizationId: string, @Param('id') id: string) {
+    return this.components.removeVersion(organizationId, id);
   }
 
   @Permissions(PERMISSIONS.ISSUE_EDIT)
   @ProjectRef('issue', 'issueId')
   @Post('issues/:issueId/versions')
   async attachVersion(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
     @Param('issueId') issueId: string,
     @Body(new ZodValidationPipe(attachVersionSchema)) dto: AttachVersionDto,
     @OwnOnly(PERMISSIONS.ISSUE_EDIT) ownOnly: boolean,
   ) {
-    await this.ownership.assertOwnsIssue(ownOnly, workspaceId, user.id, issueId);
-    return this.components.attachVersion(workspaceId, user.id, issueId, dto.versionId, dto.type);
+    await this.ownership.assertOwnsIssue(ownOnly, organizationId, user.id, issueId);
+    return this.components.attachVersion(organizationId, user.id, issueId, dto.versionId, dto.type);
   }
 
   @Permissions(PERMISSIONS.ISSUE_EDIT)
   @ProjectRef('issue', 'issueId')
   @Delete('issues/:issueId/versions/:versionId/:type')
   async detachVersion(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
     @Param('issueId') issueId: string,
     @Param('versionId') versionId: string,
     @Param('type', new ZodValidationPipe(fixVersionTypeSchema)) type: FixVersionType,
     @OwnOnly(PERMISSIONS.ISSUE_EDIT) ownOnly: boolean,
   ) {
-    await this.ownership.assertOwnsIssue(ownOnly, workspaceId, user.id, issueId);
-    return this.components.detachVersion(workspaceId, user.id, issueId, versionId, type);
+    await this.ownership.assertOwnsIssue(ownOnly, organizationId, user.id, issueId);
+    return this.components.detachVersion(organizationId, user.id, issueId, versionId, type);
   }
 }

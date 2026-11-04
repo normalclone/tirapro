@@ -3,11 +3,11 @@ import { ApiTags } from '@nestjs/swagger';
 import { PERMISSIONS } from '@tirapro/types';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
-import { WorkspaceId } from '../../common/decorators/workspace-id.decorator';
+import { OrganizationId } from '../../common/decorators/organization-id.decorator';
 import type { AuthUser } from '../../common/types/request';
 import { MeOverviewService } from './me-overview.service';
 
-/** Dữ liệu của CHÍNH người gọi trong workspace hiện tại (theo JWT như mọi API khác). */
+/** Dữ liệu của CHÍNH người gọi trong tổ chức hiện tại (theo JWT như mọi API khác). */
 @ApiTags('me')
 @Controller('me')
 export class MeController {
@@ -16,7 +16,7 @@ export class MeController {
   /** Tổng quan cá nhân: số đếm, việc của tôi, bug liên quan đến tôi, điểm đã xong 8 tuần. Chỉ dự án người gọi xem được. */
   @Permissions(PERMISSIONS.PROJECT_VIEW)
   @Get('overview')
-  async getOverview(@WorkspaceId() workspaceId: string, @CurrentUser() user: AuthUser) {
-    return this.overview.overview(workspaceId, user.id);
+  async getOverview(@OrganizationId() organizationId: string, @CurrentUser() user: AuthUser) {
+    return this.overview.overview(organizationId, user.id);
   }
 }

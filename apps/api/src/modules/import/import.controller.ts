@@ -24,7 +24,7 @@ import {
 } from '@tirapro/shared';
 import { PERMISSIONS } from '@tirapro/types';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import { WorkspaceId } from '../../common/decorators/workspace-id.decorator';
+import { OrganizationId } from '../../common/decorators/organization-id.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import type { AuthUser } from '../../common/types/request';
@@ -67,33 +67,33 @@ export class ImportController {
   @Post('csv')
   @Permissions(PERMISSIONS.IMPORT_RUN)
   async importCsv(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
     @Body(new ZodValidationPipe(importCsvSchema)) body: ImportCsvBody,
   ) {
-    return this.importService.importCsv(workspaceId, user.id, body);
+    return this.importService.importCsv(organizationId, user.id, body);
   }
 
   /** Import từ bản export JSON (round-trip với Export module) vào một project sẵn có. */
   @Post('json')
   @Permissions(PERMISSIONS.IMPORT_RUN)
   async importJson(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
     @Body(new ZodValidationPipe(importJsonSchema)) body: ImportJsonBody,
   ) {
-    return this.importService.importJson(workspaceId, user.id, body);
+    return this.importService.importJson(organizationId, user.id, body);
   }
 
   /** Excel: tải biểu mẫu `.xlsx` của dự án (drop-list lấy từ cấu hình dự án). */
   @Get('excel/template')
   @Permissions(PERMISSIONS.IMPORT_RUN)
   async excelTemplate(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @Query(new ZodValidationPipe(excelImportBodySchema)) query: ExcelImportBody,
     @Res() res: Response,
   ): Promise<void> {
-    const { buffer, filename } = await this.excel.template(workspaceId, query.projectId);
+    const { buffer, filename } = await this.excel.template(organizationId, query.projectId);
     res.setHeader(
       'Content-Type',
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -112,11 +112,11 @@ export class ImportController {
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: EXCEL_IMPORT_MAX_BYTES } }))
   async excelPreview(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @Body(new ZodValidationPipe(excelImportBodySchema)) body: ExcelImportBody,
     @UploadedFile() file: Express.Multer.File | undefined,
   ) {
-    return this.excel.preview(workspaceId, body.projectId, file);
+    return this.excel.preview(organizationId, body.projectId, file);
   }
 
   /** Excel: nhập các dòng hợp lệ (validate lại từ đầu), bỏ dòng lỗi. */
@@ -126,60 +126,63 @@ export class ImportController {
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: EXCEL_IMPORT_MAX_BYTES } }))
   async importExcel(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
     @Body(new ZodValidationPipe(excelImportBodySchema)) body: ExcelImportBody,
     @UploadedFile() file: Express.Multer.File | undefined,
   ) {
-    return this.excel.commit(workspaceId, user.id, body.projectId, file);
+    return this.excel.commit(organizationId, user.id, body.projectId, file);
   }
 
-  /** Lịch sử các lần import của workspace (mới nhất trước). */
+  /** Lịch sử các lần import của tổ chức (mới nhất trước). */
   @Get('jobs')
   @Permissions(PERMISSIONS.IMPORT_RUN)
   async listJobs(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @Query('cursor') cursor?: string,
     @Query('limit') limit?: string,
   ) {
-    return this.importService.listJobs(workspaceId, cursor, Number(limit) || 20);
+    return this.importService.listJobs(organizationId, cursor, Number(limit) || 20);
   }
 
   /** Tiến độ / kết quả một lần import (web poll mỗi 2 giây). */
   @Get('jobs/:id')
   @Permissions(PERMISSIONS.IMPORT_RUN)
-  async getJob(@WorkspaceId() workspaceId: string, @Param('id') id: string) {
-    return this.importService.getJob(workspaceId, id);
+  async getJob(@OrganizationId() organizationId: string, @Param('id') id: string) {
+    return this.importService.getJob(organizationId, id);
   }
 
   /** Jira bước 1: tải CSV export (≤ 25MB), trả tóm tắt để dựng bảng mapping. */
   @Post('jira/analyze')
-  @Permissions(PERMISSIONS.WORKSPACE_ADMIN)
+  @Permissions(PERMISSIONS.ORGANIZATION_ADMIN)
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: JIRA_MAX_UPLOAD_BYTES } }))
   async jiraAnalyze(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
     @UploadedFile() file: Express.Multer.File | undefined,
   ) {
-    return this.jira.analyze(workspaceId, user.id, file);
+    return this.jira.analyze(organizationId, user.id, file);
   }
 
   /** Jira bước 2: giá trị Tirapro (project, loại, ưu tiên, trạng thái, thành viên) để ghép. */
   @Get('jira/targets')
-  @Permissions(PERMISSIONS.WORKSPACE_ADMIN)
-  async jiraTargets(@WorkspaceId() workspaceId: string, @Query('projectId') projectId?: string) {
-    return this.jira.targets(workspaceId, projectId || undefined);
+  @Permissions(PERMISSIONS.ORGANIZATION_ADMIN)
+  async jiraTargets(
+    @OrganizationId() organizationId: string,
+    @Query('projectId') projectId?: string,
+  ) {
+    return this.jira.targets(organizationId, projectId || undefined);
   }
 
   /** Jira bước 3: kiểm tra mapping, chạy thử (dryRun) hoặc chạy nền và trả `{ jobId }`. */
   @Post('jira/run')
-  @Permissions(PERMISSIONS.WORKSPACE_ADMIN)
+  @Permissions(PERMISSIONS.ORGANIZATION_ADMIN)
   async jiraRun(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
     @Body(new ZodValidationPipe(jiraImportRunSchema)) body: JiraImportRunInput,
   ) {
-    return this.jira.run(workspaceId, user.id, body);
+    return this.jira.run(organizationId, user.id, body);
   }
 }

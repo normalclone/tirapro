@@ -299,12 +299,12 @@ async function main() {
     check('issue-links (link-types)', linkOk, 'không có link-type seed — chỉ kiểm tra list');
   }
 
-  const wss = await call('GET', '/auth/workspaces');
+  const wss = await call('GET', '/auth/organizations');
   const sw = wss.json?.[0]?.id
-    ? await call('POST', '/auth/switch-workspace', { workspaceId: wss.json[0].id })
+    ? await call('POST', '/auth/switch-organization', { organizationId: wss.json[0].id })
     : { status: 0, json: null };
   check(
-    'auth/workspaces + switch',
+    'auth/organizations + switch',
     wss.status === 200 && Array.isArray(wss.json) && sw.status < 400 && !!sw.json?.accessToken,
   );
   // Lời mời đã gỡ: thêm người = chọn từ danh sách (POST /members) hoặc tạo tài khoản (POST /members/accounts).

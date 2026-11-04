@@ -182,7 +182,7 @@ describe('CommentsService.setReaction — thả/bỏ cảm xúc (idempotent)', (
     expect(events.emit).not.toHaveBeenCalled();
   });
 
-  it('bình luận không có / đã xoá mềm / ngoài workspace => 404, không ghi', async () => {
+  it('bình luận không có / đã xoá mềm / ngoài organization => 404, không ghi', async () => {
     const { service, createMany, deleteMany, commentFindFirst } = make({ commentExists: false });
     await expect(service.setReaction('w1', 'u1', 'c1', '👍', true)).rejects.toMatchObject({
       status: 404,
@@ -190,10 +190,10 @@ describe('CommentsService.setReaction — thả/bỏ cảm xúc (idempotent)', (
     await expect(service.setReaction('w1', 'u1', 'c1', '👍', false)).rejects.toMatchObject({
       status: 404,
     });
-    // requireComment phải lọc đúng: chưa xoá mềm + trong workspace
+    // requireComment phải lọc đúng: chưa xoá mềm + trong tổ chức
     expect(commentFindFirst).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: 'c1', deletedAt: null, issue: { workspaceId: 'w1', deletedAt: null } },
+        where: { id: 'c1', deletedAt: null, issue: { organizationId: 'w1', deletedAt: null } },
       }),
     );
     expect(createMany).not.toHaveBeenCalled();

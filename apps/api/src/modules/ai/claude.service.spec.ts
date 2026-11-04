@@ -6,7 +6,7 @@ import { ClaudeService, withStrictObjects } from './claude.service';
 type CreateParams = Anthropic.MessageCreateParamsNonStreaming;
 type CreateMock = Mock<(params: CreateParams) => Promise<unknown>>;
 
-const CTX = { workspaceId: 'ws1', userId: 'u1', feature: 'summarize' };
+const CTX = { organizationId: 'ws1', userId: 'u1', feature: 'summarize' };
 
 function make(opts: { create?: CreateMock; killSwitch?: boolean; quotaError?: Error } = {}) {
   const create = opts.create ?? vi.fn<(params: CreateParams) => Promise<unknown>>();
@@ -59,7 +59,7 @@ describe('ClaudeService', () => {
     expect(create.mock.calls[0]![0].model).toBe('fast-m');
     const data = logCreate.mock.calls[0]![0].data;
     expect(data).toMatchObject({
-      workspaceId: 'ws1',
+      organizationId: 'ws1',
       userId: 'u1',
       feature: 'summarize',
       model: 'fast-m',

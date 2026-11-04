@@ -5,9 +5,9 @@
 import type { PermissionScope } from './enums';
 
 export const PERMISSIONS = {
-  // Workspace
-  WORKSPACE_ADMIN: 'workspace:admin',
-  WORKSPACE_VIEW: 'workspace:view',
+  // Tổ chức
+  ORGANIZATION_ADMIN: 'organization:admin',
+  ORGANIZATION_VIEW: 'organization:view',
   MEMBER_MANAGE: 'member:manage',
   TEAM_MANAGE: 'team:manage',
   // Project
@@ -70,18 +70,18 @@ export interface PermissionDef {
 
 export const PERMISSION_CATALOG: PermissionDef[] = [
   {
-    key: PERMISSIONS.WORKSPACE_ADMIN,
+    key: PERMISSIONS.ORGANIZATION_ADMIN,
     description: 'Quản trị tổ chức',
-    scope: 'WORKSPACE',
+    scope: 'ORGANIZATION',
   },
-  { key: PERMISSIONS.WORKSPACE_VIEW, description: 'Xem tổ chức', scope: 'WORKSPACE' },
+  { key: PERMISSIONS.ORGANIZATION_VIEW, description: 'Xem tổ chức', scope: 'ORGANIZATION' },
   {
     key: PERMISSIONS.MEMBER_MANAGE,
     description: 'Quản lý thành viên & vai trò',
-    scope: 'WORKSPACE',
+    scope: 'ORGANIZATION',
   },
-  { key: PERMISSIONS.TEAM_MANAGE, description: 'Quản lý nhóm (team)', scope: 'WORKSPACE' },
-  { key: PERMISSIONS.PROJECT_CREATE, description: 'Tạo dự án', scope: 'WORKSPACE' },
+  { key: PERMISSIONS.TEAM_MANAGE, description: 'Quản lý nhóm (team)', scope: 'ORGANIZATION' },
+  { key: PERMISSIONS.PROJECT_CREATE, description: 'Tạo dự án', scope: 'ORGANIZATION' },
   { key: PERMISSIONS.PROJECT_ADMIN, description: 'Quản trị dự án', scope: 'PROJECT' },
   { key: PERMISSIONS.PROJECT_VIEW, description: 'Xem dự án', scope: 'PROJECT' },
   { key: PERMISSIONS.ISSUE_CREATE, description: 'Tạo công việc', scope: 'PROJECT' },
@@ -131,16 +131,16 @@ export const PERMISSION_CATALOG: PermissionDef[] = [
   {
     key: PERMISSIONS.DASHBOARD_MANAGE,
     description: 'Quản lý bảng tổng quan tuỳ biến',
-    scope: 'WORKSPACE',
+    scope: 'ORGANIZATION',
   },
-  { key: PERMISSIONS.FILTER_MANAGE, description: 'Quản lý bộ lọc đã lưu', scope: 'WORKSPACE' },
-  { key: PERMISSIONS.AI_USE, description: 'Dùng tính năng AI', scope: 'WORKSPACE' },
+  { key: PERMISSIONS.FILTER_MANAGE, description: 'Quản lý bộ lọc đã lưu', scope: 'ORGANIZATION' },
+  { key: PERMISSIONS.AI_USE, description: 'Dùng tính năng AI', scope: 'ORGANIZATION' },
   {
     key: PERMISSIONS.INTEGRATION_MANAGE,
     description: 'Quản lý tích hợp (Telegram, Jira...)',
-    scope: 'WORKSPACE',
+    scope: 'ORGANIZATION',
   },
-  { key: PERMISSIONS.IMPORT_RUN, description: 'Nhập dữ liệu (CSV, Jira)', scope: 'WORKSPACE' },
+  { key: PERMISSIONS.IMPORT_RUN, description: 'Nhập dữ liệu (CSV, Jira)', scope: 'ORGANIZATION' },
   {
     key: PERMISSIONS.DIGEST_MANAGE,
     description: 'Quản lý báo cáo định kỳ (digest)',
@@ -149,25 +149,25 @@ export const PERMISSION_CATALOG: PermissionDef[] = [
   {
     key: PERMISSIONS.GUIDE_MANAGE,
     description: 'Tuỳ biến hướng dẫn cho tổ chức',
-    scope: 'WORKSPACE',
+    scope: 'ORGANIZATION',
   },
   {
     key: PERMISSIONS.PROGRAM_MANAGE,
     description: 'Quản lý chương trình / danh mục dự án',
-    scope: 'WORKSPACE',
+    scope: 'ORGANIZATION',
   },
   {
     key: PERMISSIONS.GOAL_MANAGE,
     description:
       'Quản lý mục tiêu (OKR) của mọi dự án — quản trị dự án vẫn tự quản lý mục tiêu của dự án mình',
-    scope: 'WORKSPACE',
+    scope: 'ORGANIZATION',
   },
   { key: PERMISSIONS.RISK_MANAGE, description: 'Quản lý sổ rủi ro (RAID)', scope: 'PROJECT' },
   {
     key: PERMISSIONS.SLA_MANAGE,
     description:
       'Cấu hình cam kết thời gian của mọi dự án — quản trị dự án vẫn tự cấu hình cho dự án mình',
-    scope: 'WORKSPACE',
+    scope: 'ORGANIZATION',
   },
   {
     key: PERMISSIONS.WIKI_MANAGE,
@@ -177,7 +177,7 @@ export const PERMISSION_CATALOG: PermissionDef[] = [
   {
     key: PERMISSIONS.RESOURCE_MANAGE,
     description: 'Phân bổ nguồn lực & nghỉ phép',
-    scope: 'WORKSPACE',
+    scope: 'ORGANIZATION',
   },
   {
     key: PERMISSIONS.PLAN_MANAGE,
@@ -193,9 +193,9 @@ export const PERMISSION_CATALOG: PermissionDef[] = [
 
 /** Tên các system role seed sẵn. */
 export const SYSTEM_ROLES = {
-  WORKSPACE_ADMIN: 'Workspace Admin',
-  WORKSPACE_MEMBER: 'Workspace Member',
-  WORKSPACE_VIEWER: 'Workspace Viewer',
+  ORGANIZATION_ADMIN: 'Organization Admin',
+  ORGANIZATION_MEMBER: 'Organization Member',
+  ORGANIZATION_VIEWER: 'Organization Viewer',
   PROJECT_ADMIN: 'Project Admin',
   PROJECT_DEVELOPER: 'Project Developer',
   PROJECT_REPORTER: 'Project Reporter',
@@ -215,20 +215,20 @@ export type SystemRoleName = (typeof SYSTEM_ROLES)[keyof typeof SYSTEM_ROLES];
 
 /**
  * Bộ quyền mặc định cho từng vai trò hệ thống (single source of truth — seed & bootstrap
- * workspace mới đều đọc từ đây). Key = permission string. Vai trò DỰ ÁN dùng quyền scope PROJECT.
+ * tổ chức mới đều đọc từ đây). Key = permission string. Vai trò DỰ ÁN dùng quyền scope PROJECT.
  */
 export const SYSTEM_ROLE_PERMISSIONS: Record<SystemRoleName, PermissionKey[]> = {
-  [SYSTEM_ROLES.WORKSPACE_ADMIN]: PERMISSION_CATALOG.map((p) => p.key),
-  [SYSTEM_ROLES.WORKSPACE_MEMBER]: [
-    PERMISSIONS.WORKSPACE_VIEW,
-    // Không có PROJECT_CREATE: tạo dự án chỉ dành cho Workspace Admin (BA/Test/Dev không được tạo).
+  [SYSTEM_ROLES.ORGANIZATION_ADMIN]: PERMISSION_CATALOG.map((p) => p.key),
+  [SYSTEM_ROLES.ORGANIZATION_MEMBER]: [
+    PERMISSIONS.ORGANIZATION_VIEW,
+    // Không có PROJECT_CREATE: tạo dự án chỉ dành cho Organization Admin (BA/Test/Dev không được tạo).
     PERMISSIONS.PROJECT_VIEW,
     PERMISSIONS.AI_USE,
     PERMISSIONS.DASHBOARD_MANAGE,
     PERMISSIONS.FILTER_MANAGE,
   ],
-  [SYSTEM_ROLES.WORKSPACE_VIEWER]: [
-    PERMISSIONS.WORKSPACE_VIEW,
+  [SYSTEM_ROLES.ORGANIZATION_VIEWER]: [
+    PERMISSIONS.ORGANIZATION_VIEW,
     PERMISSIONS.PROJECT_VIEW,
     PERMISSIONS.REPORT_VIEW,
   ],
@@ -396,7 +396,7 @@ export const SYSTEM_ROLE_PERMISSIONS: Record<SystemRoleName, PermissionKey[]> = 
     PERMISSIONS.COMMENT_EDIT_OWN,
     PERMISSIONS.REPORT_VIEW,
   ],
-  // DevOps: như Developer (CI/CD, hạ tầng) — quản tích hợp ở cấp workspace.
+  // DevOps: như Developer (CI/CD, hạ tầng) — quản tích hợp ở cấp organization.
   [SYSTEM_ROLES.DEVOPS]: [
     PERMISSIONS.PROJECT_VIEW,
     PERMISSIONS.ISSUE_CREATE,
@@ -434,25 +434,25 @@ export const SYSTEM_ROLE_PERMISSIONS: Record<SystemRoleName, PermissionKey[]> = 
 };
 
 /**
- * Vai trò DỰ ÁN mặc định suy ra từ vai trò WORKSPACE.
+ * Vai trò DỰ ÁN mặc định suy ra từ vai trò ORGANIZATION.
  *
- * Mô hình: thành viên tính trên WORKSPACE — mọi dự án trong workspace dùng chung
- * tập người dùng đó. Không cần "thêm người vào dự án": ai thuộc workspace là tự
+ * Mô hình: thành viên tính trên ORGANIZATION — mọi dự án trong tổ chức dùng chung
+ * tập người dùng đó. Không cần "thêm người vào dự án": ai thuộc tổ chức là tự
  * động có quyền ở MỌI dự án theo vai trò mặc định dưới đây. Vẫn có thể **ghi đè**
  * vai trò riêng cho từng người ở từng dự án (ProjectMembership) khi cần.
- * `null` = không tự cấp quyền dự án (vd Viewer chỉ đọc theo quyền workspace).
+ * `null` = không tự cấp quyền dự án (vd Viewer chỉ đọc theo quyền tổ chức).
  */
 export const DEFAULT_PROJECT_ROLE_BY_WS_ROLE: Record<string, SystemRoleName | null> = {
-  [SYSTEM_ROLES.WORKSPACE_ADMIN]: SYSTEM_ROLES.PROJECT_ADMIN,
-  [SYSTEM_ROLES.WORKSPACE_MEMBER]: SYSTEM_ROLES.DEVELOPER,
-  [SYSTEM_ROLES.WORKSPACE_VIEWER]: null,
+  [SYSTEM_ROLES.ORGANIZATION_ADMIN]: SYSTEM_ROLES.PROJECT_ADMIN,
+  [SYSTEM_ROLES.ORGANIZATION_MEMBER]: SYSTEM_ROLES.DEVELOPER,
+  [SYSTEM_ROLES.ORGANIZATION_VIEWER]: null,
 };
 
 /** Scope của từng system role (để seed & UI nhóm theo cấp). */
-export const SYSTEM_ROLE_SCOPE: Record<SystemRoleName, 'WORKSPACE' | 'PROJECT'> = {
-  [SYSTEM_ROLES.WORKSPACE_ADMIN]: 'WORKSPACE',
-  [SYSTEM_ROLES.WORKSPACE_MEMBER]: 'WORKSPACE',
-  [SYSTEM_ROLES.WORKSPACE_VIEWER]: 'WORKSPACE',
+export const SYSTEM_ROLE_SCOPE: Record<SystemRoleName, 'ORGANIZATION' | 'PROJECT'> = {
+  [SYSTEM_ROLES.ORGANIZATION_ADMIN]: 'ORGANIZATION',
+  [SYSTEM_ROLES.ORGANIZATION_MEMBER]: 'ORGANIZATION',
+  [SYSTEM_ROLES.ORGANIZATION_VIEWER]: 'ORGANIZATION',
   [SYSTEM_ROLES.PROJECT_ADMIN]: 'PROJECT',
   [SYSTEM_ROLES.PROJECT_DEVELOPER]: 'PROJECT',
   [SYSTEM_ROLES.PROJECT_REPORTER]: 'PROJECT',
@@ -469,15 +469,15 @@ export const SYSTEM_ROLE_SCOPE: Record<SystemRoleName, 'WORKSPACE' | 'PROJECT'> 
 
 /** Mô tả ngắn + màu nhãn cho vai trò hệ thống (UI badge/catalog). */
 export const SYSTEM_ROLE_META: Record<SystemRoleName, { description: string; color: string }> = {
-  [SYSTEM_ROLES.WORKSPACE_ADMIN]: {
+  [SYSTEM_ROLES.ORGANIZATION_ADMIN]: {
     description: 'Toàn quyền quản trị tổ chức',
     color: 'oklch(0.55 0.20 25)',
   },
-  [SYSTEM_ROLES.WORKSPACE_MEMBER]: {
+  [SYSTEM_ROLES.ORGANIZATION_MEMBER]: {
     description: 'Thành viên: tham gia dự án (không tạo dự án)',
     color: 'oklch(0.55 0.13 245)',
   },
-  [SYSTEM_ROLES.WORKSPACE_VIEWER]: {
+  [SYSTEM_ROLES.ORGANIZATION_VIEWER]: {
     description: 'Chỉ xem ở cấp tổ chức',
     color: 'oklch(0.60 0.018 256)',
   },

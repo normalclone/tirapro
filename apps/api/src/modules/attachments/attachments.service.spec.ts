@@ -42,7 +42,7 @@ const file = (name: string, body: string, mimetype = 'text/plain') =>
 describe('AttachmentsService — qua ObjectStorage', () => {
   afterEach(() => vi.restoreAllMocks());
 
-  it('upload: ghi vào storage với khoá `{workspaceId}/{id}-{tên đã làm sạch}` (định dạng cũ), lưu checksum', async () => {
+  it('upload: ghi vào storage với khoá `{organizationId}/{id}-{tên đã làm sạch}` (định dạng cũ), lưu checksum', async () => {
     const { service, storage, prisma } = setup();
     const dto = await service.upload('w1', 'u1', 'i1', file('báo cáo ../x.txt', 'hello'));
     const key = (prisma.attachment.create.mock.calls[0]?.[0] as { data: { storageKey: string } })

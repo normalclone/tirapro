@@ -7,7 +7,7 @@ import { PrismaClient } from '@prisma/client';
  * `$extends` (query.$allModels) khi có DB test để kiểm chứng.
  */
 export const SOFT_DELETE_MODELS = new Set([
-  'Workspace',
+  'Organization',
   'Project',
   'Issue',
   'Comment',

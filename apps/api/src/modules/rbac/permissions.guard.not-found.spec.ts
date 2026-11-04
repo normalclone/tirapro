@@ -28,7 +28,7 @@ async function run(ref: ProjectRefMeta | undefined, params: Record<string, strin
           // assertProjectVisible: dự án riêng tư người gọi không phải thành viên
           if (args.select && 'memberships' in args.select)
             return Promise.resolve({ isPrivate: true, memberships: [] });
-          // assertProjectInWorkspace
+          // assertProjectInOrganization
           return Promise.resolve(hidden ? { id: 'P1' } : null);
         },
       ),
@@ -36,9 +36,12 @@ async function run(ref: ProjectRefMeta | undefined, params: Record<string, strin
     issue: {
       findFirst: vi.fn(() => Promise.resolve(hidden ? { projectId: 'P1' } : null)),
     },
-    workspaceMembership: {
+    organizationMembership: {
       findUnique: vi.fn(() =>
-        Promise.resolve({ roleId: 'r', roles: [{ role: { id: 'r', name: 'Workspace Member' } }] }),
+        Promise.resolve({
+          roleId: 'r',
+          roles: [{ role: { id: 'r', name: 'Organization Member' } }],
+        }),
       ),
     },
     rolePermission: {
@@ -58,7 +61,7 @@ async function run(ref: ProjectRefMeta | undefined, params: Record<string, strin
   };
   const guard = new PermissionsGuard(reflector as unknown as Reflector, rbac);
   const req = {
-    user: { id: 'U1', workspaceId: 'W1', isSystemAdmin: false },
+    user: { id: 'U1', organizationId: 'W1', isSystemAdmin: false },
     params,
     query: {},
     body: {},

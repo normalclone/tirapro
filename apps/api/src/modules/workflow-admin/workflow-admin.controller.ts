@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { PERMISSIONS } from '@tirapro/types';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { AuthUser } from '../../common/types/request';
-import { WorkspaceId } from '../../common/decorators/workspace-id.decorator';
+import { OrganizationId } from '../../common/decorators/organization-id.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { ForbiddenAppException } from '../../common/exceptions/app.exception';
@@ -114,16 +114,16 @@ export class WorkflowAdminController {
    */
   private async assertCanEdit(
     user: AuthUser,
-    workspaceId: string,
+    organizationId: string,
     kind: 'workflow' | 'status' | 'transition',
     id: string,
-  ): Promise<{ owned: boolean; workspaceAdmin: boolean }> {
-    const owner = await this.workflows.ownerProjectId(workspaceId, kind, id);
-    const workspaceAdmin =
-      user.isSystemAdmin || !!user.permissions?.includes(PERMISSIONS.WORKSPACE_ADMIN);
-    if (owner === null && !workspaceAdmin)
+  ): Promise<{ owned: boolean; organizationAdmin: boolean }> {
+    const owner = await this.workflows.ownerProjectId(organizationId, kind, id);
+    const organizationAdmin =
+      user.isSystemAdmin || !!user.permissions?.includes(PERMISSIONS.ORGANIZATION_ADMIN);
+    if (owner === null && !organizationAdmin)
       throw new ForbiddenAppException('Quy trình chung của tổ chức chỉ Quản trị chung sửa được');
-    return { owned: owner !== null, workspaceAdmin };
+    return { owned: owner !== null, organizationAdmin };
   }
 
   // ----- Workflows -----
@@ -132,14 +132,14 @@ export class WorkflowAdminController {
   @ProjectRef('query', 'projectId')
   @Get('workflows')
   async list(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
     @Query('projectId') projectId?: string,
     @Query('isTemplate') isTemplate?: string,
     @Query('includeTrashed') includeTrashed?: string,
   ) {
     return this.workflows.listWorkflows(
-      workspaceId,
+      organizationId,
       {
         projectId: projectId || undefined,
         isTemplate:
@@ -153,42 +153,42 @@ export class WorkflowAdminController {
   @Permissions(PERMISSIONS.PROJECT_VIEW)
   @Get('workflows/:id')
   async getOne(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
   ) {
-    return this.workflows.getWorkflow(workspaceId, id, user.id);
+    return this.workflows.getWorkflow(organizationId, id, user.id);
   }
 
   @Post('workflows')
-  @Permissions(PERMISSIONS.WORKSPACE_ADMIN)
+  @Permissions(PERMISSIONS.ORGANIZATION_ADMIN)
   async create(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @Body(new ZodValidationPipe(createWorkflowSchema)) dto: CreateWorkflowBody,
   ) {
-    return this.workflows.createWorkflow(workspaceId, dto);
+    return this.workflows.createWorkflow(organizationId, dto);
   }
 
   @Patch('workflows/:id')
   @Permissions(PERMISSIONS.PROJECT_ADMIN)
   @ProjectRef('workflow', 'id')
   async update(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
     @Body(new ZodValidationPipe(updateWorkflowSchema)) dto: UpdateWorkflowBody,
   ) {
-    const { workspaceAdmin } = await this.assertCanEdit(user, workspaceId, 'workflow', id);
+    const { organizationAdmin } = await this.assertCanEdit(user, organizationId, 'workflow', id);
     // Đặt "mặc định" là việc của Quản trị chung; Quản trị dự án chỉ đổi tên/mô tả quy trình của dự án mình.
-    if (dto.isDefault !== undefined && !workspaceAdmin)
+    if (dto.isDefault !== undefined && !organizationAdmin)
       throw new ForbiddenAppException('Chỉ Quản trị chung đặt được quy trình mặc định');
-    return this.workflows.updateWorkflow(workspaceId, id, dto);
+    return this.workflows.updateWorkflow(organizationId, id, dto);
   }
 
   @Delete('workflows/:id')
-  @Permissions(PERMISSIONS.WORKSPACE_ADMIN)
-  async remove(@WorkspaceId() workspaceId: string, @Param('id') id: string) {
-    return this.workflows.removeWorkflow(workspaceId, id);
+  @Permissions(PERMISSIONS.ORGANIZATION_ADMIN)
+  async remove(@OrganizationId() organizationId: string, @Param('id') id: string) {
+    return this.workflows.removeWorkflow(organizationId, id);
   }
 
   // ----- Statuses -----
@@ -197,26 +197,26 @@ export class WorkflowAdminController {
   @Permissions(PERMISSIONS.PROJECT_ADMIN)
   @ProjectRef('workflow', 'id')
   async createStatus(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
     @Param('id') workflowId: string,
     @Body(new ZodValidationPipe(createStatusSchema)) dto: CreateStatusBody,
   ) {
-    await this.assertCanEdit(user, workspaceId, 'workflow', workflowId);
-    return this.workflows.createStatus(workspaceId, workflowId, dto);
+    await this.assertCanEdit(user, organizationId, 'workflow', workflowId);
+    return this.workflows.createStatus(organizationId, workflowId, dto);
   }
 
   @Patch('statuses/:id')
   @Permissions(PERMISSIONS.PROJECT_ADMIN)
   @ProjectRef('workflowStatus', 'id')
   async updateStatus(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
     @Body(new ZodValidationPipe(updateStatusSchema)) dto: UpdateStatusBody,
   ) {
-    await this.assertCanEdit(user, workspaceId, 'status', id);
-    return this.workflows.updateStatus(workspaceId, id, dto);
+    await this.assertCanEdit(user, organizationId, 'status', id);
+    return this.workflows.updateStatus(organizationId, id, dto);
   }
 
   /** Còn việc ở trạng thái này thì phải kèm `?replacementStatusId=` (409 STATUS_HAS_ISSUES nếu thiếu). */
@@ -224,13 +224,18 @@ export class WorkflowAdminController {
   @Permissions(PERMISSIONS.PROJECT_ADMIN)
   @ProjectRef('workflowStatus', 'id')
   async removeStatus(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
     @Query('replacementStatusId') replacementStatusId?: string,
   ) {
-    await this.assertCanEdit(user, workspaceId, 'status', id);
-    return this.workflows.removeStatus(workspaceId, user.id, id, replacementStatusId || undefined);
+    await this.assertCanEdit(user, organizationId, 'status', id);
+    return this.workflows.removeStatus(
+      organizationId,
+      user.id,
+      id,
+      replacementStatusId || undefined,
+    );
   }
 
   // ----- Transitions -----
@@ -239,37 +244,37 @@ export class WorkflowAdminController {
   @Permissions(PERMISSIONS.PROJECT_ADMIN)
   @ProjectRef('workflow', 'id')
   async createTransition(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
     @Param('id') workflowId: string,
     @Body(new ZodValidationPipe(createTransitionSchema)) dto: CreateTransitionBody,
   ) {
-    await this.assertCanEdit(user, workspaceId, 'workflow', workflowId);
-    return this.workflows.createTransition(workspaceId, workflowId, dto);
+    await this.assertCanEdit(user, organizationId, 'workflow', workflowId);
+    return this.workflows.createTransition(organizationId, workflowId, dto);
   }
 
   @Patch('transitions/:id')
   @Permissions(PERMISSIONS.PROJECT_ADMIN)
   @ProjectRef('workflowTransition', 'id')
   async updateTransition(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
     @Body(new ZodValidationPipe(updateTransitionSchema)) dto: UpdateTransitionBody,
   ) {
-    await this.assertCanEdit(user, workspaceId, 'transition', id);
-    return this.workflows.updateTransition(workspaceId, id, dto);
+    await this.assertCanEdit(user, organizationId, 'transition', id);
+    return this.workflows.updateTransition(organizationId, id, dto);
   }
 
   @Delete('transitions/:id')
   @Permissions(PERMISSIONS.PROJECT_ADMIN)
   @ProjectRef('workflowTransition', 'id')
   async removeTransition(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
   ) {
-    await this.assertCanEdit(user, workspaceId, 'transition', id);
-    return this.workflows.removeTransition(workspaceId, id);
+    await this.assertCanEdit(user, organizationId, 'transition', id);
+    return this.workflows.removeTransition(organizationId, id);
   }
 }

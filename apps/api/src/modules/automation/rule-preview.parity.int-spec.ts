@@ -26,7 +26,7 @@ import { evalFieldCondition, fieldConditionToWhere, type FieldCondition } from '
  * `fieldConditionToWhere` (qua Prisma) và với `RulePreviewService.previewMatch` TRÊN CÙNG các hàng đọc lại từ DB.
  *
  * Chạy: `PARITY_DATABASE_URL=postgresql://…/projira_w2c?schema=public pnpm --filter @tirapro/api test:parity`
- * (đuôi `.int-spec.ts` không khớp `include` của vitest mặc định; DB nháp phải đã `migrate deploy`). Spec tự tạo workspace
+ * (đuôi `.int-spec.ts` không khớp `include` của vitest mặc định; DB nháp phải đã `migrate deploy`). Spec tự tạo tổ chức
  * riêng (tiền tố ngẫu nhiên) và dọn sạch khi xong; chỉ dùng DB nháp, KHÔNG BAO GIỜ trỏ vào DB demo/thật.
  */
 const DB_URL = process.env.PARITY_DATABASE_URL;
@@ -140,31 +140,31 @@ describe.skipIf(!DB_URL)('xem trước quy tắc ↔ engine trên Postgres thậ
     await mkUser(UA);
     await mkUser(UB);
     const ws = (wid: string, slug: string) =>
-      prisma.workspace.create({ data: { id: wid, name: slug, slug, ownerId: EDITOR } });
+      prisma.organization.create({ data: { id: wid, name: slug, slug, ownerId: EDITOR } });
     await ws(WS, `${TAG}-a`);
     await ws(WS2, `${TAG}-b`);
 
-    await prisma.workflow.create({ data: { id: id('wf'), workspaceId: WS, name: 'wf' } });
+    await prisma.workflow.create({ data: { id: id('wf'), organizationId: WS, name: 'wf' } });
     await prisma.status.createMany({
       data: [
         { id: S.s1, workflowId: id('wf'), name: 'A', category: 'TODO' },
         { id: S.s2, workflowId: id('wf'), name: 'B', category: 'DONE' },
       ],
     });
-    await prisma.issueType.create({ data: { id: id('t1'), workspaceId: WS, name: 'Task' } });
+    await prisma.issueType.create({ data: { id: id('t1'), organizationId: WS, name: 'Task' } });
     await prisma.priority.createMany({
       data: [
-        { id: P.p1, workspaceId: WS, name: 'High' },
-        { id: P.p2, workspaceId: WS, name: 'Low' },
+        { id: P.p1, organizationId: WS, name: 'High' },
+        { id: P.p2, organizationId: WS, name: 'Low' },
       ],
     });
-    await prisma.resolution.create({ data: { id: R1, workspaceId: WS, name: 'Done' } });
+    await prisma.resolution.create({ data: { id: R1, organizationId: WS, name: 'Done' } });
     await prisma.role.create({
-      data: { id: id('role'), workspaceId: WS, name: 'member', scope: 'PROJECT' },
+      data: { id: id('role'), organizationId: WS, name: 'member', scope: 'PROJECT' },
     });
 
     const proj = (pid: string, key: string, extra: object = {}, w = WS) =>
-      prisma.project.create({ data: { id: pid, workspaceId: w, key, name: key, ...extra } });
+      prisma.project.create({ data: { id: pid, organizationId: w, key, name: key, ...extra } });
     await proj(PROJ.PUB, 'PUB');
     await proj(PROJ.MINE, 'MINE', { isPrivate: true });
     await proj(PROJ.SECRET, 'SEC', { isPrivate: true });
@@ -193,7 +193,7 @@ describe.skipIf(!DB_URL)('xem trước quy tắc ↔ engine trên Postgres thậ
       const issue = await prisma.issue.create({
         data: {
           id: id(`i${n}`),
-          workspaceId: wsId,
+          organizationId: wsId,
           projectId: project,
           number: n,
           key: `${TAG}-${n}`,
@@ -223,7 +223,7 @@ describe.skipIf(!DB_URL)('xem trước quy tắc ↔ engine trên Postgres thậ
     // Đọc lại từ DB (Float/Date đã khứ hồi qua Postgres) → dạng IssueDto mà engine nhìn thấy.
     const rows = await prisma.issue.findMany({
       where: {
-        workspaceId: WS,
+        organizationId: WS,
         deletedAt: null,
         projectId: { in: [PROJ.PUB, PROJ.MINE] },
         id: { startsWith: TAG },
@@ -273,7 +273,7 @@ describe.skipIf(!DB_URL)('xem trước quy tắc ↔ engine trên Postgres thậ
     await prisma.priority.deleteMany({ where: { id: like } });
     await prisma.resolution.deleteMany({ where: { id: like } });
     await prisma.role.deleteMany({ where: { id: like } });
-    await prisma.workspace.deleteMany({ where: { id: like } });
+    await prisma.organization.deleteMany({ where: { id: like } });
     await prisma.user.deleteMany({ where: { id: like } });
     await prisma.$disconnect();
   }, 120_000);
@@ -534,7 +534,7 @@ describe.skipIf(!DB_URL)('xem trước quy tắc ↔ engine trên Postgres thậ
     let n = 0;
     for (const r of inScope) {
       n += await prisma.issue.count({
-        where: { id: r.id, workspaceId: WS, deletedAt: null, AND: [where] },
+        where: { id: r.id, organizationId: WS, deletedAt: null, AND: [where] },
       });
     }
     return n;

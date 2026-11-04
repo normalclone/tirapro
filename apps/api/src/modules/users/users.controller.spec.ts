@@ -17,7 +17,7 @@ function make() {
   return { ctrl, users, auth, events, res };
 }
 
-const user = { id: 'u1', workspaceId: 'w1' } as never;
+const user = { id: 'u1', organizationId: 'w1' } as never;
 const body = { currentPassword: 'Old-Passw0rd', newPassword: 'New-Passw0rd1' };
 const req = (extra: Record<string, unknown> = {}) =>
   ({ headers: {}, ip: '1.1.1.1', ...extra }) as never;
@@ -51,7 +51,7 @@ describe('UsersController.list — truyền truy vấn xuống service', () => {
     query: Record<string, string | undefined>,
     viewer: Record<string, unknown>,
   ) => {
-    const users = { listWorkspaceMembers: vi.fn((..._a: unknown[]) => Promise.resolve([])) };
+    const users = { listOrganizationMembers: vi.fn((..._a: unknown[]) => Promise.resolve([])) };
     const ctrl = new UsersController(users as never, {} as never, {} as never, {} as never);
     await ctrl.list(
       'w1',
@@ -61,7 +61,7 @@ describe('UsersController.list — truyền truy vấn xuống service', () => {
       query.limit,
       query.includeInactive,
     );
-    return users.listWorkspaceMembers.mock.calls[0] as unknown[];
+    return users.listOrganizationMembers.mock.calls[0] as unknown[];
   };
 
   it('search/projectId/limit/includeInactive đi nguyên xuống service; includeInactive chỉ khi đúng chuỗi "true"', async () => {
@@ -78,13 +78,13 @@ describe('UsersController.list — truyền truy vấn xuống service', () => {
   it('privileged chỉ với member:manage hoặc admin hệ thống', async () => {
     expect((await run({}, { id: 'u1', permissions: ['member:manage'] }))[3]).toBe(true);
     expect((await run({}, { id: 'u1', isSystemAdmin: true }))[3]).toBe(true);
-    expect((await run({}, { id: 'u1', permissions: ['workspace:view'] }))[3]).toBe(false);
+    expect((await run({}, { id: 'u1', permissions: ['organization:view'] }))[3]).toBe(false);
   });
 });
 
 describe('UsersController — hồ sơ chỉ quản trị hệ thống đổi họ tên/ảnh', () => {
-  const normal = { id: 'u1', workspaceId: 'w1', isSystemAdmin: false } as never;
-  const sa = { id: 'u1', workspaceId: 'w1', isSystemAdmin: true } as never;
+  const normal = { id: 'u1', organizationId: 'w1', isSystemAdmin: false } as never;
+  const sa = { id: 'u1', organizationId: 'w1', isSystemAdmin: true } as never;
   function mk() {
     const users = {
       updateProfile: vi.fn(() => Promise.resolve({})),

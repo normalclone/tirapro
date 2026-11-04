@@ -8,7 +8,7 @@ import { PrismaService } from '../../infra/prisma/prisma.service';
 import { ForbiddenAppException } from '../../common/exceptions/app.exception';
 import { RbacService } from '../rbac/rbac.service';
 import { ACTIVE_MEMBERSHIP_COUNT } from '../../common/active-member';
-import { WorkspaceBootstrapService } from '../workspaces/workspace-bootstrap.service';
+import { OrganizationBootstrapService } from '../organizations/organization-bootstrap.service';
 import { SystemSettingsService } from '../system-settings/system-settings.service';
 import { TokenService, type RefreshMeta } from './token.service';
 
@@ -21,7 +21,7 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly tokens: TokenService,
     private readonly rbac: RbacService,
-    private readonly bootstrap: WorkspaceBootstrapService,
+    private readonly bootstrap: OrganizationBootstrapService,
     private readonly settings: SystemSettingsService,
     private readonly events: EventEmitter2,
   ) {}
@@ -38,22 +38,22 @@ export class AuthService {
       throw new ConflictException({ code: 'EMAIL_TAKEN', message: 'Email đã được đăng ký' });
 
     const passwordHash = await argon2.hash(input.password);
-    const wsName = input.workspaceName?.trim() || `Tổ chức của ${input.displayName}`;
+    const wsName = input.organizationName?.trim() || `Tổ chức của ${input.displayName}`;
 
-    const { user, workspaceId } = await this.prisma.$transaction(async (tx) => {
+    const { user, organizationId } = await this.prisma.$transaction(async (tx) => {
       const user = await tx.user.create({
         data: { email, passwordHash, displayName: input.displayName },
       });
       const slug = await this.uniqueSlug(tx, wsName);
-      const ws = await tx.workspace.create({
+      const ws = await tx.organization.create({
         data: { name: wsName, slug, ownerId: user.id, plan: 'FREE', createdById: user.id },
       });
       await this.bootstrap.bootstrap(tx, ws.id);
       const adminRole = await tx.role.findFirst({
         where: {
-          name: SYSTEM_ROLES.WORKSPACE_ADMIN,
-          scope: 'WORKSPACE',
-          workspaceId: null,
+          name: SYSTEM_ROLES.ORGANIZATION_ADMIN,
+          scope: 'ORGANIZATION',
+          organizationId: null,
           isSystem: true,
         },
         select: { id: true },
@@ -62,9 +62,9 @@ export class AuthService {
         throw new Error(
           'System role chưa được seed (chạy pnpm --filter @tirapro/api run db:seed:roles)',
         );
-      await tx.workspaceMembership.create({
+      await tx.organizationMembership.create({
         data: {
-          workspaceId: ws.id,
+          organizationId: ws.id,
           userId: user.id,
           roleId: adminRole.id,
           joinedAt: new Date(),
@@ -72,10 +72,10 @@ export class AuthService {
           roles: { create: [{ roleId: adminRole.id }] },
         },
       });
-      return { user, workspaceId: ws.id };
+      return { user, organizationId: ws.id };
     });
 
-    return this.issueSession(user, workspaceId, meta);
+    return this.issueSession(user, organizationId, meta);
   }
 
   async login(input: LoginInput, meta: RefreshMeta) {
@@ -94,24 +94,24 @@ export class AuthService {
         message: 'Email hoặc mật khẩu không đúng',
       });
 
-    const membership = await this.prisma.workspaceMembership.findFirst({
+    const membership = await this.prisma.organizationMembership.findFirst({
       where: { userId: user.id },
       orderBy: { createdAt: 'asc' },
-      select: { workspaceId: true },
+      select: { organizationId: true },
     });
     await this.prisma.user.update({ where: { id: user.id }, data: { lastSeenAt: new Date() } });
-    return this.issueSession(user, membership?.workspaceId ?? null, meta);
+    return this.issueSession(user, membership?.organizationId ?? null, meta);
   }
 
   /**
-   * Xoay refresh + cấp access mới. `preferredWorkspaceId` (lấy từ access token cũ) được giữ nếu user
-   * vẫn còn là thành viên của workspace đó; ngược lại rơi về membership đầu tiên.
+   * Xoay refresh + cấp access mới. `preferredOrganizationId` (lấy từ access token cũ) được giữ nếu user
+   * vẫn còn là thành viên của tổ chức đó; ngược lại rơi về membership đầu tiên.
    */
-  async refresh(refreshToken: string, meta: RefreshMeta, preferredWorkspaceId?: string | null) {
+  async refresh(refreshToken: string, meta: RefreshMeta, preferredOrganizationId?: string | null) {
     const {
       userId,
       newToken,
-      workspaceId: tokenWorkspaceId,
+      organizationId: tokenOrganizationId,
     } = await this.tokens.rotateRefresh(refreshToken, meta);
     const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
     if (user.status === 'DEACTIVATED') {
@@ -131,28 +131,28 @@ export class AuthService {
         .update({ where: { id: userId }, data: { lastSeenAt: new Date() } })
         .catch(() => undefined);
     }
-    // Ưu tiên: workspace trong access token cũ (header) → workspace lưu trong refresh token (vừa chuyển rồi tải lại
-    // trang, access token trong bộ nhớ đã mất) → workspace tham gia sớm nhất. Luôn kiểm còn là thành viên.
-    let workspaceId: string | null = null;
-    for (const candidate of [preferredWorkspaceId, tokenWorkspaceId]) {
-      if (!candidate || workspaceId) continue;
-      const kept = await this.prisma.workspaceMembership.findUnique({
-        where: { workspaceId_userId: { workspaceId: candidate, userId } },
-        select: { workspaceId: true },
+    // Ưu tiên: tổ chức trong access token cũ (header) → tổ chức lưu trong refresh token (vừa chuyển rồi tải lại
+    // trang, access token trong bộ nhớ đã mất) → tổ chức tham gia sớm nhất. Luôn kiểm còn là thành viên.
+    let organizationId: string | null = null;
+    for (const candidate of [preferredOrganizationId, tokenOrganizationId]) {
+      if (!candidate || organizationId) continue;
+      const kept = await this.prisma.organizationMembership.findUnique({
+        where: { organizationId_userId: { organizationId: candidate, userId } },
+        select: { organizationId: true },
       });
-      workspaceId = kept?.workspaceId ?? null;
+      organizationId = kept?.organizationId ?? null;
     }
-    if (!workspaceId) {
-      const first = await this.prisma.workspaceMembership.findFirst({
+    if (!organizationId) {
+      const first = await this.prisma.organizationMembership.findFirst({
         where: { userId },
         orderBy: { createdAt: 'asc' },
-        select: { workspaceId: true },
+        select: { organizationId: true },
       });
-      workspaceId = first?.workspaceId ?? null;
+      organizationId = first?.organizationId ?? null;
     }
-    if (newToken && workspaceId !== tokenWorkspaceId)
-      await this.tokens.setRefreshWorkspace(newToken, workspaceId);
-    const access = this.tokens.signAccess(user, workspaceId);
+    if (newToken && organizationId !== tokenOrganizationId)
+      await this.tokens.setRefreshOrganization(newToken, organizationId);
+    const access = this.tokens.signAccess(user, organizationId);
     return { ...access, refreshToken: newToken, user: this.publicUser(user) };
   }
 
@@ -176,14 +176,14 @@ export class AuthService {
     return { success: true };
   }
 
-  async me(userId: string, workspaceId: string | null) {
+  async me(userId: string, organizationId: string | null) {
     const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
     const roleRefSelect = { role: { select: { id: true, name: true, color: true } } };
-    const wsMemberships = await this.prisma.workspaceMembership.findMany({
+    const wsMemberships = await this.prisma.organizationMembership.findMany({
       where: { userId },
       select: {
         id: true,
-        workspaceId: true,
+        organizationId: true,
         roleId: true,
         role: { select: { name: true, scope: true } },
         roles: { select: roleRefSelect },
@@ -194,14 +194,14 @@ export class AuthService {
       select: {
         id: true,
         projectId: true,
-        project: { select: { workspaceId: true } },
+        project: { select: { organizationId: true } },
         roleId: true,
         role: { select: { name: true, scope: true } },
         roles: { select: roleRefSelect },
       },
     });
-    const permissions: PermissionKey[] = workspaceId
-      ? ([...(await this.rbac.getEffectivePermissions(userId, workspaceId))] as PermissionKey[])
+    const permissions: PermissionKey[] = organizationId
+      ? ([...(await this.rbac.getEffectivePermissions(userId, organizationId))] as PermissionKey[])
       : [];
     // Gộp vai trò chính + phụ (dedupe theo id), giữ roleName là vai trò chính.
     const rolesOf = (
@@ -216,11 +216,11 @@ export class AuthService {
     };
     return {
       user: this.publicUser(user),
-      workspaceId,
+      organizationId,
       memberships: [
         ...wsMemberships.map((m) => ({
           id: m.id,
-          workspaceId: m.workspaceId,
+          organizationId: m.organizationId,
           userId,
           roleId: m.roleId,
           roleName: m.role.name,
@@ -230,7 +230,7 @@ export class AuthService {
         })),
         ...projMemberships.map((m) => ({
           id: m.id,
-          workspaceId: m.project.workspaceId,
+          organizationId: m.project.organizationId,
           userId,
           roleId: m.roleId,
           roleName: m.role.name,
@@ -244,18 +244,18 @@ export class AuthService {
   }
 
   /**
-   * Danh sách workspace mà user là thành viên (kèm role và `memberCount`).
+   * Danh sách tổ chức mà user là thành viên (kèm role và `memberCount`).
    * `memberCount` = số thành viên ĐANG HOẠT ĐỘNG: bỏ tài khoản bị vô hiệu hoá và user hệ thống (automation).
-   * Một lời gọi Prisma (khoảng 3 câu SQL: membership, workspace, đếm), không N+1 — chỉ của workspace mà người gọi là
-   * thành viên; không lộ workspace khác, không trả danh sách tên.
-   * Vị từ `SYSTEM_USER_EMAIL` là lưới an toàn: user hệ thống không bao giờ có membership (`addWorkspace` chặn).
+   * Một lời gọi Prisma (khoảng 3 câu SQL: membership, tổ chức, đếm), không N+1 — chỉ của tổ chức mà người gọi là
+   * thành viên; không lộ tổ chức khác, không trả danh sách tên.
+   * Vị từ `SYSTEM_USER_EMAIL` là lưới an toàn: user hệ thống không bao giờ có membership (`addOrganization` chặn).
    */
-  async listWorkspaces(userId: string) {
-    const memberships = await this.prisma.workspaceMembership.findMany({
+  async listOrganizations(userId: string) {
+    const memberships = await this.prisma.organizationMembership.findMany({
       where: { userId },
       orderBy: { createdAt: 'asc' },
       select: {
-        workspace: {
+        organization: {
           select: {
             id: true,
             name: true,
@@ -270,22 +270,22 @@ export class AuthService {
       },
     });
     return memberships.map((m) => ({
-      id: m.workspace.id,
-      name: m.workspace.name,
-      slug: m.workspace.slug,
-      avatarUrl: m.workspace.avatarUrl,
+      id: m.organization.id,
+      name: m.organization.name,
+      slug: m.organization.slug,
+      avatarUrl: m.organization.avatarUrl,
       roleName: m.role.name,
-      memberCount: m.workspace._count.memberships,
+      memberCount: m.organization._count.memberships,
     }));
   }
 
   /**
-   * Chuyển workspace: xác minh user là thành viên của workspace đích, rồi cấp
-   * session mới (access token mang workspaceId mới + xoay refresh) — y hệt login.
+   * Chuyển organization: xác minh user là thành viên của tổ chức đích, rồi cấp
+   * session mới (access token mang organizationId mới + xoay refresh) — y hệt login.
    */
-  async switchWorkspace(userId: string, workspaceId: string, meta: RefreshMeta) {
-    const membership = await this.prisma.workspaceMembership.findUnique({
-      where: { workspaceId_userId: { workspaceId, userId } },
+  async switchOrganization(userId: string, organizationId: string, meta: RefreshMeta) {
+    const membership = await this.prisma.organizationMembership.findUnique({
+      where: { organizationId_userId: { organizationId, userId } },
       select: { id: true },
     });
     if (!membership) {
@@ -294,30 +294,30 @@ export class AuthService {
       );
     }
     const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
-    return this.issueSession(user, workspaceId, meta);
+    return this.issueSession(user, organizationId, meta);
   }
 
   /**
    * Cấp phiên mới (access + refresh) cho thiết bị đang dùng — sau khi chính user đổi mật khẩu (các phiên khác đã bị
    * thu hồi bằng `sessionsRevokedAt`, phiên này không bị đăng xuất giữa chừng).
    */
-  async reissueSession(userId: string, workspaceId: string | null, meta: RefreshMeta) {
+  async reissueSession(userId: string, organizationId: string | null, meta: RefreshMeta) {
     const user = await this.prisma.user.findUniqueOrThrow({
       where: { id: userId },
       select: { id: true, email: true },
     });
-    const access = this.tokens.signAccess(user, workspaceId);
-    const refreshToken = await this.tokens.issueRefresh(userId, null, meta, workspaceId);
+    const access = this.tokens.signAccess(user, organizationId);
+    const refreshToken = await this.tokens.issueRefresh(userId, null, meta, organizationId);
     return { ...access, refreshToken };
   }
 
   private async issueSession(
     user: { id: string; email: string },
-    workspaceId: string | null,
+    organizationId: string | null,
     meta: RefreshMeta,
   ) {
-    const access = this.tokens.signAccess(user, workspaceId);
-    const refreshToken = await this.tokens.issueRefresh(user.id, null, meta, workspaceId);
+    const access = this.tokens.signAccess(user, organizationId);
+    const refreshToken = await this.tokens.issueRefresh(user.id, null, meta, organizationId);
     const full = await this.prisma.user.findUniqueOrThrow({ where: { id: user.id } });
     return { ...access, refreshToken, user: this.publicUser(full) };
   }
@@ -331,7 +331,7 @@ export class AuthService {
     locale: string;
     status: string;
     isSystemAdmin: boolean;
-    canCreateWorkspace: boolean;
+    canCreateOrganization: boolean;
     lastSeenAt: Date | null;
     createdAt: Date;
   }) {
@@ -344,14 +344,14 @@ export class AuthService {
       locale: u.locale,
       status: u.status,
       isSystemAdmin: u.isSystemAdmin,
-      canCreateWorkspace: u.canCreateWorkspace,
+      canCreateOrganization: u.canCreateOrganization,
       lastSeenAt: u.lastSeenAt?.toISOString() ?? null,
       createdAt: u.createdAt.toISOString(),
     };
   }
 
   private async uniqueSlug(
-    tx: { workspace: { findUnique: (a: { where: { slug: string } }) => Promise<unknown> } },
+    tx: { organization: { findUnique: (a: { where: { slug: string } }) => Promise<unknown> } },
     name: string,
   ): Promise<string> {
     const base =
@@ -361,10 +361,10 @@ export class AuthService {
         .replace(/[̀-ͯ]/g, '')
         .replace(/[^a-z0-9]+/g, '-')
         .replace(/^-+|-+$/g, '')
-        .slice(0, 40) || 'workspace';
+        .slice(0, 40) || 'organization';
     let slug = base;
     let i = 1;
-    while (await tx.workspace.findUnique({ where: { slug } })) {
+    while (await tx.organization.findUnique({ where: { slug } })) {
       slug = `${base}-${i++}`;
       if (i > 50) {
         slug = `${base}-${createId().slice(0, 6)}`;

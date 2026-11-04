@@ -39,13 +39,13 @@ describe('IssueOwnershipService', () => {
     expect(prisma.issueLink.findFirst).not.toHaveBeenCalled();
   });
 
-  it('assertOwnsIssue: việc của người khác → 403; của mình → qua; không thấy → 404; truy vấn có workspace + deletedAt:null', async () => {
+  it('assertOwnsIssue: việc của người khác → 403; của mình → qua; không thấy → 404; truy vấn có organization + deletedAt:null', async () => {
     const other = make(owners());
     await expect(other.svc.assertOwnsIssue(true, 'w1', 'x', 'i1')).rejects.toMatchObject({
       status: 403,
     });
     expect(other.prisma.issue.findFirst.mock.calls[0]![0]).toMatchObject({
-      where: { id: 'i1', workspaceId: 'w1', deletedAt: null },
+      where: { id: 'i1', organizationId: 'w1', deletedAt: null },
     });
     await expect(
       make(owners()).svc.assertOwnsIssue(true, 'w1', 'b', 'i1'),

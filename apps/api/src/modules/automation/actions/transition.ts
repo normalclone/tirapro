@@ -21,7 +21,7 @@ export async function runTransition(
   );
   const candidates = [a.toStatusId, ...(a.alsoStatusIds ?? [])];
   const rows = await ctx.deps.prisma.status.findMany({
-    where: { id: { in: candidates }, workflow: { workspaceId: ctx.workspaceId } },
+    where: { id: { in: candidates }, workflow: { organizationId: ctx.organizationId } },
     select: { id: true, name: true, workflowId: true },
   });
   const primary = rows.find((r) => r.id === a.toStatusId);
@@ -36,7 +36,7 @@ export async function runTransition(
   if (ctx.dryRun) return `Sẽ chuyển sang "${status.name}"`;
   const updated = await withFreshIssue(ctx, (version) =>
     ctx.deps.issues.transition(
-      ctx.workspaceId,
+      ctx.organizationId,
       ctx.actorId,
       ctx.issue.id,
       { toStatusId: status.id, version },

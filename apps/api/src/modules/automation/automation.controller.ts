@@ -2,7 +2,7 @@ import { Body, Controller, Delete, Get, Param, Post, Put, Query } from '@nestjs/
 import { ApiTags } from '@nestjs/swagger';
 import { PERMISSIONS } from '@tirapro/types';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import { WorkspaceId } from '../../common/decorators/workspace-id.decorator';
+import { OrganizationId } from '../../common/decorators/organization-id.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
 import { ProjectRef } from '../../common/decorators/project-ref.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
@@ -28,42 +28,42 @@ export class AutomationController {
 
   @ProjectRef('query', 'projectId')
   @Get('templates')
-  @Permissions(PERMISSIONS.WORKSPACE_VIEW)
+  @Permissions(PERMISSIONS.ORGANIZATION_VIEW)
   async listTemplates(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
     @Query('projectId') projectId?: string,
   ) {
-    return this.automation.listTemplates(workspaceId, projectId, user.id);
+    return this.automation.listTemplates(organizationId, projectId, user.id);
   }
 
   @ProjectRef('automationTemplate', 'id')
   @Get('templates/:id')
-  @Permissions(PERMISSIONS.WORKSPACE_VIEW)
-  async getTemplate(@WorkspaceId() workspaceId: string, @Param('id') id: string) {
-    return this.automation.getTemplate(workspaceId, id);
+  @Permissions(PERMISSIONS.ORGANIZATION_VIEW)
+  async getTemplate(@OrganizationId() organizationId: string, @Param('id') id: string) {
+    return this.automation.getTemplate(organizationId, id);
   }
 
   @Post('templates')
   @Permissions(PERMISSIONS.PROJECT_ADMIN)
   async createTemplate(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
     @Body(new ZodValidationPipe(createTemplateSchema)) dto: CreateTemplateInput,
   ) {
-    return this.automation.createTemplate(workspaceId, dto, user.id);
+    return this.automation.createTemplate(organizationId, dto, user.id);
   }
 
   @ProjectRef('automationTemplate', 'id')
   @Put('templates/:id')
   @Permissions(PERMISSIONS.PROJECT_ADMIN)
   async updateTemplate(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
     @Body(new ZodValidationPipe(updateTemplateSchema)) dto: UpdateTemplateInput,
   ) {
-    return this.automation.updateTemplate(workspaceId, id, dto, user.id);
+    return this.automation.updateTemplate(organizationId, id, dto, user.id);
   }
 
   @ProjectRef('automationTemplate', 'id')
@@ -71,52 +71,52 @@ export class AutomationController {
   @Permissions(PERMISSIONS.PROJECT_ADMIN)
   async removeTemplate(
     @CurrentUser() user: AuthUser,
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @Param('id') id: string,
   ) {
-    return this.automation.removeTemplate(workspaceId, id, user.id);
+    return this.automation.removeTemplate(organizationId, id, user.id);
   }
 
   /* ---------------------------- Việc lặp lại ----------------------------- */
 
   @ProjectRef('query', 'projectId')
   @Get('recurring')
-  @Permissions(PERMISSIONS.WORKSPACE_VIEW)
+  @Permissions(PERMISSIONS.ORGANIZATION_VIEW)
   async listRecurring(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
     @Query('projectId') projectId?: string,
   ) {
-    return this.automation.listRecurring(workspaceId, projectId, user.id);
+    return this.automation.listRecurring(organizationId, projectId, user.id);
   }
 
   @ProjectRef('recurringIssue', 'id')
   @Get('recurring/:id')
-  @Permissions(PERMISSIONS.WORKSPACE_VIEW)
-  async getRecurring(@WorkspaceId() workspaceId: string, @Param('id') id: string) {
-    return this.automation.getRecurring(workspaceId, id);
+  @Permissions(PERMISSIONS.ORGANIZATION_VIEW)
+  async getRecurring(@OrganizationId() organizationId: string, @Param('id') id: string) {
+    return this.automation.getRecurring(organizationId, id);
   }
 
   @Post('recurring')
   @Permissions(PERMISSIONS.PROJECT_ADMIN)
   async createRecurring(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
     @Body(new ZodValidationPipe(createRecurringSchema)) dto: CreateRecurringInput,
   ) {
-    return this.automation.createRecurring(workspaceId, dto, user.id);
+    return this.automation.createRecurring(organizationId, dto, user.id);
   }
 
   @ProjectRef('recurringIssue', 'id')
   @Put('recurring/:id')
   @Permissions(PERMISSIONS.PROJECT_ADMIN)
   async updateRecurring(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
     @Body(new ZodValidationPipe(updateRecurringSchema)) dto: UpdateRecurringInput,
   ) {
-    return this.automation.updateRecurring(workspaceId, id, dto, user.id);
+    return this.automation.updateRecurring(organizationId, id, dto, user.id);
   }
 
   /** Tạo issue ngay lập tức từ việc lặp lại (không dời lịch chạy kế tiếp). */
@@ -125,10 +125,10 @@ export class AutomationController {
   @Permissions(PERMISSIONS.PROJECT_ADMIN)
   async runNow(
     @CurrentUser() user: AuthUser,
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @Param('id') id: string,
   ) {
-    return this.automation.runNow(workspaceId, id, user.id);
+    return this.automation.runNow(organizationId, id, user.id);
   }
 
   @ProjectRef('recurringIssue', 'id')
@@ -136,9 +136,9 @@ export class AutomationController {
   @Permissions(PERMISSIONS.PROJECT_ADMIN)
   async removeRecurring(
     @CurrentUser() user: AuthUser,
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @Param('id') id: string,
   ) {
-    return this.automation.removeRecurring(workspaceId, id, user.id);
+    return this.automation.removeRecurring(organizationId, id, user.id);
   }
 }

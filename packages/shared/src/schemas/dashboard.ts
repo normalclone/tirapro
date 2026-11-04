@@ -6,7 +6,7 @@ export const DASHBOARD_LIMITS = {
   dashboardsPerOwner: 30,
 } as const;
 
-/** Bốn mức chia sẻ: riêng tư / cả workspace / thành viên một dự án / thành viên một nhóm. */
+/** Bốn mức chia sẻ: riêng tư / cả tổ chức / thành viên một dự án / thành viên một nhóm. */
 export const DASHBOARD_SCOPES = ['PRIVATE', 'GLOBAL', 'PROJECT', 'TEAM'] as const;
 export type DashboardScopeValue = (typeof DASHBOARD_SCOPES)[number];
 
@@ -161,7 +161,7 @@ export interface CustomDashboardSummaryDto {
   isMine: boolean;
   /** Sửa nội dung/đổi mức chia sẻ: CHỈ chủ. Người khác dùng "Nhân bản". */
   canEdit: boolean;
-  /** Xoá: chủ, hoặc admin workspace với dashboard đã chia sẻ (kiểm duyệt). */
+  /** Xoá: chủ, hoặc admin tổ chức với dashboard đã chia sẻ (kiểm duyệt). */
   canDelete: boolean;
   owner: { id: string; displayName: string; avatarUrl: string | null };
   project: { id: string; key: string; name: string } | null;

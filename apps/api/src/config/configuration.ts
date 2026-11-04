@@ -49,7 +49,10 @@ export function configuration() {
       anthropicApiKey: e.ANTHROPIC_API_KEY,
       modelPrimary: e.AI_MODEL_PRIMARY,
       modelFast: e.AI_MODEL_FAST,
-      monthlyQuotaPerWorkspace: e.AI_MONTHLY_TOKEN_QUOTA_PER_WORKSPACE,
+      monthlyQuotaPerOrganization:
+        e.AI_MONTHLY_TOKEN_QUOTA_PER_ORGANIZATION ??
+        e.AI_MONTHLY_TOKEN_QUOTA_PER_WORKSPACE ??
+        5_000_000,
     },
     embedding: {
       provider: e.EMBEDDING_PROVIDER,

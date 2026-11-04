@@ -16,7 +16,7 @@ import type { CreateProgramInput, UpdateProgramInput } from './programs.schemas'
 const programSelect = (visible: Prisma.ProjectWhereInput) =>
   ({
     id: true,
-    workspaceId: true,
+    organizationId: true,
     name: true,
     description: true,
     color: true,
@@ -100,35 +100,35 @@ export class ProgramsService {
   ) {}
 
   /** Điều kiện hiển thị dự án của người xem (`{}` = thấy hết). `viewerId` bắt buộc ở mọi đường đọc. */
-  private visibleFor(workspaceId: string, viewerId: string): Promise<Prisma.ProjectWhereInput> {
-    return this.access.visibleWhere(viewerId, workspaceId);
+  private visibleFor(organizationId: string, viewerId: string): Promise<Prisma.ProjectWhereInput> {
+    return this.access.visibleWhere(viewerId, organizationId);
   }
 
-  async list(workspaceId: string, viewerId: string) {
+  async list(organizationId: string, viewerId: string) {
     const rows = await this.prisma.program.findMany({
-      where: { workspaceId },
+      where: { organizationId },
       orderBy: [{ startDate: 'asc' }, { name: 'asc' }],
-      select: programSelect(await this.visibleFor(workspaceId, viewerId)),
+      select: programSelect(await this.visibleFor(organizationId, viewerId)),
     });
     return rows.map((p) => this.toDto(p));
   }
 
-  async get(workspaceId: string, id: string, viewerId: string) {
+  async get(organizationId: string, id: string, viewerId: string) {
     const p = await this.prisma.program.findFirst({
-      where: { id, workspaceId },
-      select: programSelect(await this.visibleFor(workspaceId, viewerId)),
+      where: { id, organizationId },
+      select: programSelect(await this.visibleFor(organizationId, viewerId)),
     });
     if (!p) throw new NotFoundAppException('Chương trình');
     return this.toDto(p);
   }
 
-  async create(workspaceId: string, dto: CreateProgramInput, viewerId: string) {
+  async create(organizationId: string, dto: CreateProgramInput, viewerId: string) {
     const name = dto.name.trim();
-    await this.assertNameFree(workspaceId, name);
-    const ownerId = await this.resolveOwner(workspaceId, dto.ownerId ?? null);
+    await this.assertNameFree(organizationId, name);
+    const ownerId = await this.resolveOwner(organizationId, dto.ownerId ?? null);
     const created = await this.prisma.program.create({
       data: {
-        workspaceId,
+        organizationId,
         name,
         description: dto.description?.trim() || null,
         color: dto.color ?? null,
@@ -139,18 +139,18 @@ export class ProgramsService {
       select: { id: true },
     });
     if (dto.projectIds?.length)
-      await this.setProjects(workspaceId, created.id, dto.projectIds, viewerId);
-    return this.get(workspaceId, created.id, viewerId);
+      await this.setProjects(organizationId, created.id, dto.projectIds, viewerId);
+    return this.get(organizationId, created.id, viewerId);
   }
 
-  async update(workspaceId: string, id: string, dto: UpdateProgramInput, viewerId: string) {
-    await this.require(workspaceId, id);
+  async update(organizationId: string, id: string, dto: UpdateProgramInput, viewerId: string) {
+    await this.require(organizationId, id);
     const data: Prisma.ProgramUpdateInput = {};
 
     if (dto.name !== undefined && dto.name !== null) {
       const name = dto.name.trim();
       if (!name) throw new BusinessRuleException('Tên chương trình bắt buộc');
-      await this.assertNameFree(workspaceId, name, id);
+      await this.assertNameFree(organizationId, name, id);
       data.name = name;
     }
     if (dto.description !== undefined) data.description = dto.description?.trim() || null;
@@ -158,18 +158,18 @@ export class ProgramsService {
     if (dto.startDate !== undefined) data.startDate = toDate(dto.startDate);
     if (dto.targetDate !== undefined) data.targetDate = toDate(dto.targetDate);
     if (dto.ownerId !== undefined) {
-      const ownerId = await this.resolveOwner(workspaceId, dto.ownerId ?? null);
+      const ownerId = await this.resolveOwner(organizationId, dto.ownerId ?? null);
       data.owner = ownerId ? { connect: { id: ownerId } } : { disconnect: true };
     }
 
     await this.prisma.program.update({ where: { id }, data });
     if (dto.projectIds !== undefined)
-      await this.setProjects(workspaceId, id, dto.projectIds, viewerId);
-    return this.get(workspaceId, id, viewerId);
+      await this.setProjects(organizationId, id, dto.projectIds, viewerId);
+    return this.get(organizationId, id, viewerId);
   }
 
-  async remove(workspaceId: string, id: string) {
-    await this.require(workspaceId, id);
+  async remove(organizationId: string, id: string) {
+    await this.require(organizationId, id);
     await this.prisma.program.delete({ where: { id } }); // ProjectProgram của nhóm xoá theo (cascade)
     return { success: true };
   }
@@ -177,16 +177,16 @@ export class ProgramsService {
   /**
    * Đặt lại TOÀN BỘ tập dự án của nhóm (trong phạm vi người gọi thấy): ngoài danh sách → gỡ khỏi nhóm (không đụng các
    * nhóm khác của dự án đó).
-   * Dự án riêng tư người gọi không thấy không gắn được (cùng lỗi với dự án ngoài workspace — không lộ sự tồn tại) và
+   * Dự án riêng tư người gọi không thấy không gắn được (cùng lỗi với dự án ngoài tổ chức — không lộ sự tồn tại) và
    * cũng không bị gỡ nhầm khi người gọi gửi lại danh sách chỉ gồm phần họ thấy.
    */
-  async setProjects(workspaceId: string, id: string, projectIds: string[], viewerId: string) {
-    await this.require(workspaceId, id);
-    const visible = await this.visibleFor(workspaceId, viewerId);
+  async setProjects(organizationId: string, id: string, projectIds: string[], viewerId: string) {
+    await this.require(organizationId, id);
+    const visible = await this.visibleFor(organizationId, viewerId);
     const ids = [...new Set(projectIds)];
     if (ids.length > 0) {
       const found = await this.prisma.project.findMany({
-        where: { id: { in: ids }, workspaceId, deletedAt: null, ...visible },
+        where: { id: { in: ids }, organizationId, deletedAt: null, ...visible },
         select: { id: true },
       });
       if (found.length !== ids.length)
@@ -199,7 +199,7 @@ export class ProgramsService {
       this.prisma.projectProgram.deleteMany({
         where: {
           programId: id,
-          project: { workspaceId, deletedAt: null, ...visible },
+          project: { organizationId, deletedAt: null, ...visible },
           ...(ids.length ? { projectId: { notIn: ids } } : {}),
         },
       }),
@@ -212,7 +212,7 @@ export class ProgramsService {
           ]
         : []),
     ]);
-    return this.get(workspaceId, id, viewerId);
+    return this.get(organizationId, id, viewerId);
   }
 
   /**
@@ -222,20 +222,20 @@ export class ProgramsService {
    * tổ chức nên đổi nhóm vẫn được khi dự án đã lưu trữ. Trả danh sách nhóm mới của dự án (theo tên).
    */
   async setForProject(
-    workspaceId: string,
+    organizationId: string,
     projectId: string,
     programIds: string[],
     viewerId: string,
   ) {
-    await this.access.assertCanSee(viewerId, workspaceId, projectId);
+    await this.access.assertCanSee(viewerId, organizationId, projectId);
     const project = await this.prisma.project.findFirst({
-      where: { id: projectId, workspaceId, deletedAt: null },
+      where: { id: projectId, organizationId, deletedAt: null },
       select: { id: true },
     });
     if (!project) throw new NotFoundAppException('Dự án');
     const ids = [...new Set(programIds)];
     if (ids.length > 0) {
-      const found = await this.prisma.program.count({ where: { id: { in: ids }, workspaceId } });
+      const found = await this.prisma.program.count({ where: { id: { in: ids }, organizationId } });
       if (found !== ids.length)
         throw new BusinessRuleException(
           'Một số nhóm không thuộc tổ chức này — hãy bỏ chọn những nhóm đó',
@@ -263,16 +263,16 @@ export class ProgramsService {
   }
 
   /**
-   * Rollup toàn workspace: mỗi chương trình + nhóm "Chưa thuộc nhóm",
+   * Rollup toàn organization: mỗi chương trình + nhóm "Chưa thuộc nhóm",
    * kèm số liệu issue của từng dự án con (tổng / xong / quá hạn / % tiến độ).
    * Chỉ gồm dự án `viewerId` được thấy (chương trình vẫn hiện; số liệu hai người xem có thể khác nhau).
    */
-  async rollup(workspaceId: string, viewerId: string): Promise<RollupResult> {
-    const visible = await this.visibleFor(workspaceId, viewerId);
-    const issueScope = rollupIssueScope(workspaceId, visible);
+  async rollup(organizationId: string, viewerId: string): Promise<RollupResult> {
+    const visible = await this.visibleFor(organizationId, viewerId);
+    const issueScope = rollupIssueScope(organizationId, visible);
     const [programs, projects, statuses] = await Promise.all([
       this.prisma.program.findMany({
-        where: { workspaceId },
+        where: { organizationId },
         orderBy: [{ startDate: 'asc' }, { name: 'asc' }],
         select: {
           id: true,
@@ -285,7 +285,7 @@ export class ProgramsService {
         },
       }),
       this.prisma.project.findMany({
-        where: { workspaceId, deletedAt: null, ...visible },
+        where: { organizationId, deletedAt: null, ...visible },
         orderBy: { name: 'asc' },
         select: {
           id: true,
@@ -297,7 +297,7 @@ export class ProgramsService {
         },
       }),
       this.prisma.status.findMany({
-        where: { workflow: { workspaceId } },
+        where: { workflow: { organizationId } },
         select: { id: true, category: true },
       }),
     ]);
@@ -352,7 +352,7 @@ export class ProgramsService {
     const spanOf = new Map(spans.map((r) => [r.projectId, r]));
     // Sức khoẻ chỉ tính cho dự án đang hoạt động (dự án lưu trữ → null).
     const healthOf = await this.health.forProjects(
-      workspaceId,
+      organizationId,
       projects.filter((p) => !p.isArchived).map((p) => p.id),
       viewerId,
     );
@@ -425,28 +425,31 @@ export class ProgramsService {
 
   // ───────────────────────── helpers ─────────────────────────
 
-  private async require(workspaceId: string, id: string) {
+  private async require(organizationId: string, id: string) {
     const p = await this.prisma.program.findFirst({
-      where: { id, workspaceId },
+      where: { id, organizationId },
       select: { id: true, name: true },
     });
     if (!p) throw new NotFoundAppException('Chương trình');
     return p;
   }
 
-  private async assertNameFree(workspaceId: string, name: string, excludeId?: string) {
+  private async assertNameFree(organizationId: string, name: string, excludeId?: string) {
     const clash = await this.prisma.program.findFirst({
-      where: { workspaceId, name, ...(excludeId ? { NOT: { id: excludeId } } : {}) },
+      where: { organizationId, name, ...(excludeId ? { NOT: { id: excludeId } } : {}) },
       select: { id: true },
     });
     if (clash) throw new BusinessRuleException('Tên chương trình đã tồn tại');
   }
 
-  /** Chủ nhiệm chương trình phải là thành viên workspace. */
-  private async resolveOwner(workspaceId: string, ownerId: string | null): Promise<string | null> {
+  /** Chủ nhiệm chương trình phải là thành viên organization. */
+  private async resolveOwner(
+    organizationId: string,
+    ownerId: string | null,
+  ): Promise<string | null> {
     if (!ownerId) return null;
-    const m = await this.prisma.workspaceMembership.findFirst({
-      where: { workspaceId, userId: ownerId },
+    const m = await this.prisma.organizationMembership.findFirst({
+      where: { organizationId, userId: ownerId },
       select: { userId: true },
     });
     if (!m)
@@ -458,7 +461,7 @@ export class ProgramsService {
 
   private toDto(p: {
     id: string;
-    workspaceId: string;
+    organizationId: string;
     name: string;
     description: string | null;
     color: string | null;
@@ -470,7 +473,7 @@ export class ProgramsService {
   }) {
     return {
       id: p.id,
-      workspaceId: p.workspaceId,
+      organizationId: p.organizationId,
       name: p.name,
       description: p.description,
       color: p.color,
@@ -547,11 +550,11 @@ function latest(items: { targetDate: string | null }[]): string | null {
 
 /** Việc tính vào Danh mục: chưa xoá, dự án sống + người xem thấy, và KHÔNG phải việc chưa duyệt (như Board/Sức khoẻ/QA). */
 function rollupIssueScope(
-  workspaceId: string,
+  organizationId: string,
   visible: Prisma.ProjectWhereInput,
 ): Prisma.IssueWhereInput {
   return {
-    workspaceId,
+    organizationId,
     deletedAt: null,
     project: { deletedAt: null, ...visible },
     AND: [TRIAGE_VISIBLE],

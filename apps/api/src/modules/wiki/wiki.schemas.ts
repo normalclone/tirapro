@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-/** Tạo trang wiki. `projectId` null = tài liệu chung của workspace. */
+/** Tạo trang wiki. `projectId` null = tài liệu chung của organization. */
 export const createWikiPageSchema = z.object({
   title: z.string().min(1, 'Tiêu đề bắt buộc').max(200),
   body: z.string().max(200_000).optional().default(''),

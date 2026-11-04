@@ -72,7 +72,7 @@ const CASES: Case[] = [
 
 async function call(c: Case, user: string, target: string, bodyProjectId?: string) {
   const rbac = {
-    assertProjectInWorkspace: vi.fn(() => Promise.resolve()),
+    assertProjectInOrganization: vi.fn(() => Promise.resolve()),
     assertProjectVisible: vi.fn(() => Promise.resolve()),
     resolveProjectId: vi.fn((_w: string, _k: string, id: string) =>
       Promise.resolve({ projectId: ROW_PROJECT[id as Row] ?? null }),
@@ -85,7 +85,7 @@ async function call(c: Case, user: string, target: string, bodyProjectId?: strin
   const guard = new PermissionsGuard(new Reflector(), rbac as never);
   const handler = (c.controller.prototype as Record<string, () => unknown>)[c.method]!;
   const req = {
-    user: { id: user, workspaceId: 'W1', isSystemAdmin: false },
+    user: { id: user, organizationId: 'W1', isSystemAdmin: false },
     // Hàng sửa/xoá: `:id` là hàng; dự án thật suy từ hàng. Route tạo: không có params, dự án ở body.
     params: c.row ? { id: target } : {},
     query: {},

@@ -26,7 +26,7 @@ function extractApiKey(req: AuthedRequest): string | null {
 
 /**
  * Xác thực JWT (người dùng web) HOẶC API key (tích hợp ngoài/MCP).
- * API key resolve ra AuthUser gắn workspace → mọi endpoint hiện có phục vụ được,
+ * API key resolve ra AuthUser gắn tổ chức → mọi endpoint hiện có phục vụ được,
  * vẫn chịu RBAC (PermissionsGuard). Khoá read-only bị chặn mutation (non-GET).
  */
 @Injectable()
@@ -68,7 +68,7 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
         id: ctx.userId,
         email: ctx.email,
         displayName: ctx.displayName,
-        workspaceId: ctx.workspaceId,
+        organizationId: ctx.organizationId,
         isSystemAdmin: false,
       };
       req.apiKey = { id: ctx.keyId, scopes: ctx.scopes };
@@ -87,12 +87,12 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     return ok;
   }
 
-  /** Ghi userId/workspaceId vào AsyncLocalStorage của request để log/audit đọc được ở mọi tầng. */
+  /** Ghi userId/organizationId vào AsyncLocalStorage của request để log/audit đọc được ở mọi tầng. */
   private bindRequestContext(req: AuthedRequest): void {
     const store = getStore();
     if (store && req.user) {
       store.userId = req.user.id;
-      store.workspaceId = req.user.workspaceId;
+      store.organizationId = req.user.organizationId;
     }
   }
 }

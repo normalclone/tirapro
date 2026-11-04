@@ -48,21 +48,23 @@ describe.skipIf(!DB_URL)('CommentReaction ↔ Postgres thật', () => {
         data: { id: uid, email: `${uid}@reaction.test`, displayName: `Tên ${uid.slice(-2)}` },
       });
     }
-    await prisma.workspace.create({ data: { id: WS, name: TAG, slug: TAG, ownerId: U.owner } });
+    await prisma.organization.create({ data: { id: WS, name: TAG, slug: TAG, ownerId: U.owner } });
     await prisma.project.create({
-      data: { id: PROJECT, workspaceId: WS, key: 'RXN', name: TAG, createdById: U.owner },
+      data: { id: PROJECT, organizationId: WS, key: 'RXN', name: TAG, createdById: U.owner },
     });
-    const wf = await prisma.workflow.create({ data: { id: id('wf'), workspaceId: WS, name: TAG } });
+    const wf = await prisma.workflow.create({
+      data: { id: id('wf'), organizationId: WS, name: TAG },
+    });
     const status = await prisma.status.create({
       data: { id: id('st'), workflowId: wf.id, name: 'Mới', category: 'TODO', isInitial: true },
     });
     const type = await prisma.issueType.create({
-      data: { id: id('type'), workspaceId: WS, name: TAG },
+      data: { id: id('type'), organizationId: WS, name: TAG },
     });
     await prisma.issue.create({
       data: {
         id: ISSUE,
-        workspaceId: WS,
+        organizationId: WS,
         projectId: PROJECT,
         number: 1,
         key: 'RXN-1',
@@ -100,7 +102,7 @@ describe.skipIf(!DB_URL)('CommentReaction ↔ Postgres thật', () => {
     await prisma.workflow.deleteMany({ where: { id: like } });
     await prisma.issueType.deleteMany({ where: { id: like } });
     await prisma.project.deleteMany({ where: { id: like } });
-    await prisma.workspace.deleteMany({ where: { id: like } });
+    await prisma.organization.deleteMany({ where: { id: like } });
     await prisma.user.deleteMany({ where: { id: like } });
     await prisma.$disconnect();
   }, 60_000);

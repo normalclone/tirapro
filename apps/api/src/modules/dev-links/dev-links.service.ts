@@ -30,7 +30,7 @@ export interface CreateRepositoryInput {
 /** DTO repo trả về (ẩn webhookSecret). */
 export interface RepositoryDto {
   id: string;
-  workspaceId: string;
+  organizationId: string;
   integrationId: string;
   provider: IntegrationType;
   externalId: string;
@@ -147,20 +147,20 @@ export class DevLinksService {
   // ---------------------------- Repositories ----------------------------
 
   async createRepository(
-    workspaceId: string,
+    organizationId: string,
     input: CreateRepositoryInput,
   ): Promise<RepositoryDto> {
-    // Integration phải thuộc workspace của user.
+    // Integration phải thuộc tổ chức của user.
     const integration = await this.prisma.integration.findFirst({
-      where: { id: input.integrationId, workspaceId },
+      where: { id: input.integrationId, organizationId },
       select: { id: true },
     });
     if (!integration) throw new NotFoundAppException('Tích hợp');
 
-    // Nếu có gắn project, project cũng phải thuộc workspace.
+    // Nếu có gắn project, project cũng phải thuộc organization.
     if (input.projectId) {
       const project = await this.prisma.project.findFirst({
-        where: { id: input.projectId, workspaceId, deletedAt: null },
+        where: { id: input.projectId, organizationId, deletedAt: null },
         select: { id: true },
       });
       if (!project) throw new NotFoundAppException('Dự án');
@@ -169,7 +169,7 @@ export class DevLinksService {
     try {
       const repo = await this.prisma.codeRepository.create({
         data: {
-          workspaceId,
+          organizationId,
           integrationId: input.integrationId,
           provider: input.provider,
           externalId: input.externalId,
@@ -191,17 +191,17 @@ export class DevLinksService {
 
   /**
    * Liệt kê repository (lọc theo project nếu truyền). Không có `projectId` thì repo gắn dự án riêng tư người xem không
-   * thấy bị loại (tên repo/liên kết không lộ); repo cấp workspace (không gắn dự án) luôn hiện.
+   * thấy bị loại (tên repo/liên kết không lộ); repo cấp tổ chức (không gắn dự án) luôn hiện.
    */
   async listRepositories(
-    workspaceId: string,
+    organizationId: string,
     projectId: string | undefined,
     viewerId: string,
   ): Promise<RepositoryDto[]> {
-    const ids = await this.access.visibleProjectIds(viewerId, workspaceId);
+    const ids = await this.access.visibleProjectIds(viewerId, organizationId);
     const repos = await this.prisma.codeRepository.findMany({
       where: {
-        workspaceId,
+        organizationId,
         ...(projectId ? { projectId } : {}),
         ...(ids === null ? {} : { OR: [{ projectId: null }, { projectId: { in: ids } }] }),
       },
@@ -210,9 +210,9 @@ export class DevLinksService {
     return repos.map((r) => this.toRepoDto(r));
   }
 
-  async removeRepository(workspaceId: string, id: string): Promise<{ success: true }> {
+  async removeRepository(organizationId: string, id: string): Promise<{ success: true }> {
     const repo = await this.prisma.codeRepository.findFirst({
-      where: { id, workspaceId },
+      where: { id, organizationId },
       select: { id: true },
     });
     if (!repo) throw new NotFoundAppException('Kho mã nguồn');
@@ -222,9 +222,9 @@ export class DevLinksService {
 
   // ----------------------------- Dev links ------------------------------
 
-  async listIssueDevLinks(workspaceId: string, issueId: string): Promise<DevLinkDto[]> {
+  async listIssueDevLinks(organizationId: string, issueId: string): Promise<DevLinkDto[]> {
     const issue = await this.prisma.issue.findFirst({
-      where: { id: issueId, workspaceId, deletedAt: null, ...LIVE_PROJECT },
+      where: { id: issueId, organizationId, deletedAt: null, ...LIVE_PROJECT },
       select: { id: true },
     });
     if (!issue) throw new NotFoundAppException('Công việc');
@@ -251,7 +251,13 @@ export class DevLinksService {
   ): Promise<{ linked: number; matched: string[] }> {
     const repo = await this.prisma.codeRepository.findUnique({
       where: { id: repositoryId },
-      select: { id: true, workspaceId: true, webhookSecret: true, isEnabled: true, provider: true },
+      select: {
+        id: true,
+        organizationId: true,
+        webhookSecret: true,
+        isEnabled: true,
+        provider: true,
+      },
     });
     if (!repo) throw new NotFoundAppException('Kho mã nguồn');
 
@@ -288,7 +294,7 @@ export class DevLinksService {
         const firstLine = message.split('\n')[0]?.trim() || message.trim() || sha;
         for (const key of keys) {
           matched.add(key);
-          const issue = await this.findIssue(repo.workspaceId, key);
+          const issue = await this.findIssue(repo.organizationId, key);
           if (!issue) continue;
           const created = await this.upsertDevLink(issue.id, repo.id, {
             type: DevLinkType.COMMIT,
@@ -319,7 +325,7 @@ export class DevLinksService {
           const externalCreatedAt = this.toDate(pr.created_at);
           for (const key of keys) {
             matched.add(key);
-            const issue = await this.findIssue(repo.workspaceId, key);
+            const issue = await this.findIssue(repo.organizationId, key);
             if (!issue) continue;
             const created = await this.upsertDevLink(issue.id, repo.id, {
               type: DevLinkType.PULL_REQUEST,
@@ -355,10 +361,10 @@ export class DevLinksService {
     return extractIssueKeys(text, 200, true);
   }
 
-  private async findIssue(workspaceId: string, key: string): Promise<{ id: string } | null> {
+  private async findIssue(organizationId: string, key: string): Promise<{ id: string } | null> {
     return this.prisma.issue.findFirst({
       // Dự án đã lưu trữ là chỉ đọc: webhook bỏ qua im lặng (không 4xx — Git provider khỏi đánh dấu webhook hỏng).
-      where: { workspaceId, key, deletedAt: null, project: WRITABLE_PROJECT_FILTER },
+      where: { organizationId, key, deletedAt: null, project: WRITABLE_PROJECT_FILTER },
       select: { id: true },
     });
   }
@@ -464,7 +470,7 @@ export class DevLinksService {
   private toRepoDto(r: Prisma.CodeRepositoryGetPayload<object>): RepositoryDto {
     return {
       id: r.id,
-      workspaceId: r.workspaceId,
+      organizationId: r.organizationId,
       integrationId: r.integrationId,
       provider: r.provider,
       externalId: r.externalId,

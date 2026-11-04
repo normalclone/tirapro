@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { MembersService } from './members.service';
 
 /**
- * P-C14: chỉ người đang giữ `workspace:admin` (hoặc admin hệ thống) mới cấp/gỡ vai trò mang `workspace:admin`.
+ * P-C14: chỉ người đang giữ `organization:admin` (hoặc admin hệ thống) mới cấp/gỡ vai trò mang `organization:admin`.
  * Người chỉ có `member:manage` giữ nguyên mọi khả năng khác (đổi sang vai trò thường vẫn được).
  */
 const ADMIN_ROLE = 'adminRole';
@@ -13,7 +13,7 @@ const memberRow = {
   id: 'm2',
   joinedAt: new Date(),
   roleId: MEMBER_ROLE,
-  role: { id: MEMBER_ROLE, name: 'Workspace Member', color: null },
+  role: { id: MEMBER_ROLE, name: 'Organization Member', color: null },
   user: {
     id: 'u2',
     email: 'ba@x.vn',
@@ -26,7 +26,7 @@ const memberRow = {
     lastSeenAt: null,
     createdAt: new Date(),
   },
-  roles: [{ role: { id: MEMBER_ROLE, name: 'Workspace Member', color: null } }],
+  roles: [{ role: { id: MEMBER_ROLE, name: 'Organization Member', color: null } }],
 };
 
 function setup(opts: {
@@ -54,12 +54,12 @@ function setup(opts: {
       ),
       count: vi.fn(() => Promise.resolve(1)),
     },
-    workspace: { findUnique: vi.fn(() => Promise.resolve({ ownerId: 'owner' })) },
+    organization: { findUnique: vi.fn(() => Promise.resolve({ ownerId: 'owner' })) },
     project: {
       findFirst: vi.fn(() => Promise.resolve({ id: 'p1', name: 'Dự án', isPrivate: false })),
       findMany: vi.fn(() => Promise.resolve([] as unknown[])),
     },
-    workspaceMembership: {
+    organizationMembership: {
       count: vi.fn((_a?: unknown) => Promise.resolve(opts.targetIsAdmin ? 1 : 0)),
       findUnique: vi.fn((_a?: unknown) =>
         Promise.resolve({
@@ -75,7 +75,7 @@ function setup(opts: {
       delete: vi.fn(() => Promise.resolve({})),
       findUniqueOrThrow: vi.fn(() => Promise.resolve(memberRow)),
     },
-    workspaceMembershipRole: {
+    organizationMembershipRole: {
       deleteMany: vi.fn(() => Promise.resolve({})),
       createMany: vi.fn(() => Promise.resolve({})),
     },
@@ -103,12 +103,12 @@ function setup(opts: {
       typeof arg === 'function'
         ? Promise.resolve(
             (arg as (t: unknown) => unknown)({
-              workspaceMembership: {
+              organizationMembership: {
                 createMany: vi.fn(() => Promise.resolve({ count: 1 })),
                 findMany: vi.fn(() => Promise.resolve([{ id: 'm9' }])),
                 delete: vi.fn(() => Promise.resolve({})),
               },
-              workspaceMembershipRole: { createMany: vi.fn(() => Promise.resolve({})) },
+              organizationMembershipRole: { createMany: vi.fn(() => Promise.resolve({})) },
               projectMembership: {
                 createMany: vi.fn(() => Promise.resolve({ count: 1 })),
                 findMany: vi.fn(() => Promise.resolve([{ id: 'pm9' }])),
@@ -123,8 +123,8 @@ function setup(opts: {
   };
   const rbac = {
     invalidate: vi.fn(() => Promise.resolve()),
-    invalidateWorkspace: vi.fn(() => Promise.resolve()),
-    holdsWorkspaceAdmin: vi.fn((_u: string, _w: string) => Promise.resolve(opts.callerIsAdmin)),
+    invalidateOrganization: vi.fn(() => Promise.resolve()),
+    holdsOrganizationAdmin: vi.fn((_u: string, _w: string) => Promise.resolve(opts.callerIsAdmin)),
     adminRoleIds: vi.fn((ids: readonly string[]) =>
       Promise.resolve(new Set(ids.filter((i) => i === ADMIN_ROLE))),
     ),
@@ -144,38 +144,38 @@ const DENIED = {
   response: expect.objectContaining({ code: 'ADMIN_GRANT_REQUIRES_ADMIN' }) as unknown,
 };
 
-describe('MembersService — chỉ quản trị mới cấp/gỡ workspace:admin (P-C14)', () => {
+describe('MembersService — chỉ quản trị mới cấp/gỡ organization:admin (P-C14)', () => {
   describe('người chỉ có member:manage (không phải quản trị) bị từ chối', () => {
     it('PUT roles: THÊM vai trò quản trị', async () => {
       const { svc, prisma } = setup({ callerIsAdmin: false });
       await expect(
-        svc.setWorkspaceRoles('w1', 'u2', [MEMBER_ROLE, ADMIN_ROLE], 'caller'),
+        svc.setOrganizationRoles('w1', 'u2', [MEMBER_ROLE, ADMIN_ROLE], 'caller'),
       ).rejects.toMatchObject(DENIED);
-      expect(prisma.workspaceMembershipRole.deleteMany).not.toHaveBeenCalled();
+      expect(prisma.organizationMembershipRole.deleteMany).not.toHaveBeenCalled();
       expect(prisma.$transaction).not.toHaveBeenCalled();
     });
 
     it('PUT roles: GỠ vai trò quản trị khỏi người đang là quản trị', async () => {
       const { svc, prisma } = setup({ callerIsAdmin: false, currentRoleIds: [ADMIN_ROLE] });
       await expect(
-        svc.setWorkspaceRoles('w1', 'u2', [MEMBER_ROLE], 'caller'),
+        svc.setOrganizationRoles('w1', 'u2', [MEMBER_ROLE], 'caller'),
       ).rejects.toMatchObject(DENIED);
       expect(prisma.$transaction).not.toHaveBeenCalled();
     });
 
     it('thêm thành viên (POST /members) với vai trò quản trị', async () => {
       const { svc, prisma } = setup({ callerIsAdmin: false });
-      prisma.workspaceMembership.findUnique.mockResolvedValue(null as never);
-      await expect(svc.addWorkspace('w1', 'u2', [ADMIN_ROLE], 'caller')).rejects.toMatchObject(
+      prisma.organizationMembership.findUnique.mockResolvedValue(null as never);
+      await expect(svc.addOrganization('w1', 'u2', [ADMIN_ROLE], 'caller')).rejects.toMatchObject(
         DENIED,
       );
-      expect(prisma.workspaceMembership.create).not.toHaveBeenCalled();
+      expect(prisma.organizationMembership.create).not.toHaveBeenCalled();
     });
 
     it('thêm hàng loạt (POST /members/bulk) với vai trò quản trị', async () => {
       const { svc, prisma } = setup({ callerIsAdmin: false });
       await expect(
-        svc.addWorkspaceMany('w1', ['u2'], [MEMBER_ROLE, ADMIN_ROLE], 'caller'),
+        svc.addOrganizationMany('w1', ['u2'], [MEMBER_ROLE, ADMIN_ROLE], 'caller'),
       ).rejects.toMatchObject(DENIED);
       expect(prisma.$transaction).not.toHaveBeenCalled();
     });
@@ -200,11 +200,11 @@ describe('MembersService — chỉ quản trị mới cấp/gỡ workspace:admin
         currentRoleIds: [ADMIN_ROLE],
       });
       // còn quản trị khác nên không dính chốt "quản trị cuối cùng"
-      await expect(svc.removeWorkspace('w1', 'u2', 'caller')).rejects.toMatchObject(DENIED);
+      await expect(svc.removeOrganization('w1', 'u2', 'caller')).rejects.toMatchObject(DENIED);
       expect(prisma.$transaction).not.toHaveBeenCalled();
     });
 
-    it('dự án: đặt/thêm vai trò dự án mang workspace:admin, và gỡ ghi đè đang giữ nó', async () => {
+    it('dự án: đặt/thêm vai trò dự án mang organization:admin, và gỡ ghi đè đang giữ nó', async () => {
       const a = setup({ callerIsAdmin: false });
       await expect(
         a.svc.setProjectRoles('w1', 'p1', 'u2', [ADMIN_ROLE], 'caller'),
@@ -230,7 +230,7 @@ describe('MembersService — chỉ quản trị mới cấp/gỡ workspace:admin
     it('đổi sang vai trò thường khác, giữ nguyên quản trị không có → qua', async () => {
       const { svc, prisma } = setup({ callerIsAdmin: false });
       await expect(
-        svc.setWorkspaceRoles('w1', 'u2', [OTHER_ROLE], 'caller'),
+        svc.setOrganizationRoles('w1', 'u2', [OTHER_ROLE], 'caller'),
       ).resolves.toBeDefined();
       expect(prisma.$transaction).toHaveBeenCalled();
     });
@@ -238,44 +238,48 @@ describe('MembersService — chỉ quản trị mới cấp/gỡ workspace:admin
     it('thêm hàng loạt/thành viên/tài khoản với vai trò thường → qua', async () => {
       const a = setup({ callerIsAdmin: false });
       await expect(
-        a.svc.addWorkspaceMany('w1', ['u2'], [MEMBER_ROLE], 'caller'),
+        a.svc.addOrganizationMany('w1', ['u2'], [MEMBER_ROLE], 'caller'),
       ).resolves.toMatchObject({ added: 1 });
       const b = setup({ callerIsAdmin: false });
-      b.prisma.workspaceMembership.findUnique.mockResolvedValue(null as never);
-      await expect(b.svc.addWorkspace('w1', 'u2', [MEMBER_ROLE], 'caller')).resolves.toBeDefined();
+      b.prisma.organizationMembership.findUnique.mockResolvedValue(null as never);
+      await expect(
+        b.svc.addOrganization('w1', 'u2', [MEMBER_ROLE], 'caller'),
+      ).resolves.toBeDefined();
     });
 
     it('gỡ một thành viên thường → qua', async () => {
       const { svc } = setup({ callerIsAdmin: false });
-      await expect(svc.removeWorkspace('w1', 'u2', 'caller')).resolves.toEqual({ success: true });
+      await expect(svc.removeOrganization('w1', 'u2', 'caller')).resolves.toEqual({
+        success: true,
+      });
     });
 
     it('giữ nguyên vai trò quản trị của người đang là quản trị (chỉ thêm vai trò thường) → qua', async () => {
       const { svc } = setup({ callerIsAdmin: false, currentRoleIds: [ADMIN_ROLE] });
       await expect(
-        svc.setWorkspaceRoles('w1', 'u2', [ADMIN_ROLE, OTHER_ROLE], 'caller'),
+        svc.setOrganizationRoles('w1', 'u2', [ADMIN_ROLE, OTHER_ROLE], 'caller'),
       ).resolves.toBeDefined();
     });
   });
 
-  describe('quản trị workspace / admin hệ thống được phép', () => {
+  describe('quản trị organization / admin hệ thống được phép', () => {
     it('cấp và gỡ vai trò quản trị; chỉ hỏi quyền người gọi MỘT lần (không tra DB vai trò)', async () => {
       const { svc, rbac } = setup({ callerIsAdmin: true });
       await expect(
-        svc.setWorkspaceRoles('w1', 'u2', [MEMBER_ROLE, ADMIN_ROLE], 'admin'),
+        svc.setOrganizationRoles('w1', 'u2', [MEMBER_ROLE, ADMIN_ROLE], 'admin'),
       ).resolves.toBeDefined();
-      expect(rbac.holdsWorkspaceAdmin).toHaveBeenCalledWith('admin', 'w1');
+      expect(rbac.holdsOrganizationAdmin).toHaveBeenCalledWith('admin', 'w1');
       expect(rbac.adminRoleIds).not.toHaveBeenCalled();
       const b = setup({ callerIsAdmin: true, currentRoleIds: [ADMIN_ROLE] });
       await expect(
-        b.svc.setWorkspaceRoles('w1', 'u2', [MEMBER_ROLE], 'admin'),
+        b.svc.setOrganizationRoles('w1', 'u2', [MEMBER_ROLE], 'admin'),
       ).resolves.toBeDefined();
     });
   });
 
   it('gọi nội bộ không có người gọi (seed, đăng ký, nhóm) → không áp luật', async () => {
     const { svc, rbac } = setup({ callerIsAdmin: false });
-    await expect(svc.setWorkspaceRoles('w1', 'u2', [ADMIN_ROLE])).resolves.toBeDefined();
-    expect(rbac.holdsWorkspaceAdmin).not.toHaveBeenCalled();
+    await expect(svc.setOrganizationRoles('w1', 'u2', [ADMIN_ROLE])).resolves.toBeDefined();
+    expect(rbac.holdsOrganizationAdmin).not.toHaveBeenCalled();
   });
 });

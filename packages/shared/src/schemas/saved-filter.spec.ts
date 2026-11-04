@@ -38,8 +38,8 @@ describe('savedFilterCreateSchema', () => {
     );
     expect(savedFilterCreateSchema.safeParse(base).success).toBe(true);
   });
-  it('mức cũ WORKSPACE/PROJECT không còn hợp lệ', () => {
-    for (const visibility of ['WORKSPACE', 'PROJECT'])
+  it('mức cũ ORGANIZATION/PROJECT không còn hợp lệ', () => {
+    for (const visibility of ['ORGANIZATION', 'PROJECT'])
       expect(savedFilterCreateSchema.safeParse({ ...base, visibility }).success).toBe(false);
   });
   it('khử trùng id; chặn quá nhiều đích', () => {

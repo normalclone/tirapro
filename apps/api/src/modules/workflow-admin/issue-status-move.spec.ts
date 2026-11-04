@@ -30,7 +30,7 @@ const rows = [
   { id: 'b', projectId: 'p2', sprintId: null, resolutionId: 'r1' },
 ];
 const args = (from: ReturnType<typeof ref>, to: ReturnType<typeof ref>) => ({
-  where: { workspaceId: 'w1', typeId: 't1' },
+  where: { organizationId: 'w1', typeId: 't1' },
   from,
   to,
   actorId: 'u1',
@@ -46,7 +46,7 @@ describe('moveIssuesToStatus', () => {
     );
     expect(r).toEqual({ count: 2, projectIds: ['p1', 'p2'] });
     expect(tx.issue.findMany.mock.calls[0]![0].where).toMatchObject({
-      workspaceId: 'w1',
+      organizationId: 'w1',
       typeId: 't1',
       statusId: 'old',
     });

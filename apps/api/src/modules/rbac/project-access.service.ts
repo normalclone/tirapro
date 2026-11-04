@@ -16,9 +16,9 @@ export const PUBLIC_VIEWER = '__public__';
  * phải dùng `visibleWhere` / `visibleProjectIds` / `canSee` thay vì tự viết điều kiện.
  *
  * MỘT định nghĩa "thấy" (`RbacService.projectVisibilityMode`, dùng chung cho cả guard và các hàm dưới đây):
- * - admin hệ thống / `workspace:admin` → thấy mọi dự án;
- * - vai cấp workspace có `project:view` → dự án công khai + dự án riêng tư mình là thành viên (`ProjectMembership`);
- * - vai cấp workspace KHÔNG có `project:view` → chỉ dự án mình là thành viên.
+ * - admin hệ thống / `organization:admin` → thấy mọi dự án;
+ * - vai cấp tổ chức có `project:view` → dự án công khai + dự án riêng tư mình là thành viên (`ProjectMembership`);
+ * - vai cấp tổ chức KHÔNG có `project:view` → chỉ dự án mình là thành viên.
  * Người ngoài nhận 404 (không 403) để không lộ sự tồn tại của dự án.
  */
 @Injectable()
@@ -28,18 +28,18 @@ export class ProjectAccessService {
     private readonly rbac: RbacService,
   ) {}
 
-  /** Admin hệ thống hoặc quyền hiệu lực workspace:admin → thấy mọi dự án riêng tư. */
-  async seesAll(userId: string, workspaceId: string): Promise<boolean> {
-    return (await this.rbac.projectVisibilityMode(userId, workspaceId)) === 'all';
+  /** Admin hệ thống hoặc quyền hiệu lực organization:admin → thấy mọi dự án riêng tư. */
+  async seesAll(userId: string, organizationId: string): Promise<boolean> {
+    return (await this.rbac.projectVisibilityMode(userId, organizationId)) === 'all';
   }
 
   /**
    * Điều kiện lồng vào `project: {...}` của model con hoặc `where` của Project. Admin → `{}`.
-   * Người thường: công khai HOẶC là thành viên dự án; người không có `project:view` cấp workspace: chỉ dự án có vai trò.
+   * Người thường: công khai HOẶC là thành viên dự án; người không có `project:view` cấp organization: chỉ dự án có vai trò.
    */
-  async visibleWhere(userId: string, workspaceId: string): Promise<Prisma.ProjectWhereInput> {
+  async visibleWhere(userId: string, organizationId: string): Promise<Prisma.ProjectWhereInput> {
     if (userId === PUBLIC_VIEWER) return { isPrivate: false };
-    const mode = await this.rbac.projectVisibilityMode(userId, workspaceId);
+    const mode = await this.rbac.projectVisibilityMode(userId, organizationId);
     if (mode === 'all') return {};
     return mode === 'memberOnly' ? this.memberOnly(userId) : this.memberOrPublic(userId);
   }
@@ -59,13 +59,13 @@ export class ProjectAccessService {
    */
   async visibleProjectIds(
     userId: string,
-    workspaceId: string,
+    organizationId: string,
     known?: Prisma.ProjectWhereInput,
   ): Promise<string[] | null> {
-    const visible = known ?? (await this.visibleWhere(userId, workspaceId));
+    const visible = known ?? (await this.visibleWhere(userId, organizationId));
     if (Object.keys(visible).length === 0) return null;
     const rows = await this.prisma.project.findMany({
-      where: { workspaceId, deletedAt: null, ...visible },
+      where: { organizationId, deletedAt: null, ...visible },
       select: { id: true },
     });
     return rows.map((r) => r.id);
@@ -77,16 +77,16 @@ export class ProjectAccessService {
    */
   async assertCanSee(
     userId: string,
-    workspaceId: string,
+    organizationId: string,
     projectId: string,
     notFoundLabel?: string,
   ): Promise<void> {
-    await this.rbac.assertProjectVisible(userId, workspaceId, projectId, notFoundLabel);
+    await this.rbac.assertProjectVisible(userId, organizationId, projectId, notFoundLabel);
   }
 
-  async canSee(userId: string, workspaceId: string, projectId: string): Promise<boolean> {
+  async canSee(userId: string, organizationId: string, projectId: string): Promise<boolean> {
     try {
-      await this.assertCanSee(userId, workspaceId, projectId);
+      await this.assertCanSee(userId, organizationId, projectId);
       return true;
     } catch (e) {
       if (e instanceof NotFoundAppException) return false;
@@ -94,18 +94,18 @@ export class ProjectAccessService {
     }
   }
 
-  /** Gọi sau khi thêm/đổi thành viên dự án: bỏ cache quyền của từng người (cache khoá theo workspace+user+dự án). */
+  /** Gọi sau khi thêm/đổi thành viên dự án: bỏ cache quyền của từng người (cache khoá theo tổ chức+user+dự án). */
   async onMembersChanged(
-    workspaceId: string,
+    organizationId: string,
     userIds: (string | null | undefined)[],
   ): Promise<void> {
     for (const id of new Set(userIds.filter((u): u is string => !!u))) {
-      await this.rbac.invalidate(id, workspaceId);
+      await this.rbac.invalidate(id, organizationId);
     }
   }
 
   /** Gọi sau khi đổi cờ riêng tư: bỏ cache quyền hiệu lực (60s) để không còn quyền cũ của người vừa mất/được thấy. */
-  async onVisibilityChanged(workspaceId: string): Promise<void> {
-    await this.rbac.invalidateWorkspace(workspaceId);
+  async onVisibilityChanged(organizationId: string): Promise<void> {
+    await this.rbac.invalidateOrganization(organizationId);
   }
 }

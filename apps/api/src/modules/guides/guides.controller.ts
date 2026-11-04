@@ -1,7 +1,7 @@
 import { Controller, Get, Param, Post, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import { WorkspaceId } from '../../common/decorators/workspace-id.decorator';
+import { OrganizationId } from '../../common/decorators/organization-id.decorator';
 import type { AuthUser } from '../../common/types/request';
 import { GuidesService, type GuideListItemDto, type GuideStateDto } from './guides.service';
 import { OnboardingService, type OnboardingDto } from './onboarding.service';
@@ -36,7 +36,7 @@ export class GuidesController {
     return this.guides.listState(user);
   }
 
-  /** Toàn bộ guide của workspace để quản trị. */
+  /** Toàn bộ guide của tổ chức để quản trị. */
   @Permissions(PERMISSIONS.GUIDE_MANAGE)
   @Get('admin')
   async admin(@CurrentUser() user: AuthUser): Promise<GuideListItemDto[]> {
@@ -44,20 +44,20 @@ export class GuidesController {
   }
 
   /**
-   * Checklist "Bắt đầu" của workspace (4 mục, tiến độ tính từ dữ liệu thật). Đặt TRƯỚC `:key/...` để `onboarding` không bị
+   * Checklist "Bắt đầu" của tổ chức (4 mục, tiến độ tính từ dữ liệu thật). Đặt TRƯỚC `:key/...` để `onboarding` không bị
    * coi là khoá guide.
    */
-  @Permissions(PERMISSIONS.WORKSPACE_ADMIN)
+  @Permissions(PERMISSIONS.ORGANIZATION_ADMIN)
   @Get('onboarding')
   async getOnboarding(
     @CurrentUser() user: AuthUser,
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
   ): Promise<OnboardingDto> {
-    return this.onboarding.get(user.id, workspaceId);
+    return this.onboarding.get(user.id, organizationId);
   }
 
   /** Ẩn khối "Bắt đầu" của chính người dùng. */
-  @Permissions(PERMISSIONS.WORKSPACE_ADMIN)
+  @Permissions(PERMISSIONS.ORGANIZATION_ADMIN)
   @Post('onboarding/dismiss')
   async dismissOnboarding(@CurrentUser() user: AuthUser): Promise<{ ok: true }> {
     return this.onboarding.dismiss(user.id);

@@ -54,9 +54,9 @@ export class WorklogsService {
     private readonly issues: IssuesService,
   ) {}
 
-  async list(workspaceId: string, issueId: string): Promise<WorklogListDto> {
+  async list(organizationId: string, issueId: string): Promise<WorklogListDto> {
     const issue = await this.prisma.issue.findFirst({
-      where: { id: issueId, workspaceId, deletedAt: null },
+      where: { id: issueId, organizationId, deletedAt: null },
       select: { originalEstimate: true, remainingEstimate: true, timeSpent: true },
     });
     if (!issue) throw new NotFoundAppException('Công việc');
@@ -75,7 +75,7 @@ export class WorklogsService {
   }
 
   async create(
-    workspaceId: string,
+    organizationId: string,
     userId: string,
     issueId: string,
     input: CreateWorklogInput,
@@ -83,7 +83,7 @@ export class WorklogsService {
     const sec = this.requireDuration(input.timeSpent);
     const startedAt = input.startedAt ? new Date(input.startedAt) : new Date();
     const { row, issue } = await this.prisma.$transaction(async (tx) => {
-      const state = await this.lockIssue(tx, workspaceId, issueId, userId);
+      const state = await this.lockIssue(tx, organizationId, issueId, userId);
       const created = await tx.workLog.create({
         data: {
           issueId,
@@ -97,21 +97,28 @@ export class WorklogsService {
       await this.recompute(tx, issueId, userId, state, input.adjustRemaining);
       return { row: created, issue: state };
     });
-    await this.publish(workspaceId, userId, issue, DOMAIN_EVENTS.WORKLOG_CREATED, issueId, row.id);
+    await this.publish(
+      organizationId,
+      userId,
+      issue,
+      DOMAIN_EVENTS.WORKLOG_CREATED,
+      issueId,
+      row.id,
+    );
     return this.toDto(row);
   }
 
   async update(
-    workspaceId: string,
+    organizationId: string,
     userId: string,
     id: string,
     input: UpdateWorklogInput,
   ): Promise<WorklogDto> {
-    const current = await this.requireWorklog(workspaceId, id);
-    await this.assertCanModify(userId, workspaceId, current);
+    const current = await this.requireWorklog(organizationId, id);
+    await this.assertCanModify(userId, organizationId, current);
     const sec = input.timeSpent !== undefined ? this.requireDuration(input.timeSpent) : undefined;
     const { row, issue } = await this.prisma.$transaction(async (tx) => {
-      const state = await this.lockIssue(tx, workspaceId, current.issueId, userId);
+      const state = await this.lockIssue(tx, organizationId, current.issueId, userId);
       const updated = await tx.workLog.update({
         where: { id },
         data: {
@@ -125,7 +132,7 @@ export class WorklogsService {
       return { row: updated, issue: state };
     });
     await this.publish(
-      workspaceId,
+      organizationId,
       userId,
       issue,
       DOMAIN_EVENTS.WORKLOG_UPDATED,
@@ -136,21 +143,21 @@ export class WorklogsService {
   }
 
   async remove(
-    workspaceId: string,
+    organizationId: string,
     userId: string,
     id: string,
     adjustRemaining?: AdjustRemainingInput,
   ): Promise<{ success: true }> {
-    const current = await this.requireWorklog(workspaceId, id);
-    await this.assertCanModify(userId, workspaceId, current);
+    const current = await this.requireWorklog(organizationId, id);
+    await this.assertCanModify(userId, organizationId, current);
     const issue = await this.prisma.$transaction(async (tx) => {
-      const state = await this.lockIssue(tx, workspaceId, current.issueId, userId);
+      const state = await this.lockIssue(tx, organizationId, current.issueId, userId);
       await tx.workLog.delete({ where: { id } });
       await this.recompute(tx, current.issueId, userId, state, adjustRemaining);
       return state;
     });
     await this.publish(
-      workspaceId,
+      organizationId,
       userId,
       issue,
       DOMAIN_EVENTS.WORKLOG_DELETED,
@@ -178,19 +185,19 @@ export class WorklogsService {
    */
   private async lockIssue(
     tx: Prisma.TransactionClient,
-    workspaceId: string,
+    organizationId: string,
     issueId: string,
     userId: string,
   ): Promise<IssueTimeState> {
     // Dự án đã lưu trữ là chỉ đọc (BUG-5) — kiểm TRƯỚC khi bump version; ném trong $transaction thì rollback sạch.
     await assertIssueWritable(tx, issueId);
     const { count } = await tx.issue.updateMany({
-      where: { id: issueId, workspaceId, deletedAt: null },
+      where: { id: issueId, organizationId, deletedAt: null },
       data: { version: { increment: 1 }, updatedById: userId },
     });
     if (count === 0) throw new NotFoundAppException('Công việc');
     const state = await tx.issue.findFirst({
-      where: { id: issueId, workspaceId, deletedAt: null },
+      where: { id: issueId, organizationId, deletedAt: null },
       select: {
         key: true,
         projectId: true,
@@ -259,28 +266,28 @@ export class WorklogsService {
     return Math.max(0, state.originalEstimate - total);
   }
 
-  private async requireWorklog(workspaceId: string, id: string) {
+  private async requireWorklog(organizationId: string, id: string) {
     const row = await this.prisma.workLog.findFirst({
-      where: { id, issue: { workspaceId, deletedAt: null } },
+      where: { id, issue: { organizationId, deletedAt: null } },
       select: { id: true, authorId: true, issueId: true, issue: { select: { projectId: true } } },
     });
     if (!row) throw new NotFoundAppException('Worklog');
     return row;
   }
 
-  /** Chỉ tác giả hoặc quản trị (project admin / workspace admin / system admin) được sửa-xoá. */
+  /** Chỉ tác giả hoặc quản trị (project admin / tổ chức admin / system admin) được sửa-xoá. */
   private async assertCanModify(
     userId: string,
-    workspaceId: string,
+    organizationId: string,
     worklog: { authorId: string; issue: { projectId: string } },
   ): Promise<void> {
     if (worklog.authorId === userId) return;
     const perms = await this.rbac.getEffectivePermissions(
       userId,
-      workspaceId,
+      organizationId,
       worklog.issue.projectId,
     );
-    if (perms.has(PERMISSIONS.PROJECT_ADMIN) || perms.has(PERMISSIONS.WORKSPACE_ADMIN)) return;
+    if (perms.has(PERMISSIONS.PROJECT_ADMIN) || perms.has(PERMISSIONS.ORGANIZATION_ADMIN)) return;
     const u = await this.prisma.user.findUnique({
       where: { id: userId },
       select: { isSystemAdmin: true },
@@ -293,7 +300,7 @@ export class WorklogsService {
 
   /** Sau commit: báo realtime/automation rằng issue đổi (version, timeSpent) và worklog đổi. Lỗi ở đây không làm hỏng yêu cầu. */
   private async publish(
-    workspaceId: string,
+    organizationId: string,
     actorId: string,
     state: IssueTimeState,
     event: string,
@@ -301,7 +308,7 @@ export class WorklogsService {
     worklogId: string,
   ): Promise<void> {
     try {
-      const dto = await this.issues.getByKey(workspaceId, state.key, null);
+      const dto = await this.issues.getByKey(organizationId, state.key, null);
       this.events.emit(DOMAIN_EVENTS.ISSUE_UPDATED, {
         issue: dto,
         actorId,

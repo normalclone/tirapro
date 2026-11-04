@@ -13,7 +13,7 @@ import { ApiConsumes, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { PERMISSIONS } from '@tirapro/types';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import { WorkspaceId } from '../../common/decorators/workspace-id.decorator';
+import { OrganizationId } from '../../common/decorators/organization-id.decorator';
 import { ProjectRef } from '../../common/decorators/project-ref.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
 import type { AuthUser } from '../../common/types/request';
@@ -37,14 +37,14 @@ export class AttachmentsController {
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(AttachmentUploadInterceptor)
   async upload(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
     @Param('issueId') issueId: string,
     @UploadedFile() file: Express.Multer.File,
     @OwnOnly(PERMISSIONS.ISSUE_EDIT) ownOnly: boolean,
   ) {
-    await this.ownership.assertOwnsIssue(ownOnly, workspaceId, user.id, issueId);
-    return this.attachments.upload(workspaceId, user.id, issueId, file);
+    await this.ownership.assertOwnsIssue(ownOnly, organizationId, user.id, issueId);
+    return this.attachments.upload(organizationId, user.id, issueId, file);
   }
 
   /**
@@ -57,30 +57,33 @@ export class AttachmentsController {
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(AttachmentUploadInterceptor)
   async uploadForComment(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
     @Param('issueId') issueId: string,
     @UploadedFile() file: Express.Multer.File,
   ) {
-    return this.attachments.upload(workspaceId, user.id, issueId, file);
+    return this.attachments.upload(organizationId, user.id, issueId, file);
   }
 
   @Permissions(PERMISSIONS.PROJECT_VIEW)
   @ProjectRef('issue', 'issueId')
   @Get('issues/:issueId/attachments')
-  async list(@WorkspaceId() workspaceId: string, @Param('issueId') issueId: string) {
-    return this.attachments.list(workspaceId, issueId);
+  async list(@OrganizationId() organizationId: string, @Param('issueId') issueId: string) {
+    return this.attachments.list(organizationId, issueId);
   }
 
   @Permissions(PERMISSIONS.PROJECT_VIEW)
   @ProjectRef('attachment', 'id')
   @Get('attachments/:id/download')
   async download(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @Param('id') id: string,
     @Res({ passthrough: true }) res: Response,
   ): Promise<StreamableFile> {
-    const { stream, fileName, mimeType, size } = await this.attachments.download(workspaceId, id);
+    const { stream, fileName, mimeType, size } = await this.attachments.download(
+      organizationId,
+      id,
+    );
     res.setHeader('Content-Type', mimeType);
     if (size !== undefined) res.setHeader('Content-Length', size);
     res.setHeader('Content-Disposition', contentDispositionAttachment(fileName));
@@ -91,12 +94,12 @@ export class AttachmentsController {
   @Delete('attachments/:id')
   @Permissions(PERMISSIONS.ISSUE_EDIT)
   async remove(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
     @OwnOnly(PERMISSIONS.ISSUE_EDIT) ownOnly: boolean,
   ) {
-    await this.ownership.assertOwnsAttachment(ownOnly, workspaceId, user.id, id);
-    return this.attachments.remove(workspaceId, id);
+    await this.ownership.assertOwnsAttachment(ownOnly, organizationId, user.id, id);
+    return this.attachments.remove(organizationId, id);
   }
 }

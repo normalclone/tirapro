@@ -7,7 +7,7 @@ import {
   type UpdateBoardInput,
 } from '@tirapro/shared';
 import { PERMISSIONS } from '@tirapro/types';
-import { WorkspaceId } from '../../common/decorators/workspace-id.decorator';
+import { OrganizationId } from '../../common/decorators/organization-id.decorator';
 import { ProjectRef } from '../../common/decorators/project-ref.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
@@ -23,15 +23,15 @@ export class BoardsController {
   @Permissions(PERMISSIONS.PROJECT_VIEW)
   @ProjectRef('query', 'projectId')
   @Get()
-  async list(@WorkspaceId() workspaceId: string, @Query('projectId') projectId: string) {
-    return this.boards.listForProject(workspaceId, projectId);
+  async list(@OrganizationId() organizationId: string, @Query('projectId') projectId: string) {
+    return this.boards.listForProject(organizationId, projectId);
   }
 
   @Permissions(PERMISSIONS.PROJECT_VIEW)
   @ProjectRef('board', 'id')
   @Get(':id')
-  async get(@WorkspaceId() workspaceId: string, @Param('id') id: string) {
-    return this.boards.get(workspaceId, id);
+  async get(@OrganizationId() organizationId: string, @Param('id') id: string) {
+    return this.boards.get(organizationId, id);
   }
 
   /** Việc của board — có bộ lọc JQL của board thì đã áp sẵn. */
@@ -39,35 +39,35 @@ export class BoardsController {
   @ProjectRef('board', 'id')
   @Get(':id/issues')
   async issues(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
     @Query('cursor') cursor?: string,
     @Query('limit') limit?: string,
   ) {
     const lim = Math.min(Math.max(Number(limit) || 100, 1), 200);
-    return this.boards.listIssues(workspaceId, user.id, id, cursor, lim);
+    return this.boards.listIssues(organizationId, user.id, id, cursor, lim);
   }
 
   @Permissions(PERMISSIONS.BOARD_MANAGE)
   @ProjectRef('board', 'id')
   @Patch(':id')
   async update(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @Param('id') id: string,
     @Body(new ZodValidationPipe(updateBoardSchema)) dto: UpdateBoardInput,
   ) {
-    return this.boards.update(workspaceId, id, dto);
+    return this.boards.update(organizationId, id, dto);
   }
 
   @Permissions(PERMISSIONS.BOARD_MANAGE)
   @ProjectRef('board', 'id')
   @Put(':id/columns')
   async setColumns(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @Param('id') id: string,
     @Body(new ZodValidationPipe(setBoardColumnsSchema)) dto: SetBoardColumnsInput,
   ) {
-    return this.boards.setColumns(workspaceId, id, dto);
+    return this.boards.setColumns(organizationId, id, dto);
   }
 }

@@ -50,7 +50,7 @@ type LeadershipCard = 'topRisks' | 'slowGoals' | 'overloaded';
 export interface LeadershipOptions {
   /** Chỉ tính các thẻ này (mặc định cả ba) — digest chỉ tải khối người dùng đã chọn. */
   cards?: readonly LeadershipCard[];
-  /** Thu hẹp rủi ro/OKR vào một dự án; thẻ nhân lực (cấp workspace) bị bỏ qua. */
+  /** Thu hẹp rủi ro/OKR vào một dự án; thẻ nhân lực (cấp tổ chức) bị bỏ qua. */
   projectId?: string;
 }
 
@@ -72,7 +72,7 @@ export class LeadershipService {
   ) {}
 
   async get(
-    workspaceId: string,
+    organizationId: string,
     viewerId: string,
     now = new Date(),
     opts: LeadershipOptions = {},
@@ -92,25 +92,25 @@ export class LeadershipService {
     };
     const [topRisks, slowGoals, overloaded] = await Promise.all([
       want('topRisks')
-        ? safe('topRisks', () => this.topRisks(workspaceId, viewerId, opts.projectId))
+        ? safe('topRisks', () => this.topRisks(organizationId, viewerId, opts.projectId))
         : [],
       want('slowGoals')
-        ? safe('slowGoals', () => this.slowGoals(workspaceId, viewerId, now, opts.projectId))
+        ? safe('slowGoals', () => this.slowGoals(organizationId, viewerId, now, opts.projectId))
         : [],
       want('overloaded') && !opts.projectId
-        ? safe('overloaded', () => this.overloaded(workspaceId, viewerId, now))
+        ? safe('overloaded', () => this.overloaded(organizationId, viewerId, now))
         : [],
     ]);
     return { topRisks, slowGoals, overloaded, unavailable };
   }
 
   private async topRisks(
-    workspaceId: string,
+    organizationId: string,
     viewerId: string,
     projectId?: string,
   ): Promise<LeadershipOverview['topRisks']> {
     const items = await this.raid.list(
-      workspaceId,
+      organizationId,
       { kind: 'RISK', status: 'OPEN', ...(projectId ? { projectId } : {}) },
       viewerId,
     );
@@ -132,13 +132,13 @@ export class LeadershipService {
   }
 
   private async slowGoals(
-    workspaceId: string,
+    organizationId: string,
     viewerId: string,
     now: Date,
     projectId?: string,
   ): Promise<LeadershipOverview['slowGoals']> {
     const goals = await this.goals.list(
-      workspaceId,
+      organizationId,
       { status: 'ACTIVE', ...(projectId ? { projectId } : {}) },
       viewerId,
     );
@@ -165,7 +165,7 @@ export class LeadershipService {
   }
 
   private async overloaded(
-    workspaceId: string,
+    organizationId: string,
     viewerId: string,
     now: Date,
   ): Promise<LeadershipOverview['overloaded']> {
@@ -173,7 +173,7 @@ export class LeadershipService {
     // 00:00–07:00 sáng thứ Hai giờ VN máy chủ (UTC) còn là Chủ nhật → dùng ngày UTC sẽ lệch về tuần trước.
     const today = vnTodayUtc(now);
     const report = await this.resources.workload(
-      workspaceId,
+      organizationId,
       { from: isoDay(today), to: isoDay(addDays(today, 7)) },
       viewerId,
     );

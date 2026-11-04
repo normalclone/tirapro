@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { claimImportJob, findImportJobByAnalyzeId } from './jira-claim';
 
 function fake() {
-  const jobs: { id: string; workspaceId: string; config: { analyzeId: string } }[] = [];
+  const jobs: { id: string; organizationId: string; config: { analyzeId: string } }[] = [];
   let chain: Promise<unknown> = Promise.resolve();
   const order: string[] = [];
   let n = 0;
@@ -12,22 +12,25 @@ function fake() {
       return Promise.resolve(1);
     }),
     importJob: {
-      findFirst: vi.fn((a: { where: { workspaceId: string; config: { equals: string } } }) => {
+      findFirst: vi.fn((a: { where: { organizationId: string; config: { equals: string } } }) => {
         order.push('find');
         return Promise.resolve(
           jobs.find(
             (j) =>
-              j.workspaceId === a.where.workspaceId && j.config.analyzeId === a.where.config.equals,
+              j.organizationId === a.where.organizationId &&
+              j.config.analyzeId === a.where.config.equals,
           ) ?? null,
         );
       }),
-      create: vi.fn(async (a: { data: { workspaceId: string; config: { analyzeId: string } } }) => {
-        order.push('create');
-        await new Promise((r) => setTimeout(r, 5)); // cho các request khác có cơ hội chen vào nếu KHÔNG có khoá
-        const j = { id: `job${++n}`, ...a.data };
-        jobs.push(j);
-        return { id: j.id };
-      }),
+      create: vi.fn(
+        async (a: { data: { organizationId: string; config: { analyzeId: string } } }) => {
+          order.push('create');
+          await new Promise((r) => setTimeout(r, 5)); // cho các request khác có cơ hội chen vào nếu KHÔNG có khoá
+          const j = { id: `job${++n}`, ...a.data };
+          jobs.push(j);
+          return { id: j.id };
+        },
+      ),
     },
   };
   const prisma = {
@@ -42,7 +45,7 @@ function fake() {
 }
 
 const data = (analyzeId: string) =>
-  ({ workspaceId: 'w1', source: 'JIRA_CLOUD', config: { analyzeId } }) as never;
+  ({ organizationId: 'w1', source: 'JIRA_CLOUD', config: { analyzeId } }) as never;
 
 describe('claimImportJob — claim ở DB', () => {
   it('lấy advisory lock theo analyzeId TRƯỚC khi tìm/tạo, cùng một transaction', async () => {
@@ -54,7 +57,7 @@ describe('claimImportJob — claim ở DB', () => {
     expect(order.slice(1)).toEqual(['find', 'create']);
   });
 
-  it('đã có job cùng analyzeId trong workspace → trả job đó, KHÔNG tạo mới', async () => {
+  it('đã có job cùng analyzeId trong organization → trả job đó, KHÔNG tạo mới', async () => {
     const { prisma, tx } = fake();
     await claimImportJob(prisma as never, 'w1', 'AN1', data('AN1'));
     const again = await claimImportJob(prisma as never, 'w1', 'AN1', data('AN1'));
@@ -82,12 +85,12 @@ describe('claimImportJob — claim ở DB', () => {
     expect(a.id).not.toBe(b.id);
   });
 
-  it('findImportJobByAnalyzeId lọc theo workspace + nguồn Jira', async () => {
+  it('findImportJobByAnalyzeId lọc theo organization + nguồn Jira', async () => {
     const { tx } = fake();
     await findImportJobByAnalyzeId(tx as never, 'w1', 'AN1');
     expect(tx.importJob.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: expect.objectContaining({ workspaceId: 'w1', source: 'JIRA_CLOUD' }) as unknown,
+        where: expect.objectContaining({ organizationId: 'w1', source: 'JIRA_CLOUD' }) as unknown,
       }),
     );
   });

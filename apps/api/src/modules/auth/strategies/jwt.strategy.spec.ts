@@ -13,7 +13,7 @@ function setup(opts: { user?: Record<string, unknown> | null; membership?: unkno
         ),
       ),
     },
-    workspaceMembership: {
+    organizationMembership: {
       findUnique: vi.fn(() =>
         Promise.resolve(opts.membership === undefined ? { id: 'M1' } : opts.membership),
       ),
@@ -25,17 +25,17 @@ function setup(opts: { user?: Record<string, unknown> | null; membership?: unkno
   return { strategy, prisma };
 }
 
-const payload = { sub: 'U1', email: 'a@b.c', workspaceId: 'W1', jti: 'j' };
+const payload = { sub: 'U1', email: 'a@b.c', organizationId: 'W1', jti: 'j' };
 
 describe('JwtStrategy.validate', () => {
-  it('payload có workspaceId nhưng membership đã mất -> Unauthorized (tiếng Việt)', async () => {
+  it('payload có organizationId nhưng membership đã mất -> Unauthorized (tiếng Việt)', async () => {
     const { strategy, prisma } = setup({ membership: null });
     const p = strategy.validate(payload);
     await expect(p).rejects.toBeInstanceOf(UnauthorizedException);
     await expect(p).rejects.toThrow(/đăng nhập lại/);
-    expect(prisma.workspaceMembership.findUnique).toHaveBeenCalledWith(
+    expect(prisma.organizationMembership.findUnique).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { workspaceId_userId: { workspaceId: 'W1', userId: 'U1' } },
+        where: { organizationId_userId: { organizationId: 'W1', userId: 'U1' } },
       }),
     );
   });
@@ -44,7 +44,7 @@ describe('JwtStrategy.validate', () => {
     const { strategy } = setup({});
     await expect(strategy.validate(payload)).resolves.toMatchObject({
       id: 'U1',
-      workspaceId: 'W1',
+      organizationId: 'W1',
     });
   });
 
@@ -55,17 +55,46 @@ describe('JwtStrategy.validate', () => {
     });
     await expect(strategy.validate(payload)).resolves.toMatchObject({
       isSystemAdmin: true,
-      workspaceId: 'W1',
+      organizationId: 'W1',
     });
-    expect(prisma.workspaceMembership.findUnique).not.toHaveBeenCalled();
+    expect(prisma.organizationMembership.findUnique).not.toHaveBeenCalled();
   });
 
-  it('payload không có workspaceId -> không kiểm membership', async () => {
+  it('payload không có organizationId -> không kiểm membership', async () => {
     const { strategy, prisma } = setup({ membership: null });
-    await expect(strategy.validate({ ...payload, workspaceId: null })).resolves.toMatchObject({
-      workspaceId: null,
+    await expect(strategy.validate({ ...payload, organizationId: null })).resolves.toMatchObject({
+      organizationId: null,
     });
-    expect(prisma.workspaceMembership.findUnique).not.toHaveBeenCalled();
+    expect(prisma.organizationMembership.findUnique).not.toHaveBeenCalled();
+  });
+
+  // Access token phát TRƯỚC khi đổi tên còn sống tới khi hết hạn (15 phút): claim cũ `workspaceId` vẫn được nhận, không bắt đăng nhập lại.
+  it('token cũ mang claim `workspaceId`: vẫn xác thực, kiểm membership theo tổ chức đó, req.user.organizationId đúng', async () => {
+    const { strategy, prisma } = setup({});
+    const legacy = { sub: 'U1', email: 'a@b.c', workspaceId: 'W9', jti: 'j' };
+    await expect(strategy.validate(legacy)).resolves.toMatchObject({
+      id: 'U1',
+      organizationId: 'W9',
+    });
+    expect(prisma.organizationMembership.findUnique).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { organizationId_userId: { organizationId: 'W9', userId: 'U1' } },
+      }),
+    );
+  });
+
+  it('token cũ mà người dùng đã bị gỡ khỏi tổ chức -> vẫn bị chặn như token mới', async () => {
+    const { strategy } = setup({ membership: null });
+    await expect(
+      strategy.validate({ sub: 'U1', email: 'a@b.c', workspaceId: 'W9', jti: 'j' }),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
+  });
+
+  it('claim mới thắng claim cũ khi token có cả hai', async () => {
+    const { strategy } = setup({});
+    await expect(
+      strategy.validate({ ...payload, organizationId: 'NEW', workspaceId: 'OLD' }),
+    ).resolves.toMatchObject({ organizationId: 'NEW' });
   });
 
   it('tài khoản bị vô hiệu hoá -> Unauthorized', async () => {

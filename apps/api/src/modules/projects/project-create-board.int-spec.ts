@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import { assertParityDatabase } from '../../common/testing/parity-db-guard';
 import type { PrismaService } from '../../infra/prisma/prisma.service';
-import { WorkspaceBootstrapService } from '../workspaces/workspace-bootstrap.service';
+import { OrganizationBootstrapService } from '../organizations/organization-bootstrap.service';
 import { WorkflowResolver } from '../workflow-admin/workflow-resolver.service';
 import { ProjectsService } from './projects.service';
 
@@ -40,30 +40,30 @@ describe.skipIf(!DB_URL)('Tổ chức/dự án mới ↔ Postgres thật', () =>
     await prisma.user.create({
       data: { id: USER, email: `${USER}@pc.test`, displayName: 'PC' },
     });
-    await prisma.workspace.create({ data: { id: WS, name: WS, slug: WS, ownerId: USER } });
-    await prisma.$transaction((tx) => new WorkspaceBootstrapService().bootstrap(tx, WS));
+    await prisma.organization.create({ data: { id: WS, name: WS, slug: WS, ownerId: USER } });
+    await prisma.$transaction((tx) => new OrganizationBootstrapService().bootstrap(tx, WS));
   });
 
   afterAll(async () => {
     if (!prisma) return;
     // Dọn sạch để spec khác (đếm mọi tổ chức trong DB) không thấy dấu vết: dự án → cấu hình → quy trình → tổ chức.
-    await prisma.project.deleteMany({ where: { workspaceId: WS } });
-    await prisma.workspaceWorkflowScheme.deleteMany({ where: { workspaceId: WS } });
-    await prisma.workflow.deleteMany({ where: { workspaceId: WS } });
-    await prisma.workspace.deleteMany({ where: { id: WS } });
+    await prisma.project.deleteMany({ where: { organizationId: WS } });
+    await prisma.organizationWorkflowScheme.deleteMany({ where: { organizationId: WS } });
+    await prisma.workflow.deleteMany({ where: { organizationId: WS } });
+    await prisma.organization.deleteMany({ where: { id: WS } });
     await prisma.user.deleteMany({ where: { id: USER } });
     await prisma.$disconnect();
   });
 
   it('tổ chức mới: có 3 quy trình mặc định và dòng cấu hình cho MỌI loại việc', async () => {
     const [types, scheme, defaults] = await Promise.all([
-      prisma.issueType.findMany({ where: { workspaceId: WS }, select: { id: true } }),
-      prisma.workspaceWorkflowScheme.findMany({
-        where: { workspaceId: WS },
+      prisma.issueType.findMany({ where: { organizationId: WS }, select: { id: true } }),
+      prisma.organizationWorkflowScheme.findMany({
+        where: { organizationId: WS },
         select: { issueTypeId: true, workflowId: true },
       }),
       prisma.workflow.findMany({
-        where: { workspaceId: WS, sourceTemplateId: { startsWith: 'tirapro-default:' } },
+        where: { organizationId: WS, sourceTemplateId: { startsWith: 'tirapro-default:' } },
         select: { name: true },
       }),
     ]);
@@ -82,8 +82,8 @@ describe.skipIf(!DB_URL)('Tổ chức/dự án mới ↔ Postgres thật', () =>
       name: 'PCA',
       type: 'SCRUM',
     } as never);
-    const scheme = await prisma.workspaceWorkflowScheme.findMany({
-      where: { workspaceId: WS, issueType: { key: { in: ['TASK', 'BUG', 'EPIC'] } } },
+    const scheme = await prisma.organizationWorkflowScheme.findMany({
+      where: { organizationId: WS, issueType: { key: { in: ['TASK', 'BUG', 'EPIC'] } } },
       select: { workflowId: true },
     });
     const flowIds = [...new Set(scheme.map((s) => s.workflowId))];

@@ -20,7 +20,7 @@ interface ActionDeps {
 /** Ngữ cảnh một lần chạy quy tắc trên MỘT issue. */
 export interface ActionContext {
   deps: ActionDeps;
-  workspaceId: string;
+  organizationId: string;
   /** Người dùng hệ thống (automation@tirapro.local) — tác giả mọi thay đổi do quy tắc gây ra. */
   actorId: string;
   rule: { id: string; name: string };

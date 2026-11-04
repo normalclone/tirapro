@@ -32,7 +32,7 @@ describe('user mapper — người nhúng không lộ trường quản trị', (
   it('canSeeAdminUserFields: admin hệ thống hoặc member:manage', () => {
     expect(canSeeAdminUserFields({ isSystemAdmin: true })).toBe(true);
     expect(canSeeAdminUserFields({ permissions: ['member:manage'] })).toBe(true);
-    expect(canSeeAdminUserFields({ permissions: ['workspace:view'] })).toBe(false);
+    expect(canSeeAdminUserFields({ permissions: ['organization:view'] })).toBe(false);
     expect(canSeeAdminUserFields({})).toBe(false);
   });
 });

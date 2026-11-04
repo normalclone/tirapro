@@ -2,7 +2,7 @@ import { Body, Controller, Delete, Get, Param, Post, Put, Query } from '@nestjs/
 import { ApiTags } from '@nestjs/swagger';
 import { PERMISSIONS } from '@tirapro/types';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import { WorkspaceId } from '../../common/decorators/workspace-id.decorator';
+import { OrganizationId } from '../../common/decorators/organization-id.decorator';
 import { Permissions, PermissionsAnyOf } from '../../common/decorators/permissions.decorator';
 import { ProjectRef } from '../../common/decorators/project-ref.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
@@ -25,57 +25,57 @@ export class RaidController {
   @Get()
   @Permissions(PERMISSIONS.PROJECT_VIEW)
   async list(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
     @Query('kind') kind?: string,
     @Query('status') status?: string,
     @Query('projectId') projectId?: string,
     @Query('ownerId') ownerId?: string,
   ) {
-    return this.raid.list(workspaceId, { kind, status, projectId, ownerId }, user.id);
+    return this.raid.list(organizationId, { kind, status, projectId, ownerId }, user.id);
   }
 
   @ProjectRef('raid', 'id')
   @Get(':id')
   @Permissions(PERMISSIONS.PROJECT_VIEW)
   async get(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
   ) {
-    return this.raid.get(workspaceId, id, user.id);
+    return this.raid.get(organizationId, id, user.id);
   }
 
   @Post()
   @PermissionsAnyOf(PERMISSIONS.RISK_MANAGE, PERMISSIONS.PROJECT_ADMIN)
   async create(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
     @Body(new ZodValidationPipe(createRaidSchema)) dto: CreateRaidInput,
   ) {
-    return this.raid.create(workspaceId, dto, user.id);
+    return this.raid.create(organizationId, dto, user.id);
   }
 
   @ProjectRef('raid', 'id')
   @Put(':id')
   @PermissionsAnyOf(PERMISSIONS.RISK_MANAGE, PERMISSIONS.PROJECT_ADMIN)
   async update(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
     @Body(new ZodValidationPipe(updateRaidSchema)) dto: UpdateRaidInput,
   ) {
-    return this.raid.update(workspaceId, id, dto, user);
+    return this.raid.update(organizationId, id, dto, user);
   }
 
   @ProjectRef('raid', 'id')
   @Delete(':id')
   @PermissionsAnyOf(PERMISSIONS.RISK_MANAGE, PERMISSIONS.PROJECT_ADMIN)
   async remove(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
   ) {
-    return this.raid.remove(workspaceId, id, user.id);
+    return this.raid.remove(organizationId, id, user.id);
   }
 }

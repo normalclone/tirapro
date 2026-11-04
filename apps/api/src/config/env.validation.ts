@@ -76,7 +76,9 @@ const baseEnvSchema = z.object({
   AI_MODEL_PRIMARY: z.string().default('claude-opus-4-8'),
   // Model rẻ/nhanh cho tác vụ ngắn (tóm tắt, gợi ý). Giá trị này đi qua configuration.ts → ClaudeService, không còn default thứ hai.
   AI_MODEL_FAST: z.string().default('claude-haiku-4-5'),
-  AI_MONTHLY_TOKEN_QUOTA_PER_WORKSPACE: z.coerce.number().int().default(5_000_000),
+  // Tên cũ `AI_MONTHLY_TOKEN_QUOTA_PER_WORKSPACE` vẫn được nhận (môi trường đã triển khai chưa đổi tên biến) — xem configuration.ts.
+  AI_MONTHLY_TOKEN_QUOTA_PER_ORGANIZATION: z.coerce.number().int().optional(),
+  AI_MONTHLY_TOKEN_QUOTA_PER_WORKSPACE: z.coerce.number().int().optional(),
 
   EMBEDDING_PROVIDER: z.enum(['voyage', 'openai', 'none']).default('none'),
   EMBEDDING_DIM: z.coerce.number().int().default(1024),
@@ -103,7 +105,7 @@ const baseEnvSchema = z.object({
   THROTTLE_LIMIT: z.coerce.number().int().default(100),
 
   // ---- Integrations ----
-  // Bot Telegram toàn cục (optional). Workspace có thể BYO token riêng (lưu trong Integration.config).
+  // Bot Telegram toàn cục (optional). Tổ chức có thể BYO token riêng (lưu trong Integration.config).
   TELEGRAM_BOT_TOKEN: z.string().optional().default(''),
   TELEGRAM_WEBHOOK_DOMAIN: z.string().optional().default(''), // rỗng => long polling
   // Khóa mã hóa secret tích hợp (AES-256-GCM) — tối thiểu 32 ký tự.

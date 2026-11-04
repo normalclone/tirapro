@@ -65,30 +65,30 @@ export class KrSnapshotCron implements OnApplicationShutdown {
     }).catch((err: Error) => this.logger.warn(`Chụp Key Result hằng ngày lỗi: ${err.message}`));
   }
 
-  /** Chụp mọi KR của mục tiêu ACTIVE ở mọi workspace. Trả số dòng đã ghi. Mỗi workspace bọc try/catch riêng. */
+  /** Chụp mọi KR của mục tiêu ACTIVE ở mọi organization. Trả số dòng đã ghi. Mỗi tổ chức bọc try/catch riêng. */
   async snapshotAll(now: Date = new Date()): Promise<number> {
     if (this.stopping) return 0;
     const snapshotDate = vnDay(now);
-    const workspaces = await this.prisma.workspace.findMany({
+    const organizations = await this.prisma.organization.findMany({
       where: { deletedAt: null },
       select: { id: true },
     });
     let written = 0;
-    for (const ws of workspaces) {
+    for (const ws of organizations) {
       if (this.stopping) break;
       try {
-        written += await this.snapshotWorkspace(ws.id, snapshotDate);
+        written += await this.snapshotOrganization(ws.id, snapshotDate);
       } catch (err) {
-        this.logger.warn(`Chụp KR workspace ${ws.id} lỗi: ${(err as Error).message}`);
+        this.logger.warn(`Chụp KR organization ${ws.id} lỗi: ${(err as Error).message}`);
       }
     }
     return written;
   }
 
-  private async snapshotWorkspace(workspaceId: string, snapshotDate: Date): Promise<number> {
+  private async snapshotOrganization(organizationId: string, snapshotDate: Date): Promise<number> {
     const objectives = await this.prisma.objective.findMany({
       where: {
-        workspaceId,
+        organizationId,
         status: 'ACTIVE',
         // Mục tiêu của dự án đã xoá/lưu trữ bị bỏ qua.
         project: { deletedAt: null, archivedAt: null },
@@ -118,7 +118,7 @@ export class KrSnapshotCron implements OnApplicationShutdown {
     if (todo.length === 0) return 0;
 
     const measured = await this.measurer.measure(
-      workspaceId,
+      organizationId,
       'public',
       todo.filter((k) => k.source !== 'MANUAL'),
     );
@@ -152,7 +152,7 @@ export class KrSnapshotCron implements OnApplicationShutdown {
         currentValue: true,
         objective: {
           select: {
-            workspaceId: true,
+            organizationId: true,
             status: true,
             project: { select: { deletedAt: true, archivedAt: true } },
           },
@@ -165,7 +165,7 @@ export class KrSnapshotCron implements OnApplicationShutdown {
 
     let value: number | null = kr.currentValue;
     if (kr.source !== 'MANUAL') {
-      const res = (await this.measurer.measure(kr.objective.workspaceId, 'public', [kr])).get(
+      const res = (await this.measurer.measure(kr.objective.organizationId, 'public', [kr])).get(
         kr.id,
       );
       value = res?.value ?? null;

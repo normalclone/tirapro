@@ -107,18 +107,18 @@ export class AiService {
 
   // ---------- NL → issues (preview) ----------
   async generateIssues(
-    workspaceId: string,
+    organizationId: string,
     userId: string,
     input: GenerateIssuesInput,
   ): Promise<AiGenerateIssuesResult> {
     const project = await this.prisma.project.findFirst({
-      where: { id: input.projectId, workspaceId, deletedAt: null },
+      where: { id: input.projectId, organizationId, deletedAt: null },
       select: { id: true, key: true, name: true },
     });
     if (!project) throw new NotFoundAppException('Dự án');
 
     const { data, reason } = await this.claude.extract<{ issues: AiGeneratedIssue[] }>({
-      ctx: { workspaceId, userId, feature: 'generate-issues' },
+      ctx: { organizationId, userId, feature: 'generate-issues' },
       model: this.claude.modelPrimary,
       system:
         'Bạn là trợ lý quản lý dự án Agile. Phân rã yêu cầu thành các công việc rõ ràng, khả thi. ' +
@@ -155,11 +155,11 @@ export class AiService {
 
   // ---------- Tóm tắt issue ----------
   async summarizeIssue(
-    workspaceId: string,
+    organizationId: string,
     userId: string,
     issueId: string,
   ): Promise<AiSummaryResult> {
-    const issue = await this.loadIssue(workspaceId, issueId);
+    const issue = await this.loadIssue(organizationId, issueId);
     const comments = await this.prisma.comment.findMany({
       where: { issueId: issue.id, deletedAt: null },
       orderBy: { createdAt: 'asc' },
@@ -179,7 +179,7 @@ export class AiService {
         .join('\n');
 
     const { data: out, reason } = await this.claude.complete({
-      ctx: { workspaceId, userId, feature: 'summarize' },
+      ctx: { organizationId, userId, feature: 'summarize' },
       model: this.claude.modelFast,
       system:
         'Tóm tắt công việc ngắn gọn bằng 3-5 gạch đầu dòng: bối cảnh, tình trạng hiện tại, ' +
@@ -202,14 +202,14 @@ export class AiService {
   }
 
   // ---------- Gợi ý ưu tiên / điểm ----------
-  async suggest(workspaceId: string, userId: string, issueId: string): Promise<AiSuggestResult> {
-    const issue = await this.loadIssue(workspaceId, issueId);
+  async suggest(organizationId: string, userId: string, issueId: string): Promise<AiSuggestResult> {
+    const issue = await this.loadIssue(organizationId, issueId);
     const issueCtx =
       `Công việc ${issue.key}: ${issue.summary}\nLoại: ${issue.type?.name ?? '—'}\n` +
       `Mô tả: ${stripText(issue.description) || '(trống)'}`;
     // Nguồn do MÁY CHỦ tính (full-text, theo quyền người xem) — độc lập với AI nên heuristic cũng có. Mô hình chỉ viết lời
     // giải thích; danh sách nguồn trả về luôn là `similar.sources`, không bao giờ lấy từ đầu ra của mô hình.
-    const similar = await this.similarSources(workspaceId, userId, issue);
+    const similar = await this.similarSources(organizationId, userId, issue);
     const sources = similar.sources;
     const similarCtx = similar.context;
 
@@ -218,7 +218,7 @@ export class AiService {
       difficulty?: string;
       rationale: string;
     }>({
-      ctx: { workspaceId, userId, feature: 'suggest' },
+      ctx: { organizationId, userId, feature: 'suggest' },
       model: this.claude.modelFast,
       system:
         'Bạn là trợ lý Agile. Dựa trên nội dung công việc, đề xuất mức ưu tiên (Highest..Lowest) và ' +
@@ -269,7 +269,7 @@ export class AiService {
    * `context`: văn bản các việc đó để đưa vào prompt (mã, tiêu đề, ưu tiên, điểm) — người gọi bọc trong `<issue>`.
    */
   private async similarSources(
-    workspaceId: string,
+    organizationId: string,
     viewerId: string,
     issue: { id: string; projectId: string; summary: string },
   ): Promise<{ sources: AiSource[]; context: string }> {
@@ -277,7 +277,7 @@ export class AiService {
     try {
       const ids = (
         await this.search.similarIssueIds(
-          workspaceId,
+          organizationId,
           issue.projectId,
           issue.summary,
           viewerId,
@@ -290,7 +290,7 @@ export class AiService {
       const rows = await this.prisma.issue.findMany({
         where: {
           id: { in: ids },
-          workspaceId,
+          organizationId,
           projectId: issue.projectId,
           deletedAt: null,
           ...TRIAGE_VISIBLE,
@@ -326,9 +326,9 @@ export class AiService {
     }
   }
 
-  private async loadIssue(workspaceId: string, issueId: string) {
+  private async loadIssue(organizationId: string, issueId: string) {
     const issue = await this.prisma.issue.findFirst({
-      where: { id: issueId, workspaceId, deletedAt: null },
+      where: { id: issueId, organizationId, deletedAt: null },
       include: { status: true, assignee: true, priority: true, type: true },
     });
     if (!issue) throw new NotFoundAppException('Công việc');

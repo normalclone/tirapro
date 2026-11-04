@@ -11,7 +11,7 @@ function setup(assignable: boolean, payload: Record<string, unknown> = {}) {
           name: 'Báo cáo tuần',
           projectId: 'p1',
           payload: { typeId: 't1', summary: 'Báo cáo', assigneeId: 'gone', ...payload },
-          project: { id: 'p1', workspaceId: 'w1', leadId: null },
+          project: { id: 'p1', organizationId: 'w1', leadId: null },
         }),
       ),
       update: vi.fn(() => Promise.resolve({})),
@@ -37,7 +37,7 @@ function setup(assignable: boolean, payload: Record<string, unknown> = {}) {
   return { service, issues, warn };
 }
 
-describe('AutomationService — tạo việc lặp lại với assignee đã rời workspace', () => {
+describe('AutomationService — tạo việc lặp lại với assignee đã rời organization', () => {
   it('assignee không còn là thành viên hoạt động => tạo KHÔNG gán + log warn, không ném lỗi', async () => {
     const { service, issues, warn } = setup(false);
     const res = await service.runNow('w1', 'r1', 'u1');
@@ -84,7 +84,7 @@ function setupArchived() {
   const archived = { id: 'p1', archivedAt: new Date() };
   const tpl = {
     id: 't1',
-    workspaceId: 'w1',
+    organizationId: 'w1',
     projectId: 'p1',
     name: 'Mẫu',
     description: null,
@@ -113,7 +113,7 @@ function setupArchived() {
       id: 'p1',
       key: 'P',
       name: 'P',
-      workspaceId: 'w1',
+      organizationId: 'w1',
       leadId: null,
       archivedAt: archived.archivedAt,
     },
@@ -172,7 +172,7 @@ describe('AutomationService — dự án lưu trữ là chỉ đọc', () => {
     const { service, prisma } = setupArchived();
     prisma.issueTemplate.findFirst.mockResolvedValueOnce({
       id: 't1',
-      workspaceId: 'w1',
+      organizationId: 'w1',
       projectId: null,
       name: 'Chung',
       description: null,
@@ -250,7 +250,7 @@ describe('AutomationService — danh sách mẫu/việc lặp không lộ dự �
     expect(access.visibleWhere).toHaveBeenCalledWith('u1', 'w1');
     expect(prisma.issueTemplate.findMany.mock.calls[0]![0]).toMatchObject({
       where: {
-        workspaceId: 'w1',
+        organizationId: 'w1',
         AND: [{ OR: [{ projectId: null }, { project: visibleToU1 }] }],
       },
     });
@@ -271,7 +271,7 @@ describe('AutomationService — danh sách mẫu/việc lặp không lộ dự �
     const { service, prisma } = listSetup(visibleToU1);
     await service.listRecurring('w1', undefined, 'u1');
     expect(prisma.recurringIssue.findMany.mock.calls[0]![0]).toMatchObject({
-      where: { project: { workspaceId: 'w1', deletedAt: null, ...visibleToU1 } },
+      where: { project: { organizationId: 'w1', deletedAt: null, ...visibleToU1 } },
     });
   });
 
@@ -279,7 +279,7 @@ describe('AutomationService — danh sách mẫu/việc lặp không lộ dự �
     const { service, prisma } = listSetup({});
     await service.listRecurring('w1', undefined, 'admin');
     expect(prisma.recurringIssue.findMany.mock.calls[0]![0]).toMatchObject({
-      where: { project: { workspaceId: 'w1', deletedAt: null } },
+      where: { project: { organizationId: 'w1', deletedAt: null } },
     });
   });
 });

@@ -21,7 +21,7 @@ export interface JqlCompileContext {
 
 /**
  * JQL có phụ thuộc người đang xem không: hàm `currentUser` (có/không ngoặc) ở bất kỳ trường nào, hoặc alias `me`
- * ở trường người (assignee/reporter) — những điều kiện này không có nghĩa khi đo cho cả workspace (cron lịch sử KR).
+ * ở trường người (assignee/reporter) — những điều kiện này không có nghĩa khi đo cho cả tổ chức (cron lịch sử KR).
  */
 export function jqlDependsOnViewer(node: JqlNode | null): boolean {
   const isViewerValue = (v: JqlValue, userField: boolean): boolean => {

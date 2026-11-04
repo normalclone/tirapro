@@ -13,7 +13,7 @@ import {
 import { PERMISSIONS } from '@tirapro/types';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { AuthUser } from '../../common/types/request';
-import { WorkspaceId } from '../../common/decorators/workspace-id.decorator';
+import { OrganizationId } from '../../common/decorators/organization-id.decorator';
 import { ProjectRef } from '../../common/decorators/project-ref.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
@@ -27,8 +27,8 @@ export class SprintsController {
   @Permissions(PERMISSIONS.PROJECT_VIEW)
   @ProjectRef('query', 'projectId')
   @Get()
-  async list(@WorkspaceId() workspaceId: string, @Query('projectId') projectId: string) {
-    return this.sprints.listForProject(workspaceId, projectId);
+  async list(@OrganizationId() organizationId: string, @Query('projectId') projectId: string) {
+    return this.sprints.listForProject(organizationId, projectId);
   }
 
   @Permissions(PERMISSIONS.SPRINT_MANAGE)
@@ -37,21 +37,21 @@ export class SprintsController {
   @ProjectRef('body', 'projectId')
   @Post()
   async create(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @Body(new ZodValidationPipe(createSprintSchema)) dto: CreateSprintInput,
   ) {
-    return this.sprints.create(workspaceId, dto.projectId, dto);
+    return this.sprints.create(organizationId, dto.projectId, dto);
   }
 
   @Permissions(PERMISSIONS.SPRINT_MANAGE)
   @ProjectRef('sprint', 'id')
   @Post(':id/start')
   async start(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @Param('id') id: string,
     @Body(new ZodValidationPipe(startSprintSchema)) dto: StartSprintInput,
   ) {
-    return this.sprints.start(workspaceId, id, dto);
+    return this.sprints.start(organizationId, id, dto);
   }
 
   /** Hoàn thành sprint; body (tuỳ chọn) chọn nơi chuyển việc chưa xong, mặc định về backlog. */
@@ -59,23 +59,23 @@ export class SprintsController {
   @ProjectRef('sprint', 'id')
   @Post(':id/complete')
   async complete(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
     @Body(new ZodValidationPipe(completeSprintSchema)) dto: CompleteSprintInput,
   ) {
-    return this.sprints.complete(workspaceId, id, user.id, dto);
+    return this.sprints.complete(organizationId, id, user.id, dto);
   }
 
   @Permissions(PERMISSIONS.SPRINT_MANAGE)
   @ProjectRef('sprint', 'id')
   @Patch(':id')
   async update(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @Param('id') id: string,
     @Body(new ZodValidationPipe(updateSprintSchema)) dto: UpdateSprintInput,
   ) {
-    return this.sprints.update(workspaceId, id, dto);
+    return this.sprints.update(organizationId, id, dto);
   }
 
   /** Chỉ xoá được sprint FUTURE; việc trong sprint về backlog. */
@@ -83,10 +83,10 @@ export class SprintsController {
   @ProjectRef('sprint', 'id')
   @Delete(':id')
   async remove(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
   ) {
-    return this.sprints.remove(workspaceId, id, user.id);
+    return this.sprints.remove(organizationId, id, user.id);
   }
 }

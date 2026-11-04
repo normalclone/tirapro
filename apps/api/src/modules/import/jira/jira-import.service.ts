@@ -83,14 +83,14 @@ interface Catalog {
 
 /** Tất cả những gì `execute` cần — dựng sau khi mọi kiểm tra đồng bộ đã qua. */
 interface RunContext {
-  workspaceId: string;
+  organizationId: string;
   userId: string;
   jobId: string;
   analyzeId: string;
   parsed: JiraParseResult;
   input: JiraImportRunInput;
   catalog: Catalog;
-  /** Project có sẵn (đã kiểm tra thuộc workspace); undefined khi tạo project mới. */
+  /** Project có sẵn (đã kiểm tra thuộc tổ chức); undefined khi tạo project mới. */
   existingProject?: { id: string; key: string; defaultWorkflowId: string | null };
 }
 
@@ -106,7 +106,7 @@ interface Plan {
   comments: number;
 }
 
-/** Việc đã có mã này trong workspace (kể cả đã xoá mềm — unique `(workspaceId, key)` vẫn giữ mã). */
+/** Việc đã có mã này trong tổ chức (kể cả đã xoá mềm — unique `(organizationId, key)` vẫn giữ mã). */
 interface ExistingKey {
   id: string;
   key: string;
@@ -119,7 +119,7 @@ interface ExistingKey {
 interface KeyPlan {
   /** Dòng → mã Jira đã chuẩn hoá, dùng làm `Issue.key`. */
   fixed: Map<JiraIssueRow, string>;
-  /** Dòng bị bỏ qua vì mã trùng (đã có trong workspace, hoặc lặp trong tệp — `existing` rỗng). */
+  /** Dòng bị bỏ qua vì mã trùng (đã có trong tổ chức, hoặc lặp trong tệp — `existing` rỗng). */
   skip: Map<JiraIssueRow, { message: string; existing?: ExistingKey }>;
   /** Dòng có mã sai dạng → vẫn tạo bằng mã Tirapro tự sinh. */
   invalid: Map<JiraIssueRow, string>;
@@ -132,7 +132,7 @@ const KEY_LOOKUP_CHUNK = 5000;
 const DRY_RUN_KEY_WARNINGS = 20;
 
 interface AnalyzeMeta {
-  workspaceId: string;
+  organizationId: string;
   userId: string;
 }
 
@@ -213,7 +213,7 @@ export class JiraImportService implements OnApplicationBootstrap {
 
   /** Lưu tệp, parse và trả tóm tắt để dựng bảng mapping. */
   async analyze(
-    workspaceId: string,
+    organizationId: string,
     userId: string,
     file: Express.Multer.File | undefined,
   ): Promise<JiraAnalyzeResult> {
@@ -246,7 +246,7 @@ export class JiraImportService implements OnApplicationBootstrap {
     await putOrThrowBusiness(this.logger, this.storage, this.key(analyzeId, 'csv'), file.buffer, {
       contentType: 'text/csv',
     });
-    const meta: AnalyzeMeta = { workspaceId, userId };
+    const meta: AnalyzeMeta = { organizationId, userId };
     await putOrThrowBusiness(
       this.logger,
       this.storage,
@@ -259,25 +259,25 @@ export class JiraImportService implements OnApplicationBootstrap {
   }
 
   /** Giá trị Tirapro để chọn trong bảng mapping (bước 2). */
-  async targets(workspaceId: string, projectId?: string): Promise<JiraImportTargets> {
+  async targets(organizationId: string, projectId?: string): Promise<JiraImportTargets> {
     const [projects, issueTypes, priorities, members] = await Promise.all([
       this.prisma.project.findMany({
-        where: { workspaceId, deletedAt: null, isArchived: false },
+        where: { organizationId, deletedAt: null, isArchived: false },
         orderBy: { name: 'asc' },
         select: { id: true, key: true, name: true },
       }),
       this.prisma.issueType.findMany({
-        where: { workspaceId },
+        where: { organizationId },
         orderBy: { hierarchyLevel: 'asc' },
         select: { id: true, name: true, isSubtask: true },
       }),
       this.prisma.priority.findMany({
-        where: { workspaceId },
+        where: { organizationId },
         orderBy: { rank: 'desc' },
         select: { id: true, name: true },
       }),
-      this.prisma.workspaceMembership.findMany({
-        where: { workspaceId },
+      this.prisma.organizationMembership.findMany({
+        where: { organizationId },
         select: { user: { select: { id: true, displayName: true, email: true } } },
       }),
     ]);
@@ -310,18 +310,18 @@ export class JiraImportService implements OnApplicationBootstrap {
    * `alreadyStarted: true` để client báo "đã chạy — đang theo dõi tiến trình hiện có".
    */
   async run(
-    workspaceId: string,
+    organizationId: string,
     userId: string,
     input: JiraImportRunInput,
   ): Promise<{ jobId: string; alreadyStarted?: true } | JiraDryRunResult> {
     // Thử lại sau khi phản hồi đầu bị mất (hoặc bấm lần hai): đã có job cho analyzeId này → trả lại đúng job đó,
     // kể cả khi tệp phân tích đã được dọn. Dry-run thì không có gì để xem trước nữa.
-    const prior = await findImportJobByAnalyzeId(this.prisma, workspaceId, input.analyzeId);
+    const prior = await findImportJobByAnalyzeId(this.prisma, organizationId, input.analyzeId);
     if (prior) {
       if (input.options.dryRun) throw new BusinessRuleException(ALREADY_RUN_MESSAGE);
       return { jobId: prior.id, alreadyStarted: true };
     }
-    const parsed = await this.load(workspaceId, input.analyzeId);
+    const parsed = await this.load(organizationId, input.analyzeId);
     const analysis = analyzeJira(parsed);
 
     const missing = findMissingMapping(analysis, input.mapping);
@@ -330,14 +330,14 @@ export class JiraImportService implements OnApplicationBootstrap {
     let existingProject: RunContext['existingProject'];
     if (input.projectId) {
       const p = await this.prisma.project.findFirst({
-        where: { id: input.projectId, workspaceId, deletedAt: null },
+        where: { id: input.projectId, organizationId, deletedAt: null },
         select: { id: true, key: true, defaultWorkflowId: true },
       });
       if (!p) throw new NotFoundAppException('Dự án');
       existingProject = p;
     } else if (input.newProject) {
       const dup = await this.prisma.project.findFirst({
-        where: { workspaceId, key: input.newProject.key, deletedAt: null },
+        where: { organizationId, key: input.newProject.key, deletedAt: null },
         select: { id: true },
       });
       if (dup)
@@ -346,7 +346,7 @@ export class JiraImportService implements OnApplicationBootstrap {
         );
     }
 
-    const catalog = await this.loadCatalog(workspaceId);
+    const catalog = await this.loadCatalog(organizationId);
     const statuses = existingProject
       ? await this.projectStatusPool(existingProject.id, existingProject.defaultWorkflowId)
       : [];
@@ -356,8 +356,8 @@ export class JiraImportService implements OnApplicationBootstrap {
 
     if (input.options.dryRun) {
       const keyPlan = input.options.keepJiraKey
-        ? // Phản hồi dry-run chỉ đến tay quản trị (jira/run = workspace:admin, thấy mọi dự án) nên nêu mã dự án đang giữ mã.
-          await this.planKeys(workspaceId, parsed.issues, { revealProjects: true })
+        ? // Phản hồi dry-run chỉ đến tay quản trị (jira/run = organization:admin, thấy mọi dự án) nên nêu mã dự án đang giữ mã.
+          await this.planKeys(organizationId, parsed.issues, { revealProjects: true })
         : NO_KEY_PLAN();
       const keyWarnings = this.keyWarnings(keyPlan);
       const assigneeNotes = this.dryRunAssignees(parsed.issues, input.mapping);
@@ -391,8 +391,8 @@ export class JiraImportService implements OnApplicationBootstrap {
     // bấm "Chạy" lần hai nhận lại CÙNG job thay vì tạo job + issue trùng.
     let job: { id: string };
     try {
-      const claim = await claimImportJob(this.prisma, workspaceId, input.analyzeId, {
-        workspaceId,
+      const claim = await claimImportJob(this.prisma, organizationId, input.analyzeId, {
+        organizationId,
         source: 'JIRA_CLOUD',
         status: 'RUNNING',
         createdById: userId,
@@ -415,7 +415,7 @@ export class JiraImportService implements OnApplicationBootstrap {
     }
 
     const ctx: RunContext = {
-      workspaceId,
+      organizationId,
       userId,
       jobId: job.id,
       analyzeId: input.analyzeId,
@@ -438,7 +438,7 @@ export class JiraImportService implements OnApplicationBootstrap {
 
   /** Chạy toàn bộ import. Không bao giờ ném: mọi lỗi được ghi vào ImportJob. */
   private async execute(ctx: RunContext): Promise<void> {
-    const { workspaceId, userId, jobId, parsed, input } = ctx;
+    const { organizationId, userId, jobId, parsed, input } = ctx;
     const opts = input.options;
     // Heartbeat nền: giữ `updatedAt` mới kể cả khi một bước (tạo project, một lô lớn) kéo dài, để
     // job đang chạy thật không bị node khác coi là kẹt.
@@ -454,7 +454,7 @@ export class JiraImportService implements OnApplicationBootstrap {
         workflowId = ctx.existingProject.defaultWorkflowId;
       } else {
         const np = input.newProject!;
-        const created = await this.projects.create(workspaceId, userId, {
+        const created = await this.projects.create(organizationId, userId, {
           key: np.key,
           name: np.name,
           type: 'SCRUM',
@@ -473,9 +473,13 @@ export class JiraImportService implements OnApplicationBootstrap {
       });
 
       // 2. Đổi mapping thành id thật (tạo mới loại/ưu tiên/trạng thái khi người dùng chọn "Tạo mới").
-      const typeIds = await this.resolveTypes(workspaceId, input.mapping.issueTypes, ctx.catalog);
+      const typeIds = await this.resolveTypes(
+        organizationId,
+        input.mapping.issueTypes,
+        ctx.catalog,
+      );
       const priorityIds = await this.resolvePriorities(
-        workspaceId,
+        organizationId,
         input.mapping.priorities,
         ctx.catalog,
       );
@@ -522,7 +526,7 @@ export class JiraImportService implements OnApplicationBootstrap {
       // Mã Jira gốc (L27): tra một lần trước khi ghi theo lô — dòng trùng bỏ qua, dòng sai dạng dùng mã Tirapro.
       const keyPlan = opts.keepJiraKey
         ? // Nhật ký job đọc được qua `import:run` (rộng hơn quản trị): không nêu mã dự án khác (có thể là dự án riêng tư).
-          await this.planKeys(workspaceId, parsed.issues, {
+          await this.planKeys(organizationId, parsed.issues, {
             revealProjects: false,
             targetProjectId: projectId,
           })
@@ -602,7 +606,7 @@ export class JiraImportService implements OnApplicationBootstrap {
                 ? sprintIds.get(row.sprints[row.sprints.length - 1] ?? '')
                 : undefined,
               fixedKey: keyPlan.fixed.get(row),
-              workspaceId,
+              organizationId,
               pendingEmail: row.assignee
                 ? pendingEmailFor(row.assignee, input.mapping.users, input.mapping.pendingEmails)
                 : undefined,
@@ -626,7 +630,7 @@ export class JiraImportService implements OnApplicationBootstrap {
         }
         if (skippedInLayer) await hooks.onChunk(skippedInLayer); // dòng bỏ qua vẫn tính vào tiến độ
         const written = await this.importService.createIssuesInChunks(
-          workspaceId,
+          organizationId,
           userId,
           items,
           labelCache,
@@ -652,7 +656,7 @@ export class JiraImportService implements OnApplicationBootstrap {
 
       // 5b. Báo người phụ trách bị bỏ gán (một dòng gộp, không mỗi việc một dòng).
       const unmatched = summarizeUnmatchedAssignees(assigneeTally.unmatched);
-      // L28: người đã nhớ email → ghi chú (KHÔNG phải cảnh báo): việc của họ sẽ tự gán khi họ được thêm vào workspace.
+      // L28: người đã nhớ email → ghi chú (KHÔNG phải cảnh báo): việc của họ sẽ tự gán khi họ được thêm vào organization.
       const remembered = summarizeRemembered(assigneeTally.remembered);
       // (không nêu email: result/errorLog đọc được qua `import:run`; wizard tự giữ email vừa nhập để hiển thị)
       if (remembered) errorLines.unshift(`[Ghi chú]: ${formatRemembered(remembered)}`);
@@ -726,7 +730,7 @@ export class JiraImportService implements OnApplicationBootstrap {
     sprintId?: string;
     /** Mã Jira gốc làm `Issue.key` (đã kiểm định dạng + trùng). */
     fixedKey?: string;
-    workspaceId: string;
+    organizationId: string;
     /** Email đã nhớ cho người phụ trách chưa ghép (L28) → ghi hàng chờ trong cùng transaction. */
     pendingEmail?: string;
     assigneeId?: string;
@@ -790,7 +794,7 @@ export class JiraImportService implements OnApplicationBootstrap {
         if (a.pendingEmail) {
           await tx.importPendingAssignee.create({
             data: {
-              workspaceId: a.workspaceId,
+              organizationId: a.organizationId,
               projectId: a.projectId,
               issueId: issue.id,
               email: a.pendingEmail,
@@ -840,7 +844,7 @@ export class JiraImportService implements OnApplicationBootstrap {
   // ---------------------------------------------------------------- mapping → id
 
   private async resolveTypes(
-    workspaceId: string,
+    organizationId: string,
     mapping: Record<string, string>,
     catalog: Catalog,
   ): Promise<Map<string, string>> {
@@ -854,12 +858,12 @@ export class JiraImportService implements OnApplicationBootstrap {
       }
       let id = byName.get(jiraName.toLowerCase());
       if (!id) {
-        // Loại Epic tạo mới phải thật sự là Epic của Tirapro (level 1; key EPIC nếu workspace chưa có loại key đó).
+        // Loại Epic tạo mới phải thật sự là Epic của Tirapro (level 1; key EPIC nếu tổ chức chưa có loại key đó).
         const isEpic = isEpicTypeName(jiraName);
         const hasEpicKey = catalog.types.some((t) => t.key === 'EPIC') || epicKeyTaken;
         const created = await this.prisma.issueType.create({
           data: {
-            workspaceId,
+            organizationId,
             name: jiraName,
             isSubtask: isSubtaskTypeName(jiraName),
             ...(isEpic
@@ -878,7 +882,7 @@ export class JiraImportService implements OnApplicationBootstrap {
   }
 
   private async resolvePriorities(
-    workspaceId: string,
+    organizationId: string,
     mapping: Record<string, string>,
     catalog: Catalog,
   ): Promise<Map<string, string>> {
@@ -892,7 +896,7 @@ export class JiraImportService implements OnApplicationBootstrap {
       let id = byName.get(jiraName.toLowerCase());
       if (!id) {
         const created = await this.prisma.priority.create({
-          data: { workspaceId, name: jiraName, rank: inferPriorityRank(jiraName) },
+          data: { organizationId, name: jiraName, rank: inferPriorityRank(jiraName) },
           select: { id: true },
         });
         id = created.id;
@@ -1139,23 +1143,29 @@ export class JiraImportService implements OnApplicationBootstrap {
 
   // ---------------------------------------------------------------- kiểm tra + kế hoạch
 
-  private async loadCatalog(workspaceId: string): Promise<Catalog> {
+  private async loadCatalog(organizationId: string): Promise<Catalog> {
     const [types, priorities, resolutions, members] = await Promise.all([
       this.prisma.issueType.findMany({
-        where: { workspaceId },
+        where: { organizationId },
         select: { id: true, name: true, key: true, isSubtask: true },
       }),
-      this.prisma.priority.findMany({ where: { workspaceId }, select: { id: true, name: true } }),
-      this.prisma.resolution.findMany({ where: { workspaceId }, select: { id: true, name: true } }),
-      this.prisma.workspaceMembership.findMany({
-        where: { workspaceId },
+      this.prisma.priority.findMany({
+        where: { organizationId },
+        select: { id: true, name: true },
+      }),
+      this.prisma.resolution.findMany({
+        where: { organizationId },
+        select: { id: true, name: true },
+      }),
+      this.prisma.organizationMembership.findMany({
+        where: { organizationId },
         select: { userId: true },
       }),
     ]);
     return { types, priorities, resolutions, memberIds: new Set(members.map((m) => m.userId)) };
   }
 
-  /** Mọi id được chọn phải thuộc workspace (loại/ưu tiên/người dùng) hoặc workflow của project (trạng thái). */
+  /** Mọi id được chọn phải thuộc tổ chức (loại/ưu tiên/người dùng) hoặc workflow của project (trạng thái). */
   private assertTargets(
     input: JiraImportRunInput,
     catalog: Catalog,
@@ -1232,8 +1242,8 @@ export class JiraImportService implements OnApplicationBootstrap {
     return `imports/${analyzeId}.${ext}`;
   }
 
-  /** Đọc + parse tệp đã analyze; kiểm tra thuộc workspace và chưa hết hạn. */
-  private async load(workspaceId: string, analyzeId: string): Promise<JiraParseResult> {
+  /** Đọc + parse tệp đã analyze; kiểm tra thuộc tổ chức và chưa hết hạn. */
+  private async load(organizationId: string, analyzeId: string): Promise<JiraParseResult> {
     if (!jiraAnalyzeIdSchema.safeParse(analyzeId).success)
       throw new BusinessRuleException(EXPIRED_MESSAGE);
     try {
@@ -1244,7 +1254,7 @@ export class JiraImportService implements OnApplicationBootstrap {
       const meta = JSON.parse(
         (await streamToBuffer(metaObj.stream)).toString('utf8'),
       ) as AnalyzeMeta;
-      if (meta.workspaceId !== workspaceId) throw new Error('khác tổ chức');
+      if (meta.organizationId !== organizationId) throw new Error('khác tổ chức');
       if (Date.now() - stat.lastModified.getTime() > ANALYZE_TTL_MS) {
         await this.removeFiles(analyzeId);
         throw new Error('hết hạn');
@@ -1330,11 +1340,11 @@ export class JiraImportService implements OnApplicationBootstrap {
   /**
    * Quyết định mã cho từng dòng khi giữ mã Jira (L27). Kiểm trùng bằng truy vấn trước + `Set` trong lượt, KHÔNG dựa
    * vào bắt P2002 trong transaction (Postgres huỷ cả transaction sau lỗi unique). Trùng = bỏ qua (idempotent, không
-   * ghi đè chỉnh sửa người dùng đã làm trên Tirapro): mã đang có trong workspace (mọi dự án, kể cả đã xoá mềm) hoặc
+   * ghi đè chỉnh sửa người dùng đã làm trên Tirapro): mã đang có trong tổ chức (mọi dự án, kể cả đã xoá mềm) hoặc
    * mã lặp lại trong chính tệp (dòng sau bị bỏ). Mã sai dạng `KEY-123` → không dùng làm mã, việc vẫn được tạo.
    */
   private async planKeys(
-    workspaceId: string,
+    organizationId: string,
     rows: JiraIssueRow[],
     scope: { revealProjects: boolean; targetProjectId?: string },
   ): Promise<KeyPlan> {
@@ -1355,8 +1365,8 @@ export class JiraImportService implements OnApplicationBootstrap {
     const existing = new Map<string, ExistingKey>();
     for (let i = 0; i < keys.length; i += KEY_LOOKUP_CHUNK) {
       const found = await this.prisma.issue.findMany({
-        // allow-deleted: việc đã xoá mềm vẫn giữ mã → vẫn trùng unique (workspaceId, key)
-        where: { workspaceId, key: { in: keys.slice(i, i + KEY_LOOKUP_CHUNK) } },
+        // allow-deleted: việc đã xoá mềm vẫn giữ mã → vẫn trùng unique (organizationId, key)
+        where: { organizationId, key: { in: keys.slice(i, i + KEY_LOOKUP_CHUNK) } },
         select: {
           id: true,
           key: true,
@@ -1416,7 +1426,7 @@ export class JiraImportService implements OnApplicationBootstrap {
 
   /**
    * Dry-run về người phụ trách: dòng cảnh báo gộp cho người sẽ bị bỏ gán (không khớp, không có email) và dòng ghi chú
-   * cho người đã nhớ email (sẽ tự gán khi họ được thêm vào workspace); kèm số việc của nhóm sau.
+   * cho người đã nhớ email (sẽ tự gán khi họ được thêm vào tổ chức); kèm số việc của nhóm sau.
    */
   private dryRunAssignees(
     rows: JiraIssueRow[],

@@ -22,7 +22,7 @@ export const AUDIT_ACTIONS = {
   ACCOUNT_REACTIVATED: 'account.reactivated',
   ACCOUNT_PASSWORD_RESET: 'account.password_reset',
   ACCOUNT_SESSIONS_REVOKED: 'account.sessions_revoked',
-  ACCOUNT_WORKSPACE_ADDED: 'account.workspace_added',
+  ACCOUNT_ORGANIZATION_ADDED: 'account.organization_added',
   INTEGRATION_CREATED: 'integration.created',
   INTEGRATION_DELETED: 'integration.deleted',
   INTEGRATION_CHANNEL_ADDED: 'integration.channel_added',
@@ -55,7 +55,7 @@ export const AUDIT_ACTION_LABEL: Record<AuditAction, string> = {
   'account.reactivated': 'Mở khoá tài khoản',
   'account.password_reset': 'Đặt lại mật khẩu',
   'account.sessions_revoked': 'Thu hồi phiên đăng nhập',
-  'account.workspace_added': 'Thêm tài khoản vào tổ chức',
+  'account.organization_added': 'Thêm tài khoản vào tổ chức',
   'integration.created': 'Tạo tích hợp',
   'integration.deleted': 'Xoá tích hợp',
   'integration.channel_added': 'Thêm kênh tích hợp',
@@ -77,5 +77,5 @@ export interface AuditLogDto {
   meta: Record<string, unknown>;
   createdAt: string;
   actor: { id: string; displayName: string; avatarUrl: string | null } | null;
-  workspace?: { id: string; name: string } | null;
+  organization?: { id: string; name: string } | null;
 }

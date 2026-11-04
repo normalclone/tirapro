@@ -33,7 +33,7 @@ function make(visibleIds: string[] | null = ['p1']) {
       ),
       findFirst: vi.fn(() => Promise.resolve({ id: 'p1' })),
     },
-    workspaceMembership: {
+    organizationMembership: {
       findMany: vi.fn((a: { where: { userId: { in: string[] } } }) =>
         Promise.resolve(a.where.userId.in.map((userId) => ({ userId }))),
       ),
@@ -50,7 +50,7 @@ function make(visibleIds: string[] | null = ['p1']) {
       update: vi.fn(() => Promise.resolve({})),
     },
     project: prisma.project,
-    workspaceMembership: prisma.workspaceMembership,
+    organizationMembership: prisma.organizationMembership,
     user: prisma.user,
     savedFilterProjectShare: { deleteMany: vi.fn(), createMany: vi.fn() },
     savedFilterUserShare: { deleteMany: vi.fn(), createMany: vi.fn() },
@@ -85,7 +85,7 @@ describe('SavedFiltersService — phạm vi xem', () => {
     expect(where).toContain(JSON.stringify(VISIBLE));
     // Chỉ MỘT điều kiện thành viên — nằm trong visibleWhere; không còn luật "chỉ thành viên" riêng cho bộ lọc
     expect(where.split('"memberships"').length - 1).toBe(1);
-    expect(where).not.toContain('WORKSPACE');
+    expect(where).not.toContain('ORGANIZATION');
   });
 
   it('run(): chạy JQL với người xem; bộ lọc không thấy → 404 "Bộ lọc", không chạy', async () => {
@@ -140,7 +140,7 @@ describe('SavedFiltersService — chia sẻ', () => {
         sharedProjectIds: ['hr'],
       }),
     ).rejects.toMatchObject({ status: 422, code: 'FILTER_SHARE_PROJECT_NOT_VISIBLE' });
-    prisma.workspaceMembership.findMany.mockResolvedValue([]);
+    prisma.organizationMembership.findMany.mockResolvedValue([]);
     await expect(
       service.create('w1', 'u1', {
         name: 'x',
@@ -166,7 +166,9 @@ describe('SavedFiltersService — chia sẻ', () => {
       sharedProjectIds: ['p1'],
     });
     expect(access.visibleWhere).toHaveBeenCalledWith('u1', 'w1');
-    expect(JSON.stringify(prisma.project.findMany.mock.calls[0])).toContain('"workspaceId":"w1"');
+    expect(JSON.stringify(prisma.project.findMany.mock.calls[0])).toContain(
+      '"organizationId":"w1"',
+    );
   });
 
   it('update(): người không phải chủ → 403, không ghi', async () => {

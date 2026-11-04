@@ -2,7 +2,7 @@ import { Controller, Get, Param, Post } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { PERMISSIONS } from '@tirapro/types';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import { WorkspaceId } from '../../common/decorators/workspace-id.decorator';
+import { OrganizationId } from '../../common/decorators/organization-id.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
 import type { AuthUser } from '../../common/types/request';
 import { IssuesService } from './issues.service';
@@ -19,18 +19,18 @@ export class TrashController {
 
   @Permissions(PERMISSIONS.ISSUE_DELETE)
   @Get()
-  list(@WorkspaceId() workspaceId: string, @Param('projectId') projectId: string) {
-    return this.trash.list(workspaceId, projectId);
+  list(@OrganizationId() organizationId: string, @Param('projectId') projectId: string) {
+    return this.trash.list(organizationId, projectId);
   }
 
   @Permissions(PERMISSIONS.ISSUE_DELETE)
   @Post(':issueId/restore')
   restore(
     @CurrentUser() user: AuthUser,
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @Param('projectId') projectId: string,
     @Param('issueId') issueId: string,
   ) {
-    return this.issues.restore(workspaceId, user.id, projectId, issueId);
+    return this.issues.restore(organizationId, user.id, projectId, issueId);
   }
 }

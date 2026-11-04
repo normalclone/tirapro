@@ -9,32 +9,32 @@ type ResolverDelegate = { findFirst(args: { where: object; select: object }): Pr
 
 const projectIdOnly = { projectId: true } as const;
 // Sprint/board/nhãn/... của dự án đã xoá mềm = không tồn tại (guard trả 404, không cho start/complete/setColumns...).
-const viaProject = (value: string, workspaceId: string) => ({
+const viaProject = (value: string, organizationId: string) => ({
   id: value,
-  project: { workspaceId, deletedAt: null },
+  project: { organizationId, deletedAt: null },
 });
 // Issue của dự án đã xoá mềm = không tồn tại (mọi route theo issue id → guard trả 404).
-const issueInLiveProject = (value: string, workspaceId: string) => ({
+const issueInLiveProject = (value: string, organizationId: string) => ({
   id: value,
-  workspaceId,
+  organizationId,
   project: { deletedAt: null },
 });
-// Điều kiện đầu issue: thuộc workspace và dự án chưa bị xoá mềm.
-const liveIssueEnd = (workspaceId: string) => ({ workspaceId, project: { deletedAt: null } });
-const inWorkspace = (value: string, workspaceId: string) => ({ id: value, workspaceId });
+// Điều kiện đầu issue: thuộc tổ chức và dự án chưa bị xoá mềm.
+const liveIssueEnd = (organizationId: string) => ({ organizationId, project: { deletedAt: null } });
+const inOrganization = (value: string, organizationId: string) => ({ id: value, organizationId });
 const ownProjectId = (row: { projectId: string | null }) => row.projectId;
 
 /**
- * Bảng tra: loại tài nguyên → model Prisma, điều kiện (luôn giới hạn theo workspace), cột select,
+ * Bảng tra: loại tài nguyên → model Prisma, điều kiện (luôn giới hạn theo tổ chức), cột select,
  * và cách lấy projectId từ hàng tìm được.
  */
 const RESOURCE_RESOLVERS: Record<
   ProjectResourceKind,
   {
     model: string;
-    where: (value: string, workspaceId: string) => object;
+    where: (value: string, organizationId: string) => object;
     select: object;
-    project: (row: never, workspaceId: string) => string | null;
+    project: (row: never, organizationId: string) => string | null;
   }
 > = {
   issue: {
@@ -59,90 +59,98 @@ const RESOURCE_RESOLVERS: Record<
     select: projectIdOnly,
     project: ownProjectId,
   },
-  // Tài nguyên cấp workspace, dự án là tuỳ chọn (null = áp quyền workspace).
-  raid: { model: 'raidItem', where: inWorkspace, select: projectIdOnly, project: ownProjectId },
+  // Tài nguyên cấp tổ chức, dự án là tuỳ chọn (null = áp quyền tổ chức).
+  raid: { model: 'raidItem', where: inOrganization, select: projectIdOnly, project: ownProjectId },
   // Mục tiêu và chính sách thời gian xử lý luôn thuộc một dự án (projectId bắt buộc ở DB).
   objective: {
     model: 'objective',
-    where: inWorkspace,
+    where: inOrganization,
     select: projectIdOnly,
     project: ownProjectId,
   },
   slaPolicy: {
     model: 'slaPolicy',
-    where: inWorkspace,
+    where: inOrganization,
     select: projectIdOnly,
     project: ownProjectId,
   },
   automationTemplate: {
     model: 'issueTemplate',
-    where: inWorkspace,
+    where: inOrganization,
     select: projectIdOnly,
     project: ownProjectId,
   },
   automationRule: {
     model: 'automationRule',
-    where: inWorkspace,
+    where: inOrganization,
     select: projectIdOnly,
     project: ownProjectId,
   },
   // Worklog đi qua issue cha.
   worklog: {
     model: 'workLog',
-    where: (value, workspaceId) => ({ id: value, issue: liveIssueEnd(workspaceId) }),
+    where: (value, organizationId) => ({ id: value, issue: liveIssueEnd(organizationId) }),
     select: { issue: { select: projectIdOnly } },
     project: (row: { issue: { projectId: string } }) => row.issue.projectId,
   },
   customField: {
     model: 'customField',
-    where: inWorkspace,
+    where: inOrganization,
     select: projectIdOnly,
     project: ownProjectId,
   },
-  // Trang wiki: projectId null = tài liệu chung (áp quyền workspace).
+  // Trang wiki: projectId null = tài liệu chung (áp quyền tổ chức).
   wikiPage: {
     model: 'wikiPage',
     // Trang của dự án đã xoá mềm = không tồn tại (guard 404), như các resolver theo dự án khác.
-    where: (value, workspaceId) => ({
+    where: (value, organizationId) => ({
       id: value,
-      workspaceId,
+      organizationId,
       OR: [{ projectId: null }, { project: { deletedAt: null } }],
     }),
     select: projectIdOnly,
     project: ownProjectId,
   },
-  // Quy trình / trạng thái / bước chuyển: projectId null = quy trình chung của tổ chức (áp quyền workspace).
-  workflow: { model: 'workflow', where: inWorkspace, select: projectIdOnly, project: ownProjectId },
+  // Quy trình / trạng thái / bước chuyển: projectId null = quy trình chung của tổ chức (áp quyền tổ chức).
+  workflow: {
+    model: 'workflow',
+    where: inOrganization,
+    select: projectIdOnly,
+    project: ownProjectId,
+  },
   workflowStatus: {
     model: 'status',
-    where: (value, workspaceId) => ({ id: value, workflow: { workspaceId } }),
+    where: (value, organizationId) => ({ id: value, workflow: { organizationId } }),
     select: { workflow: { select: projectIdOnly } },
     project: (row: { workflow: { projectId: string | null } }) => row.workflow.projectId,
   },
   workflowTransition: {
     model: 'workflowTransition',
-    where: (value, workspaceId) => ({ id: value, workflow: { workspaceId } }),
+    where: (value, organizationId) => ({ id: value, workflow: { organizationId } }),
     select: { workflow: { select: projectIdOnly } },
     project: (row: { workflow: { projectId: string | null } }) => row.workflow.projectId,
   },
   repository: {
     model: 'codeRepository',
-    where: inWorkspace,
+    where: inOrganization,
     select: projectIdOnly,
     project: ownProjectId,
   },
   comment: {
     model: 'comment',
-    where: (value, workspaceId) => ({ id: value, issue: liveIssueEnd(workspaceId) }),
+    where: (value, organizationId) => ({ id: value, issue: liveIssueEnd(organizationId) }),
     select: { issue: { select: projectIdOnly } },
     project: (row: { issue: { projectId: string } }) => row.issue.projectId,
   },
   // Đính kèm gắn thẳng vào issue hoặc vào comment của issue; mồ côi (không issue) → không tìm thấy.
   attachment: {
     model: 'attachment',
-    where: (value, workspaceId) => ({
+    where: (value, organizationId) => ({
       id: value,
-      OR: [{ issue: liveIssueEnd(workspaceId) }, { comment: { issue: liveIssueEnd(workspaceId) } }],
+      OR: [
+        { issue: liveIssueEnd(organizationId) },
+        { comment: { issue: liveIssueEnd(organizationId) } },
+      ],
     }),
     select: {
       issue: { select: projectIdOnly },
@@ -153,37 +161,38 @@ const RESOURCE_RESOLVERS: Record<
       comment: { issue: { projectId: string } } | null;
     }) => row.issue?.projectId ?? row.comment?.issue.projectId ?? null,
   },
-  // Hai đầu có thể khác dự án: lấy đầu thuộc workspace hiện tại (ưu tiên đầu nguồn).
+  // Hai đầu có thể khác dự án: lấy đầu thuộc tổ chức hiện tại (ưu tiên đầu nguồn).
   // Link có một đầu ở dự án đã xoá mềm = không tồn tại (cả hai đầu đều phải ở dự án còn sống).
   issueLink: {
     model: 'issueLink',
-    where: (value, workspaceId) => ({
+    where: (value, organizationId) => ({
       id: value,
       source: { project: { deletedAt: null } },
       target: { project: { deletedAt: null } },
-      OR: [{ source: { workspaceId } }, { target: { workspaceId } }],
+      OR: [{ source: { organizationId } }, { target: { organizationId } }],
     }),
     select: {
-      source: { select: { projectId: true, workspaceId: true } },
-      target: { select: { projectId: true, workspaceId: true } },
+      source: { select: { projectId: true, organizationId: true } },
+      target: { select: { projectId: true, organizationId: true } },
     },
     project: (
-      row: { source: { projectId: string; workspaceId: string }; target: { projectId: string } },
-      workspaceId,
-    ) => (row.source.workspaceId === workspaceId ? row.source.projectId : row.target.projectId),
+      row: { source: { projectId: string; organizationId: string }; target: { projectId: string } },
+      organizationId,
+    ) =>
+      row.source.organizationId === organizationId ? row.source.projectId : row.target.projectId,
   },
   // Giá trị là KEY dự án (vd "ABC"), không phải id.
   projectKey: {
     model: 'project',
-    where: (value, workspaceId) => ({ key: value.toUpperCase(), workspaceId }),
+    where: (value, organizationId) => ({ key: value.toUpperCase(), organizationId }),
     select: { id: true },
     project: (row: { id: string }) => row.id,
   },
 };
 
 /**
- * Resolve quyền hiệu lực = union(vai trò workspace, vai trò project). Cache Redis 60s
- * (key embed workspaceId+userId+projectId). Redis down => tính trực tiếp từ Prisma.
+ * Resolve quyền hiệu lực = union(vai trò tổ chức, vai trò project). Cache Redis 60s
+ * (key embed organizationId+userId+projectId). Redis down => tính trực tiếp từ Prisma.
  */
 @Injectable()
 export class RbacService {
@@ -194,16 +203,16 @@ export class RbacService {
     private readonly redis: RedisService,
   ) {}
 
-  private cacheKey(userId: string, workspaceId: string, projectId?: string | null): string {
-    return `rbac:${workspaceId}:${userId}:${projectId ?? '-'}`;
+  private cacheKey(userId: string, organizationId: string, projectId?: string | null): string {
+    return `rbac:org:${organizationId}:${userId}:${projectId ?? '-'}`;
   }
 
   async getEffectivePermissions(
     userId: string,
-    workspaceId: string,
+    organizationId: string,
     projectId?: string | null,
   ): Promise<Set<string>> {
-    const key = this.cacheKey(userId, workspaceId, projectId);
+    const key = this.cacheKey(userId, organizationId, projectId);
     const client = this.redis.getClient();
     if (client && this.redis.isAvailable()) {
       try {
@@ -214,7 +223,7 @@ export class RbacService {
       }
     }
 
-    const perms = await this.compute(userId, workspaceId, projectId);
+    const perms = await this.compute(userId, organizationId, projectId);
     if (client && this.redis.isAvailable()) {
       // jittered TTL backstop chống thundering invalidation
       const ttl = this.TTL + Math.floor((userId.charCodeAt(0) || 0) % 20);
@@ -225,19 +234,19 @@ export class RbacService {
 
   private async compute(
     userId: string,
-    workspaceId: string,
+    organizationId: string,
     projectId?: string | null,
   ): Promise<Set<string>> {
     const roleIds: string[] = [];
-    // Dự án riêng tư mà người này không phải thành viên → không được leo thang qua vai trò mặc định của workspace.
+    // Dự án riêng tư mà người này không phải thành viên → không được leo thang qua vai trò mặc định của organization.
     let hiddenFromUser = false;
 
     // 1 thành viên có thể NHIỀU vai trò → union vai trò chính (roleId) + các vai trò phụ (join).
-    const wsMembership = await this.prisma.workspaceMembership.findUnique({
-      where: { workspaceId_userId: { workspaceId, userId } },
+    const wsMembership = await this.prisma.organizationMembership.findUnique({
+      where: { organizationId_userId: { organizationId, userId } },
       select: { roleId: true, roles: { select: { role: { select: { id: true, name: true } } } } },
     });
-    // Không còn là thành viên workspace → KHÔNG quyền nào, kể cả khi còn sót bản ghi ghi đè vai trò dự án
+    // Không còn là thành viên tổ chức → KHÔNG quyền nào, kể cả khi còn sót bản ghi ghi đè vai trò dự án
     // (người bị gỡ không được giữ quyền dự án qua API key hoặc token cũ).
     if (!wsMembership) return new Set();
     const wsRoleNames: string[] = [];
@@ -246,9 +255,9 @@ export class RbacService {
 
     if (projectId) {
       const projMembership = await this.prisma.projectMembership.findUnique({
-        // Giới hạn theo workspace: membership dự án của workspace khác không được tính.
+        // Giới hạn theo organization: membership dự án của tổ chức khác không được tính.
         // Cố ý KHÔNG lọc project.deletedAt: đây chỉ tính quyền hiệu lực; dự án xoá mềm đã bị guard (`viaProject`/`@ProjectRef`) trả 404 trước khi tới đây.
-        where: { projectId_userId: { projectId, userId }, project: { workspaceId } },
+        where: { projectId_userId: { projectId, userId }, project: { organizationId } },
         select: { roleId: true, roles: { select: { roleId: true } } },
       });
       if (projMembership) {
@@ -256,13 +265,13 @@ export class RbacService {
         roleIds.push(projMembership.roleId, ...projMembership.roles.map((r) => r.roleId));
       } else {
         const proj = await this.prisma.project.findFirst({
-          where: { id: projectId, workspaceId, deletedAt: null },
+          where: { id: projectId, organizationId, deletedAt: null },
           select: { isPrivate: true },
         });
         hiddenFromUser = proj?.isPrivate === true;
-        // Không ghi đè → áp vai trò dự án MẶC ĐỊNH suy từ vai trò workspace
-        // (thành viên tính trên workspace; mọi dự án dùng chung tập người dùng).
-        roleIds.push(...(await this.defaultProjectRoleIds(workspaceId, wsRoleNames)));
+        // Không ghi đè → áp vai trò dự án MẶC ĐỊNH suy từ vai trò tổ chức
+        // (thành viên tính trên tổ chức; mọi dự án dùng chung tập người dùng).
+        roleIds.push(...(await this.defaultProjectRoleIds(organizationId, wsRoleNames)));
       }
     }
 
@@ -274,18 +283,18 @@ export class RbacService {
     });
     const perms = new Set(rows.map((r) => r.permission.key));
     // Phòng thủ: service tự gọi getEffectivePermissions(…, projectId) không được thấy quyền ở dự án riêng tư
-    // của người ngoài (guard đã 404 ở route; đây là lớp thứ hai). Quản trị workspace vẫn giữ quyền.
-    if (hiddenFromUser && !perms.has('workspace:admin')) return new Set();
+    // của người ngoài (guard đã 404 ở route; đây là lớp thứ hai). Quản trị tổ chức vẫn giữ quyền.
+    if (hiddenFromUser && !perms.has('organization:admin')) return new Set();
     return perms;
   }
 
   /**
-   * Vai trò DỰ ÁN mặc định (id) suy từ các vai trò WORKSPACE của user.
+   * Vai trò DỰ ÁN mặc định (id) suy từ các vai trò ORGANIZATION của user.
    * Map ở `DEFAULT_PROJECT_ROLE_BY_WS_ROLE` (@tirapro/types) — vai trò không có
    * trong map (vd vai trò tuỳ biến) thì không tự cấp quyền dự án.
    */
   private async defaultProjectRoleIds(
-    workspaceId: string,
+    organizationId: string,
     wsRoleNames: string[],
   ): Promise<string[]> {
     const mapped: string[] = [];
@@ -299,7 +308,7 @@ export class RbacService {
       where: {
         name: { in: wanted },
         scope: 'PROJECT',
-        OR: [{ workspaceId }, { workspaceId: null }],
+        OR: [{ organizationId }, { organizationId: null }],
       },
       select: { id: true },
     });
@@ -307,13 +316,13 @@ export class RbacService {
   }
 
   /**
-   * Tra DB để suy ra dự án THẬT của tài nguyên, chỉ khi tài nguyên thuộc workspace hiện tại.
-   * - `null`: không tìm thấy (hoặc thuộc workspace khác) → guard trả NotFound.
-   * - `{ projectId: null }`: tài nguyên cấp workspace (raid/mẫu/custom field/repo không gắn dự án)
-   *   → chỉ tính quyền cấp workspace.
+   * Tra DB để suy ra dự án THẬT của tài nguyên, chỉ khi tài nguyên thuộc tổ chức hiện tại.
+   * - `null`: không tìm thấy (hoặc thuộc tổ chức khác) → guard trả NotFound.
+   * - `{ projectId: null }`: tài nguyên cấp tổ chức (raid/mẫu/custom field/repo không gắn dự án)
+   *   → chỉ tính quyền cấp organization.
    */
   async resolveProjectId(
-    workspaceId: string,
+    organizationId: string,
     kind: ProjectResourceKind,
     value: string,
   ): Promise<{ projectId: string | null } | null> {
@@ -322,15 +331,18 @@ export class RbacService {
       r.model
     ];
     if (!delegate) throw new Error(`Loại tài nguyên không hỗ trợ: ${String(kind)}`);
-    const row = await delegate.findFirst({ where: r.where(value, workspaceId), select: r.select });
+    const row = await delegate.findFirst({
+      where: r.where(value, organizationId),
+      select: r.select,
+    });
     if (!row) return null;
-    return { projectId: r.project(row as never, workspaceId) };
+    return { projectId: r.project(row as never, organizationId) };
   }
 
-  /** Dự án phải thuộc workspace hiện tại, nếu không coi như không tồn tại. */
-  async assertProjectInWorkspace(projectId: string, workspaceId: string): Promise<void> {
+  /** Dự án phải thuộc tổ chức hiện tại, nếu không coi như không tồn tại. */
+  async assertProjectInOrganization(projectId: string, organizationId: string): Promise<void> {
     const project = await this.prisma.project.findFirst({
-      where: { id: projectId, workspaceId, deletedAt: null },
+      where: { id: projectId, organizationId, deletedAt: null },
       select: { id: true },
     });
     if (!project) throw new NotFoundAppException('Dự án');
@@ -339,15 +351,15 @@ export class RbacService {
   /**
    * MỘT định nghĩa duy nhất của "thấy dự án" (ProjectAccessService.visibleWhere/visibleProjectIds/canSee/assertCanSee và
    * guard đều đi qua đây):
-   * - `all`: admin hệ thống hoặc `workspace:admin` — thấy mọi dự án.
-   * - `standard`: vai cấp workspace có `project:view` — thấy dự án công khai + dự án riêng tư mình là thành viên.
-   * - `memberOnly`: vai cấp workspace KHÔNG có `project:view` (vai tuỳ biến) — chỉ dự án mình có vai trò (thành viên),
+   * - `all`: admin hệ thống hoặc `organization:admin` — thấy mọi dự án.
+   * - `standard`: vai cấp tổ chức có `project:view` — thấy dự án công khai + dự án riêng tư mình là thành viên.
+   * - `memberOnly`: vai cấp tổ chức KHÔNG có `project:view` (vai tuỳ biến) — chỉ dự án mình có vai trò (thành viên),
    *   kể cả công khai.
    * `knownSystemAdmin`: đã biết người gọi có phải admin hệ thống không (guard biết) → bỏ một truy vấn user.
    */
   async projectVisibilityMode(
     userId: string,
-    workspaceId: string,
+    organizationId: string,
     knownSystemAdmin?: boolean,
   ): Promise<'all' | 'standard' | 'memberOnly'> {
     const isSystemAdmin =
@@ -359,64 +371,64 @@ export class RbacService {
         })
       )?.isSystemAdmin;
     if (isSystemAdmin) return 'all';
-    const perms = await this.getEffectivePermissions(userId, workspaceId);
-    if (perms.has('workspace:admin')) return 'all';
+    const perms = await this.getEffectivePermissions(userId, organizationId);
+    if (perms.has('organization:admin')) return 'all';
     return perms.has(PERMISSIONS.PROJECT_VIEW) ? 'standard' : 'memberOnly';
   }
 
   /**
    * Người gọi không thấy dự án (theo `projectVisibilityMode`) → `NotFoundAppException(notFoundLabel)`.
-   * Dự án không tồn tại / đã xoá / khác workspace → cũng 404 (trừ admin, thấy mọi thứ: `all` return sớm).
+   * Dự án không tồn tại / đã xoá / khác tổ chức → cũng 404 (trừ admin, thấy mọi thứ: `all` return sớm).
    * `notFoundLabel`: nhãn của thông điệp 404 — người gọi truyền đúng nhãn của đường "không tồn tại" cùng loại để
    * 404 của dự án ẩn giống hệt 404 của tài nguyên không có thật (không lộ sự tồn tại).
    */
   async assertProjectVisible(
     userId: string,
-    workspaceId: string,
+    organizationId: string,
     projectId: string,
     notFoundLabel = 'Dự án',
     knownSystemAdmin?: boolean,
   ): Promise<void> {
-    const mode = await this.projectVisibilityMode(userId, workspaceId, knownSystemAdmin);
+    const mode = await this.projectVisibilityMode(userId, organizationId, knownSystemAdmin);
     if (mode === 'all') return;
     const row = await this.prisma.project.findFirst({
-      where: { id: projectId, workspaceId, deletedAt: null },
+      where: { id: projectId, organizationId, deletedAt: null },
       select: {
         isPrivate: true,
         memberships: { where: { userId }, select: { id: true }, take: 1 },
       },
     });
-    // Không tồn tại / đã xoá / khác workspace: với người không phải admin coi như KHÔNG thấy (nhất quán visibleWhere, vốn lọc
-    // deletedAt/workspace). Guard đã 404 các ca này ở bước tra dự án trước đó nên không đổi hành vi HTTP.
+    // Không tồn tại / đã xoá / khác organization: với người không phải admin coi như KHÔNG thấy (nhất quán visibleWhere, vốn lọc
+    // deletedAt/organization). Guard đã 404 các ca này ở bước tra dự án trước đó nên không đổi hành vi HTTP.
     if (!row) throw new NotFoundAppException(notFoundLabel);
     if (row.memberships.length > 0) return;
     if (mode === 'memberOnly' || row.isPrivate) throw new NotFoundAppException(notFoundLabel);
   }
 
   /**
-   * P-C14: `userId` đang giữ `workspace:admin` trong workspace (hoặc là admin hệ thống)? `member:manage` KHÔNG đủ — chỉ
+   * P-C14: `userId` đang giữ `organization:admin` trong tổ chức (hoặc là admin hệ thống)? `member:manage` KHÔNG đủ — chỉ
    * người thoả điều này mới được cấp/gỡ quyền quản trị (qua vai trò thành viên hoặc bộ quyền của vai trò).
    */
-  async holdsWorkspaceAdmin(userId: string, workspaceId: string): Promise<boolean> {
+  async holdsOrganizationAdmin(userId: string, organizationId: string): Promise<boolean> {
     const u = await this.prisma.user.findUnique({
       where: { id: userId },
       select: { isSystemAdmin: true },
     });
     if (!u) return false;
     if (u.isSystemAdmin) return true;
-    return (await this.getEffectivePermissions(userId, workspaceId)).has(
-      PERMISSIONS.WORKSPACE_ADMIN,
+    return (await this.getEffectivePermissions(userId, organizationId)).has(
+      PERMISSIONS.ORGANIZATION_ADMIN,
     );
   }
 
-  /** Trong `roleIds`, những vai trò nào mang quyền `workspace:admin` (hệ thống hay tuỳ biến). */
+  /** Trong `roleIds`, những vai trò nào mang quyền `organization:admin` (hệ thống hay tuỳ biến). */
   async adminRoleIds(roleIds: readonly string[]): Promise<Set<string>> {
     const ids = [...new Set(roleIds)];
     if (ids.length === 0) return new Set();
     const rows = await this.prisma.role.findMany({
       where: {
         id: { in: ids },
-        permissions: { some: { permission: { key: PERMISSIONS.WORKSPACE_ADMIN } } },
+        permissions: { some: { permission: { key: PERMISSIONS.ORGANIZATION_ADMIN } } },
       },
       select: { id: true },
     });
@@ -424,13 +436,13 @@ export class RbacService {
   }
 
   /** Invalidate cache khi đổi vai trò của 1 user (gọi từ MembersModule). */
-  async invalidate(userId: string, workspaceId: string): Promise<void> {
-    await this.unlinkByPattern(`rbac:${workspaceId}:${userId}:*`);
+  async invalidate(userId: string, organizationId: string): Promise<void> {
+    await this.unlinkByPattern(`rbac:org:${organizationId}:${userId}:*`);
   }
 
-  /** Invalidate toàn bộ cache của workspace (khi sửa quyền của 1 role → ảnh hưởng nhiều user). */
-  async invalidateWorkspace(workspaceId: string): Promise<void> {
-    await this.unlinkByPattern(`rbac:${workspaceId}:*`);
+  /** Invalidate toàn bộ cache của tổ chức (khi sửa quyền của 1 role → ảnh hưởng nhiều user). */
+  async invalidateOrganization(organizationId: string): Promise<void> {
+    await this.unlinkByPattern(`rbac:org:${organizationId}:*`);
   }
 
   /** Xoá key theo pattern bằng SCAN + UNLINK (không dùng KEYS vì chặn Redis). Redis down → bỏ qua. */

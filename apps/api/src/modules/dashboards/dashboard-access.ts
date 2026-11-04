@@ -1,6 +1,6 @@
 import type { Prisma } from '@prisma/client';
 
-/** Người xem đã được phân giải: `isAdmin` = admin hệ thống hoặc `workspace:admin` (xem `ProjectAccessService.seesAll`). */
+/** Người xem đã được phân giải: `isAdmin` = admin hệ thống hoặc `organization:admin` (xem `ProjectAccessService.seesAll`). */
 export interface DashboardViewer {
   userId: string;
   isAdmin: boolean;
@@ -8,9 +8,9 @@ export interface DashboardViewer {
 
 /**
  * MỘT hàm duy nhất quyết định người xem THẤY dashboard nào (list/get/duplicate/update/delete đều đi qua đây).
- * Thấy = chưa xoá, cùng workspace VÀ một trong:
+ * Thấy = chưa xoá, cùng tổ chức VÀ một trong:
  * - của tôi (mọi mức — chủ vẫn thấy bản của mình để chuyển mức/xoá dù đã mất quyền xem dự án/nhóm);
- * - GLOBAL: mọi thành viên workspace;
+ * - GLOBAL: mọi thành viên tổ chức;
  * - PROJECT: dự án còn sống và người xem thấy được (`projectVisible` = `ProjectAccessService.visibleWhere` — dự án riêng
  *   tư chỉ thành viên/admin; đánh giá lúc đọc nên khi dự án thành riêng tư hoặc người xem bị gỡ, dashboard tự biến mất);
  * - TEAM: nhóm còn sống mà người xem là trưởng nhóm hoặc thành viên.
@@ -18,7 +18,7 @@ export interface DashboardViewer {
  */
 export function dashboardVisibleWhere(
   viewer: DashboardViewer,
-  workspaceId: string,
+  organizationId: string,
   projectVisible: Prisma.ProjectWhereInput,
 ): Prisma.DashboardWhereInput {
   const { userId, isAdmin } = viewer;
@@ -26,7 +26,7 @@ export function dashboardVisibleWhere(
     ? { deletedAt: null }
     : { deletedAt: null, OR: [{ leadId: userId }, { members: { some: { userId } } }] };
   return {
-    workspaceId,
+    organizationId,
     deletedAt: null,
     OR: [
       { ownerId: userId },
@@ -38,8 +38,8 @@ export function dashboardVisibleWhere(
 }
 
 /**
- * SỬA nội dung và ĐỔI mức chia sẻ: CHỈ chủ. Admin workspace, `project:admin`, trưởng nhóm không sửa dashboard của người
- * khác (họ muốn chỉnh thì nhân bản) — nên người khác không thể công bố bản của chủ ra cả workspace hay ẩn nó khỏi
+ * SỬA nội dung và ĐỔI mức chia sẻ: CHỈ chủ. Admin tổ chức, `project:admin`, trưởng nhóm không sửa dashboard của người
+ * khác (họ muốn chỉnh thì nhân bản) — nên người khác không thể công bố bản của chủ ra cả tổ chức hay ẩn nó khỏi
  * chính những người đang dùng.
  */
 export function canEditDashboard(viewer: DashboardViewer, dashboard: { ownerId: string }): boolean {
@@ -47,7 +47,7 @@ export function canEditDashboard(viewer: DashboardViewer, dashboard: { ownerId: 
 }
 
 /**
- * XOÁ: chủ; hoặc admin workspace với dashboard đã chia sẻ (GLOBAL/PROJECT/TEAM) — để kiểm duyệt. Admin không bao giờ
+ * XOÁ: chủ; hoặc admin tổ chức với dashboard đã chia sẻ (GLOBAL/PROJECT/TEAM) — để kiểm duyệt. Admin không bao giờ
  * xoá được PRIVATE của người khác (cũng không thấy được).
  */
 export function canDeleteDashboard(

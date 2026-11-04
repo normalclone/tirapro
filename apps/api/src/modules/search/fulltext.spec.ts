@@ -213,7 +213,7 @@ describe('FulltextSearcher.search', () => {
     expect(String(logger.warn.mock.calls[0]?.[0])).toContain('db:raw');
   });
 
-  it('fallback vẫn scope project/workspace và ném lại nếu chính câu fallback lỗi lạ', async () => {
+  it('fallback vẫn scope project/organization và ném lại nếu chính câu fallback lỗi lạ', async () => {
     const calls: unknown[][] = [];
     const prisma = {
       $queryRaw: vi.fn((...args: unknown[]) => {

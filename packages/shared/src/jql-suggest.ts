@@ -1,13 +1,13 @@
 /**
  * Gợi ý tự hoàn thành JQL (lõi thuần, dùng chung web/api): với câu đang gõ + vị trí con trỏ, trả về nên chèn gì
- * (tên trường → toán tử hợp lệ → giá trị thật của workspace → AND/OR/ORDER BY). Không dùng parser vì câu đang gõ
+ * (tên trường → toán tử hợp lệ → giá trị thật của tổ chức → AND/OR/ORDER BY). Không dùng parser vì câu đang gõ
  * chưa hoàn chỉnh — quét token thủ công theo máy trạng thái nhỏ. Danh sách trường/kiểu đọc từ `JQL_FIELDS`,
  * hàm ngày đọc từ `DATE_FUNCTIONS` nên trường mới tự có mặt (chỉ cần thêm mô tả vào `JQL_FIELD_HINTS`).
  */
 import { foldForMatch } from './did-you-mean';
 import { JQL_FIELDS, type JqlFieldName } from './jql';
 
-/** Danh mục giá trị thật của workspace (tên, đúng như JQL so khớp). */
+/** Danh mục giá trị thật của tổ chức (tên, đúng như JQL so khớp). */
 export interface JqlCatalog {
   statuses: string[];
   types: string[];

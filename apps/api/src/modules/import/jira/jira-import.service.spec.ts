@@ -37,7 +37,7 @@ type ExistingIssue = {
 function jobStore() {
   const jobs: {
     id: string;
-    workspaceId: string;
+    organizationId: string;
     source: string;
     config: Record<string, unknown>;
   }[] = [];
@@ -55,7 +55,7 @@ function jobStore() {
     create: vi.fn((args: { data: Record<string, unknown> }) => {
       jobs.push({
         id: 'job1',
-        workspaceId: String(args.data.workspaceId),
+        organizationId: String(args.data.organizationId),
         source: String(args.data.source),
         config: args.data.config as Record<string, unknown>,
       });
@@ -63,12 +63,16 @@ function jobStore() {
     }),
     findFirst: vi.fn(
       (args: {
-        where: { workspaceId: string; source: string; config: { path: string[]; equals: string } };
+        where: {
+          organizationId: string;
+          source: string;
+          config: { path: string[]; equals: string };
+        };
       }) =>
         Promise.resolve(
           jobs.find(
             (j) =>
-              j.workspaceId === args.where.workspaceId &&
+              j.organizationId === args.where.organizationId &&
               j.source === args.where.source &&
               j.config[args.where.config.path[0] ?? ''] === args.where.config.equals,
           ) ?? null,
@@ -114,7 +118,7 @@ function setup(
     existingIssues?: ExistingIssue[];
     /** Quy trình mặc định của dự án MỚI (project.findUnique). */
     workflowDefault?: string;
-    /** Scheme workspace: loại việc → quy trình. */
+    /** Scheme organization: loại việc → quy trình. */
     scheme?: Array<{ issueTypeId: string; workflowId: string }>;
     /** Trạng thái thêm vào kết quả `status.findMany` (vd. của quy trình theo loại việc). */
     extraStatuses?: Array<Record<string, unknown>>;
@@ -143,15 +147,15 @@ function setup(
         ),
       ),
       findUnique: vi.fn(() =>
-        Promise.resolve({ workspaceId: 'w1', defaultWorkflowId: opts.workflowDefault ?? 'wf2' }),
+        Promise.resolve({ organizationId: 'w1', defaultWorkflowId: opts.workflowDefault ?? 'wf2' }),
       ),
     },
     // Resolver quy trình theo loại việc: mặc định không ghi đè, không scheme → rơi về quy trình mặc định của dự án.
     projectWorkflowOverride: { findMany: vi.fn(() => Promise.resolve([])) },
-    workspaceWorkflowScheme: { findMany: vi.fn(() => Promise.resolve(opts.scheme ?? [])) },
+    organizationWorkflowScheme: { findMany: vi.fn(() => Promise.resolve(opts.scheme ?? [])) },
     ...catalogModels(),
     resolution: { findMany: vi.fn(() => Promise.resolve([{ id: 'res-done', name: 'Done' }])) },
-    workspaceMembership: {
+    organizationMembership: {
       findMany: vi.fn(() => Promise.resolve([{ userId: 'u-an' }, { userId: 'u-binh' }])),
     },
     status: {
@@ -189,7 +193,7 @@ function setup(
     label: { findMany: vi.fn(() => Promise.resolve([])) },
     issue: {
       update: vi.fn(() => Promise.resolve({})),
-      // L27: tra mã đã có trong workspace (kể cả việc đã xoá mềm — `// allow-deleted`).
+      // L27: tra mã đã có trong tổ chức (kể cả việc đã xoá mềm — `// allow-deleted`).
       findMany: vi.fn((args: { where: { key: { in: string[] } } }) =>
         Promise.resolve(
           (opts.existingIssues ?? []).filter((i) => args.where.key.in.includes(i.key)),
@@ -324,7 +328,7 @@ describe('JiraImportService.targets', () => {
     Object.assign(prisma.project, {
       findMany: vi.fn(() => Promise.resolve([{ id: 'p1', key: 'PROJ', name: 'Dự án' }])),
     });
-    Object.assign(prisma.workspaceMembership, {
+    Object.assign(prisma.organizationMembership, {
       findMany: vi.fn(() =>
         Promise.resolve([
           { user: { id: 'u2', displayName: 'Bình', email: 'b@x.vn' } },
@@ -358,24 +362,24 @@ describe('JiraImportService.run — kiểm tra mapping', () => {
     expect(prisma.importJob.create).not.toHaveBeenCalled();
   });
 
-  it('id đích không thuộc workspace/workflow → lỗi', async () => {
+  it('id đích không thuộc organization/workflow → lỗi', async () => {
     const { service } = setup();
     const { analyzeId } = await service.analyze('w1', 'u1', file());
     const mapping = fullMapping();
     mapping.statuses['Done'] = 's-nơi-khác';
-    mapping.users['Trần Thị Bình'] = 'u-ngoài-workspace';
+    mapping.users['Trần Thị Bình'] = 'u-ngoài-organization';
     await expect(service.run('w1', 'u1', runInput(analyzeId, { mapping }))).rejects.toThrow(
       /s-nơi-khác|Done/,
     );
   });
 
-  it('analyzeId của workspace khác → coi như không tồn tại', async () => {
+  it('analyzeId của organization khác → coi như không tồn tại', async () => {
     const { service } = setup();
     const { analyzeId } = await service.analyze('w1', 'u1', file());
     await expect(service.run('w2', 'u2', runInput(analyzeId))).rejects.toThrow(/hết hạn|tải lại/);
   });
 
-  it('project đích không thuộc workspace → NotFound', async () => {
+  it('project đích không thuộc organization → NotFound', async () => {
     const { service, prisma } = setup();
     prisma.project.findFirst.mockResolvedValueOnce(null);
     const { analyzeId } = await service.analyze('w1', 'u1', file());
@@ -674,9 +678,9 @@ describe('JiraImportService.run — chạy thật', () => {
   });
 
   it.each([
-    ['workspace chưa có loại key EPIC', [], { hierarchyLevel: 1, key: 'EPIC' }],
+    ['organization chưa có loại key EPIC', [], { hierarchyLevel: 1, key: 'EPIC' }],
     [
-      'workspace đã có loại key EPIC (tên khác) => không nhân đôi key',
+      'organization đã có loại key EPIC (tên khác) => không nhân đôi key',
       [{ id: 't-old', name: 'Initiative', key: 'EPIC', isSubtask: false }],
       { hierarchyLevel: 1 },
     ],
@@ -837,7 +841,7 @@ describe('JiraImportService.run — chống chạy trùng theo analyzeId', () =>
     writeFileSync(join(importsDir(c.localDir), `${c.analyzeId}.csv`), CSV);
     writeFileSync(
       join(importsDir(c.localDir), `${c.analyzeId}.json`),
-      JSON.stringify({ workspaceId: 'w1', userId: 'u1' }),
+      JSON.stringify({ organizationId: 'w1', userId: 'u1' }),
     );
     await expect(c.service.run('w1', 'u1', c.input)).resolves.toEqual({
       ...first,
@@ -846,11 +850,11 @@ describe('JiraImportService.run — chống chạy trùng theo analyzeId', () =>
     expect(c.prisma.importJob.create).toHaveBeenCalledTimes(1);
   });
 
-  it('job của analyzeId này ở KHÔNG GIAN KHÁC không được trả cho workspace này', async () => {
+  it('job của analyzeId này ở KHÔNG GIAN KHÁC không được trả cho organization này', async () => {
     const c = await prepared();
     await c.service.run('w1', 'u1', c.input);
     await c.service.waitForJob('job1');
-    // workspace w2 dùng cùng analyzeId: tệp thuộc w1 (hoặc đã dọn) nên không được lộ jobId của w1
+    // tổ chức w2 dùng cùng analyzeId: tệp thuộc w1 (hoặc đã dọn) nên không được lộ jobId của w1
     await expect(c.service.run('w2', 'u2', c.input)).rejects.toThrow(/hết hạn|không tồn tại/);
   });
 
@@ -1184,7 +1188,7 @@ describe('JiraImportService — mã Jira thật làm Issue.key (L27)', () => {
     expect(c.prisma.issue.findMany).not.toHaveBeenCalled();
   });
 
-  it('đã có sẵn PROJ-1 trong workspace → bỏ qua dòng đó, cảnh báo trong errorLog, duplicateKeys = 1', async () => {
+  it('đã có sẵn PROJ-1 trong organization → bỏ qua dòng đó, cảnh báo trong errorLog, duplicateKeys = 1', async () => {
     const c = setup({ existingIssues: [existing('PROJ-1')] });
     await runAndWait(c);
     expect(createdKeys(c)).not.toContain('PROJ-1');
@@ -1194,11 +1198,11 @@ describe('JiraImportService — mã Jira thật làm Issue.key (L27)', () => {
     expect(done.errorLog as string).toContain('Dòng 1 (PROJ-1) [Cảnh báo]: Mã PROJ-1 đã tồn tại');
     expect(done.errorLog as string).toContain('bỏ qua');
     expect(done.status).toBe('COMPLETED');
-    // tra mã theo workspace, kể cả việc đã xoá mềm (unique vẫn giữ mã)
+    // tra mã theo tổ chức, kể cả việc đã xoá mềm (unique vẫn giữ mã)
     const where = (
       c.prisma.issue.findMany.mock.calls[0] as unknown as [{ where: Record<string, unknown> }]
     )[0].where;
-    expect(where).toMatchObject({ workspaceId: 'w1' });
+    expect(where).toMatchObject({ organizationId: 'w1' });
     expect(JSON.stringify(where)).not.toContain('deletedAt');
   });
 
@@ -1410,13 +1414,13 @@ describe('JiraImportService — nhớ email người phụ trách chưa có (L28
     return tx;
   };
 
-  it('người chưa ghép có email → ghi hàng chờ trong cùng transaction (email chữ thường, gắn việc/dự án/workspace)', async () => {
+  it('người chưa ghép có email → ghi hàng chờ trong cùng transaction (email chữ thường, gắn việc/dự án/organization)', async () => {
     const c = setup();
     await runAndWait(c, withEmail());
     const tx = await afterFor(c, 'Cấu hình CI/CD'); // việc của Lê Minh Cường
     expect(tx.importPendingAssignee.create).toHaveBeenCalledWith({
       data: {
-        workspaceId: 'w1',
+        organizationId: 'w1',
         projectId: 'p1',
         issueId: 'i1',
         email: 'cuong@x.com',

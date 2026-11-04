@@ -36,8 +36,8 @@ describe('wiki:manage — quyền cấp dự án (A8)', () => {
     expect(SYSTEM_ROLE_PERMISSIONS[role]).not.toContain(PERMISSIONS.WIKI_MANAGE);
   });
 
-  it('Workspace Admin vẫn có wiki:manage (mọi quyền trong catalog)', () => {
-    expect(SYSTEM_ROLE_PERMISSIONS[SYSTEM_ROLES.WORKSPACE_ADMIN]).toContain(
+  it('Organization Admin vẫn có wiki:manage (mọi quyền trong catalog)', () => {
+    expect(SYSTEM_ROLE_PERMISSIONS[SYSTEM_ROLES.ORGANIZATION_ADMIN]).toContain(
       PERMISSIONS.WIKI_MANAGE,
     );
   });

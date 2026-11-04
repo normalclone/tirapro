@@ -75,7 +75,7 @@ export class WipService {
     wip: WipColumn,
     ctx: {
       userId: string;
-      workspaceId: string;
+      organizationId: string;
       projectId: string;
       incoming: number;
       force?: boolean;
@@ -110,17 +110,17 @@ export class WipService {
           : `Cột "${wip.name}" đã đạt giới hạn ${wip.wipLimit} việc đang làm — hãy hoàn thành bớt hoặc chọn "Vẫn chuyển"`,
       );
     }
-    await this.assertCanForceWip(ctx.userId, ctx.workspaceId, ctx.projectId);
+    await this.assertCanForceWip(ctx.userId, ctx.organizationId, ctx.projectId);
   }
 
-  /** "Vẫn chuyển" qua giới hạn WIP chỉ dành cho quản trị dự án (project/workspace admin, system admin). */
+  /** "Vẫn chuyển" qua giới hạn WIP chỉ dành cho quản trị dự án (project/organization admin, system admin). */
   private async assertCanForceWip(
     userId: string,
-    workspaceId: string,
+    organizationId: string,
     projectId: string,
   ): Promise<void> {
-    const perms = await this.rbac.getEffectivePermissions(userId, workspaceId, projectId);
-    if (perms.has(PERMISSIONS.PROJECT_ADMIN) || perms.has(PERMISSIONS.WORKSPACE_ADMIN)) return;
+    const perms = await this.rbac.getEffectivePermissions(userId, organizationId, projectId);
+    if (perms.has(PERMISSIONS.PROJECT_ADMIN) || perms.has(PERMISSIONS.ORGANIZATION_ADMIN)) return;
     const u = await this.prisma.user.findUnique({
       where: { id: userId },
       select: { isSystemAdmin: true },

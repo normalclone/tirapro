@@ -3,7 +3,7 @@ import { ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { BusinessRuleException } from '../../common/exceptions/app.exception';
-import { WorkspaceId } from '../../common/decorators/workspace-id.decorator';
+import { OrganizationId } from '../../common/decorators/organization-id.decorator';
 import type { AuthUser } from '../../common/types/request';
 import { SearchService } from './search.service';
 import { Permissions } from '../../common/decorators/permissions.decorator';
@@ -26,7 +26,7 @@ export class SearchController {
   @ProjectRef('query', 'projectId')
   @Get()
   async run(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
     @Query('jql') jql?: string,
     @Query('q') q?: string,
@@ -48,7 +48,7 @@ export class SearchController {
         'Thiếu điều kiện tìm — dùng jql=… (cú pháp JQL) hoặc q=…&mode=text (tìm theo chữ)',
       );
     }
-    return this.search.search(workspaceId, user.id, {
+    return this.search.search(organizationId, user.id, {
       mode: effective,
       q,
       jql,
@@ -60,21 +60,21 @@ export class SearchController {
   }
 
   /** Danh mục giá trị cho bộ dựng truy vấn trực quan (type/status/priority/sprint/label/resolution). */
-  @Permissions(PERMISSIONS.WORKSPACE_VIEW)
+  @Permissions(PERMISSIONS.ORGANIZATION_VIEW)
   @Get('fields')
-  async fields(@WorkspaceId() workspaceId: string, @CurrentUser() user: AuthUser) {
-    return this.search.fields(workspaceId, user.id);
+  async fields(@OrganizationId() organizationId: string, @CurrentUser() user: AuthUser) {
+    return this.search.fields(organizationId, user.id);
   }
 
-  /** Kiểm cú pháp + giá trị JQL (có "ý bạn là …") cho ô JQL báo lỗi ngay khi gõ. Đọc danh mục workspace nên cần `workspace:view`. */
-  @Permissions(PERMISSIONS.WORKSPACE_VIEW)
+  /** Kiểm cú pháp + giá trị JQL (có "ý bạn là …") cho ô JQL báo lỗi ngay khi gõ. Đọc danh mục tổ chức nên cần `organization:view`. */
+  @Permissions(PERMISSIONS.ORGANIZATION_VIEW)
   @Post('validate')
   validate(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
     @Body(new ZodValidationPipe(validateJqlSchema)) body: ValidateJqlInput,
   ) {
-    return this.search.validate(workspaceId, user.id, body.jql ?? '');
+    return this.search.validate(organizationId, user.id, body.jql ?? '');
   }
 
   /**
@@ -89,10 +89,10 @@ export class SearchController {
   @Throttle({ default: { limit: 20, ttl: 60_000 } })
   @Post('relax-counts')
   relaxCounts(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
     @Body(new ZodValidationPipe(relaxCountsSchema)) body: RelaxCountsInput,
   ) {
-    return this.search.relaxCounts(workspaceId, user.id, body);
+    return this.search.relaxCounts(organizationId, user.id, body);
   }
 }

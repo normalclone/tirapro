@@ -21,7 +21,7 @@ export interface EnsureDefaultSchemeResult {
  */
 export async function ensureDefaultScheme(
   tx: Prisma.TransactionClient,
-  workspaceId: string,
+  organizationId: string,
 ): Promise<EnsureDefaultSchemeResult> {
   // 1. Ba quy trình mặc định (theo tên chính xác, chung của tổ chức).
   const createdWorkflows: string[] = [];
@@ -29,7 +29,7 @@ export async function ensureDefaultScheme(
   for (const key of DEFAULT_KEYS) {
     const def = DEFAULT_WORKFLOWS[key];
     const marker = `${DEFAULT_MARKER_PREFIX}${key}`;
-    const shared = { workspaceId, projectId: null, isTemplate: false } as const;
+    const shared = { organizationId, projectId: null, isTemplate: false } as const;
     const found =
       (await tx.workflow.findFirst({
         where: { ...shared, sourceTemplateId: marker },
@@ -49,7 +49,7 @@ export async function ensureDefaultScheme(
     }
     const wf = await tx.workflow.create({
       data: {
-        workspaceId,
+        organizationId,
         name: def.name,
         isTemplate: false,
         sourceTemplateId: marker,
@@ -80,19 +80,19 @@ export async function ensureDefaultScheme(
 
   // 2. Dòng cấu hình cho mọi loại việc — dòng đã có luôn thắng.
   const types = await tx.issueType.findMany({
-    where: { workspaceId },
+    where: { organizationId },
     select: { id: true, key: true, name: true },
   });
-  const existingScheme = await tx.workspaceWorkflowScheme.findMany({
-    where: { workspaceId },
+  const existingScheme = await tx.organizationWorkflowScheme.findMany({
+    where: { organizationId },
     select: { issueTypeId: true },
   });
   const have = new Set(existingScheme.map((r) => r.issueTypeId));
   const missing = types.filter((t) => !have.has(t.id));
   if (missing.length > 0)
-    await tx.workspaceWorkflowScheme.createMany({
+    await tx.organizationWorkflowScheme.createMany({
       data: missing.map((t) => ({
-        workspaceId,
+        organizationId,
         issueTypeId: t.id,
         workflowId: defaultIdByKey.get(DEFAULT_SCHEME[t.key ?? 'CUSTOM'])!,
       })),

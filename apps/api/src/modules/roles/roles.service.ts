@@ -25,7 +25,7 @@ const VALID_KEYS = new Set<string>(PERMISSION_CATALOG.map((p) => p.key));
 
 type RoleRow = {
   id: string;
-  workspaceId: string | null;
+  organizationId: string | null;
   name: string;
   scope: RoleScope;
   isSystem: boolean;
@@ -36,17 +36,19 @@ type RoleRow = {
   _count: { wsMembershipRoles: number; projMembershipRoles: number };
 };
 
-/** Đếm số lần gán vai trò — chỉ trong workspace đang xem (không đếm toàn hệ thống). */
-const memberCountSelect = (workspaceId: string) =>
+/** Đếm số lần gán vai trò — chỉ trong tổ chức đang xem (không đếm toàn hệ thống). */
+const memberCountSelect = (organizationId: string) =>
   ({
-    wsMembershipRoles: { where: { membership: { workspaceId } } },
-    projMembershipRoles: { where: { membership: { project: { workspaceId, deletedAt: null } } } },
+    wsMembershipRoles: { where: { membership: { organizationId } } },
+    projMembershipRoles: {
+      where: { membership: { project: { organizationId, deletedAt: null } } },
+    },
   }) as const;
 
-const roleSelect = (workspaceId: string) =>
+const roleSelect = (organizationId: string) =>
   ({
     id: true,
-    workspaceId: true,
+    organizationId: true,
     name: true,
     scope: true,
     isSystem: true,
@@ -54,12 +56,12 @@ const roleSelect = (workspaceId: string) =>
     color: true,
     updatedAt: true,
     permissions: { select: { permission: { select: { key: true } } } },
-    _count: { select: memberCountSelect(workspaceId) },
+    _count: { select: memberCountSelect(organizationId) },
   }) as const;
 
 /**
- * Danh mục vai trò: gồm role HỆ THỐNG (workspaceId=null, dùng chung, chỉ đọc) + role
- * CUSTOM của workspace (sửa/xoá được). Quyền sửa/xoá gated bởi MEMBER_MANAGE ở controller.
+ * Danh mục vai trò: gồm role HỆ THỐNG (organizationId=null, dùng chung, chỉ đọc) + role
+ * CUSTOM của tổ chức (sửa/xoá được). Quyền sửa/xoá gated bởi MEMBER_MANAGE ở controller.
  */
 @Injectable()
 export class RolesService {
@@ -71,23 +73,23 @@ export class RolesService {
     private readonly events?: EventEmitter2,
   ) {}
 
-  async list(workspaceId: string, scope?: RoleScope) {
+  async list(organizationId: string, scope?: RoleScope) {
     const roles = await this.prisma.role.findMany({
-      where: { OR: [{ workspaceId: null }, { workspaceId }], ...(scope ? { scope } : {}) },
+      where: { OR: [{ organizationId: null }, { organizationId }], ...(scope ? { scope } : {}) },
       orderBy: [{ isSystem: 'desc' }, { scope: 'asc' }, { name: 'asc' }],
-      select: roleSelect(workspaceId),
+      select: roleSelect(organizationId),
     });
     return roles.map((r) => this.toDto(r));
   }
 
-  async create(workspaceId: string, input: CreateRoleInput, actorId: string) {
-    // P-C14: vai trò (kể cả bản nhân bản) mang workspace:admin chỉ quản trị mới tạo được.
-    if (input.permissionKeys.includes(PERMISSIONS.WORKSPACE_ADMIN))
-      await this.assertCallerHoldsAdmin(workspaceId, actorId);
+  async create(organizationId: string, input: CreateRoleInput, actorId: string) {
+    // P-C14: vai trò (kể cả bản nhân bản) mang organization:admin chỉ quản trị mới tạo được.
+    if (input.permissionKeys.includes(PERMISSIONS.ORGANIZATION_ADMIN))
+      await this.assertCallerHoldsAdmin(organizationId, actorId);
     const permIds = await this.permIds(input.permissionKeys);
     const role = await this.prisma.role.create({
       data: {
-        workspaceId,
+        organizationId,
         name: input.name.trim(),
         scope: input.scope,
         isSystem: false,
@@ -95,10 +97,10 @@ export class RolesService {
         color: input.color ?? null,
         permissions: { create: permIds.map((permissionId) => ({ permissionId })) },
       },
-      select: roleSelect(workspaceId),
+      select: roleSelect(organizationId),
     });
     await this.audit.record({
-      workspaceId,
+      organizationId,
       actorId,
       action: AUDIT_ACTIONS.ROLE_CREATED,
       entityType: 'role',
@@ -109,9 +111,9 @@ export class RolesService {
     return this.toDto(role);
   }
 
-  async update(workspaceId: string, id: string, input: UpdateRoleInput, actorId: string) {
-    await this.assertCustom(workspaceId, id);
-    await this.assertMayEditAdminRole(workspaceId, id, input.permissionKeys, actorId);
+  async update(organizationId: string, id: string, input: UpdateRoleInput, actorId: string) {
+    await this.assertCustom(organizationId, id);
+    await this.assertMayEditAdminRole(organizationId, id, input.permissionKeys, actorId);
     const data: Record<string, unknown> = {};
     if (input.name !== undefined) data.name = input.name.trim();
     if (input.description !== undefined) data.description = input.description;
@@ -125,7 +127,7 @@ export class RolesService {
     const now = new Date();
     data.updatedAt = now;
     const removesAdmin =
-      permIds !== null && !(input.permissionKeys ?? []).includes(PERMISSIONS.WORKSPACE_ADMIN);
+      permIds !== null && !(input.permissionKeys ?? []).includes(PERMISSIONS.ORGANIZATION_ADMIN);
     // MỘT transaction cho cả: (1) so-sánh-và-đặt `updatedAt` (điều kiện tiên quyết của client), (2) xoá bộ quyền cũ + ghi
     // vai trò kèm bộ mới (đổi tên trùng/lỗi giữa chừng không làm vai trò mất sạch quyền), (3) chặn gỡ quản trị cuối cùng.
     const role = await this.prisma.$transaction(async (tx) => {
@@ -143,22 +145,22 @@ export class RolesService {
       const hadAdmin =
         removesAdmin &&
         (await tx.rolePermission.count({
-          where: { roleId: id, permission: { key: PERMISSIONS.WORKSPACE_ADMIN } },
+          where: { roleId: id, permission: { key: PERMISSIONS.ORGANIZATION_ADMIN } },
         })) > 0;
       if (permIds) await tx.rolePermission.deleteMany({ where: { roleId: id } });
       const updated = await tx.role.update({
         where: { id },
         data,
-        select: roleSelect(workspaceId),
+        select: roleSelect(organizationId),
       });
-      if (hadAdmin) await this.assertWorkspaceStillHasAdmin(tx, workspaceId);
+      if (hadAdmin) await this.assertOrganizationStillHasAdmin(tx, organizationId);
       return updated;
     });
-    await this.rbac.invalidateWorkspace(workspaceId); // quyền role đổi → xoá cache toàn workspace
-    // Bộ quyền đổi → ảnh hưởng mọi người giữ vai trò này: gateway rà lại socket cả workspace (rút người mất quyền xem).
-    if (input.permissionKeys) this.events?.emit(DOMAIN_EVENTS.ACCESS_CHANGED, { workspaceId });
+    await this.rbac.invalidateOrganization(organizationId); // quyền role đổi → xoá cache toàn tổ chức
+    // Bộ quyền đổi → ảnh hưởng mọi người giữ vai trò này: gateway rà lại socket cả tổ chức (rút người mất quyền xem).
+    if (input.permissionKeys) this.events?.emit(DOMAIN_EVENTS.ACCESS_CHANGED, { organizationId });
     await this.audit.record({
-      workspaceId,
+      organizationId,
       actorId,
       action: AUDIT_ACTIONS.ROLE_UPDATED,
       entityType: 'role',
@@ -175,8 +177,8 @@ export class RolesService {
     return this.toDto(role);
   }
 
-  async remove(workspaceId: string, id: string, actorId: string) {
-    const role = await this.assertCustom(workspaceId, id);
+  async remove(organizationId: string, id: string, actorId: string) {
+    const role = await this.assertCustom(organizationId, id);
     const count = role._count.wsMembershipRoles + role._count.projMembershipRoles;
     if (count > 0) {
       throw new ForbiddenAppException(
@@ -184,9 +186,9 @@ export class RolesService {
       );
     }
     await this.prisma.role.delete({ where: { id } });
-    await this.rbac.invalidateWorkspace(workspaceId);
+    await this.rbac.invalidateOrganization(organizationId);
     await this.audit.record({
-      workspaceId,
+      organizationId,
       actorId,
       action: AUDIT_ACTIONS.ROLE_DELETED,
       entityType: 'role',
@@ -198,54 +200,56 @@ export class RolesService {
   }
 
   // ── helpers ──
-  /** P-C14: người gọi phải đang giữ `workspace:admin` (hoặc là admin hệ thống) — `member:manage` một mình không đủ. */
-  private async assertCallerHoldsAdmin(workspaceId: string, actorId: string): Promise<void> {
-    if (!(await this.rbac.holdsWorkspaceAdmin(actorId, workspaceId)))
+  /** P-C14: người gọi phải đang giữ `organization:admin` (hoặc là admin hệ thống) — `member:manage` một mình không đủ. */
+  private async assertCallerHoldsAdmin(organizationId: string, actorId: string): Promise<void> {
+    if (!(await this.rbac.holdsOrganizationAdmin(actorId, organizationId)))
       throw new AdminGrantRequiresAdminException();
   }
 
   /**
-   * P-C14: sửa vai trò cần quản trị khi bộ quyền MỚI có `workspace:admin` (thêm) hoặc vai trò ĐANG có nó (gỡ, hoặc sửa
+   * P-C14: sửa vai trò cần quản trị khi bộ quyền MỚI có `organization:admin` (thêm) hoặc vai trò ĐANG có nó (gỡ, hoặc sửa
    * quyền khác/tên/mô tả — đổi quyền của mọi quản trị đang giữ vai trò này). Sửa vai trò không dính quản trị thì không đổi.
    */
   private async assertMayEditAdminRole(
-    workspaceId: string,
+    organizationId: string,
     roleId: string,
     newKeys: string[] | undefined,
     actorId: string,
   ): Promise<void> {
-    if (await this.rbac.holdsWorkspaceAdmin(actorId, workspaceId)) return;
-    const addsAdmin = newKeys?.includes(PERMISSIONS.WORKSPACE_ADMIN) ?? false;
+    if (await this.rbac.holdsOrganizationAdmin(actorId, organizationId)) return;
+    const addsAdmin = newKeys?.includes(PERMISSIONS.ORGANIZATION_ADMIN) ?? false;
     const hasAdmin =
       addsAdmin ||
       (await this.prisma.rolePermission.count({
-        where: { roleId, permission: { key: PERMISSIONS.WORKSPACE_ADMIN } },
+        where: { roleId, permission: { key: PERMISSIONS.ORGANIZATION_ADMIN } },
       })) > 0;
     if (hasAdmin) throw new AdminGrantRequiresAdminException();
   }
 
   /**
-   * Phản chiếu `MembersService.assertNotLastWorkspaceAdmin` cho đường SỬA VAI TRÒ: gỡ `workspace:admin` khỏi một vai trò
-   * không được làm workspace hết quản trị viên (còn hoạt động) — sau đó chỉ admin hệ thống mới khôi phục được.
+   * Phản chiếu `MembersService.assertNotLastOrganizationAdmin` cho đường SỬA VAI TRÒ: gỡ `organization:admin` khỏi một vai trò
+   * không được làm tổ chức hết quản trị viên (còn hoạt động) — sau đó chỉ admin hệ thống mới khôi phục được.
    */
-  private async assertWorkspaceStillHasAdmin(
-    tx: Pick<PrismaService, 'workspaceMembership'>,
-    workspaceId: string,
+  private async assertOrganizationStillHasAdmin(
+    tx: Pick<PrismaService, 'organizationMembership'>,
+    organizationId: string,
   ): Promise<void> {
-    const admins = await tx.workspaceMembership.count({
+    const admins = await tx.organizationMembership.count({
       where: {
-        workspaceId,
+        organizationId,
         user: { status: { not: 'DEACTIVATED' } },
         roles: {
           some: {
-            role: { permissions: { some: { permission: { key: PERMISSIONS.WORKSPACE_ADMIN } } } },
+            role: {
+              permissions: { some: { permission: { key: PERMISSIONS.ORGANIZATION_ADMIN } } },
+            },
           },
         },
       },
     });
     if (admins > 0) return;
     throw new ConflictAppException(
-      ERROR_CODES.LAST_WORKSPACE_ADMIN,
+      ERROR_CODES.LAST_ORGANIZATION_ADMIN,
       'Gỡ quyền này sẽ khiến tổ chức không còn quản trị viên — hãy cấp quyền quản trị cho vai trò khác trước',
     );
   }
@@ -254,7 +258,7 @@ export class RolesService {
     const meta = SYSTEM_ROLE_META[r.name as keyof typeof SYSTEM_ROLE_META];
     return {
       id: r.id,
-      workspaceId: r.workspaceId,
+      organizationId: r.organizationId,
       name: r.name,
       scope: r.scope,
       isSystem: r.isSystem,
@@ -266,19 +270,19 @@ export class RolesService {
     };
   }
 
-  private async assertCustom(workspaceId: string, id: string) {
+  private async assertCustom(organizationId: string, id: string) {
     const role = await this.prisma.role.findUnique({
       where: { id },
       select: {
         id: true,
         name: true,
         isSystem: true,
-        workspaceId: true,
-        _count: { select: memberCountSelect(workspaceId) },
+        organizationId: true,
+        _count: { select: memberCountSelect(organizationId) },
       },
     });
     if (!role) throw new NotFoundAppException('Vai trò');
-    if (role.isSystem || role.workspaceId !== workspaceId) {
+    if (role.isSystem || role.organizationId !== organizationId) {
       throw new ForbiddenAppException('Không thể sửa/xoá vai trò hệ thống');
     }
     return role;

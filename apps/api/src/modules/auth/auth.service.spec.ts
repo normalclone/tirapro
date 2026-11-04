@@ -14,12 +14,12 @@ vi.mock('argon2', () => ({
 function make() {
   const tx = {
     user: { create: vi.fn(() => Promise.resolve({ id: 'u1', email: 'a@x.vn' })) },
-    workspace: {
+    organization: {
       findUnique: vi.fn(() => Promise.resolve(null)),
       create: vi.fn(() => Promise.resolve({ id: 'w1' })),
     },
     role: { findFirst: vi.fn(() => Promise.resolve({ id: 'r-admin' })) },
-    workspaceMembership: { create: vi.fn(() => Promise.resolve({})) },
+    organizationMembership: { create: vi.fn(() => Promise.resolve({})) },
   };
   const prisma = {
     user: {
@@ -57,10 +57,10 @@ function make() {
 }
 
 describe('AuthService.register — ghi bảng vai trò đa vai', () => {
-  it('membership của chủ workspace có cả dòng nối WorkspaceMembershipRole', async () => {
+  it('membership của chủ organization có cả dòng nối OrganizationMembershipRole', async () => {
     const { service, tx } = make();
     await service.register({ email: 'a@x.vn', password: 'Password1', displayName: 'A' }, {});
-    const arg = tx.workspaceMembership.create.mock.calls[0] as unknown as [
+    const arg = tx.organizationMembership.create.mock.calls[0] as unknown as [
       { data: Record<string, unknown> },
     ];
     expect(arg[0].data).toMatchObject({
@@ -94,16 +94,16 @@ function makeSession(userOverrides: Record<string, unknown> = {}) {
       update: vi.fn(() => Promise.resolve({})),
     },
     refreshToken: { updateMany: vi.fn(() => Promise.resolve({ count: 1 })) },
-    workspaceMembership: {
+    organizationMembership: {
       findUnique: vi.fn(() => Promise.resolve(null)),
-      findFirst: vi.fn(() => Promise.resolve({ workspaceId: 'w1' })),
+      findFirst: vi.fn(() => Promise.resolve({ organizationId: 'w1' })),
     },
     $transaction: vi.fn((fn: (t: unknown) => unknown) => Promise.resolve(fn(tx))),
   };
   const tokens = {
     rotateRefresh: vi.fn(() => Promise.resolve({ userId: 'u1', newToken: 'NEW' })),
     signAccess: vi.fn(() => ({ accessToken: 'AT', expiresIn: 900 })),
-    setRefreshWorkspace: vi.fn(() => Promise.resolve()),
+    setRefreshOrganization: vi.fn(() => Promise.resolve()),
   };
   const events = { emit: vi.fn() };
   const service = new AuthService(
@@ -145,10 +145,10 @@ describe('AuthService.refresh — tài khoản bị khoá và hoạt động g�
     expect(prisma.user.update).toHaveBeenCalled();
   });
 
-  it('user trả về cho web có canCreateWorkspace (màn "chưa thuộc tổ chức nào" cần)', async () => {
-    const { service } = makeSession({ canCreateWorkspace: true });
+  it('user trả về cho web có canCreateOrganization (màn "chưa thuộc tổ chức nào" cần)', async () => {
+    const { service } = makeSession({ canCreateOrganization: true });
     const out = await service.refresh('fam.raw', {}, null);
-    expect(out.user.canCreateWorkspace).toBe(true);
+    expect(out.user.canCreateOrganization).toBe(true);
   });
 
   it('lastSeenAt mới (dưới 10 phút) -> không ghi DB', async () => {
@@ -158,44 +158,44 @@ describe('AuthService.refresh — tài khoản bị khoá và hoạt động g�
   });
 });
 
-describe('AuthService.refresh — giữ workspace vừa chuyển khi tải lại trang', () => {
-  it('không có access token cũ: dùng workspace lưu trong refresh token (không rơi về workspace đầu tiên)', async () => {
+describe('AuthService.refresh — giữ organization vừa chuyển khi tải lại trang', () => {
+  it('không có access token cũ: dùng organization lưu trong refresh token (không rơi về organization đầu tiên)', async () => {
     const { service, prisma, tokens } = makeSession({ lastSeenAt: new Date() });
     tokens.rotateRefresh.mockResolvedValue({
       userId: 'u1',
       newToken: 'NEW',
-      workspaceId: 'w2',
+      organizationId: 'w2',
     } as never);
-    prisma.workspaceMembership.findUnique.mockResolvedValue({ workspaceId: 'w2' } as never);
+    prisma.organizationMembership.findUnique.mockResolvedValue({ organizationId: 'w2' } as never);
     await service.refresh('fam.raw', {}, null);
     expect(tokens.signAccess).toHaveBeenCalledWith(expect.anything(), 'w2');
-    expect(prisma.workspaceMembership.findFirst).not.toHaveBeenCalled();
-    expect(tokens.setRefreshWorkspace).not.toHaveBeenCalled();
+    expect(prisma.organizationMembership.findFirst).not.toHaveBeenCalled();
+    expect(tokens.setRefreshOrganization).not.toHaveBeenCalled();
   });
 
-  it('đã bị gỡ khỏi workspace lưu trong token: rơi về workspace đầu tiên và ghi lại vào token mới', async () => {
+  it('đã bị gỡ khỏi organization lưu trong token: rơi về organization đầu tiên và ghi lại vào token mới', async () => {
     const { service, tokens } = makeSession({ lastSeenAt: new Date() });
     tokens.rotateRefresh.mockResolvedValue({
       userId: 'u1',
       newToken: 'NEW',
-      workspaceId: 'w2',
+      organizationId: 'w2',
     } as never);
     await service.refresh('fam.raw', {}, null);
     expect(tokens.signAccess).toHaveBeenCalledWith(expect.anything(), 'w1');
-    expect(tokens.setRefreshWorkspace).toHaveBeenCalledWith('NEW', 'w1');
+    expect(tokens.setRefreshOrganization).toHaveBeenCalledWith('NEW', 'w1');
   });
 
-  it('access token cũ (header) thắng workspace trong refresh token', async () => {
+  it('access token cũ (header) thắng organization trong refresh token', async () => {
     const { service, prisma, tokens } = makeSession({ lastSeenAt: new Date() });
     tokens.rotateRefresh.mockResolvedValue({
       userId: 'u1',
       newToken: 'NEW',
-      workspaceId: 'w2',
+      organizationId: 'w2',
     } as never);
-    prisma.workspaceMembership.findUnique.mockResolvedValue({ workspaceId: 'w3' } as never);
+    prisma.organizationMembership.findUnique.mockResolvedValue({ organizationId: 'w3' } as never);
     await service.refresh('fam.raw', {}, 'w3');
     expect(tokens.signAccess).toHaveBeenCalledWith(expect.anything(), 'w3');
-    expect(tokens.setRefreshWorkspace).toHaveBeenCalledWith('NEW', 'w3');
+    expect(tokens.setRefreshOrganization).toHaveBeenCalledWith('NEW', 'w3');
   });
 });
 
@@ -227,10 +227,10 @@ describe('AuthService.logoutAll', () => {
   });
 });
 
-describe('AuthService.listWorkspaces — memberCount (bộ chọn tổ chức)', () => {
+describe('AuthService.listOrganizations — memberCount (bộ chọn tổ chức)', () => {
   function makeList(rows: unknown[]) {
     const findMany = vi.fn((_args: unknown) => Promise.resolve(rows));
-    const prisma = { workspaceMembership: { findMany } };
+    const prisma = { organizationMembership: { findMany } };
     const service = new AuthService(
       prisma as never,
       {} as never,
@@ -242,19 +242,19 @@ describe('AuthService.listWorkspaces — memberCount (bộ chọn tổ chức)',
     return { service, findMany };
   }
   const row = (id: string, count: number | undefined) => ({
-    workspace: {
+    organization: {
       id,
       name: `WS ${id}`,
       slug: id,
       avatarUrl: null,
       ...(count === undefined ? {} : { _count: { memberships: count } }),
     },
-    role: { name: 'Workspace Admin' },
+    role: { name: 'Organization Admin' },
   });
 
-  it('trả memberCount từ _count.memberships của từng workspace', async () => {
+  it('trả memberCount từ _count.memberships của từng organization', async () => {
     const { service } = makeList([row('a', 12), row('b', 1)]);
-    const out = await service.listWorkspaces('u1');
+    const out = await service.listOrganizations('u1');
     expect(out.map((w) => [w.id, w.memberCount])).toEqual([
       ['a', 12],
       ['b', 1],
@@ -263,29 +263,29 @@ describe('AuthService.listWorkspaces — memberCount (bộ chọn tổ chức)',
       name: 'WS a',
       slug: 'a',
       avatarUrl: null,
-      roleName: 'Workspace Admin',
+      roleName: 'Organization Admin',
     });
   });
 
-  it('MỘT truy vấn duy nhất (không N+1): _count có điều kiện trong select của workspace', async () => {
+  it('MỘT truy vấn duy nhất (không N+1): _count có điều kiện trong select của organization', async () => {
     const { service, findMany } = makeList([row('a', 3), row('b', 4), row('c', 5)]);
-    await service.listWorkspaces('u1');
+    await service.listOrganizations('u1');
     expect(findMany).toHaveBeenCalledTimes(1);
     const arg = findMany.mock.calls[0]![0] as {
       where: unknown;
       select: {
-        workspace: { select: { _count: { select: { memberships: { where: unknown } } } } };
+        organization: { select: { _count: { select: { memberships: { where: unknown } } } } };
       };
     };
-    expect(arg.where).toEqual({ userId: 'u1' }); // chỉ workspace mà người này là thành viên
-    expect(arg.select.workspace.select._count.select.memberships.where).toEqual({
+    expect(arg.where).toEqual({ userId: 'u1' }); // chỉ tổ chức mà người này là thành viên
+    expect(arg.select.organization.select._count.select.memberships.where).toEqual({
       user: { status: { not: 'DEACTIVATED' }, email: { not: SYSTEM_USER_EMAIL } },
     });
   });
 
   it('loại tài khoản bị vô hiệu hoá và user hệ thống khỏi số đếm (điều kiện nằm ở truy vấn)', async () => {
     const { service, findMany } = makeList([row('a', 2)]);
-    await service.listWorkspaces('u1');
+    await service.listOrganizations('u1');
     const where = JSON.stringify((findMany.mock.calls[0]![0] as { select: unknown }).select);
     expect(where).toContain('"DEACTIVATED"');
     expect(where).toContain(SYSTEM_USER_EMAIL);

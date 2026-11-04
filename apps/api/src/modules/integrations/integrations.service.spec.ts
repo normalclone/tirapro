@@ -5,7 +5,7 @@ import { createTelegramSchema } from './integrations.controller';
 
 const integ = (over: Record<string, unknown> = {}) => ({
   id: 'g1',
-  workspaceId: 'w1',
+  organizationId: 'w1',
   type: 'TELEGRAM',
   name: 'n',
   config: { botToken: 'x' },
@@ -63,7 +63,13 @@ function setup(
   };
 }
 const payload = {
-  issue: { workspaceId: 'w1', key: 'P-1', summary: 's', projectId: 'p1', status: { name: 'Done' } },
+  issue: {
+    organizationId: 'w1',
+    key: 'P-1',
+    summary: 's',
+    projectId: 'p1',
+    status: { name: 'Done' },
+  },
 };
 
 describe('IntegrationsService — token không dùng được', () => {
@@ -116,7 +122,7 @@ describe('IntegrationsService — ghi nhật ký quản trị', () => {
     await service.createTelegram('w1', 'u1', { name: 'Bot QA', botToken: '123:SECRET' });
     const entry = audit.record.mock.calls[0]![0] as Record<string, unknown>;
     expect(entry).toMatchObject({
-      workspaceId: 'w1',
+      organizationId: 'w1',
       actorId: 'u1',
       action: 'integration.created',
       entityType: 'integration',
@@ -129,7 +135,7 @@ describe('IntegrationsService — ghi nhật ký quản trị', () => {
     const { service, audit } = setup({ kind: 'global' });
     await service.remove('w1', 'g1', 'u1');
     expect(audit.record.mock.calls[0]![0]).toMatchObject({
-      workspaceId: 'w1',
+      organizationId: 'w1',
       actorId: 'u1',
       action: 'integration.deleted',
       entityId: 'g1',
@@ -341,7 +347,7 @@ describe('IntegrationsService.fanout — dự án riêng tư (P16)', () => {
     ...over,
   });
 
-  it('dự án riêng tư: kênh cấp workspace KHÔNG nhận; kênh gắn đúng dự án đó thì nhận', async () => {
+  it('dự án riêng tư: kênh cấp organization KHÔNG nhận; kênh gắn đúng dự án đó thì nhận', async () => {
     const row = integ({
       channels: [
         ch({ externalId: 'ws-wide', projectId: null }),
@@ -355,12 +361,12 @@ describe('IntegrationsService.fanout — dự án riêng tư (P16)', () => {
     expect(telegram.send).toHaveBeenCalledWith(null, 'bound', expect.any(String));
     expect(prisma.project.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: 'p1', workspaceId: 'w1', deletedAt: null, isPrivate: true },
+        where: { id: 'p1', organizationId: 'w1', deletedAt: null, isPrivate: true },
       }),
     );
   });
 
-  it('dự án công khai: kênh cấp workspace vẫn nhận như cũ', async () => {
+  it('dự án công khai: kênh cấp organization vẫn nhận như cũ', async () => {
     const row = integ({ channels: [ch({ externalId: 'ws-wide' })] });
     const { service, telegram } = setup({ kind: 'global' }, row);
     await service.onIssueUpdated(payload);
@@ -372,7 +378,7 @@ describe('IntegrationsService.fanout — dự án riêng tư (P16)', () => {
     const { service, prisma, telegram } = setup({ kind: 'global' }, row);
     (prisma as Record<string, unknown>).issue = {
       findUnique: vi.fn(() =>
-        Promise.resolve({ workspaceId: 'w1', key: 'P-1', summary: 's', projectId: 'p1' }),
+        Promise.resolve({ organizationId: 'w1', key: 'P-1', summary: 's', projectId: 'p1' }),
       ),
     };
     prisma.project.findFirst.mockResolvedValue({ id: 'p1' });
@@ -396,7 +402,7 @@ describe('IntegrationsService.addChannel — gắn kênh vào dự án riêng t�
     ).toHaveLength(0);
   });
 
-  it('người thấy dự án → tạo kênh gắn dự án; kênh cấp workspace (không dự án) không cần kiểm', async () => {
+  it('người thấy dự án → tạo kênh gắn dự án; kênh cấp organization (không dự án) không cần kiểm', async () => {
     const { service, prisma, access } = setup({ kind: 'global' });
     const create = vi.fn((a: { data: Record<string, unknown> }) =>
       Promise.resolve({ id: 'c1', ...a.data }),
@@ -452,7 +458,7 @@ describe('IntegrationsService — sửa hàng loạt không spam kênh (D-I2)', 
       Promise.resolve((a as { select?: { key?: boolean } }).select?.key ? { key: 'DEMO' } : null),
     );
     await service.onIssuesBulkUpdated({
-      workspaceId: 'w1',
+      organizationId: 'w1',
       projectId: 'p1',
       actorId: 'u1',
       count: 30,
@@ -466,7 +472,7 @@ describe('IntegrationsService — sửa hàng loạt không spam kênh (D-I2)', 
 });
 
 describe('IntegrationsService — dự án chuyển riêng tư tắt kênh gắn dự án (S-I5)', () => {
-  const evt = { workspaceId: 'w1', projectId: 'p1', isPrivate: true, actorId: 'u1' };
+  const evt = { organizationId: 'w1', projectId: 'p1', isPrivate: true, actorId: 'u1' };
 
   it('sang riêng tư: tắt MỌI kênh đang bật gắn đúng dự án + ghi nhật ký với số kênh', async () => {
     const { service, prisma, audit } = setup({ kind: 'global' });
@@ -478,7 +484,7 @@ describe('IntegrationsService — dự án chuyển riêng tư tắt kênh gắn
     await service.onProjectVisibilityChanged(evt);
     expect(channel.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { workspaceId: 'w1', projectId: 'p1', isEnabled: true },
+        where: { organizationId: 'w1', projectId: 'p1', isEnabled: true },
       }),
     );
     expect(channel.updateMany).toHaveBeenCalledWith({
@@ -488,7 +494,7 @@ describe('IntegrationsService — dự án chuyển riêng tư tắt kênh gắn
     expect(audit.record).toHaveBeenCalledWith(
       expect.objectContaining({
         action: 'integration.channels_disabled',
-        workspaceId: 'w1',
+        organizationId: 'w1',
         entityId: 'p1',
         meta: expect.objectContaining({ count: 2 }) as unknown,
       }),
@@ -517,7 +523,7 @@ describe('IntegrationsService.listChannels/removeChannel — kênh của dự á
     { id: 'c-hid', externalId: 'c', projectId: 'pHidden' },
   ];
 
-  it('liệt kê: ẩn kênh gắn dự án người xem không thấy; kênh cấp workspace/dự án thấy được vẫn hiện', async () => {
+  it('liệt kê: ẩn kênh gắn dự án người xem không thấy; kênh cấp organization/dự án thấy được vẫn hiện', async () => {
     const { service, prisma, access } = setup({ kind: 'global' });
     prisma.integrationChannel.findMany.mockResolvedValue(rows as never);
     access.canSee.mockImplementation((_u: unknown, _w: unknown, p: unknown) =>

@@ -26,7 +26,7 @@ describe('avatarKeyFromUrl', () => {
 });
 
 describe('collectKeys', () => {
-  it('gộp khoá đính kèm + avatar (user/workspace/project) + system-settings, bỏ trùng/null', () => {
+  it('gộp khoá đính kèm + avatar (user/organization/project) + system-settings, bỏ trùng/null', () => {
     const keys = collectKeys({
       attachmentKeys: ['w1/a-x.txt', 'w1/a-x.txt', 'w1/b-y.png'],
       avatarUrls: [

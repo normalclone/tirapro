@@ -261,7 +261,7 @@ describe('IssueLinksService.listForIssue — không rò issue ở dự án khôn
     );
     expect(where).toContain('"deletedAt":null');
     expect(where).toContain('"project":{"deletedAt":null}');
-    expect(where).toContain('"workspaceId":"w1"'); // phòng thủ link chéo workspace cũ
+    expect(where).toContain('"organizationId":"w1"'); // phòng thủ link chéo tổ chức cũ
   });
 });
 

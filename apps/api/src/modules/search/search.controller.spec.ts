@@ -58,7 +58,7 @@ describe('SearchController — U15', () => {
       expect.objectContaining({ checkValues: true }),
     );
   });
-  it('POST /search/validate truyền workspaceId', async () => {
+  it('POST /search/validate truyền organizationId', async () => {
     const { ctrl, search } = make();
     await ctrl.validate('w1', user, { jql: 'status = Done' });
     expect(search.validate).toHaveBeenCalledWith('w1', 'u1', 'status = Done');
@@ -71,7 +71,7 @@ describe('SearchController.relaxCounts — POST /search/relax-counts (092)', () 
   const handler = SearchController.prototype.relaxCounts as unknown as object;
   const meta = (key: string) => Reflect.getMetadata(key, handler) as unknown;
 
-  it('truyền workspaceId, user.id và body (jql, projectId) cho service', async () => {
+  it('truyền organizationId, user.id và body (jql, projectId) cho service', async () => {
     const { ctrl, search } = make();
     await ctrl.relaxCounts('w1', user, { jql: 'status = A AND priority = B', projectId: 'p1' });
     expect(search.relaxCounts).toHaveBeenCalledWith('w1', 'u1', {

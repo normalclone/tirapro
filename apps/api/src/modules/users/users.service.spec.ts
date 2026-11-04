@@ -7,14 +7,17 @@ describe('UsersService — escape ký tự đại diện LIKE khi tìm người 
     { email: { contains: '\\_', mode: 'insensitive' } },
   ];
 
-  it('listWorkspaceMembers: search="_" không khớp mọi người', async () => {
+  it('listOrganizationMembers: search="_" không khớp mọi người', async () => {
     const findMany = vi.fn(() => Promise.resolve([]));
     const service = new UsersService(
-      { workspaceMembership: { findMany }, $queryRaw: vi.fn(() => Promise.resolve([])) } as never,
+      {
+        organizationMembership: { findMany },
+        $queryRaw: vi.fn(() => Promise.resolve([])),
+      } as never,
       {} as never,
       {} as never,
     );
-    await service.listWorkspaceMembers('w1', 'v1', { search: '_' }, false);
+    await service.listOrganizationMembers('w1', 'v1', { search: '_' }, false);
     const call = findMany.mock.calls[0] as unknown as [{ where: { user: { OR: unknown[] } } }];
     expect(call[0].where.user.OR).toEqual(expected);
   });
@@ -161,7 +164,7 @@ function listFixture(
     canSee: vi.fn((userId: string) => Promise.resolve(opts.canSee ? opts.canSee(userId) : true)),
   };
   const prisma = {
-    workspaceMembership: { findMany },
+    organizationMembership: { findMany },
     $queryRaw: vi.fn((..._a: unknown[]) =>
       Promise.resolve((opts.rawIds ?? []).map((id) => ({ id }))),
     ),
@@ -170,10 +173,10 @@ function listFixture(
   return { service, findMany, access, prisma };
 }
 
-describe('UsersService.listWorkspaceMembers — bộ chọn người phía server (S-I7)', () => {
+describe('UsersService.listOrganizationMembers — bộ chọn người phía server (S-I7)', () => {
   it('mặc định loại tài khoản đã khoá và người dùng hệ thống automation; includeInactive giữ lại', async () => {
     const a = listFixture([{ id: 'u1' }]);
-    await a.service.listWorkspaceMembers('w1', 'v1', {}, false);
+    await a.service.listOrganizationMembers('w1', 'v1', {}, false);
     expect(
       (a.findMany.mock.calls[0]![0] as unknown as { where: { user: unknown } }).where.user,
     ).toEqual({
@@ -181,7 +184,7 @@ describe('UsersService.listWorkspaceMembers — bộ chọn người phía serve
       email: { not: 'automation@tirapro.local' },
     });
     const b = listFixture([{ id: 'u1' }]);
-    await b.service.listWorkspaceMembers('w1', 'v1', { includeInactive: true }, false);
+    await b.service.listOrganizationMembers('w1', 'v1', { includeInactive: true }, false);
     expect(
       (b.findMany.mock.calls[0]![0] as unknown as { where: { user: unknown } }).where.user,
     ).toEqual({});
@@ -190,7 +193,7 @@ describe('UsersService.listWorkspaceMembers — bộ chọn người phía serve
   it('limit: mặc định 50, tối đa 200, tối thiểu 1', async () => {
     const take = async (limit?: number) => {
       const f = listFixture([]);
-      await f.service.listWorkspaceMembers('w1', 'v1', { limit }, false);
+      await f.service.listOrganizationMembers('w1', 'v1', { limit }, false);
       return (f.findMany.mock.calls[0]![0] as unknown as { take: number }).take;
     };
     expect(await take(undefined)).toBe(50);
@@ -203,7 +206,7 @@ describe('UsersService.listWorkspaceMembers — bộ chọn người phía serve
     const f = listFixture([{ id: 'u1' }]);
     f.access.assertCanSee.mockRejectedValueOnce(Object.assign(new Error('Dự án'), { status: 404 }));
     await expect(
-      f.service.listWorkspaceMembers('w1', 'v1', { projectId: 'pHidden' }, false),
+      f.service.listOrganizationMembers('w1', 'v1', { projectId: 'pHidden' }, false),
     ).rejects.toMatchObject({ status: 404 });
     expect(f.access.assertCanSee).toHaveBeenCalledWith('v1', 'w1', 'pHidden');
     expect(f.findMany).not.toHaveBeenCalled();
@@ -214,7 +217,7 @@ describe('UsersService.listWorkspaceMembers — bộ chọn người phía serve
     // chỉ u3, u7, u9, u11 xem được dự án
     const ok = new Set(['u3', 'u7', 'u9', 'u11']);
     const f = listFixture(rows, { canSee: (id) => ok.has(id) });
-    const out = await f.service.listWorkspaceMembers(
+    const out = await f.service.listOrganizationMembers(
       'w1',
       'v1',
       { projectId: 'p1', limit: 3 },
@@ -227,7 +230,7 @@ describe('UsersService.listWorkspaceMembers — bộ chọn người phía serve
 
   it('không có projectId => không gọi canSee, chỉ một truy vấn', async () => {
     const f = listFixture([{ id: 'u1' }, { id: 'u2' }]);
-    const out = await f.service.listWorkspaceMembers('w1', 'v1', {}, false);
+    const out = await f.service.listOrganizationMembers('w1', 'v1', {}, false);
     expect(out).toHaveLength(2);
     expect(f.access.canSee).not.toHaveBeenCalled();
     expect(f.access.assertCanSee).not.toHaveBeenCalled();
@@ -236,7 +239,7 @@ describe('UsersService.listWorkspaceMembers — bộ chọn người phía serve
 
   it('search: so khớp tên/email không phân biệt hoa thường VÀ dấu (thêm nhánh id từ truy vấn bỏ dấu)', async () => {
     const f = listFixture([{ id: 'u1' }], { rawIds: ['uNguyen'] });
-    await f.service.listWorkspaceMembers('w1', 'v1', { search: ' nguyen ' }, false);
+    await f.service.listOrganizationMembers('w1', 'v1', { search: ' nguyen ' }, false);
     const where = (
       f.findMany.mock.calls[0]![0] as unknown as { where: { user: { OR: unknown[] } } }
     ).where;
@@ -252,16 +255,16 @@ describe('UsersService.listWorkspaceMembers — bộ chọn người phía serve
     const f = listFixture([{ id: 'u1' }]);
     f.prisma.$queryRaw.mockRejectedValueOnce(new Error('translate'));
     await expect(
-      f.service.listWorkspaceMembers('w1', 'v1', { search: 'an' }, false),
+      f.service.listOrganizationMembers('w1', 'v1', { search: 'an' }, false),
     ).resolves.toHaveLength(1);
   });
 
   it('isSystemAdmin/lastSeenAt chỉ cho người có member:manage', async () => {
     const f = listFixture([{ id: 'adm' }]);
-    const plain = await f.service.listWorkspaceMembers('w1', 'v1', {}, false);
+    const plain = await f.service.listOrganizationMembers('w1', 'v1', {}, false);
     expect(plain[0]).not.toHaveProperty('isSystemAdmin');
     expect(plain[0]).not.toHaveProperty('lastSeenAt');
-    const priv = await f.service.listWorkspaceMembers('w1', 'v1', {}, true);
+    const priv = await f.service.listOrganizationMembers('w1', 'v1', {}, true);
     expect(priv[0]).toMatchObject({ isSystemAdmin: true, lastSeenAt: '2026-10-16T01:00:00.000Z' });
   });
 });

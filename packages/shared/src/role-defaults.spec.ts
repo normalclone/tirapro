@@ -21,7 +21,7 @@ describe('bộ quyền mặc định của vai trò hệ thống', () => {
 
   it('issue:triage (API enforce ở /triage/*): quản trị/PM/SM/BA/PO/Tester có; Developer/Reporter/Designer không', () => {
     for (const role of [
-      R.WORKSPACE_ADMIN,
+      R.ORGANIZATION_ADMIN,
       R.PROJECT_ADMIN,
       R.SCRUM_MASTER,
       R.BUSINESS_ANALYST,
@@ -29,7 +29,7 @@ describe('bộ quyền mặc định của vai trò hệ thống', () => {
       R.TESTER,
     ])
       expect(RP[role], role).toContain(P.ISSUE_TRIAGE);
-    for (const role of [R.DEVELOPER, R.PROJECT_REPORTER, R.DESIGNER, R.WORKSPACE_MEMBER])
+    for (const role of [R.DEVELOPER, R.PROJECT_REPORTER, R.DESIGNER, R.ORGANIZATION_MEMBER])
       expect(RP[role], role).not.toContain(P.ISSUE_TRIAGE);
   });
 

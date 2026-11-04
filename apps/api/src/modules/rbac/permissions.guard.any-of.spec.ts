@@ -31,10 +31,10 @@ function setup(opts: {
     getEffectivePermissions: vi.fn(() => Promise.resolve(new Set(opts.effective))),
     resolveProjectId: vi.fn(() => Promise.resolve({ projectId: 'P1' })),
     assertProjectVisible: vi.fn(() => Promise.resolve()),
-    assertProjectInWorkspace: vi.fn(() => Promise.resolve()),
+    assertProjectInOrganization: vi.fn(() => Promise.resolve()),
   };
   const req = {
-    user: { id: 'U1', workspaceId: 'W1', isSystemAdmin: opts.isSystemAdmin ?? false },
+    user: { id: 'U1', organizationId: 'W1', isSystemAdmin: opts.isSystemAdmin ?? false },
     params: { id: 'X1' },
     body: {},
     query: {},
@@ -60,10 +60,10 @@ describe('PermissionsGuard — @PermissionsAnyOf', () => {
   });
 
   it('VÀ với @Permissions: phải đạt CẢ quyền bắt buộc lẫn một quyền trong anyOf', async () => {
-    const cfg = { required: ['workspace:view'], anyOf: ['goal:manage', 'project:admin'] };
-    const both = setup({ ...cfg, effective: ['workspace:view', 'project:admin'] });
+    const cfg = { required: ['organization:view'], anyOf: ['goal:manage', 'project:admin'] };
+    const both = setup({ ...cfg, effective: ['organization:view', 'project:admin'] });
     await expect(both.guard.canActivate(both.ctx)).resolves.toBe(true);
-    const onlyRequired = setup({ ...cfg, effective: ['workspace:view'] });
+    const onlyRequired = setup({ ...cfg, effective: ['organization:view'] });
     await expect(onlyRequired.guard.canActivate(onlyRequired.ctx)).rejects.toBeInstanceOf(
       ForbiddenAppException,
     );
@@ -90,12 +90,12 @@ describe('PermissionsGuard — @PermissionsAnyOf', () => {
 
   it('mảng rỗng: anyOf rỗng + có @Permissions → chỉ xét quyền bắt buộc; cả hai rỗng → không kiểm gì (rbac-coverage chặn khai báo kiểu này)', async () => {
     const reqOnly = setup({
-      required: ['workspace:view'],
+      required: ['organization:view'],
       anyOf: [],
-      effective: ['workspace:view'],
+      effective: ['organization:view'],
     });
     await expect(reqOnly.guard.canActivate(reqOnly.ctx)).resolves.toBe(true);
-    const lacking = setup({ required: ['workspace:view'], anyOf: [], effective: [] });
+    const lacking = setup({ required: ['organization:view'], anyOf: [], effective: [] });
     await expect(lacking.guard.canActivate(lacking.ctx)).rejects.toBeInstanceOf(
       ForbiddenAppException,
     );

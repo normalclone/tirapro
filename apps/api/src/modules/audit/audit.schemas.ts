@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-/** Truy vấn nhật ký quản trị của workspace (`GET /audit`). */
+/** Truy vấn nhật ký quản trị của tổ chức (`GET /audit`). */
 export const auditListSchema = z.object({
   action: z.string().min(1).optional(),
   actorId: z.string().min(1).optional(),

@@ -7,7 +7,7 @@ export const createUserSchema = z.object({
   displayName: z.string().min(1, 'Tên hiển thị bắt buộc').max(120),
   password: passwordSchema.optional(),
   isSystemAdmin: z.boolean().optional(),
-  canCreateWorkspace: z.boolean().optional(),
+  canCreateOrganization: z.boolean().optional(),
 });
 
 export const updateUserSchema = z.object({
@@ -15,13 +15,13 @@ export const updateUserSchema = z.object({
   email: z.string().trim().email('Email không hợp lệ').toLowerCase().optional(),
   displayName: z.string().min(1).max(120).optional(),
   isSystemAdmin: z.boolean().optional(),
-  canCreateWorkspace: z.boolean().optional(),
+  canCreateOrganization: z.boolean().optional(),
   status: z.enum(['ACTIVE', 'DEACTIVATED']).optional(),
 });
 
-/** Admin hệ thống thêm một tài khoản vào một tổ chức (vai trò mặc định: Workspace Member). */
-export const addToWorkspaceSchema = z.object({
-  workspaceId: z.string().min(1),
+/** Admin hệ thống thêm một tài khoản vào một tổ chức (vai trò mặc định: Organization Member). */
+export const addToOrganizationSchema = z.object({
+  organizationId: z.string().min(1),
   roleIds: z.array(z.string().min(1)).max(20).optional(),
 });
 
@@ -30,7 +30,7 @@ export const listUsersQuerySchema = z.object({
   status: z.enum(['ACTIVE', 'DEACTIVATED']).optional(),
 });
 
-export type AddToWorkspaceInput = z.infer<typeof addToWorkspaceSchema>;
+export type AddToOrganizationInput = z.infer<typeof addToOrganizationSchema>;
 export type ListUsersQuery = z.infer<typeof listUsersQuerySchema>;
 export type CreateUserInput = z.infer<typeof createUserSchema>;
 export type UpdateUserInput = z.infer<typeof updateUserSchema>;

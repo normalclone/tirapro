@@ -77,7 +77,7 @@ function worldData(over: WorldOver) {
   const workflows = [
     {
       id: 'wfOld',
-      workspaceId: 'w1',
+      organizationId: 'w1',
       projectId: null,
       name: 'Phát triển phần mềm',
       description: null,
@@ -85,7 +85,7 @@ function worldData(over: WorldOver) {
     },
     {
       id: 'wfStd',
-      workspaceId: 'w1',
+      organizationId: 'w1',
       projectId: null,
       name: 'Standard Workflow',
       description: 'd',
@@ -95,7 +95,7 @@ function worldData(over: WorldOver) {
   if (over.existingCopy) {
     workflows.push({
       id: 'cp',
-      workspaceId: 'w1',
+      organizationId: 'w1',
       projectId: 'p2',
       name: 'Standard Workflow (TI)',
       description: 'd',
@@ -113,8 +113,8 @@ function worldData(over: WorldOver) {
     ...[1, 2].map((n) => ({ id: `c${n}`, projectId: 'p2', typeId: 'tTask', statusId: 'o2' })),
   ];
   const projects = [
-    { id: 'p1', key: 'KY', workspaceId: 'w1', defaultWorkflowId: 'wfOld' },
-    { id: 'p2', key: 'TI', workspaceId: 'w1', defaultWorkflowId: 'wfOld' },
+    { id: 'p1', key: 'KY', organizationId: 'w1', defaultWorkflowId: 'wfOld' },
+    { id: 'p2', key: 'TI', organizationId: 'w1', defaultWorkflowId: 'wfOld' },
   ];
   const scheme = [...(over.scheme ?? [])];
   const overrides = [...(over.overrides ?? [])];
@@ -217,11 +217,12 @@ function workflowModels(d: WorldData) {
     workflowTransition: {
       create: vi.fn((_a: { data: Record<string, unknown> }) => Promise.resolve({})),
     },
-    workspaceWorkflowScheme: {
+    organizationWorkflowScheme: {
       findMany: vi.fn(() => Promise.resolve(scheme.map((s) => ({ ...s })))),
-      findUnique: vi.fn((a: { where: { workspaceId_issueTypeId: { issueTypeId: string } } }) =>
+      findUnique: vi.fn((a: { where: { organizationId_issueTypeId: { issueTypeId: string } } }) =>
         Promise.resolve(
-          scheme.find((s) => s.issueTypeId === a.where.workspaceId_issueTypeId.issueTypeId) ?? null,
+          scheme.find((s) => s.issueTypeId === a.where.organizationId_issueTypeId.issueTypeId) ??
+            null,
         ),
       ),
       upsert: vi.fn((a: { create: { issueTypeId: string; workflowId: string } }) => {
@@ -438,12 +439,12 @@ const rejects = (p: Promise<unknown>) =>
       },
   );
 
-describe('WorkflowSchemeService.setWorkspaceScheme', () => {
+describe('WorkflowSchemeService.setOrganizationScheme', () => {
   it('dryRun: bảng việc sẽ chuyển (đếm theo dự án/trạng thái), bỏ dự án có ghi đè, không ghi gì', async () => {
     const w = world({
       overrides: [{ projectId: 'p2', issueTypeId: 'tTask', workflowId: 'wfOld' }],
     });
-    const out = await w.service.setWorkspaceScheme('w1', 'u1', { items }, true);
+    const out = await w.service.setOrganizationScheme('w1', 'u1', { items }, true);
     expect(out.dryRun).toBe(true);
     expect(out.totalIssues).toBe(4);
     expect(
@@ -458,21 +459,21 @@ describe('WorkflowSchemeService.setWorkspaceScheme', () => {
       ['KY', 'Cần làm', 'To Do', 1, true],
       ['KY', 'Đang làm', 'In Progress', 3, true],
     ]);
-    expect(w.prisma.workspaceWorkflowScheme.upsert).not.toHaveBeenCalled();
+    expect(w.prisma.organizationWorkflowScheme.upsert).not.toHaveBeenCalled();
     expect(w.prisma.issue.updateMany).not.toHaveBeenCalled();
     expect(w.prisma.$transaction).not.toHaveBeenCalled();
   });
 
   it('chạy thật thiếu statusMap => 422 STATUS_MAPPING_REQUIRED kèm gợi ý cho từng trạng thái cũ; chưa ghi gì; cache được bỏ', async () => {
     const w = world();
-    const err = await rejects(w.service.setWorkspaceScheme('w1', 'u1', { items }, false));
+    const err = await rejects(w.service.setOrganizationScheme('w1', 'u1', { items }, false));
     expect(err!.status).toBe(422);
     expect(err!.response.code).toBe('STATUS_MAPPING_REQUIRED');
     const byField = Object.fromEntries(
       err!.response.details!.map((d) => [d.field, d.suggestedStatusId]),
     );
     expect(byField).toEqual({ 'statusMap.o1': 's1', 'statusMap.o2': 's2' });
-    expect(w.prisma.workspaceWorkflowScheme.upsert).not.toHaveBeenCalled();
+    expect(w.prisma.organizationWorkflowScheme.upsert).not.toHaveBeenCalled();
     expect(w.prisma.issue.updateMany).not.toHaveBeenCalled();
     expect(w.invalidate).toHaveBeenCalled(); // cả đường rollback
   });
@@ -481,7 +482,7 @@ describe('WorkflowSchemeService.setWorkspaceScheme', () => {
     const w = world({
       overrides: [{ projectId: 'p2', issueTypeId: 'tTask', workflowId: 'wfOld' }],
     });
-    const out = await w.service.setWorkspaceScheme(
+    const out = await w.service.setOrganizationScheme(
       'w1',
       'u1',
       { items, statusMap: { o1: 's1', o2: 's2' } },
@@ -531,7 +532,7 @@ describe('WorkflowSchemeService.setWorkspaceScheme', () => {
           : [],
       ),
     );
-    await w.service.setWorkspaceScheme(
+    await w.service.setOrganizationScheme(
       'w1',
       'u1',
       { items, statusMap: { o1: 's1', o2: 's2' } },
@@ -555,7 +556,7 @@ describe('WorkflowSchemeService.setWorkspaceScheme', () => {
 
   it('PUT lặp lại cùng cấu hình: không còn gì thay đổi => không chuyển việc, không ghi', async () => {
     const w = world({ scheme: [{ issueTypeId: 'tTask', workflowId: 'wfStd' }] });
-    const out = await w.service.setWorkspaceScheme('w1', 'u1', { items }, false);
+    const out = await w.service.setOrganizationScheme('w1', 'u1', { items }, false);
     expect(out).toEqual({
       dryRun: false,
       moves: [],
@@ -563,15 +564,15 @@ describe('WorkflowSchemeService.setWorkspaceScheme', () => {
       affectedRules: [],
       nameRefs: [],
     });
-    expect(w.prisma.workspaceWorkflowScheme.upsert).not.toHaveBeenCalled();
+    expect(w.prisma.organizationWorkflowScheme.upsert).not.toHaveBeenCalled();
     expect(w.prisma.issue.updateMany).not.toHaveBeenCalled();
   });
 });
 
-describe('WorkflowSchemeService.setWorkspaceScheme — ánh xạ theo loại, kiểm đầu vào, nameRefs', () => {
+describe('WorkflowSchemeService.setOrganizationScheme — ánh xạ theo loại, kiểm đầu vào, nameRefs', () => {
   it('statusMapByType thắng statusMap phẳng; đích không thuộc quy trình đích của loại đó coi như chưa chọn', async () => {
     const w = world();
-    const out = await w.service.setWorkspaceScheme(
+    const out = await w.service.setOrganizationScheme(
       'w1',
       'u1',
       {
@@ -589,7 +590,7 @@ describe('WorkflowSchemeService.setWorkspaceScheme — ánh xạ theo loại, ki
       ['Cần làm', 'To Do', false],
       ['Đang làm', 'In Progress', false],
     ]);
-    const flatOnly = await world().service.setWorkspaceScheme(
+    const flatOnly = await world().service.setOrganizationScheme(
       'w1',
       'u1',
       { items, statusMap: { o1: 'o3' } },
@@ -605,7 +606,7 @@ describe('WorkflowSchemeService.setWorkspaceScheme — ánh xạ theo loại, ki
   it('quy trình không chọn được (của dự án / mẫu / tổ chức khác) => 422; loại việc lạ => 404; id trạng thái lạ => 422', async () => {
     const w = world();
     await expect(
-      w.service.setWorkspaceScheme(
+      w.service.setOrganizationScheme(
         'w1',
         'u1',
         { items: [{ issueTypeId: 'tTask', workflowId: 'nope' }] },
@@ -613,7 +614,7 @@ describe('WorkflowSchemeService.setWorkspaceScheme — ánh xạ theo loại, ki
       ),
     ).rejects.toMatchObject({ status: 422 });
     await expect(
-      w.service.setWorkspaceScheme(
+      w.service.setOrganizationScheme(
         'w1',
         'u1',
         { items: [{ issueTypeId: 'tX', workflowId: 'wfStd' }] },
@@ -621,20 +622,20 @@ describe('WorkflowSchemeService.setWorkspaceScheme — ánh xạ theo loại, ki
       ),
     ).rejects.toMatchObject({ status: 404 });
     await expect(
-      w.service.setWorkspaceScheme('w1', 'u1', { items, statusMap: { o1: 'ghost' } }, true),
+      w.service.setOrganizationScheme('w1', 'u1', { items, statusMap: { o1: 'ghost' } }, true),
     ).rejects.toMatchObject({ status: 422 });
   });
 
-  it('getWorkspaceScheme trả các dòng ánh xạ', async () => {
+  it('getOrganizationScheme trả các dòng ánh xạ', async () => {
     const w = world({ scheme: [{ issueTypeId: 'tTask', workflowId: 'wfStd' }] });
-    expect(await w.service.getWorkspaceScheme('w1')).toEqual({
+    expect(await w.service.getOrganizationScheme('w1')).toEqual({
       items: [{ issueTypeId: 'tTask', workflowId: 'wfStd' }],
       issueTypes: [TASK_TYPE],
     });
   });
 
   it('dryRun và chạy thật đều trả nameRefs: chỉ bộ lọc dùng tên trạng thái cũ không còn (Đang làm), không báo "Done"', async () => {
-    const dry = await world().service.setWorkspaceScheme('w1', 'u1', { items }, true);
+    const dry = await world().service.setOrganizationScheme('w1', 'u1', { items }, true);
     expect(dry.nameRefs).toEqual([
       {
         kind: 'savedFilter',
@@ -643,7 +644,12 @@ describe('WorkflowSchemeService.setWorkspaceScheme — ánh xạ theo loại, ki
         names: ['Đang làm'],
       },
     ]);
-    const real = await world().service.setWorkspaceScheme('w1', 'u1', { items, statusMap }, false);
+    const real = await world().service.setOrganizationScheme(
+      'w1',
+      'u1',
+      { items, statusMap },
+      false,
+    );
     expect(real.nameRefs.map((n) => n.id)).toEqual(['f1']);
   });
 });
@@ -809,15 +815,20 @@ describe('WorkflowSchemeService.clearProjectOverride / getProjectScheme', () => 
     w.prisma.issueType.findMany.mockResolvedValue([{ id: 'tTask' }, { id: 'tBug' }] as never);
     const p2 = await w.service.getProjectScheme('w1', 'p2');
     expect(p2.items).toEqual([
-      { issueTypeId: 'tTask', workflowId: 'wfOld', isOverride: true, workspaceWorkflowId: 'wfStd' },
-      { issueTypeId: 'tBug', workflowId: 'wfOld', isOverride: false, workspaceWorkflowId: null },
+      {
+        issueTypeId: 'tTask',
+        workflowId: 'wfOld',
+        isOverride: true,
+        organizationWorkflowId: 'wfStd',
+      },
+      { issueTypeId: 'tBug', workflowId: 'wfOld', isOverride: false, organizationWorkflowId: null },
     ]);
     const p1 = await w.service.getProjectScheme('w1', 'p1');
     expect(p1.items[0]).toEqual({
       issueTypeId: 'tTask',
       workflowId: 'wfStd',
       isOverride: false,
-      workspaceWorkflowId: 'wfStd',
+      organizationWorkflowId: 'wfStd',
     });
   });
 });
@@ -839,7 +850,7 @@ const statusMap = { o1: 's1', o2: 's2', o3: 's3' };
 describe('WorkflowSchemeService — quy tắc automation, khoá, thông báo', () => {
   it('PUT scheme dryRun: liệt kê affectedRules nhưng KHÔNG sửa quy tắc, không khoá, không báo', async () => {
     const w = world({ rules: [RULE] });
-    const out = await w.service.setWorkspaceScheme('w1', 'u1', { items }, true);
+    const out = await w.service.setOrganizationScheme('w1', 'u1', { items }, true);
     expect(out.affectedRules).toEqual([
       expect.objectContaining({ ruleId: 'r1', outcome: 'rewritten', createdById: 'u-rule' }),
     ]);
@@ -861,19 +872,21 @@ describe('WorkflowSchemeService — quy tắc automation, khoá, thông báo', (
       order.push('plan');
       return realGroupBy(a);
     });
-    const out = await w.service.setWorkspaceScheme('w1', 'u1', { items, statusMap }, false);
+    const out = await w.service.setOrganizationScheme('w1', 'u1', { items, statusMap }, false);
     expect(order[0]).toBe('lock');
     const rule = w.rules[0]!;
     expect(rule.triggerConfig).toEqual({ toStatusId: 's2' });
     expect(rule.actions).toEqual([{ type: 'transition', toStatusId: 's3' }]);
     expect(out.affectedRules).toHaveLength(1);
-    expect(w.events.emit).toHaveBeenCalledWith('automation.rules_changed', { workspaceId: 'w1' });
+    expect(w.events.emit).toHaveBeenCalledWith('automation.rules_changed', {
+      organizationId: 'w1',
+    });
     expect(w.published).toEqual([]); // sửa được hết → không có quy tắc bị tắt, không ai cần báo
   });
 
   it('chạy thật bị rollback (thiếu statusMap): không sửa quy tắc, không bỏ cache, không báo ai', async () => {
     const w = world({ rules: [RULE] });
-    await rejects(w.service.setWorkspaceScheme('w1', 'u1', { items }, false));
+    await rejects(w.service.setOrganizationScheme('w1', 'u1', { items }, false));
     expect(w.prisma.automationRule.update).not.toHaveBeenCalled();
     expect(w.events.emit).not.toHaveBeenCalled();
     expect(w.published).toEqual([]);
@@ -907,6 +920,8 @@ describe('WorkflowSchemeService — quy tắc automation, khoá, thông báo', (
     expect(b.prisma.$executeRaw).toHaveBeenCalledTimes(1);
     expect(out.affectedRules.map((r) => r.ruleId)).toEqual(['r1']);
     // Còn việc ở trạng thái cũ ở dự án khác (p2 vẫn ở quy trình cũ) thì quy tắc giữ cả id cũ lẫn mới.
-    expect(b.events.emit).toHaveBeenCalledWith('automation.rules_changed', { workspaceId: 'w1' });
+    expect(b.events.emit).toHaveBeenCalledWith('automation.rules_changed', {
+      organizationId: 'w1',
+    });
   });
 });

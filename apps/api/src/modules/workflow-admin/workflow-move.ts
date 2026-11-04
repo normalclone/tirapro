@@ -33,7 +33,7 @@ type TargetStatus = StatusRef & { order: number; isInitial: boolean };
  */
 export async function planMoves(
   db: Prisma.TransactionClient,
-  workspaceId: string,
+  organizationId: string,
   scopes: MoveScope[],
   pick: (typeId: string, fromStatusId: string) => string | undefined,
 ): Promise<PlannedMove[]> {
@@ -57,7 +57,7 @@ export async function planMoves(
     const groups = await db.issue.groupBy({
       by: ['projectId', 'statusId'],
       where: {
-        workspaceId,
+        organizationId,
         typeId: scope.typeId,
         projectId: { in: scope.projectIds },
         status: { workflowId: { not: scope.toWorkflowId } },
@@ -77,7 +77,7 @@ export async function planMoves(
       const wanted = pick(scope.typeId, g.statusId);
       const chosen = wanted ? targets.find((t) => t.id === wanted) : undefined;
       // Đích trong `statusMap` không thuộc quy trình đích (vd. khoá phẳng dùng chung cho nhiều loại sang quy trình khác nhau)
-      // thì coi như chưa chọn cho loại này; id không tồn tại ở đâu cả đã bị `assertMapInWorkspace` chặn từ trước.
+      // thì coi như chưa chọn cho loại này; id không tồn tại ở đâu cả đã bị `assertMapInOrganization` chặn từ trước.
       const suggestion = chosen ? null : suggestTargetStatus(from, targets);
       moves.push({
         projectId: g.projectId,
@@ -112,15 +112,15 @@ export function toMoveRows(
 }
 
 /**
- * Khoá advisory theo workspace TRONG transaction (tự nhả khi commit/rollback): hai thay đổi quy trình đồng thời trong cùng một
- * workspace (PUT scheme, ghi đè dự án, xoá trạng thái có thay thế, script migrate) xếp hàng thay vì đọc kế hoạch cũ rồi chuyển
+ * Khoá advisory theo tổ chức TRONG transaction (tự nhả khi commit/rollback): hai thay đổi quy trình đồng thời trong cùng một
+ * tổ chức (PUT scheme, ghi đè dự án, xoá trạng thái có thay thế, script migrate) xếp hàng thay vì đọc kế hoạch cũ rồi chuyển
  * việc chồng lên nhau. KHÔNG chặn đọc/ghi việc thường.
  */
-export async function lockWorkspaceWorkflows(
+export async function lockOrganizationWorkflows(
   tx: Prisma.TransactionClient,
-  workspaceId: string,
+  organizationId: string,
 ): Promise<void> {
-  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`workflow-scheme:${workspaceId}`}))`;
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`workflow-scheme:${organizationId}`}))`;
 }
 
 /** Chạy thật mà còn nhóm chưa có đích do người dùng chọn → 422 STATUS_MAPPING_REQUIRED, mỗi trạng thái cũ một dòng. */
@@ -145,16 +145,16 @@ export function assertAllMapped(moves: PlannedMove[], typeNames: Map<string, str
 }
 
 /** Mọi id trong `statusMap` (cả khoá lẫn đích) phải là trạng thái của tổ chức này — id sai/đã xoá/của tổ chức khác → 422. */
-export async function assertMapInWorkspace(
+export async function assertMapInOrganization(
   db: Prisma.TransactionClient,
-  workspaceId: string,
+  organizationId: string,
   statusMaps: Array<Record<string, string> | undefined>,
 ): Promise<void> {
   const ids = new Set<string>();
   for (const m of statusMaps) for (const [k, v] of Object.entries(m ?? {})) ids.add(k).add(v);
   if (ids.size === 0) return;
   const found = await db.status.count({
-    where: { id: { in: [...ids] }, workflow: { workspaceId } },
+    where: { id: { in: [...ids] }, workflow: { organizationId } },
   });
   if (found !== ids.size)
     throw new BusinessRuleException(

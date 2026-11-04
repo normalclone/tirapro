@@ -1,5 +1,5 @@
 /**
- * DTO "quy trình theo loại việc" (workflow scheme): workspace ánh xạ loại việc → quy trình,
+ * DTO "quy trình theo loại việc" (workflow scheme): tổ chức ánh xạ loại việc → quy trình,
  * dự án có thể ghi đè riêng từng loại. Zero-dep; zod schema ở @tirapro/shared.
  */
 import type { StatusCategory } from './enums';
@@ -14,8 +14,8 @@ export interface WorkflowSchemeItemDto {
   workflowId: string;
 }
 
-/** Cấu hình quy trình của workspace (GET/PUT). */
-export interface WorkspaceWorkflowSchemeDto {
+/** Cấu hình quy trình của tổ chức (GET/PUT). */
+export interface OrganizationWorkflowSchemeDto {
   items: WorkflowSchemeItemDto[];
   /** Mọi loại việc của tổ chức (kể cả loại chưa có dòng cấu hình) — để giao diện vẽ đủ hàng. */
   issueTypes: SchemeIssueTypeDto[];
@@ -38,10 +38,10 @@ export interface ProjectWorkflowOverrideDto extends WorkflowSchemeItemDto {
 
 /** Quy trình hiệu lực của một loại việc trong một dự án. */
 export interface ProjectWorkflowSchemeItemDto extends WorkflowSchemeItemDto {
-  /** true = dự án dùng quy trình riêng; false = theo workspace. */
+  /** true = dự án dùng quy trình riêng; false = theo organization. */
   isOverride: boolean;
-  /** Quy trình theo workspace (để hiển thị "Theo workspace: …" khi đang ghi đè). */
-  workspaceWorkflowId: string | null;
+  /** Quy trình theo tổ chức (để hiển thị "Theo organization: …" khi đang ghi đè). */
+  organizationWorkflowId: string | null;
 }
 
 export interface ProjectWorkflowSchemeDto {

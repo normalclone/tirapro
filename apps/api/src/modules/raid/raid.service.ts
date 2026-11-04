@@ -14,7 +14,7 @@ const OWNER_SELECT = { id: true, displayName: true, email: true, avatarUrl: true
 
 const RAID_SELECT = {
   id: true,
-  workspaceId: true,
+  organizationId: true,
   projectId: true,
   kind: true,
   title: true,
@@ -71,18 +71,18 @@ export class RaidService {
    * (dự án riêng tư → thành viên/admin). Admin → `{}` (không lọc).
    */
   private async scopeFor(
-    workspaceId: string,
+    organizationId: string,
     viewerId: string,
   ): Promise<Prisma.RaidItemWhereInput> {
-    const visible = await this.access.visibleWhere(viewerId, workspaceId);
+    const visible = await this.access.visibleWhere(viewerId, organizationId);
     if (Object.keys(visible).length === 0) return {};
     return { project: visible };
   }
 
-  async list(workspaceId: string, filter: RaidListFilter, viewerId: string) {
+  async list(organizationId: string, filter: RaidListFilter, viewerId: string) {
     const where: Prisma.RaidItemWhereInput = {
-      workspaceId,
-      ...(await this.scopeFor(workspaceId, viewerId)),
+      organizationId,
+      ...(await this.scopeFor(organizationId, viewerId)),
     };
     if (filter.kind) where.kind = filter.kind as RaidKind;
     if (filter.status) where.status = filter.status as RaidStatus;
@@ -102,27 +102,27 @@ export class RaidService {
     return rows.map((r) => this.toDto(r)).sort((a, b) => b.score - a.score);
   }
 
-  async get(workspaceId: string, id: string, viewerId: string) {
+  async get(organizationId: string, id: string, viewerId: string) {
     const row = await this.prisma.raidItem.findFirst({
-      where: { id, workspaceId, ...(await this.scopeFor(workspaceId, viewerId)) },
+      where: { id, organizationId, ...(await this.scopeFor(organizationId, viewerId)) },
       select: RAID_SELECT,
     });
     if (!row) throw new NotFoundAppException('Mục rủi ro');
     return this.toDto(row);
   }
 
-  async create(workspaceId: string, dto: CreateRaidInput, actingUserId: string) {
+  async create(organizationId: string, dto: CreateRaidInput, actingUserId: string) {
     const projectId = await this.resolveProject(
-      workspaceId,
+      organizationId,
       requireProjectId(dto.projectId, 'mục rủi ro'),
       actingUserId,
     );
     await assertProjectWritable(this.prisma, projectId);
-    const ownerIds = await this.resolveOwners(workspaceId, dto);
+    const ownerIds = await this.resolveOwners(organizationId, dto);
 
     const created = await this.prisma.raidItem.create({
       data: {
-        workspaceId,
+        organizationId,
         projectId,
         ownerId: ownerIds[0] ?? null,
         owners: { create: ownerIds.map((userId) => ({ userId })) },
@@ -138,11 +138,11 @@ export class RaidService {
       },
       select: { id: true },
     });
-    return this.get(workspaceId, created.id, actingUserId);
+    return this.get(organizationId, created.id, actingUserId);
   }
 
-  async update(workspaceId: string, id: string, dto: UpdateRaidInput, actor: RaidActor) {
-    const item = await this.requireItem(workspaceId, id, actor.id);
+  async update(organizationId: string, id: string, dto: UpdateRaidInput, actor: RaidActor) {
+    const item = await this.requireItem(organizationId, id, actor.id);
     await assertProjectWritable(this.prisma, item.projectId);
     const data: Prisma.RaidItemUpdateInput = {};
 
@@ -161,19 +161,19 @@ export class RaidService {
     if (dto.dueDate !== undefined) data.dueDate = this.parseDate(dto.dueDate ?? null);
     if (dto.projectId !== undefined) {
       const projectId = await this.resolveProject(
-        workspaceId,
+        organizationId,
         requireProjectId(dto.projectId, 'mục rủi ro'),
         actor.id,
       );
       if (projectId !== item.projectId) {
         // Guard chỉ tính quyền ở dự án HIỆN TẠI của mục → phải kiểm thêm quyền Ở ĐÍCH.
-        await this.assertCanManageRisk(workspaceId, actor, projectId);
+        await this.assertCanManageRisk(organizationId, actor, projectId);
         await assertProjectWritable(this.prisma, projectId);
       }
       data.project = { connect: { id: projectId } };
     }
     if (dto.ownerIds !== undefined || dto.ownerId !== undefined) {
-      const ownerIds = await this.resolveOwners(workspaceId, dto);
+      const ownerIds = await this.resolveOwners(organizationId, dto);
       data.owner = ownerIds[0] ? { connect: { id: ownerIds[0] } } : { disconnect: true };
       data.owners = {
         deleteMany: {},
@@ -182,11 +182,11 @@ export class RaidService {
     }
 
     await this.prisma.raidItem.update({ where: { id }, data });
-    return this.get(workspaceId, id, actor.id);
+    return this.get(organizationId, id, actor.id);
   }
 
-  async remove(workspaceId: string, id: string, viewerId: string) {
-    const item = await this.requireItem(workspaceId, id, viewerId);
+  async remove(organizationId: string, id: string, viewerId: string) {
+    const item = await this.requireItem(organizationId, id, viewerId);
     await assertProjectWritable(this.prisma, item.projectId);
     await this.prisma.raidItem.delete({ where: { id } });
     return { success: true };
@@ -194,9 +194,9 @@ export class RaidService {
 
   // ───────────────────────── helpers ─────────────────────────
 
-  private async requireItem(workspaceId: string, id: string, viewerId: string) {
+  private async requireItem(organizationId: string, id: string, viewerId: string) {
     const row = await this.prisma.raidItem.findFirst({
-      where: { id, workspaceId, ...(await this.scopeFor(workspaceId, viewerId)) },
+      where: { id, organizationId, ...(await this.scopeFor(organizationId, viewerId)) },
       select: { id: true, projectId: true },
     });
     if (!row) throw new NotFoundAppException('Mục rủi ro');
@@ -204,7 +204,7 @@ export class RaidService {
   }
 
   private async assertCanManageRisk(
-    workspaceId: string,
+    organizationId: string,
     actor: RaidActor,
     projectId: string,
   ): Promise<void> {
@@ -213,7 +213,7 @@ export class RaidService {
     await assertCanManageInProject(
       this.rbac,
       actor.id,
-      workspaceId,
+      organizationId,
       projectId,
       PERMISSIONS.RISK_MANAGE,
       'rủi ro',
@@ -228,13 +228,13 @@ export class RaidService {
   }
 
   private async resolveProject(
-    workspaceId: string,
+    organizationId: string,
     projectId: string,
     viewerId: string,
   ): Promise<string> {
-    const visible = await this.access.visibleWhere(viewerId, workspaceId);
+    const visible = await this.access.visibleWhere(viewerId, organizationId);
     const p = await this.prisma.project.findFirst({
-      where: { id: projectId, workspaceId, deletedAt: null, ...visible },
+      where: { id: projectId, organizationId, deletedAt: null, ...visible },
       select: { id: true },
     });
     if (!p) throw new NotFoundAppException('Dự án');
@@ -246,14 +246,14 @@ export class RaidService {
    * mọi người phải là thành viên tổ chức.
    */
   private async resolveOwners(
-    workspaceId: string,
+    organizationId: string,
     dto: { ownerIds?: string[]; ownerId?: string | null },
   ): Promise<string[]> {
     const wanted = dto.ownerIds ?? (dto.ownerId ? [dto.ownerId] : []);
     const ids = [...new Set(wanted)];
     if (ids.length === 0) return [];
-    const members = await this.prisma.workspaceMembership.findMany({
-      where: { workspaceId, userId: { in: ids } },
+    const members = await this.prisma.organizationMembership.findMany({
+      where: { organizationId, userId: { in: ids } },
       select: { userId: true },
     });
     const ok = new Set(members.map((m) => m.userId));
@@ -276,7 +276,7 @@ export class RaidService {
     const { level, levelLabel } = raidLevel(score);
     return {
       id: r.id,
-      workspaceId: r.workspaceId,
+      organizationId: r.organizationId,
       projectId: r.projectId,
       project: r.project,
       kind: r.kind,

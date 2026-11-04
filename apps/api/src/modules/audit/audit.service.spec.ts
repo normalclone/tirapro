@@ -17,7 +17,7 @@ describe('AuditService', () => {
   it('record(): ghi đủ trường', async () => {
     const { svc, prisma } = make();
     await svc.record({
-      workspaceId: 'w1',
+      organizationId: 'w1',
       actorId: 'u1',
       action: AUDIT_ACTIONS.ROLE_CREATED,
       entityType: 'role',
@@ -29,7 +29,7 @@ describe('AuditService', () => {
       { data: Record<string, unknown> },
     ];
     expect(arg[0].data).toMatchObject({
-      workspaceId: 'w1',
+      organizationId: 'w1',
       actorId: 'u1',
       action: 'role.created',
       entityType: 'role',
@@ -63,7 +63,7 @@ describe('AuditService', () => {
     expect(prisma.auditLog.create).not.toHaveBeenCalled();
   });
 
-  it('list(): luôn lọc theo workspace + bộ lọc, mới nhất trước, lấy dư 1 dòng để biết còn trang sau', async () => {
+  it('list(): luôn lọc theo organization + bộ lọc, mới nhất trước, lấy dư 1 dòng để biết còn trang sau', async () => {
     const { svc, prisma } = make();
     await svc.list('w1', {
       action: 'role.created',
@@ -76,7 +76,7 @@ describe('AuditService', () => {
       { where: unknown; orderBy: unknown; take: number },
     ];
     expect(arg[0].where).toEqual({
-      workspaceId: 'w1',
+      organizationId: 'w1',
       action: 'role.created',
       actorId: 'u1',
       createdAt: { gte: new Date('2026-10-01'), lte: new Date('2026-10-31') },
@@ -85,12 +85,12 @@ describe('AuditService', () => {
     expect(arg[0].take).toBe(21);
   });
 
-  it('list(): không có bộ lọc thì chỉ lọc theo workspace; phân giải tên người thực hiện theo lô', async () => {
+  it('list(): không có bộ lọc thì chỉ lọc theo organization; phân giải tên người thực hiện theo lô', async () => {
     const { svc, prisma } = make();
     prisma.auditLog.findMany.mockResolvedValueOnce([
       {
         id: 'a1',
-        workspaceId: 'w1',
+        organizationId: 'w1',
         actorId: 'u1',
         action: 'role.created',
         entityType: 'role',
@@ -106,7 +106,7 @@ describe('AuditService', () => {
     const page = await svc.list('w1', { limit: 20 });
     expect(
       (prisma.auditLog.findMany.mock.calls[0] as unknown as [{ where: unknown }])[0].where,
-    ).toEqual({ workspaceId: 'w1' });
+    ).toEqual({ organizationId: 'w1' });
     expect(page.data[0]).toMatchObject({
       id: 'a1',
       createdAt: '2026-10-02T00:00:00.000Z',
@@ -115,7 +115,7 @@ describe('AuditService', () => {
     expect(page.pageInfo).toMatchObject({ hasNextPage: false, endCursor: 'a1' });
   });
 
-  it('list(): có con trỏ → keyset (createdAt < cur HOẶC cùng createdAt và id < cur), con trỏ tra trong CÙNG workspace', async () => {
+  it('list(): có con trỏ → keyset (createdAt < cur HOẶC cùng createdAt và id < cur), con trỏ tra trong CÙNG organization', async () => {
     const { svc, prisma } = make();
     const at = new Date('2026-10-02T00:00:00Z');
     (prisma.auditLog as unknown as { findFirst: unknown }).findFirst = vi.fn(() =>
@@ -125,12 +125,12 @@ describe('AuditService', () => {
     const find = (prisma.auditLog as unknown as { findFirst: { mock: { calls: unknown[][] } } })
       .findFirst;
     expect(find.mock.calls[0]![0]).toEqual({
-      where: { id: 'a5', workspaceId: 'w1' },
+      where: { id: 'a5', organizationId: 'w1' },
       select: { createdAt: true },
     });
     const arg = prisma.auditLog.findMany.mock.calls[0] as unknown as [{ where: unknown }];
     expect(arg[0].where).toEqual({
-      workspaceId: 'w1',
+      organizationId: 'w1',
       AND: [{ OR: [{ createdAt: { lt: at } }, { createdAt: at, id: { lt: 'a5' } }] }],
     });
   });

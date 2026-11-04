@@ -105,7 +105,7 @@ export class ExportService {
    * `CSV_MAX_ROWS`; chạm trần thì cắt và `truncated: true`.
    */
   async exportIssuesCsv(
-    workspaceId: string,
+    organizationId: string,
     userId: string,
     q: IssuesCsvQuery,
   ): Promise<{ csv: string; truncated: boolean; filename: string; rows: number }> {
@@ -132,17 +132,17 @@ export class ExportService {
 
     const project = projectId
       ? await this.prisma.project.findFirst({
-          where: { id: projectId, workspaceId, deletedAt: null },
+          where: { id: projectId, organizationId, deletedAt: null },
           select: { id: true, key: true },
         })
       : null;
     if (projectId && !project) throw new NotFoundAppException('Dự án');
     // Tự kiểm quyền thấy dự án riêng tư (không chỉ dựa vào guard ProjectRef): người ngoài nhận 404 như dự án không tồn tại.
-    if (projectId) await this.access.assertCanSee(userId, workspaceId, projectId, 'Dự án');
+    if (projectId) await this.access.assertCanSee(userId, organizationId, projectId, 'Dự án');
     const sprint =
       sprintId && projectId
         ? await this.prisma.sprint.findFirst({
-            where: { id: sprintId, projectId, deletedAt: null, project: { workspaceId } },
+            where: { id: sprintId, projectId, deletedAt: null, project: { organizationId } },
             select: { id: true, name: true },
           })
         : null;
@@ -151,7 +151,7 @@ export class ExportService {
     let fetchPage: (cursor: string | undefined) => Promise<PageResult<IssueDto>>;
     if (hasJql) {
       fetchPage = (cursor) =>
-        this.search.search(workspaceId, userId, {
+        this.search.search(organizationId, userId, {
           mode: 'jql',
           jql,
           projectId,
@@ -175,7 +175,7 @@ export class ExportService {
         orderBy = [{ rank: 'asc' }];
       }
       fetchPage = (cursor) =>
-        this.issues.query(workspaceId, where, orderBy, cursor, CSV_PAGE_SIZE, userId);
+        this.issues.query(organizationId, where, orderBy, cursor, CSV_PAGE_SIZE, userId);
     }
 
     const columnIds = resolveIssueCsvColumns(q.columns);
@@ -188,7 +188,7 @@ export class ExportService {
     for (;;) {
       const res = await fetchPage(cursor);
       const batch = res.data.slice(0, CSV_MAX_ROWS - rows.length);
-      await this.fillNames(workspaceId, batch, columnIds, sprintNames, projectKeys);
+      await this.fillNames(organizationId, batch, columnIds, sprintNames, projectKeys);
       for (const i of batch) {
         rows.push({
           ...i,
@@ -212,13 +212,13 @@ export class ExportService {
       csv: toCsv(rows, columns, { delimiter }),
       truncated,
       rows: rows.length,
-      filename: `tirapro-${project?.key ?? 'workspace'}-${label}-${vnDayStamp()}.csv`,
+      filename: `tirapro-${project?.key ?? 'organization'}-${label}-${vnDayStamp()}.csv`,
     };
   }
 
   /** Nạp tên sprint / khoá dự án còn thiếu cho một lô (chỉ khi cột đó được xuất). */
   private async fillNames(
-    workspaceId: string,
+    organizationId: string,
     batch: IssueDto[],
     columnIds: readonly string[],
     sprintNames: Map<string, string>,
@@ -232,7 +232,7 @@ export class ExportService {
       ];
       if (ids.length) {
         const found = await this.prisma.sprint.findMany({
-          where: { id: { in: ids }, deletedAt: null, project: { workspaceId } },
+          where: { id: { in: ids }, deletedAt: null, project: { organizationId } },
           select: { id: true, name: true },
         });
         for (const s of found) sprintNames.set(s.id, s.name);
@@ -242,7 +242,7 @@ export class ExportService {
       const ids = [...new Set(batch.map((i) => i.projectId).filter((x) => !projectKeys.has(x)))];
       if (ids.length) {
         const found = await this.prisma.project.findMany({
-          where: { id: { in: ids }, workspaceId, deletedAt: null },
+          where: { id: { in: ids }, organizationId, deletedAt: null },
           select: { id: true, key: true },
         });
         for (const p of found) projectKeys.set(p.id, p.key);
@@ -251,9 +251,9 @@ export class ExportService {
   }
 
   /** Xuất toàn bộ một project ra JSON tự chứa. Chỉ đọc, không thay đổi dữ liệu. */
-  async exportProject(workspaceId: string, projectId: string): Promise<ProjectExport> {
+  async exportProject(organizationId: string, projectId: string): Promise<ProjectExport> {
     const project = await this.prisma.project.findFirst({
-      where: { id: projectId, workspaceId, deletedAt: null },
+      where: { id: projectId, organizationId, deletedAt: null },
       select: { id: true, key: true, name: true, description: true, type: true },
     });
     if (!project) throw new NotFoundAppException('Dự án');

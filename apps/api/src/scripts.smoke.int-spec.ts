@@ -97,7 +97,7 @@ describe.skipIf(!ENABLED)('scripts vận hành chạy thật (spawn)', () => {
     await prisma.user.create({
       data: { id: ids.user, email: `${ids.user}@smoke.test`, displayName: 'Smoke' },
     });
-    await prisma.workspace.create({
+    await prisma.organization.create({
       data: { id: ids.ws, name: TAG, slug: TAG, ownerId: ids.user },
     });
     await prisma.attachment.createMany({
@@ -122,7 +122,7 @@ describe.skipIf(!ENABLED)('scripts vận hành chạy thật (spawn)', () => {
 
   afterAll(async () => {
     await prisma.attachment.deleteMany({ where: { id: { startsWith: TAG } } });
-    await prisma.workspace.deleteMany({ where: { id: ids.ws } });
+    await prisma.organization.deleteMany({ where: { id: ids.ws } });
     await prisma.user.deleteMany({ where: { id: ids.user } });
     await prisma.$disconnect();
     const objs = (await bucketKeys()).map((Key) => ({ Key }));

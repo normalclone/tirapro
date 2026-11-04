@@ -17,7 +17,7 @@ export interface WatcherUser {
 /** Issue tối thiểu kèm trong payload của các domain event issue.*. */
 interface IssueEventShape {
   id: string;
-  workspaceId: string;
+  organizationId: string;
   key: string;
   summary: string;
 }
@@ -49,11 +49,15 @@ export class WatchersService {
     private readonly notifications: NotificationsService,
   ) {}
 
-  // ---------- COMMANDS / QUERIES (luôn scope theo workspace của user) ----------
+  // ---------- COMMANDS / QUERIES (luôn scope theo tổ chức của user) ----------
 
   /** Theo dõi issue trên danh nghĩa của chính user. Idempotent (nuốt P2002). */
-  async watch(workspaceId: string, userId: string, issueId: string): Promise<{ watching: true }> {
-    await this.requireIssue(workspaceId, issueId);
+  async watch(
+    organizationId: string,
+    userId: string,
+    issueId: string,
+  ): Promise<{ watching: true }> {
+    await this.requireIssue(organizationId, issueId);
     await assertIssueWritable(this.prisma, issueId);
     try {
       await this.prisma.issueWatcher.create({ data: { issueId, userId } });
@@ -66,11 +70,11 @@ export class WatchersService {
 
   /** Bỏ theo dõi issue. Idempotent (xóa không có cũng coi như thành công). */
   async unwatch(
-    workspaceId: string,
+    organizationId: string,
     userId: string,
     issueId: string,
   ): Promise<{ watching: false }> {
-    await this.requireIssue(workspaceId, issueId);
+    await this.requireIssue(organizationId, issueId);
     await assertIssueWritable(this.prisma, issueId);
     await this.prisma.issueWatcher.deleteMany({ where: { issueId, userId } });
     return { watching: false };
@@ -84,11 +88,11 @@ export class WatchersService {
    * danh sách vừa lộ tên người đã rời vừa hứa thông báo sẽ không bao giờ tới.
    */
   async list(
-    workspaceId: string,
+    organizationId: string,
     userId: string,
     issueId: string,
   ): Promise<{ watchers: WatcherUser[]; isWatching: boolean }> {
-    const issue = await this.requireIssue(workspaceId, issueId);
+    const issue = await this.requireIssue(organizationId, issueId);
     const rows = await this.prisma.issueWatcher.findMany({
       where: { issueId, user: { status: { not: 'DEACTIVATED' } } },
       select: { user: { select: { id: true, displayName: true, avatarUrl: true } } },
@@ -97,7 +101,7 @@ export class WatchersService {
     const visible = new Set(
       await this.notifications.filterCanSee(
         rows.map((r) => r.user.id),
-        workspaceId,
+        organizationId,
         issue.projectId,
       ),
     );
@@ -113,11 +117,11 @@ export class WatchersService {
 
   /** User hiện tại có đang theo dõi issue không. */
   async isWatching(
-    workspaceId: string,
+    organizationId: string,
     userId: string,
     issueId: string,
   ): Promise<{ watching: boolean }> {
-    await this.requireIssue(workspaceId, issueId);
+    await this.requireIssue(organizationId, issueId);
     const found = await this.prisma.issueWatcher.findUnique({
       where: { issueId_userId: { issueId, userId } },
       select: { userId: true },
@@ -162,7 +166,7 @@ export class WatchersService {
       if (!issueId) return;
       const issue = await this.prisma.issue.findFirst({
         where: { id: issueId, deletedAt: null },
-        select: { id: true, workspaceId: true, key: true, summary: true },
+        select: { id: true, organizationId: true, key: true, summary: true },
       });
       if (!issue) return;
       await this.notifyWatchers(issue, author);
@@ -193,7 +197,7 @@ export class WatchersService {
         await this.notifications.publish(
           {
             recipientId,
-            workspaceId: issue.workspaceId,
+            organizationId: issue.organizationId,
             type: 'WATCHING_UPDATE',
             issueId: issue.id,
             actorId: actorId ?? null,
@@ -207,13 +211,13 @@ export class WatchersService {
     }
   }
 
-  /** Issue phải thuộc workspace của user và chưa xóa mềm. */
+  /** Issue phải thuộc tổ chức của user và chưa xóa mềm. */
   private async requireIssue(
-    workspaceId: string,
+    organizationId: string,
     issueId: string,
   ): Promise<{ id: string; projectId: string }> {
     const issue = await this.prisma.issue.findFirst({
-      where: { id: issueId, workspaceId, deletedAt: null },
+      where: { id: issueId, organizationId, deletedAt: null },
       select: { id: true, projectId: true },
     });
     if (!issue) throw new NotFoundAppException('Công việc');

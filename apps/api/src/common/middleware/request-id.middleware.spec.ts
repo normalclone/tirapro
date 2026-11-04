@@ -19,12 +19,12 @@ describe('RequestIdMiddleware', () => {
     const req = makeReq({ 'x-request-id': 'abc-123' });
     new RequestIdMiddleware().use(req, { setHeader } as never, next as never);
     await new Promise((r) => setTimeout(r, 0));
-    expect(seen).toEqual({ requestId: 'abc-123', userId: undefined, workspaceId: undefined });
+    expect(seen).toEqual({ requestId: 'abc-123', userId: undefined, organizationId: undefined });
     expect(setHeader).toHaveBeenCalledWith('X-Request-Id', 'abc-123');
     expect(getStore()).toBeUndefined(); // ngoài request không rò context
   });
 
-  it('guard điền userId/workspaceId vào đúng store của request', () => {
+  it('guard điền userId/organizationId vào đúng store của request', () => {
     const req = makeReq();
     new RequestIdMiddleware().use(
       req,
@@ -32,8 +32,8 @@ describe('RequestIdMiddleware', () => {
       (() => {
         const store = getStore()!;
         store.userId = 'u1';
-        store.workspaceId = 'w1';
-        expect(getStore()).toMatchObject({ userId: 'u1', workspaceId: 'w1' });
+        store.organizationId = 'w1';
+        expect(getStore()).toMatchObject({ userId: 'u1', organizationId: 'w1' });
       }) as never,
     );
   });

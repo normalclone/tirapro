@@ -30,8 +30,8 @@ export const DEFAULT_DIGEST_BLOCKS: readonly DigestBlockId[] = [
 /** Digest cũ (cột `metrics` rỗng) = nội dung đã gửi trước đây: giữ nguyên hành vi. */
 export const LEGACY_DIGEST_BLOCKS: readonly DigestBlockId[] = ['summary', 'sprint'];
 
-/** Khối chỉ có nghĩa ở cấp workspace — bỏ qua khi digest gắn một dự án (OKR lọc theo dự án riêng, xem API). */
-export const WORKSPACE_ONLY_DIGEST_BLOCKS: readonly DigestBlockId[] = ['workload'];
+/** Khối chỉ có nghĩa ở cấp tổ chức — bỏ qua khi digest gắn một dự án (OKR lọc theo dự án riêng, xem API). */
+export const ORGANIZATION_ONLY_DIGEST_BLOCKS: readonly DigestBlockId[] = ['workload'];
 
 export interface DigestSection {
   id: string;

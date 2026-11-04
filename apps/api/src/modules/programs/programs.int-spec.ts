@@ -42,7 +42,7 @@ describe.skipIf(!DB_URL)('nhóm dự án nhiều–nhiều ↔ Postgres thật',
       await prisma.projectProgram.findMany({ where: { programId }, orderBy: { projectId: 'asc' } })
     ).map((l) => l.projectId);
   const reset = async () => {
-    await prisma.projectProgram.deleteMany({ where: { program: { workspaceId: WS } } });
+    await prisma.projectProgram.deleteMany({ where: { program: { organizationId: WS } } });
     const link = (projectId: string, programId: string) =>
       prisma.projectProgram.create({ data: { projectId, programId } });
     await link(P.pub, G.a);
@@ -58,21 +58,21 @@ describe.skipIf(!DB_URL)('nhóm dự án nhiều–nhiều ↔ Postgres thật',
       await prisma.user.create({
         data: { id: u, email: `${u}@x.test`, displayName: k, status: 'ACTIVE' },
       });
-    await prisma.workspace.create({ data: { id: WS, name: WS, slug: WS, ownerId: U.admin } });
+    await prisma.organization.create({ data: { id: WS, name: WS, slug: WS, ownerId: U.admin } });
     await prisma.role.create({
-      data: { id: id('wrole'), workspaceId: WS, name: 'R', scope: 'WORKSPACE' },
+      data: { id: id('wrole'), organizationId: WS, name: 'R', scope: 'ORGANIZATION' },
     });
     await prisma.role.create({
-      data: { id: id('prole'), workspaceId: WS, name: 'PR', scope: 'PROJECT' },
+      data: { id: id('prole'), organizationId: WS, name: 'PR', scope: 'PROJECT' },
     });
     for (const u of Object.values(U))
-      await prisma.workspaceMembership.create({
-        data: { workspaceId: WS, userId: u, roleId: id('wrole') },
+      await prisma.organizationMembership.create({
+        data: { organizationId: WS, userId: u, roleId: id('wrole') },
       });
     const k = TAG.slice(2, 7).toUpperCase();
     const proj = (pid: string, key: string, over: Record<string, unknown> = {}) =>
       prisma.project.create({
-        data: { id: pid, workspaceId: WS, key: `${k}${key}`, name: `${k}${key}`, ...over },
+        data: { id: pid, organizationId: WS, key: `${k}${key}`, name: `${k}${key}`, ...over },
       });
     await proj(P.pub, '1');
     await proj(P.priv, '2', { isPrivate: true });
@@ -87,7 +87,9 @@ describe.skipIf(!DB_URL)('nhóm dự án nhiều–nhiều ↔ Postgres thật',
       [G.b, 'B'],
       [G.empty, 'Rỗng'],
     ] as const)
-      await prisma.program.create({ data: { id: gid, workspaceId: WS, name: `${name}-${TAG}` } });
+      await prisma.program.create({
+        data: { id: gid, organizationId: WS, name: `${name}-${TAG}` },
+      });
     await reset();
 
     // RbacService THẬT (assertProjectVisible/404 thật), chỉ đặt cố định chế độ xem dự án theo người.
@@ -107,16 +109,16 @@ describe.skipIf(!DB_URL)('nhóm dự án nhiều–nhiều ↔ Postgres thật',
 
   afterAll(async () => {
     if (!prisma) return;
-    await prisma.slaPolicy.deleteMany({ where: { workspaceId: WS } });
-    await prisma.raidItem.deleteMany({ where: { workspaceId: WS } });
-    await prisma.objective.deleteMany({ where: { workspaceId: WS } });
-    await prisma.projectProgram.deleteMany({ where: { program: { workspaceId: WS } } });
-    await prisma.projectMembership.deleteMany({ where: { project: { workspaceId: WS } } });
-    await prisma.project.deleteMany({ where: { workspaceId: WS } });
-    await prisma.program.deleteMany({ where: { workspaceId: WS } });
-    await prisma.workspaceMembership.deleteMany({ where: { workspaceId: WS } });
-    await prisma.role.deleteMany({ where: { workspaceId: WS } });
-    await prisma.workspace.deleteMany({ where: { id: WS } });
+    await prisma.slaPolicy.deleteMany({ where: { organizationId: WS } });
+    await prisma.raidItem.deleteMany({ where: { organizationId: WS } });
+    await prisma.objective.deleteMany({ where: { organizationId: WS } });
+    await prisma.projectProgram.deleteMany({ where: { program: { organizationId: WS } } });
+    await prisma.projectMembership.deleteMany({ where: { project: { organizationId: WS } } });
+    await prisma.project.deleteMany({ where: { organizationId: WS } });
+    await prisma.program.deleteMany({ where: { organizationId: WS } });
+    await prisma.organizationMembership.deleteMany({ where: { organizationId: WS } });
+    await prisma.role.deleteMany({ where: { organizationId: WS } });
+    await prisma.organization.deleteMany({ where: { id: WS } });
     await prisma.user.deleteMany({ where: { id: { in: Object.values(U) } } });
     await prisma.$disconnect();
   }, 120_000);
@@ -222,7 +224,7 @@ describe.skipIf(!DB_URL)('nhóm dự án nhiều–nhiều ↔ Postgres thật',
     await prisma.project.create({
       data: {
         id: extra,
-        workspaceId: WS,
+        organizationId: WS,
         key: `${TAG.slice(2, 7).toUpperCase()}9`,
         name: `x-${TAG}`,
       },
@@ -231,24 +233,24 @@ describe.skipIf(!DB_URL)('nhóm dự án nhiều–nhiều ↔ Postgres thật',
     await prisma.project.delete({ where: { id: extra } });
     expect(await prisma.projectProgram.count({ where: { projectId: extra } })).toBe(0);
     expect(await prisma.program.count({ where: { id: G.a } })).toBe(1);
-    await prisma.program.create({ data: { id: G.empty, workspaceId: WS, name: `Rong-${TAG}` } });
+    await prisma.program.create({ data: { id: G.empty, organizationId: WS, name: `Rong-${TAG}` } });
   });
 
   it('mục tiêu / rủi ro / chính sách thời gian xử lý: DB từ chối projectId rỗng', async () => {
     const now = new Date();
     await expect(
       prisma.$executeRawUnsafe(
-        `INSERT INTO "Objective"(id,"workspaceId","projectId",name,period,"updatedAt") VALUES ('${id('o')}','${WS}',NULL,'x','2026-Q4','${now.toISOString()}')`,
+        `INSERT INTO "Objective"(id,"organizationId","projectId",name,period,"updatedAt") VALUES ('${id('o')}','${WS}',NULL,'x','2026-Q4','${now.toISOString()}')`,
       ),
     ).rejects.toThrow();
     await expect(
       prisma.$executeRawUnsafe(
-        `INSERT INTO "RaidItem"(id,"workspaceId","projectId",title,"updatedAt") VALUES ('${id('r')}','${WS}',NULL,'x','${now.toISOString()}')`,
+        `INSERT INTO "RaidItem"(id,"organizationId","projectId",title,"updatedAt") VALUES ('${id('r')}','${WS}',NULL,'x','${now.toISOString()}')`,
       ),
     ).rejects.toThrow();
     await expect(
       prisma.$executeRawUnsafe(
-        `INSERT INTO "SlaPolicy"(id,"workspaceId","projectId",name,"responseMins","resolveMins","updatedAt") VALUES ('${id('s')}','${WS}',NULL,'x',5,60,'${now.toISOString()}')`,
+        `INSERT INTO "SlaPolicy"(id,"organizationId","projectId",name,"responseMins","resolveMins","updatedAt") VALUES ('${id('s')}','${WS}',NULL,'x',5,60,'${now.toISOString()}')`,
       ),
     ).rejects.toThrow();
   });

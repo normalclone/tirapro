@@ -21,7 +21,7 @@ describe.skipIf(!DB_URL)('SearchService.fields (trạng thái) ↔ Postgres th�
   let service: SearchService;
 
   const flow = async (key: string, names: string[]) => {
-    await prisma.workflow.create({ data: { id: id(key), workspaceId: WS, name: key } });
+    await prisma.workflow.create({ data: { id: id(key), organizationId: WS, name: key } });
     await prisma.status.createMany({
       data: names.map((n, i) => ({
         id: id(`${key}-${i}`),
@@ -46,29 +46,41 @@ describe.skipIf(!DB_URL)('SearchService.fields (trạng thái) ↔ Postgres th�
     await prisma.user.create({
       data: { id: id('u'), email: `${id('u')}@sf.test`, displayName: 'QT' },
     });
-    await prisma.workspace.create({ data: { id: WS, name: WS, slug: WS, ownerId: id('u') } });
+    await prisma.organization.create({ data: { id: WS, name: WS, slug: WS, ownerId: id('u') } });
     await flow('old', ['Cần làm', 'Đang làm', 'Xong']);
     await flow('std', ['To Do', 'In Review', 'Done']);
     await flow('bug', ['New', 'Ready for Retest', 'Done']);
     await flow('ovr', ['Chờ QA', 'Đang QA', 'Done']);
     await prisma.issueType.create({
-      data: { id: id('t-task'), workspaceId: WS, name: 'Task', key: 'TASK' },
+      data: { id: id('t-task'), organizationId: WS, name: 'Task', key: 'TASK' },
     });
     await prisma.issueType.create({
-      data: { id: id('t-bug'), workspaceId: WS, name: 'Bug', key: 'BUG' },
+      data: { id: id('t-bug'), organizationId: WS, name: 'Bug', key: 'BUG' },
     });
     await prisma.project.create({
-      data: { id: id('p1'), workspaceId: WS, key: 'SFA', name: 'A', defaultWorkflowId: id('old') },
+      data: {
+        id: id('p1'),
+        organizationId: WS,
+        key: 'SFA',
+        name: 'A',
+        defaultWorkflowId: id('old'),
+      },
     });
     await prisma.project.create({
-      data: { id: id('p2'), workspaceId: WS, key: 'SFB', name: 'B', defaultWorkflowId: id('old') },
+      data: {
+        id: id('p2'),
+        organizationId: WS,
+        key: 'SFB',
+        name: 'B',
+        defaultWorkflowId: id('old'),
+      },
     });
   }, 60_000);
 
   afterAll(async () => {
     if (!prisma) return;
-    await prisma.project.deleteMany({ where: { workspaceId: WS } });
-    await prisma.workspace.deleteMany({ where: { id: WS } });
+    await prisma.project.deleteMany({ where: { organizationId: WS } });
+    await prisma.organization.deleteMany({ where: { id: WS } });
     await prisma.user.deleteMany({ where: { id: { startsWith: TAG } } });
     await prisma.$disconnect();
   }, 60_000);
@@ -79,10 +91,10 @@ describe.skipIf(!DB_URL)('SearchService.fields (trạng thái) ↔ Postgres th�
   });
 
   it('có cấu hình theo loại việc → hợp theo tên của các quy trình đang dùng; quy trình cũ không còn dùng thì biến mất', async () => {
-    await prisma.workspaceWorkflowScheme.createMany({
+    await prisma.organizationWorkflowScheme.createMany({
       data: [
-        { workspaceId: WS, issueTypeId: id('t-task'), workflowId: id('std') },
-        { workspaceId: WS, issueTypeId: id('t-bug'), workflowId: id('bug') },
+        { organizationId: WS, issueTypeId: id('t-task'), workflowId: id('std') },
+        { organizationId: WS, issueTypeId: id('t-bug'), workflowId: id('bug') },
       ],
     });
     // Mọi loại việc đều đã có cấu hình → quy trình mặc định cũ của dự án không còn việc nào dùng.
@@ -107,7 +119,7 @@ describe.skipIf(!DB_URL)('SearchService.fields (trạng thái) ↔ Postgres th�
 
   it('thêm loại việc chưa có cấu hình → quy trình mặc định của dự án lại được dùng', async () => {
     await prisma.issueType.create({
-      data: { id: id('t-epic'), workspaceId: WS, name: 'Epic', key: 'EPIC' },
+      data: { id: id('t-epic'), organizationId: WS, name: 'Epic', key: 'EPIC' },
     });
     expect(await statusNames()).toEqual(expect.arrayContaining(['Cần làm', 'Đang làm', 'Xong']));
   });

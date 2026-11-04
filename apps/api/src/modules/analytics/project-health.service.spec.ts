@@ -146,7 +146,7 @@ describe('ProjectHealthService.forProjects', () => {
       .where;
     expect(projWhere).toMatchObject({
       id: { in: ['p1', 'p2', 'p3'] },
-      workspaceId: 'w1',
+      organizationId: 'w1',
       deletedAt: null,
     });
     const raidWhere = (prisma.raidItem.findMany.mock.calls[0] as unknown as [{ where: unknown }])[0]
@@ -191,7 +191,7 @@ describe('ProjectHealthService.forProjects', () => {
     }
   });
 
-  it('danh sách rỗng => Map rỗng, không chạm DB; id không thuộc workspace/đã xoá bị bỏ qua', async () => {
+  it('danh sách rỗng => Map rỗng, không chạm DB; id không thuộc organization/đã xoá bị bỏ qua', async () => {
     const { service, prisma } = make();
     expect((await service.forProjects('w1', [], null)).size).toBe(0);
     expect(prisma.project.findMany).not.toHaveBeenCalled();
@@ -237,7 +237,7 @@ describe('ProjectHealthService.forProjects — người xem (dự án riêng tư
       (prisma.project.findMany.mock.calls[0] as unknown as [{ where: unknown }])[0].where,
     ).toMatchObject({
       id: { in: ['p1', 'p2', 'p3'] },
-      workspaceId: 'w1',
+      organizationId: 'w1',
       deletedAt: null,
       ...visible,
     });

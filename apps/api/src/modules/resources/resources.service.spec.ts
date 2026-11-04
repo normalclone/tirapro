@@ -9,7 +9,7 @@ describe('ResourcesService.workload — bỏ issue/worklog của dự án xoá m
   it('issue.findMany và workLog.findMany có project.deletedAt:null (cả khi lọc theo projectId)', async () => {
     const empty = () => vi.fn(() => Promise.resolve([]));
     const prisma = {
-      workspaceMembership: {
+      organizationMembership: {
         findMany: vi.fn(() =>
           Promise.resolve([{ user: { id: 'u1', displayName: 'An', email: 'a@x.vn' } }]),
         ),
@@ -30,12 +30,12 @@ describe('ResourcesService.workload — bỏ issue/worklog của dự án xoá m
         prisma.workLog.findMany.mock.calls[0] as unknown as [{ where: { issue: unknown } }]
       )[0].where.issue;
       expect(issueWhere).toMatchObject({
-        workspaceId: 'w1',
+        organizationId: 'w1',
         deletedAt: null,
         project: { deletedAt: null },
       });
       expect(logWhere).toMatchObject({
-        workspaceId: 'w1',
+        organizationId: 'w1',
         deletedAt: null,
         project: { deletedAt: null },
       });
@@ -55,7 +55,7 @@ describe('ResourcesService — dự án riêng tư (P14)', () => {
   function make() {
     const empty = () => vi.fn((_a?: unknown) => Promise.resolve([]));
     const prisma = {
-      workspaceMembership: {
+      organizationMembership: {
         findMany: vi.fn(() =>
           Promise.resolve([{ user: { id: 'u1', displayName: 'An', email: 'a@x.vn' } }]),
         ),
@@ -80,7 +80,7 @@ describe('ResourcesService — dự án riêng tư (P14)', () => {
     await service.listAllocations('w1', {}, 'u1');
     expect(access.visibleWhere).toHaveBeenCalledWith('u1', 'w1');
     expect(whereOf(prisma.allocation.findMany)).toMatchObject({
-      project: { workspaceId: 'w1', deletedAt: null, ...visible },
+      project: { organizationId: 'w1', deletedAt: null, ...visible },
     });
   });
 
@@ -88,7 +88,7 @@ describe('ResourcesService — dự án riêng tư (P14)', () => {
     const { service, prisma } = make();
     await service.workload('w1', {}, 'u1');
     expect(whereOf(prisma.allocation.findMany)).toMatchObject({
-      project: { workspaceId: 'w1', deletedAt: null, ...visible },
+      project: { organizationId: 'w1', deletedAt: null, ...visible },
     });
     expect(whereOf(prisma.issue.findMany)).toMatchObject({
       project: { deletedAt: null, ...visible },
@@ -118,7 +118,7 @@ describe('ResourcesService — dự án riêng tư (P14)', () => {
     for (const i of [0, 1])
       expect(whereOf(prisma.allocation.findFirst, i)).toMatchObject({
         id: 'a1',
-        project: { workspaceId: 'w1', deletedAt: null, ...visible },
+        project: { organizationId: 'w1', deletedAt: null, ...visible },
       });
     expect(prisma.allocation.create).not.toHaveBeenCalled();
   });
@@ -128,7 +128,7 @@ describe('ResourcesService.workload — việc chưa duyệt không tính vào t
   it('issue.findMany lọc TRIAGE_VISIBLE mà không đè khoá OR theo khoảng ngày', async () => {
     const empty = () => vi.fn(() => Promise.resolve([]));
     const prisma = {
-      workspaceMembership: {
+      organizationMembership: {
         findMany: vi.fn(() =>
           Promise.resolve([{ user: { id: 'u1', displayName: 'An', email: 'a@x.vn' } }]),
         ),
@@ -161,7 +161,7 @@ describe('ResourcesService.workload — điểm Epic không quy ra giờ (đếm
   const run = (issues: unknown[]) => {
     const empty = () => vi.fn(() => Promise.resolve([]));
     const prisma = {
-      workspaceMembership: {
+      organizationMembership: {
         findMany: vi.fn(() =>
           Promise.resolve([{ user: { id: 'u1', displayName: 'An', email: 'a@x.vn' } }]),
         ),

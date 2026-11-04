@@ -111,21 +111,39 @@ describe('TokenService.rotateRefresh — atomic', () => {
   });
 });
 
-describe('TokenService.workspaceFromExpiredAccess', () => {
-  it('đọc workspaceId từ access token đã hết hạn (chữ ký đúng)', () => {
+describe('TokenService.organizationFromExpiredAccess', () => {
+  it('đọc organizationId từ access token đã hết hạn (chữ ký đúng)', () => {
     const { service, jwt } = setup([], null);
     const expired = jwt.sign(
-      { sub: 'u1', workspaceId: 'w2' },
+      { sub: 'u1', organizationId: 'w2' },
       { secret: 'secret', expiresIn: -10 },
     );
-    expect(service.workspaceFromExpiredAccess(`Bearer ${expired}`)).toBe('w2');
+    expect(service.organizationFromExpiredAccess(`Bearer ${expired}`)).toBe('w2');
+  });
+  it('access token CŨ (claim `workspaceId`) hết hạn: refresh vẫn giữ đúng tổ chức đang làm việc', () => {
+    const { service, jwt } = setup([], null);
+    const expired = jwt.sign(
+      { sub: 'u1', workspaceId: 'w7' },
+      { secret: 'secret', expiresIn: -10 },
+    );
+    expect(service.organizationFromExpiredAccess(`Bearer ${expired}`)).toBe('w7');
   });
   it('sai chữ ký / thiếu header => null', () => {
     const { service, jwt } = setup([], null);
-    const forged = jwt.sign({ sub: 'u1', workspaceId: 'w2' }, { secret: 'khac' });
-    expect(service.workspaceFromExpiredAccess(`Bearer ${forged}`)).toBeNull();
-    expect(service.workspaceFromExpiredAccess(undefined)).toBeNull();
-    expect(service.workspaceFromExpiredAccess('Bearer rác')).toBeNull();
+    const forged = jwt.sign({ sub: 'u1', organizationId: 'w2' }, { secret: 'khac' });
+    expect(service.organizationFromExpiredAccess(`Bearer ${forged}`)).toBeNull();
+    expect(service.organizationFromExpiredAccess(undefined)).toBeNull();
+    expect(service.organizationFromExpiredAccess('Bearer rác')).toBeNull();
+  });
+});
+
+describe('TokenService.signAccess — claim tổ chức', () => {
+  it('token mới mang `organizationId` và KHÔNG còn claim cũ', () => {
+    const { service, jwt } = setup([], null);
+    const { accessToken } = service.signAccess({ id: 'u1', email: 'a@x.vn' }, 'w1');
+    const payload = jwt.decode<Record<string, unknown>>(accessToken);
+    expect(payload.organizationId).toBe('w1');
+    expect(payload).not.toHaveProperty('workspaceId');
   });
 });
 

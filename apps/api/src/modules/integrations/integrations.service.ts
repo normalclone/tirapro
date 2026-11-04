@@ -43,7 +43,7 @@ export interface TelegramTestResult {
 /** Integration đã redact (không lộ botToken). */
 interface IntegrationDto {
   id: string;
-  workspaceId: string;
+  organizationId: string;
   type: IntegrationType;
   name: string;
   config: Record<string, unknown>;
@@ -74,7 +74,7 @@ interface AddChannelInput {
 /** Issue payload đi kèm domain event (issue.* ). */
 interface IssueEventPayload {
   issue: {
-    workspaceId: string;
+    organizationId: string;
     key: string;
     summary: string;
     status?: { name?: string } | null;
@@ -91,7 +91,7 @@ interface IssueEventPayload {
 
 /** Payload của `DOMAIN_EVENTS.ISSUES_BULK_UPDATED`. */
 interface BulkUpdatedPayload {
-  workspaceId: string;
+  organizationId: string;
   projectId: string;
   actorId: string;
   count: number;
@@ -128,10 +128,10 @@ export class IntegrationsService {
 
   // ----------------------------- CRUD -----------------------------
 
-  /** Liệt kê integration của workspace (redact botToken). */
-  async list(workspaceId: string, type?: IntegrationType): Promise<IntegrationDto[]> {
+  /** Liệt kê integration của tổ chức (redact botToken). */
+  async list(organizationId: string, type?: IntegrationType): Promise<IntegrationDto[]> {
     const rows = await this.prisma.integration.findMany({
-      where: { workspaceId, ...(type ? { type } : {}) },
+      where: { organizationId, ...(type ? { type } : {}) },
       orderBy: { createdAt: 'desc' },
       include: { _count: { select: { channels: { where: { isEnabled: true } } } } },
     });
@@ -154,14 +154,14 @@ export class IntegrationsService {
 
   /** Tạo integration Telegram; lưu botToken đã mã hóa (nếu có). */
   async createTelegram(
-    workspaceId: string,
+    organizationId: string,
     userId: string,
     input: CreateTelegramInput,
   ): Promise<IntegrationDto> {
     const config = await this.buildTelegramConfig(input.botToken);
     const row = await this.prisma.integration.create({
       data: {
-        workspaceId,
+        organizationId,
         type: IntegrationType.TELEGRAM,
         name: input.name,
         config: config as unknown as Prisma.InputJsonValue,
@@ -170,7 +170,7 @@ export class IntegrationsService {
     });
     // Không ghi botToken/config vào nhật ký — chỉ loại + tên.
     await this.audit.record({
-      workspaceId,
+      organizationId,
       actorId: userId,
       action: AUDIT_ACTIONS.INTEGRATION_CREATED,
       entityType: 'integration',
@@ -216,14 +216,14 @@ export class IntegrationsService {
 
   /** Xóa integration (cascade kênh). */
   async remove(
-    workspaceId: string,
+    organizationId: string,
     integrationId: string,
     actorId?: string,
   ): Promise<{ success: true }> {
-    const integration = await this.requireIntegration(workspaceId, integrationId);
+    const integration = await this.requireIntegration(organizationId, integrationId);
     await this.prisma.integration.delete({ where: { id: integrationId } });
     await this.audit.record({
-      workspaceId,
+      organizationId,
       actorId,
       action: AUDIT_ACTIONS.INTEGRATION_DELETED,
       entityType: 'integration',
@@ -237,21 +237,21 @@ export class IntegrationsService {
   // --------------------------- Channels ---------------------------
 
   async addChannel(
-    workspaceId: string,
+    organizationId: string,
     integrationId: string,
     input: AddChannelInput,
     actorId?: string,
   ) {
-    const integration = await this.requireIntegration(workspaceId, integrationId);
+    const integration = await this.requireIntegration(organizationId, integrationId);
     // Gắn kênh vào dự án = kênh sẽ nhận thông báo của dự án đó (kể cả riêng tư): người gắn phải THẤY dự án (404 nếu không),
     // nếu không người có `integration:manage` mà không thuộc dự án riêng tư có thể tự gắn nhóm chat của mình để nhận tin.
     if (input.projectId && actorId)
-      await this.access.assertCanSee(actorId, workspaceId, input.projectId);
+      await this.access.assertCanSee(actorId, organizationId, input.projectId);
     try {
       const channel = await this.prisma.integrationChannel.create({
         data: {
           integrationId,
-          workspaceId,
+          organizationId,
           externalId: input.externalId,
           title: input.title ?? null,
           events: input.events ?? [],
@@ -259,7 +259,7 @@ export class IntegrationsService {
         },
       });
       await this.audit.record({
-        workspaceId,
+        organizationId,
         actorId,
         action: AUDIT_ACTIONS.INTEGRATION_CHANNEL_ADDED,
         entityType: 'integration_channel',
@@ -277,10 +277,10 @@ export class IntegrationsService {
   }
 
   /** Kênh của một tích hợp; kênh gắn dự án riêng tư mà người xem không thấy thì ẨN (như `addChannel` đòi thấy dự án). */
-  async listChannels(workspaceId: string, integrationId: string, viewerId?: string) {
-    await this.requireIntegration(workspaceId, integrationId);
+  async listChannels(organizationId: string, integrationId: string, viewerId?: string) {
+    await this.requireIntegration(organizationId, integrationId);
     const channels = await this.prisma.integrationChannel.findMany({
-      where: { integrationId, workspaceId },
+      where: { integrationId, organizationId },
       orderBy: { createdAt: 'desc' },
     });
     if (!viewerId) return channels;
@@ -288,17 +288,18 @@ export class IntegrationsService {
       ...new Set(channels.map((c) => c.projectId).filter((x): x is string => !!x)),
     ];
     const seen = new Map<string, boolean>();
-    for (const id of projectIds) seen.set(id, await this.access.canSee(viewerId, workspaceId, id));
+    for (const id of projectIds)
+      seen.set(id, await this.access.canSee(viewerId, organizationId, id));
     return channels.filter((c) => !c.projectId || seen.get(c.projectId));
   }
 
   async removeChannel(
-    workspaceId: string,
+    organizationId: string,
     channelId: string,
     actorId?: string,
   ): Promise<{ success: true }> {
     const channel = await this.prisma.integrationChannel.findFirst({
-      where: { id: channelId, workspaceId },
+      where: { id: channelId, organizationId },
       select: { id: true, title: true, externalId: true, integrationId: true, projectId: true },
     });
     if (!channel) throw new NotFoundAppException('Kênh');
@@ -306,12 +307,12 @@ export class IntegrationsService {
     if (
       channel.projectId &&
       actorId &&
-      !(await this.access.canSee(actorId, workspaceId, channel.projectId))
+      !(await this.access.canSee(actorId, organizationId, channel.projectId))
     )
       throw new NotFoundAppException('Kênh');
     await this.prisma.integrationChannel.delete({ where: { id: channelId } });
     await this.audit.record({
-      workspaceId,
+      organizationId,
       actorId,
       action: AUDIT_ACTIONS.INTEGRATION_CHANNEL_REMOVED,
       entityType: 'integration_channel',
@@ -329,15 +330,15 @@ export class IntegrationsService {
    */
   @OnEvent(DOMAIN_EVENTS.PROJECT_VISIBILITY_CHANGED)
   async onProjectVisibilityChanged(p: {
-    workspaceId?: string;
+    organizationId?: string;
     projectId?: string;
     isPrivate?: boolean;
     actorId?: string;
   }): Promise<void> {
-    if (!p?.workspaceId || !p.projectId || p.isPrivate !== true) return;
+    if (!p?.organizationId || !p.projectId || p.isPrivate !== true) return;
     try {
       const channels = await this.prisma.integrationChannel.findMany({
-        where: { workspaceId: p.workspaceId, projectId: p.projectId, isEnabled: true },
+        where: { organizationId: p.organizationId, projectId: p.projectId, isEnabled: true },
         select: { id: true },
       });
       if (channels.length === 0) return;
@@ -349,7 +350,7 @@ export class IntegrationsService {
         `Dự án ${p.projectId} chuyển riêng tư: đã tắt ${count} kênh tích hợp gắn dự án`,
       );
       await this.audit.record({
-        workspaceId: p.workspaceId,
+        organizationId: p.organizationId,
         actorId: p.actorId,
         action: AUDIT_ACTIONS.INTEGRATION_CHANNELS_DISABLED,
         entityType: 'project',
@@ -371,8 +372,8 @@ export class IntegrationsService {
    * `reason` (PLATFORM_OFF / NO_BOT / NO_CHANNEL) thay vì "đã gửi 0/0"; mỗi lần có gửi đều ghi
    * `config.lastTest` để giao diện hiện "Gửi thử gần nhất …".
    */
-  async test(workspaceId: string, integrationId: string): Promise<TelegramTestResult> {
-    const integration = await this.requireIntegration(workspaceId, integrationId);
+  async test(organizationId: string, integrationId: string): Promise<TelegramTestResult> {
+    const integration = await this.requireIntegration(organizationId, integrationId);
     const res = this.telegram.resolveBotToken(integration.config);
     if (res.kind === 'unusable') {
       await this.reportUnusableToken(integration.id);
@@ -392,7 +393,7 @@ export class IntegrationsService {
     }
     if (!enabled) return { sent: 0, total: 0, enabled, ok: false, reason: 'NO_BOT' };
     const channels = await this.prisma.integrationChannel.findMany({
-      where: { integrationId, workspaceId, isEnabled: true },
+      where: { integrationId, organizationId, isEnabled: true },
     });
     if (channels.length === 0)
       return { sent: 0, total: 0, enabled, ok: false, reason: 'NO_CHANNEL' };
@@ -412,7 +413,7 @@ export class IntegrationsService {
     // Cập nhật NGUYÊN TỬ riêng khoá lastTest (jsonb_set) — không đọc-sửa-ghi cả config, nên không đè thay đổi
     // khác xảy ra trong lúc gửi (vài giây).
     await this.prisma
-      .$executeRaw`UPDATE "Integration" SET "config" = jsonb_set(COALESCE("config", '{}'::jsonb), '{lastTest}', ${JSON.stringify(lastTest)}::jsonb, true) WHERE "id" = ${integration.id} AND "workspaceId" = ${workspaceId}`;
+      .$executeRaw`UPDATE "Integration" SET "config" = jsonb_set(COALESCE("config", '{}'::jsonb), '{lastTest}', ${JSON.stringify(lastTest)}::jsonb, true) WHERE "id" = ${integration.id} AND "organizationId" = ${organizationId}`;
     return { sent, total: channels.length, enabled, ok };
   }
 
@@ -439,19 +440,19 @@ export class IntegrationsService {
   @OnEvent(DOMAIN_EVENTS.ISSUES_BULK_UPDATED)
   async onIssuesBulkUpdated(payload: BulkUpdatedPayload): Promise<void> {
     try {
-      if (!payload?.workspaceId || !payload.count) return;
+      if (!payload?.organizationId || !payload.count) return;
       const [actor, project] = await Promise.all([
         this.prisma.user.findUnique({
           where: { id: payload.actorId },
           select: { displayName: true },
         }),
         this.prisma.project.findFirst({
-          where: { id: payload.projectId, workspaceId: payload.workspaceId, deletedAt: null },
+          where: { id: payload.projectId, organizationId: payload.organizationId, deletedAt: null },
           select: { key: true },
         }),
       ]);
       const msg = `✏️ <b>${payload.count}</b> việc${project ? ` của <b>${esc(project.key)}</b>` : ''} được cập nhật bởi <i>${esc(actor?.displayName ?? 'một thành viên')}</i>`;
-      await this.fanout(payload.workspaceId, payload.projectId, 'ISSUE_UPDATED', msg);
+      await this.fanout(payload.organizationId, payload.projectId, 'ISSUE_UPDATED', msg);
     } catch (err) {
       this.logger.warn(
         `Telegram producer (issue.bulk_updated) lỗi: ${err instanceof Error ? err.message : String(err)}`,
@@ -464,11 +465,11 @@ export class IntegrationsService {
     try {
       const issue = await this.prisma.issue.findUnique({
         where: { id: payload.issueId },
-        select: { workspaceId: true, key: true, summary: true, projectId: true },
+        select: { organizationId: true, key: true, summary: true, projectId: true },
       });
       if (!issue) return;
       const msg = `💬 <b>${esc(issue.key)}</b> có bình luận mới: <i>${esc(issue.summary)}</i>`;
-      await this.fanout(issue.workspaceId, issue.projectId, 'COMMENT_ADDED', msg);
+      await this.fanout(issue.organizationId, issue.projectId, 'COMMENT_ADDED', msg);
     } catch (err) {
       this.logger.warn(
         `Telegram producer (comment.added) lỗi: ${err instanceof Error ? err.message : String(err)}`,
@@ -479,13 +480,13 @@ export class IntegrationsService {
   private async dispatchIssue(payload: IssueEventPayload, notificationType: string): Promise<void> {
     try {
       const issue = payload?.issue;
-      if (!issue?.workspaceId) return;
+      if (!issue?.organizationId) return;
       const statusName = issue.status?.name ?? '—';
       const msg =
         notificationType === 'STATUS_CHANGED'
           ? `<b>${esc(issue.key)}</b> chuyển sang <i>${esc(statusName)}</i>`
           : `✏️ <b>${esc(issue.key)}</b> được cập nhật: <i>${esc(issue.summary)}</i>`;
-      await this.fanout(issue.workspaceId, issue.projectId, notificationType, msg);
+      await this.fanout(issue.organizationId, issue.projectId, notificationType, msg);
     } catch (err) {
       this.logger.warn(
         `Telegram producer (${notificationType}) lỗi: ${err instanceof Error ? err.message : String(err)}`,
@@ -494,25 +495,25 @@ export class IntegrationsService {
   }
 
   /**
-   * Tìm integration TELEGRAM ACTIVE + kênh đang bật trong workspace (lọc theo project nếu kênh có
+   * Tìm integration TELEGRAM ACTIVE + kênh đang bật trong tổ chức (lọc theo project nếu kênh có
    * projectId) mà events rỗng (=tất cả) hoặc chứa notificationType; gửi message.
-   * Dự án RIÊNG TƯ: tin chỉ tới kênh gắn ĐÚNG dự án đó — kênh cấp workspace (không gắn dự án) là nhóm chat không rõ người
+   * Dự án RIÊNG TƯ: tin chỉ tới kênh gắn ĐÚNG dự án đó — kênh cấp tổ chức (không gắn dự án) là nhóm chat không rõ người
    * đọc có thuộc dự án không nên không nhận khoá/tiêu đề việc của dự án riêng tư.
    */
   private async fanout(
-    workspaceId: string,
+    organizationId: string,
     projectId: string | undefined,
     notificationType: string,
     message: string,
   ): Promise<void> {
     const integrations = await this.prisma.integration.findMany({
-      where: { workspaceId, type: IntegrationType.TELEGRAM, status: IntegrationStatus.ACTIVE },
+      where: { organizationId, type: IntegrationType.TELEGRAM, status: IntegrationStatus.ACTIVE },
       include: { channels: { where: { isEnabled: true } } },
     });
     if (integrations.length === 0) return;
     const privateProject = projectId
       ? await this.prisma.project.findFirst({
-          where: { id: projectId, workspaceId, deletedAt: null, isPrivate: true },
+          where: { id: projectId, organizationId, deletedAt: null, isPrivate: true },
           select: { id: true },
         })
       : null;
@@ -535,9 +536,9 @@ export class IntegrationsService {
 
   // ----------------------------- Helpers --------------------------
 
-  private async requireIntegration(workspaceId: string, integrationId: string) {
+  private async requireIntegration(organizationId: string, integrationId: string) {
     const row = await this.prisma.integration.findFirst({
-      where: { id: integrationId, workspaceId },
+      where: { id: integrationId, organizationId },
     });
     if (!row) throw new NotFoundAppException('Tích hợp');
     return row;
@@ -560,7 +561,7 @@ export class IntegrationsService {
   private redact(
     row: {
       id: string;
-      workspaceId: string;
+      organizationId: string;
       type: IntegrationType;
       name: string;
       config: Prisma.JsonValue;
@@ -582,7 +583,7 @@ export class IntegrationsService {
     const botUsername = typeof config.botUsername === 'string' ? config.botUsername : null;
     return {
       id: row.id,
-      workspaceId: row.workspaceId,
+      organizationId: row.organizationId,
       type: row.type,
       name: row.name,
       config,

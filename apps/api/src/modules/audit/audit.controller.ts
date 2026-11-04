@@ -1,7 +1,7 @@
 import { Controller, Get, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { PERMISSIONS } from '@tirapro/types';
-import { WorkspaceId } from '../../common/decorators/workspace-id.decorator';
+import { OrganizationId } from '../../common/decorators/organization-id.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { AuditService } from './audit.service';
@@ -12,13 +12,13 @@ import { auditListSchema, type AuditListInput } from './audit.schemas';
 export class AuditController {
   constructor(private readonly audit: AuditService) {}
 
-  /** Nhật ký quản trị của workspace — chỉ quản trị workspace. */
+  /** Nhật ký quản trị của tổ chức — chỉ quản trị organization. */
   @Get()
-  @Permissions(PERMISSIONS.WORKSPACE_ADMIN)
+  @Permissions(PERMISSIONS.ORGANIZATION_ADMIN)
   async list(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @Query(new ZodValidationPipe(auditListSchema)) query: AuditListInput,
   ) {
-    return this.audit.list(workspaceId, query);
+    return this.audit.list(organizationId, query);
   }
 }

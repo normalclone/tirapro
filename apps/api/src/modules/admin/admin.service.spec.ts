@@ -17,10 +17,10 @@ function setup(status = 'ACTIVE') {
     avatarUrl: null,
     status: 'DEACTIVATED',
     isSystemAdmin: false,
-    canCreateWorkspace: false,
+    canCreateOrganization: false,
     lastSeenAt: null,
     createdAt: new Date(),
-    _count: { workspaceMemberships: 1 },
+    _count: { organizationMemberships: 1 },
   };
   const prisma = {
     user: {
@@ -33,7 +33,7 @@ function setup(status = 'ACTIVE') {
               displayName: 'An',
               email: 'a@x.vn',
               isSystemAdmin: false,
-              canCreateWorkspace: false,
+              canCreateOrganization: false,
             }),
       ),
       update: vi.fn(() => Promise.resolve(updated)),
@@ -110,7 +110,7 @@ describe('AdminService.update — nhật ký khoá/mở khoá', () => {
                 displayName: 'An',
                 email: 'a@x.vn',
                 isSystemAdmin: false,
-                canCreateWorkspace: false,
+                canCreateOrganization: false,
               },
         ) as never,
     );
@@ -127,16 +127,16 @@ describe('AdminService.update — nhật ký khoá/mở khoá', () => {
     expect(audit.record).not.toHaveBeenCalled();
   });
 
-  it('đổi isSystemAdmin / canCreateWorkspace ghi account.permissions_changed', async () => {
+  it('đổi isSystemAdmin / canCreateOrganization ghi account.permissions_changed', async () => {
     const { service, audit } = setup('ACTIVE');
-    await service.update('u1', { isSystemAdmin: true, canCreateWorkspace: true }, 'admin');
+    await service.update('u1', { isSystemAdmin: true, canCreateOrganization: true }, 'admin');
     const entry = audit.record.mock.calls[0]![0] as { action: string; summary: string };
     expect(entry.action).toBe('account.permissions_changed');
     expect(entry.summary).toContain('cấp quyền admin hệ thống');
     expect(entry.summary).toContain('cho phép lập tổ chức');
   });
 
-  it('bật/tắt isSystemAdmin phát access.changed {userIds:[id]} (gateway rà socket mọi workspace); đổi tên thì không', async () => {
+  it('bật/tắt isSystemAdmin phát access.changed {userIds:[id]} (gateway rà socket mọi organization); đổi tên thì không', async () => {
     const a = setup('ACTIVE');
     await a.service.update('u1', { isSystemAdmin: true }, 'admin');
     expect(a.events.emit).toHaveBeenCalledWith('access.changed', { userIds: ['u1'] });
@@ -182,13 +182,13 @@ function make(
       findMany: vi.fn(() => Promise.resolve([])),
       update: vi.fn(() => Promise.resolve({})),
     },
-    workspace: { findFirst: vi.fn(() => Promise.resolve({ id: 'w2', name: 'Công ty Demo' })) },
-    workspaceMembership: { findUnique: vi.fn(() => Promise.resolve(null)) },
+    organization: { findFirst: vi.fn(() => Promise.resolve({ id: 'w2', name: 'Công ty Demo' })) },
+    organizationMembership: { findUnique: vi.fn(() => Promise.resolve(null)) },
     role: { findFirst: vi.fn(() => Promise.resolve({ id: 'r-member' })) },
     $transaction: vi.fn((fn: (t: unknown) => unknown) => Promise.resolve(fn(tx))),
   };
   const audit = { record: vi.fn() };
-  const members = { addWorkspace: vi.fn(() => Promise.resolve({ membershipId: 'm1' })) };
+  const members = { addOrganization: vi.fn(() => Promise.resolve({ membershipId: 'm1' })) };
   const apiKeys = { dropCachesForUser: vi.fn(() => Promise.resolve()) };
   const events = { emit: vi.fn() };
   return {
@@ -228,7 +228,7 @@ describe('AdminService — vòng đời tài khoản', () => {
     expect(audit.record).toHaveBeenCalledWith(
       expect.objectContaining({
         action: 'account.deactivated',
-        workspaceId: null,
+        organizationId: null,
         actorId: 'admin1',
       }),
     );
@@ -298,7 +298,7 @@ describe('AdminService — vòng đời tài khoản', () => {
       displayName: 'A',
       status: 'ACTIVE',
       isSystemAdmin: true,
-      canCreateWorkspace: false,
+      canCreateOrganization: false,
       passwordHash: 'H',
     });
     await expect(
@@ -348,7 +348,7 @@ describe('AdminService — vòng đời tài khoản', () => {
       expect.objectContaining({ data: { sessionsRevokedAt: anyDate } }),
     );
     expect(audit.record).toHaveBeenCalledWith(
-      expect.objectContaining({ action: 'account.sessions_revoked', workspaceId: null }),
+      expect.objectContaining({ action: 'account.sessions_revoked', organizationId: null }),
     );
   });
 
@@ -364,20 +364,20 @@ describe('AdminService — vòng đời tài khoản', () => {
   });
 });
 
-describe('AdminService.addToWorkspace — gán tài khoản vào tổ chức', () => {
-  it('không chỉ định vai trò -> dùng vai trò hệ thống Workspace Member, ghi account.workspace_added', async () => {
+describe('AdminService.addToOrganization — gán tài khoản vào tổ chức', () => {
+  it('không chỉ định vai trò -> dùng vai trò hệ thống Organization Member, ghi account.organization_added', async () => {
     const { svc, members, audit, prisma } = make();
-    await svc.addToWorkspace('admin1', 'u2', { workspaceId: 'w2' });
-    expect(members.addWorkspace).toHaveBeenCalledWith('w2', 'u2', ['r-member'], 'admin1');
+    await svc.addToOrganization('admin1', 'u2', { organizationId: 'w2' });
+    expect(members.addOrganization).toHaveBeenCalledWith('w2', 'u2', ['r-member'], 'admin1');
     expect(prisma.role.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: contain({ name: 'Workspace Member', isSystem: true }),
+        where: contain({ name: 'Organization Member', isSystem: true }),
       }),
     );
     expect(audit.record).toHaveBeenCalledWith(
       expect.objectContaining({
-        action: 'account.workspace_added',
-        workspaceId: null,
+        action: 'account.organization_added',
+        organizationId: null,
         actorId: 'admin1',
         entityId: 'u2',
       }),
@@ -386,30 +386,30 @@ describe('AdminService.addToWorkspace — gán tài khoản vào tổ chức', (
 
   it('có chỉ định vai trò -> giữ nguyên danh sách, không tra vai trò mặc định', async () => {
     const { svc, members, prisma } = make();
-    await svc.addToWorkspace('admin1', 'u2', { workspaceId: 'w2', roleIds: ['r1', 'r2'] });
-    expect(members.addWorkspace).toHaveBeenCalledWith('w2', 'u2', ['r1', 'r2'], 'admin1');
+    await svc.addToOrganization('admin1', 'u2', { organizationId: 'w2', roleIds: ['r1', 'r2'] });
+    expect(members.addOrganization).toHaveBeenCalledWith('w2', 'u2', ['r1', 'r2'], 'admin1');
     expect(prisma.role.findFirst).not.toHaveBeenCalled();
   });
 
   it('tổ chức không tồn tại / đã lưu trữ -> NotFoundAppException', async () => {
     const { svc, prisma, members } = make();
-    prisma.workspace.findFirst.mockResolvedValue(null as never);
-    await expect(svc.addToWorkspace('admin1', 'u2', { workspaceId: 'zz' })).rejects.toBeInstanceOf(
-      NotFoundAppException,
-    );
-    expect(prisma.workspace.findFirst).toHaveBeenCalledWith(
+    prisma.organization.findFirst.mockResolvedValue(null as never);
+    await expect(
+      svc.addToOrganization('admin1', 'u2', { organizationId: 'zz' }),
+    ).rejects.toBeInstanceOf(NotFoundAppException);
+    expect(prisma.organization.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({ where: { id: 'zz', deletedAt: null } }),
     );
-    expect(members.addWorkspace).not.toHaveBeenCalled();
+    expect(members.addOrganization).not.toHaveBeenCalled();
   });
 
   it('đã là thành viên -> từ chối, không ghi đè vai trò', async () => {
     const { svc, prisma, members } = make();
-    prisma.workspaceMembership.findUnique.mockResolvedValue({ id: 'm9' } as never);
-    await expect(svc.addToWorkspace('admin1', 'u2', { workspaceId: 'w2' })).rejects.toThrow(
+    prisma.organizationMembership.findUnique.mockResolvedValue({ id: 'm9' } as never);
+    await expect(svc.addToOrganization('admin1', 'u2', { organizationId: 'w2' })).rejects.toThrow(
       /đã thuộc/,
     );
-    expect(members.addWorkspace).not.toHaveBeenCalled();
+    expect(members.addOrganization).not.toHaveBeenCalled();
   });
 });
 
@@ -423,10 +423,10 @@ describe('AdminService.list — đánh dấu tài khoản automation', () => {
       avatarUrl: null,
       status: 'ACTIVE',
       isSystemAdmin: false,
-      canCreateWorkspace: false,
+      canCreateOrganization: false,
       lastSeenAt: null,
       createdAt: new Date(),
-      _count: { workspaceMemberships: 0 },
+      _count: { organizationMemberships: 0 },
     });
     prisma.user.findMany.mockResolvedValue([
       row('automation@tirapro.local'),
@@ -444,7 +444,7 @@ describe('AdminService — bảo mật vòng đời tài khoản (fix round 1)',
     displayName: 'B',
     status: 'ACTIVE',
     isSystemAdmin: true,
-    canCreateWorkspace: false,
+    canCreateOrganization: false,
     passwordHash: 'H',
   };
 
@@ -455,10 +455,10 @@ describe('AdminService — bảo mật vòng đời tài khoản (fix round 1)',
     avatarUrl: null,
     status: 'ACTIVE',
     isSystemAdmin: false,
-    canCreateWorkspace: false,
+    canCreateOrganization: false,
     lastSeenAt: null,
     createdAt: new Date(),
-    _count: { workspaceMemberships: 1 },
+    _count: { organizationMemberships: 1 },
   };
 
   it('khoá: xoá cache API key của user NGAY, ngắt socket, xoá link quên mật khẩu đang chờ', async () => {

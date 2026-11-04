@@ -9,7 +9,7 @@ import { SearchService } from './search.service';
  * (mọi quy trình người xem thấy). Các mock bên dưới ghi đè khoá nào cần.
  */
 const noWorkflowUse = () => ({
-  workspaceWorkflowScheme: { findMany: vi.fn().mockResolvedValue([]) },
+  organizationWorkflowScheme: { findMany: vi.fn().mockResolvedValue([]) },
   projectWorkflowOverride: { findMany: vi.fn().mockResolvedValue([]) },
   project: { findMany: vi.fn().mockResolvedValue([]) },
   issueType: { findMany: vi.fn().mockResolvedValue([]) },
@@ -62,7 +62,7 @@ const issue = (
   extra: Row = {},
 ): Row => ({
   id,
-  workspaceId: 'W1',
+  organizationId: 'W1',
   deletedAt: null,
   projectId: (project as { isPrivate: boolean }).isPrivate ? 'PRIV' : 'PUB',
   status: { name: status },
@@ -78,13 +78,13 @@ const VISIBLE: Row[] = [
   issue('V2', 'Done', 'Low', pub),
   issue('V3', 'Open', 'Low', pub, { assigneeId: 'U2' }),
 ];
-/** Việc người xem KHÔNG được tính: dự án riêng tư không thấy, dự án đã xoá, việc đã xoá, workspace khác. */
+/** Việc người xem KHÔNG được tính: dự án riêng tư không thấy, dự án đã xoá, việc đã xoá, tổ chức khác. */
 const HIDDEN: Row[] = [
   issue('H1', 'Open', 'High', priv),
   issue('H2', 'Done', 'Low', priv),
   issue('H3', 'Done', 'Low', gone),
   issue('H4', 'Open', 'High', pub, { deletedAt: new Date() }),
-  issue('H5', 'Done', 'Low', pub, { workspaceId: 'W2' }),
+  issue('H5', 'Done', 'Low', pub, { organizationId: 'W2' }),
   issue('H6', 'Done', 'Low', priv, { assigneeId: 'U1' }),
 ];
 
@@ -149,7 +149,7 @@ function make(opts: Opts = {}) {
   return { service, prisma, tx, access, state, counts, order, fulltextSearch };
 }
 
-/** Phạm vi (workspace/dự án/quyền xem) trong `where` mà relaxCounts gửi cho `issue.count`. */
+/** Phạm vi (organization/dự án/quyền xem) trong `where` mà relaxCounts gửi cho `issue.count`. */
 const scopeOf = (where: object): object =>
   (where as { AND: [{ AND: [object, object] }] }).AND[0].AND[0];
 
@@ -188,7 +188,7 @@ describe('SearchService.relaxCounts', () => {
 });
 
 describe('SearchService.relaxCounts — RIÊNG TƯ (cùng bộ lọc xem như count())', () => {
-  it('việc ở dự án riêng tư người xem không thấy / dự án đã xoá / việc đã xoá / workspace khác không đổi bất kỳ số đếm nào', async () => {
+  it('việc ở dự án riêng tư người xem không thấy / dự án đã xoá / việc đã xoá / organization khác không đổi bất kỳ số đếm nào', async () => {
     const withHidden = await run(make().service, 'status = Open AND priority = Low');
     const onlyVisible = await run(
       make({ rows: VISIBLE }).service,
@@ -200,7 +200,7 @@ describe('SearchService.relaxCounts — RIÊNG TƯ (cùng bộ lọc xem như co
     expect(leaky.clauses.map((c) => c.count)).not.toEqual(withHidden.clauses.map((c) => c.count));
   });
 
-  it('mọi truy vấn đếm đều mang điều kiện workspace + deletedAt + dự án chưa xoá + visibleWhere', async () => {
+  it('mọi truy vấn đếm đều mang điều kiện organization + deletedAt + dự án chưa xoá + visibleWhere', async () => {
     const { service, counts, access } = make();
     await run(service, 'status = Open AND priority = Low AND labels = x');
     expect(access.visibleWhere).toHaveBeenCalledWith('U1', 'W1');
@@ -208,7 +208,7 @@ describe('SearchService.relaxCounts — RIÊNG TƯ (cùng bộ lọc xem như co
     for (const where of counts) {
       expect((where as { deletedAt: null }).deletedAt).toBeNull(); // chốt chặn tầng thấp nhất
       expect(scopeOf(where)).toEqual({
-        workspaceId: 'W1',
+        organizationId: 'W1',
         deletedAt: null,
         project: {
           deletedAt: null,

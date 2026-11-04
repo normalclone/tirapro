@@ -42,7 +42,7 @@ export const listAllocationsQuerySchema = z.object({
 const TIME_OFF_KINDS = ['LEAVE', 'HOLIDAY', 'OTHER'] as const;
 
 export const createTimeOffSchema = z.object({
-  /** Bỏ trống / null = ngày lễ áp dụng cho TOÀN workspace. */
+  /** Bỏ trống / null = ngày lễ áp dụng cho TOÀN organization. */
   userId: z.string().min(1).optional().nullable(),
   kind: z.enum(TIME_OFF_KINDS).default('LEAVE'),
   startDate: dayString,

@@ -15,10 +15,10 @@ export interface TrashItemDto {
 export class TrashService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async list(workspaceId: string, projectId: string): Promise<TrashItemDto[]> {
+  async list(organizationId: string, projectId: string): Promise<TrashItemDto[]> {
     // allow-deleted: Thùng rác cố ý đọc việc đã xoá mềm
     const rows = await this.prisma.issue.findMany({
-      where: { workspaceId, projectId, deletedAt: { not: null } },
+      where: { organizationId, projectId, deletedAt: { not: null } },
       orderBy: { deletedAt: 'desc' },
       take: 200,
       select: {

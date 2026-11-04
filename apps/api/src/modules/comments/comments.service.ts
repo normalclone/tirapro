@@ -41,19 +41,19 @@ export class CommentsService {
    * mà vẫn bị ghi sổ thì khi được thêm vào dự án sau đó, lần sửa bình luận kế tiếp sẽ không coi họ là "mới" nên không báo.
    */
   private async mentionableIn(
-    workspaceId: string,
+    organizationId: string,
     projectId: string,
     userIds: string[],
   ): Promise<string[]> {
     const ok = await Promise.all(
-      userIds.map((id) => this.access.canSee(id, workspaceId, projectId)),
+      userIds.map((id) => this.access.canSee(id, organizationId, projectId)),
     );
     return userIds.filter((_, i) => ok[i]);
   }
 
   /** `viewerId` để tính `reactions[].mine` (trường theo người xem — vì vậy KHÔNG nằm trong DTO phát qua WS). */
-  async list(workspaceId: string, issueId: string, viewerId: string): Promise<CommentDto[]> {
-    await this.requireIssue(workspaceId, issueId);
+  async list(organizationId: string, issueId: string, viewerId: string): Promise<CommentDto[]> {
+    await this.requireIssue(organizationId, issueId);
     const rows = await this.prisma.comment.findMany({
       where: { issueId, deletedAt: null },
       include: commentInclude,
@@ -94,13 +94,13 @@ export class CommentsService {
    * trữ là chỉ đọc (422). KHÔNG tạo thông báo (tránh spam — quyết định sản phẩm: reaction chỉ hiện trên bình luận + realtime).
    */
   async setReaction(
-    workspaceId: string,
+    organizationId: string,
     userId: string,
     commentId: string,
     emoji: CommentReactionEmoji,
     on: boolean,
   ): Promise<CommentReactionDto[]> {
-    const current = await this.requireComment(workspaceId, commentId);
+    const current = await this.requireComment(organizationId, commentId);
     await assertIssueWritable(this.prisma, current.issueId);
     const { count } = on
       ? await this.prisma.commentReaction.createMany({
@@ -119,23 +119,23 @@ export class CommentsService {
   }
 
   async create(
-    workspaceId: string,
+    organizationId: string,
     userId: string,
     issueId: string,
     input: CreateCommentInput,
     meta?: AutomationEventMeta,
   ): Promise<CommentDto> {
-    const issue = await this.requireIssue(workspaceId, issueId);
+    const issue = await this.requireIssue(organizationId, issueId);
     await assertIssueWritable(this.prisma, issueId);
-    // Người được nhắc = token trong body ∪ mentionUserIds (client cũ / API key), lọc theo thành viên workspace và quyền xem
+    // Người được nhắc = token trong body ∪ mentionUserIds (client cũ / API key), lọc theo thành viên tổ chức và quyền xem
     // dự án. Tính TRƯỚC khi mở transaction: không giữ một connection của pool trong lúc truy vấn bằng `this.prisma`.
     const mentionIds = (
       await this.mentionableIn(
-        workspaceId,
+        organizationId,
         issue.projectId,
         await resolveMentionedMembers(
           this.prisma,
-          workspaceId,
+          organizationId,
           [...extractMentionIds(input.body), ...(input.mentionUserIds ?? [])],
           userId,
         ),
@@ -177,13 +177,13 @@ export class CommentsService {
   }
 
   async update(
-    workspaceId: string,
+    organizationId: string,
     userId: string,
     commentId: string,
     body: string,
     version: number,
   ): Promise<CommentDto> {
-    const current = await this.requireComment(workspaceId, commentId);
+    const current = await this.requireComment(organizationId, commentId);
     await assertIssueWritable(this.prisma, current.issueId);
     if (current.authorId !== userId)
       throw new ForbiddenAppException('Chỉ tác giả mới sửa được bình luận');
@@ -194,9 +194,9 @@ export class CommentsService {
     // Ứng viên @nhắc tính TRƯỚC khi mở transaction (không gọi `this.prisma` bên trong tx đang giữ connection).
     const candidates = (
       await this.mentionableIn(
-        workspaceId,
+        organizationId,
         current.issue.projectId,
-        await resolveMentionedMembers(this.prisma, workspaceId, extractMentionIds(body), userId),
+        await resolveMentionedMembers(this.prisma, organizationId, extractMentionIds(body), userId),
       )
     ).slice(0, MENTION_LIMIT);
     const { updated, fresh } = await this.prisma.$transaction(async (tx) => {
@@ -241,12 +241,12 @@ export class CommentsService {
   }
 
   async softDelete(
-    workspaceId: string,
+    organizationId: string,
     userId: string,
     commentId: string,
     canDeleteAny = false,
   ): Promise<{ success: true }> {
-    const current = await this.requireComment(workspaceId, commentId);
+    const current = await this.requireComment(organizationId, commentId);
     await assertIssueWritable(this.prisma, current.issueId);
     if (current.authorId !== userId && !canDeleteAny) {
       throw new ForbiddenAppException(
@@ -263,19 +263,19 @@ export class CommentsService {
     return { success: true };
   }
 
-  private async requireIssue(workspaceId: string, issueId: string) {
+  private async requireIssue(organizationId: string, issueId: string) {
     const issue = await this.prisma.issue.findFirst({
-      where: { id: issueId, workspaceId, deletedAt: null },
+      where: { id: issueId, organizationId, deletedAt: null },
       select: { id: true, projectId: true },
     });
     if (!issue) throw new NotFoundAppException('Công việc');
     return issue;
   }
 
-  private async requireComment(workspaceId: string, commentId: string) {
+  private async requireComment(organizationId: string, commentId: string) {
     const c = await this.prisma.comment.findFirst({
-      // Việc đã xoá mềm cũng loại: bình luận của nó không nhận cảm xúc / sửa / xoá (guard @ProjectRef chỉ kiểm workspace + dự án).
-      where: { id: commentId, deletedAt: null, issue: { workspaceId, deletedAt: null } },
+      // Việc đã xoá mềm cũng loại: bình luận của nó không nhận cảm xúc / sửa / xoá (guard @ProjectRef chỉ kiểm tổ chức + dự án).
+      where: { id: commentId, deletedAt: null, issue: { organizationId, deletedAt: null } },
       include: { issue: { select: { projectId: true } } },
     });
     if (!c) throw new NotFoundAppException('Bình luận');

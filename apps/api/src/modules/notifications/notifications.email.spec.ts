@@ -64,7 +64,7 @@ function setup(settings: unknown) {
   const create = (type: string) =>
     service.publish({
       recipientId: 'r1',
-      workspaceId: 'w1',
+      organizationId: 'w1',
       type: type as NotificationType,
       actorId: 'a1',
       payload: { key: 'TP-1', summary: 'Sửa lỗi', statusName: 'Done' },

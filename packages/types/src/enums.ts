@@ -16,21 +16,21 @@ export const UserStatus = {
 } as const;
 export type UserStatus = (typeof UserStatus)[keyof typeof UserStatus];
 
-export const WorkspacePlan = {
+export const OrganizationPlan = {
   FREE: 'FREE',
   PRO: 'PRO',
   ENTERPRISE: 'ENTERPRISE',
 } as const;
-export type WorkspacePlan = (typeof WorkspacePlan)[keyof typeof WorkspacePlan];
+export type OrganizationPlan = (typeof OrganizationPlan)[keyof typeof OrganizationPlan];
 
 export const RoleScope = {
-  WORKSPACE: 'WORKSPACE',
+  ORGANIZATION: 'ORGANIZATION',
   PROJECT: 'PROJECT',
 } as const;
 export type RoleScope = (typeof RoleScope)[keyof typeof RoleScope];
 
 export const PermissionScope = {
-  WORKSPACE: 'WORKSPACE',
+  ORGANIZATION: 'ORGANIZATION',
   PROJECT: 'PROJECT',
 } as const;
 export type PermissionScope = (typeof PermissionScope)[keyof typeof PermissionScope];

@@ -23,7 +23,7 @@ const PERMS: Record<string, Record<string, string[]>> = {
 
 async function put(user: string, projectId: string): Promise<'ok' | number> {
   const rbac = {
-    assertProjectInWorkspace: vi.fn(() => Promise.resolve()),
+    assertProjectInOrganization: vi.fn(() => Promise.resolve()),
     assertProjectVisible: vi.fn(() => Promise.resolve()),
     getEffectivePermissions: vi.fn((u: string, _w: string, p: string | null) =>
       Promise.resolve(new Set(p ? (PERMS[u]?.[p] ?? []) : [])),
@@ -32,7 +32,7 @@ async function put(user: string, projectId: string): Promise<'ok' | number> {
   const guard = new PermissionsGuard(new Reflector(), rbac as never);
   const handler = ProjectProgramsController.prototype.setForProject;
   const req = {
-    user: { id: user, workspaceId: 'W1', isSystemAdmin: false },
+    user: { id: user, organizationId: 'W1', isSystemAdmin: false },
     params: { id: projectId },
     query: {},
     body: { programIds: ['g1'] },

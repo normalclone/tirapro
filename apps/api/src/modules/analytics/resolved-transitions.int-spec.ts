@@ -26,8 +26,8 @@ describe.skipIf(!DB_URL)('đếm việc vừa xong ↔ Postgres thật', () => {
     await prisma.user.create({
       data: { id: id('u'), email: `${id('u')}@rs.test`, displayName: 'QT' },
     });
-    await prisma.workspace.create({ data: { id: WS, name: WS, slug: WS, ownerId: id('u') } });
-    await prisma.workflow.create({ data: { id: id('wf'), workspaceId: WS, name: 'W' } });
+    await prisma.organization.create({ data: { id: WS, name: WS, slug: WS, ownerId: id('u') } });
+    await prisma.workflow.create({ data: { id: id('wf'), organizationId: WS, name: 'W' } });
     await prisma.status.createMany({
       data: [
         { id: id('s-todo'), workflowId: id('wf'), name: 'To Do', category: 'TODO', order: 0 },
@@ -42,10 +42,10 @@ describe.skipIf(!DB_URL)('đếm việc vừa xong ↔ Postgres thật', () => {
       ],
     });
     await prisma.issueType.create({
-      data: { id: id('t'), workspaceId: WS, name: 'Task', key: 'TASK' },
+      data: { id: id('t'), organizationId: WS, name: 'Task', key: 'TASK' },
     });
     await prisma.project.create({
-      data: { id: id('p'), workspaceId: WS, key: 'RS', name: 'RS', defaultWorkflowId: id('wf') },
+      data: { id: id('p'), organizationId: WS, key: 'RS', name: 'RS', defaultWorkflowId: id('wf') },
     });
     const issue = (n: string, status: string) =>
       prisma.issue.create({
@@ -53,7 +53,7 @@ describe.skipIf(!DB_URL)('đếm việc vừa xong ↔ Postgres thật', () => {
           id: id(n),
           key: `RS-${n}`,
           number: Math.floor(Math.random() * 1e6),
-          workspaceId: WS,
+          organizationId: WS,
           projectId: id('p'),
           typeId: id('t'),
           statusId: id(status),
@@ -87,8 +87,8 @@ describe.skipIf(!DB_URL)('đếm việc vừa xong ↔ Postgres thật', () => {
 
   afterAll(async () => {
     if (!prisma) return;
-    await prisma.project.deleteMany({ where: { workspaceId: WS } });
-    await prisma.workspace.deleteMany({ where: { id: WS } });
+    await prisma.project.deleteMany({ where: { organizationId: WS } });
+    await prisma.organization.deleteMany({ where: { id: WS } });
     await prisma.user.deleteMany({ where: { id: { startsWith: TAG } } });
     await prisma.$disconnect();
   }, 60_000);
@@ -118,7 +118,7 @@ describe.skipIf(!DB_URL)('đếm việc vừa xong ↔ Postgres thật', () => {
       svc as unknown as {
         countResolved(ctx: { issueScope: unknown }, since: Date): Promise<number>;
       }
-    ).countResolved({ issueScope: { workspaceId: WS } }, since);
+    ).countResolved({ issueScope: { organizationId: WS } }, since);
     expect(count).toBe(3);
   });
 });

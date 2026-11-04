@@ -6,7 +6,7 @@ const ACCESS_ALL = { visibleWhere: vi.fn(() => Promise.resolve({})) };
 
 const raidRow = (over: Record<string, unknown> = {}) => ({
   id: 'r1',
-  workspaceId: 'w1',
+  organizationId: 'w1',
   projectId: 'p1',
   kind: 'RISK',
   title: 't',
@@ -38,7 +38,7 @@ function setup(
       update: vi.fn((_args: unknown) => Promise.resolve({})),
       create: vi.fn((_args: unknown) => Promise.resolve({ id: 'r1' })),
     },
-    workspaceMembership: {
+    organizationMembership: {
       findMany: vi.fn(({ where }: { where: { userId: { in: string[] } } }) =>
         Promise.resolve(
           where.userId.in.filter((u) => u !== 'outsider').map((userId) => ({ userId })),
@@ -113,7 +113,7 @@ describe('RaidService.update — đổi dự án', () => {
     expect(prisma.raidItem.update).toHaveBeenCalledTimes(1);
   });
 
-  it('dự án đích ngoài workspace -> 404, không hỏi quyền, không ghi', async () => {
+  it('dự án đích ngoài organization -> 404, không hỏi quyền, không ghi', async () => {
     const { service, prisma, rbac } = setup(['risk:manage'], { projectId: 'p1' }, false);
     await expect(service.update('w1', 'r1', { projectId: 'px' }, member)).rejects.toMatchObject({
       status: 404,
@@ -146,7 +146,7 @@ describe('RaidService — dự án riêng tư (P14)', () => {
     await service.list('w1', { kind: 'RISK' }, 'u1');
     expect(access.visibleWhere).toHaveBeenCalledWith('u1', 'w1');
     expect(whereOf(prisma.raidItem.findMany)).toMatchObject({
-      workspaceId: 'w1',
+      organizationId: 'w1',
       kind: 'RISK',
       project: visible,
     });
@@ -157,7 +157,7 @@ describe('RaidService — dự án riêng tư (P14)', () => {
     await expect(service.get('w1', 'r1', 'u1')).rejects.toMatchObject({ status: 404 });
     expect(whereOf(prisma.raidItem.findFirst)).toMatchObject({
       id: 'r1',
-      workspaceId: 'w1',
+      organizationId: 'w1',
       project: visible,
     });
   });

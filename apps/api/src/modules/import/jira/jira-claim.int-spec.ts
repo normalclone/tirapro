@@ -23,19 +23,19 @@ describe.skipIf(!DB_URL)('claimImportJob ↔ Postgres thật', () => {
     await prisma.user.create({
       data: { id: USER, email: `${USER}@claim.test`, displayName: 'Claim' },
     });
-    await prisma.workspace.create({ data: { id: WS, name: TAG, slug: TAG, ownerId: USER } });
+    await prisma.organization.create({ data: { id: WS, name: TAG, slug: TAG, ownerId: USER } });
   }, 60_000);
 
   afterAll(async () => {
     if (!prisma) return;
-    await prisma.importJob.deleteMany({ where: { workspaceId: WS } });
-    await prisma.workspace.deleteMany({ where: { id: WS } });
+    await prisma.importJob.deleteMany({ where: { organizationId: WS } });
+    await prisma.organization.deleteMany({ where: { id: WS } });
     await prisma.user.deleteMany({ where: { id: USER } });
     await prisma.$disconnect();
   }, 60_000);
 
   const data = (analyzeId: string) => ({
-    workspaceId: WS,
+    organizationId: WS,
     source: 'JIRA_CLOUD' as const,
     status: 'RUNNING' as const,
     createdById: USER,
@@ -49,7 +49,7 @@ describe.skipIf(!DB_URL)('claimImportJob ↔ Postgres thật', () => {
     );
     expect(rs.filter((r) => r.created)).toHaveLength(1);
     expect(new Set(rs.map((r) => r.id)).size).toBe(1);
-    expect(await prisma.importJob.count({ where: { workspaceId: WS } })).toBe(1);
+    expect(await prisma.importJob.count({ where: { organizationId: WS } })).toBe(1);
   });
 
   it('claim lại sau khi job đã COMPLETED vẫn trả job cũ (không tạo mới)', async () => {

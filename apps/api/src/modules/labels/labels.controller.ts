@@ -1,7 +1,7 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
-import { WorkspaceId } from '../../common/decorators/workspace-id.decorator';
+import { OrganizationId } from '../../common/decorators/organization-id.decorator';
 import { ProjectRef } from '../../common/decorators/project-ref.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { LabelsService } from './labels.service';
@@ -57,64 +57,64 @@ export class LabelsController {
   @Permissions(PERMISSIONS.PROJECT_VIEW)
   @ProjectRef('param', 'projectId')
   @Get('projects/:projectId/labels')
-  async list(@WorkspaceId() workspaceId: string, @Param('projectId') projectId: string) {
-    return this.labels.list(workspaceId, projectId);
+  async list(@OrganizationId() organizationId: string, @Param('projectId') projectId: string) {
+    return this.labels.list(organizationId, projectId);
   }
 
   @Permissions(PERMISSIONS.PROJECT_ADMIN)
   @ProjectRef('param', 'projectId')
   @Post('projects/:projectId/labels')
   async create(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @Param('projectId') projectId: string,
     @Body(new ZodValidationPipe(createLabelSchema)) dto: CreateLabelDto,
   ) {
-    return this.labels.create(workspaceId, projectId, dto);
+    return this.labels.create(organizationId, projectId, dto);
   }
 
   @Permissions(PERMISSIONS.PROJECT_ADMIN)
   @ProjectRef('label', 'id')
   @Patch('labels/:id')
   async update(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @Param('id') id: string,
     @Body(new ZodValidationPipe(updateLabelSchema)) dto: UpdateLabelDto,
   ) {
-    return this.labels.update(workspaceId, id, dto);
+    return this.labels.update(organizationId, id, dto);
   }
 
   @Permissions(PERMISSIONS.PROJECT_ADMIN)
   @ProjectRef('label', 'id')
   @Delete('labels/:id')
-  async remove(@WorkspaceId() workspaceId: string, @Param('id') id: string) {
-    return this.labels.remove(workspaceId, id);
+  async remove(@OrganizationId() organizationId: string, @Param('id') id: string) {
+    return this.labels.remove(organizationId, id);
   }
 
   @Permissions(PERMISSIONS.ISSUE_EDIT)
   @ProjectRef('issue', 'issueId')
   @Post('issues/:issueId/labels')
   async attach(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
     @Param('issueId') issueId: string,
     @Body(new ZodValidationPipe(attachLabelSchema)) dto: AttachLabelDto,
     @OwnOnly(PERMISSIONS.ISSUE_EDIT) ownOnly: boolean,
   ) {
-    await this.ownership.assertOwnsIssue(ownOnly, workspaceId, user.id, issueId);
-    return this.labels.attach(workspaceId, issueId, dto.labelId);
+    await this.ownership.assertOwnsIssue(ownOnly, organizationId, user.id, issueId);
+    return this.labels.attach(organizationId, issueId, dto.labelId);
   }
 
   @Permissions(PERMISSIONS.ISSUE_EDIT)
   @ProjectRef('issue', 'issueId')
   @Delete('issues/:issueId/labels/:labelId')
   async detach(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
     @Param('issueId') issueId: string,
     @Param('labelId') labelId: string,
     @OwnOnly(PERMISSIONS.ISSUE_EDIT) ownOnly: boolean,
   ) {
-    await this.ownership.assertOwnsIssue(ownOnly, workspaceId, user.id, issueId);
-    return this.labels.detach(workspaceId, issueId, labelId);
+    await this.ownership.assertOwnsIssue(ownOnly, organizationId, user.id, issueId);
+    return this.labels.detach(organizationId, issueId, labelId);
   }
 }

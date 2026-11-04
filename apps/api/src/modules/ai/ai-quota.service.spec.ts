@@ -3,7 +3,7 @@ import { BusinessRuleException } from '../../common/exceptions/app.exception';
 import { AiQuotaService } from './ai-quota.service';
 
 interface AggregateArg {
-  where: { workspaceId: string; success: boolean; createdAt: { gte: Date } };
+  where: { organizationId: string; success: boolean; createdAt: { gte: Date } };
 }
 
 function make(used: { inputTokens: number | null; outputTokens: number | null }, quota = 1000) {
@@ -11,7 +11,7 @@ function make(used: { inputTokens: number | null; outputTokens: number | null },
     .fn<(arg: AggregateArg) => Promise<{ _sum: typeof used }>>()
     .mockResolvedValue({ _sum: used });
   const prisma = { aiGenerationLog: { aggregate } };
-  const config = { get: vi.fn().mockReturnValue({ monthlyQuotaPerWorkspace: quota }) };
+  const config = { get: vi.fn().mockReturnValue({ monthlyQuotaPerOrganization: quota }) };
   const svc = new AiQuotaService(prisma as never, config as never);
   return { svc, aggregate };
 }
@@ -34,11 +34,11 @@ describe('AiQuotaService.assertWithinQuota', () => {
     await expect(svc.assertWithinQuota('ws1')).resolves.toBeUndefined();
   });
 
-  it('chỉ cộng log của đúng workspace, từ đầu tháng (UTC), chỉ call thành công', async () => {
+  it('chỉ cộng log của đúng organization, từ đầu tháng (UTC), chỉ call thành công', async () => {
     const { svc, aggregate } = make({ inputTokens: 1, outputTokens: 1 });
     await svc.assertWithinQuota('ws1');
     const arg = aggregate.mock.calls[0]![0];
-    expect(arg.where.workspaceId).toBe('ws1');
+    expect(arg.where.organizationId).toBe('ws1');
     expect(arg.where.success).toBe(true);
     const since: Date = arg.where.createdAt.gte;
     expect(since.getUTCDate()).toBe(1);

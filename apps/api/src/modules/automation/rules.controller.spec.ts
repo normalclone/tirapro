@@ -41,18 +41,22 @@ describe('RulesController — mọi route gác automation:manage theo dự án',
 });
 
 describe('RulesController.list — guard thật (người chỉ quản trị MỘT dự án vào từ menu Thêm)', () => {
-  /** Chỉ có automation:manage ở dự án p1 (vai trò dự án), không có ở cấp workspace. */
+  /** Chỉ có automation:manage ở dự án p1 (vai trò dự án), không có ở cấp organization. */
   function setup(query: Record<string, string>) {
     const rbac = {
       getEffectivePermissions: vi.fn((_u: string, _w: string, projectId?: string | null) =>
         Promise.resolve(new Set<string>(projectId === 'p1' ? [PERMISSIONS.AUTOMATION_MANAGE] : [])),
       ),
       resolveProjectId: vi.fn(),
-      assertProjectInWorkspace: vi.fn(() => Promise.resolve()),
+      assertProjectInOrganization: vi.fn(() => Promise.resolve()),
       assertProjectVisible: vi.fn(() => Promise.resolve()),
     };
     const guard = new PermissionsGuard(new Reflector(), rbac as unknown as RbacService);
-    const req = { user: { id: 'U1', workspaceId: 'w1', isSystemAdmin: false }, params: {}, query };
+    const req = {
+      user: { id: 'U1', organizationId: 'w1', isSystemAdmin: false },
+      params: {},
+      query,
+    };
     const ctx = {
       getHandler: () => proto.list,
       getClass: () => RulesController,
@@ -69,14 +73,14 @@ describe('RulesController.list — guard thật (người chỉ quản trị M�
     const { guard, ctx } = setup({ projectId: 'p2' });
     await expect(guard.canActivate(ctx)).rejects.toBeInstanceOf(ForbiddenAppException);
   });
-  it('không truyền projectId (xem tất cả quy tắc workspace) => 403', async () => {
+  it('không truyền projectId (xem tất cả quy tắc organization) => 403', async () => {
     const { guard, ctx } = setup({});
     await expect(guard.canActivate(ctx)).rejects.toBeInstanceOf(ForbiddenAppException);
   });
 });
 
 describe('RulesController.test — truyền người xem xuống dryRun (mã việc dự án ẩn → 404)', () => {
-  it('gọi engine.dryRun(workspaceId, rule, issueKey, user.id)', async () => {
+  it('gọi engine.dryRun(organizationId, rule, issueKey, user.id)', async () => {
     const rule = { id: 'r1', lastRunAt: null };
     const engine = { dryRun: vi.fn(() => Promise.resolve({ status: 'SUCCESS', log: [] })) };
     const rules = { require: vi.fn(() => Promise.resolve(rule)) };
@@ -100,7 +104,7 @@ describe('RulesController.previewMatch — POST /automation/rules/preview-match 
     expect(meta('THROTTLER:LIMITdefault')).toBe(30);
     expect(meta('THROTTLER:TTLdefault')).toBe(60_000);
   });
-  it('truyền workspaceId, user.id (người soạn, không phải hệ thống) và body cho service', async () => {
+  it('truyền organizationId, user.id (người soạn, không phải hệ thống) và body cho service', async () => {
     const preview = { previewMatch: vi.fn().mockResolvedValue({ count: 3 }) };
     const ctrl = new RulesController({} as never, {} as never, preview as never);
     const body = { projectId: 'p1', conditions: [{ jql: 'x = 1' }] };

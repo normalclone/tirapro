@@ -2,7 +2,7 @@ import { Body, Controller, Delete, Get, Param, Post, Put } from '@nestjs/common'
 import { ApiTags } from '@nestjs/swagger';
 import { PERMISSIONS } from '@tirapro/types';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import { WorkspaceId } from '../../common/decorators/workspace-id.decorator';
+import { OrganizationId } from '../../common/decorators/organization-id.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import type { AuthUser } from '../../common/types/request';
@@ -32,105 +32,111 @@ export class PlanningController {
   @Get(':projectId/dependencies')
   @Permissions(PERMISSIONS.PROJECT_VIEW)
   async listDependencies(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @Param('projectId') projectId: string,
   ) {
-    return this.planning.listDependencies(workspaceId, projectId);
+    return this.planning.listDependencies(organizationId, projectId);
   }
 
   @Post(':projectId/dependencies')
   @Permissions(PERMISSIONS.PLAN_MANAGE)
   async createDependency(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @Param('projectId') projectId: string,
     @Body(new ZodValidationPipe(createDependencySchema)) dto: CreateDependencyInput,
   ) {
-    return this.planning.createDependency(workspaceId, projectId, dto);
+    return this.planning.createDependency(organizationId, projectId, dto);
   }
 
   @Delete(':projectId/dependencies/:id')
   @Permissions(PERMISSIONS.PLAN_MANAGE)
   async removeDependency(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @Param('projectId') projectId: string,
     @Param('id') id: string,
   ) {
-    return this.planning.removeDependency(workspaceId, projectId, id);
+    return this.planning.removeDependency(organizationId, projectId, id);
   }
 
   // ── cột mốc ──
 
   @Get(':projectId/milestones')
   @Permissions(PERMISSIONS.PROJECT_VIEW)
-  async listMilestones(@WorkspaceId() workspaceId: string, @Param('projectId') projectId: string) {
-    return this.planning.listMilestones(workspaceId, projectId);
+  async listMilestones(
+    @OrganizationId() organizationId: string,
+    @Param('projectId') projectId: string,
+  ) {
+    return this.planning.listMilestones(organizationId, projectId);
   }
 
   @Post(':projectId/milestones')
   @Permissions(PERMISSIONS.PLAN_MANAGE)
   async createMilestone(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @Param('projectId') projectId: string,
     @Body(new ZodValidationPipe(createMilestoneSchema)) dto: CreateMilestoneInput,
   ) {
-    return this.planning.createMilestone(workspaceId, projectId, dto);
+    return this.planning.createMilestone(organizationId, projectId, dto);
   }
 
   @Put(':projectId/milestones/:id')
   @Permissions(PERMISSIONS.PLAN_MANAGE)
   async updateMilestone(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @Param('projectId') projectId: string,
     @Param('id') id: string,
     @Body(new ZodValidationPipe(updateMilestoneSchema)) dto: UpdateMilestoneInput,
   ) {
-    return this.planning.updateMilestone(workspaceId, projectId, id, dto);
+    return this.planning.updateMilestone(organizationId, projectId, id, dto);
   }
 
   @Delete(':projectId/milestones/:id')
   @Permissions(PERMISSIONS.PLAN_MANAGE)
   async removeMilestone(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @Param('projectId') projectId: string,
     @Param('id') id: string,
   ) {
-    return this.planning.removeMilestone(workspaceId, projectId, id);
+    return this.planning.removeMilestone(organizationId, projectId, id);
   }
 
   // ── kế hoạch gốc ──
 
   @Get(':projectId/baselines')
   @Permissions(PERMISSIONS.PROJECT_VIEW)
-  async listBaselines(@WorkspaceId() workspaceId: string, @Param('projectId') projectId: string) {
-    return this.planning.listBaselines(workspaceId, projectId);
+  async listBaselines(
+    @OrganizationId() organizationId: string,
+    @Param('projectId') projectId: string,
+  ) {
+    return this.planning.listBaselines(organizationId, projectId);
   }
 
   @Post(':projectId/baselines')
   @Permissions(PERMISSIONS.PLAN_MANAGE)
   async createBaseline(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
     @Param('projectId') projectId: string,
     @Body(new ZodValidationPipe(createBaselineSchema)) dto: CreateBaselineInput,
   ) {
-    return this.planning.createBaseline(workspaceId, projectId, dto, user.id);
+    return this.planning.createBaseline(organizationId, projectId, dto, user.id);
   }
 
   @Get(':projectId/baselines/:id')
   @Permissions(PERMISSIONS.PROJECT_VIEW)
   async getBaseline(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @Param('projectId') projectId: string,
     @Param('id') id: string,
   ) {
-    return this.planning.getBaseline(workspaceId, projectId, id);
+    return this.planning.getBaseline(organizationId, projectId, id);
   }
 
   // ── lịch trình / đường găng ──
 
   @Get(':projectId/schedule')
   @Permissions(PERMISSIONS.PROJECT_VIEW)
-  async schedule(@WorkspaceId() workspaceId: string, @Param('projectId') projectId: string) {
-    return this.planning.schedule(workspaceId, projectId);
+  async schedule(@OrganizationId() organizationId: string, @Param('projectId') projectId: string) {
+    return this.planning.schedule(organizationId, projectId);
   }
 }

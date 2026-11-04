@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 /**
- * Truy vấn tài nguyên theo dự án (`project: { workspaceId }`) ở các service này phải loại dự án đã xoá mềm
+ * Truy vấn tài nguyên theo dự án (`project: { organizationId }`) ở các service này phải loại dự án đã xoá mềm
  * (`deletedAt: null`) — lớp phòng thủ thứ hai sau guard `viaProject` của RBAC.
  */
 const FILES = [
@@ -17,12 +17,12 @@ const FILES = [
 ];
 
 describe('soft-delete — project scope phòng thủ', () => {
-  it.each(FILES)('%s: không còn `project: { workspaceId }` thiếu deletedAt: null', (f) => {
+  it.each(FILES)('%s: không còn `project: { organizationId }` thiếu deletedAt: null', (f) => {
     const src = readFileSync(join(__dirname, f), 'utf8');
-    expect(src.match(/project:\s*\{\s*workspaceId\s*\}/g) ?? []).toEqual([]);
+    expect(src.match(/project:\s*\{\s*organizationId\s*\}/g) ?? []).toEqual([]);
   });
 
-  it('reaction (077): chỉ ghi/đọc qua bình luận chưa xoá mềm trong workspace (requireComment) — không có đường tắt theo commentId thô', () => {
+  it('reaction (077): chỉ ghi/đọc qua bình luận chưa xoá mềm trong organization (requireComment) — không có đường tắt theo commentId thô', () => {
     const src = readFileSync(join(__dirname, 'modules/comments/comments.service.ts'), 'utf8');
     const m = /async setReaction\([\s\S]*?\n  }\n/.exec(src);
     expect(m, 'không tìm thấy setReaction').not.toBeNull();
@@ -30,7 +30,7 @@ describe('soft-delete — project scope phòng thủ', () => {
     expect(body.indexOf('this.requireComment(')).toBeGreaterThan(-1);
     expect(body.indexOf('this.requireComment(')).toBeLessThan(body.indexOf('commentReaction.'));
     expect(src).toMatch(
-      /where: \{ id: commentId, deletedAt: null, issue: \{ workspaceId, deletedAt: null \} \}/,
+      /where: \{ id: commentId, deletedAt: null, issue: \{ organizationId, deletedAt: null \} \}/,
     );
     // `list` chỉ gom reaction của bình luận đã lọc deletedAt: null ở truy vấn trước đó
     expect(src).toMatch(/where: \{ issueId, deletedAt: null \}/);

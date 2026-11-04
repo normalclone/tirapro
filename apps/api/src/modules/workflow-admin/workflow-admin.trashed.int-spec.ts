@@ -32,7 +32,7 @@ describe.skipIf(!DB_URL)(
       await prisma.user.create({
         data: { id: USER, email: `${USER}@wf.test`, displayName: USER, isSystemAdmin: true },
       });
-      await prisma.workspace.create({ data: { id: WS, name: TAG, slug: TAG, ownerId: USER } });
+      await prisma.organization.create({ data: { id: WS, name: TAG, slug: TAG, ownerId: USER } });
       for (const [pid, deleted] of [
         ['live', false],
         ['trashed', true],
@@ -40,18 +40,18 @@ describe.skipIf(!DB_URL)(
         await prisma.project.create({
           data: {
             id: id(pid),
-            workspaceId: WS,
+            organizationId: WS,
             key: pid === 'live' ? 'LV' : 'TR',
             name: pid,
             deletedAt: deleted ? new Date() : null,
           },
         });
         await prisma.workflow.create({
-          data: { id: id(`wf-${pid}`), workspaceId: WS, projectId: id(pid), name: `wf-${pid}` },
+          data: { id: id(`wf-${pid}`), organizationId: WS, projectId: id(pid), name: `wf-${pid}` },
         });
       }
       await prisma.workflow.create({
-        data: { id: id('wf-tpl'), workspaceId: WS, name: 'wf-tpl', isTemplate: true },
+        data: { id: id('wf-tpl'), organizationId: WS, name: 'wf-tpl', isTemplate: true },
       });
       svc = new WorkflowAdminService(
         prisma as unknown as PrismaService,
@@ -61,9 +61,9 @@ describe.skipIf(!DB_URL)(
 
     afterAll(async () => {
       if (!prisma) return;
-      await prisma.workflow.deleteMany({ where: { workspaceId: WS } });
-      await prisma.project.deleteMany({ where: { workspaceId: WS } });
-      await prisma.workspace.deleteMany({ where: { id: WS } });
+      await prisma.workflow.deleteMany({ where: { organizationId: WS } });
+      await prisma.project.deleteMany({ where: { organizationId: WS } });
+      await prisma.organization.deleteMany({ where: { id: WS } });
       await prisma.user.deleteMany({ where: { id: USER } });
       await prisma.$disconnect();
     }, 60_000);

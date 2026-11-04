@@ -4,15 +4,15 @@ import type { PrismaService } from '../../../infra/prisma/prisma.service';
 /** Nguồn của ImportJob tạo bởi import Jira (khớp `source` khi tạo job). */
 const JIRA_SOURCE = 'JIRA_CLOUD' as const;
 
-/** Job import Jira đã tạo cho `analyzeId` trong workspace (nếu có). Dùng được cả trong transaction. */
+/** Job import Jira đã tạo cho `analyzeId` trong tổ chức (nếu có). Dùng được cả trong transaction. */
 export async function findImportJobByAnalyzeId(
   db: Pick<Prisma.TransactionClient, 'importJob'>,
-  workspaceId: string,
+  organizationId: string,
   analyzeId: string,
 ): Promise<{ id: string } | null> {
   return db.importJob.findFirst({
     where: {
-      workspaceId,
+      organizationId,
       source: JIRA_SOURCE,
       config: { path: ['analyzeId'], equals: analyzeId },
     },
@@ -28,13 +28,13 @@ export async function findImportJobByAnalyzeId(
  */
 export async function claimImportJob(
   prisma: Pick<PrismaService, '$transaction'>,
-  workspaceId: string,
+  organizationId: string,
   analyzeId: string,
   data: Prisma.ImportJobUncheckedCreateInput,
 ): Promise<{ id: string; created: boolean }> {
   return prisma.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`tirapro:jira-import:${analyzeId}`}, 0))`;
-    const existing = await findImportJobByAnalyzeId(tx, workspaceId, analyzeId);
+    const existing = await findImportJobByAnalyzeId(tx, organizationId, analyzeId);
     if (existing) return { id: existing.id, created: false };
     const job = await tx.importJob.create({ data, select: { id: true } });
     return { id: job.id, created: true };

@@ -7,7 +7,7 @@ import type { NotificationsService } from '../notifications/notifications.servic
 import type { PlannedMove } from './workflow-move';
 
 /**
- * Sửa tham chiếu trạng thái trong quy tắc automation của MỘT workspace theo `fromToMap` (id cũ → id mới, xem
+ * Sửa tham chiếu trạng thái trong quy tắc automation của MỘT tổ chức theo `fromToMap` (id cũ → id mới, xem
  * `remapRuleStatusIds`). MỘT hàm dùng chung cho: PUT workflow-schemes, PUT/DELETE ghi đè dự án, xoá trạng thái có thay thế, và
  * script migrate. Quy tắc không ánh xạ được (trạng thái cũ không còn thay thế) bị TẮT — bên gọi báo cho người tạo SAU commit
  * (`disabledRuleNotices`). `dryRun`: chỉ liệt kê `affectedRules`, không ghi gì.
@@ -15,7 +15,7 @@ import type { PlannedMove } from './workflow-move';
  */
 export async function rewriteRuleStatusRefs(
   db: Prisma.TransactionClient,
-  workspaceId: string,
+  organizationId: string,
   fromToMap: StatusRefMap,
   opts: {
     dryRun: boolean;
@@ -39,7 +39,7 @@ export async function rewriteRuleStatusRefs(
   if (fromToMap.size === 0) return { affectedRules };
   const rules = await db.automationRule.findMany({
     where: {
-      workspaceId,
+      organizationId,
       ...(opts.projectScope ? { OR: [{ projectId: opts.projectScope }, { projectId: null }] } : {}),
     },
     select: {
@@ -148,12 +148,17 @@ export function scopeFromPairs(
 
 /** Người nhận + nội dung thông báo "Quy tắc … đã tắt vì trạng thái không còn" cho các quy tắc vừa bị TẮT (đang bật trước đó). */
 export function disabledRuleNotices(
-  workspaceId: string,
+  organizationId: string,
   affected: AffectedRuleDto[],
-): Array<{ recipientId: string; workspaceId: string; ruleId: string; ruleName: string }> {
+): Array<{ recipientId: string; organizationId: string; ruleId: string; ruleName: string }> {
   return affected
     .filter((a) => a.outcome === 'disabled' && a.wasEnabled)
-    .map((a) => ({ recipientId: a.createdById, workspaceId, ruleId: a.ruleId, ruleName: a.name }));
+    .map((a) => ({
+      recipientId: a.createdById,
+      organizationId,
+      ruleId: a.ruleId,
+      ruleName: a.name,
+    }));
 }
 
 /** Sự kiện bỏ cache quy tắc (engine đọc bản mới) — chỉ khi thật sự có quy tắc bị sửa/tắt. */
@@ -241,18 +246,18 @@ const logger = new Logger('RuleStatusRefs');
  */
 export async function publishRuleChanges(
   deps: { events?: EventEmitter2; notifications?: NotificationsService },
-  workspaceId: string,
+  organizationId: string,
   actorId: string,
   affected: AffectedRuleDto[],
 ): Promise<void> {
   if (affected.length === 0) return;
-  deps.events?.emit(RULES_CHANGED_EVENT, { workspaceId });
-  for (const n of disabledRuleNotices(workspaceId, affected)) {
+  deps.events?.emit(RULES_CHANGED_EVENT, { organizationId });
+  for (const n of disabledRuleNotices(organizationId, affected)) {
     try {
       await deps.notifications?.publish(
         {
           recipientId: n.recipientId,
-          workspaceId,
+          organizationId,
           type: 'ISSUE_UPDATED',
           actorId,
           payload: { automationRuleDisabled: n.ruleName },
@@ -271,7 +276,7 @@ export async function publishRuleChanges(
  */
 export async function ruleStepForMoves(
   db: Prisma.TransactionClient,
-  workspaceId: string,
+  organizationId: string,
   pairs: Array<{ typeId: string; fromWorkflowIds: string[]; toWorkflowId: string }>,
   pick: (typeId: string, fromStatusId: string, toWorkflowId: string) => string | undefined,
   pending: PlannedMove[],
@@ -281,7 +286,7 @@ export async function ruleStepForMoves(
   const base = await buildStatusRefMap(db, pairs, pick);
   const map = await keepStillUsedStatuses(db, base, dryRun ? pending : []);
   return (
-    await rewriteRuleStatusRefs(db, workspaceId, map, {
+    await rewriteRuleStatusRefs(db, organizationId, map, {
       dryRun,
       scopeOf: scopeFromPairs(pairs),
       projectScope,

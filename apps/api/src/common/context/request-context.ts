@@ -4,7 +4,7 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 export interface RequestStore {
   requestId: string;
   userId?: string;
-  workspaceId?: string | null;
+  organizationId?: string | null;
 }
 
 export const requestContext = new AsyncLocalStorage<RequestStore>();

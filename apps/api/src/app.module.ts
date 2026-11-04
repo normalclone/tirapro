@@ -22,7 +22,7 @@ import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
 import { RbacModule } from './modules/rbac/rbac.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { PermissionsGuard } from './modules/rbac/permissions.guard';
-import { WorkspacesModule } from './modules/workspaces/workspaces.module';
+import { OrganizationsModule } from './modules/organizations/organizations.module';
 import { UsersModule } from './modules/users/users.module';
 import { ProjectsModule } from './modules/projects/projects.module';
 import { IssuesModule } from './modules/issues/issues.module';
@@ -101,7 +101,7 @@ import { ApiKeyModule } from './modules/api-keys/api-key.module';
             genReqId: (req) => resolveRequestId(req),
             customProps: (req) => {
               const user = (req as unknown as AuthedRequest).user;
-              return { userId: user?.id, workspaceId: user?.workspaceId };
+              return { userId: user?.id, organizationId: user?.organizationId };
             },
             // Không ghi token/cookie vào log.
             redact: ['req.headers.authorization', 'req.headers.cookie', 'req.headers["x-api-key"]'],
@@ -140,7 +140,7 @@ import { ApiKeyModule } from './modules/api-keys/api-key.module';
     MailModule,
     HealthModule,
     AuthModule,
-    WorkspacesModule,
+    OrganizationsModule,
     UsersModule,
     ProjectsModule,
     IssuesModule,

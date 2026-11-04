@@ -39,8 +39,8 @@ function make(
       createManyAndReturn: mentionCreateManyAndReturn,
     },
   };
-  // @nhắc được tính bằng `prisma` TRƯỚC khi mở transaction (tx KHÔNG có workspaceMembership: dùng nhầm sẽ ném lỗi).
-  const workspaceMembership = {
+  // @nhắc được tính bằng `prisma` TRƯỚC khi mở transaction (tx KHÔNG có organizationMembership: dùng nhầm sẽ ném lỗi).
+  const organizationMembership = {
     findMany: vi.fn((a: { where: { userId: { in: string[] } } }) =>
       Promise.resolve(
         a.where.userId.in.filter((id) => members.includes(id)).map((userId) => ({ userId })),
@@ -48,7 +48,7 @@ function make(
     ),
   };
   const prisma = {
-    workspaceMembership,
+    organizationMembership,
     comment: {
       findFirst: vi.fn().mockResolvedValue({
         id: 'c1',
@@ -175,7 +175,7 @@ describe('CommentsService — domain event kèm projectId', () => {
 });
 
 describe('CommentsService — @mention', () => {
-  it('create(): token trong body + mentionUserIds → chỉ thành viên workspace, bỏ chính mình, event mang mentionIds đã lọc', async () => {
+  it('create(): token trong body + mentionUserIds → chỉ thành viên organization, bỏ chính mình, event mang mentionIds đã lọc', async () => {
     const { service, mentionCreateMany, events } = make('u1');
     await service.create('w1', 'u1', 'i1', {
       body: 'Xin @[Hai](user:u2) và @[Lạ](user:x9) xem giúp',
@@ -308,9 +308,11 @@ describe('CommentsService — không đọc bằng prisma bên trong transaction
       mentionUserIds: ['u2'],
     });
     expect(access.canSee).toHaveBeenCalled();
-    expect(prisma.workspaceMembership.findMany).toHaveBeenCalled();
+    expect(prisma.organizationMembership.findMany).toHaveBeenCalled();
     const txOrder = prisma.$transaction.mock.invocationCallOrder[0]!;
-    expect(prisma.workspaceMembership.findMany.mock.invocationCallOrder[0]!).toBeLessThan(txOrder);
+    expect(prisma.organizationMembership.findMany.mock.invocationCallOrder[0]!).toBeLessThan(
+      txOrder,
+    );
     expect(access.canSee.mock.invocationCallOrder[0]!).toBeLessThan(txOrder);
   });
 

@@ -65,19 +65,19 @@ export class CustomFieldsService {
   // ============================ DEFINITIONS ============================
 
   /**
-   * Liệt kê field áp dụng cho workspace; nếu có projectId → field của project đó + field global (projectId null).
+   * Liệt kê field áp dụng cho tổ chức; nếu có projectId → field của project đó + field global (projectId null).
    * Không có projectId: chỉ field global + field của dự án người xem thấy (tên/lựa chọn field của dự án riêng tư
    * người ngoài không lộ).
    */
   async listDefinitions(
-    workspaceId: string,
+    organizationId: string,
     projectId: string | undefined,
     viewerId: string,
   ): Promise<FieldDefinitionView[]> {
-    if (projectId) await this.requireProject(workspaceId, projectId);
-    const visible = projectId ? {} : await this.access.visibleWhere(viewerId, workspaceId);
+    if (projectId) await this.requireProject(organizationId, projectId);
+    const visible = projectId ? {} : await this.access.visibleWhere(viewerId, organizationId);
     const where: Prisma.CustomFieldWhereInput = {
-      workspaceId,
+      organizationId,
       deletedAt: null,
       ...(projectId
         ? { OR: [{ projectId }, { projectId: null }] }
@@ -94,11 +94,11 @@ export class CustomFieldsService {
   }
 
   async createDefinition(
-    workspaceId: string,
+    organizationId: string,
     input: CreateCustomFieldInput,
   ): Promise<FieldDefinitionView> {
-    if (input.projectId) await this.requireProject(workspaceId, input.projectId);
-    // Định nghĩa cấp workspace (không gắn dự án) không bị chặn.
+    if (input.projectId) await this.requireProject(organizationId, input.projectId);
+    // Định nghĩa cấp tổ chức (không gắn dự án) không bị chặn.
     await assertProjectIdWritable(this.prisma, input.projectId);
 
     const isSelect = SELECT_TYPES.has(input.type);
@@ -112,7 +112,7 @@ export class CustomFieldsService {
 
     const created = await this.prisma.customField.create({
       data: {
-        workspaceId,
+        organizationId,
         projectId: input.projectId ?? null,
         name: input.name.trim(),
         type: input.type,
@@ -126,11 +126,11 @@ export class CustomFieldsService {
   }
 
   async updateDefinition(
-    workspaceId: string,
+    organizationId: string,
     id: string,
     input: UpdateCustomFieldInput,
   ): Promise<FieldDefinitionView> {
-    const cur = await this.requireField(workspaceId, id);
+    const cur = await this.requireField(organizationId, id);
     await assertProjectIdWritable(this.prisma, cur.projectId);
     const data: Prisma.CustomFieldUpdateInput = {};
     if (input.name !== undefined) data.name = input.name.trim();
@@ -144,8 +144,8 @@ export class CustomFieldsService {
     return this.toDefinitionView(updated);
   }
 
-  async softDeleteDefinition(workspaceId: string, id: string): Promise<{ success: true }> {
-    const cur = await this.requireField(workspaceId, id);
+  async softDeleteDefinition(organizationId: string, id: string): Promise<{ success: true }> {
+    const cur = await this.requireField(organizationId, id);
     await assertProjectIdWritable(this.prisma, cur.projectId);
     await this.prisma.customField.update({ where: { id }, data: { deletedAt: new Date() } });
     return { success: true };
@@ -154,11 +154,11 @@ export class CustomFieldsService {
   // ============================ VALUES (per issue) ============================
 
   /** Field áp dụng cho issue + giá trị hiện tại đã merge & chuẩn hoá. */
-  async listIssueValues(workspaceId: string, issueId: string): Promise<IssueFieldValueView[]> {
-    const issue = await this.requireIssue(workspaceId, issueId);
+  async listIssueValues(organizationId: string, issueId: string): Promise<IssueFieldValueView[]> {
+    const issue = await this.requireIssue(organizationId, issueId);
     const fields = await this.prisma.customField.findMany({
       where: {
-        workspaceId,
+        organizationId,
         deletedAt: null,
         OR: [{ projectId: issue.projectId }, { projectId: null }],
       },
@@ -175,14 +175,14 @@ export class CustomFieldsService {
 
   /** Ghi giá trị field cho issue (upsert theo unique [issueId, customFieldId]). */
   async setIssueValue(
-    workspaceId: string,
+    organizationId: string,
     issueId: string,
     fieldId: string,
     value: unknown,
   ): Promise<IssueFieldValueView> {
-    await this.requireIssue(workspaceId, issueId);
+    await this.requireIssue(organizationId, issueId);
     await assertIssueWritable(this.prisma, issueId);
-    const field = await this.requireField(workspaceId, fieldId);
+    const field = await this.requireField(organizationId, fieldId);
 
     const columns = this.toColumns(field, value);
     const empty: Prisma.CustomFieldValueUncheckedCreateInput = {
@@ -348,27 +348,27 @@ export class CustomFieldsService {
     return unique;
   }
 
-  private async requireProject(workspaceId: string, projectId: string) {
+  private async requireProject(organizationId: string, projectId: string) {
     const p = await this.prisma.project.findFirst({
-      where: { id: projectId, workspaceId, deletedAt: null },
+      where: { id: projectId, organizationId, deletedAt: null },
       select: { id: true },
     });
     if (!p) throw new NotFoundAppException('Dự án');
     return p;
   }
 
-  private async requireField(workspaceId: string, id: string): Promise<FieldRow> {
+  private async requireField(organizationId: string, id: string): Promise<FieldRow> {
     const f = await this.prisma.customField.findFirst({
-      where: { id, workspaceId, deletedAt: null },
+      where: { id, organizationId, deletedAt: null },
       include: fieldInclude,
     });
     if (!f) throw new NotFoundAppException('Trường thông tin thêm');
     return f;
   }
 
-  private async requireIssue(workspaceId: string, issueId: string) {
+  private async requireIssue(organizationId: string, issueId: string) {
     const issue = await this.prisma.issue.findFirst({
-      where: { id: issueId, workspaceId, deletedAt: null },
+      where: { id: issueId, organizationId, deletedAt: null },
       select: { id: true, projectId: true },
     });
     if (!issue) throw new NotFoundAppException('Công việc');

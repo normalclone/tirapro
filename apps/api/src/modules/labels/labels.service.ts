@@ -21,8 +21,8 @@ type LabelRow = Prisma.LabelGetPayload<true>;
 export class LabelsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async list(workspaceId: string, projectId: string): Promise<LabelDto[]> {
-    await this.requireProject(workspaceId, projectId);
+  async list(organizationId: string, projectId: string): Promise<LabelDto[]> {
+    await this.requireProject(organizationId, projectId);
     const rows = await this.prisma.label.findMany({
       where: { projectId },
       orderBy: { name: 'asc' },
@@ -30,8 +30,12 @@ export class LabelsService {
     return rows.map((r) => this.toDto(r));
   }
 
-  async create(workspaceId: string, projectId: string, input: CreateLabelInput): Promise<LabelDto> {
-    await this.requireProject(workspaceId, projectId);
+  async create(
+    organizationId: string,
+    projectId: string,
+    input: CreateLabelInput,
+  ): Promise<LabelDto> {
+    await this.requireProject(organizationId, projectId);
     await assertProjectWritable(this.prisma, projectId);
     try {
       const row = await this.prisma.label.create({
@@ -46,8 +50,12 @@ export class LabelsService {
     }
   }
 
-  async update(workspaceId: string, labelId: string, input: UpdateLabelInput): Promise<LabelDto> {
-    const cur = await this.requireLabel(workspaceId, labelId);
+  async update(
+    organizationId: string,
+    labelId: string,
+    input: UpdateLabelInput,
+  ): Promise<LabelDto> {
+    const cur = await this.requireLabel(organizationId, labelId);
     await assertProjectWritable(this.prisma, cur.projectId);
     const data: Prisma.LabelUpdateInput = {};
     if (input.name !== undefined) data.name = input.name;
@@ -63,15 +71,15 @@ export class LabelsService {
     }
   }
 
-  async remove(workspaceId: string, labelId: string): Promise<{ success: true }> {
-    const cur = await this.requireLabel(workspaceId, labelId);
+  async remove(organizationId: string, labelId: string): Promise<{ success: true }> {
+    const cur = await this.requireLabel(organizationId, labelId);
     await assertProjectWritable(this.prisma, cur.projectId);
     await this.prisma.label.delete({ where: { id: labelId } });
     return { success: true };
   }
 
-  async attach(workspaceId: string, issueId: string, labelId: string): Promise<{ ok: true }> {
-    const issue = await this.requireIssue(workspaceId, issueId);
+  async attach(organizationId: string, issueId: string, labelId: string): Promise<{ ok: true }> {
+    const issue = await this.requireIssue(organizationId, issueId);
     await assertIssueWritable(this.prisma, issueId);
     const label = await this.prisma.label.findFirst({
       where: { id: labelId, projectId: issue.projectId },
@@ -89,8 +97,8 @@ export class LabelsService {
     return { ok: true };
   }
 
-  async detach(workspaceId: string, issueId: string, labelId: string): Promise<{ ok: true }> {
-    await this.requireIssue(workspaceId, issueId);
+  async detach(organizationId: string, issueId: string, labelId: string): Promise<{ ok: true }> {
+    await this.requireIssue(organizationId, issueId);
     await assertIssueWritable(this.prisma, issueId);
     try {
       await this.prisma.issueLabel.delete({
@@ -105,27 +113,27 @@ export class LabelsService {
     return { ok: true };
   }
 
-  private async requireProject(workspaceId: string, projectId: string) {
+  private async requireProject(organizationId: string, projectId: string) {
     const project = await this.prisma.project.findFirst({
-      where: { id: projectId, workspaceId, deletedAt: null },
+      where: { id: projectId, organizationId, deletedAt: null },
       select: { id: true },
     });
     if (!project) throw new NotFoundAppException('Dự án');
     return project;
   }
 
-  private async requireLabel(workspaceId: string, labelId: string) {
+  private async requireLabel(organizationId: string, labelId: string) {
     const label = await this.prisma.label.findFirst({
-      where: { id: labelId, project: { workspaceId, deletedAt: null } },
+      where: { id: labelId, project: { organizationId, deletedAt: null } },
       select: { id: true, projectId: true },
     });
     if (!label) throw new NotFoundAppException('Nhãn');
     return label;
   }
 
-  private async requireIssue(workspaceId: string, issueId: string) {
+  private async requireIssue(organizationId: string, issueId: string) {
     const issue = await this.prisma.issue.findFirst({
-      where: { id: issueId, workspaceId, deletedAt: null },
+      where: { id: issueId, organizationId, deletedAt: null },
       select: { id: true, projectId: true },
     });
     if (!issue) throw new NotFoundAppException('Công việc');

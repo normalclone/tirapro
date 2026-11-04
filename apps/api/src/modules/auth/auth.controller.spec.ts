@@ -8,7 +8,7 @@ function make() {
       Promise.resolve({ accessToken: 'AT', refreshToken: 'RT2', user: { id: 'u1' } }),
     ),
   };
-  const tokens = { workspaceFromExpiredAccess: vi.fn(() => null) };
+  const tokens = { organizationFromExpiredAccess: vi.fn(() => null) };
   const config = { get: vi.fn(() => false) };
   const ctrl = new AuthController(auth as never, tokens as never, {} as never, config as never);
   const res = { cookie: vi.fn(), clearCookie: vi.fn() };

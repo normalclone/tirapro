@@ -213,7 +213,7 @@ describe('thông báo quy tắc bị tắt', () => {
         { ...disabled, ruleId: 'r3', outcome: 'rewritten' as const },
       ]),
     ).toEqual([
-      { recipientId: 'u-rule', workspaceId: 'w1', ruleId: 'r1', ruleName: 'Khi đang làm' },
+      { recipientId: 'u-rule', organizationId: 'w1', ruleId: 'r1', ruleName: 'Khi đang làm' },
     ]);
   });
 
@@ -233,7 +233,7 @@ describe('thông báo quy tắc bị tắt', () => {
       'actor',
       [disabled],
     );
-    expect(events.emit).toHaveBeenCalledWith('automation.rules_changed', { workspaceId: 'w1' });
+    expect(events.emit).toHaveBeenCalledWith('automation.rules_changed', { organizationId: 'w1' });
     expect(publish).toHaveBeenCalledWith(
       expect.objectContaining({
         recipientId: 'u-rule',

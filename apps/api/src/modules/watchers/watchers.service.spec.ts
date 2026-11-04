@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { WatchersService } from './watchers.service';
 
-const issue = { id: 'i1', workspaceId: 'w1', key: 'TP-1', summary: 'Sửa lỗi' };
+const issue = { id: 'i1', organizationId: 'w1', key: 'TP-1', summary: 'Sửa lỗi' };
 
 function setup(watcherIds: string[]) {
   const prisma = {
@@ -23,7 +23,7 @@ describe('WatchersService — thông báo theo dõi đi qua NotificationsService
     expect(notifications.publish).toHaveBeenCalledWith(
       {
         recipientId: 'w2',
-        workspaceId: 'w1',
+        organizationId: 'w1',
         type: 'WATCHING_UPDATE',
         issueId: 'i1',
         actorId: 'a1',

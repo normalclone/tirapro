@@ -10,7 +10,7 @@ import { WorkflowSchemeService } from './workflow-scheme.service';
 
 /**
  * SCRIPT MIGRATE QUY TRÌNH THEO LOẠI VIỆC TRÊN POSTGRES THẬT — OPT-IN (`PARITY_DATABASE_URL=…_scratch pnpm --filter
- * @tirapro/api test:parity`). Hai workspace: A (quy trình cũ 9 trạng thái, đủ loại việc, bảng, quy tắc, SLA) và B (đã có quy trình
+ * @tirapro/api test:parity`). Hai organization: A (quy trình cũ 9 trạng thái, đủ loại việc, bảng, quy tắc, SLA) và B (đã có quy trình
  * "Bug" tuỳ chỉnh + dòng cấu hình trỏ vào nó — dòng đã có luôn thắng, quy trình tuỳ chỉnh không bị đụng).
  */
 const DB_URL = process.env.PARITY_DATABASE_URL;
@@ -38,7 +38,7 @@ const notified: Array<{ recipientId: string; ruleName: string }> = [];
 
 const issues = (ws: string) =>
   prisma.issue.findMany({
-    where: { workspaceId: ws },
+    where: { organizationId: ws },
     select: { id: true, statusId: true, version: true, updatedAt: true, resolvedAt: true },
     orderBy: { id: 'asc' },
   });
@@ -48,19 +48,19 @@ const statusName = async (statusId: string) =>
   (await prisma.status.findUniqueOrThrow({ where: { id: statusId } })).name;
 
 /** Hai tổ chức: bảng, cột, loại việc, quy trình cũ 9 trạng thái (A có thêm cột "ma"). */
-async function seedWorkspaces(): Promise<void> {
+async function seedOrganizations(): Promise<void> {
   for (const [ws, slug] of [
     [WS_A, 'a'],
     [WS_B, 'b'],
   ] as const) {
-    await prisma.workspace.create({
+    await prisma.organization.create({
       data: { id: ws, name: `Tổ chức ${slug}`, slug: ws, ownerId: id('u') },
     });
     await prisma.resolution.create({
-      data: { id: id(`res-${slug}`), workspaceId: ws, name: 'Done', isDefault: true },
+      data: { id: id(`res-${slug}`), organizationId: ws, name: 'Done', isDefault: true },
     });
     await prisma.workflow.create({
-      data: { id: id(`old-${slug}`), workspaceId: ws, name: 'Phát triển phần mềm' },
+      data: { id: id(`old-${slug}`), organizationId: ws, name: 'Phát triển phần mềm' },
     });
     await prisma.status.createMany({
       data: LEGACY.map(([name, category], i) => ({
@@ -80,15 +80,15 @@ async function seedWorkspaces(): Promise<void> {
       ['sub', 'SUBTASK'],
     ] as const)
       await prisma.issueType.create({
-        data: { id: id(`t-${k}-${slug}`), workspaceId: ws, name: key, key },
+        data: { id: id(`t-${k}-${slug}`), organizationId: ws, name: key, key },
       });
     await prisma.issueType.create({
-      data: { id: id(`t-cus-${slug}`), workspaceId: ws, name: 'Yêu cầu' },
+      data: { id: id(`t-cus-${slug}`), organizationId: ws, name: 'Yêu cầu' },
     });
     await prisma.project.create({
       data: {
         id: id(`p-${slug}`),
-        workspaceId: ws,
+        organizationId: ws,
         key: slug === 'a' ? 'ATP' : 'GSDA',
         name: slug,
         defaultWorkflowId: id(`old-${slug}`),
@@ -131,7 +131,7 @@ async function seedIssues(): Promise<void> {
         id: id(`i${n}`),
         key: `${slug}-${n}`,
         number: ++n,
-        workspaceId: slug === 'a' ? WS_A : WS_B,
+        organizationId: slug === 'a' ? WS_A : WS_B,
         projectId: id(`p-${slug}`),
         typeId: id(`t-${typeKey}-${slug}`),
         statusId: id(`old-${slug}-${st}`),
@@ -140,7 +140,7 @@ async function seedIssues(): Promise<void> {
         ...extra,
       },
     });
-  // Workspace A: mỗi trạng thái cũ một việc Task + Task ở thùng rác + Bug + Epic + một Task đã Done có Resolution.
+  // Tổ chức A: mỗi trạng thái cũ một việc Task + Task ở thùng rác + Bug + Epic + một Task đã Done có Resolution.
   for (let st = 0; st < 9; st++)
     await issue(
       'a',
@@ -151,8 +151,8 @@ async function seedIssues(): Promise<void> {
   await issue('a', 'task', 3, { deletedAt: new Date() });
   await issue('a', 'bug', 5);
   await issue('a', 'epic', 3);
-  // Workspace B: quy trình "Bug" tuỳ chỉnh (To Do / Fixing / Fixed) + dòng cấu hình BUG trỏ vào nó.
-  await prisma.workflow.create({ data: { id: id('cbug'), workspaceId: WS_B, name: 'Bug' } });
+  // Tổ chức B: quy trình "Bug" tuỳ chỉnh (To Do / Fixing / Fixed) + dòng cấu hình BUG trỏ vào nó.
+  await prisma.workflow.create({ data: { id: id('cbug'), organizationId: WS_B, name: 'Bug' } });
   await prisma.status.createMany({
     data: [
       ['Mới', 'TODO'],
@@ -167,8 +167,8 @@ async function seedIssues(): Promise<void> {
       isInitial: i === 0,
     })),
   });
-  await prisma.workspaceWorkflowScheme.create({
-    data: { workspaceId: WS_B, issueTypeId: id('t-bug-b'), workflowId: id('cbug') },
+  await prisma.organizationWorkflowScheme.create({
+    data: { organizationId: WS_B, issueTypeId: id('t-bug-b'), workflowId: id('cbug') },
   });
   await issue('b', 'bug', 3); // Đang làm → Đang sửa (cùng nhóm)
   await issue('b', 'task', 7); // Hoàn thành → Done
@@ -176,11 +176,11 @@ async function seedIssues(): Promise<void> {
 
 /** Quy tắc, bộ lọc/bảng/widget tham chiếu theo tên, mẫu trùng tên và SLA. */
 async function seedRulesAndRefs(): Promise<void> {
-  // Quy tắc + SLA ở workspace A.
+  // Quy tắc + SLA ở tổ chức A.
   await prisma.automationRule.create({
     data: {
       id: id('rule'),
-      workspaceId: WS_A,
+      organizationId: WS_A,
       name: 'Khi đang làm thì gán',
       trigger: 'ISSUE_TRANSITIONED',
       triggerConfig: { toStatusId: id('old-a-3') },
@@ -193,7 +193,7 @@ async function seedRulesAndRefs(): Promise<void> {
   await prisma.automationRule.create({
     data: {
       id: id('rule-std'),
-      workspaceId: WS_A,
+      organizationId: WS_A,
       name: 'Chỉ Task đang làm',
       trigger: 'ISSUE_TRANSITIONED',
       triggerConfig: { toStatusId: id('old-a-3') },
@@ -205,7 +205,7 @@ async function seedRulesAndRefs(): Promise<void> {
   await prisma.automationRule.create({
     data: {
       id: id('rule-jql'),
-      workspaceId: WS_A,
+      organizationId: WS_A,
       name: 'Có JQL theo tên',
       trigger: 'ISSUE_CREATED',
       triggerConfig: {},
@@ -219,14 +219,14 @@ async function seedRulesAndRefs(): Promise<void> {
     data: [
       {
         id: id('f1'),
-        workspaceId: WS_A,
+        organizationId: WS_A,
         ownerId: id('u'),
         name: 'Đang làm của tôi',
         jql: 'status = "Đang làm"',
       },
       {
         id: id('f2'),
-        workspaceId: WS_A,
+        organizationId: WS_A,
         ownerId: id('u'),
         name: 'Đã xong',
         jql: 'status = Done',
@@ -240,7 +240,7 @@ async function seedRulesAndRefs(): Promise<void> {
   await prisma.dashboard.create({
     data: {
       id: id('dash'),
-      workspaceId: WS_A,
+      organizationId: WS_A,
       ownerId: id('u'),
       name: 'Tổng quan',
       widgets: {
@@ -255,14 +255,14 @@ async function seedRulesAndRefs(): Promise<void> {
       },
     },
   });
-  // Mẫu (isTemplate) trùng tên quy trình mặc định ở workspace B: không được nhận nhầm làm quy trình mặc định.
+  // Mẫu (isTemplate) trùng tên quy trình mặc định ở tổ chức B: không được nhận nhầm làm quy trình mặc định.
   await prisma.workflow.create({
-    data: { id: id('tpl'), workspaceId: WS_B, name: 'Epic Workflow', isTemplate: true },
+    data: { id: id('tpl'), organizationId: WS_B, name: 'Epic Workflow', isTemplate: true },
   });
   await prisma.slaPolicy.create({
     data: {
       id: id('sla'),
-      workspaceId: WS_A,
+      organizationId: WS_A,
       projectId: id('p-a'),
       name: 'SLA',
       responseMins: 60,
@@ -277,15 +277,15 @@ beforeAll(async () => {
   await prisma.user.create({
     data: { id: id('u'), email: `${id('u')}@mg.test`, displayName: 'QT' },
   });
-  await seedWorkspaces();
+  await seedOrganizations();
   await seedIssues();
   await seedRulesAndRefs();
 }, 60_000);
 
 afterAll(async () => {
   if (!prisma) return;
-  await prisma.project.deleteMany({ where: { workspaceId: { in: [WS_A, WS_B] } } });
-  await prisma.workspace.deleteMany({ where: { id: { in: [WS_A, WS_B] } } });
+  await prisma.project.deleteMany({ where: { organizationId: { in: [WS_A, WS_B] } } });
+  await prisma.organization.deleteMany({ where: { id: { in: [WS_A, WS_B] } } });
   await prisma.user.deleteMany({ where: { id: { startsWith: TAG } } });
   await prisma.$disconnect();
 }, 60_000);
@@ -293,14 +293,14 @@ afterAll(async () => {
 const run = (dryRun: boolean) =>
   migrateWorkflowSchemes(prisma, {
     dryRun,
-    workspace: undefined,
+    organization: undefined,
     notify: (n) => {
       notified.push({ recipientId: n.recipientId, ruleName: n.ruleName });
       return Promise.resolve();
     },
   });
 const only = (r: Awaited<ReturnType<typeof run>>, ws: string) =>
-  r.workspaces.find((w) => w.workspaceId === ws)!;
+  r.organizations.find((w) => w.organizationId === ws)!;
 
 let before: Awaited<ReturnType<typeof issues>>;
 
@@ -349,7 +349,7 @@ describe.skipIf(!DB_URL)('migrateWorkflowSchemes ↔ Postgres thật', () => {
       ].sort(),
     );
     expect(a.nameRefs.find((n) => n.id === id('f1'))!.names).toEqual(['Đang làm']);
-    // Workspace B: dòng cấu hình của quy trình tuỳ chỉnh thắng → Bug đi vào "Đang sửa" (gợi ý theo nhóm).
+    // Tổ chức B: dòng cấu hình của quy trình tuỳ chỉnh thắng → Bug đi vào "Đang sửa" (gợi ý theo nhóm).
     const b = only(out, WS_B);
     expect(b.createdSchemeRows).toBe(5); // BUG đã có dòng
     expect(b.createdWorkflows).toHaveLength(3); // mẫu cùng tên không bị nhận nhầm
@@ -358,11 +358,13 @@ describe.skipIf(!DB_URL)('migrateWorkflowSchemes ↔ Postgres thật', () => {
       toWorkflowName: 'Bug',
       via: 'suggested',
     });
-    expect(out.totals).toMatchObject({ workspaces: 2, movedIssues: 14, rulesRewritten: 2 });
+    expect(out.totals).toMatchObject({ organizations: 2, movedIssues: 14, rulesRewritten: 2 });
     // Không ghi gì.
     expect(await issues(WS_A)).toEqual(before);
-    expect(await prisma.workflow.count({ where: { workspaceId: WS_A } })).toBe(1);
-    expect(await prisma.workspaceWorkflowScheme.count({ where: { workspaceId: WS_A } })).toBe(0);
+    expect(await prisma.workflow.count({ where: { organizationId: WS_A } })).toBe(1);
+    expect(await prisma.organizationWorkflowScheme.count({ where: { organizationId: WS_A } })).toBe(
+      0,
+    );
     expect(
       (await prisma.automationRule.findUniqueOrThrow({ where: { id: id('rule') } })).triggerConfig,
     ).toEqual({
@@ -400,8 +402,10 @@ describe.skipIf(!DB_URL)('migrateWorkflowSchemes ↔ Postgres thật — chạy 
       actorId: await systemUser(), // hệ thống ghi, không phải chủ tổ chức
     });
     // Mọi dòng cấu hình có mặt; ba quy trình mặc định chung của tổ chức.
-    expect(await prisma.workspaceWorkflowScheme.count({ where: { workspaceId: WS_A } })).toBe(6);
-    const wfNames = (await prisma.workflow.findMany({ where: { workspaceId: WS_A } })).map(
+    expect(await prisma.organizationWorkflowScheme.count({ where: { organizationId: WS_A } })).toBe(
+      6,
+    );
+    const wfNames = (await prisma.workflow.findMany({ where: { organizationId: WS_A } })).map(
       (w) => w.name,
     );
     expect(wfNames.sort()).toEqual([
@@ -412,7 +416,7 @@ describe.skipIf(!DB_URL)('migrateWorkflowSchemes ↔ Postgres thật — chạy 
     ]);
     // Không có bước chuyển '*OPEN' thô: mọi bước trỏ vào trạng thái thật.
     const wfStd = await prisma.workflow.findFirstOrThrow({
-      where: { workspaceId: WS_A, name: 'Standard Workflow' },
+      where: { organizationId: WS_A, name: 'Standard Workflow' },
       include: { transitions: true, statuses: true },
     });
     expect(wfStd.transitions.length).toBeGreaterThan(8);
@@ -465,11 +469,11 @@ describe.skipIf(!DB_URL)('migrateWorkflowSchemes ↔ Postgres thật — chạy 
     ).toBe(
       (
         await prisma.workflow.findFirstOrThrow({
-          where: { workspaceId: WS_A, name: 'Standard Workflow' },
+          where: { organizationId: WS_A, name: 'Standard Workflow' },
         })
       ).id,
     );
-    // SLA + workspace B: quy trình "Bug" tuỳ chỉnh nguyên vẹn, việc Bug vào "Đang sửa".
+    // SLA + tổ chức B: quy trình "Bug" tuỳ chỉnh nguyên vẹn, việc Bug vào "Đang sửa".
     expect(await prisma.slaPolicy.count({ where: { id: id('sla') } })).toBe(1);
     expect(await prisma.status.count({ where: { workflowId: id('cbug') } })).toBe(3);
     const bBug = (await issues(WS_B)).find((x) => x.id === id('i12'))!;
@@ -485,7 +489,7 @@ describe.skipIf(!DB_URL)(
       const snap = await issues(WS_A);
       const second = await run(false);
       expect(second.totals).toEqual({
-        workspaces: 2,
+        organizations: 2,
         createdWorkflows: 0,
         createdSchemeRows: 0,
         movedIssues: 0,
@@ -501,21 +505,21 @@ describe.skipIf(!DB_URL)(
 
     it('đổi tên quy trình mặc định rồi chạy lại: không sinh bản trùng (nhận diện bằng dấu ổn định)', async () => {
       await prisma.workflow.updateMany({
-        where: { workspaceId: WS_A, name: 'Standard Workflow' },
+        where: { organizationId: WS_A, name: 'Standard Workflow' },
         data: { name: 'Chuẩn của tổ chức' },
       });
       const out = await run(false);
       expect(only(out, WS_A).createdWorkflows).toEqual([]);
-      expect(await prisma.workflow.count({ where: { workspaceId: WS_A } })).toBe(4);
+      expect(await prisma.workflow.count({ where: { organizationId: WS_A } })).toBe(4);
       await prisma.workflow.updateMany({
-        where: { workspaceId: WS_A, name: 'Chuẩn của tổ chức' },
+        where: { organizationId: WS_A, name: 'Chuẩn của tổ chức' },
         data: { name: 'Standard Workflow' }, // trả lại cho các test sau
       });
     });
 
     it('chạy cho một tổ chức: chỉ chạm đúng tổ chức đó', async () => {
-      const out = await migrateWorkflowSchemes(prisma, { dryRun: true, workspace: WS_B });
-      expect(out.workspaces.map((w) => w.workspaceId)).toEqual([WS_B]);
+      const out = await migrateWorkflowSchemes(prisma, { dryRun: true, organization: WS_B });
+      expect(out.organizations.map((w) => w.organizationId)).toEqual([WS_B]);
     });
   },
 );
@@ -554,7 +558,7 @@ describe.skipIf(!DB_URL)('rewriteRuleStatusRefs dùng chung cho endpoint (M1)', 
     await prisma.automationRule.create({
       data: {
         id: id('rule-b'),
-        workspaceId: WS_B,
+        organizationId: WS_B,
         name: 'Quy tắc sửa xong',
         trigger: 'ISSUE_TRANSITIONED',
         triggerConfig: { toStatusId: id('cbug-2') },
@@ -582,7 +586,7 @@ describe.skipIf(!DB_URL)('rewriteRuleStatusRefs dùng chung cho endpoint (M1)', 
     await prisma.automationRule.create({
       data: {
         id: id('rule-b2'),
-        workspaceId: WS_B,
+        organizationId: WS_B,
         name: 'Khi đang sửa',
         trigger: 'ISSUE_TRANSITIONED',
         triggerConfig: { toStatusId: id('cbug-1') },
@@ -591,11 +595,11 @@ describe.skipIf(!DB_URL)('rewriteRuleStatusRefs dùng chung cho endpoint (M1)', 
       },
     });
     const std = await prisma.workflow.findFirstOrThrow({
-      where: { workspaceId: WS_B, name: 'Bug Workflow' },
+      where: { organizationId: WS_B, name: 'Bug Workflow' },
       include: { statuses: true },
     });
     const items = [{ issueTypeId: id('t-bug-b'), workflowId: std.id }];
-    const preview = await svc.setWorkspaceScheme(WS_B, id('u'), { items }, true);
+    const preview = await svc.setOrganizationScheme(WS_B, id('u'), { items }, true);
     expect(preview.affectedRules.map((r) => r.ruleId)).toContain(id('rule-b2'));
     expect(
       (await prisma.automationRule.findUniqueOrThrow({ where: { id: id('rule-b2') } }))
@@ -606,7 +610,7 @@ describe.skipIf(!DB_URL)('rewriteRuleStatusRefs dùng chung cho endpoint (M1)', 
       [id('cbug-0')]: std.statuses.find((s) => s.name === 'New')!.id,
       [id('cbug-1')]: inProgress,
     };
-    const real = await svc.setWorkspaceScheme(WS_B, id('u'), { items, statusMap }, false);
+    const real = await svc.setOrganizationScheme(WS_B, id('u'), { items, statusMap }, false);
     expect(real.affectedRules.find((r) => r.ruleId === id('rule-b2'))).toMatchObject({
       outcome: 'rewritten',
     });
@@ -616,19 +620,19 @@ describe.skipIf(!DB_URL)('rewriteRuleStatusRefs dùng chung cho endpoint (M1)', 
 
   it('khoá advisory theo tổ chức: hai thay đổi đồng thời xếp hàng, không lỗi', async () => {
     const std = await prisma.workflow.findFirstOrThrow({
-      where: { workspaceId: WS_A, name: 'Standard Workflow' },
+      where: { organizationId: WS_A, name: 'Standard Workflow' },
     });
     const items = [{ issueTypeId: id('t-task-a'), workflowId: std.id }];
     const [r1, r2] = await Promise.all([
-      svc.setWorkspaceScheme(WS_A, id('u'), { items }, false),
-      svc.setWorkspaceScheme(WS_A, id('u'), { items }, false),
+      svc.setOrganizationScheme(WS_A, id('u'), { items }, false),
+      svc.setOrganizationScheme(WS_A, id('u'), { items }, false),
     ]);
     expect(r1.totalIssues + r2.totalIssues).toBe(0); // đã khớp từ lần chạy script
   });
 
   it('(L3) không xoá trạng thái ban đầu của quy trình đang được tổ chức dùng: 409 INITIAL_STATUS_IN_USE', async () => {
     const std = await prisma.workflow.findFirstOrThrow({
-      where: { workspaceId: WS_A, name: 'Standard Workflow' },
+      where: { organizationId: WS_A, name: 'Standard Workflow' },
       include: { statuses: true },
     });
     const initial = std.statuses.find((s) => s.isInitial)!;

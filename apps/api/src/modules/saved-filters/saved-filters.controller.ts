@@ -9,7 +9,7 @@ import {
   type SavedFilterUpdateInput,
 } from '@tirapro/shared';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import { WorkspaceId } from '../../common/decorators/workspace-id.decorator';
+import { OrganizationId } from '../../common/decorators/organization-id.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import type { AuthUser } from '../../common/types/request';
 import { SavedFiltersService } from './saved-filters.service';
@@ -24,64 +24,64 @@ export type UpdateSavedFilterBody = SavedFilterUpdateInput;
 export class SavedFiltersController {
   constructor(private readonly filters: SavedFiltersService) {}
 
-  @Permissions(PERMISSIONS.WORKSPACE_VIEW)
+  @Permissions(PERMISSIONS.ORGANIZATION_VIEW)
   @Get()
-  async list(@CurrentUser() user: AuthUser, @WorkspaceId() workspaceId: string) {
-    return this.filters.list(workspaceId, user.id);
+  async list(@CurrentUser() user: AuthUser, @OrganizationId() organizationId: string) {
+    return this.filters.list(organizationId, user.id);
   }
 
   @Permissions(PERMISSIONS.FILTER_MANAGE)
   @Post()
   async create(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
     @Body(new ZodValidationPipe(savedFilterCreateSchema)) body: CreateSavedFilterBody,
   ) {
-    return this.filters.create(workspaceId, user.id, body);
+    return this.filters.create(organizationId, user.id, body);
   }
 
   /** Số người xem được một bản chia sẻ CHƯA lưu (hộp Chia sẻ). Tính theo người gọi: dự án họ không xem được bị bỏ qua. */
   @Permissions(PERMISSIONS.FILTER_MANAGE)
   @Post('audience')
   async audience(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
     @Body(new ZodValidationPipe(filterAudienceSchema)) body: FilterAudienceInput,
   ) {
-    return this.filters.audience(workspaceId, user.id, body);
+    return this.filters.audience(organizationId, user.id, body);
   }
 
   @Permissions(PERMISSIONS.FILTER_MANAGE)
   @Patch(':id')
   async update(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
     @Body(new ZodValidationPipe(savedFilterUpdateSchema)) body: UpdateSavedFilterBody,
   ) {
-    return this.filters.update(workspaceId, user.id, id, body);
+    return this.filters.update(organizationId, user.id, id, body);
   }
 
   @Permissions(PERMISSIONS.FILTER_MANAGE)
   @Delete(':id')
   async remove(
     @CurrentUser() user: AuthUser,
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @Param('id') id: string,
   ) {
-    return this.filters.softDelete(workspaceId, user.id, id);
+    return this.filters.softDelete(organizationId, user.id, id);
   }
 
   @Permissions(PERMISSIONS.PROJECT_VIEW)
   @Get(':id/run')
   async run(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
     @Query('cursor') cursor?: string,
     @Query('limit') limit?: string,
   ) {
     const lim = Math.min(Math.max(Number(limit) || 50, 1), 200);
-    return this.filters.run(workspaceId, user.id, id, { cursor, limit: lim });
+    return this.filters.run(organizationId, user.id, id, { cursor, limit: lim });
   }
 }

@@ -63,8 +63,8 @@ export class PlanningService {
 
   // ───────────────────────── phụ thuộc ─────────────────────────
 
-  async listDependencies(workspaceId: string, projectId: string) {
-    await this.requireProject(workspaceId, projectId);
+  async listDependencies(organizationId: string, projectId: string) {
+    await this.requireProject(organizationId, projectId);
     const rows = await this.prisma.issueDependency.findMany({
       where: { projectId },
       orderBy: { createdAt: 'asc' },
@@ -93,8 +93,8 @@ export class PlanningService {
     }));
   }
 
-  async createDependency(workspaceId: string, projectId: string, dto: CreateDependencyInput) {
-    await this.requireProject(workspaceId, projectId);
+  async createDependency(organizationId: string, projectId: string, dto: CreateDependencyInput) {
+    await this.requireProject(organizationId, projectId);
     await assertProjectWritable(this.prisma, projectId);
     if (dto.predecessorId === dto.successorId) {
       throw new BusinessRuleException(
@@ -121,12 +121,12 @@ export class PlanningService {
       },
       select: { id: true },
     });
-    const all = await this.listDependencies(workspaceId, projectId);
+    const all = await this.listDependencies(organizationId, projectId);
     return all.find((d) => d.id === created.id) ?? null;
   }
 
-  async removeDependency(workspaceId: string, projectId: string, id: string) {
-    await this.requireProject(workspaceId, projectId);
+  async removeDependency(organizationId: string, projectId: string, id: string) {
+    await this.requireProject(organizationId, projectId);
     await assertProjectWritable(this.prisma, projectId);
     const dep = await this.prisma.issueDependency.findFirst({
       where: { id, projectId },
@@ -139,8 +139,8 @@ export class PlanningService {
 
   // ───────────────────────── cột mốc ─────────────────────────
 
-  async listMilestones(workspaceId: string, projectId: string) {
-    await this.requireProject(workspaceId, projectId);
+  async listMilestones(organizationId: string, projectId: string) {
+    await this.requireProject(organizationId, projectId);
     const rows = await this.prisma.milestone.findMany({
       where: { projectId },
       orderBy: { dueDate: 'asc' },
@@ -148,8 +148,8 @@ export class PlanningService {
     return rows.map((m) => this.toMilestoneDto(m));
   }
 
-  async createMilestone(workspaceId: string, projectId: string, dto: CreateMilestoneInput) {
-    await this.requireProject(workspaceId, projectId);
+  async createMilestone(organizationId: string, projectId: string, dto: CreateMilestoneInput) {
+    await this.requireProject(organizationId, projectId);
     await assertProjectWritable(this.prisma, projectId);
     const name = dto.name.trim();
     if (!name) throw new BusinessRuleException('Tên cột mốc bắt buộc');
@@ -167,12 +167,12 @@ export class PlanningService {
   }
 
   async updateMilestone(
-    workspaceId: string,
+    organizationId: string,
     projectId: string,
     id: string,
     dto: UpdateMilestoneInput,
   ) {
-    await this.requireProject(workspaceId, projectId);
+    await this.requireProject(organizationId, projectId);
     await assertProjectWritable(this.prisma, projectId);
     const cur = await this.prisma.milestone.findFirst({
       where: { id, projectId },
@@ -202,8 +202,8 @@ export class PlanningService {
     return this.toMilestoneDto(row);
   }
 
-  async removeMilestone(workspaceId: string, projectId: string, id: string) {
-    await this.requireProject(workspaceId, projectId);
+  async removeMilestone(organizationId: string, projectId: string, id: string) {
+    await this.requireProject(organizationId, projectId);
     await assertProjectWritable(this.prisma, projectId);
     const cur = await this.prisma.milestone.findFirst({
       where: { id, projectId },
@@ -216,8 +216,8 @@ export class PlanningService {
 
   // ───────────────────────── kế hoạch gốc ─────────────────────────
 
-  async listBaselines(workspaceId: string, projectId: string) {
-    await this.requireProject(workspaceId, projectId);
+  async listBaselines(organizationId: string, projectId: string) {
+    await this.requireProject(organizationId, projectId);
     const rows = await this.prisma.planBaseline.findMany({
       where: { projectId },
       orderBy: { capturedAt: 'desc' },
@@ -242,12 +242,12 @@ export class PlanningService {
 
   /** Chụp ảnh startDate/dueDate của MỌI issue chưa xoá trong dự án. */
   async createBaseline(
-    workspaceId: string,
+    organizationId: string,
     projectId: string,
     dto: CreateBaselineInput,
     actingUserId: string,
   ) {
-    await this.requireProject(workspaceId, projectId);
+    await this.requireProject(organizationId, projectId);
     await assertProjectWritable(this.prisma, projectId);
     const issues = await this.prisma.issue.findMany({
       where: { projectId, deletedAt: null },
@@ -267,11 +267,11 @@ export class PlanningService {
         })),
       });
     }
-    return this.getBaseline(workspaceId, projectId, baseline.id);
+    return this.getBaseline(organizationId, projectId, baseline.id);
   }
 
-  async getBaseline(workspaceId: string, projectId: string, id: string) {
-    await this.requireProject(workspaceId, projectId);
+  async getBaseline(organizationId: string, projectId: string, id: string) {
+    await this.requireProject(organizationId, projectId);
     const b = await this.prisma.planBaseline.findFirst({
       where: { id, projectId },
       select: {
@@ -318,8 +318,8 @@ export class PlanningService {
    * - Issue không có ngày VÀ không tham gia phụ thuộc nào → bỏ qua (`skippedCount`).
    * - Ngày đã đặt đóng vai trò "không bắt đầu sớm hơn" (anchor), nên slack luôn ≥ 0.
    */
-  async schedule(workspaceId: string, projectId: string) {
-    await this.requireProject(workspaceId, projectId);
+  async schedule(organizationId: string, projectId: string) {
+    await this.requireProject(organizationId, projectId);
     const [issues, deps] = await Promise.all([
       this.prisma.issue.findMany({
         where: { projectId, deletedAt: null },
@@ -536,9 +536,9 @@ export class PlanningService {
     return order;
   }
 
-  private async requireProject(workspaceId: string, projectId: string): Promise<void> {
+  private async requireProject(organizationId: string, projectId: string): Promise<void> {
     const p = await this.prisma.project.findFirst({
-      where: { id: projectId, workspaceId, deletedAt: null },
+      where: { id: projectId, organizationId, deletedAt: null },
       select: { id: true },
     });
     if (!p) throw new NotFoundAppException('Dự án');

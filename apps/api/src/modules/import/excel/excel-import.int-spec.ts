@@ -8,7 +8,7 @@ import { ExcelImportService } from './excel-import.service';
 /**
  * TEMPLATE → ĐIỀN → XEM TRƯỚC TRÊN POSTGRES THẬT — OPT-IN (`PARITY_DATABASE_URL=…_scratch pnpm --filter @tirapro/api test:parity`).
  * Mock không chứng minh được các truy vấn danh mục (lọc sprint chưa đóng, phiên bản chưa phát hành, epic theo loại,
- * thành viên dự án ACTIVE, cô lập workspace) — spec này chạy chúng với dữ liệu thật. Bước ghi (`commit`) đi qua
+ * thành viên dự án ACTIVE, cô lập tổ chức) — spec này chạy chúng với dữ liệu thật. Bước ghi (`commit`) đi qua
  * IssuesService nên được kiểm bằng round-trip HTTP, không ở đây.
  */
 const DB_URL = process.env.PARITY_DATABASE_URL;
@@ -36,9 +36,9 @@ describe.skipIf(!DB_URL)('ExcelImportService ↔ Postgres thật', () => {
     await user('gone', 'DEACTIVATED');
     await user('outsider');
     for (const w of [WS, OTHER_WS])
-      await prisma.workspace.create({ data: { id: w, name: w, slug: w, ownerId: id('owner') } });
+      await prisma.organization.create({ data: { id: w, name: w, slug: w, ownerId: id('owner') } });
     const wf = await prisma.workflow.create({
-      data: { id: id('wf'), workspaceId: WS, name: 'WF' },
+      data: { id: id('wf'), organizationId: WS, name: 'WF' },
     });
     await prisma.status.createMany({
       data: [
@@ -54,18 +54,26 @@ describe.skipIf(!DB_URL)('ExcelImportService ↔ Postgres thật', () => {
       ],
     });
     await prisma.project.create({
-      data: { id: PROJECT, workspaceId: WS, key: 'XL', name: 'Dự án XL', defaultWorkflowId: wf.id },
+      data: {
+        id: PROJECT,
+        organizationId: WS,
+        key: 'XL',
+        name: 'Dự án XL',
+        defaultWorkflowId: wf.id,
+      },
     });
     await prisma.issueType.createMany({
       data: [
-        { id: id('t-epic'), workspaceId: WS, name: 'Epic', key: 'EPIC', hierarchyLevel: 1 },
-        { id: id('t-task'), workspaceId: WS, name: 'Task', key: 'TASK' },
-        { id: id('t-other'), workspaceId: OTHER_WS, name: 'Loại tenant khác' },
+        { id: id('t-epic'), organizationId: WS, name: 'Epic', key: 'EPIC', hierarchyLevel: 1 },
+        { id: id('t-task'), organizationId: WS, name: 'Task', key: 'TASK' },
+        { id: id('t-other'), organizationId: OTHER_WS, name: 'Loại tenant khác' },
       ],
     });
-    await prisma.priority.create({ data: { id: id('pr'), workspaceId: WS, name: 'Cao', rank: 5 } });
+    await prisma.priority.create({
+      data: { id: id('pr'), organizationId: WS, name: 'Cao', rank: 5 },
+    });
     const role = await prisma.role.create({
-      data: { id: id('role'), workspaceId: WS, name: 'Dev', scope: 'PROJECT' },
+      data: { id: id('role'), organizationId: WS, name: 'Dev', scope: 'PROJECT' },
     });
     await prisma.projectMembership.createMany({
       data: ['member', 'gone'].map((u) => ({ projectId: PROJECT, userId: id(u), roleId: role.id })),
@@ -89,7 +97,7 @@ describe.skipIf(!DB_URL)('ExcelImportService ↔ Postgres thật', () => {
         },
       ].map((i) => ({
         ...i,
-        workspaceId: WS,
+        organizationId: WS,
         projectId: PROJECT,
         statusId: id('s1'),
         rank: `0|${i.number}:`,
@@ -107,9 +115,9 @@ describe.skipIf(!DB_URL)('ExcelImportService ↔ Postgres thật', () => {
 
   afterAll(async () => {
     if (!prisma) return;
-    // Dự án (kéo theo membership) phải đi trước Role (RESTRICT), rồi mới tới workspace.
-    await prisma.project.deleteMany({ where: { workspaceId: { in: [WS, OTHER_WS] } } });
-    await prisma.workspace.deleteMany({ where: { id: { in: [WS, OTHER_WS] } } });
+    // Dự án (kéo theo membership) phải đi trước Role (RESTRICT), rồi mới tới organization.
+    await prisma.project.deleteMany({ where: { organizationId: { in: [WS, OTHER_WS] } } });
+    await prisma.organization.deleteMany({ where: { id: { in: [WS, OTHER_WS] } } });
     await prisma.user.deleteMany({ where: { id: { startsWith: TAG } } });
     await prisma.$disconnect();
   }, 60_000);

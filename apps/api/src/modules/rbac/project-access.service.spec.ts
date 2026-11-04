@@ -6,7 +6,7 @@ import { RbacService } from './rbac.service';
 /**
  * ProjectAccessService chạy trên RbacService THẬT với Prisma giả (không mock lại logic ẩn/hiện):
  * - `priv`: undefined/null = dự án công khai (không có dòng isPrivate:true); số = dự án riêng tư có chừng đó thành viên khớp người gọi.
- * - `perms`: quyền hợp nhất của người gọi ở cấp workspace (qua vai trò workspace → rolePermission).
+ * - `perms`: quyền hợp nhất của người gọi ở cấp tổ chức (qua vai trò tổ chức → rolePermission).
  */
 function make(
   opts: {
@@ -31,9 +31,12 @@ function make(
       ),
       findMany: vi.fn((_a?: unknown) => Promise.resolve([{ id: 'p-pub' }, { id: 'p-mine' }])),
     },
-    workspaceMembership: {
+    organizationMembership: {
       findUnique: vi.fn(() =>
-        Promise.resolve({ roleId: 'r', roles: [{ role: { id: 'r', name: 'Workspace Member' } }] }),
+        Promise.resolve({
+          roleId: 'r',
+          roles: [{ role: { id: 'r', name: 'Organization Member' } }],
+        }),
       ),
     },
     rolePermission: {
@@ -57,9 +60,9 @@ describe('ProjectAccessService', () => {
     });
   });
 
-  it('visibleWhere: admin hệ thống hoặc workspace:admin thấy tất cả → {}', async () => {
+  it('visibleWhere: admin hệ thống hoặc organization:admin thấy tất cả → {}', async () => {
     expect(await make({ sysAdmin: true }).svc.visibleWhere('u1', 'w1')).toEqual({});
-    expect(await make({ perms: ['workspace:admin'] }).svc.visibleWhere('u1', 'w1')).toEqual({});
+    expect(await make({ perms: ['organization:admin'] }).svc.visibleWhere('u1', 'w1')).toEqual({});
   });
 
   it('visibleProjectIds: admin → null; người thường → id từ truy vấn có visibleWhere + deletedAt, chỉ hỏi quyền MỘT lần', async () => {
@@ -69,7 +72,7 @@ describe('ProjectAccessService', () => {
     expect(await svc.visibleProjectIds('u1', 'w1')).toEqual(['p-pub', 'p-mine']);
     const where = (prisma.project.findMany.mock.calls[0]![0] as { where: object }).where;
     expect(where).toMatchObject({
-      workspaceId: 'w1',
+      organizationId: 'w1',
       deletedAt: null,
       OR: [{ isPrivate: false }, { memberships: { some: { userId: 'u1' } } }],
     });
@@ -89,13 +92,13 @@ describe('ProjectAccessService', () => {
     );
   });
 
-  it('assertCanSee: công khai / thành viên / workspace:admin → qua', async () => {
+  it('assertCanSee: công khai / thành viên / organization:admin → qua', async () => {
     await expect(make({ priv: null }).svc.assertCanSee('u1', 'w1', 'p1')).resolves.toBeUndefined();
     await expect(
       make({ priv: { memberCount: 1 } }).svc.assertCanSee('u1', 'w1', 'p1'),
     ).resolves.toBeUndefined();
     await expect(
-      make({ priv: { memberCount: 0 }, perms: ['workspace:admin'] }).svc.assertCanSee(
+      make({ priv: { memberCount: 0 }, perms: ['organization:admin'] }).svc.assertCanSee(
         'u1',
         'w1',
         'p1',
@@ -111,14 +114,14 @@ describe('ProjectAccessService', () => {
     await expect(boom.svc.canSee('u1', 'w1', 'p1')).rejects.toThrow('db down');
   });
 
-  it('visibleWhere/visibleProjectIds: vai trò cấp workspace không có project:view → chỉ dự án mình có vai trò (kể cả dự án công khai)', async () => {
-    const { svc, prisma } = make({ perms: ['workspace:view'] });
+  it('visibleWhere/visibleProjectIds: vai trò cấp organization không có project:view → chỉ dự án mình có vai trò (kể cả dự án công khai)', async () => {
+    const { svc, prisma } = make({ perms: ['organization:view'] });
     expect(await svc.visibleWhere('u1', 'w1')).toEqual({ memberships: { some: { userId: 'u1' } } });
     await svc.visibleProjectIds('u1', 'w1');
     expect(
       (prisma.project.findMany.mock.calls[0] as unknown as [{ where: unknown }])[0].where,
     ).toMatchObject({
-      workspaceId: 'w1',
+      organizationId: 'w1',
       deletedAt: null,
       memberships: { some: { userId: 'u1' } },
     });
@@ -128,7 +131,7 @@ describe('ProjectAccessService', () => {
     const nobody = make({ perms: ['project:view'] });
     nobody.prisma.project.findFirst.mockResolvedValue(null as never);
     expect(await nobody.svc.canSee('u1', 'w1', 'p-gone')).toBe(false);
-    const admin = make({ perms: ['workspace:admin'] });
+    const admin = make({ perms: ['organization:admin'] });
     admin.prisma.project.findFirst.mockResolvedValue(null as never);
     expect(await admin.svc.canSee('u1', 'w1', 'p-gone')).toBe(true);
   });
@@ -148,15 +151,15 @@ describe('ProjectAccessService', () => {
     };
     const actors: { name: string; opts: Parameters<typeof make>[0]; see: (p: P) => boolean }[] = [
       { name: 'admin hệ thống', opts: { sysAdmin: true, perms: [] }, see: () => true },
-      { name: 'workspace:admin', opts: { perms: ['workspace:admin'] }, see: () => true },
+      { name: 'organization:admin', opts: { perms: ['organization:admin'] }, see: () => true },
       {
-        name: 'project:view cấp workspace',
+        name: 'project:view cấp organization',
         opts: { perms: ['project:view'] },
         see: (p) => !p.isPrivate || p.member,
       },
       {
         name: 'không project:view, có vai dự án',
-        opts: { perms: ['workspace:view', 'report:view'] },
+        opts: { perms: ['organization:view', 'report:view'] },
         see: (p) => p.member,
       },
     ];

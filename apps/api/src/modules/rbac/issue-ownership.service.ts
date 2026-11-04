@@ -25,7 +25,7 @@ export function assertIssueOwner(userId: string, i: IssueOwners): void {
 /**
  * Kiểm sở hữu cho route chỉ qua `PermissionsGuard` nhờ quyền `:own` (cờ `@OwnOnly`).
  * Mọi hàm `assertOwns*` là no-op (không query) khi `ownOnly=false`; trả 404 nếu đối tượng không
- * tồn tại trong workspace, 403 nếu user không phải chủ issue.
+ * tồn tại trong tổ chức, 403 nếu user không phải chủ issue.
  */
 @Injectable()
 export class IssueOwnershipService {
@@ -34,13 +34,13 @@ export class IssueOwnershipService {
   /** Kiểm user là chủ của issue `issueId`. */
   async assertOwnsIssue(
     ownOnly: boolean,
-    workspaceId: string,
+    organizationId: string,
     userId: string,
     issueId: string,
   ): Promise<void> {
     if (!ownOnly) return;
     const issue = await this.prisma.issue.findFirst({
-      where: { id: issueId, workspaceId, deletedAt: null },
+      where: { id: issueId, organizationId, deletedAt: null },
       select: OWNERS,
     });
     if (!issue) throw new NotFoundAppException('Công việc');
@@ -50,12 +50,12 @@ export class IssueOwnershipService {
   /** Kiểm user là chủ của issue chứa tệp đính kèm (trực tiếp hoặc qua comment), không theo người upload. */
   async assertOwnsAttachment(
     ownOnly: boolean,
-    workspaceId: string,
+    organizationId: string,
     userId: string,
     attachmentId: string,
   ): Promise<void> {
     if (!ownOnly) return;
-    const live = { workspaceId, deletedAt: null };
+    const live = { organizationId, deletedAt: null };
     const att = await this.prisma.attachment.findFirst({
       where: { id: attachmentId, OR: [{ issue: live }, { comment: { issue: live } }] },
       select: { issue: { select: OWNERS }, comment: { select: { issue: { select: OWNERS } } } },
@@ -68,13 +68,13 @@ export class IssueOwnershipService {
   /** Kiểm user là chủ của issue NGUỒN của liên kết `linkId`. */
   async assertOwnsLinkSource(
     ownOnly: boolean,
-    workspaceId: string,
+    organizationId: string,
     userId: string,
     linkId: string,
   ): Promise<void> {
     if (!ownOnly) return;
     const link = await this.prisma.issueLink.findFirst({
-      where: { id: linkId, source: { workspaceId, deletedAt: null } },
+      where: { id: linkId, source: { organizationId, deletedAt: null } },
       select: { source: { select: OWNERS } },
     });
     if (!link) throw new NotFoundAppException('Liên kết');

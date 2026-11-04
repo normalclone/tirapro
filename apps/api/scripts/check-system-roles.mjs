@@ -15,7 +15,7 @@ let diff = 0;
 try {
   for (const name of Object.values(SYSTEM_ROLES)) {
     const role = await prisma.role.findFirst({
-      where: { workspaceId: null, isSystem: true, name, scope: SYSTEM_ROLE_SCOPE[name] },
+      where: { organizationId: null, isSystem: true, name, scope: SYSTEM_ROLE_SCOPE[name] },
       select: { permissions: { select: { permission: { select: { key: true } } } } },
     });
     if (!role) {

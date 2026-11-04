@@ -7,7 +7,7 @@ import { SearchService } from './search.service';
  * (mọi quy trình người xem thấy). Các mock bên dưới ghi đè khoá nào cần.
  */
 const noWorkflowUse = () => ({
-  workspaceWorkflowScheme: { findMany: vi.fn().mockResolvedValue([]) },
+  organizationWorkflowScheme: { findMany: vi.fn().mockResolvedValue([]) },
   projectWorkflowOverride: { findMany: vi.fn().mockResolvedValue([]) },
   project: { findMany: vi.fn().mockResolvedValue([]) },
   issueType: { findMany: vi.fn().mockResolvedValue([]) },
@@ -101,11 +101,11 @@ describe('SearchService.search', () => {
     expect(optsOf(call).rankHint).toEqual(['I2', 'I1']);
   });
 
-  it('JQL project = ABC AND text ~ => FTS bị giới hạn project đã resolve (bind P1), không quét cả workspace', async () => {
+  it('JQL project = ABC AND text ~ => FTS bị giới hạn project đã resolve (bind P1), không quét cả organization', async () => {
     const { service, queryRaw, prisma } = makeService([{ id: 'I1', rank: 1 }]);
     await service.search('W1', 'U1', { jql: 'project = ABC AND text ~ "foo"', limit: 50 });
     expect(prisma.project.findMany).toHaveBeenCalledWith({
-      where: { workspaceId: 'W1', key: { in: ['ABC'] }, deletedAt: null },
+      where: { organizationId: 'W1', key: { in: ['ABC'] }, deletedAt: null },
       select: { id: true },
     });
     expect(JSON.stringify((queryRaw.mock.calls[0] as unknown[]).slice(1))).toContain('P1');
@@ -210,7 +210,7 @@ describe('SearchService.fields — severities', () => {
     const service = new SearchService({} as never, prisma as never, ACCESS as never);
     const out = await service.fields('W1', 'u0');
     expect(severity.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { workspaceId: 'W1' }, orderBy: { rank: 'desc' } }),
+      expect.objectContaining({ where: { organizationId: 'W1' }, orderBy: { rank: 'desc' } }),
     );
     expect(out.severities).toEqual([
       { value: 'Critical', label: 'Critical', color: '#f00' },
@@ -240,7 +240,7 @@ describe('SearchService.fields — components/versions (B17)', () => {
     const out = await service.fields('W1', 'u0');
     expect(prisma.component.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { project: { workspaceId: 'W1', deletedAt: null } },
+        where: { project: { organizationId: 'W1', deletedAt: null } },
         orderBy: { name: 'asc' },
       }),
     );
@@ -297,7 +297,7 @@ describe('SearchService — dự án riêng tư (P13)', () => {
     for (const m of [prisma.sprint, prisma.label, prisma.component, prisma.version]) {
       expect(m.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { project: { workspaceId: 'w1', deletedAt: null, ...visible } },
+          where: { project: { organizationId: 'w1', deletedAt: null, ...visible } },
         }),
       );
     }
@@ -544,7 +544,7 @@ describe('SearchService — chỉ liệt kê/gợi ý dự án người hỏi đ
       expect.objectContaining({
         where: {
           workflow: {
-            workspaceId: 'w1',
+            organizationId: 'w1',
             OR: [{ projectId: null }, { project: { deletedAt: null, ...VISIBLE } }],
           },
         },
@@ -572,7 +572,7 @@ describe('SearchService — chỉ liệt kê/gợi ý dự án người hỏi đ
     for (const m of [prisma.sprint, prisma.label, prisma.component, prisma.version]) {
       expect(m.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { project: { workspaceId: 'w1', deletedAt: null, ...VISIBLE } },
+          where: { project: { organizationId: 'w1', deletedAt: null, ...VISIBLE } },
         }),
       );
     }
@@ -592,13 +592,13 @@ describe('SearchService.count (L25)', () => {
     return { service, count, access };
   }
 
-  it('compile JQL → issue.count với where đã compile + workspaceId + dự án chưa xoá', async () => {
+  it('compile JQL → issue.count với where đã compile + organizationId + dự án chưa xoá', async () => {
     const { service, count, access } = make();
     await expect(service.count('W1', 'U1', 'type = Bug')).resolves.toBe(9);
     expect(access.visibleWhere).toHaveBeenCalledWith('U1', 'W1');
     const { where } = (count.mock.calls[0] as unknown as [{ where: { AND: unknown[] } }])[0];
     const json = JSON.stringify(where);
-    expect(json).toContain('"workspaceId":"W1"');
+    expect(json).toContain('"organizationId":"W1"');
     expect(json).toContain('"deletedAt":null');
     expect(json).toContain('Bug');
   });
@@ -616,7 +616,7 @@ describe('SearchService.count (L25)', () => {
     expect(access.visibleWhere).not.toHaveBeenCalled();
     const json = JSON.stringify((count.mock.calls[0] as unknown[])[0]);
     expect(json).toContain('"isPrivate":false');
-    expect(json).toContain('"workspaceId":"W1"');
+    expect(json).toContain('"organizationId":"W1"');
   });
 
   it.each([
@@ -698,7 +698,7 @@ describe('SearchService.fields — trạng thái theo quy trình đang dùng (m�
   it('gộp theo TÊN trạng thái của các quy trình trong cấu hình theo loại việc (Done của Task và Bug là một mục); bỏ quy trình cũ không dùng', async () => {
     const { service, prisma } = make({
       issueType: { findMany: vi.fn().mockResolvedValue([{ id: 'tTask' }, { id: 'tBug' }]) },
-      workspaceWorkflowScheme: {
+      organizationWorkflowScheme: {
         findMany: vi.fn().mockResolvedValue([
           { issueTypeId: 'tTask', workflowId: 'wfStd' },
           { issueTypeId: 'tBug', workflowId: 'wfBug' },
@@ -726,7 +726,7 @@ describe('SearchService.fields — trạng thái theo quy trình đang dùng (m�
       issueType: {
         findMany: vi.fn().mockResolvedValue([{ id: 'tTask' }, { id: 'tNew' }]),
       },
-      workspaceWorkflowScheme: {
+      organizationWorkflowScheme: {
         findMany: vi.fn().mockResolvedValue([{ issueTypeId: 'tTask', workflowId: 'wfStd' }]),
       },
       projectWorkflowOverride: {
@@ -748,7 +748,7 @@ describe('SearchService.fields — trạng thái theo quy trình đang dùng (m�
     const { service, prisma } = make({ projectWorkflowOverride: { findMany: overrides } });
     const out = await service.fields('w1', 'u1');
     expect(overrides).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { project: { workspaceId: 'w1', deletedAt: null } } }),
+      expect.objectContaining({ where: { project: { organizationId: 'w1', deletedAt: null } } }),
     );
     expect(prisma.status.findMany.mock.calls[0]![0].where.workflow.id).toBeUndefined();
     expect(out.statuses.map((s) => s.value)).toContain('QA cũ');

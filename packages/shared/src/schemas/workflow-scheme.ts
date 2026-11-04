@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-/** Một dòng "Loại việc → Quy trình" của workspace. */
+/** Một dòng "Loại việc → Quy trình" của organization. */
 const schemeItemSchema = z.object({
   issueTypeId: z.string().min(1, 'Thiếu loại việc'),
   workflowId: z.string().min(1, 'Hãy chọn quy trình'),
@@ -10,11 +10,11 @@ const schemeItemSchema = z.object({
 const statusMapSchema = z.record(z.string().min(1), z.string().min(1));
 
 /**
- * Đặt cấu hình quy trình của workspace (PUT). Mỗi loại việc xuất hiện tối đa một lần.
+ * Đặt cấu hình quy trình của tổ chức (PUT). Mỗi loại việc xuất hiện tối đa một lần.
  * `statusMap` (phẳng) áp cho mọi loại; `statusMapByType[loại]` ghi đè cho loại đó (cần khi hai loại cùng rời một trạng thái
  * cũ nhưng sang hai quy trình khác nhau).
  */
-export const setWorkspaceSchemeSchema = z.object({
+export const setOrganizationSchemeSchema = z.object({
   statusMap: statusMapSchema.optional(),
   statusMapByType: z.record(z.string().min(1), statusMapSchema).optional(),
   items: z
@@ -26,11 +26,11 @@ export const setWorkspaceSchemeSchema = z.object({
       'Mỗi loại việc chỉ được chọn một quy trình',
     ),
 });
-export type SetWorkspaceSchemeInput = z.infer<typeof setWorkspaceSchemeSchema>;
+export type SetOrganizationSchemeInput = z.infer<typeof setOrganizationSchemeSchema>;
 
 /**
  * Ghi đè quy trình của một dự án cho một loại việc.
- * `workflowId: null` = quay về dùng chung với workspace.
+ * `workflowId: null` = quay về dùng chung với organization.
  * `statusMap` = trạng thái cũ → trạng thái mới, để chuyển các việc đang ở quy trình bị bỏ.
  */
 export const setProjectOverrideSchema = z.object({

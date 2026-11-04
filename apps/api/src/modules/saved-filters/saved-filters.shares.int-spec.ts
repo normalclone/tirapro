@@ -57,17 +57,17 @@ describe.skipIf(!DB_URL)('bộ lọc chia sẻ ↔ Postgres thật', () => {
         },
       });
     for (const w of [WS, WS2]) {
-      await prisma.workspace.create({ data: { id: w, name: w, slug: w, ownerId: U.owner } });
+      await prisma.organization.create({ data: { id: w, name: w, slug: w, ownerId: U.owner } });
       await prisma.role.create({
-        data: { id: `${w}-role`, workspaceId: w, name: 'R', scope: 'WORKSPACE' },
+        data: { id: `${w}-role`, organizationId: w, name: 'R', scope: 'ORGANIZATION' },
       });
     }
     for (const u of [U.owner, U.a, U.b, U.c, U.admin, U.off])
-      await prisma.workspaceMembership.create({
-        data: { workspaceId: WS, userId: u, roleId: `${WS}-role` },
+      await prisma.organizationMembership.create({
+        data: { organizationId: WS, userId: u, roleId: `${WS}-role` },
       });
-    await prisma.workspaceMembership.create({
-      data: { workspaceId: WS2, userId: U.d, roleId: `${WS2}-role` },
+    await prisma.organizationMembership.create({
+      data: { organizationId: WS2, userId: U.d, roleId: `${WS2}-role` },
     });
     const proj = (
       pid: string,
@@ -77,7 +77,7 @@ describe.skipIf(!DB_URL)('bộ lọc chia sẻ ↔ Postgres thật', () => {
       deletedAt: Date | null = null,
     ) =>
       prisma.project.create({
-        data: { id: pid, workspaceId: ws, key, name: key, isPrivate, deletedAt },
+        data: { id: pid, organizationId: ws, key, name: key, isPrivate, deletedAt },
       });
     const k = TAG.slice(2, 7).toUpperCase();
     await proj(P.p1, WS, `${k}1`, false);
@@ -86,7 +86,7 @@ describe.skipIf(!DB_URL)('bộ lọc chia sẻ ↔ Postgres thật', () => {
     await proj(P.pDel, WS, `${k}D`, false, new Date());
     await proj(P.other, WS2, `${k}X`, false);
     await prisma.role.create({
-      data: { id: id('prole'), workspaceId: WS, name: 'PR', scope: 'PROJECT' },
+      data: { id: id('prole'), organizationId: WS, name: 'PR', scope: 'PROJECT' },
     });
     const member = (n: string, pid: string, uid: string) =>
       prisma.projectMembership.create({
@@ -119,14 +119,16 @@ describe.skipIf(!DB_URL)('bộ lọc chia sẻ ↔ Postgres thật', () => {
 
   afterAll(async () => {
     if (!prisma) return;
-    await prisma.savedFilter.deleteMany({ where: { workspaceId: { in: [WS, WS2] } } });
+    await prisma.savedFilter.deleteMany({ where: { organizationId: { in: [WS, WS2] } } });
     await prisma.projectMembership.deleteMany({
-      where: { project: { workspaceId: { in: [WS, WS2] } } },
+      where: { project: { organizationId: { in: [WS, WS2] } } },
     });
-    await prisma.project.deleteMany({ where: { workspaceId: { in: [WS, WS2] } } });
-    await prisma.workspaceMembership.deleteMany({ where: { workspaceId: { in: [WS, WS2] } } });
-    await prisma.role.deleteMany({ where: { workspaceId: { in: [WS, WS2] } } });
-    await prisma.workspace.deleteMany({ where: { id: { in: [WS, WS2] } } });
+    await prisma.project.deleteMany({ where: { organizationId: { in: [WS, WS2] } } });
+    await prisma.organizationMembership.deleteMany({
+      where: { organizationId: { in: [WS, WS2] } },
+    });
+    await prisma.role.deleteMany({ where: { organizationId: { in: [WS, WS2] } } });
+    await prisma.organization.deleteMany({ where: { id: { in: [WS, WS2] } } });
     await prisma.user.deleteMany({ where: { id: { in: Object.values(U) } } });
     await prisma.$disconnect();
   }, 120_000);
@@ -208,7 +210,7 @@ describe.skipIf(!DB_URL)('bộ lọc chia sẻ ↔ Postgres thật', () => {
   });
 
   it('chia sẻ cho người ngoài tổ chức / đã vô hiệu hoá → 422 FILTER_SHARE_USER_NOT_MEMBER, nêu tên', async () => {
-    const before = await prisma.savedFilter.count({ where: { workspaceId: WS } });
+    const before = await prisma.savedFilter.count({ where: { organizationId: WS } });
     await expect(mk(U.owner, { visibility: 'SHARED', sharedUserIds: [U.d] })).rejects.toMatchObject(
       {
         status: 422,
@@ -221,7 +223,7 @@ describe.skipIf(!DB_URL)('bộ lọc chia sẻ ↔ Postgres thật', () => {
     ).rejects.toMatchObject({
       code: 'FILTER_SHARE_USER_NOT_MEMBER',
     });
-    expect(await prisma.savedFilter.count({ where: { workspaceId: WS } })).toBe(before); // không lưu bộ lọc dở dang
+    expect(await prisma.savedFilter.count({ where: { organizationId: WS } })).toBe(before); // không lưu bộ lọc dở dang
   });
 
   it('chia sẻ trực tiếp cho người: người đó thấy (kể cả không thuộc dự án nào), người khác không; danh sách người chỉ chủ thấy đủ', async () => {
@@ -277,7 +279,7 @@ describe.skipIf(!DB_URL)('bộ lọc chia sẻ ↔ Postgres thật', () => {
     await prisma.project.create({
       data: {
         id: tmp,
-        workspaceId: WS,
+        organizationId: WS,
         key: `T${TAG.slice(2, 6).toUpperCase()}`,
         name: 'tmp',
         isPrivate: false,
@@ -336,7 +338,7 @@ describe.skipIf(!DB_URL)('bộ lọc chia sẻ ↔ Postgres thật', () => {
     expect(publish).toHaveBeenLastCalledWith(
       expect.objectContaining({
         recipientId: U.b,
-        workspaceId: WS,
+        organizationId: WS,
         type: 'FILTER_SHARED',
         actorId: U.owner,
         payload: { filterId: f.id, filterName: 'Bug tuần này' },

@@ -804,7 +804,7 @@ describe('SprintsService — dự án đã xoá mềm = sprint không tồn tạ
     await expect(service.update('w1', 's1', { goal: 'x' })).rejects.toMatchObject({ status: 404 });
     await expect(service.remove('w1', 's1', 'u1')).rejects.toMatchObject({ status: 404 });
     for (const call of tx.sprint.findFirst.mock.calls)
-      expect(call[0].where).toMatchObject({ project: { workspaceId: 'w1', deletedAt: null } });
+      expect(call[0].where).toMatchObject({ project: { organizationId: 'w1', deletedAt: null } });
     expect(tx.sprint.updateMany).not.toHaveBeenCalled();
   });
 });

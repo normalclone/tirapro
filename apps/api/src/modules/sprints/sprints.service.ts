@@ -30,12 +30,12 @@ export class SprintsService {
     private readonly events: EventEmitter2,
   ) {}
 
-  async listForProject(workspaceId: string, projectId: string): Promise<SprintDto[]> {
+  async listForProject(organizationId: string, projectId: string): Promise<SprintDto[]> {
     // `projectId` thiếu (query bỏ trống) ⇒ Prisma bỏ qua điều kiện và liệt kê sprint của MỌI dự án (kể cả riêng tư) mà guard
     // không kiểm dự án nào: bắt buộc phải có.
     if (!projectId) throw new BusinessRuleException('Thiếu projectId');
     const sprints = await this.prisma.sprint.findMany({
-      where: { projectId, deletedAt: null, project: { workspaceId, deletedAt: null } },
+      where: { projectId, deletedAt: null, project: { organizationId, deletedAt: null } },
       orderBy: [{ state: 'asc' }, { sequence: 'desc' }],
     });
     if (sprints.length === 0) return [];
@@ -68,12 +68,12 @@ export class SprintsService {
   }
 
   async create(
-    workspaceId: string,
+    organizationId: string,
     projectId: string,
     input: Omit<CreateSprintInput, 'projectId'>,
   ): Promise<SprintDto> {
     const project = await this.prisma.project.findFirst({
-      where: { id: projectId, workspaceId, deletedAt: null },
+      where: { id: projectId, organizationId, deletedAt: null },
       select: { id: true, archivedAt: true },
     });
     if (!project) throw new NotFoundAppException('Dự án');
@@ -126,11 +126,11 @@ export class SprintsService {
    * (không PATCH rồi start — hai request sẽ để sprint nửa vời nếu request sau lỗi). Kiểm `end >= start` trong transaction, TRƯỚC khi ghi.
    */
   async start(
-    workspaceId: string,
+    organizationId: string,
     sprintId: string,
     input: StartSprintInput = {},
   ): Promise<SprintDto> {
-    const sprint = await this.requireSprint(workspaceId, sprintId);
+    const sprint = await this.requireSprint(organizationId, sprintId);
     const updated = await this.prisma.$transaction(async (tx) => {
       // Khoá dòng project để hai request start đồng thời trong cùng project phải xếp hàng.
       await tx.project.update({
@@ -185,12 +185,12 @@ export class SprintsService {
    * mới, chuyển issue + history — nằm trong MỘT transaction: lỗi ở đâu cũng không để sprint đóng mà việc còn kẹt.
    */
   async complete(
-    workspaceId: string,
+    organizationId: string,
     sprintId: string,
     actorId: string,
     input: CompleteSprintInput = { moveIncompleteTo: 'backlog' },
   ): Promise<SprintDto> {
-    const sprint = await this.requireSprint(workspaceId, sprintId);
+    const sprint = await this.requireSprint(organizationId, sprintId);
     const dest = input.moveIncompleteTo;
     if (typeof dest === 'object' && dest.sprintId === sprintId) {
       throw new BusinessRuleException(
@@ -313,11 +313,11 @@ export class SprintsService {
 
   /** Sửa sprint. FUTURE sửa được mọi trường; ACTIVE chỉ mục tiêu + ngày kết thúc; CLOSED không sửa. */
   async update(
-    workspaceId: string,
+    organizationId: string,
     sprintId: string,
     input: UpdateSprintInput,
   ): Promise<SprintDto> {
-    const sprint = await this.requireSprint(workspaceId, sprintId);
+    const sprint = await this.requireSprint(organizationId, sprintId);
     if (sprint.state === 'CLOSED')
       throw new BusinessRuleException('Sprint đã hoàn thành — không sửa được nữa');
     if (sprint.state === 'ACTIVE') {
@@ -357,8 +357,12 @@ export class SprintsService {
   }
 
   /** Xoá mềm sprint FUTURE; issue trong sprint về backlog + history, cùng một transaction. */
-  async remove(workspaceId: string, sprintId: string, actorId: string): Promise<{ success: true }> {
-    const sprint = await this.requireSprint(workspaceId, sprintId);
+  async remove(
+    organizationId: string,
+    sprintId: string,
+    actorId: string,
+  ): Promise<{ success: true }> {
+    const sprint = await this.requireSprint(organizationId, sprintId);
     if (sprint.state !== 'FUTURE') {
       throw new BusinessRuleException(
         'Chỉ xoá được sprint chưa bắt đầu — sprint đang chạy hãy kết thúc, sprint đã đóng được giữ làm lịch sử',
@@ -528,9 +532,9 @@ export class SprintsService {
     });
   }
 
-  private async requireSprint(workspaceId: string, sprintId: string) {
+  private async requireSprint(organizationId: string, sprintId: string) {
     const s = await this.prisma.sprint.findFirst({
-      where: { id: sprintId, deletedAt: null, project: { workspaceId, deletedAt: null } },
+      where: { id: sprintId, deletedAt: null, project: { organizationId, deletedAt: null } },
       include: { project: { select: { archivedAt: true } } },
     });
     if (!s) throw new NotFoundAppException('Đợt làm việc (sprint)');

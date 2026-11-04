@@ -2,9 +2,9 @@ import { SYSTEM_USER_EMAIL } from './system-user';
 
 /**
  * Điều kiện đếm thành viên "đang hoạt động" của một tổ chức: bỏ tài khoản bị vô hiệu hoá và user hệ
- * thống (automation). Dùng chung cho bộ chọn tổ chức (`AuthService.listWorkspaces`) và bảng quản trị
- * (`AdminWorkspacesService`) để hai nơi luôn cùng một con số.
- * Vị từ SYSTEM_USER_EMAIL là lưới an toàn: user hệ thống không bao giờ có membership (`addWorkspace` chặn).
+ * thống (automation). Dùng chung cho bộ chọn tổ chức (`AuthService.listOrganizations`) và bảng quản trị
+ * (`AdminOrganizationsService`) để hai nơi luôn cùng một con số.
+ * Vị từ SYSTEM_USER_EMAIL là lưới an toàn: user hệ thống không bao giờ có membership (`addOrganization` chặn).
  */
 export const ACTIVE_MEMBERSHIP_COUNT = {
   where: { user: { status: { not: 'DEACTIVATED' }, email: { not: SYSTEM_USER_EMAIL } } },

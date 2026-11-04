@@ -133,7 +133,7 @@ interface IssueEventShape {
   id: string;
   key: string;
   summary: string;
-  workspaceId: string;
+  organizationId: string;
   /** Dự án của công việc (payload thật là `IssueDto` nên luôn có) — để kiểm người nhận có xem được dự án (riêng tư). */
   projectId?: string;
   assigneeId: string | null;
@@ -155,7 +155,7 @@ interface IssueUpdatedPayload {
   /** Các trường vừa đổi (có từ E3); thiếu → coi như không rõ, không suy ra việc giao lại. */
   changedFields?: string[];
   /**
-   * Giao việc hàng loạt (vd tự gán việc Jira khi người phụ trách vào workspace): producer tự gửi MỘT thông báo gộp
+   * Giao việc hàng loạt (vd tự gán việc Jira khi người phụ trách vào tổ chức): producer tự gửi MỘT thông báo gộp
    * cho người nhận nên bỏ qua thông báo "được giao"/"cập nhật" cho từng việc (không spam N thông báo).
    */
   bulk?: boolean;
@@ -193,7 +193,7 @@ export interface PublishOptions {
 
 export interface NotificationInput {
   recipientId: string;
-  workspaceId: string;
+  organizationId: string;
   type: NotificationType;
   issueId?: string | null;
   commentId?: string | null;
@@ -222,8 +222,8 @@ export class NotificationsService {
 
   /**
    * Điều kiện "thông báo này còn được xem" (dự án riêng tư): thông báo không gắn công việc luôn hiện; thông báo gắn công
-   * việc chỉ hiện khi người nhận CÒN thấy dự án của công việc đó trong workspace của thông báo (mỗi workspace một điều
-   * kiện — `visibleWhere` tính theo workspace). Người đã bị gỡ khỏi dự án riêng tư (hoặc rời workspace) không còn đọc được
+   * việc chỉ hiện khi người nhận CÒN thấy dự án của công việc đó trong tổ chức của thông báo (mỗi tổ chức một điều
+   * kiện — `visibleWhere` tính theo tổ chức). Người đã bị gỡ khỏi dự án riêng tư (hoặc rời tổ chức) không còn đọc được
    * tiêu đề việc cũ; dữ liệu không xoá nên hiện lại nếu được thêm lại. Admin hệ thống thấy mọi thứ.
    */
   private async readableWhere(userId: string): Promise<Prisma.NotificationWhereInput> {
@@ -232,19 +232,19 @@ export class NotificationsService {
       select: { isSystemAdmin: true },
     });
     if (me?.isSystemAdmin) return {};
-    const memberships = await this.prisma.workspaceMembership.findMany({
+    const memberships = await this.prisma.organizationMembership.findMany({
       where: { userId },
-      select: { workspaceId: true },
+      select: { organizationId: true },
     });
-    const perWorkspace = await Promise.all(
+    const perOrganization = await Promise.all(
       memberships.map(async (m): Promise<Prisma.NotificationWhereInput> => {
-        const visible = await this.access.visibleWhere(userId, m.workspaceId);
+        const visible = await this.access.visibleWhere(userId, m.organizationId);
         return Object.keys(visible).length
-          ? { workspaceId: m.workspaceId, issue: { project: visible } }
-          : { workspaceId: m.workspaceId };
+          ? { organizationId: m.organizationId, issue: { project: visible } }
+          : { organizationId: m.organizationId };
       }),
     );
-    return { OR: [{ issueId: null }, ...perWorkspace] };
+    return { OR: [{ issueId: null }, ...perOrganization] };
   }
 
   /** Thông báo của tôi, mới nhất trước, phân trang cursor. */
@@ -419,7 +419,7 @@ export class NotificationsService {
         : null;
       await this.publish({
         recipientId: issue.assigneeId,
-        workspaceId: issue.workspaceId,
+        organizationId: issue.organizationId,
         type: 'STATUS_CHANGED',
         issueId: issue.id,
         projectId: issue.projectId,
@@ -464,7 +464,7 @@ export class NotificationsService {
       }
       await this.publish({
         recipientId: issue.assigneeId,
-        workspaceId: issue.workspaceId,
+        organizationId: issue.organizationId,
         type: 'ISSUE_UPDATED',
         issueId: issue.id,
         projectId: issue.projectId,
@@ -486,7 +486,7 @@ export class NotificationsService {
         where: { id: issueId, deletedAt: null },
         select: {
           id: true,
-          workspaceId: true,
+          organizationId: true,
           projectId: true,
           assigneeId: true,
           key: true,
@@ -515,7 +515,7 @@ export class NotificationsService {
         return;
       await this.publish({
         recipientId: issue.assigneeId,
-        workspaceId: issue.workspaceId,
+        organizationId: issue.organizationId,
         type: 'COMMENT_ADDED',
         issueId: issue.id,
         projectId: issue.projectId,
@@ -537,7 +537,7 @@ export class NotificationsService {
       if (!issueId || !author || !newMentionIds?.length) return;
       const issue = await this.prisma.issue.findFirst({
         where: { id: issueId, deletedAt: null },
-        select: { id: true, workspaceId: true, projectId: true, key: true, summary: true },
+        select: { id: true, organizationId: true, projectId: true, key: true, summary: true },
       });
       if (!issue) return;
       await this.notifyMentioned({
@@ -569,8 +569,8 @@ export class NotificationsService {
       // Người được nhắc phải xem được công việc: lọc TRƯỚC khi ghi sổ "đã báo" (nếu không, người được thêm vào dự án sau
       // đó sẽ không bao giờ được báo vì đã có dòng sổ).
       const members = await this.filterCanSee(
-        await resolveMentionedMembers(this.prisma, issue.workspaceId, ids, actorId),
-        issue.workspaceId,
+        await resolveMentionedMembers(this.prisma, issue.organizationId, ids, actorId),
+        issue.organizationId,
         issue.projectId,
       );
       if (!members.length) return;
@@ -585,7 +585,7 @@ export class NotificationsService {
           mentionedUserId,
           await this.prepare({
             recipientId: mentionedUserId,
-            workspaceId: issue.workspaceId,
+            organizationId: issue.organizationId,
             type: 'MENTIONED',
             issueId: issue.id,
             projectId: issue.projectId,
@@ -621,9 +621,9 @@ export class NotificationsService {
     return { key: issue.key, summary: issue.summary, excerpt: plainExcerpt(body, 80), where };
   }
 
-  /** Tạo MENTIONED cho các id còn là thành viên workspace (≠ người nhắc); trả về tập người đã được báo. */
+  /** Tạo MENTIONED cho các id còn là thành viên tổ chức (≠ người nhắc); trả về tập người đã được báo. */
   private async notifyMentioned(input: {
-    issue: { id: string; workspaceId: string; projectId?: string; key: string; summary: string };
+    issue: { id: string; organizationId: string; projectId?: string; key: string; summary: string };
     author: string;
     ids: readonly string[];
     commentId: string | null;
@@ -633,15 +633,15 @@ export class NotificationsService {
     const { issue, author } = input;
     const mentioned = new Set<string>();
     const members = await this.filterCanSee(
-      await resolveMentionedMembers(this.prisma, issue.workspaceId, input.ids, author),
-      issue.workspaceId,
+      await resolveMentionedMembers(this.prisma, issue.organizationId, input.ids, author),
+      issue.organizationId,
       issue.projectId,
     );
     for (const recipientId of members) {
       mentioned.add(recipientId);
       await this.publish({
         recipientId,
-        workspaceId: issue.workspaceId,
+        organizationId: issue.organizationId,
         type: 'MENTIONED',
         issueId: issue.id,
         projectId: issue.projectId,
@@ -656,12 +656,12 @@ export class NotificationsService {
   /** Giữ lại những người xem được dự án (không có `projectId` → không lọc). Giữ thứ tự. */
   async filterCanSee(
     userIds: string[],
-    workspaceId: string,
+    organizationId: string,
     projectId: string | undefined,
   ): Promise<string[]> {
     if (!projectId) return userIds;
     const ok = await Promise.all(
-      userIds.map((id) => this.access.canSee(id, workspaceId, projectId)),
+      userIds.map((id) => this.access.canSee(id, organizationId, projectId)),
     );
     return userIds.filter((_, i) => ok[i]);
   }
@@ -681,13 +681,13 @@ export class NotificationsService {
       projectId = row?.projectId;
     }
     if (!projectId) return true;
-    return this.access.canSee(input.recipientId, input.workspaceId, projectId);
+    return this.access.canSee(input.recipientId, input.organizationId, projectId);
   }
 
   private notifyAssigned(issue: IssueEventShape, actorId: string): Promise<void> {
     return this.publish({
       recipientId: issue.assigneeId as string,
-      workspaceId: issue.workspaceId,
+      organizationId: issue.organizationId,
       type: 'ISSUE_ASSIGNED',
       issueId: issue.id,
       projectId: issue.projectId,
@@ -797,7 +797,7 @@ export class NotificationsService {
         (await db.notification.create({
           data: {
             recipientId: input.recipientId,
-            workspaceId: input.workspaceId,
+            organizationId: input.organizationId,
             type: input.type,
             issueId: input.issueId ?? null,
             commentId: input.commentId ?? null,

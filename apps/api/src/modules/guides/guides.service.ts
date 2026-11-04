@@ -33,12 +33,12 @@ export class GuidesService {
 
   /**
    * Guide đã publish cho một màn (hoặc toàn bộ tổ chức nếu bỏ `screen`).
-   * Hiển thị guide của workspace hiện tại hoặc guide toàn cục (workspaceId = null).
+   * Hiển thị guide của tổ chức hiện tại hoặc guide toàn cục (organizationId = null).
    */
   async listForScreen(user: AuthUser, screen?: string): Promise<GuideListItemDto[]> {
     const where: Prisma.GuideWhereInput = {
       isPublished: true,
-      OR: [{ workspaceId: user.workspaceId }, { workspaceId: null }],
+      OR: [{ organizationId: user.organizationId }, { organizationId: null }],
       ...(screen ? { screen } : {}),
     };
 
@@ -122,10 +122,10 @@ export class GuidesService {
     return { ok: true };
   }
 
-  /** Danh sách toàn bộ guide của workspace (quản trị). */
+  /** Danh sách toàn bộ guide của tổ chức (quản trị). */
   async listAdmin(user: AuthUser): Promise<GuideListItemDto[]> {
     const guides = await this.prisma.guide.findMany({
-      where: { OR: [{ workspaceId: user.workspaceId }, { workspaceId: null }] },
+      where: { OR: [{ organizationId: user.organizationId }, { organizationId: null }] },
       orderBy: [{ screen: 'asc' }, { order: 'asc' }],
     });
     return guides.map((g) => ({

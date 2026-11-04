@@ -11,12 +11,12 @@ import { ForbiddenAppException } from './exceptions/app.exception';
 export async function canManageInProject(
   rbac: Pick<RbacService, 'getEffectivePermissions' | 'projectVisibilityMode'>,
   userId: string,
-  workspaceId: string,
+  organizationId: string,
   projectId: string,
   orgPerm: PermissionKey,
 ): Promise<boolean> {
-  if ((await rbac.projectVisibilityMode(userId, workspaceId)) === 'all') return true;
-  const perms = await rbac.getEffectivePermissions(userId, workspaceId, projectId);
+  if ((await rbac.projectVisibilityMode(userId, organizationId)) === 'all') return true;
+  const perms = await rbac.getEffectivePermissions(userId, organizationId, projectId);
   return perms.has(orgPerm) || perms.has(PERMISSIONS.PROJECT_ADMIN);
 }
 
@@ -24,12 +24,12 @@ export async function canManageInProject(
 export async function assertCanManageInProject(
   rbac: Pick<RbacService, 'getEffectivePermissions' | 'projectVisibilityMode'>,
   userId: string,
-  workspaceId: string,
+  organizationId: string,
   projectId: string,
   orgPerm: PermissionKey,
   what: string,
 ): Promise<void> {
-  if (await canManageInProject(rbac, userId, workspaceId, projectId, orgPerm)) return;
+  if (await canManageInProject(rbac, userId, organizationId, projectId, orgPerm)) return;
   throw new ForbiddenAppException(
     `Bạn không có quyền quản lý ${what} ở dự án đích — hãy nhờ quản trị dự án đó cấp quyền hoặc chọn dự án khác`,
   );

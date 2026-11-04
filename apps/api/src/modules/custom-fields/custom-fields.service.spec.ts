@@ -6,7 +6,7 @@ const ARCHIVED = { status: 422, message: expect.stringContaining('lưu trữ') a
 function setup(archived: boolean, fieldProjectId: string | null = 'p1') {
   const field = {
     id: 'f1',
-    workspaceId: 'w1',
+    organizationId: 'w1',
     projectId: fieldProjectId,
     name: 'F',
     type: 'TEXT',
@@ -48,7 +48,7 @@ describe('CustomFieldsService — định nghĩa trường của dự án lưu t
     expect(prisma.customField.update).not.toHaveBeenCalled();
   });
 
-  it('định nghĩa cấp workspace (không gắn dự án) không bị chặn', async () => {
+  it('định nghĩa cấp organization (không gắn dự án) không bị chặn', async () => {
     const { service, prisma } = setup(true, null);
     await service.createDefinition('w1', { name: 'F', type: 'TEXT' } as never);
     await service.updateDefinition('w1', 'f1', { name: 'Mới' });
@@ -72,7 +72,7 @@ describe('CustomFieldsService.listDefinitions — dự án riêng tư (P15)', ()
     await service.listDefinitions('w1', undefined, 'u1');
     expect(access.visibleWhere).toHaveBeenCalledWith('u1', 'w1');
     expect(list(prisma).customField.findMany.mock.calls[0]![0]!.where).toEqual({
-      workspaceId: 'w1',
+      organizationId: 'w1',
       deletedAt: null,
       OR: [{ projectId: null }, { project: visible }],
     });
@@ -83,12 +83,12 @@ describe('CustomFieldsService.listDefinitions — dự án riêng tư (P15)', ()
     (prisma.customField as Record<string, unknown>).findMany = vi.fn(() => Promise.resolve([]));
     await service.listDefinitions('w1', undefined, 'u1');
     expect(list(prisma).customField.findMany.mock.calls[0]![0]!.where).toEqual({
-      workspaceId: 'w1',
+      organizationId: 'w1',
       deletedAt: null,
     });
     await service.listDefinitions('w1', 'p1', 'u1');
     expect(list(prisma).customField.findMany.mock.calls[1]![0]!.where).toEqual({
-      workspaceId: 'w1',
+      organizationId: 'w1',
       deletedAt: null,
       OR: [{ projectId: 'p1' }, { projectId: null }],
     });

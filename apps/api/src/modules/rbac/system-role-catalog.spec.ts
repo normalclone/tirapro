@@ -2,11 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { PERMISSIONS, SYSTEM_ROLES, SYSTEM_ROLE_PERMISSIONS } from '@tirapro/types';
 
 describe('Danh mục quyền vai trò hệ thống (logbug #4, #7)', () => {
-  it('Workspace Member không có quyền tạo dự án; Workspace Admin vẫn có', () => {
-    expect(SYSTEM_ROLE_PERMISSIONS[SYSTEM_ROLES.WORKSPACE_MEMBER]).not.toContain(
+  it('Organization Member không có quyền tạo dự án; Organization Admin vẫn có', () => {
+    expect(SYSTEM_ROLE_PERMISSIONS[SYSTEM_ROLES.ORGANIZATION_MEMBER]).not.toContain(
       PERMISSIONS.PROJECT_CREATE,
     );
-    expect(SYSTEM_ROLE_PERMISSIONS[SYSTEM_ROLES.WORKSPACE_ADMIN]).toContain(
+    expect(SYSTEM_ROLE_PERMISSIONS[SYSTEM_ROLES.ORGANIZATION_ADMIN]).toContain(
       PERMISSIONS.PROJECT_CREATE,
     );
   });

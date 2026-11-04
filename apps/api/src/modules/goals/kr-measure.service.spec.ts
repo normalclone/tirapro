@@ -41,7 +41,7 @@ describe('KrMeasureService.measure (L25)', () => {
     expect(out.get('k1')).toMatchObject({ value: 12, error: null });
     expect(out.get('k1')!.measuredAt).toEqual(expect.any(String));
     expect(whereOf(prisma.issue.count)).toMatchObject({
-      workspaceId: 'w1',
+      organizationId: 'w1',
       deletedAt: null,
       // cùng định nghĩa 'bug' với báo cáo QA / CSV: key BUG hoặc tên Bug
       type: { OR: [{ key: 'BUG' }, { name: { equals: 'Bug', mode: 'insensitive' } }] },
@@ -166,7 +166,7 @@ describe('KrMeasureService.validateConfig (L25)', () => {
     ).rejects.toMatchObject({ status: 422, message: 'Không có loại "Bugg"' });
   });
 
-  it('projectId không thuộc workspace/không thấy → 404 Dự án; không projectId → qua', async () => {
+  it('projectId không thuộc organization/không thấy → 404 Dự án; không projectId → qua', async () => {
     const { service, prisma } = make();
     prisma.project.findFirst.mockResolvedValueOnce(null);
     await expect(
@@ -174,7 +174,7 @@ describe('KrMeasureService.validateConfig (L25)', () => {
     ).rejects.toMatchObject({ status: 404 });
     expect(whereOf(prisma.project.findFirst)).toMatchObject({
       id: 'hr',
-      workspaceId: 'w1',
+      organizationId: 'w1',
       deletedAt: null,
       ...VISIBLE,
     });
@@ -189,7 +189,7 @@ describe("KrMeasureService.measure — phạm vi 'public' (cron chụp lịch s�
     expect(out.get('k1')).toMatchObject({ value: 12, error: null });
     expect(access.visibleWhere).not.toHaveBeenCalled();
     expect(whereOf(prisma.issue.count)).toMatchObject({
-      workspaceId: 'w1',
+      organizationId: 'w1',
       type: { OR: [{ key: 'BUG' }, { name: { equals: 'Bug', mode: 'insensitive' } }] },
       project: { deletedAt: null, isPrivate: false },
     });
@@ -203,7 +203,7 @@ describe("KrMeasureService.measure — phạm vi 'public' (cron chụp lịch s�
     expect(JSON.stringify(w)).not.toContain('isPrivate');
   });
 
-  it('SPRINT_COMPLETION: dự án tra theo workspace + chưa xoá, không lọc quyền người xem', async () => {
+  it('SPRINT_COMPLETION: dự án tra theo organization + chưa xoá, không lọc quyền người xem', async () => {
     const { service, prisma, access } = make();
     prisma.sprint.findFirst.mockResolvedValueOnce({ id: 's1' });
     const out = await service.measure('w1', 'public', [
@@ -213,7 +213,7 @@ describe("KrMeasureService.measure — phạm vi 'public' (cron chụp lịch s�
     expect(access.visibleWhere).not.toHaveBeenCalled();
     expect(whereOf(prisma.project.findFirst)).toEqual({
       id: 'hr',
-      workspaceId: 'w1',
+      organizationId: 'w1',
       deletedAt: null,
     });
   });
@@ -251,7 +251,7 @@ describe('KrMeasureService.measure — giới hạn song song + cache 30s (D-M7)
     expect(peak).toBeGreaterThan(1); // vẫn song song, không tuần tự hoá hoàn toàn
   });
 
-  it('gọi lại trong 30s với cùng (workspace, người xem, cấu hình) → không đo lại; quá 30s → đo lại', async () => {
+  it('gọi lại trong 30s với cùng (organization, người xem, cấu hình) → không đo lại; quá 30s → đo lại', async () => {
     vi.useFakeTimers();
     try {
       vi.setSystemTime(new Date('2026-10-16T10:00:00Z'));

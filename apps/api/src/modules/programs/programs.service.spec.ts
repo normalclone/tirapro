@@ -22,7 +22,7 @@ describe('ProgramsService.rollup — bỏ issue của dự án xoá mềm', () =
     ).rollup('w1', 'u0');
     expect(groupBy).toHaveBeenCalledTimes(3);
     for (const c of groupBy.mock.calls as unknown as [{ where: unknown }][])
-      expect(c[0].where).toMatchObject({ workspaceId: 'w1', project: { deletedAt: null } });
+      expect(c[0].where).toMatchObject({ organizationId: 'w1', project: { deletedAt: null } });
   });
 });
 
@@ -122,7 +122,7 @@ describe('ProgramsService — dự án riêng tư (P14)', () => {
               startDate: null,
               targetDate: null,
               owner: null,
-              workspaceId: 'w1',
+              organizationId: 'w1',
               createdAt: new Date(),
               projects: [],
             },
@@ -132,7 +132,7 @@ describe('ProgramsService — dự án riêng tư (P14)', () => {
           Promise.resolve({
             id: 'g1',
             name: 'G',
-            workspaceId: 'w1',
+            organizationId: 'w1',
             description: null,
             color: null,
             startDate: null,
@@ -167,7 +167,7 @@ describe('ProgramsService — dự án riêng tư (P14)', () => {
     // Sức khoẻ (có tiêu đề RAID ở reasons + ghi chú ghi đè của PM) chỉ tính cho dự án đã lọc và truyền người xem tiếp.
     expect(health.forProjects).toHaveBeenCalledWith('w1', [], 'u1');
     expect(whereOf(prisma.project.findMany)).toMatchObject({
-      workspaceId: 'w1',
+      organizationId: 'w1',
       deletedAt: null,
       ...visible,
     });
@@ -196,14 +196,14 @@ describe('ProgramsService — dự án riêng tư (P14)', () => {
     }
   });
 
-  it('setProjects: dự án người gọi không thấy → BusinessRuleException (cùng lỗi với dự án ngoài workspace), không ghi', async () => {
+  it('setProjects: dự án người gọi không thấy → BusinessRuleException (cùng lỗi với dự án ngoài organization), không ghi', async () => {
     const { service, prisma } = make({ found: [] });
     await expect(service.setProjects('w1', 'g1', ['hidden'], 'u1')).rejects.toMatchObject({
       status: 422,
     });
     expect(whereOf(prisma.project.findMany)).toMatchObject({
       id: { in: ['hidden'] },
-      workspaceId: 'w1',
+      organizationId: 'w1',
       ...visible,
     });
     expect(prisma.projectProgram.deleteMany).not.toHaveBeenCalled();
@@ -219,7 +219,7 @@ describe('ProgramsService — dự án riêng tư (P14)', () => {
     expect(unlink).toMatchObject({
       programId: 'g1',
       projectId: { notIn: ['p1'] },
-      project: { workspaceId: 'w1', deletedAt: null, ...visible },
+      project: { organizationId: 'w1', deletedAt: null, ...visible },
     });
     expect(prisma.projectProgram.createMany).toHaveBeenCalledWith({
       data: [{ projectId: 'p1', programId: 'g1' }],
@@ -324,7 +324,7 @@ describe('ProgramsService.setForProject — nhóm của MỘT dự án', () => {
     const r = await service.setForProject('w1', 'p1', ['g1', 'g2', 'g1'], 'u1');
     expect(access.assertCanSee).toHaveBeenCalledWith('u1', 'w1', 'p1');
     expect(prisma.program.count).toHaveBeenCalledWith({
-      where: { id: { in: ['g1', 'g2'] }, workspaceId: 'w1' },
+      where: { id: { in: ['g1', 'g2'] }, organizationId: 'w1' },
     });
     expect(prisma.projectProgram.deleteMany).toHaveBeenCalledWith({
       where: { projectId: 'p1', programId: { notIn: ['g1', 'g2'] } },

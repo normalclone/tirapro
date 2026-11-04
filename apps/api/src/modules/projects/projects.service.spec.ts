@@ -5,7 +5,7 @@ import { ProjectsService } from './projects.service';
 /** Bảng mà WorkflowResolver đọc khi tạo dự án (không có loại việc → không gì để đồng bộ vào bảng). */
 const resolverTables = () => ({
   projectWorkflowOverride: { findMany: vi.fn(() => Promise.resolve([])) },
-  workspaceWorkflowScheme: { findMany: vi.fn(() => Promise.resolve([])) },
+  organizationWorkflowScheme: { findMany: vi.fn(() => Promise.resolve([])) },
   issueType: { findMany: vi.fn(() => Promise.resolve([])) },
 });
 
@@ -19,7 +19,7 @@ const AUDIT = { record: vi.fn((_e?: unknown, _tx?: unknown) => Promise.resolve()
 
 const row = (over: Record<string, unknown> = {}) => ({
   id: 'p1',
-  workspaceId: 'w1',
+  organizationId: 'w1',
   key: 'DEMO',
   name: 'Demo',
   description: null,
@@ -58,7 +58,7 @@ function make(
           Promise.resolve({ count: over.archivedCount ?? 1 }),
       ),
     },
-    workspaceMembership: {
+    organizationMembership: {
       findUnique: vi.fn(() =>
         Promise.resolve(over.member === false ? null : { id: 'm1', user: ACTIVE_USER }),
       ),
@@ -87,7 +87,7 @@ describe('ProjectsService — lưu trữ / sửa / xoá', () => {
     const { service, prisma } = make();
     await service.list('w1', false, 'u1');
     expect(prisma.project.findMany.mock.calls[0]![0].where).toMatchObject({
-      workspaceId: 'w1',
+      organizationId: 'w1',
       deletedAt: null,
       archivedAt: null,
     });
@@ -200,7 +200,7 @@ describe('ProjectsService — dự án lưu trữ là chỉ đọc (cài đặt 
 });
 
 describe('ProjectsService.meta — severities + resolutions', () => {
-  it('trả danh mục Severity (rank giảm) và Resolution (rank tăng) của workspace', async () => {
+  it('trả danh mục Severity (rank giảm) và Resolution (rank tăng) của organization', async () => {
     const sev = [
       { id: 's1', name: 'Critical', description: null, color: '#f00', rank: 4, isDefault: false },
     ];
@@ -222,10 +222,10 @@ describe('ProjectsService.meta — severities + resolutions', () => {
     const out = await service.meta('w1', 'DEMO');
     expect(out).toMatchObject({ projectId: 'p1', severities: sev, resolutions: res });
     expect(prisma.severity.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { workspaceId: 'w1' }, orderBy: { rank: 'desc' } }),
+      expect.objectContaining({ where: { organizationId: 'w1' }, orderBy: { rank: 'desc' } }),
     );
     expect(prisma.resolution.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { workspaceId: 'w1' }, orderBy: { rank: 'asc' } }),
+      expect.objectContaining({ where: { organizationId: 'w1' }, orderBy: { rank: 'asc' } }),
     );
   });
 });
@@ -306,7 +306,7 @@ describe('ProjectsService.create — vai trò chủ dự án', () => {
         create: vi.fn(() => Promise.resolve(row({ id: 'p1', name: 'D' }))),
         update: ok(),
         findUnique: vi.fn(() =>
-          Promise.resolve({ workspaceId: 'w1', defaultWorkflowId: 'wf-clone' }),
+          Promise.resolve({ organizationId: 'w1', defaultWorkflowId: 'wf-clone' }),
         ),
       },
       workflow: { create: ok() },
@@ -351,7 +351,7 @@ describe('ProjectsService.create — mẫu dự án', () => {
         create: vi.fn((_a?: unknown) => Promise.resolve(row({ id: 'p1', name: 'D' }))),
         update: ok(),
         findUnique: vi.fn(() =>
-          Promise.resolve({ workspaceId: 'w1', defaultWorkflowId: 'wf-clone' }),
+          Promise.resolve({ organizationId: 'w1', defaultWorkflowId: 'wf-clone' }),
         ),
       },
       workflow: { create: ok() },
@@ -476,7 +476,7 @@ describe('ProjectsService — dự án riêng tư', () => {
     await service.list('w1', false, 'u1');
     expect(ACCESS.visibleWhere).toHaveBeenCalledWith('u1', 'w1');
     expect(prisma.project.findMany.mock.calls.at(-1)![0].where).toMatchObject({
-      workspaceId: 'w1',
+      organizationId: 'w1',
       deletedAt: null,
       archivedAt: null,
       ...visible,
@@ -490,7 +490,7 @@ describe('ProjectsService — dự án riêng tư', () => {
         create: vi.fn((_a?: unknown) => Promise.resolve(row({ id: 'p1', isPrivate: true }))),
         update: ok(),
         findUnique: vi.fn(() =>
-          Promise.resolve({ workspaceId: 'w1', defaultWorkflowId: 'wf-clone' }),
+          Promise.resolve({ organizationId: 'w1', defaultWorkflowId: 'wf-clone' }),
         ),
       },
       workflow: { create: ok() },
@@ -505,7 +505,7 @@ describe('ProjectsService — dự án riêng tư', () => {
     const prisma = {
       project: { findFirst: vi.fn(() => Promise.resolve(null)) },
       role: { findFirst: vi.fn(() => Promise.resolve({ id: 'r-padmin' })) },
-      workspaceMembership: {
+      organizationMembership: {
         findUnique: vi.fn(() => Promise.resolve({ id: 'm', user: ACTIVE_USER })),
       },
       $transaction: vi.fn((fn: (t: unknown) => unknown) => Promise.resolve(fn(tx))),
@@ -578,7 +578,7 @@ describe('ProjectsService.update — đổi riêng tư', () => {
     const changed = setupPrivacyUpdate();
     await changed.svc.update('w1', 'p1', 'actor1', { isPrivate: true });
     expect(changed.events.emit).toHaveBeenCalledWith('project.visibility_changed', {
-      workspaceId: 'w1',
+      organizationId: 'w1',
       projectId: 'p1',
       isPrivate: true, // hướng đổi: sang riêng tư mới tắt kênh Telegram gắn dự án
       actorId: 'actor1',
@@ -630,7 +630,7 @@ describe('ProjectsService.update — đổi riêng tư', () => {
 
   it('đổi người phụ trách cùng lúc bật riêng tư => người phụ trách MỚI được bảo đảm', async () => {
     const { svc, tx, prisma } = setupPrivacyUpdate();
-    (prisma as unknown as { workspaceMembership: unknown }).workspaceMembership = {
+    (prisma as unknown as { organizationMembership: unknown }).organizationMembership = {
       findUnique: vi.fn(() => Promise.resolve({ id: 'm', user: ACTIVE_USER })),
     };
     await svc.update('w1', 'p1', 'actor1', { isPrivate: true, leadId: 'lead2' });
@@ -643,7 +643,7 @@ describe('ProjectsService.update — đổi riêng tư', () => {
 
   it('đang riêng tư, đổi người phụ trách => người phụ trách mới được thêm làm thành viên', async () => {
     const { svc, tx, prisma } = setupPrivacyUpdate({ cur: { isPrivate: true } });
-    (prisma as unknown as { workspaceMembership: unknown }).workspaceMembership = {
+    (prisma as unknown as { organizationMembership: unknown }).organizationMembership = {
       findUnique: vi.fn(() => Promise.resolve({ id: 'm', user: ACTIVE_USER })),
     };
     await svc.update('w1', 'p1', 'actor1', { leadId: 'lead2' });
@@ -660,7 +660,7 @@ describe('ProjectsService.update — đổi riêng tư', () => {
 
   it('đổi lead sang tài khoản vô hiệu hoá => từ chối, không ghi', async () => {
     const { svc, tx, prisma } = setupPrivacyUpdate({ cur: { isPrivate: true } });
-    (prisma as unknown as { workspaceMembership: unknown }).workspaceMembership = {
+    (prisma as unknown as { organizationMembership: unknown }).organizationMembership = {
       findUnique: vi.fn(() =>
         Promise.resolve({ id: 'm', user: { status: 'DEACTIVATED', email: 'a@x.vn' } }),
       ),
@@ -675,7 +675,7 @@ describe('ProjectsService.update — đổi riêng tư', () => {
     const { svc, events } = setupPrivacyUpdate({ cur: { isPrivate: true } });
     await svc.update('w1', 'p1', 'actor1', { isPrivate: false });
     expect(events.emit).toHaveBeenCalledWith('project.access_changed', {
-      workspaceId: 'w1',
+      organizationId: 'w1',
       projectId: 'p1',
       userIds: null,
       actorId: 'actor1',
@@ -684,7 +684,7 @@ describe('ProjectsService.update — đổi riêng tư', () => {
 
   it('đang riêng tư, người phụ trách mới vào dự án: phát project.access_changed với người đó; bật riêng tư thì không phát', async () => {
     const a = setupPrivacyUpdate({ cur: { isPrivate: true } });
-    (a.prisma as unknown as { workspaceMembership: unknown }).workspaceMembership = {
+    (a.prisma as unknown as { organizationMembership: unknown }).organizationMembership = {
       findUnique: vi.fn(() => Promise.resolve({ id: 'm', user: ACTIVE_USER })),
     };
     await a.svc.update('w1', 'p1', 'actor1', { leadId: 'lead2' });
@@ -741,7 +741,7 @@ describe('ProjectsService.create — điều kiện cho dự án riêng tư / ng
           Promise.resolve(opts.adminRole === false ? null : { id: 'r-padmin' }),
         ),
       },
-      workspaceMembership: {
+      organizationMembership: {
         findUnique: vi.fn(() =>
           Promise.resolve(opts.member === undefined ? { id: 'm', user: ACTIVE_USER } : opts.member),
         ),
@@ -769,7 +769,7 @@ describe('ProjectsService.create — điều kiện cho dự án riêng tư / ng
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
-  it('leadId không phải thành viên workspace => lỗi, không tạo', async () => {
+  it('leadId không phải thành viên organization => lỗi, không tạo', async () => {
     const { svc, prisma } = setup({ member: null });
     await expect(
       svc.create('w1', 'u1', { key: 'HR', name: 'HR', type: 'SCRUM', leadId: 'ngoai' }),
@@ -791,7 +791,7 @@ describe('ProjectsService.create — điều kiện cho dự án riêng tư / ng
   it('công khai không gán lead: không kiểm thành viên (hành vi cũ)', async () => {
     const { svc, prisma } = setup();
     await svc.create('w1', 'u1', { key: 'HR', name: 'HR', type: 'SCRUM' });
-    expect(prisma.workspaceMembership.findUnique).not.toHaveBeenCalled();
+    expect(prisma.organizationMembership.findUnique).not.toHaveBeenCalled();
   });
 });
 
@@ -865,7 +865,7 @@ describe('ProjectsService.create — cache quy trình của resolver (đặt def
         create: vi.fn((_a?: unknown) => Promise.resolve(row({ id: 'p1', name: 'D' }))),
         update: ok(),
         findUnique: vi.fn(() =>
-          Promise.resolve({ workspaceId: 'w1', defaultWorkflowId: 'wf-clone' }),
+          Promise.resolve({ organizationId: 'w1', defaultWorkflowId: 'wf-clone' }),
         ),
       },
       workflow: { create: ok() },

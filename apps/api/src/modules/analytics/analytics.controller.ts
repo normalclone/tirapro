@@ -2,7 +2,7 @@ import { Controller, Get, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { PERMISSIONS } from '@tirapro/types';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import { WorkspaceId } from '../../common/decorators/workspace-id.decorator';
+import { OrganizationId } from '../../common/decorators/organization-id.decorator';
 import type { AuthUser } from '../../common/types/request';
 import { Permissions } from '../../common/decorators/permissions.decorator';
 import { ProjectRef } from '../../common/decorators/project-ref.decorator';
@@ -20,27 +20,33 @@ export class AnalyticsController {
     private readonly leadership: LeadershipService,
   ) {}
 
-  /** Tổng hợp toàn workspace cho Tổng quan — chỉ gồm dự án người xem được thấy (dự án riêng tư chỉ cho thành viên/admin). */
+  /** Tổng hợp toàn tổ chức cho Tổng quan — chỉ gồm dự án người xem được thấy (dự án riêng tư chỉ cho thành viên/admin). */
   @Get('overview')
   @Permissions(PERMISSIONS.REPORT_VIEW)
-  async overview(@WorkspaceId() workspaceId: string, @CurrentUser() user: AuthUser) {
-    return this.analytics.workspaceOverview(workspaceId, user.id);
+  async overview(@OrganizationId() organizationId: string, @CurrentUser() user: AuthUser) {
+    return this.analytics.organizationOverview(organizationId, user.id);
   }
 
-  /** Ba thẻ lãnh đạo (Top rủi ro, OKR chậm, người quá tải) — workspace-level như `overview`, lọc theo dự án người xem thấy. */
+  /** Ba thẻ lãnh đạo (Top rủi ro, OKR chậm, người quá tải) — organization-level như `overview`, lọc theo dự án người xem thấy. */
   @Get('leadership')
   @Permissions(PERMISSIONS.REPORT_VIEW)
-  async leadershipOverview(@WorkspaceId() workspaceId: string, @CurrentUser() user: AuthUser) {
-    return this.leadership.get(workspaceId, user.id);
+  async leadershipOverview(
+    @OrganizationId() organizationId: string,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.leadership.get(organizationId, user.id);
   }
 
   /** Báo cáo tổng hợp một dự án (phân bố trạng thái/loại/ưu tiên/người phụ trách). */
   @ProjectRef('query', 'projectId')
   @Get('project')
   @Permissions(PERMISSIONS.REPORT_VIEW)
-  async projectReport(@WorkspaceId() workspaceId: string, @Query('projectId') projectId?: string) {
+  async projectReport(
+    @OrganizationId() organizationId: string,
+    @Query('projectId') projectId?: string,
+  ) {
     if (!projectId) throw new BusinessRuleException('Thiếu projectId');
-    return this.analytics.projectReport(workspaceId, projectId);
+    return this.analytics.projectReport(organizationId, projectId);
   }
 
   /** projectId BẮT BUỘC: guard tính report:view theo dự án; service kiểm sprint thuộc đúng dự án đó. */
@@ -48,13 +54,13 @@ export class AnalyticsController {
   @Get('burndown')
   @Permissions(PERMISSIONS.REPORT_VIEW)
   async burndown(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @Query('sprintId') sprintId?: string,
     @Query('projectId') projectId?: string,
   ) {
     if (!projectId) throw new BusinessRuleException('Thiếu projectId');
     if (!sprintId) throw new BusinessRuleException('Thiếu sprintId');
-    return this.analytics.burndown(workspaceId, projectId, sprintId);
+    return this.analytics.burndown(organizationId, projectId, sprintId);
   }
 
   /** Tổng kết một sprint (đã xong x/y điểm, việc chuyển tiếp, so velocity TB). Cùng khuôn quyền với burndown. */
@@ -62,51 +68,51 @@ export class AnalyticsController {
   @Get('sprint-summary')
   @Permissions(PERMISSIONS.REPORT_VIEW)
   async sprintSummary(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @Query('sprintId') sprintId?: string,
     @Query('projectId') projectId?: string,
   ) {
     if (!projectId) throw new BusinessRuleException('Thiếu projectId');
     if (!sprintId) throw new BusinessRuleException('Thiếu sprintId');
-    return this.analytics.sprintSummary(workspaceId, projectId, sprintId);
+    return this.analytics.sprintSummary(organizationId, projectId, sprintId);
   }
 
   @ProjectRef('query', 'projectId')
   @Get('velocity')
   @Permissions(PERMISSIONS.REPORT_VIEW)
   async velocity(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @Query('projectId') projectId?: string,
     @Query('limit') limit?: string,
   ) {
     if (!projectId) throw new BusinessRuleException('Thiếu projectId');
-    return this.analytics.velocity(workspaceId, projectId, Number(limit) || 8);
+    return this.analytics.velocity(organizationId, projectId, Number(limit) || 8);
   }
 
   @ProjectRef('query', 'projectId')
   @Get('cfd')
   @Permissions(PERMISSIONS.REPORT_VIEW)
   async cfd(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @Query('projectId') projectId?: string,
     @Query('from') from?: string,
     @Query('to') to?: string,
   ) {
     if (!projectId) throw new BusinessRuleException('Thiếu projectId');
-    return this.analytics.cfd(workspaceId, projectId, from, to);
+    return this.analytics.cfd(organizationId, projectId, from, to);
   }
 
   @ProjectRef('query', 'projectId')
   @Get('created-resolved')
   @Permissions(PERMISSIONS.REPORT_VIEW)
   async createdResolved(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @Query('projectId') projectId?: string,
     @Query('from') from?: string,
     @Query('to') to?: string,
   ) {
     if (!projectId) throw new BusinessRuleException('Thiếu projectId');
-    return this.analytics.createdResolved(workspaceId, projectId, from, to);
+    return this.analytics.createdResolved(organizationId, projectId, from, to);
   }
 
   /** Báo cáo QA (chỉ bug): mở theo mức nghiêm trọng, tỷ lệ mở lại, thời gian đóng, theo phiên bản. Mặc định 30 ngày. */
@@ -114,12 +120,12 @@ export class AnalyticsController {
   @Get('qa')
   @Permissions(PERMISSIONS.REPORT_VIEW)
   async qa(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @Query('projectId') projectId?: string,
     @Query('from') from?: string,
     @Query('to') to?: string,
   ) {
     if (!projectId) throw new BusinessRuleException('Thiếu projectId');
-    return this.qaReport.report(workspaceId, projectId, from, to);
+    return this.qaReport.report(organizationId, projectId, from, to);
   }
 }

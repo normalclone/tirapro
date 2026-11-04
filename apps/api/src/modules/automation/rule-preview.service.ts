@@ -42,7 +42,7 @@ export class RulePreviewService {
   ) {}
 
   async previewMatch(
-    workspaceId: string,
+    organizationId: string,
     userId: string,
     input: PreviewMatchInput,
   ): Promise<PreviewMatchResult> {
@@ -80,9 +80,9 @@ export class RulePreviewService {
       }
     }
 
-    const visible = await this.access.visibleWhere(userId, workspaceId);
+    const visible = await this.access.visibleWhere(userId, organizationId);
     const where: Prisma.IssueWhereInput = {
-      workspaceId,
+      organizationId,
       deletedAt: null,
       project: { ...WRITABLE_PROJECT_FILTER, ...visible },
       ...(input.projectId ? { projectId: input.projectId } : {}),

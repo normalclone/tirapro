@@ -66,9 +66,9 @@ export class LinkCodesService {
   /** Đồng hồ — thuộc tính thường (KHÔNG phải tham số constructor: Nest sẽ cố tiêm) để test đặt giờ cố định. */
   clock: () => Date = () => new Date();
 
-  private async requireTelegram(workspaceId: string, integrationId: string) {
+  private async requireTelegram(organizationId: string, integrationId: string) {
     const row = await this.prisma.integration.findFirst({
-      where: { id: integrationId, workspaceId, type: IntegrationType.TELEGRAM },
+      where: { id: integrationId, organizationId, type: IntegrationType.TELEGRAM },
     });
     if (!row) throw new NotFoundAppException('Tích hợp');
     return row;
@@ -83,20 +83,20 @@ export class LinkCodesService {
   }
 
   async createCode(
-    workspaceId: string,
+    organizationId: string,
     integrationId: string,
     userId: string,
     projectId?: string,
   ): Promise<LinkCodeResult> {
-    const integration = await this.requireTelegram(workspaceId, integrationId);
+    const integration = await this.requireTelegram(organizationId, integrationId);
     if (projectId) {
       const project = await this.prisma.project.findFirst({
-        where: { id: projectId, workspaceId, deletedAt: null },
+        where: { id: projectId, organizationId, deletedAt: null },
         select: { id: true },
       });
       if (!project) throw new NotFoundAppException('Dự án');
       // Mã gắn với dự án ⇒ nhóm chat nhập mã sẽ nhận thông báo dự án đó: người tạo mã phải thấy dự án (404 như không tồn tại).
-      await this.access.assertCanSee(userId, workspaceId, projectId, 'Dự án');
+      await this.access.assertCanSee(userId, organizationId, projectId, 'Dự án');
     }
     const now = this.clock();
     const dayAgo = new Date(now.getTime() - CLEANUP_AFTER_MS);
@@ -120,7 +120,7 @@ export class LinkCodesService {
         await this.prisma.channelLinkToken.create({
           data: {
             token: code,
-            workspaceId,
+            organizationId,
             projectId: projectId ?? null,
             integrationType: IntegrationType.TELEGRAM,
             integrationId,
@@ -146,12 +146,12 @@ export class LinkCodesService {
     };
   }
 
-  async poll(workspaceId: string, integrationId: string, rawCode: string): Promise<PollResult> {
-    const integration = await this.requireTelegram(workspaceId, integrationId);
+  async poll(organizationId: string, integrationId: string, rawCode: string): Promise<PollResult> {
+    const integration = await this.requireTelegram(organizationId, integrationId);
     const code = rawCode.trim().toUpperCase();
     if (!CODE_SHAPE.test(code)) return { status: 'expired' };
     const row = await this.prisma.channelLinkToken.findFirst({
-      where: { token: code, integrationId, workspaceId },
+      where: { token: code, integrationId, organizationId },
     });
     const now = this.clock();
     if (!row || row.consumedAt || row.expiresAt <= now) return { status: 'expired' };
@@ -205,7 +205,7 @@ export class LinkCodesService {
       where: {
         token: code,
         integrationId,
-        workspaceId,
+        organizationId,
         consumedAt: null,
         expiresAt: { gt: now },
       },
@@ -221,7 +221,7 @@ export class LinkCodesService {
       if (!channel) {
         try {
           channel = await this.integrations.addChannel(
-            workspaceId,
+            organizationId,
             integrationId,
             { externalId, title: title ?? undefined, projectId: row.projectId ?? undefined },
             row.createdById,
@@ -241,7 +241,7 @@ export class LinkCodesService {
       throw e;
     }
 
-    await this.confirmInChat(token, externalId, workspaceId);
+    await this.confirmInChat(token, externalId, organizationId);
     return {
       status: 'linked',
       channel: { id: channel.id, externalId: channel.externalId, title: channel.title },
@@ -259,11 +259,11 @@ export class LinkCodesService {
   private async confirmInChat(
     token: string | null,
     chatId: string,
-    workspaceId: string,
+    organizationId: string,
   ): Promise<void> {
     try {
-      const ws = await this.prisma.workspace.findUnique({
-        where: { id: workspaceId },
+      const ws = await this.prisma.organization.findUnique({
+        where: { id: organizationId },
         select: { name: true },
       });
       await this.telegram.send(

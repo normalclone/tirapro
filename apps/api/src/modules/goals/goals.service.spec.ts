@@ -8,7 +8,9 @@ const ACCESS_ALL = { visibleWhere: vi.fn(() => Promise.resolve({})) };
 const NO_MEASURE = { measure: vi.fn(() => Promise.resolve(new Map())) };
 /** RbacService giả: người xem có mọi quyền (GOAL_MANAGE…). */
 const RBAC = {
-  getEffectivePermissions: vi.fn(() => Promise.resolve(new Set(['goal:manage', 'workspace:view']))),
+  getEffectivePermissions: vi.fn(() =>
+    Promise.resolve(new Set(['goal:manage', 'organization:view'])),
+  ),
   projectVisibilityMode: vi.fn(() => Promise.resolve('standard')),
 };
 /** KrSnapshotCron giả: không chụp gì. */
@@ -34,7 +36,7 @@ describe('GoalsService — không đếm/gắn issue của dự án xoá mềm',
     ).validateIssues.bind(service);
     await expect(validate('w1', ['i1'], null)).resolves.toEqual(['i1']);
     const { where } = (findMany.mock.calls[0] as unknown as [IssueWhere])[0];
-    expect(where).toMatchObject({ workspaceId: 'w1', deletedAt: null, project: LIVE });
+    expect(where).toMatchObject({ organizationId: 'w1', deletedAt: null, project: LIVE });
     // Có projectId của mục tiêu: điều kiện dự án sống vẫn còn, projectId được thêm vào.
     await validate('w1', ['i1'], 'p1');
     const w2 = (findMany.mock.calls[1] as unknown as [IssueWhere])[0].where;
@@ -89,7 +91,7 @@ function setup(archived: boolean, objectiveProject = true) {
       deleteMany: vi.fn(() => Promise.resolve({})),
     },
     issue: { findMany: vi.fn(() => Promise.resolve([{ id: 'i1' }])) },
-    workspaceMembership: { findFirst: vi.fn(() => Promise.resolve({ userId: 'u1' })) },
+    organizationMembership: { findFirst: vi.fn(() => Promise.resolve({ userId: 'u1' })) },
     $transaction: vi.fn(() => Promise.resolve([])),
   };
   return {
@@ -206,7 +208,7 @@ describe('GoalsService — dự án riêng tư (P14)', () => {
     await service.list('w1', { period: '2026-Q4' }, 'u1');
     expect(access.visibleWhere).toHaveBeenCalledWith('u1', 'w1');
     expect(whereOf(prisma.objective.findMany)).toMatchObject({
-      workspaceId: 'w1',
+      organizationId: 'w1',
       period: '2026-Q4',
       ...scope,
     });
@@ -223,7 +225,7 @@ describe('GoalsService — dự án riêng tư (P14)', () => {
   it('periods(w, viewer): chỉ kỳ của mục tiêu người xem thấy', async () => {
     const { service, prisma } = make();
     await service.periods('w1', 'u1');
-    expect(whereOf(prisma.objective.findMany)).toMatchObject({ workspaceId: 'w1', ...scope });
+    expect(whereOf(prisma.objective.findMany)).toMatchObject({ organizationId: 'w1', ...scope });
   });
 
   it('get(w, id, viewer): mục tiêu của dự án riêng tư không thấy → 404 "Mục tiêu" như không tồn tại', async () => {
@@ -315,7 +317,7 @@ describe('GoalsService — dự án riêng tư (P14)', () => {
 describe('GoalsService — KR tự đo (L25)', () => {
   const objectiveRow = (krs: unknown[]) => ({
     id: 'o1',
-    workspaceId: 'w1',
+    organizationId: 'w1',
     projectId: null,
     name: 'O',
     description: null,
@@ -1170,7 +1172,7 @@ describe('GoalsService.update — OCC và chuyển nguồn của KR (I3/I4)', ()
 describe('GoalsService — che cấu hình nguồn của KR theo quyền người xem (I6) và trung bình tiến độ (M1)', () => {
   const row = (krs: unknown[]) => ({
     id: 'o1',
-    workspaceId: 'w1',
+    organizationId: 'w1',
     projectId: 'p1',
     name: 'O',
     description: null,
@@ -1235,7 +1237,7 @@ describe('GoalsService — che cấu hình nguồn của KR theo quyền ngườ
     Object.fromEntries(g.keyResults.map((k) => [k.id, k.sourceConfig]));
 
   it('không thấy dự án riêng tư và không có GOAL_MANAGE: projectId của dự án ẩn và JQL thô bị che (source vẫn trả)', async () => {
-    const { service } = make({ visibleIds: ['p1'], perms: ['workspace:view'] });
+    const { service } = make({ visibleIds: ['p1'], perms: ['organization:view'] });
     const g = await service.get('w1', 'o1', 'u1');
     expect(configs(g)).toEqual({
       hidden: null,
@@ -1254,14 +1256,14 @@ describe('GoalsService — che cấu hình nguồn của KR theo quyền ngườ
   });
 
   it('có GOAL_MANAGE: JQL thô được trả; dự án riêng tư vẫn che nếu không thấy dự án đó', async () => {
-    const { service } = make({ visibleIds: ['p1'], perms: ['workspace:view', 'goal:manage'] });
+    const { service } = make({ visibleIds: ['p1'], perms: ['organization:view', 'goal:manage'] });
     const c = configs(await service.get('w1', 'o1', 'u1'));
     expect(c.jql).toEqual({ jql: 'project = HR AND text ~ "lương"' });
     expect(c.hidden).toBeNull();
   });
 
   it('quản trị CHÍNH dự án của mục tiêu (project:admin, không có goal:manage cấp tổ chức): thấy JQL thô', async () => {
-    const { service } = make({ visibleIds: ['p1'], perms: ['workspace:view', 'project:admin'] });
+    const { service } = make({ visibleIds: ['p1'], perms: ['organization:view', 'project:admin'] });
     const c = configs(await service.get('w1', 'o1', 'u1'));
     expect(c.jql).toEqual({ jql: 'project = HR AND text ~ "lương"' });
   });
@@ -1290,7 +1292,7 @@ describe('GoalsService — che cấu hình nguồn của KR theo quyền ngườ
 describe('GoalsService.toDto — expectedProgress (chỉ đọc, tính từ kỳ + hôm nay, không migration)', () => {
   const row = (period: string) => ({
     id: 'o1',
-    workspaceId: 'w1',
+    organizationId: 'w1',
     projectId: null,
     project: null,
     name: 'Mục tiêu',
@@ -1384,12 +1386,12 @@ describe('GoalsService.update — chuyển mục tiêu sang dự án khác kiể
   }
   afterEach(() => {
     RBAC.projectVisibilityMode.mockResolvedValue('standard');
-    RBAC.getEffectivePermissions.mockResolvedValue(new Set(['goal:manage', 'workspace:view']));
+    RBAC.getEffectivePermissions.mockResolvedValue(new Set(['goal:manage', 'organization:view']));
     RBAC.getEffectivePermissions.mockClear();
   });
 
   it('không có goal:manage / project:admin ở dự án đích → 403, không ghi', async () => {
-    const { service, prisma } = make(['workspace:view']);
+    const { service, prisma } = make(['organization:view']);
     await expect(service.update('w1', 'o1', { projectId: 'p2' }, 'u1')).rejects.toMatchObject({
       status: 403,
     });

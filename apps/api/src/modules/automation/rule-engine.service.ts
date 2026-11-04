@@ -168,7 +168,7 @@ export class RuleEngineService implements OnModuleInit, OnApplicationShutdown {
       if (trigger === 'ISSUE_CREATED' && isUnreviewed(issue.triageState)) return;
       const depth = p.meta?.automationDepth ?? 0;
       const chain = p.meta?.automationChain ?? [];
-      const candidates = await this.rules.activeFor(issue.workspaceId, trigger, issue.projectId);
+      const candidates = await this.rules.activeFor(issue.organizationId, trigger, issue.projectId);
       for (const rule of candidates) {
         if (this.stopping) return;
         if (!this.triggerMatches(rule, trigger, issue, p)) continue;
@@ -228,9 +228,9 @@ export class RuleEngineService implements OnModuleInit, OnApplicationShutdown {
     if (!p.issueId) return null;
     const row = await this.prisma.issue.findFirst({
       where: { id: p.issueId, deletedAt: null },
-      select: { workspaceId: true },
+      select: { organizationId: true },
     });
-    return row ? this.loadIssue(row.workspaceId, p.issueId) : null;
+    return row ? this.loadIssue(row.organizationId, p.issueId) : null;
   }
 
   private triggerMatches(
@@ -257,14 +257,14 @@ export class RuleEngineService implements OnModuleInit, OnApplicationShutdown {
 
   /** Chạy thử: đánh giá điều kiện + mô tả action, KHÔNG ghi/gửi gì và không ghi AutomationRun. */
   async dryRun(
-    workspaceId: string,
+    organizationId: string,
     rule: CachedRule,
     issueKey: string,
     viewerId: string,
   ): Promise<AutomationRuleTestResultDto> {
     // Mã việc do người dùng gõ tự do (guard chỉ kiểm dự án của QUY TẮC) → lọc theo người xem: mã việc của dự án riêng tư
     // họ không thấy trả 404 giống mã không tồn tại. Phần chạy nội bộ của engine (loadIssue, cron) giữ `null` (hệ thống).
-    const issue = await this.issues.getByKey(workspaceId, issueKey, viewerId);
+    const issue = await this.issues.getByKey(organizationId, issueKey, viewerId);
     if (rule.projectId && rule.projectId !== issue.projectId) {
       return {
         status: 'SKIPPED',
@@ -309,7 +309,7 @@ export class RuleEngineService implements OnModuleInit, OnApplicationShutdown {
       } else {
         const systemId = await this.systemUserId();
         // Luôn dùng issue mới nhất: có thể đã đổi từ lúc sự kiện phát ra (hoặc do quy tắc đứng trước).
-        const issue = (await this.loadIssue(input.issue.workspaceId, issueId)) ?? input.issue;
+        const issue = (await this.loadIssue(input.issue.organizationId, issueId)) ?? input.issue;
         issueId = issue.id;
         const unmet = await this.firstUnmetCondition(
           conditions.data,
@@ -355,7 +355,7 @@ export class RuleEngineService implements OnModuleInit, OnApplicationShutdown {
         events: this.events,
         openSecret: (s: string) => this.rules.openSecret(s),
       },
-      workspaceId: issue.workspaceId,
+      organizationId: issue.organizationId,
       actorId: systemId,
       rule: { id: rule.id, name: rule.name },
       trigger: input.trigger,
@@ -365,7 +365,7 @@ export class RuleEngineService implements OnModuleInit, OnApplicationShutdown {
       meta: { automationDepth: input.depth + 1, automationChain: [...input.chain, rule.id] },
       issue,
       reload: async () => {
-        const fresh = await this.loadIssue(issue.workspaceId, issue.id);
+        const fresh = await this.loadIssue(issue.organizationId, issue.id);
         if (!fresh) throw new NotFoundAppException('Công việc');
         ctx.issue = fresh;
         return fresh;
@@ -404,13 +404,13 @@ export class RuleEngineService implements OnModuleInit, OnApplicationShutdown {
   private async matchesJql(jql: string, issue: IssueDto, systemId: string): Promise<boolean> {
     const { where } = compileJql(parseJql(jql), { currentUserId: systemId });
     const n = await this.prisma.issue.count({
-      where: { id: issue.id, workspaceId: issue.workspaceId, deletedAt: null, AND: [where] },
+      where: { id: issue.id, organizationId: issue.organizationId, deletedAt: null, AND: [where] },
     });
     return n === 1;
   }
 
-  private async loadIssue(workspaceId: string, issueId: string): Promise<IssueDto | null> {
-    const page = await this.issues.query(workspaceId, { id: issueId }, [], undefined, 1, null);
+  private async loadIssue(organizationId: string, issueId: string): Promise<IssueDto | null> {
+    const page = await this.issues.query(organizationId, { id: issueId }, [], undefined, 1, null);
     return page.data[0] ?? null;
   }
 
@@ -460,7 +460,7 @@ export class RuleEngineService implements OnModuleInit, OnApplicationShutdown {
   async runScheduled(now: Date): Promise<void> {
     const minute = new Date(Math.floor(now.getTime() / 60_000) * 60_000);
     const rules = await this.prisma.automationRule.findMany({
-      where: { enabled: true, trigger: 'SCHEDULED', workspace: { deletedAt: null } },
+      where: { enabled: true, trigger: 'SCHEDULED', organization: { deletedAt: null } },
     });
     for (const row of rules) {
       if (this.stopping) return;
@@ -510,7 +510,7 @@ export class RuleEngineService implements OnModuleInit, OnApplicationShutdown {
       ],
     };
     const page = await this.issues.query(
-      rule.workspaceId,
+      rule.organizationId,
       where,
       [],
       undefined,

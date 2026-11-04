@@ -45,13 +45,13 @@ beforeAll(async () => {
   await prisma.user.create({
     data: { id: id('u'), email: `${id('u')}@wf.test`, displayName: 'QT' },
   });
-  await prisma.workspace.create({ data: { id: WS, name: WS, slug: WS, ownerId: id('u') } });
+  await prisma.organization.create({ data: { id: WS, name: WS, slug: WS, ownerId: id('u') } });
   // Quy trình cũ (3 trạng thái) + quy trình tổ chức "Standard" (To Do / In Progress / Done).
   for (const [wf, name, names] of [
     ['old', 'Cũ', ['Cần làm', 'Đang làm', 'Xong']],
     ['std', 'Standard', ['To Do', 'In Progress', 'Done']],
   ] as const) {
-    await prisma.workflow.create({ data: { id: id(wf), workspaceId: WS, name } });
+    await prisma.workflow.create({ data: { id: id(wf), organizationId: WS, name } });
     await prisma.status.createMany({
       data: names.map((n, i) => ({
         id: id(`${wf}-${i}`),
@@ -72,17 +72,17 @@ beforeAll(async () => {
     },
   });
   await prisma.resolution.create({
-    data: { id: id('res'), workspaceId: WS, name: 'Done', isDefault: true },
+    data: { id: id('res'), organizationId: WS, name: 'Done', isDefault: true },
   });
   await prisma.issueType.create({
-    data: { id: id('t-task'), workspaceId: WS, name: 'Task', key: 'TASK' },
+    data: { id: id('t-task'), organizationId: WS, name: 'Task', key: 'TASK' },
   });
   for (const [p, key] of [
     ['p1', 'WA'],
     ['p2', 'WB'],
   ] as const) {
     await prisma.project.create({
-      data: { id: id(p), workspaceId: WS, key, name: key, defaultWorkflowId: id('old') },
+      data: { id: id(p), organizationId: WS, key, name: key, defaultWorkflowId: id('old') },
     });
     const board = await prisma.board.create({
       data: { id: id(`b-${p}`), projectId: id(p), name: 'B', type: 'KANBAN' },
@@ -102,7 +102,7 @@ beforeAll(async () => {
         id: id(n),
         key: `${p}-${n}`,
         number: Math.floor(Math.random() * 1e6),
-        workspaceId: WS,
+        organizationId: WS,
         projectId: id(p),
         typeId: id('t-task'),
         statusId: id(`old-${st}`),
@@ -120,7 +120,7 @@ beforeAll(async () => {
   await prisma.savedFilter.create({
     data: {
       id: id('f1'),
-      workspaceId: WS,
+      organizationId: WS,
       ownerId: id('u'),
       name: 'Đang làm của tôi',
       jql: 'status = "Đang làm"',
@@ -130,8 +130,8 @@ beforeAll(async () => {
 
 afterAll(async () => {
   if (!prisma) return;
-  await prisma.project.deleteMany({ where: { workspaceId: WS } });
-  await prisma.workspace.deleteMany({ where: { id: WS } });
+  await prisma.project.deleteMany({ where: { organizationId: WS } });
+  await prisma.organization.deleteMany({ where: { id: WS } });
   await prisma.user.deleteMany({ where: { id: { startsWith: TAG } } });
   await prisma.$disconnect();
 }, 60_000);
@@ -145,32 +145,36 @@ const map = () => ({
 
 describe.skipIf(!DB_URL)('WorkflowSchemeService ↔ Postgres thật', () => {
   it('dryRun: đếm theo dự án/trạng thái (gồm việc ở thùng rác), không ghi gì', async () => {
-    const out = await svc.setWorkspaceScheme(WS, id('u'), { items: items() }, true);
+    const out = await svc.setOrganizationScheme(WS, id('u'), { items: items() }, true);
     expect(out.dryRun).toBe(true);
     expect(out.totalIssues).toBe(5);
     expect(out.nameRefs).toEqual([
       { kind: 'savedFilter', id: id('f1'), label: 'Đang làm của tôi', names: ['Đang làm'] },
     ]);
-    expect((await svc.getWorkspaceScheme(WS)).issueTypes.map((t) => t.name)).toEqual(['Task']);
+    expect((await svc.getOrganizationScheme(WS)).issueTypes.map((t) => t.name)).toEqual(['Task']);
     expect(
       out.moves.find((m) => m.projectKey === 'WA' && m.fromStatusName === 'Đang làm'),
     ).toMatchObject({ count: 2, toStatusName: 'In Progress', suggested: true });
-    expect(await prisma.workspaceWorkflowScheme.count({ where: { workspaceId: WS } })).toBe(0);
+    expect(await prisma.organizationWorkflowScheme.count({ where: { organizationId: WS } })).toBe(
+      0,
+    );
     expect((await issueState(['a2']))[0]!.version).toBe(1);
   });
 
   it('thiếu statusMap => 422 STATUS_MAPPING_REQUIRED và DB không đổi', async () => {
     await expect(
-      svc.setWorkspaceScheme(WS, id('u'), { items: items() }, false),
+      svc.setOrganizationScheme(WS, id('u'), { items: items() }, false),
     ).rejects.toMatchObject({ status: 422, code: 'STATUS_MAPPING_REQUIRED' });
-    expect(await prisma.workspaceWorkflowScheme.count({ where: { workspaceId: WS } })).toBe(0);
+    expect(await prisma.organizationWorkflowScheme.count({ where: { organizationId: WS } })).toBe(
+      0,
+    );
   });
 
   it('một ghi đè của p2 giữ p2 nguyên vẹn; chạy thật chuyển việc p1: version+1, lịch sử STATUS, vào/ra Done đúng, cột bảng thêm trạng thái mới (M1)', async () => {
     await prisma.projectWorkflowOverride.create({
       data: { projectId: id('p2'), issueTypeId: id('t-task'), workflowId: id('old') },
     });
-    const out = await svc.setWorkspaceScheme(
+    const out = await svc.setOrganizationScheme(
       WS,
       id('u'),
       { items: items(), statusMap: map() },
@@ -218,7 +222,7 @@ describe.skipIf(!DB_URL)('WorkflowSchemeService ↔ Postgres thật', () => {
   });
 
   it('PUT lặp lại cùng cấu hình: không đổi gì (idempotent)', async () => {
-    const out = await svc.setWorkspaceScheme(
+    const out = await svc.setOrganizationScheme(
       WS,
       id('u'),
       { items: items(), statusMap: map() },
@@ -276,7 +280,7 @@ describe.skipIf(!DB_URL)(
       );
       expect(put.totalIssues).toBe(1);
       const copy = await prisma.workflow.findFirstOrThrow({
-        where: { workspaceId: WS, projectId: id('p2') },
+        where: { organizationId: WS, projectId: id('p2') },
         include: { statuses: true, transitions: true },
       });
       expect(copy.name).toBe('Standard (WB)');
@@ -295,9 +299,9 @@ describe.skipIf(!DB_URL)(
         { issueTypeId: id('t-task'), workflowId: id('std'), copy: true, statusMap: {} },
         false,
       );
-      expect(await prisma.workflow.count({ where: { workspaceId: WS, projectId: id('p2') } })).toBe(
-        1,
-      );
+      expect(
+        await prisma.workflow.count({ where: { organizationId: WS, projectId: id('p2') } }),
+      ).toBe(1);
       // Quay về dùng chung: việc sang quy trình tổ chức theo statusMap.
       const back = await svc.clearProjectOverride(
         WS,

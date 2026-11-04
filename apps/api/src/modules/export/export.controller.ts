@@ -2,7 +2,7 @@ import { Controller, Get, Param, Query, Res } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { PERMISSIONS } from '@tirapro/types';
 import type { Response } from 'express';
-import { WorkspaceId } from '../../common/decorators/workspace-id.decorator';
+import { OrganizationId } from '../../common/decorators/organization-id.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
 import { ProjectRef } from '../../common/decorators/project-ref.decorator';
@@ -20,11 +20,11 @@ export class ExportController {
   @Get('project/:projectId')
   @Permissions(PERMISSIONS.IMPORT_RUN)
   async exportProject(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @Param('projectId') projectId: string,
     @Res({ passthrough: true }) res: Response,
   ): Promise<ProjectExport> {
-    const data = await this.export_.exportProject(workspaceId, projectId);
+    const data = await this.export_.exportProject(organizationId, projectId);
     res.setHeader('Content-Type', 'application/json');
     res.setHeader(
       'Content-Disposition',
@@ -41,13 +41,13 @@ export class ExportController {
   @Permissions(PERMISSIONS.PROJECT_VIEW)
   @ProjectRef('query', 'projectId')
   async exportIssuesCsv(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
     @Query(new ZodValidationPipe(issuesCsvQuerySchema)) query: IssuesCsvQuery,
     @Res({ passthrough: true }) res: Response,
   ): Promise<string> {
     const { csv, truncated, filename, rows } = await this.export_.exportIssuesCsv(
-      workspaceId,
+      organizationId,
       user.id,
       query,
     );

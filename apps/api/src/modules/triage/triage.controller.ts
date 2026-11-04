@@ -3,7 +3,7 @@ import { ApiTags } from '@nestjs/swagger';
 import { PERMISSIONS } from '@tirapro/types';
 import { z } from 'zod';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import { WorkspaceId } from '../../common/decorators/workspace-id.decorator';
+import { OrganizationId } from '../../common/decorators/organization-id.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
 import { ProjectRef } from '../../common/decorators/project-ref.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
@@ -41,14 +41,14 @@ export class TriageController {
   @ProjectRef('query', 'projectId')
   @Get()
   async inbox(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
     @Query('projectId') projectId?: string,
     @Query('cursor') cursor?: string,
     @Query('limit') limit?: string,
   ) {
     return this.triage.inbox(
-      workspaceId,
+      organizationId,
       projectId,
       cursor,
       Math.min(Math.max(Number(limit) || 50, 1), 100),
@@ -60,11 +60,11 @@ export class TriageController {
   @ProjectRef('query', 'projectId')
   @Get('count')
   async count(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
     @Query('projectId') projectId?: string,
   ) {
-    return this.triage.count(workspaceId, projectId, user.id);
+    return this.triage.count(organizationId, projectId, user.id);
   }
 
   // Duyệt việc mới vào = quyền `issue:triage` (đủ cho cả trường đổi kèm khi Nhận: loại/ưu tiên/sprint/người phụ trách);
@@ -73,12 +73,12 @@ export class TriageController {
   @ProjectRef('issue', 'issueId')
   @Post(':issueId/accept')
   async accept(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
     @Param('issueId') issueId: string,
     @Body(new ZodValidationPipe(acceptSchema)) dto: AcceptInput,
   ) {
-    return this.triage.accept(workspaceId, user.id, issueId, dto);
+    return this.triage.accept(organizationId, user.id, issueId, dto);
   }
 
   // Duyệt việc mới vào = quyền `issue:triage` (đủ cho cả trường đổi kèm khi Nhận: loại/ưu tiên/sprint/người phụ trách);
@@ -87,12 +87,12 @@ export class TriageController {
   @ProjectRef('issue', 'issueId')
   @Post(':issueId/decline')
   async decline(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
     @Param('issueId') issueId: string,
     @Body(new ZodValidationPipe(declineSchema)) dto: DeclineInput,
   ) {
-    return this.triage.decline(workspaceId, user.id, issueId, dto);
+    return this.triage.decline(organizationId, user.id, issueId, dto);
   }
 
   // Duyệt việc mới vào = quyền `issue:triage` (đủ cho cả trường đổi kèm khi Nhận: loại/ưu tiên/sprint/người phụ trách);
@@ -101,11 +101,11 @@ export class TriageController {
   @ProjectRef('issue', 'issueId')
   @Post(':issueId/snooze')
   async snooze(
-    @WorkspaceId() workspaceId: string,
+    @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
     @Param('issueId') issueId: string,
     @Body(new ZodValidationPipe(snoozeSchema)) dto: SnoozeInput,
   ) {
-    return this.triage.snooze(workspaceId, user.id, issueId, dto);
+    return this.triage.snooze(organizationId, user.id, issueId, dto);
   }
 }

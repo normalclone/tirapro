@@ -1,7 +1,7 @@
 /* eslint-disable no-console */
 /**
  * Seed Tirapro: permission catalog + system roles (gồm BA/Dev/Tester có phân quyền riêng),
- * rồi LÀM MỚI workspace demo (xoá data cũ) với dữ liệu "như thật": 4 tài khoản theo vai trò,
+ * rồi LÀM MỚI tổ chức demo (xoá data cũ) với dữ liệu "như thật": 4 tài khoản theo vai trò,
  * 3 sprint (đã đóng / đang chạy / sắp tới), và bộ sinh task/bug/story/epic mã theo loại
  * (BUG-1, TASK-3, STORY-2…) kèm comment, label, history, notification.
  */
@@ -29,7 +29,27 @@ const day = 86_400_000;
 /* ───────────────────────── Permissions & roles ───────────────────────── */
 /** Toàn bộ danh mục vai trò hệ thống đến từ @tirapro/types (single source of truth). */
 
+/** Đổi tên di sản (Workspace -> Organization) TRƯỚC khi upsert theo tên mới — không sinh vai trò/quyền trùng. Idempotent. */
+async function renameLegacyNames() {
+  for (const p of await prisma.permission.findMany({
+    where: { key: { startsWith: 'workspace:' } },
+  })) {
+    const next = p.key.replace(/^workspace:/, 'organization:');
+    if (!(await prisma.permission.findUnique({ where: { key: next } })))
+      await prisma.permission.update({ where: { id: p.id }, data: { key: next } });
+  }
+  const legacy = await prisma.role.findMany({
+    where: { organizationId: null, isSystem: true, name: { startsWith: 'Workspace ' } },
+  });
+  for (const r of legacy) {
+    const next = r.name.replace(/^Workspace /, 'Organization ');
+    if (!(await prisma.role.findFirst({ where: { organizationId: null, name: next } })))
+      await prisma.role.update({ where: { id: r.id }, data: { name: next } });
+  }
+}
+
 async function seedPermissionsAndRoles() {
+  await renameLegacyNames();
   for (const def of PERMISSION_CATALOG) {
     await prisma.permission.upsert({
       where: { key: def.key },
@@ -45,7 +65,7 @@ async function seedPermissionsAndRoles() {
     const scope = SYSTEM_ROLE_SCOPE[name];
     const meta = SYSTEM_ROLE_META[name];
     const found = await prisma.role.findFirst({
-      where: { workspaceId: null, name, scope },
+      where: { organizationId: null, name, scope },
       select: { id: true },
     });
     const data = { isSystem: true, description: meta.description, color: meta.color };
@@ -102,12 +122,12 @@ async function seedDemoUsers() {
 
 /* ───────────────────────── Bootstrap config ───────────────────────── */
 
-async function bootstrapWorkspaceConfig(workspaceId: string) {
+async function bootstrapOrganizationConfig(organizationId: string) {
   const issueTypes = new Map<string, { id: string; key: string | null }>();
   for (const t of DEFAULT_ISSUE_TYPES) {
     const row = await prisma.issueType.create({
       data: {
-        workspaceId,
+        organizationId,
         name: t.name,
         key: t.key as any,
         color: t.color,
@@ -122,7 +142,7 @@ async function bootstrapWorkspaceConfig(workspaceId: string) {
   for (const p of DEFAULT_PRIORITIES) {
     const row = await prisma.priority.create({
       data: {
-        workspaceId,
+        organizationId,
         name: p.name,
         iconKey: p.iconKey,
         color: p.color,
@@ -136,7 +156,7 @@ async function bootstrapWorkspaceConfig(workspaceId: string) {
   for (const s of DEFAULT_SEVERITIES) {
     await prisma.severity.create({
       data: {
-        workspaceId,
+        organizationId,
         name: s.name,
         description: s.description,
         color: s.color,
@@ -149,7 +169,7 @@ async function bootstrapWorkspaceConfig(workspaceId: string) {
   for (const r of DEFAULT_RESOLUTIONS) {
     await prisma.resolution.create({
       data: {
-        workspaceId,
+        organizationId,
         name: r.name,
         description: r.description,
         rank: r.rank,
@@ -161,7 +181,7 @@ async function bootstrapWorkspaceConfig(workspaceId: string) {
   for (const l of DEFAULT_LINK_TYPES) {
     await prisma.linkType.create({
       data: {
-        workspaceId,
+        organizationId,
         name: l.name,
         outwardName: l.outwardName,
         inwardName: l.inwardName,
@@ -172,7 +192,7 @@ async function bootstrapWorkspaceConfig(workspaceId: string) {
   for (const tpl of DEFAULT_WORKFLOW_TEMPLATES) {
     const wf = await prisma.workflow.create({
       data: {
-        workspaceId,
+        organizationId,
         projectId: null,
         isTemplate: true,
         isDefault: !!tpl.isDefault,
@@ -466,7 +486,7 @@ function catToStatus(c: Cat): string {
 
 /* ───────────────────────── Teams (nhóm thành viên) ───────────────────────── */
 
-async function seedTeams(workspaceId: string, u: Record<string, string>) {
+async function seedTeams(organizationId: string, u: Record<string, string>) {
   const teams = [
     {
       name: 'Frontend',
@@ -496,7 +516,7 @@ async function seedTeams(workspaceId: string, u: Record<string, string>) {
   for (const t of teams) {
     await prisma.team.create({
       data: {
-        workspaceId,
+        organizationId,
         name: t.name,
         key: t.key,
         color: t.color,
@@ -518,40 +538,43 @@ async function main() {
   const roleByName = await seedPermissionsAndRoles();
   const u = await seedDemoUsers();
 
-  // ── LÀM MỚI: xoá workspace demo cũ rồi tạo lại ──
-  // Issue.typeId/statusId là ON DELETE RESTRICT → phải xoá issue trước, phần còn lại cascade theo workspace.
-  const old = await prisma.workspace.findUnique({ where: { slug: 'demo' }, select: { id: true } });
+  // ── LÀM MỚI: xoá tổ chức demo cũ rồi tạo lại ──
+  // Issue.typeId/statusId là ON DELETE RESTRICT → phải xoá issue trước, phần còn lại cascade theo organization.
+  const old = await prisma.organization.findUnique({
+    where: { slug: 'demo' },
+    select: { id: true },
+  });
   if (old) {
-    await prisma.issue.deleteMany({ where: { workspaceId: old.id } });
-    await prisma.workspace.delete({ where: { id: old.id } });
-    console.log('  ✓ Đã xoá workspace demo cũ (issues + cascade)');
+    await prisma.issue.deleteMany({ where: { organizationId: old.id } });
+    await prisma.organization.delete({ where: { id: old.id } });
+    console.log('  ✓ Đã xoá tổ chức demo cũ (issues + cascade)');
   }
 
-  const ws = await prisma.workspace.create({
+  const ws = await prisma.organization.create({
     data: { name: 'Tirapro Demo', slug: 'demo', ownerId: u.admin, plan: 'PRO' },
   });
   const rid = (name: SystemRoleName) => roleByName.get(name)!;
   // Gán NHIỀU vai trò: roleId = vai trò chính (roleNames[0]), join giữ toàn bộ.
   const addWsMember = (userId: string, roleNames: SystemRoleName[]) =>
-    prisma.workspaceMembership.create({
+    prisma.organizationMembership.create({
       data: {
-        workspaceId: ws.id,
+        organizationId: ws.id,
         userId,
         roleId: rid(roleNames[0]!),
         joinedAt: new Date(),
         roles: { create: roleNames.map((n) => ({ roleId: rid(n) })) },
       },
     });
-  await addWsMember(u.admin, [SYSTEM_ROLES.WORKSPACE_ADMIN]);
-  await addWsMember(u.ba, [SYSTEM_ROLES.WORKSPACE_MEMBER]);
-  await addWsMember(u.dev, [SYSTEM_ROLES.WORKSPACE_MEMBER]);
-  await addWsMember(u.tester, [SYSTEM_ROLES.WORKSPACE_MEMBER]);
+  await addWsMember(u.admin, [SYSTEM_ROLES.ORGANIZATION_ADMIN]);
+  await addWsMember(u.ba, [SYSTEM_ROLES.ORGANIZATION_MEMBER]);
+  await addWsMember(u.dev, [SYSTEM_ROLES.ORGANIZATION_MEMBER]);
+  await addWsMember(u.tester, [SYSTEM_ROLES.ORGANIZATION_MEMBER]);
 
-  const { issueTypes, priorities } = await bootstrapWorkspaceConfig(ws.id);
+  const { issueTypes, priorities } = await bootstrapOrganizationConfig(ws.id);
 
   const project = await prisma.project.create({
     data: {
-      workspaceId: ws.id,
+      organizationId: ws.id,
       key: 'DEMO',
       name: 'Demo App',
       type: 'SCRUM',
@@ -578,7 +601,7 @@ async function main() {
   const scrumTpl = DEFAULT_WORKFLOW_TEMPLATES.find((t) => t.boardType === 'SCRUM')!;
   const projectWf = await prisma.workflow.create({
     data: {
-      workspaceId: ws.id,
+      organizationId: ws.id,
       projectId: project.id,
       isTemplate: false,
       isDefault: true,
@@ -714,7 +737,7 @@ async function main() {
 
     const issue = await prisma.issue.create({
       data: {
-        workspaceId: ws.id,
+        organizationId: ws.id,
         projectId: project.id,
         number,
         key,
@@ -845,7 +868,7 @@ async function main() {
       await prisma.notification.create({
         data: {
           recipientId: u.admin,
-          workspaceId: ws.id,
+          organizationId: ws.id,
           type: n.type as any,
           issueId: iss.id,
           actorId: n.actor,

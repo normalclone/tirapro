@@ -1,11 +1,11 @@
 /**
  * Tirapro — nạp danh mục quyền + vai trò HỆ THỐNG cho DB mới (không nạp dữ liệu demo).
- * DB sạch chưa có vai trò thì đăng ký/tạo workspace lỗi 500 "System role chưa được seed".
+ * DB sạch chưa có vai trò thì đăng ký/tạo tổ chức lỗi 500 "System role chưa được seed".
  * Mặc định chỉ THÊM (quyền, vai trò, quyền còn thiếu của vai trò) — không gỡ gì, chạy lại trên DB thật an toàn.
  * `--sync`: GỠ thêm các quyền mà vai trò HỆ THỐNG đang có nhưng danh mục (SYSTEM_ROLE_PERMISSIONS) không còn cấp
- * (vd `project:create` của Workspace Member). Chỉ đụng vai trò isSystem, không đụng vai trò tuỳ chỉnh.
+ * (vd `project:create` của Organization Member). Chỉ đụng vai trò isSystem, không đụng vai trò tuỳ chỉnh.
  * Kết hợp `--dry-run` để xem trước (nên chạy dry-run trước).
- * Khác `db:seed`: lệnh đó làm mới (xoá) workspace demo, không dùng cho dữ liệu thật.
+ * Khác `db:seed`: lệnh đó làm mới (xoá) tổ chức demo, không dùng cho dữ liệu thật.
  *
  *   pnpm --filter @tirapro/api run db:seed:roles [-- --dry-run] [--sync]
  *
@@ -27,7 +27,41 @@ let addedPerms = 0;
 let addedRoles = 0;
 let addedGrants = 0;
 let removedGrants = 0;
+/**
+ * Đổi tên di sản (trước khi đổi Workspace -> Organization): migration `organization_rename` đã đổi khoá quyền + tên vai trò hệ thống;
+ * bước này chỉ phòng DB còn tên cũ (vd khôi phục từ bản sao lưu cũ rồi chạy seed trước migration). Chạy TRƯỚC khi upsert theo tên mới
+ * để không sinh vai trò/quyền trùng. Idempotent; không đè khi tên mới đã tồn tại.
+ */
+async function renameLegacyNames() {
+  const perms = await prisma.permission.findMany({
+    where: { key: { startsWith: 'workspace:' } },
+    select: { id: true, key: true },
+  });
+  for (const p of perms) {
+    const next = p.key.replace(/^workspace:/, 'organization:');
+    if (await prisma.permission.findUnique({ where: { key: next }, select: { id: true } }))
+      continue;
+    console.log(`~ quyền ${p.key} -> ${next}`);
+    if (!dryRun) await prisma.permission.update({ where: { id: p.id }, data: { key: next } });
+  }
+  const roles = await prisma.role.findMany({
+    where: { organizationId: null, isSystem: true, name: { startsWith: 'Workspace ' } },
+    select: { id: true, name: true, scope: true },
+  });
+  for (const r of roles) {
+    const next = r.name.replace(/^Workspace /, 'Organization ');
+    const clash = await prisma.role.findFirst({
+      where: { organizationId: null, isSystem: true, name: next },
+      select: { id: true },
+    });
+    if (clash) continue;
+    console.log(`~ vai trò ${r.name} -> ${next}`);
+    if (!dryRun) await prisma.role.update({ where: { id: r.id }, data: { name: next } });
+  }
+}
+
 try {
+  await renameLegacyNames();
   const existing = new Set(
     (await prisma.permission.findMany({ select: { key: true } })).map((p) => p.key),
   );
@@ -50,7 +84,7 @@ try {
   for (const name of Object.values(SYSTEM_ROLES)) {
     const scope = SYSTEM_ROLE_SCOPE[name];
     let role = await prisma.role.findFirst({
-      where: { workspaceId: null, isSystem: true, name, scope },
+      where: { organizationId: null, isSystem: true, name, scope },
       select: { id: true, permissions: { select: { permission: { select: { key: true } } } } },
     });
     if (!role) {

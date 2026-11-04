@@ -104,7 +104,7 @@ describe('PendingAssigneeService.claimFor (L28)', () => {
     const n = await svc.claimFor('w1', ['u1'], { actorId: 'admin' });
     expect(n).toBe(1);
     expect(prisma.importPendingAssignee.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { workspaceId: 'w1', email: { in: ['an@x.com'] } } }),
+      expect.objectContaining({ where: { organizationId: 'w1', email: { in: ['an@x.com'] } } }),
     );
     const upd = tx.issue.updateMany.mock.calls[0]![0] as unknown as {
       where: Record<string, unknown>;
@@ -251,7 +251,7 @@ describe('PendingAssigneeService — gán hàng loạt không spam (L28 fix)', (
     expect(notifications.publish).toHaveBeenCalledWith(
       expect.objectContaining({
         recipientId: 'u1',
-        workspaceId: 'w1',
+        organizationId: 'w1',
         type: 'ISSUE_ASSIGNED',
         actorId: 'admin',
         payload: expect.objectContaining({ bulk: 'jira-import', count: 500 }) as unknown,
@@ -308,7 +308,7 @@ describe('PendingAssigneeService — thử lại khi được cấp quyền xem 
       ],
     });
     const n = await svc.onProjectAccessChanged({
-      workspaceId: 'w1',
+      organizationId: 'w1',
       projectId: 'p-private',
       userIds: ['u1'],
     });
@@ -322,7 +322,7 @@ describe('PendingAssigneeService — thử lại khi được cấp quyền xem 
     expect(ids).toEqual(['i1']); // chỉ việc của dự án vừa được cấp quyền
   });
 
-  it('dự án vừa mở công khai (userIds null): xét mọi hàng chờ của dự án, tìm người theo email trong workspace', async () => {
+  it('dự án vừa mở công khai (userIds null): xét mọi hàng chờ của dự án, tìm người theo email trong organization', async () => {
     const { svc, tx, prisma } = setup({
       pending: [
         row({ projectId: 'p-private' }),
@@ -333,9 +333,13 @@ describe('PendingAssigneeService — thử lại khi được cấp quyền xem 
         { id: 'u2', email: 'binh@x.com' },
       ],
     });
-    await svc.onProjectAccessChanged({ workspaceId: 'w1', projectId: 'p-private', userIds: null });
+    await svc.onProjectAccessChanged({
+      organizationId: 'w1',
+      projectId: 'p-private',
+      userIds: null,
+    });
     expect(prisma.importPendingAssignee.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { workspaceId: 'w1', projectId: 'p-private' } }),
+      expect.objectContaining({ where: { organizationId: 'w1', projectId: 'p-private' } }),
     );
     const calls = tx.issue.updateMany.mock.calls.map(
       (c) => c[0] as unknown as { data: { assigneeId: string } },
@@ -343,14 +347,14 @@ describe('PendingAssigneeService — thử lại khi được cấp quyền xem 
     expect(calls.map((c) => c.data.assigneeId)).toEqual(['u1', 'u2']);
   });
 
-  it('người dùng ngoài workspace (email khớp nhưng không là thành viên) không được gán khi dự án mở công khai', async () => {
+  it('người dùng ngoài organization (email khớp nhưng không là thành viên) không được gán khi dự án mở công khai', async () => {
     const { svc, tx, prisma } = setup({ pending: [row({ projectId: 'p1' })], users: [] });
-    await svc.onProjectAccessChanged({ workspaceId: 'w1', projectId: 'p1', userIds: null });
-    // truy vấn user chỉ nhận thành viên workspace
+    await svc.onProjectAccessChanged({ organizationId: 'w1', projectId: 'p1', userIds: null });
+    // truy vấn user chỉ nhận thành viên tổ chức
     expect(prisma.user.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
-          workspaceMemberships: { some: { workspaceId: 'w1' } },
+          organizationMemberships: { some: { organizationId: 'w1' } },
         }) as unknown,
       }),
     );
@@ -361,7 +365,7 @@ describe('PendingAssigneeService — thử lại khi được cấp quyền xem 
     const { svc, prisma } = setup();
     prisma.importPendingAssignee.findMany.mockRejectedValueOnce(new Error('db down'));
     await expect(
-      svc.onProjectAccessChanged({ workspaceId: 'w1', projectId: 'p1', userIds: null }),
+      svc.onProjectAccessChanged({ organizationId: 'w1', projectId: 'p1', userIds: null }),
     ).resolves.toBeUndefined();
   });
 });
@@ -371,14 +375,14 @@ describe('PendingAssigneeService.onMemberAdded (L28)', () => {
     const { svc, prisma } = setup();
     prisma.user.findMany.mockRejectedValueOnce(new Error('db down'));
     await expect(
-      svc.onMemberAdded({ workspaceId: 'w1', userIds: ['u1'] }),
+      svc.onMemberAdded({ organizationId: 'w1', userIds: ['u1'] }),
     ).resolves.toBeUndefined();
   });
 
-  it('chuyển workspaceId/userIds/actorId vào claimFor', async () => {
+  it('chuyển organizationId/userIds/actorId vào claimFor', async () => {
     const { svc } = setup();
     const spy = vi.spyOn(svc, 'claimFor').mockResolvedValue(0);
-    await svc.onMemberAdded({ workspaceId: 'w1', userIds: ['u1'], actorId: 'a' });
+    await svc.onMemberAdded({ organizationId: 'w1', userIds: ['u1'], actorId: 'a' });
     expect(spy).toHaveBeenCalledWith('w1', ['u1'], { actorId: 'a' });
   });
 });

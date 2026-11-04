@@ -63,17 +63,17 @@ export class TriageService {
 
   /**
    * Bộ lọc inbox: chưa xóa, đang chờ (PENDING) hoặc snooze đã tới hạn (SNOOZED && until <= now),
-   * trong workspace hiện tại, tùy chọn lọc theo project. `visible` = điều kiện dự án người xem thấy (`{}` = thấy hết):
-   * luôn áp, kể cả khi không có `projectId` (huy hiệu/đếm cấp workspace không đếm việc của dự án riêng tư người ngoài).
+   * trong tổ chức hiện tại, tùy chọn lọc theo project. `visible` = điều kiện dự án người xem thấy (`{}` = thấy hết):
+   * luôn áp, kể cả khi không có `projectId` (huy hiệu/đếm cấp tổ chức không đếm việc của dự án riêng tư người ngoài).
    */
   private inboxWhere(
-    workspaceId: string,
+    organizationId: string,
     projectId: string | undefined,
     now: Date,
     visible: Prisma.ProjectWhereInput,
   ): Prisma.IssueWhereInput {
     return {
-      workspaceId,
+      organizationId,
       deletedAt: null,
       ...(projectId ? { projectId } : {}),
       // Dự án đã xoá mềm không đếm/liệt kê (kể cả quản trị: `visible` = `{}`).
@@ -82,9 +82,9 @@ export class TriageService {
     };
   }
 
-  /** Hàng đợi triage của workspace, sắp xếp theo lần lặp nhiều nhất / cũ nhất trước. */
+  /** Hàng đợi triage của tổ chức, sắp xếp theo lần lặp nhiều nhất / cũ nhất trước. */
   async inbox(
-    workspaceId: string,
+    organizationId: string,
     projectId: string | undefined,
     cursor: string | undefined,
     limit: number,
@@ -92,10 +92,10 @@ export class TriageService {
   ): Promise<PageResult<TriageItemDto>> {
     const rows = await this.prisma.issue.findMany({
       where: this.inboxWhere(
-        workspaceId,
+        organizationId,
         projectId,
         new Date(),
-        await this.access.visibleWhere(viewerId, workspaceId),
+        await this.access.visibleWhere(viewerId, organizationId),
       ),
       include: triageInclude,
       orderBy: [{ occurrenceCount: 'desc' }, { createdAt: 'asc' }, { id: 'asc' }],
@@ -111,16 +111,16 @@ export class TriageService {
 
   /** Số lượng issue đang chờ triage (cùng bộ lọc với inbox). */
   async count(
-    workspaceId: string,
+    organizationId: string,
     projectId: string | undefined,
     viewerId: string,
   ): Promise<{ count: number }> {
     const count = await this.prisma.issue.count({
       where: this.inboxWhere(
-        workspaceId,
+        organizationId,
         projectId,
         new Date(),
-        await this.access.visibleWhere(viewerId, workspaceId),
+        await this.access.visibleWhere(viewerId, organizationId),
       ),
     });
     return { count };
@@ -128,18 +128,18 @@ export class TriageService {
 
   /**
    * Chấp nhận issue vào backlog: ACCEPTED, xóa snooze. Tùy chọn đổi loại/ưu tiên/sprint/người phụ trách:
-   * các trường đó đi qua MỘT lần `IssuesService.update` (cùng kiểm tra workspace/dự án, sprint đã đóng, lịch sử, OCC)
+   * các trường đó đi qua MỘT lần `IssuesService.update` (cùng kiểm tra organization/dự án, sprint đã đóng, lịch sử, OCC)
    * rồi mới đặt ACCEPTED. Không có trường nào ngoài triage thì giữ đường nhận một chạm — người phụ trách vẫn qua
-   * `isAssignableMember` (thành viên workspace còn hoạt động + thấy dự án) như `PATCH /issues/:id`.
+   * `isAssignableMember` (thành viên tổ chức còn hoạt động + thấy dự án) như `PATCH /issues/:id`.
    * Quyền: `issue:triage` (controller) đủ cho mọi trường đổi kèm.
    */
   async accept(
-    workspaceId: string,
+    organizationId: string,
     userId: string,
     issueId: string,
     input: AcceptTriageInput,
   ): Promise<TriageItemDto> {
-    const current = await this.requireIssue(workspaceId, issueId);
+    const current = await this.requireIssue(organizationId, issueId);
     await assertIssueWritable(this.prisma, issueId);
     this.assertVersion(current.version, input.version);
 
@@ -149,7 +149,7 @@ export class TriageService {
     // Gán MỚI mới kiểm (giữ người cũ không làm hỏng việc nhận) — cùng quy tắc `IssuesService.update`.
     if (assigneeId && assigneeId !== current.assigneeId) {
       const ok = await this.issues.isAssignableMember(
-        workspaceId,
+        organizationId,
         assigneeId,
         undefined,
         current.projectId,
@@ -160,7 +160,7 @@ export class TriageService {
         );
     }
     if (hasIssueFields) {
-      await this.issues.update(workspaceId, userId, issueId, {
+      await this.issues.update(organizationId, userId, issueId, {
         version: input.version,
         ...(typeId ? { typeId } : {}),
         ...(priorityId !== undefined ? { priorityId } : {}),
@@ -178,7 +178,7 @@ export class TriageService {
     if (!hasIssueFields && assigneeId !== undefined) {
       data.assignee = assigneeId ? { connect: { id: assigneeId } } : { disconnect: true };
     }
-    return this.applyAndEmit(workspaceId, current, data, userId, true);
+    return this.applyAndEmit(organizationId, current, data, userId, true);
   }
 
   /**
@@ -186,18 +186,18 @@ export class TriageService {
    * bình luận (đường watcher báo cho họ) — ghi SAU khi từ chối nên lỗi bình luận không huỷ quyết định.
    */
   async decline(
-    workspaceId: string,
+    organizationId: string,
     userId: string,
     issueId: string,
     input: DeclineTriageInput,
   ): Promise<TriageItemDto> {
-    const current = await this.requireIssue(workspaceId, issueId);
+    const current = await this.requireIssue(organizationId, issueId);
     await assertIssueWritable(this.prisma, issueId);
     this.assertVersion(current.version, input.version);
     this.assertInQueue(current, 'từ chối');
 
     const dto = await this.applyAndEmit(
-      workspaceId,
+      organizationId,
       current,
       {
         triageState: 'DECLINED',
@@ -207,24 +207,24 @@ export class TriageService {
       userId,
     );
     const reason = input.reason?.trim();
-    if (reason) await this.recordDeclineReason(workspaceId, userId, current, reason);
+    if (reason) await this.recordDeclineReason(organizationId, userId, current, reason);
     return dto;
   }
 
   /** Tạm hoãn issue tới mốc thời gian: SNOOZED + triageSnoozeUntil. */
   async snooze(
-    workspaceId: string,
+    organizationId: string,
     userId: string,
     issueId: string,
     input: SnoozeTriageInput,
   ): Promise<TriageItemDto> {
-    const current = await this.requireIssue(workspaceId, issueId);
+    const current = await this.requireIssue(organizationId, issueId);
     await assertIssueWritable(this.prisma, issueId);
     this.assertVersion(current.version, input.version);
     this.assertInQueue(current, 'tạm hoãn');
 
     return this.applyAndEmit(
-      workspaceId,
+      organizationId,
       current,
       {
         triageState: 'SNOOZED',
@@ -238,7 +238,7 @@ export class TriageService {
 
   // ---------- helpers ----------
   private async recordDeclineReason(
-    workspaceId: string,
+    organizationId: string,
     userId: string,
     issue: TriageRow,
     reason: string,
@@ -255,7 +255,7 @@ export class TriageService {
         where: { id: userId },
         select: { displayName: true },
       });
-      await this.comments.create(workspaceId, userId, issue.id, {
+      await this.comments.create(organizationId, userId, issue.id, {
         body: `*${actor?.displayName ?? 'Người duyệt'} từ chối yêu cầu này*\n\n${reason}`,
         bodyFormat: 'MARKDOWN',
       });
@@ -275,7 +275,7 @@ export class TriageService {
    * còn `triageState` → ACCEPTED là tín hiệu để automation chạy quy tắc "khi tạo việc".
    */
   private async applyAndEmit(
-    workspaceId: string,
+    organizationId: string,
     before: TriageRow,
     data: Prisma.IssueUpdateInput,
     userId: string,
@@ -303,7 +303,7 @@ export class TriageService {
     )
       changedFields.push('assigneeId');
     try {
-      await this.issues.emitUpdatedFor(workspaceId, before.id, userId, changedFields);
+      await this.issues.emitUpdatedFor(organizationId, before.id, userId, changedFields);
     } catch (err) {
       // Dữ liệu ĐÃ ghi: lỗi nạp lại để phát realtime không được biến thành lỗi của request.
       this.logger.warn(
@@ -313,9 +313,9 @@ export class TriageService {
     return this.toDto(updated);
   }
 
-  private async requireIssue(workspaceId: string, issueId: string): Promise<TriageRow> {
+  private async requireIssue(organizationId: string, issueId: string): Promise<TriageRow> {
     const issue = await this.prisma.issue.findFirst({
-      where: { id: issueId, workspaceId, deletedAt: null },
+      where: { id: issueId, organizationId, deletedAt: null },
       include: triageInclude,
     });
     if (!issue) throw new NotFoundAppException('Công việc');

@@ -117,12 +117,12 @@ describe('RankService.rankOf', () => {
     await expect(svc.rankOf('w1', 'p1', 'x')).rejects.toMatchObject({ status: 404 });
   });
 
-  it('mốc còn sống => trả rank, tìm theo workspace/project và bỏ issue đã xoá mềm', async () => {
+  it('mốc còn sống => trả rank, tìm theo organization/project và bỏ issue đã xoá mềm', async () => {
     const { svc, tx } = make();
     tx.issue.findFirst.mockResolvedValue({ rank: 'k' });
     await expect(svc.rankOf('w1', 'p1', 'x')).resolves.toBe('k');
     expect(tx.issue.findFirst).toHaveBeenCalledWith({
-      where: { id: 'x', workspaceId: 'w1', projectId: 'p1', deletedAt: null },
+      where: { id: 'x', organizationId: 'w1', projectId: 'p1', deletedAt: null },
       select: { rank: true },
     });
   });

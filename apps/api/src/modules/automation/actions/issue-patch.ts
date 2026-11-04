@@ -12,10 +12,10 @@ export type PatchAction = Extract<RuleAction, { type: 'setField' | 'assign' }>;
 export const isPatchAction = (a: RuleAction): a is PatchAction =>
   a.type === 'setField' || a.type === 'assign';
 
-/** Người nhận phải là thành viên của workspace — chặn quy tắc gán nhầm người ngoài tenant. */
+/** Người nhận phải là thành viên của tổ chức — chặn quy tắc gán nhầm người ngoài tenant. */
 async function assertMember(ctx: ActionContext, userId: string): Promise<void> {
-  const m = await ctx.deps.prisma.workspaceMembership.findFirst({
-    where: { workspaceId: ctx.workspaceId, userId },
+  const m = await ctx.deps.prisma.organizationMembership.findFirst({
+    where: { organizationId: ctx.organizationId, userId },
     select: { userId: true },
   });
   if (!m)
@@ -38,7 +38,7 @@ async function resolveAssignee(
     }
     case 'lead': {
       const project = await prisma.project.findFirst({
-        where: { id: ctx.issue.projectId, workspaceId: ctx.workspaceId, deletedAt: null },
+        where: { id: ctx.issue.projectId, organizationId: ctx.organizationId, deletedAt: null },
         select: { leadId: true },
       });
       if (!project?.leadId)
@@ -52,8 +52,8 @@ async function resolveAssignee(
       return a.userId as string;
     }
     case 'roundRobin': {
-      const members = await prisma.workspaceMembership.findMany({
-        where: { workspaceId: ctx.workspaceId, user: { status: 'ACTIVE' } },
+      const members = await prisma.organizationMembership.findMany({
+        where: { organizationId: ctx.organizationId, user: { status: 'ACTIVE' } },
         select: { userId: true },
         orderBy: { userId: 'asc' },
       });
@@ -194,7 +194,7 @@ export async function runPatchBatch(
   const updated = await withFreshIssue(ctx, (version) => {
     const body: UpdateIssueInput = { version };
     for (const f of changed) Object.assign(body, { [f]: patch[f] });
-    return ctx.deps.issues.update(ctx.workspaceId, ctx.actorId, ctx.issue.id, body, ctx.meta);
+    return ctx.deps.issues.update(ctx.organizationId, ctx.actorId, ctx.issue.id, body, ctx.meta);
   });
   ctx.issue = updated;
   return logs;

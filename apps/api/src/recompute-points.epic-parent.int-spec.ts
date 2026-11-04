@@ -37,14 +37,14 @@ describe.skipIf(!DB_URL)('recompute-points: cha lÃ  Epic -> epicId (Postgres thá
     await prisma.user.create({
       data: { id: id('u'), email: `${id('u')}@epp.test`, displayName: 'u' },
     });
-    await prisma.workspace.create({ data: { id: WS, name: TAG, slug: TAG, ownerId: id('u') } });
+    await prisma.organization.create({ data: { id: WS, name: TAG, slug: TAG, ownerId: id('u') } });
     await prisma.project.create({
-      data: { id: id('p'), workspaceId: WS, key: 'EPP', name: 'EPP' },
+      data: { id: id('p'), organizationId: WS, key: 'EPP', name: 'EPP' },
     });
     await prisma.workflow.create({
       data: {
         id: id('wf'),
-        workspaceId: WS,
+        organizationId: WS,
         projectId: id('p'),
         name: 'wf',
         statuses: { create: [{ id: id('st'), name: 'To Do', category: 'TODO', isInitial: true }] },
@@ -55,14 +55,14 @@ describe.skipIf(!DB_URL)('recompute-points: cha lÃ  Epic -> epicId (Postgres thá
       ['task', 'TASK'],
     ] as const)
       await prisma.issueType.create({
-        data: { id: id(`t-${k}`), workspaceId: WS, name: `${TAG}-${k}`, key },
+        data: { id: id(`t-${k}`), organizationId: WS, name: `${TAG}-${k}`, key },
       });
     let n = 0;
     const issue = (k: string, type: 'epic' | 'task', extra: Record<string, unknown> = {}) =>
       prisma.issue.create({
         data: {
           id: id(k),
-          workspaceId: WS,
+          organizationId: WS,
           projectId: id('p'),
           number: ++n,
           key: `EPP-${n}`,
@@ -89,14 +89,14 @@ describe.skipIf(!DB_URL)('recompute-points: cha lÃ  Epic -> epicId (Postgres thá
 
   afterAll(async () => {
     await prisma.issue.updateMany({
-      where: { workspaceId: WS },
+      where: { organizationId: WS },
       data: { parentId: null, epicId: null },
     });
-    await prisma.issue.deleteMany({ where: { workspaceId: WS } });
-    await prisma.workflow.deleteMany({ where: { workspaceId: WS } });
-    await prisma.issueType.deleteMany({ where: { workspaceId: WS } });
-    await prisma.project.deleteMany({ where: { workspaceId: WS } });
-    await prisma.workspace.deleteMany({ where: { id: WS } });
+    await prisma.issue.deleteMany({ where: { organizationId: WS } });
+    await prisma.workflow.deleteMany({ where: { organizationId: WS } });
+    await prisma.issueType.deleteMany({ where: { organizationId: WS } });
+    await prisma.project.deleteMany({ where: { organizationId: WS } });
+    await prisma.organization.deleteMany({ where: { id: WS } });
     await prisma.user.deleteMany({ where: { id: id('u') } });
     await prisma.$disconnect();
   }, 60_000);
