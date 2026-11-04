@@ -15,12 +15,27 @@ import { safeHref, safeImg } from './safeUrl';
 const INLINE_SOURCE =
   '(?<img>!\\[(?<imgAlt>[^\\]]*)\\]\\((?<imgSrc>[^)\\s]+)\\))' +
   '|(?<link>\\[(?<linkText>[^\\]]+)\\]\\((?<linkHref>[^)\\s]+)\\))' +
+  // Link dán trơn (chỉ http/https) — đứng trước nghiêng `_x_` để dấu _ trong URL không thành chữ nghiêng.
+  '|(?<url>https?:\\/\\/[^\\s<>"\'`]+)' +
   '|\\*\\*(?<bold>[^*]+)\\*\\*' +
   '|`(?<code>[^`]+)`' +
   '|~~(?<strike>[^~]+)~~' +
   '|\\*(?<em1>[^*]+)\\*' +
   '|_(?<em2>[^_]+)_' +
   '|(?<mention>@\\[(?<mentionName>[^\\]\\n]{1,80})\\]\\(user:(?<mentionId>[A-Za-z0-9_-]{1,64})\\))';
+
+/** Tách dấu câu cuối (. , ; : ! ?) và ngoặc đóng thừa ra khỏi link dán trơn: "(https://a.io)." → link "https://a.io". */
+function trimUrl(raw: string): { url: string; rest: string } {
+  let url = raw;
+  for (;;) {
+    const last = url.at(-1);
+    if (last && '.,;:!?'.includes(last)) url = url.slice(0, -1);
+    else if (last === ')' && (url.match(/\(/g)?.length ?? 0) < (url.match(/\)/g)?.length ?? 0))
+      url = url.slice(0, -1);
+    else break;
+  }
+  return { url, rest: raw.slice(url.length) };
+}
 
 function renderInline(text: string, refs?: Record<string, IssueRef>): ReactNode[] {
   const out: ReactNode[] = [];
@@ -69,6 +84,26 @@ function renderInline(text: string, refs?: Record<string, IssueRef>): ReactNode[
           <span key={k++}>{g.linkText}</span>
         ),
       );
+    } else if (g.url !== undefined) {
+      const { url, rest } = trimUrl(g.url);
+      const href = safeHref(url);
+      out.push(
+        href ? (
+          <a
+            key={k++}
+            href={href}
+            target="_blank"
+            rel="noopener noreferrer nofollow"
+            onClick={(e) => e.stopPropagation()}
+            className="break-all text-primary hover:underline"
+          >
+            {url}
+          </a>
+        ) : (
+          url
+        ),
+      );
+      if (rest) out.push(rest);
     } else if (g.bold !== undefined) {
       out.push(
         <strong key={k++} className="font-semibold text-ink-strong">
