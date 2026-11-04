@@ -17,6 +17,8 @@ const EXEMPT: Record<string, string> = {
   'analytics/analytics.service.ts': 'chỉ đọc',
   'export/export.service.ts': 'chỉ đọc',
   'search/search.service.ts': 'chỉ đọc',
+  'workflow-admin/workflow-resolver.service.ts':
+    'chỉ đọc DB; `.delete(` là xoá mục cache trong bộ nhớ',
   'rbac/issue-ownership.service.ts': 'kiểm quyền',
   'rbac/rbac.service.ts': 'kiểm quyền',
   'realtime/presence.service.ts': 'trạng thái tạm thời',
