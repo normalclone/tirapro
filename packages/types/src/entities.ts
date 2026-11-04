@@ -9,6 +9,7 @@ import type {
   DefaultAssigneeMode,
   FilterVisibility,
   FixVersionType,
+  IssueDifficulty,
   IssueTypeKey,
   MailStatus,
   NotificationType,
@@ -342,7 +343,14 @@ export interface IssueDto extends IssueSummaryDto {
   parentId: ID | null;
   epicId: ID | null;
   sprintId: ID | null;
+  /** Điểm cuối cùng: tự tính theo Loại × Độ khó × Ưu tiên (Epic = tổng việc con), trừ khi `pointsManual`. */
   storyPoints: number | null;
+  /** Độ khó (mặc định Trung bình) — một trong ba đầu vào của công thức điểm. */
+  difficulty: IssueDifficulty;
+  /** Điểm do Quản trị dự án/SA ghi đè tay: đổi loại/độ khó/ưu tiên không tính lại; "Tính lại theo công thức" để bỏ. */
+  pointsManual: boolean;
+  /** Cách ra điểm theo bảng hệ số hiện hành, vd "Bug · Khó · High = 2×3×1.5 = 9" (tooltip cho người không ghi đè được). */
+  pointsExplain: string;
   originalEstimate: number | null;
   remainingEstimate: number | null;
   timeSpent: number | null;

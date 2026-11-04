@@ -443,6 +443,14 @@ const READ_ALLOWLIST: Record<string, [Kind, string]> = {
     'INTERNAL',
     'ngữ cảnh hệ thống có chủ đích (L28): chỉ dựng DTO để phát realtime sau khi nghiệp vụ tự gán việc đã kiểm quyền; không route nào gọi',
   ],
+  'issues/points.service.ts::PointsService.epicTotal': [
+    'INTERNAL',
+    'tổng điểm việc con của một Epic, gọi từ IssuesService trong transaction ghi (đã kiểm quyền/dự án); không route nào gọi',
+  ],
+  'issues/points.service.ts::PointsService.rollupEpics': [
+    'INTERNAL',
+    'cập nhật tổng điểm Epic sau khi IssuesService ghi việc (đã kiểm quyền/dự án); không route nào gọi',
+  ],
   'issues/trash.service.ts::TrashService.list': ['ROUTE_GUARDED', R_ROUTE_GUARDED],
   'labels/labels.service.ts::LabelsService.list': ['ROUTE_GUARDED', R_ROUTE_GUARDED],
   'labels/labels.service.ts::LabelsService.attach': ['ROUTE_GUARDED', R_ROUTE_GUARDED],

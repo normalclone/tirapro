@@ -55,3 +55,19 @@ describe('POST /issues/:id/rank — schema body', () => {
     expect(out).toEqual({ version: 3, afterId: 'a', beforeId: null, sprintId: 'sp1' });
   });
 });
+
+describe('IssuesController.resetPoints — "Tính lại theo công thức"', () => {
+  it('policy: chỉ project:admin (SA qua guard), ProjectRef issue/id', () => {
+    const h = IssuesController.prototype.resetPoints;
+    expect(Reflect.getMetadata(PERMISSIONS_KEY, h)).toEqual([PERMISSIONS.PROJECT_ADMIN]);
+    expect(Reflect.getMetadata(PROJECT_REF_KEY, h)).toEqual({ kind: 'issue', param: 'id' });
+    expect(Reflect.getMetadata('path', h)).toBe(':id/points/reset');
+  });
+
+  it('chuyển tiếp tới resetPoints(workspace, người dùng, id)', async () => {
+    const issues = { resetPoints: vi.fn(() => Promise.resolve({})) };
+    const ctrl = new IssuesController(issues as never);
+    await ctrl.resetPoints('w1', { id: 'u1' } as never, 'i1');
+    expect(issues.resetPoints).toHaveBeenCalledWith('w1', 'u1', 'i1');
+  });
+});

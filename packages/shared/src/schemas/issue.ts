@@ -1,8 +1,19 @@
 import { z } from 'zod';
 import { environmentSchema } from './environment';
+import { DIFFICULTIES } from '../points';
 
 // priority/resolution/linkType giờ là config (FK theo id), không còn enum cứng.
 export const richTextFormatEnum = z.enum(['MARKDOWN', 'TIPTAP_JSON']);
+/** Độ khó của việc (đầu vào công thức điểm). */
+export const difficultyEnum = z.enum(
+  DIFFICULTIES as [(typeof DIFFICULTIES)[number], ...(typeof DIFFICULTIES)[number][]],
+);
+/** Điểm ghi đè tay (Quản trị dự án/SA): số nguyên 0–100. */
+const manualPointsSchema = z
+  .number()
+  .int('Điểm phải là số nguyên')
+  .min(0)
+  .max(100, 'Điểm tối đa 100');
 
 export const createIssueSchema = z.object({
   projectId: z.string().min(1),
@@ -21,7 +32,9 @@ export const createIssueSchema = z.object({
   parentId: z.string().optional().nullable(),
   epicId: z.string().optional().nullable(),
   sprintId: z.string().optional().nullable(),
+  // Điểm do hệ thống tự tính; chỉ người ghi đè được mới đặt tay (người khác: bị bỏ qua). Nhập file cũng bị bỏ qua.
   storyPoints: z.number().min(0).max(100, 'Điểm tối đa 100').optional().nullable(),
+  difficulty: difficultyEnum.optional(),
   labelIds: z.array(z.string()).optional(),
   statusId: z.string().optional(),
   dueDate: z.string().datetime().optional().nullable(),
@@ -36,6 +49,8 @@ export const updateIssueSchema = createIssueSchema
   .extend({
     // OCC: bắt buộc gửi version hiện tại khi update
     version: z.number().int().nonnegative(),
+    // Ghi đè điểm tay: số nguyên 0–100. `null` vẫn qua zod nhưng service từ chối 422 (tính lại = POST /issues/:id/points/reset).
+    storyPoints: manualPointsSchema.nullable().optional(),
     resolutionId: z.string().optional().nullable(),
     // Ước lượng thời gian (giây). Ước lượng còn lại do worklog tự trừ; sửa tay khi cần.
     originalEstimate: z.number().int().min(0).max(100_000_000).optional().nullable(),
@@ -76,7 +91,8 @@ export const bulkUpdateIssuesSchema = z.object({
       assigneeId: z.string().min(1).nullable().optional(),
       priorityId: z.string().min(1).nullable().optional(),
       sprintId: z.string().min(1).nullable().optional(),
-      storyPoints: z.number().min(0).max(100, 'Điểm tối đa 100').nullable().optional(),
+      storyPoints: manualPointsSchema.nullable().optional(), // null bị service từ chối 422
+      difficulty: difficultyEnum.optional(),
       epicId: z.string().min(1).nullable().optional(),
       // Nhãn của DỰ ÁN; chỉ thêm/gỡ, không thay cả bộ — hoàn tác phía web dùng đối ngẫu add ↔ remove.
       labels: z

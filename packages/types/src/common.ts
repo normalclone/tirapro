@@ -71,6 +71,8 @@ export const ERROR_CODES = {
   ADMIN_GRANT_REQUIRES_ADMIN: 'ADMIN_GRANT_REQUIRES_ADMIN',
   /** 403: chỉ quản trị hệ thống được đổi họ tên, email, ảnh đại diện — người dùng thường chỉ đổi mật khẩu, múi giờ, ngôn ngữ. */
   PROFILE_LOCKED: 'PROFILE_LOCKED',
+  /** 403: chỉ Quản trị dự án (`project:admin`) hoặc SA được ghi đè điểm tay — người khác đổi Loại/Độ khó/Ưu tiên để điểm tự tính. */
+  POINTS_OVERRIDE_FORBIDDEN: 'POINTS_OVERRIDE_FORBIDDEN',
   /** 413: tệp tải lên vượt giới hạn dung lượng. */
   PAYLOAD_TOO_LARGE: 'PAYLOAD_TOO_LARGE',
   INTERNAL: 'INTERNAL',

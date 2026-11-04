@@ -36,6 +36,15 @@ export class AdminGrantRequiresAdminException extends AppException {
   }
 }
 
+/** 403 mã riêng: ghi đè điểm tay chỉ dành cho Quản trị dự án/SA — web nhận ra mà không so khớp câu chữ. */
+export class PointsOverrideForbiddenException extends AppException {
+  constructor(
+    message = 'Điểm tự tính theo Loại × Độ khó × Ưu tiên — chỉ Quản trị dự án mới chỉnh tay được. Hãy đổi Độ khó hoặc Ưu tiên.',
+  ) {
+    super(ERROR_CODES.POINTS_OVERRIDE_FORBIDDEN, message, HttpStatus.FORBIDDEN);
+  }
+}
+
 export class VersionConflictException extends AppException {
   constructor(
     message = 'Dữ liệu đã thay đổi bởi người khác',

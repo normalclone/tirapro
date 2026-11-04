@@ -104,6 +104,18 @@ export class IssuesController {
     return this.issues.update(workspaceId, user.id, id, dto, undefined, ownOnly);
   }
 
+  /** "Tính lại theo công thức": bỏ điểm chỉnh tay. Chỉ Quản trị dự án (SA qua guard luôn được). */
+  @Permissions(PERMISSIONS.PROJECT_ADMIN)
+  @ProjectRef('issue', 'id')
+  @Post(':id/points/reset')
+  async resetPoints(
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+  ) {
+    return this.issues.resetPoints(workspaceId, user.id, id);
+  }
+
   @Permissions(PERMISSIONS.ISSUE_TRANSITION)
   @ProjectRef('issue', 'id')
   @Post(':id/transition')

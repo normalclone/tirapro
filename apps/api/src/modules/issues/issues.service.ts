@@ -15,9 +15,11 @@ import {
   issueTypePrefix,
   normalizeEnvironment,
   normalizeJiraKey,
+  computePoints,
   vnTodayUtc,
   type BulkUpdateIssuesInput,
   type CreateIssueInput,
+  type Difficulty,
   type MoveIssueInput,
   type TransitionIssueInput,
   type UpdateIssueInput,
@@ -36,12 +38,14 @@ import {
   ForbiddenAppException,
   InvalidTransitionException,
   NotFoundAppException,
+  PointsOverrideForbiddenException,
   VersionConflictException,
 } from '../../common/exceptions/app.exception';
 import { cursorPage, PageResult } from '../../common/dto/page-result';
 import { assertNotArchived, assertProjectWritable } from '../../common/project-writable';
 import { TRIAGE_VISIBLE } from '../../common/triage-visibility';
 import { mapIssueSets } from './issue-sets';
+import { PointsService } from './points.service';
 import { RankService } from './rank.service';
 import { WipService } from './wip.service';
 
@@ -87,6 +91,8 @@ const TRACKED_FIELDS = [
   'severityId',
   'assigneeId',
   'storyPoints',
+  'difficulty',
+  'pointsManual',
   'sprintId',
   'resolutionId',
   'typeId',
@@ -137,7 +143,179 @@ export class IssuesService {
     private readonly comments?: CommentsService,
     // Mặc định dựng từ prisma/rbac để spec dựng bằng ít đối số vẫn chạy; Nest DI tiêm bản thật (dự án riêng tư — P13).
     private readonly access: ProjectAccessService = new ProjectAccessService(prisma, rbac),
+    // Điểm tự tính + tổng Epic. Mặc định dựng từ prisma để spec dựng bằng ít đối số vẫn chạy; Nest DI tiêm bản thật.
+    private readonly points: PointsService = new PointsService(prisma),
   ) {}
+
+  /**
+   * Ghi đè điểm tay chỉ dành cho Quản trị dự án (`project:admin` ở dự án đó) hoặc SA (`isSystemAdmin`). Người khác đổi
+   * Loại/Độ khó/Ưu tiên để điểm tự tính — KPI so sánh được giữa người và dự án.
+   */
+  private async canOverridePoints(
+    userId: string,
+    workspaceId: string,
+    projectId: string,
+  ): Promise<boolean> {
+    const perms = await this.rbac.getEffectivePermissions(userId, workspaceId, projectId);
+    if (perms.has(PERMISSIONS.PROJECT_ADMIN)) return true;
+    const u = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { isSystemAdmin: true },
+    });
+    return !!u?.isSystemAdmin;
+  }
+
+  /**
+   * Độ khó (mặc định Trung bình) và điểm chỉnh tay lúc TẠO: chỉ nhận qua API từ Quản trị dự án/SA; người khác và đường
+   * nhập file bị bỏ qua → điểm theo công thức.
+   */
+  private async planCreatePoints(
+    origin: 'api' | 'import',
+    userId: string,
+    workspaceId: string,
+    projectId: string,
+    input: CreateIssueInput,
+  ): Promise<{ difficulty: Difficulty; manual: number | null }> {
+    const difficulty = input.difficulty ?? 'MEDIUM';
+    if (origin !== 'api' || input.storyPoints == null) return { difficulty, manual: null };
+    const allowed = await this.canOverridePoints(userId, workspaceId, projectId);
+    return { difficulty, manual: allowed ? this.assertManualPoints(input.storyPoints) : null };
+  }
+
+  /**
+   * Việc mới gắn vào Epic → cộng điểm vào Epic (cùng transaction); sự kiện realtime của Epic đẩy vào `after` (chạy SAU
+   * commit: tự mở transaction → ngay sau `$transaction`; transaction của bên gọi (import) → `deferred` của họ).
+   */
+  private async rollupOnCreate(
+    tx: Prisma.TransactionClient,
+    workspaceId: string,
+    userId: string,
+    epicId: string | null,
+    after: Array<() => void> | null,
+  ): Promise<void> {
+    if (!epicId) return;
+    const changedEpics = await this.points.rollupEpics(tx, [epicId]);
+    if (changedEpics.length)
+      after?.push(() => {
+        void this.emitEpicTotals(workspaceId, userId, changedEpics);
+      });
+  }
+
+  /**
+   * Độ khó, điểm và cờ chỉnh tay của việc MỚI. `computed = null` là Epic: điểm = tổng việc con (việc mới chưa có con → 0)
+   * và không chỉnh tay được.
+   */
+  private async pointsForCreate(
+    tx: Prisma.TransactionClient,
+    typeId: string,
+    priorityId: string | null | undefined,
+    plan: { difficulty: Difficulty; manual: number | null },
+  ): Promise<{ difficulty: Difficulty; storyPoints: number; pointsManual: boolean }> {
+    const { difficulty, manual } = plan;
+    const computed = await this.points.pointsFor(tx, {
+      typeId,
+      difficulty,
+      priorityId: priorityId ?? null,
+    });
+    const isManual = manual !== null && computed !== null;
+    return { difficulty, storyPoints: isManual ? manual : (computed ?? 0), pointsManual: isManual };
+  }
+
+  /**
+   * Ghi đè điểm của LÔ: chỉ Quản trị dự án/SA (→ pointsManual), số nguyên 0–100, không áp cho Epic. Người khác gửi điểm
+   * làm đổi ít nhất một việc → 403 cả lô, chưa ghi gì. Trả `undefined` khi không có ghi đè nào áp dụng.
+   */
+  private async resolveBulkManualPoints(
+    userId: string,
+    workspaceId: string,
+    projectId: string,
+    rows: IssueRow[],
+    requested: number | null | undefined,
+  ): Promise<number | undefined> {
+    if (requested === undefined) return undefined;
+    if (!(await this.canOverridePoints(userId, workspaceId, projectId))) {
+      if (rows.some((r) => r.storyPoints !== requested))
+        throw new PointsOverrideForbiddenException();
+      return undefined;
+    }
+    if (rows.some((r) => r.type.key === 'EPIC'))
+      throw new BusinessRuleException(
+        'Điểm của Epic là tổng điểm các việc con — không chỉnh tay được; hãy bỏ Epic khỏi lô',
+      );
+    return this.assertManualPoints(requested);
+  }
+
+  /**
+   * Đổi Ưu tiên/Độ khó của lô → tính lại điểm từng việc KHÔNG chỉnh tay. Tra bảng hệ số + tên ưu tiên MỘT lần cho cả lô;
+   * `null` khi patch không đụng hai trường đó.
+   */
+  private async bulkRecomputeContext(patch: BulkUpdateIssuesInput['patch']) {
+    if (patch.difficulty === undefined && patch.priorityId === undefined) return null;
+    const priority = patch.priorityId
+      ? await this.prisma.priority.findUnique({
+          where: { id: patch.priorityId },
+          select: { name: true },
+        })
+      : null;
+    return { formula: await this.points.getFormula(), priorityName: priority?.name ?? null };
+  }
+
+  /** Điểm của MỘT việc trong lô: ghi đè tay, hoặc tự tính lại khi đổi Độ khó/Ưu tiên (việc chỉnh tay giữ nguyên). */
+  private applyBulkPoints(
+    before: IssueRow,
+    patch: BulkUpdateIssuesInput['patch'],
+    manualPoints: number | undefined,
+    recompute: Awaited<ReturnType<IssuesService['bulkRecomputeContext']>>,
+    data: Prisma.IssueUncheckedUpdateManyInput,
+  ): void {
+    if (manualPoints !== undefined) {
+      if (manualPoints !== before.storyPoints) data.storyPoints = manualPoints;
+      if (!before.pointsManual) data.pointsManual = true;
+    }
+    const difficultyChanged =
+      patch.difficulty !== undefined && patch.difficulty !== before.difficulty;
+    if (difficultyChanged) data.difficulty = patch.difficulty;
+    const priorityChanged =
+      patch.priorityId !== undefined && patch.priorityId !== before.priorityId;
+    if (!recompute || manualPoints !== undefined || before.pointsManual) return;
+    if (!difficultyChanged && !priorityChanged) return;
+    const pts = computePoints(
+      recompute.formula,
+      before.type.key,
+      patch.difficulty ?? before.difficulty,
+      patch.priorityId !== undefined ? recompute.priorityName : (before.priority?.name ?? null),
+    );
+    if (pts !== null && pts !== before.storyPoints) data.storyPoints = pts;
+  }
+
+  /** Điểm ghi đè tay: số nguyên 0–100 (zod đã chặn ở API; kiểm lại cho người gọi nội bộ). */
+  private assertManualPoints(value: number | null): number {
+    if (value === null || !Number.isInteger(value) || value < 0 || value > 100)
+      throw new BusinessRuleException(
+        'Điểm chỉnh tay phải là số nguyên từ 0 đến 100 — muốn bỏ chỉnh tay hãy bấm "Tính lại theo công thức"',
+      );
+    return value;
+  }
+
+  /**
+   * Phát `ISSUE_UPDATED` cho các Epic vừa đổi tổng điểm (sau commit) để board/danh sách của người khác cập nhật.
+   * Dữ liệu ĐÃ commit: lỗi đọc lại/phát chỉ ghi log, không làm hỏng request.
+   */
+  private async emitEpicTotals(
+    workspaceId: string,
+    actorId: string,
+    epicIds: string[],
+  ): Promise<void> {
+    for (const id of epicIds) {
+      try {
+        await this.emitUpdatedFor(workspaceId, id, actorId, ['storyPoints']);
+      } catch (e) {
+        this.logger.warn(
+          `Epic ${id}: không phát được cập nhật tổng điểm — ${(e as Error).message}`,
+        );
+      }
+    }
+  }
 
   /**
    * Điều kiện `project` của mọi truy vấn đọc cấp workspace: dự án chưa xoá mềm + (có `viewerId`) dự án người đó được thấy.
@@ -794,32 +972,14 @@ export class IssuesService {
     await this.assertParentForCreate(db, workspaceId, input, project.id, origin === 'api');
     await this.assertCreateAssignee(workspaceId, input.assigneeId, db, project.id, origin);
 
-    // Status: input (phải thuộc workflow của dự án) hoặc trạng thái initial của workflow project
-    const workflowId = project.defaultWorkflowId ?? '';
-    const initial = await db.status.findFirst({
-      where: { workflowId, isInitial: true },
-      select: { id: true },
-    });
-    let statusId = input.statusId;
-    let isDone = false;
-    if (statusId) {
-      const chosen = await db.status.findFirst({
-        where: { id: statusId, workflowId },
-        select: { id: true, category: true },
-      });
-      if (!chosen)
-        throw new BusinessRuleException(
-          'Trạng thái không thuộc quy trình của dự án này — hãy chọn lại trạng thái từ danh sách',
-        );
-      // Tạo thẳng ở trạng thái khác trạng thái khởi tạo cũng là một lần "chuyển trạng thái" → cần cùng quyền.
-      if (origin === 'api' && chosen.id !== initial?.id)
-        await this.assertCanTransition(userId, workspaceId, project.id);
-      isDone = chosen.category === 'DONE';
-    } else {
-      if (!initial)
-        throw new BusinessRuleException('Dự án chưa cấu hình quy trình/trạng thái khởi đầu');
-      statusId = initial.id;
-    }
+    const { statusId, isDone } = await this.resolveCreateStatus(
+      db,
+      userId,
+      workspaceId,
+      project,
+      input.statusId,
+      origin,
+    );
 
     const doneResolutionId = isDone ? await this.defaultResolutionId(db, workspaceId) : null;
 
@@ -828,6 +988,8 @@ export class IssuesService {
 
     const assigneeId =
       input.assigneeId ?? (project.defaultAssigneeMode === 'PROJECT_LEAD' ? project.leadId : null);
+
+    const plan = await this.planCreatePoints(origin, userId, workspaceId, project.id, input);
 
     // Sự kiện đánh số lại rank (nếu hết chỗ chèn) chỉ phát SAU commit: tự mở transaction → chạy ngay sau `$transaction`;
     // nằm trong transaction của bên gọi (import) → đẩy vào `deferred` của họ.
@@ -843,6 +1005,7 @@ export class IssuesService {
       const rank = await this.rankAtEnd(tx, project.id, outerTx ? deferred : afterCommit);
       const key =
         importedKey ?? (await this.nextTiraproKey(tx, project.id, project.key, input.typeId));
+      const pts = await this.pointsForCreate(tx, input.typeId, priorityId, plan);
       const created = await tx.issue.create({
         data: {
           workspaceId,
@@ -866,7 +1029,7 @@ export class IssuesService {
           parentId: input.parentId ?? null,
           epicId: input.epicId ?? null,
           sprintId: input.sprintId ?? null,
-          storyPoints: input.storyPoints ?? null,
+          ...pts,
           dueDate: input.dueDate ? new Date(input.dueDate) : null,
           startDate: input.startDate ? new Date(input.startDate) : null,
           rank,
@@ -902,6 +1065,13 @@ export class IssuesService {
           occurredAt: new Date(),
         },
       });
+      await this.rollupOnCreate(
+        tx,
+        workspaceId,
+        userId,
+        created.epicId,
+        outerTx ? deferred : afterCommit,
+      );
       return created;
     };
     // timeout 30s như transaction đánh số lại rank riêng trước đây (dự án lớn hết chỗ chèn thì rebalance chạy trong đây).
@@ -910,6 +1080,39 @@ export class IssuesService {
       : await this.prisma.$transaction(body, { timeout: 30_000 });
     for (const fn of afterCommit) fn();
     return this.toDto(issue);
+  }
+
+  /** Trạng thái lúc tạo: `statusId` đã chọn (phải thuộc workflow của dự án) hoặc trạng thái initial của workflow. */
+  private async resolveCreateStatus(
+    db: Prisma.TransactionClient,
+    userId: string,
+    workspaceId: string,
+    project: { id: string; defaultWorkflowId: string | null },
+    requested: string | undefined,
+    origin: 'api' | 'import',
+  ): Promise<{ statusId: string; isDone: boolean }> {
+    const workflowId = project.defaultWorkflowId ?? '';
+    const initial = await db.status.findFirst({
+      where: { workflowId, isInitial: true },
+      select: { id: true },
+    });
+    if (!requested) {
+      if (!initial)
+        throw new BusinessRuleException('Dự án chưa cấu hình quy trình/trạng thái khởi đầu');
+      return { statusId: initial.id, isDone: false };
+    }
+    const chosen = await db.status.findFirst({
+      where: { id: requested, workflowId },
+      select: { id: true, category: true },
+    });
+    if (!chosen)
+      throw new BusinessRuleException(
+        'Trạng thái không thuộc quy trình của dự án này — hãy chọn lại trạng thái từ danh sách',
+      );
+    // Tạo thẳng ở trạng thái khác trạng thái khởi tạo cũng là một lần "chuyển trạng thái" → cần cùng quyền.
+    if (origin === 'api' && chosen.id !== initial?.id)
+      await this.assertCanTransition(userId, workspaceId, project.id);
+    return { statusId: chosen.id, isDone: chosen.category === 'DONE' };
   }
 
   /**
@@ -1259,6 +1462,21 @@ export class IssuesService {
         this.assertDueNotBeforeCreated(input.dueDate, current.createdAt);
     }
 
+    // Điểm: chỉ Quản trị dự án/SA ghi đè tay (→ pointsManual). Người khác gửi điểm KHÁC hiện tại → 403, chưa ghi gì
+    // (gửi lại đúng điểm hiện có — vd form gửi cả đối tượng — không phải là sửa điểm).
+    let manualPoints: number | undefined;
+    if (input.storyPoints !== undefined) {
+      if (await this.canOverridePoints(userId, workspaceId, current.projectId)) {
+        if (current.type.key === 'EPIC')
+          throw new BusinessRuleException(
+            'Điểm của Epic là tổng điểm các việc con — không chỉnh tay được',
+          );
+        manualPoints = this.assertManualPoints(input.storyPoints);
+      } else if (input.storyPoints !== current.storyPoints) {
+        throw new PointsOverrideForbiddenException();
+      }
+    }
+
     const data: Prisma.IssueUncheckedUpdateManyInput = { updatedById: userId };
     if (input.summary !== undefined) data.summary = input.summary;
     if (input.description !== undefined) data.description = input.description;
@@ -1269,7 +1487,7 @@ export class IssuesService {
     if (input.environment !== undefined)
       data.environment = normalizeEnvironment(input.environment) ?? Prisma.DbNull;
     if (input.assigneeId !== undefined) data.assigneeId = input.assigneeId ?? null;
-    if (input.storyPoints !== undefined) data.storyPoints = input.storyPoints;
+    if (input.difficulty !== undefined) data.difficulty = input.difficulty;
     if (input.sprintId !== undefined) data.sprintId = input.sprintId ?? null;
     if (input.resolutionId !== undefined) data.resolutionId = input.resolutionId ?? null;
     if (input.typeId !== undefined && input.typeId) data.typeId = input.typeId;
@@ -1290,9 +1508,12 @@ export class IssuesService {
       data.parentId = input.parentId ?? null;
     }
 
+    let changedEpics: string[] = [];
     const updated = await this.prisma.$transaction(async (tx) => {
+      await this.applyPoints(tx, current, input, data, manualPoints);
       const row = await this.updateWithVersion(tx, id, workspaceId, input.version, data);
       await this.recordChanges(tx, userId, current, row);
+      changedEpics = await this.points.rollupEpics(tx, this.epicsToRollup(current, row));
       return row;
     });
     const dto = this.toDto(updated);
@@ -1302,7 +1523,59 @@ export class IssuesService {
       changedFields: changedFieldsOf(current, updated),
       ...withMeta(opts),
     });
+    await this.emitEpicTotals(workspaceId, userId, changedEpics);
     return dto;
+  }
+
+  /**
+   * Quyết định điểm khi `update()`: ghi đè tay → `storyPoints` + `pointsManual=true`; đổi Loại/Độ khó/Ưu tiên trên việc
+   * KHÔNG chỉnh tay → tính lại; việc đã chỉnh tay giữ nguyên điểm. Việc thành/đang là Epic: điểm = tổng việc con và
+   * không thể chỉnh tay. Sửa `data` tại chỗ (chạy trong transaction để đọc đúng loại/ưu tiên mới).
+   */
+  private async applyPoints(
+    tx: Prisma.TransactionClient,
+    current: IssueRow,
+    input: UpdateIssueInput,
+    data: Prisma.IssueUncheckedUpdateManyInput,
+    manualPoints: number | undefined,
+  ): Promise<void> {
+    const typeId = input.typeId || current.typeId;
+    const priorityId =
+      input.priorityId !== undefined ? (input.priorityId ?? null) : current.priorityId;
+    const difficulty = input.difficulty ?? current.difficulty;
+    const inputsChanged =
+      typeId !== current.typeId ||
+      priorityId !== current.priorityId ||
+      difficulty !== current.difficulty;
+    if (manualPoints === undefined && !inputsChanged) return;
+    const computed = await this.points.pointsFor(tx, { typeId, difficulty, priorityId });
+    if (computed === null) {
+      // Là/đang thành Epic: điểm = tổng việc con, không chỉnh tay được.
+      if (manualPoints !== undefined)
+        throw new BusinessRuleException(
+          'Điểm của Epic là tổng điểm các việc con — không chỉnh tay được',
+        );
+      data.pointsManual = false;
+      data.storyPoints = await this.points.epicTotal(tx, current.id);
+      return;
+    }
+    if (manualPoints !== undefined) {
+      data.storyPoints = manualPoints;
+      data.pointsManual = true;
+    } else if (!current.pointsManual) {
+      data.storyPoints = computed;
+    }
+  }
+
+  /** Epic cần tính lại tổng sau khi một việc đổi: Epic cũ + mới khi đổi `epicId`, hoặc Epic hiện tại khi điểm việc đổi. */
+  private epicsToRollup(
+    before: { epicId: string | null; storyPoints: number | null },
+    after: { epicId: string | null; storyPoints: number | null },
+  ): string[] {
+    const ids: string[] = [];
+    if (before.epicId !== after.epicId) ids.push(...[before.epicId, after.epicId].filter(isString));
+    else if (after.epicId && before.storyPoints !== after.storyPoints) ids.push(after.epicId);
+    return ids;
   }
 
   /**
@@ -1339,7 +1612,13 @@ export class IssuesService {
     // Chỉ kiểm khi có hàng thật sự đổi assignee (hàng đã giữ đúng assignee đó thì bỏ qua).
     if (patch.assigneeId !== undefined && rows.some((r) => r.assigneeId !== patch.assigneeId))
       await this.assertAssigneeInWorkspace(workspaceId, patch.assigneeId, this.prisma, projectId);
-    // storyPoints không cần kiểm quyền riêng: `ownOnly` ở trên đã 403 cả lô khi có việc của người khác.
+    const manualPoints = await this.resolveBulkManualPoints(
+      userId,
+      workspaceId,
+      projectId,
+      rows,
+      patch.storyPoints,
+    );
     if (patch.epicId) for (const r of rows) this.assertNotEpicWithEpic(r.type);
     if (patch.epicId)
       await this.assertEpicForBulk(
@@ -1378,7 +1657,10 @@ export class IssuesService {
       ? await this.wipService.resolveWipColumn(input.boardId, projectId, patch.statusId)
       : null;
 
+    const recompute = await this.bulkRecomputeContext(patch);
+
     const conflicts: BulkUpdateIssuesResult['conflicts'] = [];
+    let changedEpics: string[] = [];
     const changed: Array<{ before: IssueRow; after: IssueRow }> = [];
     const result: IssueRow[] = [];
     const labelIds: string[] = []; // hàng đã/sẽ được ghi nhãn (version còn khớp)
@@ -1418,8 +1700,7 @@ export class IssuesService {
           data.priorityId = patch.priorityId;
         if (patch.sprintId !== undefined && patch.sprintId !== before.sprintId)
           data.sprintId = patch.sprintId;
-        if (patch.storyPoints !== undefined && patch.storyPoints !== before.storyPoints)
-          data.storyPoints = patch.storyPoints;
+        this.applyBulkPoints(before, patch, manualPoints, recompute, data);
         if (patch.epicId !== undefined && patch.epicId !== before.epicId)
           data.epicId = patch.epicId;
         if (Object.keys(data).length === 0) {
@@ -1441,9 +1722,15 @@ export class IssuesService {
         }
       }
       if (labelOps && labelIds.length) await this.applyBulkLabels(tx, labelIds, labelOps);
+      // Tổng điểm Epic (cũ và mới) sau khi cả lô đã ghi — một lần cho mỗi Epic, cùng transaction.
+      changedEpics = await this.points.rollupEpics(
+        tx,
+        changed.flatMap((c) => this.epicsToRollup(c.before, c.after)),
+      );
     }, BULK_TX_OPTIONS);
 
     const fresh = await this.emitBulkEvents(workspaceId, userId, projectId, changed, labelIds);
+    await this.emitEpicTotals(workspaceId, userId, changedEpics);
     return { updated: result.map((r) => this.toDto(fresh.get(r.id) ?? r)), conflicts };
   }
 
@@ -1799,16 +2086,22 @@ export class IssuesService {
   async softDelete(workspaceId: string, userId: string, id: string): Promise<{ success: true }> {
     const current = await this.requireIssue(workspaceId, id);
     // updateMany + deletedAt:null để hai lần xoá đồng thời chỉ một lần thắng (và chỉ phát sự kiện một lần).
-    const { count } = await this.prisma.issue.updateMany({
-      where: { id, workspaceId, deletedAt: null },
-      data: { deletedAt: new Date(), updatedById: userId, version: { increment: 1 } },
+    // Trừ điểm khỏi Epic trong cùng transaction.
+    let changedEpics: string[] = [];
+    await this.prisma.$transaction(async (tx) => {
+      const { count } = await tx.issue.updateMany({
+        where: { id, workspaceId, deletedAt: null },
+        data: { deletedAt: new Date(), updatedById: userId, version: { increment: 1 } },
+      });
+      if (count === 0) throw new NotFoundAppException('Công việc');
+      if (current.epicId) changedEpics = await this.points.rollupEpics(tx, [current.epicId]);
     });
-    if (count === 0) throw new NotFoundAppException('Công việc');
     this.events.emit(DOMAIN_EVENTS.ISSUE_DELETED, {
       issueId: id,
       projectId: current.projectId,
       actorId: userId,
     });
+    await this.emitEpicTotals(workspaceId, userId, changedEpics);
     return { success: true };
   }
 
@@ -1881,11 +2174,17 @@ export class IssuesService {
       detach.epicId = null;
       orphaned.push('epicId');
     }
-    const { count } = await this.prisma.issue.updateMany({
-      where,
-      data: { deletedAt: null, updatedById: userId, version: { increment: 1 }, ...detach },
+    // Cộng điểm lại vào Epic (nếu còn gắn) trong cùng transaction.
+    let changedEpics: string[] = [];
+    await this.prisma.$transaction(async (tx) => {
+      const { count } = await tx.issue.updateMany({
+        where,
+        data: { deletedAt: null, updatedById: userId, version: { increment: 1 }, ...detach },
+      });
+      if (count === 0) throw new NotFoundAppException('Công việc');
+      const epicId = 'epicId' in detach ? null : current.epicId;
+      if (epicId) changedEpics = await this.points.rollupEpics(tx, [epicId]);
     });
-    if (count === 0) throw new NotFoundAppException('Công việc');
     const row = await this.prisma.issue.findFirstOrThrow({
       where: { id: issueId, workspaceId, deletedAt: null },
       include: issueInclude,
@@ -1896,6 +2195,45 @@ export class IssuesService {
       actorId: userId,
       changedFields: ['deletedAt', ...orphaned],
     });
+    await this.emitEpicTotals(workspaceId, userId, changedEpics);
+    return dto;
+  }
+
+  /**
+   * "Tính lại theo công thức": bỏ chỉnh tay (`pointsManual=false`) rồi tính lại điểm từ Loại × Độ khó × Ưu tiên.
+   * Chỉ Quản trị dự án/SA (route đã chặn bằng `project:admin`; kiểm lại ở đây). Epic không có điểm chỉnh tay.
+   */
+  async resetPoints(workspaceId: string, userId: string, id: string): Promise<IssueDto> {
+    const current = await this.requireIssue(workspaceId, id);
+    if (!(await this.canOverridePoints(userId, workspaceId, current.projectId)))
+      throw new PointsOverrideForbiddenException();
+    if (current.type.key === 'EPIC')
+      throw new BusinessRuleException(
+        'Điểm của Epic luôn là tổng điểm các việc con — không có điểm chỉnh tay để tính lại',
+      );
+    let changedEpics: string[] = [];
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const computed = await this.points.pointsFor(tx, {
+        typeId: current.typeId,
+        difficulty: current.difficulty,
+        priorityId: current.priorityId,
+      });
+      const row = await this.updateWithVersion(tx, id, workspaceId, current.version, {
+        pointsManual: false,
+        ...(computed !== null ? { storyPoints: computed } : {}),
+        updatedById: userId,
+      });
+      await this.recordChanges(tx, userId, current, row);
+      changedEpics = await this.points.rollupEpics(tx, this.epicsToRollup(current, row));
+      return row;
+    });
+    const dto = this.toDto(updated);
+    this.events.emit(DOMAIN_EVENTS.ISSUE_UPDATED, {
+      issue: dto,
+      actorId: userId,
+      changedFields: changedFieldsOf(current, updated),
+    });
+    await this.emitEpicTotals(workspaceId, userId, changedEpics);
     return dto;
   }
 
@@ -2152,6 +2490,9 @@ export class IssuesService {
       epicId: i.epicId,
       sprintId: i.sprintId,
       storyPoints: i.storyPoints,
+      difficulty: i.difficulty,
+      pointsManual: i.pointsManual,
+      pointsExplain: this.points.explain(i, i.pointsManual),
       originalEstimate: i.originalEstimate,
       remainingEstimate: i.remainingEstimate,
       timeSpent: i.timeSpent,
@@ -2194,6 +2535,8 @@ export class IssuesService {
     };
   }
 }
+
+const isString = (x: string | null): x is string => x !== null;
 
 /** Hai mốc ngày (chuỗi ISO / Date / null) có cùng thời điểm không. */
 function sameInstant(
