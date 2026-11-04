@@ -40,6 +40,9 @@ const NotificationsPage = lazy(() =>
     default: m.NotificationsPage,
   })),
 );
+const MyTeamsPage = lazy(() =>
+  import('@/features/teams/MyTeamsPage').then((m) => ({ default: m.MyTeamsPage })),
+);
 const AccountPage = lazy(() =>
   import('@/features/members/AccountPage').then((m) => ({ default: m.AccountPage })),
 );
@@ -288,6 +291,7 @@ export const router = createBrowserRouter([
       { path: 'members', element: <MembersPage /> },
       { path: 'notifications', element: <NotificationsPage /> },
       { path: 'account', element: <AccountPage /> },
+      { path: 'account/teams', element: <MyTeamsPage /> },
       {
         path: 'admin',
         element: <AdminLayout />,
