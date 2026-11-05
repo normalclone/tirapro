@@ -27,7 +27,9 @@ describe('fieldsParam', () => {
   it('Tất cả => undefined; còn lại => CSV', () => {
     expect(fieldsParam('all')).toBeUndefined();
     expect(fieldsParam('status')).toBe('STATUS');
-    expect(fieldsParam('other')).toBe('TYPE,RESOLUTION,SCOPE,TIME_SPENT,COMPONENT,FIX_VERSION');
+    expect(fieldsParam('other')).toBe(
+      'TYPE,RESOLUTION,SCOPE,TIME_SPENT,COMPONENT,FIX_VERSION,EPIC,PARENT',
+    );
   });
   it('id lạ => undefined', () => expect(fieldsParam('zzz')).toBeUndefined());
   it('mỗi loại lịch sử hệ thống xuất hiện đúng một lần trong các chip (trừ Tất cả)', () => {
@@ -37,7 +39,9 @@ describe('fieldsParam', () => {
       'ASSIGNEE',
       'COMPONENT',
       'DESCRIPTION',
+      'EPIC',
       'FIX_VERSION',
+      'PARENT',
       'PRIORITY',
       'RESOLUTION',
       'SCOPE',
@@ -51,6 +55,20 @@ describe('fieldsParam', () => {
 });
 
 describe('describeActivity', () => {
+  it('Epic / việc cha: gắn, đổi, gỡ (giá trị là mã việc)', () => {
+    expect(describeActivity(a({ field: 'EPIC', oldValue: 'TIRA-1', newValue: null }))).toBe(
+      'gỡ khỏi Epic TIRA-1',
+    );
+    expect(describeActivity(a({ field: 'EPIC', oldValue: null, newValue: 'TIRA-2' }))).toBe(
+      'gắn vào Epic TIRA-2',
+    );
+    expect(describeActivity(a({ field: 'EPIC', oldValue: 'TIRA-1', newValue: 'TIRA-2' }))).toBe(
+      'đổi Epic: TIRA-1 → TIRA-2',
+    );
+    expect(describeActivity(a({ field: 'PARENT', oldValue: 'TIRA-5', newValue: null }))).toBe(
+      'gỡ khỏi việc cha TIRA-5',
+    );
+  });
   it('người phụ trách có tên, Chưa gán khi null', () => {
     expect(describeActivity(a({ field: 'ASSIGNEE', oldLabel: null, newLabel: 'Dũng' }))).toBe(
       'đổi người phụ trách: Chưa gán → Dũng',

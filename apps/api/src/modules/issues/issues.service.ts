@@ -116,10 +116,20 @@ const TRACKED_FIELDS = [
   'remainingEstimate',
 ] as const;
 
+/** Loại Epic: `key = EPIC` hoặc `hierarchyLevel >= 1` (cùng định nghĩa mọi nơi kiểm "Epic là cấp cao nhất"). */
+const isEpicType = (t: { key: string | null; hierarchyLevel: number }): boolean =>
+  t.key === 'EPIC' || t.hierarchyLevel >= 1;
+
 function changedFieldsOf(before: IssueRow, after: IssueRow): string[] {
   const same = (a: unknown, b: unknown) =>
     a instanceof Date && b instanceof Date ? a.getTime() === b.getTime() : a === b;
   return TRACKED_FIELDS.filter((f) => !same(before[f], after[f]));
+}
+
+/** Việc con được chuyển thành việc của Epic mới (xem `adoptChildrenIntoEpic`). */
+interface AdoptedChildren {
+  ids: string[];
+  oldEpicIds: string[];
 }
 
 /** Trạng thái đích của một việc đổi loại sang quy trình khác. */
@@ -856,7 +866,7 @@ export class IssuesService {
 
   /** Epic là cấp cao nhất: chính việc là Epic thì không được có `epicId` (không epic lồng epic) — 422. */
   private assertNotEpicWithEpic(type: { key: string | null; hierarchyLevel: number }): void {
-    if (type.key === 'EPIC' || type.hierarchyLevel >= 1)
+    if (isEpicType(type))
       throw new BusinessRuleException(
         'Epic là cấp cao nhất — không thể đặt một Epic vào epic khác',
       );
@@ -871,8 +881,10 @@ export class IssuesService {
     organizationId: string,
     self: { projectId: string; type: { key: string | null; hierarchyLevel: number } },
     parentId: string,
+    /** Loại hiệu lực sau khi sửa (đổi loại cùng lúc đặt cha); mặc định loại hiện tại của `self`. */
+    effType: { key: string | null; hierarchyLevel: number } = self.type,
   ): Promise<void> {
-    if (self.type.key === 'EPIC' || self.type.hierarchyLevel >= 1)
+    if (isEpicType(effType))
       throw new BusinessRuleException(
         'Epic là cấp cao nhất — không thể đặt Epic vào bên trong một việc khác, chỉ có thể gắn việc vào Epic',
       );
@@ -1703,24 +1715,39 @@ export class IssuesService {
    * và bỏ qua kiểm tra "chỉ người tạo/quản trị sửa Hạn" (người dùng hệ thống không phải thành viên —
    * quy tắc đã do quản trị tạo).
    */
-  /** Epic mới hợp lệ + cha mới đặt đúng chỗ (không Epic có cha, cùng dự án, không sub-task) và không vòng theo `parentId ?? epicId`. */
+  /**
+   * Epic mới hợp lệ + cha mới đặt đúng chỗ (không Epic có cha, cùng dự án, không sub-task) và không vòng theo `parentId ?? epicId`.
+   * Luật "Epic là cấp cao nhất" tính trên LOẠI HIỆU LỰC sau khi sửa (`input.typeId ?? loại hiện tại`) và trên `epicId`/`parentId`
+   * HIỆU LỰC (trường không gửi giữ giá trị hiện có): đổi sang Epic khi việc vẫn thuộc Epic/việc cha sau request → 422 — client phải
+   * gỡ chúng ngay trong request đó (`epicId: null, parentId: null`); ngược lại (Epic → loại thường kèm gắn Epic, vd Hoàn tác) hợp lệ.
+   * Trả `true` khi việc vừa thành Epic (bên gọi chuyển việc con trực tiếp sang Epic mới).
+   */
   private async assertUpdatePlacement(
     organizationId: string,
     id: string,
     current: IssueWriteRow,
     input: UpdateIssueInput,
-  ): Promise<void> {
+  ): Promise<boolean> {
+    const newType = await this.newTypeOf(organizationId, current, input);
+    const effType = newType ?? current.type;
+    const effEpicId = input.epicId !== undefined ? input.epicId : current.epicId;
+    const effParentId = input.parentId !== undefined ? input.parentId : current.parentId;
+    if (newType && isEpicType(newType) && !isEpicType(current.type) && (effEpicId || effParentId))
+      throw new BusinessRuleException(
+        'Epic là cấp cao nhất — việc đang thuộc Epic hoặc việc cha không thể đổi thành Epic. Hãy gỡ việc khỏi Epic/việc cha (gửi epicId: null và parentId: null) trong cùng lần đổi loại',
+      );
     if (input.epicId && input.epicId !== current.epicId) {
       await this.assertEpicValid(this.prisma, organizationId, input.epicId, current.projectId, id);
-      this.assertNotEpicWithEpic(current.type);
+      this.assertNotEpicWithEpic(effType);
     }
     const newParent = input.parentId && input.parentId !== current.parentId ? input.parentId : null;
     const newEpic = input.epicId && input.epicId !== current.epicId ? input.epicId : null;
     if (newParent && newParent !== id)
-      await this.assertParentPlacement(this.prisma, organizationId, current, newParent);
+      await this.assertParentPlacement(this.prisma, organizationId, current, newParent, effType);
     for (const start of [newParent, newEpic])
       if (start && start !== id)
         await this.assertNoTreeCycle(this.prisma, organizationId, id, start);
+    return !!newType && isEpicType(newType) && !isEpicType(current.type);
   }
 
   async update(
@@ -1748,7 +1775,7 @@ export class IssuesService {
     });
     // Đổi sang loại dùng quy trình KHÁC: phải chọn trạng thái đích trong quy trình mới (không để việc trỏ vào trạng thái của quy trình khác).
     const typeMove = await this.planUpdateTypeMove(userId, organizationId, current, input);
-    await this.assertUpdatePlacement(organizationId, id, current, input);
+    const becomesEpic = await this.assertUpdatePlacement(organizationId, id, current, input);
     if (input.assigneeId !== undefined && input.assigneeId !== current.assigneeId)
       await this.assertAssigneeInOrganization(
         organizationId,
@@ -1847,12 +1874,16 @@ export class IssuesService {
 
     let changedEpics: string[] = [];
     let cascaded: string[] = [];
+    let adopted: AdoptedChildren = { ids: [], oldEpicIds: [] };
     const updated = await this.prisma.$transaction(async (tx) => {
       // Khoá nhánh việc con TRƯỚC khi ghi việc cha (thứ tự con → cha, như cộng điểm).
       const subtree = sprintChanged ? await this.lockSubtree(tx, [id]) : [];
+      // Thành Epic: việc con trực tiếp thành việc của Epic TRƯỚC khi tính điểm (xem `adoptChildrenIntoEpic`).
+      if (becomesEpic) adopted = await this.adoptChildrenIntoEpic(tx, userId, current);
       await this.applyPoints(tx, current, input, data, manualPoints);
       const row = await this.updateWithVersion(tx, id, organizationId, input.version, data);
       await this.recordChanges(tx, userId, current, row);
+      await this.recordPlacementChanges(tx, userId, current, row);
       if (typeMove) await this.recordStatusChange(tx, userId, current, row);
       if (sprintChanged)
         cascaded = await this.cascadeSprint(
@@ -1862,7 +1893,9 @@ export class IssuesService {
           subtree,
           newSprint ?? null,
         );
-      changedEpics = await this.rollupTree(tx, this.rollupTargets([[current, row]]));
+      const targets = this.rollupTargets([[current, row]]);
+      if (adopted.ids.length > 0) targets.epicIds.push(id, ...adopted.oldEpicIds); // Epic mới + Epic cũ của việc con
+      changedEpics = await this.rollupTree(tx, targets);
       return row;
     });
     const dto = this.toDto(updated);
@@ -1880,9 +1913,142 @@ export class IssuesService {
         fromStatusId: current.statusId,
         ...withMeta(opts),
       });
+    await this.emitUpdateTotals(organizationId, userId, changedEpics, cascaded, adopted.ids);
+    return dto;
+  }
+
+  /** Loại mới (chỉ khi `update()` đổi loại) để kiểm luật "Epic là cấp cao nhất" trên loại hiệu lực; `null` = không đổi loại. */
+  private async newTypeOf(
+    organizationId: string,
+    current: IssueWriteRow,
+    input: UpdateIssueInput,
+  ): Promise<{ key: string | null; hierarchyLevel: number } | null> {
+    if (!input.typeId || input.typeId === current.typeId) return null;
+    return this.prisma.issueType.findFirst({
+      where: { id: input.typeId, organizationId },
+      select: { key: true, hierarchyLevel: true },
+    });
+  }
+
+  /** Sau commit `update()`: phát sự kiện cho Epic đổi tổng, việc con đổi sprint theo cha và việc con vừa chuyển sang Epic mới. */
+  private async emitUpdateTotals(
+    organizationId: string,
+    userId: string,
+    changedEpics: string[],
+    cascaded: string[],
+    adopted: string[],
+  ): Promise<void> {
     await this.emitEpicTotals(organizationId, userId, changedEpics);
     await this.emitEpicTotals(organizationId, userId, cascaded, ['sprintId']);
-    return dto;
+    await this.emitEpicTotals(organizationId, userId, adopted, ['parentId', 'epicId']);
+  }
+
+  /**
+   * Việc vừa đổi sang Epic: các việc con trực tiếp (`parentId = epic.id`, chưa xoá) đổi thành việc của Epic này
+   * (`parentId = null`, `epicId = epic.id`), kể cả việc đang thuộc Epic khác — vì Epic không làm việc cha. Việc cháu giữ nguyên
+   * (vẫn dưới việc con của chúng). Sprint của việc con không đổi (Epic không ép sprint). Ghi lịch sử PARENT/EPIC từng việc
+   * con trong cùng transaction; khoá việc con TRƯỚC khi ghi Epic (thứ tự con → cha). Trả id việc con + Epic cũ của chúng.
+   */
+  private async adoptChildrenIntoEpic(
+    tx: Prisma.TransactionClient,
+    userId: string,
+    epic: { id: string; key: string; projectId: string },
+  ): Promise<AdoptedChildren> {
+    const kids = await tx.issue.findMany({
+      where: { parentId: epic.id, deletedAt: null },
+      select: { id: true, epicId: true, sprintId: true },
+      orderBy: { id: 'asc' },
+    });
+    if (kids.length === 0) return { ids: [], oldEpicIds: [] };
+    await lockIssues(
+      tx,
+      kids.map((k) => k.id),
+    );
+    await tx.issue.updateMany({
+      where: { id: { in: kids.map((k) => k.id) }, deletedAt: null },
+      data: { parentId: null, epicId: epic.id, updatedById: userId, version: { increment: 1 } },
+    });
+    const oldEpicIds = [
+      ...new Set(kids.map((k) => k.epicId).filter((e): e is string => !!e && e !== epic.id)),
+    ];
+    // allow-deleted: chỉ lấy MÃ Epic cũ để ghi nhãn lịch sử (Epic đã xoá mềm vẫn có mã)
+    const oldEpics = await tx.issue.findMany({
+      where: { id: { in: oldEpicIds } },
+      select: { id: true, key: true },
+    });
+    const oldKeys = new Map(oldEpics.map((r) => [r.id, r.key]));
+    const occurredAt = new Date();
+    const rows: Prisma.IssueHistoryCreateManyInput[] = [];
+    for (const k of kids) {
+      const base = {
+        issueId: k.id,
+        projectId: epic.projectId,
+        sprintId: k.sprintId,
+        actorId: userId,
+        occurredAt,
+      };
+      rows.push({ ...base, field: 'PARENT', oldValue: epic.key, newValue: null });
+      if (k.epicId !== epic.id)
+        rows.push({
+          ...base,
+          field: 'EPIC',
+          oldValue: k.epicId ? (oldKeys.get(k.epicId) ?? null) : null,
+          newValue: epic.key,
+        });
+    }
+    await tx.issueHistory.createMany({ data: rows });
+    return { ids: kids.map((k) => k.id), oldEpicIds };
+  }
+
+  /**
+   * Lịch sử Loại / Epic / Việc cha của MỘT việc khi `update()` đổi chúng (giá trị lưu là mã việc, loại là tên): để thấy ai gỡ việc khỏi
+   * Epic khi đổi sang Epic. Tra mã Epic/cha trong cùng transaction (chỉ khi có đổi).
+   */
+  private async recordPlacementChanges(
+    tx: Prisma.TransactionClient,
+    userId: string,
+    before: IssueRow,
+    after: IssueRow,
+  ): Promise<void> {
+    const typeChanged = before.typeId !== after.typeId;
+    const epicChanged = before.epicId !== after.epicId;
+    const parentChanged = before.parentId !== after.parentId;
+    if (!typeChanged && !epicChanged && !parentChanged) return;
+    const ids = [before.epicId, after.epicId, before.parentId, after.parentId].filter(
+      (x): x is string => !!x,
+    );
+    const refs =
+      ids.length === 0
+        ? []
+        : // allow-deleted: chỉ lấy MÃ Epic/cha để ghi nhãn lịch sử (việc đã xoá mềm vẫn có mã)
+          await tx.issue.findMany({ where: { id: { in: ids } }, select: { id: true, key: true } });
+    const keys = new Map(refs.map((r) => [r.id, r.key]));
+    const keyOf = (id: string | null) => (id ? (keys.get(id) ?? null) : null);
+    const base = {
+      issueId: after.id,
+      projectId: after.projectId,
+      sprintId: after.sprintId,
+      actorId: userId,
+      occurredAt: new Date(),
+    };
+    const rows: Prisma.IssueHistoryCreateManyInput[] = [];
+    if (typeChanged)
+      rows.push({ ...base, field: 'TYPE', oldValue: before.type.name, newValue: after.type.name });
+    if (epicChanged)
+      rows.push({
+        ...base,
+        field: 'EPIC',
+        oldValue: keyOf(before.epicId),
+        newValue: keyOf(after.epicId),
+      });
+    if (parentChanged)
+      rows.push({
+        ...base,
+        field: 'PARENT',
+        oldValue: keyOf(before.parentId),
+        newValue: keyOf(after.parentId),
+      });
+    await tx.issueHistory.createMany({ data: rows });
   }
 
   /** `update()` đổi loại sang quy trình khác: trạng thái đích (null = không đổi trạng thái) + kiểm quyền/chặn Done. */

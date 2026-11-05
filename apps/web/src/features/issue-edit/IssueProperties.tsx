@@ -8,7 +8,12 @@ import { useProjects } from '@/features/projects/api';
 import { useCanEditIssue, useCanIn } from '@/features/projects/permissions';
 import { useProjectSprints, useMoveToSprint } from '@/features/backlog/api';
 import { BACKLOG_LABEL, buildSprintOptions } from './sprintOptions';
-import { useUpdateIssue, useResetPoints, useHasLoadedChildren } from '@/features/issues/api';
+import {
+  useUpdateIssue,
+  useResetPoints,
+  useHasLoadedChildren,
+  useProjectIssues,
+} from '@/features/issues/api';
 import { pointsConfirmOptions, pointsEditWarning } from '@/features/issues/pointsWarning';
 import { useConfirm } from '@/components/ui/useConfirm';
 import { useAssigneePicker } from '@/features/issue-edit/useAssigneeOptions';
@@ -30,6 +35,7 @@ import { isBugType } from './severity';
 import { dueState } from '@/lib/dueDate';
 import { apiErrorMessage } from '@/lib/api';
 import { statusMappingNeeded } from './typeChange';
+import { epicConversionCopy, epicConversionPlan, isEpicTypeOption } from './epicConversion';
 import { TypeChangeStatusDialog } from './TypeChangeStatusDialog';
 import { isRollupPoints, parsePointsOverride, pointsTip, CHILD_SPRINT_TIP } from '@/lib/points';
 import { DIFFICULTIES, DIFFICULTY_LABELS, formatCalendarDmy } from '@tirapro/shared';
@@ -114,6 +120,8 @@ export function IssueTypeSelect({ issue }: { issue: IssueDto }) {
   // Lỗi tự xử lý bên dưới (422 → hộp chọn trạng thái; còn lại → toast) nên không để thông báo chung hiện thêm một lần nữa.
   const patch = useUpdateIssue(issue.projectId, { silent: true });
   const canEdit = useCanEditIssue(issue.projectId)(issue);
+  const confirm = useConfirm();
+  const { data: projectIssues } = useProjectIssues(issue.projectId);
   // Loại mới dùng quy trình khác → máy chủ báo cần trạng thái đích; hộp giữ loại đang đổi + gợi ý cho tới khi xong/huỷ.
   // `ask` giữ nội dung kể cả khi hộp đang đóng (để hiệu ứng đóng chạy), `askOpen` điều khiển mở.
   const [ask, setAsk] = useState<{
@@ -121,6 +129,8 @@ export function IssueTypeSelect({ issue }: { issue: IssueDto }) {
     typeId: string;
     typeName: string;
     suggestedStatusId: string | undefined;
+    /** Đổi sang Epic đã được xác nhận: lần gửi sau cũng phải gỡ epicId/parentId (Epic không thuộc Epic/việc cha). */
+    detach: boolean;
   } | null>(null);
   const [askOpen, setAskOpen] = useState(false);
   // Sang việc khác (panel xem nhanh đổi dòng) → bỏ hộp đang mở, kẻo xác nhận nhầm cho việc mới.
@@ -136,6 +146,72 @@ export function IssueTypeSelect({ issue }: { issue: IssueDto }) {
     );
   }
   const typeName = (id: string) => meta?.issueTypes.find((t) => t.id === id)?.name ?? '';
+  const DETACH = { epicId: null, parentId: null };
+
+  /**
+   * Đổi loại. Sang Epic mà việc đang thuộc Epic/việc cha (hoặc có việc con): HỎI trước, rồi MỘT lần gửi vừa đổi loại vừa gỡ
+   * `epicId/parentId` ("Epic không được là con của Epic" — máy chủ từ chối nếu thiếu); Hoàn tác đưa loại + Epic/cha về như cũ
+   * (không có khi đã có việc con chuyển sang Epic mới — việc con không tự quay lại).
+   */
+  async function changeType(v: string) {
+    if (v === issue.type.id) return;
+    const target = meta?.issueTypes.find((t) => t.id === v);
+    const plan =
+      target && isEpicTypeOption(target) ? epicConversionPlan(issue, projectIssues ?? []) : null;
+    if (plan) {
+      const copy = epicConversionCopy(issue.key, plan);
+      if (!(await confirm({ ...copy, confirmLabel: 'Đổi thành Epic' }))) return;
+    }
+    const undo = plan?.detaches && plan.childCount === 0 ? { ...issue } : null;
+    patch.mutate(
+      {
+        id: issue.id,
+        key: issue.key,
+        patch: { typeId: v, ...(plan ? DETACH : {}) },
+        version: issue.version,
+      },
+      {
+        onSuccess: (res) => {
+          if (!undo) return;
+          toast.success(`Đã đổi ${issue.key} thành Epic và gỡ khỏi Epic/việc cha`, {
+            duration: 6000,
+            action: {
+              label: 'Hoàn tác',
+              onClick: () =>
+                patch.mutate(
+                  {
+                    id: undo.id,
+                    key: undo.key,
+                    patch: {
+                      typeId: undo.type.id,
+                      epicId: undo.epicId,
+                      parentId: undo.parentId,
+                      targetStatusId: undo.status.id,
+                    },
+                    version: res.data.version,
+                  },
+                  { onError: (e) => toast.error(apiErrorMessage(e)) },
+                ),
+            },
+          });
+        },
+        onError: (e) => {
+          const need = statusMappingNeeded(e);
+          if (need) {
+            setAsk({
+              seq: Date.now(),
+              typeId: v,
+              typeName: typeName(v),
+              suggestedStatusId: need.suggestedStatusId,
+              detach: !!plan,
+            });
+            setAskOpen(true);
+          } else toast.error(apiErrorMessage(e));
+        },
+      },
+    );
+  }
+
   return (
     <>
       <SearchSelect
@@ -147,26 +223,7 @@ export function IssueTypeSelect({ issue }: { issue: IssueDto }) {
           label: t.name,
           color: t.color,
         }))}
-        onChange={(v) => {
-          if (v === issue.type.id) return;
-          patch.mutate(
-            { id: issue.id, key: issue.key, patch: { typeId: v }, version: issue.version },
-            {
-              onError: (e) => {
-                const need = statusMappingNeeded(e);
-                if (need) {
-                  setAsk({
-                    seq: Date.now(),
-                    typeId: v,
-                    typeName: typeName(v),
-                    suggestedStatusId: need.suggestedStatusId,
-                  });
-                  setAskOpen(true);
-                } else toast.error(apiErrorMessage(e));
-              },
-            },
-          );
-        }}
+        onChange={(v) => void changeType(v)}
         className={INLINE_TRIGGER}
         renderTrigger={() => (
           <span title={`Loại việc: ${issue.type.name}. Bấm để đổi.`}>
@@ -191,7 +248,7 @@ export function IssueTypeSelect({ issue }: { issue: IssueDto }) {
               {
                 id: issue.id,
                 key: issue.key,
-                patch: { typeId: ask.typeId, targetStatusId },
+                patch: { typeId: ask.typeId, targetStatusId, ...(ask.detach ? DETACH : {}) },
                 version: issue.version,
               },
               {

@@ -53,6 +53,9 @@ function fieldIcon(field: string): LucideIcon {
       return Layers;
     case 'TYPE':
       return Tag;
+    case 'EPIC':
+    case 'PARENT':
+      return Layers;
     case 'DESCRIPTION':
       return FileText;
     case 'COMPONENT':

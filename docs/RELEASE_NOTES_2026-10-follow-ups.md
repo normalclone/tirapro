@@ -1050,3 +1050,21 @@ Spec: `docs/superpowers/specs/2026-11-05-dashboard-templates-design.md`. Nhánh 
 - Thẻ "Người quá tải" đo người trên mọi dự án nên chỉ có khi bảng lấy số liệu toàn tổ chức.
 - Cho phép `POST /dashboards` bỏ trống `dataScope` (→ `ORG`) là chủ ý để client cũ không vỡ; có thể bắt buộc sau khi mọi client đã cập nhật.
 - Báo cáo chất lượng ở phạm vi toàn tổ chức gửi tối đa 200 dự án đang hoạt động đầu tiên người xem thấy.
+
+---
+
+# Sửa lỗi tester: đổi loại sang Epic, Cây việc có xem nhanh (2026-11)
+
+## 1. Cần làm khi triển khai
+
+- **Có migration:** `20261108100000_history_epic_parent` — chỉ `ALTER TYPE "HistoryField" ADD VALUE` (`EPIC`, `PARENT`). Không khoá bảng, không cần dừng dịch vụ. Lùi mã sau khi đã có dòng lịch sử `EPIC`/`PARENT` thì API cũ đọc lịch sử có thể lỗi enum — nên sửa tiếp thay vì lùi.
+
+## 2. Thay đổi
+
+- **TIRA-BUG-20:** đổi loại một việc đang thuộc Epic/việc cha sang Epic không còn âm thầm tạo "Epic trong Epic". Giao diện hỏi trước ("đang thuộc Epic KEY tên — đổi thành Epic sẽ gỡ nó khỏi Epic đó") rồi gửi MỘT yêu cầu vừa đổi loại vừa gỡ Epic/việc cha, có Hoàn tác. API: đổi sang Epic mà việc vẫn còn `epicId`/`parentId` sau yêu cầu → 422 (gửi `epicId: null, parentId: null` cùng lúc để gỡ). Việc con trực tiếp của việc vừa thành Epic chuyển thành việc của Epic đó (điểm Epic = tổng việc con). Lịch sử việc ghi thêm đổi Loại, Epic, Việc cha.
+- **TIRA-BUG-21:** Cây việc giữ nguyên bề rộng mọi cột khi mở xem nhanh; bảng cuộn ngang thay vì chồng chữ (cột tiêu đề tối thiểu 26rem).
+
+## 3. Còn mở
+
+- Đổi Epic → loại thường vẫn để các việc con trỏ `epicId` vào một việc không còn là Epic (có từ trước).
+- Cột tiêu đề chưa dính khi cuộn ngang (nền hàng đổi theo trạng thái nên cần nền đục riêng từng trạng thái).

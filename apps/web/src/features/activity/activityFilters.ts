@@ -13,7 +13,16 @@ export const ACTIVITY_FILTERS: { id: string; label: string; fields: string[] }[]
   {
     id: 'other',
     label: 'Khác',
-    fields: ['TYPE', 'RESOLUTION', 'SCOPE', 'TIME_SPENT', 'COMPONENT', 'FIX_VERSION'],
+    fields: [
+      'TYPE',
+      'RESOLUTION',
+      'SCOPE',
+      'TIME_SPENT',
+      'COMPONENT',
+      'FIX_VERSION',
+      'EPIC',
+      'PARENT',
+    ],
   },
 ];
 
@@ -31,6 +40,13 @@ function parseVersionValue(v: string | null): { type: 'FIX' | 'AFFECTS'; name: s
   if (!v) return null;
   const m = /^(FIX|AFFECTS):(.*)$/s.exec(v);
   return m ? { type: m[1] as 'FIX' | 'AFFECTS', name: m[2]! } : { type: 'FIX', name: v };
+}
+
+/** Gắn/đổi/gỡ Epic hoặc việc cha (giá trị là mã việc): "gắn vào Epic X", "đổi Epic: X → Y", "gỡ khỏi Epic X". */
+function placementSentence(what: string, from: string | null, to: string | null): string {
+  if (to && from) return `đổi ${what}: ${from} → ${to}`;
+  if (to) return `gắn vào ${what} ${to}`;
+  return from ? `gỡ khỏi ${what} ${from}` : `gỡ khỏi ${what}`;
 }
 
 type ActivityLike = Pick<ActivityItem, 'field' | 'oldValue' | 'newValue' | 'oldLabel' | 'newLabel'>;
@@ -61,6 +77,10 @@ export function describeActivity(a: ActivityLike): string {
     }
     case 'TYPE':
       return 'đổi loại';
+    case 'EPIC':
+      return placementSentence('Epic', a.oldValue, a.newValue);
+    case 'PARENT':
+      return placementSentence('việc cha', a.oldValue, a.newValue);
     case 'RESOLUTION':
       return 'đổi kết quả xử lý';
     case 'TIME_SPENT':
@@ -84,7 +104,9 @@ export function projectFeedSentence(a: ActivityLike): string | null {
   return a.field === 'DESCRIPTION' ||
     a.field === 'COMPONENT' ||
     a.field === 'FIX_VERSION' ||
-    a.field === 'TIME_SPENT'
+    a.field === 'TIME_SPENT' ||
+    a.field === 'EPIC' ||
+    a.field === 'PARENT'
     ? `đã ${describeActivity(a)}`
     : null;
 }

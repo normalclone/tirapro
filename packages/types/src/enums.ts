@@ -215,6 +215,8 @@ export const HistoryField = {
   DESCRIPTION: 'DESCRIPTION',
   COMPONENT: 'COMPONENT',
   FIX_VERSION: 'FIX_VERSION',
+  EPIC: 'EPIC',
+  PARENT: 'PARENT',
 } as const;
 export type HistoryField = (typeof HistoryField)[keyof typeof HistoryField];
 

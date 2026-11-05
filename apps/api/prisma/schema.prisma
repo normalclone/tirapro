@@ -206,6 +206,8 @@ enum HistoryField {
   DESCRIPTION
   COMPONENT
   FIX_VERSION
+  EPIC
+  PARENT
 }
 
 enum AiSuggestionKind {

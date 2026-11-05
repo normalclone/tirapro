@@ -6108,3 +6108,198 @@ describe('IssuesService — quy trình theo loại việc', () => {
     });
   });
 });
+
+describe('IssuesService.update — đổi loại sang Epic (TIRA-BUG-20)', () => {
+  const typeEpic = {
+    ...issueRow().type,
+    id: 't-epic',
+    name: 'Epic',
+    key: 'EPIC',
+    hierarchyLevel: 1,
+  };
+  const typeRows: Record<string, { key: string; hierarchyLevel: number }> = {
+    't-epic': { key: 'EPIC', hierarchyLevel: 1 },
+    t1: { key: 'TASK', hierarchyLevel: 0 },
+  };
+
+  /** `kids`: việc con trực tiếp của `i1` (để Epic mới nhận); `keys`: id → mã việc (tra lịch sử). */
+  function tx(
+    current: Record<string, unknown>,
+    after: Record<string, unknown>,
+    o: {
+      kids?: Array<{ id: string; epicId: string | null; sprintId: string | null }>;
+      keys?: Record<string, string>;
+      rows?: Record<string, Record<string, unknown>>;
+    } = {},
+  ) {
+    const keys = o.keys ?? { e1: 'P-EPIC-1', par: 'P-TASK-9' };
+    return {
+      issue: {
+        findFirst: vi.fn(({ where }: { where: { id: string } }) =>
+          Promise.resolve(where.id === 'i1' ? current : (o.rows?.[where.id] ?? null)),
+        ),
+        findFirstOrThrow: vi.fn(() => Promise.resolve(after)),
+        findMany: vi.fn(
+          (a: { where: { parentId?: unknown; id?: { in: string[] } }; select?: unknown }) => {
+            if (typeof a.where.parentId === 'string') return Promise.resolve(o.kids ?? []);
+            if (a.where.parentId !== undefined) return Promise.resolve([]); // idsWithLiveChildren
+            const ids = a.where.id?.in ?? [];
+            return Promise.resolve(ids.map((id) => ({ ...issueRow({ id }), key: keys[id] ?? id })));
+          },
+        ),
+        updateMany: vi.fn((_a: { where: { id: unknown }; data: Record<string, unknown> }) =>
+          Promise.resolve({ count: 1 }),
+        ),
+        aggregate: vi.fn(() => Promise.resolve({ _sum: { storyPoints: 0 }, _count: { _all: 0 } })),
+      },
+      issueHistory: { createMany: vi.fn() },
+      issueType: {
+        findFirst: vi.fn(({ where }: { where: { id: string } }) =>
+          Promise.resolve({
+            id: where.id,
+            ...(typeRows[where.id] ?? { key: 'TASK', hierarchyLevel: 0 }),
+          }),
+        ),
+        findUnique: vi.fn(({ where }: { where: { id: string } }) =>
+          Promise.resolve({ key: typeRows[where.id]?.key ?? 'TASK' }),
+        ),
+      },
+      project: {
+        findUnique: vi.fn(() => Promise.resolve({ organizationId: 'w1', defaultWorkflowId: null })),
+      },
+    };
+  }
+  const asEpic = (over: Record<string, unknown> = {}) =>
+    issueRow({ typeId: 't-epic', type: typeEpic, version: 4, ...over });
+  const hist = (t: ReturnType<typeof tx>) =>
+    t.issueHistory.createMany.mock.calls.flatMap(
+      (c) => (c[0] as { data: Array<Record<string, unknown>> }).data,
+    );
+
+  it.each([
+    ['epicId', { epicId: 'e1' }],
+    ['parentId', { parentId: 'par' }],
+    ['cả hai', { epicId: 'e1', parentId: 'par' }],
+  ])('đang thuộc %s mà request không gỡ => 422, không ghi gì', async (_n, cur) => {
+    const t = tx(issueRow(cur), asEpic());
+    const { service } = makeService(t);
+    await expect(
+      service.update('w1', 'u1', 'i1', { version: 3, typeId: 't-epic' }),
+    ).rejects.toMatchObject({
+      status: 422,
+      message: has('gửi epicId: null và parentId: null'),
+    });
+    expect(t.issue.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('chỉ gỡ epicId mà còn parentId (hoặc ngược lại) => vẫn 422', async () => {
+    const t = tx(issueRow({ epicId: 'e1', parentId: 'par' }), asEpic());
+    const { service } = makeService(t);
+    await expect(
+      service.update('w1', 'u1', 'i1', { version: 3, typeId: 't-epic', epicId: null }),
+    ).rejects.toMatchObject({ status: 422 });
+    await expect(
+      service.update('w1', 'u1', 'i1', { version: 3, typeId: 't-epic', parentId: null }),
+    ).rejects.toMatchObject({ status: 422 });
+    expect(t.issue.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('cùng request gỡ epicId + parentId => một lần ghi: loại mới + epicId/parentId null, lịch sử TYPE/EPIC/PARENT', async () => {
+    const t = tx(
+      issueRow({ epicId: 'e1', parentId: 'par' }),
+      asEpic({ epicId: null, parentId: null }),
+    );
+    const { service } = makeService(t);
+    await service.update('w1', 'u1', 'i1', {
+      version: 3,
+      typeId: 't-epic',
+      epicId: null,
+      parentId: null,
+    });
+    const writes = t.issue.updateMany.mock.calls.filter((c) => c[0].where.id === 'i1');
+    expect(writes).toHaveLength(1);
+    expect(writes[0]![0].data).toMatchObject({ typeId: 't-epic', epicId: null, parentId: null });
+    expect(hist(t)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ field: 'TYPE', oldValue: 'Task', newValue: 'Epic' }),
+        expect.objectContaining({ field: 'EPIC', oldValue: 'P-EPIC-1', newValue: null }),
+        expect.objectContaining({ field: 'PARENT', oldValue: 'P-TASK-9', newValue: null }),
+      ]),
+    );
+  });
+
+  it('việc không thuộc epic/cha đổi sang Epic => không cần gỡ gì', async () => {
+    const t = tx(issueRow(), asEpic());
+    const { service } = makeService(t);
+    await service.update('w1', 'u1', 'i1', { version: 3, typeId: 't-epic' });
+    expect(hist(t).map((r) => r.field)).toEqual(['TYPE']);
+  });
+
+  it('đang là Epic: vẫn không được gắn epicId/parentId (luật cũ giữ nguyên)', async () => {
+    const t = tx(asEpic({ version: 3 }), asEpic(), {
+      rows: { e2: { projectId: 'p1', epicId: null, type: { key: 'EPIC', hierarchyLevel: 1 } } },
+    });
+    const { service } = makeService(t);
+    await expect(
+      service.update('w1', 'u1', 'i1', { version: 3, epicId: 'e2' }),
+    ).rejects.toMatchObject({ status: 422, message: has('cấp cao nhất') });
+  });
+
+  it('Epic → loại thường kèm gắn lại Epic trong cùng request (Hoàn tác) => hợp lệ', async () => {
+    const t = tx(asEpic({ version: 3 }), issueRow({ epicId: 'e1', version: 4 }), {
+      rows: { e1: { projectId: 'p1', epicId: null, type: { key: 'EPIC', hierarchyLevel: 1 } } },
+    });
+    const { service } = makeService(t);
+    await service.update('w1', 'u1', 'i1', { version: 3, typeId: 't1', epicId: 'e1' });
+    const w = t.issue.updateMany.mock.calls.find((c) => c[0].where.id === 'i1')!;
+    expect(w[0].data).toMatchObject({ typeId: 't1', epicId: 'e1' });
+  });
+
+  it('việc con trực tiếp thành việc của Epic mới (parentId → null, epicId → Epic), kèm lịch sử và sự kiện', async () => {
+    const t = tx(issueRow(), asEpic(), {
+      kids: [
+        { id: 'k1', epicId: null, sprintId: 's9' },
+        { id: 'k2', epicId: 'e1', sprintId: null },
+      ],
+    });
+    const { service, events } = makeService(t);
+    await service.update('w1', 'u1', 'i1', { version: 3, typeId: 't-epic' });
+    const adopt = t.issue.updateMany.mock.calls.find(
+      (c) => (c[0].where.id as { in?: string[] }).in?.join() === 'k1,k2',
+    )!;
+    expect(adopt[0].data).toMatchObject({ parentId: null, epicId: 'i1' });
+    expect(hist(t)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          issueId: 'k1',
+          field: 'PARENT',
+          oldValue: 'P-TASK-1',
+          newValue: null,
+        }),
+        expect.objectContaining({
+          issueId: 'k1',
+          field: 'EPIC',
+          oldValue: null,
+          newValue: 'P-TASK-1',
+        }),
+        expect.objectContaining({ issueId: 'k2', field: 'EPIC', oldValue: 'P-EPIC-1' }),
+      ]),
+    );
+    await vi.waitFor(() =>
+      expect(events.emit).toHaveBeenCalledWith(
+        DOMAIN_EVENTS.ISSUE_UPDATED,
+        expect.objectContaining({
+          issue: expect.objectContaining({ id: 'k1' }) as unknown,
+          changedFields: ['parentId', 'epicId'],
+        }),
+      ),
+    );
+  });
+
+  it('không có việc con => không ghi việc nào khác ngoài chính nó', async () => {
+    const t = tx(issueRow(), asEpic());
+    const { service } = makeService(t);
+    await service.update('w1', 'u1', 'i1', { version: 3, typeId: 't-epic' });
+    expect(t.issue.updateMany.mock.calls.every((c) => c[0].where.id === 'i1')).toBe(true);
+  });
+});
