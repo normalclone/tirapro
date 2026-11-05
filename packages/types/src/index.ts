@@ -7,3 +7,4 @@ export * from './common';
 export * from './audit';
 export * from './roleLabels';
 export * from './workflow-scheme';
+export * from './assistant-bulk';

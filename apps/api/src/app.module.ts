@@ -66,6 +66,7 @@ import { WorklogsModule } from './modules/worklogs/worklogs.module';
 import { WikiModule } from './modules/wiki/wiki.module';
 import { ResourcesModule } from './modules/resources/resources.module';
 import { ProgramsModule } from './modules/programs/programs.module';
+import { AssistantBulkModule } from './modules/assistant-bulk/assistant-bulk.module';
 import { RaidModule } from './modules/raid/raid.module';
 import { DashboardsModule } from './modules/dashboards/dashboards.module';
 import { GoalsModule } from './modules/goals/goals.module';
@@ -183,6 +184,7 @@ import { ApiKeyModule } from './modules/api-keys/api-key.module';
     WikiModule,
     ResourcesModule,
     ProgramsModule,
+    AssistantBulkModule,
     RaidModule,
     GoalsModule,
     DashboardsModule,
