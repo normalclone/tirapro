@@ -1014,3 +1014,39 @@ Chưa có báo cáo nào xác nhận các mục này đã chạy; người kiể
 
 - Tài khoản bị vô hiệu hoá / rời tổ chức chỉ được dọn ở lần đồng bộ kế tiếp (không có quyền nào khi không còn trong tổ chức nên vô hại).
 - `ProjectTeamLink.roleIds` không có khoá ngoại: xoá một vai trò vẫn được, id treo bị bỏ qua.
+
+---
+
+# Bảng tổng quan: mẫu dựng sẵn + phạm vi dữ liệu (2026-11-05)
+
+Spec: `docs/superpowers/specs/2026-11-05-dashboard-templates-design.md`. Nhánh `feat/dashboard-templates` (base `ad9f233b`).
+
+## 1. Cần làm khi triển khai
+
+- **Có migration:** `20261106300000_dashboard_data_scope` — thêm enum `DashboardDataScope {PROJECT, GROUP, ORG}` và 3 cột trên `Dashboard` (`dataScope` mặc định `ORG`, `scopeProjectId`, `scopeProgramId`, hai khoá ngoại `ON DELETE SET NULL`, hai chỉ mục). Chạy được trên PostgreSQL 16 (prod) và 18; không khoá bảng lớn, không sửa dữ liệu cũ.
+- **Dashboard hiện có đều thành `ORG` (toàn tổ chức) nên số liệu không đổi.** Trước đây ô không tự chọn dự án đọc số toàn tổ chức đã lọc theo dự án người xem thấy; `Dashboard.projectId` chỉ quyết định ai được XEM bảng, chưa bao giờ ảnh hưởng số liệu. Gán "theo dự án" cho bảng đang chia sẻ cho một dự án sẽ làm các ô thu hẹp bất ngờ, nên không dùng cách đó.
+- Triển khai API và web cùng lúc (web mới gọi `/dashboard-templates`, `/dashboards/from-template`, tham số `projectIds`, `/reports/qa/projects`).
+
+## 2. Thay đổi người dùng thấy
+
+- **Tạo bảng từ mẫu:** "Tạo bảng tổng quan mới…" mở thư viện mẫu (`/dashboards/new`): chọn mẫu (xem trước sơ đồ khối) → chọn phạm vi dữ liệu → đặt tên (tuỳ chọn) → Tạo. 5 mẫu: Tổng quan dự án, Kiểm thử, Lập trình viên, Quản lý tổ chức, Trống. Bảng mới luôn riêng tư; chia sẻ chỉnh sau.
+- **Phạm vi dữ liệu** (khác với "ai được xem"): một dự án / một nhóm dự án của tôi / toàn tổ chức (chỉ quản trị viên tổ chức chọn mới). Ô không tự chọn dự án lấy số liệu theo phạm vi của bảng; ô đã chọn dự án riêng giữ nguyên. Đổi phạm vi sau khi tạo: nút "Dữ liệu" trong màn chỉnh sửa; ô kế thừa tự đi theo. Mỗi ô ghi rõ nó lấy số liệu của đâu ("Nhóm … · N dự án", "Dự án ABC", "Toàn tổ chức", "Dự án ABC (riêng)").
+- **Người xem chỉ thấy phần của mình:** bảng theo nhóm dự án luôn giao danh sách dự án của nhóm với dự án NGƯỜI XEM được thấy. Nhóm hết dự án xem được hoặc đã bị xoá → ô trống, không bao giờ rơi về "toàn tổ chức".
+- **Ô mới:** chỉ số "Tỉ lệ mở lại" (báo cáo chất lượng 30 ngày), biểu đồ tròn theo "Người phụ trách" (việc chưa xong) và "Mức nghiêm trọng" (bug đang mở).
+- Mẫu Kiểm thử không gọi tên trạng thái nào (quy trình mỗi tổ chức một khác): danh sách "Bug đang xử lý hoặc chờ kiểm thử lại" lấy nhóm trạng thái "đang làm". Câu lọc mà quy trình không hiểu (máy chủ trả 422) hiện trống kèm giải thích, không phải khung lỗi.
+- **Tên nhóm dự án hiển thị cho người xem:** với bảng chia sẻ theo nhóm dự án, mọi người xem được bảng đều thấy TÊN nhóm (và mã/tên các dự án họ xem được trong nhóm). Nhóm vẫn là của riêng chủ nhóm: người khác không mở, không sửa được nhóm đó, và nhân bản bảng của người khác không mang nhóm riêng của họ sang bản sao (bản sao về toàn tổ chức).
+
+## 3. API
+
+- `GET /dashboard-templates` (cần `dashboard:manage`) → `{ templates, canUseOrgScope }`.
+- `POST /dashboards/from-template { templateKey, dataScope, scopeProjectId?, scopeProgramId?, name? }` → dashboard chi tiết. `dataScope` bắt buộc; `ORG` chỉ quản trị viên tổ chức (403), nhóm phải là của người gọi (404), mẫu không hỗ trợ phạm vi → 422.
+- `POST/PUT /dashboards` nhận thêm `dataScope`, `scopeProjectId`, `scopeProgramId` (tuỳ chọn). Bỏ trống: tạo mới → `ORG` (hành vi cũ, không qua cổng quyền), sửa → giữ nguyên. Chọn rõ `ORG` mà không phải quản trị viên → 403 (giữ nguyên `ORG` sẵn có thì không hỏi lại). Client web chỉ gửi trường này khi người dùng đổi phạm vi.
+- Dashboard trả thêm `dataScope`, `scopeProjectId`, `scopeProgramId`, `scopeProgramName`; bản chi tiết thêm `scopeProjects` (dự án trong phạm vi mà người xem thấy; `null` = toàn tổ chức) và mỗi ô có `inherits`, `projectIds`.
+- Báo cáo nhận `projectIds` (CSV hoặc tham số lặp; luôn giao với dự án người xem thấy ở máy chủ; **vắng tham số = không thu hẹp, chuỗi rỗng `projectIds=` = không dự án nào**): `GET /reports/overview`, `GET /reports/leadership`; mới `GET /reports/qa/projects` (báo cáo chất lượng nhiều dự án, cần `report:view` cấp tổ chức). Tối đa 200 dự án mỗi yêu cầu. `GET /reports/overview?byAssignee=1` kèm `byAssignee` (việc chưa xong theo người); mặc định không tính.
+
+## 4. Còn mở
+
+- Mẫu thiếu so với spec vì chưa có widget tương ứng: xu hướng bug 14 ngày chỉ-bug và "bug theo trạng thái" (mẫu dùng xu hướng tạo mới/đã xử lý của mọi việc và hai danh sách bug); "điểm đã xong của tôi" (mẫu có "Tôi vừa xong" theo số việc); theo dự án và điểm theo tuần theo dự án cho Quản lý tổ chức. Cần loại ô mới (thêm giá trị enum `WidgetType`).
+- Thẻ "Người quá tải" đo người trên mọi dự án nên chỉ có khi bảng lấy số liệu toàn tổ chức.
+- Cho phép `POST /dashboards` bỏ trống `dataScope` (→ `ORG`) là chủ ý để client cũ không vỡ; có thể bắt buộc sau khi mọi client đã cập nhật.
+- Báo cáo chất lượng ở phạm vi toàn tổ chức gửi tối đa 200 dự án đang hoạt động đầu tiên người xem thấy.

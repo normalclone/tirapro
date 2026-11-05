@@ -26,8 +26,21 @@ export type DashboardWidgetType = (typeof DASHBOARD_WIDGET_TYPES)[number];
 
 const UNSUPPORTED_WIDGET_TYPES = ['CFD', 'SPRINT_REPORT', 'CONTROL_CHART', 'AI_INSIGHT'] as const;
 
-export const STAT_METRICS = ['open', 'overdue', 'bugs', 'done14', 'projects'] as const;
-export const PIE_FIELDS = ['status', 'type', 'priority'] as const;
+/** Phạm vi DỮ LIỆU (khác `DASHBOARD_SCOPES` = ai được xem): một dự án / một nhóm dự án của chủ / cả tổ chức (chỉ admin tổ chức). */
+export const DASHBOARD_DATA_SCOPES = ['PROJECT', 'GROUP', 'ORG'] as const;
+export type DashboardDataScopeValue = (typeof DASHBOARD_DATA_SCOPES)[number];
+
+/** `reopenRate` = tỉ lệ bug mở lại (báo cáo QA 30 ngày). */
+export const STAT_METRICS = [
+  'open',
+  'overdue',
+  'bugs',
+  'done14',
+  'projects',
+  'reopenRate',
+] as const;
+/** `severity` = bug đang mở theo mức nghiêm trọng; `assignee` = việc chưa xong theo người phụ trách. */
+export const PIE_FIELDS = ['status', 'type', 'priority', 'severity', 'assignee'] as const;
 
 const projectIdOptional = z.string().min(1).optional();
 const projectIdRequired = z.string().min(1, 'Chọn dự án');
@@ -94,6 +107,10 @@ const dashboardShape = {
   scope: z.enum(DASHBOARD_SCOPES),
   projectId: z.string().min(1).optional(),
   teamId: z.string().min(1).optional(),
+  /** Bỏ trống = giữ nguyên (tạo mới: "toàn tổ chức" như dashboard cũ — hành vi trước khi có phạm vi dữ liệu). */
+  dataScope: z.enum(DASHBOARD_DATA_SCOPES).optional(),
+  scopeProjectId: z.string().min(1).optional(),
+  scopeProgramId: z.string().min(1).optional(),
   widgets: z
     .array(widgetInputSchema)
     .max(DASHBOARD_LIMITS.widgetsPerDashboard)
@@ -129,12 +146,54 @@ function scopeRules(v: ScopeFields, ctx: z.RefinementCtx): void {
   }
 }
 
-export const dashboardInputSchema = z.object(dashboardShape).superRefine(scopeRules);
+type DataScopeFields = {
+  dataScope?: DashboardDataScopeValue;
+  scopeProjectId?: string;
+  scopeProgramId?: string;
+};
+
+/** PROJECT ⇒ cần scopeProjectId; GROUP ⇒ cần scopeProgramId; ORG/bỏ trống ⇒ cấm cả hai (không để id mồ côi). */
+export function dataScopeRules(v: DataScopeFields, ctx: z.RefinementCtx): void {
+  const need = (field: 'scopeProjectId' | 'scopeProgramId', message: string) => {
+    if (!v[field]) ctx.addIssue({ code: z.ZodIssueCode.custom, path: [field], message });
+  };
+  const forbid = (field: 'scopeProjectId' | 'scopeProgramId', message: string) => {
+    if (v[field]) ctx.addIssue({ code: z.ZodIssueCode.custom, path: [field], message });
+  };
+  if (v.dataScope === 'PROJECT') {
+    need('scopeProjectId', 'Chọn dự án');
+    forbid('scopeProgramId', 'Phạm vi "một dự án" không đi kèm nhóm dự án');
+  } else if (v.dataScope === 'GROUP') {
+    need('scopeProgramId', 'Chọn nhóm dự án');
+    forbid('scopeProjectId', 'Phạm vi "nhóm dự án" không đi kèm một dự án');
+  } else {
+    forbid('scopeProjectId', 'Chỉ phạm vi "một dự án" mới gắn dự án');
+    forbid('scopeProgramId', 'Chỉ phạm vi "nhóm dự án" mới gắn nhóm');
+  }
+}
+
+export const dashboardInputSchema = z
+  .object(dashboardShape)
+  .superRefine(scopeRules)
+  .superRefine(dataScopeRules);
 
 /** Cập nhật = thay toàn bộ + `updatedAt` đã đọc (lệch → 409 "vừa được người khác sửa"). */
 export const dashboardUpdateSchema = z
   .object({ ...dashboardShape, updatedAt: z.string().datetime() })
-  .superRefine(scopeRules);
+  .superRefine(scopeRules)
+  .superRefine(dataScopeRules);
+
+/** Tạo từ mẫu: chọn mẫu + phạm vi dữ liệu (bắt buộc rõ ràng) + tên tuỳ chọn. Mức chia sẻ luôn bắt đầu PRIVATE. */
+export const dashboardFromTemplateSchema = z
+  .object({
+    templateKey: z.string().min(1),
+    dataScope: z.enum(DASHBOARD_DATA_SCOPES),
+    scopeProjectId: z.string().min(1).optional(),
+    scopeProgramId: z.string().min(1).optional(),
+    name: z.string().trim().min(1, 'Tên dashboard bắt buộc').max(120).optional(),
+  })
+  .superRefine(dataScopeRules);
+export type DashboardFromTemplateInput = z.output<typeof dashboardFromTemplateSchema>;
 
 export type DashboardInput = z.output<typeof dashboardInputSchema>;
 export type DashboardUpdateInput = z.output<typeof dashboardUpdateSchema>;
@@ -149,9 +208,23 @@ export interface CustomWidgetDto {
   title: string;
   config: Record<string, unknown>;
   position: { order: number; w: 1 | 2 | 3 };
+  /**
+   * Dự án mà ô này đọc số liệu CHO NGƯỜI XEM: ô tự đặt dự án → [dự án đó]; ô kế thừa → danh sách theo phạm vi dashboard
+   * (đã lọc theo dự án người xem thấy; `null` = toàn tổ chức, không lọc). Chỉ có ở bản chi tiết.
+   */
+  projectIds?: string[] | null;
+  /** Ô không tự đặt dự án (đi theo phạm vi dữ liệu của dashboard). */
+  inherits?: boolean;
 }
 
-export interface CustomDashboardSummaryDto {
+export interface DashboardDataScopeDto {
+  dataScope: DashboardDataScopeValue;
+  scopeProjectId: string | null;
+  scopeProgramId: string | null;
+  scopeProgramName: string | null;
+}
+
+export interface CustomDashboardSummaryDto extends DashboardDataScopeDto {
   id: string;
   name: string;
   description: string | null;
@@ -171,4 +244,10 @@ export interface CustomDashboardSummaryDto {
 
 export interface CustomDashboardDto extends CustomDashboardSummaryDto {
   widgets: CustomWidgetDto[];
+  /**
+   * Dự án trong phạm vi dữ liệu mà NGƯỜI XEM được thấy (nhóm dự án của chủ ∩ dự án người xem thấy); `null` = phạm vi
+   * toàn tổ chức (mọi dự án người xem thấy, không cần lọc). Hai người xem một
+   * dashboard nhóm có thể nhận hai danh sách khác nhau. Dùng làm `projectIds` khi gọi báo cáo / dựng JQL cho ô kế thừa.
+   */
+  scopeProjects: Array<{ id: string; key: string; name: string }> | null;
 }

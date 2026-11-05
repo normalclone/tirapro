@@ -15,6 +15,10 @@ interface Opts {
   dashboardCount?: number;
   existingWidgets?: Array<{ id: string; config?: unknown }>;
   updateCount?: number;
+  /** Nhóm dự án tìm được (findFirst); null = không phải của người gọi / không có. */
+  program?: Record<string, unknown> | null;
+  /** Dự án trả về cho findMany (phạm vi dữ liệu). */
+  scopeProjects?: Array<{ id: string; key: string; name: string }>;
 }
 
 function rowOf(over: Record<string, unknown> = {}) {
@@ -27,6 +31,10 @@ function rowOf(over: Record<string, unknown> = {}) {
     name: 'Tuần này',
     description: null,
     scope: 'PRIVATE',
+    dataScope: 'ORG',
+    scopeProjectId: null,
+    scopeProgramId: null,
+    scopeProgram: null,
     layout: { version: 1, columns: 3 },
     updatedAt: NOW,
     owner: { id: 'u1', displayName: 'An', avatarUrl: null },
@@ -70,7 +78,14 @@ function make(opts: Opts = {}) {
             : opts.project,
         ),
       ),
-      findMany: vi.fn(() => Promise.resolve([{ id: 'p1' }])),
+      findMany: vi.fn(() => Promise.resolve(opts.scopeProjects ?? [{ id: 'p1' }])),
+    },
+    program: {
+      findFirst: vi.fn(() =>
+        Promise.resolve(
+          opts.program === undefined ? { id: 'g1', name: 'Nhóm của tôi' } : opts.program,
+        ),
+      ),
     },
     team: {
       findFirst: vi.fn(() =>
@@ -645,5 +660,336 @@ describe('DashboardsService — 404 theo dữ liệu thật (where được đá
     await expect(admin.get('w1', 'privOther', 'adm')).rejects.toMatchObject({ status: 404 });
     await expect(admin.get('w1', 'projPriv', 'adm')).resolves.toMatchObject({ id: 'projPriv' });
     await expect(admin.get('w1', 'teamD', 'adm')).resolves.toMatchObject({ id: 'teamD' });
+  });
+});
+
+describe('DashboardsService — phạm vi dữ liệu (cổng quyền)', () => {
+  it('tạo kiểu cũ (không có dataScope) bởi người thường → ORG, không bị chặn (hành vi trước khi có phạm vi dữ liệu)', async () => {
+    const { svc, prisma } = make({ isAdmin: false });
+    await svc.create('w1', 'u1', input());
+    const data = (
+      prisma.dashboard.create.mock.calls[0] as unknown as [{ data: Record<string, unknown> }]
+    )[0].data;
+    expect(data).toMatchObject({ dataScope: 'ORG', scopeProjectId: null, scopeProgramId: null });
+  });
+
+  it('chọn rõ ORG khi tạo: người thường 403, admin tổ chức được', async () => {
+    const a = make({ isAdmin: false });
+    await expect(a.svc.create('w1', 'u1', input({ dataScope: 'ORG' }))).rejects.toMatchObject({
+      status: 403,
+    });
+    expect(a.prisma.dashboard.create).not.toHaveBeenCalled();
+    const b = make({ isAdmin: true });
+    await b.svc.create('w1', 'u1', input({ dataScope: 'ORG' }));
+    expect(b.prisma.dashboard.create).toHaveBeenCalled();
+  });
+
+  it('sửa: đổi sang ORG từ phạm vi khác → 403 với người thường; giữ nguyên ORG (hoặc dashboard kiểu cũ) → không 403', async () => {
+    const toOrg = make({ row: rowOf({ dataScope: 'PROJECT', scopeProjectId: 'p1' }) });
+    await expect(
+      toOrg.svc.update('w1', 'd1', 'u1', update({ dataScope: 'ORG' })),
+    ).rejects.toMatchObject({ status: 403 });
+
+    const same = make({ row: rowOf({ dataScope: 'ORG' }) });
+    await same.svc.update('w1', 'd1', 'u1', update({ dataScope: 'ORG' }));
+    expect(same.tx.dashboard.updateMany).toHaveBeenCalled();
+
+    const legacy = make({ row: rowOf({ dataScope: 'ORG' }) });
+    await legacy.svc.update('w1', 'd1', 'u1', update()); // payload kiểu cũ: không có trường phạm vi dữ liệu
+    const data = (
+      legacy.tx.dashboard.updateMany.mock.calls[0] as unknown as [{ data: Record<string, unknown> }]
+    )[0].data;
+    expect(data).toMatchObject({ dataScope: 'ORG', scopeProjectId: null, scopeProgramId: null });
+  });
+
+  it('sửa không gửi dataScope → giữ nguyên phạm vi hiện có (không reset về ORG)', async () => {
+    const { svc, tx } = make({ row: rowOf({ dataScope: 'PROJECT', scopeProjectId: 'p9' }) });
+    await svc.update('w1', 'd1', 'u1', update());
+    const data = (
+      tx.dashboard.updateMany.mock.calls[0] as unknown as [{ data: Record<string, unknown> }]
+    )[0].data;
+    expect(data).toMatchObject({
+      dataScope: 'PROJECT',
+      scopeProjectId: 'p9',
+      scopeProgramId: null,
+    });
+  });
+
+  it('GROUP: nhóm phải là của người gọi (tra theo ownerId); không phải chủ → 404 và không tạo', async () => {
+    const mine = make();
+    await mine.svc.create('w1', 'u1', input({ dataScope: 'GROUP', scopeProgramId: 'g1' }));
+    const programWhere = (
+      mine.prisma.program.findFirst.mock.calls[0] as unknown as [{ where: object }]
+    )[0].where;
+    expect(programWhere).toMatchObject({ id: 'g1', ownerId: 'u1', organizationId: 'w1' });
+    const theirs = make({ program: null });
+    await expect(
+      theirs.svc.create('w1', 'u1', input({ dataScope: 'GROUP', scopeProgramId: 'g-other' })),
+    ).rejects.toMatchObject({ status: 404 });
+    expect(theirs.prisma.dashboard.create).not.toHaveBeenCalled();
+  });
+
+  it('PROJECT: người gọi phải thấy dự án (where có bộ lọc xem); không thấy → 404', async () => {
+    const visible = { OR: [{ isPrivate: false }] };
+    const ok = make({ visibleWhere: visible });
+    await ok.svc.create('w1', 'u1', input({ dataScope: 'PROJECT', scopeProjectId: 'p1' }));
+    expect(JSON.stringify(ok.prisma.project.findFirst.mock.calls[0])).toContain(
+      '"isPrivate":false',
+    );
+    const none = make({ project: null });
+    await expect(
+      none.svc.create('w1', 'u1', input({ dataScope: 'PROJECT', scopeProjectId: 'px' })),
+    ).rejects.toMatchObject({ status: 404 });
+  });
+});
+
+describe('DashboardsService — giải phạm vi dữ liệu thành danh sách dự án', () => {
+  const widgets = [
+    {
+      id: 'w-inherit',
+      type: 'STAT_NUMBER',
+      title: 'Mở',
+      config: { metric: 'open' },
+      position: { order: 0, w: 1 },
+    },
+    {
+      id: 'w-own',
+      type: 'PIE_BY_FIELD',
+      title: 'Pie',
+      config: { field: 'status', projectId: 'p-own' },
+      position: { order: 1, w: 1 },
+    },
+  ];
+
+  it('ORG: scopeProjects = null (không lọc), ô kế thừa projectIds null, ô tự đặt dự án giữ [dự án đó]', async () => {
+    const { svc, prisma } = make({ row: rowOf({ dataScope: 'ORG', widgets }) });
+    const d = await svc.get('w1', 'd1', 'u1');
+    expect(d.scopeProjects).toBeNull();
+    expect(d.widgets.find((w) => w.id === 'w-inherit')).toMatchObject({
+      inherits: true,
+      projectIds: null,
+    });
+    expect(d.widgets.find((w) => w.id === 'w-own')).toMatchObject({
+      inherits: false,
+      projectIds: ['p-own'],
+    });
+    expect(prisma.program.findFirst).not.toHaveBeenCalled();
+  });
+
+  it('GROUP: truy vấn dự án của nhóm GIAO với bộ lọc xem của NGƯỜI XEM; ô kế thừa nhận đúng danh sách đó', async () => {
+    const visible = { OR: [{ isPrivate: false }, { memberships: { some: { userId: 'viewer' } } }] };
+    const { svc, prisma } = make({
+      visibleWhere: visible,
+      row: rowOf({
+        ownerId: 'someone',
+        scope: 'GLOBAL',
+        dataScope: 'GROUP',
+        scopeProgramId: 'g1',
+        scopeProgram: { id: 'g1', name: 'Nhóm X' },
+        widgets,
+      }),
+      scopeProjects: [{ id: 'pa', key: 'A', name: 'A' }],
+    });
+    const d = await svc.get('w1', 'd1', 'viewer');
+    const where = JSON.stringify(
+      (prisma.project.findMany.mock.calls as unknown as Array<[{ where: object }]>).map(
+        (c) => c[0].where,
+      ),
+    );
+    expect(where).toContain('"programLinks":{"some":{"programId":"g1"}}');
+    expect(where).toContain('"userId":"viewer"'); // bộ lọc xem của người XEM, không phải của chủ
+    expect(where).toContain('"deletedAt":null');
+    expect(d.scopeProjects).toEqual([{ id: 'pa', key: 'A', name: 'A' }]);
+    expect(d.scopeProgramName).toBe('Nhóm X');
+    expect(d.widgets.find((w) => w.id === 'w-inherit')?.projectIds).toEqual(['pa']);
+    expect(d.widgets.find((w) => w.id === 'w-own')?.projectIds).toEqual(['p-own']);
+  });
+
+  it('GROUP đã mất nhóm (scopeProgramId null): danh sách rỗng, không truy vấn dự án theo nhóm', async () => {
+    const { svc, prisma } = make({
+      row: rowOf({ dataScope: 'GROUP', scopeProgramId: null, widgets }),
+    });
+    const d = await svc.get('w1', 'd1', 'u1');
+    expect(d.scopeProjects).toEqual([]);
+    expect(d.widgets.find((w) => w.id === 'w-inherit')?.projectIds).toEqual([]);
+    expect(JSON.stringify(prisma.project.findMany.mock.calls)).not.toContain('programLinks');
+  });
+
+  it('PROJECT: chỉ dự án nguồn nếu người xem thấy; không thấy → rỗng', async () => {
+    const seen = make({
+      row: rowOf({ dataScope: 'PROJECT', scopeProjectId: 'p1', widgets }),
+      scopeProjects: [{ id: 'p1', key: 'A', name: 'A' }],
+    });
+    expect((await seen.svc.get('w1', 'd1', 'u1')).scopeProjects).toEqual([
+      { id: 'p1', key: 'A', name: 'A' },
+    ]);
+    const hidden = make({
+      row: rowOf({ dataScope: 'PROJECT', scopeProjectId: 'p1', widgets }),
+      scopeProjects: [],
+    });
+    const d = await hidden.svc.get('w1', 'd1', 'u1');
+    expect(d.scopeProjects).toEqual([]);
+    expect(d.widgets.find((w) => w.id === 'w-inherit')?.projectIds).toEqual([]);
+  });
+
+  it('đổi phạm vi: cùng bộ ô, ô kế thừa theo phạm vi mới, ô tự đặt dự án không đổi', async () => {
+    const a = make({
+      row: rowOf({ dataScope: 'PROJECT', scopeProjectId: 'p1', widgets }),
+      scopeProjects: [{ id: 'p1', key: 'A', name: 'A' }],
+    });
+    const b = make({
+      row: rowOf({ dataScope: 'PROJECT', scopeProjectId: 'p2', widgets }),
+      scopeProjects: [{ id: 'p2', key: 'B', name: 'B' }],
+    });
+    const da = await a.svc.get('w1', 'd1', 'u1');
+    const db = await b.svc.get('w1', 'd1', 'u1');
+    expect(da.widgets[0]!.projectIds).toEqual(['p1']);
+    expect(db.widgets[0]!.projectIds).toEqual(['p2']);
+    expect(da.widgets[1]!.projectIds).toEqual(['p-own']);
+    expect(db.widgets[1]!.projectIds).toEqual(['p-own']);
+  });
+});
+
+describe('DashboardsService.createFromTemplate / listTemplates', () => {
+  it('mẫu lạ → 404; phạm vi mẫu không hỗ trợ → 422; không tạo gì', async () => {
+    const a = make();
+    await expect(
+      a.svc.createFromTemplate('w1', 'u1', { templateKey: 'zzz', dataScope: 'ORG' }),
+    ).rejects.toMatchObject({ status: 404 });
+    await expect(
+      a.svc.createFromTemplate('w1', 'u1', {
+        templateKey: 'org-manager',
+        dataScope: 'PROJECT',
+        scopeProjectId: 'p1',
+      }),
+    ).rejects.toMatchObject({ status: 422 });
+    expect(a.prisma.dashboard.create).not.toHaveBeenCalled();
+  });
+
+  it('phạm vi PROJECT: tạo PRIVATE, ô kế thừa không mang projectId, BURNDOWN/VELOCITY mang dự án, tên mặc định theo dự án', async () => {
+    const { svc, prisma } = make();
+    await svc.createFromTemplate('w1', 'u1', {
+      templateKey: 'project-overview',
+      dataScope: 'PROJECT',
+      scopeProjectId: 'p1',
+    });
+    const data = (
+      prisma.dashboard.create.mock.calls[0] as unknown as [
+        {
+          data: {
+            name: string;
+            scope: string;
+            dataScope: string;
+            scopeProjectId: string;
+            widgets: { create: Array<{ type: string; config: Record<string, unknown> }> };
+          };
+        },
+      ]
+    )[0].data;
+    expect(data).toMatchObject({ scope: 'PRIVATE', dataScope: 'PROJECT', scopeProjectId: 'p1' });
+    expect(data.name).toBe('Tổng quan dự án · Dự án A');
+    const byType = (t: string) => data.widgets.create.filter((w) => w.type === t);
+    expect(byType('BURNDOWN')[0]!.config).toMatchObject({ projectId: 'p1' });
+    expect(byType('VELOCITY')[0]!.config).toMatchObject({ projectId: 'p1' });
+    for (const w of [...byType('STAT_NUMBER'), ...byType('PIE_BY_FIELD')])
+      expect(w.config).not.toHaveProperty('projectId');
+  });
+
+  it('phạm vi GROUP: bỏ BURNDOWN/VELOCITY; ORG: người thường 403, admin tạo được; dashboard Trống không có ô', async () => {
+    const g = make();
+    await g.svc.createFromTemplate('w1', 'u1', {
+      templateKey: 'project-overview',
+      dataScope: 'GROUP',
+      scopeProgramId: 'g1',
+      name: 'Của tôi',
+    });
+    const created = (
+      g.prisma.dashboard.create.mock.calls[0] as unknown as [
+        { data: { name: string; widgets: { create: Array<{ type: string }> } } },
+      ]
+    )[0].data;
+    expect(created.name).toBe('Của tôi');
+    expect(created.widgets.create.map((w) => w.type)).not.toContain('BURNDOWN');
+    expect(created.widgets.create.map((w) => w.type)).not.toContain('VELOCITY');
+
+    const denied = make({ isAdmin: false });
+    await expect(
+      denied.svc.createFromTemplate('w1', 'u1', { templateKey: 'org-manager', dataScope: 'ORG' }),
+    ).rejects.toMatchObject({ status: 403 });
+    expect(denied.prisma.dashboard.create).not.toHaveBeenCalled();
+
+    const admin = make({ isAdmin: true });
+    await admin.svc.createFromTemplate('w1', 'u1', {
+      templateKey: 'org-manager',
+      dataScope: 'ORG',
+    });
+    expect(admin.prisma.dashboard.create).toHaveBeenCalled();
+
+    const blank = make();
+    await blank.svc.createFromTemplate('w1', 'u1', {
+      templateKey: 'blank',
+      dataScope: 'PROJECT',
+      scopeProjectId: 'p1',
+    });
+    const b = (
+      blank.prisma.dashboard.create.mock.calls[0] as unknown as [
+        { data: { widgets: { create: unknown[] } } },
+      ]
+    )[0].data;
+    expect(b.widgets.create).toEqual([]);
+  });
+
+  it('đủ hạn mức dashboard → chặn như tạo thường', async () => {
+    const { svc, prisma } = make({ dashboardCount: 30 });
+    await expect(
+      svc.createFromTemplate('w1', 'u1', {
+        templateKey: 'blank',
+        dataScope: 'PROJECT',
+        scopeProjectId: 'p1',
+      }),
+    ).rejects.toMatchObject({ status: 422 });
+    expect(prisma.dashboard.create).not.toHaveBeenCalled();
+  });
+
+  it('listTemplates: trả mẫu + canUseOrgScope theo admin tổ chức', async () => {
+    const user = await make({ isAdmin: false }).svc.listTemplates('w1', 'u1');
+    expect(user.canUseOrgScope).toBe(false);
+    expect(user.templates.map((t) => t.key)).toContain('qa');
+    expect((await make({ isAdmin: true }).svc.listTemplates('w1', 'u1')).canUseOrgScope).toBe(true);
+  });
+});
+
+describe('DashboardsService.duplicate — phạm vi dữ liệu', () => {
+  it('giữ PROJECT khi người nhân bản thấy dự án; không thấy → về ORG', async () => {
+    const row = rowOf({
+      ownerId: 'x',
+      scope: 'GLOBAL',
+      dataScope: 'PROJECT',
+      scopeProjectId: 'p1',
+    });
+    const seen = make({ row });
+    await seen.svc.duplicate('w1', 'd1', 'u1');
+    expect(
+      (seen.prisma.dashboard.create.mock.calls[0] as unknown as [{ data: object }])[0].data,
+    ).toMatchObject({ dataScope: 'PROJECT', scopeProjectId: 'p1' });
+    const hidden = make({ row, project: null });
+    await hidden.svc.duplicate('w1', 'd1', 'u1');
+    expect(
+      (hidden.prisma.dashboard.create.mock.calls[0] as unknown as [{ data: object }])[0].data,
+    ).toMatchObject({ dataScope: 'ORG', scopeProjectId: null });
+  });
+
+  it('GROUP của người khác không bao giờ sang bản sao (về ORG); của chính mình thì giữ', async () => {
+    const row = rowOf({ ownerId: 'x', scope: 'GLOBAL', dataScope: 'GROUP', scopeProgramId: 'g-x' });
+    const others = make({ row, program: null });
+    await others.svc.duplicate('w1', 'd1', 'u1');
+    expect(
+      (others.prisma.dashboard.create.mock.calls[0] as unknown as [{ data: object }])[0].data,
+    ).toMatchObject({ dataScope: 'ORG', scopeProgramId: null });
+    const mine = make({ row, program: { id: 'g-x' } });
+    await mine.svc.duplicate('w1', 'd1', 'u1');
+    expect(
+      (mine.prisma.dashboard.create.mock.calls[0] as unknown as [{ data: object }])[0].data,
+    ).toMatchObject({ dataScope: 'GROUP', scopeProgramId: 'g-x' });
   });
 });

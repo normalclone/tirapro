@@ -6,6 +6,7 @@ import {
   type DashboardScopeValue,
   type DashboardWidgetType,
 } from '@tirapro/shared';
+import { toScopeFields, type DataScopeValue } from './scope/dataScopeModel';
 import { WIDGET_REGISTRY } from './registry';
 import type { WidgetWidth } from './widgetLayout';
 
@@ -29,6 +30,11 @@ export interface DashboardDraft {
   scope: DashboardScopeValue;
   projectId: string;
   teamId: string;
+  /**
+   * Phạm vi dữ liệu NGƯỜI DÙNG VỪA ĐỔI. `undefined` = chưa đổi → không gửi lên (máy chủ giữ nguyên; gửi lại bản đọc về sẽ
+   * bị từ chối với dashboard có nhóm đã xoá).
+   */
+  dataScope?: DataScopeValue;
   widgets: DraftWidget[];
 }
 
@@ -142,6 +148,7 @@ function fingerprint(d: DashboardDraft): string {
     scope: d.scope,
     projectId: d.projectId || null,
     teamId: d.teamId || null,
+    dataScope: d.dataScope ? toScopeFields(d.dataScope) : null,
     widgets: normalizeOrder(d.widgets).map((w) => [
       w.id,
       w.type,
@@ -200,6 +207,7 @@ export function toDashboardBody(d: DashboardDraft): DashboardInput {
     scope: d.scope,
     projectId: d.scope === 'PROJECT' ? d.projectId : undefined,
     teamId: d.scope === 'TEAM' ? d.teamId : undefined,
+    ...(d.dataScope ? toScopeFields(d.dataScope) : {}),
     widgets: normalizeOrder(d.widgets).map((w) => ({
       ...(w.isNew ? {} : { id: w.id }),
       type: w.type as DashboardWidgetType,

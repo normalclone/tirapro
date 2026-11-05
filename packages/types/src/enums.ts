@@ -146,6 +146,13 @@ export const DashboardScope = {
 } as const;
 export type DashboardScope = (typeof DashboardScope)[keyof typeof DashboardScope];
 
+export const DashboardDataScope = {
+  PROJECT: 'PROJECT',
+  GROUP: 'GROUP',
+  ORG: 'ORG',
+} as const;
+export type DashboardDataScope = (typeof DashboardDataScope)[keyof typeof DashboardDataScope];
+
 export const WidgetType = {
   BURNDOWN: 'BURNDOWN',
   VELOCITY: 'VELOCITY',

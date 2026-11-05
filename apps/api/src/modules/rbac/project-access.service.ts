@@ -72,6 +72,25 @@ export class ProjectAccessService {
   }
 
   /**
+   * Giao danh sách id do CLIENT gửi với dự án NGƯỜI XEM thấy (cùng tổ chức, chưa xoá, qua `visibleWhere`). Dự án không thấy / không
+   * tồn tại bị bỏ âm thầm — không lộ dự án riêng tư. Dùng cho báo cáo theo nhóm dự án (một yêu cầu nhiều dự án).
+   */
+  async visibleAmong(
+    userId: string,
+    organizationId: string,
+    requested: readonly string[],
+  ): Promise<string[]> {
+    const ids = [...new Set(requested)];
+    if (ids.length === 0) return [];
+    const visible = await this.visibleWhere(userId, organizationId);
+    const rows = await this.prisma.project.findMany({
+      where: { organizationId, deletedAt: null, id: { in: ids }, ...visible },
+      select: { id: true },
+    });
+    return rows.map((r) => r.id);
+  }
+
+  /**
    * Ném `NotFoundAppException(notFoundLabel)` nếu không thấy được. Truyền `notFoundLabel` đúng nhãn của đường
    * "không tồn tại" cùng loại ở nơi gọi để 404 của dự án riêng tư giống hệt 404 của tài nguyên không có thật.
    */

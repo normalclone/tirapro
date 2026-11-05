@@ -2,7 +2,12 @@ import { Injectable } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
 import {
   DASHBOARD_LIMITS,
+  DASHBOARD_TEMPLATES,
+  buildTemplateWidgets,
+  findDashboardTemplate,
   type CustomDashboardDto,
+  type DashboardDataScopeValue,
+  type DashboardFromTemplateInput,
   type DashboardInput,
   type DashboardScopeValue,
   type CustomDashboardSummaryDto,
@@ -38,7 +43,11 @@ const SUMMARY_SELECT = {
   name: true,
   description: true,
   scope: true,
+  dataScope: true,
+  scopeProjectId: true,
+  scopeProgramId: true,
   updatedAt: true,
+  scopeProgram: { select: { id: true, name: true } },
   owner: { select: { id: true, displayName: true, avatarUrl: true } },
   project: { select: { id: true, key: true, name: true } },
   team: { select: { id: true, name: true, leadId: true } },
@@ -102,6 +111,7 @@ export class DashboardsService {
     this.assertWidgetCount(input.widgets);
     await this.assertQuota(ctx);
     const target = await this.resolveTarget(ctx, input, null);
+    const data = await this.resolveDataScope(ctx, input, null);
     await this.assertWidgetProjects(ctx, input.widgets, new Set());
     const created = await this.prisma.dashboard.create({
       data: {
@@ -112,6 +122,7 @@ export class DashboardsService {
         scope: input.scope,
         projectId: target.projectId,
         teamId: target.teamId,
+        ...data,
         layout: LAYOUT,
         widgets: { create: input.widgets.map((w) => this.widgetData(w)) },
       },
@@ -132,6 +143,7 @@ export class DashboardsService {
     this.assertCanEdit(ctx, row);
     this.assertWidgetCount(input.widgets);
     const target = await this.resolveTarget(ctx, input, row);
+    const data = await this.resolveDataScope(ctx, input, row);
     const stored = new Set(
       row.widgets
         .map((w) => (w.config as { projectId?: unknown } | null)?.projectId)
@@ -148,6 +160,7 @@ export class DashboardsService {
           scope: input.scope,
           projectId: target.projectId,
           teamId: target.teamId,
+          ...data,
         },
       });
       if (count === 0) {
@@ -175,12 +188,73 @@ export class DashboardsService {
     return this.get(organizationId, id, userId);
   }
 
+  /** Mẫu dựng sẵn + người gọi có được chọn phạm vi "toàn tổ chức" không (chỉ admin tổ chức). */
+  async listTemplates(
+    organizationId: string,
+    userId: string,
+  ): Promise<{ templates: typeof DASHBOARD_TEMPLATES; canUseOrgScope: boolean }> {
+    const canUseOrgScope = await this.access.seesAll(userId, organizationId);
+    return { templates: DASHBOARD_TEMPLATES, canUseOrgScope };
+  }
+
+  /**
+   * Tạo dashboard PRIVATE từ mẫu: mọi ô kế thừa phạm vi dữ liệu đã chọn (riêng BURNDOWN/VELOCITY cần đúng một dự án nên
+   * mang `projectId` của phạm vi "một dự án"). Phạm vi do người dùng chọn rõ ràng → luôn qua cổng quyền (ORG chỉ admin).
+   */
+  async createFromTemplate(
+    organizationId: string,
+    userId: string,
+    input: DashboardFromTemplateInput,
+  ): Promise<CustomDashboardDto> {
+    const template = findDashboardTemplate(input.templateKey);
+    if (!template) throw new NotFoundAppException('Mẫu dashboard');
+    if (!template.scopes.includes(input.dataScope)) {
+      throw new BusinessRuleException(`Mẫu "${template.name}" không hỗ trợ phạm vi dữ liệu này`);
+    }
+    const ctx = await this.ctx(organizationId, userId);
+    await this.assertQuota(ctx);
+    const data = await this.resolveDataScope(ctx, input, null);
+    const widgets = buildTemplateWidgets(
+      template,
+      data.dataScope,
+      data.scopeProjectId ?? undefined,
+    );
+    this.assertWidgetCount(widgets);
+    const targetName = await this.dataScopeName(ctx, data);
+    const suffix = targetName ? ` · ${targetName}` : '';
+    const name = (input.name ?? `${template.name}${suffix}`).slice(0, 120);
+    const created = await this.prisma.dashboard.create({
+      data: {
+        organizationId,
+        ownerId: userId,
+        name,
+        description: null,
+        scope: 'PRIVATE',
+        projectId: null,
+        teamId: null,
+        ...data,
+        layout: LAYOUT,
+        widgets: {
+          create: widgets.map((w) => ({
+            type: w.type,
+            title: w.title,
+            config: w.config,
+            position: w.position,
+          })),
+        },
+      },
+      select: { id: true },
+    });
+    return this.get(organizationId, created.id, userId);
+  }
+
   /** Bản sao PRIVATE của người gọi (ai thấy được thì nhân bản được) — lối để người không có quyền sửa tự chỉnh. */
   async duplicate(organizationId: string, id: string, userId: string): Promise<CustomDashboardDto> {
     const ctx = await this.ctx(organizationId, userId);
     const row = await this.requireVisible(ctx, id);
     await this.assertQuota(ctx);
     const sanitize = await this.copySanitizer(ctx, row);
+    const data = await this.duplicateDataScope(ctx, row);
     const suffix = ' (bản sao)';
     const created = await this.prisma.dashboard.create({
       data: {
@@ -191,6 +265,7 @@ export class DashboardsService {
         scope: 'PRIVATE',
         projectId: null,
         teamId: null,
+        ...data,
         layout: LAYOUT,
         widgets: {
           create: row.widgets.map((w) => ({
@@ -316,6 +391,161 @@ export class DashboardsService {
   }
 
   /**
+   * Phạm vi dữ liệu sẽ lưu. Bỏ trống: tạo mới → ORG (đúng hành vi dashboard cũ, không qua cổng), sửa → giữ nguyên.
+   * Chọn rõ ràng thì qua cổng: ORG chỉ admin tổ chức (giữ ORG sẵn có thì không hỏi lại, để người không phải admin vẫn sửa được
+   * dashboard cũ của mình); PROJECT: người gọi phải thấy dự án (khi mới gắn/đổi); GROUP: phải là CHỦ nhóm (người khác → 404
+   * như API nhóm dự án).
+   */
+  private async resolveDataScope(
+    ctx: Ctx,
+    input: {
+      dataScope?: DashboardDataScopeValue;
+      scopeProjectId?: string;
+      scopeProgramId?: string;
+    },
+    current: {
+      dataScope: DashboardDataScopeValue;
+      scopeProjectId: string | null;
+      scopeProgramId: string | null;
+    } | null,
+  ): Promise<{
+    dataScope: DashboardDataScopeValue;
+    scopeProjectId: string | null;
+    scopeProgramId: string | null;
+  }> {
+    if (!input.dataScope) {
+      return current
+        ? {
+            dataScope: current.dataScope,
+            scopeProjectId: current.scopeProjectId,
+            scopeProgramId: current.scopeProgramId,
+          }
+        : { dataScope: 'ORG', scopeProjectId: null, scopeProgramId: null };
+    }
+    if (input.dataScope === 'ORG') {
+      if (current?.dataScope !== 'ORG' && !ctx.isAdmin) {
+        throw new ForbiddenAppException('Chỉ quản trị viên tổ chức mới chọn phạm vi toàn tổ chức');
+      }
+      return { dataScope: 'ORG', scopeProjectId: null, scopeProgramId: null };
+    }
+    if (input.dataScope === 'PROJECT') {
+      const projectId = input.scopeProjectId!;
+      const changed = current?.dataScope !== 'PROJECT' || current.scopeProjectId !== projectId;
+      const project = await this.prisma.project.findFirst({
+        where: {
+          id: projectId,
+          organizationId: ctx.organizationId,
+          deletedAt: null,
+          ...(changed ? ctx.projectVisible : {}),
+        },
+        select: { id: true },
+      });
+      if (!project) throw new NotFoundAppException('Dự án');
+      return { dataScope: 'PROJECT', scopeProjectId: projectId, scopeProgramId: null };
+    }
+    const programId = input.scopeProgramId!;
+    const program = await this.prisma.program.findFirst({
+      where: { id: programId, organizationId: ctx.organizationId, ownerId: ctx.userId },
+      select: { id: true },
+    });
+    if (!program) throw new NotFoundAppException('Nhóm dự án');
+    return { dataScope: 'GROUP', scopeProjectId: null, scopeProgramId: programId };
+  }
+
+  /** Tên đích của phạm vi (đặt tên mặc định cho dashboard tạo từ mẫu); ORG → rỗng. */
+  private async dataScopeName(
+    ctx: Ctx,
+    d: {
+      dataScope: DashboardDataScopeValue;
+      scopeProjectId: string | null;
+      scopeProgramId: string | null;
+    },
+  ): Promise<string> {
+    if (d.dataScope === 'PROJECT' && d.scopeProjectId) {
+      const p = await this.prisma.project.findFirst({
+        where: { id: d.scopeProjectId, organizationId: ctx.organizationId, deletedAt: null },
+        select: { name: true },
+      });
+      return p?.name ?? '';
+    }
+    if (d.dataScope === 'GROUP' && d.scopeProgramId) {
+      const g = await this.prisma.program.findFirst({
+        where: { id: d.scopeProgramId, organizationId: ctx.organizationId },
+        select: { name: true },
+      });
+      return g?.name ?? '';
+    }
+    return '';
+  }
+
+  /**
+   * Bản sao giữ phạm vi dữ liệu của bản gốc khi người nhân bản dùng được đích đó (thấy dự án / là chủ nhóm). Không dùng được
+   * thì về phạm vi cũ-mặc-định ORG (= mọi dự án họ thấy, đúng hành vi trước khi có phạm vi dữ liệu) — không bao giờ gắn
+   * nhóm riêng của người khác vào bản sao của mình.
+   */
+  private async duplicateDataScope(
+    ctx: Ctx,
+    row: DetailRow,
+  ): Promise<{
+    dataScope: DashboardDataScopeValue;
+    scopeProjectId: string | null;
+    scopeProgramId: string | null;
+  }> {
+    const fallback = { dataScope: 'ORG' as const, scopeProjectId: null, scopeProgramId: null };
+    if (row.dataScope === 'PROJECT' && row.scopeProjectId) {
+      const p = await this.prisma.project.findFirst({
+        where: {
+          id: row.scopeProjectId,
+          organizationId: ctx.organizationId,
+          deletedAt: null,
+          ...ctx.projectVisible,
+        },
+        select: { id: true },
+      });
+      return p ? { dataScope: 'PROJECT', scopeProjectId: p.id, scopeProgramId: null } : fallback;
+    }
+    if (row.dataScope === 'GROUP' && row.scopeProgramId) {
+      const g = await this.prisma.program.findFirst({
+        where: { id: row.scopeProgramId, organizationId: ctx.organizationId, ownerId: ctx.userId },
+        select: { id: true },
+      });
+      return g ? { dataScope: 'GROUP', scopeProjectId: null, scopeProgramId: g.id } : fallback;
+    }
+    return fallback;
+  }
+
+  /**
+   * Dự án trong phạm vi dữ liệu mà NGƯỜI XEM thấy. `null` = ORG (mọi dự án người xem thấy — không cần lọc thêm).
+   * GROUP dùng danh sách dự án hiện tại của nhóm (của chủ) giao với dự án người xem thấy: người xem khác chủ vẫn dùng danh
+   * sách nhóm nhưng không bao giờ thấy dự án mình không có quyền. Nhóm đã bị xoá / dự án bị xoá → danh sách rỗng.
+   */
+  private async scopeProjects(
+    ctx: Ctx,
+    row: {
+      dataScope: DashboardDataScopeValue;
+      scopeProjectId: string | null;
+      scopeProgramId: string | null;
+    },
+  ): Promise<Array<{ id: string; key: string; name: string }> | null> {
+    if (row.dataScope === 'ORG') return null;
+    const base = { organizationId: ctx.organizationId, deletedAt: null, ...ctx.projectVisible };
+    const select = { id: true, key: true, name: true } as const;
+    if (row.dataScope === 'PROJECT') {
+      if (!row.scopeProjectId) return [];
+      return this.prisma.project.findMany({
+        where: { ...base, id: row.scopeProjectId },
+        select,
+      });
+    }
+    if (!row.scopeProgramId) return [];
+    return this.prisma.project.findMany({
+      where: { ...base, programLinks: { some: { programId: row.scopeProgramId } } },
+      select,
+      orderBy: { createdAt: 'asc' },
+    });
+  }
+
+  /**
    * `projectId` trong config phải thuộc tổ chức và người gọi thấy được. Dự án đã nằm sẵn trong ô cũ (`alreadyStored`)
    * không bị kiểm lại — người sửa dashboard chung không bị chặn vì một ô của người khác trỏ dự án họ không thấy.
    */
@@ -438,6 +668,10 @@ export class DashboardsService {
       name: r.name,
       description: r.description,
       scope: r.scope,
+      dataScope: r.dataScope,
+      scopeProjectId: r.scopeProjectId,
+      scopeProgramId: r.scopeProgramId,
+      scopeProgramName: r.scopeProgram?.name ?? null,
       widgetCount: r._count.widgets,
       isMine: r.ownerId === ctx.userId,
       canEdit: canEditDashboard(ctx, r),
@@ -450,22 +684,30 @@ export class DashboardsService {
   }
 
   private async toDetail(ctx: Ctx, row: DetailRow): Promise<CustomDashboardDto> {
-    const [visible, masker] = await Promise.all([
+    const [visible, masker, scopeProjects] = await Promise.all([
       this.visibleProjectIds(ctx, [row]),
       this.jqlMasker(ctx, row),
+      this.scopeProjects(ctx, row),
     ]);
+    const inheritedIds = scopeProjects ? scopeProjects.map((p) => p.id) : null;
     const orderOf = (w: DetailRow['widgets'][number]) =>
       (w.position as { order?: number } | null)?.order ?? 0;
     const widgets: CustomWidgetDto[] = [...row.widgets]
       .sort((a, b) => orderOf(a) - orderOf(b))
-      .map((w) => ({
-        id: w.id,
-        type: w.type,
-        title: w.title,
-        config: masker((w.config ?? {}) as Record<string, unknown>),
-        position: (w.position ?? { order: 0, w: 1 }) as CustomWidgetDto['position'],
-      }));
-    return { ...this.summary(ctx, row, visible), widgets };
+      .map((w) => {
+        const own = (w.config as { projectId?: unknown } | null)?.projectId;
+        const explicit = typeof own === 'string' && own.length > 0;
+        return {
+          id: w.id,
+          type: w.type,
+          title: w.title,
+          config: masker((w.config ?? {}) as Record<string, unknown>),
+          position: (w.position ?? { order: 0, w: 1 }) as CustomWidgetDto['position'],
+          inherits: !explicit,
+          projectIds: explicit ? [own] : inheritedIds,
+        };
+      });
+    return { ...this.summary(ctx, row, visible), widgets, scopeProjects: scopeProjects ?? null };
   }
 
   /**

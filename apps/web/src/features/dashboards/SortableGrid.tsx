@@ -22,6 +22,7 @@ import { SORT_TRANSITION } from '@/lib/sortableDnd';
 import { cn } from '@/lib/utils';
 import type { DraftWidget } from './layoutOps';
 import { widgetDefOf } from './registry';
+import { ScopedWidget } from './scope/ScopedWidget';
 import { WidgetBoundary, WidgetFrame } from './WidgetFrame';
 import {
   DASHBOARD_GRID_CLASS,
@@ -232,7 +233,9 @@ function SortableWidget({
       >
         {def ? (
           <WidgetBoundary title={widget.title}>
-            <def.Component title={widget.title} config={widget.config} />
+            <ScopedWidget config={widget.config}>
+              <def.Component title={widget.title} config={widget.config} />
+            </ScopedWidget>
           </WidgetBoundary>
         ) : (
           <WidgetFrame title={widget.title} state="empty" emptyText="Loại ô này chưa được hỗ trợ" />

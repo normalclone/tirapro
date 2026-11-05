@@ -203,6 +203,16 @@ describe('GoalsService — dự án riêng tư (P14)', () => {
     };
   }
 
+  it('list với projectIds: giữ phạm vi xem của người xem VÀ giới hạn vào danh sách dự án', async () => {
+    const { service, prisma } = make();
+    await service.list('w1', { projectIds: ['p1', 'p2'] }, 'u1');
+    expect(whereOf(prisma.objective.findMany)).toMatchObject({
+      organizationId: 'w1',
+      projectId: { in: ['p1', 'p2'] },
+      ...scope,
+    });
+  });
+
   it('list(w, f, viewer): chỉ mục tiêu của dự án người xem thấy; việc gắn kèm của dự án ẩn bị bỏ', async () => {
     const { service, prisma, access } = make();
     await service.list('w1', { period: '2026-Q4' }, 'u1');

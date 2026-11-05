@@ -36,6 +36,7 @@ export * from './vn-date';
 export * from './points';
 export * from './digest';
 export * from './schemas/dashboard';
+export * from './dashboard-templates';
 export * from './goal-values';
 export * from './workflow-defaults';
 export * from './rule-status-refs';

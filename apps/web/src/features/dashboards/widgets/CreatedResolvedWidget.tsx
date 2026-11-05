@@ -9,12 +9,13 @@ import {
   YAxis,
 } from 'recharts';
 import { useAuth } from '@/stores/auth';
-import { useOrganizationOverview } from '@/features/dashboard/api';
 import { useCreatedResolved } from '@/features/reports/api';
 import { AXIS_PROPS, LEGEND_STYLE, TOOLTIP_STYLE } from '@/features/reports/charts';
 import { CHART_MARGIN, yAxisWidth } from '@/lib/chartAxis';
 import { fmtDayMonth } from '@/lib/dateFormat';
-import { cfgString } from '../widgetConfig';
+import { useWidgetScope } from '../scope/ScopeContext';
+import { aggregateIds } from '../scope/widgetScope';
+import { useScopedOverview } from '../scope/scopedReports';
 import { queryWidgetState } from '../widgetState';
 import { WidgetFrame } from '../WidgetFrame';
 import type { WidgetProps } from './types';
@@ -27,10 +28,11 @@ interface Point {
 
 /** Tạo mới vs Đã xử lý: theo ngày (một dự án) hoặc theo tuần (toàn tổ chức). */
 export function CreatedResolvedWidget({ title, config }: WidgetProps) {
-  const projectId = cfgString(config, 'projectId');
+  const scope = useWidgetScope(config);
+  const projectId = scope.kind === 'project' ? scope.projectId : undefined;
   const canReport = useAuth((s) => s.can('report:view'));
   const daily = useCreatedResolved(projectId);
-  const weekly = useOrganizationOverview(!projectId && canReport);
+  const weekly = useScopedOverview(aggregateIds(scope), !projectId && canReport);
 
   if (!projectId && !canReport) {
     return <WidgetFrame title={title} state="forbidden" forbiddenText="Cần quyền xem báo cáo" />;

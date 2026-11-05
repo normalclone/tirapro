@@ -1,8 +1,10 @@
 import { Body, Controller, Delete, Get, Param, Post, Put } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import {
+  dashboardFromTemplateSchema,
   dashboardInputSchema,
   dashboardUpdateSchema,
+  type DashboardFromTemplateInput,
   type DashboardInput,
   type DashboardUpdateInput,
 } from '@tirapro/shared';
@@ -34,6 +36,17 @@ export class DashboardsController {
     @Param('id') id: string,
   ) {
     return this.dashboards.get(organizationId, id, user.id);
+  }
+
+  /** Tạo từ mẫu: phạm vi dữ liệu bắt buộc chọn rõ (ORG chỉ admin tổ chức). Khai báo trước các route `:id`. */
+  @Post('from-template')
+  @Permissions(PERMISSIONS.DASHBOARD_MANAGE)
+  async createFromTemplate(
+    @OrganizationId() organizationId: string,
+    @CurrentUser() user: AuthUser,
+    @Body(new ZodValidationPipe(dashboardFromTemplateSchema)) dto: DashboardFromTemplateInput,
+  ) {
+    return this.dashboards.createFromTemplate(organizationId, user.id, dto);
   }
 
   @Post()
@@ -75,5 +88,18 @@ export class DashboardsController {
     @Param('id') id: string,
   ) {
     return this.dashboards.remove(organizationId, id, user.id);
+  }
+}
+
+/** Thư viện mẫu dashboard (mã cứng trong @tirapro/shared) + việc người gọi có chọn được phạm vi toàn tổ chức không. */
+@ApiTags('dashboards')
+@Controller('dashboard-templates')
+export class DashboardTemplatesController {
+  constructor(private readonly dashboards: DashboardsService) {}
+
+  @Get()
+  @Permissions(PERMISSIONS.DASHBOARD_MANAGE)
+  async list(@OrganizationId() organizationId: string, @CurrentUser() user: AuthUser) {
+    return this.dashboards.listTemplates(organizationId, user.id);
   }
 }

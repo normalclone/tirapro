@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import type { QaReportDto } from '@tirapro/shared';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
+import { ProjectAccessService } from '../rbac/project-access.service';
 import { BusinessRuleException, NotFoundAppException } from '../../common/exceptions/app.exception';
 import { BUG_TYPE_WHERE, bugTypeSql } from '../../common/bug-type';
 import { TRIAGE_VISIBLE } from '../../common/triage-visibility';
@@ -29,6 +30,12 @@ const IS_LIVE_VISIBLE_BUG = Prisma.sql`i."deletedAt" IS NULL
  */
 const utc = (d: Date) => Prisma.sql`(${d}::timestamptz AT TIME ZONE 'UTC')`;
 
+/** `<cột> = id` (một dự án — giữ nguyên dạng so sánh để dùng chỉ mục) hoặc `<cột> = ANY(ids)` (nhiều dự án). */
+const inProjects = (column: string, ids: readonly string[]) =>
+  ids.length === 1
+    ? Prisma.sql`${Prisma.raw(column)} = ${ids[0]!}`
+    : Prisma.sql`${Prisma.raw(column)} = ANY(${[...ids]}::text[])`;
+
 interface EventRow {
   closed: bigint | number;
   reopened: bigint | number;
@@ -52,7 +59,10 @@ interface CloseRow {
  */
 @Injectable()
 export class QaReportService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly access: ProjectAccessService,
+  ) {}
 
   async report(
     organizationId: string,
@@ -65,12 +75,36 @@ export class QaReportService {
       select: { id: true },
     });
     if (!project) throw new NotFoundAppException('Dự án');
+    return this.build(organizationId, [projectId], fromStr, toStr);
+  }
+
+  /**
+   * Báo cáo gộp nhiều dự án (phạm vi nhóm dự án của dashboard). `requested` do client gửi nên LUÔN giao với dự án người xem
+   * thấy (`visibleAmong`); dự án không thấy bị bỏ âm thầm. Rỗng → báo cáo rỗng (không phải "mọi dự án").
+   */
+  async reportForProjects(
+    organizationId: string,
+    viewerId: string,
+    requested: readonly string[],
+    fromStr?: string,
+    toStr?: string,
+  ): Promise<QaReportDto> {
+    const ids = await this.access.visibleAmong(viewerId, organizationId, requested);
+    return this.build(organizationId, ids, fromStr, toStr);
+  }
+
+  private async build(
+    organizationId: string,
+    ids: string[],
+    fromStr?: string,
+    toStr?: string,
+  ): Promise<QaReportDto> {
     const range = parseQaRange(fromStr, toStr, new Date());
     if ('error' in range) throw new BusinessRuleException(range.error);
     const { from, to } = range;
 
     const bugs: Prisma.IssueWhereInput = {
-      projectId,
+      projectId: ids.length === 1 ? ids[0]! : { in: ids },
       deletedAt: null,
       type: BUG_TYPE_WHERE,
       ...TRIAGE_VISIBLE,
@@ -83,24 +117,24 @@ export class QaReportService {
           _count: { _all: true },
         }),
         this.prisma.issue.count({ where: { ...bugs, createdAt: { gte: from, lte: to } } }),
-        this.statusEvents(projectId, from, to),
-        this.closeTime(projectId, from, to),
+        this.statusEvents(ids, from, to),
+        this.closeTime(ids, from, to),
         this.prisma.severity.findMany({
           where: { organizationId },
           select: { id: true, name: true, color: true, rank: true },
         }),
         this.prisma.version.findMany({
-          where: { projectId },
+          where: { projectId: ids.length === 1 ? ids[0]! : { in: ids } },
           select: { id: true, name: true, status: true, releaseDate: true },
         }),
-        this.releaseRows(projectId, 'AFFECTS'),
+        this.releaseRows(ids, 'AFFECTS'),
       ]);
 
     // Ưu tiên "phiên bản bị ảnh hưởng" (phát hiện trên bản nào); dự án chưa có dòng nào thì dùng "phiên bản sửa".
     let basis: 'AFFECTS' | 'FIX' = 'AFFECTS';
     let releaseRows = affects;
     if (affects.length === 0) {
-      const fix = await this.releaseRows(projectId, 'FIX');
+      const fix = await this.releaseRows(ids, 'FIX');
       if (fix.length > 0) {
         basis = 'FIX';
         releaseRows = fix;
@@ -128,7 +162,7 @@ export class QaReportService {
   }
 
   /** Số bug (distinct) có sự kiện đóng / mở lại / cả hai trong kỳ — gom theo bug rồi đếm, không phụ thuộc số sự kiện. */
-  private async statusEvents(projectId: string, from: Date, to: Date): Promise<EventRow> {
+  private async statusEvents(ids: string[], from: Date, to: Date): Promise<EventRow> {
     const rows = await this.prisma.$queryRaw<EventRow[]>(Prisma.sql`
       WITH ev AS (
         SELECT h."issueId",
@@ -139,7 +173,7 @@ export class QaReportService {
         FROM "IssueHistory" h
         JOIN "Issue" i ON i."id" = h."issueId"
         JOIN "IssueType" t ON t."id" = i."typeId"
-        WHERE h."projectId" = ${projectId} AND h."field" = 'STATUS'
+        WHERE ${inProjects('h."projectId"', ids)} AND h."field" = 'STATUS'
           AND h."occurredAt" >= ${utc(from)} AND h."occurredAt" <= ${utc(to)}
           AND ${IS_LIVE_VISIBLE_BUG}
         GROUP BY h."issueId"
@@ -152,7 +186,7 @@ export class QaReportService {
   }
 
   /** Trung bình + trung vị (percentile_cont) của resolvedAt − createdAt, tính trong Postgres trên mọi bug thoả điều kiện. */
-  private async closeTime(projectId: string, from: Date, to: Date): Promise<CloseRow | undefined> {
+  private async closeTime(ids: string[], from: Date, to: Date): Promise<CloseRow | undefined> {
     const rows = await this.prisma.$queryRaw<CloseRow[]>(Prisma.sql`
       SELECT count(*) AS "n",
              avg(x."hours")::float8 AS "avgHours",
@@ -162,7 +196,7 @@ export class QaReportService {
         FROM "Issue" i
         JOIN "IssueType" t ON t."id" = i."typeId"
         JOIN "Status" s ON s."id" = i."statusId"
-        WHERE i."projectId" = ${projectId} AND s."category" = 'DONE'
+        WHERE ${inProjects('i."projectId"', ids)} AND s."category" = 'DONE'
           AND i."resolvedAt" >= ${utc(from)} AND i."resolvedAt" <= ${utc(to)}
           AND i."resolvedAt" >= i."createdAt"
           AND ${IS_LIVE_VISIBLE_BUG}
@@ -174,7 +208,7 @@ export class QaReportService {
    * Bug theo phiên bản (mọi thời điểm, không theo kỳ). `leaked` = bug của phiên bản RELEASED được báo SAU hết ngày
    * phát hành (`releaseDate` thường nằm 00:00 nên bug báo ngay trong ngày phát hành không bị tính là rò rỉ).
    */
-  private async releaseRows(projectId: string, type: 'AFFECTS' | 'FIX'): Promise<ReleaseAggRow[]> {
+  private async releaseRows(ids: string[], type: 'AFFECTS' | 'FIX'): Promise<ReleaseAggRow[]> {
     return this.prisma.$queryRaw<ReleaseAggRow[]>(Prisma.sql`
       SELECT l."versionId" AS "versionId",
              count(*) AS "total",
@@ -187,7 +221,7 @@ export class QaReportService {
       JOIN "Issue" i ON i."id" = l."issueId"
       JOIN "IssueType" t ON t."id" = i."typeId"
       JOIN "Status" s ON s."id" = i."statusId"
-      WHERE v."projectId" = ${projectId} AND l."type"::text = ${type}
+      WHERE ${inProjects('v."projectId"', ids)} AND l."type"::text = ${type}
         AND ${IS_LIVE_VISIBLE_BUG}
       GROUP BY l."versionId"`);
   }

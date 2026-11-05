@@ -152,6 +152,19 @@ describe('RaidService — dự án riêng tư (P14)', () => {
     });
   });
 
+  it('list với projectIds: giữ bộ lọc xem của người xem VÀ giới hạn vào danh sách; projectId đơn thắng; rỗng → không mục nào', async () => {
+    const { service, prisma } = make();
+    await service.list('w1', { projectIds: ['p1', 'p2'] }, 'u1');
+    expect(whereOf(prisma.raidItem.findMany)).toMatchObject({
+      project: visible,
+      projectId: { in: ['p1', 'p2'] },
+    });
+    await service.list('w1', { projectId: 'p9', projectIds: ['p1'] }, 'u1');
+    expect(whereOf(prisma.raidItem.findMany, 1)).toMatchObject({ projectId: 'p9' });
+    await service.list('w1', { projectIds: [] }, 'u1');
+    expect(whereOf(prisma.raidItem.findMany, 2)).toMatchObject({ projectId: { in: [] } });
+  });
+
   it('get(w, id, viewer): mục của dự án riêng tư không thấy → 404 "Mục rủi ro" như không tồn tại', async () => {
     const { service, prisma } = make();
     await expect(service.get('w1', 'r1', 'u1')).rejects.toMatchObject({ status: 404 });

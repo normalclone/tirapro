@@ -257,6 +257,13 @@ describe('AnalyticsService.organizationOverview — aggregate SQL', () => {
         ];
       }
       if (by === 'projectId') return [{ projectId: 'p1', _count: { _all: 2 } }];
+      if (by === 'assigneeId') {
+        return [
+          { assigneeId: null, _count: { _all: 4 } },
+          { assigneeId: 'u-an', _count: { _all: 1 } },
+          { assigneeId: 'u-binh', _count: { _all: 3 } },
+        ];
+      }
       throw new Error(`groupBy bất ngờ: ${by}`);
     };
     const groupBy = vi.fn((args: { by: string[]; where?: unknown }) => Promise.resolve(rows(args)));
@@ -324,6 +331,14 @@ describe('AnalyticsService.organizationOverview — aggregate SQL', () => {
         ),
       },
       issue: { groupBy, count, findMany },
+      user: {
+        findMany: vi.fn(() =>
+          Promise.resolve([
+            { id: 'u-an', displayName: 'An' },
+            { id: 'u-binh', displayName: 'Bình' },
+          ]),
+        ),
+      },
       status: {
         findMany: vi.fn(() =>
           Promise.resolve([
@@ -391,6 +406,25 @@ describe('AnalyticsService.organizationOverview — aggregate SQL', () => {
     for (const w of wheres) expect(hasTriageVisible(w)).toBe(true);
     expect(queryRaw.mock.calls).toHaveLength(2);
     for (const call of queryRaw.mock.calls) expect(sqlHasTriageVisible(flatSql(call))).toBe(true);
+  });
+
+  it('byAssignee chỉ tính khi được hỏi: mặc định không có thêm truy vấn theo người và không có trường này', async () => {
+    const { service, prisma } = make();
+    const r = await service.organizationOverview('w1', 'u0');
+    expect(r.byAssignee).toBeUndefined();
+    expect(prisma.user.findMany).not.toHaveBeenCalled();
+    const bys = prisma.issue.groupBy.mock.calls.map((c) => (c[0] as { by: string[] }).by.join(','));
+    expect(bys).not.toContain('assigneeId');
+  });
+
+  it('byAssignee: việc CHƯA xong theo người, nhiều việc nhất trước, "Chưa gán" luôn cuối', async () => {
+    const { service } = make();
+    const r = await service.organizationOverview('w1', 'u0', undefined, { byAssignee: true });
+    expect(r.byAssignee).toEqual([
+      { name: 'Bình', color: null, count: 3 },
+      { name: 'An', color: null, count: 1 },
+      { name: 'Chưa gán', color: null, count: 4 },
+    ]);
   });
 
   it('totals gồm cả project lưu trữ, byProject chỉ gồm project đang hiển thị', async () => {
@@ -556,6 +590,49 @@ describe('AnalyticsService.organizationOverview — aggregate SQL', () => {
         expect(text).toContain('projectId');
         expect(JSON.stringify(c.slice(1))).toContain('p1');
       }
+    });
+
+    it('thu hẹp theo nhóm dự án (restrictTo): mọi truy vấn issue + dự án + raw SQL giao với danh sách, vẫn kèm bộ lọc xem', async () => {
+      const { service, prisma, queryRaw } = make(accessFor(['p1', 'p2']));
+      const overview = await service.organizationOverview('w1', 'u1', ['p2']);
+      expect(overview.scoped).toBe(true); // vẫn do quyền xem của người xem, không do nhóm
+      const projectWhere = JSON.stringify(
+        (prisma.project.findMany.mock.calls[0] as unknown as [{ where: unknown }])[0].where,
+      );
+      expect(projectWhere).toContain('"id":{"in":["p2"]}');
+      expect(projectWhere).toContain('"isPrivate":false');
+      const calls = [
+        ...prisma.issue.groupBy.mock.calls,
+        ...prisma.issue.count.mock.calls,
+        ...prisma.issue.findMany.mock.calls,
+      ];
+      for (const c of calls) {
+        const w = JSON.stringify((c[0] as { where: unknown }).where);
+        expect(w).toContain('"id":{"in":["p2"]}');
+        expect(w).toContain('"isPrivate":false');
+      }
+      for (const c of queryRaw.mock.calls as unknown[][]) {
+        const vals = JSON.stringify(c.slice(1));
+        expect(vals).toContain('p2');
+        expect(vals).not.toContain('p1');
+      }
+    });
+
+    it('restrictTo rỗng → không dự án nào (khác với bỏ trống = mọi dự án thấy được)', async () => {
+      const { service, prisma } = make(accessFor(['p1']));
+      await service.organizationOverview('w1', 'u1', []);
+      expect(
+        JSON.stringify(
+          (prisma.project.findMany.mock.calls[0] as unknown as [{ where: unknown }])[0].where,
+        ),
+      ).toContain('"id":{"in":[]}');
+    });
+
+    it('resolveScopeIds giao danh sách client với dự án người xem thấy (uỷ quyền ProjectAccessService.visibleAmong)', async () => {
+      const access = { ...accessFor(['p1']), visibleAmong: vi.fn(() => Promise.resolve(['p1'])) };
+      const { service } = make(access);
+      expect(await service.resolveScopeIds('w1', 'u1', ['p1', 'hidden'])).toEqual(['p1']);
+      expect(access.visibleAmong).toHaveBeenCalledWith('u1', 'w1', ['p1', 'hidden']);
     });
 
     it('người xem là admin (visibleWhere {}, ids null) → không lọc dự án riêng tư', async () => {

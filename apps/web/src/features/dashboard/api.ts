@@ -96,6 +96,8 @@ export interface OrganizationOverview {
   projects: OverviewProject[];
   byType: OverviewSlice[];
   byPriority: OverviewSlice[];
+  /** Việc CHƯA xong theo người — chỉ có khi hỏi `?byAssignee=1` (ô "theo người" của dashboard). */
+  byAssignee?: OverviewSlice[];
   trend: OverviewTrendPoint[];
   warnings: OverviewWarning[];
   forecast: OverviewForecast[];

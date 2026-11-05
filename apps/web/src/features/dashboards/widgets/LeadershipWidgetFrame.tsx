@@ -1,7 +1,10 @@
 import type { ReactNode } from 'react';
 import { useAuth } from '@/stores/auth';
 import { isUnavailable } from '@/features/dashboard/leadershipText';
-import { useLeadership, type LeadershipCard } from '@/features/dashboard/api';
+import type { LeadershipCard } from '@/features/dashboard/api';
+import { useWidgetScope } from '../scope/ScopeContext';
+import { aggregateIds } from '../scope/widgetScope';
+import { useScopedLeadership } from '../scope/scopedReports';
 import { queryWidgetState, type WidgetState } from '../widgetState';
 import { WidgetFrame } from '../WidgetFrame';
 
@@ -17,13 +20,26 @@ export function LeadershipWidgetFrame({
   card: LeadershipCard;
   to?: { href: string; label: string };
   empty: string;
-  render: (data: NonNullable<ReturnType<typeof useLeadership>['data']>) => ReactNode[];
+  render: (data: NonNullable<ReturnType<typeof useScopedLeadership>['data']>) => ReactNode[];
 }) {
   const canReport = useAuth((s) => s.can('report:view'));
-  const q = useLeadership(canReport);
+  const scope = useWidgetScope({});
+  const ids = aggregateIds(scope);
+  // Thẻ nhân lực đo người trên MỌI dự án nên không thu hẹp theo nhóm/dự án được: ngoài phạm vi toàn tổ chức nó trống có lý do.
+  const orgOnly = card === 'overloaded' && ids !== null;
+  const q = useScopedLeadership(ids, canReport && !orgOnly);
 
   if (!canReport) {
     return <WidgetFrame title={title} state="forbidden" forbiddenText="Cần quyền xem báo cáo" />;
+  }
+  if (orgOnly) {
+    return (
+      <WidgetFrame
+        title={title}
+        state="empty"
+        emptyText="Thẻ này chỉ có khi bảng lấy số liệu toàn tổ chức"
+      />
+    );
   }
   const rows = q.data ? render(q.data) : [];
   let state: WidgetState = queryWidgetState(q);

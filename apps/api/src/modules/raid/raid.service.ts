@@ -50,6 +50,8 @@ interface RaidListFilter {
   kind?: string;
   status?: string;
   projectId?: string;
+  /** Nhiều dự án (đã giao với dự án người xem thấy ở nơi gọi); rỗng = không dự án nào. Bỏ qua khi có `projectId`. */
+  projectIds?: readonly string[];
   ownerId?: string;
 }
 
@@ -87,6 +89,7 @@ export class RaidService {
     if (filter.kind) where.kind = filter.kind as RaidKind;
     if (filter.status) where.status = filter.status as RaidStatus;
     if (filter.projectId) where.projectId = filter.projectId;
+    else if (filter.projectIds) where.projectId = { in: [...filter.projectIds] };
     // Người phụ trách nằm trong `owners` (nhiều người) hoặc là người chính cũ — `AND` để không đè `OR` của scope.
     if (filter.ownerId)
       where.AND = [

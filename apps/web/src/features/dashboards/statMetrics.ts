@@ -3,7 +3,7 @@ import type { ProjectReport } from '@/features/reports/api';
 import { STATUS_CATEGORY_LABEL } from '@/lib/terms';
 import type { StatItem } from '@/components/ui/StatRow';
 
-export type StatMetric = 'open' | 'overdue' | 'bugs' | 'done14' | 'projects';
+export type StatMetric = 'open' | 'overdue' | 'bugs' | 'done14' | 'projects' | 'reopenRate';
 
 /** Nhãn + giải nghĩa số liệu của ô STAT_NUMBER (dùng cả ở khung ô lẫn hộp cấu hình). */
 export const STAT_METRIC_META: Record<StatMetric, { label: string; hint: string }> = {
@@ -18,6 +18,10 @@ export const STAT_METRIC_META: Record<StatMetric, { label: string; hint: string 
     hint: `Số việc chuyển sang nhóm ${STATUS_CATEGORY_LABEL.DONE} trong 14 ngày gần nhất.`,
   },
   projects: { label: 'Dự án', hint: 'Số dự án đang hoạt động bạn xem được.' },
+  reopenRate: {
+    label: 'Tỉ lệ mở lại',
+    hint: 'Bug bị mở lại trên số bug đã đóng, 30 ngày gần nhất (báo cáo chất lượng).',
+  },
 };
 
 /** Nguồn số liệu chung của một ô: tổng quan tổ chức hoặc một dự án (đã chuẩn hoá về cùng hình dạng). */
@@ -48,6 +52,8 @@ export function statValue(metric: StatMetric, src: StatSource): number | null {
       return src.projectCount;
     case 'done14':
       return src.resolved14 ?? null;
+    case 'reopenRate':
+      return null; // lấy từ báo cáo chất lượng, không có trong nguồn tổng quan/dự án
   }
 }
 

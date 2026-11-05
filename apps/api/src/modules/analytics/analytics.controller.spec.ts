@@ -228,3 +228,103 @@ describe('AnalyticsController.leadershipOverview', () => {
     expect(leadership.get).toHaveBeenCalledWith('w1', 'u9');
   });
 });
+
+describe('AnalyticsController — phạm vi nhóm dự án (projectIds)', () => {
+  const make = () => {
+    const analytics = {
+      resolveScopeIds: vi.fn((_o: string, _u: string, ids: string[]) =>
+        Promise.resolve(ids.filter((i) => i !== 'hidden')),
+      ),
+      organizationOverview: vi.fn(() => Promise.resolve({})),
+    };
+    const qaReport = { reportForProjects: vi.fn(() => Promise.resolve({})) };
+    const leadership = { get: vi.fn(() => Promise.resolve({})) };
+    const controller = new AnalyticsController(
+      analytics as unknown as AnalyticsService,
+      qaReport as unknown as QaReportService,
+      leadership as unknown as LeadershipService,
+    );
+    return { controller, analytics, qaReport, leadership };
+  };
+  const user = { id: 'u9' } as never;
+
+  it('overview: không projectIds → như cũ; có → giao với dự án người xem thấy rồi mới thu hẹp; chuỗi rỗng → danh sách rỗng', async () => {
+    const { controller, analytics } = make();
+    await controller.overview('w1', user);
+    expect(analytics.organizationOverview).toHaveBeenLastCalledWith('w1', 'u9', undefined, {
+      byAssignee: false,
+    });
+    expect(analytics.resolveScopeIds).not.toHaveBeenCalled();
+    await controller.overview('w1', user, ' a, b ,hidden,a');
+    expect(analytics.resolveScopeIds).toHaveBeenCalledWith('w1', 'u9', ['a', 'b', 'hidden']);
+    expect(analytics.organizationOverview).toHaveBeenLastCalledWith('w1', 'u9', ['a', 'b'], {
+      byAssignee: false,
+    });
+    await controller.overview('w1', user, '');
+    expect(analytics.organizationOverview).toHaveBeenLastCalledWith('w1', 'u9', [], {
+      byAssignee: false,
+    });
+  });
+
+  it('byAssignee=1 / true → bật; tham số lặp (mảng) được gộp thay vì ném 500; kiểu lạ → lỗi nghiệp vụ', async () => {
+    const { controller, analytics, leadership, qaReport } = make();
+    await controller.overview('w1', user, undefined, '1');
+    expect(analytics.organizationOverview).toHaveBeenLastCalledWith('w1', 'u9', undefined, {
+      byAssignee: true,
+    });
+    await controller.overview('w1', user, ['a,b', 'c'], 'true');
+    expect(analytics.resolveScopeIds).toHaveBeenLastCalledWith('w1', 'u9', ['a', 'b', 'c']);
+    await controller.leadershipOverview('w1', user, ['a', 'b']);
+    expect(leadership.get).toHaveBeenLastCalledWith('w1', 'u9', expect.any(Date), {
+      projectIds: ['a', 'b'],
+    });
+    await controller.qaForProjects('w1', user, ['a', 'b']);
+    expect(qaReport.reportForProjects).toHaveBeenLastCalledWith(
+      'w1',
+      'u9',
+      ['a', 'b'],
+      undefined,
+      undefined,
+    );
+    await expect(
+      controller.overview('w1', user, [{ x: 1 }] as unknown as string[]),
+    ).rejects.toBeInstanceOf(BusinessRuleException);
+  });
+
+  it('quá nhiều dự án trong một phạm vi → lỗi nghiệp vụ, không truy vấn', async () => {
+    const { controller, analytics } = make();
+    const csv = Array.from({ length: 201 }, (_, i) => `p${i}`).join(',');
+    await expect(controller.overview('w1', user, csv)).rejects.toBeInstanceOf(
+      BusinessRuleException,
+    );
+    expect(analytics.organizationOverview).not.toHaveBeenCalled();
+  });
+
+  it('leadership: có projectIds → thu hẹp (đã giao với dự án thấy được); không → như cũ', async () => {
+    const { controller, leadership } = make();
+    await controller.leadershipOverview('w1', user);
+    expect(leadership.get).toHaveBeenLastCalledWith('w1', 'u9');
+    await controller.leadershipOverview('w1', user, 'a,hidden');
+    expect(leadership.get).toHaveBeenLastCalledWith('w1', 'u9', expect.any(Date), {
+      projectIds: ['a'],
+    });
+  });
+
+  it('qa/projects: report:view cấp tổ chức (không ProjectRef), thiếu projectIds → lỗi, có → service nhận id người xem', async () => {
+    const h = AnalyticsController.prototype.qaForProjects;
+    expect(Reflect.getMetadata(PERMISSIONS_KEY, h)).toEqual([PERMISSIONS.REPORT_VIEW]);
+    expect(Reflect.getMetadata(PROJECT_REF_KEY, h)).toBeUndefined();
+    const { controller, qaReport } = make();
+    await expect(controller.qaForProjects('w1', user)).rejects.toBeInstanceOf(
+      BusinessRuleException,
+    );
+    await controller.qaForProjects('w1', user, 'a,b', '2026-10-01', '2026-10-15');
+    expect(qaReport.reportForProjects).toHaveBeenCalledWith(
+      'w1',
+      'u9',
+      ['a', 'b'],
+      '2026-10-01',
+      '2026-10-15',
+    );
+  });
+});
