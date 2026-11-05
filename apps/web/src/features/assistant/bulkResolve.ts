@@ -45,8 +45,14 @@ export interface ProjectMemberRef {
   userId: string;
   roleIds: string[];
   roleNames: string[];
-  /** `true` = vai trò đặt RIÊNG cho dự án; `false` = suy từ vai trò mặc định của tổ chức. */
+  /** `true` = có dòng thành viên của dự án (gán trực tiếp và/hoặc nhờ team); `false` = chỉ vai trò mặc định theo tổ chức. */
   isOverride: boolean;
+  /** Phần GÁN TRỰC TIẾP — đúng thứ "đặt / gỡ vai trò riêng" tác động. Rỗng nếu chỉ có vai trò nhờ team / mặc định. */
+  directRoleIds?: string[];
+  directRoleNames?: string[];
+  /** Vai trò đang có NHỜ team được gắn vào dự án (không bị lệnh hàng loạt đụng tới) + tên các team đó. */
+  teamRoleIds?: string[];
+  teamNames?: string[];
 }
 
 const tokensOf = (s: string): string[] =>

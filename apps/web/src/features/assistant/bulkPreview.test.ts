@@ -639,3 +639,144 @@ describe('L5 — chỉ có issue:edit:own', () => {
     expect(c.canConfirm).toBe(false);
   });
 });
+
+describe('Team theo dự án — thêm / gỡ chỉ đụng vai trò gán trực tiếp', () => {
+  const teamMember = (over: Record<string, unknown> = {}) => ({
+    roleIds: ['r-dev', 'r-tester'],
+    roleNames: ['Developer', 'Tester'],
+    isOverride: true,
+    directRoleIds: ['r-tester'],
+    directRoleNames: ['Tester'],
+    teamRoleIds: ['r-dev'],
+    teamNames: ['QA'],
+    ...over,
+  });
+  const withMembers = (kind: MemberCard['kind'], members: Record<string, unknown>): MemberCard =>
+    memberCard({
+      kind,
+      slots: [slot(LINH)],
+      roles: ROLES,
+      defaultRole:
+        kind === 'add-member'
+          ? { id: 'r-admin', source: 'parsed', query: 'Admin' }
+          : { id: null, source: 'none' },
+      projects: [
+        {
+          id: 'p1',
+          key: 'DEMO',
+          name: 'Demo',
+          isPrivate: false,
+          allowed: true,
+          members: members as MemberCard['projects'][number]['members'],
+        },
+      ],
+    });
+
+  it('thêm: giữ vai trò trực tiếp, KHÔNG đặt lại vai trò nhờ team; expect = phần trực tiếp', () => {
+    const card = withMembers('add-member', { 'u-linh': teamMember() });
+    const c = computeMembers(card, initialMemberState(card));
+    expect(c.rows[0]!.status).toBe('ok');
+    expect(c.rows[0]!.set).toEqual(['r-tester', 'r-admin']);
+    expect(c.rows[0]!.note).toContain('team QA');
+    expect(memberInputs(card, c)).toEqual([
+      { projectId: 'p1', userId: 'u-linh', expect: ['r-tester'], set: ['r-tester', 'r-admin'] },
+    ]);
+  });
+
+  it('thêm vai trò đang có CHỈ nhờ team: vẫn ghi trực tiếp (không báo "đã có")', () => {
+    const card = withMembers('add-member', {
+      'u-linh': teamMember({
+        roleIds: ['r-dev'],
+        roleNames: ['Developer'],
+        directRoleIds: [],
+        directRoleNames: [],
+      }),
+    });
+    card.defaultRole = { id: 'r-dev', source: 'parsed', query: 'Developer' };
+    const c = computeMembers(card, initialMemberState(card));
+    expect(c.rows[0]!.status).toBe('ok');
+    expect(c.rows[0]!.set).toEqual(['r-dev']);
+    expect(memberInputs(card, c)[0]!.expect).toBeNull();
+  });
+
+  it('gỡ: còn team → chỉ gỡ phần trực tiếp, ghi rõ "vẫn có quyền qua team"', () => {
+    const card = withMembers('remove-member', { 'u-linh': teamMember() });
+    const c = computeMembers(card, initialMemberState(card));
+    expect(c.rows[0]!.status).toBe('ok');
+    expect(c.rows[0]!.viaTeams).toEqual(['QA']);
+    expect(c.rows[0]!.after).toContain('team QA');
+    expect(memberInputs(card, c)).toEqual([
+      { projectId: 'p1', userId: 'u-linh', expect: ['r-tester'], set: null },
+    ]);
+  });
+
+  it('gỡ: chỉ có quyền qua team → via-team, không ghi, không xác nhận được', () => {
+    const card = withMembers('remove-member', {
+      'u-linh': teamMember({
+        roleIds: ['r-dev'],
+        roleNames: ['Developer'],
+        directRoleIds: [],
+        directRoleNames: [],
+      }),
+    });
+    const c = computeMembers(card, initialMemberState(card));
+    expect(c.rows[0]!.status).toBe('via-team');
+    expect(c.rows[0]!.note).toContain('Vẫn có quyền qua team QA');
+    expect(c.counts.viaTeam).toBe(1);
+    expect(c.canConfirm).toBe(false);
+    expect(memberInputs(card, c)).toEqual([]);
+  });
+
+  it('quản trị nhờ team vẫn tính là quản trị: gỡ phần trực tiếp không bị chặn "quản trị cuối"', () => {
+    const base = withMembers('remove-member', {
+      'u-linh': teamMember({
+        roleIds: ['r-admin', 'r-tester'],
+        roleNames: ['Project Admin', 'Tester'],
+        directRoleIds: ['r-admin', 'r-tester'],
+        directRoleNames: ['Project Admin', 'Tester'],
+        teamRoleIds: ['r-admin'],
+      }),
+    });
+    base.projects[0]!.isPrivate = true;
+    const c = computeMembers(base, initialMemberState(base));
+    expect(c.rows[0]!.status).toBe('ok');
+    // Không có team: cùng dữ liệu bị chặn (quản trị viên cuối của dự án riêng tư).
+    const solo = withMembers('remove-member', {
+      'u-linh': teamMember({
+        roleIds: ['r-admin'],
+        roleNames: ['Project Admin'],
+        directRoleIds: ['r-admin'],
+        directRoleNames: ['Project Admin'],
+        teamRoleIds: [],
+        teamNames: [],
+      }),
+    });
+    solo.projects[0]!.isPrivate = true;
+    expect(computeMembers(solo, initialMemberState(solo)).rows[0]!.status).toBe('blocked');
+  });
+
+  it('kết quả gỡ còn team: không tính là đã gỡ; Hoàn tác khôi phục đúng phần trực tiếp', () => {
+    const card = withMembers('remove-member', { 'u-linh': teamMember() });
+    const sent = computeMembers(card, initialMemberState(card)).rows.filter(
+      (r) => r.status === 'ok',
+    );
+    const out = membersOutcome(card, sent, {
+      results: [
+        {
+          projectId: 'p1',
+          userId: 'u-linh',
+          status: 'ok',
+          before: ['r-tester'],
+          after: null,
+          stillViaTeams: ['QA'],
+        },
+      ],
+    });
+    expect(out.title).toContain('Đã gỡ vai trò riêng của 0 dòng');
+    expect(out.title).toContain('1 vẫn có quyền qua team');
+    expect(out.rows[0]!.viaTeams).toEqual(['QA']);
+    expect(out.undo).toMatchObject({
+      rows: [{ projectId: 'p1', userId: 'u-linh', expect: null, set: ['r-tester'] }],
+    });
+  });
+});

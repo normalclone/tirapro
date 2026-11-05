@@ -32,8 +32,9 @@ export interface AssistantBulkAssignResult {
 }
 
 /**
- * So-sánh-rồi-đặt vai trò RIÊNG của một người trong một dự án. `expect` = bộ vai trò riêng máy chủ phải đang thấy
- * (`null` = chưa có vai trò riêng); `set` = bộ vai trò muốn đặt (`null` = gỡ vai trò riêng). `expect` không khớp → bỏ qua.
+ * So-sánh-rồi-đặt vai trò RIÊNG (gán trực tiếp) của một người trong một dự án. `expect` = bộ vai trò gán trực tiếp máy chủ phải đang
+ * thấy (`null` = chưa có); `set` = bộ vai trò gán trực tiếp muốn đặt (`null` = gỡ phần gán trực tiếp; vai trò nhờ team giữ nguyên).
+ * `expect` không khớp → bỏ qua.
  * Một nguyên thể dùng cho thêm, gỡ và Hoàn tác.
  */
 export interface AssistantBulkMemberRowInput {
@@ -48,9 +49,14 @@ export interface AssistantBulkMemberRowResult {
   userId: string;
   status: AssistantBulkRowStatus;
   reason?: string;
-  /** Vai trò riêng TRƯỚC (null = chưa có) và SAU lệnh. */
+  /**
+   * Vai trò GÁN TRỰC TIẾP trước (null = chưa có) và sau lệnh. Vai trò nhờ team được gắn vào dự án KHÔNG nằm ở đây và không bao giờ bị
+   * lệnh này đụng tới.
+   */
   before: string[] | null;
   after: string[] | null;
+  /** Sau khi gỡ phần trực tiếp, người này VẪN có quyền ở dự án nhờ các team này (tên team). Vắng = không còn / không liên quan. */
+  stillViaTeams?: string[];
 }
 
 export interface AssistantBulkMembersResult {

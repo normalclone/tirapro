@@ -69,6 +69,8 @@ const EXEMPT: Record<string, string> = {
  */
 const EXEMPT_METHODS: Record<string, string> = {
   'projects/projects.service.ts#create': 'tạo dự án mới (chưa có dự án để lưu trữ)',
+  'assistant-bulk/assistant-bulk.service.ts#setMembers':
+    '`.delete(` ở đây là Set.delete trong bộ đếm quản trị viên, không ghi Prisma; việc ghi thật đi qua MembersService (đã miễn trừ: quản trị cần chỉnh quyền cả khi dự án lưu trữ)',
   'projects/projects.service.ts#archive': 'vòng đời dự án',
   'projects/projects.service.ts#unarchive': 'vòng đời dự án — chính là lối khôi phục',
   'projects/projects.service.ts#remove': 'vòng đời dự án (xoá mềm)',

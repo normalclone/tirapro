@@ -33,6 +33,35 @@ const sameSet = (a: readonly string[] | null, b: readonly string[] | null): bool
   return a.length === b.length && [...a].sort().join('\n') === [...b].sort().join('\n');
 };
 
+interface MemberRoleLike {
+  id: string;
+  /** Có ở vai trò của thành viên có dòng ghi đè (team theo dự án): gán trực tiếp? */
+  direct?: boolean;
+  teams?: Array<{ id: string; name: string }>;
+}
+
+/**
+ * Nguồn vai trò của một thành viên dự án (khớp `roleSource.ts` phía web; dữ liệu từ `MembersService.listProject`):
+ *  - `direct`: bộ vai trò GÁN TRỰC TIẾP (`null` = không có — chưa có ghi đè, hoặc chỉ có vai trò nhờ team). Ghi đè cũ chưa có thông tin
+ *    nguồn (không vai trò nào có `direct`) xem như gán trực tiếp hết.
+ *  - `teamRoleIds` / `teamNames`: vai trò và tên team đang cho người này quyền ở dự án (không bị lệnh này đụng tới).
+ */
+function roleSources(m: { isOverride?: boolean; roles: MemberRoleLike[] } | undefined): {
+  direct: string[] | null;
+  teamRoleIds: string[];
+  teamNames: string[];
+} {
+  if (!m?.isOverride) return { direct: null, teamRoleIds: [], teamNames: [] };
+  const hasInfo = m.roles.some((r) => r.direct !== undefined);
+  const direct = (hasInfo ? m.roles.filter((r) => r.direct === true) : m.roles).map((r) => r.id);
+  const teamed = m.roles.filter((r) => (r.teams ?? []).length > 0);
+  return {
+    direct: direct.length > 0 ? direct : null,
+    teamRoleIds: teamed.map((r) => r.id),
+    teamNames: [...new Set(teamed.flatMap((r) => (r.teams ?? []).map((t) => t.name)))],
+  };
+}
+
 /**
  * Thực hiện lệnh hàng loạt của Trợ lý. Nguyên tắc: (1) quyền kiểm TỪNG DÒNG, từng dự án, ở đây — không tin web; dòng thiếu
  * quyền KHÔNG BAO GIỜ chạm vào dữ liệu; (2) dùng lại dịch vụ sẵn có (`IssuesService.bulkUpdate`, `MembersService`) nên mọi
@@ -307,13 +336,23 @@ export class AssistantBulkService {
         if (seen.has(r.userId)) continue; // dòng trùng: giữ dòng đầu
         seen.add(r.userId);
         const m = stateOf.get(r.userId);
-        const current: string[] | null = m?.isOverride ? m.roles.map((x) => x.id) : null;
+        // "Vai trò riêng" = phần GÁN TRỰC TIẾP. Vai trò nhờ team (project-teams) không thuộc phần này và không bị đụng tới.
+        const src = roleSources(m);
+        const current: string[] | null = src.direct;
         if (!sameSet(current, r.expect)) {
           put(r, 'skipped', current, current, 'Vai trò của người này đã đổi sau lúc xem trước.');
           continue;
         }
         if (r.set === null && current === null) {
-          put(r, 'skipped', null, null, 'Không có vai trò riêng để gỡ.');
+          put(
+            r,
+            'skipped',
+            null,
+            null,
+            src.teamNames.length > 0
+              ? `Người này chỉ có quyền qua team ${src.teamNames.join(', ')} — không có vai trò gán trực tiếp để gỡ (gỡ ở phần Team của dự án).`
+              : 'Không có vai trò riêng để gỡ.',
+          );
           continue;
         }
         if (r.set !== null && sameSet(current, r.set)) {
@@ -324,6 +363,7 @@ export class AssistantBulkService {
           r.set !== null &&
           current === null &&
           m &&
+          !m.isOverride &&
           sameSet(
             m.roles.map((x) => x.id),
             r.set,
@@ -339,8 +379,10 @@ export class AssistantBulkService {
           continue;
         }
         // Mất quyền quản trị dự án? (chỉ khi người này đang giữ quyền đó qua vai trò dự án và sau thay đổi không còn)
+        // Quyền quản trị còn lại sau lệnh = vai trò đặt mới + vai trò nhờ team (không bị đụng tới).
         const before = m ? m.roles.map((x) => x.id) : [];
-        const losesAdmin = holdsAdmin(before) && !(r.set !== null && holdsAdmin(r.set));
+        const losesAdmin =
+          holdsAdmin(before) && !holdsAdmin([...(r.set ?? []), ...src.teamRoleIds]);
         if (losesAdmin) {
           const keepsViaOrg = await orgAdmin(r.userId);
           if (r.userId === user.id && !keepsViaOrg) {
@@ -369,8 +411,17 @@ export class AssistantBulkService {
             await this.members.clearProjectOverride(organizationId, projectId, r.userId, user.id);
           else
             await this.members.setProjectRoles(organizationId, projectId, r.userId, r.set, user.id);
-          put(r, 'ok', current, r.set);
-          if (r.set !== null && holdsAdmin(r.set)) holders.add(r.userId);
+          const res: AssistantBulkMemberRowResult = {
+            projectId,
+            userId: r.userId,
+            status: 'ok',
+            before: current,
+            after: r.set,
+            // Gỡ phần trực tiếp mà vẫn còn vai trò nhờ team → vẫn ở dự án; báo để thẻ không tính là "đã gỡ".
+            ...(r.set === null && src.teamNames.length > 0 ? { stillViaTeams: src.teamNames } : {}),
+          };
+          out.set(keyOf(r), res);
+          if (holdsAdmin([...(r.set ?? []), ...src.teamRoleIds])) holders.add(r.userId);
           else holders.delete(r.userId);
         } catch (e) {
           put(r, 'failed', current, current, reasonOf(e));

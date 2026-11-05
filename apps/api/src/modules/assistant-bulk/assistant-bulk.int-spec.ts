@@ -7,6 +7,7 @@ import type { AuthUser } from '../../common/types/request';
 import type { PrismaService } from '../../infra/prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { MembersService } from '../members/members.service';
+import { ProjectTeamsService } from '../project-teams/project-teams.service';
 import { RbacService } from '../rbac/rbac.service';
 import { AssistantBulkService } from './assistant-bulk.service';
 
@@ -38,6 +39,7 @@ describe.skipIf(!DB_URL)('lệnh hàng loạt của Trợ lý ↔ Postgres thậ
   let prisma: PrismaClient;
   let svc: AssistantBulkService;
   let members: MembersService;
+  let pt: ProjectTeamsService;
   let seq = 0;
   let issueSeq = 0;
   let typeId = '';
@@ -78,6 +80,35 @@ describe.skipIf(!DB_URL)('lệnh hàng loạt của Trợ lý ↔ Postgres thậ
       select: { roles: { select: { roleId: true } } },
     });
     return m ? m.roles.map((r) => r.roleId).sort() : null;
+  };
+  /** Trạng thái vai trò (nguồn trực tiếp / nhờ team) của người dùng ở dự án. */
+  const roleState = async (projectId: string, userId: string) => {
+    const m = await prisma.projectMembership.findUnique({
+      where: { projectId_userId: { projectId, userId } },
+      select: {
+        roles: {
+          select: { roleId: true, direct: true, teamSources: { select: { teamId: true } } },
+        },
+      },
+    });
+    return m
+      ? m.roles
+          .map((r) => ({
+            roleId: r.roleId,
+            direct: r.direct,
+            teams: r.teamSources.map((t) => t.teamId),
+          }))
+          .sort((a, b) => a.roleId.localeCompare(b.roleId))
+      : null;
+  };
+  const linkTeam = async (projectId: string, memberIds: string[], roleIds: string[]) => {
+    const teamId = id(`team${++seq}`);
+    await prisma.team.create({
+      data: { id: teamId, organizationId: ORG, name: `QA-${seq}-${TAG}`, key: `qa${seq}-${TAG}` },
+    });
+    await prisma.teamMember.createMany({ data: memberIds.map((userId) => ({ teamId, userId })) });
+    await pt.link(ORG, projectId, teamId, roleIds, U.admin);
+    return teamId;
   };
   const row = (
     projectId: string,
@@ -164,6 +195,7 @@ describe.skipIf(!DB_URL)('lệnh hàng loạt của Trợ lý ↔ Postgres thậ
       bulkUpdate: vi.fn(() => Promise.resolve({ updated: [], conflicts: [] })),
       isAssignableMember: vi.fn(() => Promise.resolve(true)),
     };
+    pt = new ProjectTeamsService(db, rbac, { emit } as never, audit);
     svc = new AssistantBulkService(db, rbac, issues as never, members);
   }, 60_000);
 
@@ -331,5 +363,61 @@ describe.skipIf(!DB_URL)('lệnh hàng loạt của Trợ lý ↔ Postgres thậ
       status: 'skipped',
     });
     expect(JSON.stringify(res)).not.toContain('SECRET');
+  });
+
+  it('TEAM theo dự án: THÊM vai trò trực tiếp không đụng vai trò nhờ team; GỠ chỉ bỏ phần trực tiếp và báo "vẫn có quyền qua team"; Hoàn tác khôi phục phần trực tiếp', async () => {
+    const p = await newProject(true, [[U.pa, [R.admin]]]);
+    const team = await linkTeam(p, [U.m1, U.m2], [R.tester]);
+    expect(await roleState(p, U.m1)).toEqual([{ roleId: R.tester, direct: false, teams: [team] }]);
+    // THÊM Developer (trực tiếp) cho m1: Tester nhờ team vẫn nguyên
+    const add = await svc.setMembers(ORG, actor(U.admin), [row(p, U.m1, null, [R.dev])]);
+    expect(add.results[0]).toMatchObject({ status: 'ok', before: null, after: [R.dev] });
+    expect(await roleState(p, U.m1)).toEqual(
+      [
+        { roleId: R.dev, direct: true, teams: [] },
+        { roleId: R.tester, direct: false, teams: [team] },
+      ].sort((a, b) => a.roleId.localeCompare(b.roleId)),
+    );
+    // GỠ: chỉ phần trực tiếp; vẫn còn quyền qua team
+    const rm = await svc.setMembers(ORG, actor(U.admin), [row(p, U.m1, [R.dev], null)]);
+    expect(rm.results[0]).toMatchObject({ status: 'ok', before: [R.dev], after: null });
+    expect(rm.results[0]!.stillViaTeams).toHaveLength(1);
+    expect(await roleState(p, U.m1)).toEqual([{ roleId: R.tester, direct: false, teams: [team] }]);
+    expect((await members.listProject(ORG, p)).map((m) => m.user.id)).toContain(U.m1);
+    // HOÀN TÁC khôi phục đúng phần trực tiếp, vai trò nhờ team vẫn nguyên
+    const undo = await svc.setMembers(ORG, actor(U.admin), [
+      row(p, U.m1, rm.results[0]!.after, rm.results[0]!.before),
+    ]);
+    expect(undo.results[0]!.status).toBe('ok');
+    expect(await roleState(p, U.m1)).toEqual(
+      [
+        { roleId: R.dev, direct: true, teams: [] },
+        { roleId: R.tester, direct: false, teams: [team] },
+      ].sort((a, b) => a.roleId.localeCompare(b.roleId)),
+    );
+  });
+
+  it('TEAM: người CHỈ có vai trò nhờ team thì "gỡ" bị bỏ qua (nói rõ qua team), dữ liệu không đổi; thêm trực tiếp cùng vai trò thì ghi cờ direct', async () => {
+    const p = await newProject(true, [[U.pa, [R.admin]]]);
+    const team = await linkTeam(p, [U.m2], [R.tester]);
+    const rm = await svc.setMembers(ORG, actor(U.admin), [row(p, U.m2, null, null)]);
+    expect(rm.results[0]).toMatchObject({ status: 'skipped' });
+    expect(rm.results[0]!.reason).toMatch(/chỉ có quyền qua team/);
+    expect(await roleState(p, U.m2)).toEqual([{ roleId: R.tester, direct: false, teams: [team] }]);
+    const add = await svc.setMembers(ORG, actor(U.admin), [row(p, U.m2, null, [R.tester])]);
+    expect(add.results[0]!.status).toBe('ok');
+    expect(await roleState(p, U.m2)).toEqual([{ roleId: R.tester, direct: true, teams: [team] }]);
+  });
+
+  it('TEAM: quản trị dự án nhờ team vẫn là quản trị — gỡ phần trực tiếp của quản trị viên duy nhất không bị chặn (còn quyền qua team)', async () => {
+    const p = await newProject(true, [[U.pa, [R.admin]]]);
+    await linkTeam(p, [U.pa], [R.admin]);
+    expect(await roleState(p, U.pa)).toEqual([
+      { roleId: R.admin, direct: true, teams: [expect.any(String)] },
+    ]);
+    const rm = await svc.setMembers(ORG, actor(U.admin), [row(p, U.pa, [R.admin], null)]);
+    expect(rm.results[0]).toMatchObject({ status: 'ok' });
+    expect(rm.results[0]!.stillViaTeams).toHaveLength(1);
+    expect((await roleState(p, U.pa))![0]).toMatchObject({ roleId: R.admin, direct: false });
   });
 });

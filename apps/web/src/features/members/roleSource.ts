@@ -70,6 +70,15 @@ export function memberHasDirectRoles(m: RowLike): boolean {
   return hasSourceInfo(m) ? m.roles.some((r) => r.direct === true) : true;
 }
 
+/**
+ * Vai trò GÁN TRỰC TIẾP của thành viên (phần mà "đặt / gỡ vai trò riêng" tác động; vai trò nhờ team và vai trò mặc định theo tổ chức
+ * thì không). Không có ghi đè → rỗng; ghi đè cũ chưa có thông tin nguồn → tất cả đều là trực tiếp.
+ */
+export function directRolesOf(m: RowLike): RoleRefDto[] {
+  if (!m.isOverride) return [];
+  return hasSourceInfo(m) ? m.roles.filter((r) => r.direct === true) : m.roles;
+}
+
 /** Tên các team đang cho người này vai trò ở dự án (khử trùng, giữ thứ tự xuất hiện). */
 export function memberTeamNames(m: Pick<MemberDto, 'roles'>): string[] {
   return [...new Set(m.roles.flatMap((r) => (r.teams ?? []).map((t) => t.name)))];

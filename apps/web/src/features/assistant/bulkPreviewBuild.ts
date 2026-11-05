@@ -171,7 +171,15 @@ async function buildMemberCard(
         members: Object.fromEntries(
           (members ?? []).map((m) => [
             m.userId,
-            { roleIds: m.roleIds, roleNames: m.roleNames, isOverride: m.isOverride },
+            {
+              roleIds: m.roleIds,
+              roleNames: m.roleNames,
+              isOverride: m.isOverride,
+              ...(m.directRoleIds ? { directRoleIds: m.directRoleIds } : {}),
+              ...(m.directRoleNames ? { directRoleNames: m.directRoleNames } : {}),
+              ...(m.teamRoleIds ? { teamRoleIds: m.teamRoleIds } : {}),
+              ...(m.teamNames ? { teamNames: m.teamNames } : {}),
+            },
           ]),
         ),
       };

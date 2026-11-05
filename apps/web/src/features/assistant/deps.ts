@@ -10,6 +10,7 @@ import type {
 } from '@tirapro/types';
 import type { ProjectMeta } from '@/features/ai/api';
 import { fetchAllProjectIssues } from '@/features/issues/api';
+import { directRolesOf, memberTeamNames } from '@/features/members/roleSource';
 import { userSearchQuery } from '@/features/members/userSearch';
 import { projectPermissionsQuery } from '@/features/projects/permissions';
 import { fetchJqlPage } from '@/features/saved-filters/api';
@@ -145,12 +146,19 @@ export function createAssistantDeps(qc: QueryClient): AssistantDeps {
           queryFn: async () => (await api.get<MemberDto[]>(`/projects/${projectId}/members`)).data,
           staleTime: 0, // thẻ xem trước phải thấy trạng thái MỚI NHẤT (máy chủ còn so lại lúc thực hiện)
         })
-      ).map((m) => ({
-        userId: m.user.id,
-        roleIds: m.roles.map((r) => r.id),
-        roleNames: m.roles.map((r) => r.name),
-        isOverride: m.isOverride === true,
-      })),
+      ).map((m) => {
+        const direct = directRolesOf(m);
+        return {
+          userId: m.user.id,
+          roleIds: m.roles.map((r) => r.id),
+          roleNames: m.roles.map((r) => r.name),
+          isOverride: m.isOverride === true,
+          directRoleIds: direct.map((r) => r.id),
+          directRoleNames: direct.map((r) => r.name),
+          teamRoleIds: m.roles.filter((r) => (r.teams ?? []).length > 0).map((r) => r.id),
+          teamNames: memberTeamNames(m),
+        };
+      }),
     async getOpenLoad(personIds) {
       const entries = await Promise.all(
         personIds.map(async (id) => {

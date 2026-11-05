@@ -143,6 +143,9 @@ function OutcomeList({ rows }: { rows: OutcomeRow[] }) {
             <Chip tone={r.status === 'ok' ? 'ok' : r.status === 'failed' ? 'bad' : 'muted'}>
               {r.status === 'ok' ? 'Đã làm' : r.status === 'failed' ? 'Lỗi' : 'Bỏ qua'}
             </Chip>
+            {r.viaTeams ? (
+              <Chip tone="muted">{`Vẫn có quyền qua team ${r.viaTeams.join(', ')}`}</Chip>
+            ) : null}
           </div>
           {r.reason ? <p className="mt-0.5 text-muted">{r.reason}</p> : null}
         </li>
@@ -342,13 +345,17 @@ function MemberEditor({
                   {r.current} → {r.after}
                 </span>
                 {r.status === 'ok' ? (
-                  <Chip tone="ok">{adding ? 'Sẽ đặt vai trò' : 'Sẽ gỡ'}</Chip>
+                  <Chip tone="ok">
+                    {adding ? 'Sẽ đặt vai trò' : r.viaTeams ? 'Sẽ gỡ phần trực tiếp' : 'Sẽ gỡ'}
+                  </Chip>
                 ) : r.status === 'already' ? (
                   <Chip tone="muted">Đã có vai trò này</Chip>
                 ) : r.status === 'no-perm' ? (
                   <Chip tone="bad">Không đủ quyền</Chip>
                 ) : r.status === 'blocked' ? (
                   <Chip tone="bad">Bị chặn</Chip>
+                ) : r.status === 'via-team' ? (
+                  <Chip tone="muted">Vẫn có quyền qua team</Chip>
                 ) : r.status === 'skip' ? (
                   <Chip tone="muted">Bỏ dòng</Chip>
                 ) : (

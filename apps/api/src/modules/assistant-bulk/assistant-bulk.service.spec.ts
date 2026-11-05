@@ -647,3 +647,140 @@ describe('fix round 1 — M1: không tự khoá mình, không bỏ quản trị 
     expect(res.results.map((r) => r.status)).toEqual(['ok', 'skipped']);
   });
 });
+
+/* ------------------------------ project-teams: direct ≠ nhờ team ------------------------------ */
+
+interface TeamedRole {
+  id: string;
+  direct?: boolean;
+  teams?: Array<{ id: string; name: string }>;
+}
+const teamed = (id: string, ...roles: TeamedRole[]) => ({
+  user: { id },
+  isOverride: true,
+  roles,
+});
+const QA = { id: 't-qa', name: 'QA' };
+
+describe('project-teams — vai trò gán trực tiếp vs nhờ team', () => {
+  it('"vai trò riêng" = chỉ phần GÁN TRỰC TIẾP: expect so với phần direct, vai trò nhờ team không tính', async () => {
+    const { service, members } = setupMembers({
+      perms: ADMIN,
+      state: {
+        pA: [
+          teamed('u1', { id: 'dev', direct: true }, { id: 'tester', direct: false, teams: [QA] }),
+        ],
+      },
+    });
+    const res = await service.setMembers('o1', user(), [
+      { projectId: 'pA', userId: 'u1', expect: ['dev'], set: ['dev', 'designer'] },
+    ]);
+    expect(res.results[0]).toMatchObject({
+      status: 'ok',
+      before: ['dev'],
+      after: ['dev', 'designer'],
+    });
+    expect(members.setProjectRoles).toHaveBeenCalledWith(
+      'o1',
+      'pA',
+      'u1',
+      ['dev', 'designer'],
+      'me',
+    );
+    // expect = cả vai trò nhờ team (cách cũ) giờ bị coi là đã đổi
+    const stale = await service.setMembers('o1', user(), [
+      { projectId: 'pA', userId: 'u1', expect: ['dev', 'tester'], set: ['dev', 'designer'] },
+    ]);
+    expect(stale.results[0]!.status).toBe('skipped');
+  });
+
+  it('THÊM cho người chỉ có vai trò nhờ team: expect null, đặt vai trò trực tiếp (vai trò nhờ team không bị đụng); không bị coi là "đã có"', async () => {
+    const { service, members } = setupMembers({
+      perms: ADMIN,
+      state: { pA: [teamed('u1', { id: 'tester', direct: false, teams: [QA] })] },
+    });
+    const res = await service.setMembers('o1', user(), [
+      { projectId: 'pA', userId: 'u1', expect: null, set: ['tester'] }, // cùng vai trò, nhưng đặt TRỰC TIẾP
+    ]);
+    expect(res.results[0]).toMatchObject({ status: 'ok', before: null, after: ['tester'] });
+    expect(members.setProjectRoles).toHaveBeenCalledWith('o1', 'pA', 'u1', ['tester'], 'me');
+  });
+
+  it('GỠ người chỉ có vai trò nhờ team: bỏ qua, nói rõ "chỉ có quyền qua team QA", KHÔNG gọi MembersService', async () => {
+    const { service, members } = setupMembers({
+      perms: ADMIN,
+      state: { pA: [teamed('u1', { id: 'tester', direct: false, teams: [QA] })] },
+    });
+    const res = await service.setMembers('o1', user(), [
+      { projectId: 'pA', userId: 'u1', expect: null, set: null },
+    ]);
+    expect(res.results[0]!.status).toBe('skipped');
+    expect(res.results[0]!.reason).toMatch(/chỉ có quyền qua team QA/);
+    expect(members.clearProjectOverride).not.toHaveBeenCalled();
+  });
+
+  it('GỠ phần trực tiếp khi còn vai trò nhờ team: ok nhưng báo stillViaTeams; Hoàn tác khôi phục đúng phần trực tiếp', async () => {
+    const { service, members } = setupMembers({
+      perms: ADMIN,
+      state: {
+        pA: [
+          teamed('u1', { id: 'dev', direct: true }, { id: 'tester', direct: false, teams: [QA] }),
+        ],
+      },
+    });
+    const res = await service.setMembers('o1', user(), [
+      { projectId: 'pA', userId: 'u1', expect: ['dev'], set: null },
+    ]);
+    expect(res.results[0]).toMatchObject({
+      status: 'ok',
+      before: ['dev'],
+      after: null,
+      stillViaTeams: ['QA'],
+    });
+    expect(members.clearProjectOverride).toHaveBeenCalledTimes(1);
+    // Hoàn tác (lúc này người đó chỉ còn vai trò nhờ team): expect null → đặt lại ['dev']
+    const second = setupMembers({
+      perms: ADMIN,
+      state: { pA: [teamed('u1', { id: 'tester', direct: false, teams: [QA] })] },
+    });
+    const undo = await second.service.setMembers('o1', user(), [
+      { projectId: 'pA', userId: 'u1', expect: null, set: ['dev'] },
+    ]);
+    expect(undo.results[0]).toMatchObject({ status: 'ok', after: ['dev'] });
+    expect(undo.results[0]).not.toHaveProperty('stillViaTeams');
+  });
+
+  it('gỡ phần trực tiếp mà KHÔNG còn nhờ team → không có stillViaTeams', async () => {
+    const { service } = setupMembers({
+      perms: ADMIN,
+      state: { pA: [teamed('u1', { id: 'dev', direct: true })] },
+    });
+    const res = await service.setMembers('o1', user(), [
+      { projectId: 'pA', userId: 'u1', expect: ['dev'], set: null },
+    ]);
+    expect(res.results[0]).not.toHaveProperty('stillViaTeams');
+  });
+
+  it('quản trị dự án nhờ team vẫn tính là quản trị: gỡ phần trực tiếp không phải "mất quản trị cuối" ở dự án riêng tư', async () => {
+    const { service } = setupMembers({
+      perms: ADMIN,
+      isPrivate: true,
+      // MỘT vai trò admin vừa gán trực tiếp vừa có nhờ team QA
+      state: { pA: [teamed('u1', { id: 'admin', direct: true, teams: [QA] })] },
+    });
+    const res = await service.setMembers('o1', user(), [
+      { projectId: 'pA', userId: 'u1', expect: ['admin'], set: null },
+    ]);
+    expect(res.results[0]).toMatchObject({ status: 'ok', stillViaTeams: ['QA'] });
+    // không có phần nhờ team → vẫn bị chặn như trước
+    const alone = setupMembers({
+      perms: ADMIN,
+      isPrivate: true,
+      state: { pA: [teamed('u1', { id: 'admin', direct: true })] },
+    });
+    const blocked = await alone.service.setMembers('o1', user(), [
+      { projectId: 'pA', userId: 'u1', expect: ['admin'], set: null },
+    ]);
+    expect(blocked.results[0]!.status).toBe('skipped');
+  });
+});

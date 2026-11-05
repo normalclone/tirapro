@@ -91,6 +91,20 @@ export interface AssignState {
 
 export const SKIP = 'skip';
 
+/**
+ * Trạng thái hiện tại của một người ở một dự án. `roleIds/roleNames` = vai trò HIỆU LỰC (gồm cả nhờ team và mặc định theo tổ chức);
+ * các trường `direct*` / `team*` tách nguồn (team theo dự án). Thiếu (thẻ lưu từ bản cũ): ghi đè = toàn bộ là trực tiếp, không team.
+ */
+interface MemberStateRef {
+  roleIds: string[];
+  roleNames: string[];
+  isOverride: boolean;
+  directRoleIds?: string[];
+  directRoleNames?: string[];
+  teamRoleIds?: string[];
+  teamNames?: string[];
+}
+
 export interface MemberProjectCol {
   id: string;
   key: string;
@@ -99,7 +113,7 @@ export interface MemberProjectCol {
   /** Gợi ý quyền project:admin của người gõ ở dự án này. */
   allowed: boolean | undefined;
   /** userId → trạng thái hiện tại. Vắng mặt = chưa là thành viên (chỉ có thể với dự án riêng tư). */
-  members: Record<string, { roleIds: string[]; roleNames: string[]; isOverride: boolean }>;
+  members: Record<string, MemberStateRef>;
 }
 
 export interface RoleOpt {
@@ -314,7 +328,7 @@ export function assignInputs(c: AssignComputed): AssistantBulkAssignRowInput[] {
 
 /* ------------------------------ thành viên ------------------------------ */
 
-type MemberRowStatus = 'ok' | 'already' | 'no-perm' | 'blocked' | 'nothing' | 'skip';
+type MemberRowStatus = 'ok' | 'already' | 'no-perm' | 'blocked' | 'via-team' | 'nothing' | 'skip';
 
 export interface ComputedMemberRow {
   /** `userId|projectId` */
@@ -328,8 +342,10 @@ export interface ComputedMemberRow {
   after: string;
   /** Lý do khi không ghi (hoặc cảnh báo khi ghi). */
   note?: string;
-  /** Bộ vai trò sẽ đặt khi `status = ok` (`null` = gỡ vai trò riêng). */
+  /** Bộ vai trò GÁN TRỰC TIẾP sẽ đặt khi `status = ok` (`null` = gỡ phần gán trực tiếp). */
   set?: string[] | null;
+  /** Team đang cho người này quyền ở dự án — sau lệnh họ VẪN có quyền qua các team này (không tính là đã gỡ). */
+  viaTeams?: string[];
 }
 
 export interface MemberComputed {
@@ -343,6 +359,8 @@ export interface MemberComputed {
     skip: number;
     noPerm: number;
     blocked: number;
+    /** Chỉ có quyền qua team (không có vai trò gán trực tiếp để gỡ) — không ghi gì. */
+    viaTeam: number;
     nothing: number;
   };
   role: RoleOpt | null;
@@ -362,10 +380,61 @@ const LAST_ADMIN =
   'Dự án riêng tư này sẽ không còn quản trị viên nào — hãy chỉ định quản trị viên khác trước.';
 
 /**
- * Tính bảng xem trước thêm / gỡ thành viên. "Thêm" là HỢP: bộ vai trò đặt = vai trò người này đang có ở dự án (vai trò riêng, hoặc
- * vai trò mặc định nếu chưa có ghi đè) + vai trò đã chọn — KHÔNG BAO GIỜ làm mất vai trò đang có (đổi/bớt vai trò là việc khác).
- * "Gỡ" bỏ toàn bộ vai trò RIÊNG. Hai luật chặn (máy chủ cũng chặn): tự bỏ quyền quản trị của chính mình, và làm dự án riêng tư
- * không còn quản trị viên nào (cộng dồn theo thứ tự dòng).
+ * Tách NGUỒN vai trò của một người ở dự án (team theo dự án): `direct` = gán trực tiếp (thứ "đặt/gỡ vai trò riêng" tác động),
+ * `teamRoleIds/teamNames` = nhờ team (không bao giờ bị lệnh hàng loạt đụng tới), `defaults` = vai trò mặc định theo tổ chức (hiệu
+ * lực mà không phải trực tiếp, không phải nhờ team). Thẻ cũ chưa có thông tin nguồn: ghi đè = toàn bộ trực tiếp.
+ */
+function sourcesOf(m: MemberStateRef | undefined): {
+  direct: string[];
+  directNames: string[];
+  teamRoleIds: string[];
+  teamNames: string[];
+  defaults: string[];
+  defaultNames: string[];
+} {
+  if (!m)
+    return {
+      direct: [],
+      directNames: [],
+      teamRoleIds: [],
+      teamNames: [],
+      defaults: [],
+      defaultNames: [],
+    };
+  const direct = m.directRoleIds ?? (m.isOverride ? m.roleIds : []);
+  const directNames = m.directRoleNames ?? (m.isOverride ? m.roleNames : []);
+  const teamRoleIds = m.teamRoleIds ?? [];
+  const rest = m.roleIds
+    .map((id, i) => ({ id, name: m.roleNames[i] ?? id }))
+    .filter((r) => !direct.includes(r.id) && !teamRoleIds.includes(r.id));
+  return {
+    direct,
+    directNames,
+    teamRoleIds,
+    teamNames: m.teamNames ?? [],
+    defaults: rest.map((r) => r.id),
+    defaultNames: rest.map((r) => r.name),
+  };
+}
+
+/** Hiện trạng một dòng: trực tiếp + qua team + mặc định theo tổ chức. */
+function currentText(m: MemberStateRef | undefined): string {
+  if (!m) return 'Chưa là thành viên';
+  const src = sourcesOf(m);
+  const parts = [
+    src.direct.length ? roleText(src.directNames) : '',
+    src.teamNames.length ? `qua team ${src.teamNames.join(', ')}` : '',
+    src.defaults.length ? `${roleText(src.defaultNames)} (mặc định theo tổ chức)` : '',
+  ].filter(Boolean);
+  return parts.join(' + ') || '—';
+}
+
+/**
+ * Tính bảng xem trước thêm / gỡ thành viên. "Thêm" là HỢP: bộ vai trò gán trực tiếp đặt = vai trò người này đang có (trực tiếp, hoặc
+ * mặc định theo tổ chức nếu chưa có ghi đè) + vai trò đã chọn — KHÔNG BAO GIỜ làm mất vai trò đang có; vai trò nhờ team (team theo
+ * dự án) không bị đụng tới. "Gỡ" chỉ bỏ phần GÁN TRỰC TIẾP: còn quyền nhờ team thì báo "vẫn có quyền qua team" (không tính là đã gỡ);
+ * chỉ có quyền nhờ team thì không ghi gì. Hai luật chặn (máy chủ cũng chặn): tự bỏ quyền quản trị của chính mình, và làm dự án
+ * riêng tư không còn quản trị viên nào (cộng dồn theo thứ tự dòng; quản trị nhờ team vẫn tính là quản trị).
  */
 export function computeMembers(card: MemberCard, state: MemberState): MemberComputed {
   const adding = card.kind === 'add-member';
@@ -393,10 +462,9 @@ export function computeMembers(card: MemberCard, state: MemberState): MemberComp
       if (seen.has(key)) continue;
       seen.add(key);
       const m = proj.members[person.id];
+      const src = sourcesOf(m);
       const base = { key, person, via, project: { id: proj.id, key: proj.key, name: proj.name } };
-      const current = m
-        ? `${roleText(m.roleNames)}${m.isOverride ? '' : ' (mặc định theo tổ chức)'}`
-        : 'Chưa là thành viên';
+      const current = currentText(m);
       if (state.dropped.includes(key)) {
         rows.push({ ...base, status: 'skip', current, after: '—' });
         continue;
@@ -413,43 +481,68 @@ export function computeMembers(card: MemberCard, state: MemberState): MemberComp
       }
       let row: ComputedMemberRow;
       if (adding) {
-        const have = m?.roleIds ?? [];
+        // Vai trò đang có mà "thêm" phải giữ: trực tiếp + mặc định theo tổ chức (KHÔNG gồm vai trò chỉ nhờ team).
+        const haveIds = [...src.direct, ...src.defaults];
+        const haveNames = [...src.directNames, ...src.defaultNames];
+        const viaThis = role ? src.teamRoleIds.includes(role.id) : false;
         if (!role)
           row = { ...base, status: 'nothing', current, after: '—', note: 'Chưa chọn vai trò.' };
-        else if (have.includes(role.id))
+        else if (haveIds.includes(role.id))
           row = {
             ...base,
             status: 'already',
             current,
-            after: roleText(m!.roleNames),
+            after: roleText(haveNames),
             note: 'Đã có vai trò này.',
           };
         else {
-          const set = [...have, role.id];
-          const names = [...(m?.roleNames ?? []), role.name];
+          const teamNote = src.teamNames.length
+            ? ` Vai trò nhờ team ${src.teamNames.join(', ')} được giữ nguyên.`
+            : '';
           row = {
             ...base,
             status: 'ok',
             current,
-            after: roleText(names),
-            set,
-            note: !m
-              ? 'Thêm vào dự án riêng tư.'
-              : m.isOverride
-                ? `Giữ nguyên ${roleText(m.roleNames)}, thêm ${role.name}.`
-                : `Giữ vai trò mặc định ${roleText(m.roleNames)}, thêm ${role.name} (đặt vai trò riêng cho dự án này).`,
+            after: roleText([...haveNames, role.name]),
+            set: [...haveIds, role.id],
+            note: `${
+              !m
+                ? 'Thêm vào dự án riêng tư.'
+                : src.direct.length
+                  ? `Giữ nguyên ${roleText(src.directNames)}, thêm ${role.name}.`
+                  : src.defaults.length
+                    ? `Giữ vai trò mặc định ${roleText(src.defaultNames)}, thêm ${role.name} (đặt vai trò riêng cho dự án này).`
+                    : `Thêm ${role.name} trực tiếp.`
+            }${viaThis ? ` Vai trò này đang có qua team ${src.teamNames.join(', ')} — thêm trực tiếp để vẫn giữ khi rời team.` : ''}${teamNote}`,
           };
         }
-      } else if (m?.isOverride)
+      } else if (src.direct.length > 0) {
+        const still = src.teamNames;
         row = {
           ...base,
           status: 'ok',
           current,
-          after: proj.isPrivate ? 'Rời dự án' : 'Về vai trò mặc định của tổ chức',
+          after: still.length
+            ? `Chỉ còn quyền qua team ${still.join(', ')}`
+            : proj.isPrivate
+              ? 'Rời dự án'
+              : 'Về vai trò mặc định của tổ chức',
           set: null,
-          note: proj.isPrivate
-            ? 'Dự án riêng tư: gỡ vai trò riêng = gỡ khỏi dự án.'
-            : 'Chỉ gỡ được vai trò riêng của dự án; người này vẫn thuộc dự án theo vai trò tổ chức.',
+          ...(still.length ? { viaTeams: still } : {}),
+          note: still.length
+            ? `Chỉ gỡ phần gán trực tiếp — người này vẫn có quyền qua team ${still.join(', ')} (không tính là đã gỡ khỏi dự án).`
+            : proj.isPrivate
+              ? 'Dự án riêng tư: gỡ vai trò riêng = gỡ khỏi dự án.'
+              : 'Chỉ gỡ được vai trò riêng của dự án; người này vẫn thuộc dự án theo vai trò tổ chức.',
+        };
+      } else if (src.teamNames.length > 0)
+        row = {
+          ...base,
+          status: 'via-team',
+          current,
+          after: '—',
+          viaTeams: src.teamNames,
+          note: `Vẫn có quyền qua team ${src.teamNames.join(', ')} — không có vai trò gán trực tiếp để gỡ. Muốn gỡ hãy sửa ở phần Team của dự án.`,
         };
       else
         row = {
@@ -462,8 +555,9 @@ export function computeMembers(card: MemberCard, state: MemberState): MemberComp
             : 'Chưa là thành viên của dự án này.',
         };
       if (row.status === 'ok') {
-        const before = m?.roleIds ?? [];
-        const loses = holdsAdmin(before) && !(row.set && holdsAdmin(row.set));
+        // Quyền quản trị còn lại sau lệnh = vai trò đặt mới + vai trò nhờ team (không bị đụng tới).
+        const loses =
+          holdsAdmin(m?.roleIds ?? []) && !holdsAdmin([...(row.set ?? []), ...src.teamRoleIds]);
         const blockReason = !loses
           ? null
           : person.id === card.actor.id && !card.actor.orgAdmin
@@ -472,8 +566,15 @@ export function computeMembers(card: MemberCard, state: MemberState): MemberComp
               ? LAST_ADMIN
               : null;
         if (blockReason)
-          row = { ...row, status: 'blocked', after: '—', note: blockReason, set: undefined };
-        else if (row.set && holdsAdmin(row.set)) holders.add(person.id);
+          row = {
+            ...row,
+            status: 'blocked',
+            after: '—',
+            note: blockReason,
+            set: undefined,
+            viaTeams: undefined,
+          };
+        else if (holdsAdmin([...(row.set ?? []), ...src.teamRoleIds])) holders.add(person.id);
         else holders.delete(person.id);
       }
       rows.push(row);
@@ -486,6 +587,7 @@ export function computeMembers(card: MemberCard, state: MemberState): MemberComp
     skip: count('skip'),
     noPerm: count('no-perm'),
     blocked: count('blocked'),
+    viaTeam: count('via-team'),
     nothing: count('nothing'),
   };
   const blocking: string[] = [];
@@ -507,7 +609,7 @@ export function computeMembers(card: MemberCard, state: MemberState): MemberComp
   };
 }
 
-/** Yêu cầu gửi máy chủ: chỉ dòng `ok`. `expect` = vai trò RIÊNG máy chủ phải đang thấy (null = chưa có). */
+/** Yêu cầu gửi máy chủ: chỉ dòng `ok`. `expect` = vai trò GÁN TRỰC TIẾP máy chủ phải đang thấy (null = chưa có). */
 export function memberInputs(
   card: MemberCard,
   computed: MemberComputed,
@@ -515,9 +617,15 @@ export function memberInputs(
   const projects = new Map(card.projects.map((p) => [p.id, p]));
   return computed.rows.flatMap((r) => {
     if (r.status !== 'ok' || r.set === undefined) return [];
-    const m = projects.get(r.project.id)?.members[r.person.id];
-    const expect = m?.isOverride ? m.roleIds : null;
-    return [{ projectId: r.project.id, userId: r.person.id, expect, set: r.set }];
+    const direct = sourcesOf(projects.get(r.project.id)?.members[r.person.id]).direct;
+    return [
+      {
+        projectId: r.project.id,
+        userId: r.person.id,
+        expect: direct.length > 0 ? direct : null,
+        set: r.set,
+      },
+    ];
   });
 }
 
@@ -530,6 +638,8 @@ export interface OutcomeRow {
   detail: string;
   status: OutcomeStatus;
   reason?: string;
+  /** Dòng gỡ: chỉ phần gán trực tiếp bị gỡ, người này vẫn có quyền qua các team này (không tính là đã gỡ khỏi dự án). */
+  viaTeams?: string[];
 }
 
 /** Dữ liệu Hoàn tác: các yêu cầu đảo ngược CHỈ của dòng đã đổi thật (gửi lại đúng hai API cũ). */
@@ -615,18 +725,28 @@ export function membersOutcome(
       });
       continue;
     }
-    rows.push({ label, detail, status: r.status, ...(r.reason ? { reason: r.reason } : {}) });
+    const still = r.status === 'ok' && r.stillViaTeams?.length ? r.stillViaTeams : null;
+    rows.push({
+      label,
+      detail: still ? '→ gỡ phần gán trực tiếp' : detail,
+      status: r.status,
+      ...(r.reason ? { reason: r.reason } : {}),
+      ...(still ? { viaTeams: still } : {}),
+    });
     if (r.status === 'ok') {
-      // Đảo ngược: mong đợi đúng trạng thái SAU, đặt lại trạng thái TRƯỚC.
+      // Đảo ngược: chỉ khôi phục phần GÁN TRỰC TIẾP (before/after của máy chủ là bộ vai trò trực tiếp), không đụng vai trò nhờ team.: mong đợi đúng trạng thái SAU, đặt lại trạng thái TRƯỚC.
       undoRows.push({ projectId: r.projectId, userId: r.userId, expect: r.after, set: r.before });
       labels[s.key] = label;
     }
   }
   const counts = tally(rows);
-  const extra = tail(counts);
+  const stillVia = rows.filter((r) => r.viaTeams).length;
+  const extra = [tail(counts), stillVia ? `${stillVia} vẫn có quyền qua team` : '']
+    .filter(Boolean)
+    .join(', ');
   const verb = card.kind === 'add-member' ? 'Đã đặt vai trò cho' : 'Đã gỡ vai trò riêng của';
   return {
-    title: `${verb} ${counts.ok} dòng${extra ? ` (${extra})` : ''}`,
+    title: `${verb} ${counts.ok - stillVia} dòng${extra ? ` (${extra})` : ''}`,
     rows,
     counts,
     undo: undoRows.length > 0 ? { kind: 'members', rows: undoRows, labels } : null,
