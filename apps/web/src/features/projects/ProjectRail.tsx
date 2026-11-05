@@ -11,6 +11,7 @@ import {
   railToggleOutcome,
   resolveRailCollapsed,
 } from '@/lib/railPref';
+import { RAIL_WIDTH_MAX, RAIL_WIDTH_MIN, useRailWidth } from '@/lib/railWidth';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/stores/auth';
 import { useEpicPanel } from '@/stores/epicPanel';
@@ -100,16 +101,21 @@ function RailInner({
   const [createProject, setCreateProject] = useState(false);
   const canCreate = useAuth((s) => s.can('project:create'));
   const { collapsed, epicOpen, toggleCollapsed } = useRailCollapse(userId, projects, withEpicPanel);
+  const rail = useRailWidth(userId);
+  const { width, dragging } = rail;
 
   return (
     <>
       <aside
         aria-label="Danh sách dự án"
         className={cn(
-          'hidden shrink-0 flex-col border-r border-border bg-surface print:hidden lg:flex',
-          collapsed ? 'w-14' : 'w-56',
+          'relative hidden shrink-0 flex-col border-r border-border bg-surface print:hidden lg:flex',
+          collapsed && 'w-14',
+          dragging && 'select-none',
         )}
+        style={collapsed ? undefined : { width }}
       >
+        {!collapsed && <RailResizeHandle {...rail} />}
         <div
           className={cn(
             'flex items-center gap-2 py-3',
@@ -166,7 +172,7 @@ function RailInner({
             <NavLink
               key={p.id}
               to={`/p/${p.key}/${view}`}
-              title={collapsed ? `${p.name}${p.archivedAt ? ' (đã lưu trữ)' : ''}` : undefined}
+              title={`${p.name}${p.archivedAt ? ' (đã lưu trữ)' : ''}`}
               aria-label={collapsed ? `${p.name}${p.archivedAt ? ' (đã lưu trữ)' : ''}` : undefined}
               className={cn(
                 'flex items-center gap-2 rounded-md text-sm transition-colors',
@@ -220,5 +226,33 @@ function RailInner({
 
       <CreateProjectModal open={createProject} onClose={() => setCreateProject(false)} />
     </>
+  );
+}
+
+/** Tay nắm ở mép phải danh sách dự án: kéo để nới rộng (tên dự án dài), phím mũi tên/Home/End, bấm đúp = mặc định. */
+function RailResizeHandle({ width, dragging, handleProps }: ReturnType<typeof useRailWidth>) {
+  return (
+    <div
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="Kéo để đổi độ rộng danh sách dự án"
+      aria-valuenow={width}
+      aria-valuemin={RAIL_WIDTH_MIN}
+      aria-valuemax={RAIL_WIDTH_MAX}
+      title="Kéo để nới rộng · bấm đúp để về mặc định"
+      tabIndex={0}
+      {...handleProps}
+      className="group absolute inset-y-0 -right-1.5 z-10 w-3 cursor-col-resize touch-none focus-visible:outline-none"
+    >
+      <span
+        aria-hidden
+        className={cn(
+          'absolute inset-y-0 left-1/2 w-0.5 -translate-x-1/2 transition-colors',
+          dragging
+            ? 'bg-primary'
+            : 'bg-transparent group-hover:bg-border-strong group-focus-visible:bg-primary',
+        )}
+      />
+    </div>
   );
 }
