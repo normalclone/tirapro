@@ -14,6 +14,10 @@ export const AUDIT_ACTIONS = {
   PROJECT_MEMBER_ADDED: 'project_member.added',
   PROJECT_MEMBER_ROLES_CHANGED: 'project_member.roles_changed',
   PROJECT_MEMBER_REMOVED: 'project_member.removed',
+  PROJECT_TEAM_LINKED: 'project_team.linked',
+  PROJECT_TEAM_ROLES_CHANGED: 'project_team.roles_changed',
+  PROJECT_TEAM_UNLINKED: 'project_team.unlinked',
+  PROJECT_TEAM_SYNCED: 'project_team.synced',
   PROJECT_VISIBILITY_CHANGED: 'project.visibility_changed',
   ACCOUNT_CREATED: 'account.created',
   ACCOUNT_PERMISSIONS_CHANGED: 'account.permissions_changed',
@@ -32,6 +36,9 @@ export const AUDIT_ACTIONS = {
   WIKI_PAGE_RESTORED: 'wiki.page_restored',
   WIKI_VERSION_RESTORED: 'wiki.version_restored',
   POINTS_FORMULA_CHANGED: 'points.formula_changed',
+  PROJECT_SUBTEAM_CREATED: 'project_subteam.created',
+  PROJECT_SUBTEAM_UPDATED: 'project_subteam.updated',
+  PROJECT_SUBTEAM_DELETED: 'project_subteam.deleted',
 } as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];
 
@@ -48,6 +55,10 @@ export const AUDIT_ACTION_LABEL: Record<AuditAction, string> = {
   'project_member.roles_changed': 'Đổi vai trò trong dự án',
   'project_member.removed': 'Gỡ vai trò riêng trong dự án',
   'project.visibility_changed': 'Đổi chế độ riêng tư dự án',
+  'project_team.linked': 'Gắn team vào dự án',
+  'project_team.roles_changed': 'Đổi vai trò của team trong dự án',
+  'project_team.unlinked': 'Gỡ team khỏi dự án',
+  'project_team.synced': 'Đồng bộ team vào dự án',
   'account.created': 'Tạo tài khoản (quản trị hệ thống)',
   'account.permissions_changed': 'Đổi quyền hệ thống của tài khoản',
   'account.email_changed': 'Đổi email đăng nhập của tài khoản',
@@ -65,6 +76,9 @@ export const AUDIT_ACTION_LABEL: Record<AuditAction, string> = {
   'wiki.page_restored': 'Khôi phục trang wiki đã xoá',
   'wiki.version_restored': 'Khôi phục phiên bản trang wiki',
   'points.formula_changed': 'Đổi cách tính điểm (toàn hệ thống)',
+  'project_subteam.created': 'Tạo team trong dự án',
+  'project_subteam.updated': 'Sửa team trong dự án',
+  'project_subteam.deleted': 'Xoá team trong dự án',
 };
 
 export interface AuditLogDto {

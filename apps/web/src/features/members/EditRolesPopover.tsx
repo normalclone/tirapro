@@ -23,6 +23,8 @@ type Common = {
   current: RoleRefDto[];
   /** Tiêu đề trong popover (mặc định "Vai trò"). */
   title?: string;
+  /** Lưu ý hiện ngay trên nút Lưu (chỉ chế độ có nút Lưu) — vd lưu sẽ biến vai trò nhờ team thành vai trò đặt riêng. */
+  notice?: React.ReactNode;
 };
 type SaveProps = Common & {
   saving: boolean;
@@ -88,6 +90,7 @@ export function EditRolesPopover(props: SaveProps | InstantProps) {
               current={props.current}
               saving={props.saving}
               onSave={props.onSave}
+              notice={props.notice}
               onDone={() => setOpen(false)}
             />
           )}
@@ -137,6 +140,7 @@ function SaveBody({
   current,
   saving,
   onSave,
+  notice,
   onDone,
 }: {
   open: boolean;
@@ -144,6 +148,7 @@ function SaveBody({
   current: RoleRefDto[];
   saving: boolean;
   onSave: (roleIds: string[]) => Promise<unknown>;
+  notice?: React.ReactNode;
   onDone: () => void;
 }) {
   const [selected, setSelected] = useState<string[]>(() => current.map((r) => r.id));
@@ -170,6 +175,11 @@ function SaveBody({
   return (
     <>
       <RoleMultiSelect options={options} value={selected} onChange={setSelected} />
+      {notice && (
+        <p className="mt-3 rounded-md bg-surface-2 px-2.5 py-2 text-xs text-muted" role="note">
+          {notice}
+        </p>
+      )}
       <div className="mt-3 flex items-center justify-end gap-2">
         <Button type="button" variant="ghost" size="sm" onClick={onDone}>
           Huỷ

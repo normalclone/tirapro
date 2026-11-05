@@ -17,6 +17,32 @@ export interface JqlCompileContext {
    * Không có entry (vd cột searchVector chưa tồn tại) → rơi về `contains` trên summary/description.
    */
   fulltext?: ReadonlyMap<string, readonly string[]>;
+  /**
+   * Team riêng của dự án trong tổ chức (đã tra sẵn khi JQL có `team`, xem `loadJqlSubTeams`). `team` so tên TRONG dự án của việc
+   * nên cần biết từng team thuộc dự án nào; không có (không tra) → `team` coi như không có team nào tồn tại.
+   */
+  subTeams?: JqlSubTeams;
+}
+
+/** Một team riêng trong dự án — đủ để dựng điều kiện "người phụ trách thuộc team này VÀ việc thuộc đúng dự án của team". */
+interface SubTeamRef {
+  id: string;
+  projectId: string;
+  name: string;
+}
+
+export interface JqlSubTeams {
+  all: readonly SubTeamRef[];
+}
+
+/** JQL có dùng trường `team` không — để chỉ tra danh sách team khi cần. */
+export function jqlUsesTeam(node: JqlNode | null): boolean {
+  const walk = (n: JqlNode): boolean => {
+    if (n.type === 'logical') return walk(n.left) || walk(n.right);
+    if (n.type === 'not') return walk(n.node);
+    return n.field === 'team';
+  };
+  return node ? walk(node) : false;
 }
 
 /**
@@ -123,7 +149,16 @@ interface ArrayRel {
 }
 
 interface FieldCfg {
-  kind: 'relationName' | 'idUser' | 'enumRel' | 'text' | 'fulltext' | 'array' | 'date' | 'number';
+  kind:
+    | 'relationName'
+    | 'idUser'
+    | 'enumRel'
+    | 'text'
+    | 'fulltext'
+    | 'array'
+    | 'date'
+    | 'number'
+    | 'subTeam';
   relation?: string; // tên relation Prisma
   field?: string; // cột bên trong relation (name/key/category)
   idColumn?: string; // cột FK để xử lý IS EMPTY trực tiếp
@@ -182,6 +217,7 @@ const FIELD_MAP: Record<JqlFieldName, FieldCfg> = {
   },
   labels: { kind: 'array', arrayRel: { relation: 'labels', ref: 'label' } },
   component: { kind: 'array', arrayRel: { relation: 'components', ref: 'component' } },
+  team: { kind: 'subTeam' },
   fixVersion: {
     kind: 'array',
     arrayRel: { relation: 'fixVersions', ref: 'version', type: 'FIX' },
@@ -377,6 +413,8 @@ function compileComparison(
       const cmp = dateCmp(op, d);
       return { [col]: cmp };
     }
+    case 'subTeam':
+      return compileTeam(op, value, ctx);
     case 'number': {
       const col = cfg.column!;
       if (op === 'IS') return { [col]: null };
@@ -389,6 +427,41 @@ function compileComparison(
     default:
       return {};
   }
+}
+
+/**
+ * `team` = người phụ trách thuộc team (riêng của dự án) có tên đó, TRONG dự án của việc: một nhánh `OR` cho mỗi team trùng tên
+ * (mỗi dự án có thể có team cùng tên), mỗi nhánh gắn đúng `projectId` của team. `assigneeId IS NOT NULL` nằm trong nhánh để phủ
+ * định (`!=`, `NOT IN`, `IS EMPTY`) vẫn gồm việc chưa gán (không để `NULL IN (…)` làm rơi dòng).
+ */
+function teamMatch(refs: readonly SubTeamRef[]): Where {
+  if (!refs.length) return { id: { in: [] } };
+  return {
+    OR: refs.map((t) => ({
+      projectId: t.projectId,
+      AND: [
+        { assigneeId: { not: null } },
+        { assignee: { subTeamMemberships: { some: { subTeamId: t.id } } } },
+      ],
+    })),
+  };
+}
+
+function compileTeam(op: JqlOperator, value: JqlValue, ctx: JqlCompileContext): Where {
+  const all = ctx.subTeams?.all ?? [];
+  if (op === 'IS') return all.length ? { NOT: teamMatch(all) } : {}; // không thuộc team nào của dự án mình (kể cả chưa gán)
+  if (op === 'IS NOT') return teamMatch(all);
+  if (op !== '=' && op !== '!=' && op !== 'IN' && op !== 'NOT IN')
+    throw new BusinessRuleException(
+      `Toán tử ${op} không dùng được cho team — hãy dùng =, !=, IN, NOT IN hoặc IS EMPTY`,
+    );
+  const names = new Set(
+    (op === 'IN' || op === 'NOT IN' ? listStrings(value, ctx) : [scalarString(value, ctx)]).map(
+      (n) => n.trim().toLowerCase(),
+    ),
+  );
+  const match = teamMatch(all.filter((t) => names.has(t.name.toLowerCase())));
+  return op === '!=' || op === 'NOT IN' ? { NOT: match } : match;
 }
 
 // ---------- helpers ----------

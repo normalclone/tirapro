@@ -91,9 +91,10 @@ export class AnalyticsController {
   async projectReport(
     @OrganizationId() organizationId: string,
     @Query('projectId') projectId?: string,
+    @Query('teamId') teamId?: string,
   ) {
     if (!projectId) throw new BusinessRuleException('Thiếu projectId');
-    return this.analytics.projectReport(organizationId, projectId);
+    return this.analytics.projectReport(organizationId, projectId, teamId || undefined);
   }
 
   /** projectId BẮT BUỘC: guard tính report:view theo dự án; service kiểm sprint thuộc đúng dự án đó. */

@@ -1,6 +1,26 @@
 import { describe, expect, it, vi } from 'vitest';
 import { NotFoundAppException } from '../../common/exceptions/app.exception';
+import { clearDirectRoles } from '../project-teams/project-role-sources';
 import { MembersService } from './members.service';
+
+// Logic nguồn vai trò (direct / nhờ team) chạy trên Postgres THẬT ở `project-teams.int-spec.ts`; ở đây chỉ kiểm điều phối của service
+// (nhật ký, sự kiện, chốt thành viên cuối) nên thay các hàm đó bằng bản giả.
+vi.mock('../project-teams/project-role-sources', () => ({
+  lockProjectRoles: vi.fn(() => Promise.resolve()),
+  setDirectRoles: vi.fn(() => Promise.resolve()),
+  clearDirectRoles: vi.fn(() => Promise.resolve(true)),
+  teamNamesOf: vi.fn(() => Promise.resolve([])),
+  // Bản giả đếm qua `tx.projectMembership.count` của mock từng ca (bộ lọc thật được kiểm ở int-spec).
+  countActiveProjectMembers: vi.fn((tx: { projectMembership: { count: () => Promise<number> } }) =>
+    tx.projectMembership.count(),
+  ),
+}));
+
+/** `$transaction` giả: chạy callback với chính prisma giả (tx), còn dạng mảng trả `[]`. */
+const runTx = (prisma: object) =>
+  vi.fn((fn: unknown) =>
+    typeof fn === 'function' ? (fn as (t: object) => unknown)(prisma) : Promise.resolve([]),
+  );
 
 describe('MembersService.addOrganizationMany', () => {
   function setup() {
@@ -77,6 +97,11 @@ describe('MembersService.removeOrganization', () => {
     const tx = {
       organizationMembership: { delete: vi.fn(() => Promise.resolve({})) },
       projectMembership: { deleteMany: vi.fn(() => Promise.resolve({ count: 2 })) },
+      projectSubTeamMember: {
+        findMany: vi.fn(() => Promise.resolve([])),
+        deleteMany: vi.fn(() => Promise.resolve({ count: 0 })),
+      },
+      $executeRaw: vi.fn(() => Promise.resolve(0)),
     };
     const prisma = {
       $transaction: vi.fn((fn: (t: unknown) => unknown) => Promise.resolve(fn(tx))),
@@ -120,6 +145,10 @@ describe('MembersService.removeOrganization', () => {
     });
     expect(tx.projectMembership.deleteMany).toHaveBeenCalledWith({
       where: { userId: 'u1', project: { organizationId: 'w1' } },
+    });
+    // ra khỏi mọi team riêng trong dự án của tổ chức (cùng transaction)
+    expect(tx.projectSubTeamMember.deleteMany).toHaveBeenCalledWith({
+      where: { userId: 'u1', subTeam: { project: { organizationId: 'w1' } } },
     });
     expect(apiKeys.revokeAllForUser).toHaveBeenCalledWith('w1', 'u1', tx);
     expect(apiKeys.dropCaches).toHaveBeenCalledWith(['pfx1', 'pfx2']);
@@ -629,6 +658,7 @@ function setupProject(opts: {
     projectMembership: {
       findUnique: vi.fn(() => Promise.resolve(opts.hasOverride ? { id: 'pm1' } : null)),
       create: vi.fn(() => Promise.resolve({})),
+      createMany: vi.fn(() => Promise.resolve({ count: 1 })),
       update: vi.fn(() => Promise.resolve({})),
       findUniqueOrThrow: vi.fn(() => Promise.resolve(member)),
       deleteMany: vi.fn(() => Promise.resolve({ count: opts.deleteCount ?? 1 })),
@@ -637,6 +667,7 @@ function setupProject(opts: {
       deleteMany: vi.fn(() => Promise.resolve({})),
       createMany: vi.fn(() => Promise.resolve({})),
     },
+    projectMembershipRoleTeam: { findMany: vi.fn(() => Promise.resolve([])) },
     role: { findMany: vi.fn(() => Promise.resolve([{ id: 'pr1' }])) },
     user: {
       findUnique: vi.fn(() =>
@@ -654,6 +685,7 @@ function setupProject(opts: {
     },
     $transaction: vi.fn(() => Promise.resolve([])),
   };
+  prisma.$transaction = runTx(prisma);
   const audit = { record: vi.fn() };
   const events = { emit: vi.fn() };
   const svc = new MembersService(
@@ -776,6 +808,7 @@ describe('MembersService — dự án riêng tư', () => {
         ? [{ id: 'pm2', userId: 'u2', roleId: 'pr1', role, roles: [{ role }] }]
         : []),
     ];
+    const cleared = { v: false };
     const prisma = {
       project: {
         findFirst: vi.fn(() =>
@@ -785,13 +818,21 @@ describe('MembersService — dự án riêng tư', () => {
       organizationMembership: { findMany: vi.fn(() => Promise.resolve(wsRows)) },
       projectMembership: {
         findMany: vi.fn(() => Promise.resolve(overrides)),
-        count: vi.fn(() => Promise.resolve(overrides.length)),
-        findUnique: vi.fn(() => Promise.resolve({ id: 'pm1' })),
-        deleteMany: vi.fn(() => Promise.resolve({ count: 1 })),
+        // Đếm SAU khi gỡ (trong transaction): hàm giả `clearDirectRoles` đánh dấu đã xoá thành viên.
+        count: vi.fn(() => Promise.resolve(overrides.length - (cleared.v ? 1 : 0))),
+        findUnique: vi.fn(() => Promise.resolve({ id: 'pm1', roleId: 'pr1' })),
       },
       role: { findMany: vi.fn(() => Promise.resolve([role])) },
       user: { findUnique: vi.fn(() => Promise.resolve({ displayName: 'x', email: 'x@x.vn' })) },
+      $transaction: undefined as unknown as ReturnType<typeof runTx>,
     };
+    prisma.$transaction = runTx(prisma);
+    cleared.v = false;
+    vi.mocked(clearDirectRoles).mockClear();
+    vi.mocked(clearDirectRoles).mockImplementation(() => {
+      cleared.v = true;
+      return Promise.resolve(true);
+    });
     const audit = { record: vi.fn() };
     const events = { emit: vi.fn() };
     const rbac = {
@@ -822,27 +863,31 @@ describe('MembersService — dự án riêng tư', () => {
   });
 
   it('clearProjectOverride: dự án riêng tư, thành viên duy nhất => BusinessRuleException, không xoá', async () => {
-    const { svc, prisma } = setup({ isPrivate: true });
+    const { svc, audit, events } = setup({ isPrivate: true });
     await expect(svc.clearProjectOverride('w1', 'p1', 'u1', 'a')).rejects.toMatchObject({
       status: 422,
       message: expect.stringContaining('ít nhất một thành viên') as unknown,
     });
-    expect(prisma.projectMembership.deleteMany).not.toHaveBeenCalled();
+    // Ném trong transaction → hoàn lại (đã kiểm với Postgres thật ở project-teams.int-spec); không nhật ký, không sự kiện.
+    expect(audit.record).not.toHaveBeenCalled();
+    expect(events.emit).not.toHaveBeenCalled();
   });
 
   it('clearProjectOverride: dự án riêng tư còn người khác => gỡ khỏi dự án + nhật ký', async () => {
-    const { svc, prisma, audit } = setup({ isPrivate: true, memberCount: 2 });
+    const { svc, audit } = setup({ isPrivate: true, memberCount: 2 });
     await svc.clearProjectOverride('w1', 'p1', 'u1', 'a');
-    expect(prisma.projectMembership.deleteMany).toHaveBeenCalledTimes(1);
+    expect(clearDirectRoles).toHaveBeenCalledTimes(1);
     expect(audit.record).toHaveBeenCalledWith(
       expect.objectContaining({ action: 'project_member.removed' }),
     );
   });
 
   it('clearProjectOverride: dự án công khai => như cũ (không kiểm thành viên cuối)', async () => {
+    vi.mocked(clearDirectRoles).mockClear();
     const { svc, prisma } = setup({ isPrivate: false });
     await svc.clearProjectOverride('w1', 'p1', 'u1', 'a');
-    expect(prisma.projectMembership.deleteMany).toHaveBeenCalledTimes(1);
+    expect(clearDirectRoles).toHaveBeenCalledTimes(1);
+    expect(prisma.projectMembership.count).not.toHaveBeenCalled();
   });
 });
 
@@ -853,12 +898,17 @@ describe('MembersService.clearProjectOverride — phát sự kiện rút socket 
         findFirst: vi.fn(() => Promise.resolve({ id: 'p1', name: 'Demo', isPrivate: true })),
       },
       projectMembership: {
-        count: vi.fn(() => Promise.resolve(2)),
-        findUnique: vi.fn(() => Promise.resolve({ id: 'pm1' })),
-        deleteMany: vi.fn(() => Promise.resolve({ count: deleteCount })),
+        count: vi.fn(() => Promise.resolve(1)), // sau khi gỡ vẫn còn một người khác
+        // deleteCount 0 = không có bản ghi ghi đè để gỡ
+        findUnique: vi.fn(() =>
+          Promise.resolve(deleteCount > 0 ? { id: 'pm1', roleId: 'pr1' } : null),
+        ),
       },
       user: { findUnique: vi.fn(() => Promise.resolve({ displayName: 'x', email: 'x@x.vn' })) },
+      $transaction: undefined as unknown as ReturnType<typeof runTx>,
     };
+    prisma.$transaction = runTx(prisma);
+    vi.mocked(clearDirectRoles).mockImplementation(() => Promise.resolve(true));
     const events = { emit: vi.fn() };
     const svc = new MembersService(
       prisma as never,

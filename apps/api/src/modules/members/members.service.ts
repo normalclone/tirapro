@@ -34,12 +34,34 @@ import { touchedAdminRoleIds } from '../rbac/admin-grant';
 import { ApiKeyService } from '../api-keys/api-key.service';
 import { AuditService } from '../audit/audit.service';
 import { SYSTEM_USER_EMAIL } from '../../common/system-user';
+import { pruneSubTeamsOnOrganizationRemoved } from '../project-subteams/subteam-membership';
+import {
+  clearDirectRoles,
+  countActiveProjectMembers,
+  lockProjectRoles,
+  setDirectRoles,
+  teamNamesOf,
+} from '../project-teams/project-role-sources';
 import type { CreateMemberAccountInput } from './members.schemas';
 
 /** Người xem (AuthUser rút gọn) để quyết định có trả `isSystemAdmin`/`lastSeenAt` của thành viên không. */
 type ViewerLike = { isSystemAdmin?: boolean; permissions?: readonly string[] };
 
-type RoleRefRow = { role: { id: string; name: string; color: string | null } };
+type RoleRefRow = {
+  role: { id: string; name: string; color: string | null };
+  /** Chỉ có ở vai trò DỰ ÁN: gán trực tiếp? và nhờ những team nào (xem project-role-sources.ts). */
+  direct?: boolean;
+  teamSources?: Array<{ team: { id: string; name: string } }>;
+};
+
+/** Select vai trò dự án kèm NGUỒN (trực tiếp / nhờ team nào). */
+const PROJECT_ROLE_SELECT = {
+  direct: true,
+  role: { select: { id: true, name: true, color: true } },
+  teamSources: { select: { team: { select: { id: true, name: true } } } },
+} as const;
+
+const PROJECT_ROLES_TX = { maxWait: 10_000, timeout: 30_000 } as const;
 
 /**
  * Quản lý thành viên + GÁN NHIỀU VAI TRÒ ở cấp tổ chức và project.
@@ -490,6 +512,7 @@ export class MembersService {
         where: { organizationId_userId: { organizationId, userId } },
       });
       await tx.projectMembership.deleteMany({ where: { userId, project: { organizationId } } });
+      await pruneSubTeamsOnOrganizationRemoved(tx, organizationId, userId); // ra khỏi mọi team riêng trong dự án của tổ chức
       return this.apiKeys.revokeAllForUser(organizationId, userId, tx);
     });
     await this.apiKeys.dropCaches(revokedPrefixes);
@@ -588,7 +611,7 @@ export class MembersService {
           userId: true,
           roleId: true,
           role: { select: { id: true, name: true, color: true } },
-          roles: { select: { role: { select: { id: true, name: true, color: true } } } },
+          roles: { select: PROJECT_ROLE_SELECT },
         },
       }),
       this.prisma.role.findMany({
@@ -605,18 +628,26 @@ export class MembersService {
 
     const out = visibleRows.map((m) => {
       const ov = overrideByUser.get(m.user.id);
-      if (ov) {
-        return {
-          ...this.toMemberDto({ id: ov.id, user: m.user, roles: ov.roles }, ov.role),
-          isOverride: true,
-        };
-      }
       // Vai trò mặc định theo vai trò tổ chức của người này.
       const defaults: { id: string; name: string; color: string | null }[] = [];
       for (const r of m.roles.length ? m.roles : [{ role: m.role }]) {
         const target = DEFAULT_PROJECT_ROLE_BY_WS_ROLE[r.role.name];
         const found = target ? projRoleByName.get(target) : undefined;
         if (found && !defaults.some((d) => d.id === found.id)) defaults.push(found);
+      }
+      if (ov) {
+        const dto = this.toMemberDto({ id: ov.id, user: m.user, roles: ov.roles }, ov.role);
+        // Chỉ do team gắn vào (không vai trò gán trực tiếp) ở dự án công khai: quyền hiệu lực cộng cả vai trò mặc định theo tổ chức
+        // (giống `RbacService.compute`) nên danh sách cũng hiện chúng — để thấy đúng thứ người đó thật sự có.
+        const teamOnly = ov.roles.length > 0 && ov.roles.every((r) => r.direct === false);
+        if (teamOnly && !project.isPrivate) {
+          const have = new Set(dto.roles.map((r) => r.id));
+          dto.roles = [
+            ...dto.roles,
+            ...defaults.filter((d) => !have.has(d.id)).map((d) => ({ ...d })), // như dòng mặc định thường: không kèm direct/teams
+          ];
+        }
+        return { ...dto, isOverride: true };
       }
       return {
         membershipId: m.id,
@@ -643,23 +674,40 @@ export class MembersService {
       () => this.currentProjectRoleIds(projectId, userId),
       [],
     );
-    if (project.isPrivate) {
-      // Dự án riêng tư: gỡ ghi đè = GỠ KHỎI DỰ ÁN. Không để dự án không còn thành viên nào (mồ côi).
-      const members = await this.prisma.projectMembership.count({
-        where: { projectId, user: { organizationMemberships: { some: { organizationId } } } },
-      });
-      const isMember = await this.prisma.projectMembership.findUnique({
+    // Gỡ phần GÁN TRỰC TIẾP (vai trò nhờ team giữ nguyên). Hết vai trò → rời hẳn bản ghi ghi đè: dự án công khai về vai trò mặc định
+    // theo tổ chức, dự án riêng tư = gỡ khỏi dự án (không để dự án không còn thành viên nào — thao tác bị huỷ, rollback).
+    const res = await this.prisma.$transaction(async (tx) => {
+      await lockProjectRoles(tx, projectId);
+      const m = await tx.projectMembership.findUnique({
         where: { projectId_userId: { projectId, userId } },
-        select: { id: true },
+        select: { id: true, roleId: true },
       });
-      if (isMember && members <= 1)
-        throw new BusinessRuleException('Dự án phải còn ít nhất một thành viên');
-    }
-    const { count } = await this.prisma.projectMembership.deleteMany({
-      where: { projectId, userId },
-    });
+      if (!m)
+        return { had: false, removed: false, teams: [] as Array<{ id: string; name: string }> };
+      const removed = await clearDirectRoles(tx, m);
+      if (removed && project.isPrivate) {
+        const left = await countActiveProjectMembers(tx, { projectId, organizationId });
+        if (left === 0) throw new BusinessRuleException('Dự án phải còn ít nhất một thành viên');
+      }
+      return { had: true, removed, teams: removed ? [] : await teamNamesOf(tx, m.id) };
+    }, PROJECT_ROLES_TX);
     await this.rbac.invalidate(userId, organizationId);
-    if (count === 0) return { success: true }; // không có vai trò riêng để gỡ → không ghi nhật ký
+    if (!res.had) return { success: true }; // không có vai trò riêng để gỡ → không ghi nhật ký
+    const who = await this.userLabel(userId);
+    if (!res.removed) {
+      // Vẫn ở dự án nhờ team: chỉ mất phần gán trực tiếp.
+      this.emitAccessChanged(organizationId, [userId]);
+      await this.audit.record({
+        organizationId,
+        actorId,
+        action: AUDIT_ACTIONS.PROJECT_MEMBER_REMOVED,
+        entityType: 'user',
+        entityId: userId,
+        summary: `Gỡ vai trò gán trực tiếp của ${who} trong dự án "${project.name}" (vẫn ở dự án nhờ team ${res.teams.map((t) => t.name).join(', ')})`,
+        meta: { projectId, stillViaTeamIds: res.teams.map((t) => t.id) },
+      });
+      return { success: true };
+    }
     // Gỡ khỏi dự án (riêng tư): realtime rút socket của họ khỏi room project nếu không còn thấy dự án (kiểm lại ở gateway).
     this.events.emit(DOMAIN_EVENTS.PROJECT_MEMBER_REMOVED, { organizationId, projectId, userId });
     await this.audit.record({
@@ -669,8 +717,8 @@ export class MembersService {
       entityType: 'user',
       entityId: userId,
       summary: project.isPrivate
-        ? `Gỡ ${await this.userLabel(userId)} khỏi dự án riêng tư "${project.name}"`
-        : `Gỡ vai trò riêng của ${await this.userLabel(userId)} trong dự án "${project.name}"`,
+        ? `Gỡ ${who} khỏi dự án riêng tư "${project.name}"`
+        : `Gỡ vai trò riêng của ${who} trong dự án "${project.name}"`,
       meta: { projectId },
     });
     return { success: true };
@@ -744,22 +792,23 @@ export class MembersService {
       return created;
     }
     const ids = await this.validateRoles(organizationId, roleIds, 'PROJECT');
+    // Vai trò nhờ team KHÔNG bị bỏ khi đổi vai trò gán trực tiếp → tính vào bộ vai trò "sau" (không coi là gỡ quyền quản trị).
+    const viaTeams = await this.teamSourcedRoleIds(membership.id);
     await this.assertMayChangeAdminRoles(
       organizationId,
       actorId,
       () => this.currentProjectRoleIds(projectId, userId),
-      ids,
+      [...new Set([...ids, ...viaTeams])],
     );
-    await this.prisma.$transaction([
-      this.prisma.projectMembershipRole.deleteMany({ where: { membershipId: membership.id } }),
-      this.prisma.projectMembershipRole.createMany({
-        data: ids.map((roleId) => ({ membershipId: membership.id, roleId })),
-      }),
-      this.prisma.projectMembership.update({
+    await this.prisma.$transaction(async (tx) => {
+      await lockProjectRoles(tx, projectId);
+      const fresh = await tx.projectMembership.findUnique({
         where: { id: membership.id },
-        data: { roleId: ids[0]! },
-      }),
-    ]);
+        select: { id: true, roleId: true },
+      });
+      if (!fresh) throw new NotFoundAppException('Thành viên dự án'); // vừa bị gỡ đồng thời
+      await setDirectRoles(tx, fresh, ids); // chỉ phần GÁN TRỰC TIẾP; vai trò nhờ team giữ nguyên
+    }, PROJECT_ROLES_TX);
     await this.rbac.invalidate(userId, organizationId);
     this.emitAccessChanged(organizationId, [userId]);
     const member = await this.getProjectMember(projectId, userId);
@@ -914,6 +963,16 @@ export class MembersService {
     return m ? [...new Set([m.roleId, ...m.roles.map((r) => r.roleId)].filter(Boolean))] : [];
   }
 
+  /** Vai trò dự án của thành viên đang có NHỜ TEAM (không bị đụng khi đổi/gỡ phần gán trực tiếp). */
+  private async teamSourcedRoleIds(membershipId: string): Promise<string[]> {
+    const rows = await this.prisma.projectMembershipRoleTeam.findMany({
+      where: { membershipId },
+      select: { roleId: true },
+      distinct: ['roleId'],
+    });
+    return rows.map((r) => r.roleId);
+  }
+
   /** "Tên (email)" để dựng câu mô tả nhật ký. */
   private label(user: { displayName: string; email: string }): string {
     return `${user.displayName} (${user.email})`;
@@ -955,7 +1014,7 @@ export class MembersService {
         roleId: true,
         role: { select: { id: true, name: true, color: true } },
         user: { select: USER_DTO_SELECT },
-        roles: { select: { role: { select: { id: true, name: true, color: true } } } },
+        roles: { select: PROJECT_ROLE_SELECT },
       },
     });
     return this.toMemberDto(m, m.role);
@@ -999,7 +1058,14 @@ export class MembersService {
       membershipId: m.id,
       user: toUserDto(m.user),
       roles: m.roles.length
-        ? m.roles.map((r) => ({ id: r.role.id, name: r.role.name, color: r.role.color }))
+        ? m.roles.map((r) => ({
+            id: r.role.id,
+            name: r.role.name,
+            color: r.role.color,
+            // Vai trò dự án: nguồn của nó (trực tiếp / nhờ team). Vai trò tổ chức không có hai trường này.
+            ...(r.direct === undefined ? {} : { direct: r.direct }),
+            ...(r.teamSources?.length ? { teams: r.teamSources.map((t) => t.team) } : {}),
+          }))
         : primary
           ? [{ id: primary.id, name: primary.name, color: primary.color }]
           : [],

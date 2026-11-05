@@ -275,6 +275,8 @@ export function useRemoveProjectMember(projectId: string) {
       api.delete<Ack>(`/projects/${projectId}/members/${userId}`).then((r) => r.data),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: keys.members.project(projectId) });
+      // Gỡ khỏi dự án riêng tư thì người đó cũng ra khỏi team riêng của dự án.
+      void qc.invalidateQueries({ queryKey: keys.projectTeams.subTeams(projectId) });
       void qc.invalidateQueries({ queryKey: keys.projects.permissions(projectId) });
     },
   });

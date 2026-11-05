@@ -7,6 +7,7 @@ import {
   compileJql,
   containsWhere,
   jqlDependsOnViewer,
+  jqlUsesTeam,
   primaryFulltextTerm,
   topLevelProjectKeys,
 } from './jql-compiler';
@@ -386,5 +387,67 @@ describe('summary ~ không phân biệt dấu (logbug #2)', () => {
   it('không có tập id → giữ contains như cũ', () => {
     const ctx = { currentUserId: 'u' } as never;
     expect(compileJql(ast('summary ~ "abc"'), ctx).where).toEqual({ summary: like('abc') });
+  });
+});
+
+describe('JQL team — team riêng trong dự án (assignee thuộc team, so tên TRONG dự án của việc)', () => {
+  const subTeams = {
+    all: [
+      { id: 'tQa1', projectId: 'p1', name: 'QA' },
+      { id: 'tDev1', projectId: 'p1', name: 'Dev' },
+      { id: 'tQa2', projectId: 'p2', name: 'qa' },
+    ],
+  };
+  const where = (jql: string, st: typeof subTeams | undefined = subTeams) =>
+    compileJql(ast(jql), { currentUserId: 'u1', subTeams: st }).where as Record<string, unknown>;
+  const branch = (projectId: string, subTeamId: string) => ({
+    projectId,
+    AND: [
+      { assigneeId: { not: null } },
+      { assignee: { subTeamMemberships: { some: { subTeamId } } } },
+    ],
+  });
+
+  it('jqlUsesTeam nhận ra trường team ở mọi tầng', () => {
+    expect(jqlUsesTeam(ast('team = "QA"').where)).toBe(true);
+    expect(jqlUsesTeam(ast('status = Done AND NOT (team IS EMPTY)').where)).toBe(true);
+    expect(jqlUsesTeam(ast('status = Done').where)).toBe(false);
+  });
+
+  it('= : một nhánh cho MỖI team trùng tên (không phân biệt hoa/thường), mỗi nhánh gắn đúng projectId của team', () => {
+    expect(where('team = "QA"')).toEqual({ OR: [branch('p1', 'tQa1'), branch('p2', 'tQa2')] });
+    expect(where('team = "dev"')).toEqual({ OR: [branch('p1', 'tDev1')] });
+  });
+
+  it('IN gộp nhiều tên; != / NOT IN là phần bù (NOT) của đúng nhánh đó', () => {
+    expect(where('team IN ("Dev", "QA")')).toEqual({
+      OR: [branch('p1', 'tQa1'), branch('p1', 'tDev1'), branch('p2', 'tQa2')],
+    });
+    expect(where('team != "Dev"')).toEqual({ NOT: { OR: [branch('p1', 'tDev1')] } });
+    expect(where('team NOT IN ("Dev")')).toEqual({ NOT: { OR: [branch('p1', 'tDev1')] } });
+  });
+
+  it('tên không có team nào khớp: = không việc nào, != mọi việc', () => {
+    expect(where('team = "Không có"')).toEqual({ id: { in: [] } });
+    expect(where('team != "Không có"')).toEqual({ NOT: { id: { in: [] } } });
+  });
+
+  it('IS EMPTY = không thuộc team nào của dự án mình (gồm chưa gán); IS NOT EMPTY = thuộc ít nhất một', () => {
+    const any = { OR: subTeams.all.map((t) => branch(t.projectId, t.id)) };
+    expect(where('team IS NOT EMPTY')).toEqual(any);
+    expect(where('team IS EMPTY')).toEqual({ NOT: any });
+  });
+
+  it('dự án chưa có team nào: IS EMPTY khớp mọi việc, IS NOT EMPTY không việc nào; không tra danh sách (undefined) coi như không có team', () => {
+    expect(where('team IS EMPTY', { all: [] })).toEqual({});
+    expect(where('team IS NOT EMPTY', { all: [] })).toEqual({ id: { in: [] } });
+    expect(compileJql(ast('team = "QA"'), { currentUserId: 'u1' }).where).toEqual({
+      id: { in: [] },
+    });
+  });
+
+  it('toán tử không hỗ trợ → lỗi 422 rõ ràng (không để Prisma ném 500)', () => {
+    expect(() => where('team ~ "QA"')).toThrow(/team/);
+    expect(() => where('team > "QA"')).toThrow(/team/);
   });
 });

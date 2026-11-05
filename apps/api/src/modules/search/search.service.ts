@@ -37,6 +37,7 @@ import {
   primaryFulltextTerm,
   topLevelProjectKeys,
 } from './jql-compiler';
+import { loadJqlSubTeams } from './jql-teams';
 
 export interface SearchOptions {
   /** `jql` (mặc định, dùng `jql`) hoặc `text` (full-text trên `q`, xếp theo độ liên quan). */
@@ -55,6 +56,8 @@ export interface SearchOptions {
    * Chỉ bật cho truy vấn gõ tay (`GET /search`); board và bộ lọc đã lưu giữ hành vi cũ để dữ liệu đổi tên không làm sập chúng.
    */
   checkValues?: boolean;
+  /** Giới hạn thêm: người phụ trách thuộc một trong các id này (board lọc theo team riêng). Mảng rỗng = không việc nào. */
+  assigneeIds?: string[];
 }
 
 /** Trường JQL được kiểm giá trị → tên tiếng Việt dùng trong câu báo lỗi. */
@@ -67,6 +70,7 @@ const CHECKED_FIELD_LABEL: Partial<Record<JqlFieldName, string>> = {
   sprint: 'sprint',
   project: 'dự án',
   component: 'thành phần',
+  team: 'team',
   fixVersion: 'phiên bản sửa',
   affectedVersion: 'phiên bản bị ảnh hưởng',
 };
@@ -74,6 +78,7 @@ const CHECKED_FIELD_LABEL: Partial<Record<JqlFieldName, string>> = {
 const EXISTENCE_FIELDS: ReadonlySet<JqlFieldName> = new Set([
   'sprint',
   'component',
+  'team',
   'fixVersion',
   'affectedVersion',
 ]);
@@ -136,6 +141,8 @@ export interface FilterFieldsDto {
   resolutions: FieldOption[];
   components: FieldOption[];
   versions: FieldOption[];
+  /** Tên team riêng trong dự án (dự án người xem thấy) — gợi ý cho trường `team`. */
+  teams: FieldOption[];
 }
 
 @Injectable()
@@ -198,6 +205,7 @@ export class SearchService {
       resolutions,
       components,
       versions,
+      teams,
     ] = await Promise.all([
       this.prisma.issueType.findMany({
         where: { organizationId },
@@ -250,6 +258,12 @@ export class SearchService {
         select: { name: true },
         take: 200,
       }),
+      this.prisma.projectSubTeam.findMany({
+        where: inVisibleProject,
+        orderBy: { name: 'asc' },
+        select: { name: true, color: true },
+        take: 200,
+      }),
     ]);
 
     return {
@@ -262,6 +276,7 @@ export class SearchService {
       resolutions: dedupeByName(resolutions),
       components: dedupeByName(components),
       versions: dedupeByName(versions),
+      teams: dedupeByName(teams),
     };
   }
 
@@ -291,6 +306,10 @@ export class SearchService {
       where = Object.keys(where).length
         ? { AND: [where, { projectId: opts.projectId }] }
         : { projectId: opts.projectId };
+    }
+    if (opts.assigneeIds) {
+      const byAssignee: Prisma.IssueWhereInput = { assigneeId: { in: opts.assigneeIds } };
+      where = Object.keys(where).length ? { AND: [where, byAssignee] } : byAssignee;
     }
     if (opts.excludeUntriaged) {
       where = Object.keys(where).length ? { AND: [where, TRIAGE_VISIBLE] } : TRIAGE_VISIBLE;
@@ -337,7 +356,8 @@ export class SearchService {
         if (first) throw new BusinessRuleException(first.message);
       }
       const fulltext = await this.fulltextMap(organizationId, ast.where, projectId, currentUserId);
-      const compiled = compileJql(ast, { currentUserId: currentUserId ?? '', fulltext });
+      const subTeams = await loadJqlSubTeams(this.prisma, organizationId, ast.where);
+      const compiled = compileJql(ast, { currentUserId: currentUserId ?? '', fulltext, subTeams });
       where = compiled.where;
       orderBy = compiled.orderBy;
       const primary = primaryFulltextTerm(ast.where);
@@ -483,9 +503,11 @@ export class SearchService {
       project: { deletedAt: null, ...visible },
       ...(input.projectId ? { projectId: input.projectId } : {}),
     };
+    const subTeams = await loadJqlSubTeams(this.prisma, organizationId, ast.where);
     const compile = (node: JqlNode | null): Prisma.IssueWhereInput =>
       node
-        ? compileJql({ where: node, orderBy: [] }, { currentUserId: userId, fulltext }).where
+        ? compileJql({ where: node, orderBy: [] }, { currentUserId: userId, fulltext, subTeams })
+            .where
         : {};
 
     const wheres = withoutNodes.map((node) => ({ AND: [scope, compile(node)] }));
@@ -717,15 +739,20 @@ export class SearchService {
             where: { project: { organizationId, deletedAt: null, ...visible }, OR },
             select: { name: true },
           })
-        : field === 'component'
-          ? await this.prisma.component.findMany({
+        : field === 'team'
+          ? await this.prisma.projectSubTeam.findMany({
               where: { project: { organizationId, deletedAt: null, ...visible }, OR },
               select: { name: true },
             })
-          : await this.prisma.version.findMany({
-              where: { project: { organizationId, deletedAt: null, ...visible }, OR },
-              select: { name: true },
-            });
+          : field === 'component'
+            ? await this.prisma.component.findMany({
+                where: { project: { organizationId, deletedAt: null, ...visible }, OR },
+                select: { name: true },
+              })
+            : await this.prisma.version.findMany({
+                where: { project: { organizationId, deletedAt: null, ...visible }, OR },
+                select: { name: true },
+              });
     return new Set(rows.map((r) => r.name.toLowerCase()));
   }
 
@@ -850,6 +877,15 @@ export class SearchService {
       case 'component':
         return names(
           await this.prisma.component.findMany({
+            where: inVisible,
+            orderBy: { name: 'asc' },
+            select: { name: true },
+            take: 100,
+          }),
+        );
+      case 'team':
+        return names(
+          await this.prisma.projectSubTeam.findMany({
             where: inVisible,
             orderBy: { name: 'asc' },
             select: { name: true },

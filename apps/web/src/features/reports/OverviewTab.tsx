@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import {
   Bar,
   BarChart,
@@ -11,17 +12,20 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import { BarChart3 } from 'lucide-react';
+import { BarChart3, Users } from 'lucide-react';
 import { EmptyState, Skeleton } from '@/components/ui/primitives';
 import { QueryError } from '@/components/ui/QueryError';
 import { CHART_MARGIN, yAxisWidth } from '@/lib/chartAxis';
 import { cn } from '@/lib/utils';
+import { SearchSelect } from '@/components/ui/SearchSelect';
+import { useProjectSubTeams } from '@/features/project-teams/api';
 import { HealthOverrideCard } from '@/features/projects/HealthOverrideCard';
 import {
   useProjectReport,
   type ProjectReportTotals,
   type ReportAssignee,
   type ReportSlice,
+  type ReportTeam,
 } from './api';
 import { AXIS_PROPS, Card, ChartSkeleton, LEGEND_STYLE, TOOLTIP_STYLE } from './charts';
 import { StatRow, type StatItem } from '@/components/ui/StatRow';
@@ -34,7 +38,12 @@ export function OverviewTab({
 }: {
   project: { id: string; key: string; archivedAt: string | null };
 }) {
-  const report = useProjectReport(project.id);
+  // Lọc theo team riêng của dự án: mọi số liệu trừ "Sức khoẻ" chỉ tính việc của team đó.
+  const [teamId, setTeamId] = useState('');
+  const subTeams = useProjectSubTeams(project.id).data ?? [];
+  // Team bị xoá giữa chừng: bỏ lọc thay vì giữ id không còn tồn tại (máy chủ sẽ báo lỗi 422).
+  const activeTeam = subTeams.find((t) => t.id === teamId);
+  const report = useProjectReport(project.id, activeTeam?.id);
 
   if (report.isError) {
     return <QueryError error={report.error} onRetry={() => void report.refetch()} />;
@@ -42,7 +51,34 @@ export function OverviewTab({
 
   return (
     <div className="space-y-4">
-      {/* Sức khoẻ dự án: tự tính + ghi đè của PM */}
+      {subTeams.length > 0 && (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <SearchSelect
+            value={activeTeam?.id ?? ''}
+            onChange={setTeamId}
+            options={[
+              { value: '', label: 'Cả dự án' },
+              ...subTeams.map((t) => ({
+                value: t.id,
+                label: `Team ${t.name}`,
+                hint: `${t.memberCount} người`,
+              })),
+            ]}
+            placeholder="Cả dự án"
+            searchPlaceholder="Tìm team…"
+            ariaLabel="Lọc báo cáo theo team"
+            className="h-9 w-56 text-sm"
+          />
+          {activeTeam && (
+            <p className="text-xs text-muted" role="status">
+              Đang xem số liệu của Team {activeTeam.name} (việc có người phụ trách thuộc team). Sức
+              khoẻ dự án bên dưới vẫn tính cho cả dự án.
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* Sức khoẻ dự án: tự tính + ghi đè của PM — luôn là của CẢ dự án, không đổi theo team đang lọc */}
       {report.isLoading ? (
         <Skeleton className="h-[120px] w-full" />
       ) : (
@@ -136,6 +172,16 @@ export function OverviewTab({
           )}
         </Card>
       </div>
+
+      {/* Theo team riêng của dự án */}
+      {report.data && report.data.byTeam.length > 0 && (
+        <Card
+          title="Theo team trong dự án"
+          caption="Người ở nhiều team được tính vào từng team nên tổng các dòng có thể lớn hơn tổng dự án. Điểm chỉ cộng việc lá."
+        >
+          <TeamTable rows={report.data.byTeam} />
+        </Card>
+      )}
     </div>
   );
 }
@@ -286,6 +332,72 @@ function AssigneeBar({ rows }: { rows: ReportAssignee[] }) {
         />
       </BarChart>
     </ResponsiveContainer>
+  );
+}
+
+function TeamTable({ rows }: { rows: ReportTeam[] }) {
+  return (
+    <ScrollX>
+      <table className="w-full min-w-[480px] text-sm">
+        <thead>
+          <tr className="border-b border-border text-left text-[11px] font-medium uppercase tracking-wide text-faint">
+            <th className="py-2 pr-2 font-medium">Team</th>
+            <th className="w-16 py-2 px-1 text-right font-medium tabular">Người</th>
+            <th className="w-14 py-2 px-1 text-right font-medium tabular">Tổng</th>
+            <th className="w-24 whitespace-nowrap py-2 px-1 text-right font-medium tabular">
+              {STATUS_CATEGORY_LABEL.IN_PROGRESS}
+            </th>
+            <th className="w-14 py-2 px-1 text-right font-medium tabular">
+              {STATUS_CATEGORY_LABEL.DONE}
+            </th>
+            <th className="w-16 py-2 px-1 text-right font-medium tabular">Quá hạn</th>
+            <th className="w-14 py-2 pl-1 text-right font-medium tabular">Điểm</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-border">
+          {rows.map((r) => (
+            <tr key={r.id ?? '__no_team__'} className="transition-colors hover:bg-surface-2">
+              <td className="py-2 pr-2">
+                <span className="flex items-center gap-2">
+                  {r.id ? (
+                    <span
+                      className="h-2.5 w-2.5 shrink-0 rounded-full"
+                      style={{ background: r.color ?? 'var(--faint)' }}
+                      aria-hidden
+                    />
+                  ) : (
+                    <Users className="h-3.5 w-3.5 shrink-0 text-faint" aria-hidden />
+                  )}
+                  <span
+                    className={cn(
+                      'truncate',
+                      r.id === null ? 'italic text-muted' : 'text-ink-strong',
+                    )}
+                  >
+                    {r.id ? `Team ${r.name}` : r.name}
+                  </span>
+                </span>
+              </td>
+              <td className="py-2 px-1 text-right tabular text-muted">
+                {r.id ? r.memberCount : '—'}
+              </td>
+              <td className="py-2 px-1 text-right tabular text-ink-strong">{r.total}</td>
+              <td className="py-2 px-1 text-right tabular text-status-progress">{r.inProgress}</td>
+              <td className="py-2 px-1 text-right tabular text-status-done">{r.done}</td>
+              <td
+                className={cn(
+                  'py-2 px-1 text-right tabular',
+                  r.overdue > 0 ? 'font-semibold text-danger' : 'text-faint',
+                )}
+              >
+                {r.overdue}
+              </td>
+              <td className="py-2 pl-1 text-right tabular text-muted">{r.points}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </ScrollX>
   );
 }
 

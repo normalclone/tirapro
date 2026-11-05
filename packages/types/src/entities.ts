@@ -75,6 +75,55 @@ export interface RoleRefDto {
   id: ID;
   name: string;
   color?: string | null;
+  /**
+   * Chỉ ở danh sách thành viên DỰ ÁN: vai trò này được gán TRỰC TIẾP (`direct`) và/hoặc có được nhờ team gắn vào dự án (`teams`).
+   * Người mất vai trò chỉ khi không còn nguồn nào. Vắng = không có thông tin nguồn (vai trò mặc định suy từ tổ chức).
+   */
+  direct?: boolean;
+  teams?: Array<{ id: ID; name: string }>;
+}
+
+/** Team của tổ chức đã gắn vào một dự án (`GET /projects/:id/teams`). */
+export interface ProjectTeamLinkDto {
+  id: ID;
+  projectId: ID;
+  teamId: ID;
+  team: { id: ID; name: string; key: string; color?: string | null; memberCount: number };
+  roles: RoleRefDto[];
+  createdAt: ISODate;
+}
+
+/** Team RIÊNG trong dự án (lọc / nhóm board, báo cáo, JQL `team`; không cấp quyền). */
+export interface ProjectSubTeamDto {
+  id: ID;
+  projectId: ID;
+  name: string;
+  color: string | null;
+  /** Người trong team (đều là thành viên dự án), xếp theo tên. */
+  members: Array<{ id: ID; displayName: string; avatarUrl: string | null }>;
+  memberCount: number;
+  createdAt: ISODate;
+}
+
+/** Một làn swimlane theo team của board; `memberIds` là người của team. Một người ở nhiều team: giao diện chỉ đặt việc vào MỘT làn (team đầu theo tên, ưu tiên team đang lọc). */
+export interface BoardTeamLaneDto {
+  teamId: ID;
+  name: string;
+  color: string | null;
+  memberIds: ID[];
+}
+
+/** Dòng "theo team" của báo cáo dự án. Một người ở nhiều team được tính vào MỖI team của họ (nên tổng các dòng có thể lớn hơn tổng dự án). Điểm chỉ cộng việc lá. */
+export interface ProjectReportTeamRow {
+  id: ID | null; // null = dòng "Chưa thuộc team nào" (gồm việc chưa gán)
+  name: string;
+  color: string | null;
+  memberCount: number;
+  total: number;
+  inProgress: number;
+  done: number;
+  overdue: number;
+  points: number;
 }
 
 export interface MembershipDto {
@@ -127,6 +176,8 @@ export interface TeamDto {
   lead?: UserDto | null;
   members: UserDto[];
   memberCount: number;
+  /** Số dự án đang gắn team này (xoá team / đổi thành viên sẽ đổi vai trò dự án của họ). */
+  projectCount: number;
   createdAt: ISODate;
 }
 
@@ -440,7 +491,7 @@ export interface BoardColumnDto {
 }
 
 /** Cách nhóm thẻ thành swimlane trên board. */
-export const SWIMLANE_BY = ['none', 'assignee', 'epic', 'priority', 'parent'] as const;
+export const SWIMLANE_BY = ['none', 'assignee', 'epic', 'priority', 'parent', 'team'] as const;
 export type SwimlaneBy = (typeof SWIMLANE_BY)[number];
 
 export interface BoardDto {

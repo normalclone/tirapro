@@ -558,3 +558,82 @@ describe('RbacService — P-C14: holdsOrganizationAdmin / adminRoleIds', () => {
     expect(prisma.role.findMany).not.toHaveBeenCalled();
   });
 });
+
+describe('RbacService — tư cách thành viên chỉ do team (gắn team không làm giảm quyền)', () => {
+  function teamSetup(opts: {
+    isPrivate: boolean;
+    roles: Array<{ roleId: string; direct?: boolean }>;
+  }) {
+    const { svc, prisma } = setup('down');
+    prisma.organizationMembership.findUnique.mockResolvedValue({
+      roleId: 'r',
+      roles: [{ role: { id: 'r', name: 'Organization Member' } }],
+    } as never);
+    prisma.projectMembership.findUnique.mockResolvedValue({
+      roleId: opts.roles[0]!.roleId,
+      roles: opts.roles,
+    } as never);
+    prisma.project.findFirst.mockResolvedValue({ isPrivate: opts.isPrivate });
+    prisma.role.findMany.mockResolvedValue([{ id: 'rdev' }] as never);
+    prisma.rolePermission.findMany.mockResolvedValue([
+      { permission: { key: 'issue:edit' } },
+    ] as never);
+    const roleIdsQueried = () =>
+      (
+        prisma.rolePermission.findMany.mock.calls as unknown as Array<
+          [{ where: { roleId: { in: string[] } } }]
+        >
+      )[0]![0].where.roleId.in;
+    return { svc, prisma, roleIdsQueried };
+  }
+
+  it('dự án công khai + mọi vai trò nhờ team (direct=false): cộng vai trò mặc định theo tổ chức', async () => {
+    const t = teamSetup({ isPrivate: false, roles: [{ roleId: 'rrep', direct: false }] });
+    await t.svc.getEffectivePermissions('U1', 'W1', 'P1');
+    expect(t.roleIdsQueried()).toEqual(expect.arrayContaining(['rrep', 'rdev']));
+  });
+
+  it('dự án riêng tư + chỉ nhờ team: KHÔNG cộng mặc định (chỉ vai trò team)', async () => {
+    const t = teamSetup({ isPrivate: true, roles: [{ roleId: 'rrep', direct: false }] });
+    await t.svc.getEffectivePermissions('U1', 'W1', 'P1');
+    expect(t.roleIdsQueried()).toContain('rrep');
+    expect(t.roleIdsQueried()).not.toContain('rdev');
+  });
+
+  it('ghi đè tường minh (có vai trò gán trực tiếp) hoặc thành viên cũ chưa có dòng nối: giữ nghĩa "thay thế"', async () => {
+    const a = teamSetup({
+      isPrivate: false,
+      roles: [
+        { roleId: 'rrep', direct: false },
+        { roleId: 'rx', direct: true },
+      ],
+    });
+    await a.svc.getEffectivePermissions('U1', 'W1', 'P1');
+    expect(a.roleIdsQueried()).not.toContain('rdev');
+    const b = teamSetup({ isPrivate: false, roles: [{ roleId: 'rleg' }] });
+    b.prisma.projectMembership.findUnique.mockResolvedValue({ roleId: 'rleg', roles: [] } as never);
+    await b.svc.getEffectivePermissions('U1', 'W1', 'P1');
+    expect(b.roleIdsQueried()).toContain('rleg');
+    expect(b.roleIdsQueried()).not.toContain('rdev');
+  });
+
+  it('Người xem tổ chức (không có vai trò dự án mặc định) + vai trò nhờ team: chỉ có vai trò của team', async () => {
+    const t = teamSetup({ isPrivate: false, roles: [{ roleId: 'rrep', direct: false }] });
+    t.prisma.organizationMembership.findUnique.mockResolvedValue({
+      roleId: 'rv',
+      roles: [{ role: { id: 'rv', name: 'Organization Viewer' } }],
+    } as never);
+    await t.svc.getEffectivePermissions('U1', 'W1', 'P1');
+    expect(t.roleIdsQueried()).toContain('rrep');
+    expect(t.roleIdsQueried()).not.toContain('rdev');
+    expect(t.prisma.role.findMany).not.toHaveBeenCalled(); // không có vai trò mặc định để tra
+  });
+
+  it('không còn là thành viên tổ chức: vai trò nhờ team ở dự án cũng không cho quyền nào', async () => {
+    const t = teamSetup({ isPrivate: false, roles: [{ roleId: 'rrep', direct: false }] });
+    t.prisma.organizationMembership.findUnique.mockResolvedValue(null);
+    const perms = await t.svc.getEffectivePermissions('U1', 'W1', 'P1');
+    expect(perms.size).toBe(0);
+    expect(t.prisma.rolePermission.findMany).not.toHaveBeenCalled();
+  });
+});

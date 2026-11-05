@@ -17,19 +17,23 @@ export function parseSwimlaneOverride(raw: string | null): SwimlaneOverride {
 export const effectiveSwimlane = (boardBy: SwimlaneBy, override: SwimlaneOverride): SwimlaneBy =>
   override ?? boardBy;
 
-/** Bấm "Nhóm theo người": đang theo người → về mặc định của bảng (hoặc `none` nếu mặc định cũng là người); ngược lại → theo người. */
-export function toggleAssigneeSwimlane(
+/**
+ * Bấm nút "Nhóm theo <kind>" (người / team): đang theo đúng kiểu đó → về mặc định của bảng (hoặc `none` nếu mặc định cũng là kiểu đó);
+ * ngược lại → theo kiểu đó. Kết quả trùng cấu hình bảng thì trả `null` (không lưu sở thích riêng).
+ */
+export function toggleSwimlane(
   boardBy: SwimlaneBy,
   override: SwimlaneOverride,
+  kind: 'assignee' | 'team',
 ): SwimlaneOverride {
   const next: SwimlaneBy =
-    effectiveSwimlane(boardBy, override) === 'assignee'
-      ? boardBy === 'assignee'
-        ? 'none'
-        : boardBy
-      : 'assignee';
+    effectiveSwimlane(boardBy, override) === kind ? (boardBy === kind ? 'none' : boardBy) : kind;
   return next === boardBy ? null : next;
 }
+
+/** Bấm "Nhóm theo người". */
+export const toggleAssigneeSwimlane = (boardBy: SwimlaneBy, override: SwimlaneOverride) =>
+  toggleSwimlane(boardBy, override, 'assignee');
 
 /** Phần tối thiểu của `Storage` mà module dùng (để test bằng Map). */
 export type SwimlaneStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
@@ -108,12 +112,22 @@ export function useSwimlaneOverride(boardId: string | undefined, boardBy: Swimla
   );
   const override = normalizeSwimlaneOverride(raw, boardBy);
 
-  const toggleAssignee = useCallback(() => {
-    if (!storageKey) return;
-    // Đọc lại từ storage lúc bấm (không dựa vào closure) để luôn khớp với tab khác.
-    const next = toggleAssigneeSwimlane(boardBy, readSwimlaneOverride(storageKey, boardBy));
-    writeSwimlaneOverride(storageKey, next);
-  }, [boardBy, storageKey]);
+  const toggle = useCallback(
+    (kind: 'assignee' | 'team') => {
+      if (!storageKey) return;
+      // Đọc lại từ storage lúc bấm (không dựa vào closure) để luôn khớp với tab khác.
+      const next = toggleSwimlane(boardBy, readSwimlaneOverride(storageKey, boardBy), kind);
+      writeSwimlaneOverride(storageKey, next);
+    },
+    [boardBy, storageKey],
+  );
+  const toggleAssignee = useCallback(() => toggle('assignee'), [toggle]);
+  const toggleTeam = useCallback(() => toggle('team'), [toggle]);
 
-  return { swimlaneBy: effectiveSwimlane(boardBy, override), override, toggleAssignee };
+  return {
+    swimlaneBy: effectiveSwimlane(boardBy, override),
+    override,
+    toggleAssignee,
+    toggleTeam,
+  };
 }

@@ -5,6 +5,7 @@ import {
   readSwimlaneOverride,
   swimlaneStorageKey,
   toggleAssigneeSwimlane,
+  toggleSwimlane,
   writeSwimlaneOverride,
   type SwimlaneStorage,
 } from './swimlane';
@@ -46,6 +47,24 @@ const memStorage = (init: Record<string, string> = {}) => {
   };
   return { m, st };
 };
+
+describe('swimlane theo team', () => {
+  it('bấm "Theo team": bảng phẳng ↔ theo team, override xoá khi trùng cấu hình bảng', () => {
+    expect(toggleSwimlane('none', null, 'team')).toBe('team');
+    expect(toggleSwimlane('none', 'team', 'team')).toBeNull();
+  });
+  it('bảng cấu hình theo team: tắt = override none, bật lại = xoá override', () => {
+    expect(toggleSwimlane('team', null, 'team')).toBe('none');
+    expect(toggleSwimlane('team', 'none', 'team')).toBeNull();
+  });
+  it('đang theo người rồi bấm team (và ngược lại) → chuyển kiểu, không về mặc định', () => {
+    expect(toggleSwimlane('none', 'assignee', 'team')).toBe('team');
+    expect(toggleSwimlane('none', 'team', 'assignee')).toBe('assignee');
+  });
+  it('khoá lưu "team" hợp lệ', () => {
+    expect(parseSwimlaneOverride('team')).toBe('team');
+  });
+});
 
 describe('swimlane storage', () => {
   it('đọc: thiếu/sai → null; hợp lệ → giá trị', () => {

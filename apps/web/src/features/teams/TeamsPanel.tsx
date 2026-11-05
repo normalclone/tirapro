@@ -13,6 +13,16 @@ import { AssignTeamModal } from './AssignTeamModal';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
 import { SectionCard } from '@/components/ui/SectionCard';
 
+/**
+ * Lời xác nhận xoá nhóm. Nhóm đang gắn vào dự án (tab "Team" của dự án) thì xoá sẽ gỡ vai trò mà thành viên có nhờ nhóm ở các dự án đó —
+ * nói rõ số dự án; nhóm chưa gắn dự án nào chỉ là gom người nên không ảnh hưởng vai trò.
+ */
+export function deleteDescription(t: Pick<TeamDto, 'projectCount'>): string {
+  return t.projectCount > 0
+    ? `Nhóm đang gắn vào ${t.projectCount} dự án. Xoá nhóm sẽ gỡ vai trò mà các thành viên có nhờ nhóm này ở những dự án đó (vai trò gán trực tiếp hoặc nhờ nhóm khác được giữ). Họ vẫn ở lại tổ chức.`
+    : 'Chỉ nhóm bị xoá — các thành viên vẫn ở lại tổ chức và giữ nguyên vai trò.';
+}
+
 /** Chồng ảnh đại diện thành viên (tối đa `max`, còn lại hiện +N). */
 function MemberStack({ team }: { team: TeamDto }) {
   const max = 5;
@@ -72,7 +82,7 @@ export function TeamsPanel() {
     if (
       !(await confirm({
         title: `Xoá nhóm “${t.name}”?`,
-        description: 'Chỉ nhóm bị xoá — các thành viên vẫn ở lại tổ chức và giữ nguyên vai trò.',
+        description: deleteDescription(t),
         destructive: true,
       }))
     )
@@ -148,6 +158,14 @@ export function TeamsPanel() {
                         @{t.key}
                       </span>
                     </div>
+                    {t.projectCount > 0 && (
+                      <p
+                        className="mt-0.5 text-xs text-muted"
+                        title="Thành viên nhóm có vai trò ở các dự án này nhờ nhóm. Thêm hoặc bớt người sẽ đổi vai trò của họ ở đó."
+                      >
+                        Gắn vào {t.projectCount} dự án
+                      </p>
+                    )}
                     {t.description && (
                       <p className="truncate text-xs text-muted" title={t.description}>
                         {t.description}

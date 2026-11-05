@@ -39,6 +39,7 @@ function useJqlCatalog(): JqlCatalog {
       resolutions: names(fields?.resolutions),
       components: names(fields?.components),
       versions: names(fields?.versions),
+      teams: names(fields?.teams),
       projects: (projects ?? []).map((p) => p.key),
     };
   }, [fields, projects]);

@@ -16,6 +16,7 @@ import type {
   UpdateProjectInput,
 } from '@tirapro/shared';
 import { Prisma } from '@prisma/client';
+import { pruneSubTeamsForPrivateProject } from '../project-subteams/subteam-membership';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { TRIAGE_VISIBLE } from '../../common/triage-visibility';
 import { BusinessRuleException, NotFoundAppException } from '../../common/exceptions/app.exception';
@@ -437,6 +438,8 @@ export class ProjectsService {
           },
         });
       }
+      // Vừa chuyển sang riêng tư: ai không có ProjectMembership không còn là thành viên → ra khỏi team riêng của dự án.
+      if (data.isPrivate === true) await pruneSubTeamsForPrivateProject(tx, projectId);
       if (auditEntry) await this.audit.record(auditEntry, tx);
     });
   }

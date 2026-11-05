@@ -10,7 +10,12 @@ describe('TeamsService.assignToProject — dự án riêng tư (P14)', () => {
     };
     const members = { addProject: vi.fn(() => Promise.resolve({})) };
     const access = { assertCanSee: vi.fn(() => Promise.resolve()) };
-    const service = new TeamsService(prisma as never, members as never, access as never);
+    const service = new TeamsService(
+      prisma as never,
+      members as never,
+      access as never,
+      {} as never,
+    );
     return { service, prisma, members, access };
   }
 

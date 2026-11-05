@@ -9,12 +9,13 @@ import type {
   VelocityReport,
 } from '@tirapro/shared';
 import { overdueCutoff } from '@tirapro/shared';
+import type { ProjectReportTeamRow } from '@tirapro/types';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { isBugType } from '../../common/bug-type';
 import { TRIAGE_VISIBLE, triageVisibleSql } from '../../common/triage-visibility';
 import { countsTowardPoints, LEAF_POINTS_ONLY, LIVE_CHILD_COUNT } from '../../common/points-scope';
-import { NotFoundAppException } from '../../common/exceptions/app.exception';
+import { BusinessRuleException, NotFoundAppException } from '../../common/exceptions/app.exception';
 import { ProjectAccessService } from '../rbac/project-access.service';
 import { ProjectHealthService } from './project-health.service';
 
@@ -352,15 +353,28 @@ export class AnalyticsService {
   }
 
   // ---------- Báo cáo tổng hợp 1 dự án (cho màn Reports) ----------
-  async projectReport(organizationId: string, projectId: string) {
+  async projectReport(organizationId: string, projectId: string, teamId?: string) {
     await this.requireProject(organizationId, projectId);
+    // Team riêng của dự án: có `teamId` thì mọi số liệu chỉ tính việc có người phụ trách thuộc team đó; luôn trả `byTeam` (mỗi team một dòng).
+    const subTeams = await this.prisma.projectSubTeam.findMany({
+      where: { projectId },
+      orderBy: { name: 'asc' },
+      select: { id: true, name: true, color: true, members: { select: { userId: true } } },
+    });
+    const teamFilter = teamId ? subTeams.find((t) => t.id === teamId) : undefined;
+    if (teamId && !teamFilter) throw new BusinessRuleException('Team không thuộc dự án này');
+    const filterMemberIds = teamFilter ? teamFilter.members.map((m) => m.userId) : null;
     const now = new Date();
     const DAY = 24 * 3600 * 1000;
     const HIGH_RANK = 4; // High/Highest
 
     // Aggregate SQL: groupBy theo status/type/priority/assignee thay vì kéo mọi issue về app rồi reduce.
     // Việc chưa duyệt không tính vào báo cáo (cùng quy tắc Tổng quan/Board).
-    const baseWhere: Prisma.IssueWhereInput = { projectId, deletedAt: null, AND: [TRIAGE_VISIBLE] };
+    const baseWhere: Prisma.IssueWhereInput = {
+      projectId,
+      deletedAt: null,
+      AND: [TRIAGE_VISIBLE, ...(filterMemberIds ? [{ assigneeId: { in: filterMemberIds } }] : [])],
+    };
     const openStatus: Prisma.IssueWhereInput = { status: { category: { not: 'DONE' } } };
     // Điểm cộng riêng, chỉ VIỆC LÁ (điểm Epic/việc cha = tổng việc con → cộng sẽ đếm đôi); số đếm việc ở các groupBy trên vẫn tính cả hai.
     const pointsWhere: Prisma.IssueWhereInput = { ...baseWhere, ...LEAF_POINTS_ONLY };
@@ -390,14 +404,17 @@ export class AnalyticsService {
         where: { ...baseWhere, ...openStatus, dueDate: { lt: overdueCutoff(now) } },
         _count: { _all: true },
       }),
-      this.prisma.issue.count({
-        where: {
-          ...baseWhere,
-          ...openStatus,
-          assigneeId: null,
-          priority: { rank: { gte: HIGH_RANK } },
-        },
-      }),
+      // Lọc theo team: việc trong team luôn đã có người phụ trách → không có việc chưa gán nào (đừng để `assigneeId: null` đè bộ lọc).
+      filterMemberIds
+        ? Promise.resolve(0)
+        : this.prisma.issue.count({
+            where: {
+              ...baseWhere,
+              ...openStatus,
+              assigneeId: null,
+              priority: { rank: { gte: HIGH_RANK } },
+            },
+          }),
       this.prisma.issue.count({
         where: {
           ...baseWhere,
@@ -565,6 +582,12 @@ export class AnalyticsService {
     const health =
       (await this.health.forProjects(organizationId, [projectId], null)).get(projectId) ?? null; // đã qua guard dự án
 
+    const byTeam = this.teamRows(
+      teamFilter ? [teamFilter] : subTeams,
+      [...assigneeMap.values()],
+      !teamFilter,
+    );
+
     return {
       totals,
       completionRate,
@@ -580,7 +603,62 @@ export class AnalyticsService {
         .sort((a, b) => b.rank - a.rank)
         .map(({ rank: _rank, ...r }) => r),
       byAssignee,
+      byTeam,
+      teamId: teamFilter?.id ?? null,
     };
+  }
+
+  /**
+   * Gom dòng theo người phụ trách thành dòng theo team riêng. Người ở nhiều team được tính vào MỖI team (tổng các dòng có thể lớn hơn tổng dự án);
+   * điểm đã là điểm việc lá (không đếm đôi Epic/việc cha). `withUnteamed`: thêm dòng "Chưa thuộc team nào" (gồm việc chưa gán) khi dự án có team.
+   */
+  private teamRows(
+    teams: Array<{ id: string; name: string; color: string | null; members: { userId: string }[] }>,
+    assignees: Array<{
+      id: string | null;
+      total: number;
+      inProgress: number;
+      done: number;
+      overdue: number;
+      points: number;
+    }>,
+    withUnteamed: boolean,
+  ): ProjectReportTeamRow[] {
+    const zero = () => ({ total: 0, inProgress: 0, done: 0, overdue: 0, points: 0 });
+    const add = (acc: ReturnType<typeof zero>, r: (typeof assignees)[number]) => {
+      acc.total += r.total;
+      acc.inProgress += r.inProgress;
+      acc.done += r.done;
+      acc.overdue += r.overdue;
+      acc.points += r.points;
+    };
+    const inAnyTeam = new Set(teams.flatMap((t) => t.members.map((m) => m.userId)));
+    const rows: ProjectReportTeamRow[] = teams.map((t) => {
+      const members = new Set(t.members.map((m) => m.userId));
+      const acc = zero();
+      for (const a of assignees) if (a.id && members.has(a.id)) add(acc, a);
+      return {
+        id: t.id,
+        name: t.name,
+        color: t.color,
+        memberCount: members.size,
+        ...acc,
+        points: round(acc.points),
+      };
+    });
+    if (withUnteamed && teams.length > 0) {
+      const acc = zero();
+      for (const a of assignees) if (!a.id || !inAnyTeam.has(a.id)) add(acc, a);
+      rows.push({
+        id: null,
+        name: 'Chưa thuộc team nào',
+        color: null,
+        memberCount: 0,
+        ...acc,
+        points: round(acc.points),
+      });
+    }
+    return rows;
   }
 
   // ---------- Burndown (1 sprint) ----------

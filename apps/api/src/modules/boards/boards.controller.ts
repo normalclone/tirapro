@@ -44,9 +44,23 @@ export class BoardsController {
     @Param('id') id: string,
     @Query('cursor') cursor?: string,
     @Query('limit') limit?: string,
+    @Query('teamIds') teamIds?: string,
   ) {
     const lim = Math.min(Math.max(Number(limit) || 100, 1), 200);
-    return this.boards.listIssues(organizationId, user.id, id, cursor, lim);
+    // `teamIds=a,b`: chỉ việc có người phụ trách thuộc một trong các team riêng đó.
+    const teams = teamIds
+      ?.split(',')
+      .map((t) => t.trim())
+      .filter(Boolean);
+    return this.boards.listIssues(organizationId, user.id, id, cursor, lim, teams);
+  }
+
+  /** Làn swimlane theo team riêng của dự án (kèm id thành viên) — dữ liệu cho "Nhóm theo team" trên board. */
+  @Permissions(PERMISSIONS.PROJECT_VIEW)
+  @ProjectRef('board', 'id')
+  @Get(':id/team-lanes')
+  async teamLanes(@OrganizationId() organizationId: string, @Param('id') id: string) {
+    return this.boards.teamLanes(organizationId, id);
   }
 
   @Permissions(PERMISSIONS.BOARD_MANAGE)

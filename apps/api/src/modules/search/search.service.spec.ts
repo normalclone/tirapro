@@ -205,6 +205,7 @@ describe('SearchService.fields — severities', () => {
       resolution: { findMany: empty },
       component: { findMany: empty },
       version: { findMany: empty },
+      projectSubTeam: { findMany: empty },
       severity,
     };
     const service = new SearchService({} as never, prisma as never, ACCESS as never);
@@ -235,6 +236,7 @@ describe('SearchService.fields — components/versions (B17)', () => {
         findMany: vi.fn().mockResolvedValue([{ name: 'API' }, { name: 'API' }, { name: 'Web' }]),
       },
       version: { findMany: vi.fn().mockResolvedValue([{ name: 'v1.0' }, { name: 'v1.0' }]) },
+      projectSubTeam: { findMany: vi.fn().mockResolvedValue([]) },
     };
     const service = new SearchService({} as never, prisma as never, ACCESS as never);
     const out = await service.fields('W1', 'u0');
@@ -290,11 +292,18 @@ describe('SearchService — dự án riêng tư (P13)', () => {
       label: { findMany: vi.fn().mockResolvedValue([]) },
       component: { findMany: vi.fn().mockResolvedValue([]) },
       version: { findMany: vi.fn().mockResolvedValue([]) },
+      projectSubTeam: { findMany: vi.fn().mockResolvedValue([]) },
     };
     const access = { visibleWhere: vi.fn().mockResolvedValue(visible) };
     const service = new SearchService({} as never, prisma as never, access as never);
     await service.fields('w1', 'u1');
-    for (const m of [prisma.sprint, prisma.label, prisma.component, prisma.version]) {
+    for (const m of [
+      prisma.sprint,
+      prisma.label,
+      prisma.component,
+      prisma.version,
+      prisma.projectSubTeam,
+    ]) {
       expect(m.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { project: { organizationId: 'w1', deletedAt: null, ...visible } },
@@ -487,6 +496,11 @@ describe('SearchService — chỉ liệt kê/gợi ý dự án người hỏi đ
           Promise.resolve(a.where.project?.OR ? [] : rows('v9-secret')),
         ),
       },
+      projectSubTeam: {
+        findMany: vi.fn((a: { where: { project?: { OR?: unknown } } }) =>
+          Promise.resolve(a.where.project?.OR ? [] : rows('Secret Team')),
+        ),
+      },
       label: { findMany: vi.fn().mockResolvedValue([]) },
       issueType: { findMany: vi.fn().mockResolvedValue([]) },
       // Quy trình riêng của dự án riêng tư có trạng thái "Chờ pháp chế": chỉ lộ khi truy vấn KHÔNG lọc theo dự án xem được.
@@ -528,11 +542,16 @@ describe('SearchService — chỉ liệt kê/gợi ý dự án người hỏi đ
       'component = "Secret Com"',
       'fixVersion = "v9-secre"',
       'affectedVersion = "v9-secre"',
+      'team = "Secret Tea"',
     ]) {
       const r = await service.validate('w1', 'u1', jql);
       expect(r.valid, jql).toBe(false);
-      expect(JSON.stringify(r.suggestions), jql).not.toMatch(/Sprint Secret|Secret Comp|v9-secret/);
-      expect(r.error ?? '', jql).not.toMatch(/ý bạn là "(Sprint Secret|Secret Comp|v9-secret)"/);
+      expect(JSON.stringify(r.suggestions), jql).not.toMatch(
+        /Sprint Secret|Secret Comp|v9-secret|Secret Team/,
+      );
+      expect(r.error ?? '', jql).not.toMatch(
+        /ý bạn là "(Sprint Secret|Secret Comp|v9-secret|Secret Team)"/,
+      );
       expect(r.error ?? '', jql).not.toMatch(/hiện có:.*(Secret|secret)/);
     }
   });
@@ -576,7 +595,7 @@ describe('SearchService — chỉ liệt kê/gợi ý dự án người hỏi đ
         }),
       );
     }
-    expect(JSON.stringify(out)).not.toMatch(/Sprint Secret|Secret Comp|v9-secret/);
+    expect(JSON.stringify(out)).not.toMatch(/Sprint Secret|Secret Comp|v9-secret|Secret Team/);
   });
 });
 
@@ -685,6 +704,7 @@ describe('SearchService.fields — trạng thái theo quy trình đang dùng (m�
       resolution: { findMany: empty() },
       component: { findMany: empty() },
       version: { findMany: empty() },
+      projectSubTeam: { findMany: empty() },
       ...noWorkflowUse(),
       status,
       ...over,

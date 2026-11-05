@@ -382,6 +382,7 @@ const READ_ALLOWLIST: Record<string, [Kind, string]> = {
   'boards/boards.service.ts::BoardsService.get': ['ROUTE_GUARDED', R_ROUTE_GUARDED],
   'boards/boards.service.ts::BoardsService.listIssues': ['ROUTE_GUARDED', R_ROUTE_GUARDED],
   'boards/boards.service.ts::BoardsService.setColumns': ['ROUTE_GUARDED', R_ROUTE_GUARDED],
+  'boards/boards.service.ts::BoardsService.teamLanes': ['ROUTE_GUARDED', R_ROUTE_GUARDED],
   'comments/comments.service.ts::CommentsService.list': ['ROUTE_GUARDED', R_ROUTE_GUARDED],
   'components/components.service.ts::ComponentsService.listComponents': [
     'ROUTE_GUARDED',

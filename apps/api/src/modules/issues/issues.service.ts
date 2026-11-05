@@ -138,6 +138,8 @@ export interface IssueListFilter {
   projectId?: string;
   statusId?: string;
   assigneeId?: string;
+  /** Người phụ trách thuộc một trong các id này (lọc theo team riêng của dự án). Mảng rỗng = không việc nào. */
+  assigneeIds?: string[];
   typeId?: string;
   sprintId?: string;
   search?: string;
@@ -1472,7 +1474,7 @@ export class IssuesService {
       project: await this.projectScope(organizationId, viewerId),
       projectId: filter.projectId,
       statusId: filter.statusId,
-      assigneeId: filter.assigneeId,
+      assigneeId: filter.assigneeIds ? { in: filter.assigneeIds } : filter.assigneeId,
       typeId: filter.typeId,
       sprintId: filter.sprintId,
       // Tìm theo tiêu đề HOẶC mã công việc (DEMO-BUG-3, "bug-3") — chọn việc gắn mục tiêu/liên kết hay gõ mã (logbug #29).
