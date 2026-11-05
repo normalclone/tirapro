@@ -320,9 +320,7 @@ function MemberEditor({
               ? role.approx
                 ? `Lấy từ lệnh “${role.query}” — gần đúng, kiểm tra lại.`
                 : `Lấy từ lệnh “${role.query}”.`
-              : role.source === 'default'
-                ? 'Lệnh không nêu vai trò — mặc định Developer (đổi được).'
-                : 'Lệnh không nêu vai trò — hãy chọn.'}
+              : 'Lệnh không nêu vai trò — hãy chọn.'}
           </p>
         </div>
       ) : null}
@@ -349,6 +347,8 @@ function MemberEditor({
                   <Chip tone="muted">Đã có vai trò này</Chip>
                 ) : r.status === 'no-perm' ? (
                   <Chip tone="bad">Không đủ quyền</Chip>
+                ) : r.status === 'blocked' ? (
+                  <Chip tone="bad">Bị chặn</Chip>
                 ) : r.status === 'skip' ? (
                   <Chip tone="muted">Bỏ dòng</Chip>
                 ) : (
@@ -390,7 +390,12 @@ export interface BulkCardViewProps {
   onConfirm: () => void;
   onCancel: () => void;
   onUndo: () => void;
+  /** Tải lại xem trước từ trạng thái máy chủ (thẻ bị ngắt giữa chừng). Không có → không hiện nút. */
+  onRefresh?: () => void;
 }
+
+const PARTIAL_NOTICE =
+  'Có thể đã áp dụng một phần — đã tải lại xem trước từ dữ liệu mới nhất. Lần chạy vừa rồi không có Hoàn tác.';
 
 const editable = (s: BulkBlock['status']): boolean => s === 'pending' || s === 'failed';
 
@@ -405,6 +410,7 @@ export function BulkCardView({
   onConfirm,
   onCancel,
   onUndo,
+  onRefresh,
 }: BulkCardViewProps) {
   const { card, status } = block;
   const isAssign = card.kind === 'assign';
@@ -446,6 +452,12 @@ export function BulkCardView({
       <Notes lines={infoLines} />
       <Notes lines={warnLines} tone="warn" />
       <Notes lines={card.notes} />
+      {block.notice ? (
+        <p role="status" className="mt-2 flex gap-1.5 text-[13px] text-warning-ink">
+          <TriangleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
+          <span>{block.notice}</span>
+        </p>
+      ) : null}
       {open || status === 'running' ? (
         <>
           {isAssign && assign && computedA ? (
@@ -494,8 +506,8 @@ export function BulkCardView({
       {status === 'cancelled' ? <p className="mt-3 text-sm text-muted">Đã bỏ lệnh này.</p> : null}
       {status === 'interrupted' ? (
         <p className="mt-3 text-[13px] text-warning-ink">
-          Phiên bị ngắt lúc đang thực hiện nên mình không rõ kết quả — hãy kiểm tra lại trên trang
-          dự án. Mình không tự chạy lại.
+          Phiên bị ngắt lúc đang thực hiện nên có thể đã áp dụng một phần — lần chạy đó không có
+          Hoàn tác. Mình không tự chạy lại; hãy tải lại xem trước để thấy trạng thái hiện tại.
         </p>
       ) : null}
       <div className="mt-3 flex flex-wrap gap-2">
@@ -508,6 +520,11 @@ export function BulkCardView({
               Bỏ
             </Button>
           </>
+        ) : null}
+        {status === 'interrupted' && onRefresh && block.raw ? (
+          <Button size="sm" variant="secondary" onClick={onRefresh}>
+            Tải lại xem trước
+          </Button>
         ) : null}
         {(status === 'done' || status === 'undoing') && block.outcome?.undo ? (
           <Button
@@ -531,11 +548,14 @@ export function BulkCard({
   block,
   patch,
   executor = apiExecutor,
+  onRefresh,
 }: {
   messageId: string;
   block: BulkBlock;
   patch: (a: Extract<ConversationAction, { type: 'patch-bulk' }>) => void;
   executor?: BulkExecutor;
+  /** Dựng lại thẻ từ trạng thái máy chủ mới nhất; trả `false` nếu không dựng lại được. */
+  onRefresh?: (notice: string) => Promise<boolean>;
 }) {
   const qc = useQueryClient();
   const { card } = block;
@@ -572,7 +592,11 @@ export function BulkCard({
       refresh();
       announce(outcome.title);
     } catch (e) {
-      patch({ type: 'patch-bulk', messageId, status: 'failed', error: apiErrorMessage(e) });
+      const error = apiErrorMessage(e);
+      patch({ type: 'patch-bulk', messageId, status: 'failed', error });
+      // Không biết máy chủ đã áp dụng tới đâu → dựng lại xem trước từ trạng thái THẬT (dòng đã đổi sẽ hiện đúng); lần chạy này
+      // không có dữ liệu Hoàn tác.
+      await onRefresh?.(`Chưa thực hiện được: ${error} ${PARTIAL_NOTICE}`);
     } finally {
       inFlight.current = false;
     }
@@ -605,6 +629,14 @@ export function BulkCard({
       onConfirm={() => void onConfirm()}
       onCancel={() => patch({ type: 'patch-bulk', messageId, status: 'cancelled' })}
       onUndo={() => void onUndo()}
+      onRefresh={
+        onRefresh
+          ? () =>
+              void onRefresh(
+                'Phiên bị ngắt lúc đang thực hiện nên có thể đã áp dụng một phần — đã tải lại xem trước. Lần chạy đó không có Hoàn tác.',
+              )
+          : undefined
+      }
     />
   );
 }

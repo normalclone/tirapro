@@ -60,6 +60,8 @@ const memberCard = (over: Partial<MemberCard> = {}): MemberCard => ({
     { id: 'p2', key: 'ZED', name: 'Zed', isPrivate: false, allowed: false, members: {} },
   ],
   groupName: null,
+  adminRoleIds: [],
+  actor: { id: 'u-me', orgAdmin: false },
   roles: [
     { id: 'r-dev', name: 'Developer' },
     { id: 'r-tester', name: 'Tester' },
@@ -498,5 +500,93 @@ describe('kiểu Block', () => {
   it('khối bulk nằm trong union Block', () => {
     const b: Block = block(assignCard());
     expect(b.type).toBe('bulk');
+  });
+});
+
+describe('M3 — lỗi giữa chừng / bị ngắt: tải lại xem trước từ trạng thái máy chủ', () => {
+  it('Xác nhận lỗi mạng → gọi onRefresh với thông báo "có thể đã áp dụng một phần … không có Hoàn tác"', async () => {
+    const onRefresh = vi.fn(() => Promise.resolve(true));
+    const executor: BulkExecutor = {
+      assign: vi.fn(() => Promise.reject(new Error('Mất mạng'))),
+      members: vi.fn(),
+    };
+    function Host() {
+      const [b, setB] = useState<BulkBlock>(block(assignCard(), { raw: 'giao DEMO-1 cho Linh' }));
+      return (
+        <QueryClientProvider client={new QueryClient()}>
+          <BulkCard
+            messageId="m1"
+            block={b}
+            executor={executor}
+            onRefresh={onRefresh}
+            patch={(a) => setB((cur) => ({ ...cur, status: a.status, error: a.error }))}
+          />
+        </QueryClientProvider>
+      );
+    }
+    render(<Host />);
+    fireEvent.click(confirmBtn());
+    await waitFor(() => expect(onRefresh).toHaveBeenCalledTimes(1));
+    const notice = (onRefresh.mock.calls[0] as unknown as [string])[0];
+    expect(notice).toContain('Mất mạng');
+    expect(notice).toContain('Có thể đã áp dụng một phần — đã tải lại xem trước');
+    expect(notice).toContain('không có Hoàn tác');
+  });
+  it('thẻ có thông báo hiện thông báo; thẻ bị ngắt có nút "Tải lại xem trước" (chỉ khi có câu lệnh gốc + onRefresh)', () => {
+    const withNotice = render(
+      <Harness
+        b={block(assignCard(), { notice: 'Có thể đã áp dụng một phần — đã tải lại xem trước.' })}
+      />,
+    );
+    expect(screen.getByRole('status').textContent).toContain('Có thể đã áp dụng một phần');
+    withNotice.unmount();
+    const onRefresh = vi.fn();
+    render(
+      <BulkCardView
+        block={block(assignCard(), { status: 'interrupted', raw: 'giao DEMO-1 cho Linh' })}
+        assign={null}
+        member={null}
+        onConfirm={vi.fn()}
+        onCancel={vi.fn()}
+        onUndo={vi.fn()}
+        onRefresh={onRefresh}
+      />,
+    );
+    expect(screen.getByText(/không có Hoàn tác/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Tải lại xem trước' }));
+    expect(onRefresh).toHaveBeenCalledTimes(1);
+  });
+  it('bị ngắt mà không có câu lệnh gốc → không có nút', () => {
+    render(<Harness b={block(assignCard(), { status: 'interrupted' })} />);
+    expect(screen.queryAllByRole('button')).toHaveLength(0);
+  });
+});
+
+describe('M1 — dòng bị chặn hiện rõ trên thẻ', () => {
+  it('"Bị chặn" kèm lý do; không tính vào nút', () => {
+    const card = memberCard({
+      kind: 'remove-member',
+      roles: [{ id: 'r-admin', name: 'Project Admin' }],
+      adminRoleIds: ['r-admin'],
+      actor: { id: 'u-linh', orgAdmin: false },
+      defaultRole: { id: null, source: 'none' },
+      projects: [
+        {
+          id: 'p1',
+          key: 'DEMO',
+          name: 'Demo',
+          isPrivate: false,
+          allowed: true,
+          members: {
+            'u-linh': { roleIds: ['r-admin'], roleNames: ['Project Admin'], isOverride: true },
+          },
+        },
+      ],
+    });
+    render(<Harness b={block(card)} />);
+    expect(screen.getByText('Bị chặn')).toBeTruthy();
+    expect(screen.getByText(/tự bỏ quyền quản trị của chính mình/)).toBeTruthy();
+    expect(screen.getByText('Không có dòng nào cần ghi.')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /^Gỡ 0 dòng$/ }).hasAttribute('disabled')).toBe(true);
   });
 });

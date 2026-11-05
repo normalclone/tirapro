@@ -360,7 +360,8 @@ function AssistantFloating() {
   const setOpen = useAssistantPanel((s) => s.setOpen);
   const setMinimized = useAssistantPanel((s) => s.setMinimized);
   const desktop = useMediaQuery(DESKTOP_MIN_QUERY);
-  const { messages, busy, submit, clear, patchDraft, patchBulk } = useAssistantController(open);
+  const { messages, busy, submit, clear, patchDraft, patchBulk, refreshBulk } =
+    useAssistantController(open);
   const [input, setInput] = useState('');
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -550,7 +551,15 @@ function AssistantFloating() {
             // Trang phía sau còn dùng được → ô chat giữ nguyên khi bấm liên kết; trên điện thoại (gần toàn màn) thì thu nhỏ để thấy trang.
             if (!desktop) setMinimized(true);
           }}
-          renderBulk={(id, block) => <BulkCard messageId={id} block={block} patch={patchBulk} />}
+          renderBulk={(id, block) => (
+            <BulkCard
+              key={`${id}:${block.rev ?? 0}`}
+              messageId={id}
+              block={block}
+              patch={patchBulk}
+              onRefresh={(notice) => refreshBulk(id, notice)}
+            />
+          )}
           renderDraft={(id, block) => (
             <DraftCard
               messageId={id}

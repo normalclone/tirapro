@@ -72,4 +72,10 @@ export type Block =
       outcome?: BulkOutcome;
       undoOutcome?: BulkOutcome;
       error?: string;
+      /** Câu lệnh gốc — để tải lại xem trước từ trạng thái máy chủ khi không rõ kết quả. */
+      raw?: string;
+      /** Thông báo hiển thị trên thẻ (vd "Có thể đã áp dụng một phần — đã tải lại xem trước"). */
+      notice?: string;
+      /** Tăng mỗi lần xem trước được tải lại (khoá của thẻ → trạng thái chọn của người dùng được làm mới). */
+      rev?: number;
     };

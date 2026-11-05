@@ -52,6 +52,8 @@ export interface AssignRowSrc {
   points: number | null;
   /** Gợi ý quyền (issue:assign + issue:edit) ở dự án của việc: false = chắc chắn bị bỏ qua. undefined = chưa biết. */
   allowed: boolean | undefined;
+  /** Không đủ quyền vì chỉ có `issue:edit:own` (chỉ sửa được việc của mình) — để nói đúng lý do. */
+  ownOnly?: boolean;
   /** Chỉ kiểu theo cặp: tên người đã gõ cho việc này (khớp với `PersonSlot.query`). */
   pairQuery?: string;
 }
@@ -112,12 +114,19 @@ export interface MemberCard {
   projects: MemberProjectCol[];
   /** Nhóm dự án cá nhân dùng làm đích (chỉ để hiển thị). */
   groupName: string | null;
-  /** Chỉ thêm: vai trò chọn được và gợi ý mặc định. */
+  /** Vai trò chọn được (thêm: ô chọn vai trò; luôn dùng để gọi tên vai trò). */
   roles: RoleOpt[];
-  /** Vai trò mặc định: nêu trong lệnh (`parsed`, có thể gần đúng), vai trò Developer sẵn có (`default`), hoặc phải chọn (`none`). */
+  /** Id các vai trò mang `project:admin` (chặn tự bỏ quản trị / bỏ quản trị viên cuối). */
+  adminRoleIds: string[];
+  /** Người gõ + có phải quản trị tổ chức không (quản trị tổ chức không mất quyền khi đổi vai trò dự án). */
+  actor: { id: string; orgAdmin: boolean };
+  /**
+   * Vai trò mặc định: chỉ khi lệnh NÊU vai trò (`parsed`, có thể gần đúng). Lệnh không nêu → `none`: bắt buộc chọn, KHÔNG tự
+   * điền sẵn (bấm Xác nhận không chạm ô chọn sẽ không vô tình cấp quyền).
+   */
   defaultRole: {
     id: string | null;
-    source: 'parsed' | 'default' | 'none';
+    source: 'parsed' | 'none';
     query?: string;
     approx?: boolean;
   };
@@ -249,7 +258,9 @@ export function computeAssign(card: AssignCard, state: AssignState): AssignCompu
         src,
         target,
         status: 'no-perm',
-        note: `Bạn không đủ quyền giao việc ở dự án ${src.projectKey}.`,
+        note: src.ownOnly
+          ? 'Bạn chỉ được sửa việc của mình — không đủ quyền giao việc.'
+          : `Bạn không đủ quyền giao việc ở dự án ${src.projectKey}.`,
       };
     if (!target) return { src, target, status: 'no-person', note: 'Chưa có người nhận.' };
     if (src.current?.id === target.id)
@@ -303,7 +314,7 @@ export function assignInputs(c: AssignComputed): AssistantBulkAssignRowInput[] {
 
 /* ------------------------------ thành viên ------------------------------ */
 
-type MemberRowStatus = 'ok' | 'already' | 'no-perm' | 'nothing' | 'skip';
+type MemberRowStatus = 'ok' | 'already' | 'no-perm' | 'blocked' | 'nothing' | 'skip';
 
 export interface ComputedMemberRow {
   /** `userId|projectId` */
@@ -317,6 +328,8 @@ export interface ComputedMemberRow {
   after: string;
   /** Lý do khi không ghi (hoặc cảnh báo khi ghi). */
   note?: string;
+  /** Bộ vai trò sẽ đặt khi `status = ok` (`null` = gỡ vai trò riêng). */
+  set?: string[] | null;
 }
 
 export interface MemberComputed {
@@ -324,7 +337,14 @@ export interface MemberComputed {
   unresolvedChoices: string[];
   blocking: string[];
   canConfirm: boolean;
-  counts: { ok: number; already: number; skip: number; noPerm: number; nothing: number };
+  counts: {
+    ok: number;
+    already: number;
+    skip: number;
+    noPerm: number;
+    blocked: number;
+    nothing: number;
+  };
   role: RoleOpt | null;
 }
 
@@ -334,11 +354,19 @@ export function initialMemberState(card: MemberCard): MemberState {
   return { roleId: card.defaultRole.id, picks: {}, dropped: [] };
 }
 
-const sameIds = (a: readonly string[], b: readonly string[]): boolean =>
-  a.length === b.length && [...a].sort().join('\n') === [...b].sort().join('\n');
-
 const roleText = (names: string[]): string => (names.length ? names.join(', ') : '—');
 
+const SELF_LOCK =
+  'Bạn đang tự bỏ quyền quản trị của chính mình ở dự án này — hãy nhờ một quản trị viên khác làm.';
+const LAST_ADMIN =
+  'Dự án riêng tư này sẽ không còn quản trị viên nào — hãy chỉ định quản trị viên khác trước.';
+
+/**
+ * Tính bảng xem trước thêm / gỡ thành viên. "Thêm" là HỢP: bộ vai trò đặt = vai trò người này đang có ở dự án (vai trò riêng, hoặc
+ * vai trò mặc định nếu chưa có ghi đè) + vai trò đã chọn — KHÔNG BAO GIỜ làm mất vai trò đang có (đổi/bớt vai trò là việc khác).
+ * "Gỡ" bỏ toàn bộ vai trò RIÊNG. Hai luật chặn (máy chủ cũng chặn): tự bỏ quyền quản trị của chính mình, và làm dự án riêng tư
+ * không còn quản trị viên nào (cộng dồn theo thứ tự dòng).
+ */
 export function computeMembers(card: MemberCard, state: MemberState): MemberComputed {
   const adding = card.kind === 'add-member';
   const role = adding ? (card.roles.find((r) => r.id === state.roleId) ?? null) : null;
@@ -349,9 +377,17 @@ export function computeMembers(card: MemberCard, state: MemberState): MemberComp
     const p = slotPerson(s, state.picks);
     return p ? [{ person: p, via: s.via ?? null }] : [];
   });
+  const adminIds = new Set(card.adminRoleIds);
+  const holdsAdmin = (ids: readonly string[]) => ids.some((id) => adminIds.has(id));
   const seen = new Set<string>();
   const rows: ComputedMemberRow[] = [];
   for (const proj of card.projects) {
+    // Người đang giữ quản trị dự án (chỉ cần cho dự án riêng tư: thành viên = các dòng có mặt trong danh sách).
+    const holders = new Set(
+      Object.entries(proj.members)
+        .filter(([, m]) => holdsAdmin(m.roleIds))
+        .map(([id]) => id),
+    );
     for (const { person, via } of people) {
       const key = memberRowKey(person.id, proj.id);
       if (seen.has(key)) continue;
@@ -361,8 +397,11 @@ export function computeMembers(card: MemberCard, state: MemberState): MemberComp
       const current = m
         ? `${roleText(m.roleNames)}${m.isOverride ? '' : ' (mặc định theo tổ chức)'}`
         : 'Chưa là thành viên';
-      if (state.dropped.includes(key)) rows.push({ ...base, status: 'skip', current, after: '—' });
-      else if (proj.allowed === false)
+      if (state.dropped.includes(key)) {
+        rows.push({ ...base, status: 'skip', current, after: '—' });
+        continue;
+      }
+      if (proj.allowed === false) {
         rows.push({
           ...base,
           status: 'no-perm',
@@ -370,41 +409,50 @@ export function computeMembers(card: MemberCard, state: MemberState): MemberComp
           after: '—',
           note: `Bạn không phải quản trị của dự án ${proj.key}.`,
         });
-      else if (adding) {
-        if (m && role && sameIds(m.roleIds, [role.id]))
-          rows.push({
+        continue;
+      }
+      let row: ComputedMemberRow;
+      if (adding) {
+        const have = m?.roleIds ?? [];
+        if (!role)
+          row = { ...base, status: 'nothing', current, after: '—', note: 'Chưa chọn vai trò.' };
+        else if (have.includes(role.id))
+          row = {
             ...base,
             status: 'already',
             current,
-            after: role.name,
-            note: 'Đã có đúng vai trò này.',
-          });
-        else
-          rows.push({
+            after: roleText(m!.roleNames),
+            note: 'Đã có vai trò này.',
+          };
+        else {
+          const set = [...have, role.id];
+          const names = [...(m?.roleNames ?? []), role.name];
+          row = {
             ...base,
-            status: role ? 'ok' : 'nothing',
+            status: 'ok',
             current,
-            after: role?.name ?? '—',
-            note: !role
-              ? 'Chưa chọn vai trò.'
-              : !m
-                ? 'Thêm vào dự án riêng tư.'
-                : m.isOverride
-                  ? undefined
-                  : 'Đặt vai trò riêng cho dự án này.',
-          });
+            after: roleText(names),
+            set,
+            note: !m
+              ? 'Thêm vào dự án riêng tư.'
+              : m.isOverride
+                ? `Giữ nguyên ${roleText(m.roleNames)}, thêm ${role.name}.`
+                : `Giữ vai trò mặc định ${roleText(m.roleNames)}, thêm ${role.name} (đặt vai trò riêng cho dự án này).`,
+          };
+        }
       } else if (m?.isOverride)
-        rows.push({
+        row = {
           ...base,
           status: 'ok',
           current,
           after: proj.isPrivate ? 'Rời dự án' : 'Về vai trò mặc định của tổ chức',
+          set: null,
           note: proj.isPrivate
             ? 'Dự án riêng tư: gỡ vai trò riêng = gỡ khỏi dự án.'
             : 'Chỉ gỡ được vai trò riêng của dự án; người này vẫn thuộc dự án theo vai trò tổ chức.',
-        });
+        };
       else
-        rows.push({
+        row = {
           ...base,
           status: 'nothing',
           current,
@@ -412,7 +460,23 @@ export function computeMembers(card: MemberCard, state: MemberState): MemberComp
           note: m
             ? 'Không có vai trò riêng để gỡ — người này vẫn thuộc dự án theo vai trò mặc định của tổ chức (không gỡ được từ đây).'
             : 'Chưa là thành viên của dự án này.',
-        });
+        };
+      if (row.status === 'ok') {
+        const before = m?.roleIds ?? [];
+        const loses = holdsAdmin(before) && !(row.set && holdsAdmin(row.set));
+        const blockReason = !loses
+          ? null
+          : person.id === card.actor.id && !card.actor.orgAdmin
+            ? SELF_LOCK
+            : proj.isPrivate && holders.size <= 1 && holders.has(person.id)
+              ? LAST_ADMIN
+              : null;
+        if (blockReason)
+          row = { ...row, status: 'blocked', after: '—', note: blockReason, set: undefined };
+        else if (row.set && holdsAdmin(row.set)) holders.add(person.id);
+        else holders.delete(person.id);
+      }
+      rows.push(row);
     }
   }
   const count = (s: MemberRowStatus) => rows.filter((r) => r.status === s).length;
@@ -421,6 +485,7 @@ export function computeMembers(card: MemberCard, state: MemberState): MemberComp
     already: count('already'),
     skip: count('skip'),
     noPerm: count('no-perm'),
+    blocked: count('blocked'),
     nothing: count('nothing'),
   };
   const blocking: string[] = [];
@@ -449,12 +514,10 @@ export function memberInputs(
 ): AssistantBulkMemberRowInput[] {
   const projects = new Map(card.projects.map((p) => [p.id, p]));
   return computed.rows.flatMap((r) => {
-    if (r.status !== 'ok') return [];
+    if (r.status !== 'ok' || r.set === undefined) return [];
     const m = projects.get(r.project.id)?.members[r.person.id];
     const expect = m?.isOverride ? m.roleIds : null;
-    const set = card.kind === 'add-member' ? (computed.role ? [computed.role.id] : null) : null;
-    if (card.kind === 'add-member' && !set) return [];
-    return [{ projectId: r.project.id, userId: r.person.id, expect, set }];
+    return [{ projectId: r.project.id, userId: r.person.id, expect, set: r.set }];
   });
 }
 

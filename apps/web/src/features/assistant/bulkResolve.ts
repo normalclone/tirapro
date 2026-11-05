@@ -37,6 +37,8 @@ export interface GroupRef {
 export interface RoleRef {
   id: string;
   name: string;
+  /** Vai trò mang quyền `project:admin` (để thẻ chặn việc tự bỏ quản trị / bỏ quản trị viên cuối). */
+  admin?: boolean;
 }
 /** Thành viên của một dự án như danh sách `GET /projects/:id/members` trả (vai trò HIỆU LỰC + có ghi đè riêng không). */
 export interface ProjectMemberRef {

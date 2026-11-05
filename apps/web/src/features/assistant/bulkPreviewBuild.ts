@@ -68,6 +68,7 @@ async function buildAssignCard(
   const emailOf = new Map(everyone.map((p) => [p.id, p.email ?? null]));
   const projectIds = [...new Set(issues.map((i) => i.projectId))];
   const perms = new Map<string, boolean | undefined>();
+  const ownOnly = new Set<string>();
   await Promise.all(
     projectIds.map(async (pid) => {
       const [assign, edit] = await Promise.all([
@@ -75,6 +76,9 @@ async function buildAssignCard(
         deps.can(pid, 'issue:edit').catch(() => undefined),
       ]);
       perms.set(pid, allOf(assign, edit));
+      // Thiếu issue:edit nhưng có issue:edit:own → chỉ sửa được việc của mình: nói đúng lý do trên thẻ.
+      if (edit === false && (await deps.can(pid, 'issue:edit:own').catch(() => undefined)) === true)
+        ownOnly.add(pid);
     }),
   );
   const pairQuery = new Map((plan.pairs ?? []).map((p) => [p.issue.id, p.person.query]));
@@ -92,6 +96,7 @@ async function buildAssignCard(
         : null,
       points: i.storyPoints ?? null,
       allowed: perms.get(i.projectId),
+      ...(perms.get(i.projectId) === false && ownOnly.has(i.projectId) ? { ownOnly: true } : {}),
       ...(pairQuery.has(i.id) ? { pairQuery: pairQuery.get(i.id)! } : {}),
     };
   });
@@ -173,11 +178,15 @@ async function buildMemberCard(
     }),
   );
 
-  let roles: RoleOpt[] = [];
+  // Danh sách vai trò luôn tải: gọi tên vai trò trên thẻ và biết vai trò nào mang `project:admin` (chặn tự khoá / bỏ quản trị cuối).
+  const roleRefs = await deps.getProjectRoles().catch(() => []);
+  const roles: RoleOpt[] = roleRefs.map((r) => ({ id: r.id, name: r.name }));
+  const adminRoleIds = roleRefs.filter((r) => r.admin).map((r) => r.id);
+  const orgAdmin =
+    (await deps.can(targets[0]!.id, 'organization:admin').catch(() => undefined)) === true;
   let defaultRole: MemberCard['defaultRole'] = { id: null, source: 'none' };
   const info: string[] = [];
   if (adding) {
-    roles = (await deps.getProjectRoles().catch(() => [])).map((r) => ({ id: r.id, name: r.name }));
     if (plan.role?.status === 'ok')
       defaultRole = {
         id: plan.role.value.id,
@@ -189,10 +198,7 @@ async function buildMemberCard(
       info.push(`“${plan.role.query}” khớp nhiều vai trò — hãy chọn vai trò trên thẻ.`);
     else if (plan.role?.status === 'none')
       info.push(`Không thấy vai trò “${plan.role.query}” — hãy chọn vai trò trên thẻ.`);
-    if (defaultRole.id === null && !plan.role) {
-      const dev = roles.find((r) => r.name === 'Developer');
-      if (dev) defaultRole = { id: dev.id, source: 'default' };
-    }
+    // Lệnh KHÔNG nêu vai trò → không điền sẵn: người dùng phải chọn (Xác nhận khoá tới khi chọn).
   }
   if (plan.group?.status === 'ok')
     info.push(
@@ -205,6 +211,8 @@ async function buildMemberCard(
     projects: columns,
     groupName: plan.group?.status === 'ok' ? plan.group.value.name : null,
     roles,
+    adminRoleIds,
+    actor: { id: env.actor?.id ?? '', orgAdmin },
     defaultRole,
     info,
     notes: [],

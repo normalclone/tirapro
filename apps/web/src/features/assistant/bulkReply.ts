@@ -1,5 +1,7 @@
 import type { Block } from './blocks';
+import type { BulkCard } from './bulkPreview';
 import { buildBulkCard } from './bulkPreviewBuild';
+import { detectIntent } from './intents';
 import type { BulkIntent } from './bulkParse';
 import {
   approximateMatches,
@@ -158,11 +160,34 @@ export async function bulkReply(
         type: 'text',
         text: 'Đây là bản xem trước — mình chưa ghi gì. Kiểm tra rồi bấm Xác nhận; sau đó vẫn có thể Hoàn tác.',
       },
-      { type: 'bulk', card, status: 'pending' },
+      { type: 'bulk', card, status: 'pending', ...(intent.raw ? { raw: intent.raw } : {}) },
     ];
   const lines = describePlan(plan);
   const tail = planNeedsChoice(plan)
     ? 'Còn mục cần chọn lại — mình chưa làm gì.'
     : 'Không có gì để thực hiện — mình chưa ghi gì.';
   return [{ type: 'text', text: `${lines.join('\n')}\n${tail}` }];
+}
+
+/**
+ * Dựng LẠI thẻ xem trước từ câu lệnh gốc và trạng thái máy chủ HIỆN TẠI (dùng khi một lần Xác nhận lỗi mạng / bị ngắt nên không
+ * biết đã áp dụng tới đâu). `null` = không dựng lại được (câu không còn là lệnh hàng loạt, lỗi tải, hay không còn gì để xem trước).
+ */
+export async function rebuildBulkCard(
+  raw: string,
+  env: RespondEnv,
+  deps: AssistantDeps,
+): Promise<BulkCard | null> {
+  const intent = detectIntent(raw);
+  if (
+    intent.kind !== 'bulk-assign' &&
+    intent.kind !== 'bulk-add-member' &&
+    intent.kind !== 'bulk-remove-member'
+  )
+    return null;
+  try {
+    return await buildBulkCard(await planBulk(intent, env, deps, env.actor ?? NO_ACTOR), env, deps);
+  } catch {
+    return null;
+  }
 }

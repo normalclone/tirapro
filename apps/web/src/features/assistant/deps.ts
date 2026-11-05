@@ -124,12 +124,18 @@ export function createAssistantDeps(qc: QueryClient): AssistantDeps {
         queryFn: async () => (await api.get<TeamDto[]>('/teams')).data,
         staleTime: STALE,
       }),
-    getProjectRoles: () =>
-      qc.fetchQuery({
-        queryKey: keys.roles.byScope('PROJECT'),
-        queryFn: async () => (await api.get<RoleDto[]>('/roles?scope=PROJECT')).data,
-        staleTime: 5 * 60_000,
-      }),
+    getProjectRoles: async () =>
+      (
+        await qc.fetchQuery({
+          queryKey: keys.roles.byScope('PROJECT'),
+          queryFn: async () => (await api.get<RoleDto[]>('/roles?scope=PROJECT')).data,
+          staleTime: 5 * 60_000,
+        })
+      ).map((r) => ({
+        id: r.id,
+        name: r.name,
+        admin: r.permissionKeys.includes('project:admin'),
+      })),
     canCreate: (projectId) => canIn(qc, projectId, 'issue:create'),
     can: (projectId, permission) => canIn(qc, projectId, permission),
     getProjectMembers: async (projectId) =>

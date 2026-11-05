@@ -15,6 +15,7 @@ import {
   saveConversation,
   type ConversationAction,
 } from './conversation';
+import { rebuildBulkCard } from './bulkReply';
 import { createAssistantDeps } from './deps';
 import { detectIntent } from './intents';
 import { greetingBlocks, respond, type AssistantProject, type RespondEnv } from './respond';
@@ -129,6 +130,22 @@ export function useAssistantController(open: boolean) {
   );
 
   const clear = useCallback(() => dispatch({ type: 'clear' }), []);
+  const messagesRef = useRef(messages);
+  messagesRef.current = messages;
+  /** Tải lại xem trước của một thẻ hàng loạt từ trạng thái máy chủ mới nhất. `false` = không tải lại được. */
+  const refreshBulk = useCallback(
+    async (messageId: string, notice: string): Promise<boolean> => {
+      const block = messagesRef.current
+        .find((m) => m.id === messageId)
+        ?.blocks.find((b): b is Extract<Block, { type: 'bulk' }> => b.type === 'bulk');
+      if (!block?.raw) return false;
+      const card = await rebuildBulkCard(block.raw, envRef.current, deps);
+      if (!card) return false;
+      dispatch({ type: 'patch-bulk', messageId, status: 'pending', card, notice });
+      return true;
+    },
+    [deps],
+  );
   const patchBulk = useCallback(
     (m: Extract<ConversationAction, { type: 'patch-bulk' }>) => dispatch(m),
     [],
@@ -138,5 +155,5 @@ export function useAssistantController(open: boolean) {
     [],
   );
 
-  return { messages, busy, submit, clear, patchDraft, patchBulk };
+  return { messages, busy, submit, clear, patchDraft, patchBulk, refreshBulk };
 }

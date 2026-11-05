@@ -1,5 +1,5 @@
 import type { Block, BulkStatus, DraftStatus } from './blocks';
-import type { BulkOutcome } from './bulkPreview';
+import type { BulkCard, BulkOutcome } from './bulkPreview';
 
 /**
  * Hội thoại của Trợ lý — CHỈ trong phiên trình duyệt: state React + sessionStorage (bọc try/catch), theo từng người dùng.
@@ -28,6 +28,9 @@ export type ConversationAction =
       outcome?: BulkOutcome;
       undoOutcome?: BulkOutcome;
       error?: string;
+      /** Tải lại xem trước: thay thẻ bằng thẻ dựng từ trạng thái máy chủ MỚI NHẤT, tăng `rev`, kèm thông báo. */
+      card?: BulkCard;
+      notice?: string;
     }
   | { type: 'clear' };
 
@@ -70,6 +73,8 @@ export function conversationReducer(state: Message[], a: ConversationAction): Me
                       outcome: a.outcome ?? b.outcome,
                       undoOutcome: a.undoOutcome ?? b.undoOutcome,
                       error: a.error,
+                      notice: a.notice,
+                      ...(a.card ? { card: a.card, rev: (b.rev ?? 0) + 1 } : {}),
                     }
                   : b,
               ),

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { parseBulkAddMember, parseBulkAssign, parseBulkRemoveMember } from './bulkParse';
 import { planBulk, planNeedsChoice, type BulkActor } from './bulkPlan';
-import { bulkReply, dedupeLines, describePlan } from './bulkReply';
+import { bulkReply, dedupeLines, describePlan, rebuildBulkCard } from './bulkReply';
 import { ENV, issue, makeDeps } from './fixtures';
 
 const ACTOR: BulkActor = { id: 'u-me', displayName: 'Tôi Là Mình' };
@@ -119,5 +119,47 @@ describe('T2 carry — R4 mỗi điều chỉ nói một lần', () => {
         ['Không thấy dự án “ZZZ” trong các dự án bạn xem được.'],
       ),
     ).toEqual(['a']);
+  });
+});
+
+describe('M3 — dựng lại thẻ từ câu lệnh gốc', () => {
+  it('bulkReply lưu câu lệnh gốc trong khối; rebuildBulkCard dựng thẻ mới từ trạng thái hiện tại', async () => {
+    const intent = {
+      ...parseBulkAssign('giao DEMO-SUB-1 cho Linh')!,
+      raw: 'giao DEMO-SUB-1 cho Linh',
+    };
+    const deps = makeDeps(issues(1));
+    const blocks = (await bulkReply(intent, { ...ENV, actor: ACTOR }, deps))!;
+    expect(blocks[1]).toMatchObject({ type: 'bulk', raw: 'giao DEMO-SUB-1 cho Linh' });
+    const card = await rebuildBulkCard('giao DEMO-SUB-1 cho Linh', { ...ENV, actor: ACTOR }, deps);
+    expect(card?.kind).toBe('assign');
+    // Trạng thái đổi (việc nay đã giao cho Linh) → thẻ mới phản ánh: người hiện tại là Linh.
+    const after = makeDeps({
+      getIssue: (k: string) =>
+        Promise.resolve(
+          k === 'DEMO-SUB-1'
+            ? issue({
+                id: 'i1',
+                key: k,
+                version: 2,
+                assignee: { id: 'u-linh', displayName: 'Phạm Linh' },
+              })
+            : null,
+        ),
+    });
+    const fresh = await rebuildBulkCard(
+      'giao DEMO-SUB-1 cho Linh',
+      { ...ENV, actor: ACTOR },
+      after,
+    );
+    expect(fresh?.kind === 'assign' && fresh.rows[0]).toMatchObject({
+      version: 2,
+      current: { id: 'u-linh' },
+    });
+  });
+  it('câu không còn là lệnh hàng loạt / lỗi tải → null', async () => {
+    expect(await rebuildBulkCard('xin chào', ENV, makeDeps())).toBeNull();
+    const broken = makeDeps({ getPeople: () => Promise.reject(new Error('x')) });
+    expect(await rebuildBulkCard('giao DEMO-SUB-1 cho Linh', ENV, broken)).toBeNull();
   });
 });

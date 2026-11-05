@@ -321,6 +321,7 @@ describe('assignOutcome / undoOutcome — chỉ khôi phục phần đã đổi'
 const ROLES = [
   { id: 'r-dev', name: 'Developer' },
   { id: 'r-tester', name: 'Tester' },
+  { id: 'r-admin', name: 'Project Admin' },
 ];
 function memberCard(over: Partial<MemberCard> = {}): MemberCard {
   return {
@@ -350,6 +351,8 @@ function memberCard(over: Partial<MemberCard> = {}): MemberCard {
     ],
     groupName: null,
     roles: ROLES,
+    adminRoleIds: ['r-admin'],
+    actor: { id: 'u-me', orgAdmin: false },
     defaultRole: { id: 'r-tester', source: 'parsed', query: 'Tester' },
     info: [],
     notes: [],
@@ -361,23 +364,60 @@ const mrows = (c: ReturnType<typeof computeMembers>) =>
   c.rows.map((r) => `${r.person.id}|${r.project.key}:${r.status}`);
 
 describe('computeMembers — thêm', () => {
-  it('trạng thái từng dòng: đã có đúng vai trò / đổi vai trò riêng / đặt vai trò riêng / thêm vào dự án riêng tư', () => {
+  it('M2 "thêm" = HỢP vai trò: giữ vai trò đang có (riêng hoặc mặc định) và thêm vai trò đã chọn; đã có thì "đã có"', () => {
     const card = memberCard();
     const c = computeMembers(card, initialMemberState(card));
     expect(mrows(c)).toEqual([
-      'u-linh|DEMO:ok', // mặc định Developer → đặt riêng Tester
+      'u-linh|DEMO:ok', // mặc định Developer → riêng [Developer, Tester]
       'u-an|DEMO:already', // đã Tester (riêng)
-      'u-linh|SECRET:ok', // chưa là thành viên dự án riêng tư → thêm
-      'u-an|SECRET:ok', // Developer riêng → đổi sang Tester
+      'u-linh|SECRET:ok', // chưa là thành viên dự án riêng tư → thêm [Tester]
+      'u-an|SECRET:ok', // Developer riêng → [Developer, Tester]
     ]);
-    expect(c.rows[0]!.note).toBe('Đặt vai trò riêng cho dự án này.');
+    expect(c.rows[0]!.set).toEqual(['r-dev', 'r-tester']);
+    expect(c.rows[0]!.note).toContain('Giữ vai trò mặc định Developer, thêm Tester');
+    expect(c.rows[2]!.set).toEqual(['r-tester']);
     expect(c.rows[2]!.note).toBe('Thêm vào dự án riêng tư.');
+    expect(c.rows[3]!.set).toEqual(['r-dev', 'r-tester']);
+    expect(c.rows[3]!.after).toBe('Developer, Tester');
     expect(c.canConfirm).toBe(true);
+  });
+
+  it('M2: người đang có [Project Admin, Tester] + thêm Developer → [Project Admin, Tester, Developer], KHÔNG mất vai trò quản trị', () => {
+    const card = memberCard({
+      slots: [slot(LINH)],
+      projects: [
+        {
+          id: 'p1',
+          key: 'DEMO',
+          name: 'Demo',
+          isPrivate: false,
+          allowed: true,
+          members: {
+            'u-linh': {
+              roleIds: ['r-admin', 'r-tester'],
+              roleNames: ['Project Admin', 'Tester'],
+              isOverride: true,
+            },
+          },
+        },
+      ],
+    });
+    const c = computeMembers(card, { ...initialMemberState(card), roleId: 'r-dev' });
+    expect(c.rows[0]).toMatchObject({ status: 'ok', after: 'Project Admin, Tester, Developer' });
+    expect(memberInputs(card, c)).toEqual([
+      {
+        projectId: 'p1',
+        userId: 'u-linh',
+        expect: ['r-admin', 'r-tester'],
+        set: ['r-admin', 'r-tester', 'r-dev'],
+      },
+    ]);
   });
 
   it('bộ chọn vai trò: đổi vai trò thì trạng thái "đã có" đổi theo; chưa chọn vai trò → khoá xác nhận', () => {
     const card = memberCard({ defaultRole: { id: null, source: 'none' } });
     const st = initialMemberState(card);
+    expect(st.roleId).toBeNull(); // L2: không điền sẵn
     const none = computeMembers(card, st);
     expect(none.canConfirm).toBe(false);
     expect(none.blocking).toContain('Chọn vai trò cho người được thêm.');
@@ -402,7 +442,7 @@ describe('computeMembers — thêm', () => {
     const inputs = memberInputs(card, c);
     expect(inputs.every((i) => i.projectId === 'p1')).toBe(true);
     expect(inputs).toEqual([
-      { projectId: 'p1', userId: 'u-linh', expect: null, set: ['r-tester'] },
+      { projectId: 'p1', userId: 'u-linh', expect: null, set: ['r-dev', 'r-tester'] },
     ]);
   });
 
@@ -411,7 +451,7 @@ describe('computeMembers — thêm', () => {
     const st = { ...initialMemberState(card), roleId: 'r-dev' };
     const inputs = memberInputs(card, computeMembers(card, st));
     expect(inputs).toEqual([
-      { projectId: 'p1', userId: 'u-an', expect: ['r-tester'], set: ['r-dev'] },
+      { projectId: 'p1', userId: 'u-an', expect: ['r-tester'], set: ['r-tester', 'r-dev'] },
       { projectId: 'p2', userId: 'u-linh', expect: null, set: ['r-dev'] },
     ]);
   });
@@ -509,5 +549,93 @@ describe('membersOutcome / Hoàn tác thành viên', () => {
       ],
     });
     expect(undone.counts).toEqual({ ok: 1, skipped: 1, failed: 0 });
+  });
+});
+
+describe('M1 — chặn tự khoá mình / bỏ quản trị viên cuối (thẻ)', () => {
+  const adminCard = (over: Partial<MemberCard> = {}): MemberCard =>
+    memberCard({
+      kind: 'remove-member',
+      defaultRole: { id: null, source: 'none' },
+      slots: [slot(person('u-me', 'Tôi')), slot(LINH)],
+      projects: [
+        {
+          id: 'p1',
+          key: 'DEMO',
+          name: 'Demo',
+          isPrivate: false,
+          allowed: true,
+          members: {
+            'u-me': { roleIds: ['r-admin'], roleNames: ['Project Admin'], isOverride: true },
+            'u-linh': { roleIds: ['r-admin'], roleNames: ['Project Admin'], isOverride: true },
+          },
+        },
+      ],
+      ...over,
+    });
+  it('gỡ CHÍNH MÌNH khỏi quyền quản trị → dòng "Bị chặn" kèm lý do; không vào yêu cầu gửi; người khác vẫn gỡ được', () => {
+    const card = adminCard();
+    const c = computeMembers(card, initialMemberState(card));
+    expect(mrows(c)).toEqual(['u-me|DEMO:blocked', 'u-linh|DEMO:ok']);
+    expect(c.rows[0]!.note).toContain('tự bỏ quyền quản trị của chính mình');
+    expect(c.rows[0]!.note).toContain('quản trị viên khác');
+    expect(memberInputs(card, c)).toEqual([
+      { projectId: 'p1', userId: 'u-linh', expect: ['r-admin'], set: null },
+    ]);
+    expect(c.counts.blocked).toBe(1);
+  });
+  it('thêm vai trò thấp cho chính mình KHÔNG bị chặn (hợp vai trò, quản trị vẫn còn); quản trị tổ chức không bị chặn', () => {
+    const add = memberCard({
+      slots: [slot(person('u-me', 'Tôi'))],
+      projects: adminCard().projects,
+    });
+    const c = computeMembers(add, { ...initialMemberState(add), roleId: 'r-dev' });
+    expect(c.rows[0]!.status).toBe('ok');
+    const orgAdmin = adminCard({ actor: { id: 'u-me', orgAdmin: true } });
+    expect(mrows(computeMembers(orgAdmin, initialMemberState(orgAdmin)))).toEqual([
+      'u-me|DEMO:ok',
+      'u-linh|DEMO:ok',
+    ]);
+  });
+  it('DỰ ÁN RIÊNG TƯ: gỡ quản trị viên cuối bị chặn (cộng dồn theo thứ tự); công khai thì không', () => {
+    const priv = adminCard({
+      slots: [slot(LINH), slot(AN)],
+      projects: [
+        {
+          id: 'p1',
+          key: 'DEMO',
+          name: 'Demo',
+          isPrivate: true,
+          allowed: true,
+          members: {
+            'u-linh': { roleIds: ['r-admin'], roleNames: ['Project Admin'], isOverride: true },
+            'u-an': { roleIds: ['r-admin'], roleNames: ['Project Admin'], isOverride: true },
+          },
+        },
+      ],
+    });
+    const c = computeMembers(priv, initialMemberState(priv));
+    expect(mrows(c)).toEqual(['u-linh|DEMO:ok', 'u-an|DEMO:blocked']);
+    expect(c.rows[1]!.note).toContain('không còn quản trị viên nào');
+    const pub = adminCard({
+      slots: [slot(LINH), slot(AN)],
+      projects: [{ ...priv.projects[0]!, isPrivate: false }],
+    });
+    expect(mrows(computeMembers(pub, initialMemberState(pub)))).toEqual([
+      'u-linh|DEMO:ok',
+      'u-an|DEMO:ok',
+    ]);
+  });
+});
+
+describe('L5 — chỉ có issue:edit:own', () => {
+  it('dòng nói rõ "chỉ được sửa việc của mình"', () => {
+    const card = assignCard({
+      rows: [row(1, { allowed: false, ownOnly: true })],
+      defaultMode: 'one',
+    });
+    const c = computeAssign(card, initialAssignState(card));
+    expect(c.rows[0]!.note).toBe('Bạn chỉ được sửa việc của mình — không đủ quyền giao việc.');
+    expect(c.canConfirm).toBe(false);
   });
 });

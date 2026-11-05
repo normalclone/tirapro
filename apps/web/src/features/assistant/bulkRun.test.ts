@@ -173,6 +173,8 @@ describe('runConfirm / runUndo — thành viên', () => {
       { id: 'p2', key: 'ZED', name: 'Zed', isPrivate: false, allowed: false, members: {} },
     ],
     groupName: null,
+    adminRoleIds: [],
+    actor: { id: 'u-me', orgAdmin: false },
     roles: [{ id: 'r-tester', name: 'Tester' }],
     defaultRole: { id: 'r-tester', source: 'parsed', query: 'Tester' },
     info: [],

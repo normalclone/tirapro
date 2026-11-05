@@ -42,7 +42,7 @@ export const PEOPLE: PersonRef[] = [
 export const ROLES: RoleRef[] = [
   { id: 'r-tester', name: 'Tester' },
   { id: 'r-dev', name: 'Developer' },
-  { id: 'r-admin', name: 'Project Admin' },
+  { id: 'r-admin', name: 'Project Admin', admin: true },
 ];
 
 /** Nhóm dự án cá nhân của người gõ (một nhóm có dự án đã lưu trữ). */

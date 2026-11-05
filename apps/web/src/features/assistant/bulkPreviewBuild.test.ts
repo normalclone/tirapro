@@ -160,9 +160,9 @@ describe('buildBulkCard — thêm / gỡ thành viên', () => {
     expect(c.defaultRole).toEqual({ id: 'r-tester', source: 'parsed', query: 'Tester' });
   });
 
-  it('không nói vai trò → mặc định Developer; vai trò không thấy → phải chọn (không chặn bằng lỗi)', async () => {
+  it('L2: không nói vai trò → KHÔNG điền sẵn (phải chọn); vai trò không thấy → phải chọn (không chặn bằng lỗi)', async () => {
     const none = (await card('thêm Linh vào DEMO')) as MemberCard;
-    expect(none.defaultRole).toMatchObject({ id: 'r-dev', source: 'default' });
+    expect(none.defaultRole).toEqual({ id: null, source: 'none' });
     const bad = (await card('thêm Linh vào DEMO vai trò Khách')) as MemberCard;
     expect(bad.defaultRole).toEqual({ id: null, source: 'none' });
     expect(bad.info.join(' ')).toContain('Không thấy vai trò “Khách”');
@@ -189,5 +189,44 @@ describe('buildBulkCard — thêm / gỡ thành viên', () => {
 
   it('không có dự án hợp lệ → không dựng thẻ', async () => {
     expect(await card('thêm Linh vào ZZZ')).toBeNull();
+  });
+});
+
+describe('buildBulkCard — fix round 1', () => {
+  it('L5: thiếu issue:edit nhưng có issue:edit:own → ownOnly', async () => {
+    const deps = makeDeps({
+      ...store(1),
+      can: (_p, perm) => Promise.resolve(perm === 'issue:assign' || perm === 'issue:edit:own'),
+    });
+    const c = (await card('giao DEMO-SUB-1 cho Linh', deps)) as AssignCard;
+    expect(c.rows[0]).toMatchObject({ allowed: false, ownOnly: true });
+    const none = makeDeps({ ...store(1), can: () => Promise.resolve(false) });
+    expect(
+      ((await card('giao DEMO-SUB-1 cho Linh', none)) as AssignCard).rows[0]!.ownOnly,
+    ).toBeUndefined();
+  });
+  it('M1: thẻ thành viên mang người gõ + quản trị tổ chức + id vai trò quản trị dự án', async () => {
+    const deps = makeDeps({
+      getProjectRoles: ok([
+        { id: 'r-admin', name: 'Project Admin', admin: true },
+        { id: 'r-dev', name: 'Developer' },
+      ]),
+      can: (_p, perm) => Promise.resolve(perm === 'organization:admin' ? true : true),
+    });
+    const intent = parseBulkRemoveMember('gỡ Linh khỏi DEMO')!;
+    const c = (await buildBulkCard(
+      await planBulk(intent, { ...ENV, actor: ACTOR }, deps, ACTOR),
+      { ...ENV, actor: ACTOR },
+      deps,
+    )) as MemberCard;
+    expect(c.adminRoleIds).toEqual(['r-admin']);
+    expect(c.actor).toEqual({ id: 'u-me', orgAdmin: true });
+    const no = makeDeps({ can: (_p, perm) => Promise.resolve(perm !== 'organization:admin') });
+    const c2 = (await buildBulkCard(
+      await planBulk(intent, { ...ENV, actor: ACTOR }, no, ACTOR),
+      { ...ENV, actor: ACTOR },
+      no,
+    )) as MemberCard;
+    expect(c2.actor.orgAdmin).toBe(false);
   });
 });

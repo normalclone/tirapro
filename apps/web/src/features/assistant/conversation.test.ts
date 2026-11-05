@@ -252,4 +252,35 @@ describe('thẻ hàng loạt (block "bulk")', () => {
     const out = parseStored(JSON.stringify([msg(bulk())]));
     expect(out[0]!.blocks[0]).toMatchObject({ type: 'bulk', status: 'pending' });
   });
+
+  it('M3: patch-bulk với card mới thay thẻ, tăng rev, kèm thông báo; patch sau đó xoá thông báo', () => {
+    const s0 = conversationReducer([], {
+      type: 'add',
+      message: msg(bulk({ raw: 'giao A-1 cho An' })),
+    });
+    const fresh = { ...card, notes: ['mới'] };
+    const s1 = conversationReducer(s0, {
+      type: 'patch-bulk',
+      messageId: 'm1',
+      status: 'pending',
+      card: fresh,
+      notice: 'Có thể đã áp dụng một phần',
+    });
+    expect(s1[0]!.blocks[0]).toMatchObject({
+      status: 'pending',
+      rev: 1,
+      notice: 'Có thể đã áp dụng một phần',
+      card: fresh,
+    });
+    const s2 = conversationReducer(s1, { type: 'patch-bulk', messageId: 'm1', status: 'running' });
+    expect(s2[0]!.blocks[0]).toMatchObject({ status: 'running', rev: 1, notice: undefined });
+    const s3 = conversationReducer(s2, {
+      type: 'patch-bulk',
+      messageId: 'm1',
+      status: 'pending',
+      card: fresh,
+      notice: 'x',
+    });
+    expect((s3[0]!.blocks[0] as { rev: number }).rev).toBe(2);
+  });
 });
