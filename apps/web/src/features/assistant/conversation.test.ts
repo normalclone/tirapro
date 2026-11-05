@@ -174,3 +174,82 @@ describe('liên kết trong hội thoại đã lưu', () => {
     expect((m!.blocks[1] as Extract<Block, { type: 'facts' }>).to).toBeUndefined();
   });
 });
+
+describe('thẻ hàng loạt (block "bulk")', () => {
+  const card = {
+    kind: 'assign' as const,
+    rows: [],
+    slots: [],
+    unmatched: [],
+    modes: ['one' as const],
+    defaultMode: 'one' as const,
+    loads: {},
+    filterNotes: [],
+    filterJql: null,
+    truncated: false,
+    missingKeys: [],
+    notes: [],
+    problems: [],
+  };
+  const bulk = (over: Partial<Extract<Block, { type: 'bulk' }>> = {}): Block => ({
+    type: 'bulk',
+    card,
+    status: 'pending',
+    ...over,
+  });
+  const msg = (b: Block): Message => ({ id: 'm1', role: 'bot', blocks: [b] });
+  const outcome = {
+    title: 'Đã giao 1 việc',
+    rows: [],
+    counts: { ok: 1, skipped: 0, failed: 0 },
+    undo: null,
+  };
+
+  it('thêm thẻ KHÔNG đổi trạng thái; patch-bulk ghi kết quả và giữ kết quả cũ khi chỉ đổi trạng thái', () => {
+    const s0 = conversationReducer([], { type: 'add', message: msg(bulk()) });
+    expect(s0[0]!.blocks[0]).toMatchObject({ status: 'pending' });
+    const s1 = conversationReducer(s0, { type: 'patch-bulk', messageId: 'm1', status: 'running' });
+    expect(s1[0]!.blocks[0]).toMatchObject({ status: 'running' });
+    const s2 = conversationReducer(s1, {
+      type: 'patch-bulk',
+      messageId: 'm1',
+      status: 'done',
+      outcome,
+    });
+    const s3 = conversationReducer(s2, { type: 'patch-bulk', messageId: 'm1', status: 'undoing' });
+    expect(s3[0]!.blocks[0]).toMatchObject({ status: 'undoing', outcome });
+    const other = conversationReducer(s3, {
+      type: 'patch-bulk',
+      messageId: 'khac',
+      status: 'cancelled',
+    });
+    expect(other[0]!.blocks[0]).toMatchObject({ status: 'undoing' });
+  });
+
+  it('tải lại: "running" → "interrupted" (không tự chạy lại, không coi là xong); "undoing" → "done"', () => {
+    const raw = JSON.stringify([
+      msg(bulk({ status: 'running' })),
+      { ...msg(bulk({ status: 'undoing', outcome })), id: 'm2' },
+      { ...msg(bulk({ status: 'done', outcome })), id: 'm3' },
+    ]);
+    const out = parseStored(raw);
+    expect(out.map((m) => (m.blocks[0] as { status: string }).status)).toEqual([
+      'interrupted',
+      'done',
+      'done',
+    ]);
+  });
+
+  it('thẻ hỏng (sai hình dạng) bị thay bằng một dòng chữ, không ném lỗi', () => {
+    const bad = JSON.stringify([
+      msg({ type: 'bulk', card: { kind: 'assign' }, status: 'pending' } as unknown as Block),
+    ]);
+    const out = parseStored(bad);
+    expect(out[0]!.blocks[0]).toMatchObject({ type: 'text' });
+  });
+
+  it('thẻ hợp lệ được giữ nguyên qua lưu/đọc', () => {
+    const out = parseStored(JSON.stringify([msg(bulk())]));
+    expect(out[0]!.blocks[0]).toMatchObject({ type: 'bulk', status: 'pending' });
+  });
+});

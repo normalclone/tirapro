@@ -34,6 +34,10 @@ export interface BulkAssignIntent {
   kind: 'bulk-assign';
   /** Câu gốc — chỉ do `parseBulkCommand` (đường `detectIntent`) điền, để `respond` nhường ý định cũ khi không khớp được gì. */
   raw?: string;
+  /** Ghi chú KHÔNG chặn (số lạc bị bỏ qua…) — hiện trên thẻ. Chỉ có khi không rỗng. */
+  notes?: string[];
+  /** "… và các việc con": giao kèm việc con của các mã đã nêu. */
+  includeChildren?: true;
   /** `null` khi là kiểu theo cặp (dùng `pairs`) hoặc không hiểu được phạm vi việc (xem `problems`). */
   selector: IssueSelector | null;
   /** Tên/email người nhận NGUYÊN VĂN ("tôi"/"mình" = chính người gõ). */
@@ -232,6 +236,8 @@ export interface ExpandedKeys {
   problems: string[];
   /** Tiền tố (`KYHOP-SUB-`) của mã cuối cùng — để câu sau (theo cặp) dùng tiếp cho số trần. */
   lastPrefix: string | null;
+  /** Số lạc bị bỏ qua ("trước ngày 15", "(sprint 5)") — thẻ báo "mình bỏ qua số 15", không im lặng. */
+  ignored: string[];
 }
 
 /**
@@ -246,6 +252,7 @@ export function expandKeys(segment: string, startPrefix: string | null = null): 
   const problems: string[] = [];
   let prefix = startPrefix;
   let prevEnd = -1;
+  const ignored: string[] = [];
   const reported = new Set<string>();
   for (const m of segment.matchAll(ITEM)) {
     const own = m[2];
@@ -267,7 +274,11 @@ export function expandKeys(segment: string, startPrefix: string | null = null): 
         reported.add(msg);
         continue;
       }
-      if (!chained || !prefix || !CHAIN_AFTER.test(segment.slice(matchEnd))) continue; // số lạc ("trước ngày 15", "(sprint 5)")
+      if (!chained || !prefix || !CHAIN_AFTER.test(segment.slice(matchEnd))) {
+        // Số lạc ("trước ngày 15", "(sprint 5)"): không thành mã, nhưng GHI LẠI để báo người dùng.
+        if (!ignored.includes(m[3]!)) ignored.push(m[3]!);
+        continue;
+      }
     }
     if (to !== null && to < from) {
       problems.push(`Dải ${prefix}${from}..${to} bị ngược (số đầu lớn hơn số cuối).`);
@@ -294,7 +305,7 @@ export function expandKeys(segment: string, startPrefix: string | null = null): 
     );
     keys.length = BULK_MAX_ITEMS;
   }
-  return { keys, problems, lastPrefix: prefix };
+  return { keys, problems, lastPrefix: prefix, ignored };
 }
 
 /** Đoạn có ít nhất một mã đầy đủ (`DEMO-TASK-12`) không. */
@@ -414,14 +425,21 @@ export function parseBulkAssign(text: string): BulkAssignIntent | null {
       people: [],
       pairs: parsed.pairs,
       problems: parsed.problems,
+      ...ignoredNotes(parsed.ignored),
     };
   }
   const c = findWord(bws, ['cho'], 0, true);
   if (c <= 0) return null; // "giao cho tôi" (không có phần việc) hoặc không có "cho"
-  const what = sliceWords(body, bws, 0, c);
+  let what = sliceWords(body, bws, 0, c);
+  let includeChildren = false;
+  if (hasFullKey(what) && WITH_CHILDREN.test(what)) {
+    what = what.replace(WITH_CHILDREN, '').trim();
+    includeChildren = true;
+  }
   const people = cleanPeople(sliceWords(body, bws, c + 1, bws.length));
   if (!what || people.length === 0) return null;
   const problems: string[] = [];
+  const ignoredList: string[] = [];
   let selector: IssueSelector | null = null;
   const children = hasFullKey(what) ? parseFilter(what) : null;
   // "các việc thuộc epic KEY chưa giao": mã Epic là phạm vi lọc, KHÔNG phải một việc cần giao.
@@ -431,6 +449,7 @@ export function parseBulkAssign(text: string): BulkAssignIntent | null {
   else if (hasFullKey(what)) {
     const ex = expandKeys(what);
     problems.push(...ex.problems);
+    ignoredList.push(...ex.ignored);
     selector = ex.keys.length > 0 ? { kind: 'keys', keys: ex.keys } : null;
   } else {
     selector = parseFilter(what);
@@ -439,8 +458,30 @@ export function parseBulkAssign(text: string): BulkAssignIntent | null {
         'Mình chưa hiểu bạn muốn giao những việc nào — hãy nêu mã (vd KYHOP-SUB-11, 12) hoặc bộ lọc như “các việc [Test] chưa giao của KYHOP”.',
       );
   }
-  return { kind: 'bulk-assign', selector, people, pairs: null, problems };
+  return {
+    kind: 'bulk-assign',
+    selector,
+    people,
+    pairs: null,
+    problems,
+    ...ignoredNotes(ignoredList),
+    ...(includeChildren && selector?.kind === 'keys' ? { includeChildren: true as const } : {}),
+  };
 }
+
+/** Ghi chú "bỏ qua số …" (chỉ trả khi có số bị bỏ). */
+const ignoredNotes = (ignored: string[]): { notes?: string[] } =>
+  ignored.length > 0
+    ? {
+        notes: [
+          `Mình bỏ qua số ${ignored.join(', ')} vì không nối với danh sách mã (không phải mã việc).`,
+        ],
+      }
+    : {};
+
+/** "… và các việc con" cuối phần việc: giao kèm việc con của các mã đã nêu. */
+const WITH_CHILDREN =
+  /\s+(?:và|va|kèm|kem|cả|ca|cùng với|cung voi)(?:\s+(?:các|cac|những|nhung))?\s+(?:việc|viec|công việc|cong viec|task)\s+con(?:\s+của\s+(?:nó|chúng|no|chung))?\s*$/iu;
 
 /** Mọi vị trí (chỉ số từ) của từ có `fold` thuộc `set`, không nằm trong `[...]`. */
 function findAll(ws: Word[], set: readonly string[]): number[] {
@@ -478,8 +519,8 @@ function pieces(text: string): { text: string; start: number }[] {
 function parsePairs(
   body: string,
   bws: Word[],
-): { pairs: { key: string; person: string }[] | null; problems: string[] } {
-  const fail = (extra?: string) => ({ pairs: null, problems: [extra ?? PAIR_FIX] });
+): { pairs: { key: string; person: string }[] | null; problems: string[]; ignored: string[] } {
+  const fail = (extra?: string) => ({ pairs: null, problems: [extra ?? PAIR_FIX], ignored: [] });
   const cho = findAll(bws, ['cho']);
   const lefts: string[] = [sliceWords(body, bws, 0, cho[0]!)];
   const persons: string[] = [];
@@ -500,19 +541,21 @@ function parsePairs(
   }
   const pairs: { key: string; person: string }[] = [];
   const problems: string[] = [];
+  const ignored: string[] = [];
   let prefix: string | null = null;
   for (const [k, left] of lefts.entries()) {
     const ex = expandKeys(left, prefix);
     prefix = ex.lastPrefix;
     problems.push(...ex.problems);
+    for (const n of ex.ignored) if (!ignored.includes(n)) ignored.push(n);
     if (ex.keys.length === 0) return fail();
     for (const key of ex.keys) pairs.push({ key, person: persons[k]! });
   }
   if (pairs.length > BULK_MAX_ITEMS) {
     problems.push(`Quá ${BULK_MAX_ITEMS} việc trong một lệnh — hãy chia nhỏ.`);
-    return { pairs: pairs.slice(0, BULK_MAX_ITEMS), problems };
+    return { pairs: pairs.slice(0, BULK_MAX_ITEMS), problems, ignored };
   }
-  return { pairs, problems };
+  return { pairs, problems, ignored };
 }
 
 /* ------------------------------ thêm / gỡ thành viên ------------------------------ */

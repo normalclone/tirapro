@@ -60,7 +60,12 @@ export function useAssistantController(open: boolean) {
     () => ({
       pathname,
       project: project ? { id: project.id, key: project.key, name: project.name } : null,
-      projects: (activeProjects ?? []).map((p) => ({ id: p.id, key: p.key, name: p.name })),
+      projects: (activeProjects ?? []).map((p) => ({
+        id: p.id,
+        key: p.key,
+        name: p.name,
+        isPrivate: p.isPrivate,
+      })),
       recentKeys: readRecentProjectKeys(),
       tour: tourGuide
         ? {
@@ -124,10 +129,14 @@ export function useAssistantController(open: boolean) {
   );
 
   const clear = useCallback(() => dispatch({ type: 'clear' }), []);
+  const patchBulk = useCallback(
+    (m: Extract<ConversationAction, { type: 'patch-bulk' }>) => dispatch(m),
+    [],
+  );
   const patchDraft = useCallback(
     (m: Extract<ConversationAction, { type: 'patch-draft' }>) => dispatch(m),
     [],
   );
 
-  return { messages, busy, submit, clear, patchDraft };
+  return { messages, busy, submit, clear, patchDraft, patchBulk };
 }

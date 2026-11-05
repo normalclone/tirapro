@@ -602,3 +602,93 @@ describe('fix round 1 — planResolvedNothing / lỗi cú pháp chặn xem trư�
     ]);
   });
 });
+
+describe('T2 carry — R2 cặp trùng việc, L1 trần 200 người, "và các việc con", dự án-không-phải-người', () => {
+  it('R2: cùng một việc nêu cho hai người khác nhau → problem, chặn xác nhận, chỉ giữ một dòng', async () => {
+    const plan = await planBulkAssign(
+      assign('giao DEMO-SUB-1 cho Linh, DEMO-SUB-1 cho An'),
+      ENV,
+      makeDeps(store([sub(1)])),
+      ACTOR,
+    );
+    expect(plan.pairs).toHaveLength(1);
+    expect(plan.problems.join(' ')).toMatch(/DEMO-SUB-1 được nêu cho hai người khác nhau/);
+    expect(planNeedsChoice(plan)).toBe(true);
+  });
+  it('R2: cùng việc, cùng người (tên và email) → gộp, không báo lỗi', async () => {
+    const plan = await planBulkAssign(
+      assign('giao DEMO-SUB-1 cho Linh, DEMO-SUB-1 cho linh@x.vn'),
+      ENV,
+      makeDeps(store([sub(1)])),
+      ACTOR,
+    );
+    expect(plan.pairs).toHaveLength(1);
+    expect(plan.problems).toEqual([]);
+  });
+  it('L1: danh sách đã tải đầy (200) → LUÔN hỏi máy chủ và gộp, để lộ ứng viên thứ hai', async () => {
+    const filler = Array.from({ length: 199 }, (_, i) => ({
+      id: `f${i}`,
+      displayName: `Người ${i}`,
+    }));
+    const searchPeople = vi.fn(() =>
+      Promise.resolve([{ id: 'u-linh2', displayName: 'Linh Võ', email: 'linh2@x.vn' }]),
+    );
+    const full = makeDeps({
+      ...store([sub(1)]),
+      getPeople: ok([{ id: 'u-linh', displayName: 'Linh Phạm' }, ...filler]),
+      searchPeople,
+    });
+    const plan = await planBulkAssign(assign('giao DEMO-SUB-1 cho Linh'), ENV, full, ACTOR);
+    expect(searchPeople).toHaveBeenCalledTimes(1);
+    expect(plan.people[0]!.status).toBe('ambiguous');
+    // Chưa đầy → như cũ: một khớp thì không hỏi máy chủ.
+    const spy = vi.fn(() => Promise.resolve([]));
+    await planBulkAssign(
+      assign('giao DEMO-SUB-1 cho Linh'),
+      ENV,
+      makeDeps({ ...store([sub(1)]), searchPeople: spy }),
+      ACTOR,
+    );
+    expect(spy).not.toHaveBeenCalled();
+  });
+  it('"và các việc con": gồm việc con theo cha hoặc Epic, không trùng, kèm ghi chú', async () => {
+    const parent = issue({ id: 'i-parent', key: 'DEMO-TASK-12' });
+    const list = [
+      parent,
+      sub(1, { parentId: 'i-parent' }),
+      sub(2, { parentId: 'i-parent' }),
+      sub(3, { parentId: 'x' }),
+    ];
+    const plan = await planBulkAssign(
+      assign('giao DEMO-TASK-12 và các việc con cho An'),
+      ENV,
+      makeDeps(store(list)),
+      ACTOR,
+    );
+    expect(plan.issues.map((i) => i.key)).toEqual(['DEMO-TASK-12', 'DEMO-SUB-1', 'DEMO-SUB-2']);
+    expect(plan.filterNotes).toEqual(['kèm việc con (thêm 2)']);
+  });
+  it('số lạc đi vào plan.notes (không chặn)', async () => {
+    const plan = await planBulkAssign(
+      assign('giao DEMO-SUB-1 và DEMO-SUB-2 trước ngày 15 cho An'),
+      ENV,
+      makeDeps(store([sub(1), sub(2)])),
+      ACTOR,
+    );
+    expect(plan.notes[0]).toContain('bỏ qua số 15');
+    expect(planNeedsChoice(plan)).toBe(false);
+  });
+  it('R4: "thêm DEMO vào nhóm … của tôi" → nói rõ DEMO là dự án, đưa dự án vào nhóm làm ở trang Dự án', async () => {
+    const plan = await planBulkAddMember(
+      add('thêm DEMO vào nhóm Thanh Hóa của tôi'),
+      ENV,
+      makeDeps(),
+      ACTOR,
+    );
+    expect(plan.problems.join(' ')).toMatch(
+      /“DEMO” là một dự án, không phải một người.*trang Dự án/,
+    );
+    expect(planNeedsChoice(plan)).toBe(true);
+    expect(planResolvedNothing(plan)).toBe(false);
+  });
+});

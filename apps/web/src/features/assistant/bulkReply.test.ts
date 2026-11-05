@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { parseBulkAddMember, parseBulkAssign, parseBulkRemoveMember } from './bulkParse';
-import { planBulk, type BulkActor } from './bulkPlan';
-import { bulkReply, describePlan } from './bulkReply';
+import { planBulk, planNeedsChoice, type BulkActor } from './bulkPlan';
+import { bulkReply, dedupeLines, describePlan } from './bulkReply';
 import { ENV, issue, makeDeps } from './fixtures';
 
 const ACTOR: BulkActor = { id: 'u-me', displayName: 'Tôi Là Mình' };
@@ -11,17 +11,19 @@ const issues = (...ns: number[]) => {
   const m = new Map(ns.map((n) => [`DEMO-SUB-${n}`, sub(n)]));
   return { getIssue: (k: string) => Promise.resolve(m.get(k) ?? null) };
 };
+const intentOf = (cmd: string) =>
+  (parseBulkAssign(cmd) ?? parseBulkAddMember(cmd) ?? parseBulkRemoveMember(cmd))!;
+/** Tóm tắt bằng chữ của KẾ HOẠCH (dùng khi không có thẻ) + dòng kết luận như `bulkReply` trả khi không dựng được thẻ. */
 const text = async (cmd: string, deps = makeDeps(issues(1, 2))) => {
-  const b = await bulkReply(
-    (parseBulkAssign(cmd) ?? parseBulkAddMember(cmd) ?? parseBulkRemoveMember(cmd))!,
-    { ...ENV, actor: ACTOR },
-    deps,
-  );
-  expect(b).toHaveLength(1);
-  return b![0]!.type === 'text' ? b![0]!.text : '';
+  const plan = await planBulk(intentOf(cmd), { ...ENV, actor: ACTOR }, deps, ACTOR);
+  const tail = planNeedsChoice(plan) ? 'Còn mục cần chọn lại — mình chưa làm gì.' : 'chưa ghi gì';
+  return `${describePlan(plan).join('\n')}\n${tail}`;
 };
+/** Khối trả về của `bulkReply` cho lệnh (card = khối `bulk`). */
+const reply = async (cmd: string, deps = makeDeps(issues(1, 2))) =>
+  (await bulkReply(intentOf(cmd), { ...ENV, actor: ACTOR }, deps))!;
 
-describe('bulkReply (tóm tắt kế hoạch — chưa ghi gì)', () => {
+describe('tóm tắt kế hoạch bằng chữ (describePlan)', () => {
   it('giao việc rõ ràng: nêu số việc, người, mã không thấy; nói rõ chưa ghi', async () => {
     const t = await text('giao DEMO-SUB-1..3 cho Linh');
     expect(t).toContain('Giao 2 việc cho Phạm Linh');
@@ -34,11 +36,14 @@ describe('bulkReply (tóm tắt kế hoạch — chưa ghi gì)', () => {
     expect(t).toContain('cần chọn một');
     expect(t).toContain('Còn mục cần chọn lại — mình chưa làm gì.');
   });
-  it('không bao giờ gọi hàm ghi: chỉ các hàm đọc của deps', async () => {
+  it('bulkReply dựng THẺ xem trước và không bao giờ gọi hàm ghi: chỉ các hàm đọc của deps', async () => {
     const deps = makeDeps(issues(1));
-    await text('giao DEMO-SUB-1 cho Linh', deps);
-    await text('thêm Linh vào DEMO', deps);
-    await text('gỡ Linh khỏi DEMO', deps);
+    for (const cmd of ['giao DEMO-SUB-1 cho Linh', 'thêm Linh vào DEMO', 'gỡ Linh khỏi DEMO']) {
+      const blocks = await reply(cmd, deps);
+      expect(blocks.map((b) => b.type)).toEqual(['text', 'bulk']);
+      const bulk = blocks[1]!;
+      expect(bulk.type === 'bulk' && bulk.status).toBe('pending');
+    }
     expect(deps.calls.every((c) => /^(get|search|can)/.test(c))).toBe(true);
   });
   it('thêm thành viên: dự án, vai trò, người từ team', async () => {
@@ -99,5 +104,20 @@ describe('fix round 1 — bulkReply: khớp gần đúng và nhường ý địn
     const t = await text('giao DEMO-SUB-1 cho An cho Linh');
     expect(t).toContain('cặp việc');
     expect(t).toContain('mình chưa làm gì');
+  });
+});
+
+describe('T2 carry — R4 mỗi điều chỉ nói một lần', () => {
+  it('"Không thấy dự án “ZZZ”" chỉ xuất hiện một lần trong trả lời', async () => {
+    const t = await text('thêm Linh vào ZZZ');
+    expect(t.match(/ZZZ/g)).toHaveLength(1);
+  });
+  it('dedupeLines bỏ dòng "• Không thấy … “X”" đã có trong problems và dòng trùng', () => {
+    expect(
+      dedupeLines(
+        ['• Không thấy dự án “ZZZ”.', 'a', 'a'],
+        ['Không thấy dự án “ZZZ” trong các dự án bạn xem được.'],
+      ),
+    ).toEqual(['a']);
   });
 });

@@ -18,6 +18,7 @@ import { keyboardInset, mobileWindowStyle, shouldRefocus } from './layout';
 import { cn } from '@/lib/utils';
 import type { Block, Chip } from './blocks';
 import type { Message } from './conversation';
+import { BulkCard } from './BulkCard';
 import { DraftCard, DraftCardView } from './DraftCard';
 import { useAssistantPanel } from './panelStore';
 import { useAssistantController, type SubmitOptions } from './useAssistant';
@@ -60,6 +61,7 @@ interface BlocksProps {
   /** Đóng panel khi bấm liên kết trong ứng dụng (đi tới việc / bộ lọc) để nội dung hiện ra. */
   onNavigate: () => void;
   renderDraft: (messageId: string, block: Extract<Block, { type: 'draft' }>) => ReactNode;
+  renderBulk: (messageId: string, block: Extract<Block, { type: 'bulk' }>) => ReactNode;
 }
 
 /** Một khối nội dung. Mọi chữ (kể cả tiêu đề việc do người dùng đặt) là TEXT của React — không `dangerouslySetInnerHTML`. */
@@ -178,6 +180,8 @@ function BlockView({ block, messageId, p }: { block: Block; messageId: string; p
       );
     case 'draft':
       return <>{p.renderDraft(messageId, block)}</>;
+    case 'bulk':
+      return <>{p.renderBulk(messageId, block)}</>;
   }
 }
 
@@ -356,7 +360,7 @@ function AssistantFloating() {
   const setOpen = useAssistantPanel((s) => s.setOpen);
   const setMinimized = useAssistantPanel((s) => s.setMinimized);
   const desktop = useMediaQuery(DESKTOP_MIN_QUERY);
-  const { messages, busy, submit, clear, patchDraft } = useAssistantController(open);
+  const { messages, busy, submit, clear, patchDraft, patchBulk } = useAssistantController(open);
   const [input, setInput] = useState('');
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -546,6 +550,7 @@ function AssistantFloating() {
             // Trang phía sau còn dùng được → ô chat giữ nguyên khi bấm liên kết; trên điện thoại (gần toàn màn) thì thu nhỏ để thấy trang.
             if (!desktop) setMinimized(true);
           }}
+          renderBulk={(id, block) => <BulkCard messageId={id} block={block} patch={patchBulk} />}
           renderDraft={(id, block) => (
             <DraftCard
               messageId={id}

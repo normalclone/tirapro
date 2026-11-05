@@ -28,6 +28,7 @@ function html(messages: Message[], extra: { busy?: boolean; input?: string } = {
         onTour={noop}
         onNavigate={noop}
         renderDraft={staticDraft}
+        renderBulk={() => null}
       />
     </MemoryRouter>,
   );

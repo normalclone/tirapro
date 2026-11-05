@@ -1,4 +1,4 @@
-import type { IssueDto, SprintDto } from '@tirapro/types';
+import type { IssueDto, PermissionKey, SprintDto } from '@tirapro/types';
 import type { CreateIssueInput } from '@/features/issues/create-api';
 import { formatCalendarDmy } from '@tirapro/shared';
 import { fmtDate } from '@/lib/dateFormat';
@@ -12,7 +12,7 @@ import { dueJql, filtersHref, myIssuesJql, overdueJql, searchJql } from './queri
 import { screenInfoOf } from './screens';
 import { bulkReply } from './bulkReply';
 import type { BulkActor } from './bulkPlan';
-import type { GroupRef, PersonRef, RoleRef, TeamRef } from './bulkResolve';
+import type { GroupRef, PersonRef, ProjectMemberRef, RoleRef, TeamRef } from './bulkResolve';
 
 /**
  * Bộ trả lời của Trợ lý (chế độ cơ bản): ý định → các khối nội dung. KHÔNG gọi AI ngoài; dữ liệu lấy qua `AssistantDeps`
@@ -23,6 +23,8 @@ export interface AssistantProject {
   id: string;
   key: string;
   name: string;
+  /** Dự án riêng tư: "gỡ vai trò riêng" = gỡ khỏi dự án (dự án công khai: về vai trò mặc định của tổ chức). */
+  isPrivate?: boolean;
 }
 
 export interface RespondEnv {
@@ -63,6 +65,12 @@ export interface AssistantDeps {
   getTeams(): Promise<TeamRef[]>;
   /** Vai trò cấp dự án (để chọn vai trò khi thêm thành viên). */
   getProjectRoles(): Promise<RoleRef[]>;
+  /** Thành viên MỘT dự án (vai trò hiệu lực + có ghi đè riêng không) — luôn tải mới cho thẻ xem trước. */
+  getProjectMembers(projectId: string): Promise<ProjectMemberRef[]>;
+  /** Người gõ có quyền `permission` ở dự án không (gợi ý cho thẻ; máy chủ vẫn kiểm lại). undefined = chưa biết. */
+  can(projectId: string, permission: PermissionKey): Promise<boolean | undefined>;
+  /** Điểm các việc CHƯA XONG đang giữ, theo người (để chia đều theo điểm). Thiếu dữ liệu → 0. */
+  getOpenLoad(personIds: string[]): Promise<Record<string, number>>;
 }
 
 export const MAX_ROWS = 5;

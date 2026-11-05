@@ -345,3 +345,25 @@ describe('lệnh hàng loạt không khớp được gì → nhường ý địn
     expect(allText(out)).toContain('Không thấy dự án “ZZZ”');
   });
 });
+
+describe('lệnh hàng loạt → thẻ xem trước (chưa ghi gì)', () => {
+  it('"giao … cho …" trả khối bulk ở trạng thái pending; chỉ gọi hàm ĐỌC', async () => {
+    const deps = makeDeps({ getIssue: ok(issue({ id: 'i9', key: 'DEMO-SUB-11', version: 4 })) });
+    const out = await run(
+      'giao DEMO-SUB-11 cho Linh',
+      { ...ENV, actor: { id: 'u-me', displayName: 'Tôi' } },
+      deps,
+    );
+    const bulk = find(out, 'bulk')!;
+    expect(bulk.status).toBe('pending');
+    expect(bulk.card.kind).toBe('assign');
+    expect(allText(out)).toContain('mình chưa ghi gì');
+    expect(deps.calls.every((c) => /^(get|search|can)/.test(c))).toBe(true);
+  });
+  it('thêm thành viên cũng ra thẻ; lệnh không khớp gì vẫn nhường ý định cũ', async () => {
+    const out = await run('thêm Linh vào DEMO vai trò Tester');
+    expect(find(out, 'bulk')!.card.kind).toBe('add-member');
+    const none = await run('thêm Zzz vào ZZZ');
+    expect(find(none, 'bulk')).toBeUndefined();
+  });
+});

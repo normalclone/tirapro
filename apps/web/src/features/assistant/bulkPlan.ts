@@ -47,6 +47,8 @@ export interface BulkAssignPlan {
   filterJql: string | null;
   /** Mô tả bộ lọc bằng lời (hiện trên thẻ cạnh JQL). */
   filterNotes: string[];
+  /** Ghi chú KHÔNG chặn: số lạc bị bỏ qua, giao kèm việc con… */
+  notes: string[];
   people: Resolution<PersonRef>[];
   /** Kiểu theo cặp: mỗi việc kèm kết quả khớp người của nó. */
   pairs: Array<{ issue: IssueDto; person: Resolution<PersonRef> }> | null;
@@ -143,6 +145,9 @@ const typeLabel = (t: BulkIssueType): string =>
 
 type PeopleDeps = Pick<AssistantDeps, 'getPeople' | 'searchPeople'>;
 
+/** Số người tối đa `getPeople` tải một lần. Tổ chức lớn hơn → danh sách đã tải có thể thiếu người nên luôn hỏi thêm máy chủ. */
+const PEOPLE_CAP = 200;
+
 /** Khớp TỪNG tên (không bỏ bản trùng). "tôi/mình" = người gõ; tên không thấy trong danh sách đã tải (tối đa 200) thì thử tìm phía máy chủ. */
 async function resolveEach(
   names: readonly string[],
@@ -158,9 +163,17 @@ async function resolveEach(
       out.push({ status: 'ok', query: n, value: self });
       continue;
     }
+    // Danh sách đầy (≥ PEOPLE_CAP) có thể thiếu người trùng tên → LUÔN hỏi máy chủ và gộp, để không bỏ sót ứng viên thứ hai.
+    const capped = everyone.length >= PEOPLE_CAP;
     let r = resolvePerson(n, everyone);
-    if (r.status === 'none')
-      r = resolvePerson(n, await deps.searchPeople(n).catch(() => [] as PersonRef[]));
+    if (capped || r.status === 'none') {
+      const found = await deps.searchPeople(n).catch(() => [] as PersonRef[]);
+      if (capped) {
+        const byId = new Map(everyone.map((p) => [p.id, p]));
+        for (const p of found) byId.set(p.id, p);
+        r = resolvePerson(n, [...byId.values()]);
+      } else r = resolvePerson(n, found);
+    }
     out.push(r);
   }
   return out;
@@ -201,6 +214,7 @@ export async function planBulkAssign(
     truncated: false,
     filterJql: null as string | null,
     filterNotes: [] as string[],
+    notes: [...(intent.notes ?? [])],
     pairs: null as BulkAssignPlan['pairs'],
   };
 
@@ -215,9 +229,24 @@ export async function planBulkAssign(
     for (const [i, r] of (await resolveEach(personQueries, actor, deps)).entries())
       resolved.set(personQueries[i]!, r);
     const pairs: NonNullable<BulkAssignPlan['pairs']> = [];
+    const firstFor = new Map<string, Resolution<PersonRef>>();
     for (const p of intent.pairs) {
       const issue = issues.byKey.get(p.key);
-      if (issue) pairs.push({ issue, person: resolved.get(p.person)! });
+      if (!issue) continue;
+      const person = resolved.get(p.person)!;
+      const prev = firstFor.get(issue.id);
+      if (prev) {
+        // Cùng một việc nêu hai lần: cùng người → bỏ bản trùng; KHÁC người → xung đột, chặn xác nhận (không đoán).
+        const same =
+          prev.status === 'ok' && person.status === 'ok' && prev.value.id === person.value.id;
+        if (!same)
+          problems.push(
+            `${issue.key} được nêu cho hai người khác nhau (“${prev.query}” và “${person.query}”) — chỉ giao được cho một người, hãy sửa lệnh.`,
+          );
+        continue;
+      }
+      firstFor.set(issue.id, person);
+      pairs.push({ issue, person });
     }
     return {
       ...base,
@@ -279,10 +308,27 @@ async function findIssues(
   if (!sel) return empty;
   if (sel.kind === 'keys') {
     const { byKey, missing } = await fetchIssues(sel.keys, deps);
+    const found = sel.keys.flatMap((k) => (byKey.has(k) ? [byKey.get(k)!] : []));
+    if (!intent.includeChildren) return { ...empty, issues: found, missingKeys: missing };
+    // "… và các việc con": thêm việc con (theo cha / Epic) của các mã tìm thấy, mỗi dự án đọc một lần; không trùng.
+    const seen = new Set(found.map((i) => i.id));
+    const issues = [...found];
+    const perProject = new Map<string, IssueDto[]>();
+    for (const parent of found) {
+      if (!perProject.has(parent.projectId))
+        perProject.set(parent.projectId, await deps.getProjectIssues(parent.projectId));
+      for (const kid of perProject.get(parent.projectId)!) {
+        if ((kid.parentId === parent.id || kid.epicId === parent.id) && !seen.has(kid.id)) {
+          seen.add(kid.id);
+          issues.push(kid);
+        }
+      }
+    }
     return {
       ...empty,
-      issues: sel.keys.flatMap((k) => (byKey.has(k) ? [byKey.get(k)!] : [])),
+      issues,
       missingKeys: missing,
+      filterNotes: [`kèm việc con (thêm ${issues.length - found.length})`],
     };
   }
   if (sel.kind === 'children') {
@@ -447,6 +493,16 @@ export async function planBulkAddMember(
     intent.teams.length > 0 ? deps.getTeams() : Promise.resolve([] as TeamRef[]),
     intent.role ? deps.getProjectRoles() : Promise.resolve([] as RoleRef[]),
   ]);
+  // "thêm KYHOP vào nhóm Thanh Hóa của tôi": KYHOP là DỰ ÁN, không phải người. Đưa dự án vào nhóm dự án làm ở trang Dự án.
+  if (intent.targets.group) {
+    const all = env.projects.map(asProject);
+    for (const p of people) {
+      if (p.status === 'none' && resolveProject(p.query, all).status !== 'none')
+        problems.push(
+          `“${p.query}” là một dự án, không phải một người. Thêm dự án vào nhóm dự án thì làm ở trang Dự án (mục nhóm dự án của bạn), không làm qua Trợ lý.`,
+        );
+    }
+  }
   const teamRes = resolveMany(
     intent.teams,
     (t) => resolveTeam(t, teams),

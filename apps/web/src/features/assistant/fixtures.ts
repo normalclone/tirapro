@@ -146,6 +146,9 @@ export function makeDeps(over: Partial<AssistantDeps> = {}): AssistantDeps & { c
     getMyGroups: rec('getMyGroups', () => Promise.resolve(GROUPS)),
     getTeams: rec('getTeams', () => Promise.resolve(TEAMS)),
     getProjectRoles: rec('getProjectRoles', () => Promise.resolve(ROLES)),
+    getProjectMembers: rec('getProjectMembers', () => Promise.resolve([])),
+    can: rec('can', () => Promise.resolve(true)),
+    getOpenLoad: rec('getOpenLoad', () => Promise.resolve({})),
     ...over,
   };
 }

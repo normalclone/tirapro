@@ -1,4 +1,5 @@
-import type { Block, DraftStatus } from './blocks';
+import type { Block, BulkStatus, DraftStatus } from './blocks';
+import type { BulkOutcome } from './bulkPreview';
 
 /**
  * Hội thoại của Trợ lý — CHỈ trong phiên trình duyệt: state React + sessionStorage (bọc try/catch), theo từng người dùng.
@@ -17,6 +18,15 @@ export type ConversationAction =
       messageId: string;
       status: DraftStatus;
       createdKey?: string;
+      error?: string;
+    }
+  | {
+      type: 'patch-bulk';
+      messageId: string;
+      status: BulkStatus;
+      /** Chỉ ghi khi có mặt (undefined = giữ nguyên). */
+      outcome?: BulkOutcome;
+      undoOutcome?: BulkOutcome;
       error?: string;
     }
   | { type: 'clear' };
@@ -40,6 +50,25 @@ export function conversationReducer(state: Message[], a: ConversationAction): Me
                       ...b,
                       status: a.status,
                       createdKey: a.createdKey ?? b.createdKey,
+                      error: a.error,
+                    }
+                  : b,
+              ),
+            },
+      );
+    case 'patch-bulk':
+      return state.map((m) =>
+        m.id !== a.messageId
+          ? m
+          : {
+              ...m,
+              blocks: m.blocks.map((b) =>
+                b.type === 'bulk'
+                  ? {
+                      ...b,
+                      status: a.status,
+                      outcome: a.outcome ?? b.outcome,
+                      undoOutcome: a.undoOutcome ?? b.undoOutcome,
                       error: a.error,
                     }
                   : b,
@@ -76,7 +105,29 @@ function sanitizeBlock(b: Block): Block | null {
   }
 }
 
-const BLOCK_TYPES = new Set(['text', 'links', 'issues', 'facts', 'tour', 'chips', 'draft']);
+/** Dữ liệu thẻ hàng loạt đã lưu phải đủ hình dạng để vẽ; hỏng → bỏ khối (không ném lỗi). */
+const validBulk = (b: Extract<Block, { type: 'bulk' }>): boolean =>
+  !!b.card &&
+  typeof b.card === 'object' &&
+  (b.card.kind === 'assign' || b.card.kind === 'add-member' || b.card.kind === 'remove-member') &&
+  Array.isArray(b.card.problems) &&
+  (b.card.kind === 'assign' ? Array.isArray(b.card.rows) : Array.isArray(b.card.projects)) &&
+  Array.isArray(b.card.slots);
+
+/**
+ * Thẻ hàng loạt đã lưu: "running" (tab đóng giữa chừng) → "interrupted" — KHÔNG tự chạy lại và KHÔNG coi là đã xong;
+ * "undoing" → "done" (nút Hoàn tác hiện lại; máy chủ bỏ qua dòng đã hoàn tác nhờ so phiên bản).
+ */
+function restoreBulk(b: Block): Block {
+  if (b.type !== 'bulk') return b;
+  if (!validBulk(b))
+    return { type: 'text', text: 'Thẻ thao tác hàng loạt đã lưu bị hỏng nên không hiển thị.' };
+  if (b.status === 'running') return { ...b, status: 'interrupted' };
+  if (b.status === 'undoing') return { ...b, status: 'done' };
+  return b;
+}
+
+const BLOCK_TYPES = new Set(['text', 'links', 'issues', 'facts', 'tour', 'chips', 'draft', 'bulk']);
 
 /**
  * Đọc hội thoại đã lưu; dữ liệu hỏng/bị sửa tay → bỏ phần hỏng, không ném lỗi. Thẻ nháp đang "creating" (tab đóng giữa
@@ -96,6 +147,7 @@ export function parseStored(raw: string | null): Message[] {
         .map((b) =>
           b.type === 'draft' && b.status === 'creating' ? { ...b, status: 'pending' as const } : b,
         )
+        .map(restoreBulk)
         .map(sanitizeBlock)
         .filter((b): b is Block => b !== null);
       out.push({ id: m.id, role: m.role, blocks });

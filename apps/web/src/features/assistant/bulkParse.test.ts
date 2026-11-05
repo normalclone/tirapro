@@ -489,3 +489,26 @@ describe('fix round 1 — L4: vai trò "là X", nhóm trần có thể là team'
     expect(parseBulkRemoveMember('gỡ Linh khỏi nhóm QA')!.targets.groupLoose).toBe(true);
   });
 });
+
+describe('T2 carry — R1 báo số bị bỏ qua, "và các việc con"', () => {
+  it('R1: số lạc bị bỏ qua được GHI trong notes (không chặn)', () => {
+    const r = parseBulkAssign('giao KYHOP-SUB-11 và KYHOP-SUB-12 trước ngày 15 cho Linh')!;
+    expect(r.notes).toEqual([expect.stringContaining('bỏ qua số 15')]);
+    expect(r.problems).toEqual([]);
+    expect(parseBulkAssign('giao KYHOP-1 (sprint 5) cho Linh')!.notes?.[0]).toContain('số 5');
+    expect(parseBulkAssign('giao KYHOP-SUB-11, 12 cho Linh')!.notes).toBeUndefined();
+    expect(expandKeys('KYHOP-SUB-11, 12 và 3 việc khác').ignored).toEqual(['3']);
+  });
+  it('R1 ở kiểu theo cặp cũng báo', () => {
+    const r = parseBulkAssign('giao KYHOP-1 cho Linh, KYHOP-2 (sprint 7) cho An')!;
+    expect(r.pairs).toHaveLength(2);
+    expect(r.notes?.[0]).toContain('số 7');
+  });
+  it('"và các việc con" → giao kèm việc con; không còn lẫn vào danh sách mã', () => {
+    const r = parseBulkAssign('giao KYHOP-TASK-12 và các việc con cho An')!;
+    expect(r.selector).toEqual({ kind: 'keys', keys: ['KYHOP-TASK-12'] });
+    expect(r.includeChildren).toBe(true);
+    expect(parseBulkAssign('giao KYHOP-TASK-12 kèm việc con cho An')!.includeChildren).toBe(true);
+    expect(parseBulkAssign('giao KYHOP-TASK-12 cho An')!.includeChildren).toBeUndefined();
+  });
+});

@@ -1,4 +1,5 @@
 import type { Block } from './blocks';
+import { buildBulkCard } from './bulkPreviewBuild';
 import type { BulkIntent } from './bulkParse';
 import {
   approximateMatches,
@@ -76,7 +77,7 @@ function assignLines(plan: BulkAssignPlan): string[] {
 
 /** Tóm tắt kế hoạch thành các dòng chữ (thuần hàm — dễ test). */
 export function describePlan(plan: BulkPlan): string[] {
-  const lines = describeCore(plan);
+  const lines = dedupeLines(describeCore(plan), plan.problems);
   const approx = approximateMatches(plan);
   if (approx.length > 0) {
     const label = (r: Resolution<unknown>): string => {
@@ -86,6 +87,20 @@ export function describePlan(plan: BulkPlan): string[] {
     lines.push(`Khớp gần đúng, hãy kiểm tra lại: ${approx.map(label).join('; ')}.`);
   }
   return lines;
+}
+
+/**
+ * Bỏ dòng "• Không thấy … “X”" đã được `problems` nói rồi (cùng “X”) và dòng trùng nguyên văn — mỗi điều chỉ nói một lần.
+ */
+export function dedupeLines(lines: string[], problems: readonly string[]): string[] {
+  const seen = new Set<string>();
+  return lines.filter((l) => {
+    const q = l.startsWith('• Không thấy') ? /“([^”]+)”/.exec(l)?.[1] : undefined;
+    if (q && problems.some((p) => p.includes(`“${q}”`))) return false;
+    if (seen.has(l)) return false;
+    seen.add(l);
+    return true;
+  });
 }
 
 function describeCore(plan: BulkPlan): string[] {
@@ -135,9 +150,19 @@ export async function bulkReply(
   const plan = await planBulk(intent, env, deps, env.actor ?? NO_ACTOR);
   // Không khớp được gì + biết câu gốc → nhường lại ý định cũ (câu thường như "thêm bình luận vào KYHOP-12" đừng thành "Không thấy người …").
   if (intent.raw !== undefined && planResolvedNothing(plan)) return null;
+  // Có gì để xem trước → THẺ xem trước (chưa ghi gì; chỉ khi bấm Xác nhận mới thực hiện). Không có → trả lời bằng chữ.
+  const card = await buildBulkCard(plan, env, deps);
+  if (card)
+    return [
+      {
+        type: 'text',
+        text: 'Đây là bản xem trước — mình chưa ghi gì. Kiểm tra rồi bấm Xác nhận; sau đó vẫn có thể Hoàn tác.',
+      },
+      { type: 'bulk', card, status: 'pending' },
+    ];
   const lines = describePlan(plan);
   const tail = planNeedsChoice(plan)
     ? 'Còn mục cần chọn lại — mình chưa làm gì.'
-    : 'Thẻ xem trước để xác nhận sẽ có ở bước kế tiếp — hiện mình chưa ghi gì.';
+    : 'Không có gì để thực hiện — mình chưa ghi gì.';
   return [{ type: 'text', text: `${lines.join('\n')}\n${tail}` }];
 }

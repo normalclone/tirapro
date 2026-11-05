@@ -1,3 +1,4 @@
+import type { BulkCard, BulkOutcome } from './bulkPreview';
 import type { Draft } from './draft';
 
 /** Một dòng việc trong danh sách trả lời (chỉ chữ thuần — panel hiển thị dạng TEXT, không HTML). */
@@ -30,6 +31,20 @@ interface LinkItem {
 /** `opened` = đã chuyển sang form tạo việc đầy đủ (thẻ không còn là nơi tạo nữa). */
 export type DraftStatus = 'pending' | 'creating' | 'created' | 'cancelled' | 'failed' | 'opened';
 
+/**
+ * Trạng thái thẻ lệnh hàng loạt. `interrupted` = phiên đóng giữa lúc đang chạy (kết quả không rõ, KHÔNG tự chạy lại);
+ * `failed` = lệnh gọi máy chủ lỗi (có thể bấm Xác nhận lại — dòng đã đổi sẽ tự bị bỏ qua nhờ OCC).
+ */
+export type BulkStatus =
+  | 'pending'
+  | 'running'
+  | 'done'
+  | 'undoing'
+  | 'undone'
+  | 'failed'
+  | 'cancelled'
+  | 'interrupted';
+
 /** Khối nội dung của một tin nhắn trợ lý. Tất cả là dữ liệu thuần, serialize được (lưu sessionStorage). */
 export type Block =
   | { type: 'text'; text: string }
@@ -48,5 +63,13 @@ export type Block =
       draft: Draft;
       status: DraftStatus;
       createdKey?: string;
+      error?: string;
+    }
+  | {
+      type: 'bulk';
+      card: BulkCard;
+      status: BulkStatus;
+      outcome?: BulkOutcome;
+      undoOutcome?: BulkOutcome;
       error?: string;
     };

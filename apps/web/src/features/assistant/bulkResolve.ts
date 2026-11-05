@@ -38,6 +38,14 @@ export interface RoleRef {
   id: string;
   name: string;
 }
+/** Thành viên của một dự án như danh sách `GET /projects/:id/members` trả (vai trò HIỆU LỰC + có ghi đè riêng không). */
+export interface ProjectMemberRef {
+  userId: string;
+  roleIds: string[];
+  roleNames: string[];
+  /** `true` = vai trò đặt RIÊNG cho dự án; `false` = suy từ vai trò mặc định của tổ chức. */
+  isOverride: boolean;
+}
 
 const tokensOf = (s: string): string[] =>
   normalizeVi(s)
