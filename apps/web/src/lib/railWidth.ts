@@ -94,6 +94,7 @@ export function useRailWidth(userId: string | undefined) {
   const onPointerMove = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {
     const d = drag.current;
     if (!d) return;
+    if (e.buttons === 0) return; // nhả chuột ở ngoài mà không nhận được pointerup
     setWidth(clampRailWidth(d.startW + e.clientX - d.startX));
   }, []);
   const onPointerUp = useCallback(
@@ -106,6 +107,14 @@ export function useRailWidth(userId: string | undefined) {
     },
     [commit],
   );
+  /** Huỷ kéo (pointercancel / mất capture / rail bị thu giữa chừng): trả về độ rộng lúc bắt đầu, không lưu. */
+  const cancelDrag = useCallback(() => {
+    const d = drag.current;
+    if (!d) return;
+    drag.current = null;
+    setDragging(false);
+    setWidth(d.startW);
+  }, []);
   const onKeyDown = useCallback(
     (e: ReactKeyboardEvent<HTMLDivElement>) => {
       const next = railWidthForKey(width, e.key, e.shiftKey);
@@ -120,11 +129,13 @@ export function useRailWidth(userId: string | undefined) {
   return {
     width,
     dragging,
+    cancelDrag,
     handleProps: {
       onPointerDown,
       onPointerMove,
       onPointerUp,
-      onPointerCancel: onPointerUp,
+      onPointerCancel: cancelDrag,
+      onLostPointerCapture: onPointerUp,
       onKeyDown,
       onDoubleClick,
     },

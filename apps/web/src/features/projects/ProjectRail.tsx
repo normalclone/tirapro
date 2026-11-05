@@ -102,7 +102,10 @@ function RailInner({
   const canCreate = useAuth((s) => s.can('project:create'));
   const { collapsed, epicOpen, toggleCollapsed } = useRailCollapse(userId, projects, withEpicPanel);
   const rail = useRailWidth(userId);
-  const { width, dragging } = rail;
+  const { width, dragging, cancelDrag } = rail;
+  useEffect(() => {
+    if (collapsed) cancelDrag();
+  }, [collapsed, cancelDrag]);
 
   return (
     <>
@@ -113,7 +116,7 @@ function RailInner({
           collapsed && 'w-14',
           dragging && 'select-none',
         )}
-        style={collapsed ? undefined : { width }}
+        style={collapsed ? undefined : { width, maxWidth: 'min(480px, 30vw)' }}
       >
         {!collapsed && <RailResizeHandle {...rail} />}
         <div
@@ -230,7 +233,11 @@ function RailInner({
 }
 
 /** Tay nắm ở mép phải danh sách dự án: kéo để nới rộng (tên dự án dài), phím mũi tên/Home/End, bấm đúp = mặc định. */
-function RailResizeHandle({ width, dragging, handleProps }: ReturnType<typeof useRailWidth>) {
+function RailResizeHandle({
+  width,
+  dragging,
+  handleProps,
+}: Pick<ReturnType<typeof useRailWidth>, 'width' | 'dragging' | 'handleProps'>) {
   return (
     <div
       role="separator"
@@ -242,7 +249,7 @@ function RailResizeHandle({ width, dragging, handleProps }: ReturnType<typeof us
       title="Kéo để nới rộng · bấm đúp để về mặc định"
       tabIndex={0}
       {...handleProps}
-      className="group absolute inset-y-0 -right-1.5 z-10 w-3 cursor-col-resize touch-none focus-visible:outline-none"
+      className="group absolute inset-y-0 -right-1.5 z-20 w-3 cursor-col-resize touch-none rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] [@media(pointer:coarse)]:-right-[22px] [@media(pointer:coarse)]:w-11"
     >
       <span
         aria-hidden

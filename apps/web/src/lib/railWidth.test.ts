@@ -49,12 +49,33 @@ describe('độ rộng danh sách dự án', () => {
       } as never),
     );
     expect(result.current.dragging).toBe(true);
-    act(() => result.current.handleProps.onPointerMove({ clientX: 180 } as never));
+    act(() => result.current.handleProps.onPointerMove({ clientX: 180, buttons: 1 } as never));
     expect(result.current.width).toBe(400);
     act(() => result.current.handleProps.onPointerUp({ clientX: 180 } as never));
     expect(result.current.dragging).toBe(false);
     expect(localStorage.getItem(railWidthKey('u1'))).toBe('400');
     act(() => result.current.handleProps.onDoubleClick());
     expect(localStorage.getItem(railWidthKey('u1'))).toBe(String(RAIL_WIDTH_DEFAULT));
+  });
+  it('huỷ kéo thì trả về độ rộng cũ, không lưu', () => {
+    localStorage.setItem(railWidthKey('u2'), '300');
+    const { result } = renderHook(() => useRailWidth('u2'));
+    act(() =>
+      result.current.handleProps.onPointerDown({
+        button: 0,
+        clientX: 0,
+        pointerId: 1,
+        preventDefault: () => {},
+        currentTarget: {},
+      } as never),
+    );
+    act(() => result.current.handleProps.onPointerMove({ clientX: 100, buttons: 1 } as never));
+    expect(result.current.width).toBe(400);
+    act(() => result.current.handleProps.onPointerMove({ clientX: 150, buttons: 0 } as never));
+    expect(result.current.width).toBe(400);
+    act(() => result.current.handleProps.onPointerCancel());
+    expect(result.current.width).toBe(300);
+    expect(result.current.dragging).toBe(false);
+    expect(localStorage.getItem(railWidthKey('u2'))).toBe('300');
   });
 });
