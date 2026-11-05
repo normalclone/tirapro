@@ -38,7 +38,7 @@ const SWIMLANE_HINT: Record<SwimlaneBy, string> = {
   epic: 'Gom việc theo epic để thấy tiến độ từng mảng lớn.',
   priority: 'Việc quan trọng nằm hàng trên cùng.',
   parent: 'Việc con nằm cùng hàng với việc cha.',
-  team: 'Mỗi team trong dự án một hàng (người ở nhiều team thì việc xuất hiện ở từng hàng).',
+  team: 'Mỗi team trong dự án một hàng; việc nằm ở hàng của team đầu tiên (theo tên) mà người phụ trách thuộc về.',
 };
 
 const BOARD_TYPE_LABEL: Record<BoardType, string> = {

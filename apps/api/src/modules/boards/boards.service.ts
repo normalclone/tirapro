@@ -310,9 +310,9 @@ export class BoardsService {
   }
 
   /**
-   * Dữ liệu swimlane "theo team": mỗi team riêng của dự án một làn (xếp theo tên) kèm id thành viên. Một việc nằm ở làn của TỪNG team mà
-   * người phụ trách thuộc về (người ở nhiều team → nhiều làn); việc chưa gán / người không thuộc team nào đi vào làn "Chưa thuộc team"
-   * (giao diện dựng từ `memberIds`).
+   * Dữ liệu swimlane "theo team": mỗi team riêng của dự án một làn (xếp theo tên) kèm id thành viên. Giao diện đặt MỖI việc vào đúng một làn
+   * (làn của team đầu tiên theo tên mà người phụ trách thuộc về, ưu tiên team đang lọc) để kéo-thả thẻ không bị trùng id; việc chưa gán /
+   * người không thuộc team nào đi vào làn "Chưa thuộc team nào" (giao diện dựng từ `memberIds`).
    */
   async teamLanes(organizationId: string, boardId: string): Promise<BoardTeamLaneDto[]> {
     const board = await this.prisma.board.findFirst({

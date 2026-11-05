@@ -1,5 +1,5 @@
 import { skipToken, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { SprintDto } from '@tirapro/types';
+import type { ProjectReportTeamRow, SprintDto } from '@tirapro/types';
 import type {
   BurndownReport,
   VelocityReport,
@@ -42,6 +42,9 @@ export interface ReportAssignee {
   points: number;
 }
 
+/** Một dòng "theo team riêng của dự án" (`id === null`: người chưa thuộc team nào, gồm việc chưa gán). Điểm chỉ cộng việc lá. */
+export type ReportTeam = ProjectReportTeamRow;
+
 export interface ProjectReport {
   totals: ProjectReportTotals;
   completionRate: number;
@@ -53,13 +56,23 @@ export interface ProjectReport {
   byType: ReportSlice[];
   byPriority: ReportSlice[];
   byAssignee: ReportAssignee[];
+  /** Mỗi team riêng của dự án một dòng (rỗng nếu dự án chưa có team). Người ở nhiều team được tính vào từng team. */
+  byTeam: ReportTeam[];
+  /** Team đang lọc (mọi số liệu trừ `health` chỉ tính việc của team này); null = cả dự án. */
+  teamId: string | null;
 }
 
-export function useProjectReport(projectId?: string) {
+/** `teamId`: chỉ tính việc có người phụ trách thuộc team riêng đó (sức khoẻ dự án vẫn là của cả dự án). */
+export function useProjectReport(projectId?: string, teamId?: string) {
   return useQuery({
-    queryKey: keys.reports.project(projectId ?? ''),
+    queryKey: [...keys.reports.project(projectId ?? ''), teamId ?? 'all'] as const,
     queryFn: projectId
-      ? async () => (await api.get<ProjectReport>(`/reports/project?projectId=${projectId}`)).data
+      ? async () =>
+          (
+            await api.get<ProjectReport>('/reports/project', {
+              params: { projectId, ...(teamId ? { teamId } : {}) },
+            })
+          ).data
       : skipToken,
     staleTime: 30_000,
   });

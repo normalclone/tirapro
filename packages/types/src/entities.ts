@@ -105,7 +105,7 @@ export interface ProjectSubTeamDto {
   createdAt: ISODate;
 }
 
-/** Một làn swimlane theo team của board: việc có người phụ trách trong `memberIds` thuộc làn này (một người ở nhiều team → nằm ở nhiều làn). */
+/** Một làn swimlane theo team của board; `memberIds` là người của team. Một người ở nhiều team: giao diện chỉ đặt việc vào MỘT làn (team đầu theo tên, ưu tiên team đang lọc). */
 export interface BoardTeamLaneDto {
   teamId: ID;
   name: string;

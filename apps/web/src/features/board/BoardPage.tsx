@@ -1,8 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Columns3, Layers, SearchX, UserRound, Users } from 'lucide-react';
+import { Columns3, Layers, SearchX, UserRound, Users, UsersRound } from 'lucide-react';
 import { toast } from 'sonner';
-import type { BoardColumnDto, BoardDto, IssueDto, SwimlaneBy } from '@tirapro/types';
+import type {
+  BoardColumnDto,
+  BoardDto,
+  IssueDto,
+  ProjectSubTeamDto,
+  SwimlaneBy,
+} from '@tirapro/types';
 import { useProject } from '@/features/projects/api';
 import { buildListProgressMap } from '@/lib/epic';
 import { applyPendingOrder, sortByRank, type PendingMove } from '@/lib/rankOrder';
@@ -32,6 +38,9 @@ import { NO_LANE, decideDrop, type DropContext, type DropPlan } from './dropPlan
 import { blockedDropMessage } from './dropTarget';
 import { StatusPickDialog } from './StatusPickDialog';
 import { useSwimlaneOverride } from './swimlane';
+import { TeamFilter, applyTeamFilter } from './TeamFilter';
+import { buildTeamLanes, parseBoardPrefs } from './teamLanes';
+import { useProjectSubTeams } from '@/features/project-teams/api';
 import { CardDisplayPopover } from './CardDisplayPopover';
 import { CardDisplayContext } from './cardDisplayContext';
 import { useCardDisplay } from './useCardDisplay';
@@ -87,14 +96,29 @@ interface Lane {
   issues: IssueDto[];
   kind: SwimlaneBy;
   empty?: boolean;
+  /** Màu của team (làn theo team). */
+  color?: string | null;
 }
 
 /** Mảng rỗng dùng chung để `Column` memo không thấy prop đổi tham chiếu. */
 const EMPTY: IssueDto[] = [];
+const EMPTY_TEAMS: ProjectSubTeamDto[] = [];
 
 /** Chia các việc thành làn (swimlane) theo cấu hình của bảng. `all` để tra tên epic/việc cha ngoài tập đang lọc. */
-function buildLanes(by: SwimlaneBy, list: IssueDto[], all: IssueDto[]): Lane[] | null {
+function buildLanes(
+  by: SwimlaneBy,
+  list: IssueDto[],
+  all: IssueDto[],
+  teams: readonly ProjectSubTeamDto[] = [],
+  selectedTeams: readonly string[] = [],
+): Lane[] | null {
   if (by === 'none') return null;
+  if (by === 'team')
+    return buildTeamLanes(list, teams, selectedTeams).map((l) => ({
+      ...l,
+      avatarUrl: null,
+      kind: 'team' as const,
+    }));
   const byId = new Map(all.map((i) => [i.id, i]));
   const hasChildren = new Set(all.map((i) => i.parentId).filter((x): x is string => !!x));
   const groups = new Map<string, Lane & { order: number }>();
@@ -226,6 +250,9 @@ export function BoardPage() {
   const currentUserId = useAuth((s) => s.user?.id);
   const { active: quickFilters, toggle: toggleQuickFilter } = useQuickFilters();
   const [assignee, setAssignee] = useState('');
+  // Team riêng của dự án: lọc nhanh "Team" + nhóm hàng "Theo team" (người vào nhiều team, nhiều team được chọn).
+  const [teamFilter, setTeamFilter] = useState<string[]>([]);
+  const subTeams = useProjectSubTeams(project?.id).data ?? EMPTY_TEAMS;
   // Bộ lọc theo người + tên người nhận khi kéo vào làn: gồm cả tài khoản đã khoá, tối đa 200 người.
   const assigneeOptions = useAssigneeOptions(project?.id, { includeInactive: true, limit: 200 });
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -253,39 +280,48 @@ export function BoardPage() {
     swimlaneBy,
     override: swimlaneOverride,
     toggleAssignee,
+    toggleTeam,
   } = useSwimlaneOverride(board?.id, board?.swimlaneBy ?? 'none');
   // Tuỳ chọn hiển thị thẻ của riêng người dùng (mật độ, trường) — đi qua context để memo của thẻ không đổi.
   const cardDisplay = useCardDisplay(board?.id);
 
-  // Nhớ lọc người THEO DỰ ÁN (localStorage). Nạp khi đổi dự án.
+  // Nhớ lọc người + team THEO DỰ ÁN (localStorage). Nạp khi đổi dự án.
   useEffect(() => {
     const pid = project?.id;
     if (!pid) return;
+    let raw: string | null = null;
     try {
-      const p = JSON.parse(localStorage.getItem(`tirapro:boardPrefs:${pid}`) || '{}') as {
-        assignee?: unknown;
-      };
-      setAssignee(typeof p.assignee === 'string' ? p.assignee : '');
-    } catch {
-      setAssignee('');
-    }
-  }, [project?.id]);
-  const changeAssignee = (v: string) => {
-    setAssignee(v);
-    const pid = project?.id;
-    if (!pid) return;
-    try {
-      localStorage.setItem(`tirapro:boardPrefs:${pid}`, JSON.stringify({ assignee: v }));
+      raw = localStorage.getItem(`tirapro:boardPrefs:${pid}`);
     } catch {
       /* ignore */
     }
+    const prefs = parseBoardPrefs(raw);
+    setAssignee(prefs.assignee);
+    setTeamFilter(prefs.teams);
+  }, [project?.id]);
+  const savePrefs = (next: { assignee: string; teams: string[] }) => {
+    const pid = project?.id;
+    if (!pid) return;
+    try {
+      localStorage.setItem(`tirapro:boardPrefs:${pid}`, JSON.stringify(next));
+    } catch {
+      /* ignore */
+    }
+  };
+  const changeAssignee = (v: string) => {
+    setAssignee(v);
+    savePrefs({ assignee: v, teams: teamFilter });
+  };
+  const changeTeams = (v: string[]) => {
+    setTeamFilter(v);
+    savePrefs({ assignee, teams: v });
   };
 
   // Lọc: bộ lọc nhanh (AND) + người phụ trách. Đếm cột/làn dựa trên tập này.
   const filteredIssues = useMemo(() => {
     const base = applyQuickFilters(scoped, quickFilters, currentUserId);
-    return applyAssigneeFilter(base, assignee);
-  }, [scoped, quickFilters, currentUserId, assignee]);
+    return applyTeamFilter(applyAssigneeFilter(base, assignee), teamFilter, subTeams);
+  }, [scoped, quickFilters, currentUserId, assignee, teamFilter, subTeams]);
 
   // Tên epic/việc cha tra trên tập ĐẦY ĐỦ của dự án (không bị thu hẹp theo sprint/bộ lọc bảng).
   const allIssues = useMemo(() => projectIssues ?? issues ?? EMPTY, [projectIssues, issues]);
@@ -294,11 +330,11 @@ export function BoardPage() {
   const swimlaneEmpty = swimlaneEmptyKind({
     isScrum,
     scopedCount: scoped.length,
-    filtered: hasFilter || assignee !== '' || quickFilters.size > 0,
+    filtered: hasFilter || assignee !== '' || teamFilter.length > 0 || quickFilters.size > 0,
   });
   const lanes = useMemo(
-    () => buildLanes(swimlaneBy, filteredIssues, allIssues),
-    [swimlaneBy, filteredIssues, allIssues],
+    () => buildLanes(swimlaneBy, filteredIssues, allIssues, subTeams, teamFilter),
+    [swimlaneBy, filteredIssues, allIssues, subTeams, teamFilter],
   );
 
   // Phân bổ việc vào cột MỘT lần cho cả bảng phẳng lẫn mọi làn; mảng của cột không đổi nội dung thì giữ nguyên
@@ -683,6 +719,7 @@ export function BoardPage() {
                     value={assignee}
                     onChange={changeAssignee}
                   />
+                  <TeamFilter teams={subTeams} value={teamFilter} onChange={changeTeams} />
                   {cardDisplay.enabled && (
                     <CardDisplayPopover
                       display={cardDisplay.display}
@@ -705,7 +742,24 @@ export function BoardPage() {
                   >
                     <Users className="h-3.5 w-3.5" aria-hidden /> Nhóm theo người
                   </button>
-                  {swimlaneBy !== 'none' && swimlaneBy !== 'assignee' && (
+                  {(subTeams.length > 0 || swimlaneBy === 'team') && (
+                    <button
+                      type="button"
+                      onClick={toggleTeam}
+                      aria-pressed={swimlaneBy === 'team'}
+                      title={`Chia bảng thành hàng theo team của dự án — chỉ áp cho bạn${swimlaneOverride === null ? '' : ' (đang khác cấu hình bảng)'}. Mỗi việc nằm ở hàng của team đầu tiên (theo tên) mà người phụ trách thuộc về; lọc theo team để chọn hàng cho người ở nhiều team.`}
+                      className={cn(
+                        'inline-flex h-7 items-center gap-1.5 rounded-full border px-2.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
+                        CHIP_TOUCH_HIT,
+                        swimlaneBy === 'team'
+                          ? 'border-transparent bg-primary-subtle text-primary'
+                          : 'border-border text-muted hover:bg-surface-2 hover:text-ink',
+                      )}
+                    >
+                      <UsersRound className="h-3.5 w-3.5" aria-hidden /> Theo team
+                    </button>
+                  )}
+                  {swimlaneBy !== 'none' && swimlaneBy !== 'assignee' && swimlaneBy !== 'team' && (
                     <span
                       className="inline-flex h-7 items-center gap-1.5 rounded-full border border-transparent bg-primary-subtle px-2.5 text-xs font-medium text-primary"
                       title={`Bảng đang chia hàng: ${SWIMLANE_LABEL[swimlaneBy].toLowerCase()}.`}
@@ -804,6 +858,16 @@ export function BoardPage() {
                               ) : (
                                 <Avatar name={lane.name} src={lane.avatarUrl} size={24} />
                               )
+                            ) : lane.kind === 'team' && !lane.empty ? (
+                              <span
+                                className="grid h-6 w-6 place-items-center rounded-md bg-surface-2"
+                                aria-hidden
+                              >
+                                <span
+                                  className="h-3 w-3 rounded-full"
+                                  style={{ background: lane.color ?? 'var(--faint)' }}
+                                />
+                              </span>
                             ) : (
                               <span className="grid h-6 w-6 place-items-center rounded-md bg-surface-2 text-faint">
                                 <Layers className="h-3.5 w-3.5" />

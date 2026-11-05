@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Pencil, History, UserMinus, UserPlus, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import type { MemberDto } from '@tirapro/types';
@@ -6,6 +7,7 @@ import { Avatar, EmptyState, Skeleton } from '@/components/ui/primitives';
 import { useConfirm } from '@/components/ui/useConfirm';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { TabPanel, Tabs, type TabItem } from '@/components/ui/Tabs';
 import { RoleBadge } from '@/components/ui/RoleBadge';
 import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
@@ -18,8 +20,24 @@ import {
   useRemoveProjectMember,
   useSetProjectMemberRoles,
 } from '@/features/members/api';
+import {
+  isTeamOnlyMember,
+  memberHasDirectRoles,
+  memberTeamNames,
+  roleSourceOf,
+} from '@/features/members/roleSource';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
 import { SectionCard } from '@/components/ui/SectionCard';
+import { ProjectTeamsPanel } from './ProjectTeamsPanel';
+import { SubTeamsPanel } from './SubTeamsPanel';
+
+/** Ba tab của mục Thành viên dự án (đồng bộ với `?tab=` để chia sẻ được đường dẫn). */
+const MEMBER_TABS = ['members', 'teams', 'sub-teams'] as const;
+export type MemberTab = (typeof MEMBER_TABS)[number];
+export const memberTabFromParam = (raw: string | null): MemberTab =>
+  (MEMBER_TABS as readonly string[]).includes(raw ?? '') ? (raw as MemberTab) : 'members';
+
+const TAB_ID_BASE = 'project-members';
 
 /* ------------------------------------------------------------------ */
 /* Section — Thành viên dự án                                          */
@@ -32,14 +50,92 @@ export function MembersSection({
   projectId?: string;
   isPrivate?: boolean;
 }) {
-  const confirm = useConfirm();
   const canAdmin = useCan(projectId)('project:admin');
+  const [params, setParams] = useSearchParams();
+  const tab = memberTabFromParam(params.get('tab'));
+  // Danh sách thành viên + vai trò dùng chung cho cả ba tab (gỡ team cần biết ai bị ảnh hưởng, team riêng chọn người từ đây).
+  const membersQuery = useProjectMembers(projectId);
+  const { data: projectRoles } = useRoles('PROJECT');
+  const roleOptions = (projectRoles ?? []).map((r) => ({ id: r.id, name: r.name, color: r.color }));
+  const members = membersQuery.data ?? [];
+
+  const items: TabItem<MemberTab>[] = [
+    {
+      id: 'members',
+      label: 'Thành viên',
+      title: 'Danh sách người trong dự án và vai trò của từng người',
+    },
+    { id: 'teams', label: 'Team', title: 'Team của tổ chức gắn vào dự án kèm vai trò' },
+    {
+      id: 'sub-teams',
+      label: 'Team trong dự án',
+      title: 'Nhóm người riêng của dự án để lọc và nhóm việc — không cấp quyền',
+    },
+  ];
+  const setTab = (next: MemberTab) =>
+    setParams(
+      (prev) => {
+        const p = new URLSearchParams(prev);
+        if (next === 'members') p.delete('tab');
+        else p.set('tab', next);
+        return p;
+      },
+      { replace: true },
+    );
+
+  return (
+    <SectionCard>
+      <Tabs
+        idBase={TAB_ID_BASE}
+        value={tab}
+        onChange={setTab}
+        items={items}
+        ariaLabel="Thành viên và team của dự án"
+        className="mb-4"
+      />
+      <TabPanel idBase={TAB_ID_BASE} value={tab}>
+        {tab === 'members' ? (
+          <MembersList
+            projectId={projectId}
+            isPrivate={isPrivate}
+            canAdmin={canAdmin}
+            membersQuery={membersQuery}
+            roleOptions={roleOptions}
+          />
+        ) : tab === 'teams' ? (
+          <ProjectTeamsPanel
+            projectId={projectId}
+            isPrivate={isPrivate}
+            canAdmin={canAdmin}
+            members={members}
+            roleOptions={roleOptions}
+          />
+        ) : (
+          <SubTeamsPanel projectId={projectId} canAdmin={canAdmin} members={members} />
+        )}
+      </TabPanel>
+    </SectionCard>
+  );
+}
+
+function MembersList({
+  projectId,
+  isPrivate,
+  canAdmin,
+  membersQuery,
+  roleOptions,
+}: {
+  projectId?: string;
+  isPrivate: boolean;
+  canAdmin: boolean;
+  membersQuery: ReturnType<typeof useProjectMembers>;
+  roleOptions: { id: string; name: string; color?: string | null }[];
+}) {
+  const confirm = useConfirm();
 
   // Thành viên dự án = TOÀN BỘ thành viên của tổ chức (dự án dùng chung tập người dùng).
   // `isOverride` cho biết vai trò đang là ĐẶT RIÊNG hay MẶC ĐỊNH theo vai trò chung.
-  const membersQuery = useProjectMembers(projectId);
   const { data: members } = membersQuery;
-  const { data: projectRoles } = useRoles('PROJECT');
 
   const setRoles = useSetProjectMemberRoles(projectId ?? '');
   const clearOverride = useRemoveProjectMember(projectId ?? '');
@@ -48,32 +144,50 @@ export function MembersSection({
   const [adding, setAdding] = useState(false);
 
   const list = members ?? [];
-  const roleOptions = (projectRoles ?? []).map((r) => ({ id: r.id, name: r.name, color: r.color }));
   const query = q.trim().toLowerCase();
   const shown = query
     ? list.filter((m) => `${m.user.displayName} ${m.user.email}`.toLowerCase().includes(query))
     : list;
 
-  async function handleReset(name: string, uid: string) {
+  async function handleReset(m: MemberDto) {
+    const name = m.user.displayName;
+    const uid = m.user.id;
+    const teams = memberTeamNames(m);
+    // Còn vai trò nhờ team: gỡ phần "riêng" KHÔNG đưa người ra khỏi dự án — nói rõ để không tưởng đã gỡ hẳn.
+    const stays = teams.length > 0 ? ` ${name} vẫn ở dự án nhờ Team ${teams.join(', ')}.` : '';
     const ok = await confirm(
-      isPrivate
+      teams.length > 0
         ? {
-            title: `Gỡ ${name} khỏi dự án?`,
-            description: 'Người này sẽ không còn thấy dự án riêng tư này.',
-            confirmLabel: 'Gỡ khỏi dự án',
+            title: `Gỡ vai trò riêng của ${name}?`,
+            description: `Chỉ bỏ vai trò gán trực tiếp.${stays}`,
+            confirmLabel: 'Gỡ vai trò riêng',
             destructive: true,
           }
-        : { title: `Đưa ${name} về vai trò mặc định chung?` },
+        : isPrivate
+          ? {
+              title: `Gỡ ${name} khỏi dự án?`,
+              description: 'Người này sẽ không còn thấy dự án riêng tư này.',
+              confirmLabel: 'Gỡ khỏi dự án',
+              destructive: true,
+            }
+          : { title: `Đưa ${name} về vai trò mặc định chung?` },
     );
     if (!ok) return;
     clearOverride.mutate(uid, {
-      onSuccess: () => toast.success(isPrivate ? 'Đã gỡ khỏi dự án' : 'Đã về vai trò mặc định'),
+      onSuccess: () =>
+        toast.success(
+          teams.length > 0
+            ? 'Đã gỡ vai trò riêng'
+            : isPrivate
+              ? 'Đã gỡ khỏi dự án'
+              : 'Đã về vai trò mặc định',
+        ),
       onError: (e) => toast.error(apiErrorMessage(e)),
     });
   }
 
   return (
-    <SectionCard>
+    <>
       <QueryBoundary
         query={membersQuery}
         skeleton={
@@ -121,7 +235,7 @@ export function MembersSection({
                   roleOptions={roleOptions}
                   saving={setRoles.isPending}
                   onSaveRoles={(ids) => setRoles.mutateAsync({ userId: m.user.id, roleIds: ids })}
-                  onReset={() => handleReset(m.user.displayName, m.user.id)}
+                  onReset={() => void handleReset(m)}
                 />
               ))}
               {shown.length === 0 && (
@@ -141,7 +255,7 @@ export function MembersSection({
           onClose={() => setAdding(false)}
         />
       )}
-    </SectionCard>
+    </>
   );
 }
 
@@ -164,21 +278,39 @@ function MemberRow({
   onSaveRoles,
   onReset,
 }: MemberRowProps) {
+  const hasDirect = memberHasDirectRoles(m);
+  const teamOnly = isTeamOnlyMember(m);
+  const teams = memberTeamNames(m);
+  // Có thông tin nguồn từng vai trò → nhãn nguồn thay cho thẻ "riêng/mặc định" của cả hàng.
+  const perRoleSource = m.isOverride === true && m.roles.some((r) => r.direct !== undefined);
+  const stillViaTeams = hasDirect && teams.length > 0;
   return (
-    <li className="flex items-center gap-3 py-2.5 first:pt-0 last:pb-0">
+    <li className="flex items-start gap-3 py-2.5 first:pt-0 last:pb-0 sm:items-center">
       <Avatar name={m.user.displayName} src={m.user.avatarUrl} size={32} />
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium text-ink">{m.user.displayName}</p>
         <p className="truncate text-xs text-faint">{m.user.email}</p>
       </div>
-      {/* ≥ sm: cột vai trò bề rộng cố định, badge căn phải → thẳng hàng giữa các dòng dù số/độ dài vai trò khác nhau. */}
-      <div className="flex flex-wrap items-center justify-end gap-1.5 sm:w-64 sm:shrink-0">
+      {/* ≥ sm: cột vai trò bề rộng cố định → thẳng hàng giữa các dòng; mỗi vai trò kèm nguồn của nó. */}
+      <div className="flex flex-col items-end gap-1 sm:w-72 sm:shrink-0">
         {m.roles.length > 0 ? (
-          m.roles.map((r) => <RoleBadge key={r.id} name={r.name} color={r.color} />)
+          m.roles.map((r) => {
+            const src = roleSourceOf(r, m);
+            return (
+              <span key={r.id} className="flex flex-wrap items-center justify-end gap-1.5">
+                <RoleBadge name={r.name} color={r.color} />
+                {src && (
+                  <span className="text-[11px] text-muted" title={src.title}>
+                    {src.label}
+                  </span>
+                )}
+              </span>
+            );
+          })
         ) : (
           <span className="text-xs text-faint">Chỉ xem</span>
         )}
-        {!isPrivate && (
+        {!isPrivate && !perRoleSource && (
           <span
             className={cn(
               'rounded px-1.5 py-0.5 text-[10px] font-medium',
@@ -201,6 +333,13 @@ function MemberRow({
             current={m.roles}
             saving={saving}
             onSave={onSaveRoles}
+            notice={
+              teamOnly
+                ? 'Người này đang có vai trò nhờ team và/hoặc mặc định theo tổ chức. Lưu sẽ đặt các vai trò đã chọn thành vai trò riêng (không còn phụ thuộc team hay mặc định); vai trò nhờ team vẫn giữ nguyên.'
+                : stillViaTeams
+                  ? `Vai trò nhờ Team ${teams.join(', ')} không đổi khi bạn lưu — chỉ phần vai trò riêng được đặt lại.`
+                  : undefined
+            }
             trigger={
               <Button
                 variant="ghost"
@@ -212,23 +351,35 @@ function MemberRow({
               </Button>
             }
           />
-          {m.isOverride ? (
+          {hasDirect ? (
             <Button
               variant="ghost"
               size="icon"
               className="text-muted hover:text-ink"
-              title={isPrivate ? 'Gỡ khỏi dự án' : 'Về vai trò mặc định'}
+              title={
+                teams.length > 0
+                  ? 'Gỡ vai trò riêng (vẫn ở dự án nhờ team)'
+                  : isPrivate
+                    ? 'Gỡ khỏi dự án'
+                    : 'Về vai trò mặc định'
+              }
               aria-label={
-                isPrivate
-                  ? `Gỡ ${m.user.displayName} khỏi dự án`
-                  : `Đưa ${m.user.displayName} về vai trò mặc định`
+                teams.length > 0
+                  ? `Gỡ vai trò riêng của ${m.user.displayName}`
+                  : isPrivate
+                    ? `Gỡ ${m.user.displayName} khỏi dự án`
+                    : `Đưa ${m.user.displayName} về vai trò mặc định`
               }
               onClick={onReset}
             >
-              {isPrivate ? <UserMinus className="h-4 w-4" /> : <History className="h-4 w-4" />}
+              {isPrivate && teams.length === 0 ? (
+                <UserMinus className="h-4 w-4" />
+              ) : (
+                <History className="h-4 w-4" />
+              )}
             </Button>
           ) : (
-            // Giữ chỗ cùng cỡ nút "về mặc định": cột vai trò không xê dịch giữa dòng đặt riêng và dòng mặc định.
+            // Giữ chỗ cùng cỡ nút "về mặc định": cột vai trò không xê dịch giữa các dòng.
             <span
               className="invisible h-9 w-9 max-sm:hidden [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11"
               aria-hidden

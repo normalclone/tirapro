@@ -105,6 +105,13 @@ export const keys = {
   /** Xem trước một thay đổi quy trình (PUT dryRun) — KHÁC tiền tố để không bị làm mới giữa chừng khi đang xem. */
   workflowChangePreview: (req: unknown) => ['workflow-change-preview', req] as const,
   teams: { all: ['teams'] as const },
+  /** Team của tổ chức gắn vào dự án (có đồng bộ vai trò) và team riêng trong dự án (lọc/nhóm, không cấp quyền). */
+  projectTeams: {
+    links: (projectId: string) => ['project-teams', 'links', projectId] as const,
+    subTeams: (projectId: string) => ['project-teams', 'sub-teams', projectId] as const,
+    /** Mọi dữ liệu team của dự án (invalidate một lượt khi gắn/gỡ team làm đổi thành viên + vai trò). */
+    root: ['project-teams'] as const,
+  },
   apiKeys: { all: ['api-keys'] as const },
 
   filters: {

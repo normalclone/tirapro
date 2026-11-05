@@ -28,8 +28,9 @@ describe('Thành viên organization', () => {
 describe('Thành viên dự án', () => {
   const s = read('project-config/MembersSection.tsx');
   it('cột vai trò cố định; nút "về mặc định" có placeholder', () => {
-    expect(tagWith(s, 'justify-end gap-1.5 sm:w-64 sm:shrink-0')).toBe(true);
-    expect(s).toContain('{m.isOverride ? (');
+    // Mỗi vai trò kèm nhãn nguồn nên cột xếp dọc (rộng hơn); vẫn bề rộng cố định để thẳng hàng giữa các dòng.
+    expect(tagWith(s, 'flex flex-col items-end gap-1 sm:w-72 sm:shrink-0')).toBe(true);
+    expect(s).toContain('{hasDirect ? (');
     expect(tagWith(s, 'invisible h-9 w-9 max-sm:hidden', 'aria-hidden')).toBe(true);
   });
 });
