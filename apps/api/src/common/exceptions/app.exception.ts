@@ -104,6 +104,29 @@ export class StatusMappingRequiredException extends AppException {
   }
 }
 
+/**
+ * 422 EPIC_ADOPT_CHILDREN_REQUIRED: đổi việc đang có việc con (không phải sub-task) sang Epic phải được xác nhận — các việc con
+ * trực tiếp sẽ chuyển thành việc của Epic đó. Client xác nhận với người dùng (số lượng ở `details[0].count`) rồi gửi lại kèm
+ * `adoptChildren: true`.
+ */
+export class EpicAdoptChildrenRequiredException extends AppException {
+  constructor(count: number) {
+    super(
+      ERROR_CODES.EPIC_ADOPT_CHILDREN_REQUIRED,
+      `Việc này đang có ${count} việc con — đổi thành Epic sẽ chuyển chúng thành việc thuộc Epic này. Cần xác nhận chuyển ${count} việc con (adoptChildren: true)`,
+      HttpStatus.UNPROCESSABLE_ENTITY,
+      [
+        {
+          field: 'adoptChildren',
+          code: ERROR_CODES.EPIC_ADOPT_CHILDREN_REQUIRED,
+          message: `Cần xác nhận chuyển ${count} việc con`,
+          count,
+        },
+      ],
+    );
+  }
+}
+
 export class BusinessRuleException extends AppException {
   constructor(message: string, details?: ErrorDetail[]) {
     super(ERROR_CODES.BUSINESS_RULE_VIOLATION, message, HttpStatus.UNPROCESSABLE_ENTITY, details);

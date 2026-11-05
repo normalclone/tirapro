@@ -52,8 +52,29 @@ vi.mock('sonner', () => ({
 
 import { toast } from 'sonner';
 import { ConfirmHost, useConfirmStore } from '@/components/ui/useConfirm';
-import { epicConversionCopy, epicConversionPlan, isEpicTypeOption } from './epicConversion';
+import { AxiosError, type AxiosResponse } from 'axios';
+import {
+  adoptChildrenRequired,
+  cachedSubtaskCount,
+  epicBlockedReason,
+  epicConversionCopy,
+  epicConversionPlan,
+  isEpicTypeOption,
+} from './epicConversion';
 import { IssueTypeSelect } from './IssueProperties';
+
+const adoptError = (count: number) =>
+  new AxiosError('422', 'ERR_BAD_REQUEST', undefined, undefined, {
+    status: 422,
+    data: {
+      success: false,
+      error: {
+        code: 'EPIC_ADOPT_CHILDREN_REQUIRED',
+        message: 'cần xác nhận',
+        details: [{ field: 'adoptChildren', code: 'EPIC_ADOPT_CHILDREN_REQUIRED', count }],
+      },
+    },
+  } as AxiosResponse);
 
 const bugType = { ...mk('x').type, id: 'ty-bug', name: 'Bug', key: 'BUG' as const };
 const epic = mk('e1', { t: 'epic', summary: 'Thanh toán', key: 'TIRA-1', projectId: 'p1' });
@@ -70,7 +91,7 @@ describe('epicConversionPlan / epicConversionCopy', () => {
   it('thuộc Epic: nêu mã + tên Epic, có thể hoàn tác', () => {
     const b = bug({ epicId: 'e1' });
     const plan = epicConversionPlan(b, [epic, b])!;
-    expect(plan).toMatchObject({ detaches: true, childCount: 0, parent: null });
+    expect(plan).toMatchObject({ parent: null });
     const { title, description } = epicConversionCopy('TIRA-9', plan);
     expect(title).toBe('Đổi TIRA-9 thành Epic?');
     expect(description).toContain(
@@ -92,18 +113,29 @@ describe('epicConversionPlan / epicConversionCopy', () => {
     expect(lp.parent).toBeNull();
   });
 
-  it('có việc con trực tiếp: nêu số việc con và KHÔNG hứa hoàn tác', () => {
+  it('việc con KHÔNG do danh sách nạp quyết định: không thuộc Epic/cha thì không có kế hoạch gỡ dù danh sách có con', () => {
+    const b = bug();
+    const kids = [mk('k1', { parentId: 'b1' }), mk('k2', { parentId: 'b1' })];
+    expect(epicConversionPlan(b, [b, ...kids])).toBeNull();
+  });
+
+  it('đếm sub-task trong danh sách nạp + lý do chặn (cùng câu với máy chủ)', () => {
     const b = bug();
     const kids = [
-      mk('k1', { parentId: 'b1' }),
-      mk('k2', { parentId: 'b1' }),
-      mk('g', { parentId: 'k1' }),
+      mk('k1', { parentId: 'b1', t: 'sub' }),
+      mk('k2', { parentId: 'b1', t: 'sub' }),
+      mk('k3', { parentId: 'b1' }),
     ];
-    const plan = epicConversionPlan(b, [b, ...kids])!;
-    expect(plan).toMatchObject({ childCount: 2, detaches: false });
-    const d = epicConversionCopy('TIRA-9', plan).description;
-    expect(d).toContain('2 việc con trực tiếp sẽ chuyển thành việc thuộc Epic này');
-    expect(d).not.toContain('hoàn tác');
+    expect(cachedSubtaskCount(b, [b, ...kids])).toBe(2);
+    expect(epicBlockedReason(2, 'Sub-task')).toContain(
+      'đang có 2 việc con (Sub-task) — Sub-task phải nằm dưới một việc thường',
+    );
+    expect(epicBlockedReason(0, 'Sub-task')).toBeNull();
+  });
+
+  it('adoptChildrenRequired bóc số lượng từ 422 EPIC_ADOPT_CHILDREN_REQUIRED, lỗi khác => null', () => {
+    expect(adoptChildrenRequired(adoptError(3))).toBe(3);
+    expect(adoptChildrenRequired(new Error('x'))).toBeNull();
   });
 
   it('Epic thuộc dự án nhưng không có trong danh sách nạp: vẫn hỏi, nói "Epic khác"', () => {
@@ -226,16 +258,69 @@ describe('Đổi loại sang Epic từ bộ chọn loại (TIRA-BUG-20)', () => 
     expect(h.patch.mock.calls[0]![1]).toEqual({ typeId: 'ty-bug', version: 5 });
   });
 
-  it('có việc con: hộp nói việc con chuyển sang Epic và không có Hoàn tác', async () => {
+  it('máy chủ báo có việc con (422): hỏi với số lượng do máy chủ báo, gửi lại kèm adoptChildren, KHÔNG có Hoàn tác', async () => {
     const b = bug();
-    const kid = mk('k1', { parentId: 'b1', projectId: 'p1' });
-    h.patch.mockResolvedValue({ data: { ...b, version: 6 } });
-    const user = setup(b, [b, kid]);
+    h.patch.mockRejectedValueOnce(adoptError(2));
+    h.patch.mockResolvedValueOnce({ data: { ...b, version: 6 } });
+    // danh sách nạp KHÔNG có việc con nào: số lượng vẫn lấy từ máy chủ
+    const user = setup(b, [b]);
     await pick(user, /Epic/);
-    const dialog = await screen.findByRole('dialog', { name: 'Đổi TIRA-9 thành Epic?' });
-    expect(dialog.textContent).toContain('1 việc con trực tiếp');
-    await user.click(within(dialog).getByRole('button', { name: 'Đổi thành Epic' }));
-    await waitFor(() => expect(h.patch).toHaveBeenCalledTimes(1));
+    const dialog = await screen.findByRole('dialog', {
+      name: /Chuyển 2 việc con sang Epic TIRA-9/,
+    });
+    expect(h.patch).toHaveBeenCalledTimes(1);
+    expect(h.patch.mock.calls[0]![1]).toEqual({ typeId: 'te', version: 5 });
+    await user.click(within(dialog).getByRole('button', { name: 'Chuyển việc con' }));
+    await waitFor(() => expect(h.patch).toHaveBeenCalledTimes(2));
+    expect(h.patch.mock.calls[1]![1]).toEqual({ typeId: 'te', adoptChildren: true, version: 5 });
     expect(toast.success).not.toHaveBeenCalled();
+  });
+
+  it('thuộc Epic VÀ có việc con: hỏi gỡ trước, rồi hỏi việc con; lần gửi cuối mang đủ detach + adoptChildren', async () => {
+    const b = bug({ epicId: 'e1' });
+    h.patch.mockRejectedValueOnce(adoptError(1));
+    h.patch.mockResolvedValueOnce({ data: { ...b, version: 6 } });
+    const user = setup(b, [epic, b]);
+    await pick(user, /Epic/);
+    await user.click(
+      await within(
+        await screen.findByRole('dialog', { name: 'Đổi TIRA-9 thành Epic?' }),
+      ).findByRole('button', { name: 'Đổi thành Epic' }),
+    );
+    const second = await screen.findByRole('dialog', { name: /Chuyển 1 việc con/ });
+    await user.click(within(second).getByRole('button', { name: 'Chuyển việc con' }));
+    await waitFor(() => expect(h.patch).toHaveBeenCalledTimes(2));
+    expect(h.patch.mock.calls[1]![1]).toEqual({
+      typeId: 'te',
+      epicId: null,
+      parentId: null,
+      adoptChildren: true,
+      version: 5,
+    });
+    expect(toast.success).not.toHaveBeenCalled(); // việc con đã chuyển: không Hoàn tác
+  });
+
+  it('Huỷ hộp chuyển việc con => không gửi lần hai', async () => {
+    const b = bug();
+    h.patch.mockRejectedValueOnce(adoptError(4));
+    const user = setup(b, [b]);
+    await pick(user, /Epic/);
+    const dialog = await screen.findByRole('dialog', { name: /Chuyển 4 việc con/ });
+    await user.click(within(dialog).getByRole('button', { name: 'Huỷ' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(h.patch).toHaveBeenCalledTimes(1);
+  });
+
+  it('còn sub-task: lựa chọn Epic bị tắt kèm lý do, bấm không gửi gì', async () => {
+    const b = bug();
+    const sub = mk('k1', { parentId: 'b1', t: 'sub', projectId: 'p1' });
+    const user = setup(b, [b, sub]);
+    await waitFor(() => expect(vi.mocked(toast.error)).not.toHaveBeenCalled());
+    await user.click(await screen.findByRole('button', { name: 'Loại việc' }));
+    const opt = await screen.findByRole('option', { name: /Epic/ });
+    await waitFor(() => expect(opt.getAttribute('aria-disabled')).toBe('true'));
+    expect(opt.textContent).toContain('đang có 1 việc con (');
+    await user.click(opt);
+    expect(h.patch).not.toHaveBeenCalled();
   });
 });

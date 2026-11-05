@@ -1,3 +1,4 @@
+/* eslint-disable max-lines-per-function -- spec tích hợp: một describe dùng chung dữ liệu nạp một lần */
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import { assertParityDatabase } from '../../common/testing/parity-db-guard';
@@ -25,6 +26,7 @@ describe.skipIf(!DB_URL)('đổi loại sang Epic ↔ Postgres thật', () => {
   let svc: IssuesService;
   let taskType: string;
   let epicType: string;
+  let subType: string;
   let todo: string;
   let n = 0;
 
@@ -81,6 +83,17 @@ describe.skipIf(!DB_URL)('đổi loại sang Epic ↔ Postgres thật', () => {
     epicType = (
       await prisma.issueType.create({
         data: { organizationId: ORG, name: 'Epic', key: 'EPIC', hierarchyLevel: 1 },
+      })
+    ).id;
+    subType = (
+      await prisma.issueType.create({
+        data: {
+          organizationId: ORG,
+          name: 'Sub-task',
+          key: 'SUBTASK',
+          isSubtask: true,
+          hierarchyLevel: -1,
+        },
       })
     ).id;
     await prisma.project.create({
@@ -143,18 +156,19 @@ describe.skipIf(!DB_URL)('đổi loại sang Epic ↔ Postgres thật', () => {
     expect((await row(e.id)).storyPoints).toBe(0); // Epic cũ mất việc => tổng về 0
   });
 
-  it('việc có việc con thành Epic: việc con trực tiếp thành việc của Epic, tổng điểm Epic = tổng việc con, Epic cũ tính lại', async () => {
+  it('việc có việc con thường thành Epic: cần adoptChildren; việc con trực tiếp thành việc của Epic, điểm Epic = tổng việc con, Epic cũ tính lại', async () => {
     const old = await mk({ key: 'E-C', typeId: epicType, points: 5 });
     const t = await mk({ key: 'T-D', epicId: old.id, points: 5 });
     const s1 = await mk({ key: 'S-1', parentId: t.id, epicId: old.id, points: 2 });
     const s2 = await mk({ key: 'S-2', parentId: t.id, points: 3 });
     const grand = await mk({ key: 'G-1', parentId: s1.id, points: 1 });
-    await svc.update(ORG, USER, t.id, {
-      version: t.version,
-      typeId: epicType,
-      epicId: null,
-      parentId: null,
+    const body = { version: t.version, typeId: epicType, epicId: null, parentId: null };
+    await expect(svc.update(ORG, USER, t.id, body)).rejects.toMatchObject({
+      status: 422,
+      code: 'EPIC_ADOPT_CHILDREN_REQUIRED',
     });
+    expect((await row(t.id)).typeId).toBe(taskType); // chưa ghi gì
+    await svc.update(ORG, USER, t.id, { ...body, adoptChildren: true });
     expect(await row(s1.id)).toMatchObject({ parentId: null, epicId: t.id });
     expect(await row(s2.id)).toMatchObject({ parentId: null, epicId: t.id });
     // việc cháu vẫn dưới việc con của nó
@@ -167,5 +181,58 @@ describe.skipIf(!DB_URL)('đổi loại sang Epic ↔ Postgres thật', () => {
     expect(await history(s2.id)).toEqual(
       expect.arrayContaining([`PARENT:${t.key}>`, `EPIC:>${t.key}`]),
     );
+  });
+
+  it('có việc con sub-task => 422 dù đã gửi adoptChildren; việc con kiểu Epic (dữ liệu cũ) chỉ được gỡ parentId', async () => {
+    const withSub = await mk({ key: 'T-E' });
+    await mk({ key: 'SUB-1', typeId: subType, parentId: withSub.id });
+    await expect(
+      svc.update(ORG, USER, withSub.id, {
+        version: withSub.version,
+        typeId: epicType,
+        adoptChildren: true,
+      }),
+    ).rejects.toMatchObject({
+      status: 422,
+      message: expect.stringContaining('1 việc con (sub-task)') as string,
+    });
+    expect((await row(withSub.id)).typeId).toBe(taskType);
+
+    const t = await mk({ key: 'T-F' });
+    const legacyEpicChild = await mk({ key: 'E-LEG', typeId: epicType, parentId: t.id });
+    await svc.update(ORG, USER, t.id, {
+      version: t.version,
+      typeId: epicType,
+      adoptChildren: true,
+    });
+    expect(await row(legacyEpicChild.id)).toMatchObject({ parentId: null, epicId: null });
+  });
+
+  it('Epic còn việc con không đổi sang loại thường được; Epic vừa chuyển (không có việc con) thì Hoàn tác được', async () => {
+    const e = await mk({ key: 'E-D', typeId: epicType });
+    await mk({ key: 'T-G', epicId: e.id });
+    await expect(
+      svc.update(ORG, USER, e.id, { version: e.version, typeId: taskType }),
+    ).rejects.toMatchObject({
+      status: 422,
+      message: expect.stringContaining('Epic đang có 1 việc con') as string,
+    });
+    expect((await row(e.id)).typeId).toBe(epicType);
+
+    const parentEpic = await mk({ key: 'E-E', typeId: epicType });
+    const t = await mk({ key: 'T-H', epicId: parentEpic.id });
+    const up = await svc.update(ORG, USER, t.id, {
+      version: t.version,
+      typeId: epicType,
+      epicId: null,
+      parentId: null,
+    });
+    await svc.update(ORG, USER, t.id, {
+      version: up.version,
+      typeId: taskType,
+      epicId: parentEpic.id,
+      parentId: null,
+    });
+    expect(await row(t.id)).toMatchObject({ typeId: taskType, epicId: parentEpic.id });
   });
 });

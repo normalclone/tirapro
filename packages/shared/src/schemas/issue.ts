@@ -61,6 +61,11 @@ export const updateIssueSchema = createIssueSchema
      * STATUS_MAPPING_REQUIRED kèm gợi ý). Bỏ qua khi loại mới dùng cùng quy trình.
      */
     targetStatusId: z.string().min(1).optional(),
+    /**
+     * Đổi sang Epic một việc đang có việc con (không phải sub-task): xác nhận chuyển các việc con trực tiếp thành việc của Epic.
+     * Thiếu → 422 EPIC_ADOPT_CHILDREN_REQUIRED kèm số lượng. Bỏ qua khi không đổi sang Epic hoặc không có việc con.
+     */
+    adoptChildren: z.boolean().optional(),
   });
 
 export const transitionIssueSchema = z.object({

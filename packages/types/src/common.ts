@@ -31,6 +31,8 @@ export interface ErrorDetail {
   message: string;
   /** `STATUS_MAPPING_REQUIRED`: trạng thái đích gợi ý trong quy trình mới (cùng tên, không có thì đầu tiên cùng nhóm). */
   suggestedStatusId?: string;
+  /** `EPIC_ADOPT_CHILDREN_REQUIRED`: số việc con trực tiếp sẽ chuyển sang Epic mới (cần xác nhận rồi gửi `adoptChildren: true`). */
+  count?: number;
 }
 
 export interface ApiErrorBody {
@@ -83,6 +85,7 @@ export const ERROR_CODES = {
   DUE_DATE_REQUIRED: 'DUE_DATE_REQUIRED',
   /** 422: đổi loại việc sang loại dùng quy trình khác mà thiếu `targetStatusId` — `details[0].suggestedStatusId` là gợi ý. */
   STATUS_MAPPING_REQUIRED: 'STATUS_MAPPING_REQUIRED',
+  EPIC_ADOPT_CHILDREN_REQUIRED: 'EPIC_ADOPT_CHILDREN_REQUIRED',
   /** 409: quy trình đang được dùng (cấu hình theo loại việc của tổ chức hoặc ghi đè của dự án) nên không xoá được. */
   WORKFLOW_IN_USE: 'WORKFLOW_IN_USE',
   /** 409: trạng thái còn việc đang ở đó — xoá phải kèm `replacementStatusId`. */

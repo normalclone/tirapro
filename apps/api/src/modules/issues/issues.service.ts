@@ -50,6 +50,7 @@ import {
   PointsOverrideForbiddenException,
   PointsRollupOnlyException,
   StatusMappingRequiredException,
+  EpicAdoptChildrenRequiredException,
   VersionConflictException,
 } from '../../common/exceptions/app.exception';
 import { cursorPage, PageResult } from '../../common/dto/page-result';
@@ -1732,7 +1733,11 @@ export class IssuesService {
     const effType = newType ?? current.type;
     const effEpicId = input.epicId !== undefined ? input.epicId : current.epicId;
     const effParentId = input.parentId !== undefined ? input.parentId : current.parentId;
-    if (newType && isEpicType(newType) && !isEpicType(current.type) && (effEpicId || effParentId))
+    const becomesEpic = !!newType && isEpicType(newType) && !isEpicType(current.type);
+    if (becomesEpic) await this.assertCanAdoptChildren(organizationId, id, input);
+    else if (newType && isEpicType(current.type) && !isEpicType(newType))
+      await this.assertEpicHasNoChildren(organizationId, id);
+    if (becomesEpic && (effEpicId || effParentId))
       throw new BusinessRuleException(
         'Epic là cấp cao nhất — việc đang thuộc Epic hoặc việc cha không thể đổi thành Epic. Hãy gỡ việc khỏi Epic/việc cha (gửi epicId: null và parentId: null) trong cùng lần đổi loại',
       );
@@ -1747,7 +1752,40 @@ export class IssuesService {
     for (const start of [newParent, newEpic])
       if (start && start !== id)
         await this.assertNoTreeCycle(this.prisma, organizationId, id, start);
-    return !!newType && isEpicType(newType) && !isEpicType(current.type);
+    return becomesEpic;
+  }
+
+  /**
+   * Việc sắp thành Epic: có việc con SUB-TASK thì từ chối (sub-task phải nằm dưới một việc thường — Epic không làm cha của sub-task);
+   * có việc con thường thì cần `adoptChildren: true` (đã xác nhận) — chúng sẽ chuyển thành việc của Epic. 422.
+   */
+  private async assertCanAdoptChildren(
+    organizationId: string,
+    id: string,
+    input: UpdateIssueInput,
+  ): Promise<void> {
+    const kids = await this.prisma.issue.findMany({
+      where: { parentId: id, organizationId, deletedAt: null },
+      select: { type: { select: { isSubtask: true } } },
+    });
+    const subtasks = kids.filter((k) => k.type.isSubtask).length;
+    if (subtasks > 0)
+      throw new BusinessRuleException(
+        `Việc này đang có ${subtasks} việc con (sub-task) — sub-task phải nằm dưới một việc thường. Hãy chuyển hoặc xoá sub-task trước khi đổi thành Epic`,
+      );
+    if (kids.length > 0 && !input.adoptChildren)
+      throw new EpicAdoptChildrenRequiredException(kids.length);
+  }
+
+  /** Epic đổi sang loại thường: còn việc con (`epicId`/`parentId` trỏ vào nó) thì từ chối — chúng sẽ trỏ vào một việc không còn là Epic. 422. */
+  private async assertEpicHasNoChildren(organizationId: string, id: string): Promise<void> {
+    const n = await this.prisma.issue.count({
+      where: { organizationId, deletedAt: null, OR: [{ epicId: id }, { parentId: id }] },
+    });
+    if (n > 0)
+      throw new BusinessRuleException(
+        `Epic đang có ${n} việc con — hãy chuyển chúng sang Epic khác hoặc gỡ khỏi Epic trước khi đổi sang loại thường`,
+      );
   }
 
   async update(
@@ -1956,7 +1994,12 @@ export class IssuesService {
   ): Promise<AdoptedChildren> {
     const kids = await tx.issue.findMany({
       where: { parentId: epic.id, deletedAt: null },
-      select: { id: true, epicId: true, sprintId: true },
+      select: {
+        id: true,
+        epicId: true,
+        sprintId: true,
+        type: { select: { key: true, hierarchyLevel: true } },
+      },
       orderBy: { id: 'asc' },
     });
     if (kids.length === 0) return { ids: [], oldEpicIds: [] };
@@ -1964,12 +2007,20 @@ export class IssuesService {
       tx,
       kids.map((k) => k.id),
     );
+    // Việc con kiểu Epic (dữ liệu cũ) chỉ được gỡ `parentId` — KHÔNG gắn `epicId` (sẽ thành Epic trong Epic).
+    const plain = kids.filter((k) => !isEpicType(k.type));
+    const base = { updatedById: userId, version: { increment: 1 } };
     await tx.issue.updateMany({
       where: { id: { in: kids.map((k) => k.id) }, deletedAt: null },
-      data: { parentId: null, epicId: epic.id, updatedById: userId, version: { increment: 1 } },
+      data: { parentId: null, ...base },
     });
+    if (plain.length > 0)
+      await tx.issue.updateMany({
+        where: { id: { in: plain.map((k) => k.id) }, deletedAt: null },
+        data: { epicId: epic.id },
+      });
     const oldEpicIds = [
-      ...new Set(kids.map((k) => k.epicId).filter((e): e is string => !!e && e !== epic.id)),
+      ...new Set(plain.map((k) => k.epicId).filter((e): e is string => !!e && e !== epic.id)),
     ];
     // allow-deleted: chỉ lấy MÃ Epic cũ để ghi nhãn lịch sử (Epic đã xoá mềm vẫn có mã)
     const oldEpics = await tx.issue.findMany({
@@ -1980,17 +2031,17 @@ export class IssuesService {
     const occurredAt = new Date();
     const rows: Prisma.IssueHistoryCreateManyInput[] = [];
     for (const k of kids) {
-      const base = {
+      const h = {
         issueId: k.id,
         projectId: epic.projectId,
         sprintId: k.sprintId,
         actorId: userId,
         occurredAt,
       };
-      rows.push({ ...base, field: 'PARENT', oldValue: epic.key, newValue: null });
-      if (k.epicId !== epic.id)
+      rows.push({ ...h, field: 'PARENT', oldValue: epic.key, newValue: null });
+      if (!isEpicType(k.type) && k.epicId !== epic.id)
         rows.push({
-          ...base,
+          ...h,
           field: 'EPIC',
           oldValue: k.epicId ? (oldKeys.get(k.epicId) ?? null) : null,
           newValue: epic.key,
@@ -2482,12 +2533,12 @@ export class IssuesService {
       );
     const newType = await this.prisma.issueType.findFirst({
       where: { id: patch.typeId, organizationId },
-      select: { key: true },
+      select: { key: true, hierarchyLevel: true },
     });
     const newTypeKey = newType?.key ?? null;
     const changing = rows.filter((r) => r.typeId !== patch.typeId);
     if (changing.length === 0) return { ...none, newTypeKey };
-    if (newTypeKey === 'EPIC' || changing.some((r) => r.type.key === 'EPIC'))
+    if ((newType && isEpicType(newType)) || changing.some((r) => isEpicType(r.type)))
       throw new BusinessRuleException(
         'Không đổi loại hàng loạt từ hoặc sang Epic — hãy đổi từng việc một',
       );

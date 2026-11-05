@@ -5995,6 +5995,18 @@ describe('IssuesService — quy trình theo loại việc', () => {
         }),
       ).rejects.toMatchObject({ status: 422 });
     });
+
+    it('loại tuỳ biến cấp ≥ 1 (không có key EPIC) cũng bị chặn như Epic — cùng isEpicType với đổi loại từng việc', async () => {
+      const t = bTx(rows());
+      t.issueType.findFirst = vi.fn(() =>
+        Promise.resolve({ id: 't-theme', key: 'THEME', hierarchyLevel: 2 }),
+      );
+      const { service } = makeService(t, scheme());
+      await expect(
+        service.bulkUpdate('w1', 'u1', { projectId: 'p1', items, patch: { typeId: 't-theme' } }),
+      ).rejects.toMatchObject({ status: 422, message: has('Epic') });
+      expect(t.issue.updateMany).not.toHaveBeenCalled();
+    });
   });
 
   describe('GET transitions', () => {
@@ -6127,7 +6139,14 @@ describe('IssuesService.update — đổi loại sang Epic (TIRA-BUG-20)', () =>
     current: Record<string, unknown>,
     after: Record<string, unknown>,
     o: {
-      kids?: Array<{ id: string; epicId: string | null; sprintId: string | null }>;
+      kids?: Array<{
+        id: string;
+        epicId: string | null;
+        sprintId: string | null;
+        type?: { key: string | null; hierarchyLevel: number; isSubtask: boolean };
+      }>;
+      /** Số việc con (epicId/parentId trỏ vào việc) cho kiểm Epic → loại thường. */
+      epicChildren?: number;
       keys?: Record<string, string>;
       rows?: Record<string, Record<string, unknown>>;
     } = {},
@@ -6141,7 +6160,8 @@ describe('IssuesService.update — đổi loại sang Epic (TIRA-BUG-20)', () =>
         findFirstOrThrow: vi.fn(() => Promise.resolve(after)),
         findMany: vi.fn(
           (a: { where: { parentId?: unknown; id?: { in: string[] } }; select?: unknown }) => {
-            if (typeof a.where.parentId === 'string') return Promise.resolve(o.kids ?? []);
+            if (typeof a.where.parentId === 'string')
+              return Promise.resolve((o.kids ?? []).map((k) => ({ type: PLAIN, ...k })));
             if (a.where.parentId !== undefined) return Promise.resolve([]); // idsWithLiveChildren
             const ids = a.where.id?.in ?? [];
             return Promise.resolve(ids.map((id) => ({ ...issueRow({ id }), key: keys[id] ?? id })));
@@ -6150,6 +6170,7 @@ describe('IssuesService.update — đổi loại sang Epic (TIRA-BUG-20)', () =>
         updateMany: vi.fn((_a: { where: { id: unknown }; data: Record<string, unknown> }) =>
           Promise.resolve({ count: 1 }),
         ),
+        count: vi.fn(() => Promise.resolve(o.epicChildren ?? 0)),
         aggregate: vi.fn(() => Promise.resolve({ _sum: { storyPoints: 0 }, _count: { _all: 0 } })),
       },
       issueHistory: { createMany: vi.fn() },
@@ -6169,6 +6190,8 @@ describe('IssuesService.update — đổi loại sang Epic (TIRA-BUG-20)', () =>
       },
     };
   }
+  const PLAIN = { key: 'TASK', hierarchyLevel: 0, isSubtask: false };
+  const SUB = { key: 'SUBTASK', hierarchyLevel: -1, isSubtask: true };
   const asEpic = (over: Record<string, unknown> = {}) =>
     issueRow({ typeId: 't-epic', type: typeEpic, version: 4, ...over });
   const hist = (t: ReturnType<typeof tx>) =>
@@ -6263,11 +6286,17 @@ describe('IssuesService.update — đổi loại sang Epic (TIRA-BUG-20)', () =>
       ],
     });
     const { service, events } = makeService(t);
-    await service.update('w1', 'u1', 'i1', { version: 3, typeId: 't-epic' });
+    await service.update('w1', 'u1', 'i1', {
+      version: 3,
+      typeId: 't-epic',
+      adoptChildren: true,
+    });
     const adopt = t.issue.updateMany.mock.calls.find(
       (c) => (c[0].where.id as { in?: string[] }).in?.join() === 'k1,k2',
     )!;
-    expect(adopt[0].data).toMatchObject({ parentId: null, epicId: 'i1' });
+    expect(adopt[0].data).toMatchObject({ parentId: null });
+    const setEpic = t.issue.updateMany.mock.calls.find((c) => c[0].data.epicId === 'i1')!;
+    expect((setEpic[0].where.id as { in: string[] }).in).toEqual(['k1', 'k2']);
     expect(hist(t)).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -6301,5 +6330,82 @@ describe('IssuesService.update — đổi loại sang Epic (TIRA-BUG-20)', () =>
     const { service } = makeService(t);
     await service.update('w1', 'u1', 'i1', { version: 3, typeId: 't-epic' });
     expect(t.issue.updateMany.mock.calls.every((c) => c[0].where.id === 'i1')).toBe(true);
+  });
+
+  it('có việc con sub-task => 422 (kể cả đã gửi adoptChildren), không ghi gì', async () => {
+    const t = tx(issueRow(), asEpic(), {
+      kids: [
+        { id: 'k1', epicId: null, sprintId: null, type: SUB },
+        { id: 'k2', epicId: null, sprintId: null, type: SUB },
+        { id: 'k3', epicId: null, sprintId: null },
+      ],
+    });
+    const { service } = makeService(t);
+    await expect(
+      service.update('w1', 'u1', 'i1', { version: 3, typeId: 't-epic', adoptChildren: true }),
+    ).rejects.toMatchObject({
+      status: 422,
+      message: has('đang có 2 việc con (sub-task) — sub-task phải nằm dưới một việc thường'),
+    });
+    expect(t.issue.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('có việc con thường mà thiếu adoptChildren => 422 EPIC_ADOPT_CHILDREN_REQUIRED kèm số lượng, không ghi gì', async () => {
+    const t = tx(issueRow(), asEpic(), {
+      kids: [
+        { id: 'k1', epicId: null, sprintId: null },
+        { id: 'k2', epicId: null, sprintId: null },
+      ],
+    });
+    const { service } = makeService(t);
+    await expect(
+      service.update('w1', 'u1', 'i1', { version: 3, typeId: 't-epic' }),
+    ).rejects.toMatchObject({
+      status: 422,
+      code: 'EPIC_ADOPT_CHILDREN_REQUIRED',
+      details: [expect.objectContaining({ field: 'adoptChildren', count: 2 })],
+    });
+    expect(t.issue.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('việc con kiểu Epic (dữ liệu cũ) chỉ được gỡ parentId, KHÔNG gắn epicId', async () => {
+    const t = tx(issueRow(), asEpic(), {
+      kids: [
+        { id: 'k1', epicId: null, sprintId: null },
+        {
+          id: 'ke',
+          epicId: null,
+          sprintId: null,
+          type: { key: 'EPIC', hierarchyLevel: 1, isSubtask: false },
+        },
+      ],
+    });
+    const { service } = makeService(t);
+    await service.update('w1', 'u1', 'i1', {
+      version: 3,
+      typeId: 't-epic',
+      adoptChildren: true,
+    });
+    const calls = t.issue.updateMany.mock.calls.map((c) => c[0]);
+    const withEpicId = calls.filter((c) => 'epicId' in c.data && c.where.id !== 'i1');
+    expect(withEpicId).toHaveLength(1);
+    expect((withEpicId[0]!.where.id as { in: string[] }).in).toEqual(['k1']);
+    expect(
+      hist(t)
+        .filter((r) => r.issueId === 'ke')
+        .map((r) => r.field),
+    ).toEqual(['PARENT']);
+  });
+
+  it('Epic đang có việc con => không đổi sang loại thường (422); Epic trống vẫn đổi được', async () => {
+    const t = tx(asEpic({ version: 3 }), issueRow({ version: 4 }), { epicChildren: 3 });
+    const { service } = makeService(t);
+    await expect(
+      service.update('w1', 'u1', 'i1', { version: 3, typeId: 't1' }),
+    ).rejects.toMatchObject({ status: 422, message: has('Epic đang có 3 việc con') });
+    expect(t.issue.updateMany).not.toHaveBeenCalled();
+    const empty = tx(asEpic({ version: 3 }), issueRow({ version: 4 }));
+    await makeService(empty).service.update('w1', 'u1', 'i1', { version: 3, typeId: 't1' });
+    expect(empty.issue.updateMany).toHaveBeenCalled();
   });
 });

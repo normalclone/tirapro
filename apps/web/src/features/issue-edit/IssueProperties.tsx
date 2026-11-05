@@ -34,8 +34,9 @@ import { SeverityBadge } from '@/components/ui/SeverityBadge';
 import { isBugType } from './severity';
 import { dueState } from '@/lib/dueDate';
 import { apiErrorMessage } from '@/lib/api';
-import { statusMappingNeeded } from './typeChange';
-import { epicConversionCopy, epicConversionPlan, isEpicTypeOption } from './epicConversion';
+import { cachedSubtaskCount, epicBlockedReason, isEpicTypeOption } from './epicConversion';
+import { useIssueTypeChange } from './useIssueTypeChange';
+import { isEpicIssue } from '@/lib/issueRefs';
 import { TypeChangeStatusDialog } from './TypeChangeStatusDialog';
 import { isRollupPoints, parsePointsOverride, pointsTip, CHILD_SPRINT_TIP } from '@/lib/points';
 import { DIFFICULTIES, DIFFICULTY_LABELS, formatCalendarDmy } from '@tirapro/shared';
@@ -117,27 +118,9 @@ export function IssueTypeSelect({ issue }: { issue: IssueDto }) {
   const { data: projects } = useProjects();
   const projectKey = projects?.find((p) => p.id === issue.projectId)?.key;
   const { data: meta } = useProjectMeta(projectKey);
-  // Lỗi tự xử lý bên dưới (422 → hộp chọn trạng thái; còn lại → toast) nên không để thông báo chung hiện thêm một lần nữa.
-  const patch = useUpdateIssue(issue.projectId, { silent: true });
   const canEdit = useCanEditIssue(issue.projectId)(issue);
-  const confirm = useConfirm();
   const { data: projectIssues } = useProjectIssues(issue.projectId);
-  // Loại mới dùng quy trình khác → máy chủ báo cần trạng thái đích; hộp giữ loại đang đổi + gợi ý cho tới khi xong/huỷ.
-  // `ask` giữ nội dung kể cả khi hộp đang đóng (để hiệu ứng đóng chạy), `askOpen` điều khiển mở.
-  const [ask, setAsk] = useState<{
-    seq: number;
-    typeId: string;
-    typeName: string;
-    suggestedStatusId: string | undefined;
-    /** Đổi sang Epic đã được xác nhận: lần gửi sau cũng phải gỡ epicId/parentId (Epic không thuộc Epic/việc cha). */
-    detach: boolean;
-  } | null>(null);
-  const [askOpen, setAskOpen] = useState(false);
-  // Sang việc khác (panel xem nhanh đổi dòng) → bỏ hộp đang mở, kẻo xác nhận nhầm cho việc mới.
-  useEffect(() => {
-    setAskOpen(false);
-    setAsk(null);
-  }, [issue.id]);
+  const typeChange = useIssueTypeChange(issue, meta, projectIssues);
   if (!canEdit) {
     return (
       <span title={`Loại việc: ${issue.type.name}`}>
@@ -145,85 +128,29 @@ export function IssueTypeSelect({ issue }: { issue: IssueDto }) {
       </span>
     );
   }
-  const typeName = (id: string) => meta?.issueTypes.find((t) => t.id === id)?.name ?? '';
-  const DETACH = { epicId: null, parentId: null };
-
-  /**
-   * Đổi loại. Sang Epic mà việc đang thuộc Epic/việc cha (hoặc có việc con): HỎI trước, rồi MỘT lần gửi vừa đổi loại vừa gỡ
-   * `epicId/parentId` ("Epic không được là con của Epic" — máy chủ từ chối nếu thiếu); Hoàn tác đưa loại + Epic/cha về như cũ
-   * (không có khi đã có việc con chuyển sang Epic mới — việc con không tự quay lại).
-   */
-  async function changeType(v: string) {
-    if (v === issue.type.id) return;
-    const target = meta?.issueTypes.find((t) => t.id === v);
-    const plan =
-      target && isEpicTypeOption(target) ? epicConversionPlan(issue, projectIssues ?? []) : null;
-    if (plan) {
-      const copy = epicConversionCopy(issue.key, plan);
-      if (!(await confirm({ ...copy, confirmLabel: 'Đổi thành Epic' }))) return;
-    }
-    const undo = plan?.detaches && plan.childCount === 0 ? { ...issue } : null;
-    patch.mutate(
-      {
-        id: issue.id,
-        key: issue.key,
-        patch: { typeId: v, ...(plan ? DETACH : {}) },
-        version: issue.version,
-      },
-      {
-        onSuccess: (res) => {
-          if (!undo) return;
-          toast.success(`Đã đổi ${issue.key} thành Epic và gỡ khỏi Epic/việc cha`, {
-            duration: 6000,
-            action: {
-              label: 'Hoàn tác',
-              onClick: () =>
-                patch.mutate(
-                  {
-                    id: undo.id,
-                    key: undo.key,
-                    patch: {
-                      typeId: undo.type.id,
-                      epicId: undo.epicId,
-                      parentId: undo.parentId,
-                      targetStatusId: undo.status.id,
-                    },
-                    version: res.data.version,
-                  },
-                  { onError: (e) => toast.error(apiErrorMessage(e)) },
-                ),
-            },
-          });
-        },
-        onError: (e) => {
-          const need = statusMappingNeeded(e);
-          if (need) {
-            setAsk({
-              seq: Date.now(),
-              typeId: v,
-              typeName: typeName(v),
-              suggestedStatusId: need.suggestedStatusId,
-              detach: !!plan,
-            });
-            setAskOpen(true);
-          } else toast.error(apiErrorMessage(e));
-        },
-      },
-    );
-  }
-
+  // Việc còn sub-task không đổi sang Epic được (sub-task phải nằm dưới việc thường): tắt lựa chọn kèm lý do. Máy chủ vẫn là nơi quyết định.
+  const epicBlocked = isEpicIssue(issue)
+    ? null
+    : epicBlockedReason(
+        cachedSubtaskCount(issue, projectIssues ?? []),
+        meta?.issueTypes.find((t) => t.isSubtask)?.name ?? 'việc con nhỏ',
+      );
   return (
     <>
       <SearchSelect
         ariaLabel="Loại việc"
         value={issue.type.id}
-        disabled={patch.isPending}
-        options={(meta?.issueTypes ?? []).map((t) => ({
-          value: t.id,
-          label: t.name,
-          color: t.color,
-        }))}
-        onChange={(v) => void changeType(v)}
+        disabled={typeChange.pending}
+        options={(meta?.issueTypes ?? []).map((t) => {
+          const blocked = !!epicBlocked && isEpicTypeOption(t);
+          return {
+            value: t.id,
+            label: t.name,
+            color: t.color,
+            ...(blocked ? { disabled: true, description: epicBlocked } : {}),
+          };
+        })}
+        onChange={(v) => void typeChange.change(v)}
         className={INLINE_TRIGGER}
         renderTrigger={() => (
           <span title={`Loại việc: ${issue.type.name}. Bấm để đổi.`}>
@@ -231,36 +158,19 @@ export function IssueTypeSelect({ issue }: { issue: IssueDto }) {
           </span>
         )}
       />
-      {ask && (
+      {typeChange.ask && (
         <TypeChangeStatusDialog
-          key={ask.seq}
-          open={askOpen}
+          key={typeChange.ask.seq}
+          open={typeChange.askOpen}
           issueKey={issue.key}
           projectId={issue.projectId}
           fromStatusName={issue.status.name}
-          newTypeId={ask.typeId}
-          newTypeName={ask.typeName}
-          suggestedStatusId={ask.suggestedStatusId}
-          loading={patch.isPending}
-          onCancel={() => setAskOpen(false)}
-          onConfirm={(targetStatusId) =>
-            patch.mutate(
-              {
-                id: issue.id,
-                key: issue.key,
-                patch: { typeId: ask.typeId, targetStatusId, ...(ask.detach ? DETACH : {}) },
-                version: issue.version,
-              },
-              {
-                onSuccess: (res) => {
-                  setAskOpen(false);
-                  toast.success(`Đã đổi loại và chuyển sang “${res.data.status.name}”`);
-                },
-                // Lỗi (409, quy trình vừa đổi…): giữ hộp mở để chọn lại, không mất lựa chọn.
-                onError: (e) => toast.error(apiErrorMessage(e)),
-              },
-            )
-          }
+          newTypeId={typeChange.ask.typeId}
+          newTypeName={typeChange.ask.typeName}
+          suggestedStatusId={typeChange.ask.suggestedStatusId}
+          loading={typeChange.pending}
+          onCancel={typeChange.closeAsk}
+          onConfirm={typeChange.confirmAsk}
         />
       )}
     </>
