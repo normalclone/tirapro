@@ -31,15 +31,7 @@ import { COARSE_NO_CALLOUT } from '@/lib/dragTouch';
 import { isModifiedClick } from '@/lib/rowOpen';
 import { IssueContextMenu, IssueRowMenuButton } from '@/features/issues/menu/IssueContextMenu';
 import { flattenVisible, visibleKeys } from './treeOrder';
-
-/**
- * Bố cục cột dùng chung cho hàng tiêu đề (header) và mọi hàng dữ liệu, để các cột
- * luôn thẳng hàng dù nội dung dài ngắn khác nhau. Cột đầu co giãn (tiêu đề), phần
- * còn lại cố định bề rộng cho dễ quét mắt. Dưới `sm` chỉ còn cột tiêu đề (4 cột phụ không vừa 390px): trạng thái
- * hiện bằng chấm màu cạnh mã, hạn chót vẫn có nhãn.
- */
-const GRID_COLS =
-  'grid grid-cols-[minmax(0,1fr)] items-center gap-3 sm:grid-cols-[minmax(0,1fr)_9rem_11rem_6rem_4.5rem]';
+import { GRID_COLS, TREE_TABLE_MIN_W_CLS } from './treeLayout';
 
 /** Bậc thụt lề mỗi cấp (px) ở cột tiêu đề. */
 const INDENT_STEP = 20;
@@ -141,7 +133,14 @@ export function TreePage() {
                       việc và đổi ở ô “Epic / Việc cha”.
                     </p>
                   )}
-                  <div className="overflow-hidden rounded-lg border border-border bg-surface">
+                  {/* Khung cuộn là vùng cuộn của trang (đã có `overflow-auto`): bảng không co dưới sàn bề rộng nên khi có panel xem nhanh
+                      thì cuộn ngang thay vì chồng cột (TIRA-BUG-21). Hàng tiêu đề vẫn dính khi cuộn dọc. */}
+                  <div
+                    className={cn(
+                      'overflow-hidden rounded-lg border border-border bg-surface',
+                      TREE_TABLE_MIN_W_CLS,
+                    )}
+                  >
                     {/* Hàng tiêu đề cột — dính khi cuộn để luôn biết đang xem cột nào */}
                     <div
                       className={cn(
