@@ -6,7 +6,7 @@ import { dueDaysFromToday, isOverdue } from '@/lib/dueDate';
 import { STATUS_CATEGORY_LABEL } from '@/lib/terms';
 import type { Block, Chip, IssueRow } from './blocks';
 import { buildDraft, type Draft, type DraftMeta } from './draft';
-import type { Intent, TypeHint } from './intents';
+import { detectIntent, type Intent, type TypeHint } from './intents';
 import { MIN_SCORE, POPULAR_QUESTIONS, searchKnowledge } from './knowledge';
 import { dueJql, filtersHref, myIssuesJql, overdueJql, searchJql } from './queries';
 import { screenInfoOf } from './screens';
@@ -444,7 +444,10 @@ export async function respond(
     case 'bulk-assign':
     case 'bulk-add-member':
     case 'bulk-remove-member':
-      return bulkReply(intent, e, deps);
+      return (
+        (await bulkReply(intent, e, deps)) ??
+        respond(detectIntent(intent.raw ?? '', { bulk: false }), e, deps)
+      );
   }
 }
 

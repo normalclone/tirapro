@@ -52,7 +52,66 @@ describe('resolvePerson — không dấu, không phân biệt hoa thường', ()
   });
   it('tiền tố chỉ dùng khi không có khớp nguyên từ ("Hươ" → Hương); nhiều ứng viên vẫn mơ hồ', () => {
     expect(okId(resolvePerson('Hươ', PEOPLE))).toBe('u-huong');
-    expect(resolvePerson('Th', PEOPLE).status).toBe('ambiguous');
+    expect(resolvePerson('Thu', PEOPLE).status).toBe('ambiguous');
+  });
+  it('M2: tiền tố ngắn (< 3 ký tự) không bao giờ khớp: "Hà", "H", "Ng" không rơi vào "Phạm Hải"', () => {
+    const list = [{ id: 'hai', displayName: 'Phạm Hải' }];
+    for (const q of ['Hà', 'Ha', 'H', 'Ng', 'Th'])
+      expect(resolvePerson(q, list).status).toBe('none');
+    expect(okId(resolvePerson('Hải', list))).toBe('hai');
+  });
+  it('M2: khớp một phần tên / tiền tố → ok nhưng đánh dấu approx; khớp tên đầy đủ hoặc tên gọi thì không', () => {
+    const list = [
+      { id: 'van', displayName: 'Nguyễn Văn An' },
+      { id: 'tran', displayName: 'Trần Quốc Hương' },
+    ];
+    const middle = resolvePerson('Văn', list);
+    expect(middle).toMatchObject({ status: 'ok', approx: true, value: { id: 'van' } });
+    expect(resolvePerson('Nguyễn', list)).toMatchObject({ status: 'ok', approx: true });
+    expect(resolvePerson('Hươ', list)).toMatchObject({
+      status: 'ok',
+      approx: true,
+      value: { id: 'tran' },
+    });
+    // tiền tố chỉ ở từ giữa/họ của tên ≥ 3 từ: không khớp
+    expect(resolvePerson('Quố', list).status).toBe('none');
+    // tên gọi (từ cuối) và tên đầy đủ: chắc chắn
+    expect(resolvePerson('An', list)).not.toHaveProperty('approx');
+    expect(resolvePerson('Hương', list)).not.toHaveProperty('approx');
+    expect(resolvePerson('nguyen van an', list)).not.toHaveProperty('approx');
+    expect(resolvePerson('x', list).status).toBe('none');
+  });
+  it('M2: tên 2 từ — từ nào cũng là lõi (không biết thứ tự họ/tên)', () => {
+    const list = [{ id: 'h', displayName: 'Hương Đỗ' }];
+    expect(resolvePerson('Hương', list)).toMatchObject({ status: 'ok' });
+    expect(resolvePerson('Hương', list)).not.toHaveProperty('approx');
+  });
+  it('M2: dự án / nhóm / vai trò chỉ chắc khi khớp NGUYÊN tên hoặc mã; khớp một phần là approx', () => {
+    const groups = [{ id: 'g', name: 'QA Hà Nội', projects: [] }];
+    expect(resolveGroup('QA', groups)).toMatchObject({ status: 'ok', approx: true });
+    expect(resolveGroup('qa ha noi', groups)).not.toHaveProperty('approx');
+    const projects = [{ id: 'p', key: 'LLTT', name: 'Lý luận chính trị' }];
+    expect(resolveProject('LLT', projects)).toMatchObject({ status: 'ok', approx: true });
+    expect(resolveProject('lltt', projects)).not.toHaveProperty('approx');
+    expect(resolveProject('LL', projects).status).toBe('none');
+  });
+  it('M2: người gõ CÓ dấu và đúng một ứng viên khớp đúng dấu → chọn, không bắt chọn ("Hà" khi có cả Hà và Hạ)', () => {
+    const list = [
+      { id: 'ha', displayName: 'Lê Hà' },
+      { id: 'ha2', displayName: 'Vũ Hạ' },
+    ];
+    expect(okId(resolvePerson('Hà', list))).toBe('ha');
+    expect(okId(resolvePerson('Hạ', list))).toBe('ha2');
+    // không dấu thì vẫn mơ hồ
+    expect(resolvePerson('Ha', list).status).toBe('ambiguous');
+  });
+  it('M2: hai lối đặt dấu của cùng một chữ (Thuỷ / Thủy) vẫn là mơ hồ, không bị "ưu tiên đúng dấu"', () => {
+    const list = [
+      { id: 'a', displayName: 'Nguyễn Thị Thuỷ' },
+      { id: 'b', displayName: 'Lê Thủy' },
+    ];
+    expect(resolvePerson('Thuỷ', list).status).toBe('ambiguous');
+    expect(resolvePerson('Thủy', list).status).toBe('ambiguous');
   });
   it('khớp nguyên tên đầy đủ thắng khớp từng phần', () => {
     const list = [

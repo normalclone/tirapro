@@ -201,3 +201,33 @@ describe('detectIntent — lệnh hàng loạt (đứng đúng chỗ trong thứ
     else expect(k).toBe(expected);
   });
 });
+
+describe('detectIntent — vòng sửa 1: lệnh hàng loạt không cướp ý định cũ', () => {
+  const stay: [string, Intent['kind']][] = [
+    ['thêm bình luận vào KYHOP-12', 'issue-key'],
+    ['đưa KYHOP-12 vào sprint 5', 'issue-key'],
+    ['xoá KYHOP-12 khỏi sprint 3', 'issue-key'],
+    ['thêm thành viên vào dự án KYHOP', 'help'],
+    ['mời thành viên vào dự án KYHOP', 'help'],
+    ['thêm mọi người vào KYHOP', 'help'],
+    ['thêm tất cả vào KYHOP', 'help'],
+    ['thêm cột vào board KYHOP', 'help'],
+    ['thêm người dùng vào hệ thống', 'help'],
+    ['loại bug khỏi sprint', 'help'],
+    ['xoá tài khoản khỏi hệ thống', 'help'],
+  ];
+  it.each(stay)('%s → %s (không phải bulk-*)', (text, expected) => {
+    expect(kind(text)).toBe(expected);
+  });
+  it('lệnh hàng loạt đúng vẫn nhận, kể cả dạng mới', () => {
+    expect(kind('giao KYHOP-1 cho Linh và KYHOP-2 cho An')).toBe('bulk-assign');
+    expect(kind('giao KYHOP-SUB-11 đến KYHOP-SUB-20 cho An')).toBe('bulk-assign');
+    expect(kind('mời Linh vào KYHOP là Tester')).toBe('bulk-add-member');
+    expect(kind('thêm Linh vào nhóm QA')).toBe('bulk-add-member');
+  });
+  it('detectIntent(…, { bulk: false }) bỏ qua lệnh hàng loạt (đường nhường ý định cũ)', () => {
+    expect(detectIntent('giao KYHOP-1 cho Linh', { bulk: false }).kind).not.toMatch(/^bulk-/);
+    const i = detectIntent('giao KYHOP-1 cho Linh');
+    expect(i.kind === 'bulk-assign' && i.raw).toBe('giao KYHOP-1 cho Linh');
+  });
+});

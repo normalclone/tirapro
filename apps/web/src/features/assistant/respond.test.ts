@@ -328,3 +328,20 @@ describe('khác', () => {
     expect(await run('  ')).toEqual([]);
   });
 });
+
+describe('lệnh hàng loạt không khớp được gì → nhường ý định cũ', () => {
+  it('"thêm Zzz vào ZZZ" (không có người/dự án nào) → trả lời trợ giúp, không phải "Không thấy người"', async () => {
+    const out = await run('thêm Zzz vào ZZZ');
+    expect(allText(out)).not.toContain('Không thấy người');
+    expect(allText(out)).not.toContain('mình chưa làm gì');
+  });
+  it('"giao KYHOP-12 cho Zzz" (mã không có, người không có) → nhường cho tra mã việc', async () => {
+    const out = await run('giao KYHOP-12 cho Zzz', ENV, makeDeps({ getIssue: ok(null) }));
+    expect(allText(out)).toContain('KYHOP-12');
+    expect(allText(out)).not.toContain('người nhận');
+  });
+  it('có khớp một phần (một người) thì vẫn là trả lời hàng loạt', async () => {
+    const out = await run('thêm Linh vào ZZZ');
+    expect(allText(out)).toContain('Không thấy dự án “ZZZ”');
+  });
+});

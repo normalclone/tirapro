@@ -1,8 +1,10 @@
 import type { Block } from './blocks';
 import type { BulkIntent } from './bulkParse';
 import {
+  approximateMatches,
   planBulk,
   planNeedsChoice,
+  planResolvedNothing,
   targetProjects,
   type BulkActor,
   type BulkAssignPlan,
@@ -18,8 +20,11 @@ import type { AssistantDeps, RespondEnv } from './respond';
 
 const NO_ACTOR: BulkActor = { id: '', displayName: '' };
 
+const APPROX = ' (gần đúng — kiểm tra lại)';
 const names = <T extends { displayName: string }>(list: Resolution<T>[]): string =>
-  list.flatMap((r) => (r.status === 'ok' ? [r.value.displayName] : [])).join(', ');
+  list
+    .flatMap((r) => (r.status === 'ok' ? [`${r.value.displayName}${r.approx ? APPROX : ''}`] : []))
+    .join(', ');
 
 /** Dòng cho một kết quả khớp chưa chắc chắn (mơ hồ / không thấy) — thẻ yêu cầu chọn. */
 function unresolvedLines(
@@ -71,6 +76,19 @@ function assignLines(plan: BulkAssignPlan): string[] {
 
 /** Tóm tắt kế hoạch thành các dòng chữ (thuần hàm — dễ test). */
 export function describePlan(plan: BulkPlan): string[] {
+  const lines = describeCore(plan);
+  const approx = approximateMatches(plan);
+  if (approx.length > 0) {
+    const label = (r: Resolution<unknown>): string => {
+      const v = (r as { value?: { displayName?: string; name?: string; key?: string } }).value;
+      return `“${r.query}” → ${v?.displayName ?? (v?.key ? `${v.key} (${v.name})` : v?.name)}`;
+    };
+    lines.push(`Khớp gần đúng, hãy kiểm tra lại: ${approx.map(label).join('; ')}.`);
+  }
+  return lines;
+}
+
+function describeCore(plan: BulkPlan): string[] {
   if (plan.kind === 'bulk-assign') return [...assignLines(plan), ...plan.problems];
   const lines: string[] = [];
   const projects = targetProjects(plan);
@@ -113,8 +131,10 @@ export async function bulkReply(
   intent: BulkIntent,
   env: RespondEnv,
   deps: AssistantDeps,
-): Promise<Block[]> {
+): Promise<Block[] | null> {
   const plan = await planBulk(intent, env, deps, env.actor ?? NO_ACTOR);
+  // Không khớp được gì + biết câu gốc → nhường lại ý định cũ (câu thường như "thêm bình luận vào KYHOP-12" đừng thành "Không thấy người …").
+  if (intent.raw !== undefined && planResolvedNothing(plan)) return null;
   const lines = describePlan(plan);
   const tail = planNeedsChoice(plan)
     ? 'Còn mục cần chọn lại — mình chưa làm gì.'

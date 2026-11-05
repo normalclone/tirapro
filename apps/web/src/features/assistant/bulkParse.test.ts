@@ -266,9 +266,9 @@ describe('parseBulkAddMember — thêm thành viên', () => {
       role: 'Project Admin',
     });
   });
-  it('động từ khác (add, đưa), lịch sự, đuôi "nhé"', () => {
+  it('động từ khác (add, mời), lịch sự, đuôi "nhé"', () => {
     expect(parseBulkAddMember('add Linh vào KYHOP')?.people).toEqual(['Linh']);
-    expect(parseBulkAddMember('đưa Linh vào KYHOP nhé')?.targets.refs).toEqual(['KYHOP']);
+    expect(parseBulkAddMember('mời Linh vào KYHOP nhé')?.targets.refs).toEqual(['KYHOP']);
     expect(parseBulkAddMember('giúp mình thêm Linh vào KYHOP')?.people).toEqual(['Linh']);
   });
   it('hai nhóm dự án trong một lệnh → báo lỗi (chỉ một nhóm mỗi lệnh)', () => {
@@ -332,5 +332,160 @@ describe('mã Epic là phạm vi lọc, không phải việc cần giao', () => 
       kind: 'keys',
       keys: ['DEMO-EPIC-1'],
     });
+  });
+});
+
+describe('fix round 1 — H1/H2: một "cho" không bao giờ lọt vào phần "việc nào"', () => {
+  const pairs = (t: string) => parseBulkAssign(t)!.pairs;
+  it('H1: "A cho Linh và B cho An" / "… rồi …" → hai cặp, không ai bị mất', () => {
+    expect(pairs('giao KYHOP-1 cho Linh và KYHOP-2 cho An')).toEqual([
+      { key: 'KYHOP-1', person: 'Linh' },
+      { key: 'KYHOP-2', person: 'An' },
+    ]);
+    expect(pairs('giao KYHOP-1 cho Linh rồi KYHOP-2 cho An')).toEqual([
+      { key: 'KYHOP-1', person: 'Linh' },
+      { key: 'KYHOP-2', person: 'An' },
+    ]);
+    expect(pairs('giao KYHOP-1 cho Linh sau đó KYHOP-2 cho An')?.map((p) => p.person)).toEqual([
+      'Linh',
+      'An',
+    ]);
+    expect(
+      pairs('giao KYHOP-1 cho Linh, KYHOP-2 cho An; KYHOP-3 cho Hà')?.map((p) => p.person),
+    ).toEqual(['Linh', 'An', 'Hà']);
+  });
+  it('H2: dạng trộn "A, B cho An, C cho Linh" → A,B của An; C của Linh', () => {
+    expect(pairs('giao KYHOP-SUB-11, KYHOP-SUB-12 cho An, KYHOP-SUB-13 cho Linh')).toEqual([
+      { key: 'KYHOP-SUB-11', person: 'An' },
+      { key: 'KYHOP-SUB-12', person: 'An' },
+      { key: 'KYHOP-SUB-13', person: 'Linh' },
+    ]);
+    // dải + số trần kế thừa tiền tố qua các cặp
+    expect(
+      pairs('giao KYHOP-SUB-11..12 cho An, 13 cho Linh')?.map((p) => `${p.key}:${p.person}`),
+    ).toEqual(['KYHOP-SUB-11:An', 'KYHOP-SUB-12:An', 'KYHOP-SUB-13:Linh']);
+  });
+  it('cấu trúc không rõ (nhiều người một cặp, "cho" liền nhau, thiếu việc) → pairs null + lỗi, KHÔNG đoán', () => {
+    for (const t of [
+      'giao KYHOP-1 cho An cho Linh',
+      'giao KYHOP-1 cho Thuỷ và Linh, KYHOP-2 cho An',
+      'giao KYHOP-1 cho An, Linh, KYHOP-2 cho Bình',
+      'giao KYHOP-1 cho An, các việc khác cho Linh',
+    ]) {
+      const r = parseBulkAssign(t)!;
+      expect(r.pairs, t).toBeNull();
+      expect(r.selector, t).toBeNull();
+      expect(r.people, t).toEqual([]);
+      expect(r.problems.join(' '), t).toMatch(/cặp việc/);
+    }
+  });
+  it('bộ lọc có chữ "cho" nhưng không có mã/số vẫn là một lệnh một "cho" (lấy "cho" cuối)', () => {
+    const r = parseBulkAssign('giao các việc dành cho QA cho Linh')!;
+    expect(r.people).toEqual(['Linh']);
+    expect(r.pairs).toBeNull();
+  });
+});
+
+describe('fix round 1 — M1: số trần chỉ khi nối trực tiếp vào mục trước', () => {
+  it('số lạc không bị thêm vào danh sách', () => {
+    expect(expandKeys('KYHOP-SUB-11 và KYHOP-SUB-12 trước ngày 15').keys).toEqual([
+      'KYHOP-SUB-11',
+      'KYHOP-SUB-12',
+    ]);
+    expect(expandKeys('KYHOP-1 (sprint 5)').keys).toEqual(['KYHOP-1']);
+    expect(expandKeys('KYHOP-SUB-11, 12 và 3 việc khác').keys).toEqual([
+      'KYHOP-SUB-11',
+      'KYHOP-SUB-12',
+    ]);
+    expect(
+      parseBulkAssign('giao KYHOP-SUB-11 và KYHOP-SUB-12 trước ngày 15 cho Linh')!.selector,
+    ).toEqual({
+      kind: 'keys',
+      keys: ['KYHOP-SUB-11', 'KYHOP-SUB-12'],
+    });
+  });
+  it('số nối bằng , ; và vẫn nhận', () => {
+    expect(expandKeys('KYHOP-SUB-11, 12; 13 và 14').keys).toEqual([
+      'KYHOP-SUB-11',
+      'KYHOP-SUB-12',
+      'KYHOP-SUB-13',
+      'KYHOP-SUB-14',
+    ]);
+    expect(expandKeys('KYHOP-SUB-11 và 12..14').keys).toHaveLength(4);
+  });
+});
+
+describe('fix round 1 — L3: dải bằng "đến" / "->" / mã đầy đủ hai đầu', () => {
+  it('đến, tới, ->, →, mã lặp tiền tố', () => {
+    const eleven20 = Array.from({ length: 10 }, (_, i) => `KYHOP-SUB-${11 + i}`);
+    expect(expandKeys('KYHOP-SUB-11 đến KYHOP-SUB-20').keys).toEqual(eleven20);
+    expect(expandKeys('KYHOP-SUB-11 -> KYHOP-SUB-20').keys).toEqual(eleven20);
+    expect(expandKeys('KYHOP-SUB-11 → 20').keys).toEqual(eleven20);
+    expect(expandKeys('KYHOP-SUB-11 tới 20').keys).toEqual(eleven20);
+    expect(expandKeys('11 -> 20', 'KYHOP-SUB-').keys).toEqual(eleven20);
+    expect(parseBulkAssign('giao KYHOP-SUB-11 đến KYHOP-SUB-13 cho An')!.selector).toEqual({
+      kind: 'keys',
+      keys: ['KYHOP-SUB-11', 'KYHOP-SUB-12', 'KYHOP-SUB-13'],
+    });
+  });
+});
+
+describe('fix round 1 — M3: không cướp ý định cũ', () => {
+  const none = [
+    'thêm bình luận vào KYHOP-12',
+    'thêm nhãn vào KYHOP-12',
+    'thêm label bug vào KYHOP-12',
+    'đưa KYHOP-12 vào sprint 5',
+    'xoá KYHOP-12 khỏi sprint 3',
+    'thêm cột vào board KYHOP',
+    'thêm người dùng vào hệ thống',
+    'loại bug khỏi sprint',
+    'xoá tài khoản khỏi hệ thống',
+    'thêm thành viên vào dự án KYHOP',
+    'mời thành viên vào dự án KYHOP',
+    'thêm mọi người vào KYHOP',
+    'thêm tất cả vào KYHOP',
+    'thêm KYHOP-12 vào KYHOP',
+  ];
+  it.each(none)('%s → không phải lệnh hàng loạt', (t) => {
+    expect(parseBulkCommand(t)).toBeNull();
+  });
+  it('"mời" phải có dấu ("mới"/"mọi" không phải động từ); "đưa" không còn là động từ', () => {
+    expect(parseBulkAddMember('mời Linh vào KYHOP')?.people).toEqual(['Linh']);
+    expect(parseBulkAddMember('moi Linh vào KYHOP')).toBeNull();
+    expect(parseBulkAddMember('mới Linh vào KYHOP')).toBeNull();
+    expect(parseBulkAddMember('đưa Linh vào KYHOP')).toBeNull();
+  });
+  it('tên người trùng âm với danh từ chung (Nhân, Bằng) vẫn là người', () => {
+    expect(parseBulkAddMember('thêm Nhân vào KYHOP')?.people).toEqual(['Nhân']);
+    expect(parseBulkAddMember('thêm Bằng vào KYHOP')?.people).toEqual(['Bằng']);
+    expect(parseBulkRemoveMember('gỡ Nhân khỏi KYHOP')?.people).toEqual(['Nhân']);
+  });
+});
+
+describe('fix round 1 — L4: vai trò "là X", nhóm trần có thể là team', () => {
+  it('"vào KYHOP là Tester" → vai trò Tester', () => {
+    const r = parseBulkAddMember('thêm Linh vào KYHOP là Tester')!;
+    expect(r.targets.refs).toEqual(['KYHOP']);
+    expect(r.role).toBe('Tester');
+    expect(parseBulkAddMember('thêm Linh, An vào KYHOP, LLTT là Project Admin')?.role).toBe(
+      'Project Admin',
+    );
+  });
+  it('"nhóm QA" trần → groupLoose; "nhóm QA của tôi" / "mọi dự án nhóm QA" → rõ ràng', () => {
+    expect(parseBulkAddMember('thêm Linh vào nhóm QA')!.targets).toEqual({
+      refs: [],
+      group: 'QA',
+      groupLoose: true,
+    });
+    expect(parseBulkAddMember('thêm Linh vào nhóm QA của tôi')!.targets).toEqual({
+      refs: [],
+      group: 'QA',
+    });
+    expect(parseBulkAddMember('thêm Linh vào mọi dự án nhóm QA')!.targets).toEqual({
+      refs: [],
+      group: 'QA',
+    });
+    expect(parseBulkRemoveMember('gỡ Linh khỏi nhóm QA')!.targets.groupLoose).toBe(true);
   });
 });

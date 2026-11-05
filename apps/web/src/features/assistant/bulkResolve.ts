@@ -6,7 +6,8 @@ import { normalizeVi } from '@/lib/text';
  * xem trước BẮT người dùng chọn (không bao giờ đoán).
  */
 export type Resolution<T> =
-  | { status: 'ok'; query: string; value: T }
+  /** `approx` = khớp GẦN ĐÚNG (chỉ một phần tên, hoặc tiền tố): thẻ xem trước phải đánh dấu "kiểm tra lại". */
+  | { status: 'ok'; query: string; value: T; approx?: true }
   | { status: 'ambiguous'; query: string; options: T[] }
   | { status: 'none'; query: string };
 
@@ -50,11 +51,53 @@ interface Candidate<T> {
   exact: string[];
   /** Chữ tách từ để khớp từng từ (tên). */
   words: string[];
+  /**
+   * Từ "lõi" của tên người: từ cuối (tên gọi), thêm từ đầu khi tên chỉ có 2 từ (thứ tự họ/tên không biết trước). Khớp từng-từ
+   * chỉ coi là chắc khi người gõ nhắc một từ lõi — "Văn" trong "Nguyễn Văn An" chỉ là gần đúng. Không có = luôn gần đúng.
+   */
+  core?: string[];
+  /** Nguyên văn CÓ DẤU của tên đầy đủ (chuẩn hoá dấu thanh) — để ưu tiên khớp đúng dấu khi người gõ có dấu. */
+  accented?: string;
 }
 
+/** Các nguyên âm có dấu thanh, theo thứ tự: không dấu, huyền, sắc, hỏi, ngã, nặng. */
+const TONES: Record<string, string> = {
+  a: 'aàáảãạ',
+  o: 'oòóỏõọ',
+  e: 'eèéẻẽẹ',
+  u: 'uùúủũụ',
+  y: 'yỳýỷỹỵ',
+};
+
 /**
- * Bậc 1 khớp nguyên (tên đầy đủ/email/mã) · bậc 2 mọi từ người gõ là TỪ NGUYÊN của tên · bậc 3 mọi từ là TIỀN TỐ của một từ.
- * Dừng ở bậc đầu tiên có ứng viên; ≥ 2 ứng viên cùng bậc → mơ hồ.
+ * Chuẩn hoá vị trí dấu thanh ("Thuỷ" = "Thủy", "hoà" = "hòa"): đưa dấu về nguyên âm đầu của oa/oe/uy. Dùng để so sánh CÓ DẤU mà
+ * không coi hai lối đặt dấu của cùng một chữ là khác nhau.
+ */
+function canonTone(s: string): string {
+  let out = s.toLowerCase().normalize('NFC');
+  for (let k = 1; k < 6; k++) {
+    out = out
+      .replaceAll(`o${TONES.a![k]}`, `${TONES.o![k]}a`)
+      .replaceAll(`o${TONES.e![k]}`, `${TONES.o![k]}e`)
+      .replaceAll(`u${TONES.y![k]}`, `${TONES.u![k]}y`);
+  }
+  return out;
+}
+const coreWords = (ws: string[]): string[] =>
+  ws.length === 2 ? ws : ws.length > 0 ? [ws[ws.length - 1]!] : [];
+const accentedTokens = (s: string): string[] =>
+  canonTone(s)
+    .split(/[\s.,;:()"'“”‘’@]+/)
+    .filter(Boolean);
+
+/** Tối thiểu số ký tự của một từ gõ dở (tiền tố) để được coi là khớp. Từ khớp NGUYÊN từ thì không bị giới hạn. */
+const MIN_PREFIX = 3;
+
+/**
+ * Bậc 1 khớp nguyên (tên đầy đủ/email/mã) · bậc 2 mọi từ người gõ là TỪ NGUYÊN của tên · bậc 3 mọi từ là TIỀN TỐ của một từ
+ * (≥ 3 ký tự, và với người phải có từ khớp tiền tố của TÊN GỌI). Dừng ở bậc đầu tiên có ứng viên; ≥ 2 ứng viên cùng bậc →
+ * mơ hồ — trừ khi người gõ có dấu và đúng MỘT ứng viên khớp đúng dấu ("Hà" khi có cả Hà và Hạ). Chỉ bậc 1 (và bậc 2 có nhắc
+ * từ lõi) là chắc chắn; còn lại `ok` kèm `approx`.
  */
 function matchTiers<T>(
   query: string,
@@ -66,27 +109,50 @@ function matchTiers<T>(
   const qTokens = tokensOf(q);
   const empty: Resolution<T> = { status: 'none', query };
   if (qTokens.length === 0) return empty;
-  const pick = (hits: T[]): Resolution<T> | null => {
-    const uniq = hits.filter((h, i) => hits.findIndex((o) => same(o, h)) === i);
+  const qAcc = accentedTokens(q);
+  const hasAccent = qAcc.join(' ') !== qTokens.join(' ');
+  const pick = (
+    hits: Candidate<T>[],
+    approx: (c: Candidate<T>) => boolean,
+    accentOk: (c: Candidate<T>) => boolean,
+  ): Resolution<T> | null => {
+    let uniq = hits.filter((h, i) => hits.findIndex((o) => same(o.item, h.item)) === i);
+    if (uniq.length > 1 && hasAccent) {
+      const narrowed = uniq.filter(accentOk);
+      if (narrowed.length === 1) uniq = narrowed;
+    }
     if (uniq.length === 0) return null;
-    return uniq.length === 1
-      ? { status: 'ok', query, value: uniq[0]! }
-      : { status: 'ambiguous', query, options: uniq };
+    if (uniq.length > 1) return { status: 'ambiguous', query, options: uniq.map((u) => u.item) };
+    const only = uniq[0]!;
+    return approx(only)
+      ? { status: 'ok', query, value: only.item, approx: true }
+      : { status: 'ok', query, value: only.item };
   };
   const emailQuery = q.includes('@') ? q.toLowerCase() : null;
-  const tier1 = cands.filter((c) =>
-    emailQuery ? c.exact.includes(emailQuery) : c.exact.includes(qFlat),
+  const r1 = pick(
+    cands.filter((c) => (emailQuery ? c.exact.includes(emailQuery) : c.exact.includes(qFlat))),
+    () => false,
+    (c) => c.accented === canonTone(q) || c.accented === qAcc.join(' '),
   );
-  const r1 = pick(tier1.map((c) => c.item));
   if (r1) return r1;
   const r2 = pick(
-    cands.filter((c) => qTokens.every((t) => c.words.includes(t))).map((c) => c.item),
+    cands.filter((c) => qTokens.every((t) => c.words.includes(t))),
+    (c) => !c.core || !qTokens.some((t) => c.core!.includes(t)),
+    (c) => qAcc.every((t) => accentedTokens(c.accented ?? '').includes(t)),
   );
   if (r2) return r2;
   const r3 = pick(
-    cands
-      .filter((c) => qTokens.every((t) => c.words.some((w) => w.startsWith(t))))
-      .map((c) => c.item),
+    cands.filter(
+      (c) =>
+        qTokens.every(
+          (t) =>
+            c.words.includes(t) || (t.length >= MIN_PREFIX && c.words.some((w) => w.startsWith(t))),
+        ) &&
+        (!c.core ||
+          qTokens.some((t) => t.length >= MIN_PREFIX && c.core!.some((w) => w.startsWith(t)))),
+    ),
+    () => true,
+    () => false,
   );
   return r3 ?? empty;
 }
@@ -98,6 +164,8 @@ export function resolvePerson(query: string, people: readonly PersonRef[]): Reso
       item: p,
       exact: [flat(p.displayName), ...(p.email ? [p.email.toLowerCase()] : [])],
       words: tokensOf(p.displayName),
+      core: coreWords(tokensOf(p.displayName)),
+      accented: accentedTokens(p.displayName).join(' '),
     })),
     (a, b) => a.id === b.id,
   );
@@ -113,6 +181,7 @@ export function resolveProject(
       item: p,
       exact: [flat(p.key), flat(p.name)],
       words: [flat(p.key), ...tokensOf(p.name)],
+      accented: accentedTokens(p.name).join(' '),
     })),
     (a, b) => a.id === b.id,
   );
@@ -125,6 +194,7 @@ export function resolveTeam(query: string, teams: readonly TeamRef[]): Resolutio
       item: t,
       exact: [flat(t.name), ...(t.key ? [flat(t.key)] : [])],
       words: tokensOf(t.name),
+      accented: accentedTokens(t.name).join(' '),
     })),
     (a, b) => a.id === b.id,
   );
@@ -133,7 +203,12 @@ export function resolveTeam(query: string, teams: readonly TeamRef[]): Resolutio
 export function resolveGroup(query: string, groups: readonly GroupRef[]): Resolution<GroupRef> {
   return matchTiers(
     query,
-    groups.map((g) => ({ item: g, exact: [flat(g.name)], words: tokensOf(g.name) })),
+    groups.map((g) => ({
+      item: g,
+      exact: [flat(g.name)],
+      words: tokensOf(g.name),
+      accented: accentedTokens(g.name).join(' '),
+    })),
     (a, b) => a.id === b.id,
   );
 }
@@ -141,7 +216,12 @@ export function resolveGroup(query: string, groups: readonly GroupRef[]): Resolu
 export function resolveRole(query: string, roles: readonly RoleRef[]): Resolution<RoleRef> {
   return matchTiers(
     query,
-    roles.map((r) => ({ item: r, exact: [flat(r.name)], words: tokensOf(r.name) })),
+    roles.map((r) => ({
+      item: r,
+      exact: [flat(r.name)],
+      words: tokensOf(r.name),
+      accented: accentedTokens(r.name).join(' '),
+    })),
     (a, b) => a.id === b.id,
   );
 }

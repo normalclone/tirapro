@@ -18,7 +18,7 @@ const text = async (cmd: string, deps = makeDeps(issues(1, 2))) => {
     deps,
   );
   expect(b).toHaveLength(1);
-  return b[0]!.type === 'text' ? b[0]!.text : '';
+  return b![0]!.type === 'text' ? b![0]!.text : '';
 };
 
 describe('bulkReply (tóm tắt kế hoạch — chưa ghi gì)', () => {
@@ -64,7 +64,7 @@ describe('bulkReply (tóm tắt kế hoạch — chưa ghi gì)', () => {
       ENV,
       makeDeps(issues(1)),
     );
-    expect(b[0]!.type).toBe('text');
+    expect(b![0]!.type).toBe('text');
   });
   it('describePlan là hàm thuần trên kế hoạch (không cần deps)', async () => {
     const plan = await planBulk(
@@ -76,5 +76,28 @@ describe('bulkReply (tóm tắt kế hoạch — chưa ghi gì)', () => {
     expect(describePlan(plan)[0]).toBe('Giao 1 việc cho Phạm Linh (tất cả cho một người).');
     const spy = vi.fn();
     expect(spy).not.toHaveBeenCalled();
+  });
+});
+
+describe('fix round 1 — bulkReply: khớp gần đúng và nhường ý định cũ', () => {
+  it('khớp gần đúng được đánh dấu "kiểm tra lại" kèm người đã chọn', async () => {
+    const t = await text('giao DEMO-SUB-1 cho Hươ');
+    expect(t).toContain('Hương Đỗ (gần đúng — kiểm tra lại)');
+    expect(t).toContain('Khớp gần đúng, hãy kiểm tra lại: “Hươ” → Hương Đỗ');
+  });
+  it('khớp tên đầy đủ thì không có dấu gần đúng', async () => {
+    expect(await text('giao DEMO-SUB-1 cho Linh')).not.toContain('gần đúng');
+  });
+  it('có raw + không khớp gì → null (respond nhường ý định cũ); không raw thì vẫn trả lời', async () => {
+    const intent = { ...parseBulkAddMember('thêm Zzz vào ZZZ')!, raw: 'thêm Zzz vào ZZZ' };
+    expect(await bulkReply(intent, ENV, makeDeps())).toBeNull();
+    expect(
+      await bulkReply(parseBulkAddMember('thêm Zzz vào ZZZ')!, ENV, makeDeps()),
+    ).not.toBeNull();
+  });
+  it('lỗi cú pháp (cặp sai cấu trúc) → nói rõ, "mình chưa làm gì"', async () => {
+    const t = await text('giao DEMO-SUB-1 cho An cho Linh');
+    expect(t).toContain('cặp việc');
+    expect(t).toContain('mình chưa làm gì');
   });
 });

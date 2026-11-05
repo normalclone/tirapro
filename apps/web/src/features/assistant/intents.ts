@@ -210,7 +210,7 @@ function parseSearch(text: string): string | null {
 }
 
 /** Nhận diện ý định của một câu người dùng gõ. Thứ tự các luật là có chủ ý (lệnh cụ thể trước, hỏi chung sau). */
-export function detectIntent(raw: string): Intent {
+export function detectIntent(raw: string, opts: { bulk?: boolean } = {}): Intent {
   const text = raw.trim();
   if (!text) return { kind: 'empty' };
   const n = fold(text).replace(/\s+/g, ' ').trim();
@@ -227,7 +227,7 @@ export function detectIntent(raw: string): Intent {
 
   // Thao tác hàng loạt ("giao KYHOP-SUB-11, 12 cho Thuỷ", "thêm Linh vào KYHOP"): sau lệnh tạo việc (động từ "thêm" đi với
   // danh từ việc là tạo việc) và trước các luật danh sách ("giao cho tôi").
-  if (!howto) {
+  if (!howto && opts.bulk !== false) {
     const bulk = parseBulkCommand(text);
     if (bulk) return bulk;
   }

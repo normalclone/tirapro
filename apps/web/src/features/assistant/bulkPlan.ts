@@ -62,6 +62,11 @@ export interface BulkMemberPlanBase {
   group: Resolution<GroupRef> | null;
   /** Dự án của nhóm mà người gõ XEM ĐƯỢC (nhóm ∩ dự án đang hoạt động trong tổ chức), bỏ dự án đã lưu trữ. */
   groupProjects: ProjectRef[];
+  /**
+   * Người gõ trần "nhóm QA" mà vừa có nhóm dự án của họ vừa có team của tổ chức cùng tên → phải hỏi lại (thêm vào MỌI dự án
+   * của nhóm khác hẳn việc thêm team). null = không nhập nhằng.
+   */
+  groupVsTeam: TeamRef | null;
   problems: string[];
 }
 
@@ -381,11 +386,11 @@ async function findByFilter(
 /* ------------------------------ thêm / gỡ thành viên ------------------------------ */
 
 async function resolveTargets(
-  targets: { refs: string[]; group: string | null },
+  targets: { refs: string[]; group: string | null; groupLoose?: true },
   env: RespondEnv,
   deps: AssistantDeps,
   problems: string[],
-): Promise<Pick<BulkMemberPlanBase, 'projects' | 'group' | 'groupProjects'>> {
+): Promise<Pick<BulkMemberPlanBase, 'projects' | 'group' | 'groupProjects' | 'groupVsTeam'>> {
   const all = env.projects.map(asProject);
   const projects = resolveMany(
     targets.refs,
@@ -398,6 +403,7 @@ async function resolveTargets(
   }
   let group: Resolution<GroupRef> | null = null;
   let groupProjects: ProjectRef[] = [];
+  let groupVsTeam: TeamRef | null = null;
   if (targets.group) {
     const mine = await deps.getMyGroups();
     group = resolveGroup(targets.group, mine);
@@ -405,6 +411,15 @@ async function resolveTargets(
       problems.push(
         `Bạn chưa có nhóm dự án tên “${targets.group}” (chỉ dùng được nhóm của chính bạn).`,
       );
+    if (targets.groupLoose && group.status !== 'none') {
+      const team = resolveTeam(targets.group, await deps.getTeams().catch(() => [] as TeamRef[]));
+      if (team.status === 'ok') {
+        groupVsTeam = team.value;
+        problems.push(
+          `“nhóm ${targets.group}” khớp cả nhóm dự án của bạn lẫn team “${team.value.name}” của tổ chức — hãy nói rõ: “nhóm ${targets.group} của tôi” (mọi dự án của nhóm dự án) hoặc “dự án KYHOP” (từng dự án).`,
+        );
+      }
+    }
     if (group.status === 'ok') {
       const visible = new Map(all.map((p) => [p.id, p]));
       groupProjects = group.value.projects
@@ -416,7 +431,7 @@ async function resolveTargets(
         );
     }
   }
-  return { projects, group, groupProjects };
+  return { projects, group, groupProjects, groupVsTeam };
 }
 
 export async function planBulkAddMember(
@@ -508,7 +523,47 @@ export function planNeedsChoice(plan: BulkPlan): boolean {
       if (plan.role) lists.push(plan.role);
     }
   }
+  if (plan.problems.length > 0) return true; // lỗi cú pháp / dải ngược / không rõ nhóm hay team: phải sửa lệnh trước
+  if (plan.kind !== 'bulk-assign' && plan.groupVsTeam) return true;
   return lists.some((r) => r.status !== 'ok');
+}
+
+/** Mọi khớp `ok` nhưng GẦN ĐÚNG (chỉ một phần tên / tiền tố) — thẻ phải đánh dấu "kiểm tra lại". */
+export function approximateMatches(plan: BulkPlan): Resolution<unknown>[] {
+  const lists: Resolution<unknown>[] = [];
+  if (plan.kind === 'bulk-assign') {
+    lists.push(...plan.people);
+    for (const p of plan.pairs ?? []) lists.push(p.person);
+  } else {
+    lists.push(...plan.people, ...plan.projects);
+    if (plan.group) lists.push(plan.group);
+    if (plan.kind === 'bulk-add-member') {
+      lists.push(...plan.teams);
+      if (plan.role) lists.push(plan.role);
+    }
+  }
+  return lists.filter((r) => r.status === 'ok' && r.approx === true);
+}
+
+/**
+ * Lệnh không khớp được GÌ cả (không việc, không người, không dự án, không team/nhóm): rất có thể câu thường dùng chữ "thêm … vào"
+ * hay "giao … cho" — `respond` nhường lại ý định cũ thay vì trả lời "Không thấy người …".
+ */
+export function planResolvedNothing(plan: BulkPlan): boolean {
+  const seen = (r: Resolution<unknown>) => r.status !== 'none';
+  if (plan.kind === 'bulk-assign') {
+    return (
+      plan.issues.length === 0 &&
+      !plan.people.some(seen) &&
+      !(plan.pairs ?? []).some((p) => seen(p.person))
+    );
+  }
+  return (
+    !plan.people.some(seen) &&
+    !plan.projects.some(seen) &&
+    !(plan.group && seen(plan.group)) &&
+    !(plan.kind === 'bulk-add-member' && plan.teams.some(seen))
+  );
 }
 
 /** Điểm vào duy nhất cho `respond`: ý định hàng loạt → kế hoạch. */
