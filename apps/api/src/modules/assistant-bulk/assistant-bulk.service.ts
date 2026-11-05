@@ -63,6 +63,20 @@ export class AssistantBulkService {
     return this.rbac.getEffectivePermissions(user.id, organizationId, projectId);
   }
 
+  /** Trong `roleIds`, những vai trò nào mang quyền `project:admin`. */
+  private async projectAdminRoleIds(roleIds: readonly string[]): Promise<Set<string>> {
+    const ids = [...new Set(roleIds)];
+    if (ids.length === 0) return new Set();
+    const rows = await this.prisma.role.findMany({
+      where: {
+        id: { in: ids },
+        permissions: { some: { permission: { key: PERMISSIONS.PROJECT_ADMIN } } },
+      },
+      select: { id: true },
+    });
+    return new Set(rows.map((r) => r.id));
+  }
+
   async assign(
     organizationId: string,
     user: AuthUser,
@@ -99,6 +113,21 @@ export class AssistantBulkService {
         version: issue?.version ?? null,
       });
     };
+    /**
+     * Việc không tồn tại HOẶC ở dự án người gọi không xem được: trả đúng MỘT dạng (mọi trường null) cho cả hai trường hợp, để
+     * không dò được khoá/người phụ trách/version của việc ở dự án riêng tư bằng id đoán/giữ lại.
+     */
+    const hide = (row: AssistantBulkAssignRowInput): void => {
+      results.set(row.issueId, {
+        issueId: row.issueId,
+        key: null,
+        status: 'skipped',
+        reason: 'Không tìm thấy việc này (sai mã hoặc bạn không có quyền xem).',
+        previousAssigneeId: null,
+        assigneeId: null,
+        version: null,
+      });
+    };
 
     for (const row of rows) {
       if (seen.has(row.issueId)) continue; // dòng trùng: giữ dòng đầu
@@ -106,11 +135,16 @@ export class AssistantBulkService {
       const issue = byId.get(row.issueId);
       const p = issue ? perms.get(issue.projectId) : undefined;
       if (!issue || !p) {
-        skip(row, 'Không tìm thấy việc này (sai mã hoặc bạn không có quyền xem).');
+        hide(row);
         continue;
       }
       if (!p.has(PERMISSIONS.ISSUE_ASSIGN) || !p.has(PERMISSIONS.ISSUE_EDIT)) {
-        skip(row, `Bạn không đủ quyền giao việc ở dự án của ${issue.key}.`);
+        skip(
+          row,
+          !p.has(PERMISSIONS.ISSUE_EDIT) && p.has(PERMISSIONS.ISSUE_EDIT_OWN)
+            ? `Bạn chỉ được sửa việc của mình — không đủ quyền giao việc ở dự án của ${issue.key}.`
+            : `Bạn không đủ quyền giao việc ở dự án của ${issue.key}.`,
+        );
         continue;
       }
       if (issue.assigneeId === row.assigneeId) {
@@ -209,6 +243,12 @@ export class AssistantBulkService {
     const byProject = new Map<string, AssistantBulkMemberRowInput[]>();
     for (const r of rows) byProject.set(r.projectId, [...(byProject.get(r.projectId) ?? []), r]);
     const out = new Map<string, AssistantBulkMemberRowResult>();
+    const orgAdmins = new Map<string, Promise<boolean>>();
+    const orgAdmin = (userId: string): Promise<boolean> => {
+      if (!orgAdmins.has(userId))
+        orgAdmins.set(userId, this.rbac.holdsOrganizationAdmin(userId, organizationId));
+      return orgAdmins.get(userId)!;
+    };
     const keyOf = (r: { projectId: string; userId: string }) => `${r.projectId}\n${r.userId}`;
     const put = (
       r: AssistantBulkMemberRowInput,
@@ -248,6 +288,20 @@ export class AssistantBulkService {
         continue;
       }
       const stateOf = new Map(state.map((m) => [m.user.id, m]));
+      // Quản trị dự án = vai trò mang `project:admin`. Dùng để chặn tự khoá mình / bỏ quản trị viên cuối của dự án riêng tư.
+      const project = await this.prisma.project.findFirst({
+        where: { id: projectId, organizationId, deletedAt: null },
+        select: { isPrivate: true },
+      });
+      const isPrivate = project?.isPrivate === true;
+      const adminRoles = await this.projectAdminRoleIds([
+        ...state.flatMap((m) => m.roles.map((x) => x.id)),
+        ...list.flatMap((r) => r.set ?? []),
+      ]);
+      const holdsAdmin = (roleIds: readonly string[]) => roleIds.some((id) => adminRoles.has(id));
+      const holders = new Set(
+        state.filter((m) => holdsAdmin(m.roles.map((x) => x.id))).map((m) => m.user.id),
+      );
       const seen = new Set<string>();
       for (const r of list) {
         if (seen.has(r.userId)) continue; // dòng trùng: giữ dòng đầu
@@ -284,12 +338,40 @@ export class AssistantBulkService {
           );
           continue;
         }
+        // Mất quyền quản trị dự án? (chỉ khi người này đang giữ quyền đó qua vai trò dự án và sau thay đổi không còn)
+        const before = m ? m.roles.map((x) => x.id) : [];
+        const losesAdmin = holdsAdmin(before) && !(r.set !== null && holdsAdmin(r.set));
+        if (losesAdmin) {
+          const keepsViaOrg = await orgAdmin(r.userId);
+          if (r.userId === user.id && !keepsViaOrg) {
+            put(
+              r,
+              'skipped',
+              current,
+              current,
+              'Bạn đang tự bỏ quyền quản trị của chính mình ở dự án này — hãy nhờ một quản trị viên khác làm.',
+            );
+            continue;
+          }
+          if (isPrivate && holders.size <= 1 && holders.has(r.userId)) {
+            put(
+              r,
+              'skipped',
+              current,
+              current,
+              'Dự án riêng tư này sẽ không còn quản trị viên nào — hãy chỉ định quản trị viên khác trước.',
+            );
+            continue;
+          }
+        }
         try {
           if (r.set === null)
             await this.members.clearProjectOverride(organizationId, projectId, r.userId, user.id);
           else
             await this.members.setProjectRoles(organizationId, projectId, r.userId, r.set, user.id);
           put(r, 'ok', current, r.set);
+          if (r.set !== null && holdsAdmin(r.set)) holders.add(r.userId);
+          else holders.delete(r.userId);
         } catch (e) {
           put(r, 'failed', current, current, reasonOf(e));
         }

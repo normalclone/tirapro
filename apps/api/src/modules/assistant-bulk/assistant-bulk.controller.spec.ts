@@ -74,4 +74,10 @@ describe('schema thao tác hàng loạt', () => {
       false,
     );
   });
+  it('L3: vai trò trùng được gộp trong expect/set (["a","a"] ≡ ["a"])', () => {
+    const r = assistantBulkMembersSchema.parse({
+      rows: [{ projectId: 'p', userId: 'u', expect: ['a', 'a', 'b'], set: ['r', 'r'] }],
+    });
+    expect(r.rows[0]).toMatchObject({ expect: ['a', 'b'], set: ['r'] });
+  });
 });

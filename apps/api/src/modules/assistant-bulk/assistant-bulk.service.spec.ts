@@ -323,6 +323,12 @@ interface MemberState {
   roles: { id: string }[];
 }
 function setupMembers(opts: {
+  /** Dự án riêng tư? (mặc định công khai) */
+  isPrivate?: boolean;
+  /** Id vai trò mang `project:admin` (mặc định: 'admin'). */
+  adminRoles?: string[];
+  /** Người giữ organization:admin. */
+  orgAdmins?: string[];
   perms?: Record<string, string[]>;
   hidden?: string[];
   state?: Record<string, MemberState[]>;
@@ -337,6 +343,24 @@ function setupMembers(opts: {
       Promise.resolve(new Set(opts.perms?.[projectId] ?? [])),
     ),
   };
+  const prisma = {
+    project: { findFirst: vi.fn(() => Promise.resolve({ isPrivate: opts.isPrivate === true })) },
+    role: {
+      findMany: vi.fn((args: { where: { id: { in: string[] } } }) =>
+        Promise.resolve(
+          args.where.id.in
+            .filter((i) => (opts.adminRoles ?? ['admin']).includes(i))
+            .map((id) => ({ id })),
+        ),
+      ),
+    },
+  };
+  const rbacFull = {
+    ...rbac,
+    holdsOrganizationAdmin: vi.fn((u: string) =>
+      Promise.resolve((opts.orgAdmins ?? []).includes(u)),
+    ),
+  };
   const members = {
     listProject: vi.fn((_o: string, projectId: string) =>
       Promise.resolve(opts.state?.[projectId] ?? []),
@@ -349,7 +373,12 @@ function setupMembers(opts: {
     ),
   };
   return {
-    service: new AssistantBulkService({} as never, rbac as never, {} as never, members as never),
+    service: new AssistantBulkService(
+      prisma as never,
+      rbacFull as never,
+      {} as never,
+      members as never,
+    ),
     members,
   };
 }
@@ -466,5 +495,155 @@ describe('AssistantBulkService.setMembers — quyền project:admin từng dự 
     ]);
     expect(second.members.clearProjectOverride).toHaveBeenCalledWith('o1', 'pA', 'u1', 'me'); // trước đó chưa có vai trò riêng
     expect(second.members.setProjectRoles).not.toHaveBeenCalled();
+  });
+});
+
+describe('fix round 1 — H1: việc ẩn / không tồn tại có CÙNG MỘT dạng trả về', () => {
+  it('việc ở dự án người gọi không xem được và id không tồn tại: mọi trường null, giống hệt nhau (chỉ khác issueId)', async () => {
+    const { service, bulkUpdate } = setup({
+      issues: [
+        issue(7, { projectId: 'pHidden', assigneeId: 'uBoss', version: 9, key: 'SECRET-TASK-7' }),
+      ],
+      perms: { pHidden: ALL_ISSUE },
+      hidden: ['pHidden'],
+    });
+    const res = await service.assign('o1', user(), [
+      { issueId: 'i7', version: 9, assigneeId: 'u1' },
+      { issueId: 'ghost', version: 9, assigneeId: 'u1' },
+    ]);
+    const [hidden, ghost] = res.results;
+    expect(hidden).toEqual({ ...ghost, issueId: 'i7' });
+    expect(hidden).toMatchObject({
+      key: null,
+      previousAssigneeId: null,
+      assigneeId: null,
+      version: null,
+      status: 'skipped',
+    });
+    expect(JSON.stringify(res)).not.toContain('SECRET');
+    expect(JSON.stringify(res)).not.toContain('uBoss');
+    expect(bulkUpdate).not.toHaveBeenCalled();
+  });
+  it('việc xem được nhưng thiếu quyền vẫn trả khoá của chính nó (đã xem được thì không lộ gì thêm)', async () => {
+    const { service } = setup({ issues: [issue(1)], perms: { pA: [PERMISSIONS.ISSUE_EDIT] } });
+    const res = await service.assign('o1', user(), [
+      { issueId: 'i1', version: 1, assigneeId: 'u1' },
+    ]);
+    expect(res.results[0]).toMatchObject({ key: 'DEMO-1', status: 'skipped' });
+  });
+});
+
+describe('fix round 1 — L5: chỉ có issue:edit:own', () => {
+  it('lý do nói rõ "chỉ được sửa việc của mình"', async () => {
+    const { service, bulkUpdate } = setup({
+      issues: [issue(1), issue(2)],
+      perms: { pA: [PERMISSIONS.ISSUE_ASSIGN, PERMISSIONS.ISSUE_EDIT_OWN] },
+    });
+    const res = await service.assign('o1', user(), [
+      { issueId: 'i1', version: 1, assigneeId: 'u1' },
+      { issueId: 'i2', version: 1, assigneeId: 'u1' },
+    ]);
+    expect(res.results.every((r) => r.status === 'skipped')).toBe(true);
+    expect(res.results[0]!.reason).toBe(
+      'Bạn chỉ được sửa việc của mình — không đủ quyền giao việc ở dự án của DEMO-1.',
+    );
+    expect(bulkUpdate).not.toHaveBeenCalled();
+  });
+});
+
+describe('fix round 1 — M1: không tự khoá mình, không bỏ quản trị viên cuối của dự án riêng tư', () => {
+  const mem = (id: string, ...roles: string[]): MemberState => ({
+    user: { id },
+    isOverride: true,
+    roles: roles.map((r) => ({ id: r })),
+  });
+  const ME = user({ id: 'me' });
+
+  it('tự bỏ / tự hạ quyền quản trị của chính mình → bị chặn, không gọi MembersService; người khác thì vẫn làm được', async () => {
+    const { service, members } = setupMembers({
+      perms: ADMIN,
+      state: { pA: [mem('me', 'admin'), mem('u2', 'admin'), mem('u3', 'dev')] },
+    });
+    const res = await service.setMembers('o1', ME, [
+      { projectId: 'pA', userId: 'me', expect: ['admin'], set: ['tester'] }, // hạ chính mình
+      { projectId: 'pA', userId: 'me', expect: ['admin'], set: null }, // trùng dòng: bỏ
+      { projectId: 'pA', userId: 'u2', expect: ['admin'], set: ['tester'] }, // hạ người khác: được (còn me)
+    ]);
+    expect(res.results.map((r) => [r.userId, r.status])).toEqual([
+      ['me', 'skipped'],
+      ['u2', 'ok'],
+    ]);
+    expect(res.results[0]!.reason).toMatch(
+      /tự bỏ quyền quản trị của chính mình.*quản trị viên khác/,
+    );
+    expect(members.setProjectRoles).toHaveBeenCalledTimes(1);
+    expect(members.setProjectRoles).toHaveBeenCalledWith('o1', 'pA', 'u2', ['tester'], 'me');
+    expect(members.clearProjectOverride).not.toHaveBeenCalled();
+  });
+
+  it('gỡ chính mình bằng "gỡ" (clear) cũng bị chặn; giữ nguyên vai trò quản trị thì không bị chặn', async () => {
+    const { service, members } = setupMembers({
+      perms: ADMIN,
+      state: { pA: [mem('me', 'admin', 'tester')] },
+    });
+    const res = await service.setMembers('o1', ME, [
+      { projectId: 'pA', userId: 'me', expect: ['admin', 'tester'], set: null },
+    ]);
+    expect(res.results[0]!.status).toBe('skipped');
+    expect(members.clearProjectOverride).not.toHaveBeenCalled();
+    const keep = await service.setMembers('o1', ME, [
+      { projectId: 'pA', userId: 'me', expect: ['admin', 'tester'], set: ['admin', 'dev'] },
+    ]);
+    expect(keep.results[0]!.status).toBe('ok');
+  });
+
+  it('quản trị tổ chức tự đổi vai trò dự án thì không mất quyền (vẫn quản trị qua tổ chức) → không chặn', async () => {
+    const { service } = setupMembers({
+      perms: ADMIN,
+      orgAdmins: ['me'],
+      state: { pA: [mem('me', 'admin')] },
+    });
+    const res = await service.setMembers('o1', ME, [
+      { projectId: 'pA', userId: 'me', expect: ['admin'], set: ['tester'] },
+    ]);
+    expect(res.results[0]!.status).toBe('ok');
+  });
+
+  it('DỰ ÁN RIÊNG TƯ: không để mất quản trị viên cuối (kể cả cộng dồn nhiều dòng); công khai thì không áp luật này', async () => {
+    const state = { pA: [mem('u2', 'admin'), mem('u3', 'admin'), mem('u4', 'dev')] };
+    const priv = setupMembers({ perms: ADMIN, isPrivate: true, state });
+    const res = await priv.service.setMembers('o1', ME, [
+      { projectId: 'pA', userId: 'u2', expect: ['admin'], set: ['tester'] }, // còn u3 → được
+      { projectId: 'pA', userId: 'u3', expect: ['admin'], set: null }, // u3 là người cuối → chặn
+      { projectId: 'pA', userId: 'u4', expect: ['dev'], set: ['admin'] }, // thêm quản trị mới → được
+    ]);
+    expect(res.results.map((r) => [r.userId, r.status])).toEqual([
+      ['u2', 'ok'],
+      ['u3', 'skipped'],
+      ['u4', 'ok'],
+    ]);
+    expect(res.results[1]!.reason).toMatch(/không còn quản trị viên nào/);
+    const pub = setupMembers({
+      perms: ADMIN,
+      isPrivate: false,
+      state: { pA: [mem('u2', 'admin')] },
+    });
+    const ok = await pub.service.setMembers('o1', ME, [
+      { projectId: 'pA', userId: 'u2', expect: ['admin'], set: null },
+    ]);
+    expect(ok.results[0]!.status).toBe('ok');
+  });
+
+  it('thứ tự cộng dồn: hạ hai quản trị viên cuối liên tiếp → dòng thứ hai bị chặn', async () => {
+    const { service } = setupMembers({
+      perms: ADMIN,
+      isPrivate: true,
+      state: { pA: [mem('u2', 'admin'), mem('u3', 'admin')] },
+    });
+    const res = await service.setMembers('o1', ME, [
+      { projectId: 'pA', userId: 'u2', expect: ['admin'], set: ['dev'] },
+      { projectId: 'pA', userId: 'u3', expect: ['admin'], set: ['dev'] },
+    ]);
+    expect(res.results.map((r) => r.status)).toEqual(['ok', 'skipped']);
   });
 });

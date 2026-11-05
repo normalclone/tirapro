@@ -3,7 +3,12 @@ import { z } from 'zod';
 /** Trần số dòng mỗi lệnh (khớp BULK_MAX_ITEMS phía web). */
 export const ASSISTANT_BULK_MAX_ROWS = 200;
 
-const roleIds = z.array(z.string().min(1)).min(1, 'Cần ít nhất 1 vai trò').max(20);
+/** Vai trò: 1..20 mã, TRÙNG được gộp (so bộ vai trò coi `['a','a']` như `['a']`). */
+const roleIds = z
+  .array(z.string().min(1))
+  .min(1, 'Cần ít nhất 1 vai trò')
+  .max(20)
+  .transform((ids) => [...new Set(ids)]);
 
 export const assistantBulkAssignSchema = z.object({
   rows: z
