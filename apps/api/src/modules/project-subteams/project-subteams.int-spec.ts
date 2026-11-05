@@ -291,6 +291,32 @@ describe.skipIf(!DB_URL)('team riêng trong dự án ↔ Postgres thật', () =>
     ).toEqual([a]);
   });
 
+  it('thành viên team bị vô hiệu hoá sau đó vẫn ở lại và không chặn các lần lưu khác; thêm MỚI người bị khoá thì bị từ chối', async () => {
+    const { pid } = await newProject();
+    const t = await svc.create(ORG, pid, { name: 'Khoá', memberIds: [a, b] }, ADMIN);
+    await prisma.user.update({ where: { id: b }, data: { status: 'DEACTIVATED' } });
+    try {
+      // đổi màu / tên (giao diện luôn gửi kèm memberIds hiện có) vẫn lưu được, người bị khoá giữ nguyên
+      const saved = await svc.update(ORG, pid, t.id, { color: '#f00', memberIds: [a, b] }, ADMIN);
+      expect(saved.color).toBe('#f00');
+      expect(saved.members.map((m) => m.id).sort()).toEqual([a, b]);
+      // thêm người khác trong khi b vẫn bị khoá
+      const added = await svc.setMembers(ORG, pid, t.id, [a, b, c], ADMIN);
+      expect(added.members.map((m) => m.id).sort()).toEqual([a, b, c]);
+      // thêm MỚI một người bị khoá → 422; DB không đổi
+      await prisma.user.update({ where: { id: d }, data: { status: 'DEACTIVATED' } });
+      await expect(svc.setMembers(ORG, pid, t.id, [a, b, c, d], ADMIN)).rejects.toMatchObject({
+        status: 422,
+      });
+      expect((await svc.list(ORG, pid))[0]!.members.map((m) => m.id).sort()).toEqual([a, b, c]);
+      // bỏ người bị khoá được
+      const removed = await svc.setMembers(ORG, pid, t.id, [a, c], ADMIN);
+      expect(removed.members.map((m) => m.id).sort()).toEqual([a, c]);
+    } finally {
+      await prisma.user.updateMany({ where: { id: { in: [b, d] } }, data: { status: 'ACTIVE' } });
+    }
+  });
+
   it('tên chứa "_" / "%" không bị coi là ký tự đại diện khi kiểm trùng; vẫn trùng khi chỉ khác hoa/thường', async () => {
     const { pid } = await newProject();
     await svc.create(ORG, pid, { name: 'QA-Backend' }, ADMIN);

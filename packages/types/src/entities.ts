@@ -176,6 +176,8 @@ export interface TeamDto {
   lead?: UserDto | null;
   members: UserDto[];
   memberCount: number;
+  /** Số dự án đang gắn team này (xoá team / đổi thành viên sẽ đổi vai trò dự án của họ). */
+  projectCount: number;
   createdAt: ISODate;
 }
 

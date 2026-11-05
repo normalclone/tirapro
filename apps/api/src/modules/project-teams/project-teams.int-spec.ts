@@ -238,6 +238,9 @@ describe.skipIf(!DB_URL)('team theo dự án ↔ Postgres thật', () => {
       ],
     });
     expect(await state(p, u3)).toBeNull();
+    // danh sách nhóm của tổ chức báo số dự án đang gắn (để xác nhận xoá nhóm nói đúng hệ quả)
+    const listed = (await teams.list(ORG)).find((t) => t.id === T.a);
+    expect(listed?.projectCount).toBeGreaterThanOrEqual(1);
     await assertInvariants(p);
   });
 

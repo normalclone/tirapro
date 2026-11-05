@@ -28,20 +28,34 @@ export function useCreateTeam() {
   });
 }
 
-export function useUpdateTeam() {
+/**
+ * Đổi thành viên / xoá một team đang gắn vào dự án đổi thành viên + vai trò của họ ở các dự án đó (máy chủ đồng bộ ngay):
+ * nạp lại team, danh sách thành viên dự án, team riêng và quyền dự án.
+ */
+function useRefreshAfterTeamChange() {
   const qc = useQueryClient();
+  return () => {
+    void qc.invalidateQueries({ queryKey: keys.teams.all });
+    void qc.invalidateQueries({ queryKey: keys.projectTeams.root });
+    void qc.invalidateQueries({ queryKey: keys.members.projectRoot });
+    void qc.invalidateQueries({ queryKey: keys.projects.permissionsAll });
+  };
+}
+
+export function useUpdateTeam() {
+  const refresh = useRefreshAfterTeamChange();
   return useMutation({
     mutationFn: ({ id, ...input }: TeamInput & { id: string }) =>
       api.put<TeamDto>(`/teams/${id}`, input).then((r) => r.data),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: keys.teams.all }),
+    onSuccess: refresh,
   });
 }
 
 export function useDeleteTeam() {
-  const qc = useQueryClient();
+  const refresh = useRefreshAfterTeamChange();
   return useMutation({
     mutationFn: (id: string) => api.delete<Ack>(`/teams/${id}`).then((r) => r.data),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: keys.teams.all }),
+    onSuccess: refresh,
   });
 }
 

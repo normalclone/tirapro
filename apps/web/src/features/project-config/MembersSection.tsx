@@ -12,6 +12,9 @@ import { RoleBadge } from '@/components/ui/RoleBadge';
 import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { useCan } from '@/features/projects/permissions';
+import { useAuth } from '@/stores/auth';
+import { frozenAdminRoles } from '@/features/members/adminGrant';
+import { adminRoleIds } from '@/features/members/roleChange';
 import { useRoles } from '@/features/roles/api';
 import { EditRolesPopover } from '@/features/members/EditRolesPopover';
 import { AddPeopleDialog } from '@/features/members/AddPeopleDialog';
@@ -58,6 +61,9 @@ export function MembersSection({
   const { data: projectRoles } = useRoles('PROJECT');
   const roleOptions = (projectRoles ?? []).map((r) => ({ id: r.id, name: r.name, color: r.color }));
   const members = membersQuery.data ?? [];
+  // P-C14: người không phải quản trị tổ chức không gắn/gỡ được vai trò mang `organization:admin` (khoá kèm lý do, máy chủ vẫn kiểm).
+  const canGrantAdmin = useAuth((s) => s.can('organization:admin'));
+  const frozenRoles = frozenAdminRoles(canGrantAdmin, adminRoleIds(projectRoles ?? []));
 
   const items: TabItem<MemberTab>[] = [
     {
@@ -69,7 +75,7 @@ export function MembersSection({
     {
       id: 'sub-teams',
       label: 'Team trong dự án',
-      title: 'Nhóm người riêng của dự án để lọc và nhóm việc — không cấp quyền',
+      title: 'Team riêng của dự án để lọc và gom việc — không cấp quyền',
     },
   ];
   const setTab = (next: MemberTab) =>
@@ -109,6 +115,7 @@ export function MembersSection({
             canAdmin={canAdmin}
             members={members}
             roleOptions={roleOptions}
+            frozenRoles={frozenRoles}
           />
         ) : (
           <SubTeamsPanel projectId={projectId} canAdmin={canAdmin} members={members} />

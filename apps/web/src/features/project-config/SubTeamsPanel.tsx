@@ -21,6 +21,21 @@ import {
 
 const DEFAULT_COLOR = LABEL_PALETTE[0]!.hex;
 
+/** Lựa chọn thành viên cho team riêng: mọi thành viên dự án đang hoạt động + người vốn đã ở trong team (kể cả đã bị khoá, kèm nhãn). */
+export function subTeamPickerOptions(
+  members: readonly MemberDto[],
+  team: Pick<ProjectSubTeamDto, 'members'> | null,
+): { id: string; name: string }[] {
+  const inTeam = new Set(team?.members.map((m) => m.id) ?? []);
+  return members
+    .filter((m) => m.user.status !== 'DEACTIVATED' || inTeam.has(m.user.id))
+    .map((m) => ({
+      id: m.user.id,
+      name:
+        m.user.status === 'DEACTIVATED' ? `${m.user.displayName} (đã khoá)` : m.user.displayName,
+    }));
+}
+
 /** Chồng ảnh đại diện (tối đa 5, còn lại +N). */
 function MemberStack({ team }: { team: ProjectSubTeamDto }) {
   if (team.memberCount === 0) return <span className="text-xs text-faint">Chưa có ai</span>;
@@ -41,7 +56,7 @@ function MemberStack({ team }: { team: ProjectSubTeamDto }) {
 }
 
 /**
- * Tab "Team trong dự án": nhóm người CHỈ để lọc và nhóm việc trên bảng, báo cáo và JQL (`team = "QA"`) — không cấp quyền.
+ * Tab "Team trong dự án": team riêng CHỈ để lọc và nhóm việc trên bảng, báo cáo và JQL (`team = "QA"`) — không cấp quyền.
  * Người trong team phải là thành viên dự án; ai rời dự án thì tự ra khỏi team.
  */
 export function SubTeamsPanel({
@@ -63,7 +78,7 @@ export function SubTeamsPanel({
     const ok = await confirm({
       title: `Xoá team “${t.name}”?`,
       description:
-        'Chỉ xoá nhóm này — mọi người vẫn ở lại dự án. Bộ lọc, nhóm hàng trên bảng và JQL dùng tên team này sẽ không còn khớp.',
+        'Chỉ xoá team này — mọi người vẫn ở lại dự án. Bộ lọc, hàng theo team trên bảng và JQL dùng tên team này sẽ không còn khớp.',
       confirmLabel: 'Xoá team',
       destructive: true,
     });
@@ -208,10 +223,8 @@ function SubTeamEditorDialog({
   }, [open, team]);
 
   // Chỉ chọn trong THÀNH VIÊN DỰ ÁN (dự án riêng tư: người có tên trong dự án; công khai: mọi thành viên tổ chức).
-  const options = useMemo(
-    () => members.map((m) => ({ id: m.user.id, name: m.user.displayName })),
-    [members],
-  );
+  // Tài khoản đã khoá không thêm mới được (máy chủ từ chối): ẩn, trừ người vốn đã ở trong team (giữ nguyên, ghi "đã khoá").
+  const options = useMemo(() => subTeamPickerOptions(members, team), [members, team]);
   const dirty =
     open &&
     (name.trim() !== (team?.name ?? '') ||

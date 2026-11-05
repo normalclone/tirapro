@@ -429,7 +429,7 @@ export class ProjectTeamsService {
       where: { id: teamId, organizationId, deletedAt: null },
       select: { id: true, name: true },
     });
-    if (!t) throw new NotFoundAppException('Nhóm');
+    if (!t) throw new NotFoundAppException('Team');
     return t;
   }
 

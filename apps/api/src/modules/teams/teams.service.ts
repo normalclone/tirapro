@@ -22,7 +22,7 @@ const TEAM_SELECT = {
     orderBy: { createdAt: 'asc' as const },
     select: { user: { select: USER_DTO_SELECT } },
   },
-  _count: { select: { members: true } },
+  _count: { select: { members: true, projectLinks: true } },
 } satisfies Prisma.TeamSelect;
 
 const TEAM_TX_OPTS = { maxWait: 10_000, timeout: 60_000 } as const;
@@ -315,7 +315,7 @@ export class TeamsService {
     createdAt: Date;
     lead: UserDtoSource | null;
     members: { user: UserDtoSource }[];
-    _count: { members: number };
+    _count: { members: number; projectLinks: number };
   }) {
     return {
       id: t.id,
@@ -327,6 +327,7 @@ export class TeamsService {
       lead: t.lead ? toUserDto(t.lead) : null,
       members: t.members.map((m) => toUserDto(m.user)),
       memberCount: t._count.members,
+      projectCount: t._count.projectLinks,
       createdAt: t.createdAt.toISOString(),
     };
   }

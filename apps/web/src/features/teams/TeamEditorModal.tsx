@@ -38,6 +38,17 @@ function Field({
   );
 }
 
+/** Nhóm đang gắn vào dự án: sửa thành viên đổi vai trò của họ ở đó ngay khi lưu — nói trước để không bất ngờ. */
+function LinkedProjectsNote({ count }: { count: number }) {
+  if (count <= 0) return null;
+  return (
+    <p className="rounded-md bg-surface-2 px-3 py-2 text-xs text-muted" role="note">
+      Nhóm đang gắn vào {count} dự án: thêm hoặc bớt thành viên sẽ đổi vai trò của họ ở các dự án đó
+      ngay khi lưu.
+    </p>
+  );
+}
+
 /** Modal tạo/sửa nhóm: tên, màu, mô tả, thành viên & trưởng nhóm. */
 export function TeamEditorModal({
   open,
@@ -133,6 +144,7 @@ export function TeamEditorModal({
       }
     >
       <div className="space-y-4">
+        {team && <LinkedProjectsNote count={team.projectCount} />}
         <Field label="Tên nhóm" title="Đặt theo chức năng để ai cũng đoán được nhóm làm gì">
           <Input
             value={name}

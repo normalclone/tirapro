@@ -235,7 +235,11 @@ export class ProjectSubTeamsService {
     return unique;
   }
 
-  /** Thay TOÀN BỘ thành viên: chỉ xoá người bị bỏ và thêm người mới (người ở lại không đổi). */
+  /**
+   * Thay TOÀN BỘ thành viên: chỉ kiểm tra điều kiện với người MỚI thêm; người đang ở trong team được giữ nguyên dù sau đó bị vô hiệu hoá
+   * (tài khoản khoá không bị dọn tự động) — nếu không, một team có người bị khoá sẽ không lưu được bất kỳ chỉnh sửa nào.
+   * Xoá người bị bỏ và thêm người mới.
+   */
   private async replaceMembers(
     tx: Tx,
     organizationId: string,
@@ -243,10 +247,17 @@ export class ProjectSubTeamsService {
     subTeamId: string,
     memberIds: string[],
   ): Promise<void> {
-    const want = await this.eligibleMembers(tx, organizationId, project, memberIds);
-    await tx.projectSubTeamMember.deleteMany({ where: { subTeamId, userId: { notIn: want } } });
+    const wanted = [...new Set(memberIds)];
+    const existing = new Set(
+      (
+        await tx.projectSubTeamMember.findMany({ where: { subTeamId }, select: { userId: true } })
+      ).map((m) => m.userId),
+    );
+    const added = wanted.filter((u) => !existing.has(u));
+    await this.eligibleMembers(tx, organizationId, project, added);
+    await tx.projectSubTeamMember.deleteMany({ where: { subTeamId, userId: { notIn: wanted } } });
     await tx.projectSubTeamMember.createMany({
-      data: want.map((userId) => ({ subTeamId, userId })),
+      data: added.map((userId) => ({ subTeamId, userId })),
       skipDuplicates: true,
     });
   }

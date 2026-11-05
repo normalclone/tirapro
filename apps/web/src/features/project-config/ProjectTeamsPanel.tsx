@@ -50,12 +50,15 @@ export function ProjectTeamsPanel({
   canAdmin,
   members,
   roleOptions,
+  frozenRoles,
 }: {
   projectId?: string;
   isPrivate: boolean;
   canAdmin: boolean;
   members: readonly MemberDto[];
   roleOptions: RoleOption[];
+  /** Vai trò mang quyền quản trị tổ chức bị khoá với người không phải quản trị (id → lý do). */
+  frozenRoles: Record<string, string>;
 }) {
   const confirm = useConfirm();
   const linksQuery = useProjectTeamLinks(projectId);
@@ -159,6 +162,7 @@ export function ProjectTeamsPanel({
             hint: `${t.memberCount} người`,
           }))}
           roleOptions={roleOptions}
+          frozenRoles={frozenRoles}
           onClose={() => {
             setLinking(false);
             setEditing(null);
@@ -234,6 +238,7 @@ function LinkTeamDialog({
   link,
   teamOptions,
   roleOptions,
+  frozenRoles,
   onClose,
 }: {
   projectId: string;
@@ -242,6 +247,7 @@ function LinkTeamDialog({
   link: ProjectTeamLinkDto | null;
   teamOptions: { value: string; label: string; hint?: string }[];
   roleOptions: RoleOption[];
+  frozenRoles: Record<string, string>;
   onClose: () => void;
 }) {
   const save = useLinkProjectTeam(projectId);
@@ -311,6 +317,7 @@ function LinkTeamDialog({
             options={roles}
             value={roleIds}
             onChange={setRoleIds}
+            frozen={frozenRoles}
             placeholder="Chọn vai trò…"
             ariaLabel="Vai trò của team trong dự án"
           />

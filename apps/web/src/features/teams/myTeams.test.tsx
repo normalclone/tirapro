@@ -12,6 +12,7 @@ const team = (id: string, name: string, members: UserDto[], lead?: UserDto): Tea
   key: id,
   members,
   memberCount: members.length,
+  projectCount: 0,
   lead: lead ?? null,
   createdAt: '2026-11-04',
 });

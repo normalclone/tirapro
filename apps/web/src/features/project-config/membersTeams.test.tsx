@@ -25,8 +25,10 @@ vi.mock('@/features/members/AddPeopleDialog', () => ({ AddPeopleDialog: () => nu
 
 import { toast } from 'sonner';
 import { ConfirmHost, useConfirmStore } from '@/components/ui/useConfirm';
+import { useAuth } from '@/stores/auth';
 import { MembersSection, memberTabFromParam, type MemberTab } from './MembersSection';
 import { unlinkConsequence } from './ProjectTeamsPanel';
+import { subTeamPickerOptions } from './SubTeamsPanel';
 
 const user = (id: string, displayName: string) => ({
   id,
@@ -63,8 +65,14 @@ const MEMBERS = [
   },
 ];
 const ROLES = [
-  { id: 'rRep', name: 'Reporter', color: null },
-  { id: 'rDev', name: 'Developer', color: null },
+  { id: 'rRep', name: 'Reporter', color: null, permissionKeys: ['issue:view'] },
+  { id: 'rDev', name: 'Developer', color: null, permissionKeys: ['issue:edit'] },
+  {
+    id: 'rAdm',
+    name: 'Chủ dự án',
+    color: null,
+    permissionKeys: ['organization:admin', 'member:manage'],
+  },
 ];
 const LINKS = [
   {
@@ -134,6 +142,13 @@ beforeEach(() => {
     unobserve = () => undefined;
     disconnect = () => undefined;
   } as never;
+  act(() => {
+    useAuth.setState({
+      status: 'authed',
+      user: { id: 'me', isSystemAdmin: false } as never,
+      permissions: [],
+    });
+  });
   useConfirmStore.setState({ open: false, opts: null, resolve: null });
   for (const m of [h.get, h.post, h.put, h.patch, h.del]) m.mockReset();
   vi.mocked(toast.success).mockClear();
@@ -270,5 +285,61 @@ describe('Tab "Team trong dự án" (không cấp quyền)', () => {
     expect(dialog.textContent).toContain('mọi người vẫn ở lại dự án');
     await u.click(within(dialog).getByRole('button', { name: 'Xoá team' }));
     await waitFor(() => expect(h.del).toHaveBeenCalledWith('/projects/p1/sub-teams/s1'));
+  });
+});
+
+describe('Gắn team: vai trò mang quyền quản trị', () => {
+  async function openLinkRoles(u: ReturnType<typeof setup>) {
+    await screen.findByText('Team QA');
+    await u.click(screen.getByRole('button', { name: /Gắn team/ }));
+    const dialog = await screen.findByRole('dialog', { name: 'Gắn team vào dự án' });
+    await u.click(within(dialog).getByRole('button', { name: 'Vai trò của team trong dự án' }));
+    return dialog;
+  }
+
+  it('người không phải quản trị: vai trò quản trị bị khoá kèm lý do, bấm không chọn được', async () => {
+    const u = setup('teams');
+    await openLinkRoles(u);
+    const opt = await screen.findByRole('option', { name: /Chủ dự án/ });
+    expect(opt.getAttribute('aria-disabled')).toBe('true');
+    expect(opt.textContent).toContain('Chỉ quản trị mới cấp/gỡ quyền này');
+    await u.click(opt);
+    expect(opt.getAttribute('aria-selected')).toBe('false');
+    // vai trò thường vẫn chọn được
+    expect(
+      (await screen.findByRole('option', { name: /Developer|Lập trình/ })).getAttribute(
+        'aria-disabled',
+      ),
+    ).toBeNull();
+  });
+
+  it('quản trị tổ chức: không khoá vai trò nào', async () => {
+    act(() => {
+      useAuth.setState({ permissions: ['organization:admin'] });
+    });
+    const u = setup('teams');
+    await openLinkRoles(u);
+    const opt = await screen.findByRole('option', { name: /Chủ dự án/ });
+    expect(opt.getAttribute('aria-disabled')).toBeNull();
+    await u.click(opt);
+    expect(opt.getAttribute('aria-selected')).toBe('true');
+  });
+});
+
+describe('Chọn người cho team trong dự án', () => {
+  const mem = (id: string, name: string, status: string) =>
+    ({ membershipId: id, user: { ...user(id, name), status }, roles: [] }) as never;
+  const members = [
+    mem('a', 'An', 'ACTIVE'),
+    mem('b', 'Bình', 'DEACTIVATED'),
+    mem('c', 'Chi', 'DEACTIVATED'),
+  ];
+
+  it('ẩn người đã khoá, trừ người đang ở trong team (gắn nhãn "đã khoá")', () => {
+    const opts = subTeamPickerOptions(members, {
+      members: [{ id: 'b', displayName: 'Bình', avatarUrl: null }],
+    });
+    expect(opts.map((o) => o.name)).toEqual(['An', 'Bình (đã khoá)']);
+    expect(subTeamPickerOptions(members, null).map((o) => o.id)).toEqual(['a']);
   });
 });
