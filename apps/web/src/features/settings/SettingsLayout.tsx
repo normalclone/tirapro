@@ -18,7 +18,10 @@ import { SubNavLayout } from '@/components/layout/SubNavLayout';
 import type { SubNavGroup } from '@/components/layout/subNavModel';
 import { useCan } from '@/features/projects/permissions';
 
-/** Cài đặt được chia nhóm để dễ tìm: chung → con người → cách làm việc → nâng cao. */
+/**
+ * Cài đặt được chia nhóm để dễ tìm: chung → con người → cách làm việc → nâng cao. Mục danh mục chỉ hiện với người SỬA được
+ * (cùng quyền trang dùng để bật nút sửa) — chỉ xem mà không thêm/sửa/xoá được thì không cần nằm trong menu.
+ */
 const SETTINGS_GROUPS: {
   group: string;
   items: {
@@ -48,7 +51,12 @@ const SETTINGS_GROUPS: {
   {
     group: 'Con người',
     items: [
-      { to: '/settings/roles', label: SETTINGS_LABELS.roles, icon: <Shield className="h-4 w-4" /> },
+      {
+        to: '/settings/roles',
+        label: SETTINGS_LABELS.roles,
+        icon: <Shield className="h-4 w-4" />,
+        permission: 'member:manage',
+      },
       {
         to: '/settings/audit',
         label: SETTINGS_LABELS.audit,
@@ -64,21 +72,25 @@ const SETTINGS_GROUPS: {
         to: '/settings/workflows',
         label: SETTINGS_LABELS.workflows,
         icon: <GitBranch className="h-4 w-4" />,
+        permission: 'organization:admin',
       },
       {
         to: '/settings/priorities',
         label: SETTINGS_LABELS.priorities,
         icon: <SignalHigh className="h-4 w-4" />,
+        permission: 'organization:admin',
       },
       {
         to: '/settings/severities',
         label: SETTINGS_LABELS.severities,
         icon: <Flag className="h-4 w-4" />,
+        permission: 'organization:admin',
       },
       {
         to: '/settings/fields',
         label: SETTINGS_LABELS.fields,
         icon: <ListChecks className="h-4 w-4" />,
+        permission: 'customfield:manage',
       },
     ],
   },
