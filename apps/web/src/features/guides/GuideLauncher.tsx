@@ -212,7 +212,14 @@ const GUIDE_THEME_CSS = `
   color: var(--primary-fg);
   border-color: var(--primary);
 }
-.driver-popover-footer .driver-popover-next-btn:hover { background: var(--primary-hover); }
+/* driver.css có \`button:focus\`/\`:hover\` (độ ưu tiên cao hơn, tải sau) đặt nền sáng → nút chính trắng chữ khi được focus. */
+.driver-popover-footer .driver-popover-next-btn:focus,
+.driver-popover-footer .driver-popover-next-btn:focus-visible {
+  background: var(--primary);
+  color: var(--primary-fg);
+}
+.driver-popover-footer .driver-popover-next-btn:hover,
+.driver-popover-footer .driver-popover-next-btn:focus:hover { background: var(--primary-hover); color: var(--primary-fg); }
 .driver-popover-footer { gap: 0.5rem; }
 /* "Bỏ qua": nút chữ bên trái footer (Quay lại / Tiếp ở bên phải). */
 .driver-popover-footer .tour-skip-btn {
