@@ -544,16 +544,11 @@ const SCREEN_TOURS: GuideSeed[] = [
 
   // ----- Cài đặt tổ chức -----
   tour('tour-settings-general', '/settings/general', 'Thương hiệu', 'Logo của tổ chức.', [
-    [
-      'settings-general-header',
-      'Thương hiệu',
-      'Logo hiện ở nút chuyển tổ chức trên thanh trên cùng.',
-      'bottom',
-    ],
+    ['settings-general-header', 'Thương hiệu', 'Logo của tổ chức bạn.', 'bottom'],
     [
       'settings-general-logo',
       'Logo tổ chức',
-      'Bấm Tải ảnh lên (hoặc Đổi ảnh) để chọn logo. Chỉ quản trị chung đổi được; người khác chỉ xem.',
+      'Bấm Tải ảnh lên (hoặc Đổi ảnh) để chọn logo. Chỉ quản trị tổ chức đổi được; người khác chỉ xem.',
       'top',
     ],
     [

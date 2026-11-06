@@ -8,7 +8,7 @@ export const SettingsGeneralPage = () => (
     <PageHeader
       data-tour="settings-general-header"
       title={SETTINGS_LABELS.general}
-      description="Logo hiện ở nút chuyển tổ chức trên thanh trên cùng."
+      description="Logo của tổ chức bạn."
     />
     <OrganizationBrandingPanel />
   </PageFrame>
