@@ -65,7 +65,7 @@ describe('TelegramLinkCard', () => {
   it('tổ chức chưa cài bot → chỉ hiện hướng dẫn, KHÔNG có nút liên kết', async () => {
     mockGet({ '/notifications/telegram': status({ available: false, reason: 'NO_BOT' }) });
     renderUi(<TelegramLinkCard />);
-    expect(await screen.findByText(/Quản trị tổ chức cần cài bot Telegram/)).toBeTruthy();
+    expect(await screen.findByText(/Quản trị cần cài bot Telegram/)).toBeTruthy();
     expect(screen.queryByRole('button', { name: /Liên kết Telegram/ })).toBeNull();
   });
 

@@ -20,8 +20,8 @@ import { linkPhase } from './telegramLink';
 /** Gợi ý khi tổ chức chưa có bot dùng được — không có nút (người dùng thường không tự cài được bot). */
 function unavailableText(reason: TelegramLinkStatus['reason']): string {
   return reason === 'PLATFORM_OFF'
-    ? 'Tích hợp đang bị tắt toàn hệ thống — nhờ quản trị hệ thống bật lại.'
-    : 'Quản trị tổ chức cần cài bot Telegram ở Kết nối › Telegram.';
+    ? 'Tích hợp đang bị tắt toàn hệ thống — nhờ Quản trị bật lại.'
+    : 'Quản trị cần cài bot Telegram ở Kết nối › Telegram.';
 }
 
 function LinkFlow({ status, onDone }: { status: TelegramLinkStatus; onDone: () => void }) {

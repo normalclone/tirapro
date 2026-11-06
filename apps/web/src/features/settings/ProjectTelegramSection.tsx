@@ -268,8 +268,8 @@ function ProjectChannels({
     return (
       <p className="text-sm text-muted">
         {data.reason === 'PLATFORM_OFF'
-          ? 'Tích hợp đang bị tắt toàn hệ thống — nhờ quản trị hệ thống bật lại.'
-          : 'Quản trị tổ chức cần cài bot Telegram ở Kết nối › Telegram trước.'}
+          ? 'Tích hợp đang bị tắt toàn hệ thống — nhờ Quản trị bật lại.'
+          : 'Quản trị cần cài bot Telegram ở Kết nối › Telegram trước.'}
       </p>
     );
   }
