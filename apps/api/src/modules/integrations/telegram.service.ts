@@ -38,6 +38,8 @@ export interface TelegramMessageUpdate {
   chatType: string;
   chatTitle?: string;
   firstName?: string;
+  /** @username của chat riêng (không có @); người dùng có thể không đặt. */
+  username?: string;
   text: string;
   /** Unix giây. */
   date: number;
@@ -55,6 +57,32 @@ export function parseLinkCommand(text: string, botUsername?: string | null): str
   const target = m[1];
   if (target && botUsername && target.toLowerCase() !== botUsername.toLowerCase()) return null;
   return m[2]!.toUpperCase();
+}
+
+const START_COMMAND_RE = /^\/start(?:@(\w+))?(?:\s+(\S+))?$/i;
+
+/**
+ * Tách `/start` (kèm tham số deep link `?start=MÃ`): `{ code }` (mã chuẩn hoá chữ hoa, null nếu không có tham số);
+ * không phải lệnh start → null. Truyền `botUsername` để bỏ qua lệnh gọi đích danh BOT KHÁC.
+ */
+export function parseStartCommand(
+  text: string,
+  botUsername?: string | null,
+): { code: string | null } | null {
+  const m = START_COMMAND_RE.exec(text.trim());
+  if (!m) return null;
+  const target = m[1];
+  if (target && botUsername && target.toLowerCase() !== botUsername.toLowerCase()) return null;
+  return { code: m[2] ? m[2].toUpperCase() : null };
+}
+
+const STOP_COMMAND_RE = /^\/stop(?:@(\w+))?$/i;
+
+/** `/stop` (hoặc `/stop@TenBot`) → true; gọi đích danh bot khác → false. */
+export function isStopCommand(text: string, botUsername?: string | null): boolean {
+  const m = STOP_COMMAND_RE.exec(text.trim());
+  if (!m) return false;
+  return !(m[1] && botUsername && m[1].toLowerCase() !== botUsername.toLowerCase());
 }
 
 export interface TelegramBotInfo {
@@ -165,6 +193,7 @@ export class TelegramService {
           chatType: m.chat.type,
           chatTitle: 'title' in m.chat ? m.chat.title : undefined,
           firstName: 'first_name' in m.chat ? m.chat.first_name : undefined,
+          username: 'username' in m.chat ? m.chat.username : undefined,
           text: m.text,
           date: m.date,
         });
@@ -213,19 +242,35 @@ export class TelegramService {
    * - Thiếu token → trả false (disabled). Lỗi gửi → log warn + trả false (không ném).
    */
   async send(token: string | null, chatId: string, text: string): Promise<boolean> {
-    // Admin có thể tắt toàn bộ tích hợp (kill-switch) — chặn mọi gửi đi.
-    if (!this.settings.flags().integrationsEnabled) return false;
+    return (await this.sendDetailed(token, chatId, text)) === 'ok';
+  }
+
+  /**
+   * Như `send` nhưng nói rõ kết cục: `blocked` = người dùng chặn/xoá bot hoặc chat không còn (403, hoặc 400 "chat not
+   * found") — bên gọi nên bỏ liên kết để khỏi gửi mãi; `disabled` = tắt hệ thống / thiếu token; `failed` = lỗi khác.
+   */
+  async sendDetailed(
+    token: string | null,
+    chatId: string,
+    text: string,
+  ): Promise<'ok' | 'blocked' | 'disabled' | 'failed'> {
+    if (!this.settings.flags().integrationsEnabled) return 'disabled';
     const resolved = token || this.globalBotToken;
-    if (!resolved) return false;
+    if (!resolved) return 'disabled';
     try {
       const bot = this.getBot(resolved);
       await bot.telegram.sendMessage(chatId, text, { parse_mode: 'HTML' });
-      return true;
+      return 'ok';
     } catch (err) {
       this.logger.warn(
         `Không gửi được tin nhắn Telegram tới ${chatId}: ${err instanceof Error ? err.message : String(err)}`,
       );
-      return false;
+      if (
+        err instanceof TelegramError &&
+        (err.code === 403 || (err.code === 400 && /chat not found/i.test(err.description)))
+      )
+        return 'blocked';
+      return 'failed';
     }
   }
 

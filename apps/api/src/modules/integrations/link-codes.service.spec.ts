@@ -138,11 +138,11 @@ describe('createCode', () => {
     expect(LINK_CODE_ALPHABET).toHaveLength(31);
   });
 
-  it('tạo mã mới vô hiệu mọi mã còn hiệu lực chưa dùng của tích hợp (không bị chặn khi bấm Tạo mã mới liên tục)', async () => {
+  it('tạo mã mới vô hiệu mọi mã còn hiệu lực chưa dùng của chính người tạo trong tích hợp (không bị chặn khi bấm Tạo mã mới liên tục)', async () => {
     const { service, prisma } = setup();
     await service.createCode('w1', 'g1', 'u1');
     expect(prisma.channelLinkToken.updateMany).toHaveBeenCalledWith({
-      where: { integrationId: 'g1', consumedAt: null, expiresAt: { gt: NOW } },
+      where: { integrationId: 'g1', createdById: 'u1', consumedAt: null, expiresAt: { gt: NOW } },
       data: { expiresAt: NOW },
     });
     // vô hiệu TRƯỚC khi tạo mã mới
@@ -212,6 +212,29 @@ describe('createCode', () => {
 });
 
 describe('poll', () => {
+  it('route theo dự án (expectProjectId): mã của dự án khác hoặc của tổ chức → expired, không đọc Telegram', async () => {
+    const { service, telegram } = setup({
+      token: tokenRow({ projectId: 'p2' }),
+      updates: [groupUpdate('/link@TiraproBot K7M2QX')],
+    });
+    await expect(service.poll('w1', 'g1', 'K7M2QX', 'p1')).resolves.toEqual({ status: 'expired' });
+    expect(telegram.recentUpdates).not.toHaveBeenCalled();
+    const org = setup({ token: tokenRow({ projectId: null }) });
+    await expect(org.service.poll('w1', 'g1', 'K7M2QX', 'p1')).resolves.toEqual({
+      status: 'expired',
+    });
+  });
+
+  it('route theo dự án: mã đúng dự án → linked như thường', async () => {
+    const { service } = setup({
+      token: tokenRow({ projectId: 'p1' }),
+      updates: [groupUpdate('/link@TiraproBot K7M2QX')],
+    });
+    await expect(service.poll('w1', 'g1', 'K7M2QX', 'p1')).resolves.toMatchObject({
+      status: 'linked',
+    });
+  });
+
   it('bản tin khớp → tiêu thụ mã bằng CAS, tạo kênh externalId=String(chat.id), trả linked, bot xác nhận trong nhóm', async () => {
     const { service, prisma, integrations, telegram } = setup({
       updates: [groupUpdate('hello'), groupUpdate('/link@TiraproBot K7M2QX')],
