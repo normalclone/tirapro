@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { NotFoundAppException } from '../../common/exceptions/app.exception';
+import { ForbiddenAppException, NotFoundAppException } from '../../common/exceptions/app.exception';
 import { AnalyticsService } from './analytics.service';
 import {
   flatSql,
@@ -119,7 +119,12 @@ describe('AnalyticsService.projectReport — aggregate SQL', () => {
     };
     const health = healthStub();
     return {
-      service: new AnalyticsService(prisma as never, health as never, ACCESS_ALL as never),
+      service: new AnalyticsService(
+        prisma as never,
+        health as never,
+        ACCESS_ALL as never,
+        {} as never,
+      ),
       prisma,
       groupBy,
       count,
@@ -365,7 +370,7 @@ describe('AnalyticsService.organizationOverview — aggregate SQL', () => {
     };
     const health = healthStub();
     return {
-      service: new AnalyticsService(prisma as never, health as never, access as never),
+      service: new AnalyticsService(prisma as never, health as never, access as never, {} as never),
       prisma,
       queryRaw,
       health,
@@ -654,7 +659,12 @@ describe('AnalyticsService.cfd — sự kiện STATUS cuối cùng thắng', () 
       $queryRaw: queryRaw,
     };
     return {
-      service: new AnalyticsService(prisma as never, healthStub() as never, ACCESS_ALL as never),
+      service: new AnalyticsService(
+        prisma as never,
+        healthStub() as never,
+        ACCESS_ALL as never,
+        {} as never,
+      ),
       queryRaw,
     };
   }
@@ -754,6 +764,7 @@ describe('AnalyticsService.createdResolved — đếm theo ngày bằng SQL', ()
       prisma as never,
       healthStub() as never,
       ACCESS_ALL as never,
+      {} as never,
     );
     const r = await service.createdResolved('w1', 'p1', '2026-10-01', '2026-10-03');
     expect(r.series).toEqual([
@@ -783,6 +794,7 @@ describe('AnalyticsService.createdResolved — việc chưa duyệt không tính
       prisma as never,
       healthStub() as never,
       ACCESS_ALL as never,
+      {} as never,
     );
     await service.createdResolved('w1', 'p1', '2026-10-01', '2026-10-03');
     expect(queryRaw.mock.calls).toHaveLength(2);
@@ -834,7 +846,12 @@ function makeBurndown(
     sprintSnapshot: { findMany: vi.fn(() => Promise.resolve(snaps)) },
   };
   return {
-    service: new AnalyticsService(prisma as never, healthStub() as never, ACCESS_ALL as never),
+    service: new AnalyticsService(
+      prisma as never,
+      healthStub() as never,
+      ACCESS_ALL as never,
+      {} as never,
+    ),
     prisma,
   };
 }
@@ -1164,7 +1181,12 @@ function make(
     issue: { findMany: vi.fn((_args: unknown) => Promise.resolve(issues)) },
   };
   return {
-    service: new AnalyticsService(prisma as never, healthStub() as never, ACCESS_ALL as never),
+    service: new AnalyticsService(
+      prisma as never,
+      healthStub() as never,
+      ACCESS_ALL as never,
+      {} as never,
+    ),
     prisma,
   };
 }
@@ -1372,5 +1394,70 @@ describe('AnalyticsService.sprintSummary — phạm vi và velocity', () => {
     expect(r.initialCommitted).toEqual({ points: 4, count: 1 });
     expect(r.committed).toEqual({ points: 8, count: 2 });
     expect(r.completed.points).toBeLessThanOrEqual(r.committed.points);
+  });
+});
+
+describe('AnalyticsService.reportScopeIds — quyền báo cáo theo nhóm dự án', () => {
+  /** Người xem thấy a, b, c; có report:view ở dự án theo `perProject`, ở tổ chức theo `org`. */
+  function make(org: boolean, perProject: string[]) {
+    const access = {
+      visibleAmong: vi.fn((_u: string, _o: string, ids: string[]) =>
+        Promise.resolve(ids.filter((i) => ['a', 'b', 'c'].includes(i))),
+      ),
+    };
+    const rbac = {
+      getEffectivePermissions: vi.fn((_u: string, _o: string, projectId?: string | null) =>
+        Promise.resolve(
+          new Set<string>(
+            (projectId ? perProject.includes(projectId) : org) ? ['report:view'] : [],
+          ),
+        ),
+      ),
+    };
+    const service = new AnalyticsService(
+      {} as never,
+      healthStub() as never,
+      access as never,
+      rbac as never,
+    );
+    return { service, rbac };
+  }
+  const viewer = { id: 'u1' };
+
+  it('có report:view cấp tổ chức → giữ mọi dự án thấy được, không tra từng dự án', async () => {
+    const { service, rbac } = make(true, []);
+    await expect(service.reportScopeIds(viewer, 'o1', ['a', 'b', 'x'])).resolves.toEqual([
+      'a',
+      'b',
+    ]);
+    expect(rbac.getEffectivePermissions).toHaveBeenCalledTimes(1);
+  });
+  it('chỉ có report:view trong dự án (vd Project Admin) → giữ đúng các dự án đó', async () => {
+    const { service } = make(false, ['a', 'c']);
+    await expect(service.reportScopeIds(viewer, 'o1', ['a', 'b', 'c'])).resolves.toEqual([
+      'a',
+      'c',
+    ]);
+  });
+  it('không dự án nào cho xem báo cáo → 403', async () => {
+    const { service } = make(false, []);
+    await expect(service.reportScopeIds(viewer, 'o1', ['a', 'b'])).rejects.toBeInstanceOf(
+      ForbiddenAppException,
+    );
+  });
+  it('nhóm rỗng / không thấy dự án nào → danh sách rỗng (không 403)', async () => {
+    const { service } = make(false, []);
+    await expect(service.reportScopeIds(viewer, 'o1', [])).resolves.toEqual([]);
+    await expect(service.reportScopeIds(viewer, 'o1', ['x'])).resolves.toEqual([]);
+  });
+  it('quản trị hệ thống → như có quyền tổ chức; assertOrgReport chặn người không có quyền tổ chức', async () => {
+    const { service, rbac } = make(false, []);
+    await expect(
+      service.reportScopeIds({ id: 'u1', isSystemAdmin: true }, 'o1', ['a']),
+    ).resolves.toEqual(['a']);
+    expect(rbac.getEffectivePermissions).not.toHaveBeenCalled();
+    await expect(service.assertOrgReport(viewer, 'o1')).rejects.toBeInstanceOf(
+      ForbiddenAppException,
+    );
   });
 });

@@ -167,6 +167,7 @@ describe.skipIf(!DB_URL)('team riêng trong dự án ↔ Postgres thật', () =>
       db,
       { forProjects: () => Promise.resolve(new Map()) } as never,
       access as never,
+      {} as never,
     );
   }, 60_000);
 

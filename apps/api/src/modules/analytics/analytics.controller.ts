@@ -4,6 +4,7 @@ import { PERMISSIONS } from '@tirapro/types';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { OrganizationId } from '../../common/decorators/organization-id.decorator';
 import type { AuthUser } from '../../common/types/request';
+import { AuthOnly } from '../../common/decorators/auth-only.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
 import { ProjectRef } from '../../common/decorators/project-ref.decorator';
 import { BusinessRuleException } from '../../common/exceptions/app.exception';
@@ -49,9 +50,13 @@ export class AnalyticsController {
     private readonly leadership: LeadershipService,
   ) {}
 
-  /** Tổng hợp toàn tổ chức cho Tổng quan — chỉ gồm dự án người xem được thấy (dự án riêng tư chỉ cho thành viên/admin). */
+  /**
+   * Tổng hợp cho Tổng quan — chỉ gồm dự án người xem được thấy (dự án riêng tư chỉ cho thành viên/admin). Không `projectIds`
+   * (toàn tổ chức) → cần `report:view` cấp tổ chức; có `projectIds` (nhóm dự án của dashboard) → đủ khi có `report:view`
+   * trong từng dự án (xem `reportScopeIds`). Kiểm quyền ở đây thay vì `@Permissions` vì guard chỉ tính được một dự án.
+   */
   @Get('overview')
-  @Permissions(PERMISSIONS.REPORT_VIEW)
+  @AuthOnly() // quyền report:view kiểm trong handler (theo tổ chức hoặc từng dự án)
   async overview(
     @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
@@ -61,17 +66,17 @@ export class AnalyticsController {
     @Query('byAssignee') byAssignee?: string,
   ) {
     const requested = parseProjectIds(projectIds);
-    const scope = requested
-      ? await this.analytics.resolveScopeIds(organizationId, user.id, requested)
-      : undefined;
+    let scope: string[] | undefined;
+    if (requested) scope = await this.analytics.reportScopeIds(user, organizationId, requested);
+    else await this.analytics.assertOrgReport(user, organizationId);
     return this.analytics.organizationOverview(organizationId, user.id, scope, {
       byAssignee: byAssignee === '1' || byAssignee === 'true',
     });
   }
 
-  /** Ba thẻ lãnh đạo (Top rủi ro, OKR chậm, người quá tải) — organization-level như `overview`, lọc theo dự án người xem thấy. */
+  /** Ba thẻ lãnh đạo (Top rủi ro, OKR chậm, người quá tải) — quyền như `overview`, lọc theo dự án người xem thấy. */
   @Get('leadership')
-  @Permissions(PERMISSIONS.REPORT_VIEW)
+  @AuthOnly() // quyền report:view kiểm trong handler (theo tổ chức hoặc từng dự án)
   async leadershipOverview(
     @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
@@ -79,8 +84,11 @@ export class AnalyticsController {
     @Query('projectIds') projectIds?: string | string[],
   ) {
     const requested = parseProjectIds(projectIds);
-    if (!requested) return this.leadership.get(organizationId, user.id);
-    const scope = await this.analytics.resolveScopeIds(organizationId, user.id, requested);
+    if (!requested) {
+      await this.analytics.assertOrgReport(user, organizationId);
+      return this.leadership.get(organizationId, user.id);
+    }
+    const scope = await this.analytics.reportScopeIds(user, organizationId, requested);
     return this.leadership.get(organizationId, user.id, new Date(), { projectIds: scope });
   }
 
@@ -178,11 +186,11 @@ export class AnalyticsController {
   }
 
   /**
-   * Báo cáo QA gộp nhiều dự án (phạm vi nhóm dự án của dashboard). Quyền `report:view` cấp tổ chức (không gắn một dự án);
-   * `projectIds` (CSV) luôn giao với dự án người xem thấy ở máy chủ, thiếu → 422, chuỗi rỗng → báo cáo rỗng.
+   * Báo cáo QA gộp nhiều dự án (phạm vi nhóm dự án của dashboard). Quyền như `overview` có `projectIds`: `report:view` cấp
+   * tổ chức hoặc trong từng dự án. `projectIds` (CSV) luôn giao với dự án người xem thấy, thiếu → 422, chuỗi rỗng → rỗng.
    */
   @Get('qa/projects')
-  @Permissions(PERMISSIONS.REPORT_VIEW)
+  @AuthOnly() // quyền report:view kiểm trong handler (theo tổ chức hoặc từng dự án)
   async qaForProjects(
     @OrganizationId() organizationId: string,
     @CurrentUser() user: AuthUser,
@@ -192,6 +200,7 @@ export class AnalyticsController {
   ) {
     const requested = parseProjectIds(projectIds);
     if (!requested) throw new BusinessRuleException('Thiếu projectIds');
-    return this.qaReport.reportForProjects(organizationId, user.id, requested, from, to);
+    const scope = await this.analytics.reportScopeIds(user, organizationId, requested);
+    return this.qaReport.reportForProjects(organizationId, user.id, scope, from, to);
   }
 }

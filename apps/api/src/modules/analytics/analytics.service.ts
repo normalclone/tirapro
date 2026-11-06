@@ -9,17 +9,28 @@ import type {
   VelocityReport,
 } from '@tirapro/shared';
 import { overdueCutoff } from '@tirapro/shared';
-import type { ProjectReportTeamRow } from '@tirapro/types';
+import { PERMISSIONS, type ProjectReportTeamRow } from '@tirapro/types';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { isBugType } from '../../common/bug-type';
 import { TRIAGE_VISIBLE, triageVisibleSql } from '../../common/triage-visibility';
 import { countsTowardPoints, LEAF_POINTS_ONLY, LIVE_CHILD_COUNT } from '../../common/points-scope';
-import { BusinessRuleException, NotFoundAppException } from '../../common/exceptions/app.exception';
+import {
+  BusinessRuleException,
+  ForbiddenAppException,
+  NotFoundAppException,
+} from '../../common/exceptions/app.exception';
 import { ProjectAccessService } from '../rbac/project-access.service';
+import { RbacService } from '../rbac/rbac.service';
 import { ProjectHealthService } from './project-health.service';
 
 type Category = 'TODO' | 'IN_PROGRESS' | 'DONE';
+
+/** Người xem báo cáo (phần cần cho kiểm quyền). */
+export interface ReportViewer {
+  id: string;
+  isSystemAdmin?: boolean;
+}
 
 /** Dòng kết quả $queryRaw — count(*) của Postgres trả về bigint, nên `n` phải qua Number(). */
 interface CfdRow {
@@ -42,7 +53,46 @@ export class AnalyticsService {
     private readonly prisma: PrismaService,
     private readonly health: ProjectHealthService,
     private readonly access: ProjectAccessService,
+    private readonly rbac: RbacService,
   ) {}
+
+  /** Có `report:view` ở cấp TỔ CHỨC (số liệu toàn tổ chức) — quản trị hệ thống luôn có. */
+  async hasOrgReport(viewer: ReportViewer, organizationId: string): Promise<boolean> {
+    if (viewer.isSystemAdmin) return true;
+    const perms = await this.rbac.getEffectivePermissions(viewer.id, organizationId, null);
+    return perms.has(PERMISSIONS.REPORT_VIEW);
+  }
+
+  /** Số liệu toàn tổ chức (không thu hẹp) cần `report:view` cấp tổ chức. */
+  async assertOrgReport(viewer: ReportViewer, organizationId: string): Promise<void> {
+    if (!(await this.hasOrgReport(viewer, organizationId)))
+      throw new ForbiddenAppException('Bạn không có quyền thực hiện hành động này');
+  }
+
+  /**
+   * Phạm vi nhóm dự án cho báo cáo gộp: giao với dự án người xem THẤY, rồi — nếu không có `report:view` cấp tổ chức — chỉ
+   * giữ dự án mà người đó có `report:view` NGAY TRONG dự án (vd Project Admin/Developer). Gộp số của các dự án mình đã xem
+   * được từng cái không lộ thêm gì. Có dự án thấy được mà không dự án nào cho xem báo cáo → 403 (ô hiện "Cần quyền xem báo cáo").
+   */
+  async reportScopeIds(
+    viewer: ReportViewer,
+    organizationId: string,
+    requested: readonly string[],
+  ): Promise<string[]> {
+    const visible = await this.resolveScopeIds(organizationId, viewer.id, requested);
+    if (visible.length === 0 || (await this.hasOrgReport(viewer, organizationId))) return visible;
+    const allowed = await Promise.all(
+      visible.map(async (id) =>
+        (await this.rbac.getEffectivePermissions(viewer.id, organizationId, id)).has(
+          PERMISSIONS.REPORT_VIEW,
+        ),
+      ),
+    );
+    const ids = visible.filter((_, i) => allowed[i]);
+    if (ids.length === 0)
+      throw new ForbiddenAppException('Bạn không có quyền thực hiện hành động này');
+    return ids;
+  }
 
   /** Thu hẹp danh sách dự án do client gửi về dự án NGƯỜI XEM thấy (không bao giờ tin danh sách của client). */
   resolveScopeIds(

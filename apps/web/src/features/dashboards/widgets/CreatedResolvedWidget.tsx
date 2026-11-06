@@ -31,10 +31,12 @@ export function CreatedResolvedWidget({ title, config }: WidgetProps) {
   const scope = useWidgetScope(config);
   const projectId = scope.kind === 'project' ? scope.projectId : undefined;
   const canReport = useAuth((s) => s.can('report:view'));
+  // Toàn tổ chức cần quyền báo cáo cấp tổ chức; nhóm dự án: máy chủ cho qua nếu có quyền trong từng dự án (403 → ô báo thiếu quyền).
+  const blocked = scope.kind === 'org' && !canReport;
   const daily = useCreatedResolved(projectId);
-  const weekly = useScopedOverview(aggregateIds(scope), !projectId && canReport);
+  const weekly = useScopedOverview(aggregateIds(scope), !projectId && !blocked);
 
-  if (!projectId && !canReport) {
+  if (blocked) {
     return <WidgetFrame title={title} state="forbidden" forbiddenText="Cần quyền xem báo cáo" />;
   }
 

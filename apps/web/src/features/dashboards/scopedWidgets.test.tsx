@@ -126,14 +126,40 @@ describe('ô chỉ số (STAT_NUMBER) theo phạm vi', () => {
     expect(calls()[0]).toMatch(/^\/reports\/qa\/projects\?projectIds=pa&from=/);
   });
 
-  it('thiếu quyền xem báo cáo → khoá, không gọi API tổng hợp', () => {
+  it('toàn tổ chức + thiếu quyền báo cáo cấp tổ chức → khoá, không gọi API tổng hợp', () => {
     useAuth.setState({ permissions: [] as never });
+    show(<StatNumberWidget title="Mở" config={{ metric: 'open' }} />, null, {
+      inherits: true,
+      projectIds: null,
+    });
+    expect(screen.getByText(/Cần quyền xem báo cáo/)).toBeTruthy();
+    expect(h.get).not.toHaveBeenCalled();
+  });
+
+  it('nhóm dự án + không có quyền cấp tổ chức → vẫn hỏi máy chủ (quyền trong từng dự án đủ)', async () => {
+    useAuth.setState({ permissions: [] as never });
+    h.get.mockResolvedValue({
+      data: { totals: { open: 7 }, projectCount: 1, trend: [] },
+    });
     show(<StatNumberWidget title="Mở" config={{ metric: 'open' }} />, GROUP(), {
       inherits: true,
       projectIds: ['pa'],
     });
-    expect(screen.getByText(/Cần quyền xem báo cáo/)).toBeTruthy();
-    expect(h.get).not.toHaveBeenCalled();
+    await waitFor(() => expect(h.get).toHaveBeenCalled());
+    expect(calls()[0]).toMatch(/^\/reports\/overview\?projectIds=pa/);
+    expect(screen.queryByText(/Cần quyền xem báo cáo/)).toBeNull();
+  });
+
+  it('nhóm dự án mà máy chủ trả 403 (không dự án nào cho xem báo cáo) → ô báo thiếu quyền', async () => {
+    useAuth.setState({ permissions: [] as never });
+    h.get.mockRejectedValue(
+      Object.assign(new Error('403'), { isAxiosError: true, response: { status: 403 } }),
+    );
+    show(<StatNumberWidget title="Mở" config={{ metric: 'open' }} />, GROUP(), {
+      inherits: true,
+      projectIds: ['pa'],
+    });
+    expect(await screen.findByText(/không có quyền/i)).toBeTruthy();
   });
 });
 

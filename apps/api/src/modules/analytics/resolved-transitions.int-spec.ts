@@ -94,7 +94,12 @@ describe.skipIf(!DB_URL)('đếm việc vừa xong ↔ Postgres thật', () => {
   }, 60_000);
 
   it('created-vs-resolved: "đã giải quyết" theo ngày bỏ dòng DONE → DONE', async () => {
-    const svc = new AnalyticsService(prisma as unknown as PrismaService, {} as never, {} as never);
+    const svc = new AnalyticsService(
+      prisma as unknown as PrismaService,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
     const report = await svc.createdResolved(WS, id('p'), today, today);
     expect(report.series).toEqual([expect.objectContaining({ date: today, resolved: 3 })]);
   });

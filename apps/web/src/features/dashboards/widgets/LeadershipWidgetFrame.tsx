@@ -27,9 +27,11 @@ export function LeadershipWidgetFrame({
   const ids = aggregateIds(scope);
   // Thẻ nhân lực đo người trên MỌI dự án nên không thu hẹp theo nhóm/dự án được: ngoài phạm vi toàn tổ chức nó trống có lý do.
   const orgOnly = card === 'overloaded' && ids !== null;
-  const q = useScopedLeadership(ids, canReport && !orgOnly);
+  // Toàn tổ chức cần quyền báo cáo cấp tổ chức; nhóm dự án: máy chủ cho qua nếu có quyền trong từng dự án (403 → ô báo thiếu quyền).
+  const blocked = ids === null && !canReport;
+  const q = useScopedLeadership(ids, !blocked && !orgOnly);
 
-  if (!canReport) {
+  if (blocked) {
     return <WidgetFrame title={title} state="forbidden" forbiddenText="Cần quyền xem báo cáo" />;
   }
   if (orgOnly) {

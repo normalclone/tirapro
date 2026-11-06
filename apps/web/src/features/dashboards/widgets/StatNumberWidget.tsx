@@ -22,7 +22,7 @@ const isMetric = (v: unknown): v is StatMetric => METRICS.includes(v as StatMetr
 
 /**
  * Một chỉ số (số cỡ vừa, kiểu `StatRow`). Nguồn theo phạm vi của ô: một dự án → báo cáo dự án; nhóm dự án → tổng quan thu
- * hẹp vào các dự án người xem thấy; toàn tổ chức → tổng quan chung (cần quyền xem báo cáo). "Tỉ lệ mở lại" lấy từ báo cáo QA.
+ * hẹp vào các dự án người xem thấy; toàn tổ chức → tổng quan chung (cần quyền xem báo cáo cấp tổ chức). "Tỉ lệ mở lại" lấy từ báo cáo QA.
  */
 export function StatNumberWidget({ title, config }: WidgetProps) {
   const metric: StatMetric = isMetric(config.metric) ? config.metric : 'open';
@@ -30,14 +30,16 @@ export function StatNumberWidget({ title, config }: WidgetProps) {
   const projectId = scope.kind === 'project' ? scope.projectId : undefined;
   const isQa = metric === 'reopenRate';
   const canReport = useAuth((s) => s.can('report:view'));
+  // Toàn tổ chức cần quyền báo cáo cấp tổ chức; nhóm dự án: máy chủ cho qua nếu có quyền trong từng dự án (403 → ô báo thiếu quyền).
   const needsOrgReport = scope.kind !== 'project';
+  const blocked = scope.kind === 'org' && !canReport;
 
-  const overview = useScopedOverview(aggregateIds(scope), needsOrgReport && canReport && !isQa);
+  const overview = useScopedOverview(aggregateIds(scope), needsOrgReport && !blocked && !isQa);
   const report = useProjectReport(isQa ? undefined : projectId);
   const resolved = useCreatedResolved(projectId && metric === 'done14' ? projectId : undefined);
-  const qa = useScopedQa(scope, isQa && (scope.kind === 'project' || canReport));
+  const qa = useScopedQa(scope, isQa && !blocked);
 
-  if (needsOrgReport && !canReport) {
+  if (blocked) {
     return <WidgetFrame title={title} state="forbidden" forbiddenText="Cần quyền xem báo cáo" />;
   }
 

@@ -213,14 +213,14 @@ describe('AnalyticsController.qa — guard thật', () => {
 
 describe('AnalyticsController.leadershipOverview', () => {
   const h = AnalyticsController.prototype.leadershipOverview;
-  it('organization-level như overview: report:view, không gắn ProjectRef', () => {
-    expect(Reflect.getMetadata(PERMISSIONS_KEY, h)).toEqual([PERMISSIONS.REPORT_VIEW]);
+  it('không gắn @Permissions/ProjectRef: quyền kiểm trong controller (toàn tổ chức hoặc theo từng dự án)', () => {
+    expect(Reflect.getMetadata(PERMISSIONS_KEY, h)).toBeUndefined();
     expect(Reflect.getMetadata(PROJECT_REF_KEY, h)).toBeUndefined();
   });
   it('truyền id người xem xuống service (lọc dự án riêng tư)', async () => {
     const leadership = { get: vi.fn().mockResolvedValue({ topRisks: [] }) };
     const controller = new AnalyticsController(
-      {} as unknown as AnalyticsService,
+      { assertOrgReport: vi.fn(() => Promise.resolve()) } as unknown as AnalyticsService,
       {} as unknown as QaReportService,
       leadership as unknown as LeadershipService,
     );
@@ -232,9 +232,10 @@ describe('AnalyticsController.leadershipOverview', () => {
 describe('AnalyticsController — phạm vi nhóm dự án (projectIds)', () => {
   const make = () => {
     const analytics = {
-      resolveScopeIds: vi.fn((_o: string, _u: string, ids: string[]) =>
+      reportScopeIds: vi.fn((_u: unknown, _o: string, ids: string[]) =>
         Promise.resolve(ids.filter((i) => i !== 'hidden')),
       ),
+      assertOrgReport: vi.fn(() => Promise.resolve()),
       organizationOverview: vi.fn(() => Promise.resolve({})),
     };
     const qaReport = { reportForProjects: vi.fn(() => Promise.resolve({})) };
@@ -254,9 +255,10 @@ describe('AnalyticsController — phạm vi nhóm dự án (projectIds)', () => 
     expect(analytics.organizationOverview).toHaveBeenLastCalledWith('w1', 'u9', undefined, {
       byAssignee: false,
     });
-    expect(analytics.resolveScopeIds).not.toHaveBeenCalled();
+    expect(analytics.reportScopeIds).not.toHaveBeenCalled();
+    expect(analytics.assertOrgReport).toHaveBeenCalledWith(user, 'w1');
     await controller.overview('w1', user, ' a, b ,hidden,a');
-    expect(analytics.resolveScopeIds).toHaveBeenCalledWith('w1', 'u9', ['a', 'b', 'hidden']);
+    expect(analytics.reportScopeIds).toHaveBeenCalledWith(user, 'w1', ['a', 'b', 'hidden']);
     expect(analytics.organizationOverview).toHaveBeenLastCalledWith('w1', 'u9', ['a', 'b'], {
       byAssignee: false,
     });
@@ -273,7 +275,7 @@ describe('AnalyticsController — phạm vi nhóm dự án (projectIds)', () => 
       byAssignee: true,
     });
     await controller.overview('w1', user, ['a,b', 'c'], 'true');
-    expect(analytics.resolveScopeIds).toHaveBeenLastCalledWith('w1', 'u9', ['a', 'b', 'c']);
+    expect(analytics.reportScopeIds).toHaveBeenLastCalledWith(user, 'w1', ['a', 'b', 'c']);
     await controller.leadershipOverview('w1', user, ['a', 'b']);
     expect(leadership.get).toHaveBeenLastCalledWith('w1', 'u9', expect.any(Date), {
       projectIds: ['a', 'b'],
@@ -310,15 +312,15 @@ describe('AnalyticsController — phạm vi nhóm dự án (projectIds)', () => 
     });
   });
 
-  it('qa/projects: report:view cấp tổ chức (không ProjectRef), thiếu projectIds → lỗi, có → service nhận id người xem', async () => {
+  it('qa/projects: không @Permissions (kiểm theo phạm vi), thiếu projectIds → lỗi, có → service nhận id đã lọc quyền', async () => {
     const h = AnalyticsController.prototype.qaForProjects;
-    expect(Reflect.getMetadata(PERMISSIONS_KEY, h)).toEqual([PERMISSIONS.REPORT_VIEW]);
+    expect(Reflect.getMetadata(PERMISSIONS_KEY, h)).toBeUndefined();
     expect(Reflect.getMetadata(PROJECT_REF_KEY, h)).toBeUndefined();
     const { controller, qaReport } = make();
     await expect(controller.qaForProjects('w1', user)).rejects.toBeInstanceOf(
       BusinessRuleException,
     );
-    await controller.qaForProjects('w1', user, 'a,b', '2026-10-01', '2026-10-15');
+    await controller.qaForProjects('w1', user, 'a,b,hidden', '2026-10-01', '2026-10-15');
     expect(qaReport.reportForProjects).toHaveBeenCalledWith(
       'w1',
       'u9',
@@ -326,5 +328,32 @@ describe('AnalyticsController — phạm vi nhóm dự án (projectIds)', () => 
       '2026-10-01',
       '2026-10-15',
     );
+  });
+});
+
+describe('AnalyticsController — số liệu toàn tổ chức cần quyền cấp tổ chức', () => {
+  it('overview/leadership không projectIds: assertOrgReport ném 403 → không gọi service', async () => {
+    const analytics = {
+      assertOrgReport: vi.fn(() => Promise.reject(new ForbiddenAppException('x'))),
+      organizationOverview: vi.fn(),
+    };
+    const leadership = { get: vi.fn() };
+    const controller = new AnalyticsController(
+      analytics as unknown as AnalyticsService,
+      {} as unknown as QaReportService,
+      leadership as unknown as LeadershipService,
+    );
+    const user = { id: 'u9' } as never;
+    await expect(controller.overview('w1', user)).rejects.toBeInstanceOf(ForbiddenAppException);
+    await expect(controller.leadershipOverview('w1', user)).rejects.toBeInstanceOf(
+      ForbiddenAppException,
+    );
+    expect(analytics.organizationOverview).not.toHaveBeenCalled();
+    expect(leadership.get).not.toHaveBeenCalled();
+  });
+  it('overview không gắn @Permissions (guard chỉ tính được một dự án)', () => {
+    expect(
+      Reflect.getMetadata(PERMISSIONS_KEY, AnalyticsController.prototype.overview),
+    ).toBeUndefined();
   });
 });

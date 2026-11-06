@@ -36,16 +36,18 @@ export function PieByFieldWidget({ title, config }: WidgetProps) {
   const canReport = useAuth((s) => s.can('report:view'));
   const fromQa = isQaField(field);
   const aggregated = scope.kind !== 'project';
+  // Toàn tổ chức cần quyền báo cáo cấp tổ chức; nhóm dự án: máy chủ cho qua nếu có quyền trong từng dự án (403 → ô báo thiếu quyền).
+  const blocked = scope.kind === 'org' && !canReport;
 
   const overview = useScopedOverview(
     aggregateIds(scope),
-    aggregated && canReport && !fromQa,
+    aggregated && !blocked && !fromQa,
     field === 'assignee',
   );
   const report = useProjectReport(fromQa ? undefined : projectId);
-  const qa = useScopedQa(scope, fromQa && (!aggregated || canReport));
+  const qa = useScopedQa(scope, fromQa && !blocked);
 
-  if (aggregated && !canReport) {
+  if (blocked) {
     return <WidgetFrame title={title} state="forbidden" forbiddenText="Cần quyền xem báo cáo" />;
   }
 
