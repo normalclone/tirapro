@@ -426,6 +426,7 @@ describe('SearchService — kiểm giá trị JQL (U15)', () => {
     expect(r.valid).toBe(false);
     expect(r.error).toContain('Không có dự án "ATP"');
     expect(r.error).toContain('chưa được thêm vào dự án');
+    expect(r.error).toMatch(/DEMO\. Có thể bạn/);
   });
   it('quá xa → liệt kê giá trị hiện có', async () => {
     const { service } = make();
