@@ -3,6 +3,28 @@ import type { ScreenGuide } from './api';
 import { primaryTourOf, routeToScreen } from './routeToScreen';
 
 describe('routeToScreen', () => {
+  it('chuẩn hoá đoạn động của màn công việc, bảng tổng quan, bộ lọc', () => {
+    expect(routeToScreen('/issue/ABC-12')).toBe('/issue/:key');
+    expect(routeToScreen('/issue/ABC-12/')).toBe('/issue/:key');
+    expect(routeToScreen('/dashboards/ckx1y2z3')).toBe('/dashboards/:id');
+    expect(routeToScreen('/dashboards/new')).toBe('/dashboards/:id');
+    expect(routeToScreen('/filters')).toBe('/filters');
+    expect(routeToScreen('/filters/ckx1y2z3')).toBe('/filters');
+  });
+  it('gộp các mục con của cấu hình dự án và tích hợp về một màn', () => {
+    expect(routeToScreen('/p/ABC/config')).toBe('/p/:key/config');
+    expect(routeToScreen('/p/ABC/config/general')).toBe('/p/:key/config');
+    expect(routeToScreen('/p/ABC/config/workflow/')).toBe('/p/:key/config');
+    expect(routeToScreen('/connect/integrations')).toBe('/connect/integrations');
+    expect(routeToScreen('/connect/integrations/telegram')).toBe('/connect/integrations');
+  });
+  it('các màn tĩnh khác giữ nguyên', () => {
+    expect(routeToScreen('/settings/import')).toBe('/settings/import');
+    expect(routeToScreen('/connect/automation')).toBe('/connect/automation');
+    expect(routeToScreen('/admin/organizations')).toBe('/admin/organizations');
+    expect(routeToScreen('/issues')).toBe('/issues'); // không nhầm với /issue/:key
+  });
+
   it('chuẩn hoá đường dẫn dự án về mẫu có :key', () => {
     expect(routeToScreen('/p/ABC/board')).toBe('/p/:key/board');
     expect(routeToScreen('/p/ABC/backlog')).toBe('/p/:key/backlog');

@@ -5,13 +5,24 @@ import { useScreenGuides, type ScreenGuide } from './api';
 /**
  * Chuẩn hoá pathname cụ thể → screen pattern khớp với BE.
  * Vd `/p/PROJ-1/board` → `/p/:key/board`. Project key là segment sau `/p/`.
+ * Đoạn động còn lại: `/issue/ABC-1` → `/issue/:key`, `/dashboards/<id>` → `/dashboards/:id`; mục con của
+ * `/p/:key/config/*`, `/connect/integrations/*` và `/filters/<id>` gộp về một màn (mỗi nhóm một tour).
  */
 export function routeToScreen(pathname: string): string {
-  const m = /^\/p\/[^/]+(\/.*)?$/.exec(pathname);
-  if (m) return `/p/:key${m[1] ?? ''}`.replace(/\/$/, '') || '/p/:key';
-  // Bỏ trailing slash (trừ root) để khớp screen đã seed.
-  if (pathname.length > 1 && pathname.endsWith('/')) return pathname.slice(0, -1);
-  return pathname;
+  // Bỏ trailing slash (trừ root) trước, để mọi nhánh dưới đây không phải lo.
+  const path = pathname.length > 1 ? pathname.replace(/\/+$/, '') || '/' : pathname;
+  const proj = /^\/p\/[^/]+(\/.*)?$/.exec(path);
+  if (proj) {
+    const rest = proj[1] ?? '';
+    if (rest === '/config' || rest.startsWith('/config/')) return '/p/:key/config';
+    return `/p/:key${rest}`;
+  }
+  if (/^\/issue\/[^/]+$/.test(path)) return '/issue/:key';
+  if (/^\/dashboards\/[^/]+$/.test(path)) return '/dashboards/:id';
+  if (path === '/filters' || path.startsWith('/filters/')) return '/filters';
+  if (path === '/connect/integrations' || path.startsWith('/connect/integrations/'))
+    return '/connect/integrations';
+  return path;
 }
 
 /** Type-guard: content có phải tour (có mảng steps) không. */
