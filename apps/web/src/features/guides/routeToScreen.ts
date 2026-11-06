@@ -18,6 +18,8 @@ export function routeToScreen(pathname: string): string {
     return `/p/:key${rest}`;
   }
   if (/^\/issue\/[^/]+$/.test(path)) return '/issue/:key';
+  // `/dashboards/new` là thư viện mẫu, không phải một bảng cụ thể → giữ nguyên (trước luật `:id`).
+  if (path === '/dashboards/new') return path;
   if (/^\/dashboards\/[^/]+$/.test(path)) return '/dashboards/:id';
   if (path === '/filters' || path.startsWith('/filters/')) return '/filters';
   if (path === '/connect/integrations' || path.startsWith('/connect/integrations/'))

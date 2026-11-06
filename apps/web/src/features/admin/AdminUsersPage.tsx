@@ -60,7 +60,6 @@ function NoMatchingAccounts({ onReset }: { onReset: () => void }) {
   );
 }
 
-/** Màn Admin hệ thống: quản trị tài khoản toàn hệ thống + cấp quyền lập tổ chức. */
 /**
  * Ô tìm: gõ tới đâu lọc tới đó nhưng trễ 250 ms để danh sách dài không giật; lọc client vì danh sách không phân trang.
  * `setDebounced('')` xoá ngay (không chờ trễ) khi bấm "Xoá bộ lọc".
@@ -75,6 +74,7 @@ function useAccountSearch() {
   return { searchInput, setSearchInput, setDebounced, search: useDeferredValue(debounced) };
 }
 
+/** Màn Admin hệ thống: quản trị tài khoản toàn hệ thống + cấp quyền lập tổ chức. */
 export function AdminUsersPage() {
   const me = useAuth((s) => s.user);
   const { data: users, isLoading, isError, error, refetch } = useAdminUsers();

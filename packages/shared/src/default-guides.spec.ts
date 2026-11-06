@@ -60,14 +60,17 @@ describe('DEFAULT_GUIDES', () => {
       if (t.screen.startsWith('/p/')) expect(t.screen).toMatch(/^\/p\/:key\/[a-z]+$/);
     }
   });
-  it.each(tours)('$key: 3–5 bước, thứ tự 0..n-1 liên tục, selector dạng data-tour', (t) => {
-    const steps = (t.content as TourContent).steps;
-    expect(steps.length).toBeGreaterThanOrEqual(3);
-    expect(steps.length).toBeLessThanOrEqual(5);
-    expect(steps.map((s) => s.order)).toEqual(steps.map((_, i) => i));
-    for (const s of steps)
-      if (s.selector) expect(s.selector).toMatch(/^\[data-tour="[a-z0-9-]+"\]$/);
-  });
+  it.each(tours)(
+    '$key: 2–5 bước (màn có tab loại trừ nhau chỉ cần 2), thứ tự 0..n-1 liên tục, selector dạng data-tour',
+    (t) => {
+      const steps = (t.content as TourContent).steps;
+      expect(steps.length).toBeGreaterThanOrEqual(t.key === 'tour-integrations' ? 2 : 3);
+      expect(steps.length).toBeLessThanOrEqual(5);
+      expect(steps.map((s) => s.order)).toEqual(steps.map((_, i) => i));
+      for (const s of steps)
+        if (s.selector) expect(s.selector).toMatch(/^\[data-tour="[a-z0-9-]+"\]$/);
+    },
+  );
   it.each(tours)('$key: bước 0 có selector; nội dung ngắn gọn, đúng thuật ngữ', (t) => {
     const steps = (t.content as TourContent).steps;
     expect(steps[0]!.selector).toBeTruthy();
@@ -89,6 +92,15 @@ describe('DEFAULT_GUIDES', () => {
     expect(step.body).toMatch(/⌘K/);
     expect(step.body).toMatch(/Ctrl\+K/);
     expect(step.body).not.toMatch(/Windows/);
+  });
+  it('tour-integrations: các tab loại trừ nhau dùng chung MỘT bước `integrations-section`', () => {
+    const steps = (
+      DEFAULT_GUIDES.find((g) => g.key === 'tour-integrations')!.content as TourContent
+    ).steps;
+    expect(steps.map((s) => s.selector)).toEqual([
+      '[data-tour="integrations-tabs"]',
+      '[data-tour="integrations-section"]',
+    ]);
   });
   it('chỉ tour Tổng quan tự chạy lần đầu', () => {
     expect(tours.filter((t) => (t.content as TourContent).autoStart).map((t) => t.key)).toEqual([

@@ -105,8 +105,8 @@ const SCREEN_TOURS: GuideSeed[] = [
     ],
     [
       'projects-manage-groups',
-      'Nhóm của tôi',
-      'Gom các dự án thành nhóm riêng cho dễ tìm. Nhóm này chỉ mình bạn thấy, không ảnh hưởng người khác.',
+      'Quản lý nhóm của tôi',
+      'Gom các dự án thành nhóm dự án riêng cho dễ tìm, rồi xem theo nhóm. Nhóm này chỉ mình bạn thấy, không ảnh hưởng người khác.',
       'bottom',
     ],
     [
@@ -129,16 +129,16 @@ const SCREEN_TOURS: GuideSeed[] = [
         'bottom',
       ],
       [
+        'notifications-mark-all',
+        'Đánh dấu đã đọc tất cả',
+        'Một lần bấm đánh dấu mọi thông báo chưa đọc của bạn là đã đọc, không chỉ ở tab đang xem. Nút mờ đi khi không còn thông báo chưa đọc.',
+        'bottom',
+      ],
+      [
         'notifications-list',
         'Danh sách thông báo',
         'Bấm một thông báo để mở công việc liên quan; thông báo đó tự được đánh dấu đã đọc. Còn nữa thì bấm Tải thêm ở cuối danh sách.',
         'top',
-      ],
-      [
-        'notifications-mark-all',
-        'Đánh dấu đã đọc tất cả',
-        'Một lần bấm đánh dấu mọi thông báo chưa đọc của bạn là đã đọc, không chỉ ở tab đang xem.',
-        'bottom',
       ],
       [
         'notifications-settings',
@@ -316,7 +316,7 @@ const SCREEN_TOURS: GuideSeed[] = [
       [
         'triage-list',
         'Duyệt từng yêu cầu',
-        'Bấm một dòng để đọc mô tả và người gửi. Nhận đưa việc vào Việc chờ; Từ chối cần ghi lý do để người gửi biết; Tạm hoãn để xử lý sau.',
+        'Bấm tiêu đề để xem nhanh, hoặc Chi tiết để đọc mô tả và người gửi. Nhận đưa việc vào Việc chờ; Từ chối cần ghi lý do để người gửi biết; Tạm hoãn để xử lý sau.',
         'top',
       ],
       [
@@ -439,6 +439,12 @@ const SCREEN_TOURS: GuideSeed[] = [
       'over',
     ],
     [
+      'tree-drag-hint',
+      'Đổi việc cha bằng cách kéo',
+      'Kéo một dòng thả lên dòng khác để đổi Epic / Việc cha. Không kéo được thì mở công việc và đổi ở ô "Epic / Việc cha".',
+      'bottom',
+    ],
+    [
       'tree-table',
       'Các cột',
       'Tiêu đề, Trạng thái, Người phụ trách, Ưu tiên và Điểm. Dòng có việc con hiện điểm cộng dồn: đã xong / tổng. Bấm một dòng để xem nhanh.',
@@ -448,12 +454,6 @@ const SCREEN_TOURS: GuideSeed[] = [
       'tree-toggle-all',
       'Mở hoặc thu gọn',
       'Nút ở đầu cột thu gọn hoặc mở rộng cả cây; mũi tên trên từng dòng chỉ đóng mở nhánh đó.',
-      'bottom',
-    ],
-    [
-      'tree-drag-hint',
-      'Đổi việc cha bằng cách kéo',
-      'Kéo một dòng thả lên dòng khác để đổi Epic / Việc cha. Không kéo được thì mở công việc và đổi ở ô "Epic / Việc cha".',
       'bottom',
     ],
   ]),
@@ -720,7 +720,7 @@ const SCREEN_TOURS: GuideSeed[] = [
       [
         'workflows-create',
         'Tạo quy trình',
-        'Tạo quy trình mới: đặt tên và chọn dùng chung hoặc riêng cho một dự án. Nút chỉ hiện khi bạn có quyền quản lý quy trình.',
+        'Tạo quy trình mới: đặt tên và chọn Toàn tổ chức hoặc riêng cho một dự án. Nút chỉ hiện khi bạn có quyền quản lý quy trình.',
         'left',
       ],
     ],
@@ -804,21 +804,9 @@ const SCREEN_TOURS: GuideSeed[] = [
         'bottom',
       ],
       [
-        'integrations-telegram',
-        'Telegram',
-        'Gửi thông báo công việc tới nhóm Telegram. Kết nối từng bước: chọn bot, thêm bot vào nhóm, gõ mã liên kết, gửi thử.',
-        'top',
-      ],
-      [
-        'integrations-repos',
-        'Kho mã (GitHub / GitLab)',
-        'Liên kết kho mã để gắn commit và pull request vào đúng công việc, tiện theo dõi tiến độ lập trình.',
-        'top',
-      ],
-      [
-        'integrations-digest',
-        'Báo cáo định kỳ',
-        'Tổng hợp tiến độ dự án theo lịch rồi gửi qua Telegram và/hoặc email.',
+        'integrations-section',
+        'Nội dung tab đang mở',
+        'Telegram: gửi thông báo công việc tới nhóm chat, kết nối từng bước. Kho mã: gắn commit và pull request vào công việc. Báo cáo định kỳ: gửi tổng hợp tiến độ theo lịch.',
         'top',
       ],
     ],
@@ -844,7 +832,7 @@ const SCREEN_TOURS: GuideSeed[] = [
       [
         'automation-scope',
         'Chọn phạm vi',
-        'Quy tắc gắn với dự án: chọn dự án ở ô Phạm vi quy tắc, rồi bấm Tạo quy tắc nếu bạn có quyền.',
+        'Quy tắc gắn với dự án: chọn dự án ở ô chọn phạm vi, rồi bấm Tạo quy tắc nếu bạn có quyền.',
         'bottom',
       ],
       [
@@ -994,7 +982,7 @@ const SCREEN_TOURS: GuideSeed[] = [
       [
         'admin-points-save',
         'Lưu hoặc khôi phục',
-        'Lưu bảng hệ số sẽ tính lại điểm mọi việc trên toàn hệ thống, trừ việc đã chỉnh tay. Khôi phục mặc định đưa bảng về số ban đầu.',
+        'Lưu bảng hệ số sẽ tính lại điểm mọi việc trên toàn hệ thống, trừ việc đã chỉnh tay. Khôi phục mặc định đưa bảng về số mặc định (bấm Lưu mới áp dụng).',
         'top',
       ],
     ],

@@ -36,12 +36,12 @@ import { GRID_COLS, TREE_TABLE_MIN_W_CLS } from './treeLayout';
 /** Bậc thụt lề mỗi cấp (px) ở cột tiêu đề. */
 const INDENT_STEP = 20;
 
-/** Bản sao của `set` không có `id` (giữ nguyên tham chiếu nếu `id` vốn không có để khỏi vẽ lại thừa). */
 const TREE_TABLE_CLS = cn(
   'overflow-hidden rounded-lg border border-border bg-surface',
   TREE_TABLE_MIN_W_CLS,
 );
 
+/** Bản sao của `set` không có `id` (giữ nguyên tham chiếu nếu `id` vốn không có để khỏi vẽ lại thừa). */
 function without(set: Set<string>, id: string): Set<string> {
   if (!set.has(id)) return set;
   const next = new Set(set);

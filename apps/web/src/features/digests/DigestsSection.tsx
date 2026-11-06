@@ -70,7 +70,7 @@ export function DigestsSection() {
 
   return (
     <SectionCard
-      data-tour="integrations-digest"
+      data-tour="integrations-section"
       icon={<CalendarClock className="h-4 w-4" />}
       title="Báo cáo định kỳ"
       description="Tổng hợp tiến độ dự án theo lịch rồi gửi qua Telegram và/hoặc email."

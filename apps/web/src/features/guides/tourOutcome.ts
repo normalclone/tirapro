@@ -1,6 +1,17 @@
 /** Kết quả ghi nhận khi tour đóng: `complete` (xem hết và bấm "Xong") hay chỉ `seen` (đã mở/đã thấy). */
 export type TourOutcome = 'complete' | 'seen';
 
+/** Báo khi bấm "?" mà không có bước nào hiển thị được (trang đang tải, đang ở chế độ chỉnh sửa…). */
+export const EMPTY_TOUR_MESSAGE =
+  'Màn này chưa có gì để chỉ lúc này — chờ trang tải xong hoặc thoát chế độ chỉnh sửa rồi thử lại';
+
+/** Không có bước nào → báo người dùng (thay vì im lặng) và trả `true` để nơi gọi dừng; có bước thì trả `false`. */
+export function skipEmptyTour(stepCount: number, notify: (message: string) => void): boolean {
+  if (stepCount > 0) return false;
+  notify(EMPTY_TOUR_MESSAGE);
+  return true;
+}
+
 /**
  * Chỉ "complete" khi người dùng đã XÁC NHẬN bước cuối bằng "Xong" (nút hoặc phím →, cùng hook `onNextClick`). Bỏ qua, ×, Esc,
  * bấm nền đều là "seen". API: `seen` đặt tiến độ SEEN (chặn auto-start lần sau, `seen: state !== null`) và KHÔNG hạ cấp

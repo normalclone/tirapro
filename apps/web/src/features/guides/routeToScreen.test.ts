@@ -8,7 +8,7 @@ describe('routeToScreen', () => {
     expect(routeToScreen('/issue/ABC-12')).toBe('/issue/:key');
     expect(routeToScreen('/issue/ABC-12/')).toBe('/issue/:key');
     expect(routeToScreen('/dashboards/ckx1y2z3')).toBe('/dashboards/:id');
-    expect(routeToScreen('/dashboards/new')).toBe('/dashboards/:id');
+    expect(routeToScreen('/dashboards/new')).toBe('/dashboards/new');
     expect(routeToScreen('/filters')).toBe('/filters');
     expect(routeToScreen('/filters/ckx1y2z3')).toBe('/filters');
   });

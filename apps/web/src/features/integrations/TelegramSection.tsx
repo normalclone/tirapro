@@ -111,7 +111,7 @@ export function TelegramSection() {
 
   return (
     <SectionCard
-      data-tour="integrations-telegram"
+      data-tour="integrations-section"
       icon={<PlatformLogo platform="TELEGRAM" size={18} />}
       title="Telegram"
       description="Gửi thông báo công việc tới nhóm Telegram. Kết nối từng bước: chọn bot, thêm bot vào nhóm, gõ mã liên kết, gửi thử."

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { HelpCircle } from 'lucide-react';
+import { toast } from 'sonner';
 import type { DriveStep, Driver, Config } from 'driver.js';
 import type { TourContent, TourStepDef } from '@tirapro/shared';
 import { Button } from '@/components/ui/Button';
@@ -12,6 +13,7 @@ import {
   ensureSkipButton,
   restoreTourFocus,
   shouldFocusPrimary,
+  skipEmptyTour,
 } from './tourOutcome';
 
 /**
@@ -51,10 +53,19 @@ export function GuideLauncher() {
   const launching = useRef(false);
 
   const runTour = useCallback(
-    async (guide: ScreenGuide, opts: { markSeen?: boolean; returnFocus?: HTMLElement | null }) => {
+    async (
+      guide: ScreenGuide,
+      opts: { markSeen?: boolean; returnFocus?: HTMLElement | null; auto?: boolean },
+    ) => {
       if (!isTour(guide.content)) return;
       const steps = toDriveSteps(guide.content.steps);
-      if (steps.length === 0) return;
+      if (
+        skipEmptyTour(steps.length, (m) => {
+          // Tự chạy lần đầu (Tổng quan) mà trang chưa dựng xong thì im lặng; người dùng chủ động bấm thì báo.
+          if (!opts.auto) toast.info(m);
+        })
+      )
+        return;
       // driver.js + CSS chỉ tải khi thật sự chạy tour (không nằm trong bundle đầu).
       if (launching.current) return;
       launching.current = true;
@@ -132,7 +143,7 @@ export function GuideLauncher() {
     const t = window.setTimeout(() => {
       if (autoStarted.current.has(screen)) return;
       autoStarted.current.add(screen);
-      void runTourRef.current(primaryTour, { markSeen: true });
+      void runTourRef.current(primaryTour, { markSeen: true, auto: true });
     }, 350);
     return () => window.clearTimeout(t);
   }, [primaryTour, autoStart, screen]);
