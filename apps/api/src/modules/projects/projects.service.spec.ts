@@ -950,3 +950,153 @@ describe('ProjectsService.create — cache quy trình của resolver (đặt def
     expect(resolver.invalidate).not.toHaveBeenCalledWith('p1');
   });
 });
+
+describe('ProjectsService.create — thêm người ngay khi tạo (members)', () => {
+  function make(opts: { orgMembers?: string[]; roles?: string[] } = {}) {
+    const ok = () => vi.fn((_a?: unknown) => Promise.resolve({ id: 'x' }));
+    const tx = {
+      project: {
+        create: vi.fn((_a?: unknown) => Promise.resolve(row({ id: 'p1', name: 'D' }))),
+        update: ok(),
+        findUnique: vi.fn(() =>
+          Promise.resolve({ organizationId: 'w1', defaultWorkflowId: 'wf-clone' }),
+        ),
+      },
+      workflow: { create: ok() },
+      status: { create: ok() },
+      workflowTransition: { create: ok() },
+      board: { create: ok() },
+      boardColumn: { create: ok() },
+      boardColumnStatus: { create: ok() },
+      projectMembership: { create: ok() },
+      ...resolverTables(),
+    };
+    const prisma = {
+      project: { findFirst: vi.fn(() => Promise.resolve(null)) },
+      role: {
+        findFirst: vi.fn(() => Promise.resolve({ id: 'r-padmin' })),
+        findMany: vi.fn(() => Promise.resolve((opts.roles ?? ['r-dev']).map((id) => ({ id })))),
+      },
+      organizationMembership: {
+        findMany: vi.fn(() =>
+          Promise.resolve((opts.orgMembers ?? ['u2', 'u3']).map((userId) => ({ userId }))),
+        ),
+        findUnique: vi.fn(() =>
+          Promise.resolve({ id: 'm', user: { status: 'ACTIVE', email: 'a@x.vn' } }),
+        ),
+      },
+      $transaction: vi.fn((fn: (t: unknown) => unknown) => Promise.resolve(fn(tx))),
+    };
+    const svc = new ProjectsService(
+      prisma as never,
+      {} as never,
+      {} as never,
+      ACCESS as never,
+      AUDIT as never,
+    );
+    return { svc, tx, prisma };
+  }
+  const memberships = (tx: { projectMembership: { create: { mock: { calls: unknown[][] } } } }) =>
+    tx.projectMembership.create.mock.calls.map(
+      (c) => (c as unknown as [{ data: { userId: string; roleId: string } }])[0].data,
+    );
+
+  it('mỗi người được thêm có ProjectMembership + dòng nối vai trò đã chọn, cùng transaction; người tạo vẫn là Quản trị dự án', async () => {
+    const { svc, tx, prisma } = make();
+    await svc.create('w1', 'u1', {
+      key: 'D',
+      name: 'D',
+      type: 'SCRUM',
+      isPrivate: true,
+      members: [
+        { userId: 'u2', roleId: 'r-dev' },
+        { userId: 'u3', roleId: 'r-dev' },
+      ],
+    });
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(memberships(tx)).toEqual([
+      expect.objectContaining({ userId: 'u1', roleId: 'r-padmin' }),
+      expect.objectContaining({
+        userId: 'u2',
+        roleId: 'r-dev',
+        roles: { create: [{ roleId: 'r-dev' }] },
+      }),
+      expect.objectContaining({ userId: 'u3', roleId: 'r-dev' }),
+    ]);
+  });
+
+  it('vai trò phải là MẪU cấp dự án của tổ chức (projectId null); người phải là thành viên còn hoạt động của tổ chức', async () => {
+    const { svc, prisma } = make();
+    await svc.create('w1', 'u1', {
+      key: 'D',
+      name: 'D',
+      type: 'SCRUM',
+      members: [{ userId: 'u2', roleId: 'r-dev' }],
+    });
+    expect(prisma.role.findMany).toHaveBeenCalledWith({
+      where: {
+        id: { in: ['r-dev'] },
+        scope: 'PROJECT',
+        projectId: null,
+        OR: [{ organizationId: 'w1' }, { organizationId: null }],
+      },
+      select: { id: true },
+    });
+    expect(prisma.organizationMembership.findMany).toHaveBeenCalledWith({
+      where: {
+        organizationId: 'w1',
+        userId: { in: ['u2'] },
+        user: { status: { not: 'DEACTIVATED' } },
+      },
+      select: { userId: true },
+    });
+  });
+
+  it('bỏ qua người tạo, người phụ trách (dự án riêng tư) và trùng lặp', async () => {
+    const { svc, tx } = make();
+    await svc.create('w1', 'u1', {
+      key: 'D',
+      name: 'D',
+      type: 'SCRUM',
+      isPrivate: true,
+      leadId: 'u2',
+      members: [
+        { userId: 'u1', roleId: 'r-dev' },
+        { userId: 'u2', roleId: 'r-dev' },
+        { userId: 'u3', roleId: 'r-dev' },
+        { userId: 'u3', roleId: 'r-dev' },
+      ],
+    });
+    // u1 (người tạo) + u2 (phụ trách, Quản trị dự án) + u3 một lần
+    expect(memberships(tx).map((m) => m.userId)).toEqual(['u1', 'u2', 'u3']);
+  });
+
+  it('người không thuộc tổ chức → 422, không tạo dự án; vai trò không hợp lệ (vd vai trò riêng của dự án khác) → 403', async () => {
+    const a = make({ orgMembers: [] });
+    await expect(
+      a.svc.create('w1', 'u1', {
+        key: 'D',
+        name: 'D',
+        type: 'SCRUM',
+        members: [{ userId: 'ghost', roleId: 'r-dev' }],
+      }),
+    ).rejects.toMatchObject({ status: 422 });
+    expect(a.prisma.$transaction).not.toHaveBeenCalled();
+    const b = make({ roles: [] });
+    await expect(
+      b.svc.create('w1', 'u1', {
+        key: 'D',
+        name: 'D',
+        type: 'SCRUM',
+        members: [{ userId: 'u2', roleId: 'r-other' }],
+      }),
+    ).rejects.toMatchObject({ status: 403 });
+    expect(b.prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('không gửi members → không truy vấn thêm, hành vi cũ', async () => {
+    const { svc, prisma } = make();
+    await svc.create('w1', 'u1', { key: 'D', name: 'D', type: 'SCRUM' });
+    expect(prisma.organizationMembership.findMany).not.toHaveBeenCalled();
+  });
+});

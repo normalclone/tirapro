@@ -899,10 +899,31 @@ describe('MembersService — dự án riêng tư', () => {
     expect(out.every((m) => m.isOverride)).toBe(true);
   });
 
-  it('listProject: dự án công khai vẫn trả toàn bộ thành viên organization', async () => {
+  it('listProject: dự án công khai chỉ liệt kê thành viên THẬT — Organization Member không có dòng dự án thì không có tên (chỉ xem)', async () => {
     const { svc } = setup({ isPrivate: false });
     const out = await svc.listProject('w1', 'p1');
-    expect(out.map((m) => m.user.id)).toEqual(['u1', 'u2', 'u3']);
+    expect(out.map((m) => m.user.id)).toEqual(['u1']);
+    expect(out[0]!.isOverride).toBe(true);
+  });
+
+  it('listProject: dự án công khai vẫn liệt kê người có vai trò dự án MẶC ĐỊNH theo vai trò tổ chức (Quản trị → Quản trị dự án)', async () => {
+    const { svc, prisma } = setup({ isPrivate: false });
+    const admin = {
+      id: 'wm-u2',
+      joinedAt: null,
+      roleId: 'wa',
+      role: { id: 'wa', name: 'Organization Admin', color: null },
+      user: userRow('u2'),
+      roles: [{ role: { id: 'wa', name: 'Organization Admin', color: null } }],
+    };
+    const rows = (await prisma.organizationMembership.findMany()) as unknown[];
+    prisma.organizationMembership.findMany.mockResolvedValue([...rows, admin] as never);
+    const out = await svc.listProject('w1', 'p1');
+    expect(out.map((m) => [m.user.id, m.isOverride])).toEqual([
+      ['u1', true],
+      ['u2', false],
+    ]);
+    expect(out[1]!.roles.map((r) => r.name)).toEqual(['Project Admin']);
   });
 
   it('clearProjectOverride: dự án riêng tư, thành viên duy nhất => BusinessRuleException, không xoá', async () => {
@@ -1206,7 +1227,21 @@ describe('MembersService.listOrganization/listProject — lastSeenAt/isSystemAdm
   function setup() {
     const prisma = {
       organizationMembership: { findMany: vi.fn(() => Promise.resolve([wsRow])) },
-      projectMembership: { findMany: vi.fn(() => Promise.resolve([])) },
+      // người này là thành viên THẬT của dự án (dự án công khai chỉ liệt kê thành viên thật)
+      projectMembership: {
+        findMany: vi.fn(() =>
+          Promise.resolve([
+            {
+              id: 'pm1',
+              userId: 'u1',
+              projectId: 'p1',
+              roleId: 'pr1',
+              role: { id: 'pr1', name: 'Developer', color: null },
+              roles: [{ role: { id: 'pr1', name: 'Developer', color: null, permissions: [] } }],
+            },
+          ]),
+        ),
+      },
       project: {
         findFirst: vi.fn(() => Promise.resolve({ id: 'p1', name: 'Demo', isPrivate: false })),
       },

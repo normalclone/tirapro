@@ -207,7 +207,7 @@ describe('quy ước nguồn', () => {
     for (const f of ['RoleMatrixTable.tsx', 'useRolePermEditor.ts', 'RolesPage.tsx']) {
       expect(src(f)).not.toMatch(/useAuth\(\s*\(?\s*s\s*\)?\s*=>\s*s\.can\s*\)/);
     }
-    expect(src('RolesPage.tsx')).toContain("useAuth((s) => s.can('member:manage'))");
+    expect(src('RolesPage.tsx')).toContain("useAuth((s) => s.can('organization:admin'))");
   });
   it('409: chữ toast đúng yêu cầu và gom bấm ~500ms', () => {
     const hook = src('useRolePermEditor.ts');

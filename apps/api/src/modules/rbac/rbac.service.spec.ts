@@ -567,7 +567,7 @@ describe('RbacService — tư cách thành viên chỉ do team (gắn team khôn
     const { svc, prisma } = setup('down');
     prisma.organizationMembership.findUnique.mockResolvedValue({
       roleId: 'r',
-      roles: [{ role: { id: 'r', name: 'Organization Member' } }],
+      roles: [{ role: { id: 'r', name: 'Organization Admin' } }], // có vai trò dự án MẶC ĐỊNH (Project Admin)
     } as never);
     prisma.projectMembership.findUnique.mockResolvedValue({
       roleId: opts.roles[0]!.roleId,
@@ -635,5 +635,91 @@ describe('RbacService — tư cách thành viên chỉ do team (gắn team khôn
     const perms = await t.svc.getEffectivePermissions('U1', 'W1', 'P1');
     expect(perms.size).toBe(0);
     expect(t.prisma.rolePermission.findMany).not.toHaveBeenCalled();
+  });
+});
+
+describe('RbacService.compute — vai trò riêng của dự án chỉ hiệu lực ở đúng dự án đó', () => {
+  const run = async (projectId: string | null) => {
+    const { svc, prisma, client } = setup();
+    client.set.mockReturnValue(Promise.resolve('OK'));
+    prisma.organizationMembership.findUnique.mockResolvedValue({
+      roleId: 'orgRole',
+      roles: [{ role: { id: 'orgRole', name: 'Organization Member' } }],
+    } as never);
+    prisma.project.findFirst.mockResolvedValue({ isPrivate: false });
+    prisma.projectMembership.findUnique.mockResolvedValue({
+      roleId: 'own',
+      roles: [{ roleId: 'own', direct: true }],
+    } as never);
+    prisma.rolePermission.findMany.mockResolvedValue([
+      { permission: { key: 'issue:create' } },
+    ] as never);
+    await svc.getEffectivePermissions('U1', 'W1', projectId);
+    return prisma;
+  };
+
+  it('tính ở một dự án: chỉ nhận vai trò mẫu hoặc vai trò riêng của CHÍNH dự án đó', async () => {
+    const prisma = await run('P1');
+    expect(prisma.rolePermission.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          role: { OR: [{ projectId: null }, { projectId: 'P1' }] },
+        }) as object,
+      }),
+    );
+  });
+
+  it('tính cấp tổ chức (không dự án): không nhận vai trò riêng của dự án nào', async () => {
+    const prisma = await run(null);
+    expect(prisma.rolePermission.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ role: { projectId: null } }) as object,
+      }),
+    );
+  });
+});
+
+describe('RbacService — dự án công khai chỉ xem với Organization Member', () => {
+  it('Organization Member không còn vai trò dự án mặc định: không có dòng thành viên → chỉ quyền của vai trò tổ chức (không tra vai trò dự án mặc định)', async () => {
+    const { svc, prisma } = setup('down');
+    prisma.organizationMembership.findUnique.mockResolvedValue({
+      roleId: 'r',
+      roles: [{ role: { id: 'r', name: 'Organization Member' } }],
+    } as never);
+    prisma.projectMembership.findUnique.mockResolvedValue(null);
+    prisma.project.findFirst.mockResolvedValue({ isPrivate: false });
+    prisma.rolePermission.findMany.mockResolvedValue([
+      { permission: { key: 'project:view' } },
+    ] as never);
+    const perms = await svc.getEffectivePermissions('U1', 'W1', 'P1');
+    expect([...perms]).toEqual(['project:view']);
+    expect(prisma.role.findMany).not.toHaveBeenCalled(); // không có vai trò mặc định để tra
+    const asked = (
+      prisma.rolePermission.findMany.mock.calls as unknown as Array<
+        [{ where: { roleId: { in: string[] } } }]
+      >
+    )[0]![0].where.roleId.in;
+    expect([...new Set(asked)]).toEqual(['r']);
+  });
+
+  it('Organization Admin vẫn có Project Admin mặc định ở dự án công khai', async () => {
+    const { svc, prisma } = setup('down');
+    prisma.organizationMembership.findUnique.mockResolvedValue({
+      roleId: 'a',
+      roles: [{ role: { id: 'a', name: 'Organization Admin' } }],
+    } as never);
+    prisma.projectMembership.findUnique.mockResolvedValue(null);
+    prisma.project.findFirst.mockResolvedValue({ isPrivate: false });
+    prisma.role.findMany.mockResolvedValue([{ id: 'rpa' }] as never);
+    prisma.rolePermission.findMany.mockResolvedValue([] as never);
+    await svc.getEffectivePermissions('U1', 'W1', 'P1');
+    expect(prisma.role.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          name: { in: ['Project Admin'] },
+          projectId: null,
+        }) as object,
+      }),
+    );
   });
 });

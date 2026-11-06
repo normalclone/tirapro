@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Check, Search, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import { roleLabel } from '@tirapro/types';
@@ -14,6 +15,7 @@ import { useAuth } from '@/stores/auth';
 import { frozenAdminRoles } from './adminGrant';
 import { adminRoleIds } from './roleChange';
 import { useRoles } from '@/features/roles/api';
+import { useAssignableProjectRoles } from '@/features/roles/projectRolesApi';
 import { useTeams } from '@/features/teams/api';
 import { cn } from '@/lib/utils';
 import {
@@ -52,21 +54,27 @@ export function AddPeopleDialog({
   onClose,
   mode,
   projectId,
+  rolesHref,
 }: {
   open: boolean;
   onClose: () => void;
   mode: 'organization' | 'project';
   projectId?: string;
+  /** Dự án chưa có vai trò: đường dẫn tới Cấu hình › Vai trò để tạo từ mẫu. */
+  rolesHref?: string;
 }) {
   const isProject = mode === 'project';
   const { data: allUsers } = useAllUsers(undefined, open && !isProject);
   const { data: wsMembers } = useOrganizationMembers();
   const { data: projMembers } = useProjectMembers(isProject ? projectId : undefined);
   const { data: teams } = useTeams();
-  const { data: roles } = useRoles(isProject ? 'PROJECT' : 'ORGANIZATION');
+  const { data: scopeRoles } = useRoles(isProject ? 'PROJECT' : 'ORGANIZATION');
+  // Dự án: chọn trong vai trò CỦA DỰÁN đó (Quản trị chọn được cả mẫu); tổ chức: vai trò cấp tổ chức như cũ.
+  const assignable = useAssignableProjectRoles(isProject ? projectId : undefined);
+  const roles = isProject ? assignable.options : scopeRoles;
   // P-C14: người không phải quản trị không gán được vai trò mang `organization:admin` (máy chủ trả 403).
   const canGrantAdmin = useAuth((s) => s.can('organization:admin'));
-  const frozen = frozenAdminRoles(canGrantAdmin, adminRoleIds(roles ?? []));
+  const frozen = frozenAdminRoles(canGrantAdmin, adminRoleIds(scopeRoles ?? []));
   const addWs = useAddMembersBulk();
   const addProj = useAddProjectMembersBulk(projectId ?? '');
 
@@ -160,7 +168,8 @@ export function AddPeopleDialog({
 
   const allFilteredSelected = filtered.length > 0 && filtered.every((c) => selected.has(c.id));
   const busy = addWs.isPending || addProj.isPending;
-  const canSubmit = selected.size > 0 && roleIds.length > 0 && !busy;
+  const needsRoles = isProject && assignable.needsRoles;
+  const canSubmit = selected.size > 0 && roleIds.length > 0 && !busy && !needsRoles;
 
   function toggle(id: string) {
     setSelected((prev) => {
@@ -220,12 +229,27 @@ export function AddPeopleDialog({
             Vai trò khi thêm:
           </label>
           <div className="min-w-[14rem] flex-1">
-            <RoleMultiSelect
-              options={roleOptions}
-              value={roleIds}
-              onChange={setRoleIds}
-              frozen={frozen}
-            />
+            {needsRoles ? (
+              <p className="text-sm text-muted">
+                Dự án chưa có vai trò nào.{' '}
+                {rolesHref && (
+                  <Link
+                    to={rolesHref}
+                    onClick={onClose}
+                    className="font-medium text-primary hover:underline"
+                  >
+                    Tạo vai trò từ mẫu
+                  </Link>
+                )}
+              </p>
+            ) : (
+              <RoleMultiSelect
+                options={roleOptions}
+                value={roleIds}
+                onChange={setRoleIds}
+                frozen={frozen}
+              />
+            )}
           </div>
           <Button variant="ghost" onClick={onClose}>
             Huỷ

@@ -19,7 +19,11 @@ import { Prisma } from '@prisma/client';
 import { pruneSubTeamsForPrivateProject } from '../project-subteams/subteam-membership';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { TRIAGE_VISIBLE } from '../../common/triage-visibility';
-import { BusinessRuleException, NotFoundAppException } from '../../common/exceptions/app.exception';
+import {
+  BusinessRuleException,
+  ForbiddenAppException,
+  NotFoundAppException,
+} from '../../common/exceptions/app.exception';
 import { iso } from '../../common/mappers/date';
 import { assertNotArchived } from '../../common/project-writable';
 import { MediaService } from '../media/media.service';
@@ -111,6 +115,7 @@ export class ProjectsService {
         'Thiếu vai trò hệ thống "Quản trị dự án" — chưa thể tạo dự án riêng tư',
       );
     if (input.leadId) await this.assertLeadEligible(organizationId, input.leadId);
+    const extraMembers = await this.validateInitialMembers(organizationId, userId, input);
 
     let project: Prisma.ProjectGetPayload<object>;
     try {
@@ -201,28 +206,16 @@ export class ProjectsService {
         await appendMissingBoardStatuses(tx, project.id, inUse);
         await pruneUnusedBoardStatuses(tx, project.id, inUse);
 
-        // Người tạo = Project Admin
-        if (adminRole) {
-          await tx.projectMembership.create({
-            data: {
-              projectId: project.id,
-              userId,
-              roleId: adminRole.id,
-              roles: { create: [{ roleId: adminRole.id }] },
-            },
-          });
-          // Dự án riêng tư: người phụ trách được chọn khác người tạo cũng phải là thành viên, nếu không không thấy dự án.
-          if (input.isPrivate && input.leadId && input.leadId !== userId) {
-            await tx.projectMembership.create({
-              data: {
-                projectId: project.id,
-                userId: input.leadId,
-                roleId: adminRole.id,
-                roles: { create: [{ roleId: adminRole.id }] },
-              },
-            });
-          }
-        }
+        // Người tạo = Project Admin; dự án riêng tư: người phụ trách được chọn khác người tạo cũng phải là thành viên (không thì
+        // không thấy dự án). Rồi những người được thêm ngay khi tạo (vai trò ban đầu do người tạo chọn) — cùng transaction.
+        const lead =
+          input.isPrivate && input.leadId && input.leadId !== userId ? input.leadId : null;
+        await this.addInitialMemberships(tx, project.id, [
+          ...(adminRole
+            ? [userId, ...(lead ? [lead] : [])].map((id) => ({ userId: id, roleId: adminRole.id }))
+            : []),
+          ...extraMembers,
+        ]);
         return project;
       });
     } catch (e) {
@@ -240,6 +233,71 @@ export class ProjectsService {
     // Commit: `defaultWorkflowId` vừa được đặt — mọi quy trình đã nạp cho dự án này (nếu có) đã cũ.
     this.workflows.invalidate(project.id);
     return this.toDto(project, 0);
+  }
+
+  private async addInitialMemberships(
+    tx: Prisma.TransactionClient,
+    projectId: string,
+    rows: { userId: string; roleId: string }[],
+  ): Promise<void> {
+    for (const m of rows) {
+      await tx.projectMembership.create({
+        data: {
+          projectId,
+          userId: m.userId,
+          roleId: m.roleId,
+          roles: { create: [{ roleId: m.roleId }] },
+        },
+      });
+    }
+  }
+
+  /**
+   * Người thêm ngay khi tạo dự án: phải là thành viên (còn hoạt động) của tổ chức và vai trò phải là MẪU vai trò cấp dự án (dự án
+   * chưa tồn tại nên chưa có vai trò riêng). Bỏ qua người tạo (luôn là Quản trị dự án) và người phụ trách đã được thêm khi dự án riêng
+   * tư; khử trùng theo người (dòng đầu thắng).
+   */
+  private async validateInitialMembers(
+    organizationId: string,
+    creatorId: string,
+    input: CreateProjectInput,
+  ): Promise<{ userId: string; roleId: string }[]> {
+    const skip = new Set([creatorId, ...(input.isPrivate && input.leadId ? [input.leadId] : [])]);
+    const seen = new Set<string>();
+    const wanted = (input.members ?? []).filter((m) => {
+      if (skip.has(m.userId) || seen.has(m.userId)) return false;
+      seen.add(m.userId);
+      return true;
+    });
+    if (wanted.length === 0) return [];
+    const [orgMembers, roles] = await Promise.all([
+      this.prisma.organizationMembership.findMany({
+        where: {
+          organizationId,
+          userId: { in: wanted.map((m) => m.userId) },
+          user: { status: { not: 'DEACTIVATED' } },
+        },
+        select: { userId: true },
+      }),
+      this.prisma.role.findMany({
+        where: {
+          id: { in: [...new Set(wanted.map((m) => m.roleId))] },
+          scope: 'PROJECT',
+          projectId: null,
+          OR: [{ organizationId }, { organizationId: null }],
+        },
+        select: { id: true },
+      }),
+    ]);
+    const okUsers = new Set(orgMembers.map((m) => m.userId));
+    const okRoles = new Set(roles.map((r) => r.id));
+    if (wanted.some((m) => !okUsers.has(m.userId)))
+      throw new BusinessRuleException(
+        'Có người được thêm không còn là thành viên của tổ chức — bỏ họ khỏi danh sách rồi thử lại',
+      );
+    if (wanted.some((m) => !okRoles.has(m.roleId)))
+      throw new ForbiddenAppException('Một số vai trò không hợp lệ cho cấp dự án');
+    return wanted;
   }
 
   /**

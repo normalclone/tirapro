@@ -164,6 +164,12 @@ export const keys = {
     project: (projectId: string) => ['project-members', projectId] as const,
   },
 
+  /** Vai trò RIÊNG của một dự án (`GET /projects/:id/roles`) — khác `roles` (mẫu dùng chung). */
+  projectRoles: {
+    root: ['project-roles'] as const,
+    byProject: (projectId: string) => ['project-roles', projectId] as const,
+  },
+
   roles: {
     all: ['roles'] as const,
     byScope: (scope?: RoleScope) => ['roles', scope ?? 'ALL'] as const,

@@ -2,6 +2,7 @@
 export const CONFIG_SECTION_IDS = [
   'general',
   'members',
+  'roles',
   'components',
   'versions',
   'labels',

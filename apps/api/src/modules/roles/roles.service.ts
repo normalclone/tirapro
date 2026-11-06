@@ -61,7 +61,7 @@ const roleSelect = (organizationId: string) =>
 
 /**
  * Danh mục vai trò: gồm role HỆ THỐNG (organizationId=null, dùng chung, chỉ đọc) + role
- * CUSTOM của tổ chức (sửa/xoá được). Quyền sửa/xoá gated bởi MEMBER_MANAGE ở controller.
+ * CUSTOM của tổ chức (sửa/xoá được) = các MẪU vai trò. Chỉ Quản trị (`organization:admin`) tạo/sửa/xoá mẫu (controller).
  */
 @Injectable()
 export class RolesService {
@@ -75,7 +75,12 @@ export class RolesService {
 
   async list(organizationId: string, scope?: RoleScope) {
     const roles = await this.prisma.role.findMany({
-      where: { OR: [{ organizationId: null }, { organizationId }], ...(scope ? { scope } : {}) },
+      // Chỉ MẪU dùng chung (hệ thống + tuỳ chỉnh của tổ chức); vai trò riêng của từng dự án không hiện ở đây.
+      where: {
+        projectId: null,
+        OR: [{ organizationId: null }, { organizationId }],
+        ...(scope ? { scope } : {}),
+      },
       orderBy: [{ isSystem: 'desc' }, { scope: 'asc' }, { name: 'asc' }],
       select: roleSelect(organizationId),
     });
@@ -278,10 +283,12 @@ export class RolesService {
         name: true,
         isSystem: true,
         organizationId: true,
+        projectId: true,
         _count: { select: memberCountSelect(organizationId) },
       },
     });
-    if (!role) throw new NotFoundAppException('Vai trò');
+    // Vai trò riêng của dự án đi qua `/projects/:id/roles` (Project Admin), không qua danh mục mẫu → 404 như không tồn tại.
+    if (!role || role.projectId) throw new NotFoundAppException('Vai trò');
     if (role.isSystem || role.organizationId !== organizationId) {
       throw new ForbiddenAppException('Không thể sửa/xoá vai trò hệ thống');
     }

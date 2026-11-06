@@ -42,6 +42,8 @@ const EXEMPT: Record<string, string> = {
   'resources/resources.service.ts': 'cấp tổ chức',
   'teams/teams.service.ts': 'cấp tổ chức',
   'roles/roles.service.ts': 'phân quyền',
+  'roles/project-roles.service.ts':
+    'phân quyền truy cập qua vai trò riêng của dự án (như members/project-teams: quản trị cần chỉnh vai trò khi dự án đã lưu trữ)',
   'members/members.service.ts': 'phân quyền truy cập (quản trị cần chỉnh khi lưu trữ)',
   'project-teams/project-teams.service.ts':
     'phân quyền truy cập qua team (như members: quản trị cần chỉnh người/vai trò khi dự án đã lưu trữ)',

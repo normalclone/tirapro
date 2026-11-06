@@ -26,8 +26,9 @@ export class RolesController {
     return this.roles.list(organizationId, scope);
   }
 
+  /** Mẫu vai trò dùng chung: chỉ Quản trị (khớp giao diện Quản trị › Vai trò & quyền). */
   @Post()
-  @Permissions(PERMISSIONS.MEMBER_MANAGE)
+  @Permissions(PERMISSIONS.ORGANIZATION_ADMIN)
   async create(
     @CurrentUser() user: AuthUser,
     @OrganizationId() organizationId: string,
@@ -37,7 +38,7 @@ export class RolesController {
   }
 
   @Patch(':id')
-  @Permissions(PERMISSIONS.MEMBER_MANAGE)
+  @Permissions(PERMISSIONS.ORGANIZATION_ADMIN)
   async update(
     @CurrentUser() user: AuthUser,
     @OrganizationId() organizationId: string,
@@ -48,7 +49,7 @@ export class RolesController {
   }
 
   @Delete(':id')
-  @Permissions(PERMISSIONS.MEMBER_MANAGE)
+  @Permissions(PERMISSIONS.ORGANIZATION_ADMIN)
   async remove(
     @CurrentUser() user: AuthUser,
     @OrganizationId() organizationId: string,

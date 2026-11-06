@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { Pencil, History, UserMinus, UserPlus, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import type { MemberDto } from '@tirapro/types';
@@ -10,12 +10,13 @@ import { Input } from '@/components/ui/Input';
 import { TabPanel, Tabs, type TabItem } from '@/components/ui/Tabs';
 import { RoleBadge } from '@/components/ui/RoleBadge';
 import { apiErrorMessage } from '@/lib/api';
-import { cn } from '@/lib/utils';
 import { useCan } from '@/features/projects/permissions';
 import { useAuth } from '@/stores/auth';
 import { frozenAdminRoles } from '@/features/members/adminGrant';
 import { adminRoleIds } from '@/features/members/roleChange';
 import { useRoles } from '@/features/roles/api';
+import { useAssignableProjectRoles } from '@/features/roles/projectRolesApi';
+import { configSectionPath } from './configSections';
 import { EditRolesPopover } from '@/features/members/EditRolesPopover';
 import { AddPeopleDialog } from '@/features/members/AddPeopleDialog';
 import {
@@ -58,8 +59,12 @@ export function MembersSection({
   const tab = memberTabFromParam(params.get('tab'));
   // Danh sách thành viên + vai trò dùng chung cho cả ba tab (gỡ team cần biết ai bị ảnh hưởng, team riêng chọn người từ đây).
   const membersQuery = useProjectMembers(projectId);
+  // `projectRoles` = MẪU vai trò cấp dự án (chỉ để nhận ra mẫu mang quyền quản trị bị khoá); danh sách CHỌN là vai trò của dự án.
   const { data: projectRoles } = useRoles('PROJECT');
-  const roleOptions = (projectRoles ?? []).map((r) => ({ id: r.id, name: r.name, color: r.color }));
+  const assignable = useAssignableProjectRoles(projectId);
+  const roleOptions = assignable.options;
+  const { key: projectKey = '' } = useParams();
+  const rolesHref = configSectionPath(projectKey, 'roles');
   const members = membersQuery.data ?? [];
   // P-C14: người không phải quản trị tổ chức không gắn/gỡ được vai trò mang `organization:admin` (khoá kèm lý do, máy chủ vẫn kiểm).
   const canGrantAdmin = useAuth((s) => s.can('organization:admin'));
@@ -107,6 +112,8 @@ export function MembersSection({
             canAdmin={canAdmin}
             membersQuery={membersQuery}
             roleOptions={roleOptions}
+            needsRoles={assignable.needsRoles}
+            rolesHref={rolesHref}
           />
         ) : tab === 'teams' ? (
           <ProjectTeamsPanel
@@ -131,17 +138,22 @@ function MembersList({
   canAdmin,
   membersQuery,
   roleOptions,
+  needsRoles,
+  rolesHref,
 }: {
   projectId?: string;
   isPrivate: boolean;
   canAdmin: boolean;
   membersQuery: ReturnType<typeof useProjectMembers>;
   roleOptions: { id: string; name: string; color?: string | null }[];
+  /** Dự án chưa có vai trò nào để chọn → gợi ý tạo từ mẫu. */
+  needsRoles: boolean;
+  rolesHref: string;
 }) {
   const confirm = useConfirm();
 
-  // Thành viên dự án = TOÀN BỘ thành viên của tổ chức (dự án dùng chung tập người dùng).
-  // `isOverride` cho biết vai trò đang là ĐẶT RIÊNG hay MẶC ĐỊNH theo vai trò chung.
+  // Thành viên dự án = người được THÊM vào dự án (trực tiếp hoặc qua team). Dự án công khai: ai trong tổ chức cũng xem được
+  // nhưng chỉ người ở đây mới làm việc. `isOverride` cho biết vai trò đang là ĐẶT RIÊNG hay MẶC ĐỊNH theo vai trò chung.
   const { data: members } = membersQuery;
 
   const setRoles = useSetProjectMemberRoles(projectId ?? '');
@@ -170,25 +182,18 @@ function MembersList({
             confirmLabel: 'Gỡ vai trò riêng',
             destructive: true,
           }
-        : isPrivate
-          ? {
-              title: `Gỡ ${name} khỏi dự án?`,
-              description: 'Người này sẽ không còn thấy dự án riêng tư này.',
-              confirmLabel: 'Gỡ khỏi dự án',
-              destructive: true,
-            }
-          : { title: `Đưa ${name} về vai trò mặc định chung?` },
+        : {
+            title: `Gỡ ${name} khỏi dự án?`,
+            description: isPrivate
+              ? 'Người này sẽ không còn thấy dự án riêng tư này.'
+              : 'Người này chỉ còn xem được dự án, không làm việc trong đó nữa.',
+            confirmLabel: 'Gỡ khỏi dự án',
+            destructive: true,
+          },
     );
     if (!ok) return;
     clearOverride.mutate(uid, {
-      onSuccess: () =>
-        toast.success(
-          teams.length > 0
-            ? 'Đã gỡ vai trò riêng'
-            : isPrivate
-              ? 'Đã gỡ khỏi dự án'
-              : 'Đã về vai trò mặc định',
-        ),
+      onSuccess: () => toast.success(teams.length > 0 ? 'Đã gỡ vai trò riêng' : 'Đã gỡ khỏi dự án'),
       onError: (e) => toast.error(apiErrorMessage(e)),
     });
   }
@@ -209,12 +214,25 @@ function MembersList({
           <EmptyState
             icon={<Users className="h-6 w-6" />}
             title="Chưa có thành viên nào"
-            description="Thêm người vào tổ chức ở trang Thành viên — họ sẽ tự động tham gia mọi dự án."
+            description={
+              canAdmin
+                ? 'Thêm người vào dự án và chọn vai trò cho họ.'
+                : 'Chưa ai được thêm vào dự án này.'
+            }
+            action={
+              canAdmin && !needsRoles ? (
+                <Button size="sm" onClick={() => setAdding(true)}>
+                  <UserPlus className="h-4 w-4" />
+                  Thêm người
+                </Button>
+              ) : undefined
+            }
           />
         }
       >
         {() => (
           <>
+            {canAdmin && needsRoles && <NeedsRolesHint href={rolesHref} />}
             <div className="mb-3 flex items-center justify-between gap-3">
               <Input
                 value={q}
@@ -224,8 +242,8 @@ function MembersList({
               />
               <div className="flex shrink-0 items-center gap-3">
                 <span className="text-sm text-muted">{list.length} người</span>
-                {isPrivate && canAdmin && (
-                  <Button size="sm" onClick={() => setAdding(true)}>
+                {canAdmin && (
+                  <Button size="sm" onClick={() => setAdding(true)} disabled={needsRoles}>
                     <UserPlus className="h-4 w-4" />
                     Thêm người
                   </Button>
@@ -237,7 +255,6 @@ function MembersList({
                 <MemberRow
                   key={m.user.id}
                   m={m}
-                  isPrivate={isPrivate}
                   canAdmin={canAdmin}
                   roleOptions={roleOptions}
                   saving={setRoles.isPending}
@@ -254,10 +271,11 @@ function MembersList({
           </>
         )}
       </QueryBoundary>
-      {isPrivate && (
+      {canAdmin && (
         <AddPeopleDialog
           mode="project"
           projectId={projectId}
+          rolesHref={rolesHref}
           open={adding}
           onClose={() => setAdding(false)}
         />
@@ -266,9 +284,35 @@ function MembersList({
   );
 }
 
+/** Dự án chưa có vai trò → không có gì để gán: dẫn sang mục Vai trò để tạo từ mẫu. */
+function NeedsRolesHint({ href }: { href: string }) {
+  return (
+    <p className="mb-3 rounded-md bg-surface-2 px-3 py-2 text-sm text-muted">
+      Dự án chưa có vai trò nào để gán cho người mới.{' '}
+      <Link to={href} className="font-medium text-primary hover:underline">
+        Tạo vai trò từ mẫu
+      </Link>
+    </p>
+  );
+}
+
+/**
+ * Vai trò chọn được cho một người = vai trò của dự án + những vai trò người đó ĐANG giữ (vd mẫu hệ thống gán từ trước): các gán cũ
+ * vẫn hiệu lực và hiện đúng trong hộp chọn, lưu lại không làm mất chúng.
+ */
+export function withCurrentRoles<T extends { id: string; name: string; color?: string | null }>(
+  options: T[],
+  m: MemberDto,
+): { id: string; name: string; color?: string | null }[] {
+  const have = new Set(options.map((o) => o.id));
+  const extra = m.roles
+    .filter((r) => !have.has(r.id))
+    .map((r) => ({ id: r.id, name: r.name, color: r.color }));
+  return [...options, ...extra];
+}
+
 interface MemberRowProps {
   m: MemberDto;
-  isPrivate: boolean;
   canAdmin: boolean;
   roleOptions: { id: string; name: string; color?: string | null }[];
   saving: boolean;
@@ -276,20 +320,10 @@ interface MemberRowProps {
   onReset: () => void;
 }
 
-function MemberRow({
-  m,
-  isPrivate,
-  canAdmin,
-  roleOptions,
-  saving,
-  onSaveRoles,
-  onReset,
-}: MemberRowProps) {
+function MemberRow({ m, canAdmin, roleOptions, saving, onSaveRoles, onReset }: MemberRowProps) {
   const hasDirect = memberHasDirectRoles(m);
   const teamOnly = isTeamOnlyMember(m);
   const teams = memberTeamNames(m);
-  // Có thông tin nguồn từng vai trò → nhãn nguồn thay cho thẻ "riêng/mặc định" của cả hàng.
-  const perRoleSource = m.isOverride === true && m.roles.some((r) => r.direct !== undefined);
   const stillViaTeams = hasDirect && teams.length > 0;
   return (
     <li className="flex items-start gap-3 py-2.5 first:pt-0 last:pb-0 sm:items-center">
@@ -317,26 +351,11 @@ function MemberRow({
         ) : (
           <span className="text-xs text-faint">Chỉ xem</span>
         )}
-        {!isPrivate && !perRoleSource && (
-          <span
-            className={cn(
-              'rounded px-1.5 py-0.5 text-[10px] font-medium',
-              m.isOverride ? 'bg-primary-subtle text-primary' : 'bg-surface-2 text-faint',
-            )}
-            title={
-              m.isOverride
-                ? 'Vai trò đặt riêng cho dự án này'
-                : 'Vai trò mặc định suy từ vai trò chung'
-            }
-          >
-            {m.isOverride ? 'riêng' : 'mặc định'}
-          </span>
-        )}
       </div>
       {canAdmin && (
         <div className="flex shrink-0 items-center gap-1">
           <EditRolesPopover
-            roles={roleOptions}
+            roles={withCurrentRoles(roleOptions, m)}
             current={m.roles}
             saving={saving}
             onSave={onSaveRoles}
@@ -363,23 +382,15 @@ function MemberRow({
               variant="ghost"
               size="icon"
               className="text-muted hover:text-ink"
-              title={
-                teams.length > 0
-                  ? 'Gỡ vai trò riêng (vẫn ở dự án nhờ team)'
-                  : isPrivate
-                    ? 'Gỡ khỏi dự án'
-                    : 'Về vai trò mặc định'
-              }
+              title={teams.length > 0 ? 'Gỡ vai trò riêng (vẫn ở dự án nhờ team)' : 'Gỡ khỏi dự án'}
               aria-label={
                 teams.length > 0
                   ? `Gỡ vai trò riêng của ${m.user.displayName}`
-                  : isPrivate
-                    ? `Gỡ ${m.user.displayName} khỏi dự án`
-                    : `Đưa ${m.user.displayName} về vai trò mặc định`
+                  : `Gỡ ${m.user.displayName} khỏi dự án`
               }
               onClick={onReset}
             >
-              {isPrivate && teams.length === 0 ? (
+              {teams.length === 0 ? (
                 <UserMinus className="h-4 w-4" />
               ) : (
                 <History className="h-4 w-4" />

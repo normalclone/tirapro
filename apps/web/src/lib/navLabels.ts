@@ -66,6 +66,7 @@ export const TAB_SHORT_LABELS = {
 export const PROJECT_CONFIG_LABELS = {
   general: 'Chung',
   members: 'Thành viên',
+  roles: 'Vai trò',
   components: 'Thành phần',
   versions: 'Phiên bản',
   labels: 'Nhãn',

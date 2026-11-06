@@ -1,8 +1,11 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { ChevronRight, Users } from 'lucide-react';
 import { Avatar, EmptyState, Skeleton } from '@/components/ui/primitives';
 import { Input } from '@/components/ui/Input';
 import { useProjects } from '@/features/projects/api';
+import { useCan } from '@/features/projects/permissions';
+import { configSectionPath } from '@/features/project-config/configSections';
 import { foldForMatch } from '@tirapro/shared';
 import { cn } from '@/lib/utils';
 import { useProjectMembers } from './api';
@@ -70,6 +73,8 @@ function ProjectPeople({
   defaultOpen: boolean;
 }) {
   const [open, setOpen] = useState(defaultOpen);
+  // Project Admin của dự án này: có lối tắt tới Cấu hình › Thành viên để thêm/gỡ người và đổi vai trò.
+  const canAdmin = useCan(projectId)('project:admin');
   const searching = query.trim() !== '';
   // Đang tìm thì nạp mọi dự án để tìm được người ở dự án đang đóng.
   const { data: members, isPending } = useProjectMembers(open || searching ? projectId : undefined);
@@ -86,26 +91,40 @@ function ProjectPeople({
 
   return (
     <li className="overflow-hidden rounded-lg border border-border bg-surface">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={expanded}
-        aria-controls={panelId}
-        className="flex min-h-11 w-full items-center gap-2 px-4 py-2.5 text-left hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
-      >
-        <ChevronRight
-          className={cn(
-            'h-4 w-4 shrink-0 text-faint transition-transform',
-            expanded && 'rotate-90',
+      <div className="flex items-center">
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={expanded}
+          aria-controls={panelId}
+          className="flex min-h-11 min-w-0 flex-1 items-center gap-2 px-4 py-2.5 text-left hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+        >
+          <ChevronRight
+            className={cn(
+              'h-4 w-4 shrink-0 text-faint transition-transform',
+              expanded && 'rotate-90',
+            )}
+            aria-hidden
+          />
+          <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink-strong">
+            {name}
+          </span>
+          <span className="shrink-0 font-mono text-xs text-muted">{projectKey}</span>
+          {members && (
+            <span className="tabular shrink-0 text-xs text-muted">{members.length} người</span>
           )}
-          aria-hidden
-        />
-        <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink-strong">{name}</span>
-        <span className="shrink-0 font-mono text-xs text-muted">{projectKey}</span>
-        {members && (
-          <span className="tabular shrink-0 text-xs text-muted">{members.length} người</span>
+        </button>
+        {canAdmin && (
+          <Link
+            to={configSectionPath(projectKey, 'members')}
+            className="mr-2 inline-flex min-h-11 shrink-0 items-center rounded-md px-3 text-sm font-medium text-primary hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+            title="Thêm người và đổi vai trò trong cấu hình dự án"
+            aria-label={`Quản lý thành viên dự án ${name}`}
+          >
+            Quản lý
+          </Link>
         )}
-      </button>
+      </div>
       {expanded && (
         <div id={panelId} className="border-t border-border">
           {isPending ? (

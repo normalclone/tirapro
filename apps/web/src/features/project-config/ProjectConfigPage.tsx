@@ -8,6 +8,7 @@ import {
   Download,
   GitBranch,
   Image as ImageIcon,
+  Shield,
   Users,
   SlidersHorizontal,
 } from 'lucide-react';
@@ -26,6 +27,7 @@ import {
 import { GeneralSection } from './GeneralSection';
 import { SectionCard } from '@/components/ui/SectionCard';
 import { MembersSection } from './MembersSection';
+import { ProjectRolesSection } from './ProjectRolesSection';
 import { ComponentsSection } from './ComponentsSection';
 import { VersionsSection } from './VersionsSection';
 import { LabelsSection } from './LabelsSection';
@@ -58,6 +60,12 @@ const CONFIG_NAV: ConfigSectionDef[] = [
     icon: <SlidersHorizontal className="h-4 w-4" />,
   },
   { id: 'members', label: PROJECT_CONFIG_LABELS.members, icon: <Users className="h-4 w-4" /> },
+  {
+    id: 'roles',
+    label: PROJECT_CONFIG_LABELS.roles,
+    icon: <Shield className="h-4 w-4" />,
+    description: 'Vai trò riêng của dự án này: tạo từ mẫu của tổ chức hoặc tự chọn quyền.',
+  },
   {
     id: 'components',
     label: PROJECT_CONFIG_LABELS.components,
@@ -151,7 +159,7 @@ export function ConfigSection() {
     section === 'members'
       ? project?.isPrivate
         ? 'Dự án riêng tư — chỉ người ở đây và quản trị thấy được.'
-        : 'Mọi thành viên tổ chức đều tham gia; đặt vai trò riêng cho từng người khi cần.'
+        : 'Mọi người trong tổ chức xem được dự án; muốn làm việc cần được thêm vào dự án.'
       : def.description;
 
   return (
@@ -172,6 +180,7 @@ export function ConfigSection() {
         {section === 'members' && (
           <MembersSection projectId={projectId} isPrivate={project?.isPrivate ?? false} />
         )}
+        {section === 'roles' && <ProjectRolesSection projectId={projectId} />}
         {section === 'components' && (
           <ComponentsSection projectId={projectId} canAdmin={canAdmin} />
         )}

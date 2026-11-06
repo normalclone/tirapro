@@ -224,6 +224,8 @@ export const SYSTEM_ROLE_PERMISSIONS: Record<SystemRoleName, PermissionKey[]> = 
     PERMISSIONS.ORGANIZATION_VIEW,
     // Không có PROJECT_CREATE: tạo dự án chỉ dành cho Tổ chức Admin (BA/Test/Dev không được tạo).
     PERMISSIONS.PROJECT_VIEW,
+    // Dự án công khai = mọi người trong tổ chức XEM được (việc + báo cáo); muốn làm việc phải được thêm vào dự án.
+    PERMISSIONS.REPORT_VIEW,
     PERMISSIONS.AI_USE,
     PERMISSIONS.DASHBOARD_MANAGE,
     PERMISSIONS.FILTER_MANAGE,
@@ -445,7 +447,8 @@ export const SYSTEM_ROLE_PERMISSIONS: Record<SystemRoleName, PermissionKey[]> = 
  */
 export const DEFAULT_PROJECT_ROLE_BY_WS_ROLE: Record<string, SystemRoleName | null> = {
   [SYSTEM_ROLES.ORGANIZATION_ADMIN]: SYSTEM_ROLES.PROJECT_ADMIN,
-  [SYSTEM_ROLES.ORGANIZATION_MEMBER]: SYSTEM_ROLES.DEVELOPER,
+  // Dự án công khai: chỉ XEM (quyền xem đến từ vai trò tổ chức). Muốn làm việc phải có dòng thành viên dự án.
+  [SYSTEM_ROLES.ORGANIZATION_MEMBER]: null,
   [SYSTEM_ROLES.ORGANIZATION_VIEWER]: null,
 };
 
