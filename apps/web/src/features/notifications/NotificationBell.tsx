@@ -86,7 +86,7 @@ export function NotificationBell() {
         <Popover.Content
           align="end"
           sideOffset={8}
-          className="z-dropdown w-80 max-w-[calc(100vw-1rem)] overflow-hidden rounded-lg border border-border bg-surface shadow-lg outline-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95"
+          className="z-dropdown w-[30rem] max-w-[calc(100vw-1rem)] overflow-hidden rounded-lg border border-border bg-surface shadow-lg outline-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95"
         >
           <div className="flex items-center justify-between border-b border-border px-3 py-2.5">
             <span className="text-sm font-semibold text-ink-strong">Thông báo</span>
