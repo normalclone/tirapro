@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { IntegrationStatus } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
-import { TelegramService } from './telegram.service';
+import { TelegramService, redactTelegramError } from './telegram.service';
 
 /**
  * Gửi thông báo cá nhân qua Telegram (chat riêng đã liên kết). KHÔNG BAO GIỜ ném lỗi — thông báo in-app/email không được
@@ -41,9 +41,7 @@ export class TelegramNotifier {
       }
       return outcome === 'ok';
     } catch (err) {
-      this.logger.warn(
-        `Telegram cá nhân: gửi thất bại — ${err instanceof Error ? err.message : String(err)}`,
-      );
+      this.logger.warn(`Telegram cá nhân: gửi thất bại — ${redactTelegramError(err)}`);
       return false;
     }
   }

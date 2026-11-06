@@ -32,6 +32,15 @@ export class TelegramTokenRejectedError extends Error {
   }
 }
 
+/**
+ * Thông điệp lỗi an toàn để LOG: lỗi từ Telegraf/fetch có thể chứa URL `…/bot<id>:<token>/sendMessage` — che token trước khi
+ * ghi (log không bao giờ được chứa token bot).
+ */
+export function redactTelegramError(err: unknown): string {
+  const msg = err instanceof Error ? err.message : String(err);
+  return msg.replace(/bot\d+:[\w-]+/g, 'bot***');
+}
+
 /** Một bản tin văn bản trong chat (đã rút gọn từ Update.message). */
 export interface TelegramMessageUpdate {
   chatId: number;
@@ -281,7 +290,7 @@ export class TelegramService {
       return 'ok';
     } catch (err) {
       this.logger.warn(
-        `Không gửi được tin nhắn Telegram tới ${chatId}: ${err instanceof Error ? err.message : String(err)}`,
+        `Không gửi được tin nhắn Telegram tới ${chatId}: ${redactTelegramError(err)}`,
       );
       if (
         err instanceof TelegramError &&

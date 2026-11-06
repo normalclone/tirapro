@@ -37,6 +37,7 @@ function setup(
     projects?: unknown[];
     orgAdmin?: boolean;
     perms?: Record<string, string[]>;
+    memberOf?: string[];
     bot?: boolean;
     channel?: unknown;
     token?: unknown;
@@ -44,6 +45,11 @@ function setup(
 ) {
   const prisma = {
     project: { findMany: vi.fn(() => Promise.resolve(opts.projects ?? [P('a'), P('b'), P('c')])) },
+    projectMembership: {
+      findMany: vi.fn(() =>
+        Promise.resolve((opts.memberOf ?? ['a', 'b', 'c']).map((projectId) => ({ projectId }))),
+      ),
+    },
     integrationChannel: {
       findMany: vi.fn(() =>
         Promise.resolve([{ id: 'c1', title: 'Nhóm dev', events: [], isEnabled: true }]),
@@ -104,6 +110,35 @@ describe('managedProjects', () => {
     const { service, rbac } = setup({ perms: { a: ['project:admin'], c: ['project:admin'] } });
     expect((await service.managedProjects('u1', 'w1')).map((p) => p.id)).toEqual(['a', 'c']);
     expect(rbac.getEffectivePermissions).toHaveBeenCalledWith('u1', 'w1', 'b');
+  });
+
+  it('chỉ tính quyền ở dự án có dòng thành viên + MỘT dự án đại diện cho các dự án còn lại (không N lần)', async () => {
+    const projects = ['a', 'b', 'c', 'd', 'e'].map(P);
+    const { service, rbac, prisma } = setup({
+      projects,
+      memberOf: ['b'],
+      perms: { b: ['project:admin'] },
+    });
+    expect((await service.managedProjects('u1', 'w1')).map((p) => p.id)).toEqual(['b']);
+    expect(prisma.projectMembership.findMany).toHaveBeenCalledWith({
+      where: {
+        userId: 'u1',
+        project: { organizationId: 'w1', id: { in: ['a', 'b', 'c', 'd', 'e'] } },
+      },
+      select: { projectId: true },
+    });
+    const asked = rbac.getEffectivePermissions.mock.calls.map((c) => c[2]);
+    expect(asked).toEqual(['b', 'a']); // b (thành viên) + a (đại diện cho a,c,d,e)
+  });
+
+  it('quản trị dự án nhờ vai trò dự án MẶC ĐỊNH (không có dòng thành viên) → mọi dự án còn lại cùng được tính, giữ thứ tự', async () => {
+    const projects = ['a', 'b', 'c'].map(P);
+    const { service } = setup({
+      projects,
+      memberOf: ['b'],
+      perms: { a: ['project:admin'], b: [], c: ['project:admin'] },
+    });
+    expect((await service.managedProjects('u1', 'w1')).map((p) => p.id)).toEqual(['a', 'c']);
   });
 
   it('không quản trị dự án nào → rỗng (FE ẩn mục)', async () => {
@@ -184,8 +219,16 @@ describe('updateChannel / removeChannel', () => {
     await expect(
       service.updateChannel('w1', 'p1', 'c1', { isEnabled: false }, 'u1'),
     ).rejects.toMatchObject({ status: 404 });
+    // chỉ kênh của kết nối TELEGRAM (kênh loại khác → không khớp → 404)
     expect(prisma.integrationChannel.findFirst).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { id: 'c1', organizationId: 'w1', projectId: 'p1' } }),
+      expect.objectContaining({
+        where: {
+          id: 'c1',
+          organizationId: 'w1',
+          projectId: 'p1',
+          integration: { type: 'TELEGRAM' },
+        },
+      }),
     );
     expect(prisma.integrationChannel.update).not.toHaveBeenCalled();
     const rm = setup({ channel: null });

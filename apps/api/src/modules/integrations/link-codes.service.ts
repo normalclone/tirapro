@@ -11,6 +11,7 @@ import {
   TelegramUnreachableError,
   TelegramWebhookConflictError,
   parseLinkCommand,
+  redactTelegramError,
 } from './telegram.service';
 import { ProjectAccessService } from '../rbac/project-access.service';
 
@@ -283,9 +284,7 @@ export class LinkCodesService {
         `✅ Đã liên kết với Tirapro — tổ chức "${esc(ws?.name ?? '')}"`,
       );
     } catch (err) {
-      this.logger.warn(
-        `Không gửi được tin xác nhận liên kết: ${err instanceof Error ? err.message : String(err)}`,
-      );
+      this.logger.warn(`Không gửi được tin xác nhận liên kết: ${redactTelegramError(err)}`);
     }
   }
 }

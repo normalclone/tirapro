@@ -9,6 +9,7 @@ import {
   isStopCommand,
   parseLinkCommand,
   parseStartCommand,
+  redactTelegramError,
 } from './telegram.service';
 
 // Telegraf giả: getMe điều khiển được; TelegramError giữ nguyên bản thật.
@@ -372,5 +373,28 @@ describe('TelegramService.sendDetailed', () => {
   });
   it('thiếu token (không bot chung) → disabled', async () => {
     expect(await make(NEW_KEY).sendDetailed(null, '9', 'hi')).toBe('disabled');
+  });
+});
+
+describe('redactTelegramError / log không chứa token', () => {
+  const URL_ERR =
+    'FetchError: request to https://api.telegram.org/bot123456789:AAH-secret_tok/sendMessage failed';
+  it('che bot<id>:<token> ở mọi vị trí, kể cả khi lỗi không phải Error', () => {
+    expect(redactTelegramError(new Error(URL_ERR))).toBe(
+      'FetchError: request to https://api.telegram.org/bot***/sendMessage failed',
+    );
+    expect(redactTelegramError(`x bot111:abc_DEF-1 y bot222:zzz`)).toBe('x bot*** y bot***');
+    expect(redactTelegramError('không có token')).toBe('không có token');
+  });
+  it('sendDetailed: lỗi mạng có URL chứa token → log warn KHÔNG chứa token, trả failed', async () => {
+    const svc = make(NEW_KEY);
+    const warn = vi
+      .spyOn((svc as unknown as { logger: { warn: () => void } }).logger, 'warn')
+      .mockImplementation(() => undefined);
+    tg.sendMessage.mockRejectedValueOnce(new Error(URL_ERR));
+    expect(await svc.sendDetailed('123456789:AAH-secret_tok', '9', 'hi')).toBe('failed');
+    expect(JSON.stringify(warn.mock.calls)).not.toContain('AAH-secret_tok');
+    expect(JSON.stringify(warn.mock.calls)).toContain('bot***');
+    tg.sendMessage.mockReset();
   });
 });

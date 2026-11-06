@@ -80,6 +80,7 @@ function LinkFlow({ status, onDone }: { status: TelegramLinkStatus; onDone: () =
             <Button
               type="button"
               variant="ghost"
+              className="[@media(pointer:coarse)]:h-11"
               onClick={() => {
                 clear();
                 onDone();
@@ -137,6 +138,7 @@ function CardBody({ status }: { status: TelegramLinkStatus }) {
           type="button"
           variant="secondary"
           size="sm"
+          className="[@media(pointer:coarse)]:h-11"
           loading={unlink.isPending}
           onClick={() =>
             unlink.mutate(undefined, {
@@ -159,7 +161,11 @@ function CardBody({ status }: { status: TelegramLinkStatus }) {
         Chưa liên kết. Liên kết xong, bạn chọn loại thông báo nào gửi qua Telegram ở danh sách bên
         dưới.
       </p>
-      <Button type="button" onClick={() => setLinking(true)}>
+      <Button
+        type="button"
+        className="[@media(pointer:coarse)]:h-11"
+        onClick={() => setLinking(true)}
+      >
         <Send className="h-4 w-4" aria-hidden />
         Liên kết Telegram
       </Button>

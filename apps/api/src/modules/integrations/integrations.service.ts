@@ -11,6 +11,7 @@ import {
   TELEGRAM_TOKEN_UNUSABLE_MESSAGE,
   TelegramService,
   TelegramUnreachableError,
+  redactTelegramError,
 } from './telegram.service';
 import { telegramHealth, type TelegramHealth } from './telegram-health';
 
@@ -360,7 +361,7 @@ export class IntegrationsService {
       });
     } catch (err) {
       this.logger.warn(
-        `Không tắt được kênh tích hợp của dự án riêng tư ${p.projectId}: ${err instanceof Error ? err.message : String(err)}`,
+        `Không tắt được kênh tích hợp của dự án riêng tư ${p.projectId}: ${redactTelegramError(err)}`,
       );
     }
   }
@@ -454,9 +455,7 @@ export class IntegrationsService {
       const msg = `✏️ <b>${payload.count}</b> việc${project ? ` của <b>${esc(project.key)}</b>` : ''} được cập nhật bởi <i>${esc(actor?.displayName ?? 'một thành viên')}</i>`;
       await this.fanout(payload.organizationId, payload.projectId, 'ISSUE_UPDATED', msg);
     } catch (err) {
-      this.logger.warn(
-        `Telegram producer (issue.bulk_updated) lỗi: ${err instanceof Error ? err.message : String(err)}`,
-      );
+      this.logger.warn(`Telegram producer (issue.bulk_updated) lỗi: ${redactTelegramError(err)}`);
     }
   }
 
@@ -471,9 +470,7 @@ export class IntegrationsService {
       const msg = `💬 <b>${esc(issue.key)}</b> có bình luận mới: <i>${esc(issue.summary)}</i>`;
       await this.fanout(issue.organizationId, issue.projectId, 'COMMENT_ADDED', msg);
     } catch (err) {
-      this.logger.warn(
-        `Telegram producer (comment.added) lỗi: ${err instanceof Error ? err.message : String(err)}`,
-      );
+      this.logger.warn(`Telegram producer (comment.added) lỗi: ${redactTelegramError(err)}`);
     }
   }
 
@@ -488,9 +485,7 @@ export class IntegrationsService {
           : `✏️ <b>${esc(issue.key)}</b> được cập nhật: <i>${esc(issue.summary)}</i>`;
       await this.fanout(issue.organizationId, issue.projectId, notificationType, msg);
     } catch (err) {
-      this.logger.warn(
-        `Telegram producer (${notificationType}) lỗi: ${err instanceof Error ? err.message : String(err)}`,
-      );
+      this.logger.warn(`Telegram producer (${notificationType}) lỗi: ${redactTelegramError(err)}`);
     }
   }
 

@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { NotificationType } from '@prisma/client';
-import { effectiveTelegramPrefs, NotificationsService } from './notifications.service';
+import {
+  effectiveTelegramPrefs,
+  NotificationsService,
+  TELEGRAM_SEND_TIMEOUT_MS,
+} from './notifications.service';
 
 describe('effectiveTelegramPrefs', () => {
   it('mặc định: chỉ được giao việc + được nhắc tên bật', () => {
@@ -132,6 +136,26 @@ describe('NotificationsService — gửi Telegram cá nhân', () => {
     const { publish, notifier } = setup({}, { status: 'DEACTIVATED' });
     await publish('ISSUE_ASSIGNED');
     expect(notifier.send).not.toHaveBeenCalled();
+  });
+
+  it('gửi Telegram treo → quá 10 giây thì bỏ qua, publish vẫn xong (không giữ handler)', async () => {
+    vi.useFakeTimers();
+    try {
+      const { publish, notifier, prisma } = setup({});
+      notifier.send.mockImplementation(() => new Promise<boolean>(() => undefined));
+      let done = false;
+      const p = publish('ISSUE_ASSIGNED').then(() => {
+        done = true;
+      });
+      await vi.advanceTimersByTimeAsync(TELEGRAM_SEND_TIMEOUT_MS - 1);
+      expect(done).toBe(false);
+      await vi.advanceTimersByTimeAsync(2);
+      await p;
+      expect(done).toBe(true);
+      expect(prisma.notification.create).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('gửi Telegram lỗi (ném) → nuốt, in-app + email vẫn chạy', async () => {

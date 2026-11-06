@@ -74,6 +74,18 @@ describe('TelegramNotifier.send', () => {
     expect(prisma.userTelegramLink.deleteMany).toHaveBeenCalledWith({ where: { id: 'l1' } });
   });
 
+  it('ngoại lệ có URL chứa token → log KHÔNG chứa token', async () => {
+    const { notifier, prisma } = setup();
+    prisma.userTelegramLink.findUnique.mockRejectedValue(
+      new Error('boom https://api.telegram.org/bot123456789:AAH-secret_tok/sendMessage'),
+    );
+    const warn = vi
+      .spyOn((notifier as unknown as { logger: { warn: () => void } }).logger, 'warn')
+      .mockImplementation(() => undefined);
+    await notifier.send('u1', 'w1', 'x');
+    expect(JSON.stringify(warn.mock.calls)).not.toContain('AAH-secret_tok');
+  });
+
   it('lỗi tạm thời (failed) → giữ liên kết; ngoại lệ bất ngờ → nuốt, không ném', async () => {
     const failed = setup({ outcome: 'failed' });
     expect(await failed.notifier.send('u1', 'w1', 'x')).toBe(false);

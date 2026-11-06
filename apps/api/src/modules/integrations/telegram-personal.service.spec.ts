@@ -324,7 +324,9 @@ describe('poll', () => {
     const res = await service.poll('u1', 'w1', CODE);
     expect(res.status).toBe('error');
   });
+});
 
+describe('poll — việc phụ (trả lời /start sai, /stop)', () => {
   it('/start với mã SAI/hết hạn trong chat riêng → bot báo rõ MỘT lần (đọc lại cùng tin không trả lời lại)', async () => {
     const { service, telegram, prisma } = setup({ updates: [priv('/start ZZZZZZZZZZ')] });
     prisma.userTelegramLinkCode.findFirst
@@ -355,6 +357,56 @@ describe('poll', () => {
       '555',
       expect.stringContaining('Liên kết Telegram'),
     );
+  });
+
+  it('/start mang mã ĐÃ DÙNG (vừa liên kết xong, tin vẫn còn trong 100 tin gần nhất) → KHÔNG báo "mã sai"', async () => {
+    const { service, telegram, prisma } = setup({ updates: [priv('/start AAAAAAAAAA')] });
+    prisma.userTelegramLinkCode.findFirst
+      .mockResolvedValueOnce(codeRow())
+      .mockResolvedValue(codeRow({ code: 'AAAAAAAAAA', consumedAt: NOW }));
+    await service.poll('u1', 'w1', CODE);
+    expect(telegram.send).not.toHaveBeenCalled();
+  });
+
+  it('tra mã trong tin theo `code` (unique) KHÔNG lọc kết nối: mã còn hạn của tổ chức khác dùng chung bot → không báo sai; mã hết hạn → báo', async () => {
+    const other = setup({ updates: [priv('/start AAAAAAAAAA')] });
+    other.prisma.userTelegramLinkCode.findFirst.mockResolvedValueOnce(codeRow()).mockResolvedValue(
+      codeRow({
+        code: 'AAAAAAAAAA',
+        userId: 'u9',
+        organizationId: 'w2',
+        integrationId: 'g2',
+      }),
+    );
+    await other.service.poll('u1', 'w1', CODE);
+    expect(other.prisma.userTelegramLinkCode.findFirst).toHaveBeenLastCalledWith({
+      where: { code: 'AAAAAAAAAA' },
+      select: { consumedAt: true, expiresAt: true },
+    });
+    expect(other.telegram.send).not.toHaveBeenCalled();
+
+    const expired = setup({ updates: [priv('/start AAAAAAAAAA')] });
+    expired.prisma.userTelegramLinkCode.findFirst
+      .mockResolvedValueOnce(codeRow())
+      .mockResolvedValue(codeRow({ code: 'AAAAAAAAAA', expiresAt: new Date(NOW.getTime() - 1) }));
+    await expired.service.poll('u1', 'w1', CODE);
+    expect(expired.telegram.send).toHaveBeenCalledTimes(1);
+  });
+
+  it('lỗi gửi tin trả lời có URL chứa token → log KHÔNG chứa token', async () => {
+    const { service, telegram } = setup({ updates: [priv('/start')] });
+    telegram.send.mockRejectedValue(
+      new Error(
+        'request to https://api.telegram.org/bot123456789:AAH-secret_tok/sendMessage failed',
+      ),
+    );
+    const warn = vi
+      .spyOn((service as unknown as { logger: { warn: () => void } }).logger, 'warn')
+      .mockImplementation(() => undefined);
+    await service.poll('u1', 'w1', CODE);
+    expect(warn).toHaveBeenCalled();
+    expect(JSON.stringify(warn.mock.calls)).not.toContain('AAH-secret_tok');
+    expect(JSON.stringify(warn.mock.calls)).toContain('bot***');
   });
 
   it('tin /start quá cũ (>15 phút) không được trả lời', async () => {

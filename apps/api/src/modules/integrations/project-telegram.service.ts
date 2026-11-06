@@ -59,9 +59,19 @@ export class ProjectTelegramService {
     });
     if (projects.length === 0) return [];
     if (await this.rbac.holdsOrganizationAdmin(userId, organizationId)) return projects;
+    // Chỉ tính quyền ở nơi có thể có `project:admin`: (1) dự án người này có dòng thành viên (có vai trò ghi đè/qua team);
+    // (2) các dự án CÒN LẠI thấy được (công khai, không thành viên) cùng áp vai trò dự án MẶC ĐỊNH suy từ vai trò tổ chức —
+    // kết quả giống hệt nhau cho mọi dự án như vậy nên chỉ cần tính trên MỘT dự án đại diện.
+    const memberships = await this.prisma.projectMembership.findMany({
+      where: { userId, project: { organizationId, id: { in: projects.map((p) => p.id) } } },
+      select: { projectId: true },
+    });
+    const memberIds = new Set(memberships.map((m) => m.projectId));
+    const members = projects.filter((p) => memberIds.has(p.id));
+    const others = projects.filter((p) => !memberIds.has(p.id));
     const out: ManagedProject[] = [];
-    for (let i = 0; i < projects.length; i += PERMISSION_BATCH) {
-      const batch = projects.slice(i, i + PERMISSION_BATCH);
+    for (let i = 0; i < members.length; i += PERMISSION_BATCH) {
+      const batch = members.slice(i, i + PERMISSION_BATCH);
       const perms = await Promise.all(
         batch.map((p) => this.rbac.getEffectivePermissions(userId, organizationId, p.id)),
       );
@@ -69,7 +79,12 @@ export class ProjectTelegramService {
         if (perms[idx]!.has(PERMISSIONS.PROJECT_ADMIN)) out.push(p);
       });
     }
-    return out;
+    if (others.length > 0) {
+      const perms = await this.rbac.getEffectivePermissions(userId, organizationId, others[0]!.id);
+      if (perms.has(PERMISSIONS.PROJECT_ADMIN)) out.push(...others);
+    }
+    const order = new Map(projects.map((p, i) => [p.id, i]));
+    return out.sort((x, y) => order.get(x.id)! - order.get(y.id)!);
   }
 
   /** Bot đã sẵn sàng chưa + các kênh đang gắn dự án này. */
@@ -127,7 +142,12 @@ export class ProjectTelegramService {
 
   private async requireChannel(organizationId: string, projectId: string, channelId: string) {
     const channel = await this.prisma.integrationChannel.findFirst({
-      where: { id: channelId, organizationId, projectId },
+      where: {
+        id: channelId,
+        organizationId,
+        projectId,
+        integration: { type: IntegrationType.TELEGRAM },
+      },
       select: { id: true, title: true, externalId: true, integrationId: true },
     });
     // Kênh của dự án khác / cấp tổ chức: 404 như không tồn tại.

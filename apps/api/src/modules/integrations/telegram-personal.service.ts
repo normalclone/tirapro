@@ -12,6 +12,7 @@ import {
   TelegramUnreachableError,
   TelegramWebhookConflictError,
   type TelegramMessageUpdate,
+  redactTelegramError,
 } from './telegram.service';
 
 /** Cùng bảng chữ không nhập nhằng với mã gắn nhóm (bỏ 0 O 1 I L); mã cá nhân dài hơn vì nằm trong deep link. */
@@ -299,9 +300,7 @@ export class TelegramPersonalService {
     try {
       await this.telegram.send(bot.token, chatId, text);
     } catch (err) {
-      this.logger.warn(
-        `Không gửi được tin trả lời Telegram: ${err instanceof Error ? err.message : String(err)}`,
-      );
+      this.logger.warn(`Không gửi được tin trả lời Telegram: ${redactTelegramError(err)}`);
     }
   }
 
@@ -335,11 +334,14 @@ export class TelegramPersonalService {
       if (!start || !this.recent(u)) continue;
       if (start.code === polledCode) continue;
       if (start.code && CODE_SHAPE.test(start.code)) {
+        // `code` là unique toàn bảng: KHÔNG lọc theo kết nối (bot chung dùng cho nhiều tổ chức — mã của tổ chức khác không
+        // được báo sai). Có dòng mà đã dùng (vừa liên kết xong; tin vẫn nằm trong 100 tin gần nhất) hoặc còn hạn (của người
+        // khác đang chờ, poll của họ sẽ xử lý) → để yên. Chỉ báo khi không có dòng hoặc đã hết hạn.
         const other = await this.prisma.userTelegramLinkCode.findFirst({
-          where: { code: start.code, integrationId: bot.integration.id },
+          where: { code: start.code },
           select: { consumedAt: true, expiresAt: true },
         });
-        if (other && !other.consumedAt && other.expiresAt > now) continue; // của người khác, đang chờ
+        if (other && (other.consumedAt || other.expiresAt > now)) continue;
       }
       if (!this.markHandled(`start:${bot.integration.id}:${u.chatId}:${u.date}:${u.text}`))
         continue;

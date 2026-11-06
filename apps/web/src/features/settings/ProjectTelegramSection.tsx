@@ -84,6 +84,7 @@ function ChannelRow({
               type="button"
               variant="danger"
               size="sm"
+              className="[@media(pointer:coarse)]:h-11"
               loading={remove.isPending}
               onClick={() =>
                 remove.mutate(channel.id, {
@@ -94,7 +95,13 @@ function ChannelRow({
             >
               Gỡ
             </Button>
-            <Button type="button" variant="ghost" size="sm" onClick={() => setConfirming(false)}>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="[@media(pointer:coarse)]:h-11"
+              onClick={() => setConfirming(false)}
+            >
               Không
             </Button>
           </span>
@@ -208,7 +215,7 @@ function LinkChannelFlow({
                   href={session.code.startGroupUrl}
                   target="_blank"
                   rel="noreferrer"
-                  className="inline-flex items-center gap-1 text-primary hover:underline"
+                  className="inline-flex items-center gap-1 text-primary hover:underline [@media(pointer:coarse)]:min-h-11"
                 >
                   Mở Telegram <ExternalLink className="h-3.5 w-3.5" aria-hidden />
                 </a>
@@ -237,6 +244,7 @@ function LinkChannelFlow({
         type="button"
         variant="ghost"
         size="sm"
+        className="[@media(pointer:coarse)]:h-11"
         onClick={() => {
           clear();
           onDone();
@@ -289,7 +297,7 @@ function ProjectChannels({
           type="button"
           variant="secondary"
           size="sm"
-          className="mt-3"
+          className="mt-3 [@media(pointer:coarse)]:h-11"
           onClick={() => setLinking(true)}
         >
           <Plus className="h-4 w-4" aria-hidden />

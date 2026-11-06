@@ -21,6 +21,7 @@ import { PrismaService } from '../../infra/prisma/prisma.service';
 import { NotFoundAppException } from '../../common/exceptions/app.exception';
 import { cursorPage, type PageResult } from '../../common/dto/page-result';
 import { TelegramNotifier } from '../integrations/telegram-notifier.service';
+import { redactTelegramError } from '../integrations/telegram.service';
 import { MailService } from '../mail/mail.service';
 import { ProjectAccessService } from '../rbac/project-access.service';
 import { resolveMentionedMembers } from '../../common/mentions';
@@ -156,6 +157,9 @@ const FILTER_WHERE = {
   mentioned: { type: 'MENTIONED' },
   assigned: { type: 'ISSUE_ASSIGNED' },
 } as const satisfies Record<NotificationFilter, Prisma.NotificationWhereInput>;
+
+/** Thời hạn tối đa chờ một lần gửi Telegram trong `after()`. */
+export const TELEGRAM_SEND_TIMEOUT_MS = 10_000;
 
 /** Escape HTML cho tin Telegram (parse_mode HTML); `"` để dùng được trong thuộc tính href. */
 function htmlEscape(value: string): string {
@@ -1010,9 +1014,22 @@ export class NotificationsService {
         const url = `${base}/issue/${encodeURIComponent(payload.key)}`;
         lines.push(`<a href="${htmlEscape(url)}">Mở ${htmlEscape(payload.key)} trong Tirapro</a>`);
       }
-      await this.telegramNotifier.send(input.recipientId, input.organizationId, lines.join('\n'));
+      // Socket treo không được giữ handler (và `after()` của transaction) quá TELEGRAM_SEND_TIMEOUT_MS.
+      let timer: NodeJS.Timeout | undefined;
+      const timeout = new Promise<'timeout'>((resolve) => {
+        timer = setTimeout(() => resolve('timeout'), TELEGRAM_SEND_TIMEOUT_MS);
+      });
+      try {
+        const res = await Promise.race([
+          this.telegramNotifier.send(input.recipientId, input.organizationId, lines.join('\n')),
+          timeout,
+        ]);
+        if (res === 'timeout') this.logger.warn('Gửi thông báo Telegram quá thời hạn — bỏ qua');
+      } finally {
+        if (timer) clearTimeout(timer);
+      }
     } catch (err) {
-      this.logger.warn(`Gửi thông báo Telegram thất bại: ${this.errMsg(err)}`);
+      this.logger.warn(`Gửi thông báo Telegram thất bại: ${redactTelegramError(err)}`);
     }
   }
 

@@ -92,7 +92,13 @@ export function LinkWaiting({
       {phase === 'paused' && (
         <p className="flex flex-wrap items-center gap-2 text-muted">
           Vẫn chưa thấy tin nhắn (mã còn {formatRemaining(remainingMs)}).
-          <Button type="button" variant="secondary" size="sm" onClick={onRetry}>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            className="[@media(pointer:coarse)]:h-11"
+            onClick={onRetry}
+          >
             Kiểm tra lại
           </Button>
         </p>
@@ -100,7 +106,13 @@ export function LinkWaiting({
       {phase === 'expired' && (
         <p className="flex flex-wrap items-center gap-2 text-warning-ink">
           Mã đã hết hạn.
-          <Button type="button" variant="secondary" size="sm" onClick={onNewCode}>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            className="[@media(pointer:coarse)]:h-11"
+            onClick={onNewCode}
+          >
             Tạo mã mới
           </Button>
         </p>
@@ -108,7 +120,13 @@ export function LinkWaiting({
       {phase === 'error' && (
         <div className="space-y-2">
           <ErrorText>{errorHint}</ErrorText>
-          <Button type="button" variant="secondary" size="sm" onClick={onNewCode}>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            className="[@media(pointer:coarse)]:h-11"
+            onClick={onNewCode}
+          >
             Thử lại với mã mới
           </Button>
         </div>
