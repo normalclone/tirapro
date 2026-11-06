@@ -1068,3 +1068,26 @@ Spec: `docs/superpowers/specs/2026-11-05-dashboard-templates-design.md`. Nhánh 
 
 - Đổi Epic → loại thường vẫn để các việc con trỏ `epicId` vào một việc không còn là Epic (có từ trước).
 - Cột tiêu đề chưa dính khi cuộn ngang (nền hàng đổi theo trạng thái nên cần nền đục riêng từng trạng thái).
+
+---
+
+# Thông báo qua Telegram: cá nhân + kênh dự án (2026-11)
+
+## 1. Cần làm khi triển khai
+
+- **Có migration:** `20261109100000_telegram_personal_links` — hai bảng mới `UserTelegramLink`, `UserTelegramLinkCode` (chỉ `CREATE TABLE` + chỉ mục + khoá ngoại, không khoá bảng cũ). Chạy `migrate deploy` như thường. Lùi mã an toàn (bảng thừa không ảnh hưởng).
+- Không thêm biến môi trường. Cần có kết nối Telegram ACTIVE ở **Kết nối › Telegram** (bot của tổ chức); chưa có thì mục Telegram trong Cài đặt › Thông báo chỉ hiện hướng dẫn.
+- Cơ chế nhận `/start` **giống liên kết nhóm hiện có**: máy chủ không webhook/vòng lặp nền, đọc `getUpdates` theo yêu cầu khi giao diện hỏi. Bot đang gắn webhook hoặc có tiến trình khác đọc `getUpdates` → hiện lỗi rõ (như gắn nhóm).
+
+## 2. Thay đổi
+
+- **Cá nhân:** Cài đặt › Thông báo có mục "Telegram": bấm "Liên kết Telegram" → mở `t.me/<bot>?start=<mã>` (mã 10 ký tự, 10 phút, một lần) → Start → trang tự nhận. "Huỷ liên kết" hoặc gõ `/stop` trong bot (xử lý khi mở trang / khi đang chờ liên kết). Mỗi loại thông báo có ô "Gửi qua Telegram" (mặc định bật: được giao việc, được nhắc tên); mờ khi chưa liên kết. Gửi vào chat riêng: tiêu đề như trong app + tiêu đề việc + liên kết; không gửi cho chính người gây ra sự kiện; lỗi gửi chỉ log; bot bị chặn (403) tự bỏ liên kết.
+- **Kênh dự án:** mục "Kênh Telegram của dự án" chỉ hiện với Project Admin (quản trị tổ chức: mọi dự án) — liệt kê kênh, bật/tắt, chọn sự kiện (Đổi trạng thái / Việc được cập nhật / Bình luận mới), gỡ, và "Gắn nhóm/kênh" bằng mã `/link@Bot MÃ` như cũ.
+- **API mới:** `GET|POST|DELETE /notifications/telegram[...]` (liên kết cá nhân, chỉ cần đăng nhập, lọc theo người gọi + tổ chức hiện tại); `PUT /notifications/preferences` nhận thêm `telegram` (map theo loại), `GET` trả `telegram`/`telegramDefaults`; `GET /notifications/telegram/managed-projects`; `GET /projects/:projectId/telegram`, `POST …/telegram/link-codes[/:code/poll]`, `PATCH|DELETE …/telegram/channels/:channelId` (quyền `project:admin` của chính dự án, chỉ đụng kênh có `projectId` = dự án đó). Nhật ký quản trị: `integration.channel_updated`.
+- Mã gắn nhóm (`/link`) giờ chỉ vô hiệu mã cũ **của chính người tạo** (trước đây vô hiệu mã của mọi người trong cùng kết nối).
+
+## 3. Còn mở
+
+- `/stop` không được xử lý ngay (không có vòng lặp nền): có hiệu lực khi người đó mở lại Cài đặt › Thông báo. Nếu cần tức thì thì phải chuyển sang webhook.
+- Việc đã gộp trong 60 giây ở chuông (nhiều bình luận cùng việc) vẫn gửi Telegram từng sự kiện (mặc định chỉ bật cho giao việc/nhắc tên nên ít ảnh hưởng).
+- Liệt kê "dự án mình quản trị" tính quyền từng dự án (có cache Redis, theo lô 10); quản trị tổ chức bỏ qua bước này.

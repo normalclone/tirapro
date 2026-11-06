@@ -32,12 +32,23 @@ export class TelegramTokenRejectedError extends Error {
   }
 }
 
+/**
+ * Thông điệp lỗi an toàn để LOG: lỗi từ Telegraf/fetch có thể chứa URL `…/bot<id>:<token>/sendMessage` — che token trước khi
+ * ghi (log không bao giờ được chứa token bot).
+ */
+export function redactTelegramError(err: unknown): string {
+  const msg = err instanceof Error ? err.message : String(err);
+  return msg.replace(/bot\d+:[\w-]+/g, 'bot***');
+}
+
 /** Một bản tin văn bản trong chat (đã rút gọn từ Update.message). */
 export interface TelegramMessageUpdate {
   chatId: number;
   chatType: string;
   chatTitle?: string;
   firstName?: string;
+  /** @username của chat riêng (không có @); người dùng có thể không đặt. */
+  username?: string;
   text: string;
   /** Unix giây. */
   date: number;
@@ -55,6 +66,32 @@ export function parseLinkCommand(text: string, botUsername?: string | null): str
   const target = m[1];
   if (target && botUsername && target.toLowerCase() !== botUsername.toLowerCase()) return null;
   return m[2]!.toUpperCase();
+}
+
+const START_COMMAND_RE = /^\/start(?:@(\w+))?(?:\s+(\S+))?$/i;
+
+/**
+ * Tách `/start` (kèm tham số deep link `?start=MÃ`): `{ code }` (mã chuẩn hoá chữ hoa, null nếu không có tham số);
+ * không phải lệnh start → null. Truyền `botUsername` để bỏ qua lệnh gọi đích danh BOT KHÁC.
+ */
+export function parseStartCommand(
+  text: string,
+  botUsername?: string | null,
+): { code: string | null } | null {
+  const m = START_COMMAND_RE.exec(text.trim());
+  if (!m) return null;
+  const target = m[1];
+  if (target && botUsername && target.toLowerCase() !== botUsername.toLowerCase()) return null;
+  return { code: m[2] ? m[2].toUpperCase() : null };
+}
+
+const STOP_COMMAND_RE = /^\/stop(?:@(\w+))?$/i;
+
+/** `/stop` (hoặc `/stop@TenBot`) → true; gọi đích danh bot khác → false. */
+export function isStopCommand(text: string, botUsername?: string | null): boolean {
+  const m = STOP_COMMAND_RE.exec(text.trim());
+  if (!m) return false;
+  return !(m[1] && botUsername && m[1].toLowerCase() !== botUsername.toLowerCase());
 }
 
 export interface TelegramBotInfo {
@@ -87,6 +124,8 @@ export class TelegramService {
   private readonly encryptionKey: string;
   /** Khoá cũ (optional) — chỉ để giải mã dữ liệu đã mã hoá trước khi đổi khoá, không bao giờ dùng để mã hoá. */
   private readonly previousKey: string;
+  /** Đuôi hàng đợi `getUpdates` theo token: Telegram trả 409 nếu hai getUpdates chạy chồng lên nhau cho cùng một bot. */
+  private readonly updatesTail = new Map<string, Promise<unknown>>();
   /** Cache Telegraf theo token để tái dùng (tránh tạo client mới mỗi lần gửi). */
   private readonly bots = new Map<string, Telegraf>();
   private globalBotInfo: TelegramBotInfo | null = null;
@@ -143,6 +182,22 @@ export class TelegramService {
    * TelegramTokenRejectedError (401/404) hoặc TelegramUnreachableError (mạng/timeout/khác).
    */
   async recentUpdates(token: string | null): Promise<TelegramMessageUpdate[]> {
+    // Nối tiếp theo token (poll liên kết cá nhân/nhóm + quét `/stop` nền không giẫm nhau → không sinh 409 giả).
+    const key = token || this.globalBotToken;
+    const prev = this.updatesTail.get(key) ?? Promise.resolve();
+    const run = prev.then(
+      () => this.readRecentUpdates(token),
+      () => this.readRecentUpdates(token),
+    );
+    const tail = run.catch(() => undefined);
+    this.updatesTail.set(key, tail);
+    void tail.then(() => {
+      if (this.updatesTail.get(key) === tail) this.updatesTail.delete(key);
+    });
+    return run;
+  }
+
+  private async readRecentUpdates(token: string | null): Promise<TelegramMessageUpdate[]> {
     let timer: NodeJS.Timeout | undefined;
     try {
       const resolved = token || this.globalBotToken;
@@ -165,6 +220,7 @@ export class TelegramService {
           chatType: m.chat.type,
           chatTitle: 'title' in m.chat ? m.chat.title : undefined,
           firstName: 'first_name' in m.chat ? m.chat.first_name : undefined,
+          username: 'username' in m.chat ? m.chat.username : undefined,
           text: m.text,
           date: m.date,
         });
@@ -213,19 +269,35 @@ export class TelegramService {
    * - Thiếu token → trả false (disabled). Lỗi gửi → log warn + trả false (không ném).
    */
   async send(token: string | null, chatId: string, text: string): Promise<boolean> {
-    // Admin có thể tắt toàn bộ tích hợp (kill-switch) — chặn mọi gửi đi.
-    if (!this.settings.flags().integrationsEnabled) return false;
+    return (await this.sendDetailed(token, chatId, text)) === 'ok';
+  }
+
+  /**
+   * Như `send` nhưng nói rõ kết cục: `blocked` = người dùng chặn/xoá bot hoặc chat không còn (403, hoặc 400 "chat not
+   * found") — bên gọi nên bỏ liên kết để khỏi gửi mãi; `disabled` = tắt hệ thống / thiếu token; `failed` = lỗi khác.
+   */
+  async sendDetailed(
+    token: string | null,
+    chatId: string,
+    text: string,
+  ): Promise<'ok' | 'blocked' | 'disabled' | 'failed'> {
+    if (!this.settings.flags().integrationsEnabled) return 'disabled';
     const resolved = token || this.globalBotToken;
-    if (!resolved) return false;
+    if (!resolved) return 'disabled';
     try {
       const bot = this.getBot(resolved);
       await bot.telegram.sendMessage(chatId, text, { parse_mode: 'HTML' });
-      return true;
+      return 'ok';
     } catch (err) {
       this.logger.warn(
-        `Không gửi được tin nhắn Telegram tới ${chatId}: ${err instanceof Error ? err.message : String(err)}`,
+        `Không gửi được tin nhắn Telegram tới ${chatId}: ${redactTelegramError(err)}`,
       );
-      return false;
+      if (
+        err instanceof TelegramError &&
+        (err.code === 403 || (err.code === 400 && /chat not found/i.test(err.description)))
+      )
+        return 'blocked';
+      return 'failed';
     }
   }
 

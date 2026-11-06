@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
 import { Bell, ChevronDown } from 'lucide-react';
 import type { NotificationEmailPrefs } from '@tirapro/types';
 import { Skeleton } from '@/components/ui/primitives';
@@ -9,6 +9,8 @@ import { QueryBoundary } from '@/components/ui/QueryBoundary';
 import { useSaveTracker } from '@/lib/useSaveTracker';
 import { cn } from '@/lib/utils';
 import { useNotificationPrefs, useUpdateNotificationPrefs } from './api';
+import { useTelegramLink } from './telegramApi';
+import { telegramToggleHint } from './telegramLink';
 import { EMAIL_KEY_OF_TYPE, isOptionsOpen, type PrefsPatch } from './notificationPrefs';
 
 /** Thứ tự + nhãn tiếng Việt cho từng loại thông báo. */
@@ -57,28 +59,21 @@ const EMAIL_TYPES: { key: keyof NotificationEmailPrefs; label: string; hint: str
 ];
 
 /**
- * Dòng con "Gửi qua email" (nhóm có tên = tên sự kiện): mở bằng grid-rows 0fr→1fr (180ms ease-out-quart), tắt khi
- * reduced-motion; đóng thì ẩn khỏi Tab. Tên ô = nhãn + tên sự kiện; gợi ý nằm NGOÀI nhãn, nối qua `aria-describedby`.
+ * Vùng mở rộng chứa các tuỳ chọn kênh gửi thêm (email, Telegram) của một sự kiện (nhóm có tên = tên sự kiện): mở bằng
+ * grid-rows 0fr→1fr (180ms ease-out-quart), tắt khi reduced-motion; đóng thì ẩn khỏi Tab.
  */
-function EmailOption({
+function OptionsRegion({
   id,
   eventLabelId,
   open,
-  checked,
-  hint,
-  onChange,
+  children,
 }: {
   id: string;
-  /** Id span nhãn của Switch sự kiện (để tên ô có tên sự kiện). */
+  /** Id span nhãn của Switch sự kiện (để nhóm có tên sự kiện). */
   eventLabelId: string;
   open: boolean;
-  checked: boolean;
-  hint: string;
-  onChange: (next: boolean) => void;
+  children: ReactNode;
 }) {
-  const inputId = `${id}-input`;
-  const labelId = `${id}-label`;
-  const hintId = `${id}-hint`;
   return (
     <div
       id={id}
@@ -89,30 +84,66 @@ function EmailOption({
         open ? 'grid-rows-[1fr]' : 'invisible grid-rows-[0fr]',
       )}
     >
-      <div className="overflow-hidden">
-        <div className="mt-2 flex items-start gap-2.5 text-sm text-ink [@media(pointer:coarse)]:min-h-11">
-          <input
-            id={inputId}
-            type="checkbox"
-            checked={checked}
-            aria-labelledby={`${labelId} ${eventLabelId}`}
-            aria-describedby={hintId}
-            onChange={(e) => onChange(e.target.checked)}
-            className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer rounded border-border accent-[var(--primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] [@media(pointer:coarse)]:mt-3"
-          />
-          <div className="min-w-0">
-            <label
-              id={labelId}
-              htmlFor={inputId}
-              className="block cursor-pointer font-medium [@media(pointer:coarse)]:py-2.5"
-            >
-              Gửi qua email
-            </label>
-            <p id={hintId} className="text-xs text-faint">
-              {hint}
-            </p>
-          </div>
-        </div>
+      <div className="overflow-hidden">{children}</div>
+    </div>
+  );
+}
+
+/**
+ * Một ô "Gửi qua <kênh>" (email / Telegram). Tên ô = nhãn + tên sự kiện; gợi ý nằm NGOÀI nhãn, nối qua `aria-describedby`.
+ * `disabled` (vd Telegram chưa liên kết): ô mờ, gợi ý nói rõ cần làm gì.
+ */
+function ChannelOption({
+  id,
+  eventLabelId,
+  label,
+  checked,
+  hint,
+  disabled = false,
+  onChange,
+}: {
+  id: string;
+  eventLabelId: string;
+  label: string;
+  checked: boolean;
+  hint: string;
+  disabled?: boolean;
+  onChange: (next: boolean) => void;
+}) {
+  const inputId = `${id}-input`;
+  const labelId = `${id}-label`;
+  const hintId = `${id}-hint`;
+  return (
+    <div
+      className={cn(
+        'mt-2 flex items-start gap-2.5 text-sm text-ink [@media(pointer:coarse)]:min-h-11',
+        disabled && 'opacity-60',
+      )}
+    >
+      <input
+        id={inputId}
+        type="checkbox"
+        checked={checked}
+        disabled={disabled}
+        aria-labelledby={`${labelId} ${eventLabelId}`}
+        aria-describedby={hintId}
+        onChange={(e) => onChange(e.target.checked)}
+        className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer rounded border-border accent-[var(--primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:cursor-not-allowed [@media(pointer:coarse)]:mt-3"
+      />
+      <div className="min-w-0">
+        <label
+          id={labelId}
+          htmlFor={inputId}
+          className={cn(
+            'block font-medium [@media(pointer:coarse)]:py-2.5',
+            disabled ? 'cursor-not-allowed' : 'cursor-pointer',
+          )}
+        >
+          {label}
+        </label>
+        <p id={hintId} className="text-xs text-faint">
+          {hint}
+        </p>
       </div>
     </div>
   );
@@ -120,6 +151,8 @@ function EmailOption({
 
 export function NotificationSection() {
   const prefsQuery = useNotificationPrefs();
+  // Công tắc Telegram chỉ dùng được khi đã liên kết (chưa biết / chưa liên kết → mờ kèm gợi ý).
+  const telegramLinked = useTelegramLink().data?.linked != null;
   const { status, start, ok, fail } = useSaveTracker();
   const lastFailed = useRef<PrefsPatch | null>(null);
   const update = useUpdateNotificationPrefs({
@@ -150,7 +183,7 @@ export function NotificationSection() {
       data-tour="notif-settings-card"
       icon={<Bell className="h-4 w-4" />}
       title="Thông báo"
-      description="Bấm là lưu ngay. Các thông báo email trong vòng 5 phút được gộp thành một email để hộp thư không bị ngập."
+      description="Bấm là lưu ngay. Các thông báo email trong vòng 5 phút được gộp thành một email để hộp thư không bị ngập. Telegram gửi từng tin riêng khi bạn đã liên kết."
     >
       <div className="sticky top-0 z-10 -mx-5 -mt-5 mb-2 flex justify-end bg-surface px-5 py-1.5">
         <SaveStatus
@@ -176,8 +209,10 @@ export function NotificationSection() {
               const inApp = prefs.preferences[key] ?? false;
               const emailKey = EMAIL_KEY_OF_TYPE[key];
               const emailOn = emailKey ? prefs.email[emailKey] : false;
-              const open = emailKey ? isOptionsOpen(manual[key], inApp, emailOn) : false;
-              const regionId = `notif-${key}-email`;
+              const telegramOn = prefs.telegram[key] ?? false;
+              // Email/Telegram độc lập in-app: dòng con mở khi in-app bật HOẶC một kênh gửi thêm đã bật.
+              const open = isOptionsOpen(manual[key], inApp, emailOn || telegramOn);
+              const regionId = `notif-${key}-channels`;
               const eventLabelId = `notif-${key}-label`; // = id span nhãn do Switch dựng (`${id}-label`)
               return (
                 <li key={key} className="py-3 first:pt-0 last:pb-0">
@@ -188,31 +223,32 @@ export function NotificationSection() {
                     label={label}
                     description={hint}
                   />
-                  {emailKey && (
-                    <>
-                      <button
-                        type="button"
-                        aria-expanded={open}
-                        aria-controls={regionId}
-                        aria-labelledby={`${regionId}-toggle ${eventLabelId}`}
-                        onClick={() => setManual((m) => ({ ...m, [key]: !open }))}
-                        className="mt-1 inline-flex items-center gap-1 rounded text-xs text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] [@media(pointer:coarse)]:min-h-11"
-                      >
-                        <ChevronDown
-                          aria-hidden="true"
-                          className={cn(
-                            'h-3.5 w-3.5 transition-transform duration-fast motion-reduce:transition-none',
-                            open && 'rotate-180',
-                          )}
-                        />
-                        <span id={`${regionId}-toggle`}>
-                          Tuỳ chọn email{emailOn ? ' · đang bật' : ''}
-                        </span>
-                      </button>
-                      <EmailOption
-                        id={regionId}
+                  <button
+                    type="button"
+                    aria-expanded={open}
+                    aria-controls={regionId}
+                    aria-labelledby={`${regionId}-toggle ${eventLabelId}`}
+                    onClick={() => setManual((m) => ({ ...m, [key]: !open }))}
+                    className="mt-1 inline-flex items-center gap-1 rounded text-xs text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] [@media(pointer:coarse)]:min-h-11"
+                  >
+                    <ChevronDown
+                      aria-hidden="true"
+                      className={cn(
+                        'h-3.5 w-3.5 transition-transform duration-fast motion-reduce:transition-none',
+                        open && 'rotate-180',
+                      )}
+                    />
+                    <span id={`${regionId}-toggle`}>
+                      {emailKey ? 'Tuỳ chọn email & Telegram' : 'Tuỳ chọn Telegram'}
+                      {emailOn || (telegramLinked && telegramOn) ? ' · đang bật' : ''}
+                    </span>
+                  </button>
+                  <OptionsRegion id={regionId} eventLabelId={eventLabelId} open={open}>
+                    {emailKey && (
+                      <ChannelOption
+                        id={`${regionId}-email`}
                         eventLabelId={eventLabelId}
-                        open={open}
+                        label="Gửi qua email"
                         checked={emailOn}
                         hint={emailHint(emailKey)}
                         onChange={(next) => {
@@ -221,8 +257,20 @@ export function NotificationSection() {
                           setManual((m) => ({ ...m, [key]: true }));
                         }}
                       />
-                    </>
-                  )}
+                    )}
+                    <ChannelOption
+                      id={`${regionId}-telegram`}
+                      eventLabelId={eventLabelId}
+                      label="Gửi qua Telegram"
+                      checked={telegramOn}
+                      hint={telegramToggleHint(telegramLinked)}
+                      disabled={!telegramLinked}
+                      onChange={(next) => {
+                        update.mutate({ telegram: { [key]: next } });
+                        setManual((m) => ({ ...m, [key]: true }));
+                      }}
+                    />
+                  </OptionsRegion>
                 </li>
               );
             })}

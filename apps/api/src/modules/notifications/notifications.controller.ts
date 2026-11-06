@@ -9,16 +9,19 @@ import type { AuthUser } from '../../common/types/request';
 import { NotificationsService } from './notifications.service';
 import { AuthOnly } from '../../common/decorators/auth-only.decorator';
 
-/** Body của PUT /notifications/preferences — object boolean tùy chọn, khóa theo enum loại thông báo. */
-const updatePreferencesSchema = z.object({
-  preferences: z
+/** Object boolean tùy chọn, khóa theo enum loại thông báo (dùng cho in-app lẫn Telegram). */
+const perTypeBooleans = () =>
+  z
     .object(
       Object.fromEntries(
         Object.values(NotificationType).map((type) => [type, z.boolean().optional()]),
       ) as Record<NotificationType, z.ZodOptional<z.ZodBoolean>>,
     )
-    .strict()
-    .optional(),
+    .strict();
+
+/** Body của PUT /notifications/preferences. */
+const updatePreferencesSchema = z.object({
+  preferences: perTypeBooleans().optional(),
   /** Tuỳ chọn nhận thông báo qua email. */
   email: z
     .object({
@@ -29,6 +32,8 @@ const updatePreferencesSchema = z.object({
     })
     .strict()
     .optional(),
+  /** Tuỳ chọn nhận thông báo qua Telegram (theo từng loại). */
+  telegram: perTypeBooleans().optional(),
 });
 type UpdatePreferencesBody = z.infer<typeof updatePreferencesSchema>;
 
@@ -69,13 +74,18 @@ export class NotificationsController {
     return this.notifications.getPreferences(user.id);
   }
 
-  /** Cập nhật tùy chọn nhận thông báo (in-app và email) của tôi; trả về map hiệu lực sau cập nhật. */
+  /** Cập nhật tùy chọn nhận thông báo (in-app, email và Telegram) của tôi; trả về map hiệu lực sau cập nhật. */
   @Put('preferences')
   async updatePreferences(
     @CurrentUser() user: AuthUser,
     @Body(new ZodValidationPipe(updatePreferencesSchema)) dto: UpdatePreferencesBody,
   ) {
-    return this.notifications.updatePreferences(user.id, dto.preferences ?? {}, dto.email ?? {});
+    return this.notifications.updatePreferences(
+      user.id,
+      dto.preferences ?? {},
+      dto.email ?? {},
+      dto.telegram ?? {},
+    );
   }
 
   /** Đánh dấu một thông báo là đã đọc. */

@@ -92,6 +92,15 @@ export const keys = {
   },
 
   notificationPrefs: ['notification-preferences'] as const,
+  /** Telegram trong Cài đặt › Thông báo: liên kết cá nhân + kênh của các dự án mình quản trị. */
+  telegramLink: ['telegram-link'] as const,
+  telegramLinkCode: (code: string) => ['telegram-link-code', code] as const,
+  projectTelegram: {
+    managed: ['project-telegram', 'managed'] as const,
+    overview: (projectId: string) => ['project-telegram', 'overview', projectId] as const,
+    linkCode: (projectId: string, code: string) =>
+      ['project-telegram-link-code', projectId, code] as const,
+  },
   severities: ['severities'] as const,
   priorities: ['priorities'] as const,
   customFields: ['custom-fields'] as const,

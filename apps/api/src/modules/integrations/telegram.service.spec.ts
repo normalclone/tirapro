@@ -6,15 +6,18 @@ import {
   TelegramTokenRejectedError,
   TelegramUnreachableError,
   TelegramWebhookConflictError,
+  isStopCommand,
   parseLinkCommand,
+  parseStartCommand,
+  redactTelegramError,
 } from './telegram.service';
 
 // Telegraf giả: getMe điều khiển được; TelegramError giữ nguyên bản thật.
-const tg = vi.hoisted(() => ({ getMe: vi.fn(), getUpdates: vi.fn() }));
+const tg = vi.hoisted(() => ({ getMe: vi.fn(), getUpdates: vi.fn(), sendMessage: vi.fn() }));
 vi.mock('telegraf', async () => {
   const actual = await vi.importActual<Record<string, unknown>>('telegraf');
   class FakeTelegraf {
-    telegram = { getMe: tg.getMe, getUpdates: tg.getUpdates };
+    telegram = { getMe: tg.getMe, getUpdates: tg.getUpdates, sendMessage: tg.sendMessage };
   }
   return { ...actual, Telegraf: FakeTelegraf };
 });
@@ -257,6 +260,40 @@ describe('TelegramService.recentUpdates', () => {
     ]);
   });
 
+  it('hai lần đọc cùng token chạy NỐI TIẾP (không chồng nhau); khác token thì song song; lỗi lần trước không chặn lần sau', async () => {
+    const svc = make(NEW_KEY);
+    vi.spyOn(
+      (svc as unknown as { logger: { warn: () => void } }).logger,
+      'warn',
+    ).mockImplementation(() => undefined);
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const calls: string[] = [];
+    tg.getUpdates.mockImplementation(async () => {
+      inFlight += 1;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      calls.push('start');
+      await new Promise((r) => setTimeout(r, 5));
+      inFlight -= 1;
+      if (calls.length === 1) throw new Error('ECONNRESET');
+      return [];
+    });
+    const [a, b, c] = await Promise.allSettled([
+      svc.recentUpdates('1:A'),
+      svc.recentUpdates('1:A'),
+      svc.recentUpdates('1:A'),
+    ]);
+    expect(a.status).toBe('rejected');
+    expect(b.status).toBe('fulfilled');
+    expect(c.status).toBe('fulfilled');
+    expect(maxInFlight).toBe(1);
+    // token khác → không phải chờ
+    inFlight = 0;
+    maxInFlight = 0;
+    await Promise.all([svc.recentUpdates('1:A'), svc.recentUpdates('2:B')]);
+    expect(maxInFlight).toBe(2);
+  });
+
   it('409 → TelegramWebhookConflictError; 401 → TelegramTokenRejectedError; khác → Unreachable', async () => {
     const svc = make(NEW_KEY);
     vi.spyOn(
@@ -269,5 +306,95 @@ describe('TelegramService.recentUpdates', () => {
     await expect(svc.recentUpdates('1:A')).rejects.toBeInstanceOf(TelegramTokenRejectedError);
     tg.getUpdates.mockRejectedValueOnce(new Error('ECONNRESET'));
     await expect(svc.recentUpdates('1:A')).rejects.toBeInstanceOf(TelegramUnreachableError);
+  });
+});
+
+describe('parseStartCommand / isStopCommand', () => {
+  it('/start MÃ (deep link) → mã chuẩn hoá chữ hoa; /start trơn → code null; lệnh khác → null', () => {
+    expect(parseStartCommand('/start k7m2qx9abc')).toEqual({ code: 'K7M2QX9ABC' });
+    expect(parseStartCommand('/start@TiraBot K7M2QX9ABC', 'tirabot')).toEqual({
+      code: 'K7M2QX9ABC',
+    });
+    expect(parseStartCommand('/start')).toEqual({ code: null });
+    expect(parseStartCommand('/link K7M2QX')).toBeNull();
+    expect(parseStartCommand('xin chào /start')).toBeNull();
+    expect(parseStartCommand('/start a b')).toBeNull();
+  });
+  it('lệnh gọi bot khác → bỏ qua', () => {
+    expect(parseStartCommand('/start@KhacBot K7M2QX9ABC', 'TiraBot')).toBeNull();
+    expect(isStopCommand('/stop@KhacBot', 'TiraBot')).toBe(false);
+  });
+  it('/stop và /stop@Bot → true; /stopx hoặc có chữ thừa → false', () => {
+    expect(isStopCommand('/stop')).toBe(true);
+    expect(isStopCommand(' /stop@TiraBot ', 'TiraBot')).toBe(true);
+    expect(isStopCommand('/stopx')).toBe(false);
+    expect(isStopCommand('/stop now')).toBe(false);
+  });
+});
+
+describe('TelegramService.sendDetailed', () => {
+  afterEach(() => tg.sendMessage.mockReset());
+  const quiet = (svc: TelegramService) =>
+    vi
+      .spyOn((svc as unknown as { logger: { warn: () => void } }).logger, 'warn')
+      .mockImplementation(() => undefined);
+
+  it('gửi được → ok (và send() trả true)', async () => {
+    tg.sendMessage.mockResolvedValue({});
+    const svc = make(NEW_KEY);
+    expect(await svc.sendDetailed('1:A', '9', 'hi')).toBe('ok');
+    expect(await svc.send('1:A', '9', 'hi')).toBe(true);
+  });
+  it('403 (bot bị chặn) và 400 chat not found → blocked; send() vẫn trả false', async () => {
+    const svc = make(NEW_KEY);
+    quiet(svc);
+    tg.sendMessage.mockRejectedValueOnce(
+      new TelegramError({ error_code: 403, description: 'Forbidden: bot was blocked by the user' }),
+    );
+    expect(await svc.sendDetailed('1:A', '9', 'hi')).toBe('blocked');
+    tg.sendMessage.mockRejectedValueOnce(
+      new TelegramError({ error_code: 400, description: 'Bad Request: chat not found' }),
+    );
+    expect(await svc.sendDetailed('1:A', '9', 'hi')).toBe('blocked');
+    tg.sendMessage.mockRejectedValueOnce(
+      new TelegramError({ error_code: 403, description: 'Forbidden' }),
+    );
+    expect(await svc.send('1:A', '9', 'hi')).toBe(false);
+  });
+  it('lỗi khác (429/mạng) → failed, không ném', async () => {
+    const svc = make(NEW_KEY);
+    quiet(svc);
+    tg.sendMessage.mockRejectedValueOnce(
+      new TelegramError({ error_code: 429, description: 'Too Many Requests' }),
+    );
+    expect(await svc.sendDetailed('1:A', '9', 'hi')).toBe('failed');
+    tg.sendMessage.mockRejectedValueOnce(new Error('ECONNRESET'));
+    expect(await svc.sendDetailed('1:A', '9', 'hi')).toBe('failed');
+  });
+  it('thiếu token (không bot chung) → disabled', async () => {
+    expect(await make(NEW_KEY).sendDetailed(null, '9', 'hi')).toBe('disabled');
+  });
+});
+
+describe('redactTelegramError / log không chứa token', () => {
+  const URL_ERR =
+    'FetchError: request to https://api.telegram.org/bot123456789:AAH-secret_tok/sendMessage failed';
+  it('che bot<id>:<token> ở mọi vị trí, kể cả khi lỗi không phải Error', () => {
+    expect(redactTelegramError(new Error(URL_ERR))).toBe(
+      'FetchError: request to https://api.telegram.org/bot***/sendMessage failed',
+    );
+    expect(redactTelegramError(`x bot111:abc_DEF-1 y bot222:zzz`)).toBe('x bot*** y bot***');
+    expect(redactTelegramError('không có token')).toBe('không có token');
+  });
+  it('sendDetailed: lỗi mạng có URL chứa token → log warn KHÔNG chứa token, trả failed', async () => {
+    const svc = make(NEW_KEY);
+    const warn = vi
+      .spyOn((svc as unknown as { logger: { warn: () => void } }).logger, 'warn')
+      .mockImplementation(() => undefined);
+    tg.sendMessage.mockRejectedValueOnce(new Error(URL_ERR));
+    expect(await svc.sendDetailed('123456789:AAH-secret_tok', '9', 'hi')).toBe('failed');
+    expect(JSON.stringify(warn.mock.calls)).not.toContain('AAH-secret_tok');
+    expect(JSON.stringify(warn.mock.calls)).toContain('bot***');
+    tg.sendMessage.mockReset();
   });
 });

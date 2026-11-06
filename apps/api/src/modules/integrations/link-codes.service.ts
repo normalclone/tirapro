@@ -11,6 +11,7 @@ import {
   TelegramUnreachableError,
   TelegramWebhookConflictError,
   parseLinkCommand,
+  redactTelegramError,
 } from './telegram.service';
 import { ProjectAccessService } from '../rbac/project-access.service';
 
@@ -106,10 +107,11 @@ export class LinkCodesService {
         OR: [{ expiresAt: { lt: dayAgo } }, { consumedAt: { lt: dayAgo } }],
       },
     });
-    // Mã mới thay mã cũ: vô hiệu mọi mã còn hiệu lực chưa dùng của tích hợp (bấm "Tạo mã mới"/Quay lại không dồn mã,
-    // và mã cũ lộ trong nhóm không còn dùng được). Mã bị vô hiệu → poll trả `expired`.
+    // Mã mới thay mã cũ: vô hiệu mọi mã còn hiệu lực chưa dùng của CHÍNH NGƯỜI TẠO trong tích hợp (bấm "Tạo mã mới"/Quay
+    // lại không dồn mã, và mã cũ lộ trong nhóm không còn dùng được). Giới hạn theo người tạo để nhiều quản trị dự án gắn
+    // nhóm cùng lúc không làm hết hạn mã của nhau. Mã bị vô hiệu → poll trả `expired`.
     await this.prisma.channelLinkToken.updateMany({
-      where: { integrationId, consumedAt: null, expiresAt: { gt: now } },
+      where: { integrationId, createdById: userId, consumedAt: null, expiresAt: { gt: now } },
       data: { expiresAt: now },
     });
     const expiresAt = new Date(now.getTime() + LINK_CODE_TTL_MS);
@@ -146,7 +148,15 @@ export class LinkCodesService {
     };
   }
 
-  async poll(organizationId: string, integrationId: string, rawCode: string): Promise<PollResult> {
+  /**
+   * `expectProjectId`: route theo dự án truyền id dự án — mã phải gắn ĐÚNG dự án đó (mã của dự án khác / của tổ chức → `expired`).
+   */
+  async poll(
+    organizationId: string,
+    integrationId: string,
+    rawCode: string,
+    expectProjectId?: string,
+  ): Promise<PollResult> {
     const integration = await this.requireTelegram(organizationId, integrationId);
     const code = rawCode.trim().toUpperCase();
     if (!CODE_SHAPE.test(code)) return { status: 'expired' };
@@ -155,6 +165,8 @@ export class LinkCodesService {
     });
     const now = this.clock();
     if (!row || row.consumedAt || row.expiresAt <= now) return { status: 'expired' };
+    if (expectProjectId !== undefined && row.projectId !== expectProjectId)
+      return { status: 'expired' };
 
     const res = this.telegram.resolveBotToken(integration.config);
     if (res.kind === 'unusable') {
@@ -272,9 +284,7 @@ export class LinkCodesService {
         `✅ Đã liên kết với Tirapro — tổ chức "${esc(ws?.name ?? '')}"`,
       );
     } catch (err) {
-      this.logger.warn(
-        `Không gửi được tin xác nhận liên kết: ${err instanceof Error ? err.message : String(err)}`,
-      );
+      this.logger.warn(`Không gửi được tin xác nhận liên kết: ${redactTelegramError(err)}`);
     }
   }
 }

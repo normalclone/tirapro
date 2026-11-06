@@ -9,6 +9,8 @@ import type { NotificationPrefsResponse } from './api';
 export interface PrefsPatch {
   preferences?: Partial<Record<string, boolean>>;
   email?: Partial<NotificationEmailPrefs>;
+  /** Tuỳ chọn Telegram theo từng loại thông báo (khoá = tên loại, như `preferences`). */
+  telegram?: Partial<Record<string, boolean>>;
 }
 
 /** Loại thông báo in-app có kênh email tương ứng -> khoá `NotificationEmailPrefs`. */
@@ -27,7 +29,9 @@ export function applyPrefsPatch(
   const preferences = { ...d.preferences };
   for (const [k, v] of Object.entries(patch.preferences ?? {}))
     if (v !== undefined) preferences[k] = v;
-  return { ...d, preferences, email: { ...d.email, ...patch.email } };
+  const telegram = { ...d.telegram };
+  for (const [k, v] of Object.entries(patch.telegram ?? {})) if (v !== undefined) telegram[k] = v;
+  return { ...d, preferences, email: { ...d.email, ...patch.email }, telegram };
 }
 
 /**
@@ -39,6 +43,7 @@ export function restorePrefsKeys(
   values: {
     preferences?: Record<string, boolean | undefined>;
     email?: Partial<NotificationEmailPrefs>;
+    telegram?: Record<string, boolean | undefined>;
   },
 ): NotificationPrefsResponse {
   const preferences = { ...current.preferences };
@@ -46,7 +51,12 @@ export function restorePrefsKeys(
     if (v === undefined) delete preferences[k];
     else preferences[k] = v;
   }
-  return { ...current, preferences, email: { ...current.email, ...values.email } };
+  const telegram = { ...current.telegram };
+  for (const [k, v] of Object.entries(values.telegram ?? {})) {
+    if (v === undefined) delete telegram[k];
+    else telegram[k] = v;
+  }
+  return { ...current, preferences, email: { ...current.email, ...values.email }, telegram };
 }
 
 /**
@@ -64,7 +74,7 @@ export function isOptionsOpen(
 const MUTATION_KEY = ['notification-preferences', 'update'] as const;
 
 /**
- * Trạng thái theo TỪNG KHOÁ (`p:<LOẠI>` in-app, `e:<khoá>` email) trong lúc còn lần lưu chạy/xếp hàng:
+ * Trạng thái theo TỪNG KHOÁ (`p:<LOẠI>` in-app, `e:<khoá>` email, `t:<LOẠI>` Telegram) trong lúc còn lần lưu chạy/xếp hàng:
  * - `confirmed`: giá trị máy chủ đã xác nhận gần nhất (gieo từ cache trước khi áp lần bấm đầu tiên của khoá; cập nhật khi
  *   một lần lưu THÀNH CÔNG). Hoàn tác khi lỗi luôn về giá trị này, KHÔNG về ảnh chụp lạc quan lúc bấm (ảnh chụp có thể là
  *   trạng thái chưa bao giờ được lưu).
@@ -109,22 +119,28 @@ function patchEntries(patch: PrefsPatch): Array<[string, boolean]> {
     if (v !== undefined) out.push([`p:${k}`, v]);
   for (const [k, v] of Object.entries(patch.email ?? {}))
     if (v !== undefined) out.push([`e:${k}`, v]);
+  for (const [k, v] of Object.entries(patch.telegram ?? {}))
+    if (v !== undefined) out.push([`t:${k}`, v]);
   return out;
 }
 
 function readKey(d: NotificationPrefsResponse, key: string): boolean | undefined {
   const name = key.slice(2);
-  return key.startsWith('p:') ? d.preferences[name] : d.email[name as keyof NotificationEmailPrefs];
+  if (key.startsWith('p:')) return d.preferences[name];
+  if (key.startsWith('t:')) return d.telegram[name];
+  return d.email[name as keyof NotificationEmailPrefs];
 }
 
 function valuesFor(keys: Array<[string, boolean | undefined]>) {
   const preferences: Record<string, boolean | undefined> = {};
   const email: Partial<NotificationEmailPrefs> = {};
+  const telegram: Record<string, boolean | undefined> = {};
   for (const [key, v] of keys) {
     if (key.startsWith('p:')) preferences[key.slice(2)] = v;
+    else if (key.startsWith('t:')) telegram[key.slice(2)] = v;
     else if (v !== undefined) email[key.slice(2) as keyof NotificationEmailPrefs] = v;
   }
-  return { preferences, email };
+  return { preferences, email, telegram };
 }
 
 export interface PrefsSaveEvents {

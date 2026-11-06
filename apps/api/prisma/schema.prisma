@@ -289,6 +289,8 @@ model User {
   ownedRaidItems          RaidItem[]               @relation("RaidOwner")
   raidOwnerships          RaidOwner[]
   passwordResetTokens     PasswordResetToken[]
+  telegramLinks           UserTelegramLink[]
+  telegramLinkCodes       UserTelegramLinkCode[]
 
   @@index([status])
 }
@@ -330,6 +332,8 @@ model Organization {
   exportJobs             ExportJob[]
   reportSubscriptions    ReportSubscription[]
   channelLinkTokens      ChannelLinkToken[]
+  telegramLinks          UserTelegramLink[]
+  telegramLinkCodes      UserTelegramLinkCode[]
   guides                 Guide[]
   apiKeys                ApiKey[]
   teams                  Team[]
@@ -1605,6 +1609,8 @@ model Integration {
   channels     IntegrationChannel[]
   repositories CodeRepository[]
   linkTokens   ChannelLinkToken[]
+  userLinks    UserTelegramLink[]
+  userLinkCodes UserTelegramLinkCode[]
 
   @@index([organizationId, type])
 }
@@ -1647,6 +1653,46 @@ model ChannelLinkToken {
   integration  Integration? @relation(fields: [integrationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId])
+  @@index([integrationId])
+}
+
+// Liên kết Telegram CÁ NHÂN: chat riêng của một người với bot của tổ chức — nhận thông báo của chính mình.
+// chatId không bao giờ trả ra API cho người khác. Một chat chỉ gắn với một người cho mỗi bot (liên kết lại = thay).
+model UserTelegramLink {
+  id             String   @id @default(cuid())
+  userId         String
+  organizationId String
+  integrationId  String
+  chatId         String
+  username       String?
+  linkedAt       DateTime @default(now())
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  integration  Integration  @relation(fields: [integrationId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, organizationId])
+  @@unique([integrationId, chatId])
+  @@index([organizationId])
+}
+
+// Mã tạm một lần (10 phút) để liên kết Telegram cá nhân: deep link https://t.me/<bot>?start=<mã>.
+// Tách khỏi ChannelLinkToken để mã cá nhân không làm hết hạn mã gắn nhóm của quản trị (và ngược lại).
+model UserTelegramLinkCode {
+  id             String    @id @default(cuid())
+  code           String    @unique
+  userId         String
+  organizationId String
+  integrationId  String
+  expiresAt      DateTime
+  consumedAt     DateTime?
+  createdAt      DateTime  @default(now())
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  integration  Integration  @relation(fields: [integrationId], references: [id], onDelete: Cascade)
+
+  @@index([userId, organizationId])
   @@index([integrationId])
 }
 
