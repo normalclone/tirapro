@@ -22,7 +22,7 @@ export function OrganizationBrandingPanel() {
   if (!active) return null;
 
   return (
-    <SectionCard>
+    <SectionCard data-tour="settings-general-logo">
       {!canAdmin && <ReadOnlyNote />}
       <AvatarUploader
         name={active.name}

@@ -1,12 +1,14 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   applyGuideProgress,
   createTourFlow,
   ensureSkipButton,
   restoreTourFocus,
   shouldFocusPrimary,
+  skipEmptyTour,
+  EMPTY_TOUR_MESSAGE,
   SKIP_LABEL,
   tourOutcome,
 } from './tourOutcome';
@@ -262,5 +264,19 @@ describe('GuideLauncher — nối dây', () => {
       dependencies: Record<string, string>;
     };
     expect(pkg.dependencies['driver.js']).toBe('^1.3.5');
+  });
+});
+
+describe('skipEmptyTour — bấm "?" khi không có bước nào hiển thị', () => {
+  it('0 bước → báo bằng câu hướng dẫn và dừng (không im lặng)', () => {
+    const notify = vi.fn();
+    expect(skipEmptyTour(0, notify)).toBe(true);
+    expect(notify).toHaveBeenCalledExactlyOnceWith(EMPTY_TOUR_MESSAGE);
+    expect(EMPTY_TOUR_MESSAGE).toMatch(/chưa có gì để chỉ.*chờ trang tải xong.*chế độ chỉnh sửa/);
+  });
+  it('có bước → không báo, cho chạy tiếp', () => {
+    const notify = vi.fn();
+    expect(skipEmptyTour(2, notify)).toBe(false);
+    expect(notify).not.toHaveBeenCalled();
   });
 });

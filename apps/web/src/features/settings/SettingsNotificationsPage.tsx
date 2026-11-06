@@ -7,6 +7,7 @@ import { SETTINGS_LABELS } from '@/lib/navLabels';
 export const SettingsNotificationsPage = () => (
   <PageFrame size="sm">
     <PageHeader
+      data-tour="notif-settings-header"
       title={SETTINGS_LABELS.notifications}
       description={
         <>

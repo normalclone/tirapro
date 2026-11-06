@@ -46,6 +46,7 @@ export function WorkflowSchemeSection({ workflows }: { workflows: Workflow[] }) 
 
   return (
     <SectionCard
+      data-tour="workflows-scheme"
       icon={<ListTree className="h-4 w-4" />}
       title="Quy trình của tổ chức"
       description="Mỗi loại việc dùng một quy trình trong toàn tổ chức. Dự án có thể dùng quy trình riêng cho từng loại."

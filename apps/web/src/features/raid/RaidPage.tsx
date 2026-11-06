@@ -80,7 +80,10 @@ function HeatMatrix({
   }, [items]);
 
   return (
-    <section className="rounded-lg border border-border bg-surface p-4 sm:p-5">
+    <section
+      className="rounded-lg border border-border bg-surface p-4 sm:p-5"
+      data-tour="risks-matrix"
+    >
       <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
         <h2
           className="text-base font-semibold text-ink-strong"
@@ -433,6 +436,7 @@ function ProjectRaid({ project }: { project: ProjectDto }) {
       <PageFrame size="full">
         <PageHeader
           variant="tab"
+          data-tour="risks-header"
           title={MANAGE_LABELS.risks}
           description={
             <>
@@ -476,6 +480,7 @@ function ProjectRaid({ project }: { project: ProjectDto }) {
           }}
           items={RAID_KINDS.map((k) => ({ id: k.value, label: k.label, title: k.description }))}
           className="mb-5 overflow-x-auto"
+          data-tour="risks-kinds"
         />
 
         <TabPanel idBase="raid" value={kind}>
@@ -542,6 +547,7 @@ function ProjectRaid({ project }: { project: ProjectDto }) {
                   <HeatMatrix items={items ?? []} selected={cell} onSelect={setCell} />
 
                   <SectionCard
+                    data-tour="risks-table"
                     title="Danh sách chi tiết"
                     bare
                     actions={

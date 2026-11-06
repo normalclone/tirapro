@@ -83,7 +83,7 @@ export function SeveritySection() {
   }
 
   return (
-    <SectionCard>
+    <SectionCard data-tour="severities-card">
       {!canManage && <ReadOnlyNote />}
       <QueryBoundary
         query={severitiesQuery}
@@ -188,7 +188,13 @@ export function SeveritySection() {
 
       {/* Form thêm mức độ — chỉ quản trị chung */}
       {canManage && severities.length > 0 && (
-        <Button variant="secondary" size="sm" className="mt-4" onClick={() => setAdding(true)}>
+        <Button
+          variant="secondary"
+          size="sm"
+          className="mt-4"
+          onClick={() => setAdding(true)}
+          data-tour="severities-add"
+        >
           <Plus className="h-4 w-4" />
           Thêm mức độ
         </Button>

@@ -67,6 +67,7 @@ export function ChangePasswordPanel() {
 
   return (
     <SectionCard
+      data-tour="account-password"
       icon={<KeyRound className="h-4 w-4" />}
       title="Đổi mật khẩu"
       description="Nhập mật khẩu hiện tại để xác minh đúng là bạn, rồi đặt mật khẩu mới."

@@ -27,6 +27,7 @@ export function MyTeamsPage() {
   return (
     <PageFrame size="sm">
       <PageHeader
+        data-tour="my-teams-header"
         title="Nhóm của tôi"
         description="Các nhóm bạn đang thuộc. Bấm một nhóm để xem thành viên."
       />
@@ -49,7 +50,10 @@ export function MyTeamsPage() {
         }
       >
         {(teams) => (
-          <ul className="divide-y divide-border rounded-lg border border-border bg-surface">
+          <ul
+            className="divide-y divide-border rounded-lg border border-border bg-surface"
+            data-tour="my-teams-list"
+          >
             {teams.map((t) => {
               const expanded = open[t.id] === true;
               const panelId = `team-${t.id}-members`;

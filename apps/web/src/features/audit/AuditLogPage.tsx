@@ -45,7 +45,7 @@ function AuditFilterBar({
     [members],
   );
   return (
-    <div className="mb-4 flex flex-wrap items-end gap-3">
+    <div className="mb-4 flex flex-wrap items-end gap-3" data-tour="audit-filters">
       <div className="flex min-w-48 flex-col gap-1 text-xs text-muted">
         <span>Loại sự kiện</span>
         <SearchSelect
@@ -106,6 +106,7 @@ export function AuditLogPage() {
     return (
       <PageFrame size="sm">
         <PageHeader
+          data-tour="audit-header"
           title={SETTINGS_LABELS.audit}
           description="Ai đã thêm/gỡ thành viên, đổi vai trò, sửa tích hợp… trong tổ chức này."
         />
@@ -124,6 +125,7 @@ export function AuditLogPage() {
   return (
     <PageFrame size="sm">
       <PageHeader
+        data-tour="audit-header"
         title={SETTINGS_LABELS.audit}
         description="Ai đã thêm/gỡ thành viên, đổi vai trò, sửa tích hợp… trong tổ chức này."
       />
@@ -161,7 +163,10 @@ export function AuditLogPage() {
       >
         {(data) => (
           <>
-            <ul className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-surface">
+            <ul
+              className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-surface"
+              data-tour="audit-list"
+            >
               {data.pages
                 .flatMap((p) => p.data)
                 .map((e) => (

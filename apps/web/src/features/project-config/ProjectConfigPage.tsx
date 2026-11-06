@@ -156,8 +156,13 @@ export function ConfigSection() {
 
   return (
     <PageFrame size="sm">
-      <PageHeader variant="tab" title={def.label} description={description} />
-      <div className="space-y-8">
+      <PageHeader
+        variant="tab"
+        title={def.label}
+        description={description}
+        data-tour="config-header"
+      />
+      <div className="space-y-8" data-tour="config-content">
         {section === 'general' && project && (
           <>
             <GeneralSection key={project.id} project={project} canAdmin={canAdmin} />

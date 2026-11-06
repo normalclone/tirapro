@@ -73,11 +73,16 @@ export function ProjectsPage() {
   // Nhóm là của riêng từng người: ai cũng quản lý được nhóm của mình, nên nút luôn có.
   const createButton = (
     <>
-      <Button size="sm" variant="secondary" onClick={() => setManageOpen(true)}>
+      <Button
+        size="sm"
+        variant="secondary"
+        onClick={() => setManageOpen(true)}
+        data-tour="projects-manage-groups"
+      >
         <FolderTree className="h-4 w-4" /> Quản lý nhóm của tôi
       </Button>
       {canCreate && (
-        <Button size="sm" onClick={() => setCreateOpen(true)}>
+        <Button size="sm" onClick={() => setCreateOpen(true)} data-tour="projects-create">
           <Plus className="h-4 w-4" /> Tạo dự án
         </Button>
       )}

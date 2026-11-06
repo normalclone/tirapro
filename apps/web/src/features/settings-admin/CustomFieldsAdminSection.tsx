@@ -134,7 +134,7 @@ export function CustomFieldsAdminSection() {
   }
 
   return (
-    <SectionCard>
+    <SectionCard data-tour="fields-card">
       <QueryBoundary
         query={fieldsQuery}
         skeleton={
@@ -225,7 +225,13 @@ export function CustomFieldsAdminSection() {
 
       {/* Form thêm trường — chỉ người có quyền quản lý trường thông tin thêm */}
       {canManage && fields.length > 0 && (
-        <Button variant="secondary" size="sm" className="mt-4" onClick={() => setAdding(true)}>
+        <Button
+          variant="secondary"
+          size="sm"
+          className="mt-4"
+          onClick={() => setAdding(true)}
+          data-tour="fields-add"
+        >
           <Plus className="h-4 w-4" />
           Thêm trường
         </Button>

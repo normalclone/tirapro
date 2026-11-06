@@ -34,6 +34,7 @@ export function TrashPage() {
       <PageFrame size="full">
         <PageHeader
           variant="tab"
+          data-tour="trash-header"
           title={
             <span className="inline-flex items-baseline gap-2">
               Thùng rác
@@ -68,7 +69,10 @@ export function TrashPage() {
               description="Việc đã xoá được giữ lại và chưa tự dọn."
             />
           ) : (
-            <ul className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-surface">
+            <ul
+              className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-surface"
+              data-tour="trash-list"
+            >
               {trash.data.map((item) => (
                 <li
                   key={item.id}

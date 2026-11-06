@@ -90,7 +90,7 @@ export function PrioritiesSection() {
   }
 
   return (
-    <SectionCard>
+    <SectionCard data-tour="priorities-card">
       {!canManage && <ReadOnlyNote />}
       <QueryBoundary
         query={prioritiesQuery}
@@ -195,7 +195,13 @@ export function PrioritiesSection() {
 
       {/* Form thêm mức ưu tiên — chỉ quản trị chung */}
       {canManage && priorities.length > 0 && (
-        <Button variant="secondary" size="sm" className="mt-4" onClick={() => setAdding(true)}>
+        <Button
+          variant="secondary"
+          size="sm"
+          className="mt-4"
+          onClick={() => setAdding(true)}
+          data-tour="priorities-add"
+        >
           <Plus className="h-4 w-4" />
           Thêm mức ưu tiên
         </Button>

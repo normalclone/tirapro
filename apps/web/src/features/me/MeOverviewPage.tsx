@@ -47,6 +47,7 @@ export function MeOverviewPage() {
   return (
     <PageFrame size="xl" className="py-6">
       <PageHeader
+        data-tour="me-header"
         title={APP_NAV_LABELS.me}
         description="Việc được giao, bug liên quan đến bạn và điểm đã xong — trong các dự án bạn xem được."
       />
@@ -96,7 +97,7 @@ function statItems(c: MeOverviewDto['counts']): StatItem[] {
 function Overview({ data }: { data: MeOverviewDto }) {
   return (
     <div className="space-y-8">
-      <StatRow items={statItems(data.counts)} />
+      <StatRow items={statItems(data.counts)} data-tour="me-stats" />
       <MyIssuesSection items={data.myIssues} open={data.counts.open} />
       <BugsSection bugs={data.bugs} />
       <WeeklyChart weeks={data.weeklyDonePoints} />
@@ -116,7 +117,7 @@ function MyIssuesSection({ items, open }: { items: MeIssueItemDto[]; open: numbe
   const rows = useMemo(() => filterByProject(items, active), [items, active]);
 
   return (
-    <section aria-labelledby="me-issues-h">
+    <section aria-labelledby="me-issues-h" data-tour="me-issues">
       <div className="mb-3 flex flex-wrap items-baseline gap-x-2 gap-y-1">
         <h2 id="me-issues-h" className="text-base font-semibold text-ink-strong">
           Việc của tôi
@@ -320,7 +321,7 @@ function BugsSection({ bugs }: { bugs: MeOverviewDto['bugs'] }) {
   ];
   const rows = bugs[tab];
   return (
-    <section aria-labelledby="me-bugs-h">
+    <section aria-labelledby="me-bugs-h" data-tour="me-bugs">
       <h2 id="me-bugs-h" className="mb-1 text-base font-semibold text-ink-strong">
         Bug liên quan đến tôi
       </h2>
@@ -352,6 +353,7 @@ function WeeklyChart({ weeks }: { weeks: MeOverviewDto['weeklyDonePoints'] }) {
   const model = useMemo(() => buildChart(weeks), [weeks]);
   return (
     <SectionCard
+      data-tour="me-weekly"
       title="Điểm đã xong theo tuần"
       description="8 tuần gần nhất (tuần bắt đầu Thứ Hai), chỉ tính việc lá bạn đã làm xong."
     >

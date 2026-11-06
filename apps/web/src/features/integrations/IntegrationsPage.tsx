@@ -25,7 +25,12 @@ export function IntegrationsPage() {
   return (
     <PageFrame size="sm">
       <PageHeader title={CONNECT_LABELS.integrations} />
-      <LinkTabs ariaLabel="Mục tích hợp" items={TABS} className="mb-6" />
+      <LinkTabs
+        ariaLabel="Mục tích hợp"
+        items={TABS}
+        className="mb-6"
+        data-tour="integrations-tabs"
+      />
       <Outlet />
     </PageFrame>
   );

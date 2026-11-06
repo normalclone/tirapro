@@ -63,6 +63,7 @@ export function SubNavLayout({
       <nav
         aria-label={ariaLabel}
         className={cn(RAIL_SURFACE, RAIL_WIDTH.nav, 'hidden flex-col gap-0.5 lg:flex')}
+        data-tour="subnav"
       >
         <p className="px-3 pb-2 text-xs font-semibold text-faint">{title}</p>
         {top}

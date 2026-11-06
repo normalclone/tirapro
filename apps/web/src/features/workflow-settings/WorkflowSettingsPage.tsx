@@ -117,6 +117,7 @@ export function WorkflowSettingsPage() {
   return (
     <PageFrame size="lg">
       <PageHeader
+        data-tour="workflows-header"
         title={SETTINGS_LABELS.workflows}
         description="Các trạng thái của một công việc và những bước chuyển được phép giữa chúng."
       />
@@ -125,12 +126,13 @@ export function WorkflowSettingsPage() {
       {canManage && <WorkflowSchemeSection workflows={workflows} />}
 
       <SectionCard
+        data-tour="workflows-list"
         icon={<GitBranch className="h-4 w-4" />}
         title="Danh sách quy trình"
         description="Chọn một quy trình để xem và chỉnh sửa chi tiết."
         actions={
           canManage ? (
-            <Button size="sm" onClick={() => setAdding(true)}>
+            <Button size="sm" onClick={() => setAdding(true)} data-tour="workflows-create">
               <Plus className="h-4 w-4" />
               Tạo quy trình
             </Button>

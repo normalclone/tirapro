@@ -40,7 +40,11 @@ function autoMap(names: string[], options: Array<{ id: string; name: string }>):
 
 function Stepper({ step }: { step: number }) {
   return (
-    <ol className="mb-6 flex items-center gap-2 text-sm" aria-label="Các bước nhập dữ liệu">
+    <ol
+      className="mb-6 flex items-center gap-2 text-sm"
+      aria-label="Các bước nhập dữ liệu"
+      data-tour="import-steps"
+    >
       {STEPS.map((label, i) => {
         const done = i < step;
         const active = i === step;
@@ -253,6 +257,7 @@ function UploadStep({
           size="sm"
           onClick={() => fileRef.current?.click()}
           loading={analyze.isPending}
+          data-tour="import-file"
         >
           <Upload className="h-4 w-4" />
           {analysis ? 'Chọn tệp khác…' : 'Chọn tệp CSV…'}

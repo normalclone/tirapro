@@ -87,6 +87,7 @@ export function ProfilePanel() {
 
   return (
     <SectionCard
+      data-tour="account-profile"
       icon={<UserCircle className="h-4 w-4" />}
       title="Hồ sơ của tôi"
       description="Những thông tin này hiện với mọi thành viên khác, ở mọi tổ chức bạn tham gia."

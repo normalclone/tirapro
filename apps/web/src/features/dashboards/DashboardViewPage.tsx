@@ -66,7 +66,7 @@ function DashboardGrid({
 }) {
   return (
     <DashboardScopeProvider value={scopeInfoOf(dashboard)}>
-      <div className={DASHBOARD_GRID_CLASS}>
+      <div className={DASHBOARD_GRID_CLASS} data-tour="dashboard-grid">
         {widgets.map((w) => {
           const def = widgetDefOf(w.type);
           return (
@@ -140,6 +140,7 @@ function DashboardView({
       <PrintHeader title={dashboard.name} subtitle={scopeDescription(dashboard)} />
       <PageHeader
         className="print:hidden"
+        data-tour="dashboard-header"
         breadcrumb={[{ label: 'Tổng quan', to: '/' }, { label: dashboard.name }]}
         title={
           <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -175,12 +176,18 @@ function DashboardView({
           <>
             <DashboardSwitcher currentId={dashboard.id} />
             {!dashboard.canEdit && canManage && (
-              <Button size="sm" variant="secondary" onClick={copy} loading={duplicate.isPending}>
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={copy}
+                loading={duplicate.isPending}
+                data-tour="dashboard-edit"
+              >
                 <Copy className="h-4 w-4" aria-hidden /> Tạo bản sao để chỉnh sửa
               </Button>
             )}
             {dashboard.canEdit && canManage && (
-              <Button size="sm" onClick={() => setParams({ edit: '1' })}>
+              <Button size="sm" onClick={() => setParams({ edit: '1' })} data-tour="dashboard-edit">
                 <Pencil className="h-4 w-4" aria-hidden /> Chỉnh sửa
               </Button>
             )}

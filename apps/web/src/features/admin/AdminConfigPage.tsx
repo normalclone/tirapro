@@ -129,6 +129,7 @@ export function AdminConfigPage() {
 
   const header = (
     <PageHeader
+      data-tour="admin-config-header"
       title={ADMIN_LABELS.config}
       description="Cờ tính năng bật/tắt ngay, không cần triển khai lại; cấu hình nền lấy từ biến môi trường."
     />
@@ -158,7 +159,10 @@ export function AdminConfigPage() {
 
       <div className="space-y-4">
         {/* Feature flags (chỉnh được) */}
-        <section className="rounded-lg border border-border bg-surface p-4">
+        <section
+          className="rounded-lg border border-border bg-surface p-4"
+          data-tour="admin-config-flags"
+        >
           <h2 className="mb-1 text-sm font-semibold text-ink">Cờ tính năng</h2>
           <div className="divide-y divide-border">
             <FlagRow
@@ -184,7 +188,7 @@ export function AdminConfigPage() {
             />
           </div>
 
-          <div className="mt-3 border-t border-border pt-3.5">
+          <div className="mt-3 border-t border-border pt-3.5" data-tour="admin-config-banner">
             <label htmlFor="banner" className="text-sm font-medium text-ink">
               Banner bảo trì
             </label>
@@ -204,7 +208,7 @@ export function AdminConfigPage() {
         </section>
 
         {/* Cấu hình nền (đọc từ .env) */}
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid gap-4 md:grid-cols-2" data-tour="admin-config-env">
           <Panel title="AI">
             <InfoRow label="Bật (env)">
               <YesNo v={data.ai.enabled} />

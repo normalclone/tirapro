@@ -9,6 +9,7 @@ export function AccountPage() {
   return (
     <PageFrame size="sm">
       <PageHeader
+        data-tour="account-header"
         title={APP_NAV_LABELS.account}
         description="Hồ sơ và mật khẩu của bạn, dùng chung cho mọi tổ chức."
       />

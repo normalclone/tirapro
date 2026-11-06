@@ -29,7 +29,7 @@ export function GroupTree({
       return next;
     });
   return (
-    <div className="space-y-3">
+    <div className="space-y-3" data-tour="projects-list">
       {groups.map((g) => (
         <GroupSection
           key={groupKey(g)}

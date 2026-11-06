@@ -551,7 +551,7 @@ export function IssueDetailPage() {
           ) : (
             <>
               {/* Tiêu đề: [Loại][Ưu tiên] tên — dòng phụ: Sprint · Điểm ước lượng · Nhãn */}
-              <div className="mb-4">
+              <div className="mb-4" data-tour="issue-header">
                 {/* Mobile: [Loại/Ưu tiên…] + hành động cùng một hàng, tiêu đề xuống hàng riêng đủ rộng (order). */}
                 <div className="flex flex-wrap items-center gap-2 sm:flex-nowrap sm:items-start">
                   <div className="order-1 flex shrink-0 flex-wrap items-center gap-1.5 sm:mt-1.5">
@@ -611,7 +611,7 @@ export function IssueDetailPage() {
               </div>
 
               {/* Thanh nút thao tác dưới tiêu đề */}
-              <div className="mb-6 flex flex-wrap items-center gap-2">
+              <div className="mb-6 flex flex-wrap items-center gap-2" data-tour="issue-toolbar">
                 <button
                   type="button"
                   className={TOOLBAR_BTN}
@@ -783,7 +783,7 @@ export function IssueDetailPage() {
               {/* Thân: trái = mô tả + nội dung + hoạt động; phải = người liên quan + mốc thời gian */}
               <div className="grid grid-cols-1 gap-x-8 gap-y-5 lg:grid-cols-[minmax(0,1fr)_300px]">
                 <div className="min-w-0 space-y-5">
-                  <div>
+                  <div data-tour="issue-description">
                     <p className="mb-1.5 text-sm font-medium text-muted">Mô tả</p>
                     <IssueDescription issue={issue} />
                   </div>
@@ -919,7 +919,7 @@ export function IssueDetailPage() {
                 </div>
 
                 {/* Cột phải: Người liên quan + Mốc thời gian */}
-                <aside className="min-w-0">
+                <aside className="min-w-0" data-tour="issue-sidebar">
                   <div className="space-y-5 lg:sticky lg:top-4">
                     {layout.sidebar.length > 0 && (
                       <>
