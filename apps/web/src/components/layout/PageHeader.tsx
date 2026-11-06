@@ -14,7 +14,7 @@ export const PAGE_TITLE_SLOT_ID = 'page-title-slot';
 /** Render tĩnh (không DOM) không có layout effect → dùng effect thường để khỏi cảnh báo. */
 const useIsoLayoutEffect = typeof document === 'undefined' ? useEffect : useLayoutEffect;
 
-function useTitleSlot(): HTMLElement | null | undefined {
+export function usePageTitleSlot(): HTMLElement | null | undefined {
   // Không có DOM (render tĩnh) → vẽ tại chỗ; ô đã có sẵn (đổi trang trong khung) → dùng ngay; còn lại dò sau khi gắn.
   const [slot, setSlot] = useState<HTMLElement | null | undefined>(() =>
     typeof document === 'undefined'
@@ -83,7 +83,7 @@ export function PageHeader({
   ...rest
 }: PageHeaderProps) {
   const Heading = pageHeaderTag(variant);
-  const slot = useTitleSlot();
+  const slot = usePageTitleSlot();
   const hasCrumb = !!breadcrumb && breadcrumb.some((b) => b.label.trim() !== '');
   if (titleHidden || title == null) {
     return (

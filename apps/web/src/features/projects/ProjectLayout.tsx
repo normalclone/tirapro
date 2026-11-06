@@ -1,4 +1,5 @@
 import { Suspense, useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Link, NavLink, Outlet, useLocation, useNavigate, useParams } from 'react-router-dom';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import {
@@ -46,6 +47,8 @@ import {
   visibleMoreItems,
 } from './projectTabs';
 import { SearchSelect } from '@/components/ui/SearchSelect';
+import { Breadcrumb } from '@/components/ui/Breadcrumb';
+import { usePageTitleSlot } from '@/components/layout/PageHeader';
 
 const VIEWS = [
   { seg: 'board', label: PROJECT_VIEW_LABELS.board, icon: LayoutGrid },
@@ -165,6 +168,10 @@ export function ProjectLayout() {
     );
   const moreSeg = activeMoreSeg(seg);
   const moreLabel = MORE.find((m) => m.id === moreSeg)?.label;
+  // Thanh trên cùng của trang dự án: đường dẫn Dự án › tên dự án › màn đang xem (các trang khác đặt tiêu đề ở đây).
+  const titleSlot = usePageTitleSlot();
+  const viewLabel =
+    VIEWS.find((v) => v.seg === view)?.label ?? MORE.find((m) => m.id === view)?.label;
   // Dải tab cuộn ngang khi thừa; mục đang mở tự cuộn vào khung (`aria-current` do NavLink đặt; nút "Thêm" tự đặt khi ở màn của nó).
   const tabsFade = useScrollFade<HTMLDivElement>(seg, '[aria-current="page"]');
 
@@ -175,6 +182,18 @@ export function ProjectLayout() {
 
       {/* Nội dung: thanh nav view cố định + view hiện tại */}
       <div className="flex min-w-0 flex-1 flex-col print:block">
+        {titleSlot &&
+          !notFound &&
+          createPortal(
+            <Breadcrumb
+              items={[
+                { label: 'Dự án', to: '/projects' },
+                { label: project?.name ?? key, to: `/p/${key}/board` },
+                { label: viewLabel ?? PROJECT_VIEW_LABELS.board },
+              ]}
+            />,
+            titleSlot,
+          )}
         <div
           data-audit="project-header"
           className="flex flex-wrap items-center gap-x-2 gap-y-2 border-b border-border px-4 py-3 sm:px-6 print:hidden"
