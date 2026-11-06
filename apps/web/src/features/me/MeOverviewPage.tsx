@@ -30,6 +30,7 @@ import { APP_NAV_LABELS } from '@/lib/navLabels';
 import { CHIP_ROW_GAP_COARSE, CHIP_TOUCH_HIT } from '@/lib/touchHit';
 import { cn } from '@/lib/utils';
 import { useMeOverview } from './api';
+import { RecentsStrip } from './RecentsStrip';
 import {
   buildChart,
   chartSummary,
@@ -51,6 +52,8 @@ export function MeOverviewPage() {
         title={APP_NAV_LABELS.me}
         description="Việc được giao, bug liên quan đến bạn và điểm đã xong — trong các dự án bạn xem được."
       />
+      {/* Chuyển từ Tổng quan sang đây (người dùng yêu cầu 2026-11-06): việc vừa mở là của riêng mỗi người. */}
+      <RecentsStrip />
       <QueryBoundary query={query} skeleton={<PageSkeleton />}>
         {(data) => <Overview data={data} />}
       </QueryBoundary>
