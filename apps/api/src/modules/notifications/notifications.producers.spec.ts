@@ -94,6 +94,7 @@ function setup(
     mail as never,
     config as never,
     access as never,
+    { send: vi.fn(() => Promise.resolve(false)) } as never,
   );
   const created = () =>
     prisma.notification.create.mock.calls.map((c) => ({

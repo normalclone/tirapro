@@ -7,6 +7,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { RedisService } from '../../infra/redis/redis.service';
 import { AuditService } from '../audit/audit.service';
+import { NotificationsService } from '../notifications/notifications.service';
+import { TelegramNotifier } from '../integrations/telegram-notifier.service';
 import { MailService } from '../mail/mail.service';
 import { SystemSettingsService } from '../system-settings/system-settings.service';
 import { ProjectAccessService } from '../rbac/project-access.service';
@@ -48,6 +50,16 @@ describe('WorkflowAdminModule — Nest DI', () => {
     expect(svc).toBeInstanceOf(WorkflowSchemeService);
     expect((svc as unknown as { access: unknown }).access).toBeInstanceOf(ProjectAccessService);
     expect((svc as unknown as { access: unknown }).access).toBe(mod.get(ProjectAccessService));
+  });
+
+  it('NotificationsService nhận TelegramNotifier THẬT (module notifications import integrations; thiếu là Telegram im lặng)', async () => {
+    const mod = await Test.createTestingModule({
+      imports: [InfraStub, RbacModule, WorkflowAdminModule],
+    }).compile();
+    const svc = mod.get(NotificationsService, { strict: false });
+    expect((svc as unknown as { telegramNotifier: unknown }).telegramNotifier).toBeInstanceOf(
+      TelegramNotifier,
+    );
   });
 
   it('thiếu ProjectAccessService thì Nest từ chối dựng (không âm thầm bỏ lọc dự án riêng tư)', async () => {

@@ -32,6 +32,7 @@ function setup(
     { enqueue: vi.fn() } as never,
     { get: vi.fn() } as never,
     access as never,
+    { send: vi.fn(() => Promise.resolve(false)) } as never,
   );
   return { service, prisma, access };
 }

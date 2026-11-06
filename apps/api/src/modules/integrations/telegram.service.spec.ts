@@ -259,6 +259,40 @@ describe('TelegramService.recentUpdates', () => {
     ]);
   });
 
+  it('hai lần đọc cùng token chạy NỐI TIẾP (không chồng nhau); khác token thì song song; lỗi lần trước không chặn lần sau', async () => {
+    const svc = make(NEW_KEY);
+    vi.spyOn(
+      (svc as unknown as { logger: { warn: () => void } }).logger,
+      'warn',
+    ).mockImplementation(() => undefined);
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const calls: string[] = [];
+    tg.getUpdates.mockImplementation(async () => {
+      inFlight += 1;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      calls.push('start');
+      await new Promise((r) => setTimeout(r, 5));
+      inFlight -= 1;
+      if (calls.length === 1) throw new Error('ECONNRESET');
+      return [];
+    });
+    const [a, b, c] = await Promise.allSettled([
+      svc.recentUpdates('1:A'),
+      svc.recentUpdates('1:A'),
+      svc.recentUpdates('1:A'),
+    ]);
+    expect(a.status).toBe('rejected');
+    expect(b.status).toBe('fulfilled');
+    expect(c.status).toBe('fulfilled');
+    expect(maxInFlight).toBe(1);
+    // token khác → không phải chờ
+    inFlight = 0;
+    maxInFlight = 0;
+    await Promise.all([svc.recentUpdates('1:A'), svc.recentUpdates('2:B')]);
+    expect(maxInFlight).toBe(2);
+  });
+
   it('409 → TelegramWebhookConflictError; 401 → TelegramTokenRejectedError; khác → Unreachable', async () => {
     const svc = make(NEW_KEY);
     vi.spyOn(

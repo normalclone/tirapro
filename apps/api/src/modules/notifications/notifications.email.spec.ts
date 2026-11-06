@@ -60,6 +60,7 @@ function setup(settings: unknown) {
     mail as never,
     config as never,
     { canSee: vi.fn(() => Promise.resolve(true)) } as never,
+    { send: vi.fn(() => Promise.resolve(false)) } as never,
   );
   const create = (type: string) =>
     service.publish({

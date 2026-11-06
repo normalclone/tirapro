@@ -115,6 +115,8 @@ export class TelegramService {
   private readonly encryptionKey: string;
   /** Khoá cũ (optional) — chỉ để giải mã dữ liệu đã mã hoá trước khi đổi khoá, không bao giờ dùng để mã hoá. */
   private readonly previousKey: string;
+  /** Đuôi hàng đợi `getUpdates` theo token: Telegram trả 409 nếu hai getUpdates chạy chồng lên nhau cho cùng một bot. */
+  private readonly updatesTail = new Map<string, Promise<unknown>>();
   /** Cache Telegraf theo token để tái dùng (tránh tạo client mới mỗi lần gửi). */
   private readonly bots = new Map<string, Telegraf>();
   private globalBotInfo: TelegramBotInfo | null = null;
@@ -171,6 +173,22 @@ export class TelegramService {
    * TelegramTokenRejectedError (401/404) hoặc TelegramUnreachableError (mạng/timeout/khác).
    */
   async recentUpdates(token: string | null): Promise<TelegramMessageUpdate[]> {
+    // Nối tiếp theo token (poll liên kết cá nhân/nhóm + quét `/stop` nền không giẫm nhau → không sinh 409 giả).
+    const key = token || this.globalBotToken;
+    const prev = this.updatesTail.get(key) ?? Promise.resolve();
+    const run = prev.then(
+      () => this.readRecentUpdates(token),
+      () => this.readRecentUpdates(token),
+    );
+    const tail = run.catch(() => undefined);
+    this.updatesTail.set(key, tail);
+    void tail.then(() => {
+      if (this.updatesTail.get(key) === tail) this.updatesTail.delete(key);
+    });
+    return run;
+  }
+
+  private async readRecentUpdates(token: string | null): Promise<TelegramMessageUpdate[]> {
     let timer: NodeJS.Timeout | undefined;
     try {
       const resolved = token || this.globalBotToken;

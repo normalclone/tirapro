@@ -30,10 +30,7 @@ describe('effectiveTelegramPrefs', () => {
   });
 });
 
-function setup(
-  settings: unknown,
-  opts: { status?: string; notifier?: boolean; inApp?: boolean } = {},
-) {
+function setup(settings: unknown, opts: { status?: string } = {}) {
   const prisma = {
     user: {
       findUnique: vi.fn((args: { where: { id: string } }) =>
@@ -70,7 +67,7 @@ function setup(
     mail as never,
     config as never,
     { canSee: vi.fn(() => Promise.resolve(true)) } as never,
-    (opts.notifier === false ? undefined : notifier) as never,
+    notifier as never,
   );
   const publish = (type: string, over: Record<string, unknown> = {}) =>
     service.publish({
@@ -143,12 +140,6 @@ describe('NotificationsService — gửi Telegram cá nhân', () => {
     await expect(publish('ISSUE_ASSIGNED')).resolves.toBeUndefined();
     expect(prisma.notification.create).toHaveBeenCalledTimes(1);
     expect(mail.enqueue).toHaveBeenCalledTimes(1);
-  });
-
-  it('không có TelegramNotifier (module không nạp) → không gửi, không lỗi', async () => {
-    const { publish, prisma } = setup({}, { notifier: false });
-    await expect(publish('ISSUE_ASSIGNED')).resolves.toBeUndefined();
-    expect(prisma.notification.create).toHaveBeenCalledTimes(1);
   });
 });
 

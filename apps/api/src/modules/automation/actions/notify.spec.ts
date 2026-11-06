@@ -74,6 +74,7 @@ function setup(opts: {
     mail as never,
     config as never,
     access as never,
+    { send: vi.fn(() => Promise.resolve(false)) } as never,
   );
   const ctx = {
     deps: { prisma, notifications, events },

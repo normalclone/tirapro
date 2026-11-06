@@ -1,4 +1,4 @@
-import { Injectable, Logger, Optional } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
 import { z } from 'zod';
@@ -253,8 +253,8 @@ export class NotificationsService {
     private readonly mail: MailService,
     private readonly config: ConfigService,
     private readonly access: ProjectAccessService,
-    /** Telegram cá nhân — tuỳ chọn: thiếu thì không gửi Telegram (thông báo in-app/email vẫn chạy). */
-    @Optional() private readonly telegramNotifier?: TelegramNotifier,
+    /** Telegram cá nhân — bắt buộc (không `@Optional`: thiếu module = Telegram im lặng). `send` không bao giờ ném. */
+    private readonly telegramNotifier: TelegramNotifier,
   ) {}
 
   // ---------- READ: luôn scope theo recipientId = user hiện tại ----------
@@ -810,9 +810,7 @@ export class NotificationsService {
     const inApp = prefs[input.type] || (!!opts?.force && !explicitlyOff);
     // Telegram cá nhân: độc lập in-app/email; việc có liên kết hay không được tra lúc gửi (sau commit).
     const telegramOn =
-      !!this.telegramNotifier &&
-      recipient.status !== 'DEACTIVATED' &&
-      effectiveTelegramPrefs(recipient.settings)[input.type];
+      recipient.status !== 'DEACTIVATED' && effectiveTelegramPrefs(recipient.settings)[input.type];
     if (!inApp && !emailOn && !telegramOn) return null;
     const payload = await this.withActor(input);
     return { input, recipientEmail: recipient.email, inApp, emailOn, telegramOn, payload };
@@ -1012,7 +1010,7 @@ export class NotificationsService {
         const url = `${base}/issue/${encodeURIComponent(payload.key)}`;
         lines.push(`<a href="${htmlEscape(url)}">Mở ${htmlEscape(payload.key)} trong Tirapro</a>`);
       }
-      await this.telegramNotifier?.send(input.recipientId, input.organizationId, lines.join('\n'));
+      await this.telegramNotifier.send(input.recipientId, input.organizationId, lines.join('\n'));
     } catch (err) {
       this.logger.warn(`Gửi thông báo Telegram thất bại: ${this.errMsg(err)}`);
     }
