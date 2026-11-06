@@ -71,7 +71,7 @@ export interface PermissionDef {
 export const PERMISSION_CATALOG: PermissionDef[] = [
   {
     key: PERMISSIONS.ORGANIZATION_ADMIN,
-    description: 'Quản trị tổ chức',
+    description: 'Quản trị',
     scope: 'ORGANIZATION',
   },
   { key: PERMISSIONS.ORGANIZATION_VIEW, description: 'Xem tổ chức', scope: 'ORGANIZATION' },
@@ -471,7 +471,7 @@ export const SYSTEM_ROLE_SCOPE: Record<SystemRoleName, 'ORGANIZATION' | 'PROJECT
 /** Mô tả ngắn + màu nhãn cho vai trò hệ thống (UI badge/catalog). */
 export const SYSTEM_ROLE_META: Record<SystemRoleName, { description: string; color: string }> = {
   [SYSTEM_ROLES.ORGANIZATION_ADMIN]: {
-    description: 'Toàn quyền quản trị tổ chức',
+    description: 'Toàn quyền Quản trị',
     color: 'oklch(0.55 0.20 25)',
   },
   [SYSTEM_ROLES.ORGANIZATION_MEMBER]: {

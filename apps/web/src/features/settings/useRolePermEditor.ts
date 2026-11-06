@@ -194,7 +194,7 @@ export function useRolePermEditor(input: {
   const confirm = useConfirm();
   const selfId = useAuth((s) => s.user?.id ?? null);
   const selfIsSystemAdmin = useAuth((s) => s.user?.isSystemAdmin === true);
-  const callerIsAdmin = useAuth((s) => s.can('organization:admin')); // boolean (đã gồm admin hệ thống)
+  const callerIsAdmin = useAuth((s) => s.can('organization:admin')); // boolean (đã gồm Quản trị)
 
   const [pending, setPending] = useState<Record<string, Desired>>({});
   const pendingRef = useRef(pending);

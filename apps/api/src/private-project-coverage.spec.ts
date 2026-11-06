@@ -714,74 +714,74 @@ const CONTROLLER_ALLOWLIST: Record<string, [Kind, string]> = {
   'workflow-admin/workflow-admin.controller.ts::WorkflowAdminController.update -> workflows.updateWorkflow':
     [
       'ROUTE_GUARDED',
-      'sửa quy trình/trạng thái/bước chuyển theo id: route khoá theo DỰ ÁN SỞ HỮU (@Permissions project:admin + @ProjectRef workflow*), quy trình chung chỉ Quản trị chung (assertCanEdit); service không đọc dữ liệu dự án của người xem',
+      'sửa quy trình/trạng thái/bước chuyển theo id: route khoá theo DỰ ÁN SỞ HỮU (@Permissions project:admin + @ProjectRef workflow*), quy trình chung chỉ Quản trị (assertCanEdit); service không đọc dữ liệu dự án của người xem',
     ],
   'workflow-admin/workflow-admin.controller.ts::WorkflowAdminController.createStatus -> workflows.createStatus':
     [
       'ROUTE_GUARDED',
-      'sửa quy trình/trạng thái/bước chuyển theo id: route khoá theo DỰ ÁN SỞ HỮU (@Permissions project:admin + @ProjectRef workflow*), quy trình chung chỉ Quản trị chung (assertCanEdit); service không đọc dữ liệu dự án của người xem',
+      'sửa quy trình/trạng thái/bước chuyển theo id: route khoá theo DỰ ÁN SỞ HỮU (@Permissions project:admin + @ProjectRef workflow*), quy trình chung chỉ Quản trị (assertCanEdit); service không đọc dữ liệu dự án của người xem',
     ],
   'workflow-admin/workflow-admin.controller.ts::WorkflowAdminController.updateStatus -> workflows.updateStatus':
     [
       'ROUTE_GUARDED',
-      'sửa quy trình/trạng thái/bước chuyển theo id: route khoá theo DỰ ÁN SỞ HỮU (@Permissions project:admin + @ProjectRef workflow*), quy trình chung chỉ Quản trị chung (assertCanEdit); service không đọc dữ liệu dự án của người xem',
+      'sửa quy trình/trạng thái/bước chuyển theo id: route khoá theo DỰ ÁN SỞ HỮU (@Permissions project:admin + @ProjectRef workflow*), quy trình chung chỉ Quản trị (assertCanEdit); service không đọc dữ liệu dự án của người xem',
     ],
   'workflow-admin/workflow-admin.controller.ts::WorkflowAdminController.createTransition -> workflows.createTransition':
     [
       'ROUTE_GUARDED',
-      'sửa quy trình/trạng thái/bước chuyển theo id: route khoá theo DỰ ÁN SỞ HỮU (@Permissions project:admin + @ProjectRef workflow*), quy trình chung chỉ Quản trị chung (assertCanEdit); service không đọc dữ liệu dự án của người xem',
+      'sửa quy trình/trạng thái/bước chuyển theo id: route khoá theo DỰ ÁN SỞ HỮU (@Permissions project:admin + @ProjectRef workflow*), quy trình chung chỉ Quản trị (assertCanEdit); service không đọc dữ liệu dự án của người xem',
     ],
   'workflow-admin/workflow-admin.controller.ts::WorkflowAdminController.updateTransition -> workflows.updateTransition':
     [
       'ROUTE_GUARDED',
-      'sửa quy trình/trạng thái/bước chuyển theo id: route khoá theo DỰ ÁN SỞ HỮU (@Permissions project:admin + @ProjectRef workflow*), quy trình chung chỉ Quản trị chung (assertCanEdit); service không đọc dữ liệu dự án của người xem',
+      'sửa quy trình/trạng thái/bước chuyển theo id: route khoá theo DỰ ÁN SỞ HỮU (@Permissions project:admin + @ProjectRef workflow*), quy trình chung chỉ Quản trị (assertCanEdit); service không đọc dữ liệu dự án của người xem',
     ],
   'workflow-admin/workflow-admin.controller.ts::WorkflowAdminController.removeTransition -> workflows.removeTransition':
     [
       'ROUTE_GUARDED',
-      'sửa quy trình/trạng thái/bước chuyển theo id: route khoá theo DỰ ÁN SỞ HỮU (@Permissions project:admin + @ProjectRef workflow*), quy trình chung chỉ Quản trị chung (assertCanEdit); service không đọc dữ liệu dự án của người xem',
+      'sửa quy trình/trạng thái/bước chuyển theo id: route khoá theo DỰ ÁN SỞ HỮU (@Permissions project:admin + @ProjectRef workflow*), quy trình chung chỉ Quản trị (assertCanEdit); service không đọc dữ liệu dự án của người xem',
     ],
   'admin/admin-console.controller.ts::AdminConsoleController.pointsFormula -> points.getFormula': [
     'ADMIN_ONLY',
-    'console quản trị hệ thống — tự kiểm assertSysAdmin; bảng hệ số điểm là cấu hình toàn hệ thống, không thuộc dự án',
+    'console Quản trị — tự kiểm assertSysAdmin; bảng hệ số điểm là cấu hình toàn hệ thống, không thuộc dự án',
   ],
   'admin/admin-console.controller.ts::AdminConsoleController.putPointsFormula -> points.getFormula':
     [
       'ADMIN_ONLY',
-      'console quản trị hệ thống — tự kiểm assertSysAdmin; bảng hệ số điểm là cấu hình toàn hệ thống, không thuộc dự án',
+      'console Quản trị — tự kiểm assertSysAdmin; bảng hệ số điểm là cấu hình toàn hệ thống, không thuộc dự án',
     ],
   'admin/admin-console.controller.ts::AdminConsoleController.putPointsFormula -> points.recomputeAll':
     [
       'ADMIN_ONLY',
-      'console quản trị hệ thống — tự kiểm assertSysAdmin; tính lại điểm toàn hệ thống ở nền, không trả dữ liệu dự án',
+      'console Quản trị — tự kiểm assertSysAdmin; tính lại điểm toàn hệ thống ở nền, không trả dữ liệu dự án',
     ],
   'admin/admin-console.controller.ts::AdminConsoleController.overview -> overviewSvc.overview': [
     'ADMIN_ONLY',
-    'console quản trị hệ thống — tự kiểm assertSysAdmin trước khi gọi service',
+    'console Quản trị — tự kiểm assertSysAdmin trước khi gọi service',
   ],
   'admin/admin-console.controller.ts::AdminConsoleController.config -> overviewSvc.configStatus': [
     'ADMIN_ONLY',
-    'console quản trị hệ thống — tự kiểm assertSysAdmin trước khi gọi service',
+    'console Quản trị — tự kiểm assertSysAdmin trước khi gọi service',
   ],
   'admin/admin-console.controller.ts::AdminConsoleController.setFlags -> settings.setFlags': [
     'ADMIN_ONLY',
-    'console quản trị hệ thống — tự kiểm assertSysAdmin trước khi gọi service',
+    'console Quản trị — tự kiểm assertSysAdmin trước khi gọi service',
   ],
   'admin/admin-console.controller.ts::AdminConsoleController.organizations -> organizationsSvc.list':
-    ['ADMIN_ONLY', 'console quản trị hệ thống — tự kiểm assertSysAdmin trước khi gọi service'],
+    ['ADMIN_ONLY', 'console Quản trị — tự kiểm assertSysAdmin trước khi gọi service'],
   'admin/admin-console.controller.ts::AdminConsoleController.patchOrganization -> organizationsSvc.patch':
-    ['ADMIN_ONLY', 'console quản trị hệ thống — tự kiểm assertSysAdmin trước khi gọi service'],
+    ['ADMIN_ONLY', 'console Quản trị — tự kiểm assertSysAdmin trước khi gọi service'],
   'admin/admin-console.controller.ts::AdminConsoleController.health -> systemSvc.health': [
     'ADMIN_ONLY',
-    'console quản trị hệ thống — tự kiểm assertSysAdmin trước khi gọi service',
+    'console Quản trị — tự kiểm assertSysAdmin trước khi gọi service',
   ],
   'admin/admin-console.controller.ts::AdminConsoleController.audit -> systemSvc.audit': [
     'ADMIN_ONLY',
-    'console quản trị hệ thống — tự kiểm assertSysAdmin trước khi gọi service',
+    'console Quản trị — tự kiểm assertSysAdmin trước khi gọi service',
   ],
   'admin/admin.controller.ts::AdminController.list -> admin.list': [
     'ADMIN_ONLY',
-    'console quản trị hệ thống — tự kiểm assertSysAdmin trước khi gọi service',
+    'console Quản trị — tự kiểm assertSysAdmin trước khi gọi service',
   ],
   'attachments/attachments.controller.ts::AttachmentsController.remove -> attachments.remove': [
     'ROUTE_GUARDED',

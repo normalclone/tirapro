@@ -355,14 +355,14 @@ describe('Cấu hình dự án → Quy trình — xem trước, lỗi và làm m
     ).toBeTruthy();
   });
 
-  it('dự án đã lưu trữ: chỉ xem và ghi chú nói rõ dự án đã lưu trữ (khôi phục để sửa), không bảo "nhờ quản trị chung"', async () => {
+  it('dự án đã lưu trữ: chỉ xem và ghi chú nói rõ dự án đã lưu trữ (khôi phục để sửa), không bảo "nhờ Quản trị"', async () => {
     renderRoute(['project:admin'], { archivedAt: '2026-10-01T00:00:00Z' });
     await screen.findByText('Standard Workflow');
     expect(screen.queryByLabelText(/Quy trình cho loại việc/)).toBeNull();
     expect(screen.getByRole('note').textContent).toMatch(
       /Dự án đã lưu trữ — hãy khôi phục dự án để sửa/,
     );
-    expect(screen.queryByText(/nhờ quản trị chung/)).toBeNull();
+    expect(screen.queryByText(/nhờ Quản trị/)).toBeNull();
   });
 
   it('áp dụng chỉ làm mới quy trình/việc/bảng/sprint/quy tắc — không làm mới toàn bộ cache', async () => {

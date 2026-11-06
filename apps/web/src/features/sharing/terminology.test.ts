@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 /**
- * Bảng thuật ngữ (docs/UX_CONVENTIONS.md): "tổ chức" (không phải "tổ chức"), vai trò hiển thị "Quản trị chung".
+ * Bảng thuật ngữ (docs/UX_CONVENTIONS.md): "tổ chức" (không phải "tổ chức"), vai trò hiển thị "Quản trị".
  * Chỉ khoá phần chia sẻ + bộ lọc đã lưu — các chỗ khác còn chữ "tổ chức" nằm ngoài phạm vi.
  */
 const dirs = [__dirname, join(__dirname, '..', 'saved-filters')];
@@ -15,8 +15,8 @@ const files = dirs.flatMap((d) =>
 
 const BANNED: Array<[RegExp, string]> = [
   [/không gian/i, 'dùng "tổ chức" (đã bỏ khái niệm organization)'],
-  [/quản trị viên tổ chức/i, 'dùng tên vai trò hiển thị "Quản trị chung"'],
-  [/chỉ thành viên dự án thấy/i, 'ghi chú dự án riêng tư phải nhắc Quản trị chung'],
+  [/quản trị viên tổ chức/i, 'dùng tên vai trò hiển thị "Quản trị"'],
+  [/chỉ thành viên dự án thấy/i, 'ghi chú dự án riêng tư phải nhắc Quản trị'],
 ];
 
 describe('thuật ngữ chia sẻ / bộ lọc đã lưu', () => {

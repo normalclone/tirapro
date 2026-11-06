@@ -6,6 +6,7 @@ import { assertParityDatabase } from '../../common/testing/parity-db-guard';
 import type { AuthUser } from '../../common/types/request';
 import type { PrismaService } from '../../infra/prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { AdminSyncService } from '../members/admin-sync';
 import { MembersService } from '../members/members.service';
 import { ProjectTeamsService } from '../project-teams/project-teams.service';
 import { RbacService } from '../rbac/rbac.service';
@@ -28,7 +29,7 @@ describe.skipIf(!DB_URL)('lệnh hàng loạt của Trợ lý ↔ Postgres thậ
   const id = (n: string) => `${TAG}-${n}`;
   const ORG = id('org');
   const U = {
-    admin: id('admin'), // quản trị tổ chức
+    admin: id('admin'), // Quản trị
     pa: id('pa'),
     pa2: id('pa2'),
     m1: id('m1'),
@@ -190,7 +191,14 @@ describe.skipIf(!DB_URL)('lệnh hàng loạt của Trợ lý ↔ Postgres thậ
     const rbac = new RbacService(db, { getClient: () => null, isAvailable: () => false } as never);
     const emit = vi.fn();
     const audit = new AuditService(db);
-    members = new MembersService(db, rbac, {} as never, { emit } as never, audit);
+    members = new MembersService(
+      db,
+      rbac,
+      {} as never,
+      { emit } as never,
+      audit,
+      new AdminSyncService(),
+    );
     const issues = {
       bulkUpdate: vi.fn(() => Promise.resolve({ updated: [], conflicts: [] })),
       isAssignableMember: vi.fn(() => Promise.resolve(true)),
@@ -294,7 +302,7 @@ describe.skipIf(!DB_URL)('lệnh hàng loạt của Trợ lý ↔ Postgres thậ
     });
   });
 
-  it('CHẶN bỏ quản trị viên cuối của dự án riêng tư (kể cả do quản trị tổ chức); thêm quản trị khác thì gỡ được', async () => {
+  it('CHẶN bỏ quản trị viên cuối của dự án riêng tư (kể cả do Quản trị); thêm quản trị khác thì gỡ được', async () => {
     const p = await newProject(true, [
       [U.pa, [R.admin]],
       [U.m1, [R.dev]],

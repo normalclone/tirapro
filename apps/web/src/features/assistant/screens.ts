@@ -168,7 +168,7 @@ export const SCREENS: ScreenInfo[] = [
     pattern: '/account',
     name: 'Tài khoản',
     purpose:
-      'Hồ sơ cá nhân: múi giờ, ngôn ngữ, đổi mật khẩu (họ tên, email, ảnh đại diện do quản trị hệ thống đổi).',
+      'Hồ sơ cá nhân: múi giờ, ngôn ngữ, đổi mật khẩu (họ tên, email, ảnh đại diện do Quản trị đổi).',
     docAnchor: 'ca-nhan',
     chips: ['Đổi mật khẩu', 'Phím tắt'],
   },
@@ -195,10 +195,10 @@ export const SCREENS: ScreenInfo[] = [
   },
   {
     pattern: '/admin',
-    name: 'Quản trị hệ thống',
+    name: 'Quản trị',
     purpose: 'Console quản trị: tổng quan hệ thống, tổ chức, tài khoản, cấu hình và feature flags.',
     docAnchor: 'vt-sys-admin',
-    chips: ['Quản trị hệ thống làm gì', 'Phím tắt'],
+    chips: ['Quản trị làm gì', 'Phím tắt'],
   },
 ];
 

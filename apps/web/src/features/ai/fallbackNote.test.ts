@@ -19,7 +19,7 @@ describe('aiFallbackNote', () => {
   it('người dùng thường không thấy tên biến môi trường, được nhắc liên hệ quản trị', () => {
     const note = aiFallbackNote('unconfigured', 'user')!;
     expect(note).not.toMatch(/ANTHROPIC_API_KEY/);
-    expect(note).toMatch(/Liên hệ quản trị/);
+    expect(note).toMatch(/Liên hệ Quản trị/);
   });
   it('lời nhắc AI bận không gọi tên nút cụ thể', () =>
     expect(aiFallbackNote('timeout')).not.toMatch(/bấm/i));

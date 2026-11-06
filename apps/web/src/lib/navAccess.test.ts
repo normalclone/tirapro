@@ -6,17 +6,17 @@ const admin = { isSystemAdmin: false, permissions: ['organization:admin', 'integ
 const sysAdmin = { isSystemAdmin: true, permissions: [] };
 
 describe('canSeeNav', () => {
-  it('thành viên thường không thấy Kết nối / Nhập dữ liệu / Quản trị hệ thống', () => {
+  it('thành viên thường không thấy Kết nối / Nhập dữ liệu / Quản trị', () => {
     expect(canSeeNav(NAV_RULES.connect, member)).toBe(false);
     expect(canSeeNav(NAV_RULES.settingsImport, member)).toBe(false);
     expect(canSeeNav(NAV_RULES.admin, member)).toBe(false);
   });
-  it('quản trị organization thấy Kết nối, Nhập dữ liệu; vẫn không thấy Quản trị hệ thống', () => {
+  it('quản trị organization thấy Kết nối, Nhập dữ liệu; vẫn không thấy Quản trị', () => {
     expect(canSeeNav(NAV_RULES.connect, admin)).toBe(true);
     expect(canSeeNav(NAV_RULES.settingsImport, admin)).toBe(true);
     expect(canSeeNav(NAV_RULES.admin, admin)).toBe(false);
   });
-  it('admin hệ thống thấy tất cả', () => {
+  it('Quản trị thấy tất cả', () => {
     for (const rule of Object.values(NAV_RULES)) expect(canSeeNav(rule, sysAdmin)).toBe(true);
   });
   it('quy tắc "all" luôn thấy', () => expect(canSeeNav('all', member)).toBe(true));
@@ -46,6 +46,6 @@ describe('filterNavItems', () => {
       '/',
       '/connect',
     ]));
-  it('mục chỉ dành admin hệ thống không bao giờ hiện cho người khác, kể cả khi đứng trên /admin', () =>
+  it('mục chỉ dành Quản trị không bao giờ hiện cho người khác, kể cả khi đứng trên /admin', () =>
     expect(filterNavItems(items, member, '/admin').map((i) => i.to)).toEqual(['/']));
 });

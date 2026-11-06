@@ -230,8 +230,8 @@ export function ApiKeysPage() {
           <div>
             <p className="text-sm font-medium text-ink">Không có quyền quản lý API key</p>
             <p className="mx-auto mt-1 max-w-sm text-sm text-muted">
-              Chỉ quản trị chung mới tạo và quản lý được khoá API. Liên hệ quản trị chung của bạn để
-              được cấp quyền.
+              Chỉ Quản trị mới tạo và quản lý được khoá API. Liên hệ Quản trị của bạn để được cấp
+              quyền.
             </p>
           </div>
         </section>

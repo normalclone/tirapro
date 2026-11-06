@@ -424,7 +424,7 @@ export class DashboardsService {
     }
     if (input.dataScope === 'ORG') {
       if (current?.dataScope !== 'ORG' && !ctx.isAdmin) {
-        throw new ForbiddenAppException('Chỉ quản trị viên tổ chức mới chọn phạm vi toàn tổ chức');
+        throw new ForbiddenAppException('Chỉ Quản trị mới chọn phạm vi toàn tổ chức');
       }
       return { dataScope: 'ORG', scopeProjectId: null, scopeProgramId: null };
     }

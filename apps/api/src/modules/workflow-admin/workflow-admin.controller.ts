@@ -122,7 +122,7 @@ export class WorkflowAdminController {
     const organizationAdmin =
       user.isSystemAdmin || !!user.permissions?.includes(PERMISSIONS.ORGANIZATION_ADMIN);
     if (owner === null && !organizationAdmin)
-      throw new ForbiddenAppException('Quy trình chung của tổ chức chỉ Quản trị chung sửa được');
+      throw new ForbiddenAppException('Quy trình chung của tổ chức chỉ Quản trị sửa được');
     return { owned: owner !== null, organizationAdmin };
   }
 
@@ -181,7 +181,7 @@ export class WorkflowAdminController {
     const { organizationAdmin } = await this.assertCanEdit(user, organizationId, 'workflow', id);
     // Đặt "mặc định" là việc của Quản trị chung; Quản trị dự án chỉ đổi tên/mô tả quy trình của dự án mình.
     if (dto.isDefault !== undefined && !organizationAdmin)
-      throw new ForbiddenAppException('Chỉ Quản trị chung đặt được quy trình mặc định');
+      throw new ForbiddenAppException('Chỉ Quản trị đặt được quy trình mặc định');
     return this.workflows.updateWorkflow(organizationId, id, dto);
   }
 

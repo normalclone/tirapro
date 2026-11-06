@@ -16,6 +16,8 @@ vi.mock('../project-teams/project-role-sources', () => ({
   ),
 }));
 
+const ROLES_OF_M1 = { id: 'm1', roleId: 'r1', roles: [{ roleId: 'r1' }] };
+
 /** `$transaction` giả: chạy callback với chính prisma giả (tx), còn dạng mảng trả `[]`. */
 const runTx = (prisma: object) =>
   vi.fn((fn: unknown) =>
@@ -54,6 +56,10 @@ describe('MembersService.addOrganizationMany', () => {
         { revokeAllForUser: vi.fn(), dropCaches: vi.fn() } as never,
         { emit: vi.fn() } as never,
         audit as never,
+        {
+          grantsAdmin: vi.fn(() => Promise.resolve(false)),
+          syncOnOrgRoles: vi.fn(() => Promise.resolve(false)),
+        } as never,
       ),
       prisma,
       tx,
@@ -111,7 +117,10 @@ describe('MembersService.removeOrganization', () => {
       },
       project: { findMany: vi.fn((_a?: unknown) => Promise.resolve([] as unknown[])) },
       // mặc định người bị gỡ KHÔNG phải quản trị tổ chức (count=0); ca quản trị cuối cùng ghi đè
-      organizationMembership: { count: vi.fn((_a?: unknown) => Promise.resolve(0)) },
+      organizationMembership: {
+        count: vi.fn((_a?: unknown) => Promise.resolve(0)),
+        findUnique: vi.fn((_a?: unknown) => Promise.resolve(ROLES_OF_M1)),
+      },
     };
     const rbac = {
       invalidate: vi.fn(() => Promise.resolve()),
@@ -130,6 +139,10 @@ describe('MembersService.removeOrganization', () => {
       apiKeys as never,
       events as never,
       audit as never,
+      {
+        grantsAdmin: vi.fn(() => Promise.resolve(false)),
+        syncOnOrgRoles: vi.fn(() => Promise.resolve(false)),
+      } as never,
     );
     return { service, prisma, tx, rbac, apiKeys, events, audit };
   }
@@ -283,6 +296,10 @@ describe('MembersService.listOrganization — phòng thủ bảng nối rỗng',
       {} as never,
       { emit: vi.fn() } as never,
       { record: vi.fn() } as never,
+      {
+        grantsAdmin: vi.fn(() => Promise.resolve(false)),
+        syncOnOrgRoles: vi.fn(() => Promise.resolve(false)),
+      } as never,
     );
     const out = await service.listOrganization('w1');
     expect(out[0]!.roles).toEqual([{ id: 'r1', name: 'Organization Admin', color: null }]);
@@ -325,7 +342,11 @@ describe('MembersService — ghi nhật ký quản trị', () => {
       },
       organizationMembership: {
         count: vi.fn((_a?: unknown) => Promise.resolve(0)),
-        findUnique: vi.fn(() => Promise.resolve(opts.existing ? { id: 'm2' } : null)),
+        findUnique: vi.fn(() =>
+          Promise.resolve(
+            opts.existing ? { id: 'm2', roleId: 'r1', roles: [{ roleId: 'r1' }] } : null,
+          ),
+        ),
         create: vi.fn(() =>
           opts.createError ? Promise.reject(opts.createError as Error) : Promise.resolve({}),
         ),
@@ -346,6 +367,10 @@ describe('MembersService — ghi nhật ký quản trị', () => {
       {} as never,
       events as never,
       audit as never,
+      {
+        grantsAdmin: vi.fn(() => Promise.resolve(false)),
+        syncOnOrgRoles: vi.fn(() => Promise.resolve(false)),
+      } as never,
     );
     return { svc, audit, events, prisma };
   }
@@ -476,6 +501,10 @@ describe('MembersService.createAccount', () => {
       {} as never,
       { emit: vi.fn() } as never,
       audit as never,
+      {
+        grantsAdmin: vi.fn(() => Promise.resolve(false)),
+        syncOnOrgRoles: vi.fn(() => Promise.resolve(false)),
+      } as never,
     );
     return { svc, tx, prisma, audit, rbac };
   }
@@ -575,6 +604,10 @@ describe('MembersService — chặn tài khoản không hợp lệ (M2/M3/M4)', 
       {} as never,
       { emit: vi.fn() } as never,
       { record: vi.fn() } as never,
+      {
+        grantsAdmin: vi.fn(() => Promise.resolve(false)),
+        syncOnOrgRoles: vi.fn(() => Promise.resolve(false)),
+      } as never,
     );
     return { svc, prisma, tx };
   }
@@ -654,7 +687,9 @@ function setupProject(opts: {
   };
   const prisma = {
     project: { findFirst: vi.fn(() => Promise.resolve({ id: 'p1', name: 'Demo' })) },
-    organizationMembership: { findUnique: vi.fn(() => Promise.resolve({ id: 'm1' })) },
+    organizationMembership: {
+      findUnique: vi.fn(() => Promise.resolve({ id: 'm1', roleId: 'r1', roles: [] })),
+    },
     projectMembership: {
       findUnique: vi.fn(() => Promise.resolve(opts.hasOverride ? { id: 'pm1' } : null)),
       create: vi.fn(() => Promise.resolve({})),
@@ -698,6 +733,10 @@ function setupProject(opts: {
     {} as never,
     events as never,
     audit as never,
+    {
+      grantsAdmin: vi.fn(() => Promise.resolve(false)),
+      syncOnOrgRoles: vi.fn(() => Promise.resolve(false)),
+    } as never,
   );
   return { svc, audit, prisma, events };
 }
@@ -845,6 +884,10 @@ describe('MembersService — dự án riêng tư', () => {
       {} as never,
       events as never,
       audit as never,
+      {
+        grantsAdmin: vi.fn(() => Promise.resolve(false)),
+        syncOnOrgRoles: vi.fn(() => Promise.resolve(false)),
+      } as never,
     );
     return { svc, prisma, audit, events };
   }
@@ -916,6 +959,10 @@ describe('MembersService.clearProjectOverride — phát sự kiện rút socket 
       {} as never,
       events as never,
       { record: vi.fn() } as never,
+      {
+        grantsAdmin: vi.fn(() => Promise.resolve(false)),
+        syncOnOrgRoles: vi.fn(() => Promise.resolve(false)),
+      } as never,
     );
     return { svc, events };
   }
@@ -1016,6 +1063,10 @@ describe('MembersService — phát member.added SAU commit (L28)', () => {
       {} as never,
       events as never,
       { record: vi.fn() } as never,
+      {
+        grantsAdmin: vi.fn(() => Promise.resolve(false)),
+        syncOnOrgRoles: vi.fn(() => Promise.resolve(false)),
+      } as never,
     );
     return { svc, events, order };
   }
@@ -1161,12 +1212,22 @@ describe('MembersService.listOrganization/listProject — lastSeenAt/isSystemAdm
       },
       role: { findMany: vi.fn(() => Promise.resolve([])) },
     };
-    return new MembersService(prisma as never, {} as never, {} as never, {} as never, {} as never);
+    return new MembersService(
+      prisma as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {
+        grantsAdmin: vi.fn(() => Promise.resolve(false)),
+        syncOnOrgRoles: vi.fn(() => Promise.resolve(false)),
+      } as never,
+    );
   }
   const plain = { id: 'v', permissions: ['organization:view'] };
   const manager = { id: 'v', permissions: ['member:manage'] };
 
-  it('organization: người xem thường nhận bản rút gọn; member:manage / admin hệ thống / nội bộ (không viewer) nhận đủ', async () => {
+  it('organization: người xem thường nhận bản rút gọn; member:manage / Quản trị / nội bộ (không viewer) nhận đủ', async () => {
     const svc = setup();
     const [a] = await svc.listOrganization('w1', plain);
     expect(a!.user).not.toHaveProperty('isSystemAdmin');

@@ -186,7 +186,7 @@ export function SeveritySection() {
         )}
       </QueryBoundary>
 
-      {/* Form thêm mức độ — chỉ quản trị chung */}
+      {/* Form thêm mức độ — chỉ Quản trị */}
       {canManage && severities.length > 0 && (
         <Button
           variant="secondary"

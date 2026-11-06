@@ -60,7 +60,7 @@ describe('ProjectAccessService', () => {
     });
   });
 
-  it('visibleWhere: admin hệ thống hoặc organization:admin thấy tất cả → {}', async () => {
+  it('visibleWhere: Quản trị hoặc organization:admin thấy tất cả → {}', async () => {
     expect(await make({ sysAdmin: true }).svc.visibleWhere('u1', 'w1')).toEqual({});
     expect(await make({ perms: ['organization:admin'] }).svc.visibleWhere('u1', 'w1')).toEqual({});
   });
@@ -168,7 +168,7 @@ describe('ProjectAccessService', () => {
       throw new Error('điều kiện lạ');
     };
     const actors: { name: string; opts: Parameters<typeof make>[0]; see: (p: P) => boolean }[] = [
-      { name: 'admin hệ thống', opts: { sysAdmin: true, perms: [] }, see: () => true },
+      { name: 'Quản trị', opts: { sysAdmin: true, perms: [] }, see: () => true },
       { name: 'organization:admin', opts: { perms: ['organization:admin'] }, see: () => true },
       {
         name: 'project:view cấp organization',

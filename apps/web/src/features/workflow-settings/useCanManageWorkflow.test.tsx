@@ -62,7 +62,7 @@ describe('useCanManageWorkflow: ai sửa được quy trình trong giao diện',
     await waitFor(() => expect(h.get).toHaveBeenCalled());
     expect(screen.getByTestId('can').textContent).toBe('false');
   });
-  it('quy trình chung của tổ chức: Quản trị dự án không sửa được, Quản trị chung sửa được', () => {
+  it('quy trình chung của tổ chức: Quản trị dự án không sửa được, Quản trị sửa được', () => {
     setup({ projectId: null, projectPerms: { A: ['project:admin'] } });
     expect(screen.getByTestId('can').textContent).toBe('false');
     cleanup();

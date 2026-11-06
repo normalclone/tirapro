@@ -9,7 +9,7 @@ vi.mock('@/stores/auth', () => ({
   useAuth: (sel: (s: { user: unknown }) => unknown) => sel({ user: state.user }),
 }));
 
-const HINT = 'Chỉ quản trị hệ thống đổi được họ tên, email và ảnh đại diện.';
+const HINT = 'Chỉ Quản trị đổi được họ tên, email và ảnh đại diện.';
 
 function html(isSystemAdmin: boolean) {
   state.user = {
@@ -28,7 +28,7 @@ function html(isSystemAdmin: boolean) {
   );
 }
 
-describe('ProfilePanel — họ tên/ảnh chỉ quản trị hệ thống', () => {
+describe('ProfilePanel — họ tên/ảnh chỉ Quản trị', () => {
   it('người thường: ô họ tên chỉ đọc + gợi ý, không có nút gỡ ảnh', () => {
     const out = html(false);
     expect(out).toContain(HINT);
@@ -39,7 +39,7 @@ describe('ProfilePanel — họ tên/ảnh chỉ quản trị hệ thống', () 
     expect(out).toMatch(/<button(?=[^>]*disabled="")[^>]*>(?:(?!<\/button>).)*Đổi ảnh/s);
     expect(out).not.toContain('Gỡ');
   });
-  it('quản trị hệ thống: không có gợi ý, ô họ tên sửa được', () => {
+  it('Quản trị: không có gợi ý, ô họ tên sửa được', () => {
     const out = html(true);
     expect(out).not.toContain(HINT);
     expect(out).not.toMatch(

@@ -28,7 +28,7 @@ export const NAV_RULES = {
 
 export function canSeeNav(rule: NavRule, ctx: NavContext): boolean {
   if (rule === 'all') return true;
-  if (ctx.isSystemAdmin) return true; // admin hệ thống đi qua mọi luật
+  if (ctx.isSystemAdmin) return true; // Quản trị đi qua mọi luật
   if (rule === 'systemAdmin') return false;
   return rule.any.some((perm) => hasPermission({ organization: ctx.permissions }, perm));
 }

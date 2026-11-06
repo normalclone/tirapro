@@ -494,7 +494,7 @@ describe('RbacService — dự án riêng tư', () => {
       );
     });
 
-    it('riêng tư + không thành viên + organization:admin => qua; admin hệ thống => qua không cần tra dự án', async () => {
+    it('riêng tư + không thành viên + organization:admin => qua; Quản trị => qua không cần tra dự án', async () => {
       const a = withRow({ isPrivate: true, memberships: [] }, ['organization:admin']);
       await expect(a.svc.assertProjectVisible('U1', 'W1', 'P1')).resolves.toBeUndefined();
       const s = withRow({ isPrivate: true, memberships: [] }, [], true);
@@ -522,7 +522,7 @@ describe('RbacService — dự án riêng tư', () => {
 });
 
 describe('RbacService — P-C14: holdsOrganizationAdmin / adminRoleIds', () => {
-  it('admin hệ thống → true, không cần tính quyền organization', async () => {
+  it('Quản trị → true, không cần tính quyền organization', async () => {
     const { svc, prisma } = setup();
     prisma.user.findUnique.mockResolvedValue({ isSystemAdmin: true });
     const spy = vi.spyOn(svc, 'getEffectivePermissions');

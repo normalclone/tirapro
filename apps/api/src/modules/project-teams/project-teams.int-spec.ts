@@ -5,6 +5,7 @@ import { assertParityDatabase } from '../../common/testing/parity-db-guard';
 import { SYSTEM_ROLES } from '@tirapro/types';
 import type { PrismaService } from '../../infra/prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { AdminSyncService } from '../members/admin-sync';
 import { MembersService } from '../members/members.service';
 import { RbacService } from '../rbac/rbac.service';
 import { TeamsService } from '../teams/teams.service';
@@ -204,7 +205,14 @@ describe.skipIf(!DB_URL)('team theo dự án ↔ Postgres thật', () => {
     rbacSvc = rbac;
     const audit = new AuditService(db);
     pt = new ProjectTeamsService(db, rbac, { emit } as never, audit);
-    members = new MembersService(db, rbac, {} as never, { emit } as never, audit);
+    members = new MembersService(
+      db,
+      rbac,
+      {} as never,
+      { emit } as never,
+      audit,
+      new AdminSyncService(),
+    );
     teams = new TeamsService(db, members, { assertCanSee: vi.fn() } as never, pt);
   }, 60_000);
 
@@ -522,7 +530,7 @@ describe.skipIf(!DB_URL)('team theo dự án ↔ Postgres thật', () => {
     expect(await state(p, u1)).toBeNull();
   });
 
-  it('sửa thành viên / xoá team đang gắn vai trò quản trị: team:manage một mình không đủ, quản trị tổ chức thì được', async () => {
+  it('sửa thành viên / xoá team đang gắn vai trò quản trị: team:manage một mình không đủ, Quản trị thì được', async () => {
     const p = await newProject();
     const risky = id('rrisky2');
     await prisma.role.create({
@@ -634,7 +642,7 @@ describe.skipIf(!DB_URL)('team theo dự án ↔ Postgres thật', () => {
     await assertInvariants(p);
   });
 
-  it('không leo thang: người không phải quản trị tổ chức không gắn được team với vai trò mang quyền quản trị tổ chức', async () => {
+  it('không leo thang: người không phải Quản trị không gắn được team với vai trò mang quyền Quản trị', async () => {
     const p = await newProject();
     await resetTeam(T.a, [u1]);
     const risky = id('rrisky');

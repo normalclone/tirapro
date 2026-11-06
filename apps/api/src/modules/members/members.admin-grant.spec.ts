@@ -108,8 +108,12 @@ function setup(opts: {
                 createMany: vi.fn(() => Promise.resolve({ count: 1 })),
                 findMany: vi.fn(() => Promise.resolve([{ id: 'm9' }])),
                 delete: vi.fn(() => Promise.resolve({})),
+                update: vi.fn(() => Promise.resolve({})),
               },
-              organizationMembershipRole: { createMany: vi.fn(() => Promise.resolve({})) },
+              organizationMembershipRole: {
+                createMany: vi.fn(() => Promise.resolve({})),
+                deleteMany: vi.fn(() => Promise.resolve({})),
+              },
               projectMembership: {
                 createMany: vi.fn(() => Promise.resolve({ count: 1 })),
                 findMany: vi.fn(() => Promise.resolve([{ id: 'pm9' }])),
@@ -141,6 +145,10 @@ function setup(opts: {
     { revokeAllForUser: vi.fn(() => Promise.resolve([])), dropCaches: vi.fn() } as never,
     { emit: vi.fn() } as never,
     { record: vi.fn() } as never,
+    {
+      grantsAdmin: vi.fn(() => Promise.resolve(false)),
+      syncOnOrgRoles: vi.fn(() => Promise.resolve(false)),
+    } as never,
   );
   return { svc, prisma, rbac };
 }
@@ -268,7 +276,7 @@ describe('MembersService — chỉ quản trị mới cấp/gỡ organization:ad
     });
   });
 
-  describe('quản trị organization / admin hệ thống được phép', () => {
+  describe('quản trị organization / Quản trị được phép', () => {
     it('cấp và gỡ vai trò quản trị; chỉ hỏi quyền người gọi MỘT lần (không tra DB vai trò)', async () => {
       const { svc, rbac } = setup({ callerIsAdmin: true });
       await expect(

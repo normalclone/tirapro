@@ -122,7 +122,7 @@ export function TeamsPanel() {
             description={
               canManage
                 ? 'Nhóm giúp gom người theo chức năng để giao vai trò cho cả nhóm cùng lúc. Tạo nhóm đầu tiên, ví dụ Frontend hoặc QA.'
-                : 'Nhóm giúp gom người theo chức năng. Quản trị chung chưa tạo nhóm nào.'
+                : 'Nhóm giúp gom người theo chức năng. Quản trị chưa tạo nhóm nào.'
             }
             action={
               canManage ? (

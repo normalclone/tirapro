@@ -313,7 +313,7 @@ describe('Gắn team: vai trò mang quyền quản trị', () => {
     ).toBeNull();
   });
 
-  it('quản trị tổ chức: không khoá vai trò nào', async () => {
+  it('Quản trị: không khoá vai trò nào', async () => {
     act(() => {
       useAuth.setState({ permissions: ['organization:admin'] });
     });

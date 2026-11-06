@@ -1450,7 +1450,7 @@ describe('AnalyticsService.reportScopeIds — quyền báo cáo theo nhóm dự 
     await expect(service.reportScopeIds(viewer, 'o1', [])).resolves.toEqual([]);
     await expect(service.reportScopeIds(viewer, 'o1', ['x'])).resolves.toEqual([]);
   });
-  it('quản trị hệ thống → như có quyền tổ chức; assertOrgReport chặn người không có quyền tổ chức', async () => {
+  it('Quản trị → như có quyền tổ chức; assertOrgReport chặn người không có quyền tổ chức', async () => {
     const { service, rbac } = make(false, []);
     await expect(
       service.reportScopeIds({ id: 'u1', isSystemAdmin: true }, 'o1', ['a']),

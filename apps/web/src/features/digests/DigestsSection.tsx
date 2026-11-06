@@ -101,7 +101,7 @@ export function DigestsSection() {
             description={
               canManage
                 ? 'Tạo báo cáo để tự động tổng hợp tiến độ dự án theo lịch.'
-                : 'Chưa có báo cáo định kỳ nào. Nhờ quản trị chung tạo giúp.'
+                : 'Chưa có báo cáo định kỳ nào. Nhờ Quản trị tạo giúp.'
             }
             action={
               canManage ? (

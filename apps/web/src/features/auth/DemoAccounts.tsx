@@ -10,7 +10,7 @@ const DEMO_PASSWORD = 'Password123';
  * theo dữ liệu seed (đừng "đồng bộ" domain, sẽ lệch với seed).
  */
 const DEMO_ACCOUNTS: { email: string; name: string; role: string; admin?: boolean }[] = [
-  { email: 'admin@projira.dev', name: 'An Quản Trị', role: 'Admin hệ thống', admin: true },
+  { email: 'admin@projira.dev', name: 'An Quản Trị', role: 'Quản trị', admin: true },
   { email: 'ba@tirapro.dev', name: 'Bình (BA)', role: roleLabel(SYSTEM_ROLES.BUSINESS_ANALYST) },
   { email: 'dev@tirapro.dev', name: 'Dũng (Dev)', role: roleLabel(SYSTEM_ROLES.DEVELOPER) },
   { email: 'tester@tirapro.dev', name: 'Trang (Tester)', role: roleLabel(SYSTEM_ROLES.TESTER) },

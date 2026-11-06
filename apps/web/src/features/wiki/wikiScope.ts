@@ -55,5 +55,5 @@ export function askWhoText(names: readonly string[]): string {
 
 /** Câu hiển thị cho người thiếu quyền viết: nêu tên quản trị, hoặc dự phòng khi không có ai. */
 export function noWriteMessage(names: readonly string[]): string {
-  return askWhoText(names) || 'Hãy liên hệ quản trị tổ chức để được cấp quyền viết tài liệu.';
+  return askWhoText(names) || 'Hãy liên hệ Quản trị để được cấp quyền viết tài liệu.';
 }

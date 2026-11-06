@@ -17,7 +17,7 @@ type ListQuery = z.infer<typeof listQuerySchema>;
 
 /** Hộp thư đi — CHỈ admin hệ thống. Trả metadata, không trả nội dung thư (có thể chứa liên kết còn hiệu lực). */
 @ApiTags('admin')
-@AuthOnly() // Chỉ admin hệ thống: handler tự kiểm isSystemAdmin, không thuộc RBAC organization.
+@AuthOnly() // Chỉ Quản trị: handler tự kiểm isSystemAdmin, không thuộc RBAC organization.
 @Controller('admin/mail-outbox')
 export class MailAdminController {
   constructor(private readonly prisma: PrismaService) {}
@@ -28,7 +28,7 @@ export class MailAdminController {
     @Query(new ZodValidationPipe(listQuerySchema)) query: ListQuery,
   ): Promise<MailOutboxItemDto[]> {
     if (!user.isSystemAdmin)
-      throw new ForbiddenAppException('Chỉ admin hệ thống mới xem được hộp thư đi');
+      throw new ForbiddenAppException('Chỉ Quản trị mới xem được hộp thư đi');
     const rows = await this.prisma.emailOutbox.findMany({
       where: query.status ? { status: query.status } : {},
       orderBy: { createdAt: 'desc' },

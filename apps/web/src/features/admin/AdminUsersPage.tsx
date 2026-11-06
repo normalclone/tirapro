@@ -101,7 +101,7 @@ export function AdminUsersPage() {
       <PageHeader
         data-tour="admin-users-header"
         title={ADMIN_LABELS.accounts}
-        description="Tạo tài khoản và cấp quyền lập tổ chức mới hoặc quản trị hệ thống."
+        description="Tạo tài khoản và cấp quyền lập tổ chức mới hoặc Quản trị."
         actions={
           <Button
             size="sm"
@@ -169,7 +169,7 @@ export function AdminUsersPage() {
                     <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm font-medium text-ink sm:flex-nowrap">
                       {u.displayName}
                       {u.isSystemAdmin && (
-                        <Badge className="bg-primary-subtle text-primary">Admin hệ thống</Badge>
+                        <Badge className="bg-primary-subtle text-primary">Quản trị</Badge>
                       )}
                       {u.isAutomation && (
                         <Badge className="bg-surface-2 text-muted">Tài khoản hệ thống</Badge>
@@ -196,7 +196,8 @@ export function AdminUsersPage() {
                       onChange={() => toggle(u, 'canCreateOrganization')}
                     />
                     <Toggle
-                      label="Admin HT"
+                      label="Quản trị"
+                      title={ADMIN_TOGGLE_TOOLTIP}
                       on={u.isSystemAdmin}
                       disabled={update.isPending || u.id === me?.id}
                       onChange={() => toggle(u, 'isSystemAdmin')}
@@ -227,19 +228,26 @@ export function AdminUsersPage() {
 }
 
 /** Switch nhỏ có nhãn — bật/tắt một quyền của user. */
+/** Chú thích công tắc "Quản trị": bật = toàn quyền tổ chức VÀ khu Quản trị (một vai trò duy nhất, hai cờ được đồng bộ ở máy chủ). */
+export const ADMIN_TOGGLE_TOOLTIP =
+  'Bật = có toàn quyền ở tổ chức và vào được khu Quản trị. Tắt = về Thành viên.';
+
 function Toggle({
   label,
   on,
   disabled,
   onChange,
+  title,
 }: {
   label: string;
   on: boolean;
   disabled?: boolean;
   onChange: () => void;
+  title?: string;
 }) {
   return (
     <label
+      title={title}
       className={cn(
         'flex items-center gap-2 text-xs max-sm:justify-between [@media(pointer:coarse)]:max-sm:min-h-11',
         disabled && 'opacity-50',
@@ -397,7 +405,8 @@ function CreateUserModal({ open, onClose }: { open: boolean; onClose: () => void
                 onChange={(e) => setIsAdmin(e.target.checked)}
                 className="h-4 w-4 rounded border-border"
               />
-              Admin hệ thống
+              Quản trị
+              <span className="text-xs text-faint">— toàn quyền tổ chức và khu Quản trị</span>
             </label>
           </div>
           <div className="flex justify-end gap-2 pt-1">

@@ -313,7 +313,7 @@ function RulesSection({
               ) : r.outcome === 'needsReview' ? (
                 <span className="inline-flex items-center gap-1 text-xs font-medium text-warning-ink">
                   <AlertTriangle className="h-3.5 w-3.5" aria-hidden />
-                  Áp toàn tổ chức — cần quản trị chung xem lại
+                  Áp toàn tổ chức — cần Quản trị xem lại
                 </span>
               ) : (
                 <span className="text-xs text-muted">Sẽ được sửa</span>
@@ -330,8 +330,8 @@ function RulesSection({
               ))}
             {r.outcome === 'needsReview' && (
               <p className="mt-0.5 text-xs text-muted">
-                Quy tắc này không bị đổi từ thay đổi của một dự án; nhờ quản trị chung kiểm tra lại
-                các trạng thái nó nhắc tới.
+                Quy tắc này không bị đổi từ thay đổi của một dự án; nhờ Quản trị kiểm tra lại các
+                trạng thái nó nhắc tới.
               </p>
             )}
           </li>

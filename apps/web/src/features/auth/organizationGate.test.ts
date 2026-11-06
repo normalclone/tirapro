@@ -14,7 +14,7 @@ describe('needsOrganizationScreen', () => {
     );
   });
 
-  it('không organization, admin hệ thống -> chỉ cho /admin*', () => {
+  it('không organization, Quản trị -> chỉ cho /admin*', () => {
     expect(
       needsOrganizationScreen({ organizationId: null, isSystemAdmin: true }, '/admin/accounts'),
     ).toBe(false);

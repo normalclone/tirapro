@@ -134,7 +134,7 @@ export function TelegramSection() {
             description={
               canManage
                 ? 'Nối Tirapro với Telegram để cập nhật về công việc và sprint được đẩy thẳng vào nhóm chat. Mất khoảng 2 phút, không cần biết chat_id.'
-                : 'Chưa có kết nối nào. Nhờ quản trị chung kết nối Telegram cho nhóm.'
+                : 'Chưa có kết nối nào. Nhờ Quản trị kết nối Telegram cho nhóm.'
             }
             action={
               canManage ? (

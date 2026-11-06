@@ -33,7 +33,7 @@ export class OrganizationsService {
     });
     if (!actor?.isSystemAdmin && !actor?.canCreateOrganization) {
       throw new ForbiddenAppException(
-        'Bạn không có quyền tạo tổ chức — hãy liên hệ quản trị hệ thống để được cấp quyền',
+        'Bạn không có quyền tạo tổ chức — hãy liên hệ Quản trị để được cấp quyền',
       );
     }
     return this.prisma.$transaction(async (tx) => {

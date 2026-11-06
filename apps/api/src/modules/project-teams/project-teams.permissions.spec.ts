@@ -83,7 +83,7 @@ describe('Team của dự án: ai được phép (guard thật)', () => {
           else await expect(run(paA, route, 'B')).resolves.toBeTruthy();
         },
       );
-      it('Quản trị chung thao tác được ở mọi dự án', async () => {
+      it('Quản trị thao tác được ở mọi dự án', async () => {
         await expect(run(orgAdmin, route, 'B')).resolves.toBeTruthy();
       });
       if (route.needsAdmin) {

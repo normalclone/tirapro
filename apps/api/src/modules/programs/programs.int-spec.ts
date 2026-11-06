@@ -129,7 +129,7 @@ describe.skipIf(!DB_URL)('nhóm dự án cá nhân ↔ Postgres thật', () => {
     await reset();
     expect(await listIds(U.member)).toEqual([G.a, G.empty].sort());
     expect(await listIds(U.other)).toEqual([G.b]);
-    expect(await listIds(U.admin)).toEqual([G.c]); // kể cả quản trị tổ chức không thấy nhóm của người khác
+    expect(await listIds(U.admin)).toEqual([G.c]); // kể cả Quản trị không thấy nhóm của người khác
     await expect(svc.get(WS, G.a, U.other)).rejects.toMatchObject({ status: 404 });
     await expect(svc.update(WS, G.a, { name: 'Chiếm' }, U.other)).rejects.toMatchObject({
       status: 404,

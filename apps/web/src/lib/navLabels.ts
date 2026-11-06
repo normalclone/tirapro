@@ -14,7 +14,7 @@ export const APP_NAV_LABELS = {
   wiki: 'Wiki',
   connect: 'Kết nối',
   settings: 'Cài đặt',
-  admin: 'Quản trị hệ thống',
+  admin: 'Quản trị',
   notifications: 'Thông báo',
   account: 'Tài khoản',
   documentation: 'Tài liệu hướng dẫn',

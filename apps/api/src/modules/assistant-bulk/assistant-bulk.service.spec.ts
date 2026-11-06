@@ -126,7 +126,7 @@ describe('AssistantBulkService.assign — quyền từng dòng', () => {
     expect(bulkUpdate).not.toHaveBeenCalled();
   });
 
-  it('quản trị hệ thống được qua cửa quyền; người thường chỉ có issue:edit:own bị chặn', async () => {
+  it('Quản trị được qua cửa quyền; người thường chỉ có issue:edit:own bị chặn', async () => {
     const sa = setup({ issues: [issue(1)], perms: {} });
     const r1 = await sa.service.assign('o1', user({ isSystemAdmin: true }), [
       { issueId: 'i1', version: 1, assigneeId: 'u1' },
@@ -454,9 +454,7 @@ describe('AssistantBulkService.setMembers — quyền project:admin từng dự 
       state: { pA: [dflt('u1', 'dev'), dflt('u2', 'dev')] },
       setRoles: (_p, u) =>
         u === 'u1'
-          ? Promise.reject(
-              new BusinessRuleException('Chỉ quản trị tổ chức mới cấp quyền quản trị.'),
-            )
+          ? Promise.reject(new BusinessRuleException('Chỉ Quản trị mới cấp quyền quản trị.'))
           : Promise.resolve({}),
     });
     const res = await service.setMembers('o1', user(), [
@@ -465,7 +463,7 @@ describe('AssistantBulkService.setMembers — quyền project:admin từng dự 
     ]);
     expect(res.results.map((r) => r.status)).toEqual(['failed', 'ok']);
     expect(res.results[0]).toMatchObject({ before: null, after: null });
-    expect(res.results[0]!.reason).toMatch(/Chỉ quản trị tổ chức/);
+    expect(res.results[0]!.reason).toMatch(/Chỉ Quản trị/);
   });
 
   it('HOÀN TÁC dựng từ kết quả: chỉ dòng "ok" đảo ngược (expect=after, set=before); vai trò bị người khác đổi sau đó thì bỏ qua', async () => {
@@ -597,7 +595,7 @@ describe('fix round 1 — M1: không tự khoá mình, không bỏ quản trị 
     expect(keep.results[0]!.status).toBe('ok');
   });
 
-  it('quản trị tổ chức tự đổi vai trò dự án thì không mất quyền (vẫn quản trị qua tổ chức) → không chặn', async () => {
+  it('Quản trị tự đổi vai trò dự án thì không mất quyền (vẫn quản trị qua tổ chức) → không chặn', async () => {
     const { service } = setupMembers({
       perms: ADMIN,
       orgAdmins: ['me'],

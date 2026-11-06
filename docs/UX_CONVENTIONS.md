@@ -156,12 +156,12 @@ Giao diện chỉ có tiếng Việt, nhưng GIỮ thuật ngữ Agile tiếng A
 | Project | **Dự án** | |
 | Workspace | **Không gian làm việc** | |
 | Mức chia sẻ cả không gian | **Cả không gian làm việc** | Bộ lọc, bảng tổng quan, hộp chia sẻ. Không "Cả tổ chức" (chữ này chỉ còn là phạm vi nghỉ của Nghỉ phép — khái niệm khác). |
-| Admin cấp không gian làm việc | **Quản trị chung** | Tên tiếng Việt của vai trò Workspace Admin (`roleLabel`); không "quản trị viên không gian". Phân biệt **Quản trị hệ thống** (`/admin`) và **Quản trị dự án**. |
+| Admin cấp tổ chức + hệ thống | **Quản trị** | MỘT vai trò: tên hiển thị của `Organization Admin` (`roleLabel`) và nhãn khu `/admin`; không còn phân biệt "quản trị tổ chức" / "quản trị hệ thống" trên giao diện. Phân biệt với **Quản trị dự án** (`project:admin`). Máy chủ đồng bộ `isSystemAdmin` với vai trò này. |
 | Huỷ | **Huỷ** | Nút huỷ luôn viết "Huỷ", không "Hủy". |
 | Mã dự án | **Dự án** | Không "Project ID" ở chữ hiển thị. |
 | Chỉ hướng | — | Không "bên trái"/"cột trái" (trên mobile cột đó nằm trên nội dung). |
 | Cổng quản lý cấp công ty | **Danh mục** | Trước đây "Quản trị". |
-| `/admin` | **Quản trị hệ thống** | |
+| `/admin` | **Quản trị** | |
 | Workflow | **Quy trình** | |
 | Component / Version | **Thành phần** / **Phiên bản** | |
 | RAID | **Rủi ro & vướng mắc** | |

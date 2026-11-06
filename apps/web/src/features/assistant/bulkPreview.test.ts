@@ -519,7 +519,7 @@ describe('membersOutcome / Hoàn tác thành viên', () => {
           projectId: 'p2',
           userId: 'u-linh',
           status: 'failed',
-          reason: 'Chỉ quản trị tổ chức mới cấp quyền quản trị.',
+          reason: 'Chỉ Quản trị mới cấp quyền quản trị.',
           before: null,
           after: null,
         },
@@ -534,7 +534,7 @@ describe('membersOutcome / Hoàn tác thành viên', () => {
         { projectId: 'p2', userId: 'u-an', expect: ['r-tester'], set: ['r-dev'] },
       ],
     });
-    expect(out.rows[1]!.reason).toMatch(/Chỉ quản trị tổ chức/);
+    expect(out.rows[1]!.reason).toMatch(/Chỉ Quản trị/);
     const undone = undoOutcome(out.undo!, {
       results: [
         { projectId: 'p1', userId: 'u-linh', status: 'ok', before: ['r-tester'], after: null },
@@ -584,7 +584,7 @@ describe('M1 — chặn tự khoá mình / bỏ quản trị viên cuối (thẻ
     ]);
     expect(c.counts.blocked).toBe(1);
   });
-  it('thêm vai trò thấp cho chính mình KHÔNG bị chặn (hợp vai trò, quản trị vẫn còn); quản trị tổ chức không bị chặn', () => {
+  it('thêm vai trò thấp cho chính mình KHÔNG bị chặn (hợp vai trò, quản trị vẫn còn); Quản trị không bị chặn', () => {
     const add = memberCard({
       slots: [slot(person('u-me', 'Tôi'))],
       projects: adminCard().projects,

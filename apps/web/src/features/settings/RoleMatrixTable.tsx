@@ -63,7 +63,7 @@ export function RoleMatrixTable({
   const captionId = useId();
   const lockNoteId = useId();
   const adminNoteId = useId();
-  const canGrantAdmin = useAuth((s) => s.can('organization:admin')); // P-C14: boolean (đã gồm admin hệ thống)
+  const canGrantAdmin = useAuth((s) => s.can('organization:admin')); // P-C14: boolean (đã gồm Quản trị)
 
   const members = useOrganizationMembers(canEdit);
   // Chỉ cho sửa khi đã có danh sách thành viên: chốt "quản trị cuối cùng" và "tự mất quyền" cần nó.
@@ -292,7 +292,7 @@ function EditNotes({
           {' '}
           <span id={adminNoteId} className="inline-flex items-center gap-1 text-faint">
             <Lock className="h-3 w-3" aria-hidden />
-            Quyền “Quản trị tổ chức” và vai trò đang giữ quyền đó: {ADMIN_GRANT_REASON}.
+            Quyền “Quản trị” và vai trò đang giữ quyền đó: {ADMIN_GRANT_REASON}.
           </span>
         </>
       )}

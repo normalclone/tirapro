@@ -49,7 +49,7 @@ export const DOC_GROUPS: DocGroup[] = [
         id: 'vai-tro',
         label: 'Hiểu về vai trò',
         summary:
-          'Quyền thực tế là hợp của vai trò ở tổ chức và vai trò ở từng dự án. Có ma trận quyền cho Reporter, Developer, Quản trị dự án, Quản trị chung, Người xem.',
+          'Quyền thực tế là hợp của vai trò ở tổ chức và vai trò ở từng dự án. Có ma trận quyền cho Reporter, Developer, Quản trị dự án, Quản trị, Người xem.',
         keywords:
           'vai tro phan quyen quyen han ma tran quyen role permission admin viewer reporter developer',
       },
@@ -92,7 +92,7 @@ export const DOC_GROUPS: DocGroup[] = [
         id: 'ca-nhan',
         label: 'Cá nhân hoá',
         summary:
-          'Đổi giao diện sáng/tối, cập nhật múi giờ, ngôn ngữ, đổi mật khẩu ở trang Tài khoản (họ tên, email, ảnh đại diện do quản trị hệ thống đổi); trang tổng quan cá nhân.',
+          'Đổi giao diện sáng/tối, cập nhật múi giờ, ngôn ngữ, đổi mật khẩu ở trang Tài khoản (họ tên, email, ảnh đại diện do Quản trị đổi); trang tổng quan cá nhân.',
         keywords: 'ca nhan hoa giao dien sang toi theme ho so avatar mui gio tong quan ca nhan',
       },
     ],
@@ -124,9 +124,9 @@ export const DOC_GROUPS: DocGroup[] = [
       },
       {
         id: 'vt-ws-admin',
-        label: 'Quản trị chung',
+        label: 'Quản trị',
         summary:
-          'Quản trị chung thêm thành viên ở trang Thành viên, gán vai trò, tạo vai trò tuỳ biến ở Cài đặt → Vai trò, quản lý tích hợp và API key.',
+          'Quản trị thêm thành viên ở trang Thành viên, gán vai trò, tạo vai trò tuỳ biến ở Cài đặt → Vai trò, quản lý tích hợp và API key.',
         keywords:
           'quan tri chung organization admin them thanh vien moi phan quyen vai tro tuy bien nguoi dung moi cap quyen',
       },
@@ -139,7 +139,7 @@ export const DOC_GROUPS: DocGroup[] = [
       },
       {
         id: 'vt-sys-admin',
-        label: 'Quản trị hệ thống',
+        label: 'Quản trị',
         summary:
           'Console /admin riêng cho chủ hệ thống: tổng quan và sức khoẻ dịch vụ, tổ chức, tài khoản, cấu hình và feature flags.',
         keywords:
@@ -177,7 +177,7 @@ export const DOC_GROUPS: DocGroup[] = [
         id: 'tich-hop',
         label: 'Tích hợp',
         summary:
-          'Telegram (chỉ gửi tin), nhập từ Jira bằng CSV, nhập công việc hàng loạt, API key và MCP. Do quản trị chung bật và cấu hình.',
+          'Telegram (chỉ gửi tin), nhập từ Jira bằng CSV, nhập công việc hàng loạt, API key và MCP. Do Quản trị bật và cấu hình.',
         keywords:
           'tich hop telegram jira nhap excel nhap csv nhap du lieu import api key mcp ket noi xlsx bieu mau',
       },

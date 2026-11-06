@@ -205,7 +205,7 @@ describe('buildBulkCard — fix round 1', () => {
       ((await card('giao DEMO-SUB-1 cho Linh', none)) as AssignCard).rows[0]!.ownOnly,
     ).toBeUndefined();
   });
-  it('M1: thẻ thành viên mang người gõ + quản trị tổ chức + id vai trò quản trị dự án', async () => {
+  it('M1: thẻ thành viên mang người gõ + Quản trị + id vai trò quản trị dự án', async () => {
     const deps = makeDeps({
       getProjectRoles: ok([
         { id: 'r-admin', name: 'Project Admin', admin: true },

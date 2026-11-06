@@ -550,7 +550,7 @@ export function DocumentationPage() {
               <H2 id="dang-nhap">Đăng nhập &amp; tài khoản</H2>
               <P>
                 Mở ứng dụng và đăng nhập bằng email + mật khẩu được cấp. Quên mật khẩu thì dùng liên
-                kết đặt lại ở màn đăng nhập, hoặc nhờ quản trị chung cấp lại.
+                kết đặt lại ở màn đăng nhập, hoặc nhờ Quản trị cấp lại.
               </P>
               {/* Chỉ bản dev / build demo (VITE_SHOW_DEMO_ACCOUNTS) — production công khai không nêu mật khẩu demo. */}
               {SHOW_DEMO_ACCOUNTS && (
@@ -562,12 +562,7 @@ export function DocumentationPage() {
                   </P>
                   <div className="mb-3 rounded-lg border border-border bg-surface px-4">
                     {[
-                      [
-                        'A',
-                        'var(--primary)',
-                        'admin@projira.dev',
-                        'Quản trị hệ thống + Quản trị chung',
-                      ],
+                      ['A', 'var(--primary)', 'admin@projira.dev', 'Quản trị + Quản trị'],
                       [
                         'B',
                         '#7048b6',
@@ -607,15 +602,15 @@ export function DocumentationPage() {
                 <strong>Thành viên tính trên cả tổ chức</strong>: ai đã có tên ở đây là tự động tham
                 gia <em>mọi dự án công khai</em> bên trong — không cần thêm người vào từng dự án.{' '}
                 <strong>Dự án riêng tư</strong> (bật ở dự án → Cấu hình → Chung) là ngoại lệ: chỉ
-                những người được thêm riêng ở Cấu hình → Thành viên (cùng quản trị tổ chức) mới thấy
-                dự án đó. Vai trò trong dự án <strong>mặc định</strong> suy từ vai trò chung (Quản
-                trị chung → Quản trị dự án · Thành viên → Lập trình viên · Người xem → chỉ đọc), và
-                có thể <strong>đặt riêng</strong> cho từng người ở từng dự án khi cần.
+                những người được thêm riêng ở Cấu hình → Thành viên (cùng Quản trị) mới thấy dự án
+                đó. Vai trò trong dự án <strong>mặc định</strong> suy từ vai trò chung (Quản trị
+                chung → Quản trị dự án · Thành viên → Lập trình viên · Người xem → chỉ đọc), và có
+                thể <strong>đặt riêng</strong> cho từng người ở từng dự án khi cần.
               </P>
               <Cards>
                 <Card
                   name="Vai trò cấp tổ chức"
-                  val="Quản trị chung · Thành viên · Người xem"
+                  val="Quản trị · Thành viên · Người xem"
                   desc="Quyền áp dụng cho toàn tổ chức"
                 />
                 <Card
@@ -626,13 +621,7 @@ export function DocumentationPage() {
               </Cards>
               <H3>Ai làm được gì — ở phạm vi cả tổ chức</H3>
               <Matrix
-                cols={[
-                  'Hành động',
-                  'Quản trị hệ thống',
-                  'Quản trị chung',
-                  'Thành viên',
-                  'Người xem',
-                ]}
+                cols={['Hành động', 'Quản trị', 'Quản trị', 'Thành viên', 'Người xem']}
                 rows={[
                   [
                     'Xem tổ chức & dự án được phép',
@@ -879,7 +868,7 @@ export function DocumentationPage() {
                 <a href="#tich-hop" className="font-medium underline">
                   Tích hợp
                 </a>{' '}
-                — cần quản trị chung bật kết nối trước.
+                — cần Quản trị bật kết nối trước.
               </Note>
             </section>
 
@@ -917,7 +906,7 @@ export function DocumentationPage() {
                 </Feature>
                 <Feature icon={<UserPlus className="h-4 w-4" />} title="Hồ sơ cá nhân">
                   Đổi múi giờ, ngôn ngữ và mật khẩu trong trang Tài khoản. Họ tên, email và ảnh đại
-                  diện chỉ quản trị hệ thống đổi được.
+                  diện chỉ Quản trị đổi được.
                 </Feature>
                 <Feature icon={<LayoutGrid className="h-4 w-4" />} title="Trang tổng quan cá nhân">
                   Việc được giao, việc mình báo, công việc đang theo dõi và các mục vừa mở — tất cả
@@ -1038,8 +1027,8 @@ export function DocumentationPage() {
               <RoleHead
                 id="vt-ws-admin"
                 icon={<Building2 className="h-5 w-5" />}
-                title="Quản trị chung"
-                persona="Trưởng phòng / quản trị tổ chức — đứng trên tất cả dự án trong một tổ chức."
+                title="Quản trị"
+                persona="Trưởng phòng / Quản trị — đứng trên tất cả dự án trong một tổ chức."
               />
               <CanDo
                 can={[
@@ -1088,8 +1077,8 @@ export function DocumentationPage() {
                 ]}
               />
               <Note kind="info">
-                Nếu cần thao tác nhiều hơn, hãy đề nghị quản trị chung nâng vai trò của bạn lên
-                Thành viên hoặc một vai trò dự án phù hợp.
+                Nếu cần thao tác nhiều hơn, hãy đề nghị Quản trị nâng vai trò của bạn lên Thành viên
+                hoặc một vai trò dự án phù hợp.
               </Note>
             </section>
 
@@ -1097,13 +1086,13 @@ export function DocumentationPage() {
               <RoleHead
                 id="vt-sys-admin"
                 icon={<ShieldCheck className="h-5 w-5" />}
-                title="Quản trị hệ thống"
+                title="Quản trị"
                 persona="Chủ hệ thống — đứng trên mọi tổ chức. Vào trang quản trị tại /admin."
               />
               <P>
                 Console quản trị có giao diện riêng, không gắn với tổ chức nào. Đăng nhập tài khoản
-                có cờ quản trị hệ thống (vd <Mono>admin@projira.dev</Mono>) rồi mở menu người dùng →{' '}
-                <strong>Admin hệ thống</strong>.
+                có cờ Quản trị (vd <Mono>admin@projira.dev</Mono>) rồi mở menu người dùng →{' '}
+                <strong>Quản trị</strong>.
               </P>
               <div className="border-t border-border">
                 <Feature icon={<ShieldCheck className="h-4 w-4" />} title="Tổng quan & sức khoẻ">
@@ -1115,7 +1104,7 @@ export function DocumentationPage() {
                   hữu.
                 </Feature>
                 <Feature icon={<Users className="h-4 w-4" />} title="Tài khoản">
-                  Tạo người dùng, cấp/thu quyền lập tổ chức mới và quyền quản trị hệ thống.
+                  Tạo người dùng, cấp/thu quyền lập tổ chức mới và quyền Quản trị.
                 </Feature>
                 <Feature icon={<Sparkles className="h-4 w-4" />} title="Cấu hình & Feature flags">
                   Bật/tắt runtime: đăng ký công khai, kill-switch AI, tích hợp, banner bảo trì; xem
@@ -1147,9 +1136,8 @@ export function DocumentationPage() {
                 <Feature icon={<LayoutGrid className="h-4 w-4" />} title="Nhóm dự án">
                   Nhóm là của <strong>riêng từng người</strong>: mỗi người tự xếp dự án vào nhóm của
                   mình (một dự án thuộc được nhiều nhóm), không ai thấy nhóm của người khác. Trang{' '}
-                  <Mono>Dự án</Mono> có cột <strong>Nhóm dự án</strong> (bấm để thêm/bớt nhóm),
-                  công tắc <Mono>Danh sách / Theo nhóm</Mono> và nút{' '}
-                  <Mono>Nhóm dự án</Mono>.
+                  <Mono>Dự án</Mono> có cột <strong>Nhóm dự án</strong> (bấm để thêm/bớt nhóm), công
+                  tắc <Mono>Danh sách / Theo nhóm</Mono> và nút <Mono>Nhóm dự án</Mono>.
                 </Feature>
                 <Feature
                   icon={<Sparkles className="h-4 w-4" />}
@@ -1268,7 +1256,7 @@ export function DocumentationPage() {
                   ],
                   [
                     'Toàn tổ chức',
-                    'Mọi dự án người xem thấy. Chỉ quản trị viên tổ chức chọn mới; bảng cũ mặc định là phạm vi này.',
+                    'Mọi dự án người xem thấy. Chỉ Quản trị chọn mới; bảng cũ mặc định là phạm vi này.',
                   ],
                 ]}
               />
@@ -1300,15 +1288,15 @@ export function DocumentationPage() {
             <section className="mb-14">
               <H2 id="tich-hop">Tích hợp</H2>
               <P>
-                Kết nối Tirapro với công cụ khác. Do quản trị chung bật và cấu hình. Thiếu cấu hình
-                thì tính năng tắt êm, app vẫn chạy.
+                Kết nối Tirapro với công cụ khác. Do Quản trị bật và cấu hình. Thiếu cấu hình thì
+                tính năng tắt êm, app vẫn chạy.
               </P>
               <div className="border-t border-border">
                 <Feature icon={<Plug className="h-4 w-4" />} title="Telegram">
                   Hệ thống chỉ <strong>gửi</strong> tin (thông báo, digest) — không nhận lệnh tạo
-                  việc. Quản trị chung làm theo trình hướng dẫn 4 bước: nhập token bot → thêm bot
-                  vào nhóm → gõ <Mono>/link@tên_bot MÃ</Mono> trong nhóm để liên kết nhóm với không
-                  gian làm việc → gửi thử. Trạng thái kết nối hiện thật trên trang.
+                  việc. Quản trị làm theo trình hướng dẫn 4 bước: nhập token bot → thêm bot vào nhóm
+                  → gõ <Mono>/link@tên_bot MÃ</Mono> trong nhóm để liên kết nhóm với không gian làm
+                  việc → gửi thử. Trạng thái kết nối hiện thật trên trang.
                 </Feature>
                 <Feature icon={<ListPlus className="h-4 w-4" />} title="Nhập công việc từ Excel">
                   Vào dự án → <strong>Cấu hình → Xuất / Nhập dữ liệu → Nhập từ Excel</strong>: tải
@@ -1376,8 +1364,7 @@ export function DocumentationPage() {
                 <a href="#vai-tro" className="font-medium underline">
                   ma trận quyền
                 </a>
-                ; nếu cần thêm quyền, đề nghị quản trị chung hoặc quản trị dự án nâng vai trò cho
-                bạn.
+                ; nếu cần thêm quyền, đề nghị Quản trị hoặc quản trị dự án nâng vai trò cho bạn.
               </P>
               <H3>Tôi không nhận được thông báo?</H3>
               <P>
@@ -1387,18 +1374,18 @@ export function DocumentationPage() {
                 Người được giao và người tạo được theo dõi tự động.
               </P>
               <H3>Quên mật khẩu?</H3>
-              <P>Dùng liên kết đặt lại ở màn đăng nhập, hoặc nhờ quản trị chung cấp lại.</P>
+              <P>Dùng liên kết đặt lại ở màn đăng nhập, hoặc nhờ Quản trị cấp lại.</P>
               <H3>AI báo không khả dụng?</H3>
               <P>
-                Có thể quản trị hệ thống chưa cấu hình khoá AI, hoặc đã bật kill-switch. Các tính
-                năng vẫn chạy ở chế độ heuristic; hỏi quản trị nếu cần bật đầy đủ.
+                Có thể Quản trị chưa cấu hình khoá AI, hoặc đã bật kill-switch. Các tính năng vẫn
+                chạy ở chế độ heuristic; hỏi quản trị nếu cần bật đầy đủ.
               </P>
               <H3>Chuyển sang tổ chức khác thế nào?</H3>
               <P>Dùng bộ chọn tổ chức ở đầu thanh bên (chỉ hiện khi bạn thuộc nhiều nơi).</P>
             </section>
 
             <footer className="border-t border-border pt-6 text-sm text-faint">
-              Tirapro · hướng dẫn sử dụng. Cần trợ giúp thêm? Liên hệ quản trị chung của bạn.{' '}
+              Tirapro · hướng dẫn sử dụng. Cần trợ giúp thêm? Liên hệ Quản trị của bạn.{' '}
               <Link to="/" className="text-primary hover:underline">
                 Mở ứng dụng →
               </Link>

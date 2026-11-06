@@ -113,7 +113,7 @@ export function AuditLogPage() {
         <EmptyState
           icon={<ShieldOff className="h-6 w-6" />}
           title="Bạn không có quyền xem nhật ký quản trị"
-          description="Chỉ quản trị tổ chức xem được nhật ký này. Hãy nhờ quản trị viên nếu bạn cần tra cứu."
+          description="Chỉ Quản trị xem được nhật ký này. Hãy nhờ quản trị viên nếu bạn cần tra cứu."
         />
       </PageFrame>
     );
