@@ -93,7 +93,15 @@ const MORE: {
     to: (p) => `/p/${p.key}/trash`,
     needs: 'issue:delete',
   },
-  { id: 'config', label: 'Cấu hình', icon: Settings, to: (p) => `/p/${p.key}/config` },
+  {
+    id: 'config',
+    label: 'Cấu hình',
+    icon: Settings,
+    to: (p) => `/p/${p.key}/config`,
+    // Người không quản trị dự án chỉ xem được mà không sửa gì → ẩn (người dùng yêu cầu 2026-11-06); xem thành viên dự án
+    // qua mục Thành viên ở thanh trái.
+    needs: 'project:admin',
+  },
 ];
 
 /**
