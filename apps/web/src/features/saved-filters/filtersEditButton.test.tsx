@@ -178,8 +178,10 @@ describe('rail: nhóm "Của tôi" / "Được chia sẻ với tôi"', () => {
     expect(within(mine).getByText(OWN.name)).toBeTruthy();
     expect(within(mine).queryByText(SHARED.name)).toBeNull();
     expect(within(shared).getByText(SHARED.name)).toBeTruthy();
-    expect(within(shared).getByText(/Chủ: Đồng nghiệp/)).toBeTruthy();
+    // Nhóm đã nói là được chia sẻ: chỉ ghi tên người tạo, không nhãn "Được chia sẻ", không tiền tố "Chủ:".
+    expect(within(shared).getByText('Đồng nghiệp')).toBeTruthy();
+    expect(within(shared).queryByText(/Chủ:/)).toBeNull();
     expect(within(mine).getByText('Riêng tư')).toBeTruthy();
-    expect(within(shared).getByText('Được chia sẻ')).toBeTruthy();
+    expect(within(shared).queryByText('Được chia sẻ')).toBeNull();
   });
 });

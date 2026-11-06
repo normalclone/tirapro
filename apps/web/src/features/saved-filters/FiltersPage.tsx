@@ -764,14 +764,21 @@ function FilterGroup({
                   >
                     {f.name}
                   </span>
-                  <span className="mt-1 flex items-center gap-2">
-                    <Badge className="bg-surface-2 text-muted">{shareLabel(f)}</Badge>
-                    {f.access !== 'owner' && f.owner && (
-                      <span className="min-w-0 truncate text-xs text-muted">
-                        Chủ: {f.owner.displayName}
+                  {/* Nhóm "Được chia sẻ với tôi" đã nói là được chia sẻ → chỉ ghi tên người tạo; bộ lọc của mình giữ nhãn phạm vi. */}
+                  {f.access !== 'owner' ? (
+                    f.owner && (
+                      <span
+                        className="mt-0.5 block truncate text-xs text-muted"
+                        title={`Người tạo: ${f.owner.displayName}`}
+                      >
+                        {f.owner.displayName}
                       </span>
-                    )}
-                  </span>
+                    )
+                  ) : (
+                    <span className="mt-1 flex items-center gap-2">
+                      <Badge className="bg-surface-2 text-muted">{shareLabel(f)}</Badge>
+                    </span>
+                  )}
                 </button>
                 {f.isOwner && canManage ? (
                   <>
