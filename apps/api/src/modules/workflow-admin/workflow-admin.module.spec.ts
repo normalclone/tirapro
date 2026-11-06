@@ -6,7 +6,9 @@ import { Test } from '@nestjs/testing';
 import { describe, expect, it, vi } from 'vitest';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { RedisService } from '../../infra/redis/redis.service';
+import { AuditService } from '../audit/audit.service';
 import { MailService } from '../mail/mail.service';
+import { SystemSettingsService } from '../system-settings/system-settings.service';
 import { ProjectAccessService } from '../rbac/project-access.service';
 import { RbacModule } from '../rbac/rbac.module';
 import { WorkflowAdminModule } from './workflow-admin.module';
@@ -22,8 +24,18 @@ import { WorkflowSchemeService } from './workflow-scheme.service';
     { provide: EventEmitter2, useValue: { emit: vi.fn() } },
     { provide: MailService, useValue: {} },
     { provide: ConfigService, useValue: { get: vi.fn() } },
+    { provide: AuditService, useValue: {} },
+    { provide: SystemSettingsService, useValue: {} },
   ],
-  exports: [PrismaService, RedisService, EventEmitter2, MailService, ConfigService],
+  exports: [
+    PrismaService,
+    RedisService,
+    EventEmitter2,
+    MailService,
+    ConfigService,
+    AuditService,
+    SystemSettingsService,
+  ],
 })
 class InfraStub {}
 

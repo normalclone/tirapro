@@ -53,6 +53,12 @@ const EXEMPT: Record<string, string> = {
   'integrations/integrations.service.ts': 'hạ tầng tích hợp cấp tổ chức',
   'integrations/link-codes.service.ts': 'mã liên kết nhóm Telegram — hạ tầng tích hợp cấp tổ chức',
   'integrations/telegram.service.ts': 'gửi tin',
+  'integrations/telegram-personal.service.ts':
+    'liên kết Telegram CÁ NHÂN của người dùng, không thuộc dự án',
+  'integrations/telegram-notifier.service.ts':
+    'gửi tin riêng cho người dùng (chỉ bỏ liên kết khi bị chặn)',
+  'integrations/project-telegram.service.ts':
+    'cấu hình kênh thông báo Telegram của dự án (hạ tầng tích hợp như integrations.service): không phải dữ liệu làm việc; dự án lưu trữ vẫn cần tắt/gỡ kênh',
   'digests/digests.service.ts': 'hạ tầng báo cáo định kỳ cấp tổ chức',
   'import/jira/jira-import.service.ts': 'tạo dự án mới; ghi issue qua IssuesService',
   'mail/mail-outbox.service.ts': 'hàng đợi thư',
