@@ -297,6 +297,15 @@ export const router = createBrowserRouter([
           { path: 'config', element: <AdminConfigPage /> },
           { path: 'system', element: <AdminSystemPage /> },
           { path: 'points', element: <AdminPointsPage /> },
+          // Cài đặt quản trị của tổ chức chuyển từ /settings sang đây (người dùng yêu cầu 2026-11-06); chỉ Quy trình, Thông báo,
+          // Nhập dữ liệu còn ở Cài đặt.
+          { path: 'branding', element: <SettingsGeneralPage /> },
+          { path: 'roles', element: <RolesPage /> },
+          { path: 'audit', element: <AuditLogPage /> },
+          { path: 'priorities', element: <SettingsPrioritiesPage /> },
+          { path: 'severities', element: <SettingsSeveritiesPage /> },
+          { path: 'fields', element: <SettingsFieldsPage /> },
+          { path: 'api', element: <ApiKeysPage /> },
         ],
       },
       {
@@ -304,18 +313,16 @@ export const router = createBrowserRouter([
         element: <SettingsLayout />,
         children: [
           { index: true, element: <SettingsIndexRedirect /> },
-          {
-            element: <RequireAccess rule={NAV_RULES.settingsGeneral} who="quản trị viên" />,
-            children: [{ path: 'general', element: <SettingsGeneralPage /> }],
-          },
+          // Đường dẫn cũ → Quản trị hệ thống (dấu trang/liên kết đã lưu vẫn vào được).
+          { path: 'general', element: <Navigate to="/admin/branding" replace /> },
           // Tab thành viên trong Cài đặt đã gộp vào trang Thành viên — giữ link cũ hoạt động.
           { path: 'members', element: <Navigate to="/members" replace /> },
-          { path: 'roles', element: <RolesPage /> },
-          { path: 'audit', element: <AuditLogPage /> },
+          { path: 'roles', element: <Navigate to="/admin/roles" replace /> },
+          { path: 'audit', element: <Navigate to="/admin/audit" replace /> },
           { path: 'notifications', element: <SettingsNotificationsPage /> },
-          { path: 'severities', element: <SettingsSeveritiesPage /> },
-          { path: 'priorities', element: <SettingsPrioritiesPage /> },
-          { path: 'fields', element: <SettingsFieldsPage /> },
+          { path: 'severities', element: <Navigate to="/admin/severities" replace /> },
+          { path: 'priorities', element: <Navigate to="/admin/priorities" replace /> },
+          { path: 'fields', element: <Navigate to="/admin/fields" replace /> },
           { path: 'workflows', element: <WorkflowSettingsPage /> },
           {
             element: (
@@ -323,10 +330,7 @@ export const router = createBrowserRouter([
             ),
             children: [{ path: 'import', element: <ImportPage /> }],
           },
-          {
-            element: <RequireAccess rule={NAV_RULES.settingsApi} who="quản trị viên" />,
-            children: [{ path: 'api', element: <ApiKeysPage /> }],
-          },
+          { path: 'api', element: <Navigate to="/admin/api" replace /> },
         ],
       },
       // Kết nối & tự động hoá.

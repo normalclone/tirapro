@@ -26,11 +26,18 @@ describe('navItems (nguồn chung sidebar / thanh tab đáy / sheet Tôi)', () =
       '/settings',
     ]);
   });
-  it('admin: thanh giữ 4 mục đầu, sheet chứa phần còn lại (Hệ thống, Cách tính điểm)', () => {
+  it('admin: thanh giữ 4 mục đầu, sheet chứa phần còn lại (Hệ thống, Cách tính điểm, cài đặt quản trị của tổ chức)', () => {
     expect(ADMIN_NAV.length).toBeGreaterThan(ADMIN_TAB_COUNT);
     expect(sheetNavItems(ADMIN_NAV, true).map((i) => i.to)).toEqual([
       '/admin/system',
       '/admin/points',
+      '/admin/branding',
+      '/admin/roles',
+      '/admin/audit',
+      '/admin/priorities',
+      '/admin/severities',
+      '/admin/fields',
+      '/admin/api',
     ]);
   });
   it('Thành viên hiện với mọi người (người không quản lý chỉ xem người trong dự án mình tham gia)', async () => {

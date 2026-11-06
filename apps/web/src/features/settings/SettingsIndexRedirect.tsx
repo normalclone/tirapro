@@ -1,11 +1,6 @@
 import { Navigate } from 'react-router-dom';
-import { NAV_RULES, useNavVisible } from '@/lib/navAccess';
 
-/**
- * `/settings` → trang cài đặt đầu tiên người dùng được xem: Thương hiệu cần `organization:admin`,
- * người khác vào Thông báo (cá nhân, luôn xem được) — không đưa người thường thẳng vào "không có quyền".
- */
+/** `/settings` → Thông báo (cá nhân, ai cũng xem được). Thương hiệu và các mục quản trị khác nằm ở Quản trị hệ thống. */
 export function SettingsIndexRedirect() {
-  const canGeneral = useNavVisible(NAV_RULES.settingsGeneral);
-  return <Navigate to={canGeneral ? '/settings/general' : '/settings/notifications'} replace />;
+  return <Navigate to="/settings/notifications" replace />;
 }

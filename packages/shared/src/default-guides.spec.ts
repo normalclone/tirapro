@@ -4,7 +4,7 @@ import type { TourContent } from './guides';
 
 const tours = DEFAULT_GUIDES.filter((g) => g.type === 'TOUR');
 
-const MAIN_SCREENS = ['/', '/members', '/p/:key/backlog', '/p/:key/board', '/settings/roles'];
+const MAIN_SCREENS = ['/', '/members', '/p/:key/backlog', '/p/:key/board', '/admin/roles'];
 /** Các màn bổ sung (đợt "hướng dẫn cho màn còn thiếu"): mỗi màn một tour. */
 const MORE_SCREENS = [
   // Cá nhân & chung
@@ -28,15 +28,15 @@ const MORE_SCREENS = [
   '/p/:key/risks',
   '/p/:key/config',
   // Cài đặt tổ chức, Kết nối
-  '/settings/general',
-  '/settings/audit',
+  '/admin/branding',
+  '/admin/audit',
   '/settings/notifications',
-  '/settings/severities',
-  '/settings/priorities',
-  '/settings/fields',
+  '/admin/severities',
+  '/admin/priorities',
+  '/admin/fields',
   '/settings/workflows',
   '/settings/import',
-  '/settings/api',
+  '/admin/api',
   '/connect/integrations',
   '/connect/automation',
   // Quản trị hệ thống
@@ -107,9 +107,21 @@ describe('DEFAULT_GUIDES', () => {
       'tour-home',
     ]);
   });
-  it('tour-home version 2 (đổi chữ bước 4), guide cũ giữ version 1, guide mới version 1 và order 0; có tiêu đề + mô tả tiếng Việt', () => {
+  /** Version 2: tour-home (đổi chữ bước 4); các tour chuyển màn sang Quản trị hệ thống và tour Cấu hình dự án (2026-11-06). */
+  const V2 = [
+    'tour-home',
+    'tour-roles',
+    'tour-settings-general',
+    'tour-settings-audit',
+    'tour-settings-severities',
+    'tour-settings-priorities',
+    'tour-settings-fields',
+    'tour-settings-api',
+    'tour-project-config',
+  ];
+  it('version: các tour đã sửa sau khi lên máy chủ là 2, còn lại 1; order 0; có tiêu đề + mô tả tiếng Việt', () => {
     for (const g of DEFAULT_GUIDES) {
-      expect(g.version).toBe(g.key === 'tour-home' ? 2 : 1);
+      expect(g.version).toBe(V2.includes(g.key) ? 2 : 1);
       if (g.type === 'TOUR') {
         expect(g.key).toMatch(/^tour-[a-z0-9-]+$/);
         expect(g.order).toBe(0);

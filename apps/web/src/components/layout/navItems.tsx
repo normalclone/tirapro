@@ -5,18 +5,24 @@ import {
   Building2,
   Calculator,
   Filter,
+  Flag,
   FolderKanban,
+  KeyRound,
   LayoutDashboard,
   LayoutGrid,
+  ListChecks,
   Plug,
+  ScrollText,
   Settings,
+  Shield,
   ShieldCheck,
+  SignalHigh,
   SlidersHorizontal,
   UserRound,
   Users,
 } from 'lucide-react';
 import { NAV_RULES, type NavRule } from '@/lib/navAccess';
-import { ADMIN_LABELS, APP_NAV_LABELS, TAB_SHORT_LABELS } from '@/lib/navLabels';
+import { ADMIN_LABELS, APP_NAV_LABELS, SETTINGS_LABELS, TAB_SHORT_LABELS } from '@/lib/navLabels';
 
 export interface NavEntry {
   to: string;
@@ -131,6 +137,18 @@ export const ADMIN_NAV: NavEntry[] = [
     Icon: Calculator,
     match: (p) => p.startsWith('/admin/points'),
   },
+  // Cài đặt quản trị của tổ chức (chuyển từ Cài đặt, 2026-11-06).
+  ...(
+    [
+      ['/admin/branding', SETTINGS_LABELS.general, Building2],
+      ['/admin/roles', SETTINGS_LABELS.roles, Shield],
+      ['/admin/audit', SETTINGS_LABELS.audit, ScrollText],
+      ['/admin/priorities', SETTINGS_LABELS.priorities, SignalHigh],
+      ['/admin/severities', SETTINGS_LABELS.severities, Flag],
+      ['/admin/fields', SETTINGS_LABELS.fields, ListChecks],
+      ['/admin/api', SETTINGS_LABELS.api, KeyRound],
+    ] as const
+  ).map(([to, label, Icon]) => ({ to, label, Icon, match: (p: string) => p.startsWith(to) })),
 ];
 
 /** Số mục điều hướng đứng trên thanh tab đáy ở chế độ admin (ô thứ 5 là "Tôi"). */

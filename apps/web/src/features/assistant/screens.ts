@@ -187,7 +187,7 @@ export const SCREENS: ScreenInfo[] = [
     chips: ['Báo cáo cho biết gì', 'Việc của tôi'],
   },
   {
-    pattern: '/settings/roles',
+    pattern: '/admin/roles',
     name: 'Vai trò',
     purpose: 'Danh sách vai trò và quyền; tạo vai trò tuỳ biến rồi gán cho người dùng.',
     docAnchor: 'vai-tro',

@@ -30,6 +30,8 @@ function tour(
   title: string,
   description: string,
   rows: readonly StepRow[],
+  /** Tăng khi sửa nội dung/màn của tour đã lên máy chủ (bootstrap chỉ cập nhật khi version lớn hơn). */
+  version = 1,
 ): GuideSeed {
   return {
     key,
@@ -38,7 +40,7 @@ function tour(
     title,
     description,
     order: 0,
-    version: 1,
+    version,
     content: {
       steps: rows.map(([name, stepTitle, body, placement], order) => ({
         ...(name ? { selector: sel(name) } : {}),
@@ -536,31 +538,39 @@ const SCREEN_TOURS: GuideSeed[] = [
       [
         'config-content',
         'Nội dung mục',
-        'Chỉnh ở đây. Phần lớn thao tác sửa chỉ dành cho quản trị dự án; người khác chỉ xem.',
+        'Chỉnh ở đây. Thay đổi ở đây áp dụng cho cả dự án — mục Cấu hình chỉ quản trị dự án thấy.',
         'top',
       ],
     ],
+    2,
   ),
 
-  // ----- Cài đặt tổ chức -----
-  tour('tour-settings-general', '/settings/general', 'Thương hiệu', 'Logo của tổ chức.', [
-    ['settings-general-header', 'Thương hiệu', 'Logo của tổ chức bạn.', 'bottom'],
+  // ----- Cài đặt tổ chức (Thương hiệu, Nhật ký, Mức, Trường, API nằm ở Quản trị hệ thống từ 2026-11-06 → version 2) -----
+  tour(
+    'tour-settings-general',
+    '/admin/branding',
+    'Thương hiệu',
+    'Logo của tổ chức.',
     [
-      'settings-general-logo',
-      'Logo tổ chức',
-      'Bấm Tải ảnh lên (hoặc Đổi ảnh) để chọn logo. Chỉ quản trị tổ chức đổi được; người khác chỉ xem.',
-      'top',
+      ['settings-general-header', 'Thương hiệu', 'Logo của tổ chức bạn.', 'bottom'],
+      [
+        'settings-general-logo',
+        'Logo tổ chức',
+        'Bấm Tải ảnh lên (hoặc Đổi ảnh) để chọn logo. Chỉ quản trị tổ chức đổi được; người khác chỉ xem.',
+        'top',
+      ],
+      [
+        'nav-main',
+        'Menu quản trị',
+        'Thương hiệu, Vai trò & quyền, Nhật ký, Mức ưu tiên, Mức nghiêm trọng, Trường thông tin thêm và API của tổ chức nằm ở thanh trái này.',
+        'right',
+      ],
     ],
-    [
-      'subnav',
-      'Menu Cài đặt',
-      'Các mục cài đặt chia theo nhóm: Chung, Con người, Cách làm việc… Menu thay đổi theo quyền của bạn.',
-      'right',
-    ],
-  ]),
+    2,
+  ),
   tour(
     'tour-settings-audit',
-    '/settings/audit',
+    '/admin/audit',
     'Nhật ký quản trị',
     'Tra lại ai đã thay đổi cài đặt tổ chức.',
     [
@@ -583,6 +593,7 @@ const SCREEN_TOURS: GuideSeed[] = [
         'top',
       ],
     ],
+    2,
   ),
   tour(
     'tour-settings-notifications',
@@ -612,7 +623,7 @@ const SCREEN_TOURS: GuideSeed[] = [
   ),
   tour(
     'tour-settings-severities',
-    '/settings/severities',
+    '/admin/severities',
     'Mức nghiêm trọng',
     'Phân loại mức tác động của công việc.',
     [
@@ -635,10 +646,11 @@ const SCREEN_TOURS: GuideSeed[] = [
         'top',
       ],
     ],
+    2,
   ),
   tour(
     'tour-settings-priorities',
-    '/settings/priorities',
+    '/admin/priorities',
     'Mức ưu tiên',
     'Quyết định việc nào làm trước.',
     [
@@ -661,10 +673,11 @@ const SCREEN_TOURS: GuideSeed[] = [
         'top',
       ],
     ],
+    2,
   ),
   tour(
     'tour-settings-fields',
-    '/settings/fields',
+    '/admin/fields',
     'Trường thông tin thêm',
     'Thêm ô thông tin riêng vào công việc.',
     [
@@ -687,6 +700,7 @@ const SCREEN_TOURS: GuideSeed[] = [
         'top',
       ],
     ],
+    2,
   ),
   tour(
     'tour-settings-workflows',
@@ -754,7 +768,7 @@ const SCREEN_TOURS: GuideSeed[] = [
   ),
   tour(
     'tour-settings-api',
-    '/settings/api',
+    '/admin/api',
     'API & kết nối lập trình',
     'Cấp khoá cho phần mềm khác và trợ lý AI.',
     [
@@ -783,6 +797,7 @@ const SCREEN_TOURS: GuideSeed[] = [
         'top',
       ],
     ],
+    2,
   ),
 
   // ----- Kết nối -----
@@ -1139,11 +1154,11 @@ export const DEFAULT_GUIDES: GuideSeed[] = [
   {
     key: 'tour-roles',
     type: 'TOUR',
-    screen: '/settings/roles',
+    screen: '/admin/roles',
     title: 'Vai trò & quyền',
     description: 'Vai trò quyết định ai làm được gì.',
     order: 0,
-    version: 1,
+    version: 2,
     content: {
       steps: [
         {
