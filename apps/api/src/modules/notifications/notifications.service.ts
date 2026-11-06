@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
 import { z } from 'zod';
@@ -14,11 +14,13 @@ import {
   DOMAIN_EVENTS,
   NotificationType as NotificationTypeEnum,
   type NotificationEmailPrefs,
+  type NotificationTelegramPrefs,
 } from '@tirapro/types';
 import { Prisma, type Notification, type NotificationType } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { NotFoundAppException } from '../../common/exceptions/app.exception';
 import { cursorPage, type PageResult } from '../../common/dto/page-result';
+import { TelegramNotifier } from '../integrations/telegram-notifier.service';
 import { MailService } from '../mail/mail.service';
 import { ProjectAccessService } from '../rbac/project-access.service';
 import { resolveMentionedMembers } from '../../common/mentions';
@@ -101,6 +103,33 @@ export function effectiveEmailPrefs(
   return emailPrefsSchema.parse(obj);
 }
 
+/** Mặc định gửi Telegram (khi đã liên kết): chỉ được giao việc + được nhắc tên; còn lại tắt. */
+const DEFAULT_TELEGRAM_PREFS: NotificationTelegramPrefs = {
+  ISSUE_ASSIGNED: true,
+  ISSUE_UPDATED: false,
+  MENTIONED: true,
+  COMMENT_ADDED: false,
+  STATUS_CHANGED: false,
+  SPRINT_STARTED: false,
+  SPRINT_COMPLETED: false,
+  WATCHING_UPDATE: false,
+  FILTER_SHARED: false,
+};
+
+/** Đọc `settings.notifications.telegram` an toàn, luôn trả map đầy đủ (khoá lạ / sai kiểu rơi về mặc định). */
+export function effectiveTelegramPrefs(
+  userSettings: Prisma.JsonValue | null | undefined,
+): NotificationTelegramPrefs {
+  const result: NotificationTelegramPrefs = { ...DEFAULT_TELEGRAM_PREFS };
+  const raw = readNotificationsSettings(userSettings).telegram;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return result;
+  for (const type of NOTIFICATION_TYPES) {
+    const value = (raw as Record<string, unknown>)[type];
+    if (typeof value === 'boolean') result[type] = value;
+  }
+  return result;
+}
+
 /** Loại thông báo in-app → khoá tuỳ chọn email tương ứng (loại không có trong bảng thì không gửi email). */
 const EMAIL_KEY_BY_TYPE: Partial<Record<NotificationType, keyof NotificationEmailPrefs>> = {
   MENTIONED: 'mention',
@@ -127,6 +156,13 @@ const FILTER_WHERE = {
   mentioned: { type: 'MENTIONED' },
   assigned: { type: 'ISSUE_ASSIGNED' },
 } as const satisfies Record<NotificationFilter, Prisma.NotificationWhereInput>;
+
+/** Escape HTML cho tin Telegram (parse_mode HTML); `"` để dùng được trong thuộc tính href. */
+function htmlEscape(value: string): string {
+  return value.replace(/[&<>"]/g, (c) =>
+    c === '&' ? '&amp;' : c === '<' ? '&lt;' : c === '>' ? '&gt;' : '&quot;',
+  );
+}
 
 /** Issue tối thiểu kèm trong payload của các domain event. */
 interface IssueEventShape {
@@ -167,6 +203,7 @@ interface PreparedNotification {
   recipientEmail: string;
   inApp: boolean;
   emailOn: boolean;
+  telegramOn: boolean;
   payload: NotificationPayload;
 }
 
@@ -216,6 +253,8 @@ export class NotificationsService {
     private readonly mail: MailService,
     private readonly config: ConfigService,
     private readonly access: ProjectAccessService,
+    /** Telegram cá nhân — tuỳ chọn: thiếu thì không gửi Telegram (thông báo in-app/email vẫn chạy). */
+    @Optional() private readonly telegramNotifier?: TelegramNotifier,
   ) {}
 
   // ---------- READ: luôn scope theo recipientId = user hiện tại ----------
@@ -345,6 +384,8 @@ export class NotificationsService {
     defaults: NotificationPrefs;
     email: NotificationEmailPrefs;
     emailDefaults: NotificationEmailPrefs;
+    telegram: NotificationTelegramPrefs;
+    telegramDefaults: NotificationTelegramPrefs;
   }> {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
@@ -356,6 +397,8 @@ export class NotificationsService {
       defaults: DEFAULT_NOTIFICATION_PREFS,
       email: effectiveEmailPrefs(user.settings),
       emailDefaults: DEFAULT_EMAIL_PREFS,
+      telegram: effectiveTelegramPrefs(user.settings),
+      telegramDefaults: DEFAULT_TELEGRAM_PREFS,
     };
   }
 
@@ -367,7 +410,12 @@ export class NotificationsService {
     userId: string,
     patch: Partial<NotificationPrefs>,
     emailPatch: Partial<NotificationEmailPrefs> = {},
-  ): Promise<{ preferences: NotificationPrefs; email: NotificationEmailPrefs }> {
+    telegramPatch: Partial<NotificationTelegramPrefs> = {},
+  ): Promise<{
+    preferences: NotificationPrefs;
+    email: NotificationEmailPrefs;
+    telegram: NotificationTelegramPrefs;
+  }> {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       select: { settings: true },
@@ -394,12 +442,24 @@ export class NotificationsService {
     }
     mergedNotifications.email = nextEmail;
 
+    // Tuỳ chọn Telegram: nhánh con `telegram`, luôn ghi map đầy đủ đã chuẩn hoá.
+    const nextTelegram: NotificationTelegramPrefs = { ...effectiveTelegramPrefs(user.settings) };
+    for (const type of NOTIFICATION_TYPES) {
+      const value = telegramPatch[type];
+      if (typeof value === 'boolean') nextTelegram[type] = value;
+    }
+    mergedNotifications.telegram = nextTelegram;
+
     const nextSettings = { ...currentSettings, notifications: mergedNotifications };
     await this.prisma.user.update({
       where: { id: userId },
       data: { settings: nextSettings as unknown as Prisma.InputJsonValue },
     });
-    return { preferences: effectivePrefs(nextSettings as Prisma.JsonValue), email: nextEmail };
+    return {
+      preferences: effectivePrefs(nextSettings as Prisma.JsonValue),
+      email: nextEmail,
+      telegram: nextTelegram,
+    };
   }
 
   // ---------- PRODUCER: domain event -> tạo Notification ----------
@@ -748,9 +808,14 @@ export class NotificationsService {
     // `force` chỉ thay MẶC ĐỊNH (loại tắt-mặc-định như WATCHING_UPDATE); người dùng đã TẮT tường minh thì luôn thắng.
     const explicitlyOff = readNotificationsSettings(recipient.settings)[input.type] === false;
     const inApp = prefs[input.type] || (!!opts?.force && !explicitlyOff);
-    if (!inApp && !emailOn) return null;
+    // Telegram cá nhân: độc lập in-app/email; việc có liên kết hay không được tra lúc gửi (sau commit).
+    const telegramOn =
+      !!this.telegramNotifier &&
+      recipient.status !== 'DEACTIVATED' &&
+      effectiveTelegramPrefs(recipient.settings)[input.type];
+    if (!inApp && !emailOn && !telegramOn) return null;
     const payload = await this.withActor(input);
-    return { input, recipientEmail: recipient.email, inApp, emailOn, payload };
+    return { input, recipientEmail: recipient.email, inApp, emailOn, telegramOn, payload };
   }
 
   /** Bước GHI: chỉ dùng `db` (tx đang mở được) — không đọc bằng `this.prisma` cho tới khi trả `after()`. */
@@ -759,7 +824,7 @@ export class NotificationsService {
     db: Pick<Prisma.TransactionClient, 'notification'>,
   ): Promise<() => Promise<void>> {
     const noop = (): Promise<void> => Promise.resolve();
-    const { input, inApp, emailOn, payload } = prepared;
+    const { input, inApp, emailOn, telegramOn, payload } = prepared;
     const recipientEmail = prepared.recipientEmail;
     let saved: Notification | null = null;
     if (inApp) {
@@ -853,6 +918,7 @@ export class NotificationsService {
         });
       }
       if (emailOn) await this.enqueueEmail(recipientEmail, input.type, payload);
+      if (telegramOn) await this.sendTelegram(input, payload);
     };
   }
 
@@ -926,6 +992,29 @@ export class NotificationsService {
       });
     } catch (err) {
       this.logger.warn(`Xếp thư thông báo thất bại: ${this.errMsg(err)}`);
+    }
+  }
+
+  /**
+   * Gửi thông báo vào chat riêng Telegram của người nhận (nếu đã liên kết ở tổ chức này): tiêu đề như trong app, tiêu đề
+   * việc, trích đoạn (nếu có) và liên kết mở việc. Lỗi chỉ log — không được làm hỏng thông báo in-app/email.
+   */
+  private async sendTelegram(
+    input: NotificationInput,
+    payload: NotificationPayload,
+  ): Promise<void> {
+    try {
+      const base = this.config.get<string>('mail.appWebUrl') ?? '';
+      const lines = [`<b>${htmlEscape(buildNotificationTitle(input.type, payload))}</b>`];
+      if (payload.summary) lines.push(htmlEscape(payload.summary));
+      if (payload.excerpt) lines.push(`<i>${htmlEscape(payload.excerpt)}</i>`);
+      if (payload.key && base) {
+        const url = `${base}/issue/${encodeURIComponent(payload.key)}`;
+        lines.push(`<a href="${htmlEscape(url)}">Mở ${htmlEscape(payload.key)} trong Tirapro</a>`);
+      }
+      await this.telegramNotifier?.send(input.recipientId, input.organizationId, lines.join('\n'));
+    } catch (err) {
+      this.logger.warn(`Gửi thông báo Telegram thất bại: ${this.errMsg(err)}`);
     }
   }
 

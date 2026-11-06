@@ -207,6 +207,12 @@ export interface NotificationEmailPrefs {
   transition: boolean;
 }
 
+/**
+ * Tuỳ chọn nhận thông báo qua Telegram THEO TỪNG LOẠI thông báo (lưu ở `User.settings.notifications.telegram`).
+ * Chỉ có hiệu lực khi người dùng đã liên kết Telegram trong tổ chức.
+ */
+export type NotificationTelegramPrefs = Record<NotificationType, boolean>;
+
 /** Một dòng trong hộp thư đi (admin xem thư lỗi). Không kèm nội dung thư vì có thể chứa liên kết còn hiệu lực. */
 export interface MailOutboxItemDto {
   id: ID;
