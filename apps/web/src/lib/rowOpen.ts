@@ -85,14 +85,23 @@ interface RowClickEvent extends ClickLike {
  * (nút, link, ô nhập — chúng tự xử lý); Cmd/Ctrl/chuột giữa → tab mới; còn lại → `open(key)` (xem nhanh).
  * Trả về true nếu đã xử lý.
  */
-export function openOnClick(e: RowClickEvent, key: string, open: (key: string) => void): boolean {
+/** Tuỳ chọn khi mở xem nhanh. `fromClick`: bấm chuột lên dòng/thẻ — bấm lại đúng việc ĐANG xem nhanh = mở trang chi tiết. */
+export interface PeekOpenOpts {
+  fromClick?: boolean;
+}
+
+export function openOnClick(
+  e: RowClickEvent,
+  key: string,
+  open: (key: string, opts?: PeekOpenOpts) => void,
+): boolean {
   if (
     !e.currentTarget.contains(e.target as Node) ||
     clickIsOnInteractive(e.target, e.currentTarget)
   )
     return false;
   if (wantsNewTab(e)) openIssueInNewTab(key);
-  else open(key);
+  else open(key, { fromClick: true });
   return true;
 }
 

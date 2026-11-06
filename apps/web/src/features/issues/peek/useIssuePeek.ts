@@ -1,6 +1,6 @@
 import { useCallback, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { peekSearch } from '@/lib/rowOpen';
+import { peekSearch, type PeekOpenOpts } from '@/lib/rowOpen';
 import { PEEK_PARAM } from './peekParam';
 import { isPeekSheetViewport, peekNavPlan } from './peekSheetLogic';
 
@@ -17,8 +17,11 @@ export function useIssuePeek() {
   // `open`/`close` phải ổn định: dòng Việc chờ là memo và so sánh `onOpen`.
   const ref = useRef({ search, pathname, state, navigate });
   ref.current = { search, pathname, state, navigate };
-  const go = useCallback((key: string | null) => {
+  const go = useCallback((key: string | null, opts?: PeekOpenOpts) => {
     const c = ref.current;
+    // Bấm lần nữa vào đúng việc đang xem nhanh (hoặc bấm đúp: lần 1 mở, lần 2 tới đây) → sang trang chi tiết đầy đủ.
+    if (key && opts?.fromClick && new URLSearchParams(c.search).get(PEEK_PARAM) === key)
+      return c.navigate(`/issue/${encodeURIComponent(key)}`);
     const plan = peekNavPlan({
       sheet: isPeekSheetViewport(),
       hasPeek: !!new URLSearchParams(c.search).get(PEEK_PARAM),
@@ -32,7 +35,7 @@ export function useIssuePeek() {
     if (plan === 'push') c.navigate(to, { state: PUSHED_STATE });
     else c.navigate(to, { replace: true, state: isPushed(c.state) ? c.state : undefined });
   }, []);
-  const open = useCallback((key: string) => go(key), [go]);
+  const open = useCallback((key: string, opts?: PeekOpenOpts) => go(key, opts), [go]);
   const close = useCallback(() => go(null), [go]);
   const peekKey = new URLSearchParams(search).get(PEEK_PARAM);
   return { peekKey: peekKey || null, open, close };

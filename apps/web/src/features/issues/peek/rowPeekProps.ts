@@ -1,5 +1,5 @@
 import type { KeyboardEvent, MouseEvent } from 'react';
-import { openOnClick, openOnRowKey } from '@/lib/rowOpen';
+import { openOnClick, openOnRowKey, type PeekOpenOpts } from '@/lib/rowOpen';
 
 /**
  * onClick/onAuxClick/onKeyDown cho một hàng KHÔNG kéo thả (vd. Triage): bấm/Enter = xem nhanh, Cmd/Ctrl+bấm/Enter hoặc
@@ -7,7 +7,7 @@ import { openOnClick, openOnRowKey } from '@/lib/rowOpen';
  * Cmd/Ctrl+click được `Card` bắt trước ở pha bắt để bật/tắt chọn nên không tới `onClick` này; Enter/Cmd+Enter và chuột
  * giữa vẫn như trên.
  */
-export function rowPeekProps(issueKey: string, open: (key: string) => void) {
+export function rowPeekProps(issueKey: string, open: (key: string, opts?: PeekOpenOpts) => void) {
   return {
     onClick: (e: MouseEvent<HTMLElement>) => void openOnClick(e, issueKey, open),
     // Chuột giữa chỉ bắn `auxclick` (không bắn `click`).
