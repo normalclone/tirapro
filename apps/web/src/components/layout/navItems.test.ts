@@ -33,17 +33,12 @@ describe('navItems (nguồn chung sidebar / thanh tab đáy / sheet Tôi)', () =
       '/admin/points',
     ]);
   });
-  it('Thành viên chỉ hiện với người quản lý thành viên', async () => {
+  it('Thành viên hiện với mọi người (người không quản lý chỉ xem người trong dự án mình tham gia)', async () => {
     const { canSeeNav } = await import('@/lib/navAccess');
     const members = NAV_ITEMS.find((i) => i.to === '/members')!;
-    expect(members.rule).toBeDefined();
-    expect(canSeeNav(members.rule!, { isSystemAdmin: false, permissions: ['project:view'] })).toBe(
-      false,
-    );
-    expect(canSeeNav(members.rule!, { isSystemAdmin: false, permissions: ['member:manage'] })).toBe(
-      true,
-    );
-    expect(canSeeNav(members.rule!, { isSystemAdmin: true, permissions: [] })).toBe(true);
+    expect(
+      canSeeNav(members.rule ?? 'all', { isSystemAdmin: false, permissions: ['project:view'] }),
+    ).toBe(true);
   });
   it('"Của tôi" (/me) đứng ngay trên Tổng quan và chỉ khớp đúng /me', () => {
     const [me, home] = NAV_ITEMS;

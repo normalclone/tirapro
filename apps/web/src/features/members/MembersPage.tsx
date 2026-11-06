@@ -16,6 +16,7 @@ import { fmtRelative } from '@/lib/dateFormat';
 import { normalizeVi } from '@/lib/text';
 import { PageFrame } from '@/components/layout/PageFrame';
 import { PageHeader } from '@/components/layout/PageHeader';
+import { ProjectPeopleView } from './ProjectPeopleView';
 import { useAuth } from '@/stores/auth';
 import { useRoles } from '@/features/roles/api';
 import { MemberRolesCell } from './MemberRolesCell';
@@ -41,9 +42,63 @@ function tabOf(param: string | null): Tab {
 }
 
 export function MembersPage() {
-  const currentUserId = useAuth((s) => s.user?.id);
   // Chọn ra BOOLEAN (không chọn hàm `can`): trang theo dõi đúng quyền khi `refreshMe` đổi quyền sau tự đổi vai trò.
   const canManage = useAuth((s) => s.can('member:manage'));
+  // Người không quản lý thành viên: chỉ xem người trong các dự án mình tham gia (người dùng yêu cầu 2026-11-06), cùng tab
+  // Nhân lực nếu xem được báo cáo (liên kết từ Tổng quan dẫn tới đây).
+  if (!canManage) return <ProjectPeoplePage />;
+  return <ManageMembersPage />;
+}
+
+function ProjectPeoplePage() {
+  const canReport = useAuth((s) => s.can('report:view'));
+  const [params, setParams] = useSearchParams();
+  const tab = canReport && tabOf(params.get('tab')) === 'resources' ? 'resources' : 'members';
+  const tabs: { id: 'members' | 'resources'; label: string }[] = [
+    { id: 'members', label: 'Thành viên dự án' },
+    ...(canReport ? [{ id: 'resources' as const, label: MANAGE_LABELS.resources }] : []),
+  ];
+  return (
+    <PageFrame size={tab === 'resources' ? 'xl' : 'sm'}>
+      <PageHeader
+        title={APP_NAV_LABELS.members}
+        description="Người trong các dự án bạn tham gia và vai trò của họ trong từng dự án. Muốn thêm/bớt người, nhờ quản trị dự án."
+      />
+      {tabs.length > 1 && (
+        <Tabs
+          idBase="members"
+          ariaLabel="Thành viên dự án và nhân lực"
+          value={tab}
+          onChange={(next) =>
+            setParams(
+              (prev) => {
+                const p = new URLSearchParams(prev);
+                if (next === 'members') p.delete('tab');
+                else p.set('tab', next);
+                return p;
+              },
+              { replace: true },
+            )
+          }
+          items={tabs}
+          className="mb-6"
+          data-tour="members-tabs"
+        />
+      )}
+      {tabs.length > 1 ? (
+        <TabPanel idBase="members" value={tab}>
+          {tab === 'resources' ? <ResourcesPanel /> : <ProjectPeopleView />}
+        </TabPanel>
+      ) : (
+        <ProjectPeopleView />
+      )}
+    </PageFrame>
+  );
+}
+
+function ManageMembersPage() {
+  const currentUserId = useAuth((s) => s.user?.id);
+  const canManage = true;
   const [params, setParams] = useSearchParams();
   const tab = tabOf(params.get('tab'));
   const setTab = (next: Tab) =>

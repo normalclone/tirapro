@@ -15,8 +15,8 @@ export interface NavContext {
 }
 
 export const NAV_RULES = {
-  // Thành viên tổ chức: chỉ người quản lý thành viên thấy mục này (2026-11-04, người dùng yêu cầu).
-  members: { any: ['member:manage', 'organization:admin'] },
+  // Thành viên: mọi người thấy; người không quản lý thành viên chỉ xem người trong dự án mình tham gia (2026-11-06).
+  members: 'all',
   connect: { any: ['integration:manage', 'automation:manage', 'organization:admin'] },
   // Tab "Ứng dụng bên ngoài" trong Kết nối (Telegram/Digest: ghi cần `integration:manage`).
   connectIntegrations: { any: ['integration:manage', 'organization:admin'] },

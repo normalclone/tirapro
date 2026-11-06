@@ -167,9 +167,9 @@ describe('Thành viên: mời thành viên bằng hộp thoại, không còn for
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
   });
 
-  it('không có quyền member:manage: không có nút', async () => {
+  it('không có quyền member:manage: trang chỉ xem người trong dự án, không có nút mời', async () => {
     renderPage(false);
-    await screen.findByText('Danh sách thành viên');
+    await screen.findByText(/Người trong các dự án bạn tham gia/);
     expect(screen.queryByRole('button', { name: /Mời thành viên/ })).toBeNull();
   });
 });
