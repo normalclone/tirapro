@@ -13,6 +13,9 @@ export interface NotificationPrefsResponse {
   /** Tuỳ chọn nhận thông báo qua email (đã gộp mặc định). */
   email: NotificationEmailPrefs;
   emailDefaults: NotificationEmailPrefs;
+  /** Tuỳ chọn nhận thông báo qua Telegram theo từng loại (đã gộp mặc định). */
+  telegram: Record<string, boolean>;
+  telegramDefaults: Record<string, boolean>;
 }
 
 export function useNotificationPrefs() {

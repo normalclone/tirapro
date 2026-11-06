@@ -18,7 +18,7 @@ import {
 const ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 const CODE_LENGTH = 10;
 const CODE_SHAPE = /^[A-Z0-9]{10}$/;
-export const PERSONAL_CODE_TTL_MS = 10 * 60_000;
+const PERSONAL_CODE_TTL_MS = 10 * 60_000;
 const CLEANUP_AFTER_MS = 24 * 3600_000;
 /** Tin `/start`/`/stop` cũ hơn khoảng này không còn được trả lời (getUpdates đọc lại được 100 tin gần nhất). */
 const REPLY_WINDOW_MS = 15 * 60_000;

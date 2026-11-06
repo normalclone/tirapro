@@ -89,7 +89,7 @@ function StepForm({
   );
 }
 
-function ErrorText({ children }: { children: ReactNode }) {
+export function ErrorText({ children }: { children: ReactNode }) {
   return (
     <p role="alert" className="text-sm text-danger">
       {children}
@@ -287,7 +287,7 @@ function AddToGroupStep({
 /* Bước 3 — mã liên kết                                               */
 /* ------------------------------------------------------------------ */
 
-function useNow(intervalMs: number): number {
+export function useNow(intervalMs: number): number {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const t = window.setInterval(() => setNow(Date.now()), intervalMs);
@@ -298,7 +298,7 @@ function useNow(intervalMs: number): number {
 
 type LinkPhase = 'creating' | 'waiting' | 'linked' | 'expired' | 'error';
 
-function CommandBlock({ command }: { command: string }) {
+export function CommandBlock({ command }: { command: string }) {
   const { copied, copy } = useCopyToClipboard();
   return (
     <div className="flex items-start gap-2 rounded-md border border-border bg-surface-2 p-3">

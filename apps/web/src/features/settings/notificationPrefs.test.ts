@@ -19,6 +19,8 @@ const base = (): NotificationPrefsResponse => ({
   defaults: {},
   email: { mention: false, assigned: false, comment: false, transition: false },
   emailDefaults: { mention: false, assigned: false, comment: false, transition: false },
+  telegram: { MENTIONED: true, COMMENT_ADDED: false },
+  telegramDefaults: { MENTIONED: true, COMMENT_ADDED: false },
 });
 
 describe('applyPrefsPatch / revertPrefsPatch (thuần)', () => {
@@ -49,6 +51,27 @@ describe('applyPrefsPatch / revertPrefsPatch (thuần)', () => {
     const cur = applyPrefsPatch(base(), { preferences: { SPRINT_STARTED: true } });
     const out = restorePrefsKeys(cur, { preferences: { SPRINT_STARTED: undefined } });
     expect('SPRINT_STARTED' in out.preferences).toBe(false);
+  });
+});
+
+describe('Telegram trong bản vá', () => {
+  it('áp bản vá telegram độc lập với in-app và email, không đổi dữ liệu gốc', () => {
+    const d = base();
+    const n = applyPrefsPatch(d, { telegram: { COMMENT_ADDED: true } });
+    expect(n.telegram).toEqual({ MENTIONED: true, COMMENT_ADDED: true });
+    expect(n.preferences).toEqual(d.preferences);
+    expect(d.telegram.COMMENT_ADDED).toBe(false);
+  });
+  it('khôi phục khoá telegram về giá trị xác nhận; undefined = xoá khoá', () => {
+    const cur = applyPrefsPatch(base(), {
+      telegram: { COMMENT_ADDED: true, STATUS_CHANGED: true },
+    });
+    const out = restorePrefsKeys(cur, {
+      telegram: { COMMENT_ADDED: false, STATUS_CHANGED: undefined },
+    });
+    expect(out.telegram.COMMENT_ADDED).toBe(false);
+    expect('STATUS_CHANGED' in out.telegram).toBe(false);
+    expect(out.telegram.MENTIONED).toBe(true);
   });
 });
 
@@ -225,6 +248,24 @@ describe('rollback về giá trị ĐÃ XÁC NHẬN bởi máy chủ (không v�
     const { run, data } = setup(() => Promise.reject(new Error('x')));
     await run({ email: { mention: true } });
     expect(data().email.mention).toBe(false);
+  });
+});
+
+describe('khoá Telegram (t:<LOẠI>) tuân theo cùng quy tắc lưu', () => {
+  it('lạc quan ngay; lỗi → hoàn tác về giá trị máy chủ, không đụng khoá in-app cùng tên loại', async () => {
+    const ok = setup(() => Promise.resolve({}));
+    await ok.run({ telegram: { COMMENT_ADDED: true } });
+    expect(ok.data().telegram.COMMENT_ADDED).toBe(true);
+    const bad = setup(() => Promise.reject(new Error('x')));
+    await bad.run({ telegram: { COMMENT_ADDED: true }, preferences: { MENTIONED: false } });
+    expect(bad.data().telegram.COMMENT_ADDED).toBe(false);
+    expect(bad.data().preferences.MENTIONED).toBe(true);
+  });
+  it('payload gửi lên có nhánh telegram', async () => {
+    const send = vi.fn(() => Promise.resolve({}));
+    const { run } = setup(send);
+    await run({ telegram: { STATUS_CHANGED: true } });
+    expect(send).toHaveBeenCalledWith({ telegram: { STATUS_CHANGED: true } });
   });
 });
 
