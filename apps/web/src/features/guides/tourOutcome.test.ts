@@ -6,6 +6,7 @@ import {
   createTourFlow,
   ensureSkipButton,
   restoreTourFocus,
+  runnableSteps,
   shouldFocusPrimary,
   skipEmptyTour,
   EMPTY_TOUR_MESSAGE,
@@ -278,5 +279,26 @@ describe('skipEmptyTour — bấm "?" khi không có bước nào hiển thị',
     const notify = vi.fn();
     expect(skipEmptyTour(2, notify)).toBe(false);
     expect(notify).not.toHaveBeenCalled();
+  });
+});
+
+describe('runnableSteps — bước đầu là khung của màn', () => {
+  const steps = [
+    { order: 1, selector: 'b' },
+    { order: 0, selector: 'a' },
+    { order: 2, selector: 'c' },
+    { order: 3 },
+  ];
+  const find = (have: string[]) => (s: string) => (have.includes(s) ? s : null);
+  it('đủ phần tử → giữ thứ tự theo order; bước không selector luôn chạy', () => {
+    expect(runnableSteps(steps, find(['a', 'b', 'c'])).map((r) => r.step.order)).toEqual([
+      0, 1, 2, 3,
+    ]);
+  });
+  it('bước giữa vắng → chỉ bỏ bước đó', () => {
+    expect(runnableSteps(steps, find(['a', 'c'])).map((r) => r.step.order)).toEqual([0, 2, 3]);
+  });
+  it('bước đầu vắng (không có quyền / đang tải) → không chạy gì, dù bước sau có phần tử', () => {
+    expect(runnableSteps(steps, find(['b', 'c']))).toEqual([]);
   });
 });

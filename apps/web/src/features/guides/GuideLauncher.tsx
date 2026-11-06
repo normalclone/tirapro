@@ -12,6 +12,7 @@ import {
   createTourFlow,
   ensureSkipButton,
   restoreTourFocus,
+  runnableSteps,
   shouldFocusPrimary,
   skipEmptyTour,
 } from './tourOutcome';
@@ -22,24 +23,19 @@ import {
  * hiển thị đầu tiên và đưa thẳng cho driver.js — nếu để driver tự `querySelector` nó sẽ trỏ vào bản bị `display:none`.
  */
 function toDriveSteps(steps: TourStepDef[]): DriveStep[] {
-  return [...steps]
-    .sort((a, b) => a.order - b.order)
-    .flatMap((s) => {
-      const el = s.selector ? firstVisible(document.querySelectorAll(s.selector)) : null;
-      if (s.selector && !el) return [];
-      return [
-        {
-          // Bước không có selector → popover giữa màn hình (driver.js).
-          ...(el ? { element: el } : {}),
-          popover: {
-            title: s.title,
-            description: s.body,
-            // driver.js Side không có 'auto' → để mặc định; các giá trị còn lại hợp lệ.
-            side: s.placement === 'auto' ? undefined : s.placement,
-          },
-        } satisfies DriveStep,
-      ];
-    });
+  return runnableSteps(steps, (sel) => firstVisible(document.querySelectorAll(sel))).map(
+    ({ step: s, el }) =>
+      ({
+        // Bước không có selector → popover giữa màn hình (driver.js).
+        ...(el ? { element: el } : {}),
+        popover: {
+          title: s.title,
+          description: s.body,
+          // driver.js Side không có 'auto' → để mặc định; các giá trị còn lại hợp lệ.
+          side: s.placement === 'auto' ? undefined : s.placement,
+        },
+      }) satisfies DriveStep,
+  );
 }
 
 export function GuideLauncher() {

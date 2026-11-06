@@ -112,3 +112,25 @@ interface Focusable {
 export function restoreTourFocus(opener: Focusable | null | undefined): void {
   if (opener?.isConnected) opener.focus({ preventScroll: true });
 }
+
+/**
+ * Bước nào chạy được: bỏ bước có selector mà không có phần tử hiển thị. Riêng bước ĐẦU (theo `order`) là khung của màn — vắng
+ * nó nghĩa là màn đang ở trạng thái khác (không có quyền, đang tải, lỗi) → không chạy gì cả (trả rỗng → báo "chưa có gì để
+ * chỉ"), thay vì vài bước lẻ trỏ vào chỗ không liên quan.
+ */
+export function runnableSteps<S extends { order: number; selector?: string | null }, E>(
+  steps: readonly S[],
+  find: (selector: string) => E | null,
+): { step: S; el: E | null }[] {
+  const sorted = [...steps].sort((a, b) => a.order - b.order);
+  const out: { step: S; el: E | null }[] = [];
+  for (const [i, step] of sorted.entries()) {
+    const el = step.selector ? find(step.selector) : null;
+    if (step.selector && !el) {
+      if (i === 0) return [];
+      continue;
+    }
+    out.push({ step, el });
+  }
+  return out;
+}
