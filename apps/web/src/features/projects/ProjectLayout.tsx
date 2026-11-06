@@ -311,6 +311,7 @@ export function ProjectLayout() {
                   type="button"
                   aria-label={moreLabel ?? 'Thêm'}
                   title={moreLabel ?? 'Thêm'}
+                  data-tour="project-more"
                   aria-current={moreSeg ? 'page' : undefined}
                   className={cn(
                     'flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] data-[state=open]:bg-surface-2 sm:px-2.5',

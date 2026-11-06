@@ -98,7 +98,10 @@ export function SprintTab({ projectId, projectKey }: { projectId: string; projec
           .filter(Boolean)
           .join(' · ')}
       />
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 print:hidden">
+      <div
+        className="flex flex-wrap items-center gap-x-4 gap-y-2 print:hidden"
+        data-tour="reports-sprint-bar"
+      >
         <SearchSelect
           value={sprint.id}
           onChange={pickSprint}

@@ -134,7 +134,10 @@ export function ResultsTable({
   const pageItems = issues.slice(start, start + RESULTS_PAGE_SIZE);
 
   return (
-    <div className="flex flex-col rounded-lg border border-border bg-surface">
+    <div
+      className="flex flex-col rounded-lg border border-border bg-surface"
+      data-tour="filters-results"
+    >
       <p className="sr-only" role="status">
         {cols.announce}
       </p>

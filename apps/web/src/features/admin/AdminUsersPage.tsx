@@ -26,6 +26,9 @@ const STATUS_FILTERS: { label: string; value: AccountStatusFilter | undefined }[
   { label: 'Đã vô hiệu hoá', value: 'DEACTIVATED' },
 ];
 
+const ACCOUNT_LIST_CLS =
+  'divide-y divide-border overflow-hidden rounded-lg border border-border bg-surface';
+
 const ROWS_SKELETON = (
   <div className="space-y-2">
     {Array.from({ length: 4 }).map((_, i) => (
@@ -58,6 +61,20 @@ function NoMatchingAccounts({ onReset }: { onReset: () => void }) {
 }
 
 /** Màn Admin hệ thống: quản trị tài khoản toàn hệ thống + cấp quyền lập tổ chức. */
+/**
+ * Ô tìm: gõ tới đâu lọc tới đó nhưng trễ 250 ms để danh sách dài không giật; lọc client vì danh sách không phân trang.
+ * `setDebounced('')` xoá ngay (không chờ trễ) khi bấm "Xoá bộ lọc".
+ */
+function useAccountSearch() {
+  const [searchInput, setSearchInput] = useState('');
+  const [debounced, setDebounced] = useState('');
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(searchInput), 250);
+    return () => clearTimeout(t);
+  }, [searchInput]);
+  return { searchInput, setSearchInput, setDebounced, search: useDeferredValue(debounced) };
+}
+
 export function AdminUsersPage() {
   const me = useAuth((s) => s.user);
   const { data: users, isLoading, isError, error, refetch } = useAdminUsers();
@@ -65,14 +82,7 @@ export function AdminUsersPage() {
   const [createOpen, setCreateOpen] = useState(false);
   // Hộp thoại luôn mount để có hiệu ứng đóng; mỗi lần mở là một `session` mới → form + mật khẩu tạm khởi tạo lại.
   const [session, setSession] = useState(0);
-  // Ô tìm: gõ tới đâu lọc tới đó nhưng trễ 250 ms để danh sách dài không giật; lọc client vì danh sách không phân trang.
-  const [searchInput, setSearchInput] = useState('');
-  const [debounced, setDebounced] = useState('');
-  useEffect(() => {
-    const t = setTimeout(() => setDebounced(searchInput), 250);
-    return () => clearTimeout(t);
-  }, [searchInput]);
-  const search = useDeferredValue(debounced);
+  const { searchInput, setSearchInput, setDebounced, search } = useAccountSearch();
   const [status, setStatus] = useState<AccountStatusFilter | undefined>(undefined);
   const visible = useMemo(
     () => filterAccounts(users ?? [], { search, status }),
@@ -89,6 +99,7 @@ export function AdminUsersPage() {
   return (
     <PageFrame size="lg">
       <PageHeader
+        data-tour="admin-users-header"
         title={ADMIN_LABELS.accounts}
         description="Tạo tài khoản và cấp quyền lập tổ chức mới hoặc quản trị hệ thống."
         actions={
@@ -112,7 +123,7 @@ export function AdminUsersPage() {
         NO_ACCOUNTS
       ) : (
         <>
-          <div className="mb-3 flex flex-wrap items-center gap-3">
+          <div className="mb-3 flex flex-wrap items-center gap-3" data-tour="admin-users-filter">
             <div className="relative min-w-52 flex-1">
               <Search
                 className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-faint"
@@ -150,7 +161,7 @@ export function AdminUsersPage() {
               }}
             />
           ) : (
-            <ul className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-surface">
+            <ul className={ACCOUNT_LIST_CLS} data-tour="admin-users-list">
               {visible.map((u) => (
                 <li key={u.id} className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3">
                   <Avatar name={u.displayName} src={u.avatarUrl} size={36} />

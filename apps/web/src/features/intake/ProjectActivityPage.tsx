@@ -242,7 +242,12 @@ export function ProjectActivityPage() {
 
   return (
     <PageFrame size="full">
-      <PageHeader variant="tab" title="Hoạt động" description="Ai đã làm gì, trên công việc nào." />
+      <PageHeader
+        variant="tab"
+        title="Hoạt động"
+        description="Ai đã làm gì, trên công việc nào."
+        data-tour="activity-header"
+      />
 
       <QueryBoundary
         query={activityQuery}
@@ -270,8 +275,8 @@ export function ProjectActivityPage() {
       >
         {() => (
           <>
-            {groups.map((g) => (
-              <section key={g.key}>
+            {groups.map((g, i) => (
+              <section key={g.key} data-tour={i === 0 ? 'activity-timeline' : undefined}>
                 <h3 className="sticky top-0 z-[1] -mx-2 mb-3 bg-bg/85 px-2 py-1.5 text-xs font-semibold uppercase tracking-wide text-muted backdrop-blur">
                   {g.label}
                 </h3>

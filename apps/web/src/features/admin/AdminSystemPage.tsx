@@ -75,12 +75,13 @@ export function AdminSystemPage() {
   return (
     <PageFrame size="lg">
       <PageHeader
+        data-tour="admin-system-header"
         title={ADMIN_LABELS.system}
         description="Tình trạng dịch vụ (tự làm mới) & nhật ký kiểm toán toàn hệ thống."
       />
 
       {/* Health */}
-      <section className="mb-8">
+      <section className="mb-8" data-tour="admin-system-health">
         <h2 className="mb-3 text-sm font-semibold text-ink">Tình trạng dịch vụ</h2>
         {hError ? (
           <QueryError error={hErr} onRetry={() => void hRefetch()} />
@@ -130,7 +131,7 @@ export function AdminSystemPage() {
       </section>
 
       {/* Audit log */}
-      <section>
+      <section data-tour="admin-system-audit">
         <div className="mb-3 flex flex-wrap items-center gap-x-6 gap-y-3">
           <h2 className="text-sm font-semibold text-ink">Nhật ký kiểm toán · gần đây</h2>
           <Tabs

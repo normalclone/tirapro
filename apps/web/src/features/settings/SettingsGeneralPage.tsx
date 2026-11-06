@@ -6,6 +6,7 @@ import { SETTINGS_LABELS } from '@/lib/navLabels';
 export const SettingsGeneralPage = () => (
   <PageFrame size="sm">
     <PageHeader
+      data-tour="settings-general-header"
       title={SETTINGS_LABELS.general}
       description="Logo hiện ở nút chuyển tổ chức trên thanh trên cùng."
     />

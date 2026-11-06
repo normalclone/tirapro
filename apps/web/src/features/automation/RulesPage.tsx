@@ -117,7 +117,7 @@ export function RulesPage() {
       actions={
         <>
           {/* Dưới sm: ô phạm vi chiếm cả hàng, nút "Tạo quy tắc" xuống hàng dưới (trước đây ô cố định w-52 + nút tràn mép thẻ ở 390px). */}
-          <div className="w-52 max-sm:w-full">
+          <div className="w-52 max-sm:w-full" data-tour="automation-scope">
             <SearchSelect
               value={scope ?? ''}
               onChange={setScopeChoice}

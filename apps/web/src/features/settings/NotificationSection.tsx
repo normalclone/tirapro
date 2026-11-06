@@ -147,6 +147,7 @@ export function NotificationSection() {
 
   return (
     <SectionCard
+      data-tour="notif-settings-card"
       icon={<Bell className="h-4 w-4" />}
       title="Thông báo"
       description="Bấm là lưu ngay. Các thông báo email trong vòng 5 phút được gộp thành một email để hộp thư không bị ngập."
@@ -170,7 +171,7 @@ export function NotificationSection() {
         }
       >
         {(prefs) => (
-          <ul className="divide-y divide-border">
+          <ul className="divide-y divide-border" data-tour="notif-settings-list">
             {NOTIFICATION_TYPES.map(({ key, label, hint }) => {
               const inApp = prefs.preferences[key] ?? false;
               const emailKey = EMAIL_KEY_OF_TYPE[key];

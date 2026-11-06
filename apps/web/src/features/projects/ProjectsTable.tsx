@@ -122,7 +122,10 @@ export function ProjectList({
   lastView: LastView | null;
 }) {
   return (
-    <div className="overflow-hidden rounded-lg border border-border bg-surface">
+    <div
+      className="overflow-hidden rounded-lg border border-border bg-surface"
+      data-tour="projects-list"
+    >
       <ProjectsHeaderRow />
       <ul className="divide-y divide-border">
         {projects.map((p) => (

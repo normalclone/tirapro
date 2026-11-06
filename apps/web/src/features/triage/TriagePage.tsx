@@ -113,6 +113,7 @@ export function TriagePage() {
           <PageFrame size="full" className="lg:pb-24">
             <PageHeader
               variant="tab"
+              data-tour="triage-header"
               title={
                 <span className="inline-flex items-center gap-2">
                   {TRIAGE_TITLE}
@@ -138,7 +139,10 @@ export function TriagePage() {
                 description="Đây là nơi tiếp nhận công việc do người ngoài dự án báo lên. Hiện không còn việc nào chờ bạn duyệt."
               />
             ) : (
-              <ul className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-surface">
+              <ul
+                className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-surface"
+                data-tour="triage-list"
+              >
                 {issues.map((issue) => (
                   <TriageRow
                     key={issue.id}

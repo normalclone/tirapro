@@ -393,6 +393,7 @@ export function FiltersPage() {
             <div
               id="saved-filters-body"
               className={cn('flex flex-col gap-2', !railOpen && 'max-lg:hidden')}
+              data-tour="filters-saved"
             >
               <SavedFilterList
                 query={savedFilters}
@@ -418,6 +419,7 @@ export function FiltersPage() {
         <PageFrame size="lg" className="flex flex-col gap-5">
           <PageHeader
             className="mb-0"
+            data-tour="filters-header"
             title={heading}
             description={
               <>
@@ -606,7 +608,10 @@ function AdhocBar({
   const showRunError = error && !(validation && !validation.valid);
   const empty = !value.trim();
   return (
-    <div className="flex flex-col gap-2 rounded-lg border border-border bg-surface p-3">
+    <div
+      className="flex flex-col gap-2 rounded-lg border border-border bg-surface p-3"
+      data-tour="filters-jql"
+    >
       <div className="flex flex-col gap-2 sm:flex-row sm:items-start">
         <div className="min-w-0 flex-1">
           <JqlEditor

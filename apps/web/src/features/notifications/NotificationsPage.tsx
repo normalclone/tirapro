@@ -59,6 +59,7 @@ export function NotificationsPage() {
             onClick={() => markAllRead.mutate()}
             disabled={unread === 0 || markAllRead.isPending}
             title="Đánh dấu toàn bộ thông báo chưa đọc của bạn là đã đọc (không chỉ tab đang xem)"
+            data-tour="notifications-mark-all"
           >
             <CheckCheck className="h-4 w-4" /> Đánh dấu đã đọc tất cả
           </Button>
@@ -72,6 +73,7 @@ export function NotificationsPage() {
         onChange={selectTab}
         items={TABS}
         className="mb-4 overflow-x-auto"
+        data-tour="notifications-tabs"
       />
 
       <TabPanel idBase="notif" value={tab}>
@@ -82,7 +84,10 @@ export function NotificationsPage() {
         >
           {(d) => (
             <>
-              <ul className="overflow-hidden rounded-lg border border-border bg-surface divide-y divide-border">
+              <ul
+                className="overflow-hidden rounded-lg border border-border bg-surface divide-y divide-border"
+                data-tour="notifications-list"
+              >
                 {d.pages
                   .flatMap((p) => p.data)
                   .map((n) => (
@@ -104,7 +109,7 @@ export function NotificationsPage() {
             </>
           )}
         </QueryBoundary>
-        <p className="mt-6 text-center text-xs text-faint">
+        <p className="mt-6 text-center text-xs text-faint" data-tour="notifications-settings">
           Chọn loại thông báo nhận được ở{' '}
           <Link to="/settings/notifications" className="text-primary hover:underline">
             Cài đặt thông báo

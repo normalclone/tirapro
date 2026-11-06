@@ -468,7 +468,7 @@ export function WikiPage() {
 
   const treePanel = (
     <div className="flex h-full flex-col">
-      <div className="space-y-2 border-b border-border p-3">
+      <div className="space-y-2 border-b border-border p-3" data-tour="wiki-search">
         <div className="relative">
           <Search
             className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-faint"
@@ -502,7 +502,7 @@ export function WikiPage() {
         />
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto p-2">
+      <div className="min-h-0 flex-1 overflow-y-auto p-2" data-tour="wiki-tree">
         {searching ? (
           <QueryBoundary
             query={search}
@@ -591,6 +591,7 @@ export function WikiPage() {
             className="w-full"
             loading={create.isPending}
             onClick={() => void addPage(null)}
+            data-tour="wiki-create"
           >
             <Plus className="h-4 w-4" /> Tạo trang mới
           </Button>
@@ -658,6 +659,7 @@ export function WikiPage() {
     >
       <PageFrame size="lg">
         <PageHeader
+          data-tour="wiki-header"
           title={APP_NAV_LABELS.wiki}
           description={
             <>
@@ -668,7 +670,10 @@ export function WikiPage() {
           breadcrumb={crumbs}
         />
 
-        <section className="min-w-0 rounded-lg border border-border bg-surface">
+        <section
+          className="min-w-0 rounded-lg border border-border bg-surface"
+          data-tour="wiki-page"
+        >
           {pendingNew ? (
             // Trang mới chưa có trên máy chủ: khối soạn đứng riêng, tách khỏi trang đang xem (QueryBoundary bên dưới).
             <article className="p-6">

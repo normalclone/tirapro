@@ -110,6 +110,7 @@ export function RepositorySection() {
 
   return (
     <SectionCard
+      data-tour="integrations-repos"
       icon={<RepoStackIcon />}
       title="Kho mã (GitHub / GitLab)"
       description="Liên kết kho mã để gắn commit và pull request vào đúng công việc, tiện theo dõi tiến độ lập trình."

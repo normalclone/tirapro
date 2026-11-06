@@ -46,12 +46,15 @@ export function StatRow({
   className,
   cols,
   bare,
+  'data-tour': dataTour,
 }: {
   items: StatItem[];
   className?: string;
   cols?: string;
   /** Ô nằm TRONG một khung đã có viền + đệm (vd ô dashboard tuỳ biến): bỏ viền/bo/nền/đệm của hàng chỉ số. */
   bare?: boolean;
+  /** Neo tour hướng dẫn. */
+  'data-tour'?: string;
 }) {
   const oddTail = cols === undefined && items.length % 2 === 1; // mobile 2 cột → ô cuối lẻ span 2 cho kín
   return (
@@ -62,6 +65,7 @@ export function StatRow({
         cols ?? SM_COLS[items.length] ?? 'sm:grid-cols-4',
         className,
       )}
+      data-tour={dataTour}
     >
       {items.map((s, idx) => (
         <div

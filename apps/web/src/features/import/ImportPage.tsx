@@ -10,13 +10,14 @@ export function ImportPage() {
   return (
     <PageFrame size="sm">
       <PageHeader
+        data-tour="import-header"
         title={SETTINGS_LABELS.import}
         description="Chuyển công việc từ Jira sang Tirapro bằng tệp CSV, ghép trường rồi nhập theo lô."
       />
       <SectionCard>
         <JiraImportWizard />
       </SectionCard>
-      <p className="mt-4 text-sm text-muted">
+      <p className="mt-4 text-sm text-muted" data-tour="import-other">
         Muốn nhập CSV đơn giản hoặc JSON export của Tirapro vào một dự án có sẵn? Vào{' '}
         <Link to="/projects" className="text-primary hover:underline">
           Dự án

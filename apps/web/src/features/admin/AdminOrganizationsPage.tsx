@@ -84,11 +84,12 @@ export function AdminOrganizationsPage() {
   return (
     <PageFrame size="lg">
       <PageHeader
+        data-tour="admin-orgs-header"
         title={ADMIN_LABELS.organizations}
         description="Mọi tổ chức trong hệ thống — đổi gói dịch vụ, lưu trữ hoặc khôi phục."
       />
 
-      <div className="mb-4 flex flex-wrap items-center gap-3">
+      <div className="mb-4 flex flex-wrap items-center gap-3" data-tour="admin-orgs-filter">
         <div className="relative min-w-56 flex-1">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-faint" />
           <Input
@@ -143,7 +144,7 @@ export function AdminOrganizationsPage() {
           }
         />
       ) : (
-        <ScrollX className="rounded-lg border border-border">
+        <ScrollX className="rounded-lg border border-border" data-tour="admin-orgs-table">
           <table className="w-full min-w-[720px] text-sm">
             <thead>
               <tr className="border-b border-border bg-surface-2 text-left text-xs text-faint">

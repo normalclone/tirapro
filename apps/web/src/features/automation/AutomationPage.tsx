@@ -50,6 +50,7 @@ export function AutomationPage() {
   return (
     <PageFrame size="sm">
       <PageHeader
+        data-tour="automation-header"
         title={CONNECT_LABELS.automation}
         description={
           <>
@@ -66,9 +67,10 @@ export function AutomationPage() {
         onChange={setTab}
         items={tabs}
         className="mb-6"
+        data-tour="automation-tabs"
       />
 
-      <TabPanel idBase="automation" value={tab}>
+      <TabPanel idBase="automation" value={tab} data-tour="automation-panel">
         {tab === 'rules' ? (
           <RulesPage />
         ) : tab === 'templates' ? (

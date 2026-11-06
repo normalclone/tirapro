@@ -123,11 +123,12 @@ export function ApiKeysPage() {
   return (
     <PageFrame size="sm">
       <PageHeader
+        data-tour="apikeys-header"
         title={SETTINGS_LABELS.api}
         description="Cấp khoá API để phần mềm khác và trợ lý AI (MCP) khai thác dữ liệu."
         actions={
           !forbidden && !isError ? (
-            <Button size="sm" onClick={() => setAdding(true)}>
+            <Button size="sm" onClick={() => setAdding(true)} data-tour="apikeys-create">
               <Plus className="h-4 w-4" />
               Tạo khoá
             </Button>
@@ -136,7 +137,10 @@ export function ApiKeysPage() {
       />
 
       {/* Điểm kết nối */}
-      <section className="mb-5 rounded-lg border border-border bg-surface p-4">
+      <section
+        className="mb-5 rounded-lg border border-border bg-surface p-4"
+        data-tour="apikeys-endpoints"
+      >
         <h2 className="mb-3 flex items-center gap-1.5 text-sm font-semibold text-ink">
           <Plug className="h-4 w-4 text-muted" /> Điểm kết nối
         </h2>
@@ -330,7 +334,10 @@ export function ApiKeysPage() {
               }
             />
           ) : (
-            <ul className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-surface">
+            <ul
+              className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-surface"
+              data-tour="apikeys-list"
+            >
               {visibleKeys.map((k) => (
                 <KeyRow
                   key={k.id}

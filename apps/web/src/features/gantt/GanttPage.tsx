@@ -427,11 +427,15 @@ export function GanttPage() {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-2 border-b border-border px-4 py-2">
+      <div
+        className="flex flex-wrap items-center gap-x-2 gap-y-2 border-b border-border px-4 py-2"
+        data-tour="gantt-toolbar"
+      >
         <Button
           variant={highlightCritical ? 'secondary' : 'ghost'}
           size="sm"
           aria-pressed={highlightCritical}
+          data-tour="gantt-critical"
           disabled={deps.length === 0}
           title={
             deps.length === 0
@@ -448,6 +452,7 @@ export function GanttPage() {
           variant="ghost"
           size="sm"
           disabled={!projectId}
+          data-tour="gantt-deps"
           title={`Mở bảng khai báo việc nào phải xong trước và các ngày phải chốt. Hiện có ${deps.length} phụ thuộc và ${milestones.length} cột mốc.`}
           onClick={() => setPanelOpen(true)}
         >
@@ -461,6 +466,7 @@ export function GanttPage() {
           aria-expanded={unscheduledOpen}
           aria-controls="gantt-unscheduled"
           disabled={!projectId}
+          data-tour="gantt-unscheduled"
           title="Công việc chưa có ngày bắt đầu/hạn và không nối với việc nào nên chưa hiện trên biểu đồ. Bấm để đặt ngày ngay tại đây."
           onClick={() => setUnscheduledOpen((v) => !v)}
         >
@@ -559,7 +565,7 @@ export function GanttPage() {
         />
       )}
 
-      <div className="min-h-0 flex-1 overflow-auto p-4 lg:pb-24">
+      <div className="min-h-0 flex-1 overflow-auto p-4 lg:pb-24" data-tour="gantt-chart">
         {pe || issuesQ.isError ? (
           <QueryError
             error={pErr ?? issuesQ.error}

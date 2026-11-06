@@ -106,7 +106,11 @@ function ExampleRow({ formula }: { formula: PointsFormula | null }) {
   const [difficulty, setDifficulty] = useState<Difficulty>('HARD');
   const [priority, setPriority] = useState<(typeof PRIORITY_NAMES)[number]>('High');
   return (
-    <section className="border-t border-border pt-5" aria-label="Ví dụ">
+    <section
+      className="border-t border-border pt-5"
+      aria-label="Ví dụ"
+      data-tour="admin-points-example"
+    >
       <h2 className="text-sm font-semibold text-ink">Thử một ví dụ</h2>
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <SearchSelect
@@ -180,6 +184,7 @@ export function AdminPointsPage() {
 
   const header = (
     <PageHeader
+      data-tour="admin-points-header"
       title={ADMIN_LABELS.points}
       description="Điểm của một việc = điểm gốc theo loại × hệ số độ khó × hệ số ưu tiên, làm tròn thành số nguyên. Việc có việc con thì điểm bằng tổng điểm các việc con; Epic là tổng điểm các việc trong Epic — hai loại này không dùng bảng hệ số."
     />
@@ -206,7 +211,10 @@ export function AdminPointsPage() {
   return (
     <PageFrame size="lg">
       {header}
-      <div className="rounded-lg border border-border bg-surface p-5">
+      <div
+        className="rounded-lg border border-border bg-surface p-5"
+        data-tour="admin-points-table"
+      >
         <div className="divide-y divide-border">
           <CoefTable
             title="Điểm gốc theo loại"
@@ -241,7 +249,7 @@ export function AdminPointsPage() {
           <ExampleRow formula={formula} />
         </div>
       </div>
-      <div className="mt-4 flex flex-wrap items-center gap-2">
+      <div className="mt-4 flex flex-wrap items-center gap-2" data-tour="admin-points-save">
         <Button onClick={onSave} disabled={!canSave} aria-busy={busy || undefined}>
           {busy ? 'Đang lưu…' : 'Lưu bảng hệ số'}
         </Button>

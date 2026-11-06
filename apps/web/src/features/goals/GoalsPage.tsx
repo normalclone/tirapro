@@ -496,6 +496,7 @@ function ProjectGoals({ project }: { project: ProjectDto }) {
       <PageFrame size="full">
         <PageHeader
           variant="tab"
+          data-tour="goals-header"
           title={MANAGE_LABELS.goals}
           description={
             <>
@@ -505,14 +506,14 @@ function ProjectGoals({ project }: { project: ProjectDto }) {
           }
           actions={
             canManage ? (
-              <Button size="sm" onClick={openCreate}>
+              <Button size="sm" onClick={openCreate} data-tour="goals-create">
                 <Plus className="h-4 w-4" /> Tạo mục tiêu
               </Button>
             ) : undefined
           }
         />
 
-        <div className="mb-5 flex flex-wrap items-center gap-2">
+        <div className="mb-5 flex flex-wrap items-center gap-2" data-tour="goals-filters">
           <SearchSelect
             value={period}
             onChange={setPeriod}
@@ -567,7 +568,7 @@ function ProjectGoals({ project }: { project: ProjectDto }) {
           }
         >
           {() => (
-            <div className="space-y-8">
+            <div className="space-y-8" data-tour="goals-list">
               {groups.map(([groupPeriod, items]) => (
                 <section key={groupPeriod}>
                   <div className="mb-3 flex items-baseline gap-2">

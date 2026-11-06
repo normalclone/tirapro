@@ -40,9 +40,10 @@ export function ReportsPage() {
           items={REPORT_TABS.map((t) => ({ id: t.id, label: t.label, title: t.hint }))}
           fade
           className="shrink-0 overflow-x-auto scrollbar-none print:hidden"
+          data-tour="reports-tabs"
         />
 
-        <TabPanel idBase="report" value={tab} className="space-y-4 pt-4">
+        <TabPanel idBase="report" value={tab} className="space-y-4 pt-4" data-tour="reports-panel">
           {!projectId ? (
             <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
               {[0, 1, 2, 3].map((n) => (

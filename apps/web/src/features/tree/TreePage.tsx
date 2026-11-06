@@ -37,6 +37,11 @@ import { GRID_COLS, TREE_TABLE_MIN_W_CLS } from './treeLayout';
 const INDENT_STEP = 20;
 
 /** Bản sao của `set` không có `id` (giữ nguyên tham chiếu nếu `id` vốn không có để khỏi vẽ lại thừa). */
+const TREE_TABLE_CLS = cn(
+  'overflow-hidden rounded-lg border border-border bg-surface',
+  TREE_TABLE_MIN_W_CLS,
+);
+
 function without(set: Set<string>, id: string): Set<string> {
   if (!set.has(id)) return set;
   const next = new Set(set);
@@ -103,7 +108,7 @@ export function TreePage() {
       <PeekShell order={peekOrder}>
         <div className="flex h-full flex-col">
           <div className="min-h-0 flex-1 overflow-auto">
-            <PageFrame size="full" className="lg:pb-24">
+            <PageFrame size="full" className="lg:pb-24" data-tour="tree-page">
               {pe || issuesQ.isError ? (
                 <QueryError
                   error={pErr ?? issuesQ.error}
@@ -128,19 +133,14 @@ export function TreePage() {
               ) : (
                 <>
                   {canEditAny && (
-                    <p className="mb-2 text-xs text-faint">
+                    <p className="mb-2 text-xs text-faint" data-tour="tree-drag-hint">
                       Kéo một dòng thả lên dòng khác để đổi Epic / Việc cha. Không kéo được? Mở công
                       việc và đổi ở ô “Epic / Việc cha”.
                     </p>
                   )}
                   {/* Khung cuộn là vùng cuộn của trang (đã có `overflow-auto`): bảng không co dưới sàn bề rộng nên khi có panel xem nhanh
                       thì cuộn ngang thay vì chồng cột (TIRA-BUG-21). Hàng tiêu đề vẫn dính khi cuộn dọc. */}
-                  <div
-                    className={cn(
-                      'overflow-hidden rounded-lg border border-border bg-surface',
-                      TREE_TABLE_MIN_W_CLS,
-                    )}
-                  >
+                  <div className={TREE_TABLE_CLS} data-tour="tree-table">
                     {/* Hàng tiêu đề cột — dính khi cuộn để luôn biết đang xem cột nào */}
                     <div
                       className={cn(
@@ -153,6 +153,7 @@ export function TreePage() {
                         <button
                           type="button"
                           onClick={toggleAll}
+                          data-tour="tree-toggle-all"
                           disabled={parentIds.size === 0}
                           aria-label={allCollapsed ? 'Mở rộng tất cả' : 'Thu gọn tất cả'}
                           title={allCollapsed ? 'Mở rộng tất cả' : 'Thu gọn tất cả'}

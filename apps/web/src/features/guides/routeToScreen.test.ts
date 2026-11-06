@@ -1,3 +1,4 @@
+import { DEFAULT_GUIDES } from '@tirapro/shared';
 import { describe, expect, it } from 'vitest';
 import type { ScreenGuide } from './api';
 import { primaryTourOf, routeToScreen } from './routeToScreen';
@@ -35,6 +36,16 @@ describe('routeToScreen', () => {
     expect(routeToScreen('/members/')).toBe('/members');
     expect(routeToScreen('/')).toBe('/');
     expect(routeToScreen('/settings/roles')).toBe('/settings/roles');
+  });
+});
+
+describe('mẫu screen của tour mặc định ↔ routeToScreen', () => {
+  const screens = [...new Set(DEFAULT_GUIDES.map((g) => g.screen))];
+  it.each(screens)('%s: đường dẫn thật chuẩn hoá lại đúng mẫu này', (screen) => {
+    const real = screen.replace(':key', 'ABC-1').replace(':id', 'ckx1y2z3');
+    expect(routeToScreen(real)).toBe(screen);
+    // Có dấu / cuối vẫn về cùng mẫu (trừ gốc).
+    if (real !== '/') expect(routeToScreen(`${real}/`)).toBe(screen);
   });
 });
 

@@ -6,6 +6,7 @@ import { SETTINGS_LABELS } from '@/lib/navLabels';
 export const SettingsSeveritiesPage = () => (
   <PageFrame size="sm">
     <PageHeader
+      data-tour="severities-header"
       title={SETTINGS_LABELS.severities}
       description="Đặt các mức nghiêm trọng; số thứ tự càng nhỏ thì mức càng nặng, xử lý trước."
     />
