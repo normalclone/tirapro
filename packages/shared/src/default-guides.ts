@@ -105,7 +105,7 @@ const SCREEN_TOURS: GuideSeed[] = [
     ],
     [
       'projects-manage-groups',
-      'Quản lý nhóm của tôi',
+      'Nhóm dự án',
       'Gom các dự án thành nhóm dự án riêng cho dễ tìm, rồi xem theo nhóm. Nhóm này chỉ mình bạn thấy, không ảnh hưởng người khác.',
       'bottom',
     ],

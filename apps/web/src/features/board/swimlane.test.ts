@@ -4,7 +4,6 @@ import {
   parseSwimlaneOverride,
   readSwimlaneOverride,
   swimlaneStorageKey,
-  toggleAssigneeSwimlane,
   toggleSwimlane,
   writeSwimlaneOverride,
   type SwimlaneStorage,
@@ -16,16 +15,16 @@ describe('swimlane override', () => {
     expect(effectiveSwimlane('none', 'assignee')).toBe('assignee');
   });
   it('toggle: bảng phẳng ↔ theo người, override được xoá khi trùng cấu hình bảng', () => {
-    expect(toggleAssigneeSwimlane('none', null)).toBe('assignee');
-    expect(toggleAssigneeSwimlane('none', 'assignee')).toBeNull();
+    expect(toggleSwimlane('none', null, 'assignee')).toBe('assignee');
+    expect(toggleSwimlane('none', 'assignee', 'assignee')).toBeNull();
   });
   it('toggle trên bảng đã cấu hình theo người: tắt = override none, bật lại = xoá override', () => {
-    expect(toggleAssigneeSwimlane('assignee', null)).toBe('none');
-    expect(toggleAssigneeSwimlane('assignee', 'none')).toBeNull();
+    expect(toggleSwimlane('assignee', null, 'assignee')).toBe('none');
+    expect(toggleSwimlane('assignee', 'none', 'assignee')).toBeNull();
   });
   it('toggle trên bảng cấu hình epic: bật theo người, tắt trả về epic (override null)', () => {
-    expect(toggleAssigneeSwimlane('epic', null)).toBe('assignee');
-    expect(toggleAssigneeSwimlane('epic', 'assignee')).toBeNull();
+    expect(toggleSwimlane('epic', null, 'assignee')).toBe('assignee');
+    expect(toggleSwimlane('epic', 'assignee', 'assignee')).toBeNull();
   });
   it('parse: chỉ nhận giá trị hợp lệ', () => {
     expect(parseSwimlaneOverride('assignee')).toBe('assignee');
@@ -69,10 +68,13 @@ describe('swimlane theo team', () => {
 describe('swimlane storage', () => {
   it('đọc: thiếu/sai → null; hợp lệ → giá trị', () => {
     const { st } = memStorage({
-      'tirapro:swimlane:u1:b1': 'assignee',
+      'tirapro:swimlane:u1:b1': 'team',
       'tirapro:swimlane:u1:b2': 'xx',
+      'tirapro:swimlane:u1:b4': 'assignee',
     });
-    expect(readSwimlaneOverride('tirapro:swimlane:u1:b1', 'none', st)).toBe('assignee');
+    expect(readSwimlaneOverride('tirapro:swimlane:u1:b1', 'none', st)).toBe('team');
+    // Nút "Nhóm theo người" đã bỏ → sở thích riêng cũ theo người bị bỏ qua (không còn cách tắt).
+    expect(readSwimlaneOverride('tirapro:swimlane:u1:b4', 'none', st)).toBeNull();
     expect(readSwimlaneOverride('tirapro:swimlane:u1:b2', 'none', st)).toBeNull();
     expect(readSwimlaneOverride('tirapro:swimlane:u1:b3', 'none', st)).toBeNull();
     expect(readSwimlaneOverride(null, 'none', st)).toBeNull();

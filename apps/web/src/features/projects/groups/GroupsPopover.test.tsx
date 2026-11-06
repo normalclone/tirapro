@@ -81,7 +81,7 @@ describe('ô "Nhóm"', () => {
   it('quản trị dự án: tích/bỏ nhiều nhóm rồi Lưu → PUT /projects/:id/programs với đủ tập mới; toast + đóng', async () => {
     const user = renderCell(project([A]));
     await user.click(screen.getByRole('button', { name: /^1 nhóm/ }));
-    const box = await screen.findByRole('group', { name: /Nhóm của tôi cho Nhân sự/ });
+    const box = await screen.findByRole('group', { name: /Nhóm dự án cho Nhân sự/ });
     const save = await within(box).findByRole('button', { name: 'Lưu' });
     expect(save.hasAttribute('disabled')).toBe(true); // chưa đổi gì
     expect(within(box).getByRole<HTMLInputElement>('checkbox', { name: /Hạ tầng/ }).checked).toBe(
@@ -105,7 +105,7 @@ describe('ô "Nhóm"', () => {
   it('tìm nhóm theo tên (không dấu); nhóm đã chọn luôn còn trong danh sách', async () => {
     const user = renderCell(project([A]));
     await user.click(screen.getByRole('button', { name: /^1 nhóm/ }));
-    const box = await screen.findByRole('group', { name: /Nhóm của tôi cho Nhân sự/ });
+    const box = await screen.findByRole('group', { name: /Nhóm dự án cho Nhân sự/ });
     await user.type(await within(box).findByRole('textbox', { name: /Tìm trong: Nhóm/ }), 'khach');
     const labels = within(box)
       .getAllByRole('checkbox')
@@ -119,7 +119,7 @@ describe('ô "Nhóm"', () => {
   it('ai cũng tạo được nhóm của mình tại chỗ (không cần quyền nào): nhóm mới chỉ được TẠO khi bấm Lưu (rồi gửi cùng tập nhóm)', async () => {
     const user2 = renderCell(project([]));
     await user2.click(screen.getByRole('button', { name: /^—/ }));
-    const box = await screen.findByRole('group', { name: /Nhóm của tôi cho Nhân sự/ });
+    const box = await screen.findByRole('group', { name: /Nhóm dự án cho Nhân sự/ });
     await user2.type(
       await within(box).findByRole('textbox', { name: 'Tên nhóm mới' }),
       'Dự án mới{Enter}',
@@ -139,7 +139,7 @@ describe('ô "Nhóm"', () => {
   it('Huỷ sau khi gõ nhóm mới → không tạo nhóm nào; bỏ tích nhóm nháp → nhóm nháp biến mất', async () => {
     const user = renderCell(project([]));
     await user.click(screen.getByRole('button', { name: /^—/ }));
-    const box = await screen.findByRole('group', { name: /Nhóm của tôi cho Nhân sự/ });
+    const box = await screen.findByRole('group', { name: /Nhóm dự án cho Nhân sự/ });
     await user.type(
       await within(box).findByRole('textbox', { name: 'Tên nhóm mới' }),
       'Tạm{Enter}',
@@ -156,7 +156,7 @@ describe('ô "Nhóm"', () => {
   it('tên nhóm mới trùng nhóm có sẵn → chỉ tích nhóm đó, không tạo trùng', async () => {
     const user = renderCell(project([]));
     await user.click(screen.getByRole('button', { name: /^—/ }));
-    const box = await screen.findByRole('group', { name: /Nhóm của tôi cho Nhân sự/ });
+    const box = await screen.findByRole('group', { name: /Nhóm dự án cho Nhân sự/ });
     await user.type(
       await within(box).findByRole('textbox', { name: 'Tên nhóm mới' }),
       'hạ tầng{Enter}',
@@ -177,7 +177,7 @@ describe('ô "Nhóm"', () => {
       .mockResolvedValueOnce({ data: { id: 'g2', name: 'Hai', color: null } });
     const user = renderCell(project([]));
     await user.click(screen.getByRole('button', { name: /^—/ }));
-    const box = await screen.findByRole('group', { name: /Nhóm của tôi cho Nhân sự/ });
+    const box = await screen.findByRole('group', { name: /Nhóm dự án cho Nhân sự/ });
     const input = await within(box).findByRole('textbox', { name: 'Tên nhóm mới' });
     await user.type(input, 'Một{Enter}');
     await user.type(input, 'Hai{Enter}');
@@ -201,11 +201,11 @@ describe('ô "Nhóm"', () => {
     h.put.mockRejectedValue(new Error('boom'));
     const user = renderCell(project([]));
     await user.click(screen.getByRole('button', { name: /^—/ }));
-    const box = await screen.findByRole('group', { name: /Nhóm của tôi cho Nhân sự/ });
+    const box = await screen.findByRole('group', { name: /Nhóm dự án cho Nhân sự/ });
     await user.click(await within(box).findByRole('checkbox', { name: /Hạ tầng/ }));
     await user.click(within(box).getByRole('button', { name: 'Lưu' }));
     await waitFor(() => expect(toast.error).toHaveBeenCalled());
-    expect(screen.getByRole('group', { name: /Nhóm của tôi cho Nhân sự/ })).toBeTruthy();
+    expect(screen.getByRole('group', { name: /Nhóm dự án cho Nhân sự/ })).toBeTruthy();
   });
 
   it('danh mục nhóm đang tải / lỗi: báo rõ, không nói "Chưa có nhóm nào"; Thử lại tải lại', async () => {
@@ -230,7 +230,7 @@ describe('ô "Nhóm"', () => {
   it('không cần quyền quản trị: mở popover không tra quyền dự án; người chỉ xem cũng sửa được nhóm CỦA MÌNH', async () => {
     const user = renderCell(project([A]));
     await user.click(screen.getByRole('button', { name: /^1 nhóm/ }));
-    const box = await screen.findByRole('group', { name: /Nhóm của tôi cho Nhân sự/ });
+    const box = await screen.findByRole('group', { name: /Nhóm dự án cho Nhân sự/ });
     expect(await within(box).findByRole('button', { name: 'Lưu' })).toBeTruthy();
     expect(h.get).not.toHaveBeenCalledWith('/projects/p1/permissions/me');
     expect(within(box).getByRole('textbox', { name: 'Tên nhóm mới' })).toBeTruthy();

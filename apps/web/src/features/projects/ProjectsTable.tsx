@@ -30,7 +30,7 @@ export function ProjectsHeaderRow() {
     >
       <span>Dự án</span>
       <span>Loại</span>
-      <span>Nhóm của tôi</span>
+      <span>Nhóm dự án</span>
       <span>Phụ trách</span>
       <span>{TERM.issue.charAt(0).toUpperCase() + TERM.issue.slice(1)}</span>
       <span className="w-32" />

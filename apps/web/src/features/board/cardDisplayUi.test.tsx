@@ -225,11 +225,9 @@ describe('nối vào Bảng việc (đọc source)', () => {
   it('việc mẫu không mang trường status (không cần tên nhóm trạng thái)', () => {
     expect(read('CardDisplayPopover.tsx')).not.toMatch(/\bstatus:/);
   });
-  it('chip Hiển thị đứng trước "Nhóm theo người" để còn nhìn thấy ở dải cuộn ngang của mobile', () => {
-    expect(page.indexOf('<CardDisplayPopover')).toBeLessThan(
-      page.indexOf('onClick={toggleAssignee}'),
-    );
+  it('chip Hiển thị đứng sau bộ lọc người; không còn nút "Nhóm theo người"', () => {
     expect(page.indexOf('<CardDisplayPopover')).toBeGreaterThan(page.indexOf('<AssigneeFilter'));
+    expect(page).not.toContain('Nhóm theo người');
   });
   it('nút kích hoạt: chữ nhìn thấy làm tên, vùng bấm 44px trên cảm ứng', () => {
     const pop = read('CardDisplayPopover.tsx');

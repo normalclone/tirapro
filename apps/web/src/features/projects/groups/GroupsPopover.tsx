@@ -24,7 +24,7 @@ export function GroupDot({ color }: { color: string | null }) {
 }
 
 /**
- * Ô "Nhóm của tôi" của một dự án: "N nhóm" (0 → "—"); bấm mở popover chọn các nhóm CỦA BẠN cho dự án (chọn nhiều, tìm theo
+ * Ô "Nhóm dự án" của một dự án: "N nhóm" (0 → "—"); bấm mở popover chọn các nhóm CỦA BẠN cho dự án (chọn nhiều, tìm theo
  * tên, tạo nhóm mới tại chỗ — nhóm chỉ được tạo khi bấm Lưu). Nhóm là của riêng từng người: ai xem được dự án cũng tự xếp
  * nhóm của mình, không ảnh hưởng người khác và không thấy nhóm của họ. Đang tải / lỗi của danh mục nhóm được báo rõ, không
  * giả làm "trống".
@@ -83,7 +83,7 @@ function GroupsPopoverBody({ project, onClose }: { project: ProjectDto; onClose:
   return (
     <div aria-labelledby={titleId} role="group">
       <h3 id={titleId} className="mb-2 truncate text-sm font-medium text-ink-strong">
-        Nhóm của tôi cho {project.name}
+        Nhóm dự án cho {project.name}
       </h3>
       <GroupsEditor project={project} onClose={onClose} />
     </div>
@@ -163,7 +163,7 @@ function GroupsEditor({ project, onClose }: { project: ProjectDto; onClose: () =
   return (
     <div>
       <ShareChecklist
-        label="Nhóm của tôi"
+        label="Nhóm dự án"
         items={items}
         selected={new Set(ids)}
         onToggle={toggle}

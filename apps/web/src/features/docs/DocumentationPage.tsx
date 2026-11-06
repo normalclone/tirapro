@@ -1147,9 +1147,9 @@ export function DocumentationPage() {
                 <Feature icon={<LayoutGrid className="h-4 w-4" />} title="Nhóm dự án">
                   Nhóm là của <strong>riêng từng người</strong>: mỗi người tự xếp dự án vào nhóm của
                   mình (một dự án thuộc được nhiều nhóm), không ai thấy nhóm của người khác. Trang{' '}
-                  <Mono>Dự án</Mono> có cột <strong>Nhóm của tôi</strong> (bấm để thêm/bớt nhóm),
+                  <Mono>Dự án</Mono> có cột <strong>Nhóm dự án</strong> (bấm để thêm/bớt nhóm),
                   công tắc <Mono>Danh sách / Theo nhóm</Mono> và nút{' '}
-                  <Mono>Quản lý nhóm của tôi</Mono>.
+                  <Mono>Nhóm dự án</Mono>.
                 </Feature>
                 <Feature
                   icon={<Sparkles className="h-4 w-4" />}

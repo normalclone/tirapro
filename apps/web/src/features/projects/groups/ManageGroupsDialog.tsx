@@ -11,7 +11,7 @@ import { useDeleteProgram, usePrograms, type ProgramDto } from './programsApi';
 import { GroupDot } from './GroupsPopover';
 
 /**
- * "Quản lý nhóm của tôi": tạo / sửa tên, màu, thời hạn / xoá nhóm dự án CỦA NGƯỜI DÙNG (nhóm là của riêng từng người, ai
+ * "Nhóm dự án": tạo / sửa tên, màu, thời hạn / xoá nhóm dự án CỦA NGƯỜI DÙNG (nhóm là của riêng từng người, ai
  * cũng quản lý được nhóm của mình; không ai thấy nhóm của người khác). Mở từ trang Dự án; dùng lại hộp sửa nhóm có sẵn. Số dự án của từng nhóm do trang truyền vào (`counts`) để khớp với
  * danh sách đang hiện (cùng bộ lọc "Hiện đã lưu trữ") — không lấy số tổng của máy chủ.
  */
@@ -59,7 +59,7 @@ export function ManageGroupsDialog({
         onOpenChange={(o) => {
           if (!o) onClose();
         }}
-        title="Nhóm của tôi"
+        title="Nhóm dự án"
         description="Chỉ mình bạn thấy các nhóm này. Một dự án thuộc được nhiều nhóm của bạn."
         size="md"
         footer={
@@ -88,7 +88,7 @@ export function ManageGroupsDialog({
             size="compact"
             icon={<FolderTree className="h-5 w-5" />}
             title="Chưa có nhóm nào"
-            description="Tạo nhóm đầu tiên rồi gán dự án vào nhóm ở cột “Nhóm của tôi” của danh sách. Nhóm của bạn chỉ mình bạn thấy."
+            description="Tạo nhóm đầu tiên rồi gán dự án vào nhóm ở cột “Nhóm dự án” của danh sách. Nhóm của bạn chỉ mình bạn thấy."
           />
         ) : (
           <ul className="divide-y divide-border rounded-md border border-border">

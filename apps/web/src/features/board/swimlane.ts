@@ -31,10 +31,6 @@ export function toggleSwimlane(
   return next === boardBy ? null : next;
 }
 
-/** Bấm "Nhóm theo người". */
-export const toggleAssigneeSwimlane = (boardBy: SwimlaneBy, override: SwimlaneOverride) =>
-  toggleSwimlane(boardBy, override, 'assignee');
-
 /** Phần tối thiểu của `Storage` mà module dùng (để test bằng Map). */
 export type SwimlaneStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 
@@ -59,6 +55,8 @@ function readRaw(key: string | null, storage: SwimlaneStorage | null): string | 
 /** Sai/thiếu → null; trùng cấu hình bảng hiện tại → null (để admin đổi cấu hình bảng về sau vẫn có hiệu lực). */
 function normalizeSwimlaneOverride(raw: string | null, boardBy: SwimlaneBy): SwimlaneOverride {
   const v = parseSwimlaneOverride(raw);
+  // Nút "Nhóm theo người" đã bỏ (người dùng yêu cầu 2026-11-06): sở thích riêng cũ theo người không còn cách tắt → bỏ qua.
+  if (v === 'assignee') return null;
   return v === boardBy ? null : v;
 }
 
@@ -121,13 +119,11 @@ export function useSwimlaneOverride(boardId: string | undefined, boardBy: Swimla
     },
     [boardBy, storageKey],
   );
-  const toggleAssignee = useCallback(() => toggle('assignee'), [toggle]);
   const toggleTeam = useCallback(() => toggle('team'), [toggle]);
 
   return {
     swimlaneBy: effectiveSwimlane(boardBy, override),
     override,
-    toggleAssignee,
     toggleTeam,
   };
 }

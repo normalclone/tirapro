@@ -82,8 +82,8 @@ function renderPage(initial = '/projects') {
 
 const section = (name: RegExp | string) => screen.getByRole('region', { name });
 
-describe('trang Dự án — cột "Nhóm của tôi"', () => {
-  it('chế độ Danh sách: cột "Nhóm của tôi" hiện "N nhóm" / "—" cho từng dự án', async () => {
+describe('trang Dự án — cột "Nhóm dự án"', () => {
+  it('chế độ Danh sách: cột "Nhóm dự án" hiện "N nhóm" / "—" cho từng dự án', async () => {
     renderPage();
     await screen.findByText('Dự án AAA');
     expect(screen.getByRole('button', { name: /^2 nhóm.*Dự án AAA/ })).toBeTruthy();
@@ -180,24 +180,24 @@ describe('trang Dự án — chế độ "Danh sách / Theo nhóm"', () => {
   });
 });
 
-describe('trang Dự án — "Quản lý nhóm của tôi"', () => {
+describe('trang Dự án — "Nhóm dự án"', () => {
   it('ai cũng có nút (nhóm là của riêng mình, không cần quyền nào); mở hộp liệt kê nhóm kèm số dự án ĐANG HIỆN (theo công tắc lưu trữ)', async () => {
     const user = renderPage();
     await screen.findByText('Dự án AAA');
-    await user.click(screen.getByRole('button', { name: /Quản lý nhóm của tôi/ }));
-    const dlg = await screen.findByRole('dialog', { name: 'Nhóm của tôi' });
+    await user.click(screen.getByRole('button', { name: /Nhóm dự án/ }));
+    const dlg = await screen.findByRole('dialog', { name: 'Nhóm dự án' });
     await within(dlg).findByText('Hạ tầng');
     const row = (name: string) => within(dlg).getByText(name).closest('li')!;
     expect(within(row('Hạ tầng')).getByText('2 dự án')).toBeTruthy(); // không đếm dự án lưu trữ đang ẩn
     expect(within(row('Nhóm rỗng')).getByText('0 dự án')).toBeTruthy();
   });
 
-  it('người không có quyền nào (chỉ xem) vẫn có nút và tự quản lý nhóm của mình; cột đầu bảng tên "Nhóm của tôi"', async () => {
+  it('người không có quyền nào (chỉ xem) vẫn có nút và tự quản lý nhóm của mình; cột đầu bảng tên "Nhóm dự án"', async () => {
     useAuth.setState({ permissions: [] });
     renderPage();
     await screen.findByText('Dự án AAA');
-    expect(screen.getByRole('button', { name: /Quản lý nhóm của tôi/ })).toBeTruthy();
-    expect(screen.getByText('Nhóm của tôi', { selector: 'span' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /Nhóm dự án/ })).toBeTruthy();
+    expect(screen.getByText('Nhóm dự án', { selector: 'span' })).toBeTruthy();
     // Tạo dự án vẫn theo quyền project:create (không liên quan tới nhóm)
     expect(screen.queryByRole('button', { name: /Tạo dự án/ })).toBeNull();
   });
@@ -206,8 +206,8 @@ describe('trang Dự án — "Quản lý nhóm của tôi"', () => {
     h.delete.mockResolvedValue({ data: { success: true } });
     const user = renderPage();
     await screen.findByText('Dự án AAA');
-    await user.click(screen.getByRole('button', { name: /Quản lý nhóm của tôi/ }));
-    const dlg = await screen.findByRole('dialog', { name: 'Nhóm của tôi' });
+    await user.click(screen.getByRole('button', { name: /Nhóm dự án/ }));
+    const dlg = await screen.findByRole('dialog', { name: 'Nhóm dự án' });
     await user.click(await within(dlg).findByRole('button', { name: 'Xoá nhóm Nhóm rỗng' }));
     await user.click(await screen.findByRole('button', { name: 'Xoá' }));
     await waitFor(() => expect(h.delete).toHaveBeenCalledWith('/programs/ge'));

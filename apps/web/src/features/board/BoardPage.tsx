@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Columns3, Layers, SearchX, UserRound, Users, UsersRound } from 'lucide-react';
+import { Columns3, Layers, SearchX, UserRound, UsersRound } from 'lucide-react';
 import { toast } from 'sonner';
 import type {
   BoardColumnDto,
@@ -279,7 +279,6 @@ export function BoardPage() {
   const {
     swimlaneBy,
     override: swimlaneOverride,
-    toggleAssignee,
     toggleTeam,
   } = useSwimlaneOverride(board?.id, board?.swimlaneBy ?? 'none');
   // Tuỳ chọn hiển thị thẻ của riêng người dùng (mật độ, trường) — đi qua context để memo của thẻ không đổi.
@@ -727,21 +726,6 @@ export function BoardPage() {
                       onReset={cardDisplay.reset}
                     />
                   )}
-                  <button
-                    type="button"
-                    onClick={toggleAssignee}
-                    aria-pressed={swimlaneBy === 'assignee'}
-                    title={`Chia bảng thành hàng theo người phụ trách — chỉ áp cho bạn${swimlaneOverride === null ? '' : ' (đang khác cấu hình bảng)'}. Kéo việc sang hàng khác để giao cho người đó.`}
-                    className={cn(
-                      'inline-flex h-7 items-center gap-1.5 rounded-full border px-2.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
-                      CHIP_TOUCH_HIT,
-                      swimlaneBy === 'assignee'
-                        ? 'border-transparent bg-primary-subtle text-primary'
-                        : 'border-border text-muted hover:bg-surface-2 hover:text-ink',
-                    )}
-                  >
-                    <Users className="h-3.5 w-3.5" aria-hidden /> Nhóm theo người
-                  </button>
                   {(subTeams.length > 0 || swimlaneBy === 'team') && (
                     <button
                       type="button"

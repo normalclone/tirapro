@@ -79,7 +79,7 @@ export function ProjectsPage() {
         onClick={() => setManageOpen(true)}
         data-tour="projects-manage-groups"
       >
-        <FolderTree className="h-4 w-4" /> Quản lý nhóm của tôi
+        <FolderTree className="h-4 w-4" /> Nhóm dự án
       </Button>
       {canCreate && (
         <Button size="sm" onClick={() => setCreateOpen(true)} data-tour="projects-create">

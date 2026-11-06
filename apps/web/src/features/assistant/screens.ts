@@ -39,7 +39,7 @@ export const SCREENS: ScreenInfo[] = [
     pattern: '/projects',
     name: 'Dự án',
     purpose:
-      'Danh sách các dự án bạn thấy, xem theo danh sách hoặc theo nhóm (cột Nhóm của tôi, nút Quản lý nhóm của tôi — nhóm là của riêng từng người); mở một dự án để vào Bảng việc, Việc chờ, Báo cáo…',
+      'Danh sách các dự án bạn thấy, xem theo danh sách hoặc theo nhóm (cột Nhóm dự án, nút Nhóm dự án — nhóm là của riêng từng người); mở một dự án để vào Bảng việc, Việc chờ, Báo cáo…',
     docAnchor: 'khai-niem',
     chips: ['Tạo dự án', 'Việc của tôi', 'Khái niệm cơ bản'],
   },
