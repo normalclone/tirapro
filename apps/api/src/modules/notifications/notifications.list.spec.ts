@@ -98,7 +98,7 @@ describe('NotificationsService — dự án riêng tư: thông báo cũ của d�
     });
   });
 
-  it('admin hệ thống: không lọc', async () => {
+  it('Quản trị: không lọc', async () => {
     const { service, prisma } = setup({ isSystemAdmin: true, visible });
     await service.listMine('u1', undefined, 30);
     expect(whereOf(prisma.notification.findMany)).toEqual({ recipientId: 'u1' });

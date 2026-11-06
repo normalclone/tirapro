@@ -5,6 +5,7 @@ import { assertParityDatabase } from '../../common/testing/parity-db-guard';
 import type { PrismaService } from '../../infra/prisma/prisma.service';
 import { AnalyticsService } from '../analytics/analytics.service';
 import { AuditService } from '../audit/audit.service';
+import { AdminSyncService } from '../members/admin-sync';
 import { MembersService } from '../members/members.service';
 import { ProjectTeamsService } from '../project-teams/project-teams.service';
 import { RbacService } from '../rbac/rbac.service';
@@ -156,6 +157,7 @@ describe.skipIf(!DB_URL)('team riêng trong dự án ↔ Postgres thật', () =>
       { revokeAllForUser: vi.fn(() => Promise.resolve([])), dropCaches: vi.fn() } as never,
       { emit: vi.fn() } as never,
       audit,
+      new AdminSyncService(),
     );
     pteams = new ProjectTeamsService(db, rbac, { emit: vi.fn() } as never, audit);
     const access = {

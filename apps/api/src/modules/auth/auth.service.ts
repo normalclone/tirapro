@@ -29,7 +29,7 @@ export class AuthService {
   async register(input: RegisterInput, meta: RefreshMeta) {
     if (!this.settings.flags().signupEnabled) {
       throw new ForbiddenAppException(
-        'Đăng ký công khai đang tắt. Liên hệ admin hệ thống để được cấp tài khoản.',
+        'Đăng ký công khai đang tắt. Liên hệ Quản trị để được cấp tài khoản.',
       );
     }
     const email = input.email.toLowerCase();

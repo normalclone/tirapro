@@ -14,7 +14,7 @@ export const APP_NAV_LABELS = {
   wiki: 'Wiki',
   connect: 'Kết nối',
   settings: 'Cài đặt',
-  admin: 'Quản trị hệ thống',
+  admin: 'Quản trị',
   notifications: 'Thông báo',
   account: 'Tài khoản',
   documentation: 'Tài liệu hướng dẫn',
@@ -66,6 +66,7 @@ export const TAB_SHORT_LABELS = {
 export const PROJECT_CONFIG_LABELS = {
   general: 'Chung',
   members: 'Thành viên',
+  roles: 'Vai trò',
   components: 'Thành phần',
   versions: 'Phiên bản',
   labels: 'Nhãn',

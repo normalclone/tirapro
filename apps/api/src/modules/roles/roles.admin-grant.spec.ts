@@ -133,7 +133,7 @@ describe('RolesService — chỉ quản trị mới cấp/gỡ organization:admi
     });
   });
 
-  describe('quản trị organization / admin hệ thống được phép', () => {
+  describe('quản trị organization / Quản trị được phép', () => {
     it('tạo, thêm, gỡ và sửa vai trò đang có organization:admin', async () => {
       const a = setup({ callerIsAdmin: true });
       await expect(a.svc.create('w1', body([ADMIN]), 'admin')).resolves.toBeDefined();

@@ -207,8 +207,8 @@ export function grantAdminCopy(
       ? `Vai trò "${roleName}" đang gán cho ${memberCount} thành viên — tất cả sẽ`
       : `Vai trò "${roleName}" chưa gán cho ai; người được gán sau này sẽ`;
   return {
-    title: 'Cấp quyền "Quản trị tổ chức"?',
-    description: `Mọi người giữ vai trò này sẽ có toàn quyền quản trị tổ chức (thành viên, vai trò, cấu hình, mọi dự án). ${who} có quyền đó ngay khi lưu.`,
+    title: 'Cấp quyền "Quản trị"?',
+    description: `Mọi người giữ vai trò này sẽ có toàn quyền Quản trị (thành viên, vai trò, cấu hình, mọi dự án). ${who} có quyền đó ngay khi lưu.`,
     confirmLabel: 'Cấp quyền quản trị',
   };
 }

@@ -24,6 +24,6 @@ export function aiFallbackNote(
   if (reason === 'unconfigured')
     return audience === 'admin'
       ? 'AI chưa được bật hoặc chưa cấu hình, nên đây là gợi ý cơ bản. Hãy thêm khoá AI (ANTHROPIC_API_KEY) cho máy chủ để AI tách và chọn chính xác hơn.'
-      : 'AI chưa được bật hoặc chưa cấu hình, nên đây là gợi ý cơ bản. Liên hệ quản trị hệ thống để bật AI.';
+      : 'AI chưa được bật hoặc chưa cấu hình, nên đây là gợi ý cơ bản. Liên hệ Quản trị để bật AI.';
   return 'AI đang bận nên đây là gợi ý cơ bản. Bạn có thể thử lại sau ít phút.';
 }

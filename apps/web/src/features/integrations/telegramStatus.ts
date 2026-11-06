@@ -25,7 +25,7 @@ export function testToast(res: TestResult): { kind: 'success' | 'info' | 'warnin
     case 'PLATFORM_OFF':
       return {
         kind: 'warning',
-        text: 'Tích hợp đang tắt toàn hệ thống — nhờ quản trị hệ thống bật lại.',
+        text: 'Tích hợp đang tắt toàn hệ thống — nhờ Quản trị bật lại.',
       };
     default:
       break;

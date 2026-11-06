@@ -24,7 +24,7 @@ export function telegramHealth(i: TelegramHealthInput): TelegramHealth {
     return {
       state: 'PLATFORM_OFF',
       label: 'Đang tắt toàn hệ thống',
-      hint: 'Tích hợp đang bị tắt toàn hệ thống — nhờ quản trị hệ thống bật lại.',
+      hint: 'Tích hợp đang bị tắt toàn hệ thống — nhờ Quản trị bật lại.',
     };
   }
   if (i.status === 'ERROR') {

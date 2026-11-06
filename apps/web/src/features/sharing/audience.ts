@@ -67,9 +67,9 @@ const ORGANIZATION_LABEL = 'Mọi thành viên tổ chức';
  * Quản trị viên (tổ chức / hệ thống) thấy MỌI mục đã chia sẻ theo nhóm hoặc dự án, kể cả dự án riêng tư và nhóm họ không
  * thuộc (`dashboardVisibleWhere`, `visibilityScope` ← `visibleWhere` = `{}` cho admin). Mục RIÊNG TƯ thì không: admin không thấy.
  */
-const WITH_ADMINS = ' và Quản trị chung';
+const WITH_ADMINS = ' và Quản trị';
 /** Ghi chú dưới mức "Dự án" riêng tư — khớp tiêu đề: Quản trị chung vẫn thấy (xem `WITH_ADMINS`). */
-export const PRIVATE_PROJECT_NOTE = 'Người ngoài dự án không thấy (trừ Quản trị chung).';
+export const PRIVATE_PROJECT_NOTE = 'Người ngoài dự án không thấy (trừ Quản trị).';
 
 function view(headline: string, note: string | null, all: readonly AudiencePerson[]): AudienceView {
   const { shown, extra } = splitPeople(all);

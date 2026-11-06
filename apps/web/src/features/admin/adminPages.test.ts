@@ -15,7 +15,7 @@ const PAGES: [route: string, file: string][] = [
   ['points', 'features/admin/AdminPointsPage.tsx'],
 ];
 
-describe('trang Quản trị hệ thống dùng PageFrame lg + PageHeader (T7)', () => {
+describe('trang Quản trị dùng PageFrame lg + PageHeader (T7)', () => {
   it.each(PAGES)(
     '%s: PageFrame lg, PageHeader, không h1 tay/pageContainer/max-w/icon cạnh tiêu đề',
     (_r, file) => {

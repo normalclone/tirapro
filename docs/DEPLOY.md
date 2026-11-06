@@ -352,3 +352,32 @@ pnpm --filter @tirapro/api run automation:seal-secrets                # ghi vào
 Cần `DATABASE_URL` và `INTEGRATION_ENCRYPTION_KEY` (đúng giá trị API đang dùng) trong môi trường — cách nạp biến và chạy trong Docker/Render: xem [Checklist triển khai](#checklist-triển-khai--nâng-cấp). Script không đổi schema,
 không cần `prisma migrate`. Nếu in "bỏ qua (xung đột)" (có người đang sửa quy tắc) thì chạy lại. Client bên thứ ba từng đọc
 `actions[].secret` qua API sẽ không còn lấy lại được khoá.
+
+## Một vai trò "Quản trị" (gộp Quản trị tổ chức + Quản trị hệ thống)
+
+Không có migration và không cần backfill nếu dữ liệu đang khớp. Máy chủ đồng bộ `User.isSystemAdmin` với vai trò tổ chức mang quyền `organization:admin` (thêm/đổi/gỡ vai trò, tạo tài khoản kèm vai trò, bật/tắt "Quản trị" ở Quản trị › Tài khoản). Bỏ Quản trị của người cuối cùng bị chặn (422).
+
+Sau khi triển khai, kiểm tra (chỉ đọc; thoát mã 1 nếu có người lệch hai cờ):
+
+```
+pnpm --filter @tirapro/api run admins:check
+```
+
+Người lệch → bật/tắt "Quản trị" ở Quản trị › Tài khoản để đồng bộ. Lưu ý: tạo tổ chức mới KHÔNG tự cấp Quản trị hệ thống cho người tạo (tránh người có quyền "lập tổ chức" tự nâng thành Quản trị hệ thống) — `admins:check` sẽ báo họ nếu có.
+
+## Vai trò theo dự án, dự án công khai chỉ xem
+
+Gồm hai migration (thêm cột `Role.projectId` nullable + chỉ mục; thêm quyền `report:view` cho Organization Member) và một script chuyển dữ liệu. **Thứ tự bắt buộc:**
+
+1. `prisma migrate deploy` (nhẹ: thêm cột nullable, không khoá bảng lớn; chỉ mục duy nhất của tên vai trò được thay bằng chỉ mục từng phần — mẫu vẫn duy nhất theo tổ chức, vai trò dự án duy nhất theo dự án).
+2. **Chạy script chuyển dữ liệu TRƯỚC khi rollout image mới** (image mới đổi vai trò dự án mặc định của Organization Member từ Developer sang "chỉ xem"; ai không có `ProjectMembership` sẽ mất quyền làm việc trong dự án công khai):
+
+   ```
+   pnpm --filter @tirapro/api run public-members:materialize -- --dry-run   # chỉ in danh sách, không ghi
+   pnpm --filter @tirapro/api run public-members:materialize                # ghi vào DB
+   ```
+
+   Với mỗi dự án công khai còn sống, mỗi Organization Member chưa có `ProjectMembership` nhưng có hoạt động trong dự án (người tạo/phụ trách/được giao/bình luận/log giờ trên việc của dự án) được thêm `ProjectMembership` vai trò Developer. Idempotent, chạy lại an toàn. Cần `DATABASE_URL`; không đổi schema. Trong container: `node scripts/materialize-public-members.mjs [--dry-run]` (Dockerfile đã copy script + `scripts/lib`).
+3. Rollout image mới. Vai trò dự án hiện có (Project Admin, Developer, Tester, Reporter…) giữ nguyên và vẫn hiệu lực; Project Admin tạo vai trò riêng ở Cấu hình dự án › Vai trò.
+
+Ghi chú: danh bạ `GET /members` giờ chỉ đầy đủ cho Quản trị / người có `member:manage` / Project Admin; người khác chỉ thấy mình và người cùng dự án.

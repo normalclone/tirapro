@@ -34,7 +34,7 @@ export function PrivacySection({ project, canAdmin }: { project: ProjectDto; can
                 : losing === 0
                   ? 'Mọi người đang tham gia đều đã được thêm riêng nên không ai mất quyền.'
                   : `${losing} người đang tham gia mặc định sẽ mất quyền vào dự án.`
-            } Từ giờ chỉ thành viên được thêm ở mục Thành viên (cùng quản trị tổ chức) thấy dự án. Các kênh Telegram gắn riêng cho dự án này sẽ tự TẮT (bật lại ở mục Kết nối nếu thật sự cần), và báo cáo định kỳ của dự án không còn gửi vào kênh chat trừ khi bạn cho phép lại.`,
+            } Từ giờ chỉ thành viên được thêm ở mục Thành viên (cùng Quản trị) thấy dự án. Các kênh Telegram gắn riêng cho dự án này sẽ tự TẮT (bật lại ở mục Kết nối nếu thật sự cần), và báo cáo định kỳ của dự án không còn gửi vào kênh chat trừ khi bạn cho phép lại.`,
             confirmLabel: 'Chuyển sang riêng tư',
             destructive: true,
           }
@@ -67,7 +67,7 @@ export function PrivacySection({ project, canAdmin }: { project: ProjectDto; can
             Dự án riêng tư
           </p>
           <p className="mt-0.5 text-sm text-muted">
-            Chỉ thành viên dự án và quản trị tổ chức thấy dự án này.
+            Chỉ thành viên dự án và Quản trị thấy dự án này.
           </p>
           {!canAdmin && <p className="mt-1 text-xs text-faint">Chỉ quản trị dự án mới đổi được.</p>}
         </div>

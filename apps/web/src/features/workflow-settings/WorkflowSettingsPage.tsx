@@ -156,7 +156,7 @@ export function WorkflowSettingsPage() {
               description={
                 canManage
                   ? 'Quy trình là chuỗi trạng thái mà mỗi công việc đi qua, từ lúc mở đến lúc xong. Tạo quy trình đầu tiên để bắt đầu.'
-                  : 'Chưa có quy trình nào. Nhờ quản trị chung tạo giúp.'
+                  : 'Chưa có quy trình nào. Nhờ Quản trị tạo giúp.'
               }
               action={
                 canManage ? (

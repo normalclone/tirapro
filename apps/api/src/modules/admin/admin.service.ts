@@ -13,7 +13,9 @@ import { offsetPage } from '../../common/dto/page-result';
 import { generateTempPassword } from '../../common/password';
 import { AuditService } from '../audit/audit.service';
 import { ApiKeyService } from '../api-keys/api-key.service';
+import { AdminSyncService } from '../members/admin-sync';
 import { MembersService } from '../members/members.service';
+import { RbacService } from '../rbac/rbac.service';
 import { SYSTEM_USER_EMAIL } from '../../common/system-user';
 import type {
   AddToOrganizationInput,
@@ -57,18 +59,13 @@ export class AdminService {
     private readonly members: MembersService,
     private readonly apiKeys: ApiKeyService,
     private readonly events: EventEmitter2,
+    private readonly adminSync: AdminSyncService,
+    private readonly rbac: RbacService,
   ) {}
 
-  /**
-   * Chặn bỏ / khoá admin hệ thống hoạt động CUỐI CÙNG. Khoá hàng admin đang hoạt động (`FOR UPDATE`) trong cùng
-   * transaction với thao tác ghi → hai admin khoá/hạ quyền lẫn nhau đồng thời sẽ xếp hàng, người thứ hai thấy tập đã co lại.
-   */
-  private async assertNotLastAdmin(tx: Prisma.TransactionClient, userId: string): Promise<void> {
-    const admins = await tx.$queryRaw<{ id: string }[]>`
-      SELECT "id" FROM "User" WHERE "isSystemAdmin" = true AND "status" = 'ACTIVE' ORDER BY "id" FOR UPDATE`;
-    if (admins.some((a) => a.id === userId) && admins.length <= 1) {
-      throw new BusinessRuleException('Không thể bỏ admin hệ thống cuối cùng');
-    }
+  /** Vai trò tổ chức của người này vừa đổi ở các tổ chức đó → xoá cache quyền (`rbac:*`) như các chỗ đổi vai trò khác. */
+  private async invalidateOrganizations(userId: string, organizationIds: string[]): Promise<void> {
+    await Promise.all(organizationIds.map((o) => this.rbac.invalidate(userId, o)));
   }
 
   /** Sau khi thu hồi phiên: ngắt mọi socket đang mở của user (gateway lo cả node khác qua Redis adapter). */
@@ -135,13 +132,20 @@ export class AdminService {
       },
       select: USER_SELECT,
     });
-    // Tạo tài khoản (có thể là admin hệ thống) là thao tác giá trị cao → ghi nhật ký toàn hệ thống; không ghi mật khẩu.
+    // Một vai trò "Quản trị": tạo tài khoản kèm Quản trị → cũng đặt vai trò tổ chức Quản trị (như bật ở Quản trị › Tài khoản).
+    if (created.isSystemAdmin) {
+      const res = await this.prisma.$transaction((tx) =>
+        this.adminSync.setAdmin(tx, created.id, true),
+      );
+      await this.invalidateOrganizations(created.id, res.organizationIds);
+    }
+    // Tạo tài khoản (có thể là Quản trị) là thao tác giá trị cao → ghi nhật ký toàn hệ thống; không ghi mật khẩu.
     await this.audit.record({
       actorId,
       action: AUDIT_ACTIONS.ACCOUNT_CREATED,
       entityType: 'user',
       entityId: created.id,
-      summary: `Tạo tài khoản ${created.displayName} (${created.email})${created.isSystemAdmin ? ' với quyền admin hệ thống' : ''}`,
+      summary: `Tạo tài khoản ${created.displayName} (${created.email})${created.isSystemAdmin ? ' với quyền Quản trị' : ''}`,
       meta: {
         isSystemAdmin: created.isSystemAdmin,
         canCreateOrganization: created.canCreateOrganization,
@@ -181,17 +185,21 @@ export class AdminService {
     const data = {
       email: newEmail,
       displayName: input.displayName,
-      isSystemAdmin: input.isSystemAdmin,
       canCreateOrganization: input.canCreateOrganization,
     };
-    // Hạ quyền admin hệ thống (kể cả tự hạ) cũng không được để hệ thống hết admin → cùng bộ chặn với khoá admin cuối.
-    const demoting = input.isSystemAdmin === false && found.isSystemAdmin;
-    const updated = demoting
+    // Một vai trò "Quản trị": bật/tắt đổi CẢ cờ lẫn vai trò tổ chức trong cùng transaction (tắt người Quản trị cuối cùng — kể cả
+    // tự tắt — bị chặn 422 ở `adminSync`).
+    const toggling =
+      input.isSystemAdmin !== undefined && input.isSystemAdmin !== found.isSystemAdmin;
+    let touchedOrganizations: string[] = [];
+    const updated = toggling
       ? await this.prisma.$transaction(async (tx) => {
-          await this.assertNotLastAdmin(tx, id);
+          const res = await this.adminSync.setAdmin(tx, id, input.isSystemAdmin!);
+          touchedOrganizations = res.organizationIds;
           return tx.user.update({ where: { id }, data, select: USER_SELECT });
         })
       : await this.prisma.user.update({ where: { id }, data, select: USER_SELECT });
+    await this.invalidateOrganizations(id, touchedOrganizations);
     // Bật/tắt admin hệ thống đổi phạm vi thấy dự án ở MỌI organization: gateway rà lại socket đang mở của người đó
     // (isSystemAdmin đọc trực tiếp từ DB, không có cache quyền để xoá).
     if (input.isSystemAdmin !== undefined && input.isSystemAdmin !== found.isSystemAdmin)
@@ -199,9 +207,7 @@ export class AdminService {
     // Đổi quyền hệ thống (admin hệ thống / được lập tổ chức) — thao tác quản trị giá trị cao nhất.
     const permChanges: string[] = [];
     if (input.isSystemAdmin !== undefined && input.isSystemAdmin !== found.isSystemAdmin) {
-      permChanges.push(
-        input.isSystemAdmin ? 'cấp quyền admin hệ thống' : 'thu quyền admin hệ thống',
-      );
+      permChanges.push(input.isSystemAdmin ? 'cấp quyền Quản trị' : 'thu quyền Quản trị');
     }
     if (
       input.canCreateOrganization !== undefined &&
@@ -231,6 +237,7 @@ export class AdminService {
         meta: {
           isSystemAdmin: updated.isSystemAdmin,
           canCreateOrganization: updated.canCreateOrganization,
+          ...(touchedOrganizations.length ? { organizationIds: touchedOrganizations } : {}),
         },
       });
     }
@@ -257,7 +264,7 @@ export class AdminService {
     }
     await this.prisma.$transaction(async (tx) => {
       const now = new Date();
-      if (deactivate && found.isSystemAdmin) await this.assertNotLastAdmin(tx, id);
+      if (deactivate && found.isSystemAdmin) await this.adminSync.assertNotLastAdmin(tx, id);
       await tx.user.update({
         where: { id },
         data: deactivate ? { status, sessionsRevokedAt: now } : { status },

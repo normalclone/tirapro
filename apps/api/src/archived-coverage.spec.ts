@@ -29,10 +29,10 @@ const EXEMPT: Record<string, string> = {
   'ai/assignee-suggest.service.ts': 'chỉ đọc',
   'ai/claude.service.ts': 'gọi LLM',
   'ai/sprint-assistant.service.ts': 'đề xuất, ghi qua SprintsService/IssuesService (đã chặn)',
-  'admin/admin.service.ts': 'quản trị hệ thống',
-  'admin/admin-overview.service.ts': 'quản trị hệ thống',
-  'admin/admin-system.service.ts': 'quản trị hệ thống',
-  'admin/admin-organizations.service.ts': 'quản trị hệ thống',
+  'admin/admin.service.ts': 'Quản trị',
+  'admin/admin-overview.service.ts': 'Quản trị',
+  'admin/admin-system.service.ts': 'Quản trị',
+  'admin/admin-organizations.service.ts': 'Quản trị',
   'audit/audit.service.ts': 'nhật ký quản trị, không thuộc dự án',
   'api-keys/api-key.service.ts': 'khoá API cấp tổ chức',
   'auth/auth.service.ts': 'định danh',
@@ -42,6 +42,8 @@ const EXEMPT: Record<string, string> = {
   'resources/resources.service.ts': 'cấp tổ chức',
   'teams/teams.service.ts': 'cấp tổ chức',
   'roles/roles.service.ts': 'phân quyền',
+  'roles/project-roles.service.ts':
+    'phân quyền truy cập qua vai trò riêng của dự án (như members/project-teams: quản trị cần chỉnh vai trò khi dự án đã lưu trữ)',
   'members/members.service.ts': 'phân quyền truy cập (quản trị cần chỉnh khi lưu trữ)',
   'project-teams/project-teams.service.ts':
     'phân quyền truy cập qua team (như members: quản trị cần chỉnh người/vai trò khi dự án đã lưu trữ)',

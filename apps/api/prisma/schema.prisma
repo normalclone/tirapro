@@ -382,6 +382,8 @@ model Permission {
 model Role {
   id             String    @id @default(cuid())
   organizationId String?
+  // Vai trò RIÊNG của một dự án (null = vai trò dùng chung/mẫu: hệ thống + tuỳ chỉnh của tổ chức). Chỉ có hiệu lực ở đúng dự án này.
+  projectId      String?
   name           String
   scope          RoleScope
   isSystem       Boolean   @default(false)
@@ -391,13 +393,17 @@ model Role {
   updatedAt      DateTime  @updatedAt
 
   organization            Organization?                @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project                 Project?                     @relation("ProjectOwnRoles", fields: [projectId], references: [id], onDelete: Cascade)
   permissions             RolePermission[]
   organizationMemberships OrganizationMembership[]
   projectMemberships      ProjectMembership[]
   wsMembershipRoles       OrganizationMembershipRole[] @relation("WsMembershipRoles")
   projMembershipRoles     ProjectMembershipRole[]      @relation("ProjMembershipRoles")
 
-  @@unique([organizationId, name, scope])
+  // Tên duy nhất trong cùng (tổ chức, dự án, cấp). Với mẫu (projectId null) NULL không chặn trùng nên migration thêm chỉ mục
+  // duy nhất một phần `Role_template_name_key` (WHERE projectId IS NULL AND organizationId IS NOT NULL) — Prisma không biểu diễn được.
+  @@unique([organizationId, projectId, name, scope])
+  @@index([projectId])
 }
 
 model RolePermission {
@@ -580,6 +586,7 @@ model Project {
   lead              User?                     @relation("ProjectLead", fields: [leadId], references: [id], onDelete: SetNull)
   healthUpdatedBy   User?                     @relation("ProjectHealthUpdater", fields: [healthUpdatedById], references: [id], onDelete: SetNull)
   memberships       ProjectMembership[]
+  ownRoles     Role[]               @relation("ProjectOwnRoles")
   teamLinks         ProjectTeamLink[]
   subTeams          ProjectSubTeam[]
   issues            Issue[]

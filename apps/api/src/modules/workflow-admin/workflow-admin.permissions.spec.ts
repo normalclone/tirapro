@@ -123,10 +123,10 @@ describe('Sửa quy trình: ai được phép (guard thật + kiểm sở hữu)
       it('Quản trị dự án A KHÔNG sửa được quy trình chung của tổ chức', async () => {
         await expect(run(paA, route, shared)).rejects.toMatchObject({ status: 403 });
       });
-      it('vai tuỳ biến có project:admin cấp tổ chức vẫn KHÔNG sửa được quy trình chung (cần Quản trị chung)', async () => {
+      it('vai tuỳ biến có project:admin cấp tổ chức vẫn KHÔNG sửa được quy trình chung (cần Quản trị)', async () => {
         await expect(run(orgProjectAdmin, route, shared)).rejects.toMatchObject({ status: 403 });
       });
-      it('Quản trị chung sửa được cả quy trình chung lẫn của mọi dự án', async () => {
+      it('Quản trị sửa được cả quy trình chung lẫn của mọi dự án', async () => {
         await expect(run(wsAdmin, route, shared)).resolves.toBeUndefined();
         await expect(run(wsAdmin, route, ownB)).resolves.toBeUndefined();
       });
@@ -143,7 +143,7 @@ describe('Sửa quy trình: ai được phép (guard thật + kiểm sở hữu)
     expect(reflect('removeTransition').kind).toBe('workflowTransition');
   });
 
-  it('đặt quy trình mặc định (isDefault) chỉ Quản trị chung, kể cả trên quy trình của dự án mình', async () => {
+  it('đặt quy trình mặc định (isDefault) chỉ Quản trị, kể cả trên quy trình của dự án mình', async () => {
     const { controller } = build();
     const user = {
       id: 'paA',

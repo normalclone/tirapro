@@ -112,7 +112,7 @@ describe('SlaService.update — chuyển chính sách sang dự án khác kiểm
     }
   });
 
-  it('không đổi dự án → không kiểm thêm; quản trị chung/hệ thống (mode all) luôn được', async () => {
+  it('không đổi dự án → không kiểm thêm; Quản trị/hệ thống (mode all) luôn được', async () => {
     const same = asMember([]);
     await same.service.update('w1', 's1', { name: 'Mới', projectId: 'p1' }, 'u1');
     expect(same.rbac.getEffectivePermissions).not.toHaveBeenCalled();

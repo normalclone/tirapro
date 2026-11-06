@@ -40,8 +40,7 @@ export class AdminConsoleController {
   ) {}
 
   private assertSysAdmin(user: AuthUser): void {
-    if (!user.isSystemAdmin)
-      throw new ForbiddenAppException('Chỉ admin hệ thống mới truy cập được');
+    if (!user.isSystemAdmin) throw new ForbiddenAppException('Chỉ Quản trị mới truy cập được');
   }
 
   @Get('overview')

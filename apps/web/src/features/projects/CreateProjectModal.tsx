@@ -10,6 +10,8 @@ import { RadioCard } from '@/components/ui/RadioCard';
 import { Dialog } from '@/components/ui/Dialog';
 import { Input } from '@/components/ui/Input';
 import { cn } from '@/lib/utils';
+import { initialMembers } from './initialMembers';
+import { InitialMembersField, useInitialMembers } from './InitialMembersField';
 import { useCreateProject } from './create-project.api';
 import { templateOptions } from './templateOptions';
 
@@ -51,7 +53,9 @@ function CreateProjectModalInner({ open, onClose }: { open: boolean; onClose: ()
   const [keyTouched, setKeyTouched] = useState(false);
   const [templateKey, setTemplateKey] = useState<ProjectTemplateKey>('scrum');
   const [description, setDescription] = useState('');
-  const [isPrivate, setIsPrivate] = useState(false);
+  // Mặc định RIÊNG TƯ: dự án mới chỉ người được thêm mới thấy; muốn công khai thì bỏ chọn (công khai = mọi người trong tổ chức xem).
+  const [isPrivate, setIsPrivate] = useState(true);
+  const initial = useInitialMembers(open);
 
   function onNameChange(value: string) {
     setName(value);
@@ -78,7 +82,10 @@ function CreateProjectModalInner({ open, onClose }: { open: boolean; onClose: ()
         templateKey,
         type: TEMPLATES.find((t) => t.key === templateKey)?.projectType ?? 'SCRUM',
         description: description.trim() || null,
-        ...(isPrivate ? { isPrivate: true } : {}),
+        isPrivate,
+        ...(initial.memberIds.length > 0 && initial.roleId
+          ? { members: initialMembers(initial.memberIds, initial.roleId) }
+          : {}),
       });
       toast.success(`Đã tạo dự án ${created.key}`);
       onClose();
@@ -173,10 +180,14 @@ function CreateProjectModalInner({ open, onClose }: { open: boolean; onClose: ()
           <span>
             <span className="font-medium text-ink">Dự án riêng tư</span>
             <span className="block text-xs text-muted">
-              Chỉ thành viên dự án mới thấy. Bạn thêm người sau ở Cấu hình → Thành viên.
+              {isPrivate
+                ? 'Chỉ người được thêm vào dự án mới thấy.'
+                : 'Mọi người trong tổ chức xem được; muốn làm việc cần được thêm vào dự án.'}
             </span>
           </span>
         </label>
+
+        <InitialMembersField state={initial} />
       </form>
     </Dialog>
   );

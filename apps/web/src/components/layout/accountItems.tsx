@@ -49,7 +49,7 @@ export function useAccountItems(): AccountItem[] {
     },
     user.isSystemAdmin && {
       key: 'admin',
-      label: 'Quản trị hệ thống',
+      label: 'Quản trị',
       Icon: ShieldCheck,
       onSelect: () => navigate('/admin'),
     },

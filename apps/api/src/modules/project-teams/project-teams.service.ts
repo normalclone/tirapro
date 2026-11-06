@@ -103,7 +103,7 @@ export class ProjectTeamsService {
   ): Promise<ProjectTeamLinkDto[]> {
     const project = await this.requireProject(organizationId, projectId);
     const team = await this.requireTeam(organizationId, teamId);
-    const ids = await this.validateRoles(organizationId, roleIds);
+    const ids = await this.validateRoles(organizationId, roleIds, projectId);
     // Vai trò quản trị: người gọi muốn thêm/gỡ vai trò mang `organization:admin` phải là quản trị tổ chức (kiểm trong transaction, sau
     // khoá, trên vai trò hiện có của liên kết — không đọc trước ngoài khoá để tránh bị đổi xen giữa).
     const { effect, existed, before } = await this.prisma.$transaction(async (tx) => {
@@ -358,6 +358,7 @@ export class ProjectTeamsService {
         id: { in: roleIds },
         scope: 'PROJECT',
         OR: [{ organizationId }, { organizationId: null }],
+        AND: [{ OR: [{ projectId: null }, { projectId: project.id }] }],
       },
       select: { id: true },
     });
@@ -434,13 +435,19 @@ export class ProjectTeamsService {
   }
 
   /** Mỗi vai trò phải tồn tại (hệ thống hoặc của tổ chức) và thuộc cấp DỰ ÁN. Giữ thứ tự gốc (vai trò đầu = vai trò chính). */
-  private async validateRoles(organizationId: string, roleIds: string[]): Promise<string[]> {
+  private async validateRoles(
+    organizationId: string,
+    roleIds: string[],
+    projectId: string,
+  ): Promise<string[]> {
     const unique = [...new Set(roleIds)];
+    // Vai trò RIÊNG của một dự án chỉ gán được ở đúng dự án đó (mẫu dùng chung thì ở đâu cũng được).
     const found = await this.prisma.role.findMany({
       where: {
         id: { in: unique },
         scope: 'PROJECT',
         OR: [{ organizationId }, { organizationId: null }],
+        AND: [{ OR: [{ projectId: null }, { projectId }] }],
       },
       select: { id: true },
     });

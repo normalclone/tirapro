@@ -8,7 +8,7 @@ import { SYSTEM_ROLES } from './permissions';
  * Vai trò do người dùng tự đặt không có trong bảng: giữ nguyên tên họ đã nhập.
  */
 const ROLE_LABELS: Record<string, string> = {
-  [SYSTEM_ROLES.ORGANIZATION_ADMIN]: 'Quản trị chung',
+  [SYSTEM_ROLES.ORGANIZATION_ADMIN]: 'Quản trị',
   [SYSTEM_ROLES.ORGANIZATION_MEMBER]: 'Thành viên',
   [SYSTEM_ROLES.ORGANIZATION_VIEWER]: 'Người xem',
   [SYSTEM_ROLES.PROJECT_ADMIN]: 'Quản trị dự án',

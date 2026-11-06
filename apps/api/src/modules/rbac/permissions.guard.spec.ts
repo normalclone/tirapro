@@ -297,7 +297,7 @@ describe('PermissionsGuard — dự án riêng tư', () => {
     );
   });
 
-  it('admin hệ thống return sớm, không gọi assertProjectVisible', async () => {
+  it('Quản trị return sớm, không gọi assertProjectVisible', async () => {
     const { guard, rbac, ctx } = setup({
       hidden: true,
       ref: { kind: 'param', param: 'projectId' },

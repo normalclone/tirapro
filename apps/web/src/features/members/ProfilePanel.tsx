@@ -14,7 +14,7 @@ import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { settleField } from '@/lib/settleField';
 import { SectionCard } from '@/components/ui/SectionCard';
 
-const LOCKED_HINT = 'Chỉ quản trị hệ thống đổi được họ tên, email và ảnh đại diện.';
+const LOCKED_HINT = 'Chỉ Quản trị đổi được họ tên, email và ảnh đại diện.';
 
 const LOCALES: { value: string; label: string }[] = [
   { value: 'vi', label: 'Tiếng Việt' },

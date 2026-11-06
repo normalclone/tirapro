@@ -10,6 +10,6 @@ import { NoAccess } from '@/components/ui/NoAccess';
  */
 export function AdminLayout() {
   const me = useAuth((s) => s.user);
-  if (me && !me.isSystemAdmin) return <NoAccess who="quản trị hệ thống" />;
+  if (me && !me.isSystemAdmin) return <NoAccess who="Quản trị" />;
   return <Outlet />;
 }

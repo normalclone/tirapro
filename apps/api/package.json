@@ -23,6 +23,8 @@
     "db:reset": "prisma migrate reset --force",
     "db:studio": "prisma studio",
     "db:check-roles": "node scripts/check-system-roles.mjs",
+    "admins:check": "node scripts/check-admins.mjs",
+    "public-members:materialize": "node scripts/materialize-public-members.mjs",
     "points:recompute": "node scripts/recompute-points.mjs",
     "integrations:rekey": "node scripts/rekey-integrations.mjs",
     "workflows:migrate": "node scripts/migrate-workflow-schemes.mjs",

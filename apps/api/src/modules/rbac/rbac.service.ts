@@ -293,7 +293,12 @@ export class RbacService {
     if (roleIds.length === 0) return new Set();
 
     const rows = await this.prisma.rolePermission.findMany({
-      where: { roleId: { in: roleIds } },
+      // Vai trò RIÊNG của dự án chỉ có hiệu lực ở đúng dự án đó (lớp phòng thủ thứ hai sau kiểm tra lúc gán): bản ghi gán sai chỗ
+      // (vd sửa tay DB) không cấp quyền ở dự án/tổ chức khác.
+      where: {
+        roleId: { in: roleIds },
+        role: projectId ? { OR: [{ projectId: null }, { projectId }] } : { projectId: null },
+      },
       select: { permission: { select: { key: true } } },
     });
     const perms = new Set(rows.map((r) => r.permission.key));
@@ -323,6 +328,7 @@ export class RbacService {
       where: {
         name: { in: wanted },
         scope: 'PROJECT',
+        projectId: null, // chỉ MẪU: vai trò riêng của dự án trùng tên không được thành vai trò mặc định
         OR: [{ organizationId }, { organizationId: null }],
       },
       select: { id: true },

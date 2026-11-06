@@ -130,7 +130,7 @@ export function DataSection({
       <div className="space-y-6">
         {!canImport && (
           <p className="rounded-md border border-border bg-surface-2 px-3 py-2 text-sm text-muted">
-            Bạn không có quyền xuất/nhập dữ liệu. Liên hệ quản trị chung nếu cần.
+            Bạn không có quyền xuất/nhập dữ liệu. Liên hệ Quản trị nếu cần.
           </p>
         )}
 

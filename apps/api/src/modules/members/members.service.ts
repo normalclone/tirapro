@@ -42,10 +42,11 @@ import {
   setDirectRoles,
   teamNamesOf,
 } from '../project-teams/project-role-sources';
+import { AdminSyncService } from './admin-sync';
 import type { CreateMemberAccountInput } from './members.schemas';
 
 /** Người xem (AuthUser rút gọn) để quyết định có trả `isSystemAdmin`/`lastSeenAt` của thành viên không. */
-type ViewerLike = { isSystemAdmin?: boolean; permissions?: readonly string[] };
+type ViewerLike = { id?: string; isSystemAdmin?: boolean; permissions?: readonly string[] };
 
 type RoleRefRow = {
   role: { id: string; name: string; color: string | null };
@@ -75,6 +76,7 @@ export class MembersService {
     private readonly apiKeys: ApiKeyService,
     private readonly events: EventEmitter2,
     private readonly audit: AuditService,
+    private readonly adminSync: AdminSyncService,
   ) {}
 
   // ───────────────────────── Tổ chức ─────────────────────────
@@ -84,8 +86,9 @@ export class MembersService {
    * thống hoặc có `member:manage` (người khác nhận bản rút gọn). Không truyền = bản đầy đủ (dùng nội bộ).
    */
   async listOrganization(organizationId: string, viewer?: ViewerLike) {
+    const only = await this.directoryScope(organizationId, viewer);
     const rows = await this.prisma.organizationMembership.findMany({
-      where: { organizationId },
+      where: { organizationId, ...(only ? { userId: { in: only } } : {}) },
       orderBy: { createdAt: 'asc' },
       select: {
         id: true,
@@ -100,6 +103,44 @@ export class MembersService {
       rows.map((m) => this.toMemberDto(m, m.role)),
       viewer,
     );
+  }
+
+  /**
+   * Danh bạ tổ chức (có email) chỉ đầy đủ cho người QUẢN LÝ thành viên: admin hệ thống / `member:manage`, hoặc Project Admin của ít
+   * nhất một dự án (cần chọn người để thêm vào dự án của mình). Người khác chỉ nhận chính mình + những người CÙNG dự án mình tham
+   * gia (khớp giao diện: trang Thành viên hiện theo dự án). `null` = không giới hạn (nội bộ không viewer, hoặc đủ quyền).
+   */
+  private async directoryScope(
+    organizationId: string,
+    viewer?: ViewerLike,
+  ): Promise<string[] | null> {
+    if (!viewer?.id || canSeeAdminUserFields(viewer)) return null;
+    const mine = await this.prisma.projectMembership.findMany({
+      where: { userId: viewer.id, project: { organizationId, deletedAt: null } },
+      select: {
+        projectId: true,
+        roles: {
+          select: {
+            role: {
+              select: {
+                permissions: {
+                  where: { permission: { key: PERMISSIONS.PROJECT_ADMIN } },
+                  select: { roleId: true },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+    if (mine.some((m) => m.roles.some((r) => r.role.permissions.length > 0))) return null;
+    if (mine.length === 0) return [viewer.id];
+    const peers = await this.prisma.projectMembership.findMany({
+      where: { projectId: { in: mine.map((m) => m.projectId) } },
+      select: { userId: true },
+      distinct: ['userId'],
+    });
+    return [...new Set([viewer.id, ...peers.map((p) => p.userId)])];
   }
 
   /** Rút gọn `user` của từng thành viên theo quyền người xem (xem `listOrganization`). */
@@ -132,8 +173,9 @@ export class MembersService {
     this.assertAddable([user]);
     const ids = await this.validateRoles(organizationId, roleIds, 'ORGANIZATION');
     await this.assertMayChangeAdminRoles(organizationId, actorId, () => Promise.resolve([]), ids);
-    try {
-      await this.prisma.organizationMembership.create({
+    let flagChanged = false;
+    const create = (db: Prisma.TransactionClient | PrismaService) =>
+      db.organizationMembership.create({
         data: {
           organizationId,
           userId,
@@ -142,6 +184,22 @@ export class MembersService {
           roles: { create: ids.map((roleId) => ({ roleId })) },
         },
       });
+    try {
+      // Một vai trò "Quản trị": thêm với vai trò Quản trị → cũng là Quản trị hệ thống (cùng commit). Vai trò thường: ghi thẳng.
+      if (await this.adminSync.grantsAdmin(this.prisma, ids)) {
+        await this.prisma.$transaction(async (tx) => {
+          await create(tx);
+          flagChanged = await this.adminSync.syncOnOrgRoles(
+            tx,
+            userId,
+            organizationId,
+            false,
+            true,
+          );
+        });
+      } else {
+        await create(this.prisma);
+      }
     } catch (e) {
       // Hai request đồng thời cùng thêm một người: người thua nhận 409 (không phải 500).
       if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002')
@@ -149,6 +207,7 @@ export class MembersService {
       throw e;
     }
     await this.rbac.invalidate(userId, organizationId);
+    if (flagChanged) this.emitSystemAdminChanged([userId]);
     const member = await this.getOrganizationMember(organizationId, userId);
     await this.audit.record({
       organizationId,
@@ -188,6 +247,12 @@ export class MembersService {
    */
   private emitAccessChanged(organizationId: string, userIds: string[]): void {
     this.events.emit(DOMAIN_EVENTS.ACCESS_CHANGED, { organizationId, userIds });
+  }
+
+  /** Cờ Quản trị hệ thống của người dùng đổi (đồng bộ từ vai trò tổ chức) — phạm vi thấy dự án đổi ở MỌI tổ chức. */
+  private emitSystemAdminChanged(userIds: string[]): void {
+    if (userIds.length === 0) return;
+    this.events.emit(DOMAIN_EVENTS.ACCESS_CHANGED, { userIds });
   }
 
   /**
@@ -252,6 +317,9 @@ export class MembersService {
             roles: { create: ids.map((roleId) => ({ roleId })) },
           },
         });
+        // Một vai trò "Quản trị": tài khoản tạo kèm vai trò Quản trị → cũng là Quản trị hệ thống.
+        if (await this.adminSync.grantsAdmin(tx, ids))
+          await this.adminSync.syncOnOrgRoles(tx, user.id, organizationId, false, true);
         await this.audit.record(
           {
             organizationId,
@@ -283,7 +351,7 @@ export class MembersService {
     }
     if (status === 'DEACTIVATED') {
       return new BusinessRuleException(
-        'Email này thuộc một tài khoản đã bị vô hiệu hoá — hãy nhờ quản trị hệ thống mở khoá, hoặc dùng email khác',
+        'Email này thuộc một tài khoản đã bị vô hiệu hoá — hãy nhờ Quản trị mở khoá, hoặc dùng email khác',
       );
     }
     return new EmailAlreadyRegisteredException();
@@ -387,18 +455,45 @@ export class MembersService {
         },
       })) > 0;
     if (!keepsAdmin) await this.assertNotLastOrganizationAdmin(organizationId, userId);
-    await this.prisma.$transaction([
-      this.prisma.organizationMembershipRole.deleteMany({ where: { membershipId: membership.id } }),
-      this.prisma.organizationMembershipRole.createMany({
-        data: ids.map((roleId) => ({ membershipId: membership.id, roleId })),
-      }),
-      this.prisma.organizationMembership.update({
-        where: { id: membership.id },
-        data: { roleId: ids[0]! },
-      }),
-    ]);
+    const before = await this.currentOrganizationRoleIds(organizationId, userId);
+    const wasAdmin = await this.adminSync.grantsAdmin(this.prisma, before);
+    let flagChanged = false;
+    if (wasAdmin === keepsAdmin) {
+      await this.prisma.$transaction([
+        this.prisma.organizationMembershipRole.deleteMany({
+          where: { membershipId: membership.id },
+        }),
+        this.prisma.organizationMembershipRole.createMany({
+          data: ids.map((roleId) => ({ membershipId: membership.id, roleId })),
+        }),
+        this.prisma.organizationMembership.update({
+          where: { id: membership.id },
+          data: { roleId: ids[0]! },
+        }),
+      ]);
+    } else {
+      // Một vai trò "Quản trị": vào/ra Quản trị kéo theo cờ Quản trị hệ thống (cùng commit; người cuối cùng bị chặn).
+      await this.prisma.$transaction(async (tx) => {
+        await tx.organizationMembershipRole.deleteMany({ where: { membershipId: membership.id } });
+        await tx.organizationMembershipRole.createMany({
+          data: ids.map((roleId) => ({ membershipId: membership.id, roleId })),
+        });
+        await tx.organizationMembership.update({
+          where: { id: membership.id },
+          data: { roleId: ids[0]! },
+        });
+        flagChanged = await this.adminSync.syncOnOrgRoles(
+          tx,
+          userId,
+          organizationId,
+          wasAdmin,
+          keepsAdmin,
+        );
+      });
+    }
     await this.rbac.invalidate(userId, organizationId);
     this.emitAccessChanged(organizationId, [userId]);
+    if (flagChanged) this.emitSystemAdminChanged([userId]);
     const member = await this.getOrganizationMember(organizationId, userId);
     await this.audit.record({
       organizationId,
@@ -434,6 +529,7 @@ export class MembersService {
     const alreadySet = new Set(already.map((a) => a.userId));
     const toAdd = [...valid].filter((u) => !alreadySet.has(u));
     this.assertAddable(existUsers.filter((u) => toAdd.includes(u.id)));
+    let grantedFlag = false;
     if (toAdd.length) {
       // Một transaction cho cả lô: hoặc thêm đủ, hoặc không thêm ai. skipDuplicates để hai request đồng thời
       // thêm cùng một người không làm cả lô thất bại; vai trò chỉ gán cho membership chưa có vai trò nào.
@@ -455,8 +551,17 @@ export class MembersService {
           data: fresh.flatMap((m) => ids.map((roleId) => ({ membershipId: m.id, roleId }))),
           skipDuplicates: true,
         });
+        // Một vai trò "Quản trị": thêm cả lô với vai trò Quản trị → họ cũng là Quản trị hệ thống.
+        if (await this.adminSync.grantsAdmin(tx, ids)) {
+          const res = await tx.user.updateMany({
+            where: { id: { in: toAdd }, isSystemAdmin: false },
+            data: { isSystemAdmin: true },
+          });
+          grantedFlag = res.count > 0;
+        }
       });
       await this.rbac.invalidateOrganization(organizationId);
+      if (grantedFlag) this.emitSystemAdminChanged(toAdd);
       await this.audit.record({
         organizationId,
         actorId,
@@ -507,16 +612,28 @@ export class MembersService {
     }
     // Một transaction: gỡ membership + xoá ghi đè vai trò dự án của tổ chức này + thu hồi API key.
     // Thiếu bước nào thì người bị gỡ vẫn giữ được quyền qua key/ghi đè dự án còn sót.
+    const beforeRoles = await this.currentOrganizationRoleIds(organizationId, userId);
+    let flagChanged = false;
     const revokedPrefixes = await this.prisma.$transaction(async (tx) => {
+      const wasAdmin = await this.adminSync.grantsAdmin(tx, beforeRoles);
       await tx.organizationMembership.delete({
         where: { organizationId_userId: { organizationId, userId } },
       });
+      // Một vai trò "Quản trị": gỡ khỏi tổ chức = mất Quản trị ở đó → nếu không còn Quản trị ở nơi nào, mất luôn Quản trị hệ thống.
+      flagChanged = await this.adminSync.syncOnOrgRoles(
+        tx,
+        userId,
+        organizationId,
+        wasAdmin,
+        false,
+      );
       await tx.projectMembership.deleteMany({ where: { userId, project: { organizationId } } });
       await pruneSubTeamsOnOrganizationRemoved(tx, organizationId, userId); // ra khỏi mọi team riêng trong dự án của tổ chức
       return this.apiKeys.revokeAllForUser(organizationId, userId, tx);
     });
     await this.apiKeys.dropCaches(revokedPrefixes);
     await this.rbac.invalidate(userId, organizationId);
+    if (flagChanged) this.emitSystemAdminChanged([userId]);
     // Gateway ngắt mọi socket của user này đang ở tổ chức đó (room org:<id>).
     this.events.emit(DOMAIN_EVENTS.MEMBER_REMOVED, { organizationId, userId });
     await this.audit.record({
@@ -615,7 +732,12 @@ export class MembersService {
         },
       }),
       this.prisma.role.findMany({
-        where: { scope: 'PROJECT', OR: [{ organizationId }, { organizationId: null }] },
+        // Chỉ MẪU: tên vai trò hệ thống để suy vai trò mặc định; vai trò riêng của dự án không tham gia phép suy này.
+        where: {
+          scope: 'PROJECT',
+          projectId: null,
+          OR: [{ organizationId }, { organizationId: null }],
+        },
         select: { id: true, name: true, color: true },
       }),
     ]);
@@ -657,7 +779,10 @@ export class MembersService {
         isOverride: false,
       };
     });
-    return this.forViewer(out, viewer);
+    // Dự án công khai: chỉ liệt kê thành viên THẬT (có dòng thành viên dự án) và những người có vai trò dự án mặc định theo vai trò tổ
+    // chức (Quản trị → Quản trị dự án). Thành viên tổ chức thường chỉ XEM dự án công khai nên không có tên trong danh sách.
+    const real = out.filter((r) => r.isOverride || r.roles.length > 0);
+    return this.forViewer(real, viewer);
   }
 
   /** Xoá GHI ĐÈ vai trò ở dự án → người này quay về vai trò mặc định của organization. */
@@ -733,7 +858,7 @@ export class MembersService {
   ): Promise<Awaited<ReturnType<MembersService['getProjectMember']>>> {
     const project = await this.requireProject(organizationId, projectId);
     await this.assertOrganizationMember(organizationId, userId);
-    const ids = await this.validateRoles(organizationId, roleIds, 'PROJECT');
+    const ids = await this.validateRoles(organizationId, roleIds, 'PROJECT', projectId);
     const existing = await this.prisma.projectMembership.findUnique({
       where: { projectId_userId: { projectId, userId } },
       select: { id: true },
@@ -771,7 +896,7 @@ export class MembersService {
     // đặt vai trò riêng ở đây chính là tạo bản ghi đè) — ghi nhật ký là "đặt vai trò riêng", không phải "thêm vào dự án".
     if (!membership) {
       await this.assertOrganizationMember(organizationId, userId);
-      const newIds = await this.validateRoles(organizationId, roleIds, 'PROJECT');
+      const newIds = await this.validateRoles(organizationId, roleIds, 'PROJECT', projectId);
       await this.assertMayChangeAdminRoles(
         organizationId,
         actorId,
@@ -791,7 +916,7 @@ export class MembersService {
       this.emitProjectAccess(organizationId, projectId, [userId], actorId);
       return created;
     }
-    const ids = await this.validateRoles(organizationId, roleIds, 'PROJECT');
+    const ids = await this.validateRoles(organizationId, roleIds, 'PROJECT', projectId);
     // Vai trò nhờ team KHÔNG bị bỏ khi đổi vai trò gán trực tiếp → tính vào bộ vai trò "sau" (không coi là gỡ quyền quản trị).
     const viaTeams = await this.teamSourcedRoleIds(membership.id);
     await this.assertMayChangeAdminRoles(
@@ -871,7 +996,7 @@ export class MembersService {
     actorId?: string,
   ) {
     const project = await this.requireProject(organizationId, projectId);
-    const ids = await this.validateRoles(organizationId, roleIds, 'PROJECT');
+    const ids = await this.validateRoles(organizationId, roleIds, 'PROJECT', projectId);
     await this.assertMayChangeAdminRoles(organizationId, actorId, () => Promise.resolve([]), ids);
     const unique = [...new Set(userIds)];
     const wsMembers = await this.prisma.organizationMembership.findMany({
@@ -1025,10 +1150,17 @@ export class MembersService {
     organizationId: string,
     roleIds: string[],
     scope: RoleScope,
+    projectId?: string,
   ): Promise<string[]> {
     const unique = [...new Set(roleIds)];
+    // Vai trò RIÊNG của dự án (projectId ≠ null) chỉ gán được ở ĐÚNG dự án đó; cấp tổ chức / dự án khác → từ chối.
     const found = await this.prisma.role.findMany({
-      where: { id: { in: unique }, scope, OR: [{ organizationId }, { organizationId: null }] },
+      where: {
+        id: { in: unique },
+        scope,
+        OR: [{ organizationId }, { organizationId: null }],
+        AND: [{ OR: [{ projectId: null }, ...(projectId ? [{ projectId }] : [])] }],
+      },
       select: { id: true },
     });
     if (found.length !== unique.length) {

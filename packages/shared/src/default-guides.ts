@@ -160,7 +160,7 @@ const SCREEN_TOURS: GuideSeed[] = [
     [
       'account-profile',
       'Hồ sơ của tôi',
-      'Đổi múi giờ và ngôn ngữ. Họ tên, email và ảnh đại diện chỉ quản trị hệ thống đổi được. Sửa xong, bấm Lưu ở thanh "Có thay đổi chưa lưu".',
+      'Đổi múi giờ và ngôn ngữ. Họ tên, email và ảnh đại diện chỉ Quản trị đổi được. Sửa xong, bấm Lưu ở thanh "Có thay đổi chưa lưu".',
       'top',
     ],
     [
@@ -556,7 +556,7 @@ const SCREEN_TOURS: GuideSeed[] = [
       [
         'settings-general-logo',
         'Logo tổ chức',
-        'Bấm Tải ảnh lên (hoặc Đổi ảnh) để chọn logo. Chỉ quản trị tổ chức đổi được; người khác chỉ xem.',
+        'Bấm Tải ảnh lên (hoặc Đổi ảnh) để chọn logo. Chỉ Quản trị đổi được; người khác chỉ xem.',
         'top',
       ],
       [
@@ -577,7 +577,7 @@ const SCREEN_TOURS: GuideSeed[] = [
       [
         'audit-header',
         'Nhật ký quản trị',
-        'Ai đã thêm hoặc gỡ thành viên, đổi vai trò, sửa tích hợp… trong tổ chức này. Chỉ quản trị tổ chức xem được.',
+        'Ai đã thêm hoặc gỡ thành viên, đổi vai trò, sửa tích hợp… trong tổ chức này. Chỉ Quản trị xem được.',
         'bottom',
       ],
       [
@@ -858,13 +858,13 @@ const SCREEN_TOURS: GuideSeed[] = [
   tour(
     'tour-admin-organizations',
     '/admin/organizations',
-    'Tổ chức (quản trị hệ thống)',
+    'Tổ chức (Quản trị)',
     'Quản lý mọi tổ chức trong hệ thống.',
     [
       [
         'admin-orgs-header',
         'Mọi tổ chức trong hệ thống',
-        'Đổi gói dịch vụ, lưu trữ hoặc khôi phục từng tổ chức. Trang này chỉ dành cho quản trị hệ thống.',
+        'Đổi gói dịch vụ, lưu trữ hoặc khôi phục từng tổ chức. Trang này chỉ dành cho Quản trị.',
         'bottom',
       ],
       [
@@ -884,13 +884,13 @@ const SCREEN_TOURS: GuideSeed[] = [
   tour(
     'tour-admin-accounts',
     '/admin/accounts',
-    'Tài khoản (quản trị hệ thống)',
+    'Tài khoản (Quản trị)',
     'Tạo tài khoản và cấp quyền toàn hệ thống.',
     [
       [
         'admin-users-header',
         'Tài khoản toàn hệ thống',
-        'Tạo tài khoản và cấp quyền lập tổ chức mới hoặc quản trị hệ thống. Nút Tạo tài khoản ở góc phải.',
+        'Tạo tài khoản và cấp quyền lập tổ chức mới hoặc Quản trị. Nút Tạo tài khoản ở góc phải.',
         'bottom',
       ],
       [
@@ -902,7 +902,7 @@ const SCREEN_TOURS: GuideSeed[] = [
       [
         'admin-users-list',
         'Từng tài khoản',
-        'Mỗi dòng có hai công tắc: "Được lập tổ chức" và "Admin HT". Nút ⋯ cuối dòng mở các thao tác khác với tài khoản đó.',
+        'Mỗi dòng có hai công tắc: "Được lập tổ chức" và "Quản trị". Nút ⋯ cuối dòng mở các thao tác khác với tài khoản đó.',
         'top',
       ],
     ],

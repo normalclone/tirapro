@@ -30,6 +30,14 @@ export const createProjectSchema = z.object({
   leadId: z.string().optional().nullable(),
   /** Dự án riêng tư — chỉ thành viên dự án + quản trị thấy. Mặc định false. */
   isPrivate: z.boolean().optional(),
+  /**
+   * Thêm người ngay khi tạo (trong cùng transaction): mỗi người một vai trò ban đầu (mẫu vai trò cấp dự án). Người tạo luôn là Quản
+   * trị dự án (không cần liệt kê); người trùng người tạo / người phụ trách riêng tư được bỏ qua.
+   */
+  members: z
+    .array(z.object({ userId: z.string().min(1), roleId: z.string().min(1) }))
+    .max(200)
+    .optional(),
 });
 
 export const createCommentSchema = z.object({

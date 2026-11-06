@@ -31,7 +31,7 @@ export class ForbiddenAppException extends AppException {
  * `organization:admin` hoặc admin hệ thống — `member:manage` một mình không đủ. Mã riêng để web hiện đúng lý do.
  */
 export class AdminGrantRequiresAdminException extends AppException {
-  constructor(message = 'Chỉ quản trị tổ chức mới cấp hoặc gỡ quyền quản trị.') {
+  constructor(message = 'Chỉ Quản trị mới cấp hoặc gỡ quyền quản trị.') {
     super(ERROR_CODES.ADMIN_GRANT_REQUIRES_ADMIN, message, HttpStatus.FORBIDDEN);
   }
 }

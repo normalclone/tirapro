@@ -60,7 +60,7 @@ export const AUDIT_ACTION_LABEL: Record<AuditAction, string> = {
   'project_team.roles_changed': 'Đổi vai trò của team trong dự án',
   'project_team.unlinked': 'Gỡ team khỏi dự án',
   'project_team.synced': 'Đồng bộ team vào dự án',
-  'account.created': 'Tạo tài khoản (quản trị hệ thống)',
+  'account.created': 'Tạo tài khoản (Quản trị)',
   'account.permissions_changed': 'Đổi quyền hệ thống của tài khoản',
   'account.email_changed': 'Đổi email đăng nhập của tài khoản',
   'account.deactivated': 'Khoá tài khoản',

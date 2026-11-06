@@ -21,8 +21,8 @@ describe('organizationSubline', () => {
   it('đếm trước, vai trò sau; title đầy đủ', () => {
     expect(organizationSubline(ws())).toEqual({
       count: 12,
-      text: 'thành viên · Quản trị chung',
-      title: '12 thành viên đang hoạt động · Vai trò của bạn: Quản trị chung',
+      text: 'thành viên · Quản trị',
+      title: '12 thành viên đang hoạt động · Vai trò của bạn: Quản trị',
     });
   });
   it('1 thành viên và 0 vẫn đúng', () => {
@@ -33,8 +33,8 @@ describe('organizationSubline', () => {
     for (const memberCount of [undefined, null, Number.NaN, -1] as unknown as number[]) {
       const s = organizationSubline(ws({ memberCount }));
       expect(s.count).toBeNull();
-      expect(s.text).toBe('Quản trị chung');
-      expect(s.title).toBe('Vai trò của bạn: Quản trị chung');
+      expect(s.text).toBe('Quản trị');
+      expect(s.title).toBe('Vai trò của bạn: Quản trị');
     }
   });
 });
@@ -60,15 +60,15 @@ describe('OrganizationOption', () => {
   });
   it('số thành viên là tabular-nums, đứng trước vai trò, có tooltip đầy đủ', () => {
     const out = html();
-    expect(out).toMatch(/<span class="tabular-nums">12<\/span> thành viên · Quản trị chung/);
-    expect(out).toContain('title="12 thành viên đang hoạt động · Vai trò của bạn: Quản trị chung"');
+    expect(out).toMatch(/<span class="tabular-nums">12<\/span> thành viên · Quản trị/);
+    expect(out).toContain('title="12 thành viên đang hoạt động · Vai trò của bạn: Quản trị"');
   });
   it('API cũ không có memberCount → chỉ vai trò', () => {
     const out = html();
     const old = html({ memberCount: undefined });
     expect(out).toContain('tabular-nums');
     expect(old).not.toContain('tabular-nums');
-    expect(old).toContain('Quản trị chung');
+    expect(old).toContain('Quản trị');
     expect(old).not.toMatch(/undefined|NaN/);
   });
   it('✓ chỉ ở tổ chức đang chọn, aria-selected phản ánh', () => {

@@ -156,7 +156,7 @@ describe.skipIf(!DB_URL)('sửa vai trò ↔ Postgres thật', () => {
     expect(await keysOf(ROLE.plain2)).toEqual(['issue:create', 'issue:edit']);
   });
 
-  it('P-C14: quản trị tổ chức (không phải admin hệ thống) cấp được quyền quản trị', async () => {
+  it('P-C14: Quản trị (không phải Quản trị) cấp được quyền quản trị', async () => {
     await svc.update(
       WS,
       ROLE.plain2,

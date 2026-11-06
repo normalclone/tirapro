@@ -27,7 +27,7 @@ export class AdminController {
 
   private assertSysAdmin(user: AuthUser): void {
     if (!user.isSystemAdmin)
-      throw new ForbiddenAppException('Chỉ admin hệ thống mới được quản trị tài khoản');
+      throw new ForbiddenAppException('Chỉ Quản trị mới được quản trị tài khoản');
   }
 
   @Get()

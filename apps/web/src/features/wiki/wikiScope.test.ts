@@ -49,9 +49,7 @@ describe('noWriteMessage', () => {
     expect(noWriteMessage(['An'])).toBe(askWhoText(['An']));
   });
   it('không có quản trị nào → câu dự phòng', () => {
-    expect(noWriteMessage([])).toBe(
-      'Hãy liên hệ quản trị tổ chức để được cấp quyền viết tài liệu.',
-    );
+    expect(noWriteMessage([])).toBe('Hãy liên hệ Quản trị để được cấp quyền viết tài liệu.');
   });
 });
 

@@ -312,7 +312,7 @@ describe('UsersService.updateProfile — khoá họ tên/ảnh với người th
     await service.updateProfile('u1', { timezone: 'Asia/Tokyo', locale: 'en' }, false);
     expect(update).toHaveBeenCalled();
   });
-  it('quản trị hệ thống đổi họ tên -> ok', async () => {
+  it('Quản trị đổi họ tên -> ok', async () => {
     const { service, update } = mk();
     await service.updateProfile('u1', { displayName: 'Mới' }, true);
     expect(update.mock.calls[0]![0].data).toEqual({ displayName: 'Mới' });

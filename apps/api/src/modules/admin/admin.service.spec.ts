@@ -1,6 +1,22 @@
 import { describe, expect, it, vi } from 'vitest';
 import { NotFoundAppException } from '../../common/exceptions/app.exception';
+import { AdminSyncService } from '../members/admin-sync';
 import { AdminService } from './admin.service';
+
+/**
+ * Bộ chặn "Quản trị cuối cùng" là THẬT (chạy trên `$queryRaw` của mock); phần đổi vai trò tổ chức của `setAdmin` được giả (kiểm riêng ở
+ * `members/admin-sync.spec.ts`).
+ */
+function fakeAdminSync(organizationIds: string[]) {
+  const real = new AdminSyncService();
+  return {
+    assertNotLastAdmin: vi.fn((tx: never, id: string) => real.assertNotLastAdmin(tx, id)),
+    setAdmin: vi.fn(async (tx: never, id: string, enabled: boolean) => {
+      if (!enabled) await real.assertNotLastAdmin(tx, id);
+      return { organizationIds, flagChanged: true };
+    }),
+  };
+}
 
 /** `expect.any(Date)` có kiểu `any` → ép kiểu một lần để không dính no-unsafe-assignment. */
 const anyDate = expect.any(Date) as unknown as Date;
@@ -48,6 +64,8 @@ function setup(status = 'ACTIVE') {
   const audit = { record: vi.fn() };
   const apiKeys = { dropCachesForUser: vi.fn(() => Promise.resolve()) };
   const events = { emit: vi.fn() };
+  const adminSync = fakeAdminSync(['w1']);
+  const rbac = { invalidate: vi.fn(() => Promise.resolve()) };
   return {
     service: new AdminService(
       prisma as never,
@@ -55,10 +73,14 @@ function setup(status = 'ACTIVE') {
       {} as never,
       apiKeys as never,
       events as never,
+      adminSync as never,
+      rbac as never,
     ),
     audit,
     prisma,
     events,
+    adminSync,
+    rbac,
   };
 }
 
@@ -132,7 +154,7 @@ describe('AdminService.update — nhật ký khoá/mở khoá', () => {
     await service.update('u1', { isSystemAdmin: true, canCreateOrganization: true }, 'admin');
     const entry = audit.record.mock.calls[0]![0] as { action: string; summary: string };
     expect(entry.action).toBe('account.permissions_changed');
-    expect(entry.summary).toContain('cấp quyền admin hệ thống');
+    expect(entry.summary).toContain('cấp quyền Quản trị');
     expect(entry.summary).toContain('cho phép lập tổ chức');
   });
 
@@ -153,7 +175,7 @@ describe('AdminService.update — nhật ký khoá/mở khoá', () => {
     );
     const entry = audit.record.mock.calls[0]![0] as { action: string; summary: string };
     expect(entry.action).toBe('account.created');
-    expect(entry.summary).toContain('admin hệ thống');
+    expect(entry.summary).toContain('Quản trị');
     expect(JSON.stringify(entry)).not.toContain(out.tempPassword!);
   });
 });
@@ -191,6 +213,8 @@ function make(
   const members = { addOrganization: vi.fn(() => Promise.resolve({ membershipId: 'm1' })) };
   const apiKeys = { dropCachesForUser: vi.fn(() => Promise.resolve()) };
   const events = { emit: vi.fn() };
+  const adminSync = fakeAdminSync(['w1']);
+  const rbac = { invalidate: vi.fn(() => Promise.resolve()) };
   return {
     svc: new AdminService(
       prisma as never,
@@ -198,6 +222,8 @@ function make(
       members as never,
       apiKeys as never,
       events as never,
+      adminSync as never,
+      rbac as never,
     ),
     tx,
     prisma,
@@ -205,6 +231,8 @@ function make(
     members,
     apiKeys,
     events,
+    adminSync,
+    rbac,
   };
 }
 
@@ -265,7 +293,7 @@ describe('AdminService — vòng đời tài khoản', () => {
     await expect(svc.setStatus('admin1', 'admin1', 'DEACTIVATED')).rejects.toThrow(/chính mình/);
   });
 
-  it('không cho khoá admin hệ thống cuối cùng', async () => {
+  it('không cho khoá Quản trị cuối cùng', async () => {
     const { svc, tx } = make({
       id: 'u3',
       email: 'b@x.vn',
@@ -516,7 +544,7 @@ describe('AdminService — bảo mật vòng đời tài khoản (fix round 1)',
     expect(apiKeys.dropCachesForUser).not.toHaveBeenCalled();
   });
 
-  it('hạ isSystemAdmin của admin hệ thống cuối cùng (kể cả tự hạ) -> từ chối, không ghi', async () => {
+  it('hạ isSystemAdmin của Quản trị cuối cùng (kể cả tự hạ) -> từ chối, không ghi', async () => {
     const { svc, tx } = make({ ...ADMIN_ROW, id: 'admin1' });
     tx.$queryRaw.mockResolvedValue([{ id: 'admin1' }] as never);
     await expect(svc.update('admin1', { isSystemAdmin: false }, 'admin1')).rejects.toThrow(
@@ -525,20 +553,32 @@ describe('AdminService — bảo mật vòng đời tài khoản (fix round 1)',
     expect(tx.user.update).not.toHaveBeenCalled();
   });
 
-  it('hạ isSystemAdmin khi còn admin khác -> được, kiểm trong transaction', async () => {
-    const { svc, tx } = make(ADMIN_ROW);
+  it('hạ isSystemAdmin khi còn admin khác -> được: cờ + vai trò tổ chức đổi qua adminSync.setAdmin trong CHÍNH transaction', async () => {
+    const { svc, tx, adminSync, rbac } = make(ADMIN_ROW);
     tx.user.update.mockResolvedValue(FULL_ROW);
     await svc.update('u3', { isSystemAdmin: false }, 'admin1');
     expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
-    const call = tx.user.update.mock.calls[0] as unknown as [{ data: { isSystemAdmin: boolean } }];
-    expect(call[0].data.isSystemAdmin).toBe(false);
+    expect(adminSync.setAdmin).toHaveBeenCalledWith(tx, 'u3', false);
+    // cờ không còn nằm trong `data` của user.update (adminSync lo cả hai cờ)
+    const call = tx.user.update.mock.calls[0] as unknown as [{ data: Record<string, unknown> }];
+    expect('isSystemAdmin' in call[0].data).toBe(false);
+    // vai trò tổ chức đổi → xoá cache quyền ở các tổ chức đó
+    expect(rbac.invalidate).toHaveBeenCalledWith('u3', 'w1');
   });
 
-  it('cấp isSystemAdmin hoặc đổi trường khác không đi qua bộ chặn admin cuối', async () => {
-    const { svc, tx, prisma } = make({ ...ADMIN_ROW, isSystemAdmin: false });
-    prisma.user.update.mockResolvedValue(FULL_ROW);
+  it('cấp isSystemAdmin: đặt cả vai trò tổ chức Quản trị (adminSync.setAdmin true), không qua bộ chặn admin cuối', async () => {
+    const { svc, tx, adminSync } = make({ ...ADMIN_ROW, isSystemAdmin: false });
+    tx.user.update.mockResolvedValue(FULL_ROW);
     await svc.update('u3', { isSystemAdmin: true }, 'admin1');
-    expect(prisma.user.update).toHaveBeenCalledTimes(1);
+    expect(adminSync.setAdmin).toHaveBeenCalledWith(tx, 'u3', true);
     expect(tx.$queryRaw).not.toHaveBeenCalled();
+  });
+
+  it('đổi trường khác (không đụng cờ) → không gọi setAdmin, ghi thẳng', async () => {
+    const { svc, prisma, adminSync } = make(ADMIN_ROW);
+    prisma.user.update.mockResolvedValue(FULL_ROW);
+    await svc.update('u3', { displayName: 'Tên mới' }, 'admin1');
+    expect(adminSync.setAdmin).not.toHaveBeenCalled();
+    expect(prisma.user.update).toHaveBeenCalledTimes(1);
   });
 });

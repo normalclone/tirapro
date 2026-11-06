@@ -205,7 +205,7 @@ describe('guardRoleEdit', () => {
     expect(guardRoleEdit(c, [ADMIN, MANAGE], [MANAGE]).kind).toBe('blocked');
   });
 
-  it('admin hệ thống không bao giờ tự mất quyền qua vai trò → không hỏi', () => {
+  it('Quản trị không bao giờ tự mất quyền qua vai trò → không hỏi', () => {
     expect(guardRoleEdit(ctx({ selfIsSystemAdmin: true }), [ADMIN, MANAGE], [])).toEqual({
       kind: 'ok',
     });
@@ -253,10 +253,10 @@ describe('grantsAdmin / grantAdminCopy (bật quyền quản trị cho vai trò)
   });
   it('lời nhắc nêu tên vai trò, số người đang giữ và hệ quả "toàn quyền quản trị"', () => {
     const c = grantAdminCopy('QA Lead', 3);
-    expect(c.title).toContain('Quản trị tổ chức');
+    expect(c.title).toContain('Quản trị');
     expect(c.description).toContain('"QA Lead"');
     expect(c.description).toContain('3 thành viên');
-    expect(c.description).toContain('toàn quyền quản trị');
+    expect(c.description).toContain('toàn quyền Quản trị');
     expect(c.confirmLabel).toBe('Cấp quyền quản trị');
   });
   it('vai trò chưa ai giữ: nói sẽ áp dụng cho người được gán sau', () => {

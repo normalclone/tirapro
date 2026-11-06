@@ -131,7 +131,7 @@ function ManageMembersPage() {
     <PageFrame size={tab === 'resources' ? 'xl' : 'sm'}>
       <PageHeader
         title={APP_NAV_LABELS.members}
-        description="Ai có tên ở đây đều tham gia mọi dự án; nhóm giúp sắp xếp và giao vai trò hàng loạt, Nhân lực cho biết ai đang gánh bao nhiêu việc."
+        description="Danh sách người trong tổ chức. Thêm người vào từng dự án ở Cấu hình dự án › Thành viên; nhóm giúp sắp xếp và giao vai trò hàng loạt, Nhân lực cho biết ai đang gánh bao nhiêu việc."
         actions={
           canManage && tab === 'members' ? (
             <Button size="sm" onClick={() => setInviteOpen(true)} data-tour="members-add">

@@ -252,7 +252,7 @@ async function createFlow(
   if ((await deps.canCreate(project.id)) === false)
     return [
       text(
-        `Bạn không có quyền tạo việc trong dự án ${project.key}. Hãy nhờ quản trị dự án hoặc quản trị chung nâng vai trò của bạn.`,
+        `Bạn không có quyền tạo việc trong dự án ${project.key}. Hãy nhờ quản trị dự án hoặc Quản trị nâng vai trò của bạn.`,
       ),
     ];
   if (!intent.text.trim())

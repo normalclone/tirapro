@@ -91,7 +91,7 @@ describe('thư viện mẫu dashboard', () => {
     renderPage();
     const org = await screen.findByRole('radio', { name: 'Toàn tổ chức' });
     expect(org.getAttribute('aria-disabled')).toBe('true');
-    expect(screen.getByText(/Chỉ quản trị viên tổ chức chọn được/)).toBeTruthy();
+    expect(screen.getByText(/Chỉ Quản trị chọn được/)).toBeTruthy();
   });
 
   it('chọn mẫu chỉ hỗ trợ nhóm/tổ chức → phạm vi tự chuyển, "Một dự án" bị khoá', async () => {

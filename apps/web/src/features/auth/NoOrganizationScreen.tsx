@@ -33,7 +33,7 @@ export function NoOrganizationScreen() {
         <div className="mt-6 flex flex-wrap gap-2">
           {user.isSystemAdmin === true && (
             <Button variant="secondary" onClick={() => navigate('/admin/accounts')}>
-              <ShieldCheck className="h-4 w-4" /> Vào trang quản trị hệ thống
+              <ShieldCheck className="h-4 w-4" /> Vào trang Quản trị
             </Button>
           )}
           <Button variant="ghost" onClick={() => void logout()}>

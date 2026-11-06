@@ -49,6 +49,9 @@ COPY --from=build --chown=node:node /out/prisma ./prisma
 # Chỉ cần node:crypto + @prisma/client (đã có trong node_modules production). Xem docs/DEPLOY.md mục "Checklist triển khai".
 # `check-system-roles.mjs` kiểm bộ quyền vai trò hệ thống (docker run … node scripts/check-system-roles.mjs) — cùng cách chạy với hai script trên.
 COPY --from=build --chown=node:node /repo/apps/api/scripts/rekey-integrations.mjs /repo/apps/api/scripts/seal-webhook-secrets.mjs /repo/apps/api/scripts/check-system-roles.mjs /repo/apps/api/scripts/seed-system-roles.mjs /repo/apps/api/scripts/storage-migrate-local-to-s3.mjs /repo/apps/api/scripts/attachments-fix-filenames.mjs /repo/apps/api/scripts/migrate-workflow-schemes.mjs ./scripts/
+# `check-admins.mjs` (kiểm cờ Quản trị) và `materialize-public-members.mjs` (chuyển dữ liệu trước khi dự án công khai thành chỉ xem) cần thêm thư mục `lib/`.
+COPY --from=build --chown=node:node /repo/apps/api/scripts/check-admins.mjs /repo/apps/api/scripts/materialize-public-members.mjs ./scripts/
+COPY --from=build --chown=node:node /repo/apps/api/scripts/lib/admin-mismatch.mjs /repo/apps/api/scripts/lib/materialize-members.mjs ./scripts/lib/
 # `migrate-workflow-schemes.mjs` chuyển dữ liệu cũ sang quy trình theo loại việc (dùng dist/; xem docs/DEPLOY.md mục "Quy trình theo loại việc").
 # `storage-migrate-local-to-s3.mjs` chuyển tệp local → S3/MinIO (dùng dist/ + @prisma/client; xem docs/DEPLOY.md mục "Lưu tệp trên S3/MinIO").
 # `attachments-fix-filenames.mjs` (tuỳ chọn) sửa tên tệp đính kèm tiếng Việt đã lưu méo.

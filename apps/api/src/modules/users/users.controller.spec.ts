@@ -75,14 +75,14 @@ describe('UsersController.list — truyền truy vấn xuống service', () => {
     expect(q2).toMatchObject({ includeInactive: false, limit: undefined, projectId: undefined });
   });
 
-  it('privileged chỉ với member:manage hoặc admin hệ thống', async () => {
+  it('privileged chỉ với member:manage hoặc Quản trị', async () => {
     expect((await run({}, { id: 'u1', permissions: ['member:manage'] }))[3]).toBe(true);
     expect((await run({}, { id: 'u1', isSystemAdmin: true }))[3]).toBe(true);
     expect((await run({}, { id: 'u1', permissions: ['organization:view'] }))[3]).toBe(false);
   });
 });
 
-describe('UsersController — hồ sơ chỉ quản trị hệ thống đổi họ tên/ảnh', () => {
+describe('UsersController — hồ sơ chỉ Quản trị đổi họ tên/ảnh', () => {
   const normal = { id: 'u1', organizationId: 'w1', isSystemAdmin: false } as never;
   const sa = { id: 'u1', organizationId: 'w1', isSystemAdmin: true } as never;
   function mk() {
@@ -94,7 +94,7 @@ describe('UsersController — hồ sơ chỉ quản trị hệ thống đổi h�
     const ctrl = new UsersController(users as never, {} as never, {} as never, {} as never);
     return { ctrl, users };
   }
-  it('updateMe truyền cờ quản trị hệ thống xuống service', async () => {
+  it('updateMe truyền cờ Quản trị xuống service', async () => {
     const { ctrl, users } = mk();
     await ctrl.updateMe(normal, { timezone: 'Asia/Tokyo' });
     await ctrl.updateMe(sa, { displayName: 'X' });
@@ -111,7 +111,7 @@ describe('UsersController — hồ sơ chỉ quản trị hệ thống đổi h�
     expect(users.setAvatar).not.toHaveBeenCalled();
     expect(users.clearAvatar).not.toHaveBeenCalled();
   });
-  it('quản trị hệ thống tải/gỡ ảnh được', async () => {
+  it('Quản trị tải/gỡ ảnh được', async () => {
     const { ctrl, users } = mk();
     await ctrl.uploadAvatar(sa, {} as never, req());
     await ctrl.removeAvatar(sa);

@@ -18,7 +18,7 @@ const code = (p: string) =>
 describe('Cấu hình dự án là route con', () => {
   it('đường dẫn mục', () => {
     expect(configSectionPath('ABC', 'labels')).toBe('/p/ABC/config/labels');
-    expect(CONFIG_SECTION_IDS).toHaveLength(8);
+    expect(CONFIG_SECTION_IDS).toHaveLength(9);
     expect(isConfigSection('workflow')).toBe(true); // /p/:key/config/workflow là mục thật, không rơi về Chung
   });
   it('Thời gian xử lý là mục cấu hình của dự án (cam kết + bảng theo dõi theo dự án)', () => {

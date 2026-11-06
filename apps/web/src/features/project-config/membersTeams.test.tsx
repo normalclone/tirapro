@@ -26,7 +26,12 @@ vi.mock('@/features/members/AddPeopleDialog', () => ({ AddPeopleDialog: () => nu
 import { toast } from 'sonner';
 import { ConfirmHost, useConfirmStore } from '@/components/ui/useConfirm';
 import { useAuth } from '@/stores/auth';
-import { MembersSection, memberTabFromParam, type MemberTab } from './MembersSection';
+import {
+  MembersSection,
+  memberTabFromParam,
+  withCurrentRoles,
+  type MemberTab,
+} from './MembersSection';
 import { unlinkConsequence } from './ProjectTeamsPanel';
 import { subTeamPickerOptions } from './SubTeamsPanel';
 
@@ -74,6 +79,20 @@ const ROLES = [
     permissionKeys: ['organization:admin', 'member:manage'],
   },
 ];
+/** Vai trò RIÊNG của dự án p1 (danh sách chọn khi gán người/team; không có vai trò quản trị tổ chức). */
+const OWN_ROLES = ['rRep', 'rDev'].map((id) => {
+  const r = ROLES.find((x) => x.id === id)!;
+  return {
+    id,
+    projectId: 'p1',
+    name: r.name,
+    description: null,
+    color: null,
+    permissionKeys: r.permissionKeys,
+    memberCount: 1,
+    updatedAt: '2026-01-01T00:00:00.000Z',
+  };
+});
 const LINKS = [
   {
     id: 'l1',
@@ -101,6 +120,7 @@ function route(path: string, data: unknown) {
     const map: Record<string, unknown> = {
       '/projects/p1/members': MEMBERS,
       '/roles?scope=PROJECT': ROLES,
+      '/projects/p1/roles': OWN_ROLES,
       '/projects/p1/teams': LINKS,
       '/projects/p1/sub-teams': SUBTEAMS,
       '/teams': [
@@ -184,15 +204,15 @@ describe('unlinkConsequence', () => {
 });
 
 describe('Thành viên dự án: nguồn của từng vai trò', () => {
-  it('hiện "qua Team QA", "mặc định theo tổ chức", "trực tiếp + qua Team QA"; thành viên chỉ mặc định giữ thẻ "mặc định"', async () => {
+  it('hiện "qua Team QA", "mặc định theo tổ chức", "trực tiếp + qua Team QA"; không còn thẻ "riêng/mặc định"', async () => {
     route('/projects/p1/members', MEMBERS);
     setup();
     await screen.findByText('An');
     expect(screen.getByText('qua Team QA')).toBeTruthy();
     expect(screen.getByText('mặc định theo tổ chức')).toBeTruthy();
     expect(screen.getByText('trực tiếp + qua Team QA')).toBeTruthy();
-    expect(screen.getByText('mặc định')).toBeTruthy(); // Chi: không có ghi đè
-    // thẻ "riêng" của cả hàng không còn cho hai hàng có thông tin nguồn
+    // không còn thẻ "riêng"/"mặc định" của cả hàng: dự án công khai chỉ liệt kê thành viên thật
+    expect(screen.queryByText('mặc định')).toBeNull();
     expect(screen.queryByText('riêng')).toBeNull();
   });
 
@@ -297,15 +317,10 @@ describe('Gắn team: vai trò mang quyền quản trị', () => {
     return dialog;
   }
 
-  it('người không phải quản trị: vai trò quản trị bị khoá kèm lý do, bấm không chọn được', async () => {
+  it('người không phải quản trị: chỉ chọn trong vai trò của dự án — mẫu quản trị không có trong danh sách', async () => {
     const u = setup('teams');
     await openLinkRoles(u);
-    const opt = await screen.findByRole('option', { name: /Chủ dự án/ });
-    expect(opt.getAttribute('aria-disabled')).toBe('true');
-    expect(opt.textContent).toContain('Chỉ quản trị mới cấp/gỡ quyền này');
-    await u.click(opt);
-    expect(opt.getAttribute('aria-selected')).toBe('false');
-    // vai trò thường vẫn chọn được
+    expect(screen.queryByRole('option', { name: /Chủ dự án/ })).toBeNull();
     expect(
       (await screen.findByRole('option', { name: /Developer|Lập trình/ })).getAttribute(
         'aria-disabled',
@@ -313,7 +328,7 @@ describe('Gắn team: vai trò mang quyền quản trị', () => {
     ).toBeNull();
   });
 
-  it('quản trị tổ chức: không khoá vai trò nào', async () => {
+  it('Quản trị: không khoá vai trò nào', async () => {
     act(() => {
       useAuth.setState({ permissions: ['organization:admin'] });
     });
@@ -341,5 +356,40 @@ describe('Chọn người cho team trong dự án', () => {
     });
     expect(opts.map((o) => o.name)).toEqual(['An', 'Bình (đã khoá)']);
     expect(subTeamPickerOptions(members, null).map((o) => o.id)).toEqual(['a']);
+  });
+});
+
+describe('Dự án chưa có vai trò riêng', () => {
+  it('Project Admin thấy gợi ý "Tạo vai trò từ mẫu" dẫn tới mục Vai trò; nút Thêm người bị khoá', async () => {
+    h.get.mockImplementation((url: string) =>
+      Promise.resolve({ data: url === '/projects/p1/members' ? MEMBERS : [] }),
+    );
+    setup();
+    await screen.findByText('An');
+    const link = screen.getByRole('link', { name: 'Tạo vai trò từ mẫu' });
+    expect(link.getAttribute('href')).toMatch(/\/config\/roles$/); // key lấy từ route :key
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: /Thêm người/ }).disabled).toBe(
+      true,
+    );
+  });
+
+  it('dự án công khai cũng có nút Thêm người (công khai = chỉ xem, muốn làm việc phải được thêm)', async () => {
+    route('/projects/p1/members', MEMBERS);
+    setup(undefined, false);
+    await screen.findByText('An');
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: /Thêm người/ }).disabled).toBe(
+      false,
+    );
+  });
+
+  it('hộp sửa vai trò của một người giữ nguyên vai trò mẫu đã gán từ trước', () => {
+    const m = MEMBERS[0]!;
+    const ids = withCurrentRoles(
+      OWN_ROLES.map((r) => ({ id: r.id, name: r.name, color: null })).filter(
+        (r) => r.id === 'rRep',
+      ),
+      m as never,
+    ).map((o) => o.id);
+    expect(ids).toEqual(['rRep', 'rDev']);
   });
 });

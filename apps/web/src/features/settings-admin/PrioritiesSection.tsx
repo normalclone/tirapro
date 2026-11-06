@@ -109,7 +109,7 @@ export function PrioritiesSection() {
             description={
               canManage
                 ? 'Mức ưu tiên cho biết việc nào cần làm trước. Thêm mức đầu tiên để bắt đầu sắp xếp công việc.'
-                : 'Chưa có mức ưu tiên nào. Liên hệ quản trị chung để thêm.'
+                : 'Chưa có mức ưu tiên nào. Liên hệ Quản trị để thêm.'
             }
             action={
               canManage ? (
@@ -193,7 +193,7 @@ export function PrioritiesSection() {
         )}
       </QueryBoundary>
 
-      {/* Form thêm mức ưu tiên — chỉ quản trị chung */}
+      {/* Form thêm mức ưu tiên — chỉ Quản trị */}
       {canManage && priorities.length > 0 && (
         <Button
           variant="secondary"

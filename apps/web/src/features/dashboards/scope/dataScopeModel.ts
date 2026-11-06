@@ -21,10 +21,10 @@ export const DATA_SCOPE_HINT: Record<DashboardDataScopeValue, string> = {
   PROJECT: 'Số liệu của đúng một dự án.',
   GROUP:
     'Gộp các dự án trong một nhóm của bạn — mỗi người xem chỉ thấy phần thuộc dự án họ được xem.',
-  ORG: 'Mọi dự án người xem được thấy. Chỉ quản trị viên tổ chức chọn được.',
+  ORG: 'Mọi dự án người xem được thấy. Chỉ Quản trị chọn được.',
 };
 
-export const ORG_SCOPE_LOCKED = 'Chỉ quản trị viên tổ chức chọn được phạm vi này';
+export const ORG_SCOPE_LOCKED = 'Chỉ Quản trị chọn được phạm vi này';
 
 /** Chưa chọn đích thì chưa lưu được (khớp luật `dataScopeRules` của máy chủ). `null` = hợp lệ. */
 export function dataScopeIssue(v: DataScopeValue): string | null {

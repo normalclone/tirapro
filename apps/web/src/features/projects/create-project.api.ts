@@ -12,6 +12,8 @@ export interface CreateProjectInput {
   description?: string | null;
   /** Dự án riêng tư: chỉ thành viên dự án + quản trị thấy. */
   isPrivate?: boolean;
+  /** Người thêm ngay khi tạo, mỗi người một vai trò ban đầu (mẫu vai trò cấp dự án). */
+  members?: { userId: string; roleId: string }[];
 }
 
 /** Tạo dự án mới; invalidate danh sách dự án khi thành công. */

@@ -147,7 +147,7 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('Quy trình của tổ chức (bảng loại việc → quy trình)', () => {
-  it('Quản trị chung thấy bảng một hàng mỗi loại việc; người khác không thấy mục này', async () => {
+  it('Quản trị thấy bảng một hàng mỗi loại việc; người khác không thấy mục này', async () => {
     renderPage(true);
     expect(await screen.findByRole('heading', { name: 'Quy trình của tổ chức' })).toBeTruthy();
     expect(
@@ -257,7 +257,7 @@ describe('Quy trình của tổ chức (bảng loại việc → quy trình)', (
     expect(screen.getByText('+2 ghi đè ở dự án bạn không xem được')).toBeTruthy();
   });
 
-  it('một nhóm trải nhiều dự án ghi "Áp chung cho N dự án"; quy tắc toàn tổ chức chỉ được báo "cần quản trị chung xem lại"', async () => {
+  it('một nhóm trải nhiều dự án ghi "Áp chung cho N dự án"; quy tắc toàn tổ chức chỉ được báo "cần Quản trị xem lại"', async () => {
     const base = change();
     h.put.mockResolvedValue({
       data: change({
@@ -282,7 +282,7 @@ describe('Quy trình của tổ chức (bảng loại việc → quy trình)', (
     await user.click(await screen.findByRole('button', { name: 'Lưu thay đổi' }));
     const dialog = await screen.findByRole('dialog');
     expect(await within(dialog).findByText('Áp chung cho 2 dự án')).toBeTruthy();
-    expect(within(dialog).getByText(/Áp toàn tổ chức — cần quản trị chung xem lại/)).toBeTruthy();
+    expect(within(dialog).getByText(/Áp toàn tổ chức — cần Quản trị xem lại/)).toBeTruthy();
     expect(within(dialog).queryByText('Sẽ được sửa')).toBeNull();
   });
 });

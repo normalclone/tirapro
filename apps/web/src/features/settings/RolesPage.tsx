@@ -66,7 +66,7 @@ function sortRoles(roles: RoleDto[]): RoleDto[] {
 }
 
 export function RolesPage() {
-  const canManage = useAuth((s) => s.can('member:manage'));
+  const canManage = useAuth((s) => s.can('organization:admin'));
   const rolesQuery = useRoles();
   const { data: roles } = rolesQuery;
 
@@ -117,7 +117,8 @@ export function RolesPage() {
         title={SETTINGS_LABELS.roles}
         description={
           <>
-            Vai trò gom các quyền để gán cho thành viên; vai trò hệ thống không đổi được.{' '}
+            Mẫu vai trò dùng chung cho cả tổ chức; vai trò hệ thống không đổi được. Quản lý dự án
+            tạo vai trò riêng của dự án từ các mẫu này (Cấu hình dự án › Vai trò).{' '}
             <DocsLink anchor="vai-tro" />
           </>
         }
@@ -233,7 +234,12 @@ function RoleGroup({
 }) {
   return (
     <SectionCard
-      title={SCOPE_LABEL[scope]}
+      title={scope === 'PROJECT' ? 'Mẫu vai trò cấp dự án' : SCOPE_LABEL[scope]}
+      description={
+        scope === 'PROJECT'
+          ? 'Mẫu để quản lý dự án sao chép thành vai trò riêng của dự án rồi chỉnh quyền; vai trò riêng của từng dự án không hiện ở đây.'
+          : undefined
+      }
       bare
       actions={
         canManage ? (
