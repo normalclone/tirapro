@@ -414,6 +414,19 @@ describe('SearchService — kiểm giá trị JQL (U15)', () => {
     await run(service, 'status = done', true);
     expect(issues.query).toHaveBeenCalledTimes(1);
   });
+  it('dự án lạ / chưa được thêm vào (bộ lọc được chia sẻ) → KHÔNG 422, vẫn chạy phần xem được', async () => {
+    const { service, issues } = make();
+    await run(service, 'project = ATP AND type = Bug', true);
+    await run(service, 'project IN (ATP, DEMO)', true);
+    expect(issues.query).toHaveBeenCalledTimes(2);
+  });
+  it('validate vẫn báo dự án lạ, kèm giải thích điều kiện đó bị bỏ qua', async () => {
+    const { service } = make();
+    const r = await service.validate('w1', 'u1', 'project = ATP');
+    expect(r.valid).toBe(false);
+    expect(r.error).toContain('Không có dự án "ATP"');
+    expect(r.error).toContain('chưa được thêm vào dự án');
+  });
   it('quá xa → liệt kê giá trị hiện có', async () => {
     const { service } = make();
     await expect(run(service, 'priority = zzzzzz', true)).rejects.toThrow(

@@ -145,6 +145,13 @@ export interface FilterFieldsDto {
   teams: FieldOption[];
 }
 
+/**
+ * Giá trị lạ nào làm tìm kiếm trả 422. Dự án lạ thì KHÔNG: bộ lọc được chia sẻ có thể nhắc tới dự án người xem chưa được
+ * thêm vào — vẫn chạy phần xem được (điều kiện dự án đó tự không khớp gì vì kết quả luôn giới hạn trong dự án xem được),
+ * còn ô JQL vẫn báo qua `/search/validate`. Trường khác (trạng thái, loại…) giữ 422 để bắt gõ sai.
+ */
+const blocksSearch = (v: InvalidValue): boolean => v.field !== 'project';
+
 @Injectable()
 export class SearchService {
   private readonly fulltext: FulltextSearcher;
@@ -352,7 +359,9 @@ export class SearchService {
     if (jql && jql.trim()) {
       const ast = this.parse(jql);
       if (checkValues && currentUserId) {
-        const [first] = await this.findInvalidValues(organizationId, currentUserId, ast.where);
+        const [first] = (
+          await this.findInvalidValues(organizationId, currentUserId, ast.where)
+        ).filter(blocksSearch);
         if (first) throw new BusinessRuleException(first.message);
       }
       const fulltext = await this.fulltextMap(organizationId, ast.where, projectId, currentUserId);
@@ -470,7 +479,9 @@ export class SearchService {
     input: { jql: string; projectId?: string },
   ): Promise<RelaxCountsResult> {
     const ast = this.parse(input.jql);
-    const [invalid] = await this.findInvalidValues(organizationId, userId, ast.where);
+    const [invalid] = (await this.findInvalidValues(organizationId, userId, ast.where)).filter(
+      blocksSearch,
+    );
     if (invalid) throw new BusinessRuleException(invalid.message);
 
     const conjuncts = flattenAnd(ast.where);
@@ -713,11 +724,17 @@ export class SearchService {
       const options = catalogs.get(field)!;
       const didYouMean = closestMatch(value, options);
       const label = CHECKED_FIELD_LABEL[field]!;
-      const message = didYouMean
-        ? `Không có ${label} "${value}" — ý bạn là "${didYouMean}"?`
-        : options.length
-          ? `Không có ${label} "${value}". Các giá trị hiện có: ${options.slice(0, MAX_LISTED_VALUES).join(', ')}${options.length > MAX_LISTED_VALUES ? '…' : ''}`
-          : `Không có ${label} "${value}".`;
+      // Dự án lạ KHÔNG chặn tìm kiếm (xem `blocksSearch`) → nói rõ điều kiện đó bị bỏ qua thay vì "sai cú pháp".
+      const skipped =
+        field === 'project'
+          ? ' Có thể bạn chưa được thêm vào dự án này — điều kiện đó không khớp việc nào, kết quả chỉ gồm các dự án bạn xem được.'
+          : '';
+      const message =
+        (didYouMean
+          ? `Không có ${label} "${value}" — ý bạn là "${didYouMean}"?`
+          : options.length
+            ? `Không có ${label} "${value}". Các giá trị hiện có: ${options.slice(0, MAX_LISTED_VALUES).join(', ')}${options.length > MAX_LISTED_VALUES ? '…' : ''}`
+            : `Không có ${label} "${value}".`) + skipped;
       out.push({ field, value, didYouMean, message });
     }
     return out;
