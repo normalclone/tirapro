@@ -155,7 +155,11 @@ function ShareDialogInner({
         <ReadOnlyShare filter={filter} />
       )}
       <AudienceBlock filter={filter} draft={editable ? draft : saved} />
-      <CopyLinkRow url={filterUrl(filter.id)} unsavedChange={editable && changed} />
+      {/* Chỉ CHỦ bộ lọc mới có nút sao chép liên kết chia sẻ: người được chia sẻ không "chia sẻ lại" bộ lọc
+          của người khác (TIRA-BUG-27). */}
+      {filter.isOwner && (
+        <CopyLinkRow url={filterUrl(filter.id)} unsavedChange={editable && changed} />
+      )}
     </Dialog>
   );
 }

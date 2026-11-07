@@ -187,7 +187,7 @@ describe('hộp "Chia sẻ bộ lọc" — chọn nhiều dự án + nhiều ng�
     });
   });
 
-  it('người không phải chủ: chỉ xem (không radio, không Lưu), thấy tên chủ + dự án họ có quyền, vẫn sao chép được liên kết', async () => {
+  it('người không phải chủ: chỉ xem (không radio, không Lưu), thấy tên chủ + dự án họ có quyền, KHÔNG có nút sao chép liên kết (BUG-27)', async () => {
     const theirs: SavedFilter = {
       ...OWN,
       isOwner: false,
@@ -205,9 +205,15 @@ describe('hộp "Chia sẻ bộ lọc" — chọn nhiều dự án + nhiều ng�
     expect(dialog.textContent).toContain('Nguyễn An chia sẻ cho bạn');
     expect(dialog.textContent).toContain('Nhân sự');
     expect(h.post).not.toHaveBeenCalled(); // không phải chủ → không có số (luật xem tính theo chủ)
-    expect(within(dialog).getByRole('button', { name: /Sao chép liên kết/ })).toBeTruthy();
+    expect(within(dialog).queryByRole('button', { name: /Sao chép liên kết/ })).toBeNull();
     expect(dialog.textContent?.toLowerCase()).not.toContain('organization');
     expect(dialog.textContent).not.toContain('không gian làm việc');
+  });
+
+  it('chủ bộ lọc: VẪN có nút sao chép liên kết (BUG-27 chỉ ẩn với người không phải chủ)', async () => {
+    renderDialog(OWN);
+    const dialog = await screen.findByRole('dialog', { name: /Chia sẻ bộ lọc/ });
+    expect(within(dialog).getByRole('button', { name: /Sao chép liên kết/ })).toBeTruthy();
   });
 });
 
