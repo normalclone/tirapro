@@ -81,7 +81,7 @@ export class AuthService {
   async login(input: LoginInput, meta: RefreshMeta) {
     const email = input.email.toLowerCase();
     const user = await this.prisma.user.findUnique({ where: { email } });
-    if (!user || !user.passwordHash || user.status === 'DEACTIVATED') {
+    if (!user || !user.passwordHash) {
       throw new UnauthorizedException({
         code: 'INVALID_CREDENTIALS',
         message: 'Email hoặc mật khẩu không đúng',
@@ -92,6 +92,13 @@ export class AuthService {
       throw new UnauthorizedException({
         code: 'INVALID_CREDENTIALS',
         message: 'Email hoặc mật khẩu không đúng',
+      });
+    // Chỉ sau khi mật khẩu ĐÚNG mới báo tài khoản bị vô hiệu hoá: không lộ "email này có tồn tại" cho
+    // người dò mật khẩu, nhưng người đúng mật khẩu thì biết rõ lý do không vào được (không phải sai mật khẩu).
+    if (user.status === 'DEACTIVATED')
+      throw new UnauthorizedException({
+        code: 'ACCOUNT_DISABLED',
+        message: 'Tài khoản của bạn đã bị vô hiệu hoá. Vui lòng liên hệ quản trị để được hỗ trợ.',
       });
 
     const membership = await this.prisma.organizationMembership.findFirst({

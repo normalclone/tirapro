@@ -291,3 +291,83 @@ describe('AuthService.listOrganizations — memberCount (bộ chọn tổ chức
     expect(where).toContain(SYSTEM_USER_EMAIL);
   });
 });
+
+function makeLogin(status: 'ACTIVE' | 'DEACTIVATED') {
+  const prisma = {
+    user: {
+      findUnique: vi.fn(() =>
+        Promise.resolve({
+          id: 'u1',
+          email: 'a@x.vn',
+          displayName: 'A',
+          avatarUrl: null,
+          timezone: 'UTC',
+          locale: 'vi',
+          status,
+          isSystemAdmin: false,
+          passwordHash: 'HASH',
+          lastSeenAt: null,
+          createdAt: new Date(),
+        }),
+      ),
+      update: vi.fn(() => Promise.resolve({})),
+      findUniqueOrThrow: vi.fn(() =>
+        Promise.resolve({
+          id: 'u1',
+          email: 'a@x.vn',
+          displayName: 'A',
+          avatarUrl: null,
+          timezone: 'UTC',
+          locale: 'vi',
+          status,
+          isSystemAdmin: false,
+          lastSeenAt: null,
+          createdAt: new Date(),
+        }),
+      ),
+    },
+    organizationMembership: { findFirst: vi.fn(() => Promise.resolve({ organizationId: 'w1' })) },
+  };
+  const tokens = {
+    signAccess: vi.fn(() => ({ accessToken: 'AT', expiresIn: 900 })),
+    issueRefresh: vi.fn(() => Promise.resolve('RT')),
+  };
+  const service = new AuthService(
+    prisma as never,
+    tokens as never,
+    {} as never,
+    {} as never,
+    { flags: () => ({ signupEnabled: true }) } as never,
+    { emit: vi.fn() } as never,
+  );
+  return { service, prisma, tokens };
+}
+
+describe('AuthService.login — tài khoản bị vô hiệu hoá (TIRA-STORY-21)', () => {
+  it('mật khẩu đúng + tài khoản DEACTIVATED -> báo rõ "vô hiệu hoá", mã ACCOUNT_DISABLED', async () => {
+    const argon2 = await import('argon2');
+    vi.mocked(argon2.verify).mockResolvedValueOnce(true);
+    const { service, tokens } = makeLogin('DEACTIVATED');
+    await expect(service.login({ email: 'a@x.vn', password: 'p' }, {})).rejects.toMatchObject({
+      response: { code: 'ACCOUNT_DISABLED' },
+    });
+    expect(tokens.signAccess).not.toHaveBeenCalled();
+  });
+
+  it('tài khoản DEACTIVATED nhưng SAI mật khẩu -> vẫn chỉ "Email hoặc mật khẩu không đúng" (không lộ)', async () => {
+    const argon2 = await import('argon2');
+    vi.mocked(argon2.verify).mockResolvedValueOnce(false);
+    const { service } = makeLogin('DEACTIVATED');
+    await expect(service.login({ email: 'a@x.vn', password: 'x' }, {})).rejects.toMatchObject({
+      response: { code: 'INVALID_CREDENTIALS' },
+    });
+  });
+
+  it('tài khoản ACTIVE + mật khẩu đúng -> đăng nhập được', async () => {
+    const argon2 = await import('argon2');
+    vi.mocked(argon2.verify).mockResolvedValueOnce(true);
+    const { service, tokens } = makeLogin('ACTIVE');
+    await service.login({ email: 'a@x.vn', password: 'p' }, {});
+    expect(tokens.signAccess).toHaveBeenCalled();
+  });
+});
