@@ -48,14 +48,40 @@ describe('writeClipboard', () => {
     await expect(writeClipboard('abc')).resolves.toBe(true);
     expect(writeText).toHaveBeenCalledWith('abc');
   });
-  it('false khi trình duyệt từ chối', async () => {
+  // Môi trường test là node (không có DOM) nên dựng `document` tối thiểu để thử nhánh execCommand.
+  function stubDocument(execResult: boolean) {
+    const exec = vi.fn().mockReturnValue(execResult);
+    const el = {
+      value: '',
+      style: {} as Record<string, string>,
+      setAttribute: vi.fn(),
+      select: vi.fn(),
+      setSelectionRange: vi.fn(),
+    };
+    vi.stubGlobal('document', {
+      createElement: vi.fn(() => el),
+      body: { appendChild: vi.fn(), removeChild: vi.fn() },
+      execCommand: exec,
+    });
+    return exec;
+  }
+  it('HTTP thường (không có navigator.clipboard): lùi về execCommand, true khi chép được', async () => {
+    vi.stubGlobal('navigator', {});
+    const exec = stubDocument(true);
+    await expect(writeClipboard('abc')).resolves.toBe(true);
+    expect(exec).toHaveBeenCalledWith('copy');
+  });
+  it('Clipboard API từ chối: vẫn lùi về execCommand', async () => {
     vi.stubGlobal('navigator', {
       clipboard: { writeText: vi.fn().mockRejectedValue(new Error('x')) },
     });
-    await expect(writeClipboard('abc')).resolves.toBe(false);
+    const exec = stubDocument(true);
+    await expect(writeClipboard('abc')).resolves.toBe(true);
+    expect(exec).toHaveBeenCalledWith('copy');
   });
-  it('false khi không có navigator.clipboard (HTTP thường)', async () => {
+  it('false khi cả Clipboard API lẫn execCommand đều không được', async () => {
     vi.stubGlobal('navigator', {});
+    stubDocument(false);
     await expect(writeClipboard('abc')).resolves.toBe(false);
   });
 });
