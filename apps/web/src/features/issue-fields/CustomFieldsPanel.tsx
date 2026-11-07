@@ -5,7 +5,7 @@ import { DateInput, DateTimeInput } from '@/components/ui/DateInput';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { apiErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
-import { displayCustomFieldValue } from './displayValue';
+import { displayCustomFieldValue, isCustomFieldEmpty } from './displayValue';
 import {
   useIssueCustomFields,
   useSetCustomField,
@@ -72,6 +72,13 @@ function FieldRow({
       *
     </span>
   );
+  // Trường bắt buộc mà đang trống → luôn cảnh báo (TIRA-BUG-34). Không chặn lưu — chỉ nhắc rõ.
+  const missing = field.isRequired && isCustomFieldEmpty(field, item.value);
+  const warning = missing && (
+    <p className="mt-1 text-xs text-danger" role="alert">
+      Trường bắt buộc, vui lòng nhập dữ liệu.
+    </p>
+  );
   if (!canEdit) {
     return (
       <>
@@ -81,6 +88,7 @@ function FieldRow({
         </dt>
         <dd className="min-w-0 whitespace-pre-wrap break-words pt-1 text-ink">
           {displayCustomFieldValue(field, item.value) ?? <span className="text-faint">—</span>}
+          {warning}
         </dd>
       </>
     );
@@ -93,6 +101,7 @@ function FieldRow({
       </label>
       <div className="min-w-0">
         <FieldEditor field={field} value={item.value} saving={saving} onSave={onSave} />
+        {warning}
       </div>
     </>
   );

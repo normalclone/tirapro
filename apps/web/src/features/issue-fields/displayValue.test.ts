@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { CustomFieldDefinition } from './api';
-import { displayCustomFieldValue } from './displayValue';
+import { displayCustomFieldValue, isCustomFieldEmpty } from './displayValue';
 
 const def = (type: CustomFieldDefinition['type']): CustomFieldDefinition => ({
   id: 'f1',
@@ -28,5 +28,23 @@ describe('displayCustomFieldValue', () => {
     expect(displayCustomFieldValue(def('CHECKBOX'), false)).toBe('Không');
     expect(displayCustomFieldValue(def('NUMBER'), 0)).toBe('0');
     expect(displayCustomFieldValue(def('TEXT'), 'abc')).toBe('abc');
+  });
+});
+
+describe('isCustomFieldEmpty (TIRA-BUG-34)', () => {
+  it('TEXT/NUMBER/SELECT: trống khi null hoặc chuỗi rỗng', () => {
+    expect(isCustomFieldEmpty(def('TEXT'), null)).toBe(true);
+    expect(isCustomFieldEmpty(def('TEXT'), '')).toBe(true);
+    expect(isCustomFieldEmpty(def('TEXT'), 'x')).toBe(false);
+    expect(isCustomFieldEmpty(def('NUMBER'), 0)).toBe(false);
+  });
+  it('MULTI_SELECT: trống khi mảng rỗng', () => {
+    expect(isCustomFieldEmpty(def('MULTI_SELECT'), [])).toBe(true);
+    expect(isCustomFieldEmpty(def('MULTI_SELECT'), ['o1'])).toBe(false);
+  });
+  it('CHECKBOX: trống khi chưa tick (khác true)', () => {
+    expect(isCustomFieldEmpty(def('CHECKBOX'), null)).toBe(true);
+    expect(isCustomFieldEmpty(def('CHECKBOX'), false)).toBe(true);
+    expect(isCustomFieldEmpty(def('CHECKBOX'), true)).toBe(false);
   });
 });

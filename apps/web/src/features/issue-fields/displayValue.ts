@@ -1,6 +1,15 @@
 import { fmtDate, fmtDateTime } from '@/lib/dateFormat';
 import type { CustomFieldDefinition, CustomFieldValue } from './api';
 
+/**
+ * Trường tuỳ chỉnh đang trống (chưa có dữ liệu)? Dùng để cảnh báo khi trường bắt buộc bị bỏ trống
+ * (TIRA-BUG-34). CHECKBOX bắt buộc coi như trống khi CHƯA tick; các loại khác trống khi null/''/mảng rỗng.
+ */
+export function isCustomFieldEmpty(field: CustomFieldDefinition, value: CustomFieldValue): boolean {
+  if (field.type === 'CHECKBOX') return value !== true;
+  return value === null || value === '' || (Array.isArray(value) && value.length === 0);
+}
+
 /** Chuỗi hiển thị (chỉ-đọc) của giá trị trường tuỳ chỉnh; `null` = chưa có giá trị. */
 export function displayCustomFieldValue(
   field: CustomFieldDefinition,
