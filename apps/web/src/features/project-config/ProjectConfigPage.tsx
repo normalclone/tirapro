@@ -174,7 +174,12 @@ export function ConfigSection() {
         {section === 'general' && project && (
           <>
             <GeneralSection key={project.id} project={project} canAdmin={canAdmin} />
-            <ProjectAvatarSection projectKey={key} name={project.name} src={project.avatarUrl} />
+            <ProjectAvatarSection
+              projectKey={key}
+              name={project.name}
+              src={project.avatarUrl}
+              canAdmin={canAdmin}
+            />
           </>
         )}
         {section === 'members' && (
@@ -215,10 +220,12 @@ function ProjectAvatarSection({
   projectKey,
   name,
   src,
+  canAdmin,
 }: {
   projectKey: string;
   name: string;
   src?: string | null;
+  canAdmin: boolean;
 }) {
   const upload = useUploadProjectAvatar(projectKey);
   const remove = useRemoveProjectAvatar(projectKey);
@@ -235,7 +242,9 @@ function ProjectAvatarSection({
         shape="rounded"
         size={64}
         uploadFn={(f) => upload.mutateAsync(f)}
-        onRemove={src ? () => remove.mutateAsync() : undefined}
+        onRemove={canAdmin && src ? () => remove.mutateAsync() : undefined}
+        disabled={!canAdmin}
+        hint={canAdmin ? undefined : 'Chỉ quản trị dự án mới đổi được ảnh dự án.'}
       />
     </SectionCard>
   );
