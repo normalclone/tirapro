@@ -39,6 +39,14 @@ PR rất lớn — xem phần Rủi ro.
 - Nguồn locale ưu tiên: `User.locale` (đã persist) → `localStorage` (khách chưa đăng nhập) →
   `navigator.language` → mặc định `vi`.
 - Giá trị hợp lệ: `vi` | `en`. Đặt `vi` làm **fallbackLng** (bản gốc đầy đủ nhất).
+- **⚠️ BẮT BUỘC ở giai đoạn Khung — di trú dữ liệu hiện có.** Schema đang là `locale @default("en")`
+  và dữ liệu prod (2026-11-10) có **22/23 người dùng đang ở `"en"`** dù thực tế họ đang dùng giao
+  diện tiếng Việt. Nếu bật i18n mà đọc thẳng `User.locale`, toàn bộ 22 người này sẽ **bị nhảy sang
+  tiếng Anh ngay** — sai. Vì vậy, khi ship i18n phải làm MỘT trong hai, trước/cùng lúc:
+  (a) chạy di trú `UPDATE "User" SET locale='vi'` cho các tài khoản hiện có (giữ nguyên ngôn ngữ họ
+  đang thực dùng), **và** đổi `@default` của schema sang `"vi"`; hoặc
+  (b) coi giá trị default/chưa-đặt là "chưa chọn" (vd cột `locale` cho phép `null`, `null` = auto-detect
+  rồi mặc định `vi`). Cách (a) đơn giản, rõ ràng hơn — khuyến nghị.
 - Đổi ngôn ngữ trong *Trang cá nhân* (`ProfilePanel.tsx`) và Cmd+K: gọi API cập nhật `User.locale`
   + `i18n.changeLanguage()`; áp ngay không cần tải lại trang.
 
@@ -115,4 +123,6 @@ dịch + QA toàn app là phần dài.
 
 1. Dịch máy mồi bản `en` (ai/công cụ) rồi ai rà soát thuật ngữ?
 2. Có chấp nhận tách "khung trước, trích xuất theo đợt sau" để giảm rủi ro PR khổng lồ không?
-3. Mặc định ngôn ngữ cho tài khoản hiện có: giữ `vi` hay theo `User.locale` đang là `"en"` trong schema?
+
+(Vấn đề "ngôn ngữ mặc định cho tài khoản hiện có" đã được chốt là **yêu cầu bắt buộc** ở giai đoạn
+Khung — xem phần Kiến trúc > Chọn ngôn ngữ & lưu — không còn là câu hỏi mở.)
