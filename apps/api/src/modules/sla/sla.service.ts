@@ -250,7 +250,17 @@ export class SlaService {
     if (matching.length === 0) return null;
     const score = (p: (typeof candidates)[number]) =>
       priorityId && p.priorityId === priorityId ? 1 : 0;
-    return matching.sort((a, b) => score(b) - score(a))[0]!;
+    // Tie-break XÁC ĐỊNH (TIRA-BUG-30): nhiều cam kết cùng phạm vi (ví dụ hai cam kết "mọi mức ưu tiên"
+    // cùng bật) thì không chọn ngẫu nhiên theo thứ tự DB — ưu tiên khớp đúng mức ưu tiên, rồi chọn cam kết
+    // CHẶT NHẤT (hạn xử lý ngắn nhất → hạn phản hồi ngắn nhất), cuối cùng theo thời điểm tạo rồi id cho ổn định.
+    return matching.sort(
+      (a, b) =>
+        score(b) - score(a) ||
+        a.resolveMins - b.resolveMins ||
+        a.responseMins - b.responseMins ||
+        a.createdAt.getTime() - b.createdAt.getTime() ||
+        a.id.localeCompare(b.id),
+    )[0]!;
   }
 
   @OnEvent(DOMAIN_EVENTS.ISSUE_CREATED)

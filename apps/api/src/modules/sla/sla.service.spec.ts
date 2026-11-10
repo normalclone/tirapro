@@ -371,6 +371,43 @@ describe('SlaService — thời gian xử lý hiển thị đúng thực tế (l
     });
   });
 
+  it('hai cam kết "mọi mức ưu tiên" cùng bật → chọn XÁC ĐỊNH cam kết chặt nhất (hạn ngắn nhất), không theo thứ tự DB (TIRA-BUG-30)', async () => {
+    const created = new Date('2026-01-01T00:00:00Z');
+    const prisma = {
+      slaPolicy: {
+        findMany: vi.fn(() =>
+          Promise.resolve([
+            // trả về theo thứ tự "lỏng trước" để chứng minh không phụ thuộc thứ tự DB
+            {
+              id: 'polLoose',
+              projectId: 'p',
+              priorityId: null,
+              responseMins: 60,
+              resolveMins: 480,
+              createdAt: new Date('2026-01-01T00:00:00Z'),
+            },
+            {
+              id: 'polStrict',
+              projectId: 'p',
+              priorityId: null,
+              responseMins: 15,
+              resolveMins: 120,
+              createdAt: new Date('2026-01-02T00:00:00Z'),
+            },
+          ]),
+        ),
+      },
+      issueSla: { create: vi.fn((_a: unknown) => Promise.resolve({})) },
+    };
+    const service = new SlaService(prisma as never, {} as never, {} as never);
+    await service.onIssueCreated({
+      issue: { id: 'i1', organizationId: 'w', projectId: 'p', priority: null, createdAt: created },
+    });
+    const data = dataOf(prisma.issueSla.create);
+    expect(data.policyId).toBe('polStrict');
+    expect(data.resolveDueAt.getTime()).toBe(created.getTime() + 120 * 60000);
+  });
+
   it('đổi mức ưu tiên → áp lại cam kết khớp, tính lại hạn từ lúc tạo', async () => {
     const { service, prisma, created } = make();
     await service.onIssueUpdated({

@@ -13,8 +13,8 @@ export type TreeDropPlan =
 
 /**
  * Kết quả khi thả `dragged` lên `target` ở Cây việc (`target = null` là vùng "Đưa ra ngoài").
- * Theo mô hình hai cột: thả lên Epic → `epicId` (và gỡ `parentId` để cây thấy việc dưới epic); thả lên việc thường
- * (hoặc sub-task thả lên Epic) → `parentId`; đưa ra ngoài → gỡ cả hai. `restore` giữ cả hai cột cho Hoàn tác.
+ * Theo mô hình hai cột: thả việc thường lên Epic → `epicId` (và gỡ `parentId` để cây thấy việc dưới epic); sub-task thả lên
+ * việc thường (hoặc lên Epic) → `parentId`; việc thường thả lên việc thường → từ chối (cùng cấp không lồng nhau); đưa ra ngoài → gỡ cả hai. `restore` giữ cả hai cột cho Hoàn tác.
  */
 export function planTreeDrop(
   dragged: IssueDto,
@@ -40,6 +40,13 @@ export function planTreeDrop(
       reason: 'Việc con không chứa việc khác — hãy thả lên việc cha của nó',
     };
   if (treeParentId(dragged) === target.id) return { kind: 'ignore' };
+  // TIRA-BUG-22: chỉ việc con mới có `parentId`; việc thường chỉ gắn vào Epic (`epicId`), không lồng vào nhau.
+  if (!dragged.type.isSubtask && !isEpicIssue(target))
+    return {
+      kind: 'reject',
+      reason:
+        'Không thể lồng hai việc cùng cấp vào nhau — việc thường chỉ gắn vào Epic, còn việc con mới nằm dưới một việc cha',
+    };
   const viaEpic = isEpicIssue(target) && !dragged.type.isSubtask;
   return viaEpic
     ? { kind: 'set', patch: { epicId: target.id, parentId: null }, restore }

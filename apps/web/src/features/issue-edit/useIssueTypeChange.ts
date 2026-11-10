@@ -12,6 +12,14 @@ import {
   epicConversionPlan,
   isEpicTypeOption,
 } from './epicConversion';
+
+/** Loại việc thường (Story/Task/Bug): không phải Epic, không phải sub-task. */
+const isStandardTypeOption = (t: {
+  key: string | null;
+  hierarchyLevel?: number;
+  isSubtask: boolean;
+}) => !t.isSubtask && !isEpicTypeOption(t);
+import { isEpicIssue } from '@/lib/issueRefs';
 import { statusMappingNeeded } from './typeChange';
 
 const DETACH = { epicId: null, parentId: null };
@@ -20,11 +28,13 @@ const DETACH = { epicId: null, parentId: null };
 interface Send {
   detach: boolean;
   adopt: boolean;
+  /** Sub-task đổi sang loại thường: gỡ `parentId` (chỉ sub-task mới có việc cha — TIRA-BUG-22), giữ Epic nếu cha là Epic. */
+  clearParent?: boolean;
   targetStatusId?: string;
 }
 
 /** Hộp chọn trạng thái đích (đổi sang loại dùng quy trình khác) — giữ cả lựa chọn gỡ/chuyển đã xác nhận cho lần gửi lại. */
-export interface TypeChangeAsk extends Pick<Send, 'detach' | 'adopt'> {
+export interface TypeChangeAsk extends Pick<Send, 'detach' | 'adopt' | 'clearParent'> {
   seq: number;
   typeId: string;
   typeName: string;
@@ -81,6 +91,15 @@ export function useIssueTypeChange(
     });
   }
 
+  // Cha là Epic (sub-task gắn thẳng vào Epic) → thành việc của Epic đó (`epicId`); cha thường → chỉ gỡ.
+  const parentIssue = issue.parentId
+    ? projectIssues?.find((i) => i.id === issue.parentId)
+    : undefined;
+  const clearParentPatch: { parentId: null; epicId?: string } = {
+    parentId: null,
+    ...(parentIssue && isEpicIssue(parentIssue) ? { epicId: parentIssue.id } : {}),
+  };
+
   function send(typeId: string, o: Send) {
     patch.mutate(
       {
@@ -90,6 +109,7 @@ export function useIssueTypeChange(
           typeId,
           ...(o.targetStatusId ? { targetStatusId: o.targetStatusId } : {}),
           ...(o.detach ? DETACH : {}),
+          ...(o.clearParent && !o.detach ? clearParentPatch : {}),
           ...(o.adopt ? { adoptChildren: true } : {}),
         },
         version: issue.version,
@@ -121,6 +141,7 @@ export function useIssueTypeChange(
               suggestedStatusId: need.suggestedStatusId,
               detach: o.detach,
               adopt: o.adopt,
+              clearParent: o.clearParent,
             });
             setAskOpen(true);
           } else toast.error(apiErrorMessage(e)); // trong hộp trạng thái: giữ hộp mở để chọn lại
@@ -138,7 +159,9 @@ export function useIssueTypeChange(
       const copy = epicConversionCopy(issue.key, plan);
       if (!(await confirm({ ...copy, confirmLabel: 'Đổi thành Epic' }))) return;
     }
-    send(typeId, { detach: !!plan, adopt: false });
+    const clearParent =
+      !plan && issue.type.isSubtask && !!issue.parentId && !!target && isStandardTypeOption(target);
+    send(typeId, { detach: !!plan, adopt: false, clearParent });
   }
 
   return {
@@ -147,7 +170,13 @@ export function useIssueTypeChange(
     askOpen,
     closeAsk: () => setAskOpen(false),
     confirmAsk: (targetStatusId: string) =>
-      ask && send(ask.typeId, { detach: ask.detach, adopt: ask.adopt, targetStatusId }),
+      ask &&
+      send(ask.typeId, {
+        detach: ask.detach,
+        adopt: ask.adopt,
+        clearParent: ask.clearParent,
+        targetStatusId,
+      }),
     pending: patch.isPending,
   };
 }

@@ -17,6 +17,10 @@ const INLINE_SOURCE =
   '|(?<link>\\[(?<linkText>[^\\]]+)\\]\\((?<linkHref>[^)\\s]+)\\))' +
   // Link dán trơn (chỉ http/https) — đứng trước nghiêng `_x_` để dấu _ trong URL không thành chữ nghiêng.
   '|(?<url>https?:\\/\\/[^\\s<>"\'`]+)' +
+  // Đậm + nghiêng kết hợp (TIRA-BUG-29) — phải đứng TRƯỚC nhánh đậm/nghiêng để bắt 3 dấu sao trước 2 dấu.
+  '|\\*\\*\\*(?<bi1>[^*]+)\\*\\*\\*' + // ***đậm+nghiêng***
+  '|\\*\\*_(?<bi2>[^_]+)_\\*\\*' + // **_đậm+nghiêng_**
+  '|_\\*\\*(?<bi3>[^*]+)\\*\\*_' + // _**đậm+nghiêng**_
   '|\\*\\*(?<bold>[^*]+)\\*\\*' +
   '|`(?<code>[^`]+)`' +
   '|~~(?<strike>[^~]+)~~' +
@@ -104,6 +108,12 @@ function renderInline(text: string, refs?: Record<string, IssueRef>): ReactNode[
         ),
       );
       if (rest) out.push(rest);
+    } else if (g.bi1 !== undefined || g.bi2 !== undefined || g.bi3 !== undefined) {
+      out.push(
+        <strong key={k++} className="font-semibold text-ink-strong">
+          <em>{g.bi1 ?? g.bi2 ?? g.bi3}</em>
+        </strong>,
+      );
     } else if (g.bold !== undefined) {
       out.push(
         <strong key={k++} className="font-semibold text-ink-strong">

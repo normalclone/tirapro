@@ -210,6 +210,7 @@ export function epicChoices(issues: IssueDto[], selfId: string): IssueDto[] {
         a.key.localeCompare(b.key),
     );
 }
+/** Việc cha khả dĩ của một SUB-TASK (việc thường); chỉ sub-task mới có `parentId` nên chỉ hiện bộ chọn này cho sub-task (TIRA-BUG-22). */
 export function parentChoices(issues: IssueDto[], selfId: string): IssueDto[] {
   const banned = descendantIdsWithSelf(issues, selfId); // import từ issueTree
   return issues.filter((i) => !banned.has(i.id) && !isEpicIssue(i) && !i.type.isSubtask);

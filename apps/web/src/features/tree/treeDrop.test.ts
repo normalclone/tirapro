@@ -18,11 +18,21 @@ describe('planTreeDrop', () => {
       patch: { epicId: 'e', parentId: null },
       restore: { parentId: 's', epicId: null },
     }));
-  it('thả lên việc thường: đặt việc cha', () =>
-    expect(planTreeDrop(inE, s, all)).toEqual({
+  it('cấm lồng việc cùng cấp: Story/Task/Bug thả lên việc thường => reject (TIRA-BUG-22)', () => {
+    expect(planTreeDrop(inE, s, all)).toMatchObject({ kind: 'reject' });
+    expect(planTreeDrop(mk('bug'), s, all)).toMatchObject({ kind: 'reject' });
+  });
+  it('sub-task thả lên việc thường: đặt việc cha (parentId)', () =>
+    expect(planTreeDrop(mk('u2', { t: 'sub', parentId: 'c' }), s, all)).toEqual({
       kind: 'set',
       patch: { parentId: 's' },
-      restore: { parentId: null, epicId: 'e' },
+      restore: { parentId: 'c', epicId: null },
+    }));
+  it('việc thường thả lên Epic: gắn epicId, xoá parentId', () =>
+    expect(planTreeDrop(mk('lone'), e, all)).toEqual({
+      kind: 'set',
+      patch: { epicId: 'e', parentId: null },
+      restore: { parentId: null, epicId: null },
     }));
   it('sub-task thả lên Epic: đặt làm việc con trực tiếp (parentId), không phải epicId', () =>
     expect(planTreeDrop(sub, e, all)).toMatchObject({ kind: 'set', patch: { parentId: 'e' } }));

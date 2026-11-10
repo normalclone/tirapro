@@ -13,14 +13,18 @@ const opt = (i: IssueDto) => ({ value: i.id, label: i.summary, hint: i.key, colo
 
 /**
  * Mục "Epic / Việc cha": hai hàng chọn có tìm kiếm khớp đúng mô hình DB (`epicId` · `parentId`).
- * Epic không có mục này (cấp cao nhất); sub-task không có hàng Epic. Lỗi hợp lệ từ API (khác dự án, vòng…) hiện nguyên văn.
+ * Epic không có mục này (cấp cao nhất); sub-task không có hàng Epic; chỉ sub-task có hàng Việc cha (việc thường gắn vào Epic). Lỗi hợp lệ từ API (khác dự án, vòng…) hiện nguyên văn.
  */
 export function EpicParentField({ issue }: { issue: IssueDto }) {
   const { data: issues = [] } = useProjectIssues(issue.projectId);
   const patch = useUpdateIssue(issue.projectId);
   const canEdit = useCanEditIssue(issue.projectId)(issue);
   const epics = useMemo(() => epicChoices(issues, issue.id), [issues, issue.id]);
-  const parents = useMemo(() => parentChoices(issues, issue.id), [issues, issue.id]);
+  // TIRA-BUG-22: chỉ sub-task chọn được việc cha (việc thường gắn vào Epic) — việc thường không có gì để chọn.
+  const parents = useMemo(
+    () => (issue.type.isSubtask ? parentChoices(issues, issue.id) : []),
+    [issues, issue.id, issue.type.isSubtask],
+  );
   const byId = useMemo(() => new Map(issues.map((i) => [i.id, i])), [issues]);
   if (isEpicIssue(issue)) return null; // sau mọi hook (quy tắc hook)
 
@@ -84,17 +88,19 @@ export function EpicParentField({ issue }: { issue: IssueDto }) {
             />
           </InfoRow>
         )}
-        <InfoRow label="Việc cha" hint="Công việc lớn hơn mà việc này là một phần của nó">
-          <SearchSelect
-            ariaLabel="Việc cha"
-            value={parentValue}
-            disabled={!canEdit || patch.isPending}
-            options={[{ value: '', label: 'Không có việc cha' }, ...parents.map(opt)]}
-            searchPlaceholder="Tìm việc cha theo mã hoặc tiêu đề…"
-            onChange={(v) => save('parentId', v || null)}
-            className={INLINE_TRIGGER}
-          />
-        </InfoRow>
+        {(issue.type.isSubtask || !!parentValue) && (
+          <InfoRow label="Việc cha" hint="Công việc lớn hơn mà việc này là một phần của nó">
+            <SearchSelect
+              ariaLabel="Việc cha"
+              value={parentValue}
+              disabled={!canEdit || patch.isPending}
+              options={[{ value: '', label: 'Không có việc cha' }, ...parents.map(opt)]}
+              searchPlaceholder="Tìm việc cha theo mã hoặc tiêu đề…"
+              onChange={(v) => save('parentId', v || null)}
+              className={INLINE_TRIGGER}
+            />
+          </InfoRow>
+        )}
       </div>
     </PanelSection>
   );

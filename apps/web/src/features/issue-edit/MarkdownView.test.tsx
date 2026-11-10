@@ -123,6 +123,24 @@ describe('MarkdownView — in nghiêng (logbug #9)', () => {
   });
 });
 
+describe('MarkdownView — đậm + nghiêng kết hợp (TIRA-BUG-29)', () => {
+  it.each(['***vừa đậm vừa nghiêng***', '**_vừa đậm vừa nghiêng_**', '_**vừa đậm vừa nghiêng**_'])(
+    '%s → strong lồng em',
+    (md) => {
+      const out = html(md);
+      expect(out).toMatch(/<strong[^>]*><em>vừa đậm vừa nghiêng<\/em><\/strong>/);
+      expect(out).not.toContain('*');
+      expect(out).not.toContain('_vừa');
+    },
+  );
+
+  it('đậm thường và nghiêng thường vẫn hoạt động riêng lẻ', () => {
+    expect(html('**chỉ đậm**')).toMatch(/<strong[^>]*>chỉ đậm<\/strong>/);
+    expect(html('**chỉ đậm**')).not.toContain('<em>');
+    expect(html('*chỉ nghiêng*')).toContain('<em>chỉ nghiêng</em>');
+  });
+});
+
 describe('MarkdownView — mô tả dài không làm vỡ layout (logbug #12)', () => {
   it('khung bao cho phép ngắt chuỗi dài không dấu cách', () => {
     expect(html('x'.repeat(500))).toContain('[overflow-wrap:anywhere]');

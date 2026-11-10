@@ -33,7 +33,7 @@ import {
 } from './api';
 import { PriorityIcon } from '@/components/ui/PriorityIcon';
 import { usePriorityRanks } from '@/features/issue-meta/usePriorityRanks';
-import { validateSlaForm } from './slaForm';
+import { validateSlaForm, findSlaScopeOverlaps } from './slaForm';
 
 /**
  * Mục "Thời gian xử lý" trong Cấu hình dự án (`/p/:key/config/response-time`): cam kết của CHÍNH dự án này và bảng công việc
@@ -210,6 +210,8 @@ function SlaPolicies({
   const [resolveH, setResolveH] = useState('24');
 
   const list = data ?? [];
+  // Nhiều cam kết cùng phạm vi đang bật → công việc mới chỉ áp 1 (chặt nhất); cảnh báo người cấu hình (TIRA-BUG-30).
+  const overlaps = findSlaScopeOverlaps(list);
 
   // Lỗi hiện sau lần Tạo lỗi đầu tiên (sửa tới đâu hết lỗi tới đó); mở lại hộp thì xoá.
   const allErrors: FieldError[] = validateSlaForm({ name }).map((i) => ({
@@ -264,6 +266,22 @@ function SlaPolicies({
         ) : undefined
       }
     >
+      {overlaps.length > 0 && (
+        <div
+          role="alert"
+          className="mb-3 flex gap-2 rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning"
+        >
+          <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+          <p>
+            Đang có nhiều cam kết cùng áp dụng cho{' '}
+            {overlaps
+              .map((o) => (o.priorityName ? `mức ưu tiên “${o.priorityName}”` : 'mọi mức ưu tiên'))
+              .join(', ')}
+            . Một công việc khớp nhiều cam kết sẽ chỉ áp <b>một</b> — cam kết có thời gian xử lý
+            ngắn nhất. Hãy tắt bớt, hoặc đặt mỗi cam kết cho một mức ưu tiên khác nhau.
+          </p>
+        </div>
+      )}
       <QueryBoundary
         query={policiesQuery}
         skeleton={

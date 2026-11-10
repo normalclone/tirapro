@@ -23,6 +23,17 @@ const has = (text: string): unknown => expect.stringContaining(text);
 
 const now = new Date('2026-10-15T00:00:00Z');
 
+/** Loại Sub-task: chỉ loại này được có `parentId` (TIRA-BUG-22) — dùng cho ca đặt/đổi việc cha. */
+const SUBTASK_TYPE = {
+  id: 't-sub',
+  name: 'Sub-task',
+  key: 'SUBTASK',
+  iconUrl: null,
+  color: null,
+  hierarchyLevel: -1,
+  isSubtask: true,
+};
+
 /** Dòng issue đủ trường để toDto() không văng lỗi. */
 function issueRow(over: Record<string, unknown> = {}) {
   return {
@@ -3836,6 +3847,7 @@ describe('IssuesService.update — lịch sử mô tả (B19)', () => {
 describe('IssuesService — cây việc: server chặn đích sai của parentId/epicId (B22)', () => {
   const T = {
     task: { key: 'TASK', hierarchyLevel: 0, isSubtask: false },
+    bug: { key: 'BUG', hierarchyLevel: 0, isSubtask: false },
     epic: { key: 'EPIC', hierarchyLevel: 1, isSubtask: false },
     sub: { key: 'SUBTASK', hierarchyLevel: -1, isSubtask: true },
   };
@@ -3914,14 +3926,36 @@ describe('IssuesService — cây việc: server chặn đích sai của parentId
     expect(tx.issue.updateMany).not.toHaveBeenCalled();
   });
 
-  it('cha hợp lệ (cùng dự án, việc thường) => ghi parentId; vòng cũ không liên quan tới việc này không chặn oan', async () => {
-    const tx = treeTx(issueRow(), {
+  it('cha hợp lệ (sub-task con, cha cùng dự án là việc thường) => ghi parentId; vòng cũ không liên quan tới việc này không chặn oan', async () => {
+    const tx = treeTx(issueRow({ type: { ...issueRow().type, ...T.sub } }), {
       p9: row({ parentId: 'a1' }),
       a1: row({ parentId: 'a2' }),
       a2: row({ parentId: 'a1' }),
     });
     await expect(patch(tx, { parentId: 'p9' })).resolves.toBeDefined();
     expect(tx.issue.updateMany.mock.calls[0]![0].data).toMatchObject({ parentId: 'p9' });
+  });
+
+  it('TIRA-BUG-22: việc thường (Task/Bug) đặt parentId là việc thường khác => 422, không ghi', async () => {
+    const parents = { p9: row(), s9: row({ type: T.bug }) };
+    for (const type of [T.task, T.bug]) {
+      const tx = treeTx(issueRow({ type: { ...issueRow().type, ...type } }), parents);
+      await expect(patch(tx, { parentId: 'p9' })).rejects.toMatchObject({
+        status: 422,
+        message: has('không thể là việc con'),
+      });
+      await expect(patch(tx, { parentId: 's9' })).rejects.toMatchObject({ status: 422 });
+      expect(tx.issue.updateMany).not.toHaveBeenCalled();
+    }
+  });
+
+  it('TIRA-BUG-22: việc thường kéo vào Epic (parentId = Epic) vẫn hợp lệ — ghi epicId', async () => {
+    const tx = treeTx(issueRow(), { e9: row({ type: T.epic }) });
+    await expect(patch(tx, { parentId: 'e9' })).resolves.toBeDefined();
+    expect(tx.issue.updateMany.mock.calls[0]![0].data).toMatchObject({
+      epicId: 'e9',
+      parentId: null,
+    });
   });
 
   it('gỡ parentId (null) hoặc gửi lại cha hiện tại => không áp luật cấu trúc lên dữ liệu cũ', async () => {
@@ -3996,14 +4030,21 @@ describe('IssuesService — cây việc: server chặn đích sai của parentId
       });
       expect(created).not.toHaveBeenCalled();
     });
-    it('tạo Epic có parentId => 422; việc thường với cha hợp lệ => tạo', async () => {
+    it('tạo Epic có parentId => 422; sub-task với cha hợp lệ => tạo; việc thường có parentId => 422', async () => {
       const bad = createTxFor({ p9: row() });
       bad.tx.issueType.findFirst = vi.fn(() => Promise.resolve({ id: 't1', ...T.epic }));
       await expect(
         makeService(bad.tx).service.create('w1', 'u1', input({ parentId: 'p9' })),
       ).rejects.toMatchObject({ status: 422 });
       expect(bad.created).not.toHaveBeenCalled();
+      const std = createTxFor({ p9: row() });
+      std.tx.issueType.findFirst = vi.fn(() => Promise.resolve({ id: 't1', ...T.task }));
+      await expect(
+        makeService(std.tx).service.create('w1', 'u1', input({ parentId: 'p9' })),
+      ).rejects.toMatchObject({ status: 422, message: has('không thể là việc con') });
+      expect(std.created).not.toHaveBeenCalled();
       const ok = createTxFor({ p9: row() });
+      ok.tx.issueType.findFirst = vi.fn(() => Promise.resolve({ id: 't1', ...T.sub }));
       await makeService(ok.tx).service.create('w1', 'u1', input({ parentId: 'p9' }));
       expect(ok.created.mock.calls[0]![0].data.parentId).toBe('p9');
     });
@@ -4944,7 +4985,7 @@ describe('IssuesService — điểm việc cha = tổng điểm việc con (Task
   });
 
   it('chuyển sub-task sang việc cha khác => cả hai việc cha được cộng lại, kèm Epic của chúng', async () => {
-    const cur = issueRow({ parentId: 'p1x', epicId: null, storyPoints: 3 });
+    const cur = issueRow({ parentId: 'p1x', epicId: null, storyPoints: 3, type: SUBTASK_TYPE });
     const after = issueRow({ parentId: 'p2x', epicId: null, storyPoints: 3, version: 4 });
     const t = pTx(cur, after, {
       rows: {
@@ -4963,7 +5004,7 @@ describe('IssuesService — điểm việc cha = tổng điểm việc con (Task
   });
 
   it('việc cấp trên chuyển thành việc con (parentId null → pt) => Epic cũ cộng lại vì việc rời tổng Epic', async () => {
-    const cur = issueRow({ parentId: null, epicId: 'eA', storyPoints: 3 });
+    const cur = issueRow({ parentId: null, epicId: 'eA', storyPoints: 3, type: SUBTASK_TYPE });
     const after = issueRow({ parentId: 'pt', epicId: 'eA', storyPoints: 3, version: 4 });
     const t = pTx(cur, after, {
       rows: { pt: parentRow(2) },
@@ -5211,7 +5252,7 @@ describe('IssuesService.update — việc con theo sprint của việc cha', () 
   });
   it('đổi cha sang cha khác => sprint của việc đồng bộ theo cha mới', async () => {
     const { t } = sTx(
-      issueRow({ parentId: 'p1x', sprintId: 'spA' }),
+      issueRow({ parentId: 'p1x', sprintId: 'spA', type: SUBTASK_TYPE }),
       issueRow({ parentId: 'p2x', sprintId: 'spB', version: 4 }),
       {
         rows: {
@@ -6276,6 +6317,35 @@ describe('IssuesService.update — đổi loại sang Epic (TIRA-BUG-20)', () =>
     await service.update('w1', 'u1', 'i1', { version: 3, typeId: 't1', epicId: 'e1' });
     const w = t.issue.updateMany.mock.calls.find((c) => c[0].where.id === 'i1')!;
     expect(w[0].data).toMatchObject({ typeId: 't1', epicId: 'e1' });
+  });
+
+  describe('TIRA-BUG-22: đổi sub-task sang loại thường', () => {
+    const subRow = () =>
+      issueRow({ parentId: 'par', typeId: 't-sub', type: { ...issueRow().type, ...SUB } });
+    const rows = { par: { projectId: 'p1', epicId: null, type: PLAIN } };
+
+    it('còn giữ parentId => 422, không ghi', async () => {
+      const t = tx(subRow(), issueRow({ version: 4 }), { rows });
+      await expect(
+        makeService(t).service.update('w1', 'u1', 'i1', { version: 3, typeId: 't1' }),
+      ).rejects.toMatchObject({ status: 422, message: has('parentId: null') });
+      expect(t.issue.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('gỡ parentId cùng request => cho phép', async () => {
+      const t = tx(subRow(), issueRow({ version: 4, parentId: null }), { rows });
+      await expect(
+        makeService(t).service.update('w1', 'u1', 'i1', {
+          version: 3,
+          typeId: 't1',
+          parentId: null,
+        }),
+      ).resolves.toBeDefined();
+      expect(t.issue.updateMany.mock.calls[0]![0].data).toMatchObject({
+        typeId: 't1',
+        parentId: null,
+      });
+    });
   });
 
   it('việc con trực tiếp thành việc của Epic mới (parentId → null, epicId → Epic), kèm lịch sử và sự kiện', async () => {
