@@ -187,6 +187,26 @@ export function guardRoleEdit(
   return loss ? { kind: 'confirm', reason: loss } : { kind: 'ok' };
 }
 
+/**
+ * TIRA-BUG-35: trường bắt buộc của hộp thoại Tạo/Sửa vai trò. Chỉ báo lỗi SAU khi người dùng đã bấm Lưu
+ * (`submitted`) — để không hiện viền đỏ ngay lúc mở form còn trống. Bắt buộc: tên vai trò (không rỗng) và
+ * ít nhất một quyền được chọn.
+ */
+export interface RoleFormErrors {
+  name: boolean;
+  perms: boolean;
+}
+export function roleFormErrors(
+  submitted: boolean,
+  trimmedName: string,
+  permCount: number,
+): RoleFormErrors {
+  return {
+    name: submitted && trimmedName.length === 0,
+    perms: submitted && permCount === 0,
+  };
+}
+
 /** Tên đề xuất khi nhân bản — "Tên (bản sao)", cắt phần tên gốc để không vượt giới hạn 60 ký tự của máy chủ. */
 const CLONE_SUFFIX = ' (bản sao)';
 export function cloneName(sourceName: string): string {

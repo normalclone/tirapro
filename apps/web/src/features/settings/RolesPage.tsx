@@ -14,6 +14,7 @@ import { ReadOnlyNote } from '@/components/ui/NoAccess';
 import { Dialog } from '@/components/ui/Dialog';
 import { useConfirm } from '@/components/ui/useConfirm';
 import { Input } from '@/components/ui/Input';
+import { FieldErrorText } from '@/components/ui/FieldError';
 import { RoleBadge } from '@/components/ui/RoleBadge';
 import { EmptyState, Skeleton } from '@/components/ui/primitives';
 import { PageFrame } from '@/components/layout/PageFrame';
@@ -31,7 +32,7 @@ import {
 } from '@/features/roles/api';
 import { QueryBoundary } from '@/components/ui/QueryBoundary';
 import { RoleMatrixTable } from './RoleMatrixTable';
-import { cloneName } from './rolePermEdit';
+import { cloneName, roleFormErrors } from './rolePermEdit';
 import {
   ADMIN_GRANT_REASON,
   permLockedForAdminGrant,
@@ -391,9 +392,18 @@ function RoleDialog({
   const canSubmit =
     trimmedName.length > 0 && permKeys.length > 0 && !readOnly && !needsAdminToSubmit;
   const busy = createRole.isPending || updateRole.isPending;
+  // TIRA-BUG-35: trước đây nút Lưu bị khoá khi chưa hợp lệ nên người dùng không biết trường nào còn thiếu.
+  // Nay nút bấm được; lần đầu bấm bật `submitted` để hiện dấu (*) đỏ + viền đỏ + lời lỗi ở trường bắt buộc chưa nhập.
+  const [submitted, setSubmitted] = useState(false);
+  const { name: nameError, perms: permsError } = roleFormErrors(
+    submitted,
+    trimmedName,
+    permKeys.length,
+  );
 
   function submit(e: FormEvent) {
     e.preventDefault();
+    setSubmitted(true);
     if (!canSubmit || busy) return;
     if (isCreate) {
       const body: CreateRoleInput = {
@@ -481,7 +491,7 @@ function RoleDialog({
               {readOnly ? 'Đóng' : 'Huỷ'}
             </Button>
             {!readOnly && (
-              <Button type="submit" form="role-form" loading={busy} disabled={!canSubmit}>
+              <Button type="submit" form="role-form" loading={busy} disabled={busy}>
                 {isCreate ? (template ? 'Nhân bản' : 'Tạo vai trò') : 'Lưu'}
               </Button>
             )}
@@ -506,7 +516,10 @@ function RoleDialog({
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
                 <label htmlFor="role-name" className="mb-1.5 block text-sm font-medium text-muted">
-                  Tên vai trò
+                  Tên vai trò{' '}
+                  <span className="text-danger" aria-hidden="true">
+                    *
+                  </span>
                 </label>
                 <Input
                   id="role-name"
@@ -517,6 +530,7 @@ function RoleDialog({
                   onChange={(e) => setName(e.target.value)}
                   placeholder="VD: QA Lead"
                   className="text-sm"
+                  invalid={nameError ? 'Hãy nhập tên vai trò' : undefined}
                 />
               </div>
               <div>
@@ -580,9 +594,19 @@ function RoleDialog({
         {/* Checklist quyền */}
         <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <span className="text-sm font-medium text-ink-strong">Quyền</span>
+            <span className="text-sm font-medium text-ink-strong">
+              Quyền{' '}
+              {!readOnly && (
+                <span className="text-danger" aria-hidden="true">
+                  *
+                </span>
+              )}
+            </span>
             <span className="text-xs text-faint">{permKeys.length} quyền được chọn</span>
           </div>
+          {permsError && (
+            <FieldErrorText id="role-perms-error">Hãy chọn ít nhất một quyền</FieldErrorText>
+          )}
           {visibleScopes.map((ps) => (
             <fieldset key={ps} className="space-y-1">
               <legend className="mb-1 text-xs font-medium text-faint">

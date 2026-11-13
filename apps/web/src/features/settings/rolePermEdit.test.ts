@@ -11,6 +11,7 @@ import {
   hasKey,
   planFlush,
   planPermUndo,
+  roleFormErrors,
   sameKeySet,
   selfLoss,
   setManyDesired,
@@ -297,5 +298,23 @@ describe('guardRoleEdit — chỉ quản trị mới cấp/gỡ organization:adm
     expect(
       guardRoleEdit(ctx({ callerIsAdmin: false, members: undefined }), [MANAGE], [MANAGE, ADMIN]),
     ).toEqual({ kind: 'blocked', reason: ADMIN_GRANT_REASON });
+  });
+});
+
+describe('roleFormErrors (TIRA-BUG-35)', () => {
+  it('chưa bấm Lưu → không báo lỗi dù trống', () => {
+    expect(roleFormErrors(false, '', 0)).toEqual({ name: false, perms: false });
+  });
+  it('đã bấm Lưu, tên trống + chưa chọn quyền → cả hai lỗi', () => {
+    expect(roleFormErrors(true, '', 0)).toEqual({ name: true, perms: true });
+  });
+  it('đã bấm Lưu, có tên nhưng chưa chọn quyền → chỉ lỗi quyền', () => {
+    expect(roleFormErrors(true, 'QA Lead', 0)).toEqual({ name: false, perms: true });
+  });
+  it('đã bấm Lưu, chọn quyền nhưng tên trống → chỉ lỗi tên', () => {
+    expect(roleFormErrors(true, '', 3)).toEqual({ name: true, perms: false });
+  });
+  it('đã bấm Lưu, đủ tên + quyền → không lỗi', () => {
+    expect(roleFormErrors(true, 'QA Lead', 2)).toEqual({ name: false, perms: false });
   });
 });

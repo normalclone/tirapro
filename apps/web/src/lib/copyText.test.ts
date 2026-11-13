@@ -55,19 +55,23 @@ describe('writeClipboard', () => {
       value: '',
       style: {} as Record<string, string>,
       setAttribute: vi.fn(),
+      focus: vi.fn(),
       select: vi.fn(),
       setSelectionRange: vi.fn(),
+      remove: vi.fn(),
     };
+    const bodyAppend = vi.fn();
     vi.stubGlobal('document', {
+      activeElement: null,
       createElement: vi.fn(() => el),
-      body: { appendChild: vi.fn(), removeChild: vi.fn() },
+      body: { appendChild: bodyAppend },
       execCommand: exec,
     });
-    return exec;
+    return { exec, el, bodyAppend };
   }
   it('HTTP thường (không có navigator.clipboard): lùi về execCommand, true khi chép được', async () => {
     vi.stubGlobal('navigator', {});
-    const exec = stubDocument(true);
+    const { exec } = stubDocument(true);
     await expect(writeClipboard('abc')).resolves.toBe(true);
     expect(exec).toHaveBeenCalledWith('copy');
   });
@@ -75,7 +79,7 @@ describe('writeClipboard', () => {
     vi.stubGlobal('navigator', {
       clipboard: { writeText: vi.fn().mockRejectedValue(new Error('x')) },
     });
-    const exec = stubDocument(true);
+    const { exec } = stubDocument(true);
     await expect(writeClipboard('abc')).resolves.toBe(true);
     expect(exec).toHaveBeenCalledWith('copy');
   });
@@ -83,5 +87,30 @@ describe('writeClipboard', () => {
     vi.stubGlobal('navigator', {});
     stubDocument(false);
     await expect(writeClipboard('abc')).resolves.toBe(false);
+  });
+  // TIRA-BUG-26: trước đây không focus textarea → trong hộp thoại có bẫy focus, execCommand trả true
+  // nhưng clipboard rỗng. Nay phải focus() + select() trước khi chép, và dọn textarea sau đó.
+  it('nhánh execCommand: focus() + select() TRƯỚC khi chép, rồi gỡ textarea', async () => {
+    vi.stubGlobal('navigator', {});
+    const { exec, el } = stubDocument(true);
+    await writeClipboard('https://x.test/filters/f1');
+    expect(el.focus).toHaveBeenCalled();
+    expect(el.select).toHaveBeenCalled();
+    expect(el.setSelectionRange).toHaveBeenCalledWith(0, 'https://x.test/filters/f1'.length);
+    expect(el.focus.mock.invocationCallOrder[0]!).toBeLessThan(exec.mock.invocationCallOrder[0]!);
+    expect(el.select.mock.invocationCallOrder[0]!).toBeLessThan(exec.mock.invocationCallOrder[0]!);
+    expect(el.remove).toHaveBeenCalled();
+  });
+  it('nhánh execCommand: gắn textarea vào cùng vùng với phần tử đang focus (trong bẫy focus)', async () => {
+    vi.stubGlobal('navigator', {});
+    const { exec, el } = stubDocument(true);
+    const scopeAppend = vi.fn();
+    const restore = vi.fn();
+    const active = { parentElement: { appendChild: scopeAppend }, focus: restore };
+    (document as unknown as { activeElement: unknown }).activeElement = active;
+    await expect(writeClipboard('abc')).resolves.toBe(true);
+    expect(scopeAppend).toHaveBeenCalledWith(el); // không gắn vào document.body
+    expect(exec).toHaveBeenCalledWith('copy');
+    expect(restore).toHaveBeenCalled(); // trả focus về chỗ cũ
   });
 });
