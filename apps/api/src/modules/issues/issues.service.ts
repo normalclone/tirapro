@@ -82,8 +82,6 @@ const issueWriteInclude = {
   ...issueInclude,
   project: { select: { archivedAt: true } },
 } satisfies Prisma.IssueInclude;
-/** Loại việc đủ để kiểm luật cha-con của cây (`key`/`hierarchyLevel` nhận ra Epic, `isSubtask` = chỉ loại này có `parentId`). */
-type ParentCheckType = { key: string | null; hierarchyLevel: number; isSubtask: boolean };
 type IssueWriteRow = Prisma.IssueGetPayload<{ include: typeof issueWriteInclude }>;
 
 /** Trạng thái duyệt đặt lúc tạo việc từ form Báo lỗi/Đề xuất (IntakeService). */
@@ -876,25 +874,20 @@ export class IssuesService {
   }
 
   /**
-   * Việc cha trong cây (`parentId`) hợp lệ: Epic là cấp cao nhất nên không có cha; chỉ SUB-TASK mới có `parentId` (việc
-   * thường Story/Task/Bug gắn vào Epic qua `epicId`, không lồng nhau — TIRA-BUG-22); cha phải cùng dự án và không phải
+   * Việc cha trong cây (`parentId`) hợp lệ: Epic là cấp cao nhất nên không có cha; cha phải cùng dự án và không phải
    * sub-task. Chỉ gọi khi `parentId` đổi/được đặt (dữ liệu cũ không bị chặn oan khi sửa trường khác) — 404/422.
    */
   private async assertParentPlacement(
     db: Prisma.TransactionClient,
     organizationId: string,
-    self: { projectId: string; type: ParentCheckType },
+    self: { projectId: string; type: { key: string | null; hierarchyLevel: number } },
     parentId: string,
     /** Loại hiệu lực sau khi sửa (đổi loại cùng lúc đặt cha); mặc định loại hiện tại của `self`. */
-    effType: ParentCheckType = self.type,
+    effType: { key: string | null; hierarchyLevel: number } = self.type,
   ): Promise<void> {
     if (isEpicType(effType))
       throw new BusinessRuleException(
         'Epic là cấp cao nhất — không thể đặt Epic vào bên trong một việc khác, chỉ có thể gắn việc vào Epic',
-      );
-    if (!effType.isSubtask)
-      throw new BusinessRuleException(
-        'Việc thường (Story/Task/Bug) không thể là việc con của việc khác — hãy gắn vào Epic. Chỉ việc con (sub-task) mới nằm dưới một việc',
       );
     const parent = await db.issue.findFirst({
       where: { id: parentId, organizationId, deletedAt: null },
@@ -958,7 +951,7 @@ export class IssuesService {
     if (!strict || !input.parentId) return; // import giữ nguyên dữ liệu gốc
     const type = await db.issueType.findFirst({
       where: { id: input.typeId, organizationId },
-      select: { key: true, hierarchyLevel: true, isSubtask: true },
+      select: { key: true, hierarchyLevel: true },
     });
     if (type)
       await this.assertParentPlacement(db, organizationId, { projectId, type }, input.parentId);
@@ -1748,17 +1741,6 @@ export class IssuesService {
       throw new BusinessRuleException(
         'Epic là cấp cao nhất — việc đang thuộc Epic hoặc việc cha không thể đổi thành Epic. Hãy gỡ việc khỏi Epic/việc cha (gửi epicId: null và parentId: null) trong cùng lần đổi loại',
       );
-    // TIRA-BUG-22: đổi sub-task → loại thường mà vẫn giữ `parentId` sẽ để lại việc thường có cha → bắt gỡ cha trong cùng request.
-    if (
-      newType &&
-      current.type.isSubtask &&
-      !newType.isSubtask &&
-      !isEpicType(newType) &&
-      effParentId
-    )
-      throw new BusinessRuleException(
-        'Việc thường (Story/Task/Bug) không thể là việc con của việc khác — hãy gỡ việc cha (gửi parentId: null) khi đổi sub-task sang loại thường, rồi gắn vào Epic nếu cần',
-      );
     if (input.epicId && input.epicId !== current.epicId) {
       await this.assertEpicValid(this.prisma, organizationId, input.epicId, current.projectId, id);
       this.assertNotEpicWithEpic(effType);
@@ -1978,11 +1960,11 @@ export class IssuesService {
     organizationId: string,
     current: IssueWriteRow,
     input: UpdateIssueInput,
-  ): Promise<ParentCheckType | null> {
+  ): Promise<{ key: string | null; hierarchyLevel: number } | null> {
     if (!input.typeId || input.typeId === current.typeId) return null;
     return this.prisma.issueType.findFirst({
       where: { id: input.typeId, organizationId },
-      select: { key: true, hierarchyLevel: true, isSubtask: true },
+      select: { key: true, hierarchyLevel: true },
     });
   }
 

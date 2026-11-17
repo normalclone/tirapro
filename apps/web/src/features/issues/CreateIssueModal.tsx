@@ -324,9 +324,7 @@ export function CreateIssueModal() {
   const selType = meta?.issueTypes.find((t) => t.id === typeId);
   const isEpicType = selType?.key === 'EPIC';
   const hideEpic = isEpicType || !!selType?.isSubtask;
-  // TIRA-BUG-22: chỉ sub-task có việc cha (`parentId`); việc thường gắn vào Epic nên không có ô "Việc cha".
-  const parentAllowed = !!selType?.isSubtask;
-  const hideParent = !!preset.parentId || !parentAllowed;
+  const hideParent = !!preset.parentId || isEpicType;
   // Việc con luôn vào sprint của việc cha: ô Sprint khoá và hiện sprint của cha (máy chủ cũng bỏ qua sprintId gửi kèm).
   // "Tạo việc con" trên một Epic = gắn việc vào Epic đó (epicId), không phải con trong cây: Epic không làm việc cha.
   const presetParentIsEpic = (() => {
@@ -335,9 +333,7 @@ export function CreateIssueModal() {
   })();
   const parentIssueId = presetParentIsEpic
     ? ''
-    : parentAllowed
-      ? (preset.parentId ?? (hideParent ? '' : parentPick))
-      : '';
+    : (preset.parentId ?? (hideParent ? '' : parentPick));
   const hasParent = !!parentIssueId;
   const parentSprintId = projIssues.find((i) => i.id === parentIssueId)?.sprintId ?? '';
   useEffect(() => {
