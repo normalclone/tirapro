@@ -424,4 +424,32 @@ describe('SlaService — thời gian xử lý hiển thị đúng thực tế (l
     expect(data.policyId).toBe('polNew');
     expect(data.resolveDueAt.getTime()).toBe(created.getTime() + 120 * 60000);
   });
+
+  it('đổi hạn (dueDate) → đặt lại hạn giải quyết SLA = hạn mới, gỡ cờ trễ (TIRA-BUG-36)', async () => {
+    const { service, prisma, created } = make();
+    const newDue = new Date(created.getTime() + 72 * hour);
+    await service.onIssueUpdated({
+      issue: { id: 'i1', organizationId: 'w', projectId: 'p', createdAt: created, dueDate: newDue },
+      changedFields: ['dueDate'],
+    });
+    const data = dataOf(prisma.issueSla.update) as unknown as {
+      resolveDueAt: Date;
+      resolveBreached: boolean;
+      policyId?: string;
+    };
+    expect(data.resolveDueAt.getTime()).toBe(newDue.getTime());
+    expect(data.resolveBreached).toBe(false);
+    expect(data.policyId).toBeUndefined(); // chỉ dời hạn, không đổi cam kết
+  });
+
+  it('xoá hạn (dueDate = null) → hạn giải quyết về mặc định cam kết: lúc tạo + resolveMins (TIRA-BUG-36)', async () => {
+    const { service, prisma, created } = make();
+    await service.onIssueUpdated({
+      issue: { id: 'i1', organizationId: 'w', projectId: 'p', createdAt: created, dueDate: null },
+      changedFields: ['dueDate'],
+    });
+    const data = dataOf(prisma.issueSla.update);
+    // policy.resolveMins mặc định của mock = 1440 phút
+    expect(data.resolveDueAt.getTime()).toBe(created.getTime() + 1440 * 60000);
+  });
 });

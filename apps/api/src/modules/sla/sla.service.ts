@@ -355,8 +355,11 @@ export class SlaService {
   }
 
   /**
-   * Đổi mức ưu tiên sau khi tạo → áp lại cam kết khớp mức mới (hạn tính lại từ lúc TẠO việc, giữ nguyên mốc phản hồi/giải
-   * quyết đã có). Không đụng việc đã xong.
+   * Sau khi tạo việc, áp lại cam kết khi:
+   * - Đổi **mức ưu tiên** → chọn lại cam kết khớp mức mới (hạn tính lại từ lúc TẠO việc, giữ mốc phản hồi/giải quyết đã có).
+   * - TIRA-BUG-36: đổi **hạn (dueDate)** thủ công → đặt lại HẠN GIẢI QUYẾT SLA theo hạn mới (nên trễ/còn lại tính theo hạn
+   *   mới, không còn theo hạn lúc tạo). Xoá hạn (để trống) → quay về hạn mặc định của cam kết (lúc tạo + `resolveMins`).
+   * Không đụng việc đã xong. Khi đổi cả hai cùng lúc, nhánh hạn ghi đè sau để tôn trọng lựa chọn thủ công.
    */
   @OnEvent(DOMAIN_EVENTS.ISSUE_UPDATED)
   async onIssueUpdated(payload: unknown): Promise<void> {
@@ -367,38 +370,70 @@ export class SlaService {
           organizationId: string;
           projectId: string;
           createdAt?: string | Date | null;
+          dueDate?: string | Date | null;
           priority?: { id: string } | null;
         };
         changedFields?: string[];
       };
-      if (!issue?.id || !changedFields?.includes('priorityId')) return;
+      if (!issue?.id) return;
+      const priorityChanged = changedFields?.includes('priorityId') ?? false;
+      const dueChanged = changedFields?.includes('dueDate') ?? false;
+      if (!priorityChanged && !dueChanged) return;
       const sla = await this.prisma.issueSla.findUnique({
         where: { issueId: issue.id },
-        select: { policyId: true, resolvedAt: true, firstRespondedAt: true },
-      });
-      if (!sla || sla.resolvedAt) return;
-      const policy = await this.pickPolicy(
-        issue.organizationId,
-        issue.projectId,
-        issue.priority?.id ?? null,
-      );
-      if (!policy || policy.id === sla.policyId) return;
-      const start = issue.createdAt ? new Date(issue.createdAt).getTime() : Date.now();
-      const base = Number.isNaN(start) ? Date.now() : start;
-      const responseDueAt = new Date(base + policy.responseMins * 60000);
-      await this.prisma.issueSla.update({
-        where: { issueId: issue.id },
-        data: {
-          policyId: policy.id,
-          responseDueAt,
-          resolveDueAt: new Date(base + policy.resolveMins * 60000),
-          resolveBreached: false,
-          ...(sla.firstRespondedAt ? {} : { responseBreached: false }),
+        select: {
+          policyId: true,
+          resolvedAt: true,
+          firstRespondedAt: true,
+          policy: { select: { resolveMins: true } },
         },
       });
+      if (!sla || sla.resolvedAt) return;
+      const start = issue.createdAt ? new Date(issue.createdAt).getTime() : Date.now();
+      const base = Number.isNaN(start) ? Date.now() : start;
+      // `resolveMins` hiệu lực để tính hạn mặc định — cập nhật nếu đổi ưu tiên chọn được cam kết mới.
+      let resolveMins = sla.policy?.resolveMins ?? null;
+
+      if (priorityChanged) {
+        const policy = await this.pickPolicy(
+          issue.organizationId,
+          issue.projectId,
+          issue.priority?.id ?? null,
+        );
+        if (policy && policy.id !== sla.policyId) {
+          resolveMins = policy.resolveMins;
+          await this.prisma.issueSla.update({
+            where: { issueId: issue.id },
+            data: {
+              policyId: policy.id,
+              responseDueAt: new Date(base + policy.responseMins * 60000),
+              resolveDueAt: new Date(base + policy.resolveMins * 60000),
+              resolveBreached: false,
+              ...(sla.firstRespondedAt ? {} : { responseBreached: false }),
+            },
+          });
+        }
+      }
+
+      if (dueChanged) {
+        const due = issue.dueDate ? new Date(issue.dueDate) : null;
+        const resolveDueAt =
+          due && !Number.isNaN(due.getTime())
+            ? due
+            : resolveMins != null
+              ? new Date(base + resolveMins * 60000)
+              : null;
+        if (resolveDueAt) {
+          await this.prisma.issueSla.update({
+            where: { issueId: issue.id },
+            // Việc chưa xong: trễ "giải quyết" tính trực tiếp (resolveDueAt < now) nên chỉ cần dời hạn + gỡ cờ trễ cũ.
+            data: { resolveDueAt, resolveBreached: false },
+          });
+        }
+      }
     } catch (err) {
       this.logger.warn(
-        `Áp lại SLA khi đổi ưu tiên thất bại: ${err instanceof Error ? err.message : String(err)}`,
+        `Áp lại SLA khi đổi ưu tiên/hạn thất bại: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
   }
